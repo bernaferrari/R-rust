@@ -89,19 +89,23 @@ struct ParenthesesFrame {
     _workspace: WorkspaceReservation,
 }
 
-#[derive(Clone, Copy)]
-enum AdditiveOperator {
+enum DerivativeOperator {
     Transparent,
     Negate,
     Plus,
     Minus,
+    Sin(Value),
+    Cos(Value),
+    Tan,
+    Exp,
+    Log,
 }
 
-struct AdditiveFrame {
+struct DerivativeFrame {
     // Source and snapshot remain owned across callbacks in either child.
-    _expression: Value,
+    expression: Value,
     call: Call,
-    operator: AdditiveOperator,
+    operator: DerivativeOperator,
     first: Option<Value>,
 }
 
@@ -439,7 +443,7 @@ where
         };
         // Keep the old frame allocation charged until replacement succeeds.
         let mut _frame_workspace = None;
-        let mut frames: Vec<AdditiveFrame> = Vec::new();
+        let mut frames: Vec<DerivativeFrame> = Vec::new();
         let mut current = expression.clone();
         loop {
             self.access.require_active()?;
@@ -458,26 +462,43 @@ where
                     self.push_active(&current)?;
                     let call = snapshot(self.access, &current)?;
                     let function = name(&call.head)?;
+                    let first = call
+                        .arguments
+                        .first()
+                        .ok_or_else(|| invalid("invalid derivative expression"))?
+                        .clone();
+                    // These factors are constructed before D(first), exactly
+                    // where the recursive GNU rules suspend. The continuation
+                    // owns them across callbacks while the child is traversed.
                     let operator = match (function.as_str(), call.arguments.len()) {
-                        ("(" | "+", 1) => Some(AdditiveOperator::Transparent),
-                        ("-", 1) => Some(AdditiveOperator::Negate),
-                        ("+", _) => Some(AdditiveOperator::Plus),
-                        ("-", _) => Some(AdditiveOperator::Minus),
+                        ("(" | "+", 1) => Some(DerivativeOperator::Transparent),
+                        ("-", 1) => Some(DerivativeOperator::Negate),
+                        ("+", _) => Some(DerivativeOperator::Plus),
+                        ("-", _) => Some(DerivativeOperator::Minus),
+                        ("sin", _) => Some(DerivativeOperator::Sin(
+                            self.call("cos", std::slice::from_ref(&first))?,
+                        )),
+                        ("cos", _) => Some(DerivativeOperator::Cos(
+                            self.call("sin", std::slice::from_ref(&first))?,
+                        )),
+                        ("tan", _) => Some(DerivativeOperator::Tan),
+                        ("exp", _) => Some(DerivativeOperator::Exp),
+                        ("log", 1) => Some(DerivativeOperator::Log),
+                        ("log", _) => {
+                            return Err(invalid(
+                                "only single-argument calls to log() are supported;\n  maybe use log(x,a) = log(x)/log(a)",
+                            ));
+                        }
                         _ => None,
                     };
                     if let Some(operator) = operator {
-                        let first = call
-                            .arguments
-                            .first()
-                            .ok_or_else(|| invalid("invalid derivative expression"))?
-                            .clone();
                         if frames.len() == frames.capacity() {
                             let capacity = frames
                                 .len()
                                 .checked_add(1)
                                 .ok_or_else(|| invalid("cannot retain derivative frames"))?;
                             let bytes = capacity
-                                .checked_mul(size_of::<AdditiveFrame>())
+                                .checked_mul(size_of::<DerivativeFrame>())
                                 .ok_or_else(|| invalid("cannot retain derivative frames"))?;
                             let mut next = workspace(self.access, bytes, "derivative frames")?;
                             let mut replacement = Vec::new();
@@ -486,7 +507,7 @@ where
                                 .map_err(|_| invalid("cannot retain derivative frames"))?;
                             let actual = replacement
                                 .capacity()
-                                .checked_mul(size_of::<AdditiveFrame>())
+                                .checked_mul(size_of::<DerivativeFrame>())
                                 .ok_or_else(|| invalid("cannot retain derivative frames"))?;
                             next.try_resize(actual)
                                 .ok_or_else(|| invalid("cannot retain derivative frames"))?;
@@ -494,8 +515,8 @@ where
                             drop(std::mem::replace(&mut frames, replacement));
                             _frame_workspace = Some(next);
                         }
-                        frames.push(AdditiveFrame {
-                            _expression: current,
+                        frames.push(DerivativeFrame {
+                            expression: current,
                             call,
                             operator,
                             first: None,
@@ -515,7 +536,7 @@ where
                 };
                 if matches!(
                     frame.operator,
-                    AdditiveOperator::Plus | AdditiveOperator::Minus
+                    DerivativeOperator::Plus | DerivativeOperator::Minus
                 ) && frame.first.is_none()
                 {
                     if let Some(second) = frame.call.arguments.get(1) {
@@ -528,10 +549,27 @@ where
                 }
                 let frame = frames.pop().expect("frame just observed");
                 result = match frame.operator {
-                    AdditiveOperator::Transparent => result,
-                    AdditiveOperator::Negate => self.simplify("-", result, None)?,
-                    AdditiveOperator::Plus | AdditiveOperator::Minus => {
-                        let operator = if matches!(frame.operator, AdditiveOperator::Plus) {
+                    DerivativeOperator::Transparent => result,
+                    DerivativeOperator::Negate => self.simplify("-", result, None)?,
+                    DerivativeOperator::Sin(factor) => self.simplify("*", factor, Some(result))?,
+                    DerivativeOperator::Cos(factor) => {
+                        let negative = self.simplify("-", result, None)?;
+                        self.simplify("*", factor, Some(negative))?
+                    }
+                    DerivativeOperator::Tan => {
+                        let cosine =
+                            self.call("cos", std::slice::from_ref(&frame.call.arguments[0]))?;
+                        let denominator = self.simplify("^", cosine, Some(self.scalar(2.)?))?;
+                        self.simplify("/", result, Some(denominator))?
+                    }
+                    DerivativeOperator::Exp => {
+                        self.simplify("*", frame.expression, Some(result))?
+                    }
+                    DerivativeOperator::Log => {
+                        self.simplify("/", result, Some(frame.call.arguments[0].clone()))?
+                    }
+                    operator @ (DerivativeOperator::Plus | DerivativeOperator::Minus) => {
+                        let operator = if matches!(operator, DerivativeOperator::Plus) {
                             "+"
                         } else {
                             "-"
@@ -608,31 +646,6 @@ where
                     let second = self.simplify("*", power, Some(factor))?;
                     self.simplify("+", first, Some(second))
                 }
-            }
-            "sin" => self.simplify(
-                "*",
-                self.call("cos", std::slice::from_ref(&a))?,
-                Some(self.derive(&a, variable)?),
-            ),
-            "cos" => self.simplify(
-                "*",
-                self.call("sin", std::slice::from_ref(&a))?,
-                Some(self.simplify("-", self.derive(&a, variable)?, None)?),
-            ),
-            "tan" => {
-                let numerator = self.derive(&a, variable)?;
-                let cosine = self.call("cos", &[a])?;
-                let denominator = self.simplify("^", cosine, Some(self.scalar(2.)?))?;
-                self.simplify("/", numerator, Some(denominator))
-            }
-            "exp" => self.simplify("*", expression.clone(), Some(self.derive(&a, variable)?)),
-            "log" => {
-                if call.arguments.len() != 1 {
-                    return Err(invalid(
-                        "only single-argument calls to log() are supported;\n  maybe use log(x,a) = log(x)/log(a)",
-                    ));
-                }
-                self.simplify("/", self.derive(&a, variable)?, Some(a))
             }
             "sqrt" => {
                 let power = self.call("^", &[a, self.scalar(0.5)?])?;
@@ -1063,7 +1076,7 @@ mod scratch_admission_tests {
             let (allocated, held) = access
                 .with_arena(|arena| (arena.total_bytes_allocated(), arena.workspace_bytes()))?;
             let allowance =
-                size_of::<NodeLink>() + 4 * size_of::<Value>() + size_of::<AdditiveFrame>() - 1;
+                size_of::<NodeLink>() + 4 * size_of::<Value>() + size_of::<DerivativeFrame>() - 1;
             access.with_arena(|arena| {
                 arena.set_budget(ArenaBudget::new(allocated + held + allowance, 0))
             })?;
@@ -1087,6 +1100,93 @@ mod scratch_admission_tests {
         })
         .unwrap()
         .unwrap();
+    }
+
+    #[test]
+    fn common_unary_frame_denial_releases_workspace_and_allows_recovery() {
+        let mut session = RSession::new_for_gc_tests();
+        let expression = session
+            .eval_code_with_output_capture("quote(exp(y))")
+            .0
+            .unwrap()
+            .into_owned()
+            .unwrap();
+        let variable = expression.try_car().unwrap().into_owned().unwrap();
+        let owner = session.owner_token().unwrap().weak_owner().unwrap();
+        crate::sexp::owner::with_runtime(&owner, |access| {
+            let kernel = Kernel::new(access, |_, _| Err(invalid("unused installer")));
+            let (allocated, held) = access
+                .with_arena(|arena| (arena.total_bytes_allocated(), arena.workspace_bytes()))?;
+            let allowance =
+                size_of::<NodeLink>() + 2 * size_of::<Value>() + size_of::<DerivativeFrame>() - 1;
+            access.with_arena(|arena| {
+                arena.set_budget(ArenaBudget::new(allocated + held + allowance, 0))
+            })?;
+            let error = kernel.derive(&expression, &variable).unwrap_err();
+            assert!(
+                error
+                    .to_string()
+                    .contains("cannot retain derivative frames"),
+                "{error}"
+            );
+            assert!(kernel.active.borrow().is_empty());
+            assert_eq!(
+                access.with_arena(|arena| arena.workspace_bytes())?,
+                held + size_of::<NodeLink>()
+            );
+            access.with_arena(|arena| arena.set_budget(ArenaBudget::unlimited()))?;
+            assert_eq!(kernel.derive(&expression, &variable)?.try_real_elt(0)?, 0.);
+            drop(kernel);
+            assert_eq!(access.with_arena(|arena| arena.workspace_bytes())?, held);
+            Ok::<_, SexpError>(())
+        })
+        .unwrap()
+        .unwrap();
+    }
+
+    #[test]
+    fn common_unary_preserves_construction_and_child_error_order() {
+        let mut session = RSession::new_for_gc_tests();
+        let variable = session
+            .eval_code_with_output_capture("quote(x)")
+            .0
+            .unwrap()
+            .into_owned()
+            .unwrap();
+        let owner = session.owner_token().unwrap().weak_owner().unwrap();
+        for (source, expected) in [
+            ("sin(foo(x))", vec!["cos"]),
+            ("cos(foo(x))", vec!["sin"]),
+            ("tan(foo(x))", vec![]),
+            ("exp(foo(x))", vec![]),
+            ("log(foo(x))", vec![]),
+        ] {
+            let expression = session
+                .eval_code_with_output_capture(&format!("quote({source})"))
+                .0
+                .unwrap()
+                .into_owned()
+                .unwrap();
+            let events = RefCell::new(Vec::new());
+            crate::sexp::owner::with_runtime(&owner, |access| {
+                let kernel = Kernel::new(access, |_, name| {
+                    events.borrow_mut().push(name.to_owned());
+                    Ok(variable.clone())
+                });
+                let error = kernel.derive(&expression, &variable).unwrap_err();
+                assert!(
+                    error
+                        .to_string()
+                        .contains("Function 'foo' is not in the derivatives table"),
+                    "{error}"
+                );
+                assert!(kernel.active.borrow().is_empty());
+                Ok::<_, SexpError>(())
+            })
+            .unwrap()
+            .unwrap();
+            assert_eq!(*events.borrow(), expected, "{source}");
+        }
     }
 
     #[test]
