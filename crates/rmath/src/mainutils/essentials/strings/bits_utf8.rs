@@ -255,6 +255,13 @@ pub unsafe fn do_utf8ToInt(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
                 "argument must be a character vector of length 1",
             );
         }
+        let _x_root = protect(x);
+        if XLENGTH(x) > 1 {
+            crate::mainutils::errors::Rf_warning(
+                c"argument should be a character vector of length 1\nall but the first element will be ignored"
+                    .as_ptr(),
+            );
+        }
         let ch = STRING_ELT(x, 0);
         if ch.is_null() || ch == crate::sexp::globals::R_NaString() {
             return Rf_ScalarInteger(NA_INTEGER);
