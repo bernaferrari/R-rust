@@ -28,8 +28,9 @@ out <- supsmu(1:8, y, span=list(0.25))
 stopifnot(identical(round(out$y, 6), c(1.8,2.5,3.2,4.2,4.4,5.6,6.3,7)))
 trace <- character()
 Ops.spanprobe <- function(e1,e2) { trace <<- c(trace,.Generic); do.call(.Generic,list(unclass(e1),e2)) }
-as.double.spanprobe <- function(x,...) { trace <<- c(trace,'double'); unclass(x) }
+as.double.spanprobe <- function(x,...) { trace <<- c(trace,'double'); .75 }
 out <- supsmu(1:8, y, span=structure(.25,class='spanprobe'))
 stopifnot(identical(trace, c('==','<','>','double')))
-stopifnot(identical(round(out$y, 6), c(1.8,2.5,3.2,4.2,4.4,5.6,6.3,7)))
+stopifnot(identical(round(out$y, 6), c(1.928571,2.571429,3.214286,3.857143,
+                                          4.857143,5.535714,6.214286,6.892857)))
 cat('list comparison and supsmu: PASS\n')
