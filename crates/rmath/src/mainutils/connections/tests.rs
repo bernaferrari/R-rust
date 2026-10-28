@@ -3,7 +3,7 @@ use std::sync::{Mutex, MutexGuard};
 
 use super::*;
 use crate::sexp::session::RSession;
-use std::io::Write;
+use std::io::{Cursor, Write};
 
 static TEST_LOCK: Mutex<()> = Mutex::new(());
 
@@ -17,6 +17,45 @@ fn test_ok<T, E: std::fmt::Display>(result: Result<T, E>) -> T {
         Ok(value) => value,
         Err(err) => panic!("test setup failed: {err}"),
     }
+}
+
+#[test]
+fn read_crlf_line_marks_only_eof_terminated_lines_incomplete() {
+    let mut reader = Cursor::new(b"lf\ncrlf\r\ncr\rtail");
+    assert_eq!(
+        super::lines::read_crlf_line(&mut reader).unwrap(),
+        Some(("lf".to_string(), false))
+    );
+    assert_eq!(
+        super::lines::read_crlf_line(&mut reader).unwrap(),
+        Some(("crlf".to_string(), false))
+    );
+    assert_eq!(
+        super::lines::read_crlf_line(&mut reader).unwrap(),
+        Some(("cr".to_string(), false))
+    );
+    assert_eq!(
+        super::lines::read_crlf_line(&mut reader).unwrap(),
+        Some(("tail".to_string(), true))
+    );
+    assert_eq!(super::lines::read_crlf_line(&mut reader).unwrap(), None);
+}
+
+#[test]
+fn read_lines_warning_handler_gc_preserves_connection_result() {
+    let path = std::env::temp_dir().join(format!(
+        "rport-readlines-incomplete-warning-{}.txt",
+        std::process::id()
+    ));
+    fs::write(&path, b"tail").expect("write incomplete-line fixture");
+    let path = path.to_str().expect("temporary path is UTF-8");
+    let mut session = RSession::new();
+    let script = format!(
+        "con <- file('{path}', 'r'); warned <- FALSE; lines <- withCallingHandlers(readLines(con), warning=function(w) {{ warned <<- TRUE; gc() }}); close(con); warned && identical(lines, 'tail')"
+    );
+    let (result, _, _) = session.eval_script_with_output_capture(&script);
+    assert_eq!(result.unwrap().try_logical_elt(0).unwrap(), 1);
+    let _ = fs::remove_file(path);
 }
 
 fn expect_r_error<F>(f: F) -> String

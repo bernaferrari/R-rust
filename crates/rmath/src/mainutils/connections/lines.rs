@@ -29,7 +29,7 @@ use crate::sexp::protect::*;
 // do_readLines — readLines(con, n = -1, ok = TRUE, warn = TRUE, encoding = "", skipNul = FALSE)
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_readLines(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_readLines(call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let scon = CAR(args);
         let mut n_val = -1;
@@ -75,6 +75,10 @@ pub unsafe fn do_readLines(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
                 .unwrap_or_else(|e| r_error(&format!("cannot open file '{}': {}", path, e)));
             let contents = decompress_known(&raw);
             let lines = nul_normalized_lines(&contents, n, skip_nul);
+            let incomplete_line = lines.len() == count_logical_lines(&contents)
+                && contents
+                    .last()
+                    .is_some_and(|byte| !matches!(byte, b'\n' | b'\r'));
             if lines.len() < n && _ok == 0 {
                 r_error("too few lines read in readLines");
             }
@@ -86,6 +90,10 @@ pub unsafe fn do_readLines(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
                     let charsxp = Rf_mkChar(c_line.as_ptr());
                     SET_STRING_ELT(ans, idx as R_xlen_t, charsxp);
                 }
+            }
+            if incomplete_line && _warn != 0 {
+                let warning = incomplete_line_warning(&path);
+                crate::mainutils::errors::Rf_warningcall1(call, warning.as_ptr());
             }
             return ans;
         }
@@ -123,6 +131,7 @@ pub unsafe fn do_readLines(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
 
         conn.incomplete = false;
         let mut lines: Vec<String> = Vec::new();
+        let mut incomplete_line = false;
         let mut anonymous_reservations = Vec::new();
         while lines.len() < n {
             let Some(line) = read_pushback_line(conn, skip_nul) else {
@@ -156,8 +165,9 @@ pub unsafe fn do_readLines(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
                     for _ in 0..backend_limit {
                         match read_crlf_line(reader) {
                             Ok(None) => break,
-                            Ok(Some(line)) => {
+                            Ok(Some((line, incomplete))) => {
                                 lines.push(nul_normalized_line(line.into_bytes(), skip_nul));
+                                incomplete_line = incomplete;
                             }
                             Err(e) => {
                                 r_error(&format!("error reading from connection: {}", e));
@@ -237,6 +247,9 @@ pub unsafe fn do_readLines(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
                 r_error("cannot read from this connection type");
             }
         }
+        conn.incomplete = incomplete_line;
+        let incomplete_warning =
+            incomplete_line.then(|| incomplete_line_warning(&conn.description));
 
         drop(table);
         if lines.len() < n && _ok == 0 {
@@ -244,6 +257,7 @@ pub unsafe fn do_readLines(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
         }
         let nlines = lines.len() as c_int;
         let ans = Rf_allocVector(SEXPTYPE::STRSXP, nlines);
+        let _ans_root = protect(ans);
         if !ans.is_null() {
             for (idx, line) in lines.iter().enumerate() {
                 let c_line = CString::new(line.as_str()).unwrap_or_default();
@@ -254,6 +268,11 @@ pub unsafe fn do_readLines(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
 
         if let Some(guard) = auto_guard.as_mut() {
             guard.close();
+        }
+        if _warn != 0
+            && let Some(warning) = incomplete_warning
+        {
+            crate::mainutils::errors::Rf_warningcall1(call, warning.as_ptr());
         }
         ans
     }
@@ -480,7 +499,7 @@ unsafe fn auto_open_connection(con: SEXP, mode: &str, guard: &ConnectionCleanup)
     }
 }
 
-fn read_crlf_line<R: BufRead>(reader: &mut R) -> io::Result<Option<String>> {
+pub(super) fn read_crlf_line<R: BufRead>(reader: &mut R) -> io::Result<Option<(String, bool)>> {
     let mut line = Vec::new();
     loop {
         let mut byte = [0u8; 1];
@@ -489,22 +508,47 @@ fn read_crlf_line<R: BufRead>(reader: &mut R) -> io::Result<Option<String>> {
                 if line.is_empty() {
                     return Ok(None);
                 }
-                return Ok(Some(String::from_utf8_lossy(&line).into_owned()));
+                return Ok(Some((String::from_utf8_lossy(&line).into_owned(), true)));
             }
             _ => {
                 if byte[0] == b'\n' {
-                    return Ok(Some(String::from_utf8_lossy(&line).into_owned()));
+                    return Ok(Some((String::from_utf8_lossy(&line).into_owned(), false)));
                 }
                 if byte[0] == b'\r' {
                     if let Some(&b'\n') = reader.fill_buf()?.first() {
                         reader.consume(1);
                     }
-                    return Ok(Some(String::from_utf8_lossy(&line).into_owned()));
+                    return Ok(Some((String::from_utf8_lossy(&line).into_owned(), false)));
                 }
                 line.push(byte[0]);
             }
         }
     }
+}
+
+fn count_logical_lines(bytes: &[u8]) -> usize {
+    let mut count = 0;
+    let mut offset = 0;
+    while offset < bytes.len() {
+        count += 1;
+        let (end, after) = super::state::line_terminator(&bytes[offset..])
+            .map(|(end, after)| (offset + end, offset + after))
+            .unwrap_or((bytes.len(), bytes.len()));
+        offset = if end == bytes.len() {
+            bytes.len()
+        } else {
+            after
+        };
+    }
+    count
+}
+
+fn incomplete_line_warning(description: &str) -> CString {
+    CString::new(format!(
+        "incomplete final line found on '{}'",
+        description.replace('\\', "\\\\").replace('\'', "\\'")
+    ))
+    .unwrap_or_default()
 }
 
 fn decompress_known(raw: &[u8]) -> Vec<u8> {
