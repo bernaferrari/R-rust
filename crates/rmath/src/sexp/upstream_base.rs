@@ -1216,56 +1216,64 @@ unsafe fn load_file_sources(base_env: SEXP, staging: SEXP, files: &[UpstreamFile
                 if file.exports.iter().all(|name| defined_in(base_env, name)) {
                     continue;
                 }
-                let parsed = crate::sexp::memory::with_arena(|arena| {
-                    crate::eval::parser::parse_expressions(
-                        file.source,
-                        arena,
-                        parser_factory.clone(),
-                    )
-                });
-                crate::eval::parser::flush_literal_warnings();
-                let Ok(exprs) = parsed else {
-                    continue;
-                };
-                let mut failed_now = vec![false; exprs.len()];
-                for (position, expr) in exprs.iter().enumerate() {
-                    if pass > 0 && !failed[index].get(position).copied().unwrap_or(true) {
+                let needs_parse = pass == 0
+                    || failed[index].is_empty()
+                    || failed[index].iter().any(|failed| *failed);
+                if needs_parse {
+                    let parsed = crate::sexp::memory::with_arena(|arena| {
+                        crate::eval::parser::parse_expressions(
+                            file.source,
+                            arena,
+                            parser_factory.clone(),
+                        )
+                    });
+                    crate::eval::parser::flush_literal_warnings();
+                    let Ok(exprs) = parsed else {
                         continue;
+                    };
+                    let mut failed_now = vec![false; exprs.len()];
+                    for (position, expr) in exprs.iter().enumerate() {
+                        if pass > 0 && !failed[index].get(position).copied().unwrap_or(true) {
+                            continue;
+                        }
+                        // Blocked backlog names must not even be defined in the
+                        // staging frame: staged siblings would still reach them
+                        // through S3 dispatch from their shared closure env.
+                        if assigns_blocked_name(expr.as_raw()) {
+                            continue;
+                        }
+                        // R-level tryCatch keeps load-time failures inside the
+                        // condition machinery; the Rust backstop is below.
+                        let wrapped = crate::sexp::constructors::Rf_lang3(
+                            try_catch,
+                            expr.clone().as_raw(),
+                            swallow,
+                        );
+                        crate::sexp::accessors::SETTAG(
+                            crate::sexp::accessors::CDR(crate::sexp::accessors::CDR(wrapped)),
+                            Rf_install_in_current("error"),
+                        );
+                        let _wrapped = crate::sexp::protect::protect(wrapped);
+                        let evaluated =
+                            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+                                crate::eval::eval::Rf_eval(wrapped, staging)
+                            }));
+                        if matches!(evaluated, Ok(value) if value == failed_marker) {
+                            failed_now[position] = true;
+                        } else if evaluated.is_err() {
+                            // A failed load-time expression leaves that binding
+                            // unbound; the fixpoint retries once its missing
+                            // dependency may have appeared.
+                            crate::sexp::context::R_SetInError(false);
+                            failed_now[position] = true;
+                        }
                     }
-                    // Blocked backlog names must not even be defined in the
-                    // staging frame: staged siblings would still reach them
-                    // through S3 dispatch from their shared closure env.
-                    if assigns_blocked_name(expr.as_raw()) {
-                        continue;
-                    }
-                    // R-level tryCatch keeps load-time failures inside the
-                    // condition machinery; the Rust backstop is below.
-                    let wrapped = crate::sexp::constructors::Rf_lang3(
-                        try_catch,
-                        expr.clone().as_raw(),
-                        swallow,
-                    );
-                    crate::sexp::accessors::SETTAG(
-                        crate::sexp::accessors::CDR(crate::sexp::accessors::CDR(wrapped)),
-                        Rf_install_in_current("error"),
-                    );
-                    let _wrapped = crate::sexp::protect::protect(wrapped);
-                    let evaluated =
-                        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
-                            crate::eval::eval::Rf_eval(wrapped, staging)
-                        }));
-                    if matches!(evaluated, Ok(value) if value == failed_marker) {
-                        failed_now[position] = true;
-                    } else if evaluated.is_err() {
-                        // A failed load-time expression leaves that binding
-                        // unbound; the fixpoint retries once its missing
-                        // dependency may have appeared.
-                        crate::sexp::context::R_SetInError(false);
-                        failed_now[position] = true;
-                    }
+                    failed[index] = failed_now;
                 }
+                // A file may have evaluated successfully while its export
+                // waited for a dependency. Even when no expression needs a
+                // retry, reconsider publication as later files become ready.
                 bound_any |= copy_exports(base_env, staging, file.exports);
-                failed[index] = failed_now;
             }
             if !bound_any {
                 break;
@@ -1844,5 +1852,56 @@ mod fixpoint_tests {
                 .expect("dependent export is bound");
             assert_eq!(dependent.try_integer_elt(0).unwrap(), 42);
         });
+    }
+
+    #[test]
+    fn successful_file_exports_are_reconsidered_after_dependency_loads() {
+        static FILES: &[UpstreamFile] = &[
+            UpstreamFile {
+                source: concat!(
+                    "init_copy_count <<- init_copy_count + 1L\n",
+                    "init_retry_generic <- function(x) UseMethod('init_retry_generic')\n",
+                ),
+                exports: &["init_retry_generic"],
+            },
+            UpstreamFile {
+                source: "init_retry_generic.default <- function(x) 'ready'\n",
+                exports: &["init_retry_generic.default"],
+            },
+        ];
+
+        let mut session = crate::sexp::session::RSession::new_without_default_packages();
+        let (initialized, _, _) = session.eval_script_with_output_capture("init_copy_count <- 0L");
+        assert!(initialized.is_ok());
+
+        session.with_active(|| unsafe {
+            let global = crate::sexp::globals::R_GlobalEnv();
+            let staging =
+                crate::sexp::memory_ext::NewEnvironment(R_NilValue(), global, R_NilValue());
+            let _staging = crate::sexp::protect::protect(staging);
+            load_file_sources(global, staging, FILES);
+
+            let owner = session.owner_token().expect("test session owner");
+            let count = owner
+                .sexp(R_findVarInFrame(
+                    global,
+                    Rf_install_in_current("init_copy_count"),
+                ))
+                .expect("side-effect counter is bound");
+            assert_eq!(count.try_integer_elt(0).unwrap(), 1);
+
+            let generic = R_findVarInFrame(global, Rf_install_in_current("init_retry_generic"));
+            assert!(!generic.is_null() && generic != R_UnboundValue());
+        });
+
+        let (dispatched, _, _) = session.eval_script_with_output_capture("init_retry_generic(1L)");
+        assert!(
+            dispatched
+                .unwrap()
+                .try_string_elt(0)
+                .unwrap()
+                .try_char_eq(b"ready")
+                .unwrap()
+        );
     }
 }
