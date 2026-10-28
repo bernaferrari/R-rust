@@ -126,6 +126,10 @@ enum DerivativeOperator {
     Sinpi(Value),
     Cospi(Value),
     Tanpi(Value),
+    Gamma(Value),
+    GammaDerivative(&'static str),
+    Trigamma,
+    Psigamma(Value),
 }
 
 struct DerivativeFrame {
@@ -577,6 +581,29 @@ where
                             let denominator = self.simplify("+", self.scalar(1.)?, Some(square))?;
                             Some(DerivativeOperator::Atan(denominator))
                         }
+                        ("gamma", _) => {
+                            let digamma = self.call("digamma", std::slice::from_ref(&first))?;
+                            let product = self.simplify("*", current.clone(), Some(digamma))?;
+                            Some(DerivativeOperator::Gamma(product))
+                        }
+                        ("lgamma", _) => Some(DerivativeOperator::GammaDerivative("digamma")),
+                        ("digamma", _) => Some(DerivativeOperator::GammaDerivative("trigamma")),
+                        ("trigamma", _) => Some(DerivativeOperator::Trigamma),
+                        ("psigamma", _) => {
+                            let order = match call.arguments.get(1) {
+                                Some(order) => order.clone(),
+                                None => self.integer(0)?,
+                            };
+                            let next = match self.numeric(&order)? {
+                                Some(order) => self.integer(
+                                    (order as i32)
+                                        .checked_add(1)
+                                        .ok_or_else(|| invalid("derivative order overflow"))?,
+                                )?,
+                                None => self.call("+", &[order, self.integer(1)?])?,
+                            };
+                            Some(DerivativeOperator::Psigamma(next))
+                        }
                         ("sinpi", _) => Some(DerivativeOperator::Sinpi(self.symbol("pi")?)),
                         ("cospi", _) => Some(DerivativeOperator::Cospi(self.symbol("pi")?)),
                         ("tanpi", _) => Some(DerivativeOperator::Tanpi(self.symbol("pi")?)),
@@ -719,6 +746,26 @@ where
                     DerivativeOperator::Expm1(factor) | DerivativeOperator::Pnorm(factor) => {
                         self.simplify("*", factor, Some(result))?
                     }
+                    DerivativeOperator::Gamma(product) => {
+                        self.simplify("*", result, Some(product))?
+                    }
+                    DerivativeOperator::GammaDerivative(outer) => {
+                        let factor =
+                            self.call(outer, std::slice::from_ref(&frame.call.arguments[0]))?;
+                        self.simplify("*", result, Some(factor))?
+                    }
+                    DerivativeOperator::Trigamma => {
+                        let factor = self.call(
+                            "psigamma",
+                            &[frame.call.arguments[0].clone(), self.integer(2)?],
+                        )?;
+                        self.simplify("*", result, Some(factor))?
+                    }
+                    DerivativeOperator::Psigamma(next) => {
+                        let factor =
+                            self.call("psigamma", &[frame.call.arguments[0].clone(), next])?;
+                        self.simplify("*", result, Some(factor))?
+                    }
                     DerivativeOperator::Sinpi(pi) => {
                         let factor = self.simplify("*", pi, Some(result))?;
                         self.simplify(
@@ -844,58 +891,10 @@ where
             .first()
             .ok_or_else(|| invalid("invalid derivative expression"))?
             .clone();
-        let b = call.arguments.get(1).cloned();
-        let binary = || {
-            b.clone()
-                .ok_or_else(|| invalid("invalid binary derivative expression"))
-        };
         match function.as_str() {
             "sqrt" => {
                 let power = self.call("^", &[a, self.scalar(0.5)?])?;
                 self.derive(&power, variable)
-            }
-            "gamma" => {
-                let digamma = self.call("digamma", std::slice::from_ref(&a))?;
-                let product = self.simplify("*", expression.clone(), Some(digamma))?;
-                self.simplify("*", self.derive(&a, variable)?, Some(product))
-            }
-            "lgamma" | "digamma" => {
-                let outer = if function == "lgamma" {
-                    "digamma"
-                } else {
-                    "trigamma"
-                };
-                self.simplify(
-                    "*",
-                    self.derive(&a, variable)?,
-                    Some(self.call(outer, &[a])?),
-                )
-            }
-            "trigamma" => self.simplify(
-                "*",
-                self.derive(&a, variable)?,
-                Some(self.call("psigamma", &[a, self.integer(2)?])?),
-            ),
-            "psigamma" => {
-                let order = match b {
-                    Some(order) => order,
-                    // psigamma(x)'s second argument defaults to 0;
-                    // d/dx psigamma(x, 0) is psigamma(x, 1L).
-                    None => self.integer(0)?,
-                };
-                let next = match self.numeric(&order)? {
-                    Some(order) => self.integer(
-                        (order as i32)
-                            .checked_add(1)
-                            .ok_or_else(|| invalid("derivative order overflow"))?,
-                    )?,
-                    None => self.call("+", &[order, self.integer(1)?])?,
-                };
-                self.simplify(
-                    "*",
-                    self.derive(&a, variable)?,
-                    Some(self.call("psigamma", &[a, next])?),
-                )
             }
             "lfactorial" => {
                 let shifted = self.simplify("+", a.clone(), Some(self.integer(1)?))?;
@@ -1282,6 +1281,12 @@ mod scratch_admission_tests {
             ("sinpi(foo(x))", vec!["pi"]),
             ("cospi(foo(x))", vec!["pi"]),
             ("tanpi(foo(x))", vec!["pi"]),
+            ("gamma(foo(x))", vec!["digamma", "*"]),
+            ("lgamma(foo(x))", vec![]),
+            ("digamma(foo(x))", vec![]),
+            ("trigamma(foo(x))", vec![]),
+            ("psigamma(foo(x))", vec![]),
+            ("psigamma(foo(x), nu)", vec!["+"]),
         ] {
             let expression = session
                 .eval_code_with_output_capture(&format!("quote({source})"))

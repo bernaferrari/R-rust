@@ -238,6 +238,11 @@ fn collecting_derivative(action: u8, common_unary: bool, binary_frame: u8) {
                 16 => "sinpi",
                 17 => "cospi",
                 18 => "tanpi",
+                19 => "gamma",
+                20 => "lgamma",
+                21 => "digamma",
+                22 => "trigamma",
+                23 | 24 => "psigamma",
                 _ => "tan",
             };
             let tangent = if common_unary {
@@ -246,8 +251,23 @@ fn collecting_derivative(action: u8, common_unary: bool, binary_frame: u8) {
                     child = call(&owner, head, &[child]);
                 }
                 call(&owner, "tan", &[child])
+            } else if binary_frame == 24 {
+                call(&owner, unary, &[power.clone(), numeric(&owner, 2.)])
             } else {
                 call(&owner, unary, std::slice::from_ref(&power))
+            };
+            let order_cell = if binary_frame == 24 {
+                Some(
+                    tangent
+                        .try_cdr()
+                        .unwrap()
+                        .try_cdr()
+                        .unwrap()
+                        .into_owned()
+                        .unwrap(),
+                )
+            } else {
+                None
             };
             let expression = if binary_frame == 1 {
                 let left = call(&owner, "*", &[symbol(&owner, "y"), x]);
@@ -279,6 +299,11 @@ fn collecting_derivative(action: u8, common_unary: bool, binary_frame: u8) {
             )
             .unwrap();
             cell.try_set_pairlist_car(&exponent).unwrap();
+            if let Some(order_cell) = order_cell {
+                let mut order_cell =
+                    crate::sexp::object::SexpMut::try_from_checked(order_cell).unwrap();
+                order_cell.try_set_pairlist_car(&exponent).unwrap();
+            }
             let variable = owner
                 .node_factory()
                 .unwrap()
@@ -357,7 +382,7 @@ fn collecting_derivative(action: u8, common_unary: bool, binary_frame: u8) {
                 1 => b"+",
                 2 => b"-",
                 3 => b"+",
-                4 | 5 | 10 | 14 | 16 => b"*",
+                4 | 5 | 10 | 14 | 16 | 19..=24 => b"*",
                 6 => b"/",
                 7 | 9 | 11 | 12 | 13 | 18 => b"/",
                 8 | 15 | 17 => b"-",
@@ -2903,4 +2928,363 @@ fn owned_derivative_pi_trig_shapes_and_order() {
             "{operator}"
         );
     }
+}
+
+#[test]
+#[cfg(not(miri))]
+fn owned_derivative_deep_gamma_traversal_subprocess() {
+    const CHILD: &str = "RPORT_DERIV_DEEP_GAMMA_CHILD";
+    if std::env::var_os(CHILD).is_some() {
+        std::thread::Builder::new()
+            .stack_size(2 * 1024 * 1024)
+            .spawn(|| {
+                let session = RSession::new_for_gc_tests();
+                let owner = session.owner_token().unwrap().weak_owner().unwrap();
+                let y = symbol(&owner, "y");
+                let mut expression = y.clone();
+                let operators = ["gamma", "lgamma", "digamma", "trigamma", "psigamma"];
+                for index in 0..2048 {
+                    expression = call(&owner, operators[index % operators.len()], &[expression]);
+                }
+                let variable = owner
+                    .node_factory()
+                    .unwrap()
+                    .strings(&["x"])
+                    .unwrap()
+                    .into_owned()
+                    .unwrap();
+                let args = arguments(&owner, &expression, &variable);
+                let result = session.with_active(|| unsafe {
+                    session
+                        .sexp(super::do_d(args.as_raw()))
+                        .unwrap()
+                        .into_owned()
+                        .unwrap()
+                });
+                assert_eq!(result.try_real_elt(0).unwrap(), 0.);
+            })
+            .unwrap()
+            .join()
+            .unwrap();
+        return;
+    }
+    let output = std::process::Command::new(std::env::current_exe().unwrap())
+        .arg("library::stats::deriv::owned_tests::owned_derivative_deep_gamma_traversal_subprocess")
+        .args(["--exact", "--nocapture"])
+        .env(CHILD, "1")
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "child failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn owned_derivative_gamma_cycles_reject_and_recover() {
+    let session = RSession::new_for_gc_tests();
+    let owner = session.owner_token().unwrap().weak_owner().unwrap();
+    let x = symbol(&owner, "x");
+    let variable = owner
+        .node_factory()
+        .unwrap()
+        .strings(&["x"])
+        .unwrap()
+        .into_owned()
+        .unwrap();
+    for operator in ["gamma", "lgamma", "digamma", "trigamma", "psigamma"] {
+        let expression = call(&owner, operator, std::slice::from_ref(&x));
+        let first_cell = expression.try_cdr().unwrap().into_owned().unwrap();
+        let mut writable = crate::sexp::object::SexpMut::try_from_checked(first_cell).unwrap();
+        writable.try_set_pairlist_car(&expression).unwrap();
+        drop(writable);
+        let args = arguments(&owner, &expression, &variable);
+        let error = session.with_active(|| {
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+                super::do_d(args.as_raw())
+            }))
+            .unwrap_err()
+        });
+        assert!(
+            error
+                .downcast::<crate::sexp::context::RError>()
+                .unwrap()
+                .message
+                .contains("cyclic derivative expression"),
+            "{operator}"
+        );
+    }
+    let args = arguments(&owner, &x, &variable);
+    let result =
+        session.with_active(|| unsafe { session.sexp(super::do_d(args.as_raw())).unwrap() });
+    assert_eq!(result.try_real_elt(0).unwrap(), 1.);
+}
+
+#[test]
+fn owned_derivative_gamma_frame_admission_denial_recovers() {
+    let mut session = RSession::new_for_gc_tests();
+    let owner = session.owner_token().unwrap().weak_owner().unwrap();
+    let y = symbol(&owner, "y");
+    let mut expression = y.clone();
+    for index in 0..64 {
+        expression = call(
+            &owner,
+            ["gamma", "lgamma", "digamma", "trigamma", "psigamma"][index % 5],
+            &[expression],
+        );
+    }
+    let variable = owner
+        .node_factory()
+        .unwrap()
+        .strings(&["x"])
+        .unwrap()
+        .into_owned()
+        .unwrap();
+    let args = arguments(&owner, &expression, &variable);
+    let preinstalled: Vec<_> = [
+        "+", "-", "*", "/", "^", "gamma", "lgamma", "digamma", "trigamma", "psigamma",
+    ]
+    .into_iter()
+    .map(|operator| symbol(&owner, operator))
+    .collect();
+    let prior = session.arena_budget();
+    let used = crate::sexp::owner::with_runtime(&owner, |access| {
+        access.with_arena(|arena| arena.total_bytes_allocated())
+    })
+    .unwrap()
+    .unwrap();
+    session.set_arena_budget(crate::sexp::memory::ArenaBudget::new(
+        used + 8192,
+        prior.max_nodes,
+    ));
+    let error = session.with_active(|| {
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+            super::do_d(args.as_raw())
+        }))
+        .unwrap_err()
+    });
+    let message = error
+        .downcast::<crate::sexp::context::RError>()
+        .unwrap()
+        .message;
+    assert!(
+        message.contains("cannot inspect derivative expression path")
+            || message.contains("cannot retain derivative frames")
+            || message.contains("session memory limit"),
+        "{message}"
+    );
+    drop(preinstalled);
+    session.set_arena_budget(prior);
+    let args = arguments(&owner, &y, &variable);
+    let result =
+        session.with_active(|| unsafe { session.sexp(super::do_d(args.as_raw())).unwrap() });
+    assert_eq!(result.try_real_elt(0).unwrap(), 0.);
+}
+
+#[test]
+fn owned_derivative_gamma_frame_gc_retains_generated_graph() {
+    collecting_derivative(0, false, 19);
+}
+
+#[test]
+fn owned_derivative_gamma_frame_panic_recovers() {
+    collecting_derivative(1, false, 19);
+}
+
+#[test]
+fn owned_derivative_gamma_frame_revocation_rejects_success() {
+    collecting_derivative(2, false, 19);
+}
+
+#[test]
+fn owned_derivative_lgamma_frame_gc_retains_generated_graph() {
+    collecting_derivative(0, false, 20);
+}
+
+#[test]
+fn owned_derivative_lgamma_frame_panic_recovers() {
+    collecting_derivative(1, false, 20);
+}
+
+#[test]
+fn owned_derivative_lgamma_frame_revocation_rejects_success() {
+    collecting_derivative(2, false, 20);
+}
+
+#[test]
+fn owned_derivative_digamma_frame_gc_retains_generated_graph() {
+    collecting_derivative(0, false, 21);
+}
+
+#[test]
+fn owned_derivative_digamma_frame_panic_recovers() {
+    collecting_derivative(1, false, 21);
+}
+
+#[test]
+fn owned_derivative_digamma_frame_revocation_rejects_success() {
+    collecting_derivative(2, false, 21);
+}
+
+#[test]
+fn owned_derivative_trigamma_frame_gc_retains_generated_graph() {
+    collecting_derivative(0, false, 22);
+}
+
+#[test]
+fn owned_derivative_trigamma_frame_panic_recovers() {
+    collecting_derivative(1, false, 22);
+}
+
+#[test]
+fn owned_derivative_trigamma_frame_revocation_rejects_success() {
+    collecting_derivative(2, false, 22);
+}
+
+#[test]
+fn owned_derivative_psigamma_frame_gc_retains_generated_graph() {
+    collecting_derivative(0, false, 23);
+}
+
+#[test]
+fn owned_derivative_psigamma_frame_panic_recovers() {
+    collecting_derivative(1, false, 23);
+}
+
+#[test]
+fn owned_derivative_psigamma_frame_revocation_rejects_success() {
+    collecting_derivative(2, false, 23);
+}
+
+#[test]
+fn owned_derivative_psigamma_order_provider_frame_gc_retains_generated_graph() {
+    collecting_derivative(0, false, 24);
+}
+
+#[test]
+fn owned_derivative_psigamma_order_provider_frame_panic_recovers() {
+    collecting_derivative(1, false, 24);
+}
+
+#[test]
+fn owned_derivative_psigamma_order_provider_frame_revocation_rejects_success() {
+    collecting_derivative(2, false, 24);
+}
+
+#[test]
+#[cfg_attr(
+    miri,
+    ignore = "GNU gamma-family shape and numerical checks run natively"
+)]
+fn owned_derivative_gamma_shapes_and_order() {
+    let mut session = RSession::new_without_default_packages();
+    let owner = session.owner_token().unwrap().weak_owner().unwrap();
+    let variable = code(&mut session, "'x'");
+    for (source, expected, value) in [
+        (
+            "gamma(x)",
+            "gamma(x) * digamma(x)",
+            "gamma(0.3) * digamma(0.3)",
+        ),
+        (
+            "gamma(x^2)",
+            "2 * x * (gamma(x^2) * digamma(x^2))",
+            "2 * 0.3 * (gamma(0.3^2) * digamma(0.3^2))",
+        ),
+        ("lgamma(x)", "digamma(x)", "digamma(0.3)"),
+        (
+            "lgamma(x^2)",
+            "2 * x * digamma(x^2)",
+            "2 * 0.3 * digamma(0.3^2)",
+        ),
+        ("digamma(x)", "trigamma(x)", "trigamma(0.3)"),
+        (
+            "digamma(x^2)",
+            "2 * x * trigamma(x^2)",
+            "2 * 0.3 * trigamma(0.3^2)",
+        ),
+        ("trigamma(x)", "psigamma(x, 2L)", "psigamma(0.3, 2L)"),
+        (
+            "trigamma(x^2)",
+            "2 * x * psigamma(x^2, 2L)",
+            "2 * 0.3 * psigamma(0.3^2, 2L)",
+        ),
+        ("psigamma(x)", "psigamma(x, 1L)", "psigamma(0.3, 1L)"),
+        (
+            "psigamma(x^2)",
+            "2 * x * psigamma(x^2, 1L)",
+            "2 * 0.3 * psigamma(0.3^2, 1L)",
+        ),
+        ("psigamma(x, 2)", "psigamma(x, 3L)", "psigamma(0.3, 3L)"),
+        (
+            "psigamma(x, nu)",
+            "psigamma(x, nu + 1L)",
+            "psigamma(0.3, 3L)",
+        ),
+    ] {
+        let expression = code(&mut session, &format!("quote({source})"));
+        let args = arguments(&owner, &expression, &variable);
+        let derivative = session.with_active(|| unsafe {
+            session
+                .sexp(super::do_d(args.as_raw()))
+                .unwrap()
+                .into_owned()
+                .unwrap()
+        });
+        assert!(session.define_var("saved_derivative", derivative));
+        assert!(
+            code(
+                &mut session,
+                &format!("identical(saved_derivative, quote({expected}))")
+            )
+            .try_to_bool()
+            .unwrap(),
+            "shape for {source}"
+        );
+        assert!(
+            code(
+                &mut session,
+                &format!("x <- 0.3; nu <- 2; abs(eval(saved_derivative) - ({value})) < 1e-12")
+            )
+            .try_to_bool()
+            .unwrap(),
+            "value for {source}"
+        );
+    }
+    for operator in ["gamma", "lgamma", "digamma", "trigamma", "psigamma"] {
+        let expression = code(&mut session, &format!("quote({operator}(foo(x)))"));
+        let args = arguments(&owner, &expression, &variable);
+        let error = session.with_active(|| {
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+                super::do_d(args.as_raw())
+            }))
+            .unwrap_err()
+        });
+        assert!(
+            error
+                .downcast::<crate::sexp::context::RError>()
+                .unwrap()
+                .message
+                .contains("Function 'foo' is not in the derivatives table"),
+            "{operator}"
+        );
+    }
+    // The order is coerced/incremented before the first child is differentiated.
+    // Moving it past D(foo(x)) would report foo instead of the order overflow.
+    let expression = code(&mut session, "quote(psigamma(foo(x), 2147483647L))");
+    let args = arguments(&owner, &expression, &variable);
+    let error = session.with_active(|| {
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+            super::do_d(args.as_raw())
+        }))
+        .unwrap_err()
+    });
+    assert_eq!(
+        error
+            .downcast::<crate::sexp::context::RError>()
+            .unwrap()
+            .message,
+        "derivative order overflow"
+    );
 }
