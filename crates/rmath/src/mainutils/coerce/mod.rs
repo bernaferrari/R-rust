@@ -53,6 +53,8 @@ use crate::sexp::symbol::Rf_install;
 
 mod as_helpers;
 mod atomic;
+#[cfg(test)]
+mod attribute_tests;
 mod call;
 mod lang;
 mod pairlist;

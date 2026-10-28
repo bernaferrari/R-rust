@@ -258,8 +258,9 @@ pub unsafe fn SHALLOW_DUPLICATE_ATTRIB(to: SEXP, from: SEXP) {
     unsafe {
         let attr_from = ATTRIB(from);
         if !isNull(attr_from) {
-            // For simplicity, copy via setAttrib for the known attribute types.
-            // In full R this does a shallow duplicate of the entire attribute list.
+            let _attributes_guard = protect(attr_from);
+            // Preserve the existing class/shape checks, then transfer the
+            // remaining attributes as internal metadata, as GNU does.
             let class = getAttrib(from, R_ClassSymbol());
             if !isNull(class) && class_fits(to, class) {
                 setAttrib(to, R_ClassSymbol(), class);
@@ -275,6 +276,21 @@ pub unsafe fn SHALLOW_DUPLICATE_ATTRIB(to: SEXP, from: SEXP) {
             let names = getAttrib(from, R_NamesSymbol());
             if !isNull(names) {
                 setAttrib(to, R_NamesSymbol(), names);
+            }
+            // Coercion before subassignment must retain raw `tsp` and custom
+            // metadata too. Internal transfer must not revalidate attributes
+            // against a temporary result (which may be enlarged afterward).
+            let mut attr = attr_from;
+            while !isNull(attr) {
+                let tag = TAG(attr);
+                if tag != R_ClassSymbol()
+                    && tag != R_DimSymbol()
+                    && tag != R_DimNamesSymbol()
+                    && tag != R_NamesSymbol()
+                {
+                    crate::sexp::attrib_core::installAttrib(to, tag, CAR(attr));
+                }
+                attr = CDR(attr);
             }
         }
     }
