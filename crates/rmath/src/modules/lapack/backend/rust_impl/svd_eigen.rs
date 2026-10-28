@@ -405,12 +405,16 @@ pub unsafe fn zgesdd_(
     info: *mut core::ffi::c_int,
 ) {
     unsafe {
+        let jobz_byte = (*jobz).to_ascii_uppercase();
+        if !matches!(jobz_byte, b'A' | b'S' | b'O' | b'N') {
+            *info = -1;
+            return;
+        }
         let m_val = *m as usize;
         let n_val = *n as usize;
         let lda_val = *lda as usize;
         let ldu_val = *ldu as usize;
         let ldvt_val = *ldvt as usize;
-        let jobz_byte = *jobz;
         let lwork_val = *lwork;
 
         if m_val == 0 || n_val == 0 {
@@ -463,7 +467,17 @@ pub unsafe fn zgesdd_(
                     let vt_owned = vt_mat.to_owned();
                     write_owned_c64(&vt_owned, vt, n_val, n_val, ldvt_val);
                 }
-                b'S' | b's' | _ => {
+                b'O' if m_val >= n_val => {
+                    write_matref_c64(u_mat, a, m_val, n_val, lda_val);
+                    let vt_owned = v_mat.adjoint().to_owned();
+                    write_owned_c64(&vt_owned, vt, n_val, n_val, ldvt_val);
+                }
+                b'O' => {
+                    write_matref_c64(u_mat, u, m_val, m_val, ldu_val);
+                    let vt_owned = v_mat.adjoint().to_owned();
+                    write_owned_c64(&vt_owned, a, m_val, n_val, lda_val);
+                }
+                b'S' => {
                     let mut u_thin = Mat::zeros(m_val, min_mn);
                     for j in 0..min_mn {
                         for i in 0..m_val {
@@ -482,6 +496,7 @@ pub unsafe fn zgesdd_(
                     }
                     write_owned_c64(&vt_thin, vt, min_mn, n_val, ldvt_val);
                 }
+                _ => unreachable!("validated SVD vector mode"),
             }
         }
         *info = 0;

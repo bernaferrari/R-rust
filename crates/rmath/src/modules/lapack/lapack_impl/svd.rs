@@ -272,6 +272,28 @@ pub unsafe fn La_svd_cmplx(jobu: SEXP, x: SEXP, s: SEXP, u: SEXP, v: SEXP) -> SE
         let ju = CHAR(STRING_ELT(jobu, 0)) as *const u8;
 
         let mn0 = min_np as usize;
+        // Bound the backend's actual writes, accepting padded leading strides.
+        // Overwrite mode stores one side in x_copy and ignores that output.
+        let (required_u_cols, required_vt_rows) = match (*ju).to_ascii_uppercase() {
+            b'A' => (Some(n), Some(p)),
+            b'S' => (Some(min_np), Some(min_np)),
+            b'O' if n >= p => (None, Some(p)),
+            b'O' => (Some(n), None),
+            b'N' => (None, None),
+            _ => crate::sexp::context::r_error("error code from Lapack routine 'zgesdd'"),
+        };
+        if n > 0 && p > 0 {
+            if required_u_cols.is_some_and(|columns| ldu < n || u_cols < columns) {
+                crate::sexp::context::r_error(
+                    "'u' is too small for the requested singular vectors",
+                );
+            }
+            if required_vt_rows.is_some_and(|rows| ldvt < rows || vt_cols < p) {
+                crate::sexp::context::r_error(
+                    "'v' is too small for the requested singular vectors",
+                );
+            }
+        }
         let mn1 = (if n > p { n } else { p }) as usize;
         let Some(scratch) = super::workspace_size::complex_svd_scratch(
             len,
