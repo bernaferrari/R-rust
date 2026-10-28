@@ -1,0 +1,35 @@
+finite bytes: 5,0,0,0,0,0,232,63,2,0,0,0,0,0,8,64,250,255,255,255,255,255,231,63
+default cat:0.75 NA 3 NA 0.75
+default print:
+   1    2    3    4    5
+0.75   NA 3.00   NA 0.75
+digits= 3  scipen= -1  cat=0.75|-0.75|NaN|NA|1.23|1e-07|1e+07
+print:
+[1]  7.50e-01 -7.50e-01       NaN        NA  1.23e+00  1.00e-07  1.00e+07
+digits= 3  scipen= 0  cat=0.75|-0.75|NaN|NA|1.23|1e-07|1e+07
+print:
+[1]  7.50e-01 -7.50e-01       NaN        NA  1.23e+00  1.00e-07  1.00e+07
+digits= 3  scipen= 1  cat=0.75|-0.75|NaN|NA|1.23|1e-07|1e+07
+print:
+[1]  7.50e-01 -7.50e-01       NaN        NA  1.23e+00  1.00e-07  1.00e+07
+digits= 4  scipen= -1  cat=0.75|-0.75|NaN|NA|1.235|1e-07|1e+07
+print:
+[1]  7.500e-01 -7.500e-01        NaN         NA  1.235e+00  1.000e-07  1.000e+07
+digits= 4  scipen= 0  cat=0.75|-0.75|NaN|NA|1.235|1e-07|1e+07
+print:
+[1]  7.500e-01 -7.500e-01        NaN         NA  1.235e+00  1.000e-07  1.000e+07
+digits= 4  scipen= 1  cat=0.75|-0.75|NaN|NA|1.235|1e-07|1e+07
+print:
+[1]  7.500e-01 -7.500e-01        NaN         NA  1.235e+00  1.000e-07  1.000e+07
+digits= 5  scipen= -1  cat=0.75|-0.75|NaN|NA|1.2346|1e-07|1e+07
+print:
+[1]  7.5000e-01 -7.5000e-01         NaN          NA  1.2346e+00  1.0000e-07
+[7]  1.0000e+07
+digits= 5  scipen= 0  cat=0.75|-0.75|NaN|NA|1.2346|1e-07|1e+07
+print:
+[1]  7.5000e-01 -7.5000e-01         NaN          NA  1.2346e+00  1.0000e-07
+[7]  1.0000e+07
+digits= 5  scipen= 1  cat=0.75|-0.75|NaN|NA|1.2346|1e-07|1e+07
+print:
+[1]  7.5000e-01 -7.5000e-01         NaN          NA  1.2346e+00  1.0000e-07
+[7]  1.0000e+07
