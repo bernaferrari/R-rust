@@ -294,10 +294,16 @@ pub unsafe fn do_intToUtf8(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
         let multiple = TYPEOF(m) == SEXPTYPE::LGLSXP && XLENGTH(m) > 0 && *LOGICAL(m) == TRUE;
         let p = arg_by_name_or_position(args, &["allow_surrogate_pairs"], 2);
         let s_pair = TYPEOF(p) == SEXPTYPE::LGLSXP && XLENGTH(p) > 0 && *LOGICAL(p) == TRUE;
-        let int_x = if TYPEOF(x) == SEXPTYPE::REALSXP {
-            crate::mainutils::coerce::coerceVector(x, SEXPTYPE::INTSXP.into())
-        } else {
+        if crate::mainutils::apply::isFactor(x) != 0 {
+            crate::mainutils::errors::errorcall_str(
+                crate::mainutils::errors::R_getCurrentCall(),
+                "argument 'x' must be an integer vector",
+            );
+        }
+        let int_x = if TYPEOF(x) == SEXPTYPE::INTSXP {
             x
+        } else {
+            crate::mainutils::coerce::coerceVector(x, SEXPTYPE::INTSXP.into())
         };
         let _int_x_root = protect(int_x);
         let n = if int_x.is_null() || int_x == R_NilValue() {
