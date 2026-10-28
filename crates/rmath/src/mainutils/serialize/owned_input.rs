@@ -11,6 +11,14 @@ pub(super) fn memory_error() -> io::Error {
     )
 }
 
+fn allocate_bytes(capacity: usize) -> io::Result<Vec<u8>> {
+    let mut bytes = Vec::new();
+    bytes
+        .try_reserve_exact(capacity)
+        .map_err(|_| memory_error())?;
+    Ok(bytes)
+}
+
 pub(crate) struct InputBytes {
     bytes: Vec<u8>,
     reservation: WorkspaceReservation,
@@ -32,15 +40,31 @@ impl std::ops::Deref for InputBytes {
 }
 
 impl InputBytes {
+    #[cfg(test)]
+    pub(super) fn capacity(&self) -> usize {
+        self.bytes.capacity()
+    }
+
     pub(super) fn push(&mut self, byte: u8) -> io::Result<()> {
         self.write_all(&[byte])
     }
-    pub(super) fn new(mut reservation: WorkspaceReservation, capacity: usize) -> io::Result<Self> {
+    pub(super) fn new(reservation: WorkspaceReservation, capacity: usize) -> io::Result<Self> {
+        Self::new_with_allocator(reservation, capacity, allocate_bytes)
+    }
+
+    fn new_with_allocator(
+        mut reservation: WorkspaceReservation,
+        capacity: usize,
+        allocate: impl FnOnce(usize) -> io::Result<Vec<u8>>,
+    ) -> io::Result<Self> {
         reservation.try_resize(capacity).ok_or_else(memory_error)?;
-        let mut bytes = Vec::new();
-        bytes
-            .try_reserve_exact(capacity)
-            .map_err(|_| memory_error())?;
+        let mut bytes = allocate(capacity)?;
+        let actual = bytes.capacity();
+        if actual < capacity || reservation.try_resize(actual).is_none() {
+            drop(bytes);
+            return Err(memory_error());
+        }
+        bytes.clear();
         Ok(Self { bytes, reservation })
     }
 
@@ -56,29 +80,51 @@ impl InputBytes {
     }
 
     fn reserve_len(&mut self, length: usize) -> io::Result<()> {
+        self.reserve_len_with_allocator(length, allocate_bytes)
+    }
+
+    fn reserve_len_with_allocator(
+        &mut self,
+        length: usize,
+        allocate: impl FnOnce(usize) -> io::Result<Vec<u8>>,
+    ) -> io::Result<()> {
         if length <= self.bytes.capacity() {
             return Ok(());
         }
         let old_capacity = self.bytes.capacity();
-        let capacity = length
+        let requested = length
             .max(8)
             .checked_next_power_of_two()
             .ok_or_else(memory_error)?;
         let peak = old_capacity
-            .checked_add(capacity)
+            .checked_add(requested)
             .ok_or_else(memory_error)?;
         self.reservation.try_resize(peak).ok_or_else(memory_error)?;
-        let mut replacement = Vec::new();
-        if replacement.try_reserve_exact(capacity).is_err() {
+        let mut replacement = match allocate(requested) {
+            Ok(value) => value,
+            Err(error) => {
+                self.reservation
+                    .try_resize(old_capacity)
+                    .expect("restore admitted input");
+                return Err(error);
+            }
+        };
+        let actual = replacement.capacity();
+        let admitted = old_capacity
+            .checked_add(actual)
+            .and_then(|bytes| self.reservation.try_resize(bytes));
+        if actual < requested || admitted.is_none() {
+            drop(replacement);
             self.reservation
                 .try_resize(old_capacity)
-                .expect("shrinking admitted input");
+                .expect("restore admitted input");
             return Err(memory_error());
         }
+        replacement.clear();
         replacement.extend_from_slice(&self.bytes);
         drop(std::mem::replace(&mut self.bytes, replacement));
         self.reservation
-            .try_resize(capacity)
+            .try_resize(actual)
             .expect("shrinking admitted input");
         Ok(())
     }
@@ -176,6 +222,78 @@ mod tests {
         assert!(bytes.write_all(b"y").is_err());
         assert_eq!(&bytes[..], &[b'x'; 4096]);
         assert_eq!(owner.with_arena(|a| a.workspace_bytes()).unwrap(), 4096);
+        drop(bytes);
+        assert_eq!(owner.with_arena(|a| a.workspace_bytes()).unwrap(), 0);
+    }
+
+    #[test]
+    fn constructor_accounts_surplus_capacity_and_releases_denied_storage() {
+        let session = RSession::new_for_gc_tests();
+        let owner = session.owner_token().unwrap();
+        let baseline = owner.with_arena(|a| a.total_bytes_allocated()).unwrap();
+        owner
+            .with_arena(|a| a.set_budget(ArenaBudget::new(baseline + 6000, 0)))
+            .unwrap();
+        let denied =
+            InputBytes::new_with_allocator(reserve(&owner, 0).unwrap(), 4096, |requested| {
+                allocate_bytes(requested + 4096)
+            });
+        assert!(denied.is_err());
+        assert_eq!(owner.with_arena(|a| a.workspace_bytes()).unwrap(), 0);
+        assert_eq!(
+            owner.with_arena(|a| a.budget().max_bytes).unwrap(),
+            baseline + 6000
+        );
+        owner
+            .with_arena(|a| a.set_budget(ArenaBudget::unlimited()))
+            .unwrap();
+        let bytes =
+            InputBytes::new_with_allocator(reserve(&owner, 0).unwrap(), 4096, |requested| {
+                allocate_bytes(requested + 4096)
+            })
+            .unwrap();
+        assert!(bytes.bytes.capacity() >= 8192);
+        assert_eq!(
+            owner.with_arena(|a| a.workspace_bytes()).unwrap(),
+            bytes.bytes.capacity()
+        );
+        drop(bytes);
+        assert_eq!(owner.with_arena(|a| a.workspace_bytes()).unwrap(), 0);
+    }
+
+    #[test]
+    fn replacement_accounts_actual_peak_and_preserves_original_on_surplus_denial() {
+        let session = RSession::new_for_gc_tests();
+        let owner = session.owner_token().unwrap();
+        let baseline = owner.with_arena(|a| a.total_bytes_allocated()).unwrap();
+        let mut bytes = InputBytes::new(reserve(&owner, 0).unwrap(), 4096).unwrap();
+        bytes.write_all(&[7; 4096]).unwrap();
+        let old = bytes.bytes.capacity();
+        let limit = baseline + old + 8192;
+        owner
+            .with_arena(|a| a.set_budget(ArenaBudget::new(limit, 0)))
+            .unwrap();
+        let denied =
+            bytes.reserve_len_with_allocator(4097, |requested| allocate_bytes(requested + 4096));
+        assert!(denied.is_err());
+        assert_eq!(&*bytes, &[7; 4096]);
+        assert_eq!(bytes.bytes.capacity(), old);
+        assert_eq!(owner.with_arena(|a| a.workspace_bytes()).unwrap(), old);
+        assert_eq!(owner.with_arena(|a| a.budget().max_bytes).unwrap(), limit);
+        owner
+            .with_arena(|a| a.set_budget(ArenaBudget::unlimited()))
+            .unwrap();
+        bytes
+            .reserve_len_with_allocator(4097, |requested| allocate_bytes(requested + 4096))
+            .unwrap();
+        bytes.write_all(&[9]).unwrap();
+        assert_eq!(&bytes[..4096], &[7; 4096]);
+        assert_eq!(bytes[4096], 9);
+        assert!(bytes.bytes.capacity() >= 12288);
+        assert_eq!(
+            owner.with_arena(|a| a.workspace_bytes()).unwrap(),
+            bytes.bytes.capacity()
+        );
         drop(bytes);
         assert_eq!(owner.with_arena(|a| a.workspace_bytes()).unwrap(), 0);
     }

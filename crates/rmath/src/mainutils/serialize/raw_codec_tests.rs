@@ -363,3 +363,119 @@ fn serialization_workspace_gnu_zlib_uses_the_existing_input_buffer() {
         limit
     );
 }
+
+#[test]
+#[cfg(not(miri))]
+fn serialization_workspace_framed_outputs_release_chunks_and_retain_actual_final_capacity() {
+    let fixtures: [(&[u8], u8); 3] = [
+        (include_bytes!("fixtures/gnu-lazy-codecs/mode1.bin"), 1),
+        (include_bytes!("fixtures/gnu-lazy-codecs/mode2.bin"), 2),
+        (include_bytes!("fixtures/gnu-lazy-codecs/mode3.bin"), 3),
+    ];
+    let expected = include_bytes!("fixtures/gnu-lazy-codecs/expected.rds");
+    for (input, mode) in fixtures {
+        let session = RSession::new_for_gc_tests();
+        let owner = session.owner_token().unwrap();
+        let output = super::super::raw_codecs::decode(&owner, input, mode).unwrap();
+        assert_eq!(&*output, expected);
+        assert_eq!(
+            owner.with_arena(|a| a.workspace_bytes()).unwrap(),
+            output.capacity()
+        );
+        drop(output);
+        assert_eq!(owner.with_arena(|a| a.workspace_bytes()).unwrap(), 0);
+    }
+}
+
+#[test]
+#[cfg(not(miri))]
+fn serialization_workspace_chunk_coalescing_releases_decoder_scratch_and_recovers_denial() {
+    let session = RSession::new_for_gc_tests();
+    let owner = session.owner_token().unwrap();
+    let original: Vec<u8> = (0..200_000).map(|n| (n % 251) as u8).collect();
+    let encoded = super::super::raw_codecs::encode(&owner, &original, 1).unwrap();
+    let baseline = owner.with_arena(|a| a.total_bytes_allocated()).unwrap();
+    let retained = owner.with_arena(|a| a.workspace_bytes()).unwrap();
+    let denied_limit = baseline + retained + 350_000;
+    owner
+        .with_arena(|a| a.set_budget(ArenaBudget::new(denied_limit, 0)))
+        .unwrap();
+    assert!(matches!(
+        super::super::raw_codecs::decode(&owner, &encoded, 1),
+        Err(super::super::raw_codecs::DecodeError::Resource(_))
+    ));
+    assert_eq!(owner.with_arena(|a| a.workspace_bytes()).unwrap(), retained);
+    let limit = baseline + retained + 416_000;
+    owner
+        .with_arena(|a| a.set_budget(ArenaBudget::new(limit, 0)))
+        .unwrap();
+    // A live 64KiB decoder alongside both complete 200000-byte buffers
+    // would exceed this cap, so success requires the decoder to be destroyed.
+    let decoded = super::super::raw_codecs::decode(&owner, &encoded, 1).unwrap();
+    assert_eq!(&*decoded, original);
+    assert_eq!(
+        owner.with_arena(|a| a.workspace_bytes()).unwrap(),
+        retained + decoded.capacity()
+    );
+    drop(decoded);
+    assert_eq!(owner.with_arena(|a| a.workspace_bytes()).unwrap(), retained);
+    assert_eq!(owner.with_arena(|a| a.budget().max_bytes).unwrap(), limit);
+    drop(encoded);
+    assert_eq!(owner.with_arena(|a| a.workspace_bytes()).unwrap(), 0);
+}
+
+#[test]
+#[cfg(not(miri))]
+fn serialization_workspace_chunk_headers_are_admitted_and_foreign_activation_cannot_redirect_them()
+{
+    let session = RSession::new_for_gc_tests();
+    let owner = session.owner_token().unwrap();
+    let original = vec![7u8; 8192];
+    let encoded = super::super::raw_codecs::encode(&owner, &original, 1).unwrap();
+    let baseline = owner.with_arena(|a| a.total_bytes_allocated()).unwrap();
+    let retained = owner.with_arena(|a| a.workspace_bytes()).unwrap();
+    // Exactly enough for byte storage plus zlib scratch, with no room for
+    // the owning chunk headers. They must not allocate outside admission.
+    let limit = baseline + retained + 65536 + original.len();
+    owner
+        .with_arena(|a| a.set_budget(ArenaBudget::new(limit, 0)))
+        .unwrap();
+    assert!(matches!(
+        super::super::raw_codecs::decode(&owner, &encoded, 1),
+        Err(super::super::raw_codecs::DecodeError::Resource(_))
+    ));
+    assert_eq!(owner.with_arena(|a| a.workspace_bytes()).unwrap(), retained);
+    let replacement = RSession::new_for_gc_tests();
+    let replacement_owner = replacement.owner_token().unwrap();
+    replacement.with_active(|| {
+        let Err(super::super::raw_codecs::DecodeError::Resource(message)) =
+            super::super::raw_codecs::decode(&owner, &encoded, 1)
+        else {
+            panic!("foreign activation must not substitute its heap");
+        };
+        assert!(message.contains("activate the owning session"), "{message}");
+        assert_eq!(
+            replacement_owner
+                .with_arena(|a| a.workspace_bytes())
+                .unwrap(),
+            0
+        );
+    });
+    session.with_active(|| {
+        assert_eq!(owner.with_arena(|a| a.workspace_bytes()).unwrap(), retained);
+        assert_eq!(owner.with_arena(|a| a.budget().max_bytes).unwrap(), limit);
+        owner
+            .with_arena(|a| a.set_budget(ArenaBudget::unlimited()))
+            .unwrap();
+        let decoded = super::super::raw_codecs::decode(&owner, &encoded, 1).unwrap();
+        assert_eq!(&*decoded, original);
+        assert_eq!(
+            owner.with_arena(|a| a.workspace_bytes()).unwrap(),
+            retained + decoded.capacity()
+        );
+        drop(decoded);
+        assert_eq!(owner.with_arena(|a| a.workspace_bytes()).unwrap(), retained);
+        drop(encoded);
+        assert_eq!(owner.with_arena(|a| a.workspace_bytes()).unwrap(), 0);
+    });
+}

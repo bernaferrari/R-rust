@@ -1,7 +1,10 @@
 //! GNU lazy-database codec framing with admitted native storage.
 #![forbid(unsafe_code)]
 
-use super::{owned_input::InputBytes, workspace::reserve};
+use super::{
+    owned_input::InputBytes,
+    workspace::{ScopedWorkspaceVec, reserve},
+};
 use crate::sexp::owner::OwnerToken;
 use std::io::{self, Read, Write};
 
@@ -17,6 +20,54 @@ impl From<io::Error> for DecodeError {
         } else {
             Self::Invalid
         }
+    }
+}
+
+/// Decoder output is admitted from bytes actually produced, never its untrusted
+/// declared extent. Coalescing happens only after the decoder and scratch die.
+struct DecodedChunks<'owner, 'session> {
+    owner: &'owner OwnerToken<'session>,
+    chunks: ScopedWorkspaceVec<'session, InputBytes>,
+    length: usize,
+}
+
+impl<'owner, 'session> DecodedChunks<'owner, 'session> {
+    fn new(owner: &'owner OwnerToken<'session>) -> Result<Self, DecodeError> {
+        Ok(Self {
+            owner,
+            chunks: ScopedWorkspaceVec::scoped(owner).map_err(DecodeError::Resource)?,
+            length: 0,
+        })
+    }
+    fn len(&self) -> usize {
+        self.length
+    }
+    fn push(&mut self, bytes: &[u8]) -> Result<(), DecodeError> {
+        if bytes.is_empty() {
+            return Ok(());
+        }
+        let length = self
+            .length
+            .checked_add(bytes.len())
+            .ok_or(DecodeError::Invalid)?;
+        let mut chunk = InputBytes::new(
+            reserve(self.owner, bytes.len()).map_err(DecodeError::Resource)?,
+            bytes.len(),
+        )?;
+        chunk.write_all(bytes)?;
+        self.chunks.push(chunk).map_err(DecodeError::Resource)?;
+        self.length = length;
+        Ok(())
+    }
+    fn finish(self) -> Result<InputBytes, DecodeError> {
+        let mut output = InputBytes::new(
+            reserve(self.owner, self.length).map_err(DecodeError::Resource)?,
+            self.length,
+        )?;
+        for chunk in self.chunks.iter() {
+            output.write_all(chunk)?;
+        }
+        Ok(output)
     }
 }
 
@@ -86,11 +137,12 @@ pub(super) fn encode(owner: &OwnerToken<'_>, input: &[u8], mode: u8) -> Result<I
     Ok(encoded)
 }
 
-fn read_exact_output(
+fn read_exact_output<'owner, 'session>(
     mut reader: impl Read,
     expected: usize,
-    mut bytes: InputBytes,
-) -> Result<InputBytes, DecodeError> {
+    owner: &'owner OwnerToken<'session>,
+) -> Result<DecodedChunks<'owner, 'session>, DecodeError> {
+    let mut bytes = DecodedChunks::new(owner)?;
     let mut chunk = [0; 8192];
     loop {
         let count = match reader.read(&mut chunk) {
@@ -103,7 +155,7 @@ fn read_exact_output(
         if bytes.len().checked_add(count).is_none_or(|n| n > expected) {
             return Err(DecodeError::Invalid);
         }
-        bytes.write_all(&chunk[..count])?;
+        bytes.push(&chunk[..count])?;
     }
     if bytes.len() != expected {
         return Err(DecodeError::Invalid);
@@ -111,15 +163,16 @@ fn read_exact_output(
     Ok(bytes)
 }
 
-fn read_lzma2_output(
+fn read_lzma2_output<'owner, 'session>(
     mut input: &[u8],
     dictionary: u32,
     expected: usize,
-    mut bytes: InputBytes,
-) -> Result<InputBytes, DecodeError> {
+    owner: &'owner OwnerToken<'session>,
+) -> Result<DecodedChunks<'owner, 'session>, DecodeError> {
     // The admitted input already owns all compressed bytes. Decode directly
     // from it rather than copying each chunk to a second 64 KiB range buffer.
     let mut decoder = lzma_rust2::Lzma2Stream::new(dictionary);
+    let mut bytes = DecodedChunks::new(owner)?;
     let mut chunk = [0u8; 8192];
     loop {
         let result = decoder.process(input, &mut chunk, lzma_rust2::Action::Finish)?;
@@ -130,7 +183,7 @@ fn read_lzma2_output(
         {
             return Err(DecodeError::Invalid);
         }
-        bytes.write_all(&chunk[..result.bytes_produced])?;
+        bytes.push(&chunk[..result.bytes_produced])?;
         input = &input[result.bytes_consumed..];
         if result.status == lzma_rust2::Status::StreamEnd {
             return if bytes.len() == expected {
@@ -188,11 +241,61 @@ pub(super) fn decode(
             .ok_or_else(|| DecodeError::Resource(super::workspace::memory_error()))?,
         _ => return Err(DecodeError::Invalid),
     };
-    let _workspace = reserve(owner, workspace).map_err(DecodeError::Resource)?;
-    let bytes = output(owner)?;
-    match marker {
-        b'1' => read_exact_output(flate2::bufread::ZlibDecoder::new(data), expected, bytes),
-        b'2' => read_exact_output(bzip2::read::BzDecoder::new(data), expected, bytes),
-        _ => read_lzma2_output(data, dictionary, expected, bytes),
+    let workspace = reserve(owner, workspace).map_err(DecodeError::Resource)?;
+    let chunks = match marker {
+        b'1' => read_exact_output(flate2::bufread::ZlibDecoder::new(data), expected, owner),
+        b'2' => read_exact_output(bzip2::read::BzDecoder::new(data), expected, owner),
+        _ => read_lzma2_output(data, dictionary, expected, owner),
+    }?;
+    // Each helper has already destroyed its decoder. Release its exact
+    // scratch admission before old chunks coexist with the final buffer.
+    drop(workspace);
+    chunks.finish()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::sexp::{memory::ArenaBudget, session::RSession};
+
+    #[test]
+    fn zero_output_steps_do_not_allocate_headers_or_change_existing_output() {
+        let session = RSession::new_for_gc_tests();
+        let owner = session.owner_token().unwrap();
+        let mut output = DecodedChunks::new(&owner).unwrap();
+        let baseline = owner.with_arena(|a| a.total_bytes_allocated()).unwrap();
+        owner
+            .with_arena(|a| a.set_budget(ArenaBudget::new(baseline, 0)))
+            .unwrap();
+        for _ in 0..1000 {
+            output.push(&[]).unwrap();
+        }
+        assert_eq!(output.len(), 0);
+        assert!(output.chunks.is_empty());
+        assert_eq!(owner.with_arena(|a| a.workspace_bytes()).unwrap(), 0);
+        assert!(matches!(output.push(b"x"), Err(DecodeError::Resource(_))));
+        assert_eq!(
+            owner.with_arena(|a| a.budget().max_bytes).unwrap(),
+            baseline
+        );
+        owner
+            .with_arena(|a| a.set_budget(ArenaBudget::unlimited()))
+            .unwrap();
+        output.push(b"ab").unwrap();
+        let charged = owner.with_arena(|a| a.workspace_bytes()).unwrap();
+        for _ in 0..1000 {
+            output.push(&[]).unwrap();
+        }
+        assert_eq!(output.len(), 2);
+        assert_eq!(output.chunks.len(), 1);
+        assert_eq!(owner.with_arena(|a| a.workspace_bytes()).unwrap(), charged);
+        let bytes = output.finish().unwrap();
+        assert_eq!(&*bytes, b"ab");
+        assert_eq!(
+            owner.with_arena(|a| a.workspace_bytes()).unwrap(),
+            bytes.capacity()
+        );
+        drop(bytes);
+        assert_eq!(owner.with_arena(|a| a.workspace_bytes()).unwrap(), 0);
     }
 }
