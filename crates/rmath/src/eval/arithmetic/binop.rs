@@ -55,7 +55,8 @@ pub unsafe fn real_binary(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
             return R_NilValue();
         };
         let n = a.clone().recycled_len_with(b.clone());
-        let use_real = op == "/" || op == "^" || a.clone().needs_real_with(b.clone());
+        let real_operands = a.clone().needs_real_with(b.clone());
+        let use_real = op == "/" || op == "^" || real_operands;
         if n == 0 {
             let kind = if use_real {
                 SEXPTYPE::REALSXP
@@ -111,7 +112,12 @@ pub unsafe fn real_binary(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
                 continue;
             }
 
-            if x_na || y_na {
+            // Real arithmetic must execute the operation: IEEE arithmetic quiets
+            // signaling NA payloads, while R_pow preserves cases such as 0^NA.
+            // Integer-only division/power instead return the original NA_REAL.
+            // Keep remainder and floor-division NA handling unchanged.
+            let preserve_na = !real_operands || matches!(op, "%%" | "%/%");
+            if preserve_na && (x_na || y_na) {
                 if use_real {
                     result_mut.set_real_elt(i, NA_REAL);
                 } else {

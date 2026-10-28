@@ -1594,11 +1594,11 @@ pub unsafe fn do_is_nan(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         for i in 0..n {
             let is_nan = if t == SEXPTYPE::REALSXP {
                 let v = *REAL(x).add(i as usize);
-                v.is_nan() && v.to_bits() != crate::sexp::ffi::R_NA_BIT_PATTERN
+                v.is_nan() && !crate::sexp::ffi::is_na_real(v)
             } else if t == SEXPTYPE::CPLXSXP {
                 let z = *COMPLEX(x).add(i as usize);
-                (z.r.is_nan() && z.r.to_bits() != crate::sexp::ffi::R_NA_BIT_PATTERN)
-                    || (z.i.is_nan() && z.i.to_bits() != crate::sexp::ffi::R_NA_BIT_PATTERN)
+                (z.r.is_nan() && !crate::sexp::ffi::is_na_real(z.r))
+                    || (z.i.is_nan() && !crate::sexp::ffi::is_na_real(z.i))
             } else {
                 false
             };
