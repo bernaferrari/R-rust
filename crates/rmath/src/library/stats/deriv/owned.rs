@@ -110,6 +110,9 @@ enum DerivativeOperator {
     Sin(Value),
     Cos(Value),
     Tan,
+    Cosh(Value),
+    Sinh(Value),
+    Tanh(Value),
     Exp,
     Log,
 }
@@ -535,6 +538,17 @@ where
                             self.call("sin", std::slice::from_ref(&first))?,
                         )),
                         ("tan", _) => Some(DerivativeOperator::Tan),
+                        ("cosh", _) => Some(DerivativeOperator::Cosh(
+                            self.call("sinh", std::slice::from_ref(&first))?,
+                        )),
+                        ("sinh", _) => Some(DerivativeOperator::Sinh(
+                            self.call("cosh", std::slice::from_ref(&first))?,
+                        )),
+                        ("tanh", _) => {
+                            let cosine = self.call("cosh", std::slice::from_ref(&first))?;
+                            let denominator = self.simplify("^", cosine, Some(self.scalar(2.)?))?;
+                            Some(DerivativeOperator::Tanh(denominator))
+                        }
                         ("exp", _) => Some(DerivativeOperator::Exp),
                         ("log", 1) => Some(DerivativeOperator::Log),
                         ("log", _) => {
@@ -642,6 +656,12 @@ where
                         let cosine =
                             self.call("cos", std::slice::from_ref(&frame.call.arguments[0]))?;
                         let denominator = self.simplify("^", cosine, Some(self.scalar(2.)?))?;
+                        self.simplify("/", result, Some(denominator))?
+                    }
+                    DerivativeOperator::Cosh(factor) | DerivativeOperator::Sinh(factor) => {
+                        self.simplify("*", factor, Some(result))?
+                    }
+                    DerivativeOperator::Tanh(denominator) => {
                         self.simplify("/", result, Some(denominator))?
                     }
                     DerivativeOperator::Exp => {
@@ -777,21 +797,6 @@ where
                     self.derive(&a, variable)?,
                     Some(self.call("psigamma", &[a, next])?),
                 )
-            }
-            "cosh" => self.simplify(
-                "*",
-                self.call("sinh", std::slice::from_ref(&a))?,
-                Some(self.derive(&a, variable)?),
-            ),
-            "sinh" => self.simplify(
-                "*",
-                self.call("cosh", std::slice::from_ref(&a))?,
-                Some(self.derive(&a, variable)?),
-            ),
-            "tanh" => {
-                let cosine = self.call("cosh", std::slice::from_ref(&a))?;
-                let denominator = self.simplify("^", cosine, Some(self.scalar(2.)?))?;
-                self.simplify("/", self.derive(&a, variable)?, Some(denominator))
             }
             "pnorm" => self.simplify(
                 "*",

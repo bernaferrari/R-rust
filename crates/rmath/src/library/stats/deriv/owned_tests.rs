@@ -222,6 +222,12 @@ fn collecting_derivative(action: u8, common_unary: bool, binary_frame: u8) {
             let x = symbol(&owner, "x");
             let placeholder = numeric(&owner, 2.);
             let power = call(&owner, "^", &[x.clone(), placeholder]);
+            let unary = match binary_frame {
+                4 => "sinh",
+                5 => "cosh",
+                6 => "tanh",
+                _ => "tan",
+            };
             let tangent = if common_unary {
                 let mut child = power.clone();
                 for head in ["log", "exp", "sin", "cos"] {
@@ -229,7 +235,7 @@ fn collecting_derivative(action: u8, common_unary: bool, binary_frame: u8) {
                 }
                 call(&owner, "tan", &[child])
             } else {
-                call(&owner, "tan", std::slice::from_ref(&power))
+                call(&owner, unary, std::slice::from_ref(&power))
             };
             let expression = if binary_frame == 1 {
                 let left = call(&owner, "*", &[symbol(&owner, "y"), x]);
@@ -339,6 +345,8 @@ fn collecting_derivative(action: u8, common_unary: bool, binary_frame: u8) {
                 1 => b"+",
                 2 => b"-",
                 3 => b"+",
+                4 | 5 => b"*",
+                6 => b"/",
                 _ => b"/",
             };
             assert!(
@@ -470,6 +478,51 @@ fn owned_derivative_power_frame_panic_recovers() {
 #[test]
 fn owned_derivative_power_frame_revocation_rejects_success() {
     collecting_derivative(2, false, 3);
+}
+
+#[test]
+fn owned_derivative_sinh_frame_gc_retains_factor() {
+    collecting_derivative(0, false, 4);
+}
+
+#[test]
+fn owned_derivative_sinh_frame_panic_recovers() {
+    collecting_derivative(1, false, 4);
+}
+
+#[test]
+fn owned_derivative_sinh_frame_revocation_rejects_success() {
+    collecting_derivative(2, false, 4);
+}
+
+#[test]
+fn owned_derivative_cosh_frame_gc_retains_factor() {
+    collecting_derivative(0, false, 5);
+}
+
+#[test]
+fn owned_derivative_cosh_frame_panic_recovers() {
+    collecting_derivative(1, false, 5);
+}
+
+#[test]
+fn owned_derivative_cosh_frame_revocation_rejects_success() {
+    collecting_derivative(2, false, 5);
+}
+
+#[test]
+fn owned_derivative_tanh_frame_gc_retains_denominator() {
+    collecting_derivative(0, false, 6);
+}
+
+#[test]
+fn owned_derivative_tanh_frame_panic_recovers() {
+    collecting_derivative(1, false, 6);
+}
+
+#[test]
+fn owned_derivative_tanh_frame_revocation_rejects_success() {
+    collecting_derivative(2, false, 6);
 }
 
 #[test]
@@ -1531,6 +1584,215 @@ fn owned_derivative_deep_product_quotient_subprocess() {
         .arg(
             "library::stats::deriv::owned_tests::owned_derivative_deep_product_quotient_subprocess",
         )
+        .args(["--exact", "--nocapture"])
+        .env(CHILD, "1")
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "child failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+#[cfg_attr(
+    miri,
+    ignore = "GNU hyperbolic shape and numerical checks run natively"
+)]
+fn owned_derivative_hyperbolic_shapes_and_order() {
+    let mut session = RSession::new_without_default_packages();
+    let owner = session.owner_token().unwrap().weak_owner().unwrap();
+    let variable = code(&mut session, "'x'");
+    for (source, expected, value) in [
+        ("sinh(x)", "cosh(x)", "cosh(1)"),
+        ("cosh(x)", "sinh(x)", "sinh(1)"),
+        ("tanh(x)", "1/cosh(x)^2", "1/cosh(1)^2"),
+    ] {
+        let expression = code(&mut session, &format!("quote({source})"));
+        let args = arguments(&owner, &expression, &variable);
+        let derivative = session.with_active(|| unsafe {
+            session
+                .sexp(super::do_d(args.as_raw()))
+                .unwrap()
+                .into_owned()
+                .unwrap()
+        });
+        assert!(session.define_var("saved_derivative", derivative));
+        assert!(
+            code(
+                &mut session,
+                &format!("identical(saved_derivative, quote({expected}))")
+            )
+            .try_to_bool()
+            .unwrap(),
+            "shape for {source}"
+        );
+        assert!(
+            code(
+                &mut session,
+                &format!("x <- 1; abs(eval(saved_derivative) - ({value})) < 1e-12")
+            )
+            .try_to_bool()
+            .unwrap(),
+            "value for {source}"
+        );
+    }
+    for operator in ["sinh", "cosh", "tanh"] {
+        let expression = code(&mut session, &format!("quote({operator}(foo(x)))"));
+        let args = arguments(&owner, &expression, &variable);
+        let error = session.with_active(|| {
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+                super::do_d(args.as_raw())
+            }))
+            .unwrap_err()
+        });
+        assert!(
+            error
+                .downcast::<crate::sexp::context::RError>()
+                .unwrap()
+                .message
+                .contains("Function 'foo' is not in the derivatives table"),
+            "{operator}"
+        );
+    }
+}
+
+#[test]
+fn owned_derivative_hyperbolic_cycles_reject_and_recover() {
+    let session = RSession::new_for_gc_tests();
+    let owner = session.owner_token().unwrap().weak_owner().unwrap();
+    let x = symbol(&owner, "x");
+    let variable = owner
+        .node_factory()
+        .unwrap()
+        .strings(&["x"])
+        .unwrap()
+        .into_owned()
+        .unwrap();
+    for operator in ["sinh", "cosh", "tanh"] {
+        let expression = call(&owner, operator, std::slice::from_ref(&x));
+        let first_cell = expression.try_cdr().unwrap().into_owned().unwrap();
+        let mut writable = crate::sexp::object::SexpMut::try_from_checked(first_cell).unwrap();
+        writable.try_set_pairlist_car(&expression).unwrap();
+        drop(writable);
+        let args = arguments(&owner, &expression, &variable);
+        let error = session.with_active(|| {
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+                super::do_d(args.as_raw())
+            }))
+            .unwrap_err()
+        });
+        assert!(
+            error
+                .downcast::<crate::sexp::context::RError>()
+                .unwrap()
+                .message
+                .contains("cyclic derivative expression"),
+            "{operator}"
+        );
+    }
+    let args = arguments(&owner, &x, &variable);
+    let result =
+        session.with_active(|| unsafe { session.sexp(super::do_d(args.as_raw())).unwrap() });
+    assert_eq!(result.try_real_elt(0).unwrap(), 1.);
+}
+
+#[test]
+fn owned_derivative_hyperbolic_frame_admission_denial_recovers() {
+    let mut session = RSession::new_for_gc_tests();
+    let owner = session.owner_token().unwrap().weak_owner().unwrap();
+    let y = symbol(&owner, "y");
+    let mut expression = y.clone();
+    for index in 0..64 {
+        expression = call(&owner, ["sinh", "cosh", "tanh"][index % 3], &[expression]);
+    }
+    let variable = owner
+        .node_factory()
+        .unwrap()
+        .strings(&["x"])
+        .unwrap()
+        .into_owned()
+        .unwrap();
+    let args = arguments(&owner, &expression, &variable);
+    let preinstalled: Vec<_> = ["+", "-", "*", "/", "^", "sinh", "cosh", "tanh"]
+        .into_iter()
+        .map(|operator| symbol(&owner, operator))
+        .collect();
+    let prior = session.arena_budget();
+    let used = crate::sexp::owner::with_runtime(&owner, |access| {
+        access.with_arena(|arena| arena.total_bytes_allocated())
+    })
+    .unwrap()
+    .unwrap();
+    session.set_arena_budget(crate::sexp::memory::ArenaBudget::new(
+        used + 8192,
+        prior.max_nodes,
+    ));
+    let error = session.with_active(|| {
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+            super::do_d(args.as_raw())
+        }))
+        .unwrap_err()
+    });
+    let message = error
+        .downcast::<crate::sexp::context::RError>()
+        .unwrap()
+        .message;
+    assert!(
+        message.contains("cannot inspect derivative expression path")
+            || message.contains("cannot retain derivative frames")
+            || message.contains("session memory limit"),
+        "{message}"
+    );
+    drop(preinstalled);
+    session.set_arena_budget(prior);
+    let args = arguments(&owner, &y, &variable);
+    let result =
+        session.with_active(|| unsafe { session.sexp(super::do_d(args.as_raw())).unwrap() });
+    assert_eq!(result.try_real_elt(0).unwrap(), 0.);
+}
+
+#[test]
+#[cfg(not(miri))]
+fn owned_derivative_deep_hyperbolic_traversal_subprocess() {
+    const CHILD: &str = "RPORT_DERIV_DEEP_HYPERBOLIC_CHILD";
+    if std::env::var_os(CHILD).is_some() {
+        std::thread::Builder::new()
+            .stack_size(2 * 1024 * 1024)
+            .spawn(|| {
+                let session = RSession::new_for_gc_tests();
+                let owner = session.owner_token().unwrap().weak_owner().unwrap();
+                let y = symbol(&owner, "y");
+                let mut expression = y.clone();
+                let operators = ["sinh", "cosh", "tanh"];
+                for index in 0..2048 {
+                    expression = call(&owner, operators[index % operators.len()], &[expression]);
+                }
+                let variable = owner
+                    .node_factory()
+                    .unwrap()
+                    .strings(&["x"])
+                    .unwrap()
+                    .into_owned()
+                    .unwrap();
+                let args = arguments(&owner, &expression, &variable);
+                let result = session.with_active(|| unsafe {
+                    session
+                        .sexp(super::do_d(args.as_raw()))
+                        .unwrap()
+                        .into_owned()
+                        .unwrap()
+                });
+                assert_eq!(result.try_real_elt(0).unwrap(), 0.);
+            })
+            .unwrap()
+            .join()
+            .unwrap();
+        return;
+    }
+    let output = std::process::Command::new(std::env::current_exe().unwrap())
+        .arg("library::stats::deriv::owned_tests::owned_derivative_deep_hyperbolic_traversal_subprocess")
         .args(["--exact", "--nocapture"])
         .env(CHILD, "1")
         .output()
