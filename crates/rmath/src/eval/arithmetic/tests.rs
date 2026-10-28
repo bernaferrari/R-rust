@@ -184,6 +184,28 @@ fn test_modulo_and_floor_division_by_zero_match_r_shape() {
     }
 }
 
+#[test]
+fn test_real_modulo_na_by_zero_is_nan_but_integer_path_stays_na() {
+    let _session = RSession::new();
+    unsafe {
+        for zero in [0.0, -0.0] {
+            let result = real_binary("%%", Rf_ScalarReal(NA_REAL), Rf_ScalarReal(zero));
+            assert_eq!(TYPEOF(result), SEXPTYPE::REALSXP);
+            let value = *REAL(result);
+            assert!(value.is_nan());
+            assert!(!crate::sexp::ffi::R_IsNA(value));
+        }
+
+        let integer_result = real_binary(
+            "%%",
+            Rf_ScalarInteger(NA_INTEGER),
+            Rf_ScalarInteger(0),
+        );
+        assert_eq!(TYPEOF(integer_result), SEXPTYPE::INTSXP);
+        assert_eq!(*INTEGER(integer_result), NA_INTEGER);
+    }
+}
+
 // --- Vector tests ---
 
 #[test]

@@ -112,6 +112,14 @@ pub unsafe fn real_binary(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
                 continue;
             }
 
+            // GNU R's myfmod checks a zero divisor before doing NA propagation,
+            // so NA %% +/-0 is an ordinary NaN. Keep the integer-only path's
+            // existing NA result unchanged.
+            if use_real && op == "%%" && y == 0.0 {
+                result_mut.set_real_elt(i, f64::NAN);
+                continue;
+            }
+
             // Real arithmetic must execute the operation: IEEE arithmetic quiets
             // signaling NA payloads, while R_pow preserves cases such as 0^NA.
             // Integer-only division/power instead return the original NA_REAL.
