@@ -133,6 +133,33 @@ enum DerivativeOperator {
     Psigamma(Value),
 }
 
+// Brent's cycle check follows only unary edges already read by the rewrite.
+// Each operand keeps its own path across the GNU operand swaps. Keeping an
+// owning checkpoint prevents identity reuse across provider callbacks, without
+// another graph read or a native buffer requiring depth-dependent admission.
+#[derive(Default)]
+struct SimplifyPath {
+    checkpoint: Option<Value>,
+    interval: usize,
+    distance: usize,
+}
+
+impl SimplifyPath {
+    fn advance(&mut self, current: &Value, child: &Value) -> SexpResult<()> {
+        let checkpoint = self.checkpoint.get_or_insert_with(|| current.clone());
+        if checkpoint.as_raw() == child.as_raw() {
+            return Err(invalid("cyclic derivative expression"));
+        }
+        self.distance += 1;
+        if self.distance >= self.interval {
+            *checkpoint = child.clone();
+            self.interval = self.interval.max(1).saturating_mul(2);
+            self.distance = 0;
+        }
+        Ok(())
+    }
+}
+
 struct DerivativeFrame {
     // Source and snapshot remain owned across callbacks in either child.
     expression: Value,
@@ -408,113 +435,185 @@ where
         }
     }
 
-    fn simplify(&self, function: &str, first: Value, second: Option<Value>) -> SexpResult<Value> {
-        match function {
-            "+" => {
-                let second = second.ok_or_else(|| invalid("invalid binary derivative"))?;
-                if self.numeric(&first)? == Some(0.0) {
-                    return Ok(second);
-                }
-                if self.numeric(&second)? == Some(0.0) {
-                    return Ok(first);
-                }
-                if let Some(positive) = self.unary_minus(&first)? {
-                    return self.simplify("-", second, Some(positive));
-                }
-                if let Some(positive) = self.unary_minus(&second)? {
-                    return self.simplify("-", first, Some(positive));
-                }
-                self.call("+", &[first, second])
-            }
-            "-" => match second {
-                None => {
+    fn simplify(
+        &self,
+        mut function: &str,
+        mut first: Value,
+        mut second: Option<Value>,
+    ) -> SexpResult<Value> {
+        // Every suspended rewrite only applies unary minus to the child result.
+        // Count those identical continuations instead of retaining Rust frames;
+        // replay each one so provider reads and errors keep their original order.
+        let mut negations = 0usize;
+        let mut first_path = SimplifyPath::default();
+        let mut second_path = SimplifyPath::default();
+        let mut result = loop {
+            let value = match function {
+                "+" => {
+                    let rhs = second
+                        .take()
+                        .ok_or_else(|| invalid("invalid binary derivative"))?;
                     if self.numeric(&first)? == Some(0.0) {
-                        self.scalar(0.)
-                    } else if let Some(positive) = self.unary_minus(&first)? {
-                        Ok(positive)
-                    } else {
-                        self.call("-", &[first])
+                        break rhs;
                     }
-                }
-                Some(second) => {
-                    if self.numeric(&second)? == Some(0.0) {
-                        return Ok(first);
-                    }
-                    if self.numeric(&first)? == Some(0.0) {
-                        return self.simplify("-", second, None);
+                    if self.numeric(&rhs)? == Some(0.0) {
+                        break first;
                     }
                     if let Some(positive) = self.unary_minus(&first)? {
-                        return self.simplify(
-                            "-",
-                            self.simplify("+", positive, Some(second))?,
-                            None,
-                        );
+                        first_path.advance(&first, &positive)?;
+                        std::mem::swap(&mut first_path, &mut second_path);
+                        function = "-";
+                        first = rhs;
+                        second = Some(positive);
+                        continue;
                     }
-                    if let Some(positive) = self.unary_minus(&second)? {
-                        return self.simplify("+", first, Some(positive));
+                    if let Some(positive) = self.unary_minus(&rhs)? {
+                        second_path.advance(&rhs, &positive)?;
+                        function = "-";
+                        second = Some(positive);
+                        continue;
                     }
-                    self.call("-", &[first, second])
+                    self.call("+", &[first, rhs])
                 }
-            },
-            "*" => {
-                let second = second.ok_or_else(|| invalid("invalid binary derivative"))?;
-                if self.numeric(&first)? == Some(0.0) || self.numeric(&second)? == Some(0.0) {
-                    return self.scalar(0.);
+                "-" => match second.take() {
+                    None => {
+                        if self.numeric(&first)? == Some(0.0) {
+                            self.scalar(0.)
+                        } else if let Some(positive) = self.unary_minus(&first)? {
+                            Ok(positive)
+                        } else {
+                            self.call("-", &[first])
+                        }
+                    }
+                    Some(rhs) => {
+                        if self.numeric(&rhs)? == Some(0.0) {
+                            break first;
+                        }
+                        if self.numeric(&first)? == Some(0.0) {
+                            function = "-";
+                            first = rhs;
+                            second = None;
+                            continue;
+                        }
+                        if let Some(positive) = self.unary_minus(&first)? {
+                            first_path.advance(&first, &positive)?;
+                            negations = negations.checked_add(1).ok_or_else(|| {
+                                invalid("derivative simplification depth overflow")
+                            })?;
+                            function = "+";
+                            first = positive;
+                            second = Some(rhs);
+                            continue;
+                        }
+                        if let Some(positive) = self.unary_minus(&rhs)? {
+                            second_path.advance(&rhs, &positive)?;
+                            function = "+";
+                            second = Some(positive);
+                            continue;
+                        }
+                        self.call("-", &[first, rhs])
+                    }
+                },
+                "*" => {
+                    let rhs = second
+                        .take()
+                        .ok_or_else(|| invalid("invalid binary derivative"))?;
+                    if self.numeric(&first)? == Some(0.0) || self.numeric(&rhs)? == Some(0.0) {
+                        break self.scalar(0.)?;
+                    }
+                    if self.numeric(&first)? == Some(1.0) {
+                        break rhs;
+                    }
+                    if self.numeric(&rhs)? == Some(1.0) {
+                        break first;
+                    }
+                    if let Some(positive) = self.unary_minus(&first)? {
+                        first_path.advance(&first, &positive)?;
+                        negations = negations
+                            .checked_add(1)
+                            .ok_or_else(|| invalid("derivative simplification depth overflow"))?;
+                        first = positive;
+                        second = Some(rhs);
+                        continue;
+                    }
+                    if let Some(positive) = self.unary_minus(&rhs)? {
+                        second_path.advance(&rhs, &positive)?;
+                        negations = negations
+                            .checked_add(1)
+                            .ok_or_else(|| invalid("derivative simplification depth overflow"))?;
+                        second = Some(positive);
+                        continue;
+                    }
+                    self.call("*", &[first, rhs])
                 }
-                if self.numeric(&first)? == Some(1.0) {
-                    return Ok(second);
+                "/" => {
+                    let rhs = second
+                        .take()
+                        .ok_or_else(|| invalid("invalid binary derivative"))?;
+                    if self.numeric(&first)? == Some(0.0) {
+                        break self.scalar(0.)?;
+                    }
+                    if self.numeric(&rhs)? == Some(0.0) {
+                        break self.scalar(crate::sexp::ffi::NA_REAL)?;
+                    }
+                    if self.numeric(&rhs)? == Some(1.0) {
+                        break first;
+                    }
+                    if let Some(positive) = self.unary_minus(&first)? {
+                        first_path.advance(&first, &positive)?;
+                        negations = negations
+                            .checked_add(1)
+                            .ok_or_else(|| invalid("derivative simplification depth overflow"))?;
+                        first = positive;
+                        second = Some(rhs);
+                        continue;
+                    }
+                    if let Some(positive) = self.unary_minus(&rhs)? {
+                        second_path.advance(&rhs, &positive)?;
+                        negations = negations
+                            .checked_add(1)
+                            .ok_or_else(|| invalid("derivative simplification depth overflow"))?;
+                        second = Some(positive);
+                        continue;
+                    }
+                    self.call("/", &[first, rhs])
                 }
-                if self.numeric(&second)? == Some(1.0) {
-                    return Ok(first);
+                "^" => {
+                    let rhs = second
+                        .take()
+                        .ok_or_else(|| invalid("invalid binary derivative"))?;
+                    if self.numeric(&rhs)? == Some(0.0) || self.numeric(&first)? == Some(1.0) {
+                        break self.scalar(1.)?;
+                    }
+                    if self.numeric(&first)? == Some(0.0) {
+                        break self.scalar(0.)?;
+                    }
+                    if self.numeric(&rhs)? == Some(1.0) {
+                        break first;
+                    }
+                    self.call("^", &[first, rhs])
                 }
-                if let Some(positive) = self.unary_minus(&first)? {
-                    return self.simplify("-", self.simplify("*", positive, Some(second))?, None);
+                _ => {
+                    if let Some(second) = second {
+                        self.call(function, &[first, second])
+                    } else {
+                        self.call(function, &[first])
+                    }
                 }
-                if let Some(positive) = self.unary_minus(&second)? {
-                    return self.simplify("-", self.simplify("*", first, Some(positive))?, None);
-                }
-                self.call("*", &[first, second])
-            }
-            "/" => {
-                let second = second.ok_or_else(|| invalid("invalid binary derivative"))?;
-                if self.numeric(&first)? == Some(0.0) {
-                    return self.scalar(0.);
-                }
-                if self.numeric(&second)? == Some(0.0) {
-                    return self.scalar(crate::sexp::ffi::NA_REAL);
-                }
-                if self.numeric(&second)? == Some(1.0) {
-                    return Ok(first);
-                }
-                if let Some(positive) = self.unary_minus(&first)? {
-                    return self.simplify("-", self.simplify("/", positive, Some(second))?, None);
-                }
-                if let Some(positive) = self.unary_minus(&second)? {
-                    return self.simplify("-", self.simplify("/", first, Some(positive))?, None);
-                }
-                self.call("/", &[first, second])
-            }
-            "^" => {
-                let second = second.ok_or_else(|| invalid("invalid binary derivative"))?;
-                if self.numeric(&second)? == Some(0.0) || self.numeric(&first)? == Some(1.0) {
-                    return self.scalar(1.);
-                }
-                if self.numeric(&first)? == Some(0.0) {
-                    return self.scalar(0.);
-                }
-                if self.numeric(&second)? == Some(1.0) {
-                    return Ok(first);
-                }
-                self.call("^", &[first, second])
-            }
-            _ => {
-                if let Some(second) = second {
-                    self.call(function, &[first, second])
-                } else {
-                    self.call(function, &[first])
-                }
-            }
+            }?;
+            break value;
+        };
+        while negations != 0 {
+            result = if self.numeric(&result)? == Some(0.0) {
+                self.scalar(0.)?
+            } else if let Some(positive) = self.unary_minus(&result)? {
+                positive
+            } else {
+                self.call("-", &[result])?
+            };
+            negations -= 1;
         }
+        Ok(result)
     }
 
     pub(super) fn derive(&self, expression: &Value, variable: &Value) -> SexpResult<Value> {
@@ -1753,3 +1852,7 @@ mod scratch_admission_tests {
         drop(pin);
     }
 }
+
+#[cfg(test)]
+#[path = "simplify_tests.rs"]
+mod simplify_tests;
