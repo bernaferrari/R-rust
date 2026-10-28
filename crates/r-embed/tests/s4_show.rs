@@ -156,3 +156,41 @@ fn show_nine_distinct_objects_prints_every_level() {
         .unwrap_or_else(|err| panic!("{err}"));
     assert_eq!(out.trim(), "L1\nL2\nL3\nL4\nL5\nL6\nL7\nL8\nL9");
 }
+
+#[test]
+fn basic_s4_matrix_show_and_print_match_gnu() {
+    let mut session = RSession::new().unwrap();
+    let out = session
+        .eval(
+            r#"
+            x <- asS4(matrix(1:4, 2))
+            for (render in list(show, print, print.default)) {
+                cat(paste(capture.output(render(x)), collapse = "\n"), "\n", sep = "")
+            }
+            x
+            "#,
+        )
+        .unwrap();
+    // Pinned GNU R bac583951: explicit show/print/print.default and
+    // final auto-print all render the underlying matrix.
+    let expected = "     [,1] [,2]\n[1,]    1    3\n[2,]    2    4";
+    assert_eq!(out.trim(), [expected; 4].join("\n").trim());
+
+    let derived = session
+        .eval(
+            r#"
+            setClass("Foo", representation(name = "character"), contains = "matrix")
+            f <- new("Foo", .Data = diag(2), name = "Diag")
+            cat(paste(capture.output(show(f)), collapse = "\n"), "\n", sep = "")
+            cat(paste(capture.output(print(f)), collapse = "\n"), "\n", sep = "")
+            f
+            "#,
+        )
+        .unwrap();
+    let expected_derived = concat!(
+        "An object of class \"Foo\"\n",
+        "     [,1] [,2]\n[1,]    1    0\n[2,]    0    1\n",
+        "Slot \"name\":\n[1] \"Diag\"\n"
+    );
+    assert_eq!(derived.trim(), [expected_derived; 3].join("\n").trim());
+}
