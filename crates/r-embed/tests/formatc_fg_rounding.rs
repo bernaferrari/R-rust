@@ -18,7 +18,14 @@ fn formatc_fg_rounds_significant_digits_without_spurious_decimal_points() {
                     identical(formatC(0.999, 2, format = "fg"), "  1"),
                     identical(formatC(0.000001234, 1, format = "fg"), "0.000001"),
                     identical(formatC(123.456, 2, format = "fg", flag = "#"), "123."),
-                    identical(formatC(99.9, 2, format = "fg", flag = "#"), "100.")
+                    identical(formatC(99.9, 2, format = "fg", flag = "#"), "100."),
+                    identical(formatC(99.9, 0, format = "fg"), "100"),
+                    identical(formatC(9.99, 0, format = "fg"), "1e+0"),
+                    identical(formatC(0.99, 0, format = "fg"), "1"),
+                    identical(formatC(-9.99, 0, format = "fg"), "-1e+0"),
+                    identical(formatC(999, 0, format = "fg"), "1000"),
+                    identical(formatC(0.099, 0, format = "fg"), "0.1"),
+                    identical(formatC(9.99, 0, format = "fg", flag = "#"), "1.e+01")
                 )
                 cat("formatc-fg-rounding: PASS\n")
                 "##

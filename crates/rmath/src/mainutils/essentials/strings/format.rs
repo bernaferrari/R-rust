@@ -303,7 +303,7 @@ fn formatc_one(v: f64, digits: i32, format: &str, alt: bool) -> String {
                     "Inf".to_string()
                 };
             }
-            if v == 0.0 || d == 0 {
+            if v == 0.0 || (d == 0 && !matches!(format, "fg" | "fG")) {
                 return "0".to_string();
             }
             let exp = v.abs().log10().floor() as i32;
@@ -411,6 +411,19 @@ pub unsafe fn do_formatC(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         if x.is_null() || x == R_NilValue() {
             return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
         }
+        let _x_guard = protect(x);
+        let _type_guard = protect(type_arg);
+        let _width_guard = protect(width_arg);
+        let _digits_guard = protect(digits_arg);
+        let _format_guard = protect(format_arg);
+        let _flag_guard = protect(flag_arg);
+        let _i_strlen_source_guard = protect(i_strlen_arg);
+        // GNU do_formatC() coerces i.strlen to integer before allocating its
+        // output buffers. Its R-level pmax can produce a real vector, so use
+        // the shared R coercion path rather than an unchecked Rust cast.
+        let i_strlen_arg =
+            crate::mainutils::coerce::coerceVector(i_strlen_arg, SEXPTYPE::INTSXP.as_c_int());
+        let _i_strlen_guard = protect(i_strlen_arg);
         let type_str = string_elt_or(&type_arg, "double");
         let mut width = int_or_na(&width_arg);
         let digits = int_or_na(&digits_arg);
@@ -463,7 +476,7 @@ pub unsafe fn do_formatC(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
             };
             // The C buffers hold i.strlen + 2 characters plus NUL; longer
             // formatted strings are truncated to that cap.
-            let cap = if TYPEOF(i_strlen_arg) == SEXPTYPE::INTSXP && XLENGTH(i_strlen_arg) > i {
+            let cap = if XLENGTH(i_strlen_arg) > i {
                 (INTEGER_ELT(i_strlen_arg, i as i32) as usize).saturating_add(2)
             } else {
                 usize::MAX
