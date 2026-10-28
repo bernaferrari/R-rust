@@ -94,6 +94,8 @@ enum DerivativeOperator {
     Negate,
     Plus,
     Minus,
+    Multiply,
+    Divide,
     Sin(Value),
     Cos(Value),
     Tan,
@@ -475,6 +477,18 @@ where
                         ("-", 1) => Some(DerivativeOperator::Negate),
                         ("+", _) => Some(DerivativeOperator::Plus),
                         ("-", _) => Some(DerivativeOperator::Minus),
+                        ("*", _) => {
+                            if call.arguments.get(1).is_none() {
+                                return Err(invalid("invalid binary derivative expression"));
+                            }
+                            Some(DerivativeOperator::Multiply)
+                        }
+                        ("/", _) => {
+                            if call.arguments.get(1).is_none() {
+                                return Err(invalid("invalid binary derivative expression"));
+                            }
+                            Some(DerivativeOperator::Divide)
+                        }
                         ("sin", _) => Some(DerivativeOperator::Sin(
                             self.call("cos", std::slice::from_ref(&first))?,
                         )),
@@ -535,15 +549,26 @@ where
                     return Ok(result);
                 };
                 if matches!(
-                    frame.operator,
-                    DerivativeOperator::Plus | DerivativeOperator::Minus
+                    &frame.operator,
+                    DerivativeOperator::Plus
+                        | DerivativeOperator::Minus
+                        | DerivativeOperator::Multiply
+                        | DerivativeOperator::Divide
                 ) && frame.first.is_none()
                 {
                     if let Some(second) = frame.call.arguments.get(1) {
                         // Suspend only after D(first) succeeds. Each occurrence
                         // is traversed independently and the left result stays rooted.
                         current = second.clone();
-                        frame.first = Some(result);
+                        frame.first = Some(match &frame.operator {
+                            DerivativeOperator::Multiply => {
+                                self.simplify("*", result, Some(frame.call.arguments[1].clone()))?
+                            }
+                            DerivativeOperator::Divide => {
+                                self.simplify("/", result, Some(frame.call.arguments[1].clone()))?
+                            }
+                            _ => result,
+                        });
                         break;
                     }
                 }
@@ -579,6 +604,26 @@ where
                             None => self.simplify(operator, result, None)?,
                         }
                     }
+                    DerivativeOperator::Multiply => self.simplify(
+                        "+",
+                        frame.first.expect("product first term just computed"),
+                        Some(self.simplify("*", frame.call.arguments[0].clone(), Some(result))?),
+                    )?,
+                    DerivativeOperator::Divide => {
+                        let numerator =
+                            self.simplify("*", frame.call.arguments[0].clone(), Some(result))?;
+                        let denominator = self.simplify(
+                            "^",
+                            frame.call.arguments[1].clone(),
+                            Some(self.scalar(2.)?),
+                        )?;
+                        let second = self.simplify("/", numerator, Some(denominator))?;
+                        self.simplify(
+                            "-",
+                            frame.first.expect("quotient first term just computed"),
+                            Some(second),
+                        )?
+                    }
                 };
                 self.active.borrow_mut().pop();
             }
@@ -603,20 +648,6 @@ where
                 .ok_or_else(|| invalid("invalid binary derivative expression"))
         };
         match function.as_str() {
-            "*" => {
-                let b = binary()?;
-                let first = self.simplify("*", self.derive(&a, variable)?, Some(b.clone()))?;
-                let second = self.simplify("*", a, Some(self.derive(&b, variable)?))?;
-                self.simplify("+", first, Some(second))
-            }
-            "/" => {
-                let b = binary()?;
-                let first = self.simplify("/", self.derive(&a, variable)?, Some(b.clone()))?;
-                let numerator = self.simplify("*", a, Some(self.derive(&b, variable)?))?;
-                let denominator = self.simplify("^", b, Some(self.scalar(2.)?))?;
-                let second = self.simplify("/", numerator, Some(denominator))?;
-                self.simplify("-", first, Some(second))
-            }
             "^" => {
                 let b = binary()?;
                 if matches!(
