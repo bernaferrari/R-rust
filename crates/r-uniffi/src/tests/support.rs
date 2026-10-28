@@ -124,7 +124,25 @@ pub(crate) fn wait_for_callback(
     matches: impl Fn(&CallbackEvent) -> bool,
 ) -> CallbackEvent {
     let deadline = Instant::now() + Duration::from_secs(3);
-    let (lock, ready) = &**events;
+    let (_, ready) = &**events;
+    wait_for_callback_until(events, matches, deadline, |guard, remaining| {
+        let (guard, timeout) = ready
+            .wait_timeout(guard, remaining)
+            .unwrap_or_else(|e| e.into_inner());
+        (guard, timeout.timed_out())
+    })
+}
+
+fn wait_for_callback_until(
+    events: &CallbackEvents,
+    matches: impl Fn(&CallbackEvent) -> bool,
+    deadline: Instant,
+    mut wait_timeout: impl FnMut(
+        std::sync::MutexGuard<'_, Vec<CallbackEvent>>,
+        Duration,
+    ) -> (std::sync::MutexGuard<'_, Vec<CallbackEvent>>, bool),
+) -> CallbackEvent {
+    let (lock, _) = &**events;
     let mut guard = lock.lock().unwrap_or_else(|e| e.into_inner());
 
     loop {
@@ -137,13 +155,40 @@ pub(crate) fn wait_for_callback(
             panic!("timed out waiting for callback; observed events: {guard:?}");
         }
         let remaining = deadline.saturating_duration_since(now);
-        let (next_guard, timeout) = ready
-            .wait_timeout(guard, remaining)
-            .unwrap_or_else(|e| e.into_inner());
+        let (next_guard, _timed_out) = wait_timeout(guard, remaining);
         guard = next_guard;
-        if timeout.timed_out() {
-            panic!("timed out waiting for callback; observed events: {guard:?}");
-        }
+        // Recheck the predicate before enforcing the unchanged deadline: a
+        // matching event may be queued even when wait_timeout reports timeout.
+    }
+}
+
+#[cfg(test)]
+mod callback_wait_tests {
+    use super::*;
+
+    #[test]
+    fn timeout_rechecks_events_recorded_before_mutex_reacquisition() {
+        let (callback, events) = RecordingCallback::new();
+        let deadline = Instant::now() + Duration::from_secs(3);
+        let found = wait_for_callback_until(
+            &events,
+            |event| matches!(event, CallbackEvent::Output { line, .. } if line == "ready"),
+            deadline,
+            |mut guard, _remaining| {
+                // Model wait_timeout returning timed_out after the condvar
+                // reacquires the mutex, with a matching event already queued.
+                guard.push(CallbackEvent::Output {
+                    operation_id: 1,
+                    line: "ready".to_string(),
+                });
+                (guard, true)
+            },
+        );
+
+        drop(callback);
+        assert!(
+            matches!(found, CallbackEvent::Output { operation_id: 1, line } if line == "ready")
+        );
     }
 }
 
