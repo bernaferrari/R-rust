@@ -148,3 +148,92 @@ fn real_solve_reserves_caller_scratch_before_allocation_and_recovers() {
         assert!((*REAL(ans).add(1) - 2.0).abs() < 1e-12);
     });
 }
+
+#[test]
+fn real_solve_tolerance_workspace_denial_and_numerical_unwind_release() {
+    use crate::sexp::instance::with_current_instance;
+    use crate::sexp::memory::with_arena_in;
+    use crate::sexp::memory_ext::{vmaxget, vmaxset};
+
+    let session = RSession::new_for_gc_tests();
+    session.with_active(|| unsafe {
+        let a = make_input(&[2, 2], &[2.0, 0.0, 0.0, 2.0]);
+        let _a = protect(a);
+        let singular = make_input(&[2, 2], &[1.0, 1.0, 1.0, 1.0]);
+        let _singular = protect(singular);
+        let b = make_input(&[2, 1], &[2.0, 4.0]);
+        let _b = protect(b);
+        let tol = Rf_ScalarReal(1e-12);
+        let _tol = protect(tol);
+        let strict_tol = Rf_ScalarReal(2.0);
+        let _strict_tol = protect(strict_tol);
+        // The lightweight fixture initializes symbols and formatted-error
+        // caches lazily. Warm these paths before measuring caller workspace.
+        let initial_watermark = vmaxget();
+        La_solve(a, b, tol);
+        vmaxset(initial_watermark);
+        for (matrix, tolerance) in [(singular, tol), (a, strict_tol)] {
+            let _ = error_message(catch_unwind(AssertUnwindSafe(|| {
+                La_solve(matrix, b, tolerance);
+            })));
+            vmaxset(initial_watermark);
+        }
+        let watermark = vmaxget();
+        let (resident, held) = with_current_instance(|instance| {
+            with_arena_in(instance, |arena| {
+                (arena.total_bytes_allocated(), arena.workspace_bytes())
+            })
+        })
+        .unwrap();
+
+        // Two dense copies need 48 bytes; positive tolerance additionally
+        // retains 8 doubles and 2 integers. One byte below that full caller
+        // peak must fail at admission, before pivots or numerical work begin.
+        let caller_bytes = 6 * size_of::<f64>() + 8 * size_of::<f64>() + 2 * size_of::<i32>();
+        with_current_instance(|instance| {
+            with_arena_in(instance, |arena| {
+                arena.set_budget(ArenaBudget::new(resident + held + caller_bytes - 1, 0));
+            })
+        });
+        let message = error_message(catch_unwind(AssertUnwindSafe(|| {
+            La_solve(a, b, tol);
+        })));
+        assert!(
+            message.contains("native solve workspace exceeds resource limit"),
+            "{message}"
+        );
+        assert_eq!(vmaxget(), watermark);
+        with_current_instance(|instance| {
+            with_arena_in(instance, |arena| {
+                assert_eq!(arena.workspace_bytes(), held);
+                arena.set_budget(ArenaBudget::unlimited());
+            })
+        });
+
+        for (matrix, tolerance, expected) in [
+            (singular, tol, "singular matrix in 'solve'"),
+            (a, strict_tol, "system is computationally singular"),
+        ] {
+            let message = error_message(catch_unwind(AssertUnwindSafe(|| {
+                La_solve(matrix, b, tolerance);
+            })));
+            assert!(message.contains(expected), "{message}");
+            // R_alloc pivots live to the caller's watermark; the Vec scratch
+            // reservation must already be gone when the numerical error unwinds.
+            with_current_instance(|instance| {
+                with_arena_in(instance, |arena| {
+                    assert_eq!(arena.workspace_bytes(), held + 2 * size_of::<i32>());
+                })
+            });
+            vmaxset(watermark);
+        }
+
+        let answer = La_solve(a, b, tol);
+        let _answer = protect(answer);
+        assert_eq!(std::slice::from_raw_parts(REAL(answer), 2), &[1.0, 2.0]);
+        vmaxset(watermark);
+        with_current_instance(|instance| {
+            with_arena_in(instance, |arena| assert_eq!(arena.workspace_bytes(), held))
+        });
+    });
+}
