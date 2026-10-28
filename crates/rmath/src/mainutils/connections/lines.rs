@@ -20,6 +20,7 @@ use flate2::write::GzEncoder;
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::context::RError;
+use crate::sexp::encoding::{self, TextEncoding};
 use crate::sexp::ffi::{NA_INTEGER, NA_REAL, R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::{R_MissingArg, R_NilValue};
 use crate::sexp::instance::{RInstance, with_current_instance, with_required_current_instance};
@@ -67,6 +68,12 @@ pub unsafe fn do_readLines(call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEX
         } else {
             n_val as usize
         };
+        let mark_utf8 =
+            if _encoding.is_null() || _encoding == R_NilValue() || _encoding == R_MissingArg() {
+                false
+            } else {
+                check_string_arg(_encoding, "encoding") == "UTF-8"
+            };
         let skip_nul = _skipNul != 0;
 
         if TYPEOF(scon) == SEXPTYPE::STRSXP {
@@ -86,8 +93,7 @@ pub unsafe fn do_readLines(call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEX
             let _ans_root = protect(ans);
             if !ans.is_null() {
                 for (idx, line) in lines.iter().enumerate() {
-                    let c_line = CString::new(line.as_str()).unwrap_or_default();
-                    let charsxp = Rf_mkChar(c_line.as_ptr());
+                    let charsxp = read_line_charsxp(line.as_bytes(), mark_utf8);
                     SET_STRING_ELT(ans, idx as R_xlen_t, charsxp);
                 }
             }
@@ -260,8 +266,7 @@ pub unsafe fn do_readLines(call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEX
         let _ans_root = protect(ans);
         if !ans.is_null() {
             for (idx, line) in lines.iter().enumerate() {
-                let c_line = CString::new(line.as_str()).unwrap_or_default();
-                let charsxp = Rf_mkChar(c_line.as_ptr());
+                let charsxp = read_line_charsxp(line.as_bytes(), mark_utf8);
                 SET_STRING_ELT(ans, idx as R_xlen_t, charsxp);
             }
         }
@@ -276,6 +281,22 @@ pub unsafe fn do_readLines(call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEX
         }
         ans
     }
+}
+
+unsafe fn read_line_charsxp(bytes: &[u8], mark_utf8: bool) -> SEXP {
+    let encoding = if mark_utf8 {
+        TextEncoding::Utf8
+    } else {
+        TextEncoding::Native
+    };
+    // SAFETY: this helper is called only from the active readLines native
+    // operation, whose current runtime owns the allocation arena.
+    unsafe {
+        crate::sexp::memory::with_arena(|arena| {
+            encoding::allocate_character(arena, bytes, encoding)
+        })
+    }
+    .unwrap_or_else(|| crate::sexp::context::r_error("cannot allocate character string"))
 }
 
 // ---------------------------------------------------------------------------
