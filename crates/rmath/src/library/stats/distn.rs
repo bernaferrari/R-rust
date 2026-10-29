@@ -29,13 +29,25 @@ unsafe fn coerceVector(x: SEXP, type_: c_int) -> SEXP {
 // Helper: isNumeric
 // ---------------------------------------------------------------------------
 
-unsafe fn isNumeric(x: SEXP) -> bool {
+unsafe fn isNumeric(owner: crate::sexp::owner::OwnerToken<'_>, x: SEXP) -> bool {
     unsafe {
+        owner
+            .require_active()
+            .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
         if x.is_null() {
             return false;
         }
         let t = TYPEOF(x);
-        t == SEXPTYPE::REALSXP || t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP
+        // GNU isNumeric accepts logicals but excludes integer factors. Without
+        // this guard attribute copying could attach factor class to REAL output.
+        let numeric = t == SEXPTYPE::REALSXP
+            || t == SEXPTYPE::LGLSXP
+            || (t == SEXPTYPE::INTSXP
+                && crate::mainutils::objects::inherits2(x, c"factor".as_ptr()) == 0);
+        owner
+            .require_active()
+            .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
+        numeric
     }
 }
 
@@ -85,6 +97,53 @@ fn check_inputs(owner: crate::sexp::owner::OwnerToken<'_>, inputs: &[(SEXP, R_xl
     }
 }
 
+// Stock SHALLOW_DUPLICATE_ATTRIB, with checked roots retaining the exact source
+// attribute graph across allocation/collection and original-owner rechecks.
+unsafe fn copy_math_attributes(owner: crate::sexp::owner::OwnerToken<'_>, to: SEXP, from: SEXP) {
+    owner
+        .require_active()
+        .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
+    let target = owner
+        .sexp(to)
+        .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
+    let source = owner
+        .sexp(from)
+        .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
+    let attributes = source
+        .try_attrib()
+        .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
+    let copied = unsafe { crate::main::duplicate::shallow_duplicate(attributes.as_raw()) };
+    let _copied = unsafe { protect(copied) };
+    owner
+        .require_active()
+        .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
+    unsafe {
+        SET_ATTRIB(target.as_raw(), copied);
+        SET_OBJECT(target.as_raw(), OBJECT(source.as_raw()));
+        if crate::mainutils::coerce::IS_S4_OBJECT(source.as_raw()) != 0 {
+            SET_S4_OBJECT(target.as_raw());
+        } else {
+            UNSET_S4_OBJECT(target.as_raw());
+        }
+    }
+    owner
+        .require_active()
+        .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
+}
+unsafe fn finish_math_attributes(
+    owner: crate::sexp::owner::OwnerToken<'_>,
+    result: SEXP,
+    inputs: &[(SEXP, R_xlen_t)],
+    length: R_xlen_t,
+) {
+    for &(source, n) in inputs {
+        if n == length {
+            unsafe { copy_math_attributes(owner, result, source) };
+            break;
+        }
+    }
+}
+
 /// GNU `FINISH_MathN`: `warning(_("NaNs produced"))` when a finite input
 /// produced a NaN. eprintln is not a warning condition (`assertWarning`).
 unsafe fn nans_produced() {
@@ -107,7 +166,7 @@ unsafe fn math2_1(sa: SEXP, sb: SEXP, sI: SEXP, f: math2_fn_1) -> SEXP {
         owner
             .require_active()
             .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
-        if !isNumeric(sa) || !isNumeric(sb) {
+        if !isNumeric(owner, sa) || !isNumeric(owner, sb) {
             Rf_error(b"Non-numeric argument to mathematical function\0".as_ptr() as *const _);
             return R_NilValue();
         }
@@ -117,6 +176,9 @@ unsafe fn math2_1(sa: SEXP, sb: SEXP, sI: SEXP, f: math2_fn_1) -> SEXP {
         if na == 0 || nb == 0 {
             let sy = Rf_allocVector(SEXPTYPE::REALSXP, 0);
             let _sy_guard = protect(sy);
+            if na == 0 {
+                copy_math_attributes(owner, sy, sa);
+            }
             return sy;
         }
 
@@ -167,6 +229,7 @@ unsafe fn math2_1(sa: SEXP, sb: SEXP, sI: SEXP, f: math2_fn_1) -> SEXP {
         if naflag {
             nans_produced();
         }
+        finish_math_attributes(owner, sy, &inputs, n);
         sy
     }
 }
@@ -178,7 +241,7 @@ unsafe fn math2_2(sa: SEXP, sb: SEXP, sI1: SEXP, sI2: SEXP, f: math2_fn_2) -> SE
         owner
             .require_active()
             .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
-        if !isNumeric(sa) || !isNumeric(sb) {
+        if !isNumeric(owner, sa) || !isNumeric(owner, sb) {
             Rf_error(b"Non-numeric argument to mathematical function\0".as_ptr() as *const _);
             return R_NilValue();
         }
@@ -188,6 +251,9 @@ unsafe fn math2_2(sa: SEXP, sb: SEXP, sI1: SEXP, sI2: SEXP, f: math2_fn_2) -> SE
         if na == 0 || nb == 0 {
             let sy = Rf_allocVector(SEXPTYPE::REALSXP, 0);
             let _sy_guard = protect(sy);
+            if na == 0 {
+                copy_math_attributes(owner, sy, sa);
+            }
             return sy;
         }
 
@@ -239,6 +305,7 @@ unsafe fn math2_2(sa: SEXP, sb: SEXP, sI1: SEXP, sI2: SEXP, f: math2_fn_2) -> SE
         if naflag {
             nans_produced();
         }
+        finish_math_attributes(owner, sy, &inputs, n);
         sy
     }
 }
@@ -257,7 +324,7 @@ unsafe fn math3_1(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, f: math3_fn_1) -> SEXP
         owner
             .require_active()
             .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
-        if !isNumeric(sa) || !isNumeric(sb) || !isNumeric(sc) {
+        if !isNumeric(owner, sa) || !isNumeric(owner, sb) || !isNumeric(owner, sc) {
             Rf_error(b"Non-numeric argument to mathematical function\0".as_ptr() as *const _);
             return R_NilValue();
         }
@@ -268,6 +335,9 @@ unsafe fn math3_1(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, f: math3_fn_1) -> SEXP
         if na == 0 || nb == 0 || nc == 0 {
             let sy = Rf_allocVector(SEXPTYPE::REALSXP, 0);
             let _sy_guard = protect(sy);
+            if na == 0 {
+                copy_math_attributes(owner, sy, sa);
+            }
             return sy;
         }
 
@@ -334,6 +404,7 @@ unsafe fn math3_1(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, f: math3_fn_1) -> SEXP
         if naflag {
             nans_produced();
         }
+        finish_math_attributes(owner, sy, &inputs, n);
         sy
     }
 }
@@ -345,7 +416,7 @@ unsafe fn math3_2(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP, f: math3_fn_
         owner
             .require_active()
             .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
-        if !isNumeric(sa) || !isNumeric(sb) || !isNumeric(sc) {
+        if !isNumeric(owner, sa) || !isNumeric(owner, sb) || !isNumeric(owner, sc) {
             Rf_error(b"Non-numeric argument to mathematical function\0".as_ptr() as *const _);
             return R_NilValue();
         }
@@ -356,6 +427,9 @@ unsafe fn math3_2(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP, f: math3_fn_
         if na == 0 || nb == 0 || nc == 0 {
             let sy = Rf_allocVector(SEXPTYPE::REALSXP, 0);
             let _sy_guard = protect(sy);
+            if na == 0 {
+                copy_math_attributes(owner, sy, sa);
+            }
             return sy;
         }
 
@@ -423,6 +497,7 @@ unsafe fn math3_2(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP, f: math3_fn_
         if naflag {
             nans_produced();
         }
+        finish_math_attributes(owner, sy, &inputs, n);
         sy
     }
 }
@@ -441,7 +516,11 @@ unsafe fn math4_1(sa: SEXP, sb: SEXP, sc: SEXP, sd: SEXP, sI: SEXP, f: math4_fn_
         owner
             .require_active()
             .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
-        if !isNumeric(sa) || !isNumeric(sb) || !isNumeric(sc) || !isNumeric(sd) {
+        if !isNumeric(owner, sa)
+            || !isNumeric(owner, sb)
+            || !isNumeric(owner, sc)
+            || !isNumeric(owner, sd)
+        {
             Rf_error(b"Non-numeric argument to mathematical function\0".as_ptr() as *const _);
             return R_NilValue();
         }
@@ -453,6 +532,9 @@ unsafe fn math4_1(sa: SEXP, sb: SEXP, sc: SEXP, sd: SEXP, sI: SEXP, f: math4_fn_
         if na == 0 || nb == 0 || nc == 0 || nd == 0 {
             let sy = Rf_allocVector(SEXPTYPE::REALSXP, 0);
             let _sy_guard = protect(sy);
+            if na == 0 {
+                copy_math_attributes(owner, sy, sa);
+            }
             return sy;
         }
 
@@ -531,6 +613,7 @@ unsafe fn math4_1(sa: SEXP, sb: SEXP, sc: SEXP, sd: SEXP, sI: SEXP, f: math4_fn_
         if naflag {
             nans_produced();
         }
+        finish_math_attributes(owner, sy, &inputs, n);
         sy
     }
 }
@@ -550,7 +633,11 @@ unsafe fn math4_2(
         owner
             .require_active()
             .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
-        if !isNumeric(sa) || !isNumeric(sb) || !isNumeric(sc) || !isNumeric(sd) {
+        if !isNumeric(owner, sa)
+            || !isNumeric(owner, sb)
+            || !isNumeric(owner, sc)
+            || !isNumeric(owner, sd)
+        {
             Rf_error(b"Non-numeric argument to mathematical function\0".as_ptr() as *const _);
             return R_NilValue();
         }
@@ -562,6 +649,9 @@ unsafe fn math4_2(
         if na == 0 || nb == 0 || nc == 0 || nd == 0 {
             let sy = Rf_allocVector(SEXPTYPE::REALSXP, 0);
             let _sy_guard = protect(sy);
+            if na == 0 {
+                copy_math_attributes(owner, sy, sa);
+            }
             return sy;
         }
 
@@ -641,6 +731,7 @@ unsafe fn math4_2(
         if naflag {
             nans_produced();
         }
+        finish_math_attributes(owner, sy, &inputs, n);
         sy
     }
 }
@@ -1939,3 +2030,6 @@ pub const DISTN_CALL_NAMES: &[&str] = &[
 
 #[cfg(test)]
 mod flag_tests;
+
+#[cfg(test)]
+mod attribute_tests;
