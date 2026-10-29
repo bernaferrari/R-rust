@@ -194,6 +194,34 @@ pub(super) fn evaluate(
                                 scaling,
                                 workspace.values(),
                             ),
+                            Operation::BesselY if x >= 0.0 && k < 0.0 && k != k.floor() => {
+                                // Preserve Y-then-J subtraction and the half-
+                                // integer shortcut without crossing owner changes.
+                                let first = if k - k.floor() == 0.5 {
+                                    0.0
+                                } else {
+                                    let value = if length == 0 {
+                                        crate::special::bessel_y::bessel_y(x, -k)
+                                    } else {
+                                        crate::special::bessel_y::bessel_y_ex(
+                                            x,
+                                            -k,
+                                            workspace.values(),
+                                        )
+                                    };
+                                    access.require_active()?;
+                                    check()?;
+                                    value * crate::special::cospi::cospi(k)
+                                };
+                                let reflected = crate::special::bessel_j::bessel_j_ex(
+                                    x,
+                                    -k,
+                                    workspace.values(),
+                                );
+                                access.require_active()?;
+                                check()?;
+                                first - reflected * crate::special::cospi::sinpi(k)
+                            }
                             Operation::BesselY if length == 0 => {
                                 crate::special::bessel_y::bessel_y(x, k)
                             }

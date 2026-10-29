@@ -969,3 +969,6 @@ mod besseli_checked_tests;
 
 #[path="besselj_reflection_tests.rs"]
 mod besselj_reflection_tests;
+
+#[path="bessely_reflection_tests.rs"]
+mod bessely_reflection_tests;
