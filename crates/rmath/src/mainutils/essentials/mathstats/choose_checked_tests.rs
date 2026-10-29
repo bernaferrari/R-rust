@@ -377,5 +377,258 @@ fn checked_choose_leaves_shared_nmath_callers_without_new_rounding_callbacks() {
         .abs()
             < 1e-14
     );
+    assert!(crate::special::polygamma::psigamma(1.0, 101.0).is_nan());
     assert_eq!(callbacks.get(), 0);
+}
+
+#[test]
+fn checked_psigamma_limit_warning_reentry_and_missing_controls() {
+    let session = RSession::new_for_gc_tests();
+    session.with_active(|| {
+        let owner = session.owner_token().unwrap();
+        let weak = owner.weak_owner().unwrap();
+        let f = weak.node_factory().unwrap();
+        let arguments = args(
+            &f,
+            &reals(&f, &[1.0]),
+            &reals(
+                &f,
+                &[101.0, 101.5, 100.5, f64::NAN, crate::sexp::ffi::NA_REAL],
+            ),
+        );
+        let messages = Rc::new(RefCell::new(Vec::new()));
+        let seen = messages.clone();
+        let callback_owner = weak.clone();
+        let _warnings = WarningScope::new(move |message| {
+            seen.borrow_mut().push(message.to_owned());
+            unsafe {
+                crate::sexp::gengc::full_gc();
+            }
+            let f = callback_owner.node_factory().unwrap();
+            assert_eq!(
+                native(&f, &args(&f, &reals(&f, &[5.0]), &reals(&f, &[2.0])), false)
+                    .try_real_elt(0),
+                Ok(10.0)
+            );
+        });
+        let raw = unsafe {
+            super::do_psigamma(
+                f.nil().as_raw(),
+                f.nil().as_raw(),
+                arguments.as_raw(),
+                f.nil().as_raw(),
+            )
+        };
+        let result = f.wrap(raw).unwrap().into_owned().unwrap();
+        assert!(result.try_real_elt(0).unwrap().is_nan());
+        assert!(result.try_real_elt(1).unwrap().is_nan());
+        assert!(result.try_real_elt(2).unwrap().is_finite());
+        assert!(result.try_real_elt(3).unwrap().is_nan());
+        assert!(crate::sexp::ffi::R_IsNA(result.try_real_elt(4).unwrap()));
+        // The aggregate warning uses the runtime warning bridge, while scalar
+        // warnings use the nmath hook installed above.
+        assert_eq!(
+            &*messages.borrow(),
+            &["deriv = 101 > 100 (= n_max)", "deriv = 102 > 100 (= n_max)"]
+        );
+    });
+}
+
+fn native_psi(f: &SessionNodeFactory<'_>, arguments: &Sexp<'_>, _: bool) -> Sexp<'static> {
+    let raw = unsafe {
+        super::do_psigamma(
+            f.nil().as_raw(),
+            f.nil().as_raw(),
+            arguments.as_raw(),
+            f.nil().as_raw(),
+        )
+    };
+    f.wrap(raw).unwrap().into_owned().unwrap()
+}
+#[test]
+fn checked_psigamma_output_denial_precedes_warning_and_retry_recovers() {
+    let session = RSession::new_for_gc_tests();
+    let owner = session.owner_token().unwrap();
+    session.with_active(|| {
+        let f = owner.node_factory();
+        let arguments = args(&f, &reals(&f, &[5.0, 6.0]), &reals(&f, &[101.0, 102.0]));
+        let count = Rc::new(Cell::new(0));
+        let observed = count.clone();
+        let _warnings = WarningScope::new(move |_| observed.set(observed.get() + 1));
+        // Initialize existing runtime protection/coercion bookkeeping before
+        // isolating the fresh admitted output allocation.
+        let warm = args(&f, &reals(&f, &[5.0]), &reals(&f, &[101.0]));
+        drop(native_psi(&f, &warm, false));
+        drop(warm);
+        count.set(0);
+        unsafe {
+            crate::sexp::gengc::full_gc();
+        }
+        let before = owner.with_arena(|a| a.total_bytes_allocated()).unwrap();
+        owner
+            .with_arena(|a| a.set_budget(ArenaBudget::new(before, 0)))
+            .unwrap();
+        let error =
+            catch_unwind(AssertUnwindSafe(|| native_psi(&f, &arguments, false))).unwrap_err();
+        assert!(
+            error
+                .downcast_ref::<crate::sexp::context::RError>()
+                .is_some(),
+            "controlled allocation error"
+        );
+        assert_eq!(count.get(), 0);
+        owner
+            .with_arena(|a| a.set_budget(ArenaBudget::unlimited()))
+            .unwrap();
+        let result = native_psi(&f, &arguments, false);
+        assert!(result.try_real_elt(1).unwrap().is_nan());
+        assert_eq!(count.get(), 2);
+        drop(result);
+        unsafe {
+            crate::sexp::gengc::full_gc();
+        }
+        assert_eq!(
+            owner.with_arena(|a| a.total_bytes_allocated()).unwrap(),
+            before
+        );
+    });
+}
+#[test]
+fn checked_psigamma_warning_unwind_reclaims_partial_output() {
+    let session = RSession::new_for_gc_tests();
+    let owner = session.owner_token().unwrap();
+    session.with_active(|| {
+        let f = owner.node_factory();
+        let arguments = args(&f, &reals(&f, &[5.0, 6.0]), &reals(&f, &[101.0, 102.0]));
+        unsafe {
+            crate::sexp::gengc::full_gc();
+        }
+        let before = owner.with_arena(|a| a.total_bytes_allocated()).unwrap();
+        {
+            let _warnings = WarningScope::new(|_| std::panic::panic_any(715_u32));
+            let error =
+                catch_unwind(AssertUnwindSafe(|| native_psi(&f, &arguments, true))).unwrap_err();
+            assert_eq!(error.downcast_ref::<u32>(), Some(&715));
+        }
+        unsafe {
+            crate::sexp::gengc::full_gc();
+        }
+        assert_eq!(
+            owner.with_arena(|a| a.total_bytes_allocated()).unwrap(),
+            before
+        );
+        let _warnings = WarningScope::new(|_| {});
+        let result = native_psi(&f, &arguments, true);
+        assert!(result.try_real_elt(0).unwrap().is_nan());
+    });
+}
+#[test]
+fn checked_psigamma_warning_revocation_cannot_publish_or_charge_replacement() {
+    let facade = Rc::new(RefCell::new(Some(RSession::new_for_gc_tests())));
+    let weak = facade
+        .borrow()
+        .as_ref()
+        .unwrap()
+        .owner_token()
+        .unwrap()
+        .weak_owner()
+        .unwrap();
+    let pin = weak.pin().unwrap();
+    let original = pin.as_ptr();
+    let replacement = Rc::new(RefCell::new(None));
+    let after_revoke = replacement.clone();
+    let facade_callback = facade.clone();
+    let _warnings = WarningScope::new(move |_| {
+        drop(facade_callback.borrow_mut().take());
+        let next = RSession::new_for_gc_tests();
+        let bytes = next
+            .owner_token()
+            .unwrap()
+            .with_arena(|a| a.total_bytes_allocated())
+            .unwrap();
+        after_revoke.replace(Some((next, bytes)));
+    });
+    let error = catch_unwind(AssertUnwindSafe(|| unsafe {
+        crate::sexp::session::with_instance_active(original, || {
+            let f = weak.node_factory().unwrap();
+            let arguments = args(&f, &reals(&f, &[5.0]), &reals(&f, &[101.0]));
+            native_psi(&f, &arguments, false)
+        })
+    }))
+    .unwrap_err();
+    assert!(!weak.is_live());
+    assert_eq!(
+        error
+            .downcast_ref::<crate::sexp::context::RError>()
+            .unwrap()
+            .message,
+        crate::sexp::object::SexpError::RootUnavailable.to_string()
+    );
+    let replacement = replacement.borrow();
+    let (session, before) = replacement.as_ref().unwrap();
+    session.with_active(|| {
+        assert_eq!(
+            session
+                .owner_token()
+                .unwrap()
+                .with_arena(|a| a.total_bytes_allocated())
+                .unwrap(),
+            *before
+        );
+    });
+}
+
+#[test]
+fn checked_psigamma_altrep_revocation_stops_before_scalar_warnings() {
+    let facade = Rc::new(RefCell::new(Some(RSession::new_for_gc_tests())));
+    let weak = facade
+        .borrow()
+        .as_ref()
+        .unwrap()
+        .owner_token()
+        .unwrap()
+        .weak_owner()
+        .unwrap();
+    let pin = weak.pin().unwrap();
+    let original = pin.as_ptr();
+    let calls = Rc::new(Cell::new(0));
+    let callback_facade = facade.clone();
+    let class = facade
+        .borrow()
+        .as_ref()
+        .unwrap()
+        .register_altrep_class(
+            "choose.revoke",
+            Provider {
+                calls: calls.clone(),
+                action: Rc::new(move || {
+                    drop(callback_facade.borrow_mut().take());
+                }),
+            },
+        )
+        .unwrap()
+        .into_owned()
+        .unwrap();
+    let warnings = Rc::new(Cell::new(0));
+    let observed = warnings.clone();
+    let _warnings = WarningScope::new(move |_| observed.set(observed.get() + 1));
+    let error = catch_unwind(AssertUnwindSafe(|| unsafe {
+        crate::sexp::session::with_instance_active(original, || {
+            let f = weak.node_factory().unwrap();
+            let input = AltrepBuilder::new(class).build().unwrap();
+            let arguments = args(&f, &input, &reals(&f, &[101.0, 102.0]));
+            native_psi(&f, &arguments, false)
+        })
+    }))
+    .unwrap_err();
+    assert!(!weak.is_live());
+    assert_eq!(calls.get(), 1);
+    assert_eq!(warnings.get(), 0);
+    assert_eq!(
+        error
+            .downcast_ref::<crate::sexp::context::RError>()
+            .unwrap()
+            .message,
+        crate::sexp::object::SexpError::RootUnavailable.to_string()
+    );
 }

@@ -7,11 +7,18 @@ use crate::sexp::{
 };
 use core::fmt::Write;
 
+#[derive(Clone, Copy)]
+pub(super) enum Operation {
+    Choose,
+    LogChoose,
+    PsiGamma,
+}
+
 pub(super) fn evaluate(
     access: &RuntimeAccess,
     a: Sexp<'static>,
     b: Sexp<'static>,
-    logarithm: bool,
+    operation: Operation,
 ) -> SexpResult<(Sexp<'static>, Option<Sexp<'static>>)> {
     access.require_active()?;
     let na = a.len();
@@ -43,15 +50,27 @@ pub(super) fn evaluate(
             } else if x.is_nan() || k.is_nan() {
                 f64::NAN
             } else {
-                // Only this checked public path gains the rounding callback.
-                // Shared nmath kernels and FFI callers retain their behavior.
-                warn_rounding(k, crate::nmath::utils::r_forceint(k));
-                access.require_active()?;
-                check_lengths(&a, &b, na, nb)?;
-                let value = if logarithm {
-                    crate::special::choose::lchoose(x, k)
-                } else {
-                    crate::special::choose::choose(x, k)
+                let value = match operation {
+                    Operation::Choose | Operation::LogChoose => {
+                        warn_rounding(k, crate::nmath::utils::r_forceint(k));
+                        access.require_active()?;
+                        check_lengths(&a, &b, na, nb)?;
+                        match operation {
+                            Operation::LogChoose => crate::special::choose::lchoose(x, k),
+                            _ => crate::special::choose::choose(x, k),
+                        }
+                    }
+                    Operation::PsiGamma => {
+                        let n = crate::nmath::utils::r_forceint(k) as i32;
+                        if n > crate::special::polygamma::PSIGAMMA_MAX_DERIV {
+                            warn_derivative_limit(n);
+                            access.require_active()?;
+                            check_lengths(&a, &b, na, nb)?;
+                            f64::NAN
+                        } else {
+                            crate::special::polygamma::psigamma(x, k)
+                        }
+                    }
                 };
                 nan |= value.is_nan();
                 value
@@ -79,7 +98,7 @@ pub(super) fn evaluate(
 fn check_lengths(a: &Sexp<'_>, b: &Sexp<'_>, na: i64, nb: i64) -> SexpResult<()> {
     if a.len() != na || b.len() != nb {
         return Err(SexpError::EvaluationFailed {
-            message: "choose input length changed during evaluation".to_owned(),
+            message: "mathematical input length changed during evaluation".to_owned(),
         });
     }
     Ok(())
@@ -92,19 +111,6 @@ fn warn_rounding(original: f64, rounded: f64) {
     if !((rounded - original).abs() > 1e-9 * crate::nmath::utils::fmax2(1.0, original.abs())) {
         return;
     }
-    struct Message {
-        bytes: [u8; 128],
-        len: usize,
-    }
-    impl core::fmt::Write for Message {
-        fn write_str(&mut self, text: &str) -> core::fmt::Result {
-            let end = self.len.checked_add(text.len()).ok_or(core::fmt::Error)?;
-            let target = self.bytes.get_mut(self.len..end).ok_or(core::fmt::Error)?;
-            target.copy_from_slice(text.as_bytes());
-            self.len = end;
-            Ok(())
-        }
-    }
     let mut message = Message {
         bytes: [0; 128],
         len: 0,
@@ -114,6 +120,36 @@ fn warn_rounding(original: f64, rounded: f64) {
         "'k' ({original:.2}) must be integer, rounded to {rounded:.0}"
     )
     .expect("bounded choose rounding warning");
+    crate::nmath::error::ml_warn_message(
+        core::str::from_utf8(&message.bytes[..message.len]).expect("ASCII warning"),
+    );
+}
+
+struct Message {
+    bytes: [u8; 128],
+    len: usize,
+}
+impl core::fmt::Write for Message {
+    fn write_str(&mut self, text: &str) -> core::fmt::Result {
+        let end = self.len.checked_add(text.len()).ok_or(core::fmt::Error)?;
+        let target = self.bytes.get_mut(self.len..end).ok_or(core::fmt::Error)?;
+        target.copy_from_slice(text.as_bytes());
+        self.len = end;
+        Ok(())
+    }
+}
+
+fn warn_derivative_limit(n: i32) {
+    let mut message = Message {
+        bytes: [0; 128],
+        len: 0,
+    };
+    write!(
+        &mut message,
+        "deriv = {n} > {} (= n_max)",
+        crate::special::polygamma::PSIGAMMA_MAX_DERIV
+    )
+    .expect("bounded derivative warning");
     crate::nmath::error::ml_warn_message(
         core::str::from_utf8(&message.bytes[..message.len]).expect("ASCII warning"),
     );

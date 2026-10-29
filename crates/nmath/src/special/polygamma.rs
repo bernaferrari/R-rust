@@ -23,7 +23,9 @@ use crate::special::mlutils::R_pow_di;
 use crate::utils::*;
 use libm::{cos, exp, fabs, log, pow, round, sin};
 
-const N_MAX: i32 = 100;
+/// Maximum derivative supported by the shared polygamma implementation.
+pub const PSIGAMMA_MAX_DERIV: i32 = 100;
+const N_MAX: i32 = PSIGAMMA_MAX_DERIV;
 
 // Bernoulli Numbers
 const BVALUES: [f64; 23] = [

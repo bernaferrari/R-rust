@@ -462,10 +462,10 @@ pub unsafe fn do_psigamma(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
     unsafe {
         let x = CAR(args);
         let deriv_arg = CAR(CDR(args));
-        if x.is_null() || x == R_NilValue() || deriv_arg.is_null() || deriv_arg == R_NilValue() {
-            return R_NilValue();
+        if let Err(message) = validate_math2_inputs(x, deriv_arg) {
+            crate::mainutils::errors::errorcall_str(call, message);
         }
-        apply_binary_scalar_fn(call, x, deriv_arg, crate::special::polygamma::psigamma)
+        checked_math2(call, x, deriv_arg, choose_checked::Operation::PsiGamma)
     }
 }
 
@@ -506,7 +506,7 @@ pub unsafe fn do_lbeta(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 // GNU do_math2 dispatches complex first arguments before Math2 validation.
 // A complex second argument instead fails the ordinary numeric-type check.
 // Both checks precede the empty-vector shortcut.
-unsafe fn validate_choose_inputs(a: SEXP, b: SEXP) -> Result<(), &'static str> {
+unsafe fn validate_math2_inputs(a: SEXP, b: SEXP) -> Result<(), &'static str> {
     unsafe {
         if !a.is_null() && TYPEOF(a) == SEXPTYPE::CPLXSXP {
             return Err("unimplemented complex function");
@@ -530,7 +530,12 @@ mod choose_checked;
 #[path = "choose_factor.rs"]
 mod choose_factor;
 
-unsafe fn checked_choose(call: SEXP, a: SEXP, b: SEXP, logarithm: bool) -> SEXP {
+unsafe fn checked_math2(
+    call: SEXP,
+    a: SEXP,
+    b: SEXP,
+    operation: choose_checked::Operation,
+) -> SEXP {
     use crate::sexp::{object::Sexp, owner::OwnerToken};
     let owner = unsafe { OwnerToken::current() }
         .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
@@ -583,7 +588,7 @@ unsafe fn checked_choose(call: SEXP, a: SEXP, b: SEXP, logarithm: bool) -> SEXP 
     let _warning_call = crate::mainutils::errors::mathlib_warning_call_guard(call.as_raw());
     let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         crate::sexp::owner::with_runtime(&weak, |access| {
-            choose_checked::evaluate(access, a, b, logarithm)
+            choose_checked::evaluate(access, a, b, operation)
         })
     }));
     active();
@@ -620,10 +625,10 @@ pub unsafe fn do_choose(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let n_arg = CAR(args);
         let k_arg = CAR(CDR(args));
-        if let Err(message) = validate_choose_inputs(n_arg, k_arg) {
+        if let Err(message) = validate_math2_inputs(n_arg, k_arg) {
             crate::mainutils::errors::errorcall_str(call, message);
         }
-        checked_choose(call, n_arg, k_arg, false)
+        checked_math2(call, n_arg, k_arg, choose_checked::Operation::Choose)
     }
 }
 
@@ -632,10 +637,10 @@ pub unsafe fn do_lchoose(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     unsafe {
         let n_arg = CAR(args);
         let k_arg = CAR(CDR(args));
-        if let Err(message) = validate_choose_inputs(n_arg, k_arg) {
+        if let Err(message) = validate_math2_inputs(n_arg, k_arg) {
             crate::mainutils::errors::errorcall_str(call, message);
         }
-        checked_choose(call, n_arg, k_arg, true)
+        checked_math2(call, n_arg, k_arg, choose_checked::Operation::LogChoose)
     }
 }
 
@@ -863,23 +868,23 @@ mod choose_validation_tests {
             let text = Rf_mkString(c"5".as_ptr());
             let _text = protect(text);
             crate::sexp::gengc::full_gc();
-            assert_eq!(validate_choose_inputs(numeric, logical), Ok(()));
+            assert_eq!(validate_math2_inputs(numeric, logical), Ok(()));
             for invalid in [R_NilValue(), text] {
                 assert_eq!(
-                    validate_choose_inputs(invalid, complex),
+                    validate_math2_inputs(invalid, complex),
                     Err("non-numeric argument to mathematical function")
                 );
                 assert_eq!(
-                    validate_choose_inputs(complex, invalid),
+                    validate_math2_inputs(complex, invalid),
                     Err("unimplemented complex function")
                 );
                 assert_eq!(
-                    validate_choose_inputs(numeric, invalid),
+                    validate_math2_inputs(numeric, invalid),
                     Err("non-numeric argument to mathematical function")
                 );
             }
             assert_eq!(
-                validate_choose_inputs(complex, numeric),
+                validate_math2_inputs(complex, numeric),
                 Err("unimplemented complex function")
             );
         });
