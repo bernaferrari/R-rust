@@ -209,18 +209,10 @@ pub fn qt_inner(p: f64, ndf: f64, lower_tail: bool, log_p: bool) -> f64 {
         while ux < DBL_MAX && pt_inner(ux, ndf, true, false) < pp {
             ux *= 2.0;
         }
-        // GNU's bound loop stops once ux overflows. The quantile is then
-        // outside the finite range (qt(0.025, 0.001) is Inf, no warning).
-        if !ux.is_finite() || pt_inner(ux, ndf, true, false) < pp {
-            return ML_POSINF;
-        }
         let pp = p * (1.0 - q_eps);
         lx = -1.0;
         while lx > -DBL_MAX && pt_inner(lx, ndf, true, false) > pp {
             lx *= 2.0;
-        }
-        if !lx.is_finite() || pt_inner(lx, ndf, true, false) > pp {
-            return ML_NEGINF;
         }
 
         /* 2. interval (lx,ux) halving
@@ -232,7 +224,10 @@ pub fn qt_inner(p: f64, ndf: f64, lower_tail: bool, log_p: bool) -> f64 {
             } else {
                 lx = nx;
             }
-            if (ux - lx) / fabs(nx) <= accu {
+            // Preserve GNU's continuation predicate: overflowing bounds
+            // may produce NaN, which terminates halving without a precision
+            // warning and propagates the indeterminate quantile.
+            if !((ux - lx) / fabs(nx) > accu) {
                 break;
             }
             iter += 1;
@@ -500,5 +495,24 @@ mod log_endpoint_tests {
                 );
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tiny_df_tests {
+    #[test]
+    fn overflowing_bounds_preserve_gnu_indeterminate_median() {
+        let df = 1e-300;
+        assert_eq!(super::qt_inner(0.1, df, true, false), f64::NEG_INFINITY);
+        assert!(super::qt_inner(0.5, df, true, false).is_nan());
+        assert_eq!(super::qt_inner(0.9, df, true, false), f64::INFINITY);
+        // One overflowing bound still yields the corresponding infinite tail.
+        assert_eq!(
+            super::qt_inner(0.025, 0.001, true, false),
+            f64::NEG_INFINITY
+        );
+        assert_eq!(super::qt_inner(0.975, 0.001, true, false), f64::INFINITY);
+        let finite = super::qt_inner(0.25, 0.001, true, false);
+        assert!((finite / -1.6949002133388867e299 - 1.0).abs() < 1e-10);
     }
 }
