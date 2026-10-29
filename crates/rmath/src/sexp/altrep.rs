@@ -453,3 +453,7 @@ mod private_metadata_tests;
 #[cfg(test)]
 #[path = "altrep/callback_admission_tests.rs"]
 mod callback_admission_tests;
+
+#[cfg(test)]
+#[path = "altrep/public_flag_tests.rs"]
+mod public_flag_tests;

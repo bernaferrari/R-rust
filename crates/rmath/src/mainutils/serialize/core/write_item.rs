@@ -1,5 +1,16 @@
 use super::*;
 
+/// GNU serialization packs the complete gp word, not just the two ARGUSED/JIT
+/// bits exposed by this port's LEVELS helper. PackFlags still strips GNU's
+/// transient CHARSXP cache and growable-vector bits for their respective kinds.
+unsafe fn serialized_gp_bits(s: SEXP) -> c_int {
+    // The caller roots s; take an owned header snapshot without retaining a
+    // header or interpreter borrow across recursive writes or callbacks.
+    let object = unsafe { crate::sexp::object::Sexp::try_from_raw(s) }
+        .unwrap_or_else(|e| unsafe { error(&e.to_string()) });
+    i32::from(object.header().sxpinfo.gp())
+}
+
 pub unsafe fn WriteItemInternal(
     s: SEXP,
     ref_table: &mut WriteHashTable,
@@ -179,7 +190,7 @@ pub unsafe fn WriteItemInternal(
         if stype == SEXPTYPE::LISTSXP {
             let hastag = if sexp_has_tag(s) { 1 } else { 0 };
             let hasattr = if sexp_has_attributes(s) { 1 } else { 0 };
-            let flags = PackFlags(stype, LEVELS(s), OBJECT(s), hasattr, hastag);
+            let flags = PackFlags(stype, serialized_gp_bits(s), OBJECT(s), hasattr, hastag);
             writer.write_i32(flags);
             if hasattr != 0 {
                 WriteItemInternal(ATTRIB(s), ref_table, writer);
@@ -196,7 +207,7 @@ pub unsafe fn WriteItemInternal(
         if stype == SEXPTYPE::LANGSXP {
             let hastag = if sexp_has_tag(s) { 1 } else { 0 };
             let hasattr = if sexp_has_attributes(s) { 1 } else { 0 };
-            let flags = PackFlags(stype, LEVELS(s), OBJECT(s), hasattr, hastag);
+            let flags = PackFlags(stype, serialized_gp_bits(s), OBJECT(s), hasattr, hastag);
             writer.write_i32(flags);
             if hasattr != 0 {
                 WriteItemInternal(ATTRIB(s), ref_table, writer);
@@ -212,7 +223,7 @@ pub unsafe fn WriteItemInternal(
         // Handle CLOSXP
         if stype == SEXPTYPE::CLOSXP {
             let hasattr = if sexp_has_attributes(s) { 1 } else { 0 };
-            let flags = PackFlags(stype, LEVELS(s), OBJECT(s), hasattr, 1); // hastag=1 for closures
+            let flags = PackFlags(stype, serialized_gp_bits(s), OBJECT(s), hasattr, 1); // hastag=1 for closures
             writer.write_i32(flags);
             if hasattr != 0 {
                 WriteItemInternal(ATTRIB(s), ref_table, writer);
@@ -241,13 +252,8 @@ pub unsafe fn WriteItemInternal(
 
         // Handle CHARSXP
         if stype == SEXPTYPE::CHARSXP {
-            // GNU serializes the full gp field here (ASCII/UTF8/BYTES).
-            // Do not use the 2-bit ARGUSED LEVELS() helper.
-            let levs = if s.is_null() {
-                0
-            } else {
-                (*s).sxpinfo.gp() as c_int
-            };
+            // Preserve ASCII/UTF8/BYTES bits through the same checked snapshot.
+            let levs = serialized_gp_bits(s);
             let flags = PackFlags(stype, levs, 0, 0, 0);
             writer.write_i32(flags);
             let len = if s == R_NaString() { -1 } else { LENGTH(s) };
@@ -261,7 +267,7 @@ pub unsafe fn WriteItemInternal(
 
         // For atomic/vector types, compute flags with attributes
         let hasattr = if sexp_has_attributes(s) { 1 } else { 0 };
-        let flags = PackFlags(stype, LEVELS(s), OBJECT(s), hasattr, 0);
+        let flags = PackFlags(stype, serialized_gp_bits(s), OBJECT(s), hasattr, 0);
 
         if stype == SEXPTYPE::LGLSXP || stype == SEXPTYPE::INTSXP {
             writer.write_i32(flags);
@@ -361,9 +367,13 @@ unsafe fn write_compact_sequence(
             *p.add(1) = origin;
             *p.add(2) = step;
         }
-        writer.write_i32(PackFlags(ALTREP_SXP, LEVELS(s), OBJECT(s), 0, 0));
+        writer.write_i32(PackFlags(ALTREP_SXP, serialized_gp_bits(s), OBJECT(s), 0, 0));
         WriteItemInternal(info, ref_table, writer);
         WriteItemInternal(state, ref_table, writer);
         WriteItemInternal(ATTRIB(s), ref_table, writer);
     }
 }
+
+#[cfg(test)]
+#[path = "public_flag_tests.rs"]
+mod public_flag_tests;

@@ -518,12 +518,14 @@ pub(super) fn copy_public_attributes(source: &Sexp<'_>, target: &Sexp<'_>) -> Se
     let attributes = source.attrib();
     if let Some(attributes) = attributes {
         link_attributes(owner, target, &attributes)?;
-        let source = source.header();
-        update_header(target, |header| {
-            header.sxpinfo.set_obj(source.sxpinfo.obj());
-            header.sxpinfo.set_gp(source.sxpinfo.gp());
-        })?;
     }
+    // Public flags also exist on attribute-free values (for example asS4(1:3)).
+    // Keep them independent of whether the public attribute chain is empty.
+    let source = source.header();
+    update_header(target, |header| {
+        header.sxpinfo.set_obj(source.sxpinfo.obj());
+        header.sxpinfo.set_gp(source.sxpinfo.gp());
+    })?;
     Ok(())
 }
 
