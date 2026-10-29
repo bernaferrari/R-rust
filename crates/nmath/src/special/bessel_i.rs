@@ -476,6 +476,45 @@ pub fn bessel_i_ex(x: f64, alpha: f64, expo: f64, bi: &mut [f64]) -> f64 {
     bi[(nb - 1) as usize]
 }
 
+/// Callback-free positive-order calculation; the caller owns the work array.
+/// Gamma arguments inside i_bessel are 1+fraction in [1,2], where gammafn
+/// and its bounded Chebyshev evaluation cannot emit warnings.
+#[derive(Clone, Copy, Debug)]
+pub struct BesselICalculation {
+    pub value: f64,
+    pub ncalc: i32,
+    pub count: i32,
+    pub fraction: f64,
+}
+pub fn bessel_i_positive_status(
+    x: f64,
+    order: f64,
+    expo: f64,
+    work: &mut [f64],
+) -> Option<BesselICalculation> {
+    if x.is_nan()
+        || x < 0.0
+        || !order.is_finite()
+        || order < 0.0
+        || order > MAX_ALPHA_I
+        || expo.is_nan()
+    {
+        return None;
+    }
+    let count = (floor(order) as i32).checked_add(1)?;
+    if work.len() < count as usize {
+        return None;
+    }
+    let fraction = order - f64::from(count - 1);
+    let ncalc = i_bessel(x, fraction, count, expo as i32, work);
+    Some(BesselICalculation {
+        value: work[count as usize - 1],
+        ncalc,
+        count,
+        fraction,
+    })
+}
+
 /// C FFI wrapper for bessel_i_ex
 pub fn bessel_i_ex_c(x: f64, alpha: f64, expo: f64, bi: *mut f64, nb: i32) -> f64 {
     if bi.is_null() || nb <= 0 {
@@ -505,5 +544,45 @@ mod workspace_parity_tests {
             }
         }
         assert_eq!(bessel_i(1.0, 500.0, 1.0), 0.0);
+    }
+}
+
+#[cfg(test)]
+mod status_tests {
+    use super::*;
+    #[test]
+    fn positive_status_preserves_scaling_bits_and_rejects_invalid_shapes() {
+        for x in [-0.0, 0.0, 1e-300, 1.0, 12.3456789, 1000.0, f64::INFINITY] {
+            for order in [-0.0_f64, 0.5, 1.0, 500.25] {
+                for scale in [1.0, 2.0] {
+                    let mut old = vec![0.0; order as usize + 1];
+                    let expected = bessel_i_ex(x, order, scale, &mut old);
+                    let mut work = vec![0.0; order as usize + 1];
+                    let actual = bessel_i_positive_status(x, order, scale, &mut work).unwrap();
+                    assert_eq!(
+                        actual.value.to_bits(),
+                        expected.to_bits(),
+                        "x={x},order={order},scale={scale}"
+                    );
+                }
+            }
+        }
+        for (x, n, e) in [
+            (f64::NAN, 0.0, 1.0),
+            (-1.0, 0.0, 1.0),
+            (1.0, -1.0, 1.0),
+            (1.0, f64::NAN, 1.0),
+            (1.0, f64::INFINITY, 1.0),
+            (1.0, MAX_ALPHA_I + 1.0, 1.0),
+            (1.0, 0.0, f64::NAN),
+        ] {
+            assert!(bessel_i_positive_status(x, n, e, &mut [0.0]).is_none());
+        }
+        assert!(bessel_i_positive_status(1.0, 1.0, 1.0, &mut [0.0]).is_none());
+        for scale in [0.0, 3.0] {
+            let status = bessel_i_positive_status(1.0, 0.0, scale, &mut [9.0]).unwrap();
+            assert_eq!(status.ncalc, -1);
+            assert_eq!(status.value, 0.0);
+        }
     }
 }

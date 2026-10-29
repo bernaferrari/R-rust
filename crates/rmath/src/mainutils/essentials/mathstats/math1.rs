@@ -527,6 +527,8 @@ unsafe fn validate_math2_inputs(a: SEXP, b: SEXP) -> Result<(), &'static str> {
 
 #[path = "bessel_diagnostic.rs"]
 mod bessel_diagnostic;
+#[path = "bessel_i_checked.rs"]
+mod bessel_i_checked;
 #[path = "bessel_j_checked.rs"]
 mod bessel_j_checked;
 #[path = "bessel_scaling.rs"]

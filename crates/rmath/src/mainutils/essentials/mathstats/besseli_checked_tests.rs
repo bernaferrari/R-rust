@@ -28,7 +28,7 @@ fn native_i(f: &SessionNodeFactory<'_>, arguments: &Sexp<'_>, public: bool) -> S
     f.wrap(raw).unwrap().into_owned().unwrap()
 }
 #[test]
-fn checked_besseli_vector_scaling_warning_gc_reentry() {
+fn checked_besseli_diagnostic_vector_scaling_warning_gc_reentry() {
     let session = RSession::new_for_gc_tests();
     let owner = session.owner_token().unwrap();
     let weak = owner.weak_owner().unwrap();
@@ -52,7 +52,8 @@ fn checked_besseli_vector_scaling_warning_gc_reentry() {
         let seen = count.clone();
         let callback = weak.clone();
         let before_workspace = owner.with_arena(|a| a.workspace_bytes()).unwrap();
-        let _warnings = WarningScope::new(move |_| {
+        let _warnings = WarningScope::new(move |message| {
+            assert_eq!(message, "bessel_i(1,nu=500): precision lost in result");
             let charged = crate::sexp::owner::with_runtime(&callback, |access| {
                 access.with_arena(|a| a.workspace_bytes())
             })
@@ -553,3 +554,6 @@ fn besseli_reflection_rounding_signed_zero_and_missing_neighbors() {
         assert!(messages[1].starts_with("besselK("));
     });
 }
+
+#[path = "besseli_diagnostic_tests.rs"]
+mod diagnostic_tests;

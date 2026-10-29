@@ -159,27 +159,30 @@ pub(super) fn evaluate(
                                 check()?;
                                 first + reflected
                             }
-                            Operation::BesselI if x >= 0.0 && k < 0.0 && k != k.floor() => {
-                                // Preserve I-then-K reflection and arithmetic order,
-                                // checking authority before a second kernel can warn.
-                                let first = crate::special::bessel_i::bessel_i_ex(
+                            Operation::BesselI if x >= 0.0 && k < 0.0 => {
+                                // Preserve I-then-K arithmetic and integer shortcut,
+                                // checking original authority after each diagnostic.
+                                let first = super::bessel_i_checked::positive(
+                                    access,
                                     x,
                                     -k,
                                     scaling,
                                     workspace.values(),
-                                );
+                                )?;
                                 access.require_active()?;
                                 check()?;
-                                let reflected = crate::special::bessel_k::bessel_k_ex(
-                                    x,
-                                    -k,
-                                    scaling,
-                                    workspace.values(),
-                                );
-                                access.require_active()?;
-                                check()?;
-                                first
-                                    + reflected
+                                let reflected = if k == k.floor() {
+                                    0.0
+                                } else {
+                                    let value = crate::special::bessel_k::bessel_k_ex(
+                                        x,
+                                        -k,
+                                        scaling,
+                                        workspace.values(),
+                                    );
+                                    access.require_active()?;
+                                    check()?;
+                                    value
                                         * if scaling as i32 == 1 {
                                             2.0
                                         } else {
@@ -187,13 +190,16 @@ pub(super) fn evaluate(
                                         }
                                         / std::f64::consts::PI
                                         * crate::special::cospi::sinpi(-k)
+                                };
+                                first + reflected
                             }
-                            Operation::BesselI => crate::special::bessel_i::bessel_i_ex(
+                            Operation::BesselI => super::bessel_i_checked::positive(
+                                access,
                                 x,
                                 k,
                                 scaling,
                                 workspace.values(),
-                            ),
+                            )?,
                             Operation::BesselK => crate::special::bessel_k::bessel_k_ex(
                                 x,
                                 k,
