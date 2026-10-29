@@ -97,3 +97,6 @@ mod complex_owner_tests;
 
 #[cfg(test)]
 mod raw_owner_tests;
+
+#[cfg(test)]
+mod character_owner_tests;

@@ -53,6 +53,14 @@ fn current_R_print() -> RPrint {
     unsafe {
         let stored =
             crate::sexp::instance::with_current_instance(|inst| (*inst).eval_state.format_print);
+        // Character coercion snapshots print defaults, while OutDec remains live.
+        if crate::sexp::instance::with_current_instance(|inst| {
+            (*inst).eval_state.character_print_active
+        }) == Some(true) {
+            if let Some(print) = stored {
+                return print;
+            }
+        }
         let digits = stored
             .map(|p| p.digits)
             .filter(|&d| d > 0)

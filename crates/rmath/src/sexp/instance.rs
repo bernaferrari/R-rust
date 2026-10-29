@@ -265,6 +265,8 @@ pub(crate) struct EvalControlState {
     pub tracing_state: c_int,
     pub debugging_state: c_int,
     pub format_print: crate::mainutils::format::RPrint,
+    /// GNU character coercion owns a print-defaults scope across callbacks.
+    pub character_print_active: bool,
     pub printutils: crate::mainutils::printutils::PrintUtilsState,
     pub printvector: crate::mainutils::printvector::R_PrintData,
     pub print: crate::mainutils::print::PrintRuntimeState,
@@ -310,6 +312,7 @@ impl Default for EvalControlState {
             tracing_state: crate::sexp::ffi::TRUE,
             debugging_state: crate::sexp::ffi::TRUE,
             format_print: crate::mainutils::format::RPrint::default(),
+            character_print_active: false,
             printutils: crate::mainutils::printutils::PrintUtilsState::default(),
             printvector: crate::mainutils::printvector::R_PrintData::default(),
             print: crate::mainutils::print::PrintRuntimeState::default(),

@@ -510,8 +510,21 @@ pub unsafe fn PrintInit(data: *mut std::ffi::c_void, env: SEXP) {
 pub unsafe fn PrintDefaults() {
     unsafe {
         let env = R_GlobalEnv();
-        with_current_print_data_mut(|data| {
+        let defaults = with_current_print_data_mut(|data| {
             PrintInit(data as *mut R_PrintData as *mut std::ffi::c_void, env);
+            crate::mainutils::format::RPrint {
+                digits: data.digits,
+                scipen: data.scipen,
+                na_width: data.na_width,
+                na_width_noquote: data.na_width_noquote,
+            }
+        });
+        // End the print-data borrow before resolving the ambient instance.
+        // GNU nested printing resets only the active conversion's defaults.
+        crate::sexp::instance::with_current_instance(|inst| {
+            if (*inst).eval_state.character_print_active {
+                (*inst).eval_state.format_print = defaults;
+            }
         });
     }
 }

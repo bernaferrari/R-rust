@@ -464,70 +464,140 @@ pub unsafe fn coerceToRaw(v: SEXP) -> SEXP {
 /// Coerce a vector to string (character) type.
 pub unsafe fn coerceToString(v: SEXP) -> SEXP {
     unsafe {
-        let mut warn: c_int = 0;
-        let n = xlength(v);
-        let ans = Rf_allocVector3(SEXPTYPE::STRSXP, n);
-        let _ans_guard = protect(ans);
-        SHALLOW_DUPLICATE_ATTRIB(ans, v);
-
-        let vtype = TYPEOF(v);
-        // stock coerce.c:772-778 (REALSXP) and 781-787 (CPLXSXP): pin the
-        // printing digits to DBL_DIG (MAX precision) around the
-        // StringFromReal loop so as.character(<double>) renders 15
-        // significant digits regardless of options("digits"). The port's
-        // formatReal reads options("digits") live, so pin the option.
-        let pin_digits = vtype == SEXPTYPE::REALSXP || vtype == SEXPTYPE::CPLXSXP;
-        let (saved_digits, _saved_digits_guard) = if pin_digits {
-            let digits_sym = Rf_install(b"digits\0".as_ptr() as *const c_char);
-            let saved = crate::mainutils::options::GetOption1(digits_sym);
-            let _saved_guard = protect(saved);
-            let max = Rf_ScalarInteger(15);
-            let _max_guard = protect(max);
-            crate::mainutils::options::R_SetOption(digits_sym, max);
-            // The old option is no longer in the instance map after replacement.
-            // Keep its existing guard through restoration, including every
-            // allocating element conversion and coercion-warning callback.
-            (saved, Some(_saved_guard))
-        } else {
-            (R_NilValue(), None)
+        let owner = crate::sexp::owner::OwnerToken::current()
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        let pin = owner
+            .pin()
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        let factory = owner.node_factory();
+        let source = factory
+            .wrap(v)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        let check = || {
+            if let Some(pin) = &pin {
+                pin.require_live()
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            }
+            factory
+                .require_active()
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
         };
-        let _digits_guard = RestoreDigitsOnScopeEnd {
-            active: pin_digits,
-            saved_digits,
-        };
-        struct RestoreDigitsOnScopeEnd {
-            active: bool,
-            saved_digits: SEXP,
+        let n = source.len();
+        check();
+        // Keep the runtime's typed allocation-denial error and GC retry.
+        let raw_output = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+        let output = factory
+            .wrap(raw_output)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        check();
+        SHALLOW_DUPLICATE_ATTRIB(output.as_raw(), source.as_raw());
+        check();
+        let mut output = crate::sexp::object::SexpMut::try_from_checked(output)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        // GNU pins R_print for numeric coercion, not the options map.
+        // Cleanup restores the captured instance directly, even after revoke.
+        struct RestoreStringPrint<'s> {
+            owner: crate::sexp::owner::OwnerToken<'s>,
+            _pin: Option<crate::sexp::owner::OwnerPin>,
+            previous: crate::mainutils::format::RPrint,
+            was_active: bool,
+            entry_digits: i32,
         }
-        impl Drop for RestoreDigitsOnScopeEnd {
+        impl Drop for RestoreStringPrint<'_> {
             fn drop(&mut self) {
-                if self.active {
-                    let digits_sym = unsafe { Rf_install(b"digits\0".as_ptr() as *const c_char) };
-                    unsafe {
-                        crate::mainutils::options::R_SetOption(digits_sym, self.saved_digits);
+                unsafe {
+                    let state = &mut (*self.owner.as_ptr()).eval_state;
+                    if self.was_active {
+                        // GNU restores the digits read by PrintDefaults, not
+                        // the enclosing conversion's temporary DBL_DIG.
+                        state.format_print.digits = self.entry_digits;
+                    } else {
+                        state.format_print = self.previous;
                     }
+                    state.character_print_active = self.was_active;
                 }
             }
         }
+        let numeric = matches!(source.typeof_(), SEXPTYPE::REALSXP | SEXPTYPE::CPLXSXP);
+        let _print_guard = numeric.then(|| {
+            let pin = owner
+                .pin()
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            let previous = (*owner.as_ptr()).eval_state.format_print;
+            let was_active = (*owner.as_ptr()).eval_state.character_print_active;
+            let mut guard = RestoreStringPrint {
+                owner,
+                _pin: pin,
+                previous,
+                was_active,
+                entry_digits: crate::mainutils::options::GetOptionDigits(),
+            };
+            crate::mainutils::print::PrintDefaults();
+            check();
+            let defaults = crate::mainutils::print::get_R_print_data();
+            guard.entry_digits = defaults.digits;
+            (*owner.as_ptr()).eval_state.format_print = crate::mainutils::format::RPrint {
+                digits: 15,
+                scipen: defaults.scipen,
+                na_width: defaults.na_width,
+                na_width_noquote: defaults.na_width_noquote,
+            };
+            (*owner.as_ptr()).eval_state.character_print_active = true;
+            guard
+        });
+        let mut warn: c_int = 0;
         for i in 0..n {
-            let ii = i as c_int;
-            let s = match vtype {
-                t if t == SEXPTYPE::LGLSXP => StringFromLogical(LOGICAL_ELT(v, ii)),
-                t if t == SEXPTYPE::INTSXP => StringFromInteger(INTEGER_ELT(v, ii), &mut warn),
-                t if t == SEXPTYPE::REALSXP => {
-                    crate::mainutils::printutils::StringFromReal(REAL_ELT(v, ii), &mut warn)
+            let chars = match source.typeof_() {
+                SEXPTYPE::LGLSXP => {
+                    let v = source
+                        .try_logical_elt(i)
+                        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+                    check();
+                    StringFromLogical(v)
                 }
-                t if t == SEXPTYPE::CPLXSXP => StringFromComplex(COMPLEX_ELT(v, ii), &mut warn),
-                t if t == SEXPTYPE::RAWSXP => StringFromRaw(RAW_ELT(v, ii), &mut warn),
+                SEXPTYPE::INTSXP => {
+                    let v = source
+                        .try_integer_elt(i)
+                        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+                    check();
+                    StringFromInteger(v, &mut warn)
+                }
+                SEXPTYPE::REALSXP => {
+                    let v = source
+                        .try_real_elt(i)
+                        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+                    check();
+                    crate::mainutils::printutils::StringFromReal(v, &mut warn)
+                }
+                SEXPTYPE::CPLXSXP => {
+                    let v = source
+                        .try_complex_elt(i)
+                        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+                    check();
+                    StringFromComplex(v, &mut warn)
+                }
+                SEXPTYPE::RAWSXP => {
+                    let v = source
+                        .try_raw_elt(i)
+                        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+                    check();
+                    StringFromRaw(v, &mut warn)
+                }
                 _ => R_NaString(),
             };
-            SET_STRING_ELT(ans, i, s);
+            check();
+            let chars = factory
+                .wrap(chars)
+                .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+            output
+                .try_set_string_elt(i, chars)
+                .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
         }
-
         if warn != 0 {
             CoercionWarning(warn);
+            check();
         }
-        ans
+        output.freeze().as_raw()
     }
 }
 
