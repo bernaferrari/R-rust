@@ -628,7 +628,8 @@ pub unsafe fn coerceVectorList(v: SEXP, type_: SEXPTYPE) -> SEXP {
             return rval;
         }
 
-        error("list object cannot be coerced to type");
+        let target_name = CStr::from_ptr(type2char(type_.into())).to_string_lossy();
+        error(&format!("'list' object cannot be coerced to type '{target_name}'"));
     }
 }
 

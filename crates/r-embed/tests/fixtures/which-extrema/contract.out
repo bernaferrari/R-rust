@@ -1,0 +1,48 @@
+which.min|named|integer|1|2|b||
+which.min|all_na|integer|0||||
+which.min|inf|integer|1|2|b||
+which.min|logical|integer|1|3|c||
+which.min|character|integer|1|2|b||
+which.min|bad_character|integer|1|2|b|NAs introduced by coercion|
+which.min|complex|integer|1|2|b|imaginary parts discarded in coercion|
+which.min|list|integer|1|2|b||
+which.min|bad_list|ERROR|'list' object cannot be coerced to type 'double'||
+which.min|null|integer|0||||
+which.min|empty|integer|0||||
+which.min|raw|integer|1|2|||
+which.min|one_row_frame|integer|1|2|b||
+which.min|two_row_frame|ERROR|'list' object cannot be coerced to type 'double'||
+which.min|matrix|integer|1|2|||
+which.min|factor|integer|1|2|||
+which.min|ordered|integer|1|2|||
+which.max|named|integer|1|1|a||
+which.max|all_na|integer|0||||
+which.max|inf|integer|1|1|a||
+which.max|logical|integer|1|2|b||
+which.max|character|integer|1|1|a||
+which.max|bad_character|integer|1|2|b|NAs introduced by coercion|
+which.max|complex|integer|1|1|a|imaginary parts discarded in coercion|
+which.max|list|integer|1|1|a||
+which.max|bad_list|ERROR|'list' object cannot be coerced to type 'double'||
+which.max|null|integer|0||||
+which.max|empty|integer|0||||
+which.max|raw|integer|1|1|||
+which.max|one_row_frame|integer|1|1|a||
+which.max|two_row_frame|ERROR|'list' object cannot be coerced to type 'double'||
+which.max|matrix|integer|1|1|||
+which.max|factor|integer|1|1|||
+which.max|ordered|integer|1|1|||
+which.min|xtfrm|2|transformed-b|1,2,3|
+which.max|xtfrm|1|transformed-a|1,2,3|
+which.min|date|2||
+which.max|date|1||
+coerce|list|logical|'list' object cannot be coerced to type 'logical'|
+coerce|list|integer|'list' object cannot be coerced to type 'integer'|
+coerce|list|double|'list' object cannot be coerced to type 'double'|
+coerce|list|complex|'list' object cannot be coerced to type 'complex'|
+coerce|list|raw|'list' object cannot be coerced to type 'raw'|
+coerce|expression|logical|'list' object cannot be coerced to type 'logical'|
+coerce|expression|integer|'list' object cannot be coerced to type 'integer'|
+coerce|expression|double|'list' object cannot be coerced to type 'double'|
+coerce|expression|complex|'list' object cannot be coerced to type 'complex'|
+coerce|expression|raw|'list' object cannot be coerced to type 'raw'|

@@ -955,46 +955,14 @@ unsafe fn copy_pminmax_shape(first: SEXP, result: SEXP, max_len: R_xlen_t) {
     }
 }
 
-/// R's `which.min(x)` — 1-based index of minimum element.
-pub unsafe fn do_which_min(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { do_which_minmax(args, true) }
+/// GNU's first minimum index, including selected names and object transforms.
+pub unsafe fn do_which_min(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe { super::which_extrema::evaluate(call, op, args, rho, true) }
 }
 
-/// R's `which.max(x)` — 1-based index of maximum element.
-pub unsafe fn do_which_max(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { do_which_minmax(args, false) }
-}
-
-unsafe fn do_which_minmax(args: SEXP, is_min: bool) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() || XLENGTH(x) == 0 {
-            return Rf_allocVector3(SEXPTYPE::INTSXP, 0);
-        }
-        let n = XLENGTH(x);
-        let mut best: Option<(R_xlen_t, f64)> = None;
-        for i in 0..n {
-            let v = elt_real_safe(x, i);
-            if v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN || v.is_nan() {
-                continue;
-            }
-            match best {
-                None => best = Some((i, v)),
-                Some((_, best_val)) if is_min && v < best_val => {
-                    best = Some((i, v));
-                }
-                Some((_, best_val)) if !is_min && v > best_val => {
-                    best = Some((i, v));
-                }
-                _ => {}
-            }
-        }
-        if let Some((best_idx, _)) = best {
-            Rf_ScalarInteger((best_idx + 1) as c_int)
-        } else {
-            Rf_allocVector3(SEXPTYPE::INTSXP, 0)
-        }
-    }
+/// GNU's first maximum index, including selected names and object transforms.
+pub unsafe fn do_which_max(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe { super::which_extrema::evaluate(call, op, args, rho, false) }
 }
 
 // ---------------------------------------------------------------------------

@@ -46,6 +46,7 @@ mod tables;
 #[cfg(test)]
 mod tests;
 mod vectors;
+mod which_extrema;
 pub(crate) use self::conditions::*;
 pub(crate) use self::functional::*;
 pub(crate) use self::io::*;
