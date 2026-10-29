@@ -1,8 +1,17 @@
-//! Public GNU `C_cor` admission, missing-row policy and result structure.
+//! Shared GNU `C_cor`/`C_cov` admission, missing-row policy and result structure.
 //! Based on r-source r90451 src/library/stats/src/cov.c. The original R
 //! wrapper performs Spearman ranking before entering this native descriptor.
 
 use crate::sexp::{accessors::*, constructors::*, ffi::*, globals::*, protect::protect};
+
+mod workspace;
+use workspace::Workspace;
+
+#[derive(Clone, Copy, PartialEq)]
+enum Statistic {
+    Correlation,
+    Covariance,
+}
 
 #[derive(Clone, Copy, PartialEq)]
 enum MissingRows {
@@ -27,7 +36,7 @@ impl MissingRows {
 }
 
 struct Columns {
-    values: Vec<f64>,
+    values: Workspace<f64>,
     rows: usize,
     count: usize,
     matrix: bool,
@@ -48,12 +57,21 @@ impl Columns {
             let view = owner.sexp(value).unwrap_or_else(|error| {
                 crate::mainutils::essentials::base_error(error.to_string())
             });
-            let values = (0..view.len())
-                .map(|index| view.try_real_elt(index))
-                .collect::<Result<Vec<_>, _>>()
-                .unwrap_or_else(|error| {
+            let length = usize::try_from(view.len()).unwrap_or_else(|_| {
+                crate::mainutils::essentials::base_error(
+                    "cov/cor workspace exceeds session allocation limit",
+                )
+            });
+            let mut values = Workspace::filled(owner, length, 0.0)
+                .unwrap_or_else(|error| crate::mainutils::essentials::base_error(error));
+            for (index, slot) in values.iter_mut().enumerate() {
+                *slot = view.try_real_elt(index as i64).unwrap_or_else(|error| {
                     crate::mainutils::essentials::base_error(error.to_string())
                 });
+            }
+            owner.require_active().unwrap_or_else(|error| {
+                crate::mainutils::essentials::base_error(error.to_string())
+            });
             if rows.checked_mul(count) != Some(values.len()) {
                 crate::mainutils::essentials::base_error("incompatible dimensions");
             }
@@ -75,6 +93,14 @@ impl Columns {
 /// arguments and both converted vectors stay protected through publication and
 /// condition delivery; numerical work uses independent copied values.
 pub(super) unsafe fn cor(x: SEXP, y: SEXP, na_method: SEXP, kendall: SEXP) -> SEXP {
+    unsafe { corcov(x, y, na_method, kendall, Statistic::Correlation) }
+}
+
+pub(super) unsafe fn cov(x: SEXP, y: SEXP, na_method: SEXP, kendall: SEXP) -> SEXP {
+    unsafe { corcov(x, y, na_method, kendall, Statistic::Covariance) }
+}
+
+unsafe fn corcov(x: SEXP, y: SEXP, na_method: SEXP, kendall: SEXP, statistic: Statistic) -> SEXP {
     unsafe {
         let owner = crate::sexp::owner::OwnerToken::current()
             .unwrap_or_else(|error| crate::mainutils::essentials::base_error(error.to_string()));
@@ -104,10 +130,10 @@ pub(super) unsafe fn cor(x: SEXP, y: SEXP, na_method: SEXP, kendall: SEXP) -> SE
         }
         let policy = MissingRows::from_r(na_method);
         let kendall = crate::mainutils::coerce::asBool(kendall);
-        let (values, zero_sd) = calculate(&xs, ys, y_null, policy, kendall != 0);
+        let (values, zero_sd) = calculate(&xs, ys, y_null, policy, kendall != 0, statistic, owner);
         let ans = Rf_allocVector3(SEXPTYPE::REALSXP, values.len() as i64);
         let _ans = protect(ans);
-        for (index, value) in values.into_iter().enumerate() {
+        for (index, value) in values.iter().copied().enumerate() {
             SET_REAL_ELT(ans, index as i32, value);
         }
         if xs.matrix || ys.matrix {
@@ -148,7 +174,9 @@ fn calculate(
     self_matrix: bool,
     policy: MissingRows,
     kendall: bool,
-) -> (Vec<f64>, bool) {
+    statistic: Statistic,
+    owner: crate::sexp::owner::OwnerToken<'_>,
+) -> (Workspace<f64>, bool) {
     if x.values.is_empty() {
         match policy {
             MissingRows::Complete => {
@@ -160,12 +188,12 @@ fn calculate(
             _ => {}
         }
     }
-    let complete: Vec<bool> = (0..x.rows)
-        .map(|r| {
-            (0..x.count).all(|c| !x.column(c)[r].is_nan())
-                && (0..y.count).all(|c| !y.column(c)[r].is_nan())
-        })
-        .collect();
+    let mut complete = Workspace::filled(owner, x.rows, false)
+        .unwrap_or_else(|error| crate::mainutils::essentials::base_error(error));
+    for (r, value) in complete.iter_mut().enumerate() {
+        *value = (0..x.count).all(|c| !x.column(c)[r].is_nan())
+            && (0..y.count).all(|c| !y.column(c)[r].is_nan());
+    }
     if policy == MissingRows::All && complete.iter().any(|ok| !ok) {
         crate::mainutils::essentials::base_error("missing observations in cov/cor");
     }
@@ -176,25 +204,38 @@ fn calculate(
     let length = x.count.checked_mul(y.count).unwrap_or_else(|| {
         crate::mainutils::essentials::base_error("correlation matrix is too large")
     });
-    let mut ans = vec![NA_REAL; length];
+    let mut ans = Workspace::filled(owner, length, NA_REAL)
+        .unwrap_or_else(|error| crate::mainutils::essentials::base_error(error));
+    let mut row_indices = Workspace::filled(owner, x.rows, 0usize)
+        .unwrap_or_else(|error| crate::mainutils::essentials::base_error(error));
     let mut zero_sd = false;
     for j in 0..y.count {
         for i in 0..x.count {
             let xx = x.column(i);
             let yy = y.column(j);
-            let rows: Vec<usize> = (0..x.rows)
-                .filter(|&r| match policy {
+            let mut count = 0;
+            for r in 0..x.rows {
+                let include = match policy {
                     MissingRows::Pairwise => !xx[r].is_nan() && !yy[r].is_nan(),
                     MissingRows::Everything => true,
                     _ => complete[r],
-                })
-                .collect();
+                };
+                if include {
+                    row_indices[count] = r;
+                    count += 1;
+                }
+            }
+            let rows = &row_indices[..count];
             if rows.len() < 2 {
                 continue;
             }
             // GNU's non-pairwise self-matrix path sets each diagonal to one,
             // including constant/NA columns, after its n>1 admission.
-            if self_matrix && policy != MissingRows::Pairwise && i == j {
+            if statistic == Statistic::Correlation
+                && self_matrix
+                && policy != MissingRows::Pairwise
+                && i == j
+            {
                 ans[i + j * x.count] = 1.0;
                 continue;
             }
@@ -203,7 +244,14 @@ fn calculate(
             {
                 continue;
             }
-            let (value, zero) = pair(xx, yy, &rows, kendall, policy == MissingRows::Pairwise);
+            let (value, zero) = pair(
+                xx,
+                yy,
+                rows,
+                kendall,
+                policy == MissingRows::Pairwise,
+                statistic,
+            );
             ans[i + j * x.count] = value;
             zero_sd |= zero;
         }
@@ -211,7 +259,14 @@ fn calculate(
     (ans, zero_sd)
 }
 
-fn pair(x: &[f64], y: &[f64], rows: &[usize], kendall: bool, pairwise: bool) -> (f64, bool) {
+fn pair(
+    x: &[f64],
+    y: &[f64],
+    rows: &[usize],
+    kendall: bool,
+    pairwise: bool,
+    statistic: Statistic,
+) -> (f64, bool) {
     let (mut sum, mut vx, mut vy) = (0.0, 0.0, 0.0);
     if kendall {
         let sign = |a: f64, b: f64| {
@@ -255,6 +310,11 @@ fn pair(x: &[f64], y: &[f64], rows: &[usize], kendall: bool, pairwise: bool) -> 
         vx /= n1;
         vy /= n1;
     }
+    if statistic == Statistic::Covariance {
+        // GNU covariance sums both ordered Kendall pairs; correlation's
+        // normalization cancels that factor, so its shared loop is unordered.
+        return (if kendall { 2.0 * sum } else { sum }, false);
+    }
     if vx == 0.0 || vy == 0.0 {
         (NA_REAL, true)
     } else {
@@ -287,32 +347,162 @@ mod tests {
     }
 
     #[test]
-    fn native_cor_keeps_both_coercions_live_through_torture_publication() {
+    fn native_cov_and_cor_keep_both_coercions_live_through_torture_publication() {
         let mut session = RSession::new_for_gc_tests();
         session
             .eval_code_with_output_capture("gctorture(TRUE)")
             .0
             .unwrap();
-        let x = integers(&session, &[1, 2, 3]);
-        let y = integers(&session, &[2, 4, 6]);
-        let mode = integers(&session, &[4]);
-        let kendall = integers(&session, &[0]);
-        let result = session.with_active(|| unsafe {
-            let raw = super::cor(x.as_raw(), y.as_raw(), mode.as_raw(), kendall.as_raw());
-            session
-                .owner_token()
-                .unwrap()
-                .sexp(raw)
-                .unwrap()
-                .into_owned()
-                .unwrap()
-        });
-        drop((x, y, mode, kendall));
-        session.owner_token().unwrap().full_gc().unwrap();
-        assert_eq!(result.try_real_elt(0), Ok(1.0));
+        for (statistic, expected) in [
+            (super::Statistic::Correlation, 1.0),
+            (super::Statistic::Covariance, 2.0),
+        ] {
+            let x = integers(&session, &[1, 2, 3]);
+            let y = integers(&session, &[2, 4, 6]);
+            let mode = integers(&session, &[4]);
+            let kendall = integers(&session, &[0]);
+            let result = session.with_active(|| unsafe {
+                let raw = super::corcov(
+                    x.as_raw(),
+                    y.as_raw(),
+                    mode.as_raw(),
+                    kendall.as_raw(),
+                    statistic,
+                );
+                session
+                    .owner_token()
+                    .unwrap()
+                    .sexp(raw)
+                    .unwrap()
+                    .into_owned()
+                    .unwrap()
+            });
+            drop((x, y, mode, kendall));
+            session.owner_token().unwrap().full_gc().unwrap();
+            assert_eq!(result.try_real_elt(0), Ok(expected));
+        }
         session
             .eval_code_with_output_capture("gctorture(FALSE)")
             .0
             .unwrap();
+    }
+    #[test]
+    fn native_cov_and_cor_workspace_budget_denial_recovers() {
+        let session = RSession::new_for_gc_tests();
+        let reals = |values: &[f64]| {
+            let value = session
+                .owner_token()
+                .unwrap()
+                .node_factory()
+                .allocate(|arena| {
+                    arena
+                        .alloc_vector_sexp(SEXPTYPE::REALSXP, values.len() as i64)
+                        .map(|value| value.as_raw())
+                })
+                .unwrap()
+                .into_owned()
+                .unwrap();
+            let mut value = SexpMut::try_from_checked(value).unwrap();
+            for (index, &element) in values.iter().enumerate() {
+                value.try_set_real_elt(index as i64, element).unwrap();
+            }
+            value.freeze()
+        };
+        let x = reals(&[1.0, 2.0, 3.0]);
+        let y = reals(&[2.0, 4.0, 6.0]);
+        let mode = integers(&session, &[4]);
+        let kendall = integers(&session, &[0]);
+        let owner = session.owner_token().unwrap();
+        // Warm root-table capacity before isolating numerical workspace denial.
+        session.with_active(|| unsafe {
+            super::corcov(
+                x.as_raw(),
+                y.as_raw(),
+                mode.as_raw(),
+                kendall.as_raw(),
+                super::Statistic::Correlation,
+            )
+        });
+        for (statistic, expected) in [
+            (super::Statistic::Correlation, 1.0),
+            (super::Statistic::Covariance, 2.0),
+        ] {
+            let baseline = owner.with_arena(|a| a.total_bytes_allocated()).unwrap();
+            owner
+                .with_arena(|a| {
+                    a.set_budget(crate::sexp::memory::ArenaBudget::new(baseline + 23, 0))
+                })
+                .unwrap();
+            let failure = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                session.with_active(|| unsafe {
+                    super::corcov(
+                        x.as_raw(),
+                        y.as_raw(),
+                        mode.as_raw(),
+                        kendall.as_raw(),
+                        statistic,
+                    )
+                });
+            }))
+            .expect_err("copied columns require workspace admission");
+            assert!(
+                failure
+                    .downcast_ref::<crate::sexp::context::RError>()
+                    .is_some_and(|e| e.message.contains("cov/cor workspace"))
+            );
+            assert_eq!(owner.with_arena(|a| a.workspace_bytes()).unwrap(), 0);
+            owner
+                .with_arena(|a| a.set_budget(crate::sexp::memory::ArenaBudget::unlimited()))
+                .unwrap();
+            let result = session.with_active(|| unsafe {
+                let raw = super::corcov(
+                    x.as_raw(),
+                    y.as_raw(),
+                    mode.as_raw(),
+                    kendall.as_raw(),
+                    statistic,
+                );
+                owner.sexp(raw).unwrap().into_owned().unwrap()
+            });
+            assert_eq!(result.try_real_elt(0), Ok(expected));
+            assert_eq!(owner.with_arena(|a| a.workspace_bytes()).unwrap(), 0);
+        }
+    }
+    #[test]
+    fn numerical_result_workspace_overlaps_r_publication_admission() {
+        let session = RSession::new_for_gc_tests();
+        let owner = session.owner_token().unwrap();
+        let _anchor = owner
+            .node_factory()
+            .character("anchor")
+            .unwrap()
+            .into_owned()
+            .unwrap();
+        let baseline = owner.with_arena(|a| a.total_bytes_allocated()).unwrap();
+        let values = super::Workspace::filled(owner, 3, 0.0f64).unwrap();
+        let charge = owner.with_arena(|a| a.workspace_bytes()).unwrap();
+        owner
+            .with_arena(|a| {
+                a.set_budget(crate::sexp::memory::ArenaBudget::new(baseline + charge, 0))
+            })
+            .unwrap();
+        let allocate = || {
+            owner.node_factory().allocate(|arena| {
+                arena
+                    .alloc_vector_sexp(SEXPTYPE::REALSXP, 1)
+                    .map(|value| value.as_raw())
+            })
+        };
+        assert!(
+            allocate().is_err(),
+            "R publication must include live numerical scratch"
+        );
+        assert_eq!(owner.with_arena(|a| a.workspace_bytes()).unwrap(), charge);
+        drop(values);
+        assert_eq!(owner.with_arena(|a| a.workspace_bytes()).unwrap(), 0);
+        assert!(
+            allocate().is_ok(),
+            "released scratch must restore publication headroom"
+        );
     }
 }
