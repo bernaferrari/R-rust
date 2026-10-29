@@ -2121,6 +2121,25 @@ unsafe fn allocate_retained_ints(
     }
 }
 
+unsafe fn allocate_submatch_table(
+    count: usize,
+    storage: &mut Option<&mut super::owned_arena::OwnedArena>,
+) -> *mut tre_submatch_data_t {
+    let Some(bytes) = count.checked_mul(std::mem::size_of::<tre_submatch_data_t>()) else {
+        return ptr::null_mut();
+    };
+    if bytes == 0 {
+        return ptr::null_mut();
+    }
+    if let Some(storage) = storage {
+        storage
+            .allocate_exact(bytes)
+            .map_or(ptr::null_mut(), |p| p.cast())
+    } else {
+        unsafe { mem::xcalloc(count, std::mem::size_of::<tre_submatch_data_t>()).cast() }
+    }
+}
+
 unsafe fn tre_compile_tables(
     preg: *mut regex_t,
     regex: *const tre_char_t,
@@ -2244,10 +2263,11 @@ unsafe fn tre_compile_tables(
                 );
             }
 
-            let submatch_data = mem::xcalloc(
-                parse_ctx.submatch_id as usize,
-                std::mem::size_of::<tre_submatch_data_t>(),
-            ) as *mut tre_submatch_data_t;
+            let submatch_data = usize::try_from(parse_ctx.submatch_id)
+                .ok()
+                .map_or(ptr::null_mut(), |count| {
+                    allocate_submatch_table(count, &mut storage)
+                });
             if submatch_data.is_null() {
                 return compile_error(
                     mem,
@@ -2581,7 +2601,11 @@ unsafe fn tre_free_tables(preg: *mut regex_t, owned_tables: bool) {
                 }
                 i += 1;
             }
-            mem::xfree((*tnfa).submatch_data as *mut c_void);
+            // Nested parents remain legacy allocations. Their table must stay
+            // alive through this traversal; owned cells drop with the arena.
+            if !owned_tables {
+                mem::xfree((*tnfa).submatch_data as *mut c_void);
+            }
         }
 
         if !owned_tables && !(*tnfa).tag_directions.is_null() {
@@ -2602,6 +2626,55 @@ unsafe fn tre_free_tables(preg: *mut regex_t, owned_tables: bool) {
 #[cfg(test)]
 mod owned_table_tests {
     use super::*;
+
+    #[test]
+    fn retained_tre_submatch_table_belongs_to_original_owned_storage() {
+        let mut session = crate::sexp::session::RSession::new_for_gc_tests();
+        let owner = session.owner_token().unwrap();
+        let ledger = owner
+            .with_arena(|arena| arena.heap_identity().byte_ledger())
+            .unwrap();
+        let pattern: Vec<u32> = "((a|b)+?)".chars().map(u32::from).collect();
+        let compiled = unsafe {
+            tre_compile_owned(
+                pattern.as_ptr(),
+                pattern.len(),
+                REG_EXTENDED,
+                crate::mainutils::grep::regex_workspace(),
+            )
+        }
+        .unwrap_or_else(|error| panic!("compile failed: {error}"));
+        unsafe {
+            let descriptor = &*compiled.preg.value.cast::<tre_tnfa_t>();
+            assert!(descriptor.num_submatches >= 3);
+            assert!(!descriptor.submatch_data.is_null());
+            assert!(
+                compiled._tables.contains(descriptor.submatch_data.cast()),
+                "production submatch descriptor table escaped original owned storage"
+            );
+            assert!(
+                (0..descriptor.num_submatches as usize).any(|i| !(*descriptor
+                    .submatch_data
+                    .add(i))
+                .parents
+                .is_null()),
+                "fixture must exercise nested legacy parent cleanup"
+            );
+        }
+        owner.full_gc().unwrap();
+        let replacement = crate::sexp::session::RSession::new_for_gc_tests();
+        let other = replacement
+            .owner_token()
+            .unwrap()
+            .with_arena(|arena| arena.heap_identity().byte_ledger())
+            .unwrap();
+        let held = other.reserve(256).unwrap();
+        session.close();
+        drop(compiled);
+        assert_eq!(ledger.workspace_bytes_for_test(), 0);
+        assert_eq!(other.workspace_bytes_for_test(), 256);
+        drop(held);
+    }
 
     #[test]
     fn retained_tre_tag_arrays_belong_to_original_owned_storage() {
@@ -2647,6 +2720,55 @@ mod owned_table_tests {
         assert_eq!(ledger.workspace_bytes_for_test(), 0);
         assert_eq!(other.workspace_bytes_for_test(), 256);
         drop(held);
+    }
+
+    #[test]
+    fn retained_tre_submatch_table_admits_cells_reject_overflow_and_retry() {
+        use crate::sexp::{memory::ArenaBudget, session::RSession};
+        let session = RSession::new_for_gc_tests();
+        let owner = session.owner_token().unwrap();
+        let mut storage =
+            super::super::owned_arena::OwnedArena::new(crate::mainutils::grep::regex_workspace())
+                .unwrap();
+        let count = 17;
+        let bytes = count * std::mem::size_of::<tre_submatch_data_t>();
+        owner
+            .with_arena(|arena| {
+                arena.set_budget(ArenaBudget::new(
+                    arena.total_bytes_allocated() + bytes - 1,
+                    0,
+                ))
+            })
+            .unwrap();
+        assert!(unsafe { allocate_submatch_table(count, &mut Some(&mut storage)) }.is_null());
+        assert_eq!(
+            owner.with_arena(|arena| arena.workspace_bytes()).unwrap(),
+            0
+        );
+        owner
+            .with_arena(|arena| arena.set_budget(ArenaBudget::unlimited()))
+            .unwrap();
+        let pointer = unsafe { allocate_submatch_table(count, &mut Some(&mut storage)) };
+        assert!(!pointer.is_null() && storage.contains(pointer.cast()));
+        assert!(owner.with_arena(|arena| arena.workspace_bytes()).unwrap() >= bytes);
+        unsafe {
+            assert!(
+                std::slice::from_raw_parts(pointer.cast::<u8>(), bytes)
+                    .iter()
+                    .all(|n| *n == 0)
+            );
+        }
+        drop(storage);
+        assert_eq!(
+            owner.with_arena(|arena| arena.workspace_bytes()).unwrap(),
+            0
+        );
+        let (_, report) = mem::fault::observe(None, || unsafe {
+            assert!(allocate_submatch_table(usize::MAX, &mut None).is_null());
+            assert!(allocate_submatch_table(0, &mut None).is_null());
+        });
+        assert_eq!(report.attempts, 0);
+        assert_eq!(report.remaining, 0);
     }
 
     #[test]
