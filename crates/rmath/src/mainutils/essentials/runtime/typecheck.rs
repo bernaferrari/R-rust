@@ -507,31 +507,18 @@ pub unsafe fn do_is_false(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
     }
 }
 
-fn element_is_na(elt: SEXP, recursive: bool) -> bool {
-    unsafe {
-        if elt.is_null() || elt == R_NilValue() {
-            return false;
-        }
-        let n = XLENGTH(elt);
-        if n == 1 && atomic_value_is_missing(elt, 0) {
-            return true;
-        }
-        if recursive && TYPEOF(elt) == SEXPTYPE::VECSXP {
-            for i in 0..n {
-                if element_is_na(VECTOR_ELT(elt, i), true) {
-                    return true;
-                }
-            }
-        }
-        false
-    }
-}
-
-/// R's `anyNA(x)` — returns TRUE if any element is NA.
+/// R's `anyNA(x)` — internal generic with a rooted default traversal.
 pub unsafe fn do_any_na(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
+        let owner = crate::sexp::owner::OwnerToken::current().expect("active anyNA owner");
+        let pin = owner.pin().expect("live anyNA owner");
+        let factory = owner.node_factory();
+        let _args = factory.wrap(args).expect("anyNA argument owner");
+        let _call = (!call.is_null()).then(|| factory.wrap(call).expect("anyNA call owner"));
+        let _op = (!op.is_null()).then(|| factory.wrap(op).expect("anyNA operation owner"));
+        let _rho = (!rho.is_null()).then(|| factory.wrap(rho).expect("anyNA environment owner"));
         let mut ans = R_NilValue();
-        if crate::eval::dispatch::DispatchOrEval(
+        let dispatched = crate::eval::dispatch::DispatchOrEval(
             call,
             op,
             c"anyNA".as_ptr(),
@@ -540,40 +527,17 @@ pub unsafe fn do_any_na(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             &mut ans,
             0,
             1,
-        ) != 0
-        {
+        ) != 0;
+        if let Some(pin) = &pin {
+            pin.require_live().expect("live anyNA owner after dispatch");
+        }
+        factory
+            .require_active()
+            .expect("original anyNA owner after dispatch");
+        if dispatched {
             return ans;
         }
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return Rf_ScalarLogical(FALSE);
-        }
-
-        let n = XLENGTH(x);
-        if TYPEOF(x) == SEXPTYPE::VECSXP || TYPEOF(x) == SEXPTYPE::LISTSXP {
-            // GNU anyNA(list) is any(is.na(list)): a length-1 NA element counts.
-            // Longer elements are not scanned unless recursive = TRUE.
-            let recursive = CDR(args) != R_NilValue()
-                && CADR(args) != R_NilValue()
-                && TYPEOF(CADR(args)) == SEXPTYPE::LGLSXP
-                && XLENGTH(CADR(args)) > 0
-                && LOGICAL_ELT(CADR(args), 0) == TRUE;
-            if TYPEOF(x) == SEXPTYPE::VECSXP {
-                for i in 0..n {
-                    let elt = VECTOR_ELT(x, i);
-                    if element_is_na(elt, recursive) {
-                        return Rf_ScalarLogical(TRUE);
-                    }
-                }
-            }
-            return Rf_ScalarLogical(FALSE);
-        }
-        for i in 0..n {
-            if atomic_value_is_missing(x, i) {
-                return Rf_ScalarLogical(TRUE);
-            }
-        }
-        Rf_ScalarLogical(FALSE)
+        crate::mainutils::coerce::do_anyNA(call, op, args, rho)
     }
 }
 
