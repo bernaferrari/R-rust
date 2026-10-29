@@ -82,3 +82,6 @@ mod number_tests;
 mod tests;
 #[cfg(test)]
 mod warning_ownership_tests;
+
+#[cfg(test)]
+mod logical_owner_tests;

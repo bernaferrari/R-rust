@@ -1,0 +1,5 @@
+emit <- function(x) cat(paste(capture.output(dput(x)), collapse=" "), "\n", sep="")
+for (x in list(integer(), c(0L,1L,-2L,NA_integer_), c(0, -0, 1, Inf,-Inf, NA_real_,NaN), c(0+0i,1+0i,0+2i,NA_complex_), c("T","TRUE","True","true","F","FALSE","False","false"," yes","1",NA_character_), as.raw(c(0,1,255)))) emit(as.logical(x))
+x <- structure(c(0,2,NA_real_,NaN), names=c("a","b","c","d"), note=list(1:3))
+y <- as.logical(x); emit(y); emit(attributes(y)); y[1] <- TRUE; emit(x); emit(y); x[2] <- 0; emit(y); emit(x)
+for (x in list(matrix(c(0,1,NA,2),2), structure(c(0,1), class="foo"), list(0,1,NA), pairlist(0,1,NA))) emit(as.logical(x))
