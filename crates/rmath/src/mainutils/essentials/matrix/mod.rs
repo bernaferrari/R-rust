@@ -30,6 +30,7 @@ use crate::sexp::attrib_core::{R_DimNamesSymbol, R_DimSymbol, R_NamesSymbol};
 mod attrs;
 mod construct;
 mod linalg;
+mod lengths;
 mod math;
 mod stats;
 mod summary;

@@ -1,0 +1,38 @@
+matrix|TRUE|integer|1,1,1,1,1,1|2,3|NULL|r1,r2/a,b,c
+matrix|FALSE|integer|1,1,1,1,1,1|2,3|NULL|NULL
+array|TRUE|integer|1,1,1,1,1,1,1,1|2,2,2|NULL|a,b/c,d/e,f
+array|FALSE|integer|1,1,1,1,1,1,1,1|2,2,2|NULL|NULL
+list_matrix|TRUE|integer|0,3,1,2|2,2|NULL|a,b/c,d
+list_matrix|FALSE|integer|0,3,1,2|2,2|NULL|NULL
+empty_matrix|TRUE|integer||0,3|NULL|NULL/a,b,c
+empty_matrix|FALSE|integer||0,3|NULL|NULL
+names|TRUE|integer|1,1|NULL|a,b|NULL
+names|FALSE|integer|1,1|NULL|NULL|NULL
+named_list|TRUE|integer|0,3|NULL|a,b|NULL
+named_list|FALSE|integer|0,3|NULL|NULL|NULL
+expression|TRUE|integer|3,0,1|NULL|NULL|NULL
+expression|FALSE|integer|3,0,1|NULL|NULL|NULL
+null|TRUE|integer||NULL|NULL|NULL
+null|FALSE|integer||NULL|NULL|NULL
+logical|TRUE|integer|1,1|NULL|NULL|NULL
+logical|FALSE|integer|1,1|NULL|NULL|NULL
+raw|TRUE|integer|1,1|NULL|NULL|NULL
+raw|FALSE|integer|1,1|NULL|NULL|NULL
+complex|TRUE|integer|1,1|NULL|NULL|NULL
+complex|FALSE|integer|1,1|NULL|NULL|NULL
+pairlist|TRUE|ERROR:'x' must be a list or atomic vector
+pairlist|FALSE|ERROR:'x' must be a list or atomic vector
+symbol|TRUE|ERROR:'x' must be a list or atomic vector
+symbol|FALSE|ERROR:'x' must be a list or atomic vector
+closure|TRUE|ERROR:'x' must be a list or atomic vector
+closure|FALSE|ERROR:'x' must be a list or atomic vector
+flag|1|ERROR:invalid 'use.names' value
+flag|2|ERROR:invalid 'use.names' value
+flag|3|ERROR:invalid 'use.names' value
+flag|4|1,1,1,1
+flag|5|1,1,1,1
+flag|6|1,1,1,1
+flag|7|1,1,1,1
+result_mutation|TRUE|TRUE
+source_mutation|TRUE
+missing_flag|TRUE

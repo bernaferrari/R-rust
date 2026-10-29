@@ -43,61 +43,9 @@ pub unsafe fn do_NCOL(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
-/// R's `lengths(x)` — length of each element in a list/vector.
-pub unsafe fn do_lengths(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return Rf_allocVector3(SEXPTYPE::INTSXP, 0);
-        }
-        let n = XLENGTH(x);
-        let result = Rf_allocVector3(SEXPTYPE::INTSXP, n);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _result_guard = protect(result);
-        let dst = INTEGER(result);
-        let t = TYPEOF(x);
-        if t == SEXPTYPE::VECSXP {
-            for i in 0..n {
-                let elem = VECTOR_ELT(x, i as i64);
-                *dst.add(i as usize) = if elem.is_null() {
-                    0
-                } else if crate::mainutils::essentials::sexp_has_class(elem, "POSIXlt")
-                    && TYPEOF(elem) == SEXPTYPE::VECSXP
-                {
-                    crate::mainutils::subassign::posixlt_obs_length(elem) as i32
-                } else {
-                    XLENGTH(elem) as i32
-                };
-            }
-        } else {
-            for i in 0..n {
-                *dst.add(i as usize) = 1;
-            }
-        }
-        let use_names = {
-            let arg =
-                crate::mainutils::essentials::arg_by_name_or_position(args, &["use.names"], 1);
-            arg.is_null() || arg == R_NilValue() || crate::main::coerce::asLogical(arg) != 0
-        };
-        if use_names {
-            let names =
-                crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
-            if !names.is_null()
-                && names != R_NilValue()
-                && TYPEOF(names) == SEXPTYPE::STRSXP
-                && XLENGTH(names) == n
-            {
-                crate::sexp::attrib_core::setAttrib(
-                    result,
-                    crate::sexp::attrib_core::R_NamesSymbol(),
-                    names,
-                );
-            }
-        }
-        result
-    }
+/// GNU default lengths shape/flag contract with rooted copied element access.
+pub unsafe fn do_lengths(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe { super::lengths::run(call, op, args, rho) }
 }
 
 /// R's `length(x) <- value` — resize vectors with R's missing-value fill rules.
