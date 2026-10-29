@@ -36,4 +36,14 @@
     <string name="editor_saved">Saved</string>
     <string name="editor_dirty_file_name">%1$s •</string>
     <string name="editor_diagnostic_line">Line %1$d: %2$s</string>
+    <string name="console_stop">Stop</string>
+    <string name="console_clear">Clear</string>
+    <string name="console_output">Console output</string>
+    <string name="console_previous_command">Previous command</string>
+    <string name="console_next_command">Next command</string>
+    <string name="console_history_draft">Current draft</string>
+    <string name="console_history_position">Command %1$d of %2$d</string>
+    <string name="console_input_label">R console</string>
+    <string name="console_input_hint">Type an R expression</string>
+    <string name="console_run_command">Run console command</string>
 </resources>
