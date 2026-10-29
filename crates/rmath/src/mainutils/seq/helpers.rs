@@ -258,95 +258,14 @@ pub unsafe fn inherits(s: SEXP, what: *const c_char) -> c_int {
     unsafe { crate::mainutils::objects::inherits2(s, what) }
 }
 
+// Use the runtime's scalar conversion for strings, complex values and empty
+// vectors too; a numeric-only shim silently treated other types as zero.
 pub unsafe fn asReal(x: SEXP) -> c_double {
-    unsafe {
-        if x.is_null() {
-            return NA_REAL;
-        }
-        match TYPEOF(x) {
-            REALSXP_VAL => {
-                if REAL(x).is_null() {
-                    NA_REAL
-                } else {
-                    *REAL(x)
-                }
-            }
-            INTSXP_VAL => {
-                if INTEGER(x).is_null() {
-                    NA_REAL
-                } else {
-                    let v = *INTEGER(x);
-                    if v == NA_INTEGER {
-                        NA_REAL
-                    } else {
-                        v as c_double
-                    }
-                }
-            }
-            LGLSXP_VAL => {
-                if LOGICAL(x).is_null() {
-                    NA_REAL
-                } else {
-                    let v = *LOGICAL(x);
-                    if v == NA_LOGICAL {
-                        NA_REAL
-                    } else {
-                        v as c_double
-                    }
-                }
-            }
-            SYMSXP_VAL => {
-                if x == R_MissingArg() {
-                    NA_REAL
-                } else {
-                    0.0
-                }
-            }
-        }
-    }
+    unsafe { crate::mainutils::coerce::asReal(x) }
 }
 
 pub unsafe fn asInteger(x: SEXP) -> c_int {
-    unsafe {
-        if x.is_null() {
-            return NA_INTEGER;
-        }
-        match TYPEOF(x) {
-            INTSXP_VAL => {
-                if INTEGER(x).is_null() {
-                    NA_INTEGER
-                } else {
-                    *INTEGER(x)
-                }
-            }
-            REALSXP_VAL => {
-                if REAL(x).is_null() {
-                    NA_INTEGER
-                } else {
-                    let v = *REAL(x);
-                    if ISNAN(v) || v > i32::MAX as c_double || v < i32::MIN as c_double {
-                        NA_INTEGER
-                    } else {
-                        v as c_int
-                    }
-                }
-            }
-            LGLSXP_VAL => {
-                if LOGICAL(x).is_null() {
-                    NA_INTEGER
-                } else {
-                    *LOGICAL(x)
-                }
-            }
-            SYMSXP_VAL => {
-                if x == R_MissingArg() {
-                    NA_INTEGER
-                } else {
-                    0
-                }
-            }
-        }
-    }
+    unsafe { crate::mainutils::coerce::asInteger(x) }
 }
 
 pub unsafe fn asLogical(x: SEXP) -> c_int {
