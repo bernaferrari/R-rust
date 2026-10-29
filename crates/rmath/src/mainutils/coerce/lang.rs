@@ -365,6 +365,33 @@ pub unsafe fn do_anyNA(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     use crate::sexp::ffi::FALSE;
 
     unsafe {
+        // Keep the matcher allocations and any partial-match warning inside
+        // the original runtime owner, including when this lower-level entry
+        // is invoked outside the public internal-generic wrapper.
+        let owner = crate::sexp::owner::OwnerToken::current()
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        let pin = owner
+            .pin()
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        let factory = owner.node_factory();
+        let _args_owner = factory
+            .wrap(args)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        let _call_owner = (!call.is_null()).then(|| {
+            factory
+                .wrap(call)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+        });
+        let _op_owner = (!op.is_null()).then(|| {
+            factory
+                .wrap(op)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+        });
+        let _rho_owner = (!rho.is_null()).then(|| {
+            factory
+                .wrap(rho)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+        });
         let nargs = LENGTH(args);
         if nargs < 1 || nargs > 2 {
             crate::mainutils::errors::Rf_error(
@@ -372,35 +399,77 @@ pub unsafe fn do_anyNA(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             );
         }
 
-        // Simplified: skip DispatchOrEval for now, call any_na_impl directly
+        // GNU's common one-argument path validates only the `x` name and
+        // traverses the original list directly. Keep it allocation-free;
+        // besides matching check1arg semantics, this avoids formals/matched
+        // pairlist allocations for the dominant anyNA(x) call.
         if nargs == 1 {
-            Rf_ScalarLogical(if any_na_impl(call, op, args, rho) {
+            crate::mainutils::seq::check1arg(args, call, c"x".as_ptr());
+            if let Some(pin) = &pin {
+                pin.require_live()
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            }
+            factory
+                .require_active()
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            if CAR(args) == crate::sexp::globals::R_MissingArg() {
+                crate::mainutils::errors::Rf_error(
+                    b"argument 1 is empty\0".as_ptr() as *const c_char
+                );
+            }
+            return Rf_ScalarLogical(if any_na_impl(call, op, args, rho) {
                 1
             } else {
                 FALSE
-            })
-        } else {
-            // Two args: x and recursive (default FALSE)
-            // Ensure second arg exists and is logical
-            let recursive_val = CADR(args);
-            let full_args = args;
-            if recursive_val.is_null() || recursive_val == crate::sexp::globals::R_MissingArg() {
-                // Append ScalarLogical(FALSE) as second arg
-                let with_rec = Rf_cons(CAR(args), Rf_cons(Rf_ScalarLogical(FALSE), R_NilValue()));
-                let _with_rec_guard = protect(with_rec);
-                let result = Rf_ScalarLogical(if any_na_impl(call, op, with_rec, rho) {
-                    1
-                } else {
-                    FALSE
-                });
-                result
-            } else {
-                Rf_ScalarLogical(if any_na_impl(call, op, args, rho) {
-                    1
-                } else {
-                    FALSE
-                })
-            }
+            });
         }
+
+        // The outer internal-generic entry has already tried S3 dispatch and
+        // evaluated arguments. Match the primitive's `x, recursive` formals
+        // here so exact/partial names, duplicate names, and unused arguments
+        // follow GNU's matchArgs behavior before default traversal.
+        let nil = R_NilValue();
+        let recursive_formal = Rf_cons(crate::sexp::globals::R_MissingArg(), nil);
+        let _recursive_formal_guard = protect(recursive_formal);
+        SETTAG(
+            recursive_formal,
+            crate::sexp::symbol::Rf_install(c"recursive".as_ptr()),
+        );
+        let x_formal = Rf_cons(crate::sexp::globals::R_MissingArg(), recursive_formal);
+        let _x_formal_guard = protect(x_formal);
+        SETTAG(x_formal, crate::sexp::symbol::Rf_install(c"x".as_ptr()));
+        let matched = crate::mainutils::match_mod::matchArgs_RC(x_formal, args, call);
+        let _matched_guard = protect(matched);
+        if let Some(pin) = &pin {
+            pin.require_live()
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        }
+        factory
+            .require_active()
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        let x = CAR(matched);
+        if x == crate::sexp::globals::R_MissingArg() {
+            crate::mainutils::errors::Rf_error(b"argument 1 is empty\0".as_ptr() as *const c_char);
+        }
+
+        let recursive = CADR(matched);
+        if nargs == 2 && recursive == crate::sexp::globals::R_MissingArg() {
+            crate::mainutils::errors::Rf_error(b"argument 2 is empty\0".as_ptr() as *const c_char);
+        }
+        let normalized = if recursive == crate::sexp::globals::R_MissingArg() {
+            let value = Rf_ScalarLogical(FALSE);
+            let _value_guard = protect(value);
+            let tail = Rf_cons(value, nil);
+            let _tail_guard = protect(tail);
+            Rf_cons(x, tail)
+        } else {
+            matched
+        };
+        let _normalized_guard = (normalized != matched).then(|| protect(normalized));
+        Rf_ScalarLogical(if any_na_impl(call, op, normalized, rho) {
+            1
+        } else {
+            FALSE
+        })
     }
 }

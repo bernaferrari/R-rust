@@ -59,6 +59,62 @@ fn invoke(a: &Sexp<'_>) -> bool {
 }
 
 #[test]
+fn primitive_anyna_matches_formal_arguments_after_dispatch() {
+    let mut s = RSession::new_for_gc_tests();
+    for code in [
+        "stopifnot(anyNA(c(1, NA), recursive = FALSE))",
+        "stopifnot(anyNA(c(1, NA), rec = FALSE))",
+        "stopifnot(anyNA(c(1, NA), r = FALSE))",
+        "stopifnot(anyNA(x = c(1, NA), recursive = FALSE))",
+        "stopifnot(anyNA(rec = FALSE, x = c(1, NA)))",
+    ] {
+        let (result, _, _) = s.eval_code_with_output_capture(code);
+        assert!(result.is_ok(), "{code}: {:?}", result.err());
+    }
+
+    for (code, expected) in [
+        (
+            "anyNA(c(NA), recursive = FALSE, recursive = TRUE)",
+            "anyNA takes 1 or 2 arguments",
+        ),
+        ("anyNA(c(NA), foo = FALSE)", "unused argument (foo = FALSE)"),
+        ("anyNA(c(NA), recursive = )", "argument 2 is empty"),
+        ("anyNA()", "anyNA takes 1 or 2 arguments"),
+        (
+            "anyNA(recursive = FALSE)",
+            "supplied argument name 'recursive' does not match 'x'",
+        ),
+        (
+            "anyNA(foo = FALSE)",
+            "supplied argument name 'foo' does not match 'x'",
+        ),
+        ("anyNA(x = )", "argument 1 is empty"),
+        ("anyNA(, recursive = FALSE)", "argument 1 is empty"),
+    ] {
+        let (result, _, _) = s.eval_code_with_output_capture(code);
+        let error = result.expect_err(code).message;
+        assert!(error.contains(expected), "{code}: {error:?}");
+    }
+
+    let (result, _, _) = s.eval_code_with_output_capture(
+        "anyNA.probe <- function(x, recursive = FALSE, ...) { stopifnot(identical(names(list(...)), 'foo')); TRUE }; probe <- structure(NA_real_, class = 'probe'); stopifnot(anyNA(probe, foo = TRUE))",
+    );
+    assert!(
+        result.is_ok(),
+        "dispatch must happen before primitive matching: {:?}",
+        result.err()
+    );
+
+    let (result, _, _) = s.eval_code_with_output_capture(
+        "anyNA.probe <- function(...) stop('method must not run'); anyNA(probe, recursive = FALSE, foo = TRUE)",
+    );
+    let error = result
+        .expect_err("classed call with too many actual arguments")
+        .message;
+    assert!(error.contains("anyNA takes 1 or 2 arguments"), "{error:?}");
+}
+
+#[test]
 fn public_builtin_uses_rooted_recursive_default() {
     let s = RSession::new_for_gc_tests();
     let f = s.owner_token().unwrap().node_factory();

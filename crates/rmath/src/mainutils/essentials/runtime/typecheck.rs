@@ -517,6 +517,15 @@ pub unsafe fn do_any_na(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let _call = (!call.is_null()).then(|| factory.wrap(call).expect("anyNA call owner"));
         let _op = (!op.is_null()).then(|| factory.wrap(op).expect("anyNA operation owner"));
         let _rho = (!rho.is_null()).then(|| factory.wrap(rho).expect("anyNA environment owner"));
+        // GNU's do_anyNA rejects arity before attempting internal-generic
+        // dispatch. Validate owner admission first, then prevent classed
+        // calls with excess actuals from reaching a method.
+        let nargs = LENGTH(args);
+        if nargs < 1 || nargs > 2 {
+            crate::mainutils::errors::Rf_error(
+                b"anyNA takes 1 or 2 arguments\0".as_ptr() as *const c_char
+            );
+        }
         let mut ans = R_NilValue();
         let dispatched = crate::eval::dispatch::DispatchOrEval(
             call,
