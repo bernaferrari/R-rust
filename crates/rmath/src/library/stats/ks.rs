@@ -4,6 +4,8 @@
 
 use std::os::raw::{c_double, c_int};
 
+use crate::nmath::special::mlutils::R_pow_di as pow_di;
+
 use crate::sexp::accessors::{INTEGER, LENGTH, REAL};
 use crate::sexp::constructors::Rf_allocVector;
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
@@ -109,14 +111,6 @@ fn m_power(a: &[c_double], e_a: i32, v: &mut Vec<c_double>, e_v: &mut i32, m: us
         }
         *e_v += 140;
     }
-}
-
-fn pow_di(base: c_double, e: i32) -> c_double {
-    let mut r = 1.0;
-    for _ in 0..e {
-        r *= base;
-    }
-    r
 }
 
 fn k2x(n: i32, d: c_double) -> c_double {
@@ -255,5 +249,25 @@ pub unsafe fn Smirnov_sim(sr: SEXP, sc: SEXP, sb: SEXP, twosided: SEXP) -> SEXP 
         }
         crate::main::random::PutRNGstate();
         ans
+    }
+}
+
+#[cfg(test)]
+mod exact_scaling_tests {
+    use super::*;
+
+    #[test]
+    fn signed_decimal_scaling_matches_gnu_lower_tails() {
+        // Pinned GNU R r90451; relative errors must catch tiny lower tails.
+        for (n, q, expected) in [
+            (400, 0.00275, 1.3177625442620577e-143),
+            (400, 0.003, 5.5495104732665456e-122),
+            (400, 0.00325, 5.2466886749515492e-105),
+            (1000, 0.0012, 4.8989970394294441e-306),
+            (1000, 0.002, 1.7378348120591998e-116),
+        ] {
+            let p = k2x(n, q);
+            assert!((p / expected - 1.0).abs() < 1e-11, "q={q}: {p}");
+        }
     }
 }
