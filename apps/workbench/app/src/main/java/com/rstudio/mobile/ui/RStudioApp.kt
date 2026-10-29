@@ -12,26 +12,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Help
-import androidx.compose.material.icons.automirrored.filled.ListAlt
-import androidx.compose.material.icons.filled.Code
-import androidx.compose.material.icons.filled.Description
-import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.InsertChart
-import androidx.compose.material.icons.filled.TableRows
-import androidx.compose.material.icons.filled.Terminal
-import androidx.compose.material.icons.filled.Widgets
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.ScrollableTabRow
-import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.VerticalDivider
@@ -47,7 +32,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -63,21 +47,6 @@ import com.rstudio.mobile.components.ScriptEditor
 import com.rstudio.mobile.runtime.RStudioRuntime
 import com.rstudio.mobile.runtime.RStudioRuntimeFactory
 import com.rstudio.mobile.runtime.RStudioUiState
-
-private enum class Destination(val label: String, val icon: ImageVector) {
-    Editor("Editor", Icons.Default.Code),
-    Console("Console", Icons.Default.Terminal),
-    Inspect("Inspect", Icons.Default.Widgets),
-    Files("Files", Icons.Default.Folder),
-}
-
-private enum class InspectTab(val label: String, val icon: ImageVector) {
-    Data("Data", Icons.Default.TableRows),
-    Plots("Plots", Icons.Default.InsertChart),
-    Environment("Environment", Icons.AutoMirrored.Filled.ListAlt),
-    Packages("Packages", Icons.Default.Widgets),
-    Help("Help", Icons.AutoMirrored.Filled.Help),
-}
 
 @OptIn(ExperimentalMaterial3WindowSizeClassApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -154,16 +123,7 @@ fun RStudioApp() {
         },
         bottomBar = {
             if (!expanded) {
-                NavigationBar {
-                    Destination.entries.forEach { item ->
-                        NavigationBarItem(
-                            selected = destination == item,
-                            onClick = { destination = item },
-                            icon = { Icon(item.icon, contentDescription = null) },
-                            label = { Text(item.label) },
-                        )
-                    }
-                }
+                WorkbenchNavigationBar(destination, onSelect = { destination = it })
             }
         },
     ) { padding ->
@@ -242,10 +202,7 @@ private fun ExpandedWorkspace(
         VerticalDivider()
         Column(Modifier.width(390.dp).fillMaxHeight()) {
             var filesSelected by rememberSaveable { mutableStateOf(false) }
-            ScrollableTabRow(selectedTabIndex = if (filesSelected) 1 else 0, edgePadding = 8.dp) {
-                Tab(selected = !filesSelected, onClick = { filesSelected = false }, text = { Text("Inspect") })
-                Tab(selected = filesSelected, onClick = { filesSelected = true }, text = { Text("Files") })
-            }
+            WorkspaceModeTabs(filesSelected, onSelectFiles = { filesSelected = it })
             if (filesSelected) FilesPane(state, runtime, actions) else InspectPane(state, runtime, actions.exportPlot, actions.exportData, actions.installPackage)
         }
     }
@@ -319,16 +276,7 @@ private fun InspectPane(
 ) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
     Column(Modifier.fillMaxSize()) {
-        ScrollableTabRow(selectedTabIndex = tab, edgePadding = 8.dp) {
-            InspectTab.entries.forEachIndexed { index, item ->
-                Tab(
-                    selected = tab == index,
-                    onClick = { tab = index },
-                    icon = { Icon(item.icon, contentDescription = null) },
-                    text = { Text(item.label) },
-                )
-            }
-        }
+        InspectorTabs(tab, onSelect = { tab = it })
         Box(Modifier.weight(1f).fillMaxWidth()) {
             when (InspectTab.entries[tab]) {
                 InspectTab.Data -> DataTableView(state.dataTable, onExport = onExportData, onLoadMore = runtime::loadMoreData)

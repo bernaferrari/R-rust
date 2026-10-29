@@ -146,4 +146,13 @@
     <string name="workbench_runtime_information">Runtime information</string>
     <string name="workbench_stop_execution">Stop R execution</string>
     <string name="workbench_run_script">Run entire script</string>
+    <string name="navigation_editor">Editor</string>
+    <string name="navigation_console">Console</string>
+    <string name="navigation_inspect">Inspect</string>
+    <string name="navigation_files">Files</string>
+    <string name="navigation_data">Data</string>
+    <string name="navigation_plots">Plots</string>
+    <string name="navigation_environment">Environment</string>
+    <string name="navigation_packages">Packages</string>
+    <string name="navigation_help">Help</string>
 </resources>
