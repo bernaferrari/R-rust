@@ -80,4 +80,7 @@
         <item quantity="one">%1$d row</item>
         <item quantity="other">%1$d rows</item>
     </plurals>
+    <string name="document_close">Close %1$s</string>
+    <string name="document_unsaved_changes">Unsaved changes</string>
+    <string name="document_saved">Saved</string>
 </resources>
