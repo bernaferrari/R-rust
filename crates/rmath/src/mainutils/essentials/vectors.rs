@@ -1423,7 +1423,13 @@ pub unsafe fn do_subset(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 // Type checking: is.finite, is.infinite, is.nan, is.matrix, is.array, is.list
 // ---------------------------------------------------------------------------
 
-unsafe fn dispatch_is(call: SEXP, op: SEXP, args: SEXP, rho: SEXP, generic: &[u8]) -> Option<SEXP> {
+pub(super) unsafe fn dispatch_is(
+    call: SEXP,
+    op: SEXP,
+    args: SEXP,
+    rho: SEXP,
+    generic: &[u8],
+) -> Option<SEXP> {
     unsafe {
         let mut ans = R_NilValue();
         if crate::eval::dispatch::DispatchOrEval(
@@ -1444,168 +1450,42 @@ unsafe fn dispatch_is(call: SEXP, op: SEXP, args: SEXP, rho: SEXP, generic: &[u8
     }
 }
 
-/// GNU `copyDimAndNames`: dim+dimnames if array, else names.
-unsafe fn copy_dim_and_names(src: SEXP, dst: SEXP) {
-    unsafe {
-        let dims =
-            crate::sexp::attrib_core::getAttrib(src, crate::sexp::attrib_core::R_DimSymbol());
-        if !dims.is_null() && dims != R_NilValue() {
-            crate::sexp::attrib_core::setAttrib(dst, crate::sexp::attrib_core::R_DimSymbol(), dims);
-            let dimnames = crate::sexp::attrib_core::getAttrib(
-                src,
-                crate::sexp::attrib_core::R_DimNamesSymbol(),
-            );
-            if !dimnames.is_null() && dimnames != R_NilValue() {
-                crate::sexp::attrib_core::setAttrib(
-                    dst,
-                    crate::sexp::attrib_core::R_DimNamesSymbol(),
-                    dimnames,
-                );
-            }
-        } else {
-            let names =
-                crate::sexp::attrib_core::getAttrib(src, crate::sexp::attrib_core::R_NamesSymbol());
-            if !names.is_null() && names != R_NilValue() {
-                crate::sexp::attrib_core::setAttrib(
-                    dst,
-                    crate::sexp::attrib_core::R_NamesSymbol(),
-                    names,
-                );
-            }
-        }
-    }
-}
-
-/// R's `is.finite(x)` — check for finite values.
+/// GNU `is.finite` with checked element reads and original-owner roots.
 pub unsafe fn do_is_finite(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        if let Some(ans) = dispatch_is(call, op, args, rho, b"is.finite\0") {
-            return ans;
-        }
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return Rf_allocVector3(SEXPTYPE::LGLSXP, 0);
-        }
-        let t = TYPEOF(x);
-        let n = XLENGTH(x);
-        let result = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _result_guard = protect(result);
-        let dst = LOGICAL(result);
-        for i in 0..n {
-            let is_fin = if t == SEXPTYPE::REALSXP {
-                let v = *REAL(x).add(i as usize);
-                v.to_bits() != crate::sexp::ffi::R_NA_BIT_PATTERN && v.is_finite()
-            } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-                *INTEGER(x).add(i as usize) != NA_INTEGER
-            } else if t == SEXPTYPE::CPLXSXP {
-                let z = *COMPLEX(x).add(i as usize);
-                z.r.to_bits() != crate::sexp::ffi::R_NA_BIT_PATTERN
-                    && z.i.to_bits() != crate::sexp::ffi::R_NA_BIT_PATTERN
-                    && z.r.is_finite()
-                    && z.i.is_finite()
-            } else {
-                false
-            };
-            *dst.add(i as usize) = if is_fin { TRUE } else { FALSE };
-        }
-        copy_dim_and_names(x, result);
-        result
+        super::finite_predicates::evaluate(
+            call,
+            op,
+            args,
+            rho,
+            super::finite_predicates::Predicate::Finite,
+        )
     }
 }
 
-/// R's `is.infinite(x)` — check for infinite values.
+/// GNU `is.infinite` with checked element reads and original-owner roots.
 pub unsafe fn do_is_infinite(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        if let Some(ans) = dispatch_is(call, op, args, rho, b"is.infinite\0") {
-            return ans;
-        }
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return Rf_ScalarLogical(FALSE);
-        }
-        let t = TYPEOF(x);
-        let n = XLENGTH(x);
-        let result = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _result_guard = protect(result);
-        let dst = LOGICAL(result);
-        for i in 0..n {
-            let is_infinite = if t == SEXPTYPE::REALSXP {
-                (*REAL(x).add(i as usize)).is_infinite()
-            } else if t == SEXPTYPE::CPLXSXP {
-                let z = *COMPLEX(x).add(i as usize);
-                z.r.is_infinite() || z.i.is_infinite()
-            } else {
-                false
-            };
-            *dst.add(i as usize) = if is_infinite { TRUE } else { FALSE };
-        }
-        copy_dim_and_names(x, result);
-        result
+        super::finite_predicates::evaluate(
+            call,
+            op,
+            args,
+            rho,
+            super::finite_predicates::Predicate::Infinite,
+        )
     }
 }
 
-/// R's `is.nan(x)` — check for NaN values (not NA).
+/// GNU `is.nan` with checked element reads and original-owner roots.
 pub unsafe fn do_is_nan(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        if let Some(ans) = dispatch_is(call, op, args, rho, b"is.nan\0") {
-            return ans;
-        }
-        let x = CAR(args);
-        let t = TYPEOF(x);
-        let supported = t == SEXPTYPE::NILSXP
-            || t == SEXPTYPE::STRSXP
-            || t == SEXPTYPE::RAWSXP
-            || t == SEXPTYPE::LGLSXP
-            || t == SEXPTYPE::INTSXP
-            || t == SEXPTYPE::REALSXP
-            || t == SEXPTYPE::CPLXSXP;
-        if !supported {
-            let name = match t {
-                t if t == SEXPTYPE::VECSXP => "list",
-                t if t == SEXPTYPE::EXPRSXP => "expression",
-                t if t == SEXPTYPE::LANGSXP => "language",
-                t if t == SEXPTYPE::ENVSXP => "environment",
-                t if t == SEXPTYPE::CLOSXP => "closure",
-                t if t == SEXPTYPE::SYMSXP => "symbol",
-                _ => "unknown",
-            };
-            crate::mainutils::errors::errorcall_str(
-                call,
-                &format!("default method not implemented for type '{name}'"),
-            );
-        }
-        let n = if x.is_null() || x == R_NilValue() {
-            0
-        } else {
-            XLENGTH(x)
-        };
-        let result = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _result_guard = protect(result);
-        let dst = LOGICAL(result);
-        for i in 0..n {
-            let is_nan = if t == SEXPTYPE::REALSXP {
-                let v = *REAL(x).add(i as usize);
-                v.is_nan() && !crate::sexp::ffi::is_na_real(v)
-            } else if t == SEXPTYPE::CPLXSXP {
-                let z = *COMPLEX(x).add(i as usize);
-                (z.r.is_nan() && !crate::sexp::ffi::is_na_real(z.r))
-                    || (z.i.is_nan() && !crate::sexp::ffi::is_na_real(z.i))
-            } else {
-                false
-            };
-            *dst.add(i as usize) = if is_nan { TRUE } else { FALSE };
-        }
-        copy_dim_and_names(x, result);
-        result
+        super::finite_predicates::evaluate(
+            call,
+            op,
+            args,
+            rho,
+            super::finite_predicates::Predicate::Nan,
+        )
     }
 }
 

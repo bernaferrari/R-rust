@@ -1,0 +1,18 @@
+is.finite|shape|TRUE|TRUE|TRUE|
+is.finite|isolated|a|unchanged|
+is.finite|s4-marked|TRUE|FALSE|TRUE,FALSE|
+is.infinite|shape|TRUE|TRUE|TRUE|
+is.infinite|isolated|a|unchanged|
+is.infinite|s4-marked|TRUE|FALSE|FALSE,TRUE|
+is.nan|shape|TRUE|TRUE|TRUE|
+is.nan|isolated|a|unchanged|
+is.nan|s4-marked|TRUE|FALSE|FALSE,FALSE|
+is.finite|s3|dispatched|TRUE|
+is.infinite|s3|dispatched|FALSE|
+is.nan|s3|dispatched|TRUE|
+is.finite|s4-default|default method not implemented for type 'S4'|
+is.infinite|s4-default|default method not implemented for type 'S4'|
+is.nan|s4-default|default method not implemented for type 'S4'|
+is.finite|s4-method|method|TRUE|
+is.infinite|s4-method|method|FALSE|
+is.nan|s4-method|method|TRUE|

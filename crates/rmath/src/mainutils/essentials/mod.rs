@@ -28,6 +28,7 @@ mod conditions;
 mod covratio;
 #[cfg(test)]
 mod covratio_tests;
+mod finite_predicates;
 mod functional;
 mod io;
 mod mathstats;
