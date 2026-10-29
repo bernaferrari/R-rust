@@ -96,4 +96,16 @@
     <string name="packages_load_description">Load %1$s</string>
     <string name="packages_loaded_description">%1$s is loaded</string>
     <string name="packages_remove_description">Remove %1$s</string>
+    <string name="help_title">R Help</string>
+    <string name="help_search">Search functions…</string>
+    <string name="help_all_categories">All</string>
+    <string name="help_back_to_topics">Back to help topics</string>
+    <string name="help_loading">Loading help…</string>
+    <string name="help_loading_topic">Loading help for %1$s</string>
+    <string name="help_view_topic">View help for %1$s</string>
+    <string name="help_documentation_hint">Tap a topic to view its R documentation.</string>
+    <plurals name="help_topic_count">
+        <item quantity="one">%1$d topic</item>
+        <item quantity="other">%1$d topics</item>
+    </plurals>
 </resources>

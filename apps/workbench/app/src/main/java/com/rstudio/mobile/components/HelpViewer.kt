@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -31,6 +32,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
+import com.rstudio.mobile.R
 
 private data class HelpTopic(
     val name: String,
@@ -253,13 +261,14 @@ fun HelpViewer(
                 IconButton(onClick = {
                     selectedTopic = null
                     onClearHelp()
-                }) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                }, modifier = Modifier.size(48.dp)) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.help_back_to_topics))
                 }
                 Column(Modifier.padding(start = 4.dp)) {
                     Text(
                         "${selectedTopic!!.name}()",
                         style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.semantics { heading() },
                     )
                     Text(
                         selectedTopic!!.summary,
@@ -276,9 +285,10 @@ fun HelpViewer(
                         verticalArrangement = Arrangement.Center,
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
-                        CircularProgressIndicator()
+                        val loadingDescription = stringResource(R.string.help_loading_topic, selectedTopic!!.name)
+                        CircularProgressIndicator(Modifier.semantics { contentDescription = loadingDescription })
                         Text(
-                            "Loading help…",
+                            stringResource(R.string.help_loading),
                             modifier = Modifier.padding(top = 8.dp),
                             style = MaterialTheme.typography.bodyMedium,
                         )
@@ -296,7 +306,7 @@ fun HelpViewer(
                 }
                 else -> {
                     Text(
-                        "Tap a topic to view its R documentation.",
+                        stringResource(R.string.help_documentation_hint),
                         style = MaterialTheme.typography.bodyMedium,
                     )
                 }
@@ -320,13 +330,17 @@ fun HelpViewer(
             .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text("R Help", style = MaterialTheme.typography.titleMedium)
+        Text(
+            stringResource(R.string.help_title),
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.semantics { heading() },
+        )
 
         OutlinedTextField(
             value = query,
             onValueChange = { query = it },
             modifier = Modifier.fillMaxWidth(),
-            label = { Text("Search functions…") },
+            label = { Text(stringResource(R.string.help_search)) },
             singleLine = true,
         )
 
@@ -340,13 +354,13 @@ fun HelpViewer(
                 FilterChip(
                     selected = selectedCategory == category,
                     onClick = { selectedCategory = category },
-                    label = { Text(category) },
+                    label = { Text(if (category == ALL_CATEGORY) stringResource(R.string.help_all_categories) else category) },
                 )
             }
         }
 
         Text(
-            "${filtered.size} topics",
+            pluralStringResource(R.plurals.help_topic_count, filtered.size, filtered.size),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -356,10 +370,11 @@ fun HelpViewer(
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             items(filtered, key = { it.name }) { topic ->
+                val openAction = stringResource(R.string.help_view_topic, topic.name)
                 ElevatedCard(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable {
+                        .clickable(onClickLabel = openAction, role = Role.Button) {
                             selectedTopic = topic
                             onLookupHelp(topic.name)
                         },
