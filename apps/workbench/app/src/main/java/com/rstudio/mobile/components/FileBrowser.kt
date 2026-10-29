@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -34,6 +35,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import com.rstudio.mobile.R
 import com.rstudio.mobile.data.ProjectFile
 import com.rstudio.mobile.runtime.ScriptFile
 
@@ -83,7 +89,7 @@ fun FileBrowser(
         }
         if (projectName != null) {
             OutlinedButton(onClick = { createFolderOpen = true }, modifier = Modifier.fillMaxWidth()) {
-                Text("New folder")
+                Text(stringResource(R.string.files_new_folder))
             }
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -100,10 +106,20 @@ fun FileBrowser(
                 item { Text("Project", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 4.dp)) }
                 items(projectFiles, key = { it.uri }) { file ->
                     var menuOpen by remember(file.uri) { mutableStateOf(false) }
+                    val fileDescription = stringResource(
+                        if (file.isDirectory) R.string.files_folder_description else R.string.files_file_description,
+                        file.relativePath,
+                    )
+                    val openAction = stringResource(R.string.files_open_action, file.relativePath)
+                    val renameDescription = stringResource(R.string.files_rename_target, file.relativePath)
+                    val deleteDescription = stringResource(R.string.files_delete_target, file.relativePath)
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable(enabled = !file.isDirectory) { onOpenProjectFile(file) }
+                            .then(
+                                if (file.isDirectory) Modifier.semantics(mergeDescendants = true) {}
+                                else Modifier.clickable(onClickLabel = openAction, role = Role.Button) { onOpenProjectFile(file) }
+                            )
                             .padding(start = (file.relativePath.count { it == '/' } * 16).dp, top = 8.dp, bottom = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -114,15 +130,17 @@ fun FileBrowser(
                             tint = if (file.isDirectory) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         Column(Modifier.weight(1f)) {
-                            Text(file.name, style = MaterialTheme.typography.bodyMedium, maxLines = 1)
+                            Text(file.name, style = MaterialTheme.typography.bodyMedium, maxLines = 1,
+                                modifier = Modifier.semantics { contentDescription = fileDescription })
                             if (!file.isDirectory) Text(formatBytes(file.size), style = MaterialTheme.typography.labelSmall)
                         }
-                        IconButton(onClick = { menuOpen = true }) {
-                            Icon(Icons.Default.MoreVert, contentDescription = "Actions for ${file.name}")
+                        IconButton(onClick = { menuOpen = true }, modifier = Modifier.size(48.dp)) {
+                            Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.files_actions_target, file.relativePath))
                         }
                         DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                             DropdownMenuItem(
-                                text = { Text("Rename") },
+                                text = { Text(stringResource(R.string.files_rename)) },
+                                modifier = Modifier.semantics { contentDescription = renameDescription },
                                 onClick = {
                                     menuOpen = false
                                     nameInput = file.name
@@ -130,7 +148,8 @@ fun FileBrowser(
                                 },
                             )
                             DropdownMenuItem(
-                                text = { Text("Delete") },
+                                text = { Text(stringResource(R.string.files_delete)) },
+                                modifier = Modifier.semantics { contentDescription = deleteDescription },
                                 onClick = { menuOpen = false; onDelete(file) },
                             )
                         }
@@ -169,23 +188,23 @@ fun FileBrowser(
     if (createFolderOpen) {
         AlertDialog(
             onDismissRequest = { createFolderOpen = false },
-            title = { Text("New folder") },
-            text = { OutlinedTextField(value = nameInput, onValueChange = { nameInput = it }, label = { Text("Folder name") }, singleLine = true) },
+            title = { Text(stringResource(R.string.files_new_folder)) },
+            text = { OutlinedTextField(value = nameInput, onValueChange = { nameInput = it }, label = { Text(stringResource(R.string.files_folder_name)) }, singleLine = true) },
             confirmButton = {
-                TextButton(onClick = { if (nameInput.isNotBlank()) { onCreateFolder(nameInput); createFolderOpen = false; nameInput = "" } }) { Text("Create") }
+                TextButton(onClick = { if (nameInput.isNotBlank()) { onCreateFolder(nameInput); createFolderOpen = false; nameInput = "" } }) { Text(stringResource(R.string.files_create)) }
             },
-            dismissButton = { TextButton(onClick = { createFolderOpen = false }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { createFolderOpen = false }) { Text(stringResource(R.string.files_cancel)) } },
         )
     }
     renameTarget?.let { target ->
         AlertDialog(
             onDismissRequest = { renameTarget = null },
-            title = { Text("Rename ${target.name}") },
-            text = { OutlinedTextField(value = nameInput, onValueChange = { nameInput = it }, label = { Text("New name") }, singleLine = true) },
+            title = { Text(stringResource(R.string.files_rename_target, target.relativePath)) },
+            text = { OutlinedTextField(value = nameInput, onValueChange = { nameInput = it }, label = { Text(stringResource(R.string.files_new_name)) }, singleLine = true) },
             confirmButton = {
-                TextButton(onClick = { if (nameInput.isNotBlank()) { onRename(target, nameInput); renameTarget = null } }) { Text("Rename") }
+                TextButton(onClick = { if (nameInput.isNotBlank()) { onRename(target, nameInput); renameTarget = null } }) { Text(stringResource(R.string.files_rename)) }
             },
-            dismissButton = { TextButton(onClick = { renameTarget = null }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { renameTarget = null }) { Text(stringResource(R.string.files_cancel)) } },
         )
     }
 }
