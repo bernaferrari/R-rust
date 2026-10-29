@@ -1967,6 +1967,39 @@ pub unsafe fn do_vector_constructor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SE
 /// R's `as.complex(x)` — coerce to CPLXSXP through the shared vector coercer.
 pub unsafe fn do_as_complex(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
+        let owner = crate::sexp::owner::OwnerToken::current()
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        let pin = owner
+            .pin()
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        let factory = owner.node_factory();
+        let _arguments = factory
+            .wrap(args)
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        let _call = (!call.is_null()).then(|| {
+            factory
+                .wrap(call)
+                .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
+        });
+        let _operation = (!op.is_null()).then(|| {
+            factory
+                .wrap(op)
+                .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
+        });
+        let _environment = (!rho.is_null()).then(|| {
+            factory
+                .wrap(rho)
+                .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
+        });
+        let check = || {
+            if let Some(pin) = &pin {
+                pin.require_live()
+                    .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+            }
+            factory
+                .require_active()
+                .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        };
         let mut ans = R_NilValue();
         if crate::eval::dispatch::DispatchOrEval(
             call,
@@ -1979,13 +2012,24 @@ pub unsafe fn do_as_complex(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP
             1,
         ) != 0
         {
-            return ans;
+            check();
+            return factory
+                .wrap(ans)
+                .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
+                .as_raw();
         }
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return R_NilValue();
-        }
-        crate::mainutils::coerce::coerceVector(x, SEXPTYPE::CPLXSXP.as_c_int())
+        let source = factory
+            .wrap(CAR(args))
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        // The shared default path strips metadata and copies same-type attributed
+        // values before clearing it; method results above retain their attributes.
+        let result = crate::mainutils::coerce::as_atomic_safe(source, 3)
+            .unwrap_or_else(|message| crate::mainutils::errors::errorcall_str(call, &message));
+        check();
+        factory
+            .wrap(result)
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
+            .as_raw()
     }
 }
 
