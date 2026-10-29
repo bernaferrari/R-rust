@@ -43,26 +43,45 @@ unsafe fn isNumeric(x: SEXP) -> bool {
 // Helper: asInteger
 // ---------------------------------------------------------------------------
 
-unsafe fn as_integer(x: SEXP) -> c_int {
-    unsafe {
-        if x.is_null() {
-            return NA_INTEGER;
+unsafe fn as_integer(owner: crate::sexp::owner::OwnerToken<'_>, value: SEXP) -> c_int {
+    owner
+        .require_active()
+        .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
+    let value = unsafe { crate::main::coerce::asInteger(value) };
+    owner
+        .require_active()
+        .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
+    value
+}
+
+fn prepare_inputs(owner: crate::sexp::owner::OwnerToken<'_>, inputs: &[(SEXP, R_xlen_t)]) {
+    for &(raw, _) in inputs {
+        owner
+            .require_active()
+            .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
+        let value = owner
+            .sexp(raw)
+            .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
+        crate::sexp::altrep::force_materialization(&value)
+            .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
+        owner
+            .require_active()
+            .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
+    }
+}
+fn check_inputs(owner: crate::sexp::owner::OwnerToken<'_>, inputs: &[(SEXP, R_xlen_t)]) {
+    owner
+        .require_active()
+        .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
+    for &(raw, length) in inputs {
+        let value = owner
+            .sexp(raw)
+            .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
+        if value.len() != length {
+            crate::mainutils::essentials::base_error(
+                "distribution input length changed during flag coercion",
+            );
         }
-        let t = TYPEOF(x);
-        if t == SEXPTYPE::INTSXP {
-            return *INTEGER(x);
-        }
-        if t == SEXPTYPE::REALSXP {
-            let v = *REAL(x);
-            if v.is_nan() || v < c_int::MIN as c_double || v > c_int::MAX as c_double {
-                return NA_INTEGER;
-            }
-            return v as c_int;
-        }
-        if t == SEXPTYPE::LGLSXP {
-            return *INTEGER(x);
-        }
-        NA_INTEGER
     }
 }
 
@@ -83,6 +102,11 @@ type math2_fn_2 = unsafe fn(c_double, c_double, c_int, c_int) -> c_double;
 
 unsafe fn math2_1(sa: SEXP, sb: SEXP, sI: SEXP, f: math2_fn_1) -> SEXP {
     unsafe {
+        let owner = crate::sexp::owner::OwnerToken::current()
+            .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
+        owner
+            .require_active()
+            .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
         if !isNumeric(sa) || !isNumeric(sb) {
             Rf_error(b"Non-numeric argument to mathematical function\0".as_ptr() as *const _);
             return R_NilValue();
@@ -101,14 +125,17 @@ unsafe fn math2_1(sa: SEXP, sb: SEXP, sI: SEXP, f: math2_fn_1) -> SEXP {
         let _sa_guard = protect(sa);
         let sb = coerceVector(sb, SEXPTYPE::REALSXP.as_c_int());
         let _sb_guard = protect(sb);
-        let sy = Rf_allocVector(SEXPTYPE::REALSXP, n as c_int);
+        let sy = Rf_allocVector3(SEXPTYPE::REALSXP, n);
         let _sy_guard = protect(sy);
+        let inputs = [(sa, na), (sb, nb)];
+        prepare_inputs(owner, &inputs);
+        let m_opt = as_integer(owner, sI);
+        check_inputs(owner, &inputs);
         let a = REAL(sa);
         let b = REAL(sb);
         let y = REAL(sy);
         let mut naflag = false;
 
-        let m_opt = as_integer(sI);
         let mut ia: R_xlen_t = 0;
         let mut ib: R_xlen_t = 0;
 
@@ -146,6 +173,11 @@ unsafe fn math2_1(sa: SEXP, sb: SEXP, sI: SEXP, f: math2_fn_1) -> SEXP {
 
 unsafe fn math2_2(sa: SEXP, sb: SEXP, sI1: SEXP, sI2: SEXP, f: math2_fn_2) -> SEXP {
     unsafe {
+        let owner = crate::sexp::owner::OwnerToken::current()
+            .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
+        owner
+            .require_active()
+            .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
         if !isNumeric(sa) || !isNumeric(sb) {
             Rf_error(b"Non-numeric argument to mathematical function\0".as_ptr() as *const _);
             return R_NilValue();
@@ -164,15 +196,18 @@ unsafe fn math2_2(sa: SEXP, sb: SEXP, sI1: SEXP, sI2: SEXP, f: math2_fn_2) -> SE
         let _sa_guard = protect(sa);
         let sb = coerceVector(sb, SEXPTYPE::REALSXP.as_c_int());
         let _sb_guard = protect(sb);
-        let sy = Rf_allocVector(SEXPTYPE::REALSXP, n as c_int);
+        let sy = Rf_allocVector3(SEXPTYPE::REALSXP, n);
         let _sy_guard = protect(sy);
+        let inputs = [(sa, na), (sb, nb)];
+        prepare_inputs(owner, &inputs);
+        let i_1 = as_integer(owner, sI1);
+        let i_2 = as_integer(owner, sI2);
+        check_inputs(owner, &inputs);
         let a = REAL(sa);
         let b = REAL(sb);
         let y = REAL(sy);
         let mut naflag = false;
 
-        let i_1 = as_integer(sI1);
-        let i_2 = as_integer(sI2);
         let mut ia: R_xlen_t = 0;
         let mut ib: R_xlen_t = 0;
 
@@ -217,6 +252,11 @@ type math3_fn_2 = unsafe fn(c_double, c_double, c_double, c_int, c_int) -> c_dou
 
 unsafe fn math3_1(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, f: math3_fn_1) -> SEXP {
     unsafe {
+        let owner = crate::sexp::owner::OwnerToken::current()
+            .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
+        owner
+            .require_active()
+            .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
         if !isNumeric(sa) || !isNumeric(sb) || !isNumeric(sc) {
             Rf_error(b"Non-numeric argument to mathematical function\0".as_ptr() as *const _);
             return R_NilValue();
@@ -245,15 +285,18 @@ unsafe fn math3_1(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, f: math3_fn_1) -> SEXP
         let _sb_guard = protect(sb);
         let sc = coerceVector(sc, SEXPTYPE::REALSXP.as_c_int());
         let _sc_guard = protect(sc);
-        let sy = Rf_allocVector(SEXPTYPE::REALSXP, n as c_int);
+        let sy = Rf_allocVector3(SEXPTYPE::REALSXP, n);
         let _sy_guard = protect(sy);
+        let inputs = [(sa, na), (sb, nb), (sc, nc)];
+        prepare_inputs(owner, &inputs);
+        let i_1 = as_integer(owner, sI);
+        check_inputs(owner, &inputs);
         let a = REAL(sa);
         let b = REAL(sb);
         let c = REAL(sc);
         let y = REAL(sy);
         let mut naflag = false;
 
-        let i_1 = as_integer(sI);
         let mut ia: R_xlen_t = 0;
         let mut ib: R_xlen_t = 0;
         let mut ic: R_xlen_t = 0;
@@ -297,6 +340,11 @@ unsafe fn math3_1(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, f: math3_fn_1) -> SEXP
 
 unsafe fn math3_2(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP, f: math3_fn_2) -> SEXP {
     unsafe {
+        let owner = crate::sexp::owner::OwnerToken::current()
+            .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
+        owner
+            .require_active()
+            .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
         if !isNumeric(sa) || !isNumeric(sb) || !isNumeric(sc) {
             Rf_error(b"Non-numeric argument to mathematical function\0".as_ptr() as *const _);
             return R_NilValue();
@@ -325,16 +373,19 @@ unsafe fn math3_2(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP, f: math3_fn_
         let _sb_guard = protect(sb);
         let sc = coerceVector(sc, SEXPTYPE::REALSXP.as_c_int());
         let _sc_guard = protect(sc);
-        let sy = Rf_allocVector(SEXPTYPE::REALSXP, n as c_int);
+        let sy = Rf_allocVector3(SEXPTYPE::REALSXP, n);
         let _sy_guard = protect(sy);
+        let inputs = [(sa, na), (sb, nb), (sc, nc)];
+        prepare_inputs(owner, &inputs);
+        let i_1 = as_integer(owner, sI);
+        let i_2 = as_integer(owner, sJ);
+        check_inputs(owner, &inputs);
         let a = REAL(sa);
         let b = REAL(sb);
         let c = REAL(sc);
         let y = REAL(sy);
         let mut naflag = false;
 
-        let i_1 = as_integer(sI);
-        let i_2 = as_integer(sJ);
         let mut ia: R_xlen_t = 0;
         let mut ib: R_xlen_t = 0;
         let mut ic: R_xlen_t = 0;
@@ -385,6 +436,11 @@ type math4_fn_2 = unsafe fn(c_double, c_double, c_double, c_double, c_int, c_int
 
 unsafe fn math4_1(sa: SEXP, sb: SEXP, sc: SEXP, sd: SEXP, sI: SEXP, f: math4_fn_1) -> SEXP {
     unsafe {
+        let owner = crate::sexp::owner::OwnerToken::current()
+            .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
+        owner
+            .require_active()
+            .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
         if !isNumeric(sa) || !isNumeric(sb) || !isNumeric(sc) || !isNumeric(sd) {
             Rf_error(b"Non-numeric argument to mathematical function\0".as_ptr() as *const _);
             return R_NilValue();
@@ -419,8 +475,12 @@ unsafe fn math4_1(sa: SEXP, sb: SEXP, sc: SEXP, sd: SEXP, sI: SEXP, f: math4_fn_
         let _sc_guard = protect(sc);
         let sd = coerceVector(sd, SEXPTYPE::REALSXP.as_c_int());
         let _sd_guard = protect(sd);
-        let sy = Rf_allocVector(SEXPTYPE::REALSXP, n as c_int);
+        let sy = Rf_allocVector3(SEXPTYPE::REALSXP, n);
         let _sy_guard = protect(sy);
+        let inputs = [(sa, na), (sb, nb), (sc, nc), (sd, nd)];
+        prepare_inputs(owner, &inputs);
+        let i_1 = as_integer(owner, sI);
+        check_inputs(owner, &inputs);
         let a = REAL(sa);
         let b = REAL(sb);
         let c = REAL(sc);
@@ -428,7 +488,6 @@ unsafe fn math4_1(sa: SEXP, sb: SEXP, sc: SEXP, sd: SEXP, sI: SEXP, f: math4_fn_
         let y = REAL(sy);
         let mut naflag = false;
 
-        let i_1 = as_integer(sI);
         let mut ia: R_xlen_t = 0;
         let mut ib: R_xlen_t = 0;
         let mut ic: R_xlen_t = 0;
@@ -486,6 +545,11 @@ unsafe fn math4_2(
     f: math4_fn_2,
 ) -> SEXP {
     unsafe {
+        let owner = crate::sexp::owner::OwnerToken::current()
+            .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
+        owner
+            .require_active()
+            .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
         if !isNumeric(sa) || !isNumeric(sb) || !isNumeric(sc) || !isNumeric(sd) {
             Rf_error(b"Non-numeric argument to mathematical function\0".as_ptr() as *const _);
             return R_NilValue();
@@ -520,8 +584,13 @@ unsafe fn math4_2(
         let _sc_guard = protect(sc);
         let sd = coerceVector(sd, SEXPTYPE::REALSXP.as_c_int());
         let _sd_guard = protect(sd);
-        let sy = Rf_allocVector(SEXPTYPE::REALSXP, n as c_int);
+        let sy = Rf_allocVector3(SEXPTYPE::REALSXP, n);
         let _sy_guard = protect(sy);
+        let inputs = [(sa, na), (sb, nb), (sc, nc), (sd, nd)];
+        prepare_inputs(owner, &inputs);
+        let i_1 = as_integer(owner, sI);
+        let i_2 = as_integer(owner, sJ);
+        check_inputs(owner, &inputs);
         let a = REAL(sa);
         let b = REAL(sb);
         let c = REAL(sc);
@@ -529,8 +598,6 @@ unsafe fn math4_2(
         let y = REAL(sy);
         let mut naflag = false;
 
-        let i_1 = as_integer(sI);
-        let i_2 = as_integer(sJ);
         let mut ia: R_xlen_t = 0;
         let mut ib: R_xlen_t = 0;
         let mut ic: R_xlen_t = 0;
@@ -1869,3 +1936,6 @@ pub const DISTN_CALL_NAMES: &[&str] = &[
     "C_signrank_free",
     "C_wilcox_free",
 ];
+
+#[cfg(test)]
+mod flag_tests;
