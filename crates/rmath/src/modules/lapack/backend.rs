@@ -20,7 +20,7 @@ compile_error!(
 
 pub(crate) use super::lapack::{
     La_norm_type, La_rcond_type, La_valid_uplo, Rcomplex as LapRcomplex, fort_char, fort_str,
-    unscramble,
+    unscramble_into,
 };
 
 #[cfg(feature = "fortran-backend")]

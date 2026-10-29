@@ -576,45 +576,59 @@ pub(crate) fn La_valid_uplo(uplostr: &str) -> u8 {
     }
 }
 
-/// Unscramble eigenvectors from DGEEV output.
-///
-/// DGEEV returns real and imaginary parts of eigenvalues, and the real
-/// eigenvector matrix needs to be unscrambled when complex eigenvalues occur
-/// in conjugate pairs. This function constructs a complex matrix from the
-/// real eigenvector output, handling the conjugate pair structure.
-///
-/// # Arguments
-/// * `imaginary` - Array of imaginary parts of eigenvalues (length n)
-/// * `n` - Matrix dimension
-/// * `vecs` - Real eigenvector matrix from DGEEV (n x n, column-major)
-///
-/// # Returns
-/// A new complex matrix (n x n) with properly unscrambled eigenvectors.
-pub(crate) fn unscramble(imaginary: &[f64], n: i32, vecs: &[f64]) -> Vec<Rcomplex> {
-    let n_usize = n as usize;
-    let mut s = vec![Rcomplex::default(); n_usize * n_usize];
-
-    let mut j: usize = 0;
-    while j < n_usize {
-        if imaginary[j] != 0.0 {
-            let j1 = j + 1;
-            for i in 0..n_usize {
-                s[i + n_usize * j].r = vecs[i + j * n_usize];
-                s[i + n_usize * j].i = vecs[i + j1 * n_usize];
-                s[i + n_usize * j1].r = vecs[i + j * n_usize];
-                s[i + n_usize * j1].i = -vecs[i + j1 * n_usize];
-            }
-            j = j1; // skip the conjugate partner
-        } else {
-            for i in 0..n_usize {
-                s[i + n_usize * j].r = vecs[i + j * n_usize];
-                s[i + n_usize * j].i = 0.0;
-            }
-        }
-        j += 1;
+/// Reconstruct DGEEV's packed real eigenvectors into admitted output storage.
+/// No allocation or callback occurs; malformed dimensions or an orphaned
+/// conjugate column reject before any output element is written.
+pub(crate) fn unscramble_into(
+    imaginary: &[f64],
+    n: usize,
+    vecs: &[f64],
+    output: &mut [crate::sexp::ffi::Rcomplex],
+) -> Option<()> {
+    use crate::sexp::ffi::Rcomplex as ManagedComplex;
+    let len = n.checked_mul(n)?;
+    if imaginary.len() < n || vecs.len() < len || output.len() < len {
+        return None;
     }
-
-    s
+    let mut j = 0;
+    while j < n {
+        if imaginary[j] != 0.0 {
+            if j + 1 == n {
+                return None;
+            }
+            j += 2;
+        } else {
+            j += 1;
+        }
+    }
+    let mut j = 0;
+    while j < n {
+        if imaginary[j] != 0.0 {
+            let partner = j + 1;
+            for i in 0..n {
+                let real = vecs[i + j * n];
+                let imaginary = vecs[i + partner * n];
+                output[i + j * n] = ManagedComplex {
+                    r: real,
+                    i: imaginary,
+                };
+                output[i + partner * n] = ManagedComplex {
+                    r: real,
+                    i: -imaginary,
+                };
+            }
+            j += 2;
+        } else {
+            for i in 0..n {
+                output[i + j * n] = ManagedComplex {
+                    r: vecs[i + j * n],
+                    i: 0.0,
+                };
+            }
+            j += 1;
+        }
+    }
+    Some(())
 }
 
 // ============================================================

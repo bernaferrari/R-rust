@@ -211,10 +211,6 @@ pub unsafe fn La_rg(x: SEXP, only_values: SEXP) -> SEXP {
             let has_complex = (0..n as usize).any(|i| *wI.add(i) != 0.0);
 
             if has_complex {
-                let imaginary = std::slice::from_raw_parts(wI, n as usize);
-                let vecs = std::slice::from_raw_parts(right, (n as usize) * (n as usize));
-                let cmplx_vecs = unscramble(imaginary, n, vecs);
-
                 // Build complex eigenvalue vector
                 let values = Rf_allocVector(CPLXSXP_C, n as c_int);
                 let _values_guard = protect(values);
@@ -224,14 +220,10 @@ pub unsafe fn La_rg(x: SEXP, only_values: SEXP) -> SEXP {
                     (*c).i = *wI.add(i);
                 }
 
-                // Build complex eigenvector matrix
-                let z = Rf_allocVector(CPLXSXP_C, (n as c_int) * (n as c_int));
+                // Allocate admitted output before borrowing any native input
+                // or fresh payload; reconstruction needs no intermediate Vec.
+                let z = complex_eigenvector_matrix(n, wI, right);
                 let _z_guard = protect(z);
-                for i in 0..cmplx_vecs.len() {
-                    let c = COMPLEX(z).add(i);
-                    (*c).r = cmplx_vecs[i].r;
-                    (*c).i = cmplx_vecs[i].i;
-                }
 
                 ret = Rf_allocVector(VECSXP_C, 2);
                 let _ret_guard = protect(ret);
@@ -579,3 +571,34 @@ pub unsafe fn La_rg_cmplx(x: SEXP, only_values: SEXP) -> SEXP {
         ret
     }
 }
+
+/// Allocate the final complex matrix before projecting either input buffer.
+/// # Safety
+/// For a nonnegative, representable n-by-n matrix, imaginary and vecs point to
+/// n and n*n initialized f64 elements respectively. These caller-owned native
+/// buffers remain live across allocation/GC; they are not runtime field loans.
+unsafe fn complex_eigenvector_matrix(n: i32, imaginary: *const f64, vecs: *const f64) -> SEXP {
+    unsafe {
+        let n = usize::try_from(n)
+            .unwrap_or_else(|_| crate::sexp::context::r_error("invalid matrix dimensions"));
+        let len = n
+            .checked_mul(n)
+            .and_then(|len| c_int::try_from(len).ok())
+            .unwrap_or_else(|| crate::sexp::context::r_error("matrix dimensions are too large"));
+        let result = Rf_allocVector(CPLXSXP_C, len);
+        if result.is_null() {
+            crate::sexp::context::r_error("cannot allocate complex eigenvector matrix");
+        }
+        let _result_guard = protect(result);
+        let imaginary = std::slice::from_raw_parts(imaginary, n);
+        let vecs = std::slice::from_raw_parts(vecs, len as usize);
+        let output = std::slice::from_raw_parts_mut(COMPLEX(result), len as usize);
+        unscramble_into(imaginary, n, vecs, output)
+            .unwrap_or_else(|| crate::sexp::context::r_error("invalid packed eigenvector data"));
+        result
+    }
+}
+
+#[cfg(test)]
+#[path = "../real_rg_tests.rs"]
+mod real_rg_tests;

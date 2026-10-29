@@ -28,7 +28,7 @@ use crate::sexp::protect::*;
 
 use super::backend;
 use super::backend::{
-    La_norm_type, La_rcond_type, La_valid_uplo, LapRcomplex, fort_char, fort_str, unscramble,
+    La_norm_type, La_rcond_type, La_valid_uplo, LapRcomplex, fort_char, fort_str, unscramble_into,
 };
 use super::workspace_size;
 
