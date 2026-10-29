@@ -13,6 +13,7 @@ pub(super) enum Operation {
     LogChoose,
     PsiGamma,
     BesselJ,
+    BesselY,
 }
 
 pub(super) fn evaluate(
@@ -61,12 +62,19 @@ pub(super) fn evaluate(
                             _ => crate::special::choose::choose(x, k),
                         }
                     }
-                    Operation::BesselJ => {
+                    Operation::BesselJ | Operation::BesselY => {
                         // Oversized orders and negative x return before the
                         // kernel reads its array. Other orders need floor(|nu|)+1.
                         let magnitude = k.abs();
-                        let length = if x < 0.0 || magnitude > crate::special::bessel_j::MAX_ALPHA_J
-                        {
+                        // Negative fractional Y reflects through J as well.
+                        // Integer Y orders only require Y's smaller limit.
+                        let limit = match operation {
+                            Operation::BesselY if k >= 0.0 || k == k.floor() => {
+                                crate::special::bessel_y::MAX_ALPHA_Y
+                            }
+                            _ => crate::special::bessel_j::MAX_ALPHA_J,
+                        };
+                        let length = if x < 0.0 || magnitude > limit {
                             0
                         } else {
                             (magnitude.floor() as usize).checked_add(1).ok_or_else(|| {
@@ -77,7 +85,17 @@ pub(super) fn evaluate(
                         };
                         let mut workspace =
                             super::bessel_workspace::Workspace::new(access, length)?;
-                        let value = crate::special::bessel_j::bessel_j_ex(x, k, workspace.values());
+                        let value = match operation {
+                            // These branches return before scalar allocation;
+                            // retain existing shared range-warning text.
+                            Operation::BesselY if length == 0 => {
+                                crate::special::bessel_y::bessel_y(x, k)
+                            }
+                            Operation::BesselY => {
+                                crate::special::bessel_y::bessel_y_ex(x, k, workspace.values())
+                            }
+                            _ => crate::special::bessel_j::bessel_j_ex(x, k, workspace.values()),
+                        };
                         access.require_active()?;
                         check_lengths(&a, &b, na, nb)?;
                         value

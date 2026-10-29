@@ -20,7 +20,7 @@ use libm::*;
 // =====================================================================
 
 /// `M_bessel_y_max_alpha` from Rmath.h. Y stays at the old shared JY cap.
-const MAX_ALPHA_Y: f64 = 1e7;
+pub const MAX_ALPHA_Y: f64 = 1e7;
 
 const XLRG_BESS_Y: f64 = 1e8;
 const THRESH_BESS_Y: f64 = 16.0;
@@ -570,4 +570,26 @@ pub fn bessel_y_ex_c(x: f64, alpha: f64, by: *mut f64, nb: i32) -> f64 {
     }
     let by_slice = unsafe { std::slice::from_raw_parts_mut(by, nb as usize) };
     bessel_y_ex(x, alpha, by_slice)
+}
+
+#[cfg(test)]
+mod workspace_parity_tests {
+    use super::*;
+    #[test]
+    fn bessely_workspace_matches_scalar_reflection_and_overflow() {
+        for x in [0.0, 1.0, 10.0] {
+            for order in [
+                -500.5_f64, -2.0, -1.5, -0.5, 0.0, 1.0, 2.0, 30.0, 100.0, 500.0,
+            ] {
+                let mut work = vec![0.0; order.abs() as usize + 1];
+                let expected = bessel_y(x, order);
+                let actual = bessel_y_ex(x, order, &mut work);
+                assert!(
+                    expected.to_bits() == actual.to_bits()
+                        || (expected.is_nan() && actual.is_nan()),
+                    "x={x},nu={order},scalar={expected},workspace={actual}"
+                );
+            }
+        }
+    }
 }
