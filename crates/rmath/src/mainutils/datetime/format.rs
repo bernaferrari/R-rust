@@ -5,14 +5,14 @@ pub(crate) fn use_dig_secs(secs: &[f64], digits: i32) -> i32 {
     if np < 1 {
         return 0;
     }
-    let finite: Vec<f64> = secs.iter().copied().filter(|s| s.is_finite()).collect();
-    if finite.is_empty() {
+    if !secs.iter().any(|s| s.is_finite()) {
         return np;
     }
     for i in 0..np {
         let ti = 10f64.powi(i);
-        if finite
+        if secs
             .iter()
+            .filter(|s| s.is_finite())
             .all(|&s| (s - (s * ti).trunc() / ti).abs() < 1e-6)
         {
             return i;
@@ -90,6 +90,18 @@ pub(crate) unsafe fn format_posix_named_arg(args: SEXP, name: &str, pos: usize) 
             cell = CDR(cell);
         }
         positional
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::use_dig_secs;
+
+    #[test]
+    fn use_dig_secs_ignores_nonfinite_values_without_building_a_copy() {
+        assert_eq!(use_dig_secs(&[f64::NAN, 12.5, f64::INFINITY], 6), 1);
+        assert_eq!(use_dig_secs(&[f64::NAN, f64::INFINITY], 4), 4);
+        assert_eq!(use_dig_secs(&[12.125, 4.5], 3), 3);
     }
 }
 

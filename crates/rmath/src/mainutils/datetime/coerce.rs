@@ -1,5 +1,23 @@
 use super::*;
 
+unsafe fn posixlt_seconds_digits(sec: SEXP, digits: i32) -> i32 {
+    unsafe {
+        if TYPEOF(sec) != SEXPTYPE::REALSXP {
+            return use_dig_secs(&[], digits);
+        }
+        let length = XLENGTH(sec).max(0) as usize;
+        if length == 0 {
+            return use_dig_secs(&[], digits);
+        }
+
+        // REAL calls DATAPTR, which materializes compact ALTREP storage before
+        // this span is formed. The caller keeps `sec` rooted while this pure
+        // scan runs; no R allocation or callback occurs until it returns.
+        let values = std::slice::from_raw_parts(REAL(sec), length);
+        use_dig_secs(values, digits)
+    }
+}
+
 /// GNU `as.POSIXlt(x, tz="")`.
 pub unsafe fn do_as_POSIXlt(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
@@ -216,25 +234,16 @@ pub unsafe fn do_format_POSIXlt(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> 
             }
             if bare_os {
                 let sec = VECTOR_ELT(x, 0);
-                let mut secs = Vec::new();
-                if TYPEOF(sec) == SEXPTYPE::REALSXP {
-                    for i in 0..XLENGTH(sec) {
-                        secs.push(*REAL(sec).add(i as usize));
-                    }
-                }
-                digits = use_dig_secs(&secs, digits);
+                // `x` is rooted by the call arguments, and this scan is pure:
+                // finish the borrowed read before any later R allocation.
+                digits = posixlt_seconds_digits(sec, digits);
             }
         }
 
         if filled && TYPEOF(x) == SEXPTYPE::VECSXP && XLENGTH(x) >= 3 {
-            let nsec = XLENGTH(VECTOR_ELT(x, 0)).max(0);
-            let mut secs = Vec::with_capacity(nsec as usize);
-            if TYPEOF(VECTOR_ELT(x, 0)) == SEXPTYPE::REALSXP {
-                for i in 0..nsec {
-                    secs.push(*REAL(VECTOR_ELT(x, 0)).add(i as usize));
-                }
-            }
-            let np = use_dig_secs(&secs, digits);
+            // Keep the non-owning span strictly inside this pure calculation;
+            // the formatting allocations below begin only after it ends.
+            let np = posixlt_seconds_digits(VECTOR_ELT(x, 0), digits);
             let times_zero = {
                 let mut z = true;
                 for comp in 0..3 {
@@ -382,6 +391,45 @@ pub unsafe fn do_format_POSIXct(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> 
             setAttrib(out, R_NamesSymbol(), names);
         }
         out
+    }
+}
+
+#[cfg(test)]
+mod seconds_slice_tests {
+    use super::posixlt_seconds_digits;
+    use crate::sexp::{
+        accessors::REAL, altrep::is_materialized, constructors::Rf_allocVector, ffi::SEXPTYPE,
+        session::RSession,
+    };
+
+    #[test]
+    fn posixlt_seconds_scan_materializes_compact_altrep_and_keeps_its_root() {
+        let session = RSession::new_for_gc_tests();
+        let compact_raw =
+            session.with_active(|| unsafe { crate::sexp::altseq::compact_real_seq(12.0, 0.25, 4) });
+        let compact = session.sexp(compact_raw).unwrap();
+        assert!(!is_materialized(&compact));
+
+        let digits = session.with_active(|| unsafe { posixlt_seconds_digits(compact.as_raw(), 3) });
+        assert_eq!(digits, 2);
+        assert!(is_materialized(&compact));
+
+        session.gc();
+        assert_eq!(compact.try_real_elt(0).unwrap(), 12.0);
+        assert_eq!(compact.try_real_elt(3).unwrap(), 12.75);
+
+        let ordinary_raw = session.with_active(|| unsafe {
+            let values = Rf_allocVector(SEXPTYPE::REALSXP, 3);
+            *REAL(values) = 3.0;
+            *REAL(values).add(1) = 3.1;
+            *REAL(values).add(2) = 3.125;
+            values
+        });
+        let ordinary = session.sexp(ordinary_raw).unwrap();
+        assert_eq!(
+            session.with_active(|| unsafe { posixlt_seconds_digits(ordinary.as_raw(), 3) }),
+            3
+        );
     }
 }
 
