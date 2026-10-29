@@ -412,10 +412,12 @@ unsafe fn apply_binary_scalar_fn(
             } else {
                 NA_REAL
             };
-            if val_x.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN
-                || val_y.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN
-            {
+            if crate::sexp::ffi::R_IsNA(val_x) || crate::sexp::ffi::R_IsNA(val_y) {
                 *dst.add(i as usize) = NA_REAL;
+            } else if val_x.is_nan() || val_y.is_nan() {
+                // GNU Math2 skips the scalar kernel for missing operands.
+                // In particular a NaN psigamma derivative must not cast to0.
+                *dst.add(i as usize) = f64::NAN;
             } else {
                 let out = scalar_fn(val_x, val_y);
                 *dst.add(i as usize) = out;
@@ -891,3 +893,7 @@ mod choose_checked_tests;
 #[cfg(test)]
 #[path = "choose_factor_tests.rs"]
 mod choose_factor_tests;
+
+#[cfg(test)]
+#[path = "math2_nan_tests.rs"]
+mod math2_nan_tests;
