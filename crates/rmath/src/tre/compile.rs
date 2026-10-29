@@ -1752,6 +1752,7 @@ unsafe fn tre_make_trans(
     transitions: *mut tre_tnfa_transition_t,
     counts: *mut c_int,
     offs: *const c_int,
+    storage: &mut Option<&mut super::owned_arena::OwnedArena>,
 ) -> c_int {
     unsafe {
         if !transitions.is_null() {
@@ -1819,10 +1820,17 @@ unsafe fn tre_make_trans(
                         }
                     }
 
-                    if i + j > 0 {
-                        let total = (i + j + 1) as usize;
-                        (*t).tags =
-                            mem::xmalloc(std::mem::size_of::<c_int>() * total) as *mut c_int;
+                    if i > 0 || j > 0 {
+                        let total = match usize::try_from(i)
+                            .ok()
+                            .zip(usize::try_from(j).ok())
+                            .and_then(|(i, j)| i.checked_add(j))
+                            .and_then(|n| n.checked_add(1))
+                        {
+                            Some(total) => total,
+                            None => return REG_ESPACE,
+                        };
+                        (*t).tags = allocate_retained_ints(total, false, storage);
                         if (*t).tags.is_null() {
                             return REG_ESPACE;
                         } else {
@@ -1862,8 +1870,7 @@ unsafe fn tre_make_trans(
                     }
 
                     if !(*p1.offset(pi)).params.is_null() || !(*p2.offset(pj)).params.is_null() {
-                        (*t).params = mem::xmalloc(std::mem::size_of::<c_int>() * TRE_PARAM_LAST)
-                            as *mut c_int;
+                        (*t).params = allocate_retained_ints(TRE_PARAM_LAST, false, storage);
                         if (*t).params.is_null() {
                             return REG_ESPACE;
                         } else {
@@ -1914,6 +1921,7 @@ unsafe fn tre_ast_to_tnfa_iter(
     transitions: *mut tre_tnfa_transition_t,
     counts: *mut c_int,
     offs: *const c_int,
+    storage: &mut Option<&mut super::owned_arena::OwnedArena>,
 ) -> c_int {
     unsafe {
         checked_stack_push!(stack::tre_stack_push_voidptr(stack, node as *mut c_void));
@@ -1941,6 +1949,7 @@ unsafe fn tre_ast_to_tnfa_iter(
                         transitions,
                         counts,
                         offs,
+                        storage,
                     );
                     if errcode != REG_OK as c_int {
                         return errcode;
@@ -1963,6 +1972,7 @@ unsafe fn tre_ast_to_tnfa_iter(
                             transitions,
                             counts,
                             offs,
+                            storage,
                         );
                         if errcode != REG_OK as c_int {
                             return errcode;
@@ -1984,13 +1994,14 @@ unsafe fn tre_ast_to_tnfa(
     transitions: *mut tre_tnfa_transition_t,
     counts: *mut c_int,
     offs: *const c_int,
+    storage: &mut Option<&mut super::owned_arena::OwnedArena>,
 ) -> c_int {
     unsafe {
         let stack = stack::tre_stack_new(1024, 256 * 1024, 4096);
         if stack.is_null() {
             return REG_ESPACE as c_int;
         }
-        let errcode = tre_ast_to_tnfa_iter(stack, node, transitions, counts, offs);
+        let errcode = tre_ast_to_tnfa_iter(stack, node, transitions, counts, offs, storage);
         stack::tre_stack_destroy(stack);
         errcode
     }
@@ -2372,7 +2383,7 @@ unsafe fn tre_compile_tables(
         for i in 0..parse_ctx.position as isize {
             *counts.offset(i) = 0;
         }
-        let _errcode = tre_ast_to_tnfa(tree, ptr::null_mut(), counts, ptr::null());
+        let _errcode = tre_ast_to_tnfa(tree, ptr::null_mut(), counts, ptr::null(), &mut storage);
         if _errcode != REG_OK {
             return compile_error(mem, stack, counts, offs, preg, tnfa, _errcode, owned_tables);
         }
@@ -2400,7 +2411,7 @@ unsafe fn tre_compile_tables(
         (*tnfa).transitions = transitions;
         (*tnfa).num_transitions = add as u32;
 
-        let _errcode = tre_ast_to_tnfa(tree, transitions, counts, offs);
+        let _errcode = tre_ast_to_tnfa(tree, transitions, counts, offs, &mut storage);
         if _errcode != REG_OK as c_int {
             return compile_error(mem, stack, counts, offs, preg, tnfa, _errcode, owned_tables);
         }
@@ -2446,8 +2457,12 @@ unsafe fn tre_compile_tables(
                 while *(*p).tags.offset(j as isize) >= 0 {
                     j += 1;
                 }
-                let tags =
-                    mem::xmalloc(std::mem::size_of::<c_int>() * (j as usize + 1)) as *mut c_int;
+                let tags = usize::try_from(j)
+                    .ok()
+                    .and_then(|n| n.checked_add(1))
+                    .map_or(ptr::null_mut(), |count| {
+                        allocate_retained_ints(count, false, &mut storage)
+                    });
                 if tags.is_null() {
                     return compile_error(
                         mem,
@@ -2469,8 +2484,7 @@ unsafe fn tre_compile_tables(
             }
             // Copy params
             if !(*p).params.is_null() {
-                let params =
-                    mem::xmalloc(std::mem::size_of::<c_int>() * TRE_PARAM_LAST) as *mut c_int;
+                let params = allocate_retained_ints(TRE_PARAM_LAST, false, &mut storage);
                 if params.is_null() {
                     return compile_error(
                         mem,
@@ -2562,13 +2576,13 @@ unsafe fn tre_free_tables(preg: *mut regex_t, owned_tables: bool) {
         while i < (*tnfa).num_transitions {
             let trans = (*tnfa).transitions.offset(i as isize);
             if !(*trans).state.is_null() {
-                if !(*trans).tags.is_null() {
+                if !owned_tables && !(*trans).tags.is_null() {
                     mem::xfree((*trans).tags as *mut c_void);
                 }
                 if !(*trans).neg_classes.is_null() {
                     mem::xfree((*trans).neg_classes as *mut c_void);
                 }
-                if !(*trans).params.is_null() {
+                if !owned_tables && !(*trans).params.is_null() {
                     mem::xfree((*trans).params as *mut c_void);
                 }
             }
@@ -2581,10 +2595,10 @@ unsafe fn tre_free_tables(preg: *mut regex_t, owned_tables: bool) {
         if !(*tnfa).initial.is_null() {
             let mut trans = (*tnfa).initial;
             while !(*trans).state.is_null() {
-                if !(*trans).tags.is_null() {
+                if !owned_tables && !(*trans).tags.is_null() {
                     mem::xfree((*trans).tags as *mut c_void);
                 }
-                if !(*trans).params.is_null() {
+                if !owned_tables && !(*trans).params.is_null() {
                     mem::xfree((*trans).params as *mut c_void);
                 }
                 trans = trans.add(1);
@@ -2993,6 +3007,307 @@ mod owned_table_tests {
     }
 
     #[test]
+    fn retained_tre_transition_payloads_belong_to_original_storage() {
+        let mut session = crate::sexp::session::RSession::new_for_gc_tests();
+        let owner = session.owner_token().unwrap();
+        let ledger = owner
+            .with_arena(|arena| arena.heap_identity().byte_ledger())
+            .unwrap();
+        let pattern: Vec<u32> = "((a|b)+?)".chars().map(u32::from).collect();
+        let text: Vec<u32> = "aaab".chars().map(u32::from).collect();
+        let compiled = unsafe {
+            tre_compile_owned(
+                pattern.as_ptr(),
+                pattern.len(),
+                REG_EXTENDED,
+                crate::mainutils::grep::regex_workspace(),
+            )
+        }
+        .unwrap_or_else(|error| panic!("compile failed: {error}"));
+        let mut legacy = regex_t {
+            re_nsub: 0,
+            value: ptr::null_mut(),
+        };
+        assert_eq!(
+            unsafe { tre_compile(&mut legacy, pattern.as_ptr(), pattern.len(), REG_EXTENDED) },
+            REG_OK
+        );
+        let mut owned_matches = [regmatch_t::default(); 3];
+        let mut legacy_matches = [regmatch_t::default(); 3];
+        assert_eq!(
+            unsafe {
+                super::super::regapi::tre_regwnexec(compiled.regex(), &text, &mut owned_matches, 0)
+            },
+            REG_OK
+        );
+        assert_eq!(
+            unsafe { super::super::regapi::tre_regwnexec(&legacy, &text, &mut legacy_matches, 0) },
+            REG_OK
+        );
+        for (owned, standalone) in owned_matches.iter().zip(&legacy_matches) {
+            assert_eq!(
+                (owned.rm_so, owned.rm_eo),
+                (standalone.rm_so, standalone.rm_eo)
+            );
+        }
+        unsafe {
+            let descriptor = &*compiled.preg.value.cast::<tre_tnfa_t>();
+            let mut tagged_transitions = 0;
+            for index in 0..descriptor.num_transitions {
+                let transition = &*descriptor.transitions.add(index as usize);
+                if transition.state.is_null() {
+                    continue;
+                }
+                if !transition.tags.is_null() {
+                    tagged_transitions += 1;
+                    assert!(compiled._tables.contains(transition.tags.cast()));
+                }
+                if !transition.params.is_null() {
+                    assert!(compiled._tables.contains(transition.params.cast()));
+                }
+            }
+            let mut initial = descriptor.initial;
+            while !(*initial).state.is_null() {
+                if !(*initial).tags.is_null() {
+                    tagged_transitions += 1;
+                    assert!(compiled._tables.contains((*initial).tags.cast()));
+                }
+                if !(*initial).params.is_null() {
+                    assert!(compiled._tables.contains((*initial).params.cast()));
+                }
+                initial = initial.add(1);
+            }
+            assert!(
+                tagged_transitions > 0,
+                "fixture must retain transition tags"
+            );
+        }
+        unsafe { tre_free(&mut legacy) };
+        owner.full_gc().unwrap();
+        let replacement = crate::sexp::session::RSession::new_for_gc_tests();
+        let other = replacement
+            .owner_token()
+            .unwrap()
+            .with_arena(|arena| arena.heap_identity().byte_ledger())
+            .unwrap();
+        let held = other.reserve(256).unwrap();
+        session.close();
+        drop(compiled);
+        assert_eq!(ledger.workspace_bytes_for_test(), 0);
+        assert_eq!(other.workspace_bytes_for_test(), 256);
+        drop(held);
+    }
+
+    fn synthetic_transition_positions(
+        left_tags: &mut [c_int; 2],
+        right_tags: &mut [c_int; 2],
+        params: &mut [c_int; TRE_PARAM_LAST],
+    ) -> ([tre_pos_and_tags_t; 2], [tre_pos_and_tags_t; 2], [c_int; 2]) {
+        let mut left: [tre_pos_and_tags_t; 2] = [unsafe { std::mem::zeroed() }; 2];
+        left[0].position = 0;
+        left[0].code_min = i32::from(b'a');
+        left[0].code_max = i32::from(b'a');
+        left[0].tags = left_tags.as_mut_ptr();
+        left[0].backref = -1;
+        left[1].position = -1;
+
+        let mut right: [tre_pos_and_tags_t; 2] = [unsafe { std::mem::zeroed() }; 2];
+        right[0].position = 1;
+        right[0].code_min = i32::from(b'a');
+        right[0].code_max = i32::from(b'a');
+        right[0].tags = right_tags.as_mut_ptr();
+        right[0].params = params.as_mut_ptr();
+        right[0].backref = -1;
+        right[1].position = -1;
+        (left, right, [0, 1])
+    }
+
+    #[test]
+    fn retained_tre_transition_tag_and_params_belong_to_original_storage() {
+        use crate::sexp::session::RSession;
+
+        let mut session = RSession::new_for_gc_tests();
+        let owner = session.owner_token().unwrap();
+        let ledger = owner
+            .with_arena(|arena| arena.heap_identity().byte_ledger())
+            .unwrap();
+        let mut storage =
+            super::super::owned_arena::OwnedArena::new(crate::mainutils::grep::regex_workspace())
+                .unwrap();
+        let mut left_tags = [7, -1];
+        let mut right_tags = [9, -1];
+        let mut params = [TRE_PARAM_UNSET; TRE_PARAM_LAST];
+        params[TRE_PARAM_COST_INS] = 3;
+        let (left, right, offsets) =
+            synthetic_transition_positions(&mut left_tags, &mut right_tags, &mut params);
+
+        let descriptor = unsafe { allocate_tnfa(&mut Some(&mut storage)) };
+        let transitions = unsafe { allocate_transition_table(1, &mut Some(&mut storage)) };
+        assert!(!descriptor.is_null() && !transitions.is_null());
+        let status = unsafe {
+            tre_make_trans(
+                left.as_ptr(),
+                right.as_ptr(),
+                transitions,
+                ptr::null_mut(),
+                offsets.as_ptr(),
+                &mut Some(&mut storage),
+            )
+        };
+        assert_eq!(status, REG_OK);
+        assert!(storage.contains(unsafe { (*transitions).tags.cast() }));
+        assert!(storage.contains(unsafe { (*transitions).params.cast() }));
+        unsafe {
+            assert_eq!(
+                std::slice::from_raw_parts((*transitions).tags, 3),
+                [7, 9, -1]
+            );
+            assert_eq!(
+                *(*transitions).params.add(TRE_PARAM_COST_INS),
+                params[TRE_PARAM_COST_INS]
+            );
+            (*descriptor).transitions = transitions;
+            (*descriptor).num_transitions = 1;
+            (*transitions).state = transitions.add(1);
+        }
+        let compiled = CompiledTre {
+            preg: regex_t {
+                re_nsub: 0,
+                value: descriptor.cast(),
+            },
+            _tables: storage,
+        };
+        owner.full_gc().unwrap();
+        let replacement = RSession::new_for_gc_tests();
+        let other = replacement
+            .owner_token()
+            .unwrap()
+            .with_arena(|arena| arena.heap_identity().byte_ledger())
+            .unwrap();
+        let held = other.reserve(256).unwrap();
+        session.close();
+        drop(compiled);
+        assert_eq!(ledger.workspace_bytes_for_test(), 0);
+        assert_eq!(other.workspace_bytes_for_test(), 256);
+        drop(held);
+    }
+
+    #[test]
+    fn retained_tre_transition_params_deny_unfunded_cells_and_retry() {
+        use crate::sexp::{memory::ArenaBudget, session::RSession};
+
+        let session = RSession::new_for_gc_tests();
+        let owner = session.owner_token().unwrap();
+        let mut storage =
+            super::super::owned_arena::OwnedArena::new(crate::mainutils::grep::regex_workspace())
+                .unwrap();
+        let mut left_tags = [7, -1];
+        let mut right_tags = [9, -1];
+        let mut params = [TRE_PARAM_UNSET; TRE_PARAM_LAST];
+        params[TRE_PARAM_COST_INS] = 3;
+        let (mut left, mut right, offsets) =
+            synthetic_transition_positions(&mut left_tags, &mut right_tags, &mut params);
+        left[0].tags = ptr::null_mut();
+        right[0].tags = ptr::null_mut();
+
+        let bytes = TRE_PARAM_LAST * std::mem::size_of::<c_int>();
+        owner
+            .with_arena(|arena| {
+                arena.set_budget(ArenaBudget::new(
+                    arena.total_bytes_allocated() + bytes - 1,
+                    0,
+                ))
+            })
+            .unwrap();
+        let mut denied: [tre_tnfa_transition_t; 2] = unsafe { std::mem::zeroed() };
+        let status = unsafe {
+            tre_make_trans(
+                left.as_ptr(),
+                right.as_ptr(),
+                denied.as_mut_ptr(),
+                ptr::null_mut(),
+                offsets.as_ptr(),
+                &mut Some(&mut storage),
+            )
+        };
+        assert_eq!(status, REG_ESPACE);
+        assert!(denied[0].tags.is_null());
+        assert!(denied[0].params.is_null());
+        assert_eq!(
+            owner.with_arena(|arena| arena.workspace_bytes()).unwrap(),
+            0
+        );
+
+        owner
+            .with_arena(|arena| arena.set_budget(ArenaBudget::unlimited()))
+            .unwrap();
+        let mut recovered: [tre_tnfa_transition_t; 2] = unsafe { std::mem::zeroed() };
+        let status = unsafe {
+            tre_make_trans(
+                left.as_ptr(),
+                right.as_ptr(),
+                recovered.as_mut_ptr(),
+                ptr::null_mut(),
+                offsets.as_ptr(),
+                &mut Some(&mut storage),
+            )
+        };
+        assert_eq!(status, REG_OK);
+        assert!(recovered[0].tags.is_null());
+        assert!(storage.contains(recovered[0].params.cast()));
+        unsafe {
+            assert_eq!(
+                *recovered[0].params.add(TRE_PARAM_COST_INS),
+                params[TRE_PARAM_COST_INS]
+            );
+        }
+        drop(storage);
+        assert_eq!(
+            owner.with_arena(|arena| arena.workspace_bytes()).unwrap(),
+            0
+        );
+    }
+
+    #[test]
+    fn standalone_tre_transition_tag_and_params_use_malloc_free_cleanup() {
+        let mut left_tags = [7, -1];
+        let mut right_tags = [9, -1];
+        let mut params = [TRE_PARAM_UNSET; TRE_PARAM_LAST];
+        params[TRE_PARAM_COST_INS] = 3;
+        let (left, right, offsets) =
+            synthetic_transition_positions(&mut left_tags, &mut right_tags, &mut params);
+        let (status, report) = mem::fault::observe(None, || unsafe {
+            let mut storage = None;
+            let descriptor = allocate_tnfa(&mut storage);
+            let transitions = allocate_transition_table(1, &mut storage);
+            assert!(!descriptor.is_null() && !transitions.is_null());
+            let status = tre_make_trans(
+                left.as_ptr(),
+                right.as_ptr(),
+                transitions,
+                ptr::null_mut(),
+                offsets.as_ptr(),
+                &mut storage,
+            );
+            assert_eq!(status, REG_OK);
+            assert!(!(*transitions).tags.is_null());
+            assert!(!(*transitions).params.is_null());
+            (*descriptor).transitions = transitions;
+            (*descriptor).num_transitions = 1;
+            let mut preg = regex_t {
+                re_nsub: 0,
+                value: descriptor.cast(),
+            };
+            tre_free(&mut preg);
+            assert!(preg.value.is_null());
+            status
+        });
+        assert_eq!(status, REG_OK);
+        assert!(report.attempts > 1);
+        assert_eq!(report.remaining, 0);
+    }
+
+    #[test]
     fn retained_tre_descriptor_belongs_to_original_owned_storage() {
         let mut session = crate::sexp::session::RSession::new_for_gc_tests();
         let owner = session.owner_token().unwrap();
@@ -3214,6 +3529,7 @@ mod traversal_stack_tests {
                         ptr::null_mut(),
                         ptr::null_mut(),
                         ptr::null(),
+                        &mut None,
                     ),
                 };
                 stack::tre_stack_destroy(stack);
