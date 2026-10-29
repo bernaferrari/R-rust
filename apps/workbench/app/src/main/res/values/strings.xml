@@ -121,4 +121,25 @@
     <string name="files_create">Create</string>
     <string name="files_new_folder">New folder</string>
     <string name="files_folder_name">Folder name</string>
+    <string name="files_open_folder">Open folder</string>
+    <string name="files_export">Export</string>
+    <string name="files_close">Close</string>
+    <string name="files_new">New</string>
+    <string name="files_open_file">Open file</string>
+    <string name="files_import">Import</string>
+    <string name="files_save_workspace">Save workspace</string>
+    <string name="files_load_workspace">Load workspace</string>
+    <string name="files_project_section">Project</string>
+    <string name="files_recent_section">Recent scripts</string>
+    <string name="files_imported_section">Last imported data</string>
+    <string name="files_empty_hint">Open a project folder, an R script, or import a CSV/TSV file to begin.</string>
+    <string name="files_title">Files</string>
+    <string name="files_project_hint">Choose an Android folder to create a working project.</string>
+    <string name="files_open_project_description">Open project folder</string>
+    <string name="files_export_project_description">Export project %1$s</string>
+    <string name="files_close_project_description">Close project %1$s</string>
+    <string name="files_new_script_description">Create R script</string>
+    <string name="files_open_script_description">Open R script</string>
+    <string name="files_import_description">Import data file</string>
+    <string name="files_recent_description">Open recent script %1$s</string>
 </resources>

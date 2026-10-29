@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -67,43 +68,49 @@ fun FileBrowser(
     var createFolderOpen by remember { mutableStateOf(false) }
     var renameTarget by remember { mutableStateOf<ProjectFile?>(null) }
     var nameInput by remember { mutableStateOf("") }
+    val openProjectDescription = stringResource(R.string.files_open_project_description)
+    val exportDescription = stringResource(R.string.files_export_project_description, projectName.orEmpty())
+    val closeDescription = stringResource(R.string.files_close_project_description, projectName.orEmpty())
+    val newDescription = stringResource(R.string.files_new_script_description)
+    val openDescription = stringResource(R.string.files_open_script_description)
+    val importDescription = stringResource(R.string.files_import_description)
     Column(Modifier.fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text(projectName ?: "Files", style = MaterialTheme.typography.titleMedium)
+                Text(projectName ?: stringResource(R.string.files_title), style = MaterialTheme.typography.titleMedium)
                 Text(
-                    projectRoot ?: "Choose an Android folder to create a working project.",
+                    projectRoot ?: stringResource(R.string.files_project_hint),
                     style = MaterialTheme.typography.bodySmall,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
             if (projectName == null) {
-                FilledTonalButton(onClick = onOpenProject) { Text("Open folder") }
+                FilledTonalButton(onClick = onOpenProject, modifier = Modifier.heightIn(min = 48.dp).semantics { contentDescription = openProjectDescription }) { Text(stringResource(R.string.files_open_folder)) }
             } else {
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    OutlinedButton(onClick = onExportProject) { Text("Export") }
-                    OutlinedButton(onClick = onCloseProject) { Text("Close") }
+                    OutlinedButton(onClick = onExportProject, modifier = Modifier.heightIn(min = 48.dp).semantics { contentDescription = exportDescription }) { Text(stringResource(R.string.files_export)) }
+                    OutlinedButton(onClick = onCloseProject, modifier = Modifier.heightIn(min = 48.dp).semantics { contentDescription = closeDescription }) { Text(stringResource(R.string.files_close)) }
                 }
             }
         }
         if (projectName != null) {
-            OutlinedButton(onClick = { createFolderOpen = true }, modifier = Modifier.fillMaxWidth()) {
+            OutlinedButton(onClick = { createFolderOpen = true }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
                 Text(stringResource(R.string.files_new_folder))
             }
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = onNewScript, modifier = Modifier.weight(1f)) { Text("New") }
-            OutlinedButton(onClick = onOpenScript, modifier = Modifier.weight(1f)) { Text("Open file") }
-            FilledTonalButton(onClick = onImportCsv, modifier = Modifier.weight(1f)) { Text("Import") }
+            OutlinedButton(onClick = onNewScript, modifier = Modifier.weight(1f).heightIn(min = 48.dp).semantics { contentDescription = newDescription }) { Text(stringResource(R.string.files_new)) }
+            OutlinedButton(onClick = onOpenScript, modifier = Modifier.weight(1f).heightIn(min = 48.dp).semantics { contentDescription = openDescription }) { Text(stringResource(R.string.files_open_file)) }
+            FilledTonalButton(onClick = onImportCsv, modifier = Modifier.weight(1f).heightIn(min = 48.dp).semantics { contentDescription = importDescription }) { Text(stringResource(R.string.files_import)) }
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = onSaveWorkspace, modifier = Modifier.weight(1f)) { Text("Save workspace") }
-            OutlinedButton(onClick = onLoadWorkspace, modifier = Modifier.weight(1f)) { Text("Load workspace") }
+            OutlinedButton(onClick = onSaveWorkspace, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) { Text(stringResource(R.string.files_save_workspace)) }
+            OutlinedButton(onClick = onLoadWorkspace, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) { Text(stringResource(R.string.files_load_workspace)) }
         }
         LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             if (projectFiles.isNotEmpty()) {
-                item { Text("Project", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 4.dp)) }
+                item { Text(stringResource(R.string.files_project_section), style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 4.dp)) }
                 items(projectFiles, key = { it.uri }) { file ->
                     var menuOpen by remember(file.uri) { mutableStateOf(false) }
                     val fileDescription = stringResource(
@@ -157,9 +164,10 @@ fun FileBrowser(
                 }
             }
             if (recentScripts.isNotEmpty()) {
-                item { Text("Recent scripts", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 10.dp)) }
+                item { Text(stringResource(R.string.files_recent_section), style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 10.dp)) }
                 items(recentScripts, key = { it.path }) { script ->
-                    ElevatedCard(modifier = Modifier.fillMaxWidth(), onClick = { onOpenRecent(script.path) }) {
+                    val recentDescription = stringResource(R.string.files_recent_description, script.path)
+                    ElevatedCard(modifier = Modifier.fillMaxWidth().semantics { contentDescription = recentDescription }, onClick = { onOpenRecent(script.path) }) {
                         Column(Modifier.padding(12.dp)) {
                             Text(script.name, style = MaterialTheme.typography.titleSmall)
                             Text(script.path, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -169,14 +177,14 @@ fun FileBrowser(
             }
             importedPath?.let { path ->
                 item {
-                    Text("Last imported data", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 10.dp))
+                    Text(stringResource(R.string.files_imported_section), style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 10.dp))
                     Text(path, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
             }
             if (projectFiles.isEmpty() && recentScripts.isEmpty()) {
                 item {
                     Text(
-                        "Open a project folder, an R script, or import a CSV/TSV file to begin.",
+                        stringResource(R.string.files_empty_hint),
                         modifier = Modifier.padding(vertical = 18.dp),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
