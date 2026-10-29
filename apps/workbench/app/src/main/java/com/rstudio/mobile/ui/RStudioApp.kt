@@ -13,12 +13,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSizeClassApi
 import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
@@ -134,22 +130,10 @@ fun RStudioApp() {
         }
     }
     if (runtimeInfoOpen) {
-        val info = state.runtimeInfo
-        AlertDialog(
-            onDismissRequest = { runtimeInfoOpen = false },
-            title = { Text("R runtime") },
-            text = {
-                Column {
-                    Text(if (info?.isActive == true) "Active" else "Unavailable")
-                    Text("Temporary directory: ${info?.tempDir ?: "unknown"}", style = MaterialTheme.typography.bodySmall)
-                    Text("Library paths:", modifier = Modifier.padding(top = 8.dp))
-                    info?.libraryPaths?.forEach { path -> Text(path, style = MaterialTheme.typography.bodySmall) }
-                }
-            },
-            confirmButton = { TextButton(onClick = { runtimeInfoOpen = false }) { Text("Close") } },
-            dismissButton = {
-                TextButton(onClick = { runtime.resetSession(); runtimeInfoOpen = false }) { Text("Reset session") }
-            },
+        RuntimeInformationDialog(
+            info = state.runtimeInfo,
+            onDismiss = { runtimeInfoOpen = false },
+            onReset = { runtime.resetSession(); runtimeInfoOpen = false },
         )
     }
 }
@@ -239,14 +223,10 @@ private fun EditorPane(state: RStudioUiState, runtime: RStudioRuntime, actions: 
         )
     }
     closeRequest?.let { document ->
-        AlertDialog(
-            onDismissRequest = { closeRequest = null },
-            title = { Text("Discard changes?") },
-            text = { Text("${document.name} has unsaved changes.") },
-            confirmButton = {
-                TextButton(onClick = { runtime.closeDocument(document.id); closeRequest = null }) { Text("Discard") }
-            },
-            dismissButton = { TextButton(onClick = { closeRequest = null }) { Text("Cancel") } },
+        DiscardChangesDialog(
+            documentName = document.name,
+            onDismiss = { closeRequest = null },
+            onDiscard = { runtime.closeDocument(document.id); closeRequest = null },
         )
     }
 }

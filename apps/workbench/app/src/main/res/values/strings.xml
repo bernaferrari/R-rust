@@ -155,4 +155,17 @@
     <string name="navigation_environment">Environment</string>
     <string name="navigation_packages">Packages</string>
     <string name="navigation_help">Help</string>
+    <string name="runtime_dialog_title">R runtime</string>
+    <string name="runtime_active">Active</string>
+    <string name="runtime_unavailable">Unavailable</string>
+    <string name="runtime_temp_directory">Temporary directory: %1$s</string>
+    <string name="runtime_unknown_directory">unknown</string>
+    <string name="runtime_library_paths">Library paths:</string>
+    <string name="runtime_close">Close</string>
+    <string name="runtime_reset_session">Reset session</string>
+    <string name="document_discard_title">Discard changes?</string>
+    <string name="document_unsaved_message">%1$s has unsaved changes.</string>
+    <string name="document_discard_description">Discard changes to %1$s</string>
+    <string name="document_discard">Discard</string>
+    <string name="document_cancel">Cancel</string>
 </resources>
