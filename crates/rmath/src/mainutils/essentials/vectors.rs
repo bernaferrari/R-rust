@@ -533,75 +533,9 @@ unsafe fn c_arg_elem_name(tag: SEXP, arg_names: SEXP, i: R_xlen_t, n: R_xlen_t) 
 // do_seq — generate sequences
 // ---------------------------------------------------------------------------
 
-/// R's `tabulate(bin, nbins)` — count positive integer bin occurrences.
-pub unsafe fn do_tabulate(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let bins = arg_by_name_or_position(args, &["bin"], 0);
-        if bins.is_null() || bins == R_NilValue() {
-            return Rf_allocVector3(SEXPTYPE::INTSXP, 0);
-        }
-
-        let nbins_arg = arg_by_name_or_position(args, &["nbins"], 1);
-        let nbins = if nbins_arg.is_null() || nbins_arg == R_NilValue() {
-            default_tabulate_bins(bins)
-        } else {
-            (real_or_default(nbins_arg, 0.0) as i64).max(0) as usize
-        };
-
-        let result = Rf_allocVector3(SEXPTYPE::INTSXP, nbins as R_xlen_t);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _result_guard = protect(result);
-        for i in 0..nbins {
-            *INTEGER(result).add(i) = 0;
-        }
-
-        for i in 0..XLENGTH(bins) {
-            let Some(bin) = tabulate_bin_value(bins, i) else {
-                continue;
-            };
-            if bin > 0 && bin <= nbins {
-                let slot = INTEGER(result).add(bin - 1);
-                *slot = slot.read().saturating_add(1);
-            }
-        }
-        result
-    }
-}
-
-fn default_tabulate_bins(bins: SEXP) -> usize {
-    unsafe {
-        let mut max_bin = 1_usize;
-        for i in 0..XLENGTH(bins) {
-            if let Some(bin) = tabulate_bin_value(bins, i)
-                && bin > max_bin
-            {
-                max_bin = bin;
-            }
-        }
-        max_bin
-    }
-}
-
-fn tabulate_bin_value(bins: SEXP, index: R_xlen_t) -> Option<usize> {
-    unsafe {
-        match TYPEOF(bins) {
-            t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => {
-                let value = *INTEGER(bins).add(index as usize);
-                (value != NA_INTEGER).then_some(value.max(0) as usize)
-            }
-            t if t == SEXPTYPE::REALSXP => {
-                let value = *REAL(bins).add(index as usize);
-                if value.to_bits() == R_NA_BIT_PATTERN || value.is_nan() || !value.is_finite() {
-                    None
-                } else {
-                    Some((value as i64).max(0) as usize)
-                }
-            }
-            _ => None,
-        }
-    }
+/// GNU's internal integer-counting kernel; public validation stays in R.
+pub unsafe fn do_tabulate(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe { super::tabulate::evaluate(call, op, args, rho) }
 }
 
 // ---------------------------------------------------------------------------

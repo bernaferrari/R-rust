@@ -43,6 +43,7 @@ mod sets;
 mod shared;
 mod strings;
 mod tables;
+mod tabulate;
 #[cfg(test)]
 mod tests;
 mod vectors;

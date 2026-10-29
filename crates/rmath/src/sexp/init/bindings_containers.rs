@@ -570,6 +570,12 @@ pub(crate) unsafe fn install(base_env: SEXP) {
             include_str!("../gnu_eval_parent.R"),
         );
         eval_base_binding(base_env, "arrayInd", include_str!("../gnu_arrayInd.R"));
+        // Keep GNU's public argument/coercion rules in its unchanged wrapper.
+        eval_base_binding(
+            base_env,
+            "tabulate",
+            include_str!("../../../upstream/base/R/tabulate.R"),
+        );
         eval_base_binding(base_env, "which", include_str!("../gnu_which.R"));
         eval_base_binding(base_env, "which.min", include_str!("../gnu_which_min.R"));
         eval_base_binding(base_env, "which.max", include_str!("../gnu_which_max.R"));
