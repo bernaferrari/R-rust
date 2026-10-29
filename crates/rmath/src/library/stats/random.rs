@@ -324,6 +324,7 @@ const RAND_CALL_NAMES: &[&str] = &[
     "C_pppred",
     "C_isoreg",
     "C_pAnsari",
+    "C_qAnsari",
     "C_intgrt_vec",
     "C_pp_sum",
     "C_ARMAtoMA",
@@ -346,6 +347,10 @@ unsafe extern "C-unwind" fn c_isoreg(y: SEXP) -> SEXP {
 
 unsafe extern "C-unwind" fn c_pansari(q: SEXP, m: SEXP, n: SEXP) -> SEXP {
     unsafe { super::ansari::pAnsari(q, m, n) }
+}
+
+unsafe extern "C-unwind" fn c_qansari(p: SEXP, m: SEXP, n: SEXP) -> SEXP {
+    unsafe { super::ansari::qAnsari(p, m, n) }
 }
 
 unsafe extern "C-unwind" fn c_intgrt_vec(x: SEXP, xi: SEXP, lag: SEXP) -> SEXP {
@@ -572,6 +577,9 @@ pub(crate) fn lookup_call(name: &str) -> Option<crate::mainutils::native_routine
         )),
         "pAnsari" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
             crate::mainutils::native_routines::CallRoutine::Args3(c_pansari),
+        )),
+        "qAnsari" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
+            crate::mainutils::native_routines::CallRoutine::Args3(c_qansari),
         )),
         "intgrt_vec" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
             crate::mainutils::native_routines::CallRoutine::Args3(c_intgrt_vec),
