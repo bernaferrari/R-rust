@@ -543,27 +543,37 @@ pub unsafe fn do_tabulate(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// R's `pmin(...)` — parallel minimum across vectors (element-wise min with recycling).
-pub unsafe fn do_pmin(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { do_pminmax(args, true) }
+pub unsafe fn do_pmin(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        super::parallel_extrema::numeric(call, op, args, rho, true, false)
+            .unwrap_or_else(|| do_pminmax(args, true))
+    }
 }
 
 /// R's `pmax(...)` — parallel maximum across vectors (element-wise max with recycling).
-pub unsafe fn do_pmax(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { do_pminmax(args, false) }
+pub unsafe fn do_pmax(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        super::parallel_extrema::numeric(call, op, args, rho, false, false)
+            .unwrap_or_else(|| do_pminmax(args, false))
+    }
 }
 
 /// `.Internal(pmax(na.rm, ...))` wrapper: the GNU internal contract passes
-/// the `na.rm` flag as the first, untagged argument, while the shared
-/// `do_pminmax` handler parses the closure-visible signature
-/// `pmax(..., na.rm=)` by tag. Retag the first evaluated argument so the
-/// flag is recognized instead of being folded into the data.
+/// the `na.rm` flag as the first, untagged argument. The numeric kernel
+/// reads it directly; legacy character/classed paths still use retagging.
 pub unsafe fn do_pmax_internal(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe { do_pmax(call, op, retag_internal_narm(args), rho) }
+    unsafe {
+        super::parallel_extrema::numeric(call, op, args, rho, false, true)
+            .unwrap_or_else(|| do_pminmax(retag_internal_narm(args), false))
+    }
 }
 
 /// `.Internal(pmin(na.rm, ...))` wrapper; see `do_pmax_internal`.
 pub unsafe fn do_pmin_internal(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe { do_pmin(call, op, retag_internal_narm(args), rho) }
+    unsafe {
+        super::parallel_extrema::numeric(call, op, args, rho, true, true)
+            .unwrap_or_else(|| do_pminmax(retag_internal_narm(args), true))
+    }
 }
 
 /// Tag the leading `na.rm` flag of a GNU internal pmin/pmax argument list.

@@ -1,0 +1,80 @@
+pmin|FALSE|single|double|2|1,NA|a,b|||
+pmin|FALSE|logical|integer|2|0,NA||||
+pmin|FALSE|integer|integer|3|2,NA,1||||
+pmin|FALSE|real|double|4|2,NA,NaN,-Inf||||
+pmin|FALSE|nan_first|double|1|NA||||
+pmin|FALSE|na_first|double|1|NaN||||
+pmin|FALSE|all_nan|double|1|NaN||||
+pmin|FALSE|last_value|double|1|NaN||||
+pmin|FALSE|zero_left|double|0|||||
+pmin|FALSE|zero_right|double|0|||||
+pmin|FALSE|null|integer|0|||||
+pmin|FALSE|zero_order|integer|0|||||
+pmin|FALSE|all_zero|double|0|||||
+pmin|FALSE|recycle|integer|3|1,1,3|||an argument will be fractionally recycled|
+pmin|FALSE|names|double|2|2,1|a,b|||
+pmin|FALSE|matrix|double|4|1,2,3,3||2,2||
+pmin|FALSE|complex|ERROR|invalid input type||
+pmin|FALSE|raw|ERROR|invalid input type||
+pmin|FALSE|no_args|ERROR|no arguments||
+pmin|TRUE|single|double|2|1,NA|a,b|||
+pmin|TRUE|logical|integer|2|0,1||||
+pmin|TRUE|integer|integer|3|2,4,1||||
+pmin|TRUE|real|double|4|2,4,1,-Inf||||
+pmin|TRUE|nan_first|double|1|NA||||
+pmin|TRUE|na_first|double|1|NaN||||
+pmin|TRUE|all_nan|double|1|NaN||||
+pmin|TRUE|last_value|double|1|1||||
+pmin|TRUE|zero_left|double|0|||||
+pmin|TRUE|zero_right|double|0|||||
+pmin|TRUE|null|integer|0|||||
+pmin|TRUE|zero_order|integer|0|||||
+pmin|TRUE|all_zero|double|0|||||
+pmin|TRUE|recycle|integer|3|1,1,3|||an argument will be fractionally recycled|
+pmin|TRUE|names|double|2|2,1|a,b|||
+pmin|TRUE|matrix|double|4|1,2,3,3||2,2||
+pmin|TRUE|complex|ERROR|invalid input type||
+pmin|TRUE|raw|ERROR|invalid input type||
+pmin|TRUE|no_args|ERROR|no arguments||
+pmax|FALSE|single|double|2|1,NA|a,b|||
+pmax|FALSE|logical|integer|2|1,NA||||
+pmax|FALSE|integer|integer|3|3,NA,1||||
+pmax|FALSE|real|double|4|3,NA,NaN,Inf||||
+pmax|FALSE|nan_first|double|1|NA||||
+pmax|FALSE|na_first|double|1|NaN||||
+pmax|FALSE|all_nan|double|1|NaN||||
+pmax|FALSE|last_value|double|1|NaN||||
+pmax|FALSE|zero_left|double|0|||||
+pmax|FALSE|zero_right|double|0|||||
+pmax|FALSE|null|integer|0|||||
+pmax|FALSE|zero_order|integer|0|||||
+pmax|FALSE|all_zero|double|0|||||
+pmax|FALSE|recycle|integer|3|3,2,3|||an argument will be fractionally recycled|
+pmax|FALSE|names|double|2|3,4|a,b|||
+pmax|FALSE|matrix|double|4|3,3,3,4||2,2||
+pmax|FALSE|complex|ERROR|invalid input type||
+pmax|FALSE|raw|ERROR|invalid input type||
+pmax|FALSE|no_args|ERROR|no arguments||
+pmax|TRUE|single|double|2|1,NA|a,b|||
+pmax|TRUE|logical|integer|2|1,1||||
+pmax|TRUE|integer|integer|3|3,4,1||||
+pmax|TRUE|real|double|4|3,4,1,Inf||||
+pmax|TRUE|nan_first|double|1|NA||||
+pmax|TRUE|na_first|double|1|NaN||||
+pmax|TRUE|all_nan|double|1|NaN||||
+pmax|TRUE|last_value|double|1|1||||
+pmax|TRUE|zero_left|double|0|||||
+pmax|TRUE|zero_right|double|0|||||
+pmax|TRUE|null|integer|0|||||
+pmax|TRUE|zero_order|integer|0|||||
+pmax|TRUE|all_zero|double|0|||||
+pmax|TRUE|recycle|integer|3|3,2,3|||an argument will be fractionally recycled|
+pmax|TRUE|names|double|2|3,4|a,b|||
+pmax|TRUE|matrix|double|4|3,3,3,4||2,2||
+pmax|TRUE|complex|ERROR|invalid input type||
+pmax|TRUE|raw|ERROR|invalid input type||
+pmax|TRUE|no_args|ERROR|no arguments||
+pmin|invalid_na_rm|invalid 'na.rm' value|
+pmin|int_attrs|double|2|2,1|||
+pmax|invalid_na_rm|invalid 'na.rm' value|
+pmax|int_attrs|double|2|3,4|||
