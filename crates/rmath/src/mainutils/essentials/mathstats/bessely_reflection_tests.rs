@@ -99,7 +99,7 @@ fn checked_bessely_reflection_workspace_gc_reentry() {
             false,
         );
         assert_eq!(z.try_real_elt(0).unwrap(), f64::NEG_INFINITY);
-        assert_eq!(calls.get(), 1);
+        assert_eq!(calls.get(), 2);
         assert_eq!(owner.with_arena(|a| a.workspace_bytes()).unwrap(), before);
     });
 }

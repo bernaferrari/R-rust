@@ -529,6 +529,8 @@ unsafe fn validate_math2_inputs(a: SEXP, b: SEXP) -> Result<(), &'static str> {
 mod bessel_scaling;
 #[path = "bessel_workspace.rs"]
 mod bessel_workspace;
+#[path = "bessel_y_checked.rs"]
+mod bessel_y_checked;
 #[path = "choose_checked.rs"]
 mod choose_checked;
 #[path = "choose_factor.rs"]

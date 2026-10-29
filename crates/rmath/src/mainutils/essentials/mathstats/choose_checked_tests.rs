@@ -967,8 +967,11 @@ mod besselk_checked_tests;
 #[path = "besseli_checked_tests.rs"]
 mod besseli_checked_tests;
 
-#[path="besselj_reflection_tests.rs"]
+#[path = "besselj_reflection_tests.rs"]
 mod besselj_reflection_tests;
 
-#[path="bessely_reflection_tests.rs"]
+#[path = "bessely_reflection_tests.rs"]
 mod bessely_reflection_tests;
+
+#[path = "bessely_diagnostic_tests.rs"]
+mod bessely_diagnostic_tests;

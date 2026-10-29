@@ -563,6 +563,42 @@ pub fn bessel_y_ex(x: f64, alpha: f64, by: &mut [f64]) -> f64 {
     by[(nb - 1) as usize]
 }
 
+/// Positive-order work-array calculation with diagnostic metadata and no
+/// allocation or warning callback. Invalid shapes/arguments are rejected.
+#[derive(Clone, Copy, Debug)]
+pub struct BesselYCalculation {
+    pub value: f64,
+    pub ncalc: i32,
+    pub count: i32,
+    pub fraction: f64,
+}
+pub fn bessel_y_positive_status(
+    x: f64,
+    order: f64,
+    work: &mut [f64],
+) -> Option<BesselYCalculation> {
+    if x.is_nan() || x < 0.0 || !order.is_finite() || order < 0.0 || order > MAX_ALPHA_Y {
+        return None;
+    }
+    let count = (floor(order) as i32).checked_add(1)?;
+    if work.len() < count as usize {
+        return None;
+    }
+    let fraction = order - f64::from(count - 1);
+    let ncalc = y_bessel(x, fraction, count, work);
+    let value = if ncalc == -1 {
+        ML_POSINF
+    } else {
+        work[count as usize - 1]
+    };
+    Some(BesselYCalculation {
+        value,
+        ncalc,
+        count,
+        fraction,
+    })
+}
+
 /// C FFI wrapper for bessel_y_ex
 pub fn bessel_y_ex_c(x: f64, alpha: f64, by: *mut f64, nb: i32) -> f64 {
     if by.is_null() || nb <= 0 {
@@ -591,5 +627,34 @@ mod workspace_parity_tests {
                 );
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod status_tests {
+    use super::*;
+    #[test]
+    fn positive_status_preserves_values_and_rejects_invalid_shapes() {
+        for x in [-0.0, 0.0, 1e-300, 1.0, 12.3456789, 1e8, f64::INFINITY] {
+            for order in [-0.0_f64, 0.5, 1.0, 500.25] {
+                let mut old = vec![0.0; order as usize + 1];
+                let expected = bessel_y_ex(x, order, &mut old);
+                let mut work = vec![0.0; order as usize + 1];
+                let actual = bessel_y_positive_status(x, order, &mut work).unwrap();
+                assert_eq!(actual.value.to_bits(), expected.to_bits());
+            }
+        }
+        for (x, order) in [
+            (f64::NAN, 0.0),
+            (-1.0, 0.0),
+            (1.0, -1.0),
+            (1.0, f64::NAN),
+            (1.0, f64::INFINITY),
+        ] {
+            assert!(bessel_y_positive_status(x, order, &mut [0.0]).is_none());
+        }
+        assert!(bessel_y_positive_status(1.0, 1.0, &mut [0.0]).is_none());
+        let status = bessel_y_positive_status(1.0, 500.0, &mut [0.0; 501]).unwrap();
+        assert!(status.ncalc >= 0 && status.ncalc < status.count);
     }
 }
