@@ -306,6 +306,9 @@ impl<'session> SessionNodeFactory<'session> {
     pub(crate) fn require_active(&self) -> SexpResult<()> {
         self.owner.require_active()
     }
+    pub(crate) fn full_gc(&self) -> SexpResult<()> {
+        self.owner.full_gc()
+    }
     pub(crate) fn link(&self, value: &Sexp<'_>) -> SexpResult<crate::sexp::heap::NodeLink> {
         self.domain.link(value)
     }

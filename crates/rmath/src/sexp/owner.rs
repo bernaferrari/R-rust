@@ -307,6 +307,15 @@ impl<'session> StoredOwner<'session> {
         })
     }
 
+    pub(crate) fn full_gc(&self) -> SexpResult<()> {
+        self.with_projection(|pointer| {
+            // SAFETY: the stored owner projection retains this exact runtime;
+            // `OwnerToken::full_gc` validates that it is active and rechecks
+            // liveness after finalizers and collection callbacks run.
+            unsafe { OwnerToken::from_raw(pointer).full_gc().map(|_| ()) }
+        })
+    }
+
     pub(crate) fn with_arena<T>(
         &self,
         f: impl FnOnce(&mut super::memory::RArena) -> T,

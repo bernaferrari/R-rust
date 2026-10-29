@@ -117,6 +117,135 @@ unsafe fn method_name_is(method: SEXP, name: &[u8]) -> bool {
     }
 }
 
+fn summary_pairlist_next<'s>(cell: &Sexp<'s>) -> crate::sexp::object::SexpResult<Option<Sexp<'s>>> {
+    if cell.is_nil() {
+        return Ok(None);
+    }
+    let next = cell.try_cdr()?;
+    Ok((!next.is_nil()).then_some(next))
+}
+
+fn check_summary_argument_list<'s>(arguments: &Sexp<'s>) -> crate::sexp::object::SexpResult<()> {
+    let mut slow = Some(arguments.clone());
+    let mut fast = Some(arguments.clone());
+
+    while let Some(fast_cell) = fast {
+        slow = match slow {
+            Some(cell) => summary_pairlist_next(&cell)?,
+            None => None,
+        };
+        fast = summary_pairlist_next(&fast_cell)?;
+        let Some(fast_cell) = fast else {
+            break;
+        };
+        fast = summary_pairlist_next(&fast_cell)?;
+        if let (Some(slow_cell), Some(fast_cell)) = (&slow, &fast) {
+            if slow_cell == fast_cell {
+                return Err(crate::sexp::object::SexpError::EvaluationFailed {
+                    message: "cyclic Summary argument list".to_owned(),
+                });
+            }
+        }
+    }
+    Ok(())
+}
+
+fn try_summary_method_arguments<'s>(
+    factory: &SessionNodeFactory<'s>,
+    evaluated_arguments: Sexp<'s>,
+) -> crate::sexp::object::SexpResult<Sexp<'s>> {
+    factory.require_active()?;
+    check_summary_argument_list(&evaluated_arguments)?;
+    let mut builder = PairlistBuilder::from_factory(factory.clone());
+    let mut current = evaluated_arguments;
+    let mut na_rm_value = None;
+
+    while !current.is_nil() {
+        let value = current.try_car()?;
+        let tag = current.try_tag()?;
+        let is_na_rm = if tag.is_nil() {
+            false
+        } else {
+            unsafe {
+                if isSymbol(tag.as_raw()) == FALSE {
+                    false
+                } else {
+                    let printed = PRINTNAME(tag.as_raw());
+                    if printed.is_null() {
+                        false
+                    } else {
+                        let chars = CHAR(printed);
+                        !chars.is_null() && std::ffi::CStr::from_ptr(chars).to_bytes() == b"na.rm"
+                    }
+                }
+            }
+        };
+        if is_na_rm {
+            if na_rm_value.is_some() {
+                return Err(crate::sexp::object::SexpError::EvaluationFailed {
+                    message: "formal argument \"na.rm\" matched by multiple actual arguments"
+                        .to_owned(),
+                });
+            }
+            na_rm_value = Some(value);
+        } else {
+            builder.push(value, (!tag.is_nil()).then_some(tag))?;
+        }
+        current = current.try_cdr()?;
+    }
+    let na_rm_value = match na_rm_value {
+        Some(value) => value,
+        None => factory.wrap(unsafe { crate::mainutils::relop::R_FalseValue() })?,
+    };
+    let default_tag = factory.wrap(unsafe { Rf_install(b"na.rm\0".as_ptr() as *const c_char) })?;
+    builder.push(na_rm_value, Some(default_tag))?;
+    factory.require_active()?;
+    builder.finish()
+}
+
+fn summary_method_allocation_error(error: crate::sexp::object::SexpError) -> ! {
+    if matches!(
+        &error,
+        crate::sexp::object::SexpError::AllocationFailed { .. }
+    ) {
+        // Match Rf_cons/Rf_allocVector's canonical bounded-allocation error.
+        // With unlimited budgets this returns null, so preserve the checked
+        // constructor's more specific error below.
+        unsafe {
+            crate::sexp::constructors::require_allocation(std::ptr::null_mut());
+        }
+    }
+    crate::sexp::context::r_error(error.to_string())
+}
+
+fn summary_method_arguments<'s>(
+    factory: &SessionNodeFactory<'s>,
+    evaluated_arguments: Sexp<'s>,
+) -> Sexp<'s> {
+    match try_summary_method_arguments(factory, evaluated_arguments.clone()) {
+        Ok(arguments) => arguments,
+        Err(crate::sexp::object::SexpError::AllocationFailed { .. }) => {
+            // The failed builder has been dropped; the original evaluated list
+            // remains rooted by its caller while the owner performs the same
+            // one-GC retry as Rf_cons. Revalidate and rebuild from that list.
+            factory
+                .full_gc()
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            factory
+                .require_active()
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            match try_summary_method_arguments(factory, evaluated_arguments) {
+                Ok(arguments) => arguments,
+                Err(error @ crate::sexp::object::SexpError::AllocationFailed { .. }) => {
+                    summary_method_allocation_error(error)
+                }
+                Err(error) => crate::sexp::context::r_error(error.to_string()),
+            }
+        }
+        Err(error) => crate::sexp::context::r_error(error.to_string()),
+    }
+}
+
 /// Capture the active owner once at a translated evaluator entry.
 /// # Safety
 /// The caller retains this owner for `'s` and excludes overlapping payload loans.
@@ -957,6 +1086,11 @@ pub unsafe fn DispatchGroup(
             }
         }
 
+        // The S4 Summary generic path above retains its own method matching.
+        // The S3 group method path below needs the group's default represented
+        // as an actual, as GNU does, so `missing(na.rm)` is false there.
+        let is_summary_group = streql(group, b"Summary\0".as_ptr() as *const c_char) != FALSE;
+
         // For Ops group, check both args; for others, only the first
         let is_ops = streql(group, b"Ops\x00".as_ptr() as *const c_char) != FALSE
             || streql(group, b"matrixOps\x00".as_ptr() as *const c_char) != FALSE;
@@ -1118,24 +1252,40 @@ pub unsafe fn DispatchGroup(
         );
         guards.push(protect(newvars));
 
+        // GNU Summary dispatch passes evaluated actuals and puts the evaluated
+        // na.rm value last, inserting FALSE when it was omitted. Keep the
+        // other actuals in order and move only na.rm.
+        let method_arguments = if is_summary_group {
+            Some(summary_method_arguments(&factory, _arguments_owner.clone()))
+        } else {
+            None
+        };
+        let promise_expressions = method_arguments.clone().unwrap_or_else(|| {
+            call_owner
+                .try_cdr()
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+        });
+
         // Build the new call: (method . rest-of-call)
         let newcall = Rf_lang2(lmeth, R_NilValue());
-        SETCDR(newcall, CDR(call));
+        SETCDR(
+            newcall,
+            method_arguments
+                .as_ref()
+                .map_or_else(|| CDR(call), Sexp::as_raw),
+        );
         guards.push(protect(newcall));
 
         // Create promises for the arguments
-        let pargs_owner = promiseArgs(
-            &factory,
-            call_owner
-                .try_cdr()
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
-            environment_owner.clone(),
-        );
+        let pargs_owner = promiseArgs(&factory, promise_expressions, environment_owner.clone());
         let pargs = pargs_owner.as_raw();
 
         // Set promise values to the evaluated args
         let mut pi = pargs;
-        let mut ai = args;
+        let mut ai = method_arguments
+            .clone()
+            .unwrap_or_else(|| _arguments_owner.clone())
+            .as_raw();
         while !pi.is_null() && pi != R_NilValue() && !ai.is_null() && ai != R_NilValue() {
             if TYPEOF(CAR(pi)) == SEXPTYPE::PROMSXP {
                 // Cache the value without discarding PRCODE: substitute()
@@ -1243,6 +1393,7 @@ pub fn evalListKeepMissing<'a>(el: Sexp<'a>, rho: Sexp<'a>) -> Sexp<'a> {
 mod owned_argument_tests {
     use super::*;
     use crate::sexp::context::RError;
+    use crate::sexp::memory::ArenaBudget;
     use crate::sexp::{object::PairlistIter, session::RSession};
     use std::{cell::Cell, rc::Rc};
 
@@ -1271,6 +1422,160 @@ mod owned_argument_tests {
             (*instance).memory_state.gc_force_wait = 1;
         });
         notifications
+    }
+
+    #[test]
+    fn summary_arguments_reject_cycles_and_improper_tails() {
+        let session = RSession::new_for_gc_tests();
+        let factory = SessionNodeFactory::new(session.owner_token().unwrap());
+        let nil = factory.nil();
+        let value = factory
+            .wrap(unsafe { crate::sexp::constructors::Rf_ScalarInteger(1) })
+            .unwrap();
+
+        let cycle = factory.pairlist_cell(&value, &nil, &nil).unwrap();
+        unsafe { crate::sexp::accessors::SETCDR(cycle.as_raw(), cycle.as_raw()) };
+        let cycle_error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            summary_method_arguments(&factory, cycle)
+        }));
+        assert!(cycle_error.is_err());
+
+        let improper = factory.pairlist_cell(&value, &nil, &nil).unwrap();
+        unsafe { crate::sexp::accessors::SETCDR(improper.as_raw(), value.as_raw()) };
+        let improper_error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            summary_method_arguments(&factory, improper)
+        }));
+        assert!(improper_error.is_err());
+    }
+
+    #[test]
+    fn summary_argument_copy_denial_matches_pairlist_allocation_and_recovers() {
+        let session = RSession::new_for_gc_tests();
+        let factory = SessionNodeFactory::new(session.owner_token().unwrap());
+        let nil = factory.nil();
+        let value = factory
+            .wrap(unsafe { crate::sexp::constructors::Rf_ScalarInteger(1) })
+            .unwrap();
+        let arguments = factory.pairlist_cell(&value, &nil, &nil).unwrap();
+        let notifications = force_allocations_with_reentrant_gc(&session);
+        session.with_active_in(|instance| unsafe {
+            (*instance).arena.set_budget(ArenaBudget::new(0, 1));
+        });
+
+        let summary_error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            summary_method_arguments(&factory, arguments.clone())
+        }))
+        .unwrap_err()
+        .downcast::<RError>()
+        .unwrap();
+        let canonical_error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+            crate::sexp::constructors::Rf_cons(value.as_raw(), nil.as_raw())
+        }))
+        .unwrap_err()
+        .downcast::<RError>()
+        .unwrap();
+        assert_eq!(
+            canonical_error.message,
+            "R allocation failed: memory or node budget exceeded"
+        );
+        assert_eq!(summary_error.message, canonical_error.message);
+        assert!(notifications.get() >= 2);
+
+        session.with_active_in(|instance| unsafe {
+            (*instance).arena.set_budget(ArenaBudget::unlimited());
+            (*instance).memory_state.gc_force_gap = 0;
+        });
+        let recovered = summary_method_arguments(&factory, arguments);
+        assert_eq!(PairlistIter::new(recovered).count(), 2);
+    }
+
+    #[test]
+    fn summary_argument_copy_recovers_under_same_cap_after_roots_are_released() {
+        let session = RSession::new_for_gc_tests();
+        let factory = SessionNodeFactory::new(session.owner_token().unwrap());
+        let nil = factory.nil();
+        let value = factory
+            .wrap(unsafe { crate::sexp::constructors::Rf_ScalarInteger(1) })
+            .unwrap();
+        let arguments = factory.pairlist_cell(&value, &nil, &nil).unwrap();
+        let blockers = vec![
+            factory.pairlist_cell(&value, &nil, &nil).unwrap(),
+            factory.pairlist_cell(&value, &nil, &nil).unwrap(),
+        ];
+        let cap = session.with_active_in(|instance| unsafe { (*instance).arena.node_count() });
+        session.with_active_in(|instance| unsafe {
+            (*instance).arena.set_budget(ArenaBudget::new(0, cap));
+        });
+
+        let denied = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            summary_method_arguments(&factory, arguments.clone())
+        }))
+        .unwrap_err()
+        .downcast::<RError>()
+        .unwrap();
+        assert_eq!(
+            denied.message,
+            "R allocation failed: memory or node budget exceeded"
+        );
+
+        drop(blockers);
+        factory.full_gc().unwrap();
+        let recovered = summary_method_arguments(&factory, arguments);
+        assert_eq!(PairlistIter::new(recovered).count(), 2);
+    }
+
+    #[test]
+    fn summary_allocation_retry_stops_after_original_owner_is_revoked() {
+        let original = RSession::new_for_gc_tests();
+        let replacement = RSession::new_for_gc_tests();
+        let original_pointer = original.instance_ptr();
+        let replacement_pointer = replacement.instance_ptr();
+        let replacement_nodes = || {
+            replacement.with_active(|| {
+                replacement
+                    .owner_token()
+                    .unwrap()
+                    .with_arena(|arena| arena.node_count())
+                    .unwrap()
+            })
+        };
+        let before_replacement_nodes = replacement_nodes();
+        let (factory, arguments) = original.with_active(|| {
+            let factory = SessionNodeFactory::new(original.owner_token().unwrap());
+            let nil = factory.nil();
+            let value = factory
+                .wrap(unsafe { crate::sexp::constructors::Rf_ScalarInteger(1) })
+                .unwrap();
+            let arguments = factory.pairlist_cell(&value, &nil, &nil).unwrap();
+            (factory, arguments)
+        });
+        let callback_fired = Rc::new(Cell::new(false));
+        let callback_state = callback_fired.clone();
+
+        let error_message = original.with_active(|| {
+            original.with_active_in(|instance| unsafe {
+                (*instance).arena.set_budget(ArenaBudget::new(0, 1));
+            });
+            crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+                callback_state.set(true);
+                unsafe {
+                    crate::sexp::instance::revoke_instance_availability(original_pointer);
+                    crate::sexp::instance::set_current_instance(replacement_pointer);
+                }
+            }));
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                summary_method_arguments(&factory, arguments)
+            }))
+            .unwrap_err()
+            .downcast::<RError>()
+            .unwrap()
+            .message
+        });
+
+        assert!(callback_fired.get());
+        assert!(error_message.to_lowercase().contains("owner"));
+        assert_eq!(replacement_nodes(), before_replacement_nodes);
+        assert!(!original.is_active());
     }
 
     #[test]
