@@ -100,3 +100,6 @@ mod raw_owner_tests;
 
 #[cfg(test)]
 mod character_owner_tests;
+
+#[cfg(test)]
+mod same_type_owner_tests;
