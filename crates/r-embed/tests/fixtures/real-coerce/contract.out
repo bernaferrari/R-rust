@@ -1,0 +1,32 @@
+numeric(0)
+character(0)
+c(0, 1, NA)
+character(0)
+c(0, 1, -2, NA)
+character(0)
+c(0, 0, 1.9, -1.9, Inf, -Inf, NA, NaN)
+character(0)
+c(0, 1.9, -1.9, NA)
+"imaginary parts discarded in coercion"
+c(NA, Inf, NA)
+character(0)
+c(0, -1.9, 16, 100, NaN, Inf, -Inf, Inf, NA, NA, NA)
+"NAs introduced by coercion"
+c(0, 1, 255)
+character(0)
+c(0, 2, NA)
+NULL
+structure(c(a = 0L, b = 2L, c = NA), note = list(1:3))
+c(7, 2, NA)
+c(7, 2, NA)
+structure(c(a = 0L, b = 0L, c = NA), note = list(1:3))
+c(0, 1, NA, 2)
+character(0)
+c(0, 1)
+character(0)
+c(0, 1, NA)
+character(0)
+c(0, 1, NA)
+character(0)
+"(converted from warning) NAs introduced by coercion"
+2

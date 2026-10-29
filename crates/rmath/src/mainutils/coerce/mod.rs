@@ -88,3 +88,6 @@ mod logical_owner_tests;
 
 #[cfg(test)]
 mod integer_owner_tests;
+
+#[cfg(test)]
+mod real_owner_tests;
