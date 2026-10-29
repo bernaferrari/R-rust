@@ -347,19 +347,46 @@ pub unsafe fn coerceToComplex(v: SEXP) -> SEXP {
 /// Coerce a vector to raw type.
 pub unsafe fn coerceToRaw(v: SEXP) -> SEXP {
     unsafe {
+        let owner = crate::sexp::owner::OwnerToken::current()
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        let pin = owner
+            .pin()
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        let factory = owner.node_factory();
+        let source = factory
+            .wrap(v)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        let check = || {
+            if let Some(pin) = &pin {
+                pin.require_live()
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            }
+            factory
+                .require_active()
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        };
+        let n = source.len();
+        check();
+        // Keep the runtime's typed allocation-denial error and GC retry.
+        let raw_output = Rf_allocVector3(SEXPTYPE::RAWSXP, n);
+        let output = factory
+            .wrap(raw_output)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        check();
+        SHALLOW_DUPLICATE_ATTRIB(output.as_raw(), source.as_raw());
+        check();
+        let mut output = crate::sexp::object::SexpMut::try_from_checked(output)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
         let mut warn: c_int = 0;
-        let n = xlength(v);
-        let ans = Rf_allocVector3(SEXPTYPE::RAWSXP, n);
-        let _ans_guard = protect(ans);
-        SHALLOW_DUPLICATE_ATTRIB(ans, v);
-        let pa = RAW(ans);
-
-        let vtype = TYPEOF(v);
         for i in 0..n {
-            let ii = i as c_int;
-            let tmp: c_int = match vtype {
-                t if t == SEXPTYPE::LGLSXP => {
-                    let val = IntegerFromLogical(LOGICAL_ELT(v, ii), &mut warn);
+            let tmp: c_int = match source.typeof_() {
+                SEXPTYPE::LGLSXP => {
+                    let val = IntegerFromLogical(
+                        source.try_logical_elt(i).unwrap_or_else(|error| {
+                            crate::sexp::context::r_error(error.to_string())
+                        }),
+                        &mut warn,
+                    );
                     if val == NA_INTEGER {
                         warn |= WARN_RAW;
                         0
@@ -367,8 +394,10 @@ pub unsafe fn coerceToRaw(v: SEXP) -> SEXP {
                         val
                     }
                 }
-                t if t == SEXPTYPE::INTSXP => {
-                    let val = INTEGER_ELT(v, ii);
+                SEXPTYPE::INTSXP => {
+                    let val = source
+                        .try_integer_elt(i)
+                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
                     if val == NA_INTEGER || val < 0 || val > 255 {
                         warn |= WARN_RAW;
                         0
@@ -376,8 +405,13 @@ pub unsafe fn coerceToRaw(v: SEXP) -> SEXP {
                         val
                     }
                 }
-                t if t == SEXPTYPE::REALSXP => {
-                    let val = IntegerFromReal(REAL_ELT(v, ii), &mut warn);
+                SEXPTYPE::REALSXP => {
+                    let val = IntegerFromReal(
+                        source.try_real_elt(i).unwrap_or_else(|error| {
+                            crate::sexp::context::r_error(error.to_string())
+                        }),
+                        &mut warn,
+                    );
                     if val == NA_INTEGER || val < 0 || val > 255 {
                         warn |= WARN_RAW;
                         0
@@ -385,8 +419,13 @@ pub unsafe fn coerceToRaw(v: SEXP) -> SEXP {
                         val
                     }
                 }
-                t if t == SEXPTYPE::CPLXSXP => {
-                    let val = IntegerFromComplex(COMPLEX_ELT(v, ii), &mut warn);
+                SEXPTYPE::CPLXSXP => {
+                    let val = IntegerFromComplex(
+                        source.try_complex_elt(i).unwrap_or_else(|error| {
+                            crate::sexp::context::r_error(error.to_string())
+                        }),
+                        &mut warn,
+                    );
                     if val == NA_INTEGER || val < 0 || val > 255 {
                         warn |= WARN_RAW;
                         0
@@ -394,8 +433,12 @@ pub unsafe fn coerceToRaw(v: SEXP) -> SEXP {
                         val
                     }
                 }
-                t if t == SEXPTYPE::STRSXP => {
-                    let val = IntegerFromString(STRING_ELT(v, i), &mut warn);
+                SEXPTYPE::STRSXP => {
+                    let text = source
+                        .try_string_elt(i)
+                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                    check();
+                    let val = IntegerFromString(text.as_raw(), &mut warn);
                     if val == NA_INTEGER || val < 0 || val > 255 {
                         warn |= WARN_RAW;
                         0
@@ -405,13 +448,16 @@ pub unsafe fn coerceToRaw(v: SEXP) -> SEXP {
                 }
                 _ => 0,
             };
-            *pa.add(i as usize) = tmp as Rbyte;
+            check();
+            output
+                .try_set_raw_elt(i, tmp as Rbyte)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
         }
-
         if warn != 0 {
             CoercionWarning(warn);
+            check();
         }
-        ans
+        output.freeze().as_raw()
     }
 }
 
