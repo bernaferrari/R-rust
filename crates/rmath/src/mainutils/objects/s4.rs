@@ -178,6 +178,10 @@ pub unsafe fn asS4(s: SEXP, flag: c_int, complete: c_int) -> SEXP {
         if s.is_null() {
             return s;
         }
+        let owner = crate::sexp::owner::OwnerToken::current().expect("active asS4 owner");
+        let pin = owner.pin().expect("live asS4 owner");
+        let factory = owner.node_factory();
+        let _source_root = factory.wrap(s).expect("asS4 input belongs to active owner");
         if flag == IS_S4_OBJECT(s) {
             return s;
         }
@@ -186,14 +190,37 @@ pub unsafe fn asS4(s: SEXP, flag: c_int, complete: c_int) -> SEXP {
         // does not flip the bit on the caller's binding (reg-S4.R asS4(m)
         // must leave m non-S4 for identical(m, f@.Data)).
         let s = crate::mainutils::duplicate::shallow_duplicate_if_shared(s);
+        if let Some(pin) = &pin {
+            pin.require_live().expect("live asS4 owner after duplicate");
+        }
+        factory
+            .require_active()
+            .expect("original asS4 owner after duplicate");
+        let _result = factory
+            .wrap(s)
+            .expect("asS4 duplicate belongs to original owner");
         let _dup = protect(s);
 
         if flag != FALSE {
             SET_S4_OBJECT(s);
         } else {
             if complete != FALSE {
+                let value = crate::mainutils::subassign::R_getS4DataSlot(s, SEXPTYPE::ANYSXP.into());
+                if value != R_NilValue() && IS_S4_OBJECT(value) == FALSE {
+                    return value;
+                }
                 if complete == 1 {
                     let klass = R_data_class(s);
+                    if let Some(pin) = &pin {
+                        pin.require_live()
+                            .expect("live asS4 owner after class lookup");
+                    }
+                    factory
+                        .require_active()
+                        .expect("original asS4 owner after class lookup");
+                    let _class_root = factory
+                        .wrap(klass)
+                        .expect("asS4 class belongs to original owner");
                     let class_str = if !klass.is_null() && LENGTH(klass) > 0 {
                         let cs = CHAR(STRING_ELT(klass, 0));
                         if !cs.is_null() {

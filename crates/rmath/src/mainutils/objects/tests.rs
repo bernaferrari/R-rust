@@ -1646,16 +1646,172 @@ mod tests {
     }
 
     #[test]
+    fn as_s4_data_conversion_preserves_class_and_source_through_gc() {
+        let session = crate::sexp::session::RSession::new_for_gc_tests();
+        session.with_active_in(|instance| unsafe {
+            let factory = session.owner_token().unwrap().node_factory();
+            let input = factory.wrap(Rf_ScalarInteger(42)).unwrap();
+            let s3_class = factory.strings(&["Restored", "integer"]).unwrap();
+            let marker = factory.strings(&["retained attribute"]).unwrap();
+            let s3_symbol = Rf_install(c".S3Class".as_ptr());
+            let marker_symbol = Rf_install(c"marker".as_ptr());
+            setAttrib(input.as_raw(), s3_symbol, s3_class.as_raw());
+            setAttrib(input.as_raw(), marker_symbol, marker.as_raw());
+            SET_S4_OBJECT(input.as_raw());
+            SET_NAMED(input.as_raw(), 2);
+            (*instance).memory_state.gc_force_gap = 1;
+            (*instance).memory_state.gc_force_wait = 1;
+            let output = factory.wrap(asS4(input.as_raw(), FALSE, 1)).unwrap();
+            crate::sexp::gengc::full_gc_in(instance);
+            assert_ne!(output.as_raw(), input.as_raw());
+            assert_eq!(IS_S4_OBJECT(input.as_raw()), TRUE);
+            assert_eq!(IS_S4_OBJECT(output.as_raw()), FALSE);
+            assert_eq!(
+                getAttrib(output.as_raw(), R_ClassSymbol()),
+                s3_class.as_raw()
+            );
+            assert_eq!(getAttrib(output.as_raw(), marker_symbol), marker.as_raw());
+            assert_eq!(getAttrib(output.as_raw(), s3_symbol), R_NilValue());
+            assert_eq!(getAttrib(input.as_raw(), s3_symbol), s3_class.as_raw());
+            SET_INTEGER_ELT(output.as_raw(), 0, 99);
+            assert_eq!(INTEGER_ELT(input.as_raw(), 0), 42);
+        });
+    }
+
+    #[test]
+    fn as_s4_rejects_foreign_input_before_header_access() {
+        let original = crate::sexp::session::RSession::new_for_gc_tests();
+        let foreign = original.with_active_in(|_| unsafe {
+            original
+                .owner_token()
+                .unwrap()
+                .node_factory()
+                .wrap(Rf_ScalarInteger(42))
+                .unwrap()
+        });
+        let other = crate::sexp::session::RSession::new_for_gc_tests();
+        other.with_active_in(|_| {
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+                asS4(foreign.as_raw(), TRUE, 0)
+            }));
+            assert!(result.is_err());
+        });
+        original.with_active_in(|_| unsafe {
+            assert_eq!(IS_S4_OBJECT(foreign.as_raw()), FALSE);
+        });
+    }
+
+    #[test]
+    fn as_s4_conversion_rejects_owner_revocation_during_copy() {
+        use std::{cell::Cell, rc::Rc};
+        let session = crate::sexp::session::RSession::new_for_gc_tests();
+        session.with_active_in(|instance| unsafe {
+            let factory = session.owner_token().unwrap().node_factory();
+            let input = factory.wrap(Rf_ScalarInteger(42)).unwrap();
+            SET_S4_OBJECT(input.as_raw());
+            SET_NAMED(input.as_raw(), 2);
+            let fired = Rc::new(Cell::new(false));
+            let observed = fired.clone();
+            crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+                if !observed.replace(true) {
+                    crate::sexp::instance::revoke_instance_availability(instance);
+                }
+            }));
+            (*instance).memory_state.gc_force_gap = 1;
+            (*instance).memory_state.gc_force_wait = 1;
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                asS4(input.as_raw(), FALSE, 1)
+            }));
+            assert!(
+                fired.get(),
+                "copy must actually reach the revocation callback"
+            );
+            assert!(
+                result.is_err(),
+                "revoked conversion must not publish a result"
+            );
+        });
+    }
+
+    #[test]
+    fn as_s4_data_slot_respects_requested_type_and_object_mode() {
+        let session = crate::sexp::session::RSession::new_for_gc_tests();
+        session.with_active_in(|_| unsafe {
+            let factory = session.owner_token().unwrap().node_factory();
+            let basic = factory.wrap(Rf_ScalarInteger(42)).unwrap();
+            SET_S4_OBJECT(basic.as_raw());
+            assert_eq!(
+                crate::mainutils::subassign::R_getS4DataSlot(
+                    basic.as_raw(),
+                    SEXPTYPE::OBJSXP.into()
+                ),
+                R_NilValue()
+            );
+            assert_eq!(IS_S4_OBJECT(basic.as_raw()), TRUE);
+            let class = factory.strings(&["integer"]).unwrap();
+            setAttrib(
+                basic.as_raw(),
+                Rf_install(c".S3Class".as_ptr()),
+                class.as_raw(),
+            );
+            let restored = factory
+                .wrap(crate::mainutils::subassign::R_getS4DataSlot(
+                    basic.as_raw(),
+                    SEXPTYPE::OBJSXP.into(),
+                ))
+                .unwrap();
+            // OBJSXP requests restore an S3 class; they do not require an
+            // OBJSXP representation for a valid basic data part.
+            assert_eq!(TYPEOF(restored.as_raw()), SEXPTYPE::INTSXP);
+            assert_eq!(IS_S4_OBJECT(restored.as_raw()), FALSE);
+            let wrapper = factory.wrap(R_allocObject()).unwrap();
+            SET_S4_OBJECT(wrapper.as_raw());
+            let data = factory.wrap(Rf_ScalarInteger(7)).unwrap();
+            setAttrib(
+                wrapper.as_raw(),
+                Rf_install(c".Data".as_ptr()),
+                data.as_raw(),
+            );
+            assert_eq!(
+                crate::mainutils::subassign::R_getS4DataSlot(
+                    wrapper.as_raw(),
+                    SEXPTYPE::INTSXP.into()
+                ),
+                data.as_raw()
+            );
+            assert_eq!(
+                crate::mainutils::subassign::R_getS4DataSlot(
+                    wrapper.as_raw(),
+                    SEXPTYPE::ENVSXP.into()
+                ),
+                R_NilValue()
+            );
+        });
+    }
+
+    #[test]
+    fn as_s4_slot_only_conditional_remains_marked() {
+        let session = crate::sexp::session::RSession::new_for_gc_tests();
+        session.with_active_in(|_| unsafe {
+            let factory = session.owner_token().unwrap().node_factory();
+            let input = factory.wrap(R_allocObject()).unwrap();
+            SET_S4_OBJECT(input.as_raw());
+            let result = asS4(input.as_raw(), FALSE, 2);
+            assert_eq!(result, input.as_raw());
+            assert_eq!(IS_S4_OBJECT(result), TRUE);
+        });
+    }
+    #[test]
     fn test_asS4_unset_conditional() {
         let _session = crate::sexp::session::RSession::new();
         unsafe {
             let v = Rf_ScalarInteger(42);
             SET_S4_OBJECT(v);
-            // complete=2 (conditional) should return unchanged without error
+            // Conditional conversion accepts a basic data part.
             let result = asS4(v, FALSE, 2);
             assert_eq!(result, v);
-            // S4 bit should still be set (conditional mode returns unchanged)
-            assert_eq!(IS_S4_OBJECT(result), TRUE);
+            // Basic data parts lose their S4 marker.
+            assert_eq!(IS_S4_OBJECT(result), FALSE);
         }
     }
 
