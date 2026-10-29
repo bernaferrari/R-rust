@@ -59,4 +59,25 @@
         <item quantity="one">%1$d object</item>
         <item quantity="other">%1$d objects</item>
     </plurals>
+    <string name="table_empty_title">No table result</string>
+    <string name="table_empty_hint">Import a CSV or evaluate a data.frame to inspect rows and columns here.</string>
+    <string name="table_export_csv">Export CSV</string>
+    <string name="table_filter_label">Filter loaded rows</string>
+    <string name="table_load_more">Load more rows</string>
+    <string name="table_row_number_marker">#</string>
+    <string name="table_row_number_header">Row number</string>
+    <string name="table_sort_column">Sort by %1$s</string>
+    <string name="table_sort_state_none">Not sorted</string>
+    <string name="table_sort_state_ascending">Sorted ascending</string>
+    <string name="table_sort_state_descending">Sorted descending</string>
+    <string name="table_sort_action_ascending">Sort %1$s ascending</string>
+    <string name="table_sort_action_descending">Sort %1$s descending</string>
+    <plurals name="table_loaded_rows">
+        <item quantity="one">Loaded %1$d of %2$d row</item>
+        <item quantity="other">Loaded %1$d of %2$d rows</item>
+    </plurals>
+    <plurals name="table_total_rows">
+        <item quantity="one">%1$d row</item>
+        <item quantity="other">%1$d rows</item>
+    </plurals>
 </resources>

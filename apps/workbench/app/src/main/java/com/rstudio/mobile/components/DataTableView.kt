@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -26,15 +28,19 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.rstudio.mobile.R
 import com.rstudio.mobile.runtime.DataTable
 
 @Composable
@@ -45,9 +51,9 @@ fun DataTableView(table: DataTable?, onExport: () -> Unit = {}, onLoadMore: () -
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Icon(Icons.Default.TableRows, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-            Text("No table result", style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.table_empty_title), style = MaterialTheme.typography.titleMedium)
             Text(
-                "Import a CSV or evaluate a data.frame to inspect rows and columns here.",
+                stringResource(R.string.table_empty_hint),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -71,24 +77,30 @@ fun DataTableView(table: DataTable?, onExport: () -> Unit = {}, onLoadMore: () -
             Text(table.title, style = MaterialTheme.typography.titleMedium)
             val shown = table.rows.size
             Text(
-                if (shown < table.totalRows) "Loaded $shown of ${table.totalRows} rows" else "${table.totalRows} rows",
+                if (shown < table.totalRows) {
+                    pluralStringResource(R.plurals.table_loaded_rows, table.totalRows, shown, table.totalRows)
+                } else {
+                    pluralStringResource(R.plurals.table_total_rows, table.totalRows, table.totalRows)
+                },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            androidx.compose.material3.TextButton(onClick = onExport) { Text("Export CSV") }
+            androidx.compose.material3.TextButton(onClick = onExport) { Text(stringResource(R.string.table_export_csv)) }
             OutlinedTextField(
                 value = query,
                 onValueChange = { query = it },
                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                label = { Text("Filter loaded rows") },
+                label = { Text(stringResource(R.string.table_filter_label)) },
                 singleLine = true,
             )
         }
         HorizontalDivider()
         Column(Modifier.fillMaxSize().horizontalScroll(horizontal)) {
             TableRow(
-                cells = listOf("#") + table.columns,
+                cells = listOf(stringResource(R.string.table_row_number_marker)) + table.columns,
                 header = true,
+                sortColumn = sortColumn,
+                ascending = ascending,
                 onCellClick = { index ->
                     val column = index - 1
                     if (column == sortColumn) ascending = !ascending else { sortColumn = column; ascending = true }
@@ -103,7 +115,7 @@ fun DataTableView(table: DataTable?, onExport: () -> Unit = {}, onLoadMore: () -
                 if (table.rowOffset + table.rows.size < table.totalRows) {
                     item {
                         androidx.compose.material3.TextButton(onClick = onLoadMore, modifier = Modifier.fillMaxWidth()) {
-                            Text("Load more rows")
+                            Text(stringResource(R.string.table_load_more))
                         }
                     }
                 }
@@ -113,28 +125,51 @@ fun DataTableView(table: DataTable?, onExport: () -> Unit = {}, onLoadMore: () -
 }
 
 @Composable
-private fun TableRow(cells: List<String>, header: Boolean, onCellClick: (Int) -> Unit) {
+private fun TableRow(
+    cells: List<String>,
+    header: Boolean,
+    sortColumn: Int = -1,
+    ascending: Boolean = true,
+    onCellClick: (Int) -> Unit,
+) {
     Row(
         modifier = Modifier
             .background(if (header) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.surface)
             .padding(horizontal = 8.dp, vertical = 6.dp),
     ) {
         cells.forEachIndexed { index, cell ->
+            var cellModifier = Modifier.width(if (index == 0) 56.dp else 144.dp).padding(end = 10.dp)
+            if (header) {
+                if (index > 0) {
+                    val selected = sortColumn == index - 1
+                    val description = stringResource(R.string.table_sort_column, cell)
+                    val state = stringResource(
+                        when {
+                            !selected -> R.string.table_sort_state_none
+                            ascending -> R.string.table_sort_state_ascending
+                            else -> R.string.table_sort_state_descending
+                        }
+                    )
+                    val action = stringResource(
+                        if (selected && ascending) R.string.table_sort_action_descending
+                        else R.string.table_sort_action_ascending,
+                        cell,
+                    )
+                    cellModifier = cellModifier
+                        .clickable(onClickLabel = action, role = Role.Button) { onCellClick(index) }
+                        .semantics {
+                            contentDescription = description
+                            stateDescription = state
+                        }
+                } else {
+                    val description = stringResource(R.string.table_row_number_header)
+                    cellModifier = cellModifier.semantics { contentDescription = description }
+                }
+                cellModifier = cellModifier.heightIn(min = 48.dp).wrapContentHeight(Alignment.CenterVertically)
+            }
             Text(
                 text = cell,
-                modifier = Modifier
-                    .width(if (index == 0) 56.dp else 144.dp)
-                    .padding(end = 10.dp)
-                    .let { base ->
-                        if (header && index > 0) {
-                            base
-                                .clickable { onCellClick(index) }
-                                .semantics {
-                                    role = Role.Button
-                                    contentDescription = "Sort by $cell"
-                                }
-                        } else base
-                    },
+                modifier = cellModifier,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 style = MaterialTheme.typography.bodySmall.copy(
