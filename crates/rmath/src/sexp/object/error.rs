@@ -10,6 +10,10 @@ pub enum SexpError {
     EvaluationFailed {
         message: String,
     },
+    /// An attribute graph violates its structural contract.
+    InvalidAttributes {
+        reason: &'static str,
+    },
     /// A raw pointer was null.
     NullPointer,
     /// A raw pointer was visibly not aligned for `SexprecCore`.
@@ -66,6 +70,7 @@ impl std::fmt::Display for SexpError {
         match self {
             SexpError::Altrep { reason } => write!(f, "ALTREP: {reason}"),
             SexpError::EvaluationFailed { message } => write!(f, "{message}"),
+            SexpError::InvalidAttributes { reason } => write!(f, "{reason}"),
             SexpError::NullPointer => write!(f, "SEXP pointer is null"),
             SexpError::MisalignedPointer { address } => {
                 write!(f, "SEXP pointer {address:#x} is misaligned")

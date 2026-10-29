@@ -525,6 +525,8 @@ unsafe fn validate_choose_inputs(a: SEXP, b: SEXP) -> Result<(), &'static str> {
 
 #[path = "choose_checked.rs"]
 mod choose_checked;
+#[path = "choose_factor.rs"]
+mod choose_factor;
 
 unsafe fn checked_choose(call: SEXP, a: SEXP, b: SEXP, logarithm: bool) -> SEXP {
     use crate::sexp::{object::Sexp, owner::OwnerToken};
@@ -548,6 +550,24 @@ unsafe fn checked_choose(call: SEXP, a: SEXP, b: SEXP, logarithm: bool) -> SEXP 
     let mut a = root(a);
     let mut b = root(b);
     active();
+    let weak = owner
+        .weak_owner()
+        .unwrap_or_else(|| crate::sexp::context::r_error("choose requires a managed runtime"));
+    let validation = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        crate::sexp::owner::with_runtime(&weak, |access| choose_factor::has_factor(access, &a, &b))
+    }));
+    active();
+    match validation {
+        Ok(Ok(Ok(false))) => {}
+        Ok(Ok(Ok(true))) => unsafe {
+            crate::mainutils::errors::errorcall_str(
+                call.as_raw(),
+                "non-numeric argument to mathematical function",
+            )
+        },
+        Ok(Ok(Err(error))) | Ok(Err(error)) => crate::sexp::context::r_error(error.to_string()),
+        Err(payload) => std::panic::resume_unwind(payload),
+    }
     if !a.is_empty() && !b.is_empty() {
         let raw =
             unsafe { crate::main::coerce::coerceVector(a.as_raw(), SEXPTYPE::REALSXP.as_c_int()) };
@@ -558,9 +578,6 @@ unsafe fn checked_choose(call: SEXP, a: SEXP, b: SEXP, logarithm: bool) -> SEXP 
         active();
         b = root(raw);
     }
-    let weak = owner
-        .weak_owner()
-        .unwrap_or_else(|| crate::sexp::context::r_error("choose requires a managed runtime"));
     let _warning_call = crate::mainutils::errors::mathlib_warning_call_guard(call.as_raw());
     let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         crate::sexp::owner::with_runtime(&weak, |access| {
@@ -870,3 +887,7 @@ mod choose_validation_tests {
 #[cfg(test)]
 #[path = "choose_checked_tests.rs"]
 mod choose_checked_tests;
+
+#[cfg(test)]
+#[path = "choose_factor_tests.rs"]
+mod choose_factor_tests;
