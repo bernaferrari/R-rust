@@ -9,8 +9,6 @@ controls <- list(
 )
 for (name in names(controls)) {
   cat(name, "\n", sep = "")
-  cat("input="); dput(controls[[name]])
-  cat("output="); dput(as.character(controls[[name]]))
 }
 cat("precision_pairlist_equivalence=", identical(as.character(pairlist(1.2345678901234567, c(1.2345678901234567, 9.8765432109876543))), as.character(controls$list_precision)), "\n", sep = "")
 expected <- list(

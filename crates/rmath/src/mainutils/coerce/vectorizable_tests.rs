@@ -44,7 +44,6 @@ fn vectorizable_public_pairlist_and_expression_coercion_follow_gnu() {
         "identical(as.integer(pairlist(1L,2L)),c(1L,2L))",
         "identical(as.logical(pairlist(logical(),TRUE)),c(NA,TRUE))",
         "identical(as.integer(list(integer(),2L)),c(NA_integer_,2L))",
-        "inherits(try(as.integer(expression(1L)),silent=TRUE),'try-error')",
     ] {
         let actual = session
             .eval_code_with_output_capture(expression)
@@ -52,6 +51,14 @@ fn vectorizable_public_pairlist_and_expression_coercion_follow_gnu() {
             .unwrap_or_else(|error| panic!("{expression}: {error}"));
         assert_eq!(actual.try_logical_elt(0).unwrap(), 1, "{expression}");
     }
+
+    let rejected = session
+        .eval_code_with_output_capture("as.integer(expression(1L))")
+        .0;
+    assert!(
+        rejected.is_err(),
+        "as.integer(expression(1L)) must fail like the pinned GNU control"
+    );
 }
 
 #[test]
