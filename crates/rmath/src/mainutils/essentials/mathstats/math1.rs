@@ -523,6 +523,79 @@ unsafe fn validate_choose_inputs(a: SEXP, b: SEXP) -> Result<(), &'static str> {
     }
 }
 
+#[path = "choose_checked.rs"]
+mod choose_checked;
+
+unsafe fn checked_choose(call: SEXP, a: SEXP, b: SEXP, logarithm: bool) -> SEXP {
+    use crate::sexp::{object::Sexp, owner::OwnerToken};
+    let owner = unsafe { OwnerToken::current() }
+        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+    let active = || {
+        owner
+            .require_active()
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
+    };
+    let _pin = owner
+        .pin()
+        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+    let root = |raw| {
+        owner
+            .sexp(raw)
+            .and_then(Sexp::into_owned)
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
+    };
+    let call = root(call);
+    let mut a = root(a);
+    let mut b = root(b);
+    active();
+    if !a.is_empty() && !b.is_empty() {
+        let raw =
+            unsafe { crate::main::coerce::coerceVector(a.as_raw(), SEXPTYPE::REALSXP.as_c_int()) };
+        active();
+        a = root(raw);
+        let raw =
+            unsafe { crate::main::coerce::coerceVector(b.as_raw(), SEXPTYPE::REALSXP.as_c_int()) };
+        active();
+        b = root(raw);
+    }
+    let weak = owner
+        .weak_owner()
+        .unwrap_or_else(|| crate::sexp::context::r_error("choose requires a managed runtime"));
+    let _warning_call = crate::mainutils::errors::mathlib_warning_call_guard(call.as_raw());
+    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        crate::sexp::owner::with_runtime(&weak, |access| {
+            choose_checked::evaluate(access, a, b, logarithm)
+        })
+    }));
+    active();
+    let (output, source) = match outcome {
+        Ok(Ok(Ok(value))) => value,
+        Ok(Ok(Err(error))) | Ok(Err(error)) => crate::sexp::context::r_error(error.to_string()),
+        Err(payload) => std::panic::resume_unwind(payload),
+    };
+    if let Some(source) = source {
+        // Root the exact attribute graph before duplication can collect/reenter.
+        let attributes = source
+            .try_attrib()
+            .and_then(Sexp::into_owned)
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        let copied = unsafe { crate::mainutils::duplicate::shallow_duplicate(attributes.as_raw()) };
+        active();
+        let copied = root(copied);
+        unsafe {
+            SET_ATTRIB(output.as_raw(), copied.as_raw());
+            SET_OBJECT(output.as_raw(), OBJECT(source.as_raw()));
+            if crate::mainutils::coerce::IS_S4_OBJECT(source.as_raw()) != 0 {
+                SET_S4_OBJECT(output.as_raw());
+            } else {
+                UNSET_S4_OBJECT(output.as_raw());
+            }
+        }
+        active();
+    }
+    output.as_raw()
+}
+
 /// R's `choose(n, k)` — binomial coefficient.
 pub unsafe fn do_choose(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
@@ -531,7 +604,7 @@ pub unsafe fn do_choose(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if let Err(message) = validate_choose_inputs(n_arg, k_arg) {
             crate::mainutils::errors::errorcall_str(call, message);
         }
-        apply_binary_scalar_fn(call, n_arg, k_arg, crate::special::choose::choose)
+        checked_choose(call, n_arg, k_arg, false)
     }
 }
 
@@ -543,7 +616,7 @@ pub unsafe fn do_lchoose(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         if let Err(message) = validate_choose_inputs(n_arg, k_arg) {
             crate::mainutils::errors::errorcall_str(call, message);
         }
-        apply_binary_scalar_fn(call, n_arg, k_arg, crate::special::choose::lchoose)
+        checked_choose(call, n_arg, k_arg, true)
     }
 }
 
@@ -793,3 +866,7 @@ mod choose_validation_tests {
         });
     }
 }
+
+#[cfg(test)]
+#[path = "choose_checked_tests.rs"]
+mod choose_checked_tests;
