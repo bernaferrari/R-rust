@@ -45,25 +45,35 @@ pub unsafe fn LogicalFromComplex(x: Rcomplex, _warn: *mut c_int) -> c_int {
 
 /// Convert string (CHARSXP) to logical.
 ///
-/// Returns 1 for "TRUE"/"T" (case-insensitive), 0 for "FALSE"/"F",
-/// NA_LOGICAL for NA_STRING or unrecognized strings.
+/// Match GNU's exact logical spellings without allocating or interpreting
+/// arbitrary CHARSXP bytes as UTF-8.
 pub unsafe fn LogicalFromString(x: SEXP, _warn: *mut c_int) -> c_int {
-    unsafe {
-        if x.is_null() || x == R_NaString() {
-            return NA_LOGICAL;
-        }
-        let s = CHAR(x);
-        if s.is_null() {
-            return NA_LOGICAL;
-        }
-        let bytes = CStr::from_ptr(s).to_bytes();
-        let str = std::str::from_utf8_unchecked(bytes).trim();
-
-        match str.to_uppercase().as_str() {
-            "TRUE" | "T" => 1,
-            "FALSE" | "F" => 0,
-            _ => NA_LOGICAL,
-        }
+    if x.is_null() || x == R_NaString() {
+        return NA_LOGICAL;
+    }
+    let owner = unsafe { crate::sexp::owner::OwnerToken::current() }
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    let _pin = owner
+        .pin()
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    let factory = owner.node_factory();
+    let chars = factory
+        .wrap(x)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    factory
+        .require_active()
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    let matches = |text: &[u8]| {
+        chars
+            .try_char_eq(text)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+    };
+    if matches(b"T") || matches(b"TRUE") || matches(b"True") || matches(b"true") {
+        1
+    } else if matches(b"F") || matches(b"FALSE") || matches(b"False") || matches(b"false") {
+        0
+    } else {
+        NA_LOGICAL
     }
 }
 

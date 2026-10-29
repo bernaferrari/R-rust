@@ -103,3 +103,6 @@ mod character_owner_tests;
 
 #[cfg(test)]
 mod same_type_owner_tests;
+
+#[cfg(test)]
+mod scalar_logical_tests;

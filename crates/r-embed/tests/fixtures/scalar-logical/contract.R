@@ -1,0 +1,6 @@
+emit<-function(x)cat(paste(capture.output(dput(x)),collapse=" "),"\n",sep="")
+x<-c("T","t","TRUE","True","true","tRuE","F","f","FALSE","False","false","fAlSe"," TRUE","TRUE ","\tFALSE\n","falſe","\u00a0TRUE","", "0","1","NA",NA_character_)
+emit(as.logical(x));for(s in x)emit(as.logical(s));emit(x)
+y<-structure(x,names=as.character(seq_along(x)),class="unknown",note=list(1:3));z<-as.logical(y);emit(z);emit(attributes(z));emit(attributes(y));z[1]<-FALSE;emit(y);y[2]<-"FALSE";emit(z)
+for(v in list(NULL,logical(),integer(),double(),complex(),raw(),character(),c(0L,1L,NA_integer_),c(0,Inf,-Inf,NA_real_,NaN),as.raw(c(0,255))))emit(as.logical(v))
+as.logical.keep<-function(x,...)structure(TRUE,names="method",note=9L);emit(as.logical(structure("tRuE",class="keep")))
