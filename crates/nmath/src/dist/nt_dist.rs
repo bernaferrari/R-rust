@@ -268,10 +268,10 @@ pub fn qnt_inner(p: f64, df: f64, ncp: f64, lower_tail: bool, log_p: bool) -> f6
             return ml_warn_return_nan();
         }
         if p == 0.0 {
-            return if lower_tail { ML_NEGINF } else { ML_POSINF };
+            return if lower_tail { ML_POSINF } else { ML_NEGINF };
         }
         if p == ML_NEGINF {
-            return if lower_tail { ML_POSINF } else { ML_NEGINF };
+            return if lower_tail { ML_NEGINF } else { ML_POSINF };
         }
     } else {
         if p < 0.0 || p > 1.0 {
@@ -387,4 +387,26 @@ pub fn Rf_rnt(df: c_double, ncp: c_double) -> c_double {
 #[must_use]
 pub fn rnt(df: c_double, ncp: c_double) -> c_double {
     rnt_inner(df, ncp)
+}
+
+#[cfg(test)]
+mod noncentral_log_endpoint_tests {
+    #[test]
+    fn noncentral_log_endpoints_match_probability_scale() {
+        let kernels: [fn(f64, bool, bool) -> f64; 4] = [
+            |p, lower, log| super::qnt_inner(p, 1.0, 1.0, lower, log),
+            |p, lower, log| crate::dist::nbeta::qnbeta_inner(p, 1.0, 2.0, 1.0, lower, log),
+            |p, lower, log| crate::dist::nchisq::qnchisq_inner(p, 1.0, 1.0, lower, log),
+            |p, lower, log| crate::dist::nf_dist::qnf_inner(p, 1.0, 2.0, 1.0, lower, log),
+        ];
+        for kernel in kernels {
+            for lower in [true, false] {
+                assert_eq!(
+                    kernel(f64::NEG_INFINITY, lower, true),
+                    kernel(0.0, lower, false)
+                );
+                assert_eq!(kernel(0.0, lower, true), kernel(1.0, lower, false));
+            }
+        }
+    }
 }

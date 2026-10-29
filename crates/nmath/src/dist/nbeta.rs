@@ -260,10 +260,10 @@ pub fn qnbeta_inner(p: f64, a: f64, b: f64, ncp: f64, lower_tail: bool, log_p: b
             return ml_warn_return_nan();
         }
         if p == 0.0 {
-            return if lower_tail { 0.0 } else { 1.0 };
+            return if lower_tail { 1.0 } else { 0.0 };
         }
         if p == ML_NEGINF {
-            return if lower_tail { 1.0 } else { 0.0 };
+            return if lower_tail { 0.0 } else { 1.0 };
         }
     } else {
         if p < 0.0 || p > 1.0 {
