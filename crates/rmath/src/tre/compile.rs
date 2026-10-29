@@ -1802,7 +1802,10 @@ unsafe fn tre_make_trans(
                     } else {
                         (*t).u.set_class((*p1.offset(pi)).class);
                     }
-                    (*t).neg_classes = (*p1.offset(pi)).neg_classes;
+                    (*t).neg_classes = allocate_neg_classes((*p1.offset(pi)).neg_classes, storage);
+                    if !(*p1.offset(pi)).neg_classes.is_null() && (*t).neg_classes.is_null() {
+                        return REG_ESPACE;
+                    }
                     (*t).tags = ptr::null_mut();
                     (*t).params = ptr::null_mut();
 
@@ -2134,6 +2137,39 @@ unsafe fn allocate_retained_ints(
     } else {
         unsafe { mem::xmalloc(bytes).cast() }
     }
+}
+
+unsafe fn allocate_neg_classes(
+    source: *const tre_ctype_t,
+    storage: &mut Option<&mut super::owned_arena::OwnedArena>,
+) -> *mut tre_ctype_t {
+    if source.is_null() {
+        return ptr::null_mut();
+    }
+    let mut count = 0usize;
+    while unsafe { *source.add(count) } != 0 {
+        let Some(next) = count.checked_add(1) else {
+            return ptr::null_mut();
+        };
+        count = next;
+    }
+    let Some(count) = count.checked_add(1) else {
+        return ptr::null_mut();
+    };
+    let Some(bytes) = count.checked_mul(std::mem::size_of::<tre_ctype_t>()) else {
+        return ptr::null_mut();
+    };
+    let result: *mut tre_ctype_t = if let Some(storage) = storage {
+        storage
+            .allocate_exact(bytes)
+            .map_or(ptr::null_mut(), |pointer| pointer.cast())
+    } else {
+        unsafe { mem::xmalloc(bytes).cast() }
+    };
+    if !result.is_null() {
+        unsafe { ptr::copy_nonoverlapping(source, result, count) };
+    }
+    result
 }
 
 unsafe fn allocate_submatch_table(
@@ -2579,7 +2615,7 @@ unsafe fn tre_free_tables(preg: *mut regex_t, owned_tables: bool) {
                 if !owned_tables && !(*trans).tags.is_null() {
                     mem::xfree((*trans).tags as *mut c_void);
                 }
-                if !(*trans).neg_classes.is_null() {
+                if !owned_tables && !(*trans).neg_classes.is_null() {
                     mem::xfree((*trans).neg_classes as *mut c_void);
                 }
                 if !owned_tables && !(*trans).params.is_null() {
@@ -3292,6 +3328,173 @@ mod owned_table_tests {
             assert_eq!(status, REG_OK);
             assert!(!(*transitions).tags.is_null());
             assert!(!(*transitions).params.is_null());
+            (*descriptor).transitions = transitions;
+            (*descriptor).num_transitions = 1;
+            let mut preg = regex_t {
+                re_nsub: 0,
+                value: descriptor.cast(),
+            };
+            tre_free(&mut preg);
+            assert!(preg.value.is_null());
+            status
+        });
+        assert_eq!(status, REG_OK);
+        assert!(report.attempts > 1);
+        assert_eq!(report.remaining, 0);
+    }
+
+    fn synthetic_neg_class_positions(
+        neg_classes: *mut tre_ctype_t,
+    ) -> ([tre_pos_and_tags_t; 2], [tre_pos_and_tags_t; 2], [c_int; 2]) {
+        let mut left: [tre_pos_and_tags_t; 2] = [unsafe { std::mem::zeroed() }; 2];
+        left[0].position = 0;
+        left[0].code_min = i32::from(b'a');
+        left[0].code_max = i32::from(b'a');
+        left[0].neg_classes = neg_classes;
+        left[0].backref = -1;
+        left[1].position = -1;
+
+        let mut right: [tre_pos_and_tags_t; 2] = [unsafe { std::mem::zeroed() }; 2];
+        right[0].position = 1;
+        right[0].code_min = i32::from(b'a');
+        right[0].code_max = i32::from(b'a');
+        right[0].backref = -1;
+        right[1].position = -1;
+        (left, right, [0, 1])
+    }
+
+    #[test]
+    fn retained_tre_neg_classes_deny_unfunded_cells_retry_and_drop_with_owner() {
+        use crate::sexp::{memory::ArenaBudget, session::RSession};
+
+        let mut session = RSession::new_for_gc_tests();
+        let owner = session.owner_token().unwrap();
+        let ledger = owner
+            .with_arena(|arena| arena.heap_identity().byte_ledger())
+            .unwrap();
+        let mut storage =
+            super::super::owned_arena::OwnedArena::new(crate::mainutils::grep::regex_workspace())
+                .unwrap();
+        let mut scratch =
+            mem::tre_mem_struct::new(crate::mainutils::grep::RegexWorkspace::unbounded()).unwrap();
+        let bytes = 2 * std::mem::size_of::<tre_ctype_t>();
+        let source = unsafe { mem::tre_mem_alloc(&mut scratch, bytes).cast::<tre_ctype_t>() };
+        assert!(!source.is_null());
+        unsafe {
+            *source = 12;
+            *source.add(1) = 0;
+        }
+        let (left, right, offsets) = synthetic_neg_class_positions(source);
+        owner
+            .with_arena(|arena| {
+                arena.set_budget(ArenaBudget::new(
+                    arena.total_bytes_allocated() + bytes - 1,
+                    0,
+                ))
+            })
+            .unwrap();
+        let mut denied: [tre_tnfa_transition_t; 2] = unsafe { std::mem::zeroed() };
+        let status = unsafe {
+            tre_make_trans(
+                left.as_ptr(),
+                right.as_ptr(),
+                denied.as_mut_ptr(),
+                ptr::null_mut(),
+                offsets.as_ptr(),
+                &mut Some(&mut storage),
+            )
+        };
+        assert_eq!(status, REG_ESPACE);
+        assert!(denied[0].neg_classes.is_null());
+        assert_eq!(
+            owner.with_arena(|arena| arena.workspace_bytes()).unwrap(),
+            0
+        );
+
+        owner
+            .with_arena(|arena| arena.set_budget(ArenaBudget::unlimited()))
+            .unwrap();
+        let descriptor = unsafe { allocate_tnfa(&mut Some(&mut storage)) };
+        let transitions = unsafe { allocate_transition_table(1, &mut Some(&mut storage)) };
+        assert!(!descriptor.is_null() && !transitions.is_null());
+        let status = unsafe {
+            tre_make_trans(
+                left.as_ptr(),
+                right.as_ptr(),
+                transitions,
+                ptr::null_mut(),
+                offsets.as_ptr(),
+                &mut Some(&mut storage),
+            )
+        };
+        assert_eq!(status, REG_OK);
+        assert_ne!(unsafe { (*transitions).neg_classes }, source);
+        assert!(storage.contains(unsafe { (*transitions).neg_classes.cast() }));
+        scratch.clear();
+        assert_eq!(
+            unsafe { std::slice::from_raw_parts((*transitions).neg_classes, 2) },
+            [12, 0]
+        );
+        unsafe {
+            assert_ne!((*transitions).assertions & ASSERT_CHAR_CLASS_NEG, 0);
+            (*descriptor).transitions = transitions;
+            (*descriptor).num_transitions = 1;
+            (*transitions).state = transitions.add(1);
+        }
+        let compiled = CompiledTre {
+            preg: regex_t {
+                re_nsub: 0,
+                value: descriptor.cast(),
+            },
+            _tables: storage,
+        };
+        owner.full_gc().unwrap();
+        let replacement = RSession::new_for_gc_tests();
+        let other = replacement
+            .owner_token()
+            .unwrap()
+            .with_arena(|arena| arena.heap_identity().byte_ledger())
+            .unwrap();
+        let held = other.reserve(256).unwrap();
+        session.close();
+        drop(compiled);
+        assert_eq!(ledger.workspace_bytes_for_test(), 0);
+        assert_eq!(other.workspace_bytes_for_test(), 256);
+        drop(held);
+    }
+
+    #[test]
+    fn standalone_tre_neg_classes_use_malloc_free_cleanup() {
+        let (status, report) = mem::fault::observe(None, || unsafe {
+            let mut scratch =
+                mem::tre_mem_struct::new(crate::mainutils::grep::RegexWorkspace::unbounded())
+                    .unwrap();
+            let source = mem::tre_mem_alloc(&mut scratch, 2 * std::mem::size_of::<tre_ctype_t>())
+                .cast::<tre_ctype_t>();
+            assert!(!source.is_null());
+            *source = 12;
+            *source.add(1) = 0;
+            let (left, right, offsets) = synthetic_neg_class_positions(source);
+            let mut storage = None;
+            let descriptor = allocate_tnfa(&mut storage);
+            let transitions = allocate_transition_table(1, &mut storage);
+            assert!(!descriptor.is_null() && !transitions.is_null());
+            let status = tre_make_trans(
+                left.as_ptr(),
+                right.as_ptr(),
+                transitions,
+                ptr::null_mut(),
+                offsets.as_ptr(),
+                &mut storage,
+            );
+            assert_eq!(status, REG_OK);
+            assert!(!(*transitions).neg_classes.is_null());
+            assert_ne!((*transitions).neg_classes, source);
+            scratch.clear();
+            assert_eq!(
+                std::slice::from_raw_parts((*transitions).neg_classes, 2),
+                [12, 0]
+            );
             (*descriptor).transitions = transitions;
             (*descriptor).num_transitions = 1;
             let mut preg = regex_t {
