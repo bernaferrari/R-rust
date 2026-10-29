@@ -129,6 +129,30 @@ pub(super) fn evaluate(
                         let value = match operation {
                             // These branches return before scalar allocation;
                             // retain existing shared range-warning text.
+                            Operation::BesselJ if x >= 0.0 && k < 0.0 && k != k.floor() => {
+                                // Keep the half-integer shortcut and J-then-Y
+                                // arithmetic order, checking before reflection.
+                                let first = if k - k.floor() == 0.5 {
+                                    0.0
+                                } else {
+                                    let value = crate::special::bessel_j::bessel_j_ex(
+                                        x,
+                                        -k,
+                                        workspace.values(),
+                                    );
+                                    access.require_active()?;
+                                    check()?;
+                                    value * crate::special::cospi::cospi(k)
+                                };
+                                let reflected = crate::special::bessel_y::bessel_y_ex(
+                                    x,
+                                    -k,
+                                    workspace.values(),
+                                );
+                                access.require_active()?;
+                                check()?;
+                                first + reflected * crate::special::cospi::sinpi(k)
+                            }
                             Operation::BesselI if x >= 0.0 && k < 0.0 && k != k.floor() => {
                                 // Preserve I-then-K reflection and arithmetic order,
                                 // checking authority before a second kernel can warn.
