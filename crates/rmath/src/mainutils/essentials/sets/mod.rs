@@ -27,6 +27,7 @@ use crate::sexp::symbol::Rf_install;
 // Set operations: setdiff, union, intersect, setequal
 // ---------------------------------------------------------------------------
 
+mod boolean_summary;
 mod order_match;
 mod setops;
 

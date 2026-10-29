@@ -1,0 +1,112 @@
+empty:any:FALSE|FALSE|
+empty:any:TRUE|FALSE|
+empty:all:FALSE|TRUE|
+empty:all:TRUE|TRUE|
+null:any:FALSE|FALSE|
+null:any:TRUE|FALSE|
+null:all:FALSE|TRUE|
+null:all:TRUE|TRUE|
+logical:any:FALSE|TRUE|
+logical:any:TRUE|TRUE|
+logical:all:FALSE|FALSE|
+logical:all:TRUE|FALSE|
+missing:any:FALSE|NA|
+missing:any:TRUE|FALSE|
+missing:all:FALSE|NA|
+missing:all:TRUE|TRUE|
+integer:any:FALSE|TRUE|
+integer:any:TRUE|TRUE|
+integer:all:FALSE|FALSE|
+integer:all:TRUE|FALSE|
+real:any:FALSE|TRUE|coercing argument of type 'double' to logical
+real:any:TRUE|TRUE|coercing argument of type 'double' to logical
+real:all:FALSE|FALSE|coercing argument of type 'double' to logical
+real:all:TRUE|FALSE|coercing argument of type 'double' to logical
+complex:any:FALSE|TRUE|coercing argument of type 'complex' to logical
+complex:any:TRUE|TRUE|coercing argument of type 'complex' to logical
+complex:all:FALSE|NA|coercing argument of type 'complex' to logical
+complex:all:TRUE|TRUE|coercing argument of type 'complex' to logical
+complex_missing:any:FALSE|NA|coercing argument of type 'complex' to logical
+complex_missing:any:TRUE|FALSE|coercing argument of type 'complex' to logical
+complex_missing:all:FALSE|FALSE|coercing argument of type 'complex' to logical
+complex_missing:all:TRUE|FALSE|coercing argument of type 'complex' to logical
+raw:any:FALSE|TRUE|coercing argument of type 'raw' to logical
+raw:any:TRUE|TRUE|coercing argument of type 'raw' to logical
+raw:all:FALSE|FALSE|coercing argument of type 'raw' to logical
+raw:all:TRUE|FALSE|coercing argument of type 'raw' to logical
+text:any:FALSE|TRUE|coercing argument of type 'character' to logical
+text:any:TRUE|TRUE|coercing argument of type 'character' to logical
+text:all:FALSE|FALSE|coercing argument of type 'character' to logical
+text:all:TRUE|FALSE|coercing argument of type 'character' to logical
+text_invalid:any:FALSE|NA|coercing argument of type 'character' to logical
+text_invalid:any:TRUE|FALSE|coercing argument of type 'character' to logical
+text_invalid:all:FALSE|NA|coercing argument of type 'character' to logical
+text_invalid:all:TRUE|TRUE|coercing argument of type 'character' to logical
+scalar_list:any:FALSE|TRUE|coercing argument of type 'list' to logical
+scalar_list:any:TRUE|TRUE|coercing argument of type 'list' to logical
+scalar_list:all:FALSE|FALSE|coercing argument of type 'list' to logical
+scalar_list:all:TRUE|FALSE|coercing argument of type 'list' to logical
+empty_scalar:any:FALSE|NA|coercing argument of type 'list' to logical
+empty_scalar:any:TRUE|FALSE|coercing argument of type 'list' to logical
+empty_scalar:all:FALSE|NA|coercing argument of type 'list' to logical
+empty_scalar:all:TRUE|TRUE|coercing argument of type 'list' to logical
+null_scalar:any:FALSE|ERROR:'list' object cannot be coerced to type 'logical'|coercing argument of type 'list' to logical
+null_scalar:any:TRUE|ERROR:'list' object cannot be coerced to type 'logical'|coercing argument of type 'list' to logical
+null_scalar:all:FALSE|ERROR:'list' object cannot be coerced to type 'logical'|coercing argument of type 'list' to logical
+null_scalar:all:TRUE|ERROR:'list' object cannot be coerced to type 'logical'|coercing argument of type 'list' to logical
+nested_scalar:any:FALSE|NA|coercing argument of type 'list' to logical
+nested_scalar:any:TRUE|FALSE|coercing argument of type 'list' to logical
+nested_scalar:all:FALSE|NA|coercing argument of type 'list' to logical
+nested_scalar:all:TRUE|TRUE|coercing argument of type 'list' to logical
+long_scalar:any:FALSE|ERROR:'list' object cannot be coerced to type 'logical'|coercing argument of type 'list' to logical
+long_scalar:any:TRUE|ERROR:'list' object cannot be coerced to type 'logical'|coercing argument of type 'list' to logical
+long_scalar:all:FALSE|ERROR:'list' object cannot be coerced to type 'logical'|coercing argument of type 'list' to logical
+long_scalar:all:TRUE|ERROR:'list' object cannot be coerced to type 'logical'|coercing argument of type 'list' to logical
+expression:any:FALSE|ERROR:'list' object cannot be coerced to type 'logical'|coercing argument of type 'expression' to logical
+expression:any:TRUE|ERROR:'list' object cannot be coerced to type 'logical'|coercing argument of type 'expression' to logical
+expression:all:FALSE|ERROR:'list' object cannot be coerced to type 'logical'|coercing argument of type 'expression' to logical
+expression:all:TRUE|ERROR:'list' object cannot be coerced to type 'logical'|coercing argument of type 'expression' to logical
+pairlist:any:FALSE|TRUE|coercing argument of type 'pairlist' to logical
+pairlist:any:TRUE|TRUE|coercing argument of type 'pairlist' to logical
+pairlist:all:FALSE|FALSE|coercing argument of type 'pairlist' to logical
+pairlist:all:TRUE|FALSE|coercing argument of type 'pairlist' to logical
+symbol:any:FALSE|ERROR:'symbol' object cannot be coerced to type 'logical'|coercing argument of type 'symbol' to logical
+symbol:any:TRUE|ERROR:'symbol' object cannot be coerced to type 'logical'|coercing argument of type 'symbol' to logical
+symbol:all:FALSE|ERROR:'symbol' object cannot be coerced to type 'logical'|coercing argument of type 'symbol' to logical
+symbol:all:TRUE|ERROR:'symbol' object cannot be coerced to type 'logical'|coercing argument of type 'symbol' to logical
+language:any:FALSE|ERROR:'language' object cannot be coerced to type 'logical'|coercing argument of type 'language' to logical
+language:any:TRUE|ERROR:'language' object cannot be coerced to type 'logical'|coercing argument of type 'language' to logical
+language:all:FALSE|ERROR:'language' object cannot be coerced to type 'logical'|coercing argument of type 'language' to logical
+language:all:TRUE|ERROR:'language' object cannot be coerced to type 'logical'|coercing argument of type 'language' to logical
+closure:any:FALSE|ERROR:cannot coerce type 'closure' to vector of type 'logical'|coercing argument of type 'closure' to logical
+closure:any:TRUE|ERROR:cannot coerce type 'closure' to vector of type 'logical'|coercing argument of type 'closure' to logical
+closure:all:FALSE|ERROR:cannot coerce type 'closure' to vector of type 'logical'|coercing argument of type 'closure' to logical
+closure:all:TRUE|ERROR:cannot coerce type 'closure' to vector of type 'logical'|coercing argument of type 'closure' to logical
+empty_environment:any:FALSE|FALSE|
+empty_environment:any:TRUE|FALSE|
+empty_environment:all:FALSE|TRUE|
+empty_environment:all:TRUE|TRUE|
+flag:1:any|FALSE|
+flag:1:all|TRUE|
+flag:2:any|FALSE|
+flag:2:all|TRUE|
+flag:3:any|FALSE|
+flag:3:all|TRUE|
+flag:4:any|FALSE|
+flag:4:all|TRUE|
+flag:5:any|FALSE|
+flag:5:all|TRUE|
+flag:6:any|FALSE|
+flag:6:all|TRUE|
+flag:7:any|ERROR:'length = 2' in coercion to 'logical(1)'|
+flag:7:all|ERROR:'length = 2' in coercion to 'logical(1)'|
+noargs:any|FALSE|
+noargs:all|TRUE|
+short:any|TRUE|
+short:all|FALSE|
+order:any|TRUE|
+order:all|FALSE|
+duplicate:any|ERROR:formal argument "na.rm" matched by multiple actual arguments|
+duplicate:all|ERROR:formal argument "na.rm" matched by multiple actual arguments|
+method:any|TRUE|
+method:all|FALSE|
