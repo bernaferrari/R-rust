@@ -46,4 +46,17 @@
     <string name="console_input_label">R console</string>
     <string name="console_input_hint">Type an R expression</string>
     <string name="console_run_command">Run console command</string>
+    <string name="environment_title">Environment</string>
+    <string name="environment_refresh">Refresh</string>
+    <string name="environment_search_label">Find an object</string>
+    <string name="environment_empty">Run code to create variables. They will appear here.</string>
+    <string name="environment_no_matches">No objects match your search.</string>
+    <string name="environment_open">Open</string>
+    <string name="environment_remove">Remove</string>
+    <string name="environment_open_object">Open %1$s</string>
+    <string name="environment_remove_object">Remove %1$s</string>
+    <plurals name="environment_object_count">
+        <item quantity="one">%1$d object</item>
+        <item quantity="other">%1$d objects</item>
+    </plurals>
 </resources>

@@ -20,7 +20,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import com.rstudio.mobile.R
 import com.rstudio.mobile.runtime.EnvEntry
 
 @Composable
@@ -37,29 +43,37 @@ fun EnvironmentBrowser(
     Column(Modifier.fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Column {
-                Text("Environment", style = MaterialTheme.typography.titleMedium)
-                Text("${entries.size} objects", style = MaterialTheme.typography.bodySmall)
+                Text(stringResource(R.string.environment_title), style = MaterialTheme.typography.titleMedium)
+                Text(
+                    pluralStringResource(R.plurals.environment_object_count, entries.size, entries.size),
+                    style = MaterialTheme.typography.bodySmall,
+                )
             }
-            FilledTonalButton(onClick = onRefresh) { Text("Refresh") }
+            FilledTonalButton(onClick = onRefresh) { Text(stringResource(R.string.environment_refresh)) }
         }
         OutlinedTextField(
             value = query,
             onValueChange = { query = it },
             modifier = Modifier.fillMaxWidth(),
-            label = { Text("Find an object") },
+            label = { Text(stringResource(R.string.environment_search_label)) },
             singleLine = true,
         )
         if (filtered.isEmpty()) {
             Text(
-                if (entries.isEmpty()) "Run code to create variables. They will appear here." else "No objects match your search.",
+                stringResource(if (entries.isEmpty()) R.string.environment_empty else R.string.environment_no_matches),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         } else {
             LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 items(filtered, key = { it.name }) { entry ->
+                    val openLabel = stringResource(R.string.environment_open_object, entry.name)
+                    val removeLabel = stringResource(R.string.environment_remove_object, entry.name)
                     ElevatedCard(
-                        modifier = Modifier.fillMaxWidth().clickable { onOpen(entry.name) },
+                        modifier = Modifier.fillMaxWidth().clickable(
+                            onClickLabel = openLabel,
+                            role = Role.Button,
+                        ) { onOpen(entry.name) },
                     ) {
                         Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -68,8 +82,18 @@ fun EnvironmentBrowser(
                             }
                             Text(entry.summary, style = MaterialTheme.typography.bodySmall, maxLines = 2)
                             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                androidx.compose.material3.TextButton(onClick = { onOpen(entry.name) }) { Text("Open") }
-                                androidx.compose.material3.TextButton(onClick = { onRemove(entry.name) }) { Text("Remove") }
+                                androidx.compose.material3.TextButton(onClick = { onOpen(entry.name) }) {
+                                    Text(
+                                        stringResource(R.string.environment_open),
+                                        modifier = Modifier.semantics { contentDescription = openLabel },
+                                    )
+                                }
+                                androidx.compose.material3.TextButton(onClick = { onRemove(entry.name) }) {
+                                    Text(
+                                        stringResource(R.string.environment_remove),
+                                        modifier = Modifier.semantics { contentDescription = removeLabel },
+                                    )
+                                }
                             }
                         }
                     }
