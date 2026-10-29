@@ -85,3 +85,6 @@ mod warning_ownership_tests;
 
 #[cfg(test)]
 mod logical_owner_tests;
+
+#[cfg(test)]
+mod integer_owner_tests;
