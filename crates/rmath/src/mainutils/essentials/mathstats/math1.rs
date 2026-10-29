@@ -584,7 +584,10 @@ unsafe fn checked_math(
             Err(payload) => std::panic::resume_unwind(payload),
         });
     }
-    if matches!(operation, choose_checked::Operation::BesselK) {
+    if matches!(
+        operation,
+        choose_checked::Operation::BesselK | choose_checked::Operation::BesselI
+    ) {
         for value in [&a, &b].into_iter().chain(c.iter()) {
             if !matches!(
                 value.typeof_(),
@@ -721,46 +724,28 @@ pub unsafe fn do_lfactorial(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP
 }
 
 /// R's `besselI(x, nu)` — modified Bessel function of the first kind.
-pub unsafe fn do_besselI(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_besselI(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let x = CAR(args);
-        let nu_arg = CAR(CDR(args));
-        let expo_arg = CAR(CDR(CDR(args))); // optional: exponential scaling
-        if x.is_null() || x == R_NilValue() || nu_arg.is_null() || nu_arg == R_NilValue() {
-            return R_NilValue();
-        }
-        let nu = real_or_default(nu_arg, 0.0);
-        let expo = if !expo_arg.is_null() && expo_arg != R_NilValue() {
-            let e = real_or_default(expo_arg, 0.0);
-            e != 0.0
-        } else {
-            false
-        };
-        let n = XLENGTH(x);
-        let t = TYPEOF(x);
-        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _p = protect(result);
-        let dst = REAL(result);
-        for i in 0..n {
-            let val = if t == SEXPTYPE::REALSXP {
-                *REAL(x).add(i as usize)
-            } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-                let v = *INTEGER(x).add(i as usize);
-                if v == NA_INTEGER { NA_REAL } else { v as f64 }
-            } else {
-                NA_REAL
-            };
-            if val.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
-                *dst.add(i as usize) = NA_REAL;
-            } else {
-                *dst.add(i as usize) =
-                    crate::special::bessel_i::bessel_i(val, nu, if expo { 2.0 } else { 1.0 });
-            }
-        }
-        result
+        bessel_scaled_entry(
+            call,
+            op,
+            args,
+            rho,
+            true,
+            choose_checked::Operation::BesselI,
+        )
+    }
+}
+pub unsafe fn do_besselI_internal(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        bessel_scaled_entry(
+            call,
+            op,
+            args,
+            rho,
+            false,
+            choose_checked::Operation::BesselI,
+        )
     }
 }
 
@@ -778,12 +763,37 @@ pub unsafe fn do_besselJ(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 
 /// R's `besselK(x, nu)` — modified Bessel function of the second kind.
 pub unsafe fn do_besselK(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe { bessel_k_entry(call, op, args, rho, true) }
+    unsafe {
+        bessel_scaled_entry(
+            call,
+            op,
+            args,
+            rho,
+            true,
+            choose_checked::Operation::BesselK,
+        )
+    }
 }
 pub unsafe fn do_besselK_internal(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe { bessel_k_entry(call, op, args, rho, false) }
+    unsafe {
+        bessel_scaled_entry(
+            call,
+            op,
+            args,
+            rho,
+            false,
+            choose_checked::Operation::BesselK,
+        )
+    }
 }
-unsafe fn bessel_k_entry(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP, public: bool) -> SEXP {
+unsafe fn bessel_scaled_entry(
+    call: SEXP,
+    _op: SEXP,
+    args: SEXP,
+    rho: SEXP,
+    public: bool,
+    operation: choose_checked::Operation,
+) -> SEXP {
     use crate::sexp::{object::Sexp, owner::OwnerToken};
     let owner = unsafe { OwnerToken::current() }
         .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
@@ -832,7 +842,10 @@ unsafe fn bessel_k_entry(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP, public: b
         Some(read(tail.try_car()))
     };
     if !public && c.is_none() {
-        crate::sexp::context::r_error("missing scaling argument to internal besselK")
+        crate::sexp::context::r_error(match operation {
+            choose_checked::Operation::BesselI => "missing scaling argument to internal besselI",
+            _ => "missing scaling argument to internal besselK",
+        })
     }
     unsafe {
         checked_math(
@@ -840,7 +853,7 @@ unsafe fn bessel_k_entry(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP, public: b
             a.as_raw(),
             b.as_raw(),
             c.as_ref().map(Sexp::as_raw),
-            choose_checked::Operation::BesselK,
+            operation,
             public.then_some(environment.as_raw()),
         )
     }

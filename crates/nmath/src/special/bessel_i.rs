@@ -28,7 +28,7 @@ const ENTEN_BESS: f64 = 1e308;
 const EXPARG_BESS: f64 = 709.0;
 const XLRG_BESS_IJ: f64 = 1e5;
 /// `M_bessel_ik_max_alpha` from Rmath.h. Orders above this must not allocate.
-const MAX_ALPHA_I: f64 = 1e9;
+pub const MAX_ALPHA_I: f64 = 1e9;
 
 /// Minimum of two ints
 #[inline(always)]
@@ -483,4 +483,27 @@ pub fn bessel_i_ex_c(x: f64, alpha: f64, expo: f64, bi: *mut f64, nb: i32) -> f6
     }
     let bi_slice = unsafe { std::slice::from_raw_parts_mut(bi, nb as usize) };
     bessel_i_ex(x, alpha, expo, bi_slice)
+}
+
+#[cfg(test)]
+mod workspace_parity_tests {
+    use super::*;
+    #[test]
+    fn besseli_workspace_matches_scalar_scaling_reflection_and_tails() {
+        for x in [0.0, 1.0, 1000.0] {
+            for order in [-2.0_f64, -1.5, -0.5, 0.0, 1.0, 10.0, 500.0] {
+                for scale in [1.0, 2.0] {
+                    let mut work = vec![0.0; order.abs() as usize + 1];
+                    let expected = bessel_i(x, order, scale);
+                    let actual = bessel_i_ex(x, order, scale, &mut work);
+                    assert!(
+                        expected.to_bits() == actual.to_bits()
+                            || (expected.is_nan() && actual.is_nan()),
+                        "x={x},nu={order},scale={scale},scalar={expected},work={actual}"
+                    );
+                }
+            }
+        }
+        assert_eq!(bessel_i(1.0, 500.0, 1.0), 0.0);
+    }
 }

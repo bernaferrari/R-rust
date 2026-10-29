@@ -15,6 +15,7 @@ pub(super) enum Operation {
     BesselJ,
     BesselY,
     BesselK,
+    BesselI,
 }
 
 pub(super) fn evaluate(
@@ -93,7 +94,10 @@ pub(super) fn evaluate(
                             _ => crate::special::choose::choose(x, k),
                         }
                     }
-                    Operation::BesselJ | Operation::BesselY | Operation::BesselK => {
+                    Operation::BesselJ
+                    | Operation::BesselY
+                    | Operation::BesselK
+                    | Operation::BesselI => {
                         // Oversized orders and negative x return before the
                         // kernel reads its array. Other orders need floor(|nu|)+1.
                         let magnitude = k.abs();
@@ -101,6 +105,11 @@ pub(super) fn evaluate(
                         // Integer Y orders only require Y's smaller limit.
                         let limit = match operation {
                             Operation::BesselK => crate::special::bessel_k::MAX_ALPHA_K,
+                            Operation::BesselI if k < 0.0 && k != k.floor() => {
+                                crate::special::bessel_i::MAX_ALPHA_I
+                                    .max(crate::special::bessel_k::MAX_ALPHA_K)
+                            }
+                            Operation::BesselI => crate::special::bessel_i::MAX_ALPHA_I,
                             Operation::BesselY if k >= 0.0 || k == k.floor() => {
                                 crate::special::bessel_y::MAX_ALPHA_Y
                             }
@@ -120,6 +129,41 @@ pub(super) fn evaluate(
                         let value = match operation {
                             // These branches return before scalar allocation;
                             // retain existing shared range-warning text.
+                            Operation::BesselI if x >= 0.0 && k < 0.0 && k != k.floor() => {
+                                // Preserve I-then-K reflection and arithmetic order,
+                                // checking authority before a second kernel can warn.
+                                let first = crate::special::bessel_i::bessel_i_ex(
+                                    x,
+                                    -k,
+                                    scaling,
+                                    workspace.values(),
+                                );
+                                access.require_active()?;
+                                check()?;
+                                let reflected = crate::special::bessel_k::bessel_k_ex(
+                                    x,
+                                    -k,
+                                    scaling,
+                                    workspace.values(),
+                                );
+                                access.require_active()?;
+                                check()?;
+                                first
+                                    + reflected
+                                        * if scaling as i32 == 1 {
+                                            2.0
+                                        } else {
+                                            2.0 * libm::exp(-2.0 * x)
+                                        }
+                                        / std::f64::consts::PI
+                                        * crate::special::cospi::sinpi(-k)
+                            }
+                            Operation::BesselI => crate::special::bessel_i::bessel_i_ex(
+                                x,
+                                k,
+                                scaling,
+                                workspace.values(),
+                            ),
                             Operation::BesselK => crate::special::bessel_k::bessel_k_ex(
                                 x,
                                 k,

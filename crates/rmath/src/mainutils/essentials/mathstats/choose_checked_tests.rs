@@ -963,3 +963,6 @@ fn checked_bessely_altrep_revocation_stops_before_scalar_warnings() {
 
 #[path = "besselk_checked_tests.rs"]
 mod besselk_checked_tests;
+
+#[path = "besseli_checked_tests.rs"]
+mod besseli_checked_tests;
