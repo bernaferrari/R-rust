@@ -5,6 +5,9 @@
 use std::os::raw::{c_double, c_int};
 
 use crate::nmath::special::mlutils::R_pow_di as pow_di;
+use crate::sexp::owner::OwnerToken;
+
+mod workspace;
 
 use crate::sexp::accessors::{INTEGER, LENGTH, REAL};
 use crate::sexp::constructors::Rf_allocVector;
@@ -88,21 +91,28 @@ fn m_multiply(a: &[c_double], b: &[c_double], c: &mut [c_double], m: usize) {
     }
 }
 
-fn m_power(a: &[c_double], e_a: i32, v: &mut Vec<c_double>, e_v: &mut i32, m: usize, n: i32) {
+fn m_power(
+    a: &[c_double],
+    e_a: i32,
+    v: &mut [c_double],
+    e_v: &mut i32,
+    b: &mut [c_double],
+    m: usize,
+    n: i32,
+) {
     if n == 1 {
         v.copy_from_slice(a);
         *e_v = e_a;
         return;
     }
-    m_power(a, e_a, v, e_v, m, n / 2);
-    let mut b = vec![0.0; m * m];
-    m_multiply(v, v, &mut b, m);
+    m_power(a, e_a, v, e_v, b, m, n / 2);
+    m_multiply(v, v, b, m);
     let e_b = 2 * (*e_v);
     if n % 2 == 0 {
-        v.copy_from_slice(&b);
+        v.copy_from_slice(b);
         *e_v = e_b;
     } else {
-        m_multiply(a, &b, v, m);
+        m_multiply(a, b, v, m);
         *e_v = e_a + e_b;
     }
     if v[(m / 2) * m + (m / 2)] > 1e140 {
@@ -113,11 +123,11 @@ fn m_power(a: &[c_double], e_a: i32, v: &mut Vec<c_double>, e_v: &mut i32, m: us
     }
 }
 
-fn k2x(n: i32, d: c_double) -> c_double {
-    let k = (n as c_double * d) as i32 + 1;
-    let m = (2 * k - 1) as usize;
+fn k2x(owner: OwnerToken<'_>, n: i32, d: c_double) -> Result<c_double, String> {
+    let (k, m) = workspace::dimensions(n, d)?;
     let h = k as c_double - n as c_double * d;
-    let mut mat = vec![0.0; m * m];
+    let mut workspace = workspace::Workspace::matrices(owner, m, n)?;
+    let (mat, q, b) = workspace.split(m);
     for i in 0..m {
         for j in 0..m {
             if (i as i64 - j as i64 + 1) >= 0 {
@@ -142,9 +152,8 @@ fn k2x(n: i32, d: c_double) -> c_double {
         }
     }
     let e_h = 0;
-    let mut q = vec![0.0; m * m];
     let mut e_q = 0;
-    m_power(&mat, e_h, &mut q, &mut e_q, m, n);
+    m_power(mat, e_h, q, &mut e_q, b, m, n);
     let mut s = q[((k - 1) as usize) * m + (k - 1) as usize];
     for i in 1..=n {
         s = s * i as c_double / n as c_double;
@@ -153,20 +162,53 @@ fn k2x(n: i32, d: c_double) -> c_double {
             e_q -= 140;
         }
     }
-    s * pow_di(10.0, e_q)
+    owner.require_active().map_err(|e| e.to_string())?;
+    Ok(s * pow_di(10.0, e_q))
 }
 
 /// `C_pkolmogorov_two_exact(q, n)` — vectorised in `q`.
 pub unsafe fn pkolmogorov_two_exact(sq: SEXP, sn: SEXP) -> SEXP {
-    unsafe {
-        let n = crate::mainutils::coerce::asInteger(sn);
-        let ans = Rf_allocVector(SEXPTYPE::REALSXP, LENGTH(sq));
-        let _guard = protect(ans);
-        for i in 0..LENGTH(sq) as usize {
-            *REAL(ans).add(i) = k2x(n, *REAL(sq).add(i));
-        }
-        ans
+    let owner = unsafe { OwnerToken::current() }
+        .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
+    let n = unsafe { crate::mainutils::coerce::asInteger(sn) };
+    owner
+        .require_active()
+        .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
+    let quantiles = owner
+        .sexp(sq)
+        .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
+    if quantiles.typeof_() != SEXPTYPE::REALSXP {
+        crate::mainutils::essentials::base_error("exact KS quantiles must be numeric");
     }
+    // Preserve GNU REAL materialization, retaining checked handles, not pointers.
+    crate::sexp::altrep::force_materialization(&quantiles)
+        .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
+    owner
+        .require_active()
+        .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
+    let len = quantiles.len();
+    let ans = unsafe { crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::REALSXP, len) };
+    let _ans_guard = unsafe { protect(ans) };
+    let mut output = crate::sexp::SexpMut::try_from_checked(
+        owner
+            .sexp(ans)
+            .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string())),
+    )
+    .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
+    for i in 0..len {
+        let d = quantiles
+            .try_real_elt(i)
+            .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
+        let probability =
+            k2x(owner, n, d).unwrap_or_else(|e| crate::mainutils::essentials::base_error(e));
+        output
+            .try_set_real_elt(i, probability)
+            .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
+    }
+    owner
+        .require_active()
+        .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
+    ans
 }
 
 // ---------------------------------------------------------------------------
@@ -258,6 +300,8 @@ mod exact_scaling_tests {
 
     #[test]
     fn signed_decimal_scaling_matches_gnu_lower_tails() {
+        let session = crate::sexp::RSession::new_for_gc_tests();
+        let owner = session.owner_token().unwrap();
         // Pinned GNU R r90451; relative errors must catch tiny lower tails.
         for (n, q, expected) in [
             (400, 0.00275, 1.3177625442620577e-143),
@@ -266,8 +310,68 @@ mod exact_scaling_tests {
             (1000, 0.0012, 4.8989970394294441e-306),
             (1000, 0.002, 1.7378348120591998e-116),
         ] {
-            let p = k2x(n, q);
+            let p = k2x(owner, n, q).unwrap();
             assert!((p / expected - 1.0).abs() < 1e-11, "q={q}: {p}");
         }
+    }
+}
+
+#[cfg(test)]
+mod workspace_contract_tests {
+    use super::*;
+    use crate::sexp::{RSession, SexpMut, memory::ArenaBudget};
+
+    #[test]
+    fn registered_ks_workspace_denial_recovers_and_outputs_survive_gc() {
+        let session = RSession::new_for_gc_tests();
+        let owner = session.owner_token().unwrap();
+        let make_real = |x| {
+            let value = owner
+                .node_factory()
+                .allocate(|a| {
+                    a.alloc_vector_sexp(SEXPTYPE::REALSXP, 1)
+                        .map(|s| s.as_raw())
+                })
+                .unwrap()
+                .into_owned()
+                .unwrap();
+            let mut value = SexpMut::try_from_checked(value).unwrap();
+            value.try_set_real_elt(0, x).unwrap();
+            value.freeze()
+        };
+        let q = make_real(0.025);
+        let n = make_real(400.0);
+        let invoke = || {
+            session.with_active(|| {
+                let routine =
+                    crate::library::stats::random::lookup_call("pkolmogorov_two_exact").unwrap();
+                let raw = unsafe { routine.invoke_call(&[q.as_raw(), n.as_raw()]).unwrap() };
+                owner.sexp(raw).unwrap().into_owned().unwrap()
+            })
+        };
+        // Warm root capacity and arena pages so failure targets matrix scratch.
+        drop(invoke());
+        let baseline = owner.with_arena(|a| a.total_bytes_allocated()).unwrap();
+        owner
+            .with_arena(|a| a.set_budget(ArenaBudget::new(baseline + 4096, 0)))
+            .unwrap();
+        let failure = std::panic::catch_unwind(std::panic::AssertUnwindSafe(invoke))
+            .expect_err("workspace must be admitted");
+        assert!(
+            failure
+                .downcast_ref::<crate::sexp::context::RError>()
+                .is_some_and(|e| e.message.contains("exact KS workspace"))
+        );
+        assert_eq!(owner.with_arena(|a| a.workspace_bytes()).unwrap(), 0);
+        owner
+            .with_arena(|a| a.set_budget(ArenaBudget::unlimited()))
+            .unwrap();
+        let result = invoke();
+        assert!((result.try_real_elt(0).unwrap() - 0.041412552579708335).abs() < 1e-13);
+        assert_eq!(owner.with_arena(|a| a.workspace_bytes()).unwrap(), 0);
+        drop(q);
+        drop(n);
+        session.with_active(|| unsafe { crate::sexp::gengc::full_gc() });
+        assert!((result.try_real_elt(0).unwrap() - 0.041412552579708335).abs() < 1e-13);
     }
 }
