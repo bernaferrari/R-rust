@@ -73,7 +73,16 @@ fn leaf(x: &Sexp<'_>, recursive: bool, env: SEXP, check: &impl Fn()) -> bool {
             | SEXPTYPE::CPLXSXP
             | SEXPTYPE::STRSXP
     ) {
-        return false;
+        if matches!(kind, SEXPTYPE::NILSXP | SEXPTYPE::RAWSXP) {
+            return false;
+        }
+        let name = unsafe {
+            std::ffi::CStr::from_ptr(crate::mainutils::util_main::type2char(kind.into()))
+        }
+        .to_string_lossy();
+        crate::sexp::context::r_error(format!(
+            "anyNA() applied to non-(list or vector) of type '{name}'"
+        ));
     }
     for i in 0..x.len() {
         let found = match kind {

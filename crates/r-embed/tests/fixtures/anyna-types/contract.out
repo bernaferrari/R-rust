@@ -1,0 +1,18 @@
+null|FALSE|FALSE|
+null|TRUE|FALSE|
+raw|FALSE|FALSE|
+raw|TRUE|FALSE|
+symbol|FALSE|ERROR:anyNA() applied to non-(list or vector) of type 'symbol'|
+symbol|TRUE|ERROR:anyNA() applied to non-(list or vector) of type 'symbol'|
+language|FALSE|ERROR:anyNA() applied to non-(list or vector) of type 'language'|
+language|TRUE|ERROR:anyNA() applied to non-(list or vector) of type 'language'|
+expression|FALSE|ERROR:anyNA() applied to non-(list or vector) of type 'expression'|
+expression|TRUE|ERROR:anyNA() applied to non-(list or vector) of type 'expression'|
+environment|FALSE|ERROR:anyNA() applied to non-(list or vector) of type 'environment'|
+environment|TRUE|ERROR:anyNA() applied to non-(list or vector) of type 'environment'|
+closure|FALSE|ERROR:anyNA() applied to non-(list or vector) of type 'closure'|
+closure|TRUE|ERROR:anyNA() applied to non-(list or vector) of type 'closure'|
+builtin|FALSE|ERROR:anyNA() applied to non-(list or vector) of type 'builtin'|
+builtin|TRUE|ERROR:anyNA() applied to non-(list or vector) of type 'builtin'|
+special|FALSE|ERROR:anyNA() applied to non-(list or vector) of type 'special'|
+special|TRUE|ERROR:anyNA() applied to non-(list or vector) of type 'special'|
