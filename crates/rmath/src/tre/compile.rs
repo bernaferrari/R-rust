@@ -175,6 +175,7 @@ unsafe fn tre_add_tags(
     stack: *mut stack::tre_stack_rec,
     tree: *mut tre_ast_node_t,
     tnfa: *mut tre_tnfa_t,
+    storage: &mut Option<&mut super::owned_arena::OwnedArena>,
 ) -> c_int {
     unsafe {
         let mut status: c_int = REG_OK as c_int;
@@ -282,9 +283,12 @@ unsafe fn tre_add_tags(
                             }
                             (*(*tnfa).submatch_data.offset(id as isize)).parents = ptr::null_mut();
                             if i > 0 {
-                                let p =
-                                    mem::xmalloc(std::mem::size_of::<c_int>() * (i as usize + 1))
-                                        as *mut c_int;
+                                let p = usize::try_from(i)
+                                    .ok()
+                                    .and_then(|n| n.checked_add(1))
+                                    .map_or(ptr::null_mut(), |count| {
+                                        allocate_retained_ints(count, false, storage)
+                                    });
                                 if p.is_null() {
                                     status = REG_ESPACE as c_int;
                                     // continue to break out of the loop
@@ -2215,7 +2219,7 @@ unsafe fn tre_compile_tables(
 
         // Set up tags for submatch addressing
         if (*tnfa).have_backrefs != 0 || (cflags & REG_NOSUB) == 0 {
-            let _errcode = tre_add_tags(ptr::null_mut(), stack, tree, tnfa);
+            let _errcode = tre_add_tags(ptr::null_mut(), stack, tree, tnfa, &mut storage);
             if _errcode != REG_OK {
                 return compile_error(mem, stack, counts, offs, preg, tnfa, _errcode, owned_tables);
             }
@@ -2282,7 +2286,7 @@ unsafe fn tre_compile_tables(
             }
             (*tnfa).submatch_data = submatch_data;
 
-            let _errcode = tre_add_tags(mem, stack, tree, tnfa);
+            let _errcode = tre_add_tags(mem, stack, tree, tnfa, &mut storage);
             if _errcode != REG_OK {
                 return compile_error(mem, stack, counts, offs, preg, tnfa, _errcode, owned_tables);
             }
@@ -2590,7 +2594,9 @@ unsafe fn tre_free_tables(preg: *mut regex_t, owned_tables: bool) {
             }
         }
 
-        if !(*tnfa).submatch_data.is_null() {
+        // Owned submatch cells and parent arrays drop together after this
+        // legacy cleanup. Standalone compilation retains its malloc/free path.
+        if !owned_tables && !(*tnfa).submatch_data.is_null() {
             let mut i: u32 = 0;
             while i < (*tnfa).num_submatches {
                 if !(*(*tnfa).submatch_data.offset(i as isize))
@@ -2601,11 +2607,7 @@ unsafe fn tre_free_tables(preg: *mut regex_t, owned_tables: bool) {
                 }
                 i += 1;
             }
-            // Nested parents remain legacy allocations. Their table must stay
-            // alive through this traversal; owned cells drop with the arena.
-            if !owned_tables {
-                mem::xfree((*tnfa).submatch_data as *mut c_void);
-            }
+            mem::xfree((*tnfa).submatch_data as *mut c_void);
         }
 
         if !owned_tables && !(*tnfa).tag_directions.is_null() {
@@ -2626,6 +2628,129 @@ unsafe fn tre_free_tables(preg: *mut regex_t, owned_tables: bool) {
 #[cfg(test)]
 mod owned_table_tests {
     use super::*;
+
+    #[test]
+    fn retained_tre_submatch_parents_preserve_nested_capture_layout_and_cleanup() {
+        let session = crate::sexp::session::RSession::new_for_gc_tests();
+        let owner = session.owner_token().unwrap();
+        for (pattern, text) in [
+            ("(a(b(c)?))", "abc"),
+            ("(a(b)?)+", "aba"),
+            ("((a|b)+?)", "aaab"),
+        ] {
+            let pattern: Vec<u32> = pattern.chars().map(u32::from).collect();
+            let text: Vec<u32> = text.chars().map(u32::from).collect();
+            let (_, report) = mem::fault::observe(None, || unsafe {
+                let owned = tre_compile_owned(
+                    pattern.as_ptr(),
+                    pattern.len(),
+                    REG_EXTENDED,
+                    crate::mainutils::grep::regex_workspace(),
+                )
+                .unwrap_or_else(|e| panic!("{e}"));
+                let mut legacy = regex_t {
+                    re_nsub: 0,
+                    value: ptr::null_mut(),
+                };
+                assert_eq!(
+                    tre_compile(&mut legacy, pattern.as_ptr(), pattern.len(), REG_EXTENDED),
+                    REG_OK
+                );
+                let a = &*owned.preg.value.cast::<tre_tnfa_t>();
+                let b = &*legacy.value.cast::<tre_tnfa_t>();
+                assert_eq!(a.num_submatches, b.num_submatches);
+                for id in 0..a.num_submatches as usize {
+                    let left = (*a.submatch_data.add(id)).parents;
+                    let right = (*b.submatch_data.add(id)).parents;
+                    assert_eq!(left.is_null(), right.is_null());
+                    if !left.is_null() {
+                        assert!(owned._tables.contains(left.cast()));
+                        let mut terminated = false;
+                        for n in 0..=a.num_submatches as usize {
+                            assert_eq!(*left.add(n), *right.add(n));
+                            if *left.add(n) == -1 {
+                                terminated = true;
+                                break;
+                            }
+                        }
+                        assert!(terminated);
+                    }
+                }
+                let mut left = vec![regmatch_t::default(); owned.preg.re_nsub + 1];
+                let mut right = vec![regmatch_t::default(); legacy.re_nsub + 1];
+                assert_eq!(
+                    super::super::regapi::tre_regwnexec(owned.regex(), &text, &mut left, 0),
+                    REG_OK
+                );
+                assert_eq!(
+                    super::super::regapi::tre_regwnexec(&legacy, &text, &mut right, 0),
+                    REG_OK
+                );
+                assert_eq!(left[0].rm_so, 0);
+                assert!(left[0].rm_eo > 0);
+                for (a, b) in left.iter().zip(&right) {
+                    assert_eq!((a.rm_so, a.rm_eo), (b.rm_so, b.rm_eo));
+                }
+                tre_free(&mut legacy);
+                drop(owned);
+            });
+            assert_eq!(report.remaining, 0);
+            assert_eq!(
+                owner.with_arena(|arena| arena.workspace_bytes()).unwrap(),
+                0
+            );
+        }
+    }
+
+    #[test]
+    fn retained_tre_submatch_parents_belong_to_original_owned_storage() {
+        let mut session = crate::sexp::session::RSession::new_for_gc_tests();
+        let owner = session.owner_token().unwrap();
+        let ledger = owner
+            .with_arena(|arena| arena.heap_identity().byte_ledger())
+            .unwrap();
+        let pattern: Vec<u32> = "((a|b)+?)".chars().map(u32::from).collect();
+        let compiled = unsafe {
+            tre_compile_owned(
+                pattern.as_ptr(),
+                pattern.len(),
+                REG_EXTENDED,
+                crate::mainutils::grep::regex_workspace(),
+            )
+        }
+        .unwrap_or_else(|error| panic!("compile failed: {error}"));
+        unsafe {
+            let descriptor = &*compiled.preg.value.cast::<tre_tnfa_t>();
+            let mut retained_parents = 0;
+            for i in 0..descriptor.num_submatches as usize {
+                let parents = (*descriptor.submatch_data.add(i)).parents;
+                if !parents.is_null() {
+                    retained_parents += 1;
+                    assert!(
+                        compiled._tables.contains(parents.cast()),
+                        "production submatch parent array escaped original owned storage"
+                    );
+                }
+            }
+            assert!(
+                retained_parents >= 2,
+                "fixture needs multiple retained parent arrays"
+            );
+        }
+        owner.full_gc().unwrap();
+        let replacement = crate::sexp::session::RSession::new_for_gc_tests();
+        let other = replacement
+            .owner_token()
+            .unwrap()
+            .with_arena(|arena| arena.heap_identity().byte_ledger())
+            .unwrap();
+        let held = other.reserve(256).unwrap();
+        session.close();
+        drop(compiled);
+        assert_eq!(ledger.workspace_bytes_for_test(), 0);
+        assert_eq!(other.workspace_bytes_for_test(), 256);
+        drop(held);
+    }
 
     #[test]
     fn retained_tre_submatch_table_belongs_to_original_owned_storage() {
@@ -3059,7 +3184,7 @@ mod traversal_stack_tests {
                 let mut copy = ptr::null_mut();
                 let mut tnfa: tre_tnfa_t = std::mem::zeroed();
                 let status = match pass {
-                    Pass::Tags => tre_add_tags(ptr::null_mut(), stack, tree, &mut tnfa),
+                    Pass::Tags => tre_add_tags(ptr::null_mut(), stack, tree, &mut tnfa, &mut None),
                     Pass::Copy => tre_copy_ast(
                         mem,
                         stack,
