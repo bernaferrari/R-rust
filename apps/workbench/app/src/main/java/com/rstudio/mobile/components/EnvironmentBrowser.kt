@@ -3,7 +3,9 @@ package com.rstudio.mobile.components
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -29,6 +31,7 @@ import androidx.compose.ui.unit.dp
 import com.rstudio.mobile.R
 import com.rstudio.mobile.runtime.EnvEntry
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun EnvironmentBrowser(
     entries: List<EnvEntry>,
@@ -41,7 +44,7 @@ fun EnvironmentBrowser(
         entries.filter { query.isBlank() || it.name.contains(query, true) || it.kind.contains(query, true) }
     }
     Column(Modifier.fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Column {
                 Text(stringResource(R.string.environment_title), style = MaterialTheme.typography.titleMedium)
                 Text(
@@ -49,7 +52,7 @@ fun EnvironmentBrowser(
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
-            FilledTonalButton(onClick = onRefresh) { Text(stringResource(R.string.environment_refresh)) }
+            FilledTonalButton(onClick = onRefresh, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.environment_refresh)) }
         }
         OutlinedTextField(
             value = query,
@@ -76,19 +79,19 @@ fun EnvironmentBrowser(
                         ) { onOpen(entry.name) },
                     ) {
                         Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                 Text(entry.name, style = MaterialTheme.typography.titleSmall)
                                 Text(entry.kind, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                             }
                             Text(entry.summary, style = MaterialTheme.typography.bodySmall, maxLines = 2)
-                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                androidx.compose.material3.TextButton(onClick = { onOpen(entry.name) }) {
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                androidx.compose.material3.TextButton(onClick = { onOpen(entry.name) }, modifier = Modifier.heightIn(min = 48.dp)) {
                                     Text(
                                         stringResource(R.string.environment_open),
                                         modifier = Modifier.semantics { contentDescription = openLabel },
                                     )
                                 }
-                                androidx.compose.material3.TextButton(onClick = { onRemove(entry.name) }) {
+                                androidx.compose.material3.TextButton(onClick = { onRemove(entry.name) }, modifier = Modifier.heightIn(min = 48.dp)) {
                                     Text(
                                         stringResource(R.string.environment_remove),
                                         modifier = Modifier.semantics { contentDescription = removeLabel },
