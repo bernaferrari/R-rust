@@ -20,7 +20,7 @@ use libm::*;
 // =====================================================================
 
 /// `M_bessel_j_max_alpha` from Rmath.h. Raised from the shared 1e7 JY cap.
-const MAX_ALPHA_J: f64 = 1e9;
+pub const MAX_ALPHA_J: f64 = 1e9;
 
 const NSIG_BESS: f64 = 16.0;
 const ENSIG_BESS: f64 = 1e16;
@@ -629,15 +629,19 @@ pub fn bessel_j_ex(x: f64, alpha: f64, bj: &mut [f64]) -> f64 {
     let alpha_mod = alpha - ((nb - 1) as f64); // ==> alpha' in [0, 1)
 
     let ncalc = j_bessel(x, alpha_mod, nb, bj);
+    let mut result = bj[(nb - 1) as usize];
     if ncalc != nb {
         /* error input */
         if ncalc < 0 {
             ml_warning(ME_RANGE, "bessel_j");
         } else {
             ml_warning(ME_PRECISION, "bessel_j");
+            if !result.is_finite() {
+                result = 0.0;
+            }
         }
     }
-    bj[(nb - 1) as usize]
+    result
 }
 
 /// C FFI wrapper for bessel_j_ex
@@ -647,4 +651,24 @@ pub fn bessel_j_ex_c(x: f64, alpha: f64, bj: *mut f64, nb: i32) -> f64 {
     }
     let bj_slice = unsafe { std::slice::from_raw_parts_mut(bj, nb as usize) };
     bessel_j_ex(x, alpha, bj_slice)
+}
+
+#[cfg(test)]
+mod workspace_parity_tests {
+    use super::*;
+    #[test]
+    fn bessel_j_workspace_matches_scalar_reflection_and_underflow() {
+        for x in [0.0, 1.0, 10.0] {
+            for order in [-2.0_f64, -1.5, -0.5, 0.0, 1.0, 2.0, 30.0, 100.0, 500.0] {
+                let mut work = vec![0.0; order.abs() as usize + 1];
+                let expected = bessel_j(x, order);
+                let actual = bessel_j_ex(x, order, &mut work);
+                assert!(
+                    expected.to_bits() == actual.to_bits()
+                        || (expected.is_nan() && actual.is_nan()),
+                    "x={x},nu={order},scalar={expected},workspace={actual}"
+                );
+            }
+        }
+    }
 }

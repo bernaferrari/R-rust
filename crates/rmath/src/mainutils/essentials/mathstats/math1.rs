@@ -525,6 +525,8 @@ unsafe fn validate_math2_inputs(a: SEXP, b: SEXP) -> Result<(), &'static str> {
     }
 }
 
+#[path = "bessel_workspace.rs"]
+mod bessel_workspace;
 #[path = "choose_checked.rs"]
 mod choose_checked;
 #[path = "choose_factor.rs"]
@@ -709,48 +711,12 @@ pub unsafe fn do_besselI(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 /// R's `besselJ(x, nu)` — Bessel function of the first kind.
 pub unsafe fn do_besselJ(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        // Mathlib warnings raised inside bessel_j attribute to this call
-        // (upstream resolves it by walking out of the builtin context).
-        let _mathlib_call = crate::mainutils::errors::mathlib_warning_call_guard(call);
-        let x = CAR(args);
-        let nu_arg = CAR(CDR(args));
-        if x.is_null() || x == R_NilValue() || nu_arg.is_null() || nu_arg == R_NilValue() {
-            return R_NilValue();
+        let a = CAR(args);
+        let b = CAR(CDR(args));
+        if let Err(message) = validate_math2_inputs(a, b) {
+            crate::mainutils::errors::errorcall_str(call, message);
         }
-        let nu = real_or_default(nu_arg, 0.0);
-        let n = XLENGTH(x);
-        let t = TYPEOF(x);
-        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _p = protect(result);
-        let dst = REAL(result);
-        let na_bit = crate::sexp::ffi::R_NA_BIT_PATTERN;
-        let mut naflag = false;
-        for i in 0..n {
-            let val = if t == SEXPTYPE::REALSXP {
-                *REAL(x).add(i as usize)
-            } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-                let v = *INTEGER(x).add(i as usize);
-                if v == NA_INTEGER { NA_REAL } else { v as f64 }
-            } else {
-                NA_REAL
-            };
-            if val.to_bits() == na_bit {
-                *dst.add(i as usize) = NA_REAL;
-            } else {
-                let b = crate::special::bessel_j::bessel_j(val, nu);
-                *dst.add(i as usize) = b;
-                if b.is_nan() && !val.is_nan() {
-                    naflag = true;
-                }
-            }
-        }
-        if naflag {
-            crate::mainutils::errors::Rf_warningcall1(call, c"NaNs produced".as_ptr());
-        }
-        result
+        checked_math2(call, a, b, choose_checked::Operation::BesselJ)
     }
 }
 

@@ -12,6 +12,7 @@ pub(super) enum Operation {
     Choose,
     LogChoose,
     PsiGamma,
+    BesselJ,
 }
 
 pub(super) fn evaluate(
@@ -59,6 +60,27 @@ pub(super) fn evaluate(
                             Operation::LogChoose => crate::special::choose::lchoose(x, k),
                             _ => crate::special::choose::choose(x, k),
                         }
+                    }
+                    Operation::BesselJ => {
+                        // Oversized orders and negative x return before the
+                        // kernel reads its array. Other orders need floor(|nu|)+1.
+                        let magnitude = k.abs();
+                        let length = if x < 0.0 || magnitude > crate::special::bessel_j::MAX_ALPHA_J
+                        {
+                            0
+                        } else {
+                            (magnitude.floor() as usize).checked_add(1).ok_or_else(|| {
+                                SexpError::EvaluationFailed {
+                                    message: "Bessel workspace dimension overflow".into(),
+                                }
+                            })?
+                        };
+                        let mut workspace =
+                            super::bessel_workspace::Workspace::new(access, length)?;
+                        let value = crate::special::bessel_j::bessel_j_ex(x, k, workspace.values());
+                        access.require_active()?;
+                        check_lengths(&a, &b, na, nb)?;
+                        value
                     }
                     Operation::PsiGamma => {
                         let n = crate::nmath::utils::r_forceint(k) as i32;

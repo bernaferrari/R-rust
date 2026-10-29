@@ -632,3 +632,165 @@ fn checked_psigamma_altrep_revocation_stops_before_scalar_warnings() {
         crate::sexp::object::SexpError::RootUnavailable.to_string()
     );
 }
+
+fn native_j(f: &SessionNodeFactory<'_>, arguments: &Sexp<'_>, _: bool) -> Sexp<'static> {
+    let raw = unsafe {
+        super::do_besselJ(
+            f.nil().as_raw(),
+            f.nil().as_raw(),
+            arguments.as_raw(),
+            f.nil().as_raw(),
+        )
+    };
+    f.wrap(raw).unwrap().into_owned().unwrap()
+}
+#[test]
+fn checked_besselj_vectors_and_warning_gc_reentry() {
+    let session = RSession::new_for_gc_tests();
+    let owner = session.owner_token().unwrap();
+    let weak = owner.weak_owner().unwrap();
+    session.with_active(|| {
+        let f = weak.node_factory().unwrap();
+        let result = native_j(
+            &f,
+            &args(&f, &reals(&f, &[1.0]), &reals(&f, &[0.0, 1.0, 2.0])),
+            false,
+        );
+        assert_eq!(result.len(), 3);
+        for (i, x) in [0.7651976865579666, 0.44005058574493355, 0.11490348493190049]
+            .into_iter()
+            .enumerate()
+        {
+            assert!((result.try_real_elt(i as i64).unwrap() - x).abs() < 1e-14);
+        }
+        let calls = Rc::new(Cell::new(0));
+        let seen = calls.clone();
+        let callback_owner = weak.clone();
+        let _warnings = WarningScope::new(move |_| {
+            seen.set(seen.get() + 1);
+            unsafe {
+                crate::sexp::gengc::full_gc();
+            }
+            let f = callback_owner.node_factory().unwrap();
+            let z = native_j(&f, &args(&f, &reals(&f, &[1.0]), &reals(&f, &[0.0])), false);
+            assert!((z.try_real_elt(0).unwrap() - 0.7651976865579666).abs() < 1e-14);
+        });
+        let result = native_j(
+            &f,
+            &args(&f, &reals(&f, &[1.0]), &reals(&f, &[500.0])),
+            false,
+        );
+        assert_eq!(result.try_real_elt(0).unwrap(), 0.0);
+        assert_eq!(calls.get(), 1);
+    });
+}
+#[test]
+fn checked_besselj_warning_revocation_cannot_publish_or_charge_replacement() {
+    let facade = Rc::new(RefCell::new(Some(RSession::new_for_gc_tests())));
+    let weak = facade
+        .borrow()
+        .as_ref()
+        .unwrap()
+        .owner_token()
+        .unwrap()
+        .weak_owner()
+        .unwrap();
+    let pin = weak.pin().unwrap();
+    let original = pin.as_ptr();
+    let replacement = Rc::new(RefCell::new(None));
+    let after_revoke = replacement.clone();
+    let facade_callback = facade.clone();
+    let _warnings = WarningScope::new(move |_| {
+        drop(facade_callback.borrow_mut().take());
+        let next = RSession::new_for_gc_tests();
+        let bytes = next
+            .owner_token()
+            .unwrap()
+            .with_arena(|a| (a.total_bytes_allocated(), a.workspace_bytes()))
+            .unwrap();
+        after_revoke.replace(Some((next, bytes)));
+    });
+    let error = catch_unwind(AssertUnwindSafe(|| unsafe {
+        crate::sexp::session::with_instance_active(original, || {
+            let f = weak.node_factory().unwrap();
+            let arguments = args(&f, &reals(&f, &[5.0]), &reals(&f, &[500.0]));
+            native_j(&f, &arguments, false)
+        })
+    }))
+    .unwrap_err();
+    assert!(!weak.is_live());
+    assert_eq!(
+        error
+            .downcast_ref::<crate::sexp::context::RError>()
+            .unwrap()
+            .message,
+        crate::sexp::object::SexpError::RootUnavailable.to_string()
+    );
+    let replacement = replacement.borrow();
+    let (session, before) = replacement.as_ref().unwrap();
+    session.with_active(|| {
+        assert_eq!(
+            session
+                .owner_token()
+                .unwrap()
+                .with_arena(|a| (a.total_bytes_allocated(), a.workspace_bytes()))
+                .unwrap(),
+            *before
+        );
+    });
+}
+
+#[test]
+fn checked_besselj_altrep_revocation_stops_before_scalar_warnings() {
+    let facade = Rc::new(RefCell::new(Some(RSession::new_for_gc_tests())));
+    let weak = facade
+        .borrow()
+        .as_ref()
+        .unwrap()
+        .owner_token()
+        .unwrap()
+        .weak_owner()
+        .unwrap();
+    let pin = weak.pin().unwrap();
+    let original = pin.as_ptr();
+    let calls = Rc::new(Cell::new(0));
+    let callback_facade = facade.clone();
+    let class = facade
+        .borrow()
+        .as_ref()
+        .unwrap()
+        .register_altrep_class(
+            "choose.revoke",
+            Provider {
+                calls: calls.clone(),
+                action: Rc::new(move || {
+                    drop(callback_facade.borrow_mut().take());
+                }),
+            },
+        )
+        .unwrap()
+        .into_owned()
+        .unwrap();
+    let warnings = Rc::new(Cell::new(0));
+    let observed = warnings.clone();
+    let _warnings = WarningScope::new(move |_| observed.set(observed.get() + 1));
+    let error = catch_unwind(AssertUnwindSafe(|| unsafe {
+        crate::sexp::session::with_instance_active(original, || {
+            let f = weak.node_factory().unwrap();
+            let input = AltrepBuilder::new(class).build().unwrap();
+            let arguments = args(&f, &input, &reals(&f, &[0.0, 1.0]));
+            native_j(&f, &arguments, false)
+        })
+    }))
+    .unwrap_err();
+    assert!(!weak.is_live());
+    assert_eq!(calls.get(), 1);
+    assert_eq!(warnings.get(), 0);
+    assert_eq!(
+        error
+            .downcast_ref::<crate::sexp::context::RError>()
+            .unwrap()
+            .message,
+        crate::sexp::object::SexpError::RootUnavailable.to_string()
+    );
+}
