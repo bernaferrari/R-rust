@@ -113,7 +113,7 @@ pub(super) fn evaluate(
                             Operation::BesselY if k >= 0.0 || k == k.floor() => {
                                 crate::special::bessel_y::MAX_ALPHA_Y
                             }
-                            _ => crate::special::bessel_j::MAX_ALPHA_J,
+                            _ => super::bessel_j_checked::MAX_ORDER,
                         };
                         let length = if x < 0.0 || magnitude > limit {
                             0
@@ -129,30 +129,35 @@ pub(super) fn evaluate(
                         let value = match operation {
                             // These branches return before scalar allocation;
                             // retain existing shared range-warning text.
-                            Operation::BesselJ if x >= 0.0 && k < 0.0 && k != k.floor() => {
+                            Operation::BesselJ if x >= 0.0 && k < 0.0 => {
                                 // Keep the half-integer shortcut and J-then-Y
                                 // arithmetic order, checking before reflection.
                                 let first = if k - k.floor() == 0.5 {
                                     0.0
                                 } else {
-                                    let value = crate::special::bessel_j::bessel_j_ex(
+                                    let value = super::bessel_j_checked::positive(
+                                        access,
                                         x,
                                         -k,
                                         workspace.values(),
-                                    );
+                                    )?;
                                     access.require_active()?;
                                     check()?;
                                     value * crate::special::cospi::cospi(k)
                                 };
-                                let reflected = super::bessel_y_checked::positive(
-                                    access,
-                                    x,
-                                    -k,
-                                    workspace.values(),
-                                )?;
+                                let reflected = if k == k.floor() {
+                                    0.0
+                                } else {
+                                    super::bessel_y_checked::positive(
+                                        access,
+                                        x,
+                                        -k,
+                                        workspace.values(),
+                                    )? * crate::special::cospi::sinpi(k)
+                                };
                                 access.require_active()?;
                                 check()?;
-                                first + reflected * crate::special::cospi::sinpi(k)
+                                first + reflected
                             }
                             Operation::BesselI if x >= 0.0 && k < 0.0 && k != k.floor() => {
                                 // Preserve I-then-K reflection and arithmetic order,
@@ -212,11 +217,12 @@ pub(super) fn evaluate(
                                 let reflected = if k == k.floor() {
                                     0.0
                                 } else {
-                                    let value = crate::special::bessel_j::bessel_j_ex(
+                                    let value = super::bessel_j_checked::positive(
+                                        access,
                                         x,
                                         -k,
                                         workspace.values(),
-                                    );
+                                    )?;
                                     access.require_active()?;
                                     check()?;
                                     value * crate::special::cospi::sinpi(k)
@@ -226,7 +232,9 @@ pub(super) fn evaluate(
                             Operation::BesselY => {
                                 super::bessel_y_checked::positive(access, x, k, workspace.values())?
                             }
-                            _ => crate::special::bessel_j::bessel_j_ex(x, k, workspace.values()),
+                            _ => {
+                                super::bessel_j_checked::positive(access, x, k, workspace.values())?
+                            }
                         };
                         access.require_active()?;
                         check()?;

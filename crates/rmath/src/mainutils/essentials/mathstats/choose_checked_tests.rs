@@ -975,3 +975,6 @@ mod bessely_reflection_tests;
 
 #[path = "bessely_diagnostic_tests.rs"]
 mod bessely_diagnostic_tests;
+
+#[path = "besselj_diagnostic_tests.rs"]
+mod besselj_diagnostic_tests;

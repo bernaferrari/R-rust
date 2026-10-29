@@ -644,6 +644,51 @@ pub fn bessel_j_ex(x: f64, alpha: f64, bj: &mut [f64]) -> f64 {
     result
 }
 
+/// Callback-free positive-order calculation with diagnostic metadata.
+/// Invalid input/workspace shapes are rejected; legacy wrappers are unchanged.
+#[derive(Clone, Copy, Debug)]
+pub struct BesselJCalculation {
+    pub value: f64,
+    pub ncalc: i32,
+    pub count: i32,
+    pub fraction: f64,
+    pub large_x: bool,
+}
+pub fn bessel_j_positive_status(
+    x: f64,
+    order: f64,
+    work: &mut [f64],
+) -> Option<BesselJCalculation> {
+    if x.is_nan() || x < 0.0 || !order.is_finite() || order < 0.0 || order > MAX_ALPHA_J {
+        return None;
+    }
+    let count = (floor(order) as i32).checked_add(1)?;
+    if work.len() < count as usize {
+        return None;
+    }
+    let fraction = order - f64::from(count - 1);
+    // The sole callback in j_bessel is this large-x early return. Mirror its
+    // zeroing here and let the checked caller emit after calculation returns.
+    let large_x = x > XLARGE_J_BESSEL;
+    let ncalc = if large_x {
+        work[..count as usize].fill(0.0);
+        count
+    } else {
+        j_bessel(x, fraction, count, work)
+    };
+    let mut value = work[count as usize - 1];
+    if ncalc >= 0 && ncalc != count && !value.is_finite() {
+        value = 0.0;
+    }
+    Some(BesselJCalculation {
+        value,
+        ncalc,
+        count,
+        fraction,
+        large_x,
+    })
+}
+
 /// C FFI wrapper for bessel_j_ex
 pub fn bessel_j_ex_c(x: f64, alpha: f64, bj: *mut f64, nb: i32) -> f64 {
     if bj.is_null() || nb <= 0 {
@@ -670,5 +715,48 @@ mod workspace_parity_tests {
                 );
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod status_tests {
+    use super::*;
+    #[test]
+    fn positive_status_preserves_bits_and_rejects_invalid_shapes() {
+        for x in [
+            -0.0,
+            0.0,
+            1e-300,
+            1.0,
+            12.3456789,
+            1e8,
+            1e24,
+            1e25,
+            f64::INFINITY,
+        ] {
+            for order in [-0.0_f64, 0.5, 1.0, 500.25] {
+                let mut old = vec![0.0; order as usize + 1];
+                let expected = bessel_j_ex(x, order, &mut old);
+                let mut work = vec![f64::NAN; order as usize + 1];
+                let actual = bessel_j_positive_status(x, order, &mut work).unwrap();
+                assert_eq!(
+                    actual.value.to_bits(),
+                    expected.to_bits(),
+                    "x={x},order={order}"
+                );
+                assert_eq!(actual.large_x, x > XLARGE_J_BESSEL);
+            }
+        }
+        for (x, order) in [
+            (f64::NAN, 0.0),
+            (-1.0, 0.0),
+            (1.0, -1.0),
+            (1.0, f64::NAN),
+            (1.0, f64::INFINITY),
+            (1.0, MAX_ALPHA_J + 1.0),
+        ] {
+            assert!(bessel_j_positive_status(x, order, &mut [0.0]).is_none());
+        }
+        assert!(bessel_j_positive_status(1.0, 1.0, &mut [0.0]).is_none());
     }
 }
