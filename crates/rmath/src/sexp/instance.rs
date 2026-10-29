@@ -479,6 +479,8 @@ pub struct RInstance {
     pub(crate) active_bindings: HashMap<(usize, usize), SEXP>,
     /// Per-session nmath math state (sampler caches and rank memo tables).
     pub(crate) math_state: rmath_nmath::MathState,
+    /// Registered signed-rank counts live in a charged, rooted original-owner R vector.
+    pub(crate) signed_rank_cache: Option<crate::library::stats::distn::signrank::Cache>,
     /// Original-runtime projection-pursuit and spline smoother settings.
     pub(crate) ppr_settings: Cell<crate::library::stats::smart::Common>,
     /// Per-instance stats::loess workspace buffers.
@@ -664,6 +666,7 @@ impl RInstance {
             locked_bindings: HashSet::new(),
             active_bindings: HashMap::new(),
             math_state: rmath_nmath::MathState::default(),
+            signed_rank_cache: None,
             ppr_settings: Cell::new(crate::library::stats::smart::Common::default()),
             loess_workspace_state: crate::library::stats::loessc::LoessWorkspaceState::default(),
             bspline_state: crate::library::stats::bspline::BsplineState::default(),

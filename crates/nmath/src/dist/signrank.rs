@@ -79,6 +79,16 @@ fn csignrank(k: i32, n: i32) -> f64 {
 
 #[must_use]
 pub fn dsignrank_inner(x: f64, n: f64, log_p: bool) -> f64 {
+    dsignrank_with_count(x, n, log_p, csignrank)
+}
+
+/// Evaluate with copied counts supplied by the host; no buffer loan crosses a count request.
+pub fn dsignrank_with_count(
+    x: f64,
+    n: f64,
+    log_p: bool,
+    mut count: impl FnMut(i32, i32) -> f64,
+) -> f64 {
     // IEEE_754
     if isnan(x) || isnan(n) {
         return x + n;
@@ -97,7 +107,7 @@ pub fn dsignrank_inner(x: f64, n: f64, log_p: bool) -> f64 {
     }
 
     let nn = n as i32;
-    let d = r_d_exp(log(csignrank(x as i32, nn)) - n * M_LN2, log_p);
+    let d = r_d_exp(log(count(x as i32, nn)) - n * M_LN2, log_p);
 
     d
 }
@@ -108,6 +118,17 @@ pub fn dsignrank_inner(x: f64, n: f64, log_p: bool) -> f64 {
 
 #[must_use]
 pub fn psignrank_inner(x: f64, n: f64, lower_tail: bool, log_p: bool) -> f64 {
+    psignrank_with_count(x, n, lower_tail, log_p, csignrank)
+}
+
+/// Evaluate with copied counts supplied by the host; no buffer loan crosses a count request.
+pub fn psignrank_with_count(
+    x: f64,
+    n: f64,
+    lower_tail: bool,
+    log_p: bool,
+    mut count: impl FnMut(i32, i32) -> f64,
+) -> f64 {
     // IEEE_754
     if isnan(x) || isnan(n) {
         return x + n;
@@ -135,12 +156,12 @@ pub fn psignrank_inner(x: f64, n: f64, lower_tail: bool, log_p: bool) -> f64 {
 
     if x <= n * (n + 1.0) / 4.0 {
         for i in 0..=(x as i32) {
-            p += csignrank(i, nn) * f;
+            p += count(i, nn) * f;
         }
     } else {
         let x_new = (n * (n + 1.0) / 2.0 - x) as i32;
         for i in 0..x_new {
-            p += csignrank(i, nn) * f;
+            p += count(i, nn) * f;
         }
         lower_tail = !lower_tail; // p = 1 - p;
     }
@@ -154,6 +175,17 @@ pub fn psignrank_inner(x: f64, n: f64, lower_tail: bool, log_p: bool) -> f64 {
 
 #[must_use]
 pub fn qsignrank_inner(x: f64, n: f64, lower_tail: bool, log_p: bool) -> f64 {
+    qsignrank_with_count(x, n, lower_tail, log_p, csignrank)
+}
+
+/// Evaluate with copied counts supplied by the host; no buffer loan crosses a count request.
+pub fn qsignrank_with_count(
+    x: f64,
+    n: f64,
+    lower_tail: bool,
+    log_p: bool,
+    mut count: impl FnMut(i32, i32) -> f64,
+) -> f64 {
     // IEEE_754
     if isnan(x) || isnan(n) {
         return x + n;
@@ -206,7 +238,7 @@ pub fn qsignrank_inner(x: f64, n: f64, lower_tail: bool, log_p: bool) -> f64 {
     if x <= 0.5 {
         x = x - 10.0 * DBL_EPSILON;
         loop {
-            p += csignrank(q, nn) * f;
+            p += count(q, nn) * f;
             if p >= x {
                 break;
             }
@@ -215,7 +247,7 @@ pub fn qsignrank_inner(x: f64, n: f64, lower_tail: bool, log_p: bool) -> f64 {
     } else {
         x = 1.0 - x + 10.0 * DBL_EPSILON;
         loop {
-            p += csignrank(q, nn) * f;
+            p += count(q, nn) * f;
             if p > x {
                 q = (n * (n + 1.0) / 2.0 - q as f64) as i32;
                 break;

@@ -799,7 +799,7 @@ unsafe fn wrap_dsignrank(x: c_double, n: c_double, log: c_int) -> c_double {
 }
 
 pub unsafe fn do_dsignrank(sa: SEXP, sb: SEXP, sI: SEXP) -> SEXP {
-    unsafe { math2_1(sa, sb, sI, wrap_dsignrank) }
+    unsafe { signrank::evaluate(sa, sb, sI, R_NilValue(), signrank::Kind::Density) }
 }
 
 // --- pchisq(x, df, lower_tail, log_p) ---
@@ -909,7 +909,7 @@ unsafe fn wrap_psignrank(x: c_double, n: c_double, lt: c_int, lp: c_int) -> c_do
 }
 
 pub unsafe fn do_psignrank(sa: SEXP, sb: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    unsafe { math2_2(sa, sb, sI, sJ, wrap_psignrank) }
+    unsafe { signrank::evaluate(sa, sb, sI, sJ, signrank::Kind::Cdf) }
 }
 
 // --- qsignrank(p, n, lower_tail, log_p) ---
@@ -919,7 +919,7 @@ unsafe fn wrap_qsignrank(p: c_double, n: c_double, lt: c_int, lp: c_int) -> c_do
 }
 
 pub unsafe fn do_qsignrank(sa: SEXP, sb: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    unsafe { math2_2(sa, sb, sI, sJ, wrap_qsignrank) }
+    unsafe { signrank::evaluate(sa, sb, sI, sJ, signrank::Kind::Quantile) }
 }
 
 // ===========================================================================
@@ -2033,3 +2033,8 @@ mod flag_tests;
 
 #[cfg(test)]
 mod attribute_tests;
+
+pub(crate) mod signrank;
+
+#[cfg(test)]
+mod signrank_admission_tests;
