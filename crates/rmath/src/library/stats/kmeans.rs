@@ -63,7 +63,8 @@ fn kmeans_lloyd_impl(
         iter += 1;
     }
 
-    *maxiter = iter;
+    // GNU counts the terminating scan, including the exhaustion sentinel.
+    *maxiter = iter.saturating_add(1);
     wss.fill(0.0);
     for i in 0..n {
         let it = cl[i as usize] - 1;
@@ -162,7 +163,8 @@ fn kmeans_macqueen_impl(
         iter += 1;
     }
 
-    *maxiter = iter;
+    // GNU counts the terminating scan, including the exhaustion sentinel.
+    *maxiter = iter.saturating_add(1);
     wss.fill(0.0);
     for i in 0..n {
         let it = cl[i as usize] - 1;
