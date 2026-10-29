@@ -996,8 +996,18 @@ unsafe fn namespace_value(namespace: SEXP, name: SEXP, exported: bool) -> SEXP {
             let alias = crate::sexp::envir::R_findVarInFrame(exports, name);
             if alias != R_UnboundValue() {
                 let _alias = protect(alias);
-                let alias =
-                    namespace_lookup_name(force_namespace_value(alias), "bad variable name");
+                let alias = force_namespace_value(alias);
+                // Portable namespaces can publish native-backed exports as
+                // the function object itself. Lazy R exports instead store
+                // a symbol/string alias that must be looked up in the
+                // namespace. Keep direct functions rooted and return them
+                // as-is; trying to parse them as names rejects e.g.
+                // graphics::plot with "bad variable name".
+                if is_function_value(alias) {
+                    let _resolved = protect(alias);
+                    return alias;
+                }
+                let alias = namespace_lookup_name(alias, "bad variable name");
                 return crate::eval::eval::Rf_eval(alias, namespace);
             }
         }
@@ -1199,7 +1209,6 @@ pub unsafe fn do_namespace_get(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> 
             crate::sexp::globals::set_R_Visible(crate::sexp::ffi::TRUE);
             return force_namespace_value(value);
         }
-
     }
 }
 
@@ -1410,6 +1419,42 @@ pub unsafe fn do_structure(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn namespace_export_function_value_stays_rooted_across_gc() {
+        use crate::sexp::{ffi::SEXPTYPE, session::RSession, symbol::Rf_install};
+
+        let mut session = crate::sexp::session::RSession::new_for_gc_tests();
+        let (result, _, _) = session.eval_code_with_output_capture(
+            r#"local({
+                namespace <- new.env(parent = baseenv())
+                metadata <- new.env(parent = baseenv())
+                exports <- new.env(parent = baseenv())
+                assign(".__NAMESPACE__.", metadata, namespace)
+                metadata$exports <- exports
+                exports$plot <- function(value) value + 1L
+                namespace
+            })"#,
+        );
+        let namespace = result
+            .expect("test namespace should be created")
+            .into_owned()
+            .expect("namespace root should be owned");
+        session.with_active(|| unsafe {
+            let owner = session.owner_token().expect("active owner");
+            let value =
+                super::namespace_value(namespace.as_raw(), Rf_install(c"plot".as_ptr()), true);
+            let value = owner
+                .node_factory()
+                .wrap(value)
+                .expect("direct export function should be rootable");
+            assert_eq!(value.typeof_(), SEXPTYPE::CLOSXP);
+            owner
+                .full_gc()
+                .expect("rooted function survives collection");
+            assert_eq!(value.typeof_(), SEXPTYPE::CLOSXP);
+        });
+    }
+
     #[test]
     fn attributes_preserve_assignment_order() {
         let mut session = crate::sexp::session::RSession::new();

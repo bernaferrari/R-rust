@@ -4,6 +4,10 @@ const NAMESPACE_QUALIFIED_LOOKUP_SCRIPT: &str = r##"
     stopifnot(inherits(try(base::lm, silent=TRUE), "try-error"))
     stopifnot(inherits(try(base:::lm, silent=TRUE), "try-error"))
     stopifnot(inherits(try(graphics::log, silent=TRUE), "try-error"))
+    stopifnot(is.function(graphics::plot))
+    plot_export <- getExportedValue("graphics", "plot")
+    invisible(gc())
+    stopifnot(is.function(plot_export), identical(graphics::plot, plot_export))
     stopifnot(identical(base::as.list, as.list))
     stopifnot(identical(base:::as.list, as.list))
     stopifnot(identical(base::.S3PrimitiveGenerics,
