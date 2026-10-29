@@ -2,7 +2,8 @@ package com.rstudio.mobile.components
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -27,6 +28,7 @@ import androidx.compose.ui.semantics.semantics
 import com.rstudio.mobile.R
 import com.rport.uniffi.PackageInfo
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun PackageBrowser(
     packages: List<PackageInfo>,
@@ -41,12 +43,12 @@ fun PackageBrowser(
         packages.filter { query.isBlank() || it.name.contains(query, true) || it.title.contains(query, true) }
     }
     Column(Modifier.fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Column {
                 Text(stringResource(R.string.packages_title), style = MaterialTheme.typography.titleMedium)
                 Text(stringResource(R.string.packages_subtitle), style = MaterialTheme.typography.bodySmall)
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 FilledTonalButton(onClick = onInstall, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.packages_install_zip)) }
                 FilledTonalButton(onClick = onRefresh, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.packages_refresh)) }
             }
@@ -71,12 +73,12 @@ fun PackageBrowser(
                     val removeDescription = stringResource(R.string.packages_remove_description, pkg.name)
                     ElevatedCard(Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Column(Modifier.weight(1f)) {
+                            FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Column {
                                     Text(pkg.name, style = MaterialTheme.typography.titleSmall)
                                     Text(pkg.version, style = MaterialTheme.typography.labelMedium)
                                 }
-                                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                     FilledTonalButton(
                                         onClick = { onLoad(pkg.name) },
                                         enabled = !isLoaded,
