@@ -83,4 +83,17 @@
     <string name="document_close">Close %1$s</string>
     <string name="document_unsaved_changes">Unsaved changes</string>
     <string name="document_saved">Saved</string>
+    <string name="packages_title">Packages</string>
+    <string name="packages_subtitle">Pure-R packages supported</string>
+    <string name="packages_install_zip">Install ZIP</string>
+    <string name="packages_refresh">Refresh</string>
+    <string name="packages_search">Find a package</string>
+    <string name="packages_empty">No installed pure-R packages were found.</string>
+    <string name="packages_native_warning">Requires native compilation and may not run on Android.</string>
+    <string name="packages_remove">Remove</string>
+    <string name="packages_loaded">Loaded</string>
+    <string name="packages_load">Load</string>
+    <string name="packages_load_description">Load %1$s</string>
+    <string name="packages_loaded_description">%1$s is loaded</string>
+    <string name="packages_remove_description">Remove %1$s</string>
 </resources>
