@@ -171,7 +171,7 @@ unsafe fn swilk(
             return;
         }
 
-        let y = w1.ln();
+        let mut y = w1.ln();
         let xx = an.ln();
         let (m, s) = if n <= 11 {
             let gamma = poly(g.as_ptr(), 2, an);
@@ -179,7 +179,7 @@ unsafe fn swilk(
                 *pw = 1e-99;
                 return;
             }
-            let y = -(gamma - y).ln();
+            y = -(gamma - y).ln();
             let m = poly(c3.as_ptr(), 4, an);
             let s = poly(c4.as_ptr(), 4, an).exp();
             (m, s)
@@ -253,5 +253,28 @@ pub unsafe fn do_shapiro_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
             Rf_mkString(c"htest".as_ptr()),
         );
         result
+    }
+}
+
+#[cfg(test)]
+mod significance_tests {
+    use super::*;
+
+    #[test]
+    fn small_sample_transform_reaches_the_normal_tail() {
+        // Pinned GNU R r90451; cover both sides of the n=11/12 branch.
+        let expected = [
+            (3, 0.72622630994205595),
+            (4, 0.79226858783220777),
+            (11, 0.30741084749323166),
+            (12, 0.25667346766162591),
+        ];
+        let x: [f64; 12] = std::array::from_fn(|i| ((i + 1) * (i + 1)) as f64);
+        for (n, probability) in expected {
+            let (mut w, mut p, mut fault) = (0.0, 0.0, 0);
+            unsafe { swilk(x.as_ptr(), n, &mut w, &mut p, &mut fault) };
+            assert_eq!(fault, 0);
+            assert!((p - probability).abs() < 1e-12, "n={n}: {p}");
+        }
     }
 }
