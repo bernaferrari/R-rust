@@ -295,30 +295,7 @@ unsafe extern "C-unwind" fn fmingr(
 // ---------------------------------------------------------------------------
 
 unsafe fn as_real(x: SEXP) -> c_double {
-    unsafe {
-        if x.is_null() {
-            return NA_REAL;
-        }
-        let t = TYPEOF(x);
-        if t == SEXPTYPE::REALSXP {
-            return *REAL(x);
-        }
-        if t == SEXPTYPE::INTSXP {
-            let v = *INTEGER(x);
-            if v == NA_INTEGER {
-                return NA_REAL;
-            }
-            return v as c_double;
-        }
-        if t == SEXPTYPE::LGLSXP {
-            let v = *INTEGER(x);
-            if v == NA_INTEGER {
-                return NA_REAL;
-            }
-            return if v != 0 { 1.0 } else { 0.0 };
-        }
-        NA_REAL
-    }
+    unsafe { crate::mainutils::coerce::asReal(x) }
 }
 
 // ---------------------------------------------------------------------------
@@ -326,26 +303,7 @@ unsafe fn as_real(x: SEXP) -> c_double {
 // ---------------------------------------------------------------------------
 
 unsafe fn as_integer(x: SEXP) -> c_int {
-    unsafe {
-        if x.is_null() {
-            return NA_INTEGER;
-        }
-        let t = TYPEOF(x);
-        if t == SEXPTYPE::INTSXP {
-            return *INTEGER(x);
-        }
-        if t == SEXPTYPE::REALSXP {
-            let v = *REAL(x);
-            if v.is_nan() || v < c_int::MIN as c_double || v > c_int::MAX as c_double {
-                return NA_INTEGER;
-            }
-            return v as c_int;
-        }
-        if t == SEXPTYPE::LGLSXP {
-            return *INTEGER(x);
-        }
-        NA_INTEGER
-    }
+    unsafe { crate::mainutils::coerce::asInteger(x) }
 }
 
 // ---------------------------------------------------------------------------
