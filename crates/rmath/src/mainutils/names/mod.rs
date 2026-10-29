@@ -816,6 +816,7 @@ type InternalBuiltinHandler = unsafe fn(SEXP, SEXP, SEXP, SEXP) -> SEXP;
 fn internal_builtin_handler(name: &str) -> Option<InternalBuiltinHandler> {
     match name {
         "builtins" => Some(do_builtins),
+        "besselK" => Some(crate::mainutils::essentials::do_besselK_internal),
         "getLoadedDLLs" => Some(crate::mainutils::rdynload::do_getDllTable),
         "getSymbolInfo" => Some(crate::mainutils::rdynload::do_getSymbolInfo),
         "serialize" => Some(crate::mainutils::serialize::do_serialize_internal),

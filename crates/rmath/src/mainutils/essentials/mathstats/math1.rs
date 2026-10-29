@@ -525,6 +525,8 @@ unsafe fn validate_math2_inputs(a: SEXP, b: SEXP) -> Result<(), &'static str> {
     }
 }
 
+#[path = "bessel_scaling.rs"]
+mod bessel_scaling;
 #[path = "bessel_workspace.rs"]
 mod bessel_workspace;
 #[path = "choose_checked.rs"]
@@ -537,6 +539,16 @@ unsafe fn checked_math2(
     a: SEXP,
     b: SEXP,
     operation: choose_checked::Operation,
+) -> SEXP {
+    unsafe { checked_math(call, a, b, None, operation, None) }
+}
+unsafe fn checked_math(
+    call: SEXP,
+    a: SEXP,
+    b: SEXP,
+    c: Option<SEXP>,
+    operation: choose_checked::Operation,
+    environment: Option<SEXP>,
 ) -> SEXP {
     use crate::sexp::{object::Sexp, owner::OwnerToken};
     let owner = unsafe { OwnerToken::current() }
@@ -558,12 +570,49 @@ unsafe fn checked_math2(
     let call = root(call);
     let mut a = root(a);
     let mut b = root(b);
+    let mut c = c.map(root);
+    let environment = environment.map(root);
     active();
+    if let Some(environment) = environment {
+        let conversion = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+            bessel_scaling::prepare(owner, c.take(), environment)
+        }));
+        active();
+        c = Some(match conversion {
+            Ok(Ok(value)) => value,
+            Ok(Err(error)) => crate::sexp::context::r_error(error.to_string()),
+            Err(payload) => std::panic::resume_unwind(payload),
+        });
+    }
+    if matches!(operation, choose_checked::Operation::BesselK) {
+        for value in [&a, &b].into_iter().chain(c.iter()) {
+            if !matches!(
+                value.typeof_(),
+                SEXPTYPE::REALSXP | SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP
+            ) {
+                unsafe {
+                    crate::mainutils::errors::errorcall_str(
+                        call.as_raw(),
+                        "non-numeric argument to mathematical function",
+                    )
+                }
+            }
+        }
+    }
     let weak = owner
         .weak_owner()
         .unwrap_or_else(|| crate::sexp::context::r_error("choose requires a managed runtime"));
     let validation = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        crate::sexp::owner::with_runtime(&weak, |access| choose_factor::has_factor(access, &a, &b))
+        crate::sexp::owner::with_runtime(&weak, |access| {
+            if choose_factor::has_factor(access, &a, &b)? {
+                return Ok(true);
+            }
+            if let Some(c) = &c {
+                choose_factor::has_factor(access, c, c)
+            } else {
+                Ok(false)
+            }
+        })
     }));
     active();
     match validation {
@@ -577,7 +626,7 @@ unsafe fn checked_math2(
         Ok(Ok(Err(error))) | Ok(Err(error)) => crate::sexp::context::r_error(error.to_string()),
         Err(payload) => std::panic::resume_unwind(payload),
     }
-    if !a.is_empty() && !b.is_empty() {
+    if !a.is_empty() && !b.is_empty() && c.as_ref().is_none_or(|c| !c.is_empty()) {
         let raw =
             unsafe { crate::main::coerce::coerceVector(a.as_raw(), SEXPTYPE::REALSXP.as_c_int()) };
         active();
@@ -586,11 +635,18 @@ unsafe fn checked_math2(
             unsafe { crate::main::coerce::coerceVector(b.as_raw(), SEXPTYPE::REALSXP.as_c_int()) };
         active();
         b = root(raw);
+        if let Some(value) = &mut c {
+            let raw = unsafe {
+                crate::main::coerce::coerceVector(value.as_raw(), SEXPTYPE::REALSXP.as_c_int())
+            };
+            active();
+            *value = root(raw);
+        }
     }
     let _warning_call = crate::mainutils::errors::mathlib_warning_call_guard(call.as_raw());
     let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         crate::sexp::owner::with_runtime(&weak, |access| {
-            choose_checked::evaluate(access, a, b, operation)
+            choose_checked::evaluate(access, a, b, c, operation)
         })
     }));
     active();
@@ -721,46 +777,72 @@ pub unsafe fn do_besselJ(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 }
 
 /// R's `besselK(x, nu)` — modified Bessel function of the second kind.
-pub unsafe fn do_besselK(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_besselK(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe { bessel_k_entry(call, op, args, rho, true) }
+}
+pub unsafe fn do_besselK_internal(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe { bessel_k_entry(call, op, args, rho, false) }
+}
+unsafe fn bessel_k_entry(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP, public: bool) -> SEXP {
+    use crate::sexp::{object::Sexp, owner::OwnerToken};
+    let owner = unsafe { OwnerToken::current() }
+        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+    let _pin = owner
+        .pin()
+        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+    let root = |raw| {
+        owner
+            .require_active()
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        let value = owner
+            .sexp(raw)
+            .and_then(Sexp::into_owned)
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        owner
+            .require_active()
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        value
+    };
+    // Validate every entry object before traversing even the first argument.
+    let arguments = root(args);
+    let call = root(call);
+    let environment = root(rho);
+    owner
+        .require_active()
+        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+    let read = |value: Result<Sexp<'_>, crate::sexp::object::SexpError>| {
+        owner
+            .require_active()
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        let value = value
+            .and_then(Sexp::into_owned)
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        owner
+            .require_active()
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        value
+    };
+    let a = read(arguments.try_car());
+    let tail = read(arguments.try_cdr());
+    let b = read(tail.try_car());
+    let tail = read(tail.try_cdr());
+    let c = if tail.is_nil() {
+        None
+    } else {
+        Some(read(tail.try_car()))
+    };
+    if !public && c.is_none() {
+        crate::sexp::context::r_error("missing scaling argument to internal besselK")
+    }
     unsafe {
-        let x = CAR(args);
-        let nu_arg = CAR(CDR(args));
-        let expo_arg = CAR(CDR(CDR(args))); // optional: exponential scaling
-        if x.is_null() || x == R_NilValue() || nu_arg.is_null() || nu_arg == R_NilValue() {
-            return R_NilValue();
-        }
-        let nu = real_or_default(nu_arg, 0.0);
-        let expo = if !expo_arg.is_null() && expo_arg != R_NilValue() {
-            let e = real_or_default(expo_arg, 0.0);
-            e != 0.0
-        } else {
-            false
-        };
-        let n = XLENGTH(x);
-        let t = TYPEOF(x);
-        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _p = protect(result);
-        let dst = REAL(result);
-        for i in 0..n {
-            let val = if t == SEXPTYPE::REALSXP {
-                *REAL(x).add(i as usize)
-            } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-                let v = *INTEGER(x).add(i as usize);
-                if v == NA_INTEGER { NA_REAL } else { v as f64 }
-            } else {
-                NA_REAL
-            };
-            if val.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
-                *dst.add(i as usize) = NA_REAL;
-            } else {
-                *dst.add(i as usize) =
-                    crate::special::bessel_k::bessel_k(val, nu, if expo { 2.0 } else { 1.0 });
-            }
-        }
-        result
+        checked_math(
+            call.as_raw(),
+            a.as_raw(),
+            b.as_raw(),
+            c.as_ref().map(Sexp::as_raw),
+            choose_checked::Operation::BesselK,
+            public.then_some(environment.as_raw()),
+        )
     }
 }
 

@@ -14,18 +14,34 @@ pub(super) enum Operation {
     PsiGamma,
     BesselJ,
     BesselY,
+    BesselK,
 }
 
 pub(super) fn evaluate(
     access: &RuntimeAccess,
     a: Sexp<'static>,
     b: Sexp<'static>,
+    c: Option<Sexp<'static>>,
     operation: Operation,
 ) -> SexpResult<(Sexp<'static>, Option<Sexp<'static>>)> {
     access.require_active()?;
     let na = a.len();
     let nb = b.len();
-    let length = if na == 0 || nb == 0 { 0 } else { na.max(nb) };
+    let nc = c.as_ref().map_or(1, |c| c.len());
+    let check = || {
+        check_lengths(&a, &b, na, nb)?;
+        if c.as_ref().is_some_and(|c| c.len() != nc) {
+            return Err(SexpError::EvaluationFailed {
+                message: "mathematical input length changed during evaluation".into(),
+            });
+        }
+        Ok(())
+    };
+    let length = if na == 0 || nb == 0 || nc == 0 {
+        0
+    } else {
+        na.max(nb).max(nc)
+    };
     let domain = access.domain();
     let result = access
         .allocator(&domain)?
@@ -38,37 +54,53 @@ pub(super) fn evaluate(
         access.require_active()?;
         crate::sexp::altrep::force_materialization(&b)?;
         access.require_active()?;
+        if let Some(c) = &c {
+            crate::sexp::altrep::force_materialization(c)?;
+            access.require_active()?;
+        }
         let mut nan = false;
         for i in 0..length {
-            check_lengths(&a, &b, na, nb)?;
+            check()?;
             let x = a.try_real_elt(i % na)?;
             access.require_active()?;
-            check_lengths(&a, &b, na, nb)?;
+            check()?;
             let k = b.try_real_elt(i % nb)?;
             access.require_active()?;
-            check_lengths(&a, &b, na, nb)?;
-            let value = if crate::sexp::ffi::R_IsNA(x) || crate::sexp::ffi::R_IsNA(k) {
+            check()?;
+            let scaling = if let Some(c) = &c {
+                let value = c.try_real_elt(i % nc)?;
+                access.require_active()?;
+                check()?;
+                value
+            } else {
+                0.0
+            };
+            let value = if crate::sexp::ffi::R_IsNA(x)
+                || crate::sexp::ffi::R_IsNA(k)
+                || crate::sexp::ffi::R_IsNA(scaling)
+            {
                 NA_REAL
-            } else if x.is_nan() || k.is_nan() {
+            } else if x.is_nan() || k.is_nan() || scaling.is_nan() {
                 f64::NAN
             } else {
                 let value = match operation {
                     Operation::Choose | Operation::LogChoose => {
                         warn_rounding(k, crate::nmath::utils::r_forceint(k));
                         access.require_active()?;
-                        check_lengths(&a, &b, na, nb)?;
+                        check()?;
                         match operation {
                             Operation::LogChoose => crate::special::choose::lchoose(x, k),
                             _ => crate::special::choose::choose(x, k),
                         }
                     }
-                    Operation::BesselJ | Operation::BesselY => {
+                    Operation::BesselJ | Operation::BesselY | Operation::BesselK => {
                         // Oversized orders and negative x return before the
                         // kernel reads its array. Other orders need floor(|nu|)+1.
                         let magnitude = k.abs();
                         // Negative fractional Y reflects through J as well.
                         // Integer Y orders only require Y's smaller limit.
                         let limit = match operation {
+                            Operation::BesselK => crate::special::bessel_k::MAX_ALPHA_K,
                             Operation::BesselY if k >= 0.0 || k == k.floor() => {
                                 crate::special::bessel_y::MAX_ALPHA_Y
                             }
@@ -88,6 +120,12 @@ pub(super) fn evaluate(
                         let value = match operation {
                             // These branches return before scalar allocation;
                             // retain existing shared range-warning text.
+                            Operation::BesselK => crate::special::bessel_k::bessel_k_ex(
+                                x,
+                                k,
+                                scaling,
+                                workspace.values(),
+                            ),
                             Operation::BesselY if length == 0 => {
                                 crate::special::bessel_y::bessel_y(x, k)
                             }
@@ -97,7 +135,7 @@ pub(super) fn evaluate(
                             _ => crate::special::bessel_j::bessel_j_ex(x, k, workspace.values()),
                         };
                         access.require_active()?;
-                        check_lengths(&a, &b, na, nb)?;
+                        check()?;
                         value
                     }
                     Operation::PsiGamma => {
@@ -105,7 +143,7 @@ pub(super) fn evaluate(
                         if n > crate::special::polygamma::PSIGAMMA_MAX_DERIV {
                             warn_derivative_limit(n);
                             access.require_active()?;
-                            check_lengths(&a, &b, na, nb)?;
+                            check()?;
                             f64::NAN
                         } else {
                             crate::special::polygamma::psigamma(x, k)
@@ -116,7 +154,7 @@ pub(super) fn evaluate(
                 value
             };
             access.require_active()?;
-            check_lengths(&a, &b, na, nb)?;
+            check()?;
             output.try_set_real_elt(i, value)?;
         }
         if nan {
@@ -125,11 +163,13 @@ pub(super) fn evaluate(
         }
     }
     access.require_active()?;
-    check_lengths(&a, &b, na, nb)?;
-    let source = if na == 0 || (length != 0 && na >= nb) {
+    check()?;
+    let source = if na == 0 || (length != 0 && na == length) {
         Some(a)
-    } else if length != 0 {
+    } else if length != 0 && nb == length {
         Some(b)
+    } else if length != 0 {
+        c
     } else {
         None
     };

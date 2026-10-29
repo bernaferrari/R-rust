@@ -19,7 +19,7 @@ const DBL_MAX: f64 = 1.7976931348623157e+308;
 const DBL_MIN: f64 = 2.2250738585072014e-308;
 const M_SQRT_2dPI: f64 = 0.79788456080286535587989211986876; // sqrt(2/pi)
 /// `M_bessel_ik_max_alpha` from Rmath.h.
-const MAX_ALPHA_K: f64 = 1e9;
+pub const MAX_ALPHA_K: f64 = 1e9;
 
 // Mathematical constants
 const A: f64 = 0.11593151565841244881; // LOG(2) - Euler's constant
@@ -611,5 +611,27 @@ mod imp {
 
     pub fn bessel_k_c(x: f64, alpha: f64, expo: f64) -> f64 {
         bessel_k(x, alpha, expo)
+    }
+}
+
+#[cfg(test)]
+mod workspace_parity_tests {
+    use super::*;
+    #[test]
+    fn besselk_workspace_matches_scalar_scaling_reflection_and_tails() {
+        for x in [0.0, 1.0, 1000.0] {
+            for order in [-2.0_f64, -0.5, 0.0, 1.0, 10.0] {
+                for scale in [1.0, 2.0] {
+                    let mut work = vec![0.0; order.abs() as usize + 1];
+                    let expected = bessel_k(x, order, scale);
+                    let actual = bessel_k_ex(x, order, scale, &mut work);
+                    assert!(
+                        expected.to_bits() == actual.to_bits()
+                            || (expected.is_nan() && actual.is_nan()),
+                        "x={x},nu={order},scale={scale},scalar={expected},work={actual}"
+                    );
+                }
+            }
+        }
     }
 }
