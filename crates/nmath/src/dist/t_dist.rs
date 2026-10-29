@@ -164,10 +164,10 @@ pub fn qt_inner(p: f64, ndf: f64, lower_tail: bool, log_p: bool) -> f64 {
             return ml_warn_return_nan();
         }
         if p == 0.0 {
-            return if lower_tail { ML_NEGINF } else { ML_POSINF };
+            return if lower_tail { ML_POSINF } else { ML_NEGINF };
         }
         if p == ML_NEGINF {
-            return if lower_tail { ML_POSINF } else { ML_NEGINF };
+            return if lower_tail { ML_NEGINF } else { ML_POSINF };
         }
     } else {
         if p < 0.0 || p > 1.0 {
@@ -482,4 +482,23 @@ pub fn Rf_rt(df: f64) -> f64 {
 #[must_use]
 pub fn rt(df: f64) -> f64 {
     rt_inner(df)
+}
+
+#[cfg(test)]
+mod log_endpoint_tests {
+    #[test]
+    fn log_probability_endpoints_match_probability_scale() {
+        for df in [0.5, 1.0, 10.0, f64::INFINITY] {
+            for lower in [true, false] {
+                assert_eq!(
+                    super::qt_inner(f64::NEG_INFINITY, df, lower, true),
+                    super::qt_inner(0.0, df, lower, false)
+                );
+                assert_eq!(
+                    super::qt_inner(0.0, df, lower, true),
+                    super::qt_inner(1.0, df, lower, false)
+                );
+            }
+        }
+    }
 }

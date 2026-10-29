@@ -263,7 +263,7 @@ pub fn qf_inner(p: f64, df1: f64, df2: f64, lower_tail: bool, log_p: bool) -> f6
             return if lower_tail { ML_POSINF } else { 0.0 };
         }
         if p == ML_NEGINF {
-            return if lower_tail { ML_POSINF } else { 0.0 };
+            return if lower_tail { 0.0 } else { ML_POSINF };
         }
     } else {
         if p < 0.0 || p > 1.0 {
@@ -360,4 +360,28 @@ pub fn Rf_rf(n1: f64, n2: f64) -> f64 {
 #[must_use]
 pub fn rf(n1: f64, n2: f64) -> f64 {
     rf_inner(n1, n2)
+}
+
+#[cfg(test)]
+mod log_endpoint_tests {
+    #[test]
+    fn log_probability_endpoints_match_probability_scale() {
+        for (df1, df2) in [
+            (1.0, 1.0),
+            (1.0, f64::INFINITY),
+            (f64::INFINITY, 1.0),
+            (f64::INFINITY, f64::INFINITY),
+        ] {
+            for lower in [true, false] {
+                assert_eq!(
+                    super::qf_inner(f64::NEG_INFINITY, df1, df2, lower, true),
+                    super::qf_inner(0.0, df1, df2, lower, false)
+                );
+                assert_eq!(
+                    super::qf_inner(0.0, df1, df2, lower, true),
+                    super::qf_inner(1.0, df1, df2, lower, false)
+                );
+            }
+        }
+    }
 }
