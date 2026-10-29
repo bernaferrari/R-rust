@@ -73,4 +73,13 @@ impl OwnedArena {
         self.blocks.clear();
         self.next = 0;
     }
+
+    #[cfg(test)]
+    pub(super) fn contains(&self, pointer: *const c_void) -> bool {
+        self.blocks.iter().any(|block| {
+            let start = block.as_ptr().addr();
+            let bytes = block.len() * std::mem::size_of::<Unit>();
+            pointer.addr() >= start && pointer.addr() - start < bytes
+        })
+    }
 }

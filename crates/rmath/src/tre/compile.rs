@@ -2021,8 +2021,8 @@ pub(crate) unsafe fn tre_compile_with_workspace(
     unsafe { tre_compile_tables(preg, regex, n, cflags, workspace, None) }
 }
 
-/// Opaque runtime owner: nested legacy allocations are freed while table cells
-/// remain live, then Rust drops the admitted original-owner table storage.
+/// Opaque runtime owner: nested legacy allocations are freed while descriptor
+/// and table cells remain live, then Rust drops their original-owner storage.
 pub(crate) struct CompiledTre {
     preg: regex_t,
     _tables: super::owned_arena::OwnedArena,
@@ -2085,6 +2085,20 @@ unsafe fn allocate_transition_table(
     }
 }
 
+unsafe fn allocate_tnfa(
+    storage: &mut Option<&mut super::owned_arena::OwnedArena>,
+) -> *mut tre_tnfa_t {
+    if let Some(storage) = storage {
+        // Exact retained cells are zeroed and 16-byte aligned, as required by
+        // this pointer/integer descriptor. Its arena outlives nested cleanup.
+        storage
+            .allocate_exact(std::mem::size_of::<tre_tnfa_t>())
+            .map_or(ptr::null_mut(), |pointer| pointer.cast())
+    } else {
+        unsafe { mem::xcalloc(1, std::mem::size_of::<tre_tnfa_t>()).cast() }
+    }
+}
+
 unsafe fn tre_compile_tables(
     preg: *mut regex_t,
     regex: *const tre_char_t,
@@ -2141,7 +2155,7 @@ unsafe fn tre_compile_tables(
         let tree = parse_ctx.result;
 
         // Allocate TNFA
-        let tnfa = mem::xcalloc(1, std::mem::size_of::<tre_tnfa_t>()) as *mut tre_tnfa_t;
+        let tnfa = allocate_tnfa(&mut storage);
         if tnfa.is_null() {
             return compile_error(
                 mem,
@@ -2551,13 +2565,112 @@ unsafe fn tre_free_tables(preg: *mut regex_t, owned_tables: bool) {
         if !(*tnfa).minimal_tags.is_null() {
             mem::xfree((*tnfa).minimal_tags as *mut c_void);
         }
-        mem::xfree(tnfa as *mut c_void);
+        if !owned_tables {
+            mem::xfree(tnfa as *mut c_void);
+        }
     }
 }
 
 #[cfg(test)]
 mod owned_table_tests {
     use super::*;
+
+    #[test]
+    fn retained_tre_descriptor_belongs_to_original_owned_storage() {
+        let mut session = crate::sexp::session::RSession::new_for_gc_tests();
+        let owner = session.owner_token().unwrap();
+        let ledger = owner
+            .with_arena(|arena| arena.heap_identity().byte_ledger())
+            .unwrap();
+        let pattern = [u32::from('a')];
+        let compiled = unsafe {
+            tre_compile_owned(
+                pattern.as_ptr(),
+                pattern.len(),
+                REG_EXTENDED,
+                crate::mainutils::grep::regex_workspace(),
+            )
+        }
+        .unwrap_or_else(|error| panic!("compile failed: {error}"));
+        assert!(
+            compiled._tables.contains(compiled.preg.value),
+            "production TNFA descriptor escaped retained original-owner storage"
+        );
+        owner.full_gc().unwrap();
+        let replacement = crate::sexp::session::RSession::new_for_gc_tests();
+        let other = replacement
+            .owner_token()
+            .unwrap()
+            .with_arena(|arena| arena.heap_identity().byte_ledger())
+            .unwrap();
+        let held = other.reserve(192).unwrap();
+        session.close();
+        drop(compiled);
+        assert_eq!(ledger.workspace_bytes_for_test(), 0);
+        assert_eq!(other.workspace_bytes_for_test(), 192);
+        drop(held);
+    }
+
+    #[test]
+    fn retained_tre_descriptor_denies_unfunded_cells_and_retries() {
+        use crate::sexp::{memory::ArenaBudget, session::RSession};
+        let session = RSession::new_for_gc_tests();
+        let owner = session.owner_token().unwrap();
+        let mut storage =
+            super::super::owned_arena::OwnedArena::new(crate::mainutils::grep::regex_workspace())
+                .unwrap();
+        let bytes = std::mem::size_of::<tre_tnfa_t>();
+        owner
+            .with_arena(|arena| {
+                arena.set_budget(ArenaBudget::new(
+                    arena.total_bytes_allocated() + bytes - 1,
+                    0,
+                ))
+            })
+            .unwrap();
+        let denied = unsafe { allocate_tnfa(&mut Some(&mut storage)) };
+        assert!(denied.is_null());
+        assert_eq!(
+            owner.with_arena(|arena| arena.workspace_bytes()).unwrap(),
+            0
+        );
+        owner
+            .with_arena(|arena| arena.set_budget(ArenaBudget::unlimited()))
+            .unwrap();
+        let descriptor = unsafe { allocate_tnfa(&mut Some(&mut storage)) };
+        assert!(!descriptor.is_null());
+        assert!(storage.contains(descriptor.cast()));
+        assert!(owner.with_arena(|arena| arena.workspace_bytes()).unwrap() >= bytes);
+        unsafe {
+            assert!((*descriptor).transitions.is_null());
+            assert!((*descriptor).initial.is_null());
+            assert_eq!((*descriptor).num_states, 0);
+            assert_eq!((*descriptor).num_submatches, 0);
+        }
+        drop(storage);
+        assert_eq!(
+            owner.with_arena(|arena| arena.workspace_bytes()).unwrap(),
+            0
+        );
+    }
+
+    #[test]
+    fn retained_tre_descriptor_standalone_compile_keeps_legacy_cleanup() {
+        let pattern = [u32::from('a')];
+        let (status, report) = mem::fault::observe(None, || unsafe {
+            let mut preg = regex_t {
+                re_nsub: 0,
+                value: ptr::null_mut(),
+            };
+            let status = tre_compile(&mut preg, pattern.as_ptr(), pattern.len(), REG_EXTENDED);
+            tre_free(&mut preg);
+            assert!(preg.value.is_null());
+            status
+        });
+        assert_eq!(status, REG_OK);
+        assert!(report.attempts > 1);
+        assert_eq!(report.remaining, 0);
+    }
 
     #[test]
     fn retained_tre_tables_every_raw_failure_releases_owned_and_legacy_storage() {
