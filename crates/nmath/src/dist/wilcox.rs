@@ -192,21 +192,10 @@ pub fn qwilcox_inner(x: f64, m: f64, n: f64, lower_tail: bool, log_p: bool) -> f
         return ml_warn_return_nan();
     }
 
-    // R_Q_P01_check(x)
-    if log_p {
-        if x > 0.0 {
-            return ml_warn_return_nan();
-        }
-        if x == 0.0 {
-            return if lower_tail { ML_POSINF } else { 0.0 };
-        }
-        if x == ML_NEGINF {
-            return if lower_tail { 0.0 } else { ML_POSINF };
-        }
-    } else {
-        if x < 0.0 || x > 1.0 {
-            return ml_warn_return_nan();
-        }
+    // R_Q_P01_check validates only the probability range. The finite
+    // support boundaries below must follow sample-size validation.
+    if (log_p && x > 0.0) || (!log_p && (x < 0.0 || x > 1.0)) {
+        return ml_warn_return_nan();
     }
 
     let m = r_forceint(m);
@@ -419,6 +408,48 @@ mod tests {
                         "dwilcox({xf}, {m}, {n})={a} != dwilcox({xf}, {n}, {m})={b}"
                     );
                 }
+            }
+        });
+    }
+    #[test]
+    fn qwilcox_log_one_uses_finite_support_after_size_validation() {
+        let mut session = TestSession::new();
+        session.with_protected(|| {
+            for lower in [false, true] {
+                let expected = if lower { 12.0 } else { 0.0 };
+                assert_eq!(qwilcox_inner(0.0, 3.0, 4.0, lower, true), expected);
+                assert_eq!(qwilcox_inner(-0.0, 3.0, 4.0, lower, true), expected);
+                assert_eq!(
+                    qwilcox_inner(0.0, 0.51, 4.0, lower, true),
+                    if lower { 4.0 } else { 0.0 }
+                );
+                for m in [0.0, -1.0, 0.49] {
+                    assert!(qwilcox_inner(0.0, m, 4.0, lower, true).is_nan());
+                }
+                assert!(qwilcox_inner(f64::NEG_INFINITY, 3.0, 4.0, lower, true).is_nan());
+            }
+            // Boundary and invalid-size paths must not allocate count caches.
+            with_wilcox_cache(|cache| assert!(cache.is_empty()));
+        });
+    }
+    #[test]
+    fn qwilcox_finite_probability_neighbors_stay_unchanged() {
+        let mut session = TestSession::new();
+        session.with_protected(|| {
+            for lower in [false, true] {
+                assert_eq!(qwilcox_inner(0.5_f64.ln(), 3.0, 4.0, lower, true), 6.0);
+                assert_eq!(
+                    qwilcox_inner(0.99_f64.ln(), 3.0, 4.0, lower, true),
+                    if lower { 12.0 } else { 0.0 }
+                );
+                assert_eq!(
+                    qwilcox_inner(0.0, 3.0, 4.0, lower, false),
+                    if lower { 0.0 } else { 12.0 }
+                );
+                assert_eq!(
+                    qwilcox_inner(1.0, 3.0, 4.0, lower, false),
+                    if lower { 12.0 } else { 0.0 }
+                );
             }
         });
     }
