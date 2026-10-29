@@ -79,7 +79,7 @@ fn pansari(len: c_int, q: &[f64], p: &mut [f64], m: c_int, n: c_int) {
     let mut w = w_init(m, n);
 
     for (i, qv) in q.iter().copied().enumerate().take(len as usize) {
-        let q_floor = qv.floor();
+        let q_floor = (qv + 1e-7).floor();
         if q_floor < l as f64 {
             p[i] = 0.0;
         } else if q_floor > u as f64 {
@@ -89,7 +89,7 @@ fn pansari(len: c_int, q: &[f64], p: &mut [f64], m: c_int, n: c_int) {
             let mut j = l;
             loop {
                 sum += cansari(j, m, n, &mut w);
-                if j > q_floor as c_int {
+                if j >= q_floor as c_int {
                     break;
                 }
                 j += 1;
@@ -183,5 +183,42 @@ fn as_integer(x: SEXP) -> c_int {
             return *INTEGER(x);
         }
         NA_INTEGER
+    }
+}
+
+#[cfg(test)]
+mod lower_tail_tests {
+    use super::*;
+
+    #[test]
+    fn exact_cdf_includes_the_requested_mass_once() {
+        // Complete support and rounding neighbors from GNU R r90451.
+        let q = [
+            5.0,
+            6.0,
+            7.0,
+            8.0,
+            9.0,
+            10.0,
+            11.0,
+            12.0,
+            13.0,
+            14.0,
+            15.0,
+            16.0,
+            17.0,
+            18.0,
+            19.0,
+            6.0 - 5e-8,
+            6.0 - 2e-7,
+        ];
+        let counts = [
+            0, 1, 5, 14, 30, 56, 88, 122, 154, 180, 196, 205, 209, 210, 210, 1, 0,
+        ];
+        let mut p = [0.0; 17];
+        pansari(q.len() as i32, &q, &mut p, 4, 6);
+        for (actual, count) in p.into_iter().zip(counts) {
+            assert!((actual - f64::from(count) / 210.0).abs() < 1e-14);
+        }
     }
 }
