@@ -19,7 +19,7 @@ use crate::sexp::accessors::{
     PRIMOFFSET, PRINTNAME, RAW, REAL, REAL_ELT, STRING_ELT, TAG, TYPEOF, VECTOR_ELT,
 };
 use crate::sexp::attrib_core::{R_RowNamesSymbol, getAttrib};
-use crate::sexp::ffi::{R_NA_BIT_PATTERN, SEXP, SEXPTYPE};
+use crate::sexp::ffi::{SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
 
 // ---------------------------------------------------------------------------
@@ -29,7 +29,7 @@ use crate::sexp::globals::R_NilValue;
 /// Check if a double is R's NA.
 #[inline]
 pub fn R_IsNA(x: f64) -> bool {
-    x.to_bits() == R_NA_BIT_PATTERN
+    crate::sexp::ffi::R_IsNA(x)
 }
 
 /// Check if a double is any NaN.
@@ -861,7 +861,34 @@ pub unsafe fn do_identical(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sexp::ffi::R_NA_BIT_PATTERN;
     use std::ptr;
+
+    #[test]
+    fn quiet_na_classification_preserves_nan_payload_and_signed_zero_modes() {
+        let na = f64::from_bits(R_NA_BIT_PATTERN);
+        let quiet_na = f64::from_bits(R_NA_BIT_PATTERN | (1 << 51));
+        let nan1 = f64::from_bits(0x7ff8_0000_0000_0001);
+        let nan2 = f64::from_bits(0x7ff8_0000_0000_0002);
+        for mode in [NE_SINGLE_NA_NUM_EQ, NE_SINGLE_NA_NUM_BIT] {
+            assert!(!ne_with_nan(na, quiet_na, mode));
+            assert!(!ne_with_nan(quiet_na, na, mode));
+            assert!(ne_with_nan(quiet_na, nan1, mode));
+            assert!(ne_with_nan(nan1, quiet_na, mode));
+            assert!(!ne_with_nan(nan1, nan2, mode));
+        }
+        for mode in [NE_BIT_NA_NUM_EQ, NE_BIT_NA_NUM_BIT] {
+            assert!(ne_with_nan(na, quiet_na, mode));
+            assert!(ne_with_nan(nan1, nan2, mode));
+            assert!(!ne_with_nan(quiet_na, quiet_na, mode));
+        }
+        for mode in [NE_SINGLE_NA_NUM_EQ, NE_BIT_NA_NUM_EQ] {
+            assert!(!ne_with_nan(0.0, -0.0, mode));
+        }
+        for mode in [NE_SINGLE_NA_NUM_BIT, NE_BIT_NA_NUM_BIT] {
+            assert!(ne_with_nan(0.0, -0.0, mode));
+        }
+    }
 
     #[test]
     fn test_neWithNaN_single_na_num_eq() {
