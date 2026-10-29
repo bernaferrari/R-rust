@@ -277,46 +277,11 @@ fn R_distance(
 }
 
 fn as_integer(x: SEXP) -> c_int {
-    unsafe {
-        if x.is_null() {
-            return NA_INTEGER;
-        }
-        let t = TYPEOF(x);
-        if t == SEXPTYPE::INTSXP {
-            return *INTEGER(x);
-        }
-        if t == SEXPTYPE::REALSXP {
-            let v = *REAL(x);
-            if v.is_nan() || v < c_int::MIN as f64 || v > c_int::MAX as f64 {
-                return NA_INTEGER;
-            }
-            return v as c_int;
-        }
-        if t == SEXPTYPE::LGLSXP {
-            return *INTEGER(x);
-        }
-        NA_INTEGER
-    }
+    unsafe { crate::mainutils::coerce::asInteger(x) }
 }
 
 fn as_real(x: SEXP) -> c_double {
-    unsafe {
-        if x.is_null() {
-            return NA_REAL;
-        }
-        let t = TYPEOF(x);
-        if t == SEXPTYPE::REALSXP {
-            return *REAL(x);
-        }
-        if t == SEXPTYPE::INTSXP {
-            let v = *INTEGER(x);
-            if v == NA_INTEGER {
-                return NA_REAL;
-            }
-            return v as c_double;
-        }
-        NA_REAL
-    }
+    unsafe { crate::mainutils::coerce::asReal(x) }
 }
 
 fn nrows(x: SEXP) -> c_int {
@@ -360,6 +325,13 @@ pub unsafe fn Cdist(x: SEXP, smethod: SEXP, attrs: SEXP, p: SEXP) -> SEXP {
         }
     };
     let _x_guard = unsafe { protect_sexp(x) };
+    // Match GNU admission before exposing any payload spans to the kernels.
+    if !(EUCLIDEAN..=MINKOWSKI).contains(&method) {
+        unsafe { crate::main::errors::Rf_error(c"distance(): invalid distance".as_ptr()) };
+    }
+    if method == MINKOWSKI && (!rp.is_finite() || rp <= 0.0) {
+        unsafe { crate::main::errors::Rf_error(c"distance(): invalid p".as_ptr()) };
+    }
     let x_len = unsafe { LENGTH(x) };
     let x_slice: &[c_double] = if x_len == 0 {
         &[]
