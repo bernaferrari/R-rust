@@ -18,20 +18,14 @@ import androidx.compose.material.icons.automirrored.filled.ListAlt
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.InsertChart
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.TableRows
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.Widgets
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -40,7 +34,6 @@ import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSizeClassApi
 import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
@@ -148,35 +141,15 @@ fun RStudioApp() {
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text(state.projectName ?: "R Workbench", maxLines = 1)
-                        Text(
-                            state.currentFileName + if (state.isDirty) " •" else "",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                        )
-                    }
-                },
-                actions = {
-                    IconButton(onClick = actions.openProject, enabled = !state.isRunning) {
-                        Icon(Icons.Default.FolderOpen, contentDescription = "Open project folder")
-                    }
-                    IconButton(onClick = { runtimeInfoOpen = true }) {
-                        Icon(Icons.Default.Info, contentDescription = "Runtime information")
-                    }
-                    if (state.isRunning) {
-                        FilledIconButton(onClick = runtime::cancel) {
-                            Icon(Icons.Default.Stop, contentDescription = "Stop R execution")
-                        }
-                    } else {
-                        FilledIconButton(onClick = runtime::runCurrentCode) {
-                            Icon(Icons.Default.PlayArrow, contentDescription = "Run entire script")
-                        }
-                    }
-                },
+            WorkbenchTopBar(
+                projectName = state.projectName,
+                fileName = state.currentFileName,
+                isDirty = state.isDirty,
+                isRunning = state.isRunning,
+                onOpenProject = actions.openProject,
+                onRuntimeInfo = { runtimeInfoOpen = true },
+                onStop = runtime::cancel,
+                onRun = runtime::runCurrentCode,
             )
         },
         bottomBar = {

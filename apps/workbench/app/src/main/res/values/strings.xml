@@ -142,4 +142,8 @@
     <string name="files_open_script_description">Open R script</string>
     <string name="files_import_description">Import data file</string>
     <string name="files_recent_description">Open recent script %1$s</string>
+    <string name="workbench_title">R Workbench</string>
+    <string name="workbench_runtime_information">Runtime information</string>
+    <string name="workbench_stop_execution">Stop R execution</string>
+    <string name="workbench_run_script">Run entire script</string>
 </resources>
