@@ -590,6 +590,9 @@ fn qbeta_raw(
                         u_n = ML_NEGINF;
                     }
                     use_log_x = log_p;
+                    // Boundary convergence has selected the best representable
+                    // endpoint; a final Newton step can leave [0, 1].
+                    add_n_step = false;
                     // C: goto L_return
                     return qbeta_L_return(
                         tx, u_n, xinbta, swap_tail, give_log_q, use_log_x, add_n_step, pp, qq, a,
@@ -1591,5 +1594,23 @@ mod tests {
             let q = qbeta_inner(0.95, 1e-307, 1e-307, true, false);
             assert_eq!(q, 1.0, "qbeta(0.95, 1e-307, 1e-307) = {q}");
         });
+    }
+}
+
+#[cfg(test)]
+mod boundary_convergence_tests {
+    #[test]
+    fn extreme_log_probability_keeps_the_selected_boundary() {
+        // Pinned GNU R r90451: left-boundary convergence must bypass
+        // the final original-scale Newton correction.
+        let expected = 1.11253692925357e-308;
+        for shape in [0.125, 0.5, 1.0, 2.0] {
+            let lower = super::qbeta_inner(-1e300, shape, shape, true, true);
+            assert!((lower / expected - 1.0).abs() < 1e-12, "{shape}: {lower}");
+            assert_eq!(super::qbeta_inner(-1e300, shape, shape, false, true), 1.0);
+        }
+        assert_eq!(super::qbeta_inner(f64::NEG_INFINITY, 0.5, 0.5, true, true), 0.0);
+        assert_eq!(super::qbeta_inner(0.0, 0.5, 0.5, true, true), 1.0);
+        assert!((super::qbeta_inner(-1.0, 0.5, 0.5, true, true) - 0.298373474295751).abs() < 1e-14);
     }
 }
