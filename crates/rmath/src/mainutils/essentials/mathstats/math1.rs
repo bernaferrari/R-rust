@@ -501,13 +501,35 @@ pub unsafe fn do_lbeta(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
+// GNU do_math2 dispatches complex first arguments before Math2 validation.
+// A complex second argument instead fails the ordinary numeric-type check.
+// Both checks precede the empty-vector shortcut.
+unsafe fn validate_choose_inputs(a: SEXP, b: SEXP) -> Result<(), &'static str> {
+    unsafe {
+        if !a.is_null() && TYPEOF(a) == SEXPTYPE::CPLXSXP {
+            return Err("unimplemented complex function");
+        }
+        for value in [a, b] {
+            if value.is_null() {
+                return Err("non-numeric argument to mathematical function");
+            }
+            let kind = TYPEOF(value);
+            if !(kind == SEXPTYPE::LGLSXP || kind == SEXPTYPE::INTSXP || kind == SEXPTYPE::REALSXP)
+            {
+                return Err("non-numeric argument to mathematical function");
+            }
+        }
+        Ok(())
+    }
+}
+
 /// R's `choose(n, k)` — binomial coefficient.
 pub unsafe fn do_choose(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let n_arg = CAR(args);
         let k_arg = CAR(CDR(args));
-        if n_arg.is_null() || n_arg == R_NilValue() || k_arg.is_null() || k_arg == R_NilValue() {
-            return R_NilValue();
+        if let Err(message) = validate_choose_inputs(n_arg, k_arg) {
+            crate::mainutils::errors::errorcall_str(call, message);
         }
         apply_binary_scalar_fn(call, n_arg, k_arg, crate::special::choose::choose)
     }
@@ -518,8 +540,8 @@ pub unsafe fn do_lchoose(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     unsafe {
         let n_arg = CAR(args);
         let k_arg = CAR(CDR(args));
-        if n_arg.is_null() || n_arg == R_NilValue() || k_arg.is_null() || k_arg == R_NilValue() {
-            return R_NilValue();
+        if let Err(message) = validate_choose_inputs(n_arg, k_arg) {
+            crate::mainutils::errors::errorcall_str(call, message);
         }
         apply_binary_scalar_fn(call, n_arg, k_arg, crate::special::choose::lchoose)
     }
@@ -731,3 +753,43 @@ fn bessel_real_at(v: SEXP, i: i64) -> f64 {
 // ---------------------------------------------------------------------------
 // Final additions: commonly used missing functions
 // ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod choose_validation_tests {
+    use super::*;
+
+    #[test]
+    fn argument_validation_precedes_empty_and_complex_paths() {
+        let session = crate::sexp::session::RSession::new_for_gc_tests();
+        session.with_active(|| unsafe {
+            let numeric = Rf_allocVector3(SEXPTYPE::REALSXP, 0);
+            let _numeric = protect(numeric);
+            let logical = Rf_allocVector3(SEXPTYPE::LGLSXP, 0);
+            let _logical = protect(logical);
+            let complex = Rf_allocVector3(SEXPTYPE::CPLXSXP, 0);
+            let _complex = protect(complex);
+            let text = Rf_mkString(c"5".as_ptr());
+            let _text = protect(text);
+            crate::sexp::gengc::full_gc();
+            assert_eq!(validate_choose_inputs(numeric, logical), Ok(()));
+            for invalid in [R_NilValue(), text] {
+                assert_eq!(
+                    validate_choose_inputs(invalid, complex),
+                    Err("non-numeric argument to mathematical function")
+                );
+                assert_eq!(
+                    validate_choose_inputs(complex, invalid),
+                    Err("unimplemented complex function")
+                );
+                assert_eq!(
+                    validate_choose_inputs(numeric, invalid),
+                    Err("non-numeric argument to mathematical function")
+                );
+            }
+            assert_eq!(
+                validate_choose_inputs(complex, numeric),
+                Err("unimplemented complex function")
+            );
+        });
+    }
+}
