@@ -2387,8 +2387,18 @@ unsafe fn tre_compile_tables(
             return compile_error(mem, stack, counts, offs, preg, tnfa, _errcode, owned_tables);
         }
 
-        counts =
-            mem::xmalloc(std::mem::size_of::<c_int>() * parse_ctx.position as usize) as *mut c_int;
+        // Counts and offsets live only for this compilation. Allocate them
+        // in the admitted scratch arena so both complete arrays are charged
+        // before the backing slab is acquired, then released by its clear.
+        let work_array_bytes = usize::try_from(parse_ctx.position)
+            .ok()
+            .and_then(|count| count.checked_mul(std::mem::size_of::<c_int>()))
+            .unwrap_or(0);
+        counts = if work_array_bytes == 0 {
+            ptr::null_mut()
+        } else {
+            mem::tre_mem_alloc(mem, work_array_bytes).cast::<c_int>()
+        };
         if counts.is_null() {
             return compile_error(
                 mem,
@@ -2401,8 +2411,11 @@ unsafe fn tre_compile_tables(
                 owned_tables,
             );
         }
-        offs =
-            mem::xmalloc(std::mem::size_of::<c_int>() * parse_ctx.position as usize) as *mut c_int;
+        offs = if work_array_bytes == 0 {
+            ptr::null_mut()
+        } else {
+            mem::tre_mem_alloc(mem, work_array_bytes).cast::<c_int>()
+        };
         if offs.is_null() {
             return compile_error(
                 mem,
@@ -2552,8 +2565,6 @@ unsafe fn tre_compile_tables(
 
         (*mem).clear();
         stack::tre_stack_destroy(stack);
-        mem::xfree(counts as *mut c_void);
-        mem::xfree(offs as *mut c_void);
 
         (*preg).value = tnfa as *mut c_void;
         REG_OK as c_int
@@ -2564,8 +2575,8 @@ unsafe fn tre_compile_tables(
 unsafe fn compile_error(
     mem: mem::tre_mem_t,
     stack: *mut stack::tre_stack_rec,
-    counts: *mut c_int,
-    offs: *mut c_int,
+    _counts: *mut c_int,
+    _offs: *mut c_int,
     preg: *mut regex_t,
     tnfa: *mut tre_tnfa_t,
     errcode: c_int,
@@ -2577,12 +2588,6 @@ unsafe fn compile_error(
         }
         if !stack.is_null() {
             stack::tre_stack_destroy(stack);
-        }
-        if !counts.is_null() {
-            mem::xfree(counts as *mut c_void);
-        }
-        if !offs.is_null() {
-            mem::xfree(offs as *mut c_void);
         }
         (*preg).value = tnfa as *mut c_void;
         tre_free_tables(preg, owned_tables);
@@ -2678,6 +2683,79 @@ unsafe fn tre_free_tables(preg: *mut regex_t, owned_tables: bool) {
 #[cfg(test)]
 mod owned_table_tests {
     use super::*;
+
+    #[test]
+    fn compiler_work_arrays_preserve_empty_and_zero_position_pattern_behavior() {
+        let session = crate::sexp::session::RSession::new_for_gc_tests();
+        let owner = session.owner_token().unwrap();
+        for pattern_text in ["", "^$", "a*", "|"] {
+            let pattern: Vec<u32> = pattern_text.chars().map(u32::from).collect();
+            let (_, report) = mem::fault::observe(None, || unsafe {
+                let owned = tre_compile_owned(
+                    pattern.as_ptr(),
+                    pattern.len(),
+                    REG_EXTENDED,
+                    crate::mainutils::grep::regex_workspace(),
+                )
+                .unwrap_or_else(|error| panic!("owned pattern compile failed: {error}"));
+                let mut standalone = regex_t {
+                    re_nsub: 0,
+                    value: ptr::null_mut(),
+                };
+                assert_eq!(
+                    tre_compile(
+                        &mut standalone,
+                        pattern.as_ptr(),
+                        pattern.len(),
+                        REG_EXTENDED
+                    ),
+                    REG_OK,
+                    "standalone compile failed for pattern {pattern_text:?}"
+                );
+
+                let owned_tnfa = &*owned.preg.value.cast::<tre_tnfa_t>();
+                let standalone_tnfa = &*standalone.value.cast::<tre_tnfa_t>();
+                // Parsing may assign no positions to an empty/assertion-only
+                // expression. The compiler's final dummy position still
+                // makes the two work arrays nonzero-sized.
+                assert!(owned_tnfa.num_states >= 1);
+                assert_eq!(owned_tnfa.num_states, standalone_tnfa.num_states);
+
+                for text in ["", "a", "b"] {
+                    let text: Vec<u32> = text.chars().map(u32::from).collect();
+                    let mut owned_match = [regmatch_t::default()];
+                    let mut standalone_match = [regmatch_t::default()];
+                    let owned_status = super::super::regapi::tre_regwnexec(
+                        owned.regex(),
+                        &text,
+                        &mut owned_match,
+                        0,
+                    );
+                    let standalone_status = super::super::regapi::tre_regwnexec(
+                        &standalone,
+                        &text,
+                        &mut standalone_match,
+                        0,
+                    );
+                    assert_eq!(owned_status, standalone_status);
+                    if owned_status == REG_OK {
+                        assert_eq!(
+                            (owned_match[0].rm_so, owned_match[0].rm_eo),
+                            (standalone_match[0].rm_so, standalone_match[0].rm_eo),
+                        );
+                    }
+                }
+
+                tre_free(&mut standalone);
+                drop(owned);
+            });
+            assert_eq!(report.remaining, 0);
+            assert_eq!(
+                owner.with_arena(|arena| arena.workspace_bytes()).unwrap(),
+                0
+            );
+        }
+    }
 
     #[test]
     fn retained_tre_submatch_parents_preserve_nested_capture_layout_and_cleanup() {
