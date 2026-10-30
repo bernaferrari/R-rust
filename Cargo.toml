@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+  "crates/android-global-audit",
   "crates/r-device-android-headless",
   "crates/r-device-vello-gpu",
   "crates/r-embed",

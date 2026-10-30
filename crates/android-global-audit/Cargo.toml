@@ -1,0 +1,11 @@
+[package]
+name = "rport-android-global-audit"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+syn = { version = "2", features = ["full", "visit", "parsing"] }
+quote = "1"
+proc-macro2 = "1"
