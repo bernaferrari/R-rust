@@ -51,6 +51,9 @@ mod byte_buffer;
 mod byte_buffer_tests;
 mod conditions;
 mod native;
+mod nmath_bridge_buffer;
+#[cfg(test)]
+mod nmath_bridge_tests;
 pub(crate) use native::raise_owned_diagnostic;
 pub(crate) use native::try_catch_owned;
 pub use native::{NativeBody, NativeFinally, NativeHandler};
@@ -93,18 +96,55 @@ pub use self::traceback::*;
 /// before recording it (errors.c); mirror that so deferred rendering
 /// matches stock byte-for-byte.
 pub fn nmath_warning_hook(message: &str) {
-    let msg = message.strip_suffix('\n').unwrap_or(message);
-    let c_msg = std::ffi::CString::new(msg).unwrap_or_default();
-    unsafe {
-        // Attribute to the dpq builtin in scope, falling back to the
-        // current call (upstream warning() semantics).
+    let pin = state::error_scope_pin();
+    let pointer = pin.as_ptr();
+    // Immutable sibling ledger cells need no arena lend. Every in-tree emitter
+    // supplies static, stack, or Rust-owned text, valid through host callbacks.
+    let owner = unsafe { crate::sexp::owner::OwnerToken::from_raw(pointer) };
+    nmath_bridge_checked(owner.require_active());
+    let ledger = unsafe { (*pointer).heap_identity.byte_ledger() };
+    // Ordinary warningcall chooses attribution before its first allocation/GC.
+    // Snapshot and root that same choice before admission can collect/retry.
+    let call = unsafe {
         let call = mathlib_warning_call();
-        if !call.is_null() && call != globals::R_NilValue() {
-            Rf_warningcall1(call, c_msg.as_ptr());
+        let call = if !call.is_null() && call != globals::R_NilValue() {
+            call
         } else {
-            Rf_warning1(c_msg.as_ptr());
+            render::getCurrentCall()
+        };
+        let call = render::effective_warning_call(call);
+        if call.is_null() {
+            globals::R_NilValue()
+        } else {
+            call
         }
+    };
+    let call = nmath_bridge_checked(
+        owner
+            .sexp(call)
+            .and_then(crate::sexp::object::Sexp::into_owned),
+    );
+    let mut result = nmath_bridge_buffer::WarningBuffer::copy(&ledger, message);
+    if matches!(
+        &result,
+        Err(nmath_bridge_buffer::BufferError::AdmissionDenied)
+    ) && !crate::sexp::memory::is_arena_lent(pointer)
+    {
+        nmath_bridge_checked(owner.full_gc());
+        result = nmath_bridge_buffer::WarningBuffer::copy(&ledger, message);
     }
+    let buffer = nmath_bridge_checked(result.map_err(nmath_bridge_buffer::BufferError::into_sexp));
+    nmath_bridge_checked(owner.require_active());
+    unsafe {
+        // Skip both redundant CString recopy and a second mutable attribution
+        // lookup: handlers and default emission use the rooted original call.
+        render::vsignalWarning(call.as_raw(), buffer.as_c_str().as_ptr());
+    }
+    nmath_bridge_checked(owner.require_active());
+}
+
+fn nmath_bridge_checked<T>(result: crate::sexp::object::SexpResult<T>) -> T {
+    result.unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
 }
 
 /// Match GNU error()'s initial bounded message, before rendering a call prefix.

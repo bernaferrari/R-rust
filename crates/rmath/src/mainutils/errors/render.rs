@@ -1058,22 +1058,24 @@ pub(super) unsafe fn setup_warnings() {
     }));
 }
 
+/// Select override precedence before a boundary can allocate or collect.
+pub(super) unsafe fn effective_warning_call(call: SEXP) -> SEXP {
+    // A base-constructor override owns attribution for the whole handler body.
+    let override_call = super::warning_call_override();
+    if !override_call.is_null() {
+        override_call
+    } else {
+        call
+    }
+}
+
 /// Issue a warning with call.
 ///
 /// This is the equivalent of R's `warningcall()`.
 /// Unlike errors, warnings do not terminate execution.
 pub unsafe fn warningcall(call: SEXP, format: *const c_char) {
     unsafe {
-        // A base-constructor builtin that owns the current warning-call
-        // override (upstream: the closure context above its .Internal)
-        // claims attribution for the whole handler body.
-        let override_call = super::warning_call_override();
-        let call = if !override_call.is_null() {
-            override_call
-        } else {
-            call
-        };
-        vsignalWarning(call, format);
+        vsignalWarning(effective_warning_call(call), format);
     }
 }
 

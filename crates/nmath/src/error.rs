@@ -12,6 +12,8 @@ use crate::constants::*;
 /// conditions, and the runtime installs a hook bridging to `Rf_warning1`
 /// at session creation; standalone mode maps it to `printf`, so the
 /// fallback writes the message to stderr.
+/// Hooks may allocate, collect, and reenter the host. Supplied text must stay
+/// valid for the whole hook call, as required by its Rust shared borrow.
 pub type WarningHook = fn(message: &str);
 
 thread_local! {
