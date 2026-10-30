@@ -381,7 +381,7 @@ fn Ri18n_iswpunct(wc: wint_t) -> c_int {
 }
 
 /// Internal helper: map a Rust &str to a wctype descriptor.
-fn Ri18n_wctype_str(name: &str) -> c_uint {
+pub(crate) fn Ri18n_wctype_str(name: &str) -> c_uint {
     for entry in Ri18n_wctype_func.iter() {
         if entry.name == name {
             return entry.wctype;
@@ -391,7 +391,7 @@ fn Ri18n_wctype_str(name: &str) -> c_uint {
 }
 
 /// Internal helper: test whether a wide character belongs to a character class.
-fn Ri18n_iswctype_internal(wc: wint_t, desc: c_uint) -> c_int {
+pub(crate) fn Ri18n_iswctype_internal(wc: wint_t, desc: c_uint) -> c_int {
     if desc == 0 {
         return 0;
     }

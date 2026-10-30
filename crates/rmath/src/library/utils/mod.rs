@@ -1,5 +1,6 @@
 //! Utils package - I/O and utilities
 
+mod char_class;
 mod hashtab;
 mod init;
 mod io;
@@ -9,6 +10,11 @@ mod stubs;
 
 pub(crate) fn lookup(name: &str) -> Option<crate::mainutils::native_routines::NativeRoutine> {
     match name {
+        "charClass" | "C_charClass" => {
+            Some(crate::mainutils::native_routines::NativeRoutine::Call(
+                crate::mainutils::native_routines::CallRoutine::Args2(c_char_class),
+            ))
+        }
         "Rprof" | "C_Rprof" => Some(crate::mainutils::native_routines::NativeRoutine::External1(
             c_rprof,
             crate::mainutils::native_routines::PayloadArity::Fixed(10),
@@ -64,6 +70,60 @@ pub(crate) fn lookup(name: &str) -> Option<crate::mainutils::native_routines::Na
         }
         _ => None,
     }
+}
+
+unsafe extern "C-unwind" fn c_char_class(
+    x: crate::sexp::ffi::SEXP,
+    class: crate::sexp::ffi::SEXP,
+) -> crate::sexp::ffi::SEXP {
+    use crate::sexp::{
+        context::r_error,
+        ffi::SEXPTYPE,
+        owner::{OwnerToken, StoredOwner},
+    };
+    // SAFETY: the native dispatcher invokes this adapter within the active
+    // interpreter; the pin below retains that same owner for the entire call.
+    let owner = unsafe { OwnerToken::current() }.unwrap_or_else(|e| r_error(e.to_string()));
+    let _pin = owner.pin().unwrap_or_else(|e| r_error(e.to_string()));
+    let factory = owner.node_factory();
+    let input = factory.wrap(x).unwrap_or_else(|e| r_error(e.to_string()));
+    let class = factory
+        .wrap(class)
+        .unwrap_or_else(|e| r_error(e.to_string()));
+    let stored = StoredOwner::from_token(owner);
+    let outcome = char_class::prepare(stored.clone(), input, class);
+    let result = match outcome {
+        Ok(char_class::Classification::Complete(value)) => value,
+        Ok(char_class::Classification::NeedsIntegerCoercion { input, descriptor }) => {
+            // SAFETY: input is rooted in the pinned active owner throughout
+            // coercion, and the resulting pointer is wrapped after rechecking it.
+            let raw = unsafe {
+                crate::main::coerce::coerceVector(input.as_raw(), SEXPTYPE::INTSXP.as_c_int())
+            };
+            owner
+                .require_active()
+                .unwrap_or_else(|e| r_error(e.to_string()));
+            let value = factory.wrap(raw).unwrap_or_else(|e| r_error(e.to_string()));
+            char_class::classify_integers(stored, value, descriptor)
+                .unwrap_or_else(|e| r_error(e.to_string()))
+        }
+        Err(char_class::ClassError::Access(error)) => r_error(error.to_string()),
+        Err(char_class::ClassError::InvalidClassArgument) => {
+            r_error("argument 'class' must be a character string")
+        }
+        Err(char_class::ClassError::InvalidCharacterArgument) => {
+            r_error("argument 'x' must be a length-1 character vector")
+        }
+        Err(char_class::ClassError::InvalidClass(name)) => {
+            let message = char_class::invalid_class_message(stored, name)
+                .unwrap_or_else(|e| r_error(e.to_string()));
+            r_error(message.as_str())
+        }
+    };
+    owner
+        .require_active()
+        .unwrap_or_else(|e| r_error(e.to_string()));
+    result.as_raw()
 }
 
 unsafe extern "C-unwind" fn c_rprof(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
@@ -171,6 +231,24 @@ pub unsafe fn install_utils_call_symbols(env: crate::sexp::ffi::SEXP) {
             crate::mainutils::native_symbols::symbol_info(owner, "Rprof", "utils", true, &keys)
                 .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
                 .expect("bundled Rprof registration is present");
+        let address = metadata
+            .try_vector_elt(1)
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        owner
+            .require_active()
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        crate::sexp::envir::defineVar(binding.as_raw(), address.as_raw(), namespace.as_raw());
+        drop(metadata);
+        owner
+            .require_active()
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        let binding = factory
+            .wrap(crate::sexp::symbol::Rf_install(c"C_charClass".as_ptr()))
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        let metadata =
+            crate::mainutils::native_symbols::symbol_info(owner, "charClass", "utils", true, &keys)
+                .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
+                .expect("bundled charClass registration is present");
         let address = metadata
             .try_vector_elt(1)
             .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
