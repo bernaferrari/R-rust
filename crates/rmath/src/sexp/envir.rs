@@ -1529,35 +1529,45 @@ unsafe fn value_is_missing(val: Sexp<'_>, depth: u32) -> bool {
 fn bytecode_loads_missing_symbol(code: Sexp<'_>, env: Sexp<'_>, depth: u32) -> bool {
     unsafe {
         let bc = code.as_raw();
-        let code_ptr = crate::eval::bc_eval::BCODE_CODE(bc);
-        let code_vec = crate::sexp::accessors::VECTOR_ELT(bc, 0);
-        if code_ptr.is_null()
-            || TYPEOF(code_vec) != SEXPTYPE::INTSXP
-            || crate::sexp::accessors::XLENGTH(code_vec) != 4
-        {
-            return false;
-        }
-        let op = *code_ptr.add(1);
-        if *code_ptr.add(3) != crate::eval::bytecode::GNU_OP_RETURN {
-            return false;
-        }
-        if op != crate::eval::bytecode::GNU_OP_GETVAR
-            && op != crate::eval::bytecode::GNU_OP_GETVAR_MISSOK
-        {
-            return false;
-        }
-        let idx = *code_ptr.add(2);
-        let consts = crate::eval::bc_eval::BCODE_CONSTS(bc);
-        if consts.is_null() {
-            return false;
-        }
-        let sym = crate::sexp::accessors::VECTOR_ELT(consts, idx as i64);
-        if TYPEOF(sym) != SEXPTYPE::SYMSXP {
-            return false;
-        }
-        let Some(sym) = Sexp::from_raw(sym) else {
+        let Some(words) = Sexp::from_raw(crate::sexp::accessors::VECTOR_ELT(bc, 0)) else {
             return false;
         };
+        if words.typeof_() != SEXPTYPE::INTSXP {
+            return false;
+        }
+        let gnu = crate::eval::bc_eval::BCODE_IS_GNU(bc);
+        let (expected_len, opcode_index, operand_index, return_index) =
+            if gnu { (4, 1, 2, 3) } else { (3, 0, 1, 2) };
+        if words.len() != expected_len {
+            return false;
+        }
+        let (Ok(op), Ok(idx), Ok(ret)) = (
+            words.try_integer_elt(opcode_index),
+            words.try_integer_elt(operand_index),
+            words.try_integer_elt(return_index),
+        ) else {
+            return false;
+        };
+        let matches_symbol_load = if gnu {
+            (op == crate::eval::bytecode::GNU_OP_GETVAR
+                || op == crate::eval::bytecode::GNU_OP_GETVAR_MISSOK)
+                && ret == crate::eval::bytecode::GNU_OP_RETURN
+        } else {
+            op == crate::eval::bc_eval::opcodes::OP_GETVAR
+                && ret == crate::eval::bc_eval::opcodes::OP_RETURN
+        };
+        if !matches_symbol_load || idx < 0 {
+            return false;
+        }
+        let Some(constants) = Sexp::from_raw(crate::eval::bc_eval::BCODE_CONSTS(bc)) else {
+            return false;
+        };
+        let Ok(sym) = constants.try_vector_elt(i64::from(idx)) else {
+            return false;
+        };
+        if !sym.is_symbol() {
+            return false;
+        }
         propagated_missing(sym, env, depth)
     }
 }
@@ -2104,6 +2114,96 @@ mod tests {
             assert!(!is_missing_safe(symbol.clone(), environment.clone()));
             defineVar(sym, R_MissingArg(), env);
             assert!(is_missing_safe(symbol, environment));
+        });
+    }
+
+    #[test]
+    fn private_bytecode_missing_symbol_checks_shape_and_index() {
+        use crate::sexp::object::SexpMut;
+        let session = crate::sexp::session::RSession::new_for_gc_tests();
+        session.with_active(|| unsafe {
+            let factory = session.owner_token().unwrap().node_factory();
+            let env = factory
+                .allocate(|arena| Some(arena.alloc_node(SEXPTYPE::ENVSXP)))
+                .unwrap();
+            let symbol = Sexp::from_raw(Rf_install(c"bytecode_missing_test".as_ptr())).unwrap();
+            defineVar(symbol.as_raw(), R_MissingArg(), env.as_raw());
+            let words = factory
+                .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::INTSXP, 3)))
+                .unwrap();
+            let mut words_mut = SexpMut::try_from_checked(words.clone()).unwrap();
+            words_mut
+                .try_set_integer_elt(0, crate::eval::bc_eval::opcodes::OP_GETVAR)
+                .unwrap();
+            words_mut.try_set_integer_elt(1, 0).unwrap();
+            words_mut
+                .try_set_integer_elt(2, crate::eval::bc_eval::opcodes::OP_RETURN)
+                .unwrap();
+            let constants = factory
+                .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::VECSXP, 1)))
+                .unwrap();
+            super::super::accessors::SET_VECTOR_ELT(constants.as_raw(), 0, symbol.as_raw());
+            let code = factory
+                .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::BCODESXP, 3)))
+                .unwrap();
+            super::super::accessors::SET_VECTOR_ELT(code.as_raw(), 0, words.as_raw());
+            super::super::accessors::SET_VECTOR_ELT(code.as_raw(), 1, constants.as_raw());
+            assert!(bytecode_loads_missing_symbol(code.clone(), env.clone(), 0));
+            words_mut.try_set_integer_elt(1, -1).unwrap();
+            assert!(!bytecode_loads_missing_symbol(code.clone(), env.clone(), 0));
+            words_mut.try_set_integer_elt(1, 1).unwrap();
+            assert!(!bytecode_loads_missing_symbol(code.clone(), env.clone(), 0));
+            words_mut.try_set_integer_elt(1, 0).unwrap();
+            words_mut
+                .try_set_integer_elt(2, crate::eval::bc_eval::opcodes::OP_POP)
+                .unwrap();
+            assert!(!bytecode_loads_missing_symbol(code, env, 0));
+        });
+    }
+
+    #[test]
+    fn gnu_bytecode_missing_symbol_checks_dialect_and_bounds() {
+        use crate::sexp::object::SexpMut;
+        let session = crate::sexp::session::RSession::new_for_gc_tests();
+        session.with_active(|| unsafe {
+            let factory = session.owner_token().unwrap().node_factory();
+            let env = factory
+                .allocate(|arena| Some(arena.alloc_node(SEXPTYPE::ENVSXP)))
+                .unwrap();
+            let symbol = Sexp::from_raw(Rf_install(c"gnu_missing_test".as_ptr())).unwrap();
+            defineVar(symbol.as_raw(), R_MissingArg(), env.as_raw());
+            let words = factory
+                .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::INTSXP, 4)))
+                .unwrap();
+            let mut edit = SexpMut::try_from_checked(words.clone()).unwrap();
+            for (index, word) in [
+                12,
+                crate::eval::bytecode::GNU_OP_GETVAR,
+                0,
+                crate::eval::bytecode::GNU_OP_RETURN,
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                edit.try_set_integer_elt(index as i64, word).unwrap();
+            }
+            let constants = factory
+                .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::VECSXP, 1)))
+                .unwrap();
+            super::super::accessors::SET_VECTOR_ELT(constants.as_raw(), 0, symbol.as_raw());
+            let marker = Sexp::from_raw(Rf_ScalarInteger(
+                crate::eval::bytecode::GNU_BC_DIALECT_MARKER,
+            ))
+            .unwrap();
+            let code = factory
+                .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::BCODESXP, 4)))
+                .unwrap();
+            super::super::accessors::SET_VECTOR_ELT(code.as_raw(), 0, words.as_raw());
+            super::super::accessors::SET_VECTOR_ELT(code.as_raw(), 1, constants.as_raw());
+            super::super::accessors::SET_VECTOR_ELT(code.as_raw(), 3, marker.as_raw());
+            assert!(bytecode_loads_missing_symbol(code.clone(), env.clone(), 0));
+            edit.try_set_integer_elt(2, 1).unwrap();
+            assert!(!bytecode_loads_missing_symbol(code, env, 0));
         });
     }
 
