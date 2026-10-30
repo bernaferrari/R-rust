@@ -147,35 +147,114 @@ pub unsafe fn R_zeroin2(
     }
 }
 
-struct ZeroinCtx {
-    fun: crate::sexp::ffi::SEXP,
-    rho: crate::sexp::ffi::SEXP,
+#[derive(Clone, Copy)]
+enum ScalarCallbackKind {
+    Optimize,
+    Zeroin,
+}
+
+struct ZeroinCtx<'session> {
+    fun: crate::sexp::object::Sexp<'session>,
+    rho: crate::sexp::object::Sexp<'session>,
+    owner: crate::sexp::owner::StoredOwner<'session>,
+    kind: ScalarCallbackKind,
+}
+
+impl<'session> ZeroinCtx<'session> {
+    unsafe fn new(
+        fun: crate::sexp::ffi::SEXP,
+        rho: crate::sexp::ffi::SEXP,
+        kind: ScalarCallbackKind,
+    ) -> Self {
+        let owner = unsafe { crate::sexp::owner::OwnerToken::current() }
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        owner
+            .require_active()
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        Self {
+            fun: owner
+                .sexp(fun)
+                .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string())),
+            rho: owner
+                .sexp(rho)
+                .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string())),
+            owner: crate::sexp::owner::StoredOwner::from_token(owner),
+            kind,
+        }
+    }
+
+    fn evaluate(&self, x: f64) -> f64 {
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            self.owner.with_projection(|pointer| {
+                // The stored owner retains the exact originating interpreter during
+                // evaluation, ALTREP element access, and warning handlers.
+                let owner = unsafe { crate::sexp::owner::OwnerToken::from_raw(pointer) };
+                owner.require_active()?;
+                let xv = unsafe { crate::sexp::constructors::Rf_ScalarReal(x) };
+                owner.require_active()?;
+                let _xv = unsafe { crate::sexp::protect::protect(xv) };
+                let call = unsafe { crate::sexp::constructors::Rf_lang2(self.fun.as_raw(), xv) };
+                owner.require_active()?;
+                let _call = unsafe { crate::sexp::protect::protect(call) };
+                let raw = unsafe { crate::eval::eval::Rf_eval(call, self.rho.as_raw()) };
+                owner.require_active()?;
+                let value = owner.sexp(raw)?;
+                let ty = value.typeof_();
+                if value.len() != 1
+                    || !matches!(
+                        ty,
+                        crate::sexp::ffi::SEXPTYPE::INTSXP | crate::sexp::ffi::SEXPTYPE::REALSXP
+                    )
+                {
+                    let message = match self.kind {
+                        ScalarCallbackKind::Optimize => "invalid function value in 'optimize'",
+                        ScalarCallbackKind::Zeroin => "invalid function value in 'zeroin'",
+                    };
+                    crate::mainutils::errors::errorcall_str(
+                        unsafe { crate::mainutils::errors::R_getCurrentCall() },
+                        message,
+                    );
+                }
+                let result = if ty == crate::sexp::ffi::SEXPTYPE::INTSXP {
+                    let number = value.try_integer_elt(0);
+                    owner.require_active()?;
+                    let number = number?;
+                    if number == crate::sexp::ffi::NA_INTEGER {
+                        unsafe {
+                            crate::mainutils::errors::Rf_warning1(
+                                c"NA replaced by maximum positive value".as_ptr(),
+                            )
+                        };
+                        owner.require_active()?;
+                        f64::MAX
+                    } else {
+                        number as f64
+                    }
+                } else {
+                    let number = value.try_real_elt(0);
+                    owner.require_active()?;
+                    let number = number?;
+                    let number = finite_uniroot(number);
+                    owner.require_active()?;
+                    number
+                };
+                Ok(result)
+            })
+        }));
+        self.owner
+            .require_active()
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        match outcome {
+            Ok(Ok(result)) => result,
+            Ok(Err(error)) => crate::sexp::context::r_error(error.to_string()),
+            Err(payload) => std::panic::resume_unwind(payload),
+        }
+    }
 }
 
 unsafe extern "C-unwind" fn zeroin_call(x: f64, info: *mut core::ffi::c_void) -> f64 {
-    unsafe {
-        use crate::sexp::accessors::{REAL, TYPEOF, XLENGTH};
-        use crate::sexp::constructors::{Rf_ScalarReal, Rf_lang2};
-        use crate::sexp::ffi::SEXPTYPE;
-        use crate::sexp::protect::protect;
-        let ctx = &*(info as *const ZeroinCtx);
-        let xv = Rf_ScalarReal(x);
-        let _xv = protect(xv);
-        let call = Rf_lang2(ctx.fun, xv);
-        let _c = protect(call);
-        let v = crate::eval::eval::Rf_eval(call, ctx.rho);
-        let _v = protect(v);
-        let vr = if TYPEOF(v) == SEXPTYPE::REALSXP {
-            v
-        } else {
-            crate::main::coerce::coerceVector(v, SEXPTYPE::REALSXP.as_c_int())
-        };
-        let _vr = protect(vr);
-        if XLENGTH(vr) < 1 {
-            return f64::NAN;
-        }
-        finite_uniroot(*REAL(vr))
-    }
+    let ctx = unsafe { &*(info as *const ZeroinCtx<'_>) };
+    ctx.evaluate(x)
 }
 fn finite_uniroot(v: f64) -> f64 {
     let (message, replacement) = if v.is_nan() {
@@ -217,7 +296,7 @@ pub unsafe fn do_uniroot(
         } else {
             *INTEGER(interval).add(1) as f64
         };
-        let mut ctx = ZeroinCtx { fun, rho };
+        let mut ctx = ZeroinCtx::new(fun, rho, ScalarCallbackKind::Zeroin);
         let fa = zeroin_call(ax, &mut ctx as *mut _ as *mut core::ffi::c_void);
         let fb = zeroin_call(bx, &mut ctx as *mut _ as *mut core::ffi::c_void);
         let mut tol = 1e-8;
@@ -269,7 +348,7 @@ pub unsafe fn do_optimize(
         } else {
             *INTEGER(interval).add(1) as f64
         };
-        let mut ctx = ZeroinCtx { fun, rho };
+        let mut ctx = ZeroinCtx::new(fun, rho, ScalarCallbackKind::Optimize);
         let info = &mut ctx as *mut _ as *mut core::ffi::c_void;
         let gr = (5.0f64.sqrt() - 1.0) / 2.0;
         let mut x1 = hi - gr * (hi - lo);
@@ -1076,21 +1155,9 @@ pub unsafe fn do_nlminb(
     }
 }
 
-struct ZeroinCall {
-    f: crate::sexp::ffi::SEXP,
-    env: crate::sexp::ffi::SEXP,
-}
-
 unsafe extern "C-unwind" fn zeroin_r_fn(x: f64, info: *mut c_void) -> f64 {
-    unsafe {
-        let call = &*(info as *const ZeroinCall);
-        let arg = crate::sexp::constructors::Rf_ScalarReal(x);
-        let _a = crate::sexp::protect::protect(arg);
-        let expr = crate::sexp::constructors::Rf_lang2(call.f, arg);
-        let _e = crate::sexp::protect::protect(expr);
-        let result = crate::eval::eval::Rf_eval(expr, call.env);
-        finite_uniroot(crate::mainutils::coerce::asReal(result))
-    }
+    let ctx = unsafe { &*(info as *const ZeroinCtx<'_>) };
+    ctx.evaluate(x)
 }
 
 /// `.External2(C_zeroin2, f, lower, upper, f.lower, f.upper, tol, maxiter)`.
@@ -1118,14 +1185,14 @@ pub unsafe fn zeroin2(
         let mut tol = crate::mainutils::coerce::asReal(CAR(a));
         a = CDR(a);
         let mut maxit = crate::mainutils::coerce::asInteger(CAR(a));
-        let info = ZeroinCall { f, env };
+        let info = ZeroinCtx::new(f, env, ScalarCallbackKind::Zeroin);
         let root = R_zeroin2(
             lower,
             upper,
             fa,
             fb,
             zeroin_r_fn,
-            &info as *const ZeroinCall as *mut c_void,
+            &info as *const ZeroinCtx<'_> as *mut c_void,
             &mut tol,
             &mut maxit,
         );
@@ -1254,7 +1321,7 @@ pub unsafe fn do_fmin(
         let xmax = crate::mainutils::coerce::asReal(CAR(a));
         a = CDR(a);
         let tol = crate::mainutils::coerce::asReal(CAR(a));
-        let mut ctx = ZeroinCtx { fun, rho };
+        let mut ctx = ZeroinCtx::new(fun, rho, ScalarCallbackKind::Optimize);
         let info = &mut ctx as *mut _ as *mut core::ffi::c_void;
         let x = brent_fmin(xmin, xmax, info, tol);
         let out = Rf_allocVector(SEXPTYPE::REALSXP, 1);
@@ -1262,3 +1329,7 @@ pub unsafe fn do_fmin(
         out
     }
 }
+
+#[cfg(test)]
+#[path = "zeroin_scalar_tests.rs"]
+mod zeroin_scalar_tests;

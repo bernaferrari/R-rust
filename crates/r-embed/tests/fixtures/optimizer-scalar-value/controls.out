@@ -1,0 +1,22 @@
+optimize|1|error:invalid function value in 'optimize'
+optimize|2|error:invalid function value in 'optimize'
+optimize|3|error:invalid function value in 'optimize'
+optimize|4|error:invalid function value in 'optimize'
+optimize|5|error:invalid function value in 'optimize'
+optimize|6|error:invalid function value in 'optimize'
+optimize|7|error:invalid function value in 'optimize'
+optimize|8|warning:NA replaced by maximum positive value
+optimize|9|warning:NA/NaN replaced by maximum positive value
+optimize|10|ok
+optimize|11|ok
+uniroot|1|error:invalid function value in 'zeroin'
+uniroot|2|error:invalid function value in 'zeroin'
+uniroot|3|error:invalid function value in 'zeroin'
+uniroot|4|error:invalid function value in 'zeroin'
+uniroot|5|error:invalid function value in 'zeroin'
+uniroot|6|error:invalid function value in 'zeroin'
+uniroot|7|error:invalid function value in 'zeroin'
+uniroot|8|warning:NA replaced by maximum positive value
+uniroot|9|warning:NA/NaN replaced by maximum positive value
+uniroot|10|ok
+uniroot|11|ok
