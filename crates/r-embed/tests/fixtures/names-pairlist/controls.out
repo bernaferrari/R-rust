@@ -1,0 +1,60 @@
+0:1:attr|character(0)
+0:1:structure|character(0)
+0:1:replacement|ERROR:'names' attribute [2] must be the same length as the vector [0]
+0:2:attr|character(0)
+0:2:structure|character(0)
+0:2:replacement|ERROR:'names' attribute [2] must be the same length as the vector [0]
+0:3:attr|character(0)
+0:3:structure|character(0)
+0:3:replacement|ERROR:'names' attribute [2] must be the same length as the vector [0]
+0:4:attr|ERROR:incompatible 'names' argument
+0:4:structure|ERROR:incompatible 'names' argument
+0:4:replacement|ERROR:'names' attribute [2] must be the same length as the vector [0]
+0:5:attr|ERROR:incompatible 'names' argument
+0:5:structure|ERROR:incompatible 'names' argument
+0:5:replacement|ERROR:'names' attribute [2] must be the same length as the vector [0]
+1:1:attr|"1"
+1:1:structure|"1"
+1:1:replacement|ERROR:'names' attribute [2] must be the same length as the vector [1]
+1:2:attr|"é"
+1:2:structure|"é"
+1:2:replacement|ERROR:'names' attribute [2] must be the same length as the vector [1]
+1:3:attr|"TRUE"
+1:3:structure|"TRUE"
+1:3:replacement|ERROR:'names' attribute [2] must be the same length as the vector [1]
+1:4:attr|ERROR:incompatible 'names' argument
+1:4:structure|ERROR:incompatible 'names' argument
+1:4:replacement|ERROR:'names' attribute [2] must be the same length as the vector [1]
+1:5:attr|ERROR:incompatible 'names' argument
+1:5:structure|ERROR:incompatible 'names' argument
+1:5:replacement|ERROR:'names' attribute [2] must be the same length as the vector [1]
+2:1:attr|c("1", "2")
+2:1:structure|c("1", "2")
+2:1:replacement|c("1", "2")
+2:2:attr|c("é", "日本")
+2:2:structure|c("é", "日本")
+2:2:replacement|c("é", "日本")
+2:3:attr|c("TRUE", NA)
+2:3:structure|c("TRUE", NA)
+2:3:replacement|c("TRUE", "NA")
+2:4:attr|ERROR:incompatible 'names' argument
+2:4:structure|ERROR:incompatible 'names' argument
+2:4:replacement|c("1:2", "NULL")
+2:5:attr|ERROR:incompatible 'names' argument
+2:5:structure|ERROR:incompatible 'names' argument
+2:5:replacement|c("foo", "3.5")
+3:1:attr|c("1", "2", "")
+3:1:structure|c("1", "2", "")
+3:1:replacement|c("1", "2", NA)
+3:2:attr|c("é", "日本", "")
+3:2:structure|c("é", "日本", "")
+3:2:replacement|c("é", "日本", NA)
+3:3:attr|c("TRUE", NA, "")
+3:3:structure|c("TRUE", NA, "")
+3:3:replacement|c("TRUE", "NA", NA)
+3:4:attr|ERROR:incompatible 'names' argument
+3:4:structure|ERROR:incompatible 'names' argument
+3:4:replacement|c("1:2", "NULL", NA)
+3:5:attr|ERROR:incompatible 'names' argument
+3:5:structure|ERROR:incompatible 'names' argument
+3:5:replacement|c("foo", "3.5", NA)
