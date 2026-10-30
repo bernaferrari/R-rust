@@ -33,7 +33,7 @@ pub struct RArena {
     pub(super) allocated_bytes: Rc<Cell<usize>>,
     /// Bytes reserved by temporary native workspaces which live outside the
     /// arena (for example, a numerical transform's scratch Vecs).
-    pub(super) transient_bytes: Rc<Cell<usize>>,
+    pub(super) transient_bytes: super::ledger::TransientCounter,
     /// Deferred alloc-time GC hook state (see `with_arena_in`): arena
     /// methods cannot touch instance state without aliasing the live
     /// borrow, so hooks record their firings here instead.
@@ -1388,7 +1388,7 @@ pub(crate) struct WorkspaceReservation {
 impl WorkspaceReservation {
     pub(super) fn from_counters(
         allocated: Rc<Cell<usize>>,
-        transient: Rc<Cell<usize>>,
+        transient: super::ledger::TransientCounter,
         limit: Rc<Cell<usize>>,
         bytes: usize,
     ) -> Option<Self> {
@@ -1430,34 +1430,61 @@ impl WorkspaceReservation {
         self.reservation
     }
 
+    /// Transfer the same admission to a thread-safe, fixed-size token. The
+    /// allocation it accounts for must be dropped before the returned token.
+    pub(crate) fn into_send(mut self) -> SendWorkspaceReservation {
+        debug_assert!(self.reservation.payload_target.is_none());
+        let counter = self.reservation.counter.clone();
+        let bytes = std::mem::replace(&mut self.reservation.bytes, 0);
+        SendWorkspaceReservation { counter, bytes }
+    }
+
     /// A prepared buffer can only publish against the ledger that admitted it.
     pub(crate) fn belongs_to(&self, ledger: &MemoryLedger) -> bool {
         let counters = ledger.counters();
         Rc::ptr_eq(&self.allocated, &counters.allocated)
-            && Rc::ptr_eq(&self.reservation.counter, &counters.transient)
+            && self.reservation.counter.same(&counters.transient)
             && Rc::ptr_eq(&self.limit, &counters.limit)
     }
 
     pub(crate) fn try_resize(&mut self, bytes: usize) -> Option<()> {
-        let others = self
-            .reservation
-            .counter
-            .get()
-            .checked_sub(self.reservation.bytes)?;
-        let reserved = others.checked_add(bytes)?;
-        let total = self.allocated.get().checked_add(reserved)?;
-        if bytes > self.reservation.bytes && self.limit.get() != 0 && total > self.limit.get() {
-            return None;
+        loop {
+            let current = self.reservation.counter.get();
+            let others = current.checked_sub(self.reservation.bytes)?;
+            let reserved = others.checked_add(bytes)?;
+            let total = self.allocated.get().checked_add(reserved)?;
+            if bytes > self.reservation.bytes && self.limit.get() != 0 && total > self.limit.get() {
+                return None;
+            }
+            if self
+                .reservation
+                .counter
+                .compare_exchange(current, reserved)
+                .is_ok()
+            {
+                self.reservation.bytes = bytes;
+                return Some(());
+            }
         }
-        self.reservation.counter.set(reserved);
-        self.reservation.bytes = bytes;
-        Some(())
+    }
+}
+
+/// A fixed original-owner workspace charge, releasable on any thread even
+/// after the interpreter that created it has been closed.
+pub(crate) struct SendWorkspaceReservation {
+    counter: super::ledger::TransientCounter,
+    bytes: usize,
+}
+
+impl Drop for SendWorkspaceReservation {
+    fn drop(&mut self) {
+        self.counter.release(self.bytes);
     }
 }
 
 /// RAII release token for a native workspace reservation.
 pub(crate) struct TransientReservation {
-    counter: Rc<Cell<usize>>,
+    counter: super::ledger::TransientCounter,
     bytes: usize,
     payload_target: Option<(HeapIdentity, Rc<Cell<usize>>)>,
 }
@@ -1466,21 +1493,26 @@ impl TransientReservation {
     pub(crate) const fn bytes(&self) -> usize {
         self.bytes
     }
-    pub(crate) fn new(
+    pub(super) fn new(
         max_bytes: usize,
         accounted: usize,
         pending: usize,
-        counter: &Rc<Cell<usize>>,
+        counter: &super::ledger::TransientCounter,
         bytes: usize,
     ) -> Option<Self> {
-        let reserved = counter.get().checked_add(bytes)?;
-        let total = accounted.checked_add(pending)?.checked_add(reserved)?;
-        if max_bytes != 0 && total > max_bytes {
-            return None;
+        loop {
+            let current = counter.get();
+            let reserved = current.checked_add(bytes)?;
+            let total = accounted.checked_add(pending)?.checked_add(reserved)?;
+            if max_bytes != 0 && total > max_bytes {
+                return None;
+            }
+            if counter.compare_exchange(current, reserved).is_ok() {
+                break;
+            }
         }
-        counter.set(reserved);
         Some(Self {
-            counter: Rc::clone(counter),
+            counter: counter.clone(),
             bytes,
             payload_target: None,
         })
@@ -1502,14 +1534,7 @@ impl TransientReservation {
 
 impl Drop for TransientReservation {
     fn drop(&mut self) {
-        // The shared counter can outlive or move independently of the arena.
-        // Rc also confines this token to its creating thread.
-        self.counter.set(
-            self.counter
-                .get()
-                .checked_sub(self.bytes)
-                .expect("reservation byte ledger balance"),
-        );
+        self.counter.release(self.bytes);
     }
 }
 
@@ -1557,7 +1582,7 @@ pub(super) struct LendLedger {
     arena: usize,
     max_bytes: usize,
     total: Rc<Cell<usize>>,
-    transient: Rc<Cell<usize>>,
+    transient: super::ledger::TransientCounter,
     fresh: Vec<(SEXP, CheckedNode)>,
 }
 
@@ -1575,7 +1600,7 @@ pub(super) fn install_lend_ledger(inst: *mut super::super::instance::RInstance) 
             arena: std::ptr::from_ref(arena) as usize,
             max_bytes: arena.budget.max_bytes,
             total: arena.allocated_bytes.clone(),
-            transient: Rc::clone(&arena.transient_bytes),
+            transient: arena.transient_bytes.clone(),
             fresh: Vec::new(),
         }
     };

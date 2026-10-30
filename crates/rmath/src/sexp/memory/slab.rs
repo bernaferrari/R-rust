@@ -21,7 +21,7 @@ pub(crate) struct ArenaBacking {
     pub(super) identity: HeapIdentity,
     pub(super) allocated_bytes: Rc<Cell<usize>>,
     pub(super) max_bytes: Rc<Cell<usize>>,
-    pub(super) transient_bytes: Rc<Cell<usize>>,
+    pub(super) transient_bytes: super::ledger::TransientCounter,
 }
 
 impl ArenaBacking {
