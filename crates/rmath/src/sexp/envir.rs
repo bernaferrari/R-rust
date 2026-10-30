@@ -1528,10 +1528,24 @@ unsafe fn value_is_missing(val: Sexp<'_>, depth: u32) -> bool {
 /// as the promise code; this runtime sometimes stores the bytecode instead.
 fn bytecode_loads_missing_symbol(code: Sexp<'_>, env: Sexp<'_>, depth: u32) -> bool {
     unsafe {
+        // Raw compatibility views do not carry the authority needed by an
+        // ALTREP provider. Capture and retain the original runtime before any
+        // instruction read can collect or reenter another session.
+        let owner = super::owner::OwnerToken::current()
+            .unwrap_or_else(|error| binding_error(error.to_string()));
+        let _pin = owner
+            .pin()
+            .unwrap_or_else(|error| binding_error(error.to_string()));
+        let code = owner
+            .sexp(code.as_raw())
+            .unwrap_or_else(|error| binding_error(error.to_string()));
+        let env = owner
+            .sexp(env.as_raw())
+            .unwrap_or_else(|error| binding_error(error.to_string()));
         let bc = code.as_raw();
-        let Some(words) = Sexp::from_raw(crate::sexp::accessors::VECTOR_ELT(bc, 0)) else {
-            return false;
-        };
+        let words = owner
+            .sexp(crate::sexp::accessors::VECTOR_ELT(bc, 0))
+            .unwrap_or_else(|error| binding_error(error.to_string()));
         if words.typeof_() != SEXPTYPE::INTSXP {
             return false;
         }
@@ -1541,13 +1555,16 @@ fn bytecode_loads_missing_symbol(code: Sexp<'_>, env: Sexp<'_>, depth: u32) -> b
         if words.len() != expected_len {
             return false;
         }
-        let (Ok(op), Ok(idx), Ok(ret)) = (
-            words.try_integer_elt(opcode_index),
-            words.try_integer_elt(operand_index),
-            words.try_integer_elt(return_index),
-        ) else {
-            return false;
+        let read = |index| {
+            let value = words
+                .try_integer_elt(index)
+                .unwrap_or_else(|error| binding_error(error.to_string()));
+            owner
+                .require_active()
+                .unwrap_or_else(|error| binding_error(error.to_string()));
+            value
         };
+        let (op, idx, ret) = (read(opcode_index), read(operand_index), read(return_index));
         let matches_symbol_load = if gnu {
             (op == crate::eval::bytecode::GNU_OP_GETVAR
                 || op == crate::eval::bytecode::GNU_OP_GETVAR_MISSOK)
@@ -1559,12 +1576,18 @@ fn bytecode_loads_missing_symbol(code: Sexp<'_>, env: Sexp<'_>, depth: u32) -> b
         if !matches_symbol_load || idx < 0 {
             return false;
         }
-        let Some(constants) = Sexp::from_raw(crate::eval::bc_eval::BCODE_CONSTS(bc)) else {
+        let constants = owner
+            .sexp(crate::eval::bc_eval::BCODE_CONSTS(bc))
+            .unwrap_or_else(|error| binding_error(error.to_string()));
+        if constants.typeof_() != SEXPTYPE::VECSXP || i64::from(idx) >= constants.len() {
             return false;
-        };
-        let Ok(sym) = constants.try_vector_elt(i64::from(idx)) else {
-            return false;
-        };
+        }
+        let sym = constants
+            .try_vector_elt(i64::from(idx))
+            .unwrap_or_else(|error| binding_error(error.to_string()));
+        owner
+            .require_active()
+            .unwrap_or_else(|error| binding_error(error.to_string()));
         if !sym.is_symbol() {
             return false;
         }
@@ -2205,6 +2228,152 @@ mod tests {
             edit.try_set_integer_elt(2, 1).unwrap();
             assert!(!bytecode_loads_missing_symbol(code, env, 0));
         });
+    }
+
+    #[test]
+    fn propagated_missing_reentry_and_unwind_do_not_share_depth() {
+        use crate::sexp::altrep::{AltrepBuilder, AltrepClass, AltrepContext, AltrepElement};
+        use crate::sexp::object::SexpResult;
+        use std::{cell::Cell, rc::Rc};
+
+        struct Words {
+            callback: Rc<dyn Fn()>,
+        }
+        impl AltrepClass for Words {
+            fn vector_type(&self) -> SEXPTYPE {
+                SEXPTYPE::INTSXP
+            }
+            fn length(&self, _: &AltrepContext<'_>) -> SexpResult<i64> {
+                Ok(3)
+            }
+            fn element<'a>(
+                &self,
+                context: &AltrepContext<'a>,
+                i: i64,
+            ) -> SexpResult<AltrepElement<'a>> {
+                context.gc()?;
+                (self.callback)();
+                Ok(AltrepElement::Integer(
+                    [
+                        crate::eval::bc_eval::opcodes::OP_GETVAR,
+                        0,
+                        crate::eval::bc_eval::opcodes::OP_RETURN,
+                    ][i as usize],
+                ))
+            }
+        }
+
+        for mode in 0..3 {
+            let inner = Rc::new(crate::sexp::session::RSession::new_for_gc_tests());
+            let outer = crate::sexp::session::RSession::new_for_gc_tests();
+            outer.with_active_in(|instance| unsafe {
+                let owner = outer.owner_token().unwrap();
+                let factory = owner.node_factory();
+                let env = factory
+                    .allocate(|arena| Some(arena.alloc_node(SEXPTYPE::ENVSXP)))
+                    .unwrap();
+                let leaf = Sexp::from_raw(Rf_install(c"missing_reentry_leaf".as_ptr())).unwrap();
+                let middle =
+                    Sexp::from_raw(Rf_install(c"missing_reentry_middle".as_ptr())).unwrap();
+                defineVar(leaf.as_raw(), R_MissingArg(), env.as_raw());
+                let entered = Rc::new(Cell::new(false));
+                let armed = Rc::new(Cell::new(false));
+                let callback_armed = armed.clone();
+                let seen = entered.clone();
+                let nested = inner.clone();
+                let class = outer
+                    .register_altrep_class(
+                        "missing-reentry-words",
+                        Words {
+                            callback: Rc::new(move || {
+                                if callback_armed.get() && !seen.replace(true) {
+                                    nested.with_active(|| {
+                                        let env = memory::with_arena(|arena| {
+                                            arena.alloc_node(SEXPTYPE::ENVSXP)
+                                        });
+                                        let sym = Rf_install(c"nested_missing".as_ptr());
+                                        defineVar(sym, R_MissingArg(), env);
+                                        assert!(is_missing_safe(
+                                            Sexp::from_raw(sym).unwrap(),
+                                            Sexp::from_raw(env).unwrap()
+                                        ));
+                                    });
+                                    if mode == 1 {
+                                        panic!("missingness reentry test");
+                                    }
+                                    if mode == 2 {
+                                        crate::sexp::instance::revoke_instance_availability(
+                                            instance,
+                                        );
+                                    }
+                                }
+                            }),
+                        },
+                    )
+                    .unwrap();
+                let words = AltrepBuilder::new(class).build().unwrap();
+                let constants = factory
+                    .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::VECSXP, 1)))
+                    .unwrap();
+                super::super::accessors::SET_VECTOR_ELT(constants.as_raw(), 0, leaf.as_raw());
+                let code = factory
+                    .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::BCODESXP, 3)))
+                    .unwrap();
+                super::super::accessors::SET_VECTOR_ELT(code.as_raw(), 0, words.as_raw());
+                super::super::accessors::SET_VECTOR_ELT(code.as_raw(), 1, constants.as_raw());
+                let mid_promise = super::super::memory_ext::mkPROMSXP(code.as_raw(), env.as_raw());
+                defineVar(middle.as_raw(), mid_promise, env.as_raw());
+                let bound =
+                    find_var_in_frame_safe(env.clone(), middle.clone()).expect("middle binding");
+                assert_eq!(
+                    bound.as_raw(),
+                    mid_promise,
+                    "binding must retain the promise"
+                );
+                assert_eq!(bound.try_prcode().unwrap().as_raw(), code.as_raw());
+                assert!(crate::sexp::altrep::is_altrep(&words));
+                assert!(!crate::sexp::altrep::is_materialized(&words));
+                assert_eq!(words.len(), 3);
+                assert_eq!(
+                    words.try_integer_elt(0).unwrap(),
+                    crate::eval::bc_eval::opcodes::OP_GETVAR
+                );
+                assert_eq!(words.try_integer_elt(1).unwrap(), 0);
+                assert_eq!(
+                    words.try_integer_elt(2).unwrap(),
+                    crate::eval::bc_eval::opcodes::OP_RETURN
+                );
+                assert!(
+                    is_missing_safe(leaf.clone(), env.clone()),
+                    "leaf must be missing"
+                );
+                assert!(
+                    bytecode_loads_missing_symbol(code.clone(), env.clone(), 0),
+                    "direct bytecode lookup"
+                );
+                armed.set(true);
+                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    propagated_missing(middle.clone(), env.clone(), 0)
+                }));
+                if !entered.get() {
+                    match &result {
+                        Ok(value) => panic!("callback not entered, result={value}"),
+                        Err(error) => panic!(
+                            "callback not entered, error={:?}",
+                            error.downcast_ref::<crate::sexp::context::RError>()
+                        ),
+                    }
+                }
+                match mode {
+                    0 => assert!(result.unwrap()),
+                    1 => assert!(result.is_err()),
+                    _ => assert!(result.unwrap_err().is::<crate::sexp::context::RError>()),
+                }
+                if mode != 2 {
+                    assert!(propagated_missing(middle, env, 0));
+                }
+            });
+        }
     }
 
     #[test]
