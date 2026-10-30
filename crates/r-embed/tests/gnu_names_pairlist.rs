@@ -101,3 +101,38 @@ fn pairlist_one_dimensional_names_use_dimnames() {
         );
     }
 }
+
+#[test]
+fn pairlist_names_on_s4_numeric_match_pinned_gnu() {
+    for portable in [false, true] {
+        let mut session = if portable {
+            RSession::new_with_path_policy(RuntimePathPolicy::new(Vec::new(), std::env::temp_dir()))
+        } else {
+            RSession::new()
+        }
+        .unwrap();
+        let output = session
+            .eval(
+                r#"
+            setClass("PairlistNamesBox", contains="numeric")
+            for (mode in c("attr", "structure", "replacement")) {
+                x <- new("PairlistNamesBox", 1:3)
+                stopifnot(isS4(x), is(x, "PairlistNamesBox"))
+                result <- tryCatch({
+                    if (mode == "attr") attr(x,"names") <- pairlist(1,2)
+                    else if (mode == "structure") x <- structure(x,names=pairlist(1,2))
+                    else names(x) <- pairlist(1,2)
+                    paste(capture.output(dput(names(x))), collapse=" ")
+                }, error=function(e) paste0("ERROR:",conditionMessage(e)))
+                cat(mode,"|",result,"\n",sep="")
+            }
+        "#,
+            )
+            .unwrap();
+        assert_eq!(
+            output,
+            "attr|c(\"1\", \"2\", \"\")\nstructure|c(\"1\", \"2\", \"\")\nreplacement|c(\"1\", \"2\", NA)\n",
+            "portable={portable}"
+        );
+    }
+}
