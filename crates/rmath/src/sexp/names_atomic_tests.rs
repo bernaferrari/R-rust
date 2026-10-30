@@ -1685,3 +1685,56 @@ fn exact_classed_character_names_reject_metadata_change_during_publication() {
         assert!(target.try_attrib().unwrap().is_nil());
     });
 }
+
+#[test]
+fn exact_classed_character_names_reject_revocation_and_allocation_denial() {
+    use crate::sexp::memory::ArenaBudget;
+    for revoke in [false, true] {
+        let session = RSession::new_for_gc_tests();
+        session.with_active_in(|instance| unsafe {
+            let owner = session.owner_token().unwrap();
+            let factory = owner.node_factory();
+            let target = factory
+                .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::INTSXP, 2)))
+                .unwrap();
+            let input = factory
+                .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::STRSXP, 2)))
+                .unwrap();
+            let class = crate::sexp::constructors::Rf_mkString(c"demo".as_ptr());
+            let _class_root = crate::sexp::protect::protect(class);
+            super::setAttrib(input.as_raw(), super::R_ClassSymbol(), class);
+            let name = super::R_NamesSymbol();
+            if revoke {
+                crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+                    crate::sexp::instance::revoke_instance_availability(instance);
+                }));
+                crate::mainutils::memory_main::R_gc_torture(1, 1, 0);
+            } else {
+                owner.full_gc().unwrap();
+                owner
+                    .with_arena(|arena| arena.set_budget(ArenaBudget::new(1, 1)))
+                    .unwrap();
+            }
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                super::setAttrib(target.as_raw(), name, input.as_raw());
+            }));
+            if !revoke {
+                crate::mainutils::memory_main::R_gc_torture(0, 0, 0);
+            }
+            let error = result
+                .unwrap_err()
+                .downcast::<crate::sexp::context::RError>()
+                .unwrap();
+            if !revoke {
+                assert_eq!(
+                    error.message,
+                    "R allocation failed: memory or node budget exceeded"
+                );
+                owner
+                    .with_arena(|arena| arena.set_budget(ArenaBudget::unlimited()))
+                    .unwrap();
+            }
+            assert!(target.try_attrib().unwrap().is_nil());
+        });
+    }
+}
