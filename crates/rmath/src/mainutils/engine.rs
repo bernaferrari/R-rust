@@ -821,6 +821,16 @@ pub unsafe fn GEunregisterSystem(registerIndex: c_int) {
 /// Handle a graphics event, forwarding to all registered systems.
 pub unsafe fn GEhandleEvent(event: c_int, dev: *mut c_void, data: SEXP) -> SEXP {
     unsafe {
+        let owner = crate::sexp::owner::OwnerToken::current()
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        // Keep the original runtime allocated while callbacks may reenter or
+        // revoke it; never continue dispatch under an unrelated instance.
+        let _pin = owner
+            .pin()
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+            .unwrap_or_else(|| {
+                crate::sexp::context::r_error("graphics event requires a managed runtime owner")
+            });
         let systems = with_graphics_engine_state(|state| {
             (
                 state.graphics_system_registered,
@@ -831,7 +841,13 @@ pub unsafe fn GEhandleEvent(event: c_int, dev: *mut c_void, data: SEXP) -> SEXP 
         for (registered, callback) in systems.0.into_iter().zip(systems.1.into_iter()) {
             if registered {
                 if let Some(callback) = callback {
+                    owner
+                        .require_active()
+                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
                     let callback_result = callback(event, dev, data);
+                    owner
+                        .require_active()
+                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
                     if !callback_result.is_null() && callback_result != R_NilValue() {
                         result = callback_result;
                     }
@@ -2080,6 +2096,108 @@ mod tests {
         } else {
             unsafe { R_NilValue() }
         }
+    }
+
+    thread_local! {
+        static FOLLOWING_CALLBACKS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+        static EVENT_OWNER: std::cell::RefCell<Option<crate::sexp::session::RSession>> =
+            const { std::cell::RefCell::new(None) };
+    }
+
+    unsafe extern "C" fn switch_graphics_owner(
+        _event: c_int, _dev: *mut c_void, data: SEXP,
+    ) -> SEXP {
+        unsafe { crate::sexp::instance::replace_current_instance(Some(data.cast())) };
+        std::ptr::null_mut()
+    }
+
+    unsafe extern "C" fn count_graphics_callback(
+        _event: c_int, _dev: *mut c_void, _data: SEXP,
+    ) -> SEXP {
+        FOLLOWING_CALLBACKS.with(|count| count.set(count.get() + 1));
+        std::ptr::null_mut()
+    }
+
+    #[test]
+    fn graphics_event_stops_if_callback_changes_runtime_owner() {
+        let outer = crate::sexp::session::RSession::new_for_gc_tests();
+        let foreign = crate::sexp::session::RSession::construct_detached(
+            crate::sexp::session::RSession::new_for_gc_tests,
+        );
+        outer.with_active(|| unsafe {
+            FOLLOWING_CALLBACKS.with(|count| count.set(0));
+            let mut first = -1;
+            let mut second = -1;
+            GEregisterSystem(Some(switch_graphics_owner), &mut first);
+            GEregisterSystem(Some(count_graphics_callback), &mut second);
+            let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                GEhandleEvent(0, std::ptr::null_mut(), foreign.instance_ptr().cast())
+            }));
+            crate::sexp::instance::replace_current_instance(Some(outer.instance_ptr()));
+            GEunregisterSystem(first);
+            GEunregisterSystem(second);
+            let error = error.expect_err("owner switch must abort event dispatch");
+            let error = error
+                .downcast_ref::<crate::sexp::context::RError>()
+                .expect("owner switch must produce an R error");
+            assert_eq!(
+                error.message,
+                crate::sexp::object::SexpError::OwnerNotActive.to_string()
+            );
+            FOLLOWING_CALLBACKS.with(|count| assert_eq!(count.get(), 0));
+        });
+    }
+
+    unsafe extern "C" fn drop_graphics_owner(
+        _event: c_int, _dev: *mut c_void, _data: SEXP,
+    ) -> SEXP {
+        EVENT_OWNER.with(|slot| drop(slot.borrow_mut().take()));
+        std::ptr::null_mut()
+    }
+
+    #[test]
+    fn graphics_event_rejects_unmanaged_runtime() {
+        let mut instance = crate::sexp::instance::RInstance::new();
+        let error = unsafe {
+            crate::sexp::session::with_instance_active(&mut instance, || {
+                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    GEhandleEvent(0, std::ptr::null_mut(), std::ptr::null_mut())
+                }))
+            })
+        }
+        .expect_err("unmanaged runtime must not dispatch callbacks");
+        let error = error
+            .downcast_ref::<crate::sexp::context::RError>()
+            .expect("unmanaged runtime must produce an R error");
+        assert_eq!(
+            error.message,
+            "graphics event requires a managed runtime owner"
+        );
+    }
+
+    #[test]
+    fn graphics_event_stops_if_callback_drops_original_runtime() {
+        let outer = crate::sexp::session::RSession::construct_detached(
+            crate::sexp::session::RSession::new_for_gc_tests,
+        );
+        let instance = outer.instance_ptr();
+        EVENT_OWNER.with(|slot| *slot.borrow_mut() = Some(outer));
+        FOLLOWING_CALLBACKS.with(|count| count.set(0));
+        let error = unsafe {
+            crate::sexp::session::with_instance_active(instance, || {
+                let mut first = -1;
+                let mut second = -1;
+                GEregisterSystem(Some(drop_graphics_owner), &mut first);
+                GEregisterSystem(Some(count_graphics_callback), &mut second);
+                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    GEhandleEvent(0, std::ptr::null_mut(), std::ptr::null_mut())
+                }))
+            })
+        }
+        .expect_err("revoked owner must abort event dispatch");
+        assert!(error.downcast_ref::<crate::sexp::context::RError>().is_some());
+        EVENT_OWNER.with(|slot| assert!(slot.borrow().is_none()));
+        FOLLOWING_CALLBACKS.with(|count| assert_eq!(count.get(), 0));
     }
 
     #[test]
