@@ -831,6 +831,9 @@ pub unsafe fn GEhandleEvent(event: c_int, dev: *mut c_void, data: SEXP) -> SEXP 
             .unwrap_or_else(|| {
                 crate::sexp::context::r_error("graphics event requires a managed runtime owner")
             });
+        // Registry-owned devices have a checked identity across callbacks.
+        // Native external descriptors remain borrowed under the caller's ABI contract.
+        let device = device_registry::device_registration(headless_device(dev));
         let systems = with_graphics_engine_state(|state| {
             (
                 state.graphics_system_registered,
@@ -848,6 +851,13 @@ pub unsafe fn GEhandleEvent(event: c_int, dev: *mut c_void, data: SEXP) -> SEXP 
                     owner
                         .require_active()
                         .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                    if device
+                        .is_some_and(|ticket| !device_registry::device_registration_is_live(ticket))
+                    {
+                        crate::sexp::context::r_error(
+                            "graphics device was closed during event callback",
+                        );
+                    }
                     if !callback_result.is_null() && callback_result != R_NilValue() {
                         result = callback_result;
                     }
@@ -2153,6 +2163,112 @@ mod tests {
     ) -> SEXP {
         EVENT_OWNER.with(|slot| drop(slot.borrow_mut().take()));
         std::ptr::null_mut()
+    }
+
+    unsafe extern "C" fn close_and_replace_event_device(
+        _event: c_int, _dev: *mut c_void, _data: SEXP,
+    ) -> SEXP {
+        unsafe {
+            let number = device_registry::curDevice();
+            device_registry::killDevice(number);
+            device_registry::selectDevice(0);
+        }
+        std::ptr::null_mut()
+    }
+
+    unsafe extern "C" fn switch_event_device(
+        _event: c_int, _dev: *mut c_void, _data: SEXP,
+    ) -> SEXP {
+        unsafe { device_registry::selectDevice(2) };
+        std::ptr::null_mut()
+    }
+
+    #[test]
+    fn graphics_event_rejects_closed_and_replaced_registered_device() {
+        let session = crate::sexp::session::RSession::new_for_gc_tests();
+        session.with_active(|| unsafe {
+            FOLLOWING_CALLBACKS.with(|count| count.set(0));
+            device_registry::selectDevice(0);
+            let device = device_registry::GEgetDevice(1).cast();
+            assert!(!device_registry::GEgetDevice(1).is_null());
+            let mut first = -1;
+            let mut second = -1;
+            GEregisterSystem(Some(close_and_replace_event_device), &mut first);
+            GEregisterSystem(Some(count_graphics_callback), &mut second);
+            let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                GEhandleEvent(0, device, std::ptr::null_mut())
+            })).expect_err("closing the original device must stop dispatch");
+            GEunregisterSystem(first);
+            GEunregisterSystem(second);
+            let error = error.downcast_ref::<crate::sexp::context::RError>().unwrap();
+            assert_eq!(error.message, "graphics device was closed during event callback");
+            FOLLOWING_CALLBACKS.with(|count| assert_eq!(count.get(), 0));
+        });
+    }
+
+    #[test]
+    fn graphics_event_allows_switch_when_original_device_remains_live() {
+        let session = crate::sexp::session::RSession::new_for_gc_tests();
+        session.with_active(|| unsafe {
+            FOLLOWING_CALLBACKS.with(|count| count.set(0));
+            device_registry::selectDevice(0);
+            let device = device_registry::GEgetDevice(1).cast();
+            device_registry::selectDevice(0);
+            device_registry::selectDevice(1);
+            let mut first = -1;
+            let mut second = -1;
+            GEregisterSystem(Some(switch_event_device), &mut first);
+            GEregisterSystem(Some(count_graphics_callback), &mut second);
+            GEhandleEvent(0, device, std::ptr::null_mut());
+            GEunregisterSystem(first);
+            GEunregisterSystem(second);
+            assert_eq!(device_registry::curDevice(), 2);
+            FOLLOWING_CALLBACKS.with(|count| assert_eq!(count.get(), 1));
+        });
+    }
+
+    unsafe extern "C" fn reset_event_registry(
+        _event: c_int, _dev: *mut c_void, _data: SEXP,
+    ) -> SEXP {
+        device_registry::reset_registry_for_tests();
+        unsafe { device_registry::selectDevice(0) };
+        std::ptr::null_mut()
+    }
+
+    #[test]
+    fn graphics_event_rejects_device_after_registry_reset() {
+        let session = crate::sexp::session::RSession::new_for_gc_tests();
+        session.with_active(|| unsafe {
+            FOLLOWING_CALLBACKS.with(|count| count.set(0));
+            device_registry::selectDevice(0);
+            let device = device_registry::GEgetDevice(1).cast();
+            let mut first = -1;
+            let mut second = -1;
+            GEregisterSystem(Some(reset_event_registry), &mut first);
+            GEregisterSystem(Some(count_graphics_callback), &mut second);
+            let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                GEhandleEvent(0, device, std::ptr::null_mut())
+            })).expect_err("registry reset must invalidate the original device");
+            GEunregisterSystem(first);
+            GEunregisterSystem(second);
+            let error = error.downcast_ref::<crate::sexp::context::RError>().unwrap();
+            assert_eq!(error.message, "graphics device was closed during event callback");
+            FOLLOWING_CALLBACKS.with(|count| assert_eq!(count.get(), 0));
+        });
+    }
+
+    #[test]
+    fn graphics_event_accepts_borrowed_external_device() {
+        let session = crate::sexp::session::RSession::new_for_gc_tests();
+        session.with_active(|| unsafe {
+            FOLLOWING_CALLBACKS.with(|count| count.set(0));
+            let mut native_descriptor = 0_u64;
+            let mut registration = -1;
+            GEregisterSystem(Some(count_graphics_callback), &mut registration);
+            GEhandleEvent(0, (&mut native_descriptor as *mut u64).cast(), std::ptr::null_mut());
+            GEunregisterSystem(registration);
+            FOLLOWING_CALLBACKS.with(|count| assert_eq!(count.get(), 1));
+        });
     }
 
     #[test]

@@ -119,6 +119,7 @@ pub(crate) struct DeviceRegistry {
     devices: Vec<Box<GEDeviceDesc>>,
     current_label: c_int,
     next_label: c_int,
+    epoch: u64,
 }
 
 impl DeviceRegistry {
@@ -128,11 +129,17 @@ impl DeviceRegistry {
             devices: Vec::new(),
             current_label: 1,
             next_label: 2,
+            epoch: 0,
         }
     }
 
     fn reset(&mut self) {
+        let epoch = self
+            .epoch
+            .checked_add(1)
+            .expect("device registry epoch exhausted");
         *self = Self::new();
+        self.epoch = epoch;
     }
 
     fn no_devices(&self) -> bool {
@@ -372,6 +379,36 @@ pub(crate) fn page_question(ask: Option<bool>) -> bool {
 pub(crate) fn reset_registry_for_tests() {
     with_registry(|registry| registry.reset());
     crate::library::graphics::par::reset_device_parameters();
+}
+
+/// Identity of a registry-owned device, including a reset generation so that
+/// reused addresses and labels cannot authenticate a replacement descriptor.
+#[derive(Clone, Copy)]
+pub(crate) struct DeviceRegistration {
+    pointer: pGEDevDesc,
+    label: c_int,
+    epoch: u64,
+}
+
+pub(crate) fn device_registration(gdd: pGEDevDesc) -> Option<DeviceRegistration> {
+    with_registry(|registry| {
+        let epoch = registry.epoch;
+        let device = registry.find_device_mut(gdd)?;
+        Some(DeviceRegistration {
+            pointer: gdd,
+            label: device.label,
+            epoch,
+        })
+    })
+}
+
+pub(crate) fn device_registration_is_live(ticket: DeviceRegistration) -> bool {
+    with_registry(|registry| {
+        registry.epoch == ticket.epoch
+            && registry
+                .find_device_mut(ticket.pointer)
+                .is_some_and(|device| device.label == ticket.label)
+    })
 }
 
 pub(crate) fn is_registered_device(gdd: pGEDevDesc) -> bool {
