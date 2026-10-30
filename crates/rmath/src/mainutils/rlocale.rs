@@ -16,6 +16,7 @@ use std::os::raw::{c_int, c_uint};
 mod case_tables;
 mod identifier_table;
 mod simple_case;
+mod wctype_tables;
 pub(crate) use simple_case::{simple_lower, simple_upper};
 
 /// GNU R's portable wide-character alphabetic class. Its table includes
@@ -121,37 +122,6 @@ static zero_width: &[interval] = &[];
 
 /// Count of entries in zero_width.
 static zero_width_count: usize = 0;
-
-// wctype tables (from rlocale_data.h)
-static table_wupper: &[interval] = &[];
-static table_wupper_count: usize = 0;
-
-static table_wlower: &[interval] = &[];
-static table_wlower_count: usize = 0;
-
-static table_walpha: &[interval] = &[];
-static table_walpha_count: usize = 0;
-
-static table_wdigit: &[interval] = &[];
-static table_wdigit_count: usize = 0;
-
-static table_wxdigit: &[interval] = &[];
-static table_wxdigit_count: usize = 0;
-
-static table_wspace: &[interval] = &[];
-static table_wspace_count: usize = 0;
-
-static table_wprint: &[interval] = &[];
-static table_wprint_count: usize = 0;
-
-static table_wblank: &[interval] = &[];
-static table_wblank_count: usize = 0;
-
-static table_wcntrl: &[interval] = &[];
-static table_wcntrl_count: usize = 0;
-
-static table_wpunct: &[interval] = &[];
-static table_wpunct_count: usize = 0;
 
 // -----------------------------------------------------------------------
 // CJK locale name table
@@ -365,44 +335,49 @@ fn get_locale_id() -> c_int {
 // wctype helper functions (static in C, used by Ri18n_iswctype)
 // -----------------------------------------------------------------------
 
+fn in_wctype_table(wc: wint_t, ranges: &[(u32, u32)]) -> c_int {
+    let index = ranges.partition_point(|&(_, last)| last < wc);
+    i32::from(ranges.get(index).is_some_and(|&(first, _)| first <= wc))
+}
+
 fn Ri18n_iswupper(wc: wint_t) -> c_int {
-    wcsearch(wc as c_int, table_wupper, table_wupper_count as c_int)
+    in_wctype_table(wc, wctype_tables::UPPER)
 }
 
 fn Ri18n_iswlower(wc: wint_t) -> c_int {
-    wcsearch(wc as c_int, table_wlower, table_wlower_count as c_int)
+    in_wctype_table(wc, wctype_tables::LOWER)
 }
 
 fn Ri18n_iswalpha(wc: wint_t) -> c_int {
-    wcsearch(wc as c_int, table_walpha, table_walpha_count as c_int)
+    i32::from(char::from_u32(wc).is_some_and(identifier_alpha))
 }
 
 fn Ri18n_iswdigit(wc: wint_t) -> c_int {
-    wcsearch(wc as c_int, table_wdigit, table_wdigit_count as c_int)
+    i32::from((b'0' as u32..=b'9' as u32).contains(&wc))
 }
 
 fn Ri18n_iswxdigit(wc: wint_t) -> c_int {
-    wcsearch(wc as c_int, table_wxdigit, table_wxdigit_count as c_int)
+    in_wctype_table(wc, wctype_tables::XDIGIT)
 }
 
 fn Ri18n_iswspace(wc: wint_t) -> c_int {
-    wcsearch(wc as c_int, table_wspace, table_wspace_count as c_int)
+    in_wctype_table(wc, wctype_tables::SPACE)
 }
 
 fn Ri18n_iswprint(wc: wint_t) -> c_int {
-    wcsearch(wc as c_int, table_wprint, table_wprint_count as c_int)
+    in_wctype_table(wc, wctype_tables::PRINT)
 }
 
 fn Ri18n_iswblank(wc: wint_t) -> c_int {
-    wcsearch(wc as c_int, table_wblank, table_wblank_count as c_int)
+    in_wctype_table(wc, wctype_tables::BLANK)
 }
 
 fn Ri18n_iswcntrl(wc: wint_t) -> c_int {
-    wcsearch(wc as c_int, table_wcntrl, table_wcntrl_count as c_int)
+    in_wctype_table(wc, wctype_tables::CNTRL)
 }
 
 fn Ri18n_iswpunct(wc: wint_t) -> c_int {
-    wcsearch(wc as c_int, table_wpunct, table_wpunct_count as c_int)
+    in_wctype_table(wc, wctype_tables::PUNCT)
 }
 
 /// Internal helper: map a Rust &str to a wctype descriptor.
@@ -715,5 +690,83 @@ mod identifier_tests {
         assert!(identifier_alnum('9'));
         assert!(!identifier_alpha('9'));
         assert!(!identifier_alnum('²'));
+    }
+}
+
+#[cfg(test)]
+mod wctype_tests {
+    use super::{Ri18n_iswctype_internal, Ri18n_wctype_str, wctype_tables};
+
+    #[test]
+    fn portable_wide_classes_match_pinned_gnu_controls() {
+        let values = [65, 97, 225, 1633, 178, 769, 128512, 57, 9, 32];
+        let cases = [
+            ("alpha", "1111000000"),
+            ("digit", "0000000100"),
+            ("alnum", "1111000100"),
+            ("lower", "0110000000"),
+            ("upper", "1000000000"),
+            ("space", "0000000011"),
+            ("punct", "0000111000"),
+            ("print", "1111111101"),
+            ("graph", "1111111100"),
+            ("blank", "0000000011"),
+            ("cntrl", "0000000010"),
+            ("xdigit", "1100000100"),
+        ];
+        for (name, expected) in cases {
+            let descriptor = Ri18n_wctype_str(name);
+            assert_ne!(descriptor, 0, "{name}");
+            for (value, byte) in values.into_iter().zip(expected.bytes()) {
+                assert_eq!(
+                    Ri18n_iswctype_internal(value, descriptor) != 0,
+                    byte == b'1',
+                    "{name} U+{value:04X}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn generated_class_tables_preserve_interval_boundaries() {
+        let classes = [
+            ("upper", wctype_tables::UPPER),
+            ("lower", wctype_tables::LOWER),
+            ("xdigit", wctype_tables::XDIGIT),
+            ("space", wctype_tables::SPACE),
+            ("print", wctype_tables::PRINT),
+            ("blank", wctype_tables::BLANK),
+            ("cntrl", wctype_tables::CNTRL),
+            ("punct", wctype_tables::PUNCT),
+        ];
+        for (name, ranges) in classes {
+            let descriptor = Ri18n_wctype_str(name);
+            for (index, &(first, last)) in ranges.iter().enumerate() {
+                assert_ne!(
+                    Ri18n_iswctype_internal(first, descriptor),
+                    0,
+                    "{name} U+{first:04X}"
+                );
+                assert_ne!(
+                    Ri18n_iswctype_internal(last, descriptor),
+                    0,
+                    "{name} U+{last:04X}"
+                );
+                if let Some(&(next, _)) = ranges.get(index + 1) {
+                    assert!(last < next);
+                    if last + 1 < next {
+                        assert_eq!(
+                            Ri18n_iswctype_internal(last + 1, descriptor),
+                            0,
+                            "{name} U+{:04X}",
+                            last + 1
+                        );
+                    }
+                }
+            }
+            assert_eq!(Ri18n_iswctype_internal(u32::MAX, descriptor), 0, "{name}");
+        }
+        assert_eq!(Ri18n_wctype_str("unknown"), 0);
+        assert_eq!(Ri18n_iswctype_internal(65, 0), 0);
     }
 }
