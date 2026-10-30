@@ -14,8 +14,25 @@
 
 use std::os::raw::{c_int, c_uint};
 mod case_tables;
+mod identifier_table;
 mod simple_case;
 pub(crate) use simple_case::{simple_lower, simple_upper};
+
+/// GNU R's portable wide-character alphabetic class. Its table includes
+/// non-ASCII decimal digits, as R's UTF-8 identifier rules require.
+pub(crate) fn identifier_alpha(ch: char) -> bool {
+    if ch.is_ascii() {
+        return ch.is_ascii_alphabetic();
+    }
+    let value = ch as u32;
+    let ranges = identifier_table::R_ALPHA;
+    let index = ranges.partition_point(|&(_, last)| last < value);
+    ranges.get(index).is_some_and(|&(first, _)| first <= value)
+}
+
+pub(crate) fn identifier_alnum(ch: char) -> bool {
+    ch.is_ascii_digit() || identifier_alpha(ch)
+}
 
 // -----------------------------------------------------------------------
 // Type aliases
@@ -672,3 +689,31 @@ pub extern "C" fn get_locale_id_c() -> c_int {
 
 #[cfg(test)]
 mod case_tests;
+
+#[cfg(test)]
+mod identifier_tests {
+    use super::{identifier_alnum, identifier_alpha, identifier_table::R_ALPHA};
+
+    #[test]
+    fn identifier_class_matches_generated_range_boundaries() {
+        for (index, &(first, last)) in R_ALPHA.iter().enumerate() {
+            for value in [first, last] {
+                if let Some(ch) = char::from_u32(value) {
+                    assert!(identifier_alpha(ch), "U+{value:04X}");
+                    assert!(identifier_alnum(ch), "U+{value:04X}");
+                }
+            }
+            if let Some(&(next, _)) = R_ALPHA.get(index + 1) {
+                assert!(last < next);
+                if last + 1 < next {
+                    if let Some(ch) = char::from_u32(last + 1) {
+                        assert!(!identifier_alpha(ch), "U+{:04X}", last + 1);
+                    }
+                }
+            }
+        }
+        assert!(identifier_alnum('9'));
+        assert!(!identifier_alpha('9'));
+        assert!(!identifier_alnum('²'));
+    }
+}

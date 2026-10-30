@@ -194,7 +194,7 @@ impl Lexer {
         }
 
         // Identifiers and keywords
-        if ch.is_alphabetic() || ch == '.' || ch == '_' {
+        if crate::mainutils::rlocale::identifier_alpha(ch) || ch == '.' || ch == '_' {
             return self.read_ident();
         }
 
@@ -730,7 +730,7 @@ impl Lexer {
     pub(crate) fn read_ident(&mut self) -> Token {
         let mut s = String::new();
         while let Some(ch) = self.peek_char() {
-            if ch.is_alphanumeric() || ch == '.' || ch == '_' {
+            if crate::mainutils::rlocale::identifier_alnum(ch) || ch == '.' || ch == '_' {
                 s.push(ch);
                 self.advance();
             } else {
@@ -746,6 +746,9 @@ impl Lexer {
         // the post-parse scan.
         if s == "_" {
             return Token::Placeholder;
+        }
+        if s.starts_with('_') {
+            return Token::Invalid;
         }
         // Check keywords
         match s.as_str() {

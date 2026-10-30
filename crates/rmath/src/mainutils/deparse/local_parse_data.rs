@@ -122,20 +122,20 @@ pub(crate) fn is_valid_r_name_bytes(bytes: &[u8]) -> bool {
     if bytes == b"..." {
         return true;
     }
-    if bytes.is_empty() {
+    let Ok(name) = std::str::from_utf8(bytes) else {
+        return false;
+    };
+    let mut chars = name.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    if !(crate::mainutils::rlocale::identifier_alpha(first) || first == '.') {
         return false;
     }
-    let first = bytes[0];
-    if !(first.is_ascii_alphabetic() || first == b'.') {
+    if first == '.' && chars.clone().next().is_some_and(|c| c.is_ascii_digit()) {
         return false;
     }
-    if first == b'.' && bytes.get(1).is_some_and(|c| c.is_ascii_digit()) {
-        return false;
-    }
-    if !bytes
-        .iter()
-        .all(|&c| c.is_ascii_alphanumeric() || c == b'.' || c == b'_')
-    {
+    if !chars.all(|c| crate::mainutils::rlocale::identifier_alnum(c) || c == '.' || c == '_') {
         return false;
     }
     !is_gnu_reserved_name(bytes)

@@ -237,6 +237,18 @@ fn test_is_valid_name() {
 }
 
 #[test]
+fn utf8_name_validation_preserves_gnu_identifier_boundaries() {
+    for name in ["á", "β", "中", "α١", "١x", ".٥", "a_中"] {
+        assert!(is_valid_r_name_bytes(name.as_bytes()), "{name}");
+    }
+    for name in ["a\u{301}", "a²", "a·b", "😀", "_name", ".1", "if"] {
+        assert!(!is_valid_r_name_bytes(name.as_bytes()), "{name}");
+    }
+    assert!(!is_valid_r_name_bytes(&[0xff]));
+    assert!(!is_valid_r_name_bytes(&[b'a', 0xc3]));
+}
+
+#[test]
 fn test_streql() {
     unsafe {
         assert!(streql(
