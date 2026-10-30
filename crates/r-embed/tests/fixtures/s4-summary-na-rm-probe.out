@@ -1,0 +1,8 @@
+METHOD|miss=FALSE|na=FALSE|sub=FALSE
+CALL|sum(new("S4SummaryProbe", .Data = 1:3), na.rm = FALSE)
+METHOD|miss=FALSE|na=TRUE|sub=TRUE
+CALL|sum(new("S4SummaryProbe", .Data = 1:3), na.rm = TRUE)
+METHOD|miss=FALSE|na=TRUE|sub=TRUE
+CALL|sum(new("S4SummaryProbe", .Data = 1:3), 4L, na.rm = TRUE)
+METHOD|miss=FALSE|na=TRUE|sub=TRUE
+CALL|sum(new("S4SummaryProbe", .Data = 1:3), 4L, na.rm = TRUE)

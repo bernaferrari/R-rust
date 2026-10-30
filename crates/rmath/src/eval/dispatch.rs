@@ -246,6 +246,48 @@ fn summary_method_arguments<'s>(
     }
 }
 
+fn summary_method_call<'s>(
+    factory: &SessionNodeFactory<'s>,
+    call_head: &Sexp<'s>,
+    arguments: &Sexp<'s>,
+) -> Sexp<'s> {
+    factory
+        .require_active()
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    match factory.call(call_head, arguments) {
+        Ok(call) => call,
+        Err(crate::sexp::object::SexpError::AllocationFailed { .. }) => {
+            // The head and arguments stay owner-rooted across this retry.
+            factory
+                .full_gc()
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            factory
+                .require_active()
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            factory
+                .call(call_head, arguments)
+                .unwrap_or_else(|error| summary_method_allocation_error(error))
+        }
+        Err(error) => summary_method_allocation_error(error),
+    }
+}
+
+fn admit_summary_dispatch_result<'s>(
+    factory: &SessionNodeFactory<'s>,
+    value: SEXP,
+) -> Sexp<'s> {
+    factory
+        .require_active()
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    let result = factory
+        .wrap(value)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    factory
+        .require_active()
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    result
+}
+
 /// Capture the active owner once at a translated evaluator entry.
 /// # Safety
 /// The caller retains this owner for `'s` and excludes overlapping payload loans.
@@ -1071,26 +1113,53 @@ pub unsafe fn DispatchGroup(
                 }
             }
         }
+        let is_summary_group = streql(group, b"Summary\0".as_ptr() as *const c_char) != FALSE;
+
         if crate::mainutils::coerce::IS_S4_OBJECT(CAR(args)) != FALSE
             || (!CDR(args).is_null()
                 && CDR(args) != R_NilValue()
                 && crate::mainutils::coerce::IS_S4_OBJECT(CADR(args)) != FALSE)
         {
             if crate::mainutils::objects::R_has_methods(op) != FALSE {
-                let value =
-                    crate::mainutils::objects::R_possible_dispatch(call, op, args, rho, FALSE);
-                if !value.is_null() {
+                let (dispatch_call, dispatch_args) = if is_summary_group {
+                    // S4 Summary methods receive the same normalized actuals
+                    // GNU constructs in do_summary: evaluated arguments with
+                    // na.rm moved last or supplied as explicit FALSE.
+                    let method_args = summary_method_arguments(&factory, _arguments_owner.clone());
+                    let call_head = factory
+                        .wrap(CAR(call_owner.as_raw()))
+                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                    let method_call = summary_method_call(&factory, &call_head, &method_args);
+                    (method_call, method_args)
+                } else {
+                    (call_owner.clone(), _arguments_owner.clone())
+                };
+                let value = crate::mainutils::objects::R_possible_dispatch(
+                    dispatch_call.as_raw(),
+                    op,
+                    dispatch_args.as_raw(),
+                    rho,
+                    FALSE,
+                );
+                if is_summary_group {
+                    factory
+                        .require_active()
+                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                    if !value.is_null() {
+                        let value_owner = admit_summary_dispatch_result(&factory, value);
+                        *ans = value_owner.as_raw();
+                        return 1;
+                    }
+                } else if !value.is_null() {
                     *ans = value;
                     return 1;
                 }
             }
         }
 
-        // The S4 Summary generic path above retains its own method matching.
-        // The S3 group method path below needs the group's default represented
-        // as an actual, as GNU does, so `missing(na.rm)` is false there.
-        let is_summary_group = streql(group, b"Summary\0".as_ptr() as *const c_char) != FALSE;
-
+        // Both Summary paths use evaluated actuals with na.rm normalized.
+        // The S4 path above keeps primitive method matching; the S3 group
+        // method path below also needs explicit FALSE when na.rm was omitted.
         // For Ops group, check both args; for others, only the first
         let is_ops = streql(group, b"Ops\x00".as_ptr() as *const c_char) != FALSE
             || streql(group, b"matrixOps\x00".as_ptr() as *const c_char) != FALSE;
@@ -1487,6 +1556,110 @@ mod owned_argument_tests {
         });
         let recovered = summary_method_arguments(&factory, arguments);
         assert_eq!(PairlistIter::new(recovered).count(), 2);
+    }
+
+    #[test]
+    fn summary_method_call_retries_after_gc_and_reports_bounded_denial() {
+        let session = RSession::new_for_gc_tests();
+        let factory = SessionNodeFactory::new(session.owner_token().unwrap());
+        let nil = factory.nil();
+        let call_head = factory.wrap(unsafe { Rf_install(c"sum".as_ptr()) }).unwrap();
+        let value = factory
+            .wrap(unsafe { crate::sexp::constructors::Rf_ScalarInteger(1) })
+            .unwrap();
+        let arguments = factory.pairlist_cell(&value, &nil, &nil).unwrap();
+        let blockers = (0..3)
+            .map(|_| factory.pairlist_cell(&value, &nil, &nil).unwrap())
+            .collect::<Vec<_>>();
+        let cap = session.with_active_in(|instance| unsafe { (*instance).arena.node_count() });
+        session.with_active_in(|instance| unsafe {
+            (*instance)
+                .arena
+                .set_budget(ArenaBudget::new(usize::MAX, cap));
+        });
+        drop(blockers);
+
+        let call = summary_method_call(&factory, &call_head, &arguments);
+        assert_eq!(call.typeof_(), SEXPTYPE::LANGSXP);
+
+        let cap = session.with_active_in(|instance| unsafe { (*instance).arena.node_count() });
+        session.with_active_in(|instance| unsafe {
+            (*instance)
+                .arena
+                .set_budget(ArenaBudget::new(usize::MAX, cap));
+        });
+        let denied = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            summary_method_call(&factory, &call_head, &arguments)
+        }))
+        .unwrap_err()
+        .downcast::<RError>()
+        .unwrap();
+        assert_eq!(
+            denied.message,
+            "R allocation failed: memory or node budget exceeded"
+        );
+    }
+
+    #[test]
+    fn summary_dispatch_result_is_not_published_after_owner_revocation() {
+        let original = RSession::new_for_gc_tests();
+        let replacement = RSession::new_for_gc_tests();
+        let original_pointer = original.instance_ptr();
+        let replacement_pointer = replacement.instance_ptr();
+        let factory = SessionNodeFactory::new(original.owner_token().unwrap());
+        let result = original.with_active(|| {
+            factory
+                .wrap(unsafe { crate::sexp::constructors::Rf_ScalarInteger(17) })
+                .unwrap()
+        });
+        let result_raw = result.as_raw();
+        let foreign_factory = SessionNodeFactory::new(replacement.owner_token().unwrap());
+        let foreign_result = replacement.with_active(|| {
+            foreign_factory
+                .wrap(unsafe { crate::sexp::constructors::Rf_ScalarInteger(19) })
+                .unwrap()
+        });
+        let foreign_raw = foreign_result.as_raw();
+        let replacement_nodes = || {
+            replacement.with_active(|| {
+                replacement
+                    .owner_token()
+                    .unwrap()
+                    .with_arena(|arena| arena.node_count())
+                    .unwrap()
+            })
+        };
+        let before_replacement_nodes = replacement_nodes();
+
+        let foreign_error = original.with_active(|| {
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                admit_summary_dispatch_result(&factory, foreign_raw)
+            }))
+        });
+        assert!(foreign_error.is_err());
+        assert_eq!(replacement_nodes(), before_replacement_nodes);
+
+        let callback_fired = Rc::new(Cell::new(false));
+        let callback_state = callback_fired.clone();
+
+        original.with_active(|| {
+            crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+                callback_state.set(true);
+                unsafe {
+                    crate::sexp::instance::revoke_instance_availability(original_pointer);
+                    crate::sexp::instance::set_current_instance(replacement_pointer);
+                }
+            }));
+            crate::sexp::gengc::full_gc();
+        });
+
+        assert!(callback_fired.get());
+        let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            admit_summary_dispatch_result(&factory, result_raw)
+        }));
+        assert!(error.is_err());
+        assert_eq!(replacement_nodes(), before_replacement_nodes);
+        assert!(!original.is_active());
     }
 
     #[test]
