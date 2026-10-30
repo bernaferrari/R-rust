@@ -200,6 +200,100 @@ fn atomic_names_gc_reentry_panic_and_revocation() {
 }
 
 #[test]
+fn atomic_names_matrix_dimension_removal_during_coercion_does_not_publish() {
+    use crate::sexp::object::SexpMut;
+    let session = RSession::new_for_gc_tests();
+    let owner = session.owner_token().unwrap();
+    let factory = owner.node_factory();
+    let target = factory
+        .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::INTSXP, 3)))
+        .unwrap()
+        .into_owned()
+        .unwrap();
+    let dimensions = factory
+        .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::INTSXP, 2)))
+        .unwrap()
+        .into_owned()
+        .unwrap();
+    let mut dimensions = SexpMut::try_from_checked(dimensions).unwrap();
+    dimensions.try_set_integer_elt(0, 1).unwrap();
+    dimensions.try_set_integer_elt(1, 3).unwrap();
+    let dimensions = dimensions.freeze();
+    unsafe { super::setAttrib(target.as_raw(), super::R_DimSymbol(), dimensions.as_raw()) };
+    let callback_target = target.clone();
+    let nil = factory.nil().into_owned().unwrap();
+    let calls = Rc::new(Cell::new(0));
+    let class = session
+        .register_altrep_class(
+            "matrix-names-dim-change",
+            Provider {
+                size: 2,
+                calls,
+                callback: Rc::new(move || {
+                    SexpMut::try_from_checked(callback_target.clone())
+                        .unwrap()
+                        .try_set_attribute(&nil)
+                        .unwrap();
+                }),
+            },
+        )
+        .unwrap();
+    let input = AltrepBuilder::new(class).build().unwrap();
+    let failure = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+        super::setAttrib(target.as_raw(), super::R_NamesSymbol(), input.as_raw());
+    }))
+    .unwrap_err();
+    assert!(failure.is::<crate::sexp::context::RError>());
+    assert!(target.try_attrib().unwrap().is_nil());
+}
+
+#[test]
+fn atomic_names_matrix_padding_denial_preserves_dimensions() {
+    use crate::sexp::{memory::ArenaBudget, object::SexpMut};
+    let session = RSession::new_for_gc_tests();
+    let owner = session.owner_token().unwrap();
+    let factory = owner.node_factory();
+    let target = factory
+        .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::INTSXP, 10000)))
+        .unwrap();
+    let dimensions = factory
+        .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::INTSXP, 2)))
+        .unwrap();
+    let mut dimensions = SexpMut::try_from_checked(dimensions).unwrap();
+    dimensions.try_set_integer_elt(0, 100).unwrap();
+    dimensions.try_set_integer_elt(1, 100).unwrap();
+    let dimensions = dimensions.freeze();
+    let input = factory
+        .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::STRSXP, 0)))
+        .unwrap();
+    unsafe { super::setAttrib(target.as_raw(), super::R_DimSymbol(), dimensions.as_raw()) };
+    let original_attributes = target.try_attrib().unwrap().into_owned().unwrap();
+    let name = unsafe { super::R_NamesSymbol() };
+    owner.full_gc().unwrap();
+    let resident = owner
+        .with_arena(|arena| arena.total_bytes_allocated())
+        .unwrap();
+    owner
+        .with_arena(|arena| arena.set_budget(ArenaBudget::new(resident + 4096, usize::MAX)))
+        .unwrap();
+    let failure = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+        super::setAttrib(target.as_raw(), name, input.as_raw());
+    }))
+    .unwrap_err();
+    let error = failure.downcast::<crate::sexp::context::RError>().unwrap();
+    assert_eq!(
+        error.message,
+        "R allocation failed: memory or node budget exceeded"
+    );
+    assert_eq!(target.try_attrib().unwrap(), original_attributes);
+    assert_eq!(original_attributes.try_car().unwrap(), dimensions);
+    assert!(original_attributes.try_cdr().unwrap().is_nil());
+    owner
+        .with_arena(|arena| arena.set_budget(ArenaBudget::unlimited()))
+        .unwrap();
+}
+
+#[test]
 fn atomic_names_denial_preserves_typed_error_and_target() {
     use crate::sexp::memory::ArenaBudget;
     let session = RSession::new_for_gc_tests();

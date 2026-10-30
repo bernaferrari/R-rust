@@ -345,10 +345,39 @@ pub(crate) unsafe fn try_set_atomic_names(x: SEXP, which: SEXP, value: SEXP) -> 
                 {
                     return Ok(false);
                 }
-                // Arrays have separate dimnames rules.
-                if !super::tsp::attribute(access, object, b"dim")?.is_nil() {
-                    return Ok(false);
-                }
+                // Only one-dimensional arrays redirect names into dimnames.
+                let dimensions = super::tsp::attribute(access, object, b"dim")?;
+                let dimension_rank = if !dimensions.is_nil() {
+                    if dimensions.typeof_() != SEXPTYPE::INTSXP {
+                        return Ok(false);
+                    }
+                    let rank = dimensions.len();
+                    access.require_active().map_err(|error| error.to_string())?;
+                    if rank == 1 {
+                        return Ok(false);
+                    }
+                    if super::tsp::attribute(access, object, b"dim")? != dimensions {
+                        return Err("dimensions changed during names assignment".into());
+                    }
+                    Some(rank)
+                } else {
+                    None
+                };
+                let validate_dimensions = || {
+                    if super::tsp::attribute(access, object, b"dim")? != dimensions {
+                        return Err("dimensions changed during names assignment".into());
+                    }
+                    if let Some(rank) = dimension_rank {
+                        let current_rank = dimensions.len();
+                        access.require_active().map_err(|error| error.to_string())?;
+                        if current_rank != rank
+                            || super::tsp::attribute(access, object, b"dim")? != dimensions
+                        {
+                            return Err("dimensions changed during names assignment".into());
+                        }
+                    }
+                    Ok(())
+                };
                 let size = object.len();
                 access.require_active().map_err(|error| error.to_string())?;
                 let input_size = input.len();
@@ -420,9 +449,7 @@ pub(crate) unsafe fn try_set_atomic_names(x: SEXP, which: SEXP, value: SEXP) -> 
                         "'names' attribute [{size}] must be the same length as the vector [{current_size}]"
                     ));
                 }
-                if !super::tsp::attribute(access, object, b"dim")?.is_nil() {
-                    return Err("dimensions changed during names assignment".into());
-                }
+                validate_dimensions()?;
                 super::tsp::install_checked(access, object, &name, &normalized, || {
                     let current_size = object.len();
                     access.require_active().map_err(|error| error.to_string())?;
@@ -431,10 +458,7 @@ pub(crate) unsafe fn try_set_atomic_names(x: SEXP, which: SEXP, value: SEXP) -> 
                             "'names' attribute [{size}] must be the same length as the vector [{current_size}]"
                         ));
                     }
-                    if !super::tsp::attribute(access, object, b"dim")?.is_nil() {
-                        return Err("dimensions changed during names assignment".into());
-                    }
-                    Ok(())
+                    validate_dimensions()
                 })?;
                 Ok(true)
             },

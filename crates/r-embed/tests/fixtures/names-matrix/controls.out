@@ -1,0 +1,84 @@
+0:1:structure|list(dim = c(0L, 2L))
+0:1:attr|list(dim = c(0L, 2L))
+0:1:names|list(dim = c(0L, 2L))
+0:2:structure|list(dim = c(0L, 2L), names = character(0))
+0:2:attr|list(dim = c(0L, 2L), names = character(0))
+0:2:names|list(dim = c(0L, 2L), names = character(0))
+0:3:structure|ERROR:'names' attribute [1] must be the same length as the vector [0]
+0:3:attr|ERROR:'names' attribute [1] must be the same length as the vector [0]
+0:3:names|ERROR:'names' attribute [1] must be the same length as the vector [0]
+0:4:structure|ERROR:'names' attribute [2] must be the same length as the vector [0]
+0:4:attr|ERROR:'names' attribute [2] must be the same length as the vector [0]
+0:4:names|ERROR:'names' attribute [2] must be the same length as the vector [0]
+0:5:structure|ERROR:'names' attribute [2] must be the same length as the vector [0]
+0:5:attr|ERROR:'names' attribute [2] must be the same length as the vector [0]
+0:5:names|ERROR:'names' attribute [2] must be the same length as the vector [0]
+0:6:structure|ERROR:'names' attribute [7] must be the same length as the vector [0]
+0:6:attr|ERROR:'names' attribute [7] must be the same length as the vector [0]
+0:6:names|ERROR:'names' attribute [7] must be the same length as the vector [0]
+0:7:structure|ERROR:'names' attribute [6] must be the same length as the vector [0]
+0:7:attr|ERROR:'names' attribute [6] must be the same length as the vector [0]
+0:7:names|ERROR:'names' attribute [6] must be the same length as the vector [0]
+2:1:structure|list(dim = c(2L, 2L))
+2:1:attr|list(dim = c(2L, 2L))
+2:1:names|list(dim = c(2L, 2L))
+2:2:structure|list(dim = c(2L, 2L), names = c(NA_character_, NA_character_,  NA_character_, NA_character_))
+2:2:attr|list(dim = c(2L, 2L), names = c(NA_character_, NA_character_,  NA_character_, NA_character_))
+2:2:names|list(dim = c(2L, 2L), names = c(NA_character_, NA_character_,  NA_character_, NA_character_))
+2:3:structure|list(dim = c(2L, 2L), names = c("é", NA, NA, NA))
+2:3:attr|list(dim = c(2L, 2L), names = c("é", NA, NA, NA))
+2:3:names|list(dim = c(2L, 2L), names = c("é", NA, NA, NA))
+2:4:structure|list(dim = c(2L, 2L), names = c("é", "日本", NA, NA))
+2:4:attr|list(dim = c(2L, 2L), names = c("é", "日本", NA, NA))
+2:4:names|list(dim = c(2L, 2L), names = c("é", "日本", NA, NA))
+2:5:structure|list(dim = c(2L, 2L), names = c("1", "2", NA, NA))
+2:5:attr|list(dim = c(2L, 2L), names = c("1", "2", NA, NA))
+2:5:names|list(dim = c(2L, 2L), names = c("1", "2", NA, NA))
+2:6:structure|ERROR:'names' attribute [7] must be the same length as the vector [4]
+2:6:attr|ERROR:'names' attribute [7] must be the same length as the vector [4]
+2:6:names|ERROR:'names' attribute [7] must be the same length as the vector [4]
+2:7:structure|ERROR:'names' attribute [6] must be the same length as the vector [4]
+2:7:attr|ERROR:'names' attribute [6] must be the same length as the vector [4]
+2:7:names|ERROR:'names' attribute [6] must be the same length as the vector [4]
+3:1:structure|list(dim = 3:2)
+3:1:attr|list(dim = 3:2)
+3:1:names|list(dim = 3:2)
+3:2:structure|list(dim = 3:2, names = c(NA_character_, NA_character_, NA_character_,  NA_character_, NA_character_, NA_character_))
+3:2:attr|list(dim = 3:2, names = c(NA_character_, NA_character_, NA_character_,  NA_character_, NA_character_, NA_character_))
+3:2:names|list(dim = 3:2, names = c(NA_character_, NA_character_, NA_character_,  NA_character_, NA_character_, NA_character_))
+3:3:structure|list(dim = 3:2, names = c("é", NA, NA, NA, NA, NA))
+3:3:attr|list(dim = 3:2, names = c("é", NA, NA, NA, NA, NA))
+3:3:names|list(dim = 3:2, names = c("é", NA, NA, NA, NA, NA))
+3:4:structure|list(dim = 3:2, names = c("é", "日本", NA, NA, NA, NA))
+3:4:attr|list(dim = 3:2, names = c("é", "日本", NA, NA, NA, NA))
+3:4:names|list(dim = 3:2, names = c("é", "日本", NA, NA, NA, NA))
+3:5:structure|list(dim = 3:2, names = c("1", "2", NA, NA, NA, NA))
+3:5:attr|list(dim = 3:2, names = c("1", "2", NA, NA, NA, NA))
+3:5:names|list(dim = 3:2, names = c("1", "2", NA, NA, NA, NA))
+3:6:structure|ERROR:'names' attribute [7] must be the same length as the vector [6]
+3:6:attr|ERROR:'names' attribute [7] must be the same length as the vector [6]
+3:6:names|ERROR:'names' attribute [7] must be the same length as the vector [6]
+3:7:structure|list(dim = 3:2, names = c("a", "b", "c", "d", "e", "f"))
+3:7:attr|list(dim = 3:2, names = c("a", "b", "c", "d", "e", "f"))
+3:7:names|list(dim = 3:2, names = c("a", "b", "c", "d", "e", "f"))
+rank3:1:structure|list(dim = 1:3)
+rank3:1:attr|list(dim = 1:3)
+rank3:1:names|list(dim = 1:3)
+rank3:2:structure|list(dim = 1:3, names = c(NA_character_, NA_character_, NA_character_,  NA_character_, NA_character_, NA_character_))
+rank3:2:attr|list(dim = 1:3, names = c(NA_character_, NA_character_, NA_character_,  NA_character_, NA_character_, NA_character_))
+rank3:2:names|list(dim = 1:3, names = c(NA_character_, NA_character_, NA_character_,  NA_character_, NA_character_, NA_character_))
+rank3:3:structure|list(dim = 1:3, names = c("é", NA, NA, NA, NA, NA))
+rank3:3:attr|list(dim = 1:3, names = c("é", NA, NA, NA, NA, NA))
+rank3:3:names|list(dim = 1:3, names = c("é", NA, NA, NA, NA, NA))
+rank3:4:structure|list(dim = 1:3, names = c("é", "日本", NA, NA, NA, NA))
+rank3:4:attr|list(dim = 1:3, names = c("é", "日本", NA, NA, NA, NA))
+rank3:4:names|list(dim = 1:3, names = c("é", "日本", NA, NA, NA, NA))
+rank3:5:structure|list(dim = 1:3, names = c("1", "2", NA, NA, NA, NA))
+rank3:5:attr|list(dim = 1:3, names = c("1", "2", NA, NA, NA, NA))
+rank3:5:names|list(dim = 1:3, names = c("1", "2", NA, NA, NA, NA))
+rank3:6:structure|ERROR:'names' attribute [7] must be the same length as the vector [6]
+rank3:6:attr|ERROR:'names' attribute [7] must be the same length as the vector [6]
+rank3:6:names|ERROR:'names' attribute [7] must be the same length as the vector [6]
+rank3:7:structure|list(dim = 1:3, names = c("a", "b", "c", "d", "e", "f"))
+rank3:7:attr|list(dim = 1:3, names = c("a", "b", "c", "d", "e", "f"))
+rank3:7:names|list(dim = 1:3, names = c("a", "b", "c", "d", "e", "f"))
