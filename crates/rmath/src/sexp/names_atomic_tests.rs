@@ -2088,3 +2088,59 @@ fn pairlist_names_rejects_in_place_change_to_retained_scalar() {
         assert!(target.try_attrib().unwrap().is_nil());
     });
 }
+
+#[test]
+fn pairlist_names_rejects_in_place_one_dimensional_change() {
+    use crate::sexp::object::SexpMut;
+    let session = RSession::new_for_gc_tests();
+    session.with_active(|| unsafe {
+        let owner = session.owner_token().unwrap();
+        let factory = owner.node_factory();
+        let target = factory
+            .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::INTSXP, 2)))
+            .unwrap()
+            .into_owned()
+            .unwrap();
+        let dim = factory
+            .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::INTSXP, 1)))
+            .unwrap()
+            .into_owned()
+            .unwrap();
+        SexpMut::try_from_checked(dim.clone())
+            .unwrap()
+            .try_set_integer_elt(0, 2)
+            .unwrap();
+        super::setAttrib(target.as_raw(), super::R_DimSymbol(), dim.as_raw());
+        let changed_dim = dim.clone();
+        let calls = Rc::new(Cell::new(0));
+        let class = session
+            .register_altrep_class(
+                "pairlist-dim-mutation",
+                Provider {
+                    size: 1,
+                    calls: calls.clone(),
+                    callback: Rc::new(move || {
+                        SexpMut::try_from_checked(changed_dim.clone())
+                            .unwrap()
+                            .try_set_integer_elt(0, 3)
+                            .unwrap();
+                    }),
+                },
+            )
+            .unwrap();
+        let child = AltrepBuilder::new(class).build().unwrap();
+        let nil = factory.nil();
+        let input = factory.pairlist_cell(&child, &nil, &nil).unwrap();
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            super::setAttrib(target.as_raw(), super::R_NamesSymbol(), input.as_raw());
+        }));
+        assert!(calls.get() > 0);
+        assert!(
+            result.is_err(),
+            "dimension changed while names were computed"
+        );
+        assert!(
+            super::getAttrib(target.as_raw(), super::R_DimNamesSymbol()) == super::R_NilValue()
+        );
+    });
+}

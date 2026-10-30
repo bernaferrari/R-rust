@@ -458,6 +458,11 @@ pub(crate) unsafe fn try_set_pairlist_names(x: SEXP, which: SEXP, value: SEXP) -
                     }
                     Some(dimensions.len())
                 };
+                let dimension_value = if rank == Some(1) {
+                    Some(pairlist_name_scalar(&dimensions)?)
+                } else {
+                    None
+                };
                 let size = if cons_target {
                     i64::try_from(target_count).map_err(|_| "pairlist is too long")?
                 } else {
@@ -538,6 +543,11 @@ pub(crate) unsafe fn try_set_pairlist_names(x: SEXP, which: SEXP, value: SEXP) -
                     if (!cons_target && object.len() != size)
                         || super::tsp::attribute(access, object, b"dim")? != dimensions
                         || rank.is_some_and(|n| dimensions.len() != n)
+                    {
+                        return Err("target changed during names assignment".into());
+                    }
+                    if let Some(saved) = &dimension_value
+                        && pairlist_name_scalar(&dimensions)? != *saved
                     {
                         return Err("target changed during names assignment".into());
                     }
