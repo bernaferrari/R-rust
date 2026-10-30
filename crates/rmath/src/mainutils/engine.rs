@@ -819,6 +819,8 @@ pub unsafe fn GEunregisterSystem(registerIndex: c_int) {
 // ---------------------------------------------------------------------------
 
 /// Handle a graphics event, forwarding to all registered systems.
+/// Inputs and results are rooted until dispatch ends; the caller must retain
+/// the returned raw value according to the usual R protection rules.
 pub unsafe fn GEhandleEvent(event: c_int, dev: *mut c_void, data: SEXP) -> SEXP {
     unsafe {
         let owner = crate::sexp::owner::OwnerToken::current()
@@ -831,6 +833,20 @@ pub unsafe fn GEhandleEvent(event: c_int, dev: *mut c_void, data: SEXP) -> SEXP 
             .unwrap_or_else(|| {
                 crate::sexp::context::r_error("graphics event requires a managed runtime owner")
             });
+        let factory = owner.node_factory();
+        let rooted_data = if data.is_null() {
+            None
+        } else {
+            Some(
+                factory
+                    .wrap(data)
+                    .and_then(|value| value.into_owned())
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
+            )
+        };
+        let data = rooted_data
+            .as_ref()
+            .map_or(std::ptr::null_mut(), |value| value.as_raw());
         // Registry-owned devices have a checked identity across callbacks.
         // Native external descriptors remain borrowed under the caller's ABI contract.
         let device = device_registry::device_registration(headless_device(dev));
@@ -840,7 +856,7 @@ pub unsafe fn GEhandleEvent(event: c_int, dev: *mut c_void, data: SEXP) -> SEXP 
                 state.graphics_system_callbacks,
             )
         });
-        let mut result = nil_value();
+        let mut result = None;
         for (registered, callback) in systems.0.into_iter().zip(systems.1.into_iter()) {
             if registered {
                 if let Some(callback) = callback {
@@ -858,13 +874,19 @@ pub unsafe fn GEhandleEvent(event: c_int, dev: *mut c_void, data: SEXP) -> SEXP 
                             "graphics device was closed during event callback",
                         );
                     }
-                    if !callback_result.is_null() && callback_result != R_NilValue() {
-                        result = callback_result;
+                    if !callback_result.is_null() {
+                        let value = factory
+                            .wrap(callback_result)
+                            .and_then(|value| value.into_owned())
+                            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                        if value.as_raw() != R_NilValue() {
+                            result = Some(value);
+                        }
                     }
                 }
             }
         }
-        result
+        result.as_ref().map_or_else(nil_value, |value| value.as_raw())
     }
 }
 
@@ -2110,6 +2132,9 @@ mod tests {
 
     thread_local! {
         static FOLLOWING_CALLBACKS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+        static EVENT_VALUE: std::cell::Cell<SEXP> = const { std::cell::Cell::new(std::ptr::null_mut()) };
+        static EVENT_VALUE_ALIVE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+        static FOREIGN_INSTANCE: std::cell::Cell<*mut crate::sexp::instance::RInstance> = const { std::cell::Cell::new(std::ptr::null_mut()) };
         static EVENT_OWNER: std::cell::RefCell<Option<crate::sexp::session::RSession>> =
             const { std::cell::RefCell::new(None) };
     }
@@ -2117,7 +2142,10 @@ mod tests {
     unsafe extern "C" fn switch_graphics_owner(
         _event: c_int, _dev: *mut c_void, data: SEXP,
     ) -> SEXP {
-        unsafe { crate::sexp::instance::replace_current_instance(Some(data.cast())) };
+        let _ = data;
+        FOREIGN_INSTANCE.with(|foreign| unsafe {
+            crate::sexp::instance::replace_current_instance(Some(foreign.get()))
+        });
         std::ptr::null_mut()
     }
 
@@ -2140,9 +2168,11 @@ mod tests {
             let mut second = -1;
             GEregisterSystem(Some(switch_graphics_owner), &mut first);
             GEregisterSystem(Some(count_graphics_callback), &mut second);
+            FOREIGN_INSTANCE.with(|slot| slot.set(foreign.instance_ptr()));
             let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                GEhandleEvent(0, std::ptr::null_mut(), foreign.instance_ptr().cast())
+                GEhandleEvent(0, std::ptr::null_mut(), std::ptr::null_mut())
             }));
+            FOREIGN_INSTANCE.with(|slot| slot.set(std::ptr::null_mut()));
             crate::sexp::instance::replace_current_instance(Some(outer.instance_ptr()));
             GEunregisterSystem(first);
             GEunregisterSystem(second);
@@ -2314,6 +2344,149 @@ mod tests {
         assert!(error.downcast_ref::<crate::sexp::context::RError>().is_some());
         EVENT_OWNER.with(|slot| assert!(slot.borrow().is_none()));
         FOLLOWING_CALLBACKS.with(|count| assert_eq!(count.get(), 0));
+    }
+
+    unsafe extern "C" fn create_event_value(_event: c_int, _dev: *mut c_void, _data: SEXP) -> SEXP {
+        let value = unsafe { Rf_ScalarInteger(47) };
+        EVENT_VALUE.with(|slot| slot.set(value));
+        value
+    }
+
+    unsafe extern "C" fn collect_event_value(_event: c_int, _dev: *mut c_void, data: SEXP) -> SEXP {
+        crate::sexp::gengc::full_gc();
+        let pointer = if data.is_null() { EVENT_VALUE.with(|slot| slot.get()) } else { data };
+        EVENT_VALUE_ALIVE.with(|alive| alive.set(crate::sexp::memory::checked_projection(pointer).is_some()));
+        std::ptr::null_mut()
+    }
+
+    unsafe extern "C" fn return_event_value(_event: c_int, _dev: *mut c_void, _data: SEXP) -> SEXP {
+        EVENT_VALUE.with(|slot| slot.get())
+    }
+
+    #[test]
+    fn graphics_event_roots_data_across_callback_gc() {
+        let session = crate::sexp::session::RSession::new_for_gc_tests();
+        session.with_active(|| unsafe {
+            EVENT_VALUE_ALIVE.with(|alive| alive.set(false));
+            let data = Rf_ScalarInteger(42);
+            let mut index = -1;
+            GEregisterSystem(Some(collect_event_value), &mut index);
+            GEhandleEvent(0, std::ptr::null_mut(), data);
+            GEunregisterSystem(index);
+            EVENT_VALUE_ALIVE.with(|alive| assert!(alive.get()));
+            assert_eq!(*INTEGER(data), 42);
+        });
+    }
+
+    #[test]
+    fn graphics_event_roots_previous_result_across_callback_gc() {
+        let session = crate::sexp::session::RSession::new_for_gc_tests();
+        session.with_active(|| unsafe {
+            EVENT_VALUE_ALIVE.with(|alive| alive.set(false));
+            let mut first = -1;
+            let mut second = -1;
+            GEregisterSystem(Some(create_event_value), &mut first);
+            GEregisterSystem(Some(collect_event_value), &mut second);
+            let result = GEhandleEvent(0, std::ptr::null_mut(), std::ptr::null_mut());
+            GEunregisterSystem(first);
+            GEunregisterSystem(second);
+            EVENT_VALUE_ALIVE.with(|alive| assert!(alive.get()));
+            assert_eq!(*INTEGER(result), 47);
+            EVENT_VALUE.with(|slot| slot.set(std::ptr::null_mut()));
+        });
+    }
+
+    #[test]
+    fn graphics_event_rejects_foreign_callback_result() {
+        let session = crate::sexp::session::RSession::new_for_gc_tests();
+        let foreign = crate::sexp::session::RSession::construct_detached(
+            crate::sexp::session::RSession::new_for_gc_tests,
+        );
+        let value = foreign.with_active(|| unsafe {
+            let raw = Rf_ScalarInteger(123);
+            crate::sexp::owner::OwnerToken::current().unwrap().node_factory()
+                .wrap(raw).unwrap().into_owned().unwrap()
+        });
+        session.with_active(|| unsafe {
+            EVENT_VALUE.with(|slot| slot.set(value.as_raw()));
+            let mut index = -1;
+            GEregisterSystem(Some(return_event_value), &mut index);
+            let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                GEhandleEvent(0, std::ptr::null_mut(), std::ptr::null_mut())
+            }));
+            GEunregisterSystem(index);
+            EVENT_VALUE.with(|slot| slot.set(std::ptr::null_mut()));
+            assert!(error.expect_err("foreign value must be rejected")
+                .downcast_ref::<crate::sexp::context::RError>().is_some());
+        });
+    }
+
+    #[test]
+    fn graphics_event_rejects_foreign_input_before_callbacks() {
+        let session = crate::sexp::session::RSession::new_for_gc_tests();
+        let foreign = crate::sexp::session::RSession::construct_detached(
+            crate::sexp::session::RSession::new_for_gc_tests,
+        );
+        let value = foreign.with_active(|| unsafe {
+            let raw = Rf_ScalarInteger(19);
+            crate::sexp::owner::OwnerToken::current().unwrap().node_factory()
+                .wrap(raw).unwrap().into_owned().unwrap()
+        });
+        session.with_active(|| unsafe {
+            FOLLOWING_CALLBACKS.with(|count| count.set(0));
+            let mut index = -1;
+            GEregisterSystem(Some(count_graphics_callback), &mut index);
+            let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                GEhandleEvent(0, std::ptr::null_mut(), value.as_raw())
+            }));
+            GEunregisterSystem(index);
+            assert!(error.expect_err("foreign input must be rejected")
+                .downcast_ref::<crate::sexp::context::RError>().is_some());
+            FOLLOWING_CALLBACKS.with(|count| assert_eq!(count.get(), 0));
+        });
+    }
+
+    #[test]
+    fn graphics_event_rejects_collected_input_and_result() {
+        let session = crate::sexp::session::RSession::new_for_gc_tests();
+        session.with_active(|| unsafe {
+            let stale = Rf_ScalarInteger(12345);
+            crate::sexp::gengc::full_gc();
+            assert!(crate::sexp::memory::checked_projection(stale).is_none());
+            let input_error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                GEhandleEvent(0, std::ptr::null_mut(), stale)
+            }));
+            assert!(input_error.expect_err("collected input must be rejected")
+                .downcast_ref::<crate::sexp::context::RError>().is_some());
+            EVENT_VALUE.with(|slot| slot.set(stale));
+            let mut index = -1;
+            GEregisterSystem(Some(return_event_value), &mut index);
+            let result_error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                GEhandleEvent(0, std::ptr::null_mut(), std::ptr::null_mut())
+            }));
+            GEunregisterSystem(index);
+            EVENT_VALUE.with(|slot| slot.set(std::ptr::null_mut()));
+            assert!(result_error.expect_err("collected result must be rejected")
+                .downcast_ref::<crate::sexp::context::RError>().is_some());
+        });
+    }
+
+    #[test]
+    fn graphics_event_accepts_null_and_nil_values() {
+        let session = crate::sexp::session::RSession::new_for_gc_tests();
+        session.with_active(|| unsafe {
+            let mut index = -1;
+            GEregisterSystem(Some(echo_graphics_event), &mut index);
+            assert_eq!(GEhandleEvent(GE_CheckPlot, std::ptr::null_mut(), std::ptr::null_mut()), R_NilValue());
+            assert_eq!(GEhandleEvent(GE_CheckPlot, std::ptr::null_mut(), R_NilValue()), R_NilValue());
+            for singleton in [
+                crate::sexp::globals::R_MissingArg(),
+                crate::sexp::globals::R_UnboundValue(),
+            ] {
+                assert_eq!(GEhandleEvent(GE_CheckPlot, std::ptr::null_mut(), singleton), singleton);
+            }
+            GEunregisterSystem(index);
+        });
     }
 
     #[test]
