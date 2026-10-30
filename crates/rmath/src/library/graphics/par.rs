@@ -2055,11 +2055,10 @@ mod tests {
 
     #[test]
     fn c_par_delegates_to_session_local_par_state() {
-        let mut instance = RInstance::new();
-
-        unsafe {
-            let previous = replace_current_instance(Some(&mut instance as *mut RInstance));
-            let _restore = CurrentInstanceRestore(previous);
+        // C_par allocates and attaches attributes, which requires a managed
+        // runtime owner; raw RInstance::new() only creates unowned storage.
+        let session = crate::sexp::session::RSession::new_for_gc_tests();
+        session.with_active(|| unsafe {
 
             let mar = Rf_allocVector3(SEXPTYPE::REALSXP, 4);
             let _mar_guard = protect(mar);
@@ -2107,7 +2106,7 @@ mod tests {
                 ],
                 [1.0, 2.0, 3.0, 4.0]
             );
-        }
+        });
     }
 
     #[test]
