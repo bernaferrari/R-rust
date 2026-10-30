@@ -3,34 +3,38 @@ set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 fixture="$(mktemp -d)"
 trap 'rm -rf "$fixture"' EXIT
-mkdir -p "$fixture/scripts" "$fixture/docs" "$fixture/crates/rmath/src"
-cp -f "$root/scripts/check_android_globals.sh" "$fixture/scripts/"
-: > "$fixture/docs/android-platform-global-allowlist.tsv"
+mkdir -p "$fixture/crates/rmath/src"
+manifest="$fixture/manifest.tsv"
 cat > "$fixture/crates/rmath/src/atomics.rs" <<'RUST'
 static HEAP: AtomicU32 = AtomicU32::new(1);
 static ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 static FLAG: AtomicBool = AtomicBool::new(false);
+#[cfg(test)] mod arbitrary { static ONLY_TEST: AtomicU32 = AtomicU32::new(0); }
 RUST
-cat > "$fixture/crates/rmath/src/test_only.rs" <<'RUST'
-#[cfg(test)]
-mod tests {
-    static ONLY_TEST: AtomicU32 = AtomicU32::new(0);
+cd "$root"
+check() {
+    scripts/cargo_dev.sh run -q -p rport-android-global-audit -- --check "$fixture" "$manifest"
 }
-RUST
-if "$fixture/scripts/check_android_globals.sh" > "$fixture/output" 2>&1; then
-    echo 'Scanner failed to reject unclassified atomic declarations' >&2
-    exit 1
+: > "$manifest"
+if check > "$fixture/output" 2>&1; then
+    echo 'Scanner failed to reject unclassified declarations' >&2; exit 1
 fi
 for declaration in HEAP ID FLAG; do
-    if ! rg -q "static $declaration:" "$fixture/output"; then
-        echo "Scanner missed $declaration" >&2
-        exit 1
+    if ! rg -q "unclassified declaration: .*${declaration}" "$fixture/output"; then
+        echo "Scanner missed $declaration" >&2; exit 1
     fi
 done
-if rg -q 'test_only.rs' "$fixture/output"; then
-    echo 'Scanner included a cfg(test) module' >&2
-    exit 1
+if rg -q 'ONLY_TEST' "$fixture/output"; then
+    echo 'Scanner included a test-only declaration' >&2; exit 1
 fi
-printf 'crates/rmath/src/atomics.rs\tatomic-fixture\tallow-process\ttest\tfixture\n' > "$fixture/docs/android-platform-global-allowlist.tsv"
-"$fixture/scripts/check_android_globals.sh" >/dev/null
-printf 'Android global scanner atomic coverage passed.\n'
+printf 'crates/rmath/src/atomics.rs\tsync-static\tHEAP\tfixture\tallow-process\ttest\tfixture\n' > "$manifest"
+if check > "$fixture/output" 2>&1; then
+    echo 'Approving one declaration incorrectly approved other declarations in the same file' >&2; exit 1
+fi
+printf 'crates/rmath/src/atomics.rs\tsync-static\tID\tfixture\tallow-process\ttest\tfixture\ncrates/rmath/src/atomics.rs\tsync-static\tFLAG\tfixture\tallow-process\ttest\tfixture\n' >> "$manifest"
+check
+printf 'crates/rmath/src/atomics.rs\tsync-static\tSTALE\tfixture\tallow-process\ttest\tfixture\n' >> "$manifest"
+if check > "$fixture/output" 2>&1 || ! rg -q 'stale manifest declaration: .*STALE' "$fixture/output"; then
+    echo 'Scanner failed to reject a stale declaration' >&2; exit 1
+fi
+printf 'Android global declaration scanner coverage passed.\n'

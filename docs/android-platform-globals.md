@@ -2,8 +2,10 @@
 
 Android embedding must not accidentally depend on translated process globals.
 The runtime still contains C-shaped fallback state while the port is being
-sessionized, so every source file with mutable global patterns is classified in
-`docs/android-platform-global-allowlist.tsv`.
+sessionized, so each discovered declaration must be classified in
+`docs/android-platform-global-declarations.tsv`. The old file-level
+`docs/android-platform-global-allowlist.tsv` is historical context only; it
+does not approve individual declarations.
 
 This check verifies that declarations are inventoried. A passing inventory does
 not approve `sessionize` or `platform-replace` entries as safe. The remaining
@@ -29,17 +31,20 @@ The checked policy is:
 - `disabled-android`: desktop, fork, Tcl/Tk, X11, or process-startup code that
   is outside the Android embedding surface.
 
-The scanner ignores declarations inside `#[cfg(test)] mod tests`,
-`OnceLock<usize>` immutable sentinels, and the legacy `src/support/` mirror
-tree. The compiled root modules (`src/graphapp`, `src/intl`, `src/tzone`) own
-the Android-relevant state and are already wired through `RInstance`; the
-support mirror is not part of the crate root module graph.
+The syntax-based scanner ignores declarations under conditions requiring
+`test` and the legacy `src/support/` mirror. It records each recognized
+`static mut`, `thread_local!`, `lazy_static!`, and static using a written
+synchronization type, including `OnceLock<usize>`. Conditions and enclosing
+scopes are part of a declaration's identifier. The scanner checks all source
+files conservatively, so separately included test-only files can still appear.
+It does not resolve type aliases, arbitrary macro expansions, or the module
+graph; a passing inventory is not a complete semantic global-state audit.
+Macro bodies that visibly declare globals outside recognized macros are errors.
 
-Standalone test files and `#[cfg(test)]` declarations outside an inline
-`mod tests` remain visible to the conservative text scanner. Their inventory
-entries explicitly record their test-only module or declaration scope.
-The PPR settings and native LOESS prediction state now live in their original
-runtime; they require no process-global classification.
+The declaration-level manifest starts unclassified: existing file-level policy
+entries must be reviewed for each declaration rather than automatically copied.
+The release check will fail until that review is complete. The PPR settings and
+native LOESS prediction state now live in their original runtime.
 
 Run the ratchet with:
 
@@ -48,5 +53,5 @@ scripts/check_android_globals.sh
 ```
 
 `scripts/android_toolchain_check.sh` runs the same check before cross-compiling.
-If a new mutable global appears, classify it in the TSV and either move it into
+If a new mutable global appears, classify that declaration in the TSV and either move it into
 session state, gate it out of Android, or document why it is immutable/test-only.

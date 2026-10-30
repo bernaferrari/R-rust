@@ -2,7 +2,7 @@
 #![forbid(unsafe_code)]
 use quote::ToTokens;
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     env, fs,
     path::{Path, PathBuf},
     process::ExitCode,
@@ -366,26 +366,85 @@ fn scan(root: &Path) -> Result<Vec<Key>, String> {
     }
     Ok(found.into_keys().collect())
 }
+fn check_manifest(keys: &[Key], manifest: &str) -> Result<(), String> {
+    let mut allowed = BTreeSet::new();
+    let mut errors = Vec::new();
+    for (index, line) in manifest.lines().enumerate() {
+        if line.trim().is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let fields: Vec<_> = line.split('\t').collect();
+        if fields.len() != 7 || fields.iter().any(|v| v.trim().is_empty()) {
+            errors.push(format!(
+                "manifest line {}: expected seven nonempty tab-separated fields",
+                index + 1
+            ));
+            continue;
+        }
+        if !matches!(
+            fields[1],
+            "static-mut" | "sync-static" | "thread-local" | "lazy-static"
+        ) {
+            errors.push(format!(
+                "manifest line {}: invalid declaration kind",
+                index + 1
+            ));
+            continue;
+        }
+        if !matches!(
+            fields[4],
+            "allow-session-dispatch"
+                | "allow-immutable"
+                | "allow-test"
+                | "allow-process"
+                | "sessionize"
+                | "platform-replace"
+                | "disabled-android"
+        ) {
+            errors.push(format!("manifest line {}: invalid policy", index + 1));
+            continue;
+        }
+        let identity = format!("{}\t{}\t{}", fields[0], fields[1], fields[2]);
+        if !allowed.insert(identity.clone()) {
+            errors.push(format!("duplicate manifest declaration: {identity}"));
+        }
+    }
+    let found: BTreeSet<String> = keys
+        .iter()
+        .map(|k| format!("{}\t{}\t{}", k.path, k.kind, k.name))
+        .collect();
+    for key in found.difference(&allowed) {
+        errors.push(format!("unclassified declaration: {key}"));
+    }
+    for key in allowed.difference(&found) {
+        errors.push(format!("stale manifest declaration: {key}"));
+    }
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(errors.join("\n"))
+    }
+}
+
 fn main() -> ExitCode {
-    let mut args = env::args_os().skip(1);
-    let (Some(root), Some(output), None) = (args.next(), args.next(), args.next()) else {
-        eprintln!("usage: rport-android-global-audit ROOT OUTPUT");
-        return ExitCode::FAILURE;
-    };
-    match scan(Path::new(&root)) {
-        Ok(keys) => {
+    let args: Vec<_> = env::args_os().skip(1).collect();
+    let result = match args.as_slice() {
+        [root, output] => scan(Path::new(root)).and_then(|keys| {
             let text = keys
                 .iter()
                 .map(|k| format!("{}\t{}\t{}\n", k.path, k.kind, k.name))
                 .collect::<String>();
-            match fs::write(output, text) {
-                Ok(()) => ExitCode::SUCCESS,
-                Err(e) => {
-                    eprintln!("cannot write inventory: {e}");
-                    ExitCode::FAILURE
-                }
-            }
-        }
+            fs::write(output, text).map_err(|e| format!("cannot write inventory: {e}"))
+        }),
+        [flag, root, manifest] if flag == "--check" => scan(Path::new(root)).and_then(|keys| {
+            let text =
+                fs::read_to_string(manifest).map_err(|e| format!("cannot read manifest: {e}"))?;
+            check_manifest(&keys, &text)
+        }),
+        _ => Err("usage: rport-android-global-audit ROOT OUTPUT | --check ROOT MANIFEST".into()),
+    };
+    match result {
+        Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             eprintln!("{error}");
             ExitCode::FAILURE
@@ -463,6 +522,39 @@ mod tests {
         assert_eq!(bad_tls.errors.len(), 1);
         let harmless = inventory("some_macro! { &'static str, \"static\" }");
         assert!(harmless.errors.is_empty(), "{:?}", harmless.errors);
+    }
+
+    #[test]
+    fn manifest_checks_each_declaration_and_rejects_invalid_entries() {
+        let scanner = inventory("static ONE: AtomicU32 = init(); static TWO: AtomicU32 = init();");
+        let keys: Vec<_> = scanner.found.into_keys().collect();
+        let one = "fixture.rs\tsync-static\tONE\tfixture\tallow-process\ttest\tverified\n";
+        let two = "fixture.rs\tsync-static\tTWO\tfixture\tallow-process\ttest\tverified\n";
+        assert!(check_manifest(&keys, &format!("{one}{two}")).is_ok());
+        assert!(
+            check_manifest(&keys, one)
+                .unwrap_err()
+                .contains("unclassified declaration: fixture.rs\tsync-static\tTWO")
+        );
+        assert!(
+            check_manifest(&keys, &format!("{one}{two}{one}"))
+                .unwrap_err()
+                .contains("duplicate manifest")
+        );
+        assert!(check_manifest(&keys, &format!("{one}{two}fixture.rs\tsync-static\tGONE\tfixture\tallow-process\ttest\tverified\n")).unwrap_err().contains("stale manifest"));
+        assert!(
+            check_manifest(&keys, "fixture.rs\tlegacy-file-only\n")
+                .unwrap_err()
+                .contains("expected seven")
+        );
+        assert!(
+            check_manifest(
+                &keys,
+                &format!("{one}fixture.rs\tsync-static\tTWO\tfixture\tunknown\ttest\tverified\n")
+            )
+            .unwrap_err()
+            .contains("invalid policy")
+        );
     }
 
     #[test]
