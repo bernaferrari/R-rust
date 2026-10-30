@@ -1250,13 +1250,17 @@ pub unsafe fn find_fun_result<'a>(symbol: Sexp<'a>, rho: Sexp<'a>) -> EnvResult<
 /// Check if a symbol has a missing argument in the given environment.
 #[must_use]
 pub unsafe fn is_missing_safe(symbol: Sexp<'_>, rho: Sexp<'_>) -> bool {
+    unsafe { is_missing_with_depth(symbol, rho, 0) }
+}
+
+unsafe fn is_missing_with_depth(symbol: Sexp<'_>, rho: Sexp<'_>, depth: u32) -> bool {
     if let Some(n) = dd_val(symbol.clone()) {
-        return unsafe { dd_missing_in_frame(n, rho, false) };
+        return unsafe { dd_missing_in_frame(n, rho, false, depth) };
     }
     if symbol == dots_symbol() {
         return unsafe { dots_formal_is_missing(rho, false) };
     }
-    unsafe { ordinary_frame_is_missing(symbol, rho) }
+    unsafe { ordinary_frame_is_missing(symbol, rho, depth) }
 }
 
 /// GNU `R_missing`: the `missing()` builtin.
@@ -1268,12 +1272,12 @@ pub unsafe fn is_missing_safe(symbol: Sexp<'_>, rho: Sexp<'_>) -> bool {
 #[must_use]
 pub unsafe fn r_missing_safe(symbol: Sexp<'_>, rho: Sexp<'_>) -> bool {
     if let Some(n) = dd_val(symbol.clone()) {
-        return unsafe { dd_missing_in_frame(n, rho, true) };
+        return unsafe { dd_missing_in_frame(n, rho, true, 0) };
     }
     if symbol == dots_symbol() {
         return unsafe { dots_formal_is_missing(rho, true) };
     }
-    unsafe { ordinary_frame_is_missing(symbol, rho) }
+    unsafe { ordinary_frame_is_missing(symbol, rho, 0) }
 }
 
 unsafe fn dots_formal_is_missing(rho: Sexp<'_>, error_if_absent: bool) -> bool {
@@ -1292,7 +1296,7 @@ unsafe fn dots_formal_is_missing(rho: Sexp<'_>, error_if_absent: bool) -> bool {
     false
 }
 
-unsafe fn ordinary_frame_is_missing(symbol: Sexp<'_>, rho: Sexp<'_>) -> bool {
+unsafe fn ordinary_frame_is_missing(symbol: Sexp<'_>, rho: Sexp<'_>, depth: u32) -> bool {
     // Upstream R_isMissing (envir.c): a symbol NOT bound in this frame is
     // simply not missing — the missing check exists for the current
     // call's formals (bound as promises or R_MissingArg in the closure
@@ -1309,7 +1313,7 @@ unsafe fn ordinary_frame_is_missing(symbol: Sexp<'_>, rho: Sexp<'_>) -> bool {
             return true;
         }
         return match unsafe { Sexp::from_raw(super::accessors::CAR(cell)) } {
-            Some(val) => unsafe { value_is_missing(val) },
+            Some(val) => unsafe { value_is_missing(val, depth) },
             None => false,
         };
     }
@@ -1317,36 +1321,30 @@ unsafe fn ordinary_frame_is_missing(symbol: Sexp<'_>, rho: Sexp<'_>) -> bool {
         Some(v) => v,
         None => return false,
     };
-    unsafe { value_is_missing(val) }
+    unsafe { value_is_missing(val, depth) }
 }
 
 /// Missingness seen by a callee. A formal the caller did not supply is
 /// still `missing()` inside that function, but once a default promise is
 /// installed, passing the symbol onward is not a missing argument.
 /// `function(x = 1) g(x)` makes `missing(x)` false in `g`.
-unsafe fn propagated_missing(symbol: Sexp<'_>, rho: Sexp<'_>) -> bool {
-    thread_local! {
-        static DEPTH: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
-    }
-    let depth = DEPTH.with(|d| d.get());
+unsafe fn propagated_missing(symbol: Sexp<'_>, rho: Sexp<'_>, depth: u32) -> bool {
     if depth > 64 {
         return false;
     }
-    DEPTH.with(|d| d.set(depth + 1));
-    let answer = if let Some(cell) = frame_binding_cell(rho.clone(), symbol.clone()) {
+    let depth = depth + 1;
+    if let Some(cell) = frame_binding_cell(rho.clone(), symbol.clone()) {
         if unsafe { super::accessors::MISSING(cell) } != 0 {
             match unsafe { Sexp::from_raw(super::accessors::CAR(cell)) } {
-                Some(val) => val == missing_arg_value() || unsafe { value_is_missing(val) },
+                Some(val) => val == missing_arg_value() || unsafe { value_is_missing(val, depth) },
                 None => true,
             }
         } else {
-            unsafe { is_missing_safe(symbol, rho) }
+            unsafe { is_missing_with_depth(symbol, rho, depth) }
         }
     } else {
-        unsafe { is_missing_safe(symbol, rho) }
-    };
-    DEPTH.with(|d| d.set(depth));
-    answer
+        unsafe { is_missing_with_depth(symbol, rho, depth) }
+    }
 }
 
 fn frame_binding_cell(rho: Sexp<'_>, symbol: Sexp<'_>) -> Option<SEXP> {
@@ -1499,7 +1497,7 @@ fn find_root_promise(mut val: Sexp<'_>) -> Sexp<'_> {
     val
 }
 
-unsafe fn value_is_missing(val: Sexp<'_>) -> bool {
+unsafe fn value_is_missing(val: Sexp<'_>, depth: u32) -> bool {
     let missing_arg = missing_arg_value();
     if val == missing_arg {
         return true;
@@ -1514,12 +1512,12 @@ unsafe fn value_is_missing(val: Sexp<'_>) -> bool {
         if expr.clone().is_symbol()
             && let Ok(env) = root.clone().try_prenv()
         {
-            return unsafe { propagated_missing(expr, env) };
+            return unsafe { propagated_missing(expr, env, depth) };
         }
         if expr.clone().typeof_() == SEXPTYPE::BCODESXP
             && let Ok(env) = root.try_prenv()
         {
-            return bytecode_loads_missing_symbol(expr, env);
+            return bytecode_loads_missing_symbol(expr, env, depth);
         }
     }
     false
@@ -1528,7 +1526,7 @@ unsafe fn value_is_missing(val: Sexp<'_>) -> bool {
 /// A compiled argument expression that is only `GETVAR` / `GETVAR_MISSOK`
 /// of a symbol is missing when that symbol is missing. GNU keeps the symbol
 /// as the promise code; this runtime sometimes stores the bytecode instead.
-fn bytecode_loads_missing_symbol(code: Sexp<'_>, env: Sexp<'_>) -> bool {
+fn bytecode_loads_missing_symbol(code: Sexp<'_>, env: Sexp<'_>, depth: u32) -> bool {
     unsafe {
         let bc = code.as_raw();
         let code_ptr = crate::eval::bc_eval::BCODE_CODE(bc);
@@ -1560,11 +1558,11 @@ fn bytecode_loads_missing_symbol(code: Sexp<'_>, env: Sexp<'_>) -> bool {
         let Some(sym) = Sexp::from_raw(sym) else {
             return false;
         };
-        propagated_missing(sym, env)
+        propagated_missing(sym, env, depth)
     }
 }
 
-unsafe fn dd_missing_in_frame(n: i32, rho: Sexp<'_>, error_if_absent: bool) -> bool {
+unsafe fn dd_missing_in_frame(n: i32, rho: Sexp<'_>, error_if_absent: bool, depth: u32) -> bool {
     let Some(dots) = (unsafe { find_var_in_frame_safe(rho, dots_symbol()) }) else {
         if error_if_absent {
             binding_error("'missing(...)' did not find an argument");
@@ -1580,7 +1578,7 @@ unsafe fn dd_missing_in_frame(n: i32, rho: Sexp<'_>, error_if_absent: bool) -> b
     // GNU nthcdr(..0) uses n-1 == -1, which leaves the first cell in place.
     let index = if n <= 0 { 1 } else { n };
     match dots_car_at(dots, index) {
-        Some(val) => unsafe { value_is_missing(val) },
+        Some(val) => unsafe { value_is_missing(val, depth) },
         None => true,
     }
 }
@@ -2086,6 +2084,27 @@ mod tests {
             // check exists for the current call's formals only).
             assert_eq!(R_isMissing(sym, env), 0);
         }
+    }
+
+    #[test]
+    fn propagated_missing_depth_is_call_local_and_bounded() {
+        let session = crate::sexp::session::RSession::new_for_gc_tests();
+        session.with_active(|| unsafe {
+            let env = memory::with_arena(|arena| arena.alloc_node(SEXPTYPE::ENVSXP));
+            let sym = Rf_install(c"missing_depth_test".as_ptr());
+            defineVar(sym, R_MissingArg(), env);
+            let symbol = Sexp::from_raw(sym).expect("symbol");
+            let environment = Sexp::from_raw(env).expect("environment");
+            assert!(propagated_missing(symbol.clone(), environment.clone(), 64));
+            assert!(!propagated_missing(symbol.clone(), environment.clone(), 65));
+            // A prior cutoff does not affect a fresh invocation.
+            assert!(propagated_missing(symbol.clone(), environment.clone(), 0));
+            let cyclic = super::super::memory_ext::mkPROMISE(sym, env);
+            defineVar(sym, cyclic, env);
+            assert!(!is_missing_safe(symbol.clone(), environment.clone()));
+            defineVar(sym, R_MissingArg(), env);
+            assert!(is_missing_safe(symbol, environment));
+        });
     }
 
     #[test]
