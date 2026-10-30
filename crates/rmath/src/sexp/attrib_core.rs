@@ -391,6 +391,15 @@ pub(crate) unsafe fn try_set_atomic_names(x: SEXP, which: SEXP, value: SEXP) -> 
                         "'names' attribute [{input_size}] must be the same length as the vector [{size}]"
                     ));
                 }
+                let classed_metadata = if input_is_object {
+                    Some(copy_classed_names_attributes(
+                        access,
+                        input,
+                        input_is_object,
+                    )?)
+                } else {
+                    None
+                };
                 let (name, normalized) = access
                     .with_native(|owner| {
                         let name = owner
@@ -413,11 +422,12 @@ pub(crate) unsafe fn try_set_atomic_names(x: SEXP, which: SEXP, value: SEXP) -> 
                 if input.is_object() != input_is_object {
                     return Err("names metadata changed during assignment".into());
                 }
-                let classed_metadata = if input_is_object && input.typeof_() != SEXPTYPE::STRSXP {
-                    Some(copy_classed_names_attributes(access, input, &normalized)?)
-                } else {
-                    None
-                };
+                if let Some(snapshot) = &classed_metadata {
+                    snapshot.validate(access, input)?;
+                    if input.typeof_() != SEXPTYPE::STRSXP {
+                        snapshot.install(access, &normalized)?;
+                    }
+                }
                 let mut source_metadata = None;
                 let normalized = if input_size == size {
                     normalized
@@ -583,15 +593,31 @@ impl ClassedNamesSnapshot {
         }
         access.require_active().map_err(|e| e.to_string())
     }
+
+    fn install(
+        &self,
+        access: &super::owner::RuntimeAccess,
+        normalized: &super::object::Sexp<'static>,
+    ) -> Result<(), String> {
+        super::object::SexpMut::try_from_checked(normalized.clone())
+            .and_then(|mut value| value.try_set_attribute(&self.copied))
+            .map_err(|e| e.to_string())?;
+        access
+            .with_native(|owner| unsafe {
+                super::accessors::SET_OBJECT(normalized.as_raw(), i32::from(self.is_object));
+                owner.require_active()
+            })
+            .map_err(|e| e.to_string())
+    }
 }
 
 /// Copy attribute cells in source order without sharing their mutable links.
-/// Allocation can reenter R, so validate the whole captured chain before
-/// installing it on the private normalized value.
+/// Allocation can reenter R, so validate the whole captured chain.  The
+/// caller captures it before coercion and validates it again before publication.
 fn copy_classed_names_attributes(
     access: &super::owner::RuntimeAccess,
     source: &super::object::Sexp<'static>,
-    normalized: &super::object::Sexp<'static>,
+    is_object: bool,
 ) -> Result<ClassedNamesSnapshot, String> {
     let domain = access.domain();
     let allocator = access.allocator(&domain).map_err(|e| e.to_string())?;
@@ -638,19 +664,10 @@ fn copy_classed_names_attributes(
     }
     let snapshot = ClassedNamesSnapshot {
         original,
-        copied: head.clone(),
-        is_object: source.is_object(),
+        copied: head,
+        is_object,
     };
     snapshot.validate(access, source)?;
-    super::object::SexpMut::try_from_checked(normalized.clone())
-        .and_then(|mut value| value.try_set_attribute(&head))
-        .map_err(|e| e.to_string())?;
-    access
-        .with_native(|owner| unsafe {
-            super::accessors::SET_OBJECT(normalized.as_raw(), i32::from(snapshot.is_object));
-            owner.require_active()
-        })
-        .map_err(|e| e.to_string())?;
     Ok(snapshot)
 }
 
