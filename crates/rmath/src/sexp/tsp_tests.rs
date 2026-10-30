@@ -388,3 +388,56 @@ fn owned_tsp_foreign_parameters_rejected_before_provider_execution() {
         assert_eq!(calls.get(), 0);
     });
 }
+
+#[test]
+fn attribute_cycle_does_not_hide_an_earlier_match_or_mutate_on_error() {
+    use crate::sexp::object::SexpMut;
+    let session = crate::sexp::RSession::new_for_gc_tests();
+    let token = session.owner_token().unwrap();
+    let owner = token.weak_owner().unwrap();
+    let factory = token.node_factory();
+    let object = factory
+        .allocate(|a| Some(a.alloc_vector(SEXPTYPE::INTSXP, 1)))
+        .unwrap()
+        .into_owned()
+        .unwrap();
+    let present = unsafe { token.sexp(crate::sexp::symbol::Rf_install(c"present".as_ptr())) }
+        .unwrap()
+        .into_owned()
+        .unwrap();
+    let missing = unsafe { token.sexp(crate::sexp::symbol::Rf_install(c"missing".as_ptr())) }
+        .unwrap()
+        .into_owned()
+        .unwrap();
+    let nil = factory.nil().into_owned().unwrap();
+    let cell = factory
+        .pairlist_cell(&object, &nil, &present)
+        .unwrap()
+        .into_owned()
+        .unwrap();
+    SexpMut::try_from_checked(cell.clone())
+        .unwrap()
+        .try_set_pairlist_cdr(&cell)
+        .unwrap();
+    SexpMut::try_from_checked(object.clone())
+        .unwrap()
+        .try_set_attribute(&cell)
+        .unwrap();
+    crate::sexp::owner::with_runtime(&owner, |access| {
+        assert_eq!(
+            super::super::tsp::attribute(access, &object, b"present").unwrap(),
+            object
+        );
+        assert_eq!(
+            super::super::tsp::attribute(access, &object, b"missing").unwrap_err(),
+            "cyclic attribute list"
+        );
+        assert_eq!(
+            super::super::tsp::install(access, &object, &missing, &object).unwrap_err(),
+            "cyclic attribute list"
+        );
+        assert_eq!(object.try_attrib().unwrap(), cell);
+        assert_eq!(cell.try_cdr().unwrap(), cell);
+    })
+    .unwrap();
+}

@@ -10,17 +10,42 @@ fn checked<T>(result: super::object::SexpResult<T>) -> Result<T> {
     result.map_err(|error| error.to_string())
 }
 
-fn attribute(access: &RuntimeAccess, value: &Value, name: &[u8]) -> Result<Value> {
-    let domain = access.domain();
-    let mut cell = checked(checked(value.try_attrib())?.into_owned())?;
-    let mut seen = std::collections::HashSet::new();
-    while !cell.is_nil() {
-        let identity = checked(domain.link(&cell))?;
-        seen.try_reserve(1)
-            .map_err(|_| "cannot inspect attributes")?;
-        if !seen.insert(identity) {
+/// Brent's cycle detection observes only cells already reached by the walk.
+/// The checkpoint is a generation-qualified identity, not an owning root;
+/// the current attribute chain and the caller's object remain rooted.
+#[derive(Default)]
+struct CycleDetector {
+    checkpoint: Option<super::heap::NodeLink>,
+    power: usize,
+    distance: usize,
+}
+
+impl CycleDetector {
+    fn observe(&mut self, identity: super::heap::NodeLink) -> Result<()> {
+        let Some(checkpoint) = self.checkpoint else {
+            self.checkpoint = Some(identity);
+            self.power = 1;
+            return Ok(());
+        };
+        self.distance = self.distance.saturating_add(1);
+        if checkpoint == identity {
             return Err("cyclic attribute list".into());
         }
+        if self.distance == self.power {
+            self.checkpoint = Some(identity);
+            self.power = self.power.saturating_mul(2);
+            self.distance = 0;
+        }
+        Ok(())
+    }
+}
+
+pub(super) fn attribute(access: &RuntimeAccess, value: &Value, name: &[u8]) -> Result<Value> {
+    let domain = access.domain();
+    let mut cell = checked(checked(value.try_attrib())?.into_owned())?;
+    let mut seen = CycleDetector::default();
+    while !cell.is_nil() {
+        seen.observe(checked(domain.link(&cell))?)?;
         if checked(cell.try_tag_name_eq(name))? {
             let result = checked(checked(cell.try_car())?.into_owned())?;
             checked(domain.link(&result))?;
@@ -139,14 +164,9 @@ pub(super) fn install(
     checked(access.require_active())?;
     let mut previous = None;
     let mut cell = checked(checked(object.try_attrib())?.into_owned())?;
-    let mut seen = std::collections::HashSet::new();
+    let mut seen = CycleDetector::default();
     while !cell.is_nil() {
-        let identity = checked(domain.link(&cell))?;
-        seen.try_reserve(1)
-            .map_err(|_| "cannot inspect attributes")?;
-        if !seen.insert(identity) {
-            return Err("cyclic attribute list".into());
-        }
+        seen.observe(checked(domain.link(&cell))?)?;
         let tag = checked(checked(cell.try_tag())?.into_owned())?;
         checked(domain.link(&tag))?;
         if tag == *name {
@@ -204,6 +224,43 @@ fn validate([start, end, frequency]: [f64; 3], rows: i64, tolerance: f64) -> Res
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn attribute_cycle_detector_handles_tails_and_cycle_lengths() {
+        let session = crate::sexp::RSession::new_for_gc_tests();
+        let factory = session.owner_token().unwrap().node_factory();
+        let nodes: Vec<_> = (0..24)
+            .map(|_| {
+                factory
+                    .allocate(|a| Some(a.alloc_vector(SEXPTYPE::INTSXP, 0)))
+                    .unwrap()
+            })
+            .collect();
+        let identities: Vec<_> = nodes
+            .iter()
+            .map(|node| factory.domain().link(node).unwrap())
+            .collect();
+        let mut linear = CycleDetector::default();
+        for identity in &identities {
+            linear.observe(*identity).unwrap();
+        }
+        for tail in 0..8 {
+            for cycle in 1..=8 {
+                let mut detector = CycleDetector::default();
+                for identity in &identities[..tail + cycle] {
+                    detector.observe(*identity).unwrap();
+                }
+                let mut detected = false;
+                for index in 0..64 {
+                    if detector.observe(identities[tail + index % cycle]).is_err() {
+                        detected = true;
+                        break;
+                    }
+                }
+                assert!(detected, "tail={tail}, cycle={cycle}");
+            }
+        }
+    }
 
     #[test]
     fn pinned_ieee_time_series_validation() {
