@@ -2144,3 +2144,67 @@ fn pairlist_names_rejects_in_place_one_dimensional_change() {
         );
     });
 }
+
+#[test]
+#[ignore = "nested names mutation semantics and tracking: rport-45qwy"]
+fn pairlist_names_rejects_nested_in_place_change() {
+    use crate::sexp::object::SexpMut;
+    let session = RSession::new_for_gc_tests();
+    session.with_active(|| unsafe {
+        let owner = session.owner_token().unwrap();
+        let factory = owner.node_factory();
+        let target = factory
+            .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::INTSXP, 2)))
+            .unwrap()
+            .into_owned()
+            .unwrap();
+        let scalar = factory
+            .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::INTSXP, 1)))
+            .unwrap()
+            .into_owned()
+            .unwrap();
+        SexpMut::try_from_checked(scalar.clone())
+            .unwrap()
+            .try_set_integer_elt(0, 2)
+            .unwrap();
+        let list = factory
+            .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::VECSXP, 1)))
+            .unwrap()
+            .into_owned()
+            .unwrap();
+        SexpMut::try_from_checked(list.clone())
+            .unwrap()
+            .try_set_vector_elt(0, scalar.clone())
+            .unwrap();
+        let changed_scalar = scalar.clone();
+        let calls = Rc::new(Cell::new(0));
+        let class = session
+            .register_altrep_class(
+                "pairlist-nested-mutation",
+                Provider {
+                    size: 1,
+                    calls: calls.clone(),
+                    callback: Rc::new(move || {
+                        SexpMut::try_from_checked(changed_scalar.clone())
+                            .unwrap()
+                            .try_set_integer_elt(0, 99)
+                            .unwrap();
+                    }),
+                },
+            )
+            .unwrap();
+        let first = AltrepBuilder::new(class).build().unwrap();
+        let nil = factory.nil();
+        let tail = factory.pairlist_cell(&list, &nil, &nil).unwrap();
+        let input = factory.pairlist_cell(&first, &tail, &nil).unwrap();
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            super::setAttrib(target.as_raw(), super::R_NamesSymbol(), input.as_raw());
+        }));
+        assert!(calls.get() > 0);
+        assert!(
+            result.is_err(),
+            "nested input scalar changed while names were computed"
+        );
+        assert!(target.try_attrib().unwrap().is_nil());
+    });
+}
