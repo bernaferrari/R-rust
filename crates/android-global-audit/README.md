@@ -3,7 +3,9 @@
 Run `scripts/cargo_dev.sh run -p rport-android-global-audit -- . OUTPUT` from
 the repository root. The output is a sorted, tab-separated inventory of path,
 kind, and scoped declaration identifier. Duplicate identifiers, source parse
-failures, and visibly global declarations in other macro bodies are errors.
+failures, Rust `include!` invocations, and visibly global declarations in other
+macro bodies are errors. Unresolved Rust includes can insert code outside the
+scanned tree and require review; `include_str!` and `include_bytes!` are data.
 The scanner excludes conditions requiring `test` and the legacy `support`
 directories; other configuration conditions are recorded rather than evaluated.
 

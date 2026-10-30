@@ -86,7 +86,8 @@ fn suspicious_macro_tokens(tokens: proc_macro2::TokenStream) -> bool {
                 if word == "static" && !previous_lifetime {
                     return true;
                 }
-                previous_special = word == "thread_local" || word == "lazy_static";
+                previous_special =
+                    matches!(word.as_str(), "thread_local" | "lazy_static" | "include");
                 previous_lifetime = false;
             }
             TokenTree::Punct(punct) => {
@@ -166,7 +167,9 @@ impl Scanner {
             return;
         };
         if last.ident != "thread_local" && last.ident != "lazy_static" {
-            if !test_only(attrs) && suspicious_macro_tokens(mac.tokens.clone()) {
+            if !test_only(attrs)
+                && (last.ident == "include" || suspicious_macro_tokens(mac.tokens.clone()))
+            {
                 self.errors.push(format!(
                     "{}: macro {} may declare global state; audit its expansion",
                     self.path,
@@ -310,6 +313,9 @@ impl<'a> Visit<'a> for Scanner {
         self.macro_body(&item.mac, &item.attrs);
     }
     fn visit_expr_macro(&mut self, item: &'a ExprMacro) {
+        self.macro_body(&item.mac, &item.attrs);
+    }
+    fn visit_stmt_macro(&mut self, item: &'a syn::StmtMacro) {
         self.macro_body(&item.mac, &item.attrs);
     }
 }
@@ -485,7 +491,7 @@ mod tests {
             static FIRST: AtomicU32 = init();
             static SECOND: OnceLock<usize> = init();
             thread_local! { static A: u32 = 0; static B: u32 = 0; }
-            fn first() { static NEXT: AtomicU64 = init(); }
+            fn first() { static NEXT: AtomicU64 = init(); thread_local! { static LOCAL: u32 = 0; } }
             fn second() { static NEXT: AtomicU64 = init(); }
             #[cfg(unix)] unsafe extern "C" { static mut environ: i32; }
             #[cfg(unix)] static CONDITIONAL: AtomicBool = init();
@@ -494,13 +500,14 @@ mod tests {
         );
         assert!(scanner.errors.is_empty(), "{:?}", scanner.errors);
         let names: Vec<_> = scanner.found.keys().map(|k| k.name.as_str()).collect();
-        assert_eq!(names.len(), 9);
+        assert_eq!(names.len(), 10);
         for name in [
             "FIRST",
             "SECOND",
             "A",
             "B",
             "first::NEXT",
+            "first::LOCAL",
             "second::NEXT",
             "environ@cfg(unix)",
             "CONDITIONAL@cfg(unix)",
@@ -565,6 +572,23 @@ mod tests {
         assert_eq!(bad_tls.errors.len(), 1);
         let harmless = inventory("some_macro! { &'static str, \"static\" }");
         assert!(harmless.errors.is_empty(), "{:?}", harmless.errors);
+    }
+
+    #[test]
+    fn rejects_rust_includes_that_could_escape_the_inventory() {
+        for source in [
+            "include!(\"../outside.rs\");",
+            "fn f() { include!(concat!(env!(\"OUT_DIR\"), \"/generated.rs\")); }",
+            "macro_rules! indirect { () => { include!(\"generated.rs\"); } }",
+        ] {
+            let scanner = inventory(source);
+            assert!(
+                !scanner.errors.is_empty(),
+                "include must be reviewed: {source}"
+            );
+        }
+        let scanner = inventory("const TEXT: &str = include_str!(\"data.txt\");");
+        assert!(scanner.errors.is_empty());
     }
 
     #[test]

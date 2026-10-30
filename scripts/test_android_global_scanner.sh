@@ -42,4 +42,10 @@ printf 'crates/rmath/src/atomics.rs\tsync-static\tSTALE\tfixture\tallow-process\
 if check > "$fixture/output" 2>&1 || ! rg -q 'stale manifest declaration: .*STALE' "$fixture/output"; then
     echo 'Scanner failed to reject a stale declaration' >&2; exit 1
 fi
+cat > "$fixture/crates/rmath/src/include.rs" <<'RUST'
+fn include_generated_code() { include!("../outside.rs"); }
+RUST
+if check > "$fixture/output" 2>&1 || ! rg -q 'macro include may declare global state' "$fixture/output"; then
+    echo 'Scanner failed to reject a Rust include outside the inventory' >&2; exit 1
+fi
 printf 'Android global declaration scanner coverage passed.\n'

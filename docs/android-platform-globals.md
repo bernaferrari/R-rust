@@ -39,7 +39,9 @@ wrapper; their name does not establish the absence of interior mutability. Condi
 scopes are part of a declaration's identifier. The scanner checks all source
 files conservatively, so separately included test-only files can still appear.
 It does not resolve arbitrary macro expansions or the module graph; a passing inventory is not a complete semantic global-state audit.
-Macro bodies that visibly declare globals outside recognized macros are errors.
+Rust `include!` invocations and macro bodies that visibly declare globals or
+contain an `include!` outside recognized macros are errors; included Rust code
+may lie outside the scanned tree.
 
 The declaration-level manifest starts unclassified: existing file-level policy
 entries must be reviewed for each declaration rather than automatically copied.
