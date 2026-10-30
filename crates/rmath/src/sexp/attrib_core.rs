@@ -382,7 +382,11 @@ pub(crate) unsafe fn try_set_atomic_names(x: SEXP, which: SEXP, value: SEXP) -> 
                 // For other vectors an already-sized character value needs no
                 // normalization. Preserve the existing replacement path,
                 // which does not allocate an extra attribute cell.
-                if !one_dimensional && input.typeof_() == SEXPTYPE::STRSXP && input_size == size {
+                if !one_dimensional
+                    && !input_is_object
+                    && input.typeof_() == SEXPTYPE::STRSXP
+                    && input_size == size
+                {
                     validate_dimensions()?;
                     return Ok(false);
                 }

@@ -114,6 +114,7 @@ impl<'session> NodeDomain<'session> {
         };
         if target.sxpinfo.alt()
             || input.sxpinfo.alt()
+            || input.sxpinfo.obj()
             || input.sxpinfo.type_of() != crate::sexp::ffi::SEXPTYPE::STRSXP
         {
             return false;

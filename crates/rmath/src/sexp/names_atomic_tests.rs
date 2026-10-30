@@ -1571,3 +1571,117 @@ fn classed_names_metadata_change_during_coercion_is_rejected() {
         });
     }
 }
+
+#[test]
+fn classed_names_length_does_not_reenter_altrep_provider() {
+    use crate::sexp::object::{Sexp, SexpMut};
+    use std::cell::RefCell;
+    struct LengthProvider {
+        callback: Rc<dyn Fn()>,
+    }
+    impl AltrepClass for LengthProvider {
+        fn vector_type(&self) -> SEXPTYPE {
+            SEXPTYPE::INTSXP
+        }
+        fn length(&self, _: &AltrepContext<'_>) -> SexpResult<i64> {
+            (self.callback)();
+            Ok(2)
+        }
+        fn element<'s>(&self, _: &AltrepContext<'s>, i: i64) -> SexpResult<AltrepElement<'s>> {
+            Ok(AltrepElement::Integer(i as i32 + 1))
+        }
+    }
+    for target_provider in [false, true] {
+        let session = RSession::new_for_gc_tests();
+        session.with_active(|| unsafe {
+            let owner = session.owner_token().unwrap();
+            let factory = owner.node_factory();
+            let saved: Rc<RefCell<Option<Sexp<'static>>>> = Rc::new(RefCell::new(None));
+            let changed = Rc::new(Cell::new(false));
+            let callback_saved = saved.clone();
+            let callback_changed = changed.clone();
+            let nil = factory.nil().into_owned().unwrap();
+            let class = session
+                .register_altrep_class(
+                    "names-length-mutation",
+                    LengthProvider {
+                        callback: Rc::new(move || {
+                            if let Some(input) = callback_saved.borrow().as_ref() {
+                                if !callback_changed.replace(true) {
+                                    SexpMut::try_from_checked(input.clone())
+                                        .unwrap()
+                                        .try_set_attribute(&nil)
+                                        .unwrap();
+                                }
+                            }
+                        }),
+                    },
+                )
+                .unwrap();
+            let provider = AltrepBuilder::new(class).build().unwrap();
+            let plain = factory
+                .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::INTSXP, 2)))
+                .unwrap();
+            let (target, input) = if target_provider {
+                (provider, plain)
+            } else {
+                (plain, provider)
+            };
+            let class_value = crate::sexp::constructors::Rf_mkString(c"demo".as_ptr());
+            let _class_root = crate::sexp::protect::protect(class_value);
+            super::setAttrib(input.as_raw(), super::R_ClassSymbol(), class_value);
+            *saved.borrow_mut() = Some(input.clone().into_owned().unwrap());
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                super::setAttrib(target.as_raw(), super::R_NamesSymbol(), input.as_raw());
+            }));
+            assert!(
+                !changed.get(),
+                "assignment must use the stored ALTREP length"
+            );
+            result.unwrap();
+            assert!(!target.try_attrib().unwrap().is_nil());
+            assert!(!input.try_attrib().unwrap().is_nil());
+        });
+    }
+}
+
+#[test]
+fn exact_classed_character_names_reject_metadata_change_during_publication() {
+    use crate::sexp::object::SexpMut;
+    let session = RSession::new_for_gc_tests();
+    session.with_active(|| unsafe {
+        let owner = session.owner_token().unwrap();
+        let factory = owner.node_factory();
+        let target = factory
+            .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::INTSXP, 2)))
+            .unwrap();
+        let input = factory
+            .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::STRSXP, 2)))
+            .unwrap()
+            .into_owned()
+            .unwrap();
+        let class = crate::sexp::constructors::Rf_mkString(c"demo".as_ptr());
+        let _class_root = crate::sexp::protect::protect(class);
+        super::setAttrib(input.as_raw(), super::R_ClassSymbol(), class);
+        let changed = Rc::new(Cell::new(false));
+        let callback_changed = changed.clone();
+        let callback_input = input.clone();
+        let nil = factory.nil().into_owned().unwrap();
+        crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+            if !callback_changed.replace(true) {
+                SexpMut::try_from_checked(callback_input.clone())
+                    .unwrap()
+                    .try_set_attribute(&nil)
+                    .unwrap();
+            }
+        }));
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            crate::mainutils::memory_main::R_gc_torture(1, 1, 0);
+            super::setAttrib(target.as_raw(), super::R_NamesSymbol(), input.as_raw());
+        }));
+        crate::mainutils::memory_main::R_gc_torture(0, 0, 0);
+        assert!(changed.get());
+        assert!(result.unwrap_err().is::<crate::sexp::context::RError>());
+        assert!(target.try_attrib().unwrap().is_nil());
+    });
+}
