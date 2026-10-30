@@ -992,6 +992,55 @@ mod log_axis_isolation_tests {
     }
 
     #[test]
+    fn nested_sessions_restore_the_outer_plot_context() {
+        let mut outer = RSession::new_for_gc_tests();
+        let mut inner = RSession::new_for_gc_tests();
+        assert_eq!(run(&mut outer, "x"), "TRUE FALSE \n");
+        outer.with_active(|| {
+            assert_eq!(run(&mut inner, "y"), "FALSE TRUE \n");
+        });
+        let (result, output, _) =
+            outer.eval_script_with_output_capture("cat(par('xlog'), par('ylog'), '\\n')");
+        assert!(result.is_ok(), "outer query failed: {output:?}");
+        assert_eq!(output.stdout, "TRUE FALSE \n");
+    }
+
+    #[test]
+    fn concurrent_sessions_do_not_mix_log_axis_choices() {
+        let barrier = std::sync::Arc::new(std::sync::Barrier::new(2));
+        let threads: Vec<_> = [("x", "TRUE FALSE \n"), ("y", "FALSE TRUE \n")]
+            .into_iter()
+            .map(|(log, expected)| {
+                let barrier = barrier.clone();
+                std::thread::spawn(move || {
+                    let mut session = RSession::new_for_gc_tests();
+                    barrier.wait();
+                    for _ in 0..20 {
+                        assert_eq!(run(&mut session, log), expected);
+                    }
+                })
+            })
+            .collect();
+        for thread in threads {
+            thread.join().unwrap();
+        }
+    }
+
+    #[test]
+    #[ignore = "rport-p476x: plot parameters still follow the session instead of the device"]
+    fn switching_devices_restores_each_axis_choice() {
+        let mut session = RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            "invisible(pdf(NULL)); d1 <- dev.cur(); invisible(plot(1:10, log='x')); \
+             invisible(pdf(NULL)); d2 <- dev.cur(); invisible(plot(1:10, log='y')); \
+             invisible(dev.set(d1)); cat(par('xlog'), par('ylog'), '\\n'); \
+             invisible(dev.set(d2)); cat(par('xlog'), par('ylog'), '\\n')",
+        );
+        result.expect("device switching script should evaluate");
+        assert_eq!(output.stdout, "TRUE FALSE \nFALSE TRUE \n");
+    }
+
+    #[test]
     fn log_axis_choices_are_local_to_each_plot_and_session() {
         let mut left = RSession::new_for_gc_tests();
         let mut right = RSession::new_for_gc_tests();
