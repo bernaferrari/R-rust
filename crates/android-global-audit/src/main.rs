@@ -286,15 +286,25 @@ impl<'a> Visit<'a> for Scanner {
             self.record("static-mut", &item.ident, &item.attrs);
         } else if sync_type(&item.ty) {
             self.record("sync-static", &item.ident, &item.attrs);
+        } else {
+            // Aliases, imported types and user-defined wrappers may contain
+            // interior mutability even when their spelling looks immutable.
+            self.record("immutable-static", &item.ident, &item.attrs);
         }
         self.scoped(&item.attrs, Some(item.ident.to_string()), |s| {
             s.visit_expr(&item.expr)
         });
     }
     fn visit_foreign_item_static(&mut self, item: &'a ForeignItemStatic) {
-        if matches!(item.mutability, StaticMutability::Mut(_)) {
-            self.record("static-mut", &item.ident, &item.attrs);
-        }
+        self.record(
+            if matches!(item.mutability, StaticMutability::Mut(_)) {
+                "static-mut"
+            } else {
+                "foreign-static"
+            },
+            &item.ident,
+            &item.attrs,
+        );
     }
     fn visit_item_macro(&mut self, item: &'a ItemMacro) {
         self.macro_body(&item.mac, &item.attrs);
@@ -383,7 +393,12 @@ fn check_manifest(keys: &[Key], manifest: &str) -> Result<(), String> {
         }
         if !matches!(
             fields[1],
-            "static-mut" | "sync-static" | "thread-local" | "lazy-static"
+            "static-mut"
+                | "sync-static"
+                | "immutable-static"
+                | "foreign-static"
+                | "thread-local"
+                | "lazy-static"
         ) {
             errors.push(format!(
                 "manifest line {}: invalid declaration kind",
@@ -492,6 +507,34 @@ mod tests {
             "CONDITIONAL@cfg(windows)",
         ] {
             assert!(names.contains(&name), "missing {name}: {names:?}");
+        }
+    }
+
+    #[test]
+    fn requires_review_for_opaque_and_foreign_static_types() {
+        let scanner = inventory(
+            r#"
+            use std::sync::atomic::AtomicUsize as Counter;
+            type Alias = Counter;
+            static FIRST: Alias = make();
+            static SECOND: other_crate::Opaque = make();
+            static SENTINEL: usize = 0;
+            unsafe extern "C" { static FOREIGN: u32; }
+        "#,
+        );
+        for (name, kind) in [
+            ("FIRST", "immutable-static"),
+            ("SECOND", "immutable-static"),
+            ("SENTINEL", "immutable-static"),
+            ("FOREIGN", "foreign-static"),
+        ] {
+            assert!(
+                scanner
+                    .found
+                    .keys()
+                    .any(|key| key.name == name && key.kind == kind),
+                "missing {kind} {name}"
+            );
         }
     }
 

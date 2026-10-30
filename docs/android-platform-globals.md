@@ -33,12 +33,12 @@ The checked policy is:
 
 The syntax-based scanner ignores declarations under conditions requiring
 `test` and the legacy `src/support/` mirror. It records each recognized
-`static mut`, `thread_local!`, `lazy_static!`, and static using a written
-synchronization type, including `OnceLock<usize>`. Conditions and enclosing
+`static mut`, immutable and foreign statics, `thread_local!`, and `lazy_static!`.
+Immutable statics require review even when their type is an alias or an opaque
+wrapper; their name does not establish the absence of interior mutability. Conditions and enclosing
 scopes are part of a declaration's identifier. The scanner checks all source
 files conservatively, so separately included test-only files can still appear.
-It does not resolve type aliases, arbitrary macro expansions, or the module
-graph; a passing inventory is not a complete semantic global-state audit.
+It does not resolve arbitrary macro expansions or the module graph; a passing inventory is not a complete semantic global-state audit.
 Macro bodies that visibly declare globals outside recognized macros are errors.
 
 The declaration-level manifest starts unclassified: existing file-level policy
