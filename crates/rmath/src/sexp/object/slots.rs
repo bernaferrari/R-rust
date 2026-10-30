@@ -338,6 +338,49 @@ impl<'a> Sexp<'a> {
         Ok(header.char_eq(expected))
     }
 
+    /// Compare the NUL-terminated prefix without borrowing the payload or
+    /// allocating a temporary string. Used for compatibility mode names.
+    pub(crate) fn try_char_cstr_eq(&self, expected: &[u8]) -> SexpResult<bool> {
+        let header = self.header();
+        if header.sxpinfo.type_of() != SEXPTYPE::CHARSXP {
+            return Err(SexpError::TypeMismatch {
+                expected: "character scalar",
+                actual: header.sxpinfo.type_of(),
+            });
+        }
+        let NodeBody::Vector(vec) = header.body else {
+            return Err(SexpError::TypeMismatch {
+                expected: "character scalar",
+                actual: header.sxpinfo.type_of(),
+            });
+        };
+        let len = usize::try_from(vec.length).map_err(|_| SexpError::MissingData {
+            sexptype: SEXPTYPE::CHARSXP,
+        })?;
+        if expected.contains(&0) || expected.len() > len {
+            return Ok(false);
+        }
+        if len == 0 {
+            return Ok(expected.is_empty());
+        }
+        if header.payload.is_empty() {
+            return Err(SexpError::MissingData {
+                sexptype: SEXPTYPE::CHARSXP,
+            });
+        }
+        let lease = header.payload_lease().ok_or(SexpError::MissingData {
+            sexptype: SEXPTYPE::CHARSXP,
+        })?;
+        if !expected
+            .iter()
+            .enumerate()
+            .all(|(index, byte)| lease.byte_elt(index) == Some(*byte))
+        {
+            return Ok(false);
+        }
+        Ok(expected.len() == len || lease.byte_elt(expected.len()) == Some(0))
+    }
+
     #[allow(clippy::wrong_self_convention)]
     /// # Safety
     /// Retain this handle and exclude all mutation of the borrowed payload

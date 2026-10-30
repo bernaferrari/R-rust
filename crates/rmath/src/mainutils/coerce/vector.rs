@@ -1103,7 +1103,14 @@ pub unsafe fn ascommon(call: SEXP, u: SEXP, type_: c_int) -> SEXP {
             return v;
         }
 
-        errorcall(call, "cannot coerce type to vector of type");
+        let source_name =
+            CStr::from_ptr(type2char(TYPEOF(u))).to_string_lossy();
+        let target_name =
+            CStr::from_ptr(type2char(type_)).to_string_lossy();
+        errorcall(
+            call,
+            &format!("cannot coerce type '{source_name}' to vector of type '{target_name}'"),
+        );
     }
 }
 

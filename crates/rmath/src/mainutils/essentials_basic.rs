@@ -1972,31 +1972,79 @@ pub unsafe fn do_pairlist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 /// R's `as.vector(x, mode)` — GNU coerce.c `do_asvector`.
 pub unsafe fn do_as_vector(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
+        let owner = crate::sexp::owner::OwnerToken::current()
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        let _pin = owner
+            .pin()
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        let factory = owner.node_factory();
+        let args_root = factory
+            .wrap(args)
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
         if let Some(ans) = dispatch_as(call, op, args, rho, b"as.vector\0") {
+            owner
+                .require_active()
+                .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
             return ans;
         }
-        let x = CAR(args);
-        if x.is_null() {
-            return R_NilValue();
-        }
-
-        let mode = vector_mode_arg(args);
-        match mode.as_deref() {
-            None | Some("any") => duplicate_without_attributes(x),
-            Some("numeric") | Some("double") => coerce_to_type(args, SEXPTYPE::REALSXP.as_c_int()),
-            Some("integer") => coerce_to_type(args, SEXPTYPE::INTSXP.as_c_int()),
-            Some("logical") => coerce_to_type(args, SEXPTYPE::LGLSXP.as_c_int()),
-            Some("character") => coerce_to_type(args, SEXPTYPE::STRSXP.as_c_int()),
-            Some("complex") => coerce_to_type(args, SEXPTYPE::CPLXSXP.as_c_int()),
-            Some("raw") => coerce_to_type(args, SEXPTYPE::RAWSXP.as_c_int()),
-            Some("list") => do_as_list(call, op, args, rho),
-            Some("expression") => {
-                crate::mainutils::coerce::coerceVector(x, SEXPTYPE::EXPRSXP.as_c_int())
+        owner
+            .require_active()
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        let source = args_root
+            .clone()
+            .try_pairlist_arg(0)
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        let mode_value = args_root
+            .clone()
+            .try_pairlist_arg(1)
+            .unwrap_or_else(|_| crate::sexp::context::r_error("invalid 'mode' argument"));
+        let check = |chars: &crate::sexp::object::Sexp<'_>| {
+            owner
+                .require_active()
+                .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+            factory
+                .link(chars)
+                .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+            let current_source = args_root
+                .clone()
+                .try_pairlist_arg(0)
+                .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+            let current_mode = args_root
+                .clone()
+                .try_pairlist_arg(1)
+                .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+            if current_source != source || current_mode != mode_value {
+                crate::sexp::context::r_error("arguments changed during mode evaluation");
             }
-            Some("pairlist") => do_as_pairlist(call, op, args, rho),
-            Some("symbol") | Some("name") => do_as_symbol(call, op, args, rho),
-            _ => duplicate_without_attributes(x),
-        }
+        };
+        let mode = crate::mainutils::coerce::parse_as_vector_mode(&mode_value, check)
+            .unwrap_or_else(|message| crate::sexp::context::r_error(message));
+        let x = source.as_raw();
+        let result = match mode {
+            "any" => {
+                if source.typeof_().is_atomic_type() {
+                    duplicate_without_attributes(x)
+                } else {
+                    crate::mainutils::coerce::ascommon(call, x, SEXPTYPE::ANYSXP.as_c_int())
+                }
+            }
+            "numeric" | "double" => coerce_to_type(args, SEXPTYPE::REALSXP.as_c_int()),
+            "integer" => coerce_to_type(args, SEXPTYPE::INTSXP.as_c_int()),
+            "logical" => coerce_to_type(args, SEXPTYPE::LGLSXP.as_c_int()),
+            "character" => coerce_to_type(args, SEXPTYPE::STRSXP.as_c_int()),
+            "complex" => coerce_to_type(args, SEXPTYPE::CPLXSXP.as_c_int()),
+            "raw" => coerce_to_type(args, SEXPTYPE::RAWSXP.as_c_int()),
+            "list" => do_as_list(call, op, args, rho),
+            "expression" => crate::mainutils::coerce::coerceVector(x, SEXPTYPE::EXPRSXP.as_c_int()),
+            "pairlist" => do_as_pairlist(call, op, args, rho),
+            "symbol" | "name" => do_as_symbol(call, op, args, rho),
+            "function" => crate::mainutils::coerce::ascommon(call, x, SEXPTYPE::CLOSXP.as_c_int()),
+            _ => unreachable!("validated vector mode"),
+        };
+        owner
+            .require_active()
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        result
     }
 }
 
@@ -2065,16 +2113,6 @@ unsafe fn duplicate_without_attributes(x: SEXP) -> SEXP {
         }
 
         result
-    }
-}
-
-fn vector_mode_arg(args: SEXP) -> Option<String> {
-    unsafe {
-        let mode = CAR(CDR(args));
-        if mode.is_null() || mode == R_NilValue() || XLENGTH(mode) == 0 {
-            return None;
-        }
-        Some(crate::mainutils::essentials::elt_to_string(mode, 0))
     }
 }
 

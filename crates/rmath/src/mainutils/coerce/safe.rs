@@ -226,6 +226,52 @@ pub fn as_atomic_safe(x: Sexp<'_>, op: i32) -> Result<SEXP, String> {
     }
 }
 
+pub(crate) fn parse_as_vector_mode(
+    mode: &crate::sexp::object::Sexp<'_>,
+    check: impl Fn(&Sexp<'_>),
+) -> Result<&'static str, String> {
+    if mode.typeof_() != SEXPTYPE::STRSXP || mode.len() != 1 {
+        return Err("invalid 'mode' argument".into());
+    }
+    let first = mode
+        .try_string_elt(0)
+        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+    check(&first);
+    if first
+        .try_char_cstr_eq(b"function")
+        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
+    {
+        return Ok("function");
+    }
+    let second = mode
+        .try_string_elt(0)
+        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+    check(&second);
+    for name in [
+        "any",
+        "logical",
+        "integer",
+        "numeric",
+        "double",
+        "complex",
+        "character",
+        "raw",
+        "list",
+        "expression",
+        "pairlist",
+        "symbol",
+        "name",
+    ] {
+        if second
+            .try_char_cstr_eq(name.as_bytes())
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
+        {
+            return Ok(name);
+        }
+    }
+    Err("invalid 'mode' argument".into())
+}
+
 /// Safe version of `do_asvector` using `Sexp<'a>`.
 ///
 /// Coerces to a vector of the specified mode, stripping attributes for
@@ -237,44 +283,42 @@ pub fn as_vector_safe<'a>(x: Sexp<'a>, mode_str: Sexp<'a>) -> Result<SEXP, Strin
         .factory
         .wrap(mode_str.as_raw())
         .map_err(|error| error.to_string())?;
-    if mode_str.clone().typeof_() != SEXPTYPE::STRSXP || mode_str.clone().len() != 1 {
-        return Err("invalid 'mode' argument".to_string());
-    }
-    let mode_chars = mode_str
-        .try_string_elt(0)
-        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-    entry.check();
-    entry
-        .admit(&mode_chars)
-        .unwrap_or_else(|message| crate::sexp::context::r_error(message));
-    // Borrow only for a pure fixed-literal match; end the payload borrow
-    // before any runtime check/call. UTF-8 and C-string termination match the
-    // previous parser without copying arbitrary-length text to a host String.
-    let parsed: Option<c_int> = unsafe {
-        let pointer = CHAR(mode_chars.as_raw());
-        if pointer.is_null() {
-            return Err("invalid 'mode' argument".to_string());
-        }
-        let name = CStr::from_ptr(pointer).to_str().unwrap_or("");
-        match name {
-            "logical" => Some(SEXPTYPE::LGLSXP.into()),
-            "integer" => Some(SEXPTYPE::INTSXP.into()),
-            "double" | "numeric" => Some(SEXPTYPE::REALSXP.into()),
-            "complex" => Some(SEXPTYPE::CPLXSXP.into()),
-            "character" => Some(SEXPTYPE::STRSXP.into()),
-            "raw" => Some(SEXPTYPE::RAWSXP.into()),
-            "list" => Some(SEXPTYPE::VECSXP.into()),
-            "expression" => Some(SEXPTYPE::EXPRSXP.into()),
-            "pairlist" => Some(SEXPTYPE::LISTSXP.into()),
-            "symbol" | "name" => Some(SEXPTYPE::SYMSXP.into()),
-            "function" => Some(SEXPTYPE::CLOSXP.into()),
-            "any" => None,
-            _ => return Err("invalid 'mode' argument".to_string()),
-        }
+    let mode = parse_as_vector_mode(&mode_str, |chars| {
+        entry.check();
+        entry
+            .admit(chars)
+            .unwrap_or_else(|message| crate::sexp::context::r_error(message));
+    })?;
+    let parsed: Option<c_int> = match mode {
+        "logical" => Some(SEXPTYPE::LGLSXP.into()),
+        "integer" => Some(SEXPTYPE::INTSXP.into()),
+        "double" | "numeric" => Some(SEXPTYPE::REALSXP.into()),
+        "complex" => Some(SEXPTYPE::CPLXSXP.into()),
+        "character" => Some(SEXPTYPE::STRSXP.into()),
+        "raw" => Some(SEXPTYPE::RAWSXP.into()),
+        "list" => Some(SEXPTYPE::VECSXP.into()),
+        "expression" => Some(SEXPTYPE::EXPRSXP.into()),
+        "pairlist" => Some(SEXPTYPE::LISTSXP.into()),
+        "symbol" | "name" => Some(SEXPTYPE::SYMSXP.into()),
+        "function" => Some(SEXPTYPE::CLOSXP.into()),
+        "any" => None,
+        _ => unreachable!("validated vector mode"),
     };
     entry.check();
     let Some(type_) = parsed else {
-        return Ok(entry.source.as_raw());
+        let kind = entry.source.typeof_();
+        if kind.is_atomic_type() {
+            return same_type_atomic(kind, &entry);
+        }
+        let result = unsafe {
+            ascommon(
+                ptr::null_mut(),
+                entry.source.as_raw(),
+                SEXPTYPE::ANYSXP.as_c_int(),
+            )
+        };
+        entry.check();
+        return Ok(result);
     };
 
     let x_raw = entry.source.as_raw();

@@ -851,3 +851,187 @@ fn compatibility_mode_callback_revocation_stops_before_raw_character_reads() {
         assert!(error.is::<crate::sexp::context::RError>());
     }
 }
+
+#[test]
+fn public_as_vector_altrep_mode_reads_match_pinned_gnu() {
+    struct Mode(Rc<Cell<usize>>);
+    impl AltrepClass for Mode {
+        fn vector_type(&self) -> SEXPTYPE {
+            SEXPTYPE::STRSXP
+        }
+        fn length(&self, _: &AltrepContext<'_>) -> SexpResult<i64> {
+            Ok(1)
+        }
+        fn element<'s>(&self, c: &AltrepContext<'s>, _: i64) -> SexpResult<AltrepElement<'s>> {
+            let read = self.0.get() + 1;
+            self.0.set(read);
+            c.gc()?;
+            Ok(AltrepElement::String(c.string(if read == 1 {
+                "integer"
+            } else {
+                "double"
+            })?))
+        }
+    }
+    let mut session = RSession::new_for_gc_tests();
+    let reads = Rc::new(Cell::new(0));
+    let class = session
+        .register_altrep_class("public-mode-count", Mode(reads.clone()))
+        .unwrap();
+    let mode_value = AltrepBuilder::new(class)
+        .build()
+        .unwrap()
+        .into_owned()
+        .unwrap();
+    assert!(session.define_var("rport_test_mode", mode_value));
+    let (result, _, _) =
+        session.eval_code_with_output_capture("as.vector(c(1L, NA_integer_, 3L), rport_test_mode)");
+    let result = result.unwrap();
+    assert_eq!(result.typeof_(), SEXPTYPE::REALSXP);
+    assert_eq!(result.len(), 3);
+    assert_eq!(result.try_real_elt(0).unwrap(), 1.0);
+    assert!(crate::sexp::ffi::is_na_real(
+        result.try_real_elt(1).unwrap()
+    ));
+    assert_eq!(result.try_real_elt(2).unwrap(), 3.0);
+    assert_eq!(
+        reads.get(),
+        2,
+        "pinned GNU R evaluates the mode element twice"
+    );
+}
+
+#[test]
+fn public_as_vector_mode_short_circuit_errors_and_revocation() {
+    struct Mode {
+        reads: Rc<Cell<usize>>,
+        scenario: u8,
+        owner: *mut crate::sexp::instance::RInstance,
+    }
+    impl AltrepClass for Mode {
+        fn vector_type(&self) -> SEXPTYPE {
+            SEXPTYPE::STRSXP
+        }
+        fn length(&self, _: &AltrepContext<'_>) -> SexpResult<i64> {
+            Ok(1)
+        }
+        fn element<'s>(&self, c: &AltrepContext<'s>, _: i64) -> SexpResult<AltrepElement<'s>> {
+            let n = self.reads.get() + 1;
+            self.reads.set(n);
+            c.gc()?;
+            if self.scenario == 2 && n == 2 {
+                return Err(SexpError::Altrep {
+                    reason: "second mode failure",
+                });
+            }
+            if self.scenario == 3 && n == 2 {
+                unsafe {
+                    crate::sexp::instance::revoke_instance_availability(self.owner);
+                }
+            }
+            Ok(AltrepElement::String(c.string(if self.scenario == 1 {
+                "function"
+            } else if self.scenario == 4 && n == 2 {
+                "function"
+            } else {
+                "integer"
+            })?))
+        }
+    }
+    for scenario in 1..=4 {
+        let mut session = RSession::new_for_gc_tests();
+        let reads = Rc::new(Cell::new(0));
+        let pointer = session.owner_token().unwrap().as_ptr();
+        let class = session
+            .register_altrep_class(
+                "public-mode-edge",
+                Mode {
+                    reads: reads.clone(),
+                    scenario,
+                    owner: pointer,
+                },
+            )
+            .unwrap();
+        let mode = AltrepBuilder::new(class)
+            .build()
+            .unwrap()
+            .into_owned()
+            .unwrap();
+        assert!(session.define_var("rport_mode_edge", mode));
+        let (result, _, _) =
+            session.eval_code_with_output_capture("as.vector(1L, rport_mode_edge)");
+        if scenario == 1 {
+            assert_eq!(result.unwrap().typeof_(), SEXPTYPE::CLOSXP);
+            assert_eq!(reads.get(), 1);
+        } else {
+            let error = result.unwrap_err().to_string();
+            assert_eq!(reads.get(), 2);
+            if scenario == 2 {
+                assert!(error.contains("second mode failure"), "{error}");
+            }
+            if scenario == 4 {
+                assert!(error.contains("invalid 'mode' argument"), "{error}");
+            }
+        }
+    }
+}
+
+#[test]
+fn compatibility_as_vector_uses_second_stateful_mode() {
+    struct Mode(Rc<Cell<usize>>);
+    impl AltrepClass for Mode {
+        fn vector_type(&self) -> SEXPTYPE {
+            SEXPTYPE::STRSXP
+        }
+        fn length(&self, _: &AltrepContext<'_>) -> SexpResult<i64> {
+            Ok(1)
+        }
+        fn element<'s>(&self, c: &AltrepContext<'s>, _: i64) -> SexpResult<AltrepElement<'s>> {
+            let n = self.0.get() + 1;
+            self.0.set(n);
+            c.gc()?;
+            Ok(AltrepElement::String(c.string(if n == 1 {
+                "integer"
+            } else {
+                "double"
+            })?))
+        }
+    }
+    let session = RSession::new_for_gc_tests();
+    let factory = session.owner_token().unwrap().node_factory();
+    let source = factory.wrap(unsafe { Rf_ScalarInteger(7) }).unwrap();
+    let reads = Rc::new(Cell::new(0));
+    let class = session
+        .register_altrep_class("compat-as-vector-stateful", Mode(reads.clone()))
+        .unwrap();
+    let mode = AltrepBuilder::new(class).build().unwrap();
+    let result = factory.wrap(as_vector_safe(source, mode).unwrap()).unwrap();
+    assert_eq!(reads.get(), 2);
+    assert_eq!(result.typeof_(), SEXPTYPE::REALSXP);
+    assert_eq!(result.try_real_elt(0).unwrap(), 7.0);
+}
+
+#[test]
+fn compatibility_as_vector_any_preserves_list_and_strips_atomic_attributes() {
+    let session = RSession::new_for_gc_tests();
+    let factory = session.owner_token().unwrap().node_factory();
+    let any = factory
+        .wrap(unsafe { Rf_mkString(c"any".as_ptr()) })
+        .unwrap();
+    let atomic = factory.wrap(unsafe { Rf_ScalarInteger(7) }).unwrap();
+    let list = factory
+        .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::VECSXP, 1)))
+        .unwrap();
+    decorate(&atomic);
+    decorate(&list);
+    let atomic_result = factory
+        .wrap(as_vector_safe(atomic.clone(), any.clone()).unwrap())
+        .unwrap();
+    assert!(atomic_result.try_attrib().unwrap().is_nil());
+    assert!(!atomic.try_attrib().unwrap().is_nil());
+    let list_result = factory
+        .wrap(as_vector_safe(list.clone(), any).unwrap())
+        .unwrap();
+    assert_eq!(list_result, list);
+    assert!(!list_result.try_attrib().unwrap().is_nil());
+}
