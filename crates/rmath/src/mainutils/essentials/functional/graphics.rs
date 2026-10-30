@@ -409,45 +409,21 @@ pub(super) unsafe fn record_plot_window(args: SEXP) {
                         .into_owned()
                 }
             };
-        LOG_X.store(log.contains('x'), std::sync::atomic::Ordering::Relaxed);
-        LOG_Y.store(log.contains('y'), std::sync::atomic::Ordering::Relaxed);
-        if LOG_X.load(std::sync::atomic::Ordering::Relaxed) {
+        let log_x = log.contains('x');
+        let log_y = log.contains('y');
+        if log_x {
             xv = xv
                 .into_iter()
                 .filter(|v| *v > 0.0)
                 .map(|v| v.log10())
                 .collect();
-            let lo = xv
-                .iter()
-                .copied()
-                .filter(|v| v.is_finite())
-                .fold(f64::INFINITY, f64::min);
-            let hi = xv
-                .iter()
-                .copied()
-                .filter(|v| v.is_finite())
-                .fold(f64::NEG_INFINITY, f64::max);
-            LOG_X_LO.store(lo.floor() as i32, std::sync::atomic::Ordering::Relaxed);
-            LOG_X_HI.store(hi.floor() as i32, std::sync::atomic::Ordering::Relaxed);
         }
-        if LOG_Y.load(std::sync::atomic::Ordering::Relaxed) {
+        if log_y {
             yv = yv
                 .into_iter()
                 .filter(|v| *v > 0.0)
                 .map(|v| v.log10())
                 .collect();
-            let lo = yv
-                .iter()
-                .copied()
-                .filter(|v| v.is_finite())
-                .fold(f64::INFINITY, f64::min);
-            let hi = yv
-                .iter()
-                .copied()
-                .filter(|v| v.is_finite())
-                .fold(f64::NEG_INFINITY, f64::max);
-            LOG_Y_LO.store(lo.floor() as i32, std::sync::atomic::Ordering::Relaxed);
-            LOG_Y_HI.store(hi.floor() as i32, std::sync::atomic::Ordering::Relaxed);
         }
         let xaxs_i = matches!(crate::library::graphics::par::parameter("xaxs"), crate::library::graphics::par::ParValue::String(s) if s == "i");
         let yaxs_i = matches!(crate::library::graphics::par::parameter("yaxs"), crate::library::graphics::par::ParValue::String(s) if s == "i");
@@ -518,12 +494,12 @@ pub(super) unsafe fn record_plot_window(args: SEXP) {
         let (mut x0, mut x1) = apply_limit(
             (x0, x1),
             "xlim",
-            LOG_X.load(std::sync::atomic::Ordering::Relaxed),
+            log_x,
         );
         let (mut y0, mut y1) = apply_limit(
             (y0, y1),
             "ylim",
-            LOG_Y.load(std::sync::atomic::Ordering::Relaxed),
+            log_y,
         );
         let clamp_plot_log = |v: &mut f64| {
             if *v == f64::INFINITY || *v >= 308.25035 {
@@ -532,11 +508,11 @@ pub(super) unsafe fn record_plot_window(args: SEXP) {
                 *v = (1.01 * f64::MIN_POSITIVE).log10();
             }
         };
-        if LOG_X.load(std::sync::atomic::Ordering::Relaxed) {
+        if log_x {
             clamp_plot_log(&mut x0);
             clamp_plot_log(&mut x1);
         }
-        if LOG_Y.load(std::sync::atomic::Ordering::Relaxed) {
+        if log_y {
             clamp_plot_log(&mut y0);
             clamp_plot_log(&mut y1);
         }
@@ -546,7 +522,7 @@ pub(super) unsafe fn record_plot_window(args: SEXP) {
         set_plot_parameter("usr", ParValue::Real(vec![x0, x1, y0, y1]));
         set_plot_parameter(
             "xlog",
-            ParValue::Logical(vec![if LOG_X.load(std::sync::atomic::Ordering::Relaxed) {
+            ParValue::Logical(vec![if log_x {
                 1
             } else {
                 0
@@ -554,13 +530,13 @@ pub(super) unsafe fn record_plot_window(args: SEXP) {
         );
         set_plot_parameter(
             "ylog",
-            ParValue::Logical(vec![if LOG_Y.load(std::sync::atomic::Ordering::Relaxed) {
+            ParValue::Logical(vec![if log_y {
                 1
             } else {
                 0
             }]),
         );
-        if LOG_X.load(std::sync::atomic::Ordering::Relaxed) {
+        if log_x {
             let (a, b) = if x0 <= x1 { (x0, x1) } else { (x1, x0) };
             let lo = a.ceil().clamp(-307.0, 308.0);
             let hi = b.floor().clamp(lo, 308.0);
@@ -580,7 +556,7 @@ pub(super) unsafe fn record_plot_window(args: SEXP) {
         } else {
             set_plot_parameter("xaxp", ParValue::Real(vec![xa0, xa1, xn]));
         }
-        if LOG_Y.load(std::sync::atomic::Ordering::Relaxed) {
+        if log_y {
             let (a, b) = if y0 <= y1 { (y0, y1) } else { (y1, y0) };
             let lo = a.ceil().clamp(-307.0, 308.0);
             let hi = b.floor().clamp(lo, 308.0);
@@ -602,18 +578,6 @@ pub(super) unsafe fn record_plot_window(args: SEXP) {
         }
     }
 }
-
-pub(super) static LOG_X: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-
-pub(super) static LOG_X_LO: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(0);
-
-pub(super) static LOG_X_HI: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(0);
-
-pub(super) static LOG_Y_LO: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(0);
-
-pub(super) static LOG_Y_HI: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(0);
-
-pub(super) static LOG_Y: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 #[cfg(not(feature = "renderplot-device"))]
 pub(super) fn numeric_plot_values(x: SEXP) -> Vec<f64> {
@@ -1015,3 +979,25 @@ macro_rules! graphics_generics {
     )*};
 }
 graphics_generics! {do_lines=>"lines",do_points=>"points",do_text=>"text"}
+
+#[cfg(all(test, not(feature = "renderplot-device")))]
+mod log_axis_isolation_tests {
+    use crate::sexp::session::RSession;
+
+    fn run(session: &mut RSession, log: &str) -> String {
+        let code = format!("invisible(plot(1:10, log='{log}')); cat(par('xlog'), par('ylog'), '\\n')");
+        let (result, output, _) = session.eval_script_with_output_capture(&code);
+        assert!(result.is_ok(), "plot failed: {output:?}");
+        output.stdout
+    }
+
+    #[test]
+    fn log_axis_choices_are_local_to_each_plot_and_session() {
+        let mut left = RSession::new_for_gc_tests();
+        let mut right = RSession::new_for_gc_tests();
+        assert_eq!(run(&mut left, "x"), "TRUE FALSE \n");
+        assert_eq!(run(&mut right, "y"), "FALSE TRUE \n");
+        assert_eq!(run(&mut left, ""), "FALSE FALSE \n");
+        assert_eq!(run(&mut right, "xy"), "TRUE TRUE \n");
+    }
+}
