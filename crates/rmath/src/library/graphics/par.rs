@@ -127,6 +127,36 @@ pub(crate) struct GraphicsParState {
     pending_mfg_before_first_plot: bool,
     base_register_index: Option<c_int>,
     device_gpars: HashMap<usize, DeviceGParEntry>,
+    active_device: Option<c_int>,
+    device_parameters: HashMap<c_int, DeviceParameters>,
+}
+
+#[derive(Default)]
+struct DeviceParameters {
+    overrides: BTreeMap<String, ParValue>,
+    layout: LayoutState,
+    pending_mfg_before_first_plot: bool,
+}
+
+impl GraphicsParState {
+    fn select_device(&mut self, device: c_int) {
+        if self.active_device == Some(device) {
+            return;
+        }
+        let old = DeviceParameters {
+            overrides: std::mem::take(&mut self.overrides),
+            layout: std::mem::take(&mut self.layout),
+            pending_mfg_before_first_plot: std::mem::take(&mut self.pending_mfg_before_first_plot),
+        };
+        if let Some(previous) = self.active_device {
+            self.device_parameters.insert(previous, old);
+        }
+        let next = self.device_parameters.remove(&device).unwrap_or_default();
+        self.overrides = next.overrides;
+        self.layout = next.layout;
+        self.pending_mfg_before_first_plot = next.pending_mfg_before_first_plot;
+        self.active_device = Some(device);
+    }
 }
 
 fn default_gpar() -> GPar {
@@ -1032,9 +1062,59 @@ fn apply_parameter(
 }
 
 fn with_par_state<T>(f: impl FnOnce(&mut GraphicsParState) -> T) -> T {
+    // Capture the device without opening one or holding a registry borrow while
+    // accessing parameters. Device labels are unique within the owning session.
+    let device = crate::library::grdevices::device_registry::current_device_label();
     crate::sexp::instance::with_required_current_instance(|instance| unsafe {
-        f(&mut (*instance).graphics_par_state)
+        let state = &mut (*instance).graphics_par_state;
+        state.select_device(device);
+        f(state)
     })
+}
+
+/// Drop closed-device state before its descriptor can be reused. A headless
+/// render can retain its final parameters on the null device for host queries.
+pub(crate) fn forget_device_parameters(device: c_int, descriptor: usize, retain_on_null: bool) {
+    crate::sexp::instance::with_required_current_instance(|instance| unsafe {
+        let state = &mut (*instance).graphics_par_state;
+        let removed = if state.active_device == Some(device) {
+            state.active_device = None;
+            Some(DeviceParameters {
+                overrides: std::mem::take(&mut state.overrides),
+                layout: std::mem::take(&mut state.layout),
+                pending_mfg_before_first_plot: std::mem::take(
+                    &mut state.pending_mfg_before_first_plot,
+                ),
+            })
+        } else {
+            state.device_parameters.remove(&device)
+        };
+        state.device_gpars.remove(&descriptor);
+        if retain_on_null {
+            if let Some(parameters) = removed {
+                if state.active_device == Some(1) {
+                    state.overrides = parameters.overrides;
+                    state.layout = parameters.layout;
+                    state.pending_mfg_before_first_plot = parameters.pending_mfg_before_first_plot;
+                } else {
+                    state.device_parameters.insert(1, parameters);
+                }
+            }
+        }
+    });
+}
+
+/// Reset registry-owned parameter state when test code recreates the registry.
+pub(crate) fn reset_device_parameters() {
+    crate::sexp::instance::with_required_current_instance(|instance| unsafe {
+        let state = &mut (*instance).graphics_par_state;
+        state.overrides.clear();
+        state.layout = LayoutState::default();
+        state.pending_mfg_before_first_plot = false;
+        state.active_device = None;
+        state.device_parameters.clear();
+        state.device_gpars.clear();
+    });
 }
 
 /// A staged `plot.new` layout transition. The candidate is committed only

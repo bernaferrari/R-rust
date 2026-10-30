@@ -1027,17 +1027,22 @@ mod log_axis_isolation_tests {
     }
 
     #[test]
-    #[ignore = "rport-p476x: plot parameters still follow the session instead of the device"]
     fn switching_devices_restores_each_axis_choice() {
         let mut session = RSession::new();
         let (result, output, _) = session.eval_script_with_output_capture(
-            "invisible(pdf(NULL)); d1 <- dev.cur(); invisible(plot(1:10, log='x')); \
-             invisible(pdf(NULL)); d2 <- dev.cur(); invisible(plot(1:10, log='y')); \
-             invisible(dev.set(d1)); cat(par('xlog'), par('ylog'), '\\n'); \
-             invisible(dev.set(d2)); cat(par('xlog'), par('ylog'), '\\n')",
+            "invisible(pdf(NULL)); d1 <- dev.cur(); par(col='red', mar=c(1,2,3,4)); invisible(plot(1:10, log='x')); \
+             invisible(pdf(NULL)); d2 <- dev.cur(); par(col='blue', mar=c(4,3,2,1)); invisible(plot(1:10, log='y')); \
+             invisible(dev.set(d1)); cat(par('xlog'), par('ylog'), par('col'), paste(par('mar'), collapse=','), '\\n'); \
+             invisible(dev.set(d2)); cat(par('xlog'), par('ylog'), par('col'), paste(par('mar'), collapse=','), '\\n'); \
+             invisible(dev.off()); invisible(pdf(NULL)); \
+             cat(par('xlog'), par('ylog'), par('col'), paste(par('mar'), collapse=','), '\\n')",
         );
         result.expect("device switching script should evaluate");
-        assert_eq!(output.stdout, "TRUE FALSE \nFALSE TRUE \n");
+        assert_eq!(output.stdout, concat!(
+            "TRUE FALSE red 1,2,3,4 \n",
+            "FALSE TRUE blue 4,3,2,1 \n",
+            "FALSE FALSE black 5.1,4.1,4.1,2.1 \n",
+        ));
     }
 
     #[test]

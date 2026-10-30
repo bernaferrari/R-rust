@@ -309,6 +309,11 @@ impl Default for DeviceRegistry {
     }
 }
 
+/// Current label without opening the default device or invoking callbacks.
+pub(crate) fn current_device_label() -> c_int {
+    with_registry(|registry| registry.current_external())
+}
+
 fn with_registry<R>(f: impl FnOnce(&mut DeviceRegistry) -> R) -> R {
     with_required_current_instance(|instance| {
         f(unsafe { &mut (*instance).graphics_device_registry })
@@ -366,6 +371,7 @@ pub(crate) fn page_question(ask: Option<bool>) -> bool {
 
 pub(crate) fn reset_registry_for_tests() {
     with_registry(|registry| registry.reset());
+    crate::library::graphics::par::reset_device_parameters();
 }
 
 pub(crate) fn is_registered_device(gdd: pGEDevDesc) -> bool {
@@ -1154,7 +1160,17 @@ pub unsafe extern "C" fn selectDevice(dev: c_int) -> c_int {
 }
 
 pub unsafe extern "C" fn killDevice(dev: c_int) {
-    let _ = with_registry(|registry| registry.kill_external(dev + 1));
+    let label = dev + 1;
+    let removed = with_registry(|registry| {
+        let position = registry.position_of(label)?;
+        let descriptor = registry.devices[position].as_ref() as *const GEDeviceDesc as usize;
+        registry.kill_external(label);
+        Some((descriptor, registry.no_devices()))
+    });
+    if let Some((descriptor, no_devices)) = removed {
+        let retain_on_null = no_devices && renderplot_scene_is_device();
+        crate::library::graphics::par::forget_device_parameters(label, descriptor, retain_on_null);
+    }
 }
 
 pub unsafe extern "C" fn NoDevices() -> c_int {
