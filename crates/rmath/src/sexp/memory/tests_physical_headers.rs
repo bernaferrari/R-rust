@@ -36,11 +36,32 @@ fn physical_header_prepaid_slots_leave_small_budget_for_later_payloads() {
     assert!(!arena.alloc_charsxp(b"literal").is_null());
     let headers = header_backing_bytes(&arena);
     let before = arena.total_bytes_allocated();
-    assert!(!arena.alloc_vector(SEXPTYPE::STRSXP, 1).is_null());
+    let first = arena.alloc_vector(SEXPTYPE::STRSXP, 1);
+    assert!(!first.is_null());
     assert_eq!(header_backing_bytes(&arena), headers);
+    // The first character vector lazily installs its retained empty-string
+    // value as well as allocating the vector's own reference payload.
+    let blank_pointer = arena.blank_string;
+    let blank = arena.node_token(blank_pointer).unwrap();
+    let blank_payload = arena.heap_identity().payload_lease(&blank).unwrap();
+    assert_eq!(blank_payload.byte_elt(0), Some(0));
+    let first_node = arena.node_token(first).unwrap();
+    let first_payload = arena.heap_identity().payload_lease(&first_node).unwrap();
     assert_eq!(
         arena.total_bytes_allocated(),
-        before + std::mem::size_of::<NodeLink>()
+        before + blank_payload.storage_bytes() + first_payload.storage_bytes()
+    );
+    assert_eq!(
+        first_payload.storage_bytes(),
+        std::mem::size_of::<NodeLink>()
+    );
+    let before_second = arena.total_bytes_allocated();
+    let second = arena.alloc_vector(SEXPTYPE::STRSXP, 1);
+    assert!(!second.is_null());
+    assert_eq!(arena.blank_string, blank_pointer);
+    assert_eq!(
+        arena.total_bytes_allocated(),
+        before_second + first_payload.storage_bytes()
     );
     assert!(arena.total_bytes_allocated() <= 8192);
 }
