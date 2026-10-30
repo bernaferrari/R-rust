@@ -66,6 +66,44 @@ impl<'session> NodeDomain<'session> {
         self.heap.same_domain(heap)
     }
 
+    /// Test copied, non-ALTREP vector lengths only after both live allocations
+    /// are known to belong to this domain. This callback-free check takes no
+    /// roots and is valid only within an already pinned, active runtime scope.
+    pub(crate) fn has_equal_plain_character_input(&self, target: SEXP, input: SEXP) -> bool {
+        if !self.availability.is_live() {
+            return false;
+        }
+        let Some((target_projection, target_node)) =
+            crate::sexp::memory::checked_projection(target)
+        else {
+            return false;
+        };
+        let Some((input_projection, input_node)) = crate::sexp::memory::checked_projection(input)
+        else {
+            return false;
+        };
+        if !target_node.belongs_to(&self.heap) || !input_node.belongs_to(&self.heap) {
+            return false;
+        }
+        let Some(target) = crate::sexp::memory::checked_snapshot(target_projection, &target_node)
+        else {
+            return false;
+        };
+        let Some(input) = crate::sexp::memory::checked_snapshot(input_projection, &input_node)
+        else {
+            return false;
+        };
+        if target.sxpinfo.alt()
+            || input.sxpinfo.alt()
+            || input.sxpinfo.type_of() != crate::sexp::ffi::SEXPTYPE::STRSXP
+        {
+            return false;
+        }
+        matches!((target.data, input.data),
+            (crate::sexp::ffi::NodeBody::Vector(target), crate::sexp::ffi::NodeBody::Vector(input))
+                if target.length == input.length)
+    }
+
     pub(crate) fn link(&self, value: &Sexp<'_>) -> SexpResult<crate::sexp::heap::NodeLink> {
         value.link_in(&self.heap)
     }

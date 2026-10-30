@@ -147,6 +147,17 @@ pub(super) fn install(
     name: &Value,
     value: &Value,
 ) -> Result<()> {
+    install_checked(access, object, name, value, || Ok(()))
+}
+
+/// Validate again after allocating the cell, since collection can reenter R.
+pub(super) fn install_checked(
+    access: &RuntimeAccess,
+    object: &Value,
+    name: &Value,
+    value: &Value,
+    validate: impl FnOnce() -> Result<()>,
+) -> Result<()> {
     let domain = access.domain();
     checked(domain.link(object))?;
     checked(domain.link(name))?;
@@ -155,12 +166,19 @@ pub(super) fn install(
     let added = if value.is_nil() {
         None
     } else {
-        Some(checked(allocator.pairlist_cell(
-            value,
-            &domain.nil(),
-            name,
-        ))?)
+        Some(
+            allocator
+                .pairlist_cell(value, &domain.nil(), name)
+                .map_err(|error| match error {
+                    super::object::SexpError::AllocationFailed { .. } => {
+                        "R allocation failed: memory or node budget exceeded".to_owned()
+                    }
+                    other => other.to_string(),
+                })?,
+        )
     };
+    checked(access.require_active())?;
+    validate()?;
     checked(access.require_active())?;
     let mut previous = None;
     let mut cell = checked(checked(object.try_attrib())?.into_owned())?;

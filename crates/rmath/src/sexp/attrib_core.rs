@@ -20,6 +20,10 @@ use super::globals::R_NilValue;
 use super::symbol::Rf_install;
 
 #[cfg(test)]
+#[path = "names_atomic_tests.rs"]
+mod names_atomic_tests;
+
+#[cfg(test)]
 #[path = "tsp_tests.rs"]
 mod tsp_tests;
 
@@ -233,6 +237,7 @@ pub unsafe fn installAttrib(vec: SEXP, name: SEXP, val: SEXP) {
 unsafe fn run_tsp<T>(
     x: SEXP,
     value: SEXP,
+    preflight: impl FnOnce(&super::object::Sexp<'static>, &super::object::Sexp<'static>) -> Option<T>,
     operation: impl FnOnce(
         &super::owner::RuntimeAccess,
         &super::object::Sexp<'static>,
@@ -251,14 +256,25 @@ unsafe fn run_tsp<T>(
         let _pin = original
             .pin()
             .unwrap_or_else(|error| fail(error.to_string()));
-        let object = token
-            .sexp(x)
+        // Both roots belong to the same original domain; capture that domain
+        // once instead of rebuilding a factory for each input.
+        let factory = token.node_factory();
+        let object = factory
+            .wrap(x)
             .and_then(super::object::Sexp::into_owned)
             .unwrap_or_else(|error| fail(error.to_string()));
-        let input = token
-            .sexp(value)
+        let input = factory
+            .wrap(value)
             .and_then(super::object::Sexp::into_owned)
             .unwrap_or_else(|error| fail(error.to_string()));
+        // This callback only inspects rooted headers: it cannot allocate or
+        // reenter R. Check authority before the fast-path decision.
+        authority
+            .require_active()
+            .unwrap_or_else(|error| fail(error.to_string()));
+        if let Some(result) = preflight(&object, &input) {
+            return result;
+        }
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             super::owner::with_runtime(&original, |access| operation(access, &object, &input))
                 .map_err(|error| error.to_string())?
@@ -270,6 +286,159 @@ unsafe fn run_tsp<T>(
             Ok(result) => result.unwrap_or_else(|error| fail(error)),
             Err(payload) => std::panic::resume_unwind(payload),
         }
+    }
+}
+
+/// Normalize ordinary, attribute-free atomic names in the original runtime.
+/// Classed values and arrays retain their distinct names assignment paths.
+pub(crate) unsafe fn try_set_atomic_names(x: SEXP, which: SEXP, value: SEXP) -> bool {
+    unsafe {
+        if which != R_NamesSymbol() || value.is_null() || value == R_NilValue() {
+            return false;
+        }
+        // Preserve the existing no-callback path for already-sized ordinary
+        // character vectors. ALTREP lengths require checked dispatch below.
+        let token = super::owner::OwnerToken::current()
+            .unwrap_or_else(|error| super::context::r_error(error.to_string()));
+        let pin = token
+            .pin()
+            .unwrap_or_else(|error| super::context::r_error(error.to_string()));
+        token
+            .require_active()
+            .unwrap_or_else(|error| super::context::r_error(error.to_string()));
+        if pin.is_some()
+            && token
+                .node_factory()
+                .domain()
+                .has_equal_plain_character_input(x, value)
+        {
+            return false;
+        }
+        run_tsp(
+            x,
+            value,
+            |_, _| None,
+            |access, object, input| {
+                if object.is_s4()
+                    || input.is_object()
+                    || input.is_s4()
+                    || !matches!(
+                        object.typeof_(),
+                        SEXPTYPE::LGLSXP
+                            | SEXPTYPE::INTSXP
+                            | SEXPTYPE::REALSXP
+                            | SEXPTYPE::CPLXSXP
+                            | SEXPTYPE::STRSXP
+                            | SEXPTYPE::RAWSXP
+                            | SEXPTYPE::VECSXP
+                            | SEXPTYPE::EXPRSXP
+                    )
+                    || !matches!(
+                        input.typeof_(),
+                        SEXPTYPE::LGLSXP
+                            | SEXPTYPE::INTSXP
+                            | SEXPTYPE::REALSXP
+                            | SEXPTYPE::CPLXSXP
+                            | SEXPTYPE::RAWSXP
+                            | SEXPTYPE::STRSXP
+                    )
+                {
+                    return Ok(false);
+                }
+                // Arrays have separate dimnames rules.
+                if !super::tsp::attribute(access, object, b"dim")?.is_nil() {
+                    return Ok(false);
+                }
+                let size = object.len();
+                access.require_active().map_err(|error| error.to_string())?;
+                let input_size = input.len();
+                access.require_active().map_err(|error| error.to_string())?;
+                // Resizing names that themselves carry attributes has
+                // distinct metadata rules. Exact-length coercion preserves
+                // those attributes through coerceToString.
+                if input_size < size && !input.try_attrib().map_err(|e| e.to_string())?.is_nil() {
+                    return Ok(false);
+                }
+                if input_size > size {
+                    return Err(format!(
+                        "'names' attribute [{input_size}] must be the same length as the vector [{size}]"
+                    ));
+                }
+                let (name, normalized) = access
+                    .with_native(|owner| {
+                        let name = owner.sexp(which)?.into_owned()?;
+                        let pointer = if input.typeof_() == SEXPTYPE::STRSXP {
+                            input.as_raw()
+                        } else {
+                            crate::mainutils::coerce::coerceToString(input.as_raw())
+                        };
+                        let normalized = owner.sexp(pointer)?.into_owned()?;
+                        Ok((name, normalized))
+                    })
+                    .map_err(|error| error.to_string())?;
+                access.require_active().map_err(|error| error.to_string())?;
+                let normalized = if input_size == size {
+                    normalized
+                } else {
+                    let domain = access.domain();
+                    let allocator = access.allocator(&domain).map_err(|e| e.to_string())?;
+                    let padded = allocator
+                        .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::STRSXP, size)))
+                        .map_err(|error| match error {
+                            super::object::SexpError::AllocationFailed { .. } => {
+                                "R allocation failed: memory or node budget exceeded".to_owned()
+                            }
+                            other => other.to_string(),
+                        })?;
+                    let mut padded = super::object::SexpMut::try_from_checked(padded)
+                        .map_err(|e| e.to_string())?;
+                    let missing = access
+                        .with_native(|owner| owner.sexp(super::globals::R_NaString())?.into_owned())
+                        .map_err(|e| e.to_string())?;
+                    for index in 0..size {
+                        let element = if index < input_size {
+                            let element = normalized
+                                .try_string_elt(index)
+                                .and_then(super::object::Sexp::into_owned)
+                                .map_err(|e| e.to_string())?;
+                            access.require_active().map_err(|e| e.to_string())?;
+                            element
+                        } else {
+                            missing.clone()
+                        };
+                        padded
+                            .try_set_string_elt(index, element)
+                            .map_err(|e| e.to_string())?;
+                    }
+                    padded.freeze()
+                };
+                access.require_active().map_err(|error| error.to_string())?;
+                let current_size = object.len();
+                access.require_active().map_err(|error| error.to_string())?;
+                if current_size != size {
+                    return Err(format!(
+                        "'names' attribute [{size}] must be the same length as the vector [{current_size}]"
+                    ));
+                }
+                if !super::tsp::attribute(access, object, b"dim")?.is_nil() {
+                    return Err("dimensions changed during names assignment".into());
+                }
+                super::tsp::install_checked(access, object, &name, &normalized, || {
+                    let current_size = object.len();
+                    access.require_active().map_err(|error| error.to_string())?;
+                    if current_size != size {
+                        return Err(format!(
+                            "'names' attribute [{size}] must be the same length as the vector [{current_size}]"
+                        ));
+                    }
+                    if !super::tsp::attribute(access, object, b"dim")?.is_nil() {
+                        return Err("dimensions changed during names assignment".into());
+                    }
+                    Ok(())
+                })?;
+                Ok(true)
+            },
+        )
     }
 }
 
@@ -293,7 +462,7 @@ fn tsp_parameters(
 
 #[cfg(test)]
 unsafe fn normalize_tsp(x: SEXP, value: SEXP) -> super::object::Sexp<'static> {
-    unsafe { run_tsp(x, value, tsp_parameters) }
+    unsafe { run_tsp(x, value, |_, _| None, tsp_parameters) }
 }
 
 /// Set an attribute on an object.
@@ -302,6 +471,9 @@ unsafe fn normalize_tsp(x: SEXP, value: SEXP) -> super::object::Sexp<'static> {
 pub unsafe fn setAttrib(x: SEXP, which: SEXP, value: SEXP) {
     unsafe {
         if x.is_null() || which.is_null() {
+            return;
+        }
+        if try_set_atomic_names(x, which, value) {
             return;
         }
         let t = TYPEOF(x);
@@ -318,17 +490,22 @@ pub unsafe fn setAttrib(x: SEXP, which: SEXP, value: SEXP) {
         // Keep the target, parameters and original owner through checked
         // publication. The attribute chain is selected after allocation.
         if which == R_TspSymbol() && !value.is_null() {
-            run_tsp(x, value, |access, object, input| {
-                let name = access
-                    .with_native(|owner| owner.sexp(which)?.into_owned())
-                    .map_err(|error| error.to_string())?;
-                let normalized = if input.is_nil() {
-                    input.clone()
-                } else {
-                    tsp_parameters(access, object, input)?
-                };
-                super::tsp::install(access, object, &name, &normalized)
-            });
+            run_tsp(
+                x,
+                value,
+                |_, _| None,
+                |access, object, input| {
+                    let name = access
+                        .with_native(|owner| owner.sexp(which)?.into_owned())
+                        .map_err(|error| error.to_string())?;
+                    let normalized = if input.is_nil() {
+                        input.clone()
+                    } else {
+                        tsp_parameters(access, object, input)?
+                    };
+                    super::tsp::install(access, object, &name, &normalized)
+                },
+            );
             return;
         }
         // GNU classgets: empty/NULL class strips; non-string errors.

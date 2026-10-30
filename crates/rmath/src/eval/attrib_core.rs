@@ -137,6 +137,9 @@ pub unsafe fn setAttrib(x: SEXP, which: SEXP, value: SEXP) {
         if x.is_null() || which.is_null() {
             return;
         }
+        if crate::sexp::attrib_core::try_set_atomic_names(x, which, value) {
+            return;
+        }
         let t = TYPEOF(x);
         if t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP {
             let kind = if t == SEXPTYPE::BUILTINSXP {
