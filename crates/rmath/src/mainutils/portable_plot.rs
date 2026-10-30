@@ -502,9 +502,8 @@ fn current() -> Coordinates {
         .unwrap_or_else(|| base_error("plot.new has not been called yet"))
 }
 
-/// Whether this RenderPlot device has produced a frame yet. The renderer's
-/// process-global graphics flag is not sufficient here: separate R sessions
-/// and replacement RenderPlot devices have independent frame state.
+/// Whether this RenderPlot backend has produced a frame. Its frame state is
+/// separate from the session's registry devices.
 pub(crate) fn renderplot_frame_started() -> Option<bool> {
     with_required_current_instance(|inst| unsafe {
         let backend = (*inst).current_renderplot_backend.is_some();

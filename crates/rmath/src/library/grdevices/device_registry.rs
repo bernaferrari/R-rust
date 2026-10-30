@@ -72,6 +72,7 @@ pub(crate) struct GEDeviceDesc {
     pub canvas: Vec<c_int>,
     pub holdflush_level: c_int,
     pub ask: bool,
+    plot_frame_started: bool,
 }
 
 impl GEDeviceDesc {
@@ -105,6 +106,7 @@ impl GEDeviceDesc {
             ],
             holdflush_level: 0,
             ask: false,
+            plot_frame_started: false,
         }
     }
 }
@@ -293,6 +295,9 @@ impl DeviceRegistry {
         if self.current_label == external_label {
             self.current_label = next_current;
         }
+        if self.devices.is_empty() {
+            self.null_device.plot_frame_started = false;
+        }
 
         self.current_external()
     }
@@ -315,6 +320,25 @@ fn with_device_mut<R>(gdd: pGEDevDesc, f: impl FnOnce(&mut GEDeviceDesc) -> R) -
         return None;
     }
     with_registry(|registry| registry.find_device_mut(gdd).map(f))
+}
+
+/// Read or update a plot frame on a registered device without opening a
+/// default device or retaining a registry borrow across callbacks. A null
+/// pointer denotes the current (possibly virtual null) device.
+pub(crate) fn plot_frame_state(device: *mut std::ffi::c_void, set: Option<bool>) -> Option<bool> {
+    with_registry(|registry| {
+        let pointer = if device.is_null() {
+            registry.current_ptr()
+        } else {
+            device.cast::<GEDeviceDesc>()
+        };
+        let device = registry.find_device_mut(pointer)?;
+        let previous = device.plot_frame_started;
+        if let Some(value) = set {
+            device.plot_frame_started = value;
+        }
+        Some(previous)
+    })
 }
 
 /// GNU stores this flag on each device, including across device selection.
@@ -1234,6 +1258,55 @@ mod tests {
     }
 
     #[test]
+    fn plot_frame_follows_device_and_original_session() {
+        let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let left = RSession::new_for_gc_tests();
+        let right = RSession::new_for_gc_tests();
+        left.with_protected(|| {
+            with_registry(|registry| {
+                registry.open_new_device();
+                registry.open_new_device();
+            });
+            let first = unsafe { GEgetDevice(1) };
+            let second = unsafe { GEgetDevice(2) };
+            unsafe {
+                selectDevice(1);
+                crate::library::graphics::graphics::GSetState(1, first.cast());
+                assert!(crate::library::graphics::graphics::plot_new_called());
+                selectDevice(2);
+                assert!(!crate::library::graphics::graphics::plot_new_called());
+                // GCheckState must inspect its explicit device, not the current one.
+                crate::library::graphics::graphics::GCheckState(first.cast());
+            }
+            right.with_protected(|| {
+                assert!(!crate::library::graphics::graphics::plot_new_called());
+                let foreign = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+                    crate::library::graphics::graphics::GSetState(0, first.cast());
+                }));
+                assert!(foreign.unwrap_err().is::<crate::sexp::context::RError>());
+                assert!(!crate::library::graphics::graphics::plot_new_called());
+                crate::library::graphics::graphics::set_plot_new_state();
+                assert!(crate::library::graphics::graphics::plot_new_called());
+            });
+            assert!(!crate::library::graphics::graphics::plot_new_called());
+            unsafe {
+                crate::library::graphics::graphics::GSetState(1, second.cast());
+                selectDevice(1);
+                assert!(crate::library::graphics::graphics::plot_new_called());
+                killDevice(1);
+                assert!(crate::library::graphics::graphics::plot_new_called());
+                killDevice(2);
+                assert!(!crate::library::graphics::graphics::plot_new_called());
+            }
+            with_registry(|registry| {
+                registry.open_new_device();
+            });
+            assert!(!crate::library::graphics::graphics::plot_new_called());
+        });
+        right.with_protected(|| assert!(crate::library::graphics::graphics::plot_new_called()));
+    }
+
+    #[test]
     fn open_select_and_wrap_devices() {
         let _guard = reset_registry();
         with_registry(|registry| {
@@ -1328,6 +1401,26 @@ mod tests {
             assert_eq!(NoDevices(), 0);
             assert_eq!(NumDevices(), 3);
             assert_eq!(curDevice(), 2);
+        });
+    }
+
+    #[cfg(feature = "renderplot-device")]
+    #[test]
+    fn renderplot_frame_does_not_mark_registry_device() {
+        let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let session = RSession::new_for_gc_tests();
+        session.with_active_in(|instance| {
+            with_registry(|registry| {
+                registry.open_new_device();
+            });
+            assert_eq!(plot_frame_state(std::ptr::null_mut(), None), Some(false));
+            let mut target = RecordingTarget::default();
+            let pointer = &mut target as *mut _ as *mut dyn r_graphics_engine::DrawTarget;
+            unsafe { (*instance).current_renderplot_backend = Some(pointer) };
+            crate::library::graphics::graphics::set_plot_new_state();
+            assert_eq!(plot_frame_state(std::ptr::null_mut(), None), Some(false));
+            unsafe { (*instance).current_renderplot_backend = None };
+            assert!(!crate::library::graphics::graphics::plot_new_called());
         });
     }
 

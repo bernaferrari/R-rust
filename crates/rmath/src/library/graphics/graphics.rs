@@ -667,33 +667,41 @@ pub unsafe fn GRestorePars(_dd: pGEDevDesc) {
     /* Stub: full implementation restores all inline pars from static vars */
 }
 
-/// GNU `gpptr(dd)->state`: nonzero once `plot.new` has established a plot
-/// frame on the current device. The engine keeps it per device; this port
-/// has a single implicit device per session, so a global flag reproduces
-/// the `GCheckState` contract ("plot.new has not been called yet").
-static PLOT_STATE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
-
-/// GSetState -- set the graphics state flag (records whether GNewPlot called).
-pub unsafe fn GSetState(newstate: c_int, _dd: pGEDevDesc) {
-    let state = if newstate < 0 { 0 } else { newstate };
-    PLOT_STATE.store(state.min(255) as u8, std::sync::atomic::Ordering::Relaxed);
+/// GNU stores the plot-frame flag on the individual graphics device.
+/// A null pointer denotes the current device for the device-less profile.
+pub unsafe fn GSetState(newstate: c_int, dd: pGEDevDesc) {
+    crate::library::grdevices::device_registry::plot_frame_state(dd, Some(newstate > 0))
+        .unwrap_or_else(|| crate::sexp::context::r_error("invalid graphics device"));
 }
 
-/// Whether `plot.new` has been called on the implicit current device.
+/// Whether the current device has an established plot frame.
 pub(crate) fn plot_new_called() -> bool {
-    PLOT_STATE.load(std::sync::atomic::Ordering::Relaxed) != 0
+    #[cfg(feature = "renderplot-device")]
+    if let Some(started) = crate::mainutils::portable_plot::renderplot_frame_started() {
+        return started;
+    }
+    crate::library::grdevices::device_registry::plot_frame_state(std::ptr::null_mut(), None)
+        .unwrap_or(false)
 }
 
-/// Mark a plot frame as established (`plot.new` equivalent). Only the
-/// device-less profile routes plot setup through Rust handlers directly.
+/// Mark the current device's plot frame as established.
 #[allow(dead_code)]
 pub(crate) fn set_plot_new_state() {
-    PLOT_STATE.store(1, std::sync::atomic::Ordering::Relaxed);
+    #[cfg(feature = "renderplot-device")]
+    if crate::mainutils::portable_plot::renderplot_frame_started().is_some() {
+        // The RenderPlot path establishes its frame in portable_graphics;
+        // it is a separate device from any current registry device.
+        return;
+    }
+    crate::library::grdevices::device_registry::plot_frame_state(std::ptr::null_mut(), Some(true))
+        .unwrap_or_else(|| crate::sexp::context::r_error("invalid graphics device"));
 }
 
-/// GCheckState -- enquire whether GNewPlot has been called.
-pub unsafe fn GCheckState(_dd: pGEDevDesc) {
-    if !plot_new_called() {
+/// GCheckState -- enquire whether GNewPlot was called on this device.
+pub unsafe fn GCheckState(dd: pGEDevDesc) {
+    let started = crate::library::grdevices::device_registry::plot_frame_state(dd, None)
+        .unwrap_or_else(|| crate::sexp::context::r_error("invalid graphics device"));
+    if !started {
         graphics_error("plot.new has not been called yet");
     }
 }
