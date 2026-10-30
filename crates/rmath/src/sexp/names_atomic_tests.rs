@@ -1738,3 +1738,186 @@ fn exact_classed_character_names_reject_revocation_and_allocation_denial() {
         });
     }
 }
+
+#[test]
+fn pairlist_names_survive_gc_and_reject_revocation_or_mutation() {
+    use crate::sexp::object::{Sexp, SexpMut};
+    use std::cell::RefCell;
+    for mode in 0..4 {
+        let session = RSession::new_for_gc_tests();
+        session.with_active_in(|instance| unsafe {
+            let owner = session.owner_token().unwrap();
+            let factory = owner.node_factory();
+            let target = factory
+                .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::INTSXP, 2)))
+                .unwrap()
+                .into_owned()
+                .unwrap();
+            if mode == 3 {
+                let dimensions = factory
+                    .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::INTSXP, 1)))
+                    .unwrap();
+                SexpMut::try_from_checked(dimensions.clone())
+                    .unwrap()
+                    .try_set_integer_elt(0, 2)
+                    .unwrap();
+                super::setAttrib(target.as_raw(), super::R_DimSymbol(), dimensions.as_raw());
+            }
+            let callback_target = target.clone();
+            let callback_nil = factory.nil().into_owned().unwrap();
+            let saved: Rc<RefCell<Option<Sexp<'static>>>> = Rc::new(RefCell::new(None));
+            let callback_saved = saved.clone();
+            let calls = Rc::new(Cell::new(0));
+            let changed = Rc::new(Cell::new(false));
+            let callback_changed = changed.clone();
+            let replacement = factory
+                .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::INTSXP, 1)))
+                .unwrap()
+                .into_owned()
+                .unwrap();
+            let class = session
+                .register_altrep_class(
+                    "pairlist-names-owner",
+                    Provider {
+                        size: 1,
+                        calls: calls.clone(),
+                        callback: Rc::new(move || {
+                            if !callback_changed.replace(true) {
+                                if mode == 1 {
+                                    crate::sexp::instance::revoke_instance_availability(instance);
+                                } else if mode == 2 {
+                                    SexpMut::try_from_checked(
+                                        callback_saved.borrow().as_ref().unwrap().clone(),
+                                    )
+                                    .unwrap()
+                                    .try_set_pairlist_car(&replacement)
+                                    .unwrap();
+                                } else if mode == 3 {
+                                    SexpMut::try_from_checked(callback_target.clone())
+                                        .unwrap()
+                                        .try_set_attribute(&callback_nil)
+                                        .unwrap();
+                                }
+                            }
+                        }),
+                    },
+                )
+                .unwrap();
+            let child = AltrepBuilder::new(class).build().unwrap();
+            let nil = factory.nil();
+            let input = factory
+                .pairlist_cell(&child, &nil, &nil)
+                .unwrap()
+                .into_owned()
+                .unwrap();
+            *saved.borrow_mut() = Some(input.clone());
+            let name = super::R_NamesSymbol();
+            let workspace_before = owner.with_arena(|arena| arena.workspace_bytes()).unwrap();
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                super::setAttrib(target.as_raw(), name, input.as_raw());
+            }));
+            assert!(calls.get() > 0);
+            if mode == 0 {
+                result.unwrap();
+                owner.full_gc().unwrap();
+                let names = target.try_attrib().unwrap().try_car().unwrap();
+                assert!(names.try_string_elt(0).unwrap().try_char_eq(b"1").unwrap());
+                assert!(names.try_string_elt(1).unwrap().try_char_eq(b"").unwrap());
+            } else {
+                assert!(result.unwrap_err().is::<crate::sexp::context::RError>());
+                assert!(target.try_attrib().unwrap().is_nil());
+            }
+            if mode != 1 {
+                assert_eq!(
+                    owner.with_arena(|arena| arena.workspace_bytes()).unwrap(),
+                    workspace_before
+                );
+            }
+        });
+    }
+}
+
+#[test]
+fn pairlist_names_allocation_denial_does_not_publish() {
+    use crate::sexp::memory::ArenaBudget;
+    let session = RSession::new_for_gc_tests();
+    session.with_active(|| unsafe {
+        let owner = session.owner_token().unwrap();
+        let factory = owner.node_factory();
+        let target = factory
+            .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::INTSXP, 2)))
+            .unwrap();
+        let child = factory
+            .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::INTSXP, 1)))
+            .unwrap();
+        let nil = factory.nil();
+        let input = factory.pairlist_cell(&child, &nil, &nil).unwrap();
+        let name = super::R_NamesSymbol();
+        owner.full_gc().unwrap();
+        owner
+            .with_arena(|arena| arena.set_budget(ArenaBudget::new(1, 1)))
+            .unwrap();
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            super::setAttrib(target.as_raw(), name, input.as_raw());
+        }));
+        let error = result
+            .unwrap_err()
+            .downcast::<crate::sexp::context::RError>()
+            .unwrap();
+        assert_eq!(
+            error.message,
+            "R allocation failed: memory or node budget exceeded"
+        );
+        assert!(target.try_attrib().unwrap().is_nil());
+        owner
+            .with_arena(|arena| arena.set_budget(ArenaBudget::unlimited()))
+            .unwrap();
+    });
+}
+
+#[test]
+fn pairlist_names_reject_mutation_during_first_allocation() {
+    use crate::sexp::object::SexpMut;
+    let session = RSession::new_for_gc_tests();
+    session.with_active(|| unsafe {
+        let owner = session.owner_token().unwrap();
+        let factory = owner.node_factory();
+        let target = factory
+            .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::INTSXP, 2)))
+            .unwrap();
+        let child = factory
+            .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::INTSXP, 1)))
+            .unwrap();
+        let replacement = factory
+            .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::INTSXP, 1)))
+            .unwrap()
+            .into_owned()
+            .unwrap();
+        let nil = factory.nil();
+        let input = factory
+            .pairlist_cell(&child, &nil, &nil)
+            .unwrap()
+            .into_owned()
+            .unwrap();
+        let name = super::R_NamesSymbol();
+        let changed = Rc::new(Cell::new(false));
+        let callback_changed = changed.clone();
+        let callback_input = input.clone();
+        crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+            if !callback_changed.replace(true) {
+                SexpMut::try_from_checked(callback_input.clone())
+                    .unwrap()
+                    .try_set_pairlist_car(&replacement)
+                    .unwrap();
+            }
+        }));
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            crate::mainutils::memory_main::R_gc_torture(1, 1, 0);
+            super::setAttrib(target.as_raw(), name, input.as_raw());
+        }));
+        crate::mainutils::memory_main::R_gc_torture(0, 0, 0);
+        assert!(changed.get());
+        assert!(result.unwrap_err().is::<crate::sexp::context::RError>());
+        assert!(target.try_attrib().unwrap().is_nil());
+    });
+}

@@ -204,7 +204,7 @@ pub unsafe fn do_attrgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         }
         let mut x = CAR(args);
         let which = CADR(args);
-        let mut val = CADDR(args);
+        let val = CADDR(args);
         let which = if crate::sexp::accessors::TYPEOF(which) == crate::sexp::ffi::SEXPTYPE::STRSXP
             && crate::sexp::accessors::XLENGTH(which) > 0
             && crate::sexp::accessors::STRING_ELT(which, 0) != crate::sexp::globals::R_NaString()
@@ -214,11 +214,6 @@ pub unsafe fn do_attrgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             ))
             .to_string_lossy()
             .into_owned();
-            if text == "names"
-                && crate::sexp::accessors::TYPEOF(val) == crate::sexp::ffi::SEXPTYPE::LISTSXP
-            {
-                val = crate::eval::attrib_core::pairlist_to_names(val);
-            }
             crate::sexp::symbol::Rf_install(
                 std::ffi::CString::new(text).unwrap_or_default().as_ptr(),
             )

@@ -1,60 +1,288 @@
-0:1:attr|character(0)
-0:1:structure|character(0)
-0:1:replacement|ERROR:'names' attribute [2] must be the same length as the vector [0]
-0:2:attr|character(0)
-0:2:structure|character(0)
-0:2:replacement|ERROR:'names' attribute [2] must be the same length as the vector [0]
-0:3:attr|character(0)
-0:3:structure|character(0)
-0:3:replacement|ERROR:'names' attribute [2] must be the same length as the vector [0]
-0:4:attr|ERROR:incompatible 'names' argument
-0:4:structure|ERROR:incompatible 'names' argument
-0:4:replacement|ERROR:'names' attribute [2] must be the same length as the vector [0]
-0:5:attr|ERROR:incompatible 'names' argument
-0:5:structure|ERROR:incompatible 'names' argument
-0:5:replacement|ERROR:'names' attribute [2] must be the same length as the vector [0]
-1:1:attr|"1"
-1:1:structure|"1"
-1:1:replacement|ERROR:'names' attribute [2] must be the same length as the vector [1]
-1:2:attr|"é"
-1:2:structure|"é"
-1:2:replacement|ERROR:'names' attribute [2] must be the same length as the vector [1]
-1:3:attr|"TRUE"
-1:3:structure|"TRUE"
-1:3:replacement|ERROR:'names' attribute [2] must be the same length as the vector [1]
-1:4:attr|ERROR:incompatible 'names' argument
-1:4:structure|ERROR:incompatible 'names' argument
-1:4:replacement|ERROR:'names' attribute [2] must be the same length as the vector [1]
-1:5:attr|ERROR:incompatible 'names' argument
-1:5:structure|ERROR:incompatible 'names' argument
-1:5:replacement|ERROR:'names' attribute [2] must be the same length as the vector [1]
-2:1:attr|c("1", "2")
-2:1:structure|c("1", "2")
-2:1:replacement|c("1", "2")
-2:2:attr|c("é", "日本")
-2:2:structure|c("é", "日本")
-2:2:replacement|c("é", "日本")
-2:3:attr|c("TRUE", NA)
-2:3:structure|c("TRUE", NA)
-2:3:replacement|c("TRUE", "NA")
-2:4:attr|ERROR:incompatible 'names' argument
-2:4:structure|ERROR:incompatible 'names' argument
-2:4:replacement|c("1:2", "NULL")
-2:5:attr|ERROR:incompatible 'names' argument
-2:5:structure|ERROR:incompatible 'names' argument
-2:5:replacement|c("foo", "3.5")
-3:1:attr|c("1", "2", "")
-3:1:structure|c("1", "2", "")
-3:1:replacement|c("1", "2", NA)
-3:2:attr|c("é", "日本", "")
-3:2:structure|c("é", "日本", "")
-3:2:replacement|c("é", "日本", NA)
-3:3:attr|c("TRUE", NA, "")
-3:3:structure|c("TRUE", NA, "")
-3:3:replacement|c("TRUE", "NA", NA)
-3:4:attr|ERROR:incompatible 'names' argument
-3:4:structure|ERROR:incompatible 'names' argument
-3:4:replacement|c("1:2", "NULL", NA)
-3:5:attr|ERROR:incompatible 'names' argument
-3:5:structure|ERROR:incompatible 'names' argument
-3:5:replacement|c("foo", "3.5", NA)
+0:vector:1:attr|character(0)
+0:vector:1:structure|character(0)
+0:vector:1:replacement|ERROR:'names' attribute [2] must be the same length as the vector [0]
+0:vector:2:attr|character(0)
+0:vector:2:structure|character(0)
+0:vector:2:replacement|ERROR:'names' attribute [2] must be the same length as the vector [0]
+0:vector:3:attr|character(0)
+0:vector:3:structure|character(0)
+0:vector:3:replacement|ERROR:'names' attribute [2] must be the same length as the vector [0]
+0:vector:4:attr|ERROR:incompatible 'names' argument
+0:vector:4:structure|ERROR:incompatible 'names' argument
+0:vector:4:replacement|ERROR:'names' attribute [2] must be the same length as the vector [0]
+0:vector:5:attr|ERROR:incompatible 'names' argument
+0:vector:5:structure|ERROR:incompatible 'names' argument
+0:vector:5:replacement|ERROR:'names' attribute [2] must be the same length as the vector [0]
+0:vector:6:attr|character(0)
+0:vector:6:structure|character(0)
+0:vector:6:replacement|ERROR:'names' attribute [2] must be the same length as the vector [0]
+0:vector:7:attr|character(0)
+0:vector:7:structure|character(0)
+0:vector:7:replacement|ERROR:'names' attribute [2] must be the same length as the vector [0]
+0:vector:8:attr|character(0)
+0:vector:8:structure|character(0)
+0:vector:8:replacement|ERROR:'names' attribute [2] must be the same length as the vector [0]
+0:array:1:attr|NULL
+0:array:1:structure|NULL
+0:array:1:replacement|ERROR:'names' attribute [2] must be the same length as the vector [0]
+0:array:2:attr|NULL
+0:array:2:structure|NULL
+0:array:2:replacement|ERROR:'names' attribute [2] must be the same length as the vector [0]
+0:array:3:attr|NULL
+0:array:3:structure|NULL
+0:array:3:replacement|ERROR:'names' attribute [2] must be the same length as the vector [0]
+0:array:4:attr|ERROR:incompatible 'names' argument
+0:array:4:structure|ERROR:incompatible 'names' argument
+0:array:4:replacement|ERROR:'names' attribute [2] must be the same length as the vector [0]
+0:array:5:attr|ERROR:incompatible 'names' argument
+0:array:5:structure|ERROR:incompatible 'names' argument
+0:array:5:replacement|ERROR:'names' attribute [2] must be the same length as the vector [0]
+0:array:6:attr|NULL
+0:array:6:structure|NULL
+0:array:6:replacement|ERROR:'names' attribute [2] must be the same length as the vector [0]
+0:array:7:attr|NULL
+0:array:7:structure|NULL
+0:array:7:replacement|ERROR:'names' attribute [2] must be the same length as the vector [0]
+0:array:8:attr|NULL
+0:array:8:structure|NULL
+0:array:8:replacement|ERROR:'names' attribute [2] must be the same length as the vector [0]
+0:matrix:1:attr|character(0)
+0:matrix:1:structure|character(0)
+0:matrix:1:replacement|ERROR:'names' attribute [2] must be the same length as the vector [0]
+0:matrix:2:attr|character(0)
+0:matrix:2:structure|character(0)
+0:matrix:2:replacement|ERROR:'names' attribute [2] must be the same length as the vector [0]
+0:matrix:3:attr|character(0)
+0:matrix:3:structure|character(0)
+0:matrix:3:replacement|ERROR:'names' attribute [2] must be the same length as the vector [0]
+0:matrix:4:attr|ERROR:incompatible 'names' argument
+0:matrix:4:structure|ERROR:incompatible 'names' argument
+0:matrix:4:replacement|ERROR:'names' attribute [2] must be the same length as the vector [0]
+0:matrix:5:attr|ERROR:incompatible 'names' argument
+0:matrix:5:structure|ERROR:incompatible 'names' argument
+0:matrix:5:replacement|ERROR:'names' attribute [2] must be the same length as the vector [0]
+0:matrix:6:attr|character(0)
+0:matrix:6:structure|character(0)
+0:matrix:6:replacement|ERROR:'names' attribute [2] must be the same length as the vector [0]
+0:matrix:7:attr|character(0)
+0:matrix:7:structure|character(0)
+0:matrix:7:replacement|ERROR:'names' attribute [2] must be the same length as the vector [0]
+0:matrix:8:attr|character(0)
+0:matrix:8:structure|character(0)
+0:matrix:8:replacement|ERROR:'names' attribute [2] must be the same length as the vector [0]
+1:vector:1:attr|"1"
+1:vector:1:structure|"1"
+1:vector:1:replacement|ERROR:'names' attribute [2] must be the same length as the vector [1]
+1:vector:2:attr|"é"
+1:vector:2:structure|"é"
+1:vector:2:replacement|ERROR:'names' attribute [2] must be the same length as the vector [1]
+1:vector:3:attr|"TRUE"
+1:vector:3:structure|"TRUE"
+1:vector:3:replacement|ERROR:'names' attribute [2] must be the same length as the vector [1]
+1:vector:4:attr|ERROR:incompatible 'names' argument
+1:vector:4:structure|ERROR:incompatible 'names' argument
+1:vector:4:replacement|ERROR:'names' attribute [2] must be the same length as the vector [1]
+1:vector:5:attr|ERROR:incompatible 'names' argument
+1:vector:5:structure|ERROR:incompatible 'names' argument
+1:vector:5:replacement|ERROR:'names' attribute [2] must be the same length as the vector [1]
+1:vector:6:attr|ERROR:Value of SET_STRING_ELT() must be a 'CHARSXP' not a 'NULL'
+1:vector:6:structure|ERROR:Value of SET_STRING_ELT() must be a 'CHARSXP' not a 'NULL'
+1:vector:6:replacement|ERROR:'names' attribute [2] must be the same length as the vector [1]
+1:vector:7:attr|"1"
+1:vector:7:structure|"1"
+1:vector:7:replacement|ERROR:'names' attribute [2] must be the same length as the vector [1]
+1:vector:8:attr|"1+2i"
+1:vector:8:structure|"1+2i"
+1:vector:8:replacement|ERROR:'names' attribute [2] must be the same length as the vector [1]
+1:array:1:attr|"1"
+1:array:1:structure|"1"
+1:array:1:replacement|ERROR:'names' attribute [2] must be the same length as the vector [1]
+1:array:2:attr|"é"
+1:array:2:structure|"é"
+1:array:2:replacement|ERROR:'names' attribute [2] must be the same length as the vector [1]
+1:array:3:attr|"TRUE"
+1:array:3:structure|"TRUE"
+1:array:3:replacement|ERROR:'names' attribute [2] must be the same length as the vector [1]
+1:array:4:attr|ERROR:incompatible 'names' argument
+1:array:4:structure|ERROR:incompatible 'names' argument
+1:array:4:replacement|ERROR:'names' attribute [2] must be the same length as the vector [1]
+1:array:5:attr|ERROR:incompatible 'names' argument
+1:array:5:structure|ERROR:incompatible 'names' argument
+1:array:5:replacement|ERROR:'names' attribute [2] must be the same length as the vector [1]
+1:array:6:attr|ERROR:Value of SET_STRING_ELT() must be a 'CHARSXP' not a 'NULL'
+1:array:6:structure|ERROR:Value of SET_STRING_ELT() must be a 'CHARSXP' not a 'NULL'
+1:array:6:replacement|ERROR:'names' attribute [2] must be the same length as the vector [1]
+1:array:7:attr|"1"
+1:array:7:structure|"1"
+1:array:7:replacement|ERROR:'names' attribute [2] must be the same length as the vector [1]
+1:array:8:attr|"1+2i"
+1:array:8:structure|"1+2i"
+1:array:8:replacement|ERROR:'names' attribute [2] must be the same length as the vector [1]
+1:matrix:1:attr|"1"
+1:matrix:1:structure|"1"
+1:matrix:1:replacement|ERROR:'names' attribute [2] must be the same length as the vector [1]
+1:matrix:2:attr|"é"
+1:matrix:2:structure|"é"
+1:matrix:2:replacement|ERROR:'names' attribute [2] must be the same length as the vector [1]
+1:matrix:3:attr|"TRUE"
+1:matrix:3:structure|"TRUE"
+1:matrix:3:replacement|ERROR:'names' attribute [2] must be the same length as the vector [1]
+1:matrix:4:attr|ERROR:incompatible 'names' argument
+1:matrix:4:structure|ERROR:incompatible 'names' argument
+1:matrix:4:replacement|ERROR:'names' attribute [2] must be the same length as the vector [1]
+1:matrix:5:attr|ERROR:incompatible 'names' argument
+1:matrix:5:structure|ERROR:incompatible 'names' argument
+1:matrix:5:replacement|ERROR:'names' attribute [2] must be the same length as the vector [1]
+1:matrix:6:attr|ERROR:Value of SET_STRING_ELT() must be a 'CHARSXP' not a 'NULL'
+1:matrix:6:structure|ERROR:Value of SET_STRING_ELT() must be a 'CHARSXP' not a 'NULL'
+1:matrix:6:replacement|ERROR:'names' attribute [2] must be the same length as the vector [1]
+1:matrix:7:attr|"1"
+1:matrix:7:structure|"1"
+1:matrix:7:replacement|ERROR:'names' attribute [2] must be the same length as the vector [1]
+1:matrix:8:attr|"1+2i"
+1:matrix:8:structure|"1+2i"
+1:matrix:8:replacement|ERROR:'names' attribute [2] must be the same length as the vector [1]
+2:vector:1:attr|c("1", "2")
+2:vector:1:structure|c("1", "2")
+2:vector:1:replacement|c("1", "2")
+2:vector:2:attr|c("é", "日本")
+2:vector:2:structure|c("é", "日本")
+2:vector:2:replacement|c("é", "日本")
+2:vector:3:attr|c("TRUE", NA)
+2:vector:3:structure|c("TRUE", NA)
+2:vector:3:replacement|c("TRUE", "NA")
+2:vector:4:attr|ERROR:incompatible 'names' argument
+2:vector:4:structure|ERROR:incompatible 'names' argument
+2:vector:4:replacement|c("1:2", "NULL")
+2:vector:5:attr|ERROR:incompatible 'names' argument
+2:vector:5:structure|ERROR:incompatible 'names' argument
+2:vector:5:replacement|c("foo", "3.5")
+2:vector:6:attr|ERROR:Value of SET_STRING_ELT() must be a 'CHARSXP' not a 'NULL'
+2:vector:6:structure|ERROR:Value of SET_STRING_ELT() must be a 'CHARSXP' not a 'NULL'
+2:vector:6:replacement|c("character(0)", "1")
+2:vector:7:attr|c("1", "02")
+2:vector:7:structure|c("1", "02")
+2:vector:7:replacement|c("list(1)", "as.raw(0x02)")
+2:vector:8:attr|c("1+2i", NA)
+2:vector:8:structure|c("1+2i", NA)
+2:vector:8:replacement|c("1+2i", NA)
+2:array:1:attr|c("1", "2")
+2:array:1:structure|c("1", "2")
+2:array:1:replacement|c("1", "2")
+2:array:2:attr|c("é", "日本")
+2:array:2:structure|c("é", "日本")
+2:array:2:replacement|c("é", "日本")
+2:array:3:attr|c("TRUE", NA)
+2:array:3:structure|c("TRUE", NA)
+2:array:3:replacement|c("TRUE", "NA")
+2:array:4:attr|ERROR:incompatible 'names' argument
+2:array:4:structure|ERROR:incompatible 'names' argument
+2:array:4:replacement|c("1:2", "NULL")
+2:array:5:attr|ERROR:incompatible 'names' argument
+2:array:5:structure|ERROR:incompatible 'names' argument
+2:array:5:replacement|c("foo", "3.5")
+2:array:6:attr|ERROR:Value of SET_STRING_ELT() must be a 'CHARSXP' not a 'NULL'
+2:array:6:structure|ERROR:Value of SET_STRING_ELT() must be a 'CHARSXP' not a 'NULL'
+2:array:6:replacement|c("character(0)", "1")
+2:array:7:attr|c("1", "02")
+2:array:7:structure|c("1", "02")
+2:array:7:replacement|c("list(1)", "as.raw(0x02)")
+2:array:8:attr|c("1+2i", NA)
+2:array:8:structure|c("1+2i", NA)
+2:array:8:replacement|c("1+2i", NA)
+2:matrix:1:attr|c("1", "2")
+2:matrix:1:structure|c("1", "2")
+2:matrix:1:replacement|c("1", "2")
+2:matrix:2:attr|c("é", "日本")
+2:matrix:2:structure|c("é", "日本")
+2:matrix:2:replacement|c("é", "日本")
+2:matrix:3:attr|c("TRUE", NA)
+2:matrix:3:structure|c("TRUE", NA)
+2:matrix:3:replacement|c("TRUE", "NA")
+2:matrix:4:attr|ERROR:incompatible 'names' argument
+2:matrix:4:structure|ERROR:incompatible 'names' argument
+2:matrix:4:replacement|c("1:2", "NULL")
+2:matrix:5:attr|ERROR:incompatible 'names' argument
+2:matrix:5:structure|ERROR:incompatible 'names' argument
+2:matrix:5:replacement|c("foo", "3.5")
+2:matrix:6:attr|ERROR:Value of SET_STRING_ELT() must be a 'CHARSXP' not a 'NULL'
+2:matrix:6:structure|ERROR:Value of SET_STRING_ELT() must be a 'CHARSXP' not a 'NULL'
+2:matrix:6:replacement|c("character(0)", "1")
+2:matrix:7:attr|c("1", "02")
+2:matrix:7:structure|c("1", "02")
+2:matrix:7:replacement|c("list(1)", "as.raw(0x02)")
+2:matrix:8:attr|c("1+2i", NA)
+2:matrix:8:structure|c("1+2i", NA)
+2:matrix:8:replacement|c("1+2i", NA)
+3:vector:1:attr|c("1", "2", "")
+3:vector:1:structure|c("1", "2", "")
+3:vector:1:replacement|c("1", "2", NA)
+3:vector:2:attr|c("é", "日本", "")
+3:vector:2:structure|c("é", "日本", "")
+3:vector:2:replacement|c("é", "日本", NA)
+3:vector:3:attr|c("TRUE", NA, "")
+3:vector:3:structure|c("TRUE", NA, "")
+3:vector:3:replacement|c("TRUE", "NA", NA)
+3:vector:4:attr|ERROR:incompatible 'names' argument
+3:vector:4:structure|ERROR:incompatible 'names' argument
+3:vector:4:replacement|c("1:2", "NULL", NA)
+3:vector:5:attr|ERROR:incompatible 'names' argument
+3:vector:5:structure|ERROR:incompatible 'names' argument
+3:vector:5:replacement|c("foo", "3.5", NA)
+3:vector:6:attr|ERROR:Value of SET_STRING_ELT() must be a 'CHARSXP' not a 'NULL'
+3:vector:6:structure|ERROR:Value of SET_STRING_ELT() must be a 'CHARSXP' not a 'NULL'
+3:vector:6:replacement|c("character(0)", "1", NA)
+3:vector:7:attr|c("1", "02", "")
+3:vector:7:structure|c("1", "02", "")
+3:vector:7:replacement|c("list(1)", "as.raw(0x02)", NA)
+3:vector:8:attr|c("1+2i", NA, "")
+3:vector:8:structure|c("1+2i", NA, "")
+3:vector:8:replacement|c("1+2i", NA, NA)
+3:array:1:attr|c("1", "2", "")
+3:array:1:structure|c("1", "2", "")
+3:array:1:replacement|c("1", "2", NA)
+3:array:2:attr|c("é", "日本", "")
+3:array:2:structure|c("é", "日本", "")
+3:array:2:replacement|c("é", "日本", NA)
+3:array:3:attr|c("TRUE", NA, "")
+3:array:3:structure|c("TRUE", NA, "")
+3:array:3:replacement|c("TRUE", "NA", NA)
+3:array:4:attr|ERROR:incompatible 'names' argument
+3:array:4:structure|ERROR:incompatible 'names' argument
+3:array:4:replacement|c("1:2", "NULL", NA)
+3:array:5:attr|ERROR:incompatible 'names' argument
+3:array:5:structure|ERROR:incompatible 'names' argument
+3:array:5:replacement|c("foo", "3.5", NA)
+3:array:6:attr|ERROR:Value of SET_STRING_ELT() must be a 'CHARSXP' not a 'NULL'
+3:array:6:structure|ERROR:Value of SET_STRING_ELT() must be a 'CHARSXP' not a 'NULL'
+3:array:6:replacement|c("character(0)", "1", NA)
+3:array:7:attr|c("1", "02", "")
+3:array:7:structure|c("1", "02", "")
+3:array:7:replacement|c("list(1)", "as.raw(0x02)", NA)
+3:array:8:attr|c("1+2i", NA, "")
+3:array:8:structure|c("1+2i", NA, "")
+3:array:8:replacement|c("1+2i", NA, NA)
+3:matrix:1:attr|c("1", "2", "")
+3:matrix:1:structure|c("1", "2", "")
+3:matrix:1:replacement|c("1", "2", NA)
+3:matrix:2:attr|c("é", "日本", "")
+3:matrix:2:structure|c("é", "日本", "")
+3:matrix:2:replacement|c("é", "日本", NA)
+3:matrix:3:attr|c("TRUE", NA, "")
+3:matrix:3:structure|c("TRUE", NA, "")
+3:matrix:3:replacement|c("TRUE", "NA", NA)
+3:matrix:4:attr|ERROR:incompatible 'names' argument
+3:matrix:4:structure|ERROR:incompatible 'names' argument
+3:matrix:4:replacement|c("1:2", "NULL", NA)
+3:matrix:5:attr|ERROR:incompatible 'names' argument
+3:matrix:5:structure|ERROR:incompatible 'names' argument
+3:matrix:5:replacement|c("foo", "3.5", NA)
+3:matrix:6:attr|ERROR:Value of SET_STRING_ELT() must be a 'CHARSXP' not a 'NULL'
+3:matrix:6:structure|ERROR:Value of SET_STRING_ELT() must be a 'CHARSXP' not a 'NULL'
+3:matrix:6:replacement|c("character(0)", "1", NA)
+3:matrix:7:attr|c("1", "02", "")
+3:matrix:7:structure|c("1", "02", "")
+3:matrix:7:replacement|c("list(1)", "as.raw(0x02)", NA)
+3:matrix:8:attr|c("1+2i", NA, "")
+3:matrix:8:structure|c("1+2i", NA, "")
+3:matrix:8:replacement|c("1+2i", NA, NA)

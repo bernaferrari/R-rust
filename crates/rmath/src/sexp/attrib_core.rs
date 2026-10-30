@@ -289,6 +289,233 @@ unsafe fn run_tsp<T>(
     }
 }
 
+/// GNU's direct `names` attribute path treats a vectorizable pairlist
+/// differently from `names<-`: it builds a target-sized character vector,
+/// truncating excess elements and leaving empty strings in unused slots.
+pub(crate) unsafe fn try_set_pairlist_names(x: SEXP, which: SEXP, value: SEXP) -> bool {
+    unsafe {
+        if which != R_NamesSymbol()
+            || value.is_null()
+            || value == R_NilValue()
+            || TYPEOF(value) != SEXPTYPE::LISTSXP
+        {
+            return false;
+        }
+        run_tsp(
+            x,
+            value,
+            |object, input| {
+                if object.is_s4()
+                    || input.typeof_() != SEXPTYPE::LISTSXP
+                    || !matches!(
+                        object.typeof_(),
+                        SEXPTYPE::LGLSXP
+                            | SEXPTYPE::INTSXP
+                            | SEXPTYPE::REALSXP
+                            | SEXPTYPE::CPLXSXP
+                            | SEXPTYPE::STRSXP
+                            | SEXPTYPE::RAWSXP
+                            | SEXPTYPE::VECSXP
+                            | SEXPTYPE::EXPRSXP
+                    )
+                {
+                    Some(false)
+                } else {
+                    None
+                }
+            },
+            |access, object, input| {
+                let domain = access.domain();
+                let allocator = access.allocator(&domain).map_err(|e| e.to_string())?;
+                let dimensions = super::tsp::attribute(access, object, b"dim")?;
+                let rank = if dimensions.is_nil() {
+                    None
+                } else {
+                    if dimensions.typeof_() != SEXPTYPE::INTSXP {
+                        return Ok(false);
+                    }
+                    Some(dimensions.len())
+                };
+                let size = object.len();
+                let mut cursor = input.clone();
+                let mut seen = super::tsp::CycleDetector::default();
+                let mut count = 0i64;
+                while !cursor.is_nil() {
+                    if cursor.typeof_() != SEXPTYPE::LISTSXP {
+                        return Err("improper pairlist in names assignment".into());
+                    }
+                    seen.observe(domain.link(&cursor).map_err(|e| e.to_string())?)?;
+                    let child = cursor
+                        .try_car()
+                        .and_then(super::object::Sexp::into_owned)
+                        .map_err(|e| e.to_string())?;
+                    if !child.is_vector() || child.len() > 1 {
+                        return Err("incompatible 'names' argument".into());
+                    }
+                    count = count.checked_add(1).ok_or("pairlist is too long")?;
+                    cursor = cursor
+                        .try_cdr()
+                        .and_then(super::object::Sexp::into_owned)
+                        .map_err(|e| e.to_string())?;
+                }
+                let capacity = usize::try_from(count).map_err(|_| "pairlist is too long")?;
+                let bytes = capacity
+                    .checked_mul(std::mem::size_of::<super::object::Sexp<'static>>())
+                    .ok_or("R allocation failed: memory or node budget exceeded")?;
+                let mut workspace = access
+                    .with_arena(|arena| arena.reserve_workspace(bytes))
+                    .map_err(|e| e.to_string())?
+                    .ok_or("R allocation failed: memory or node budget exceeded")?;
+                let mut snapshot = Vec::new();
+                snapshot
+                    .try_reserve_exact(capacity)
+                    .map_err(|_| "R allocation failed: memory or node budget exceeded")?;
+                let actual = snapshot
+                    .capacity()
+                    .checked_mul(std::mem::size_of::<super::object::Sexp<'static>>())
+                    .ok_or("R allocation failed: memory or node budget exceeded")?;
+                workspace
+                    .try_resize(actual)
+                    .ok_or("R allocation failed: memory or node budget exceeded")?;
+                cursor = input.clone();
+                let mut seen = super::tsp::CycleDetector::default();
+                for _ in 0..count {
+                    if cursor.is_nil() || cursor.typeof_() != SEXPTYPE::LISTSXP {
+                        return Err("pairlist changed during names assignment".into());
+                    }
+                    seen.observe(domain.link(&cursor).map_err(|e| e.to_string())?)?;
+                    let child = cursor
+                        .try_car()
+                        .and_then(super::object::Sexp::into_owned)
+                        .map_err(|e| e.to_string())?;
+                    if !child.is_vector() || child.len() > 1 {
+                        return Err("incompatible 'names' argument".into());
+                    }
+                    snapshot.push(child);
+                    cursor = cursor
+                        .try_cdr()
+                        .and_then(super::object::Sexp::into_owned)
+                        .map_err(|e| e.to_string())?;
+                }
+                if !cursor.is_nil() {
+                    return Err("pairlist changed during names assignment".into());
+                }
+                let validate = || -> Result<(), String> {
+                    access.require_active().map_err(|e| e.to_string())?;
+                    if object.len() != size
+                        || super::tsp::attribute(access, object, b"dim")? != dimensions
+                        || rank.is_some_and(|n| dimensions.len() != n)
+                    {
+                        return Err("target changed during names assignment".into());
+                    }
+                    let mut cell = input.clone();
+                    let mut seen = super::tsp::CycleDetector::default();
+                    for index in 0..count {
+                        if cell.is_nil() || cell.typeof_() != SEXPTYPE::LISTSXP {
+                            return Err("pairlist changed during names assignment".into());
+                        }
+                        seen.observe(domain.link(&cell).map_err(|e| e.to_string())?)?;
+                        let current = cell
+                            .try_car()
+                            .and_then(super::object::Sexp::into_owned)
+                            .map_err(|e| e.to_string())?;
+                        let saved = &snapshot[index as usize];
+                        if current != *saved || !current.is_vector() || current.len() > 1 {
+                            return Err("pairlist changed during names assignment".into());
+                        }
+                        cell = cell
+                            .try_cdr()
+                            .and_then(super::object::Sexp::into_owned)
+                            .map_err(|e| e.to_string())?;
+                    }
+                    if !cell.is_nil() {
+                        return Err("pairlist changed during names assignment".into());
+                    }
+                    access.require_active().map_err(|e| e.to_string())
+                };
+                validate()?;
+                let output = allocator
+                    .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::STRSXP, size)))
+                    .map_err(names_allocation_error)?;
+                let mut output =
+                    super::object::SexpMut::try_from_checked(output).map_err(|e| e.to_string())?;
+                let empty = if size > count {
+                    Some(allocator.character("").map_err(names_allocation_error)?)
+                } else {
+                    None
+                };
+                for index in 0..size {
+                    let character = if index >= count {
+                        empty.as_ref().expect("padding character").clone()
+                    } else {
+                        let child = snapshot[index as usize].clone();
+                        let converted = access
+                            .with_native(|owner| {
+                                let pointer = crate::mainutils::coerce::coerceVector(
+                                    child.as_raw(),
+                                    SEXPTYPE::STRSXP.as_c_int(),
+                                );
+                                owner.sexp(pointer)?.into_owned()
+                            })
+                            .map_err(|e| e.to_string())?;
+                        access.require_active().map_err(|e| e.to_string())?;
+                        if converted.len() == 0 {
+                            return Err(
+                                "Value of SET_STRING_ELT() must be a 'CHARSXP' not a 'NULL'".into(),
+                            );
+                        }
+                        let character = converted
+                            .try_string_elt(0)
+                            .and_then(super::object::Sexp::into_owned)
+                            .map_err(|e| e.to_string())?;
+                        access.require_active().map_err(|e| e.to_string())?;
+                        character
+                    };
+                    output
+                        .try_set_string_elt(index, character)
+                        .map_err(|e| e.to_string())?;
+                }
+                let output = output.freeze();
+                let one_dimensional = rank == Some(1);
+                let name = access
+                    .with_native(|owner| {
+                        owner
+                            .sexp(if one_dimensional {
+                                R_DimNamesSymbol()
+                            } else {
+                                which
+                            })?
+                            .into_owned()
+                    })
+                    .map_err(|e| e.to_string())?;
+                let published = if one_dimensional {
+                    let list = allocator
+                        .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::VECSXP, 1)))
+                        .map_err(names_allocation_error)?;
+                    let mut list = super::object::SexpMut::try_from_checked(list)
+                        .map_err(|e| e.to_string())?;
+                    list.try_set_vector_elt(0, if size == 0 { domain.nil() } else { output })
+                        .map_err(|e| e.to_string())?;
+                    list.freeze()
+                } else {
+                    output
+                };
+                super::tsp::install_checked(access, object, &name, &published, validate)?;
+                Ok(true)
+            },
+        )
+    }
+}
+
+fn names_allocation_error(error: super::object::SexpError) -> String {
+    match error {
+        super::object::SexpError::AllocationFailed { .. } => {
+            "R allocation failed: memory or node budget exceeded".into()
+        }
+        other => other.to_string(),
+    }
+}
+
 /// Normalize ordinary, attribute-free atomic names in the original runtime.
 /// Classed values and arrays retain their distinct names assignment paths.
 pub(crate) unsafe fn try_set_atomic_names(x: SEXP, which: SEXP, value: SEXP) -> bool {
@@ -983,7 +1210,7 @@ pub unsafe fn setAttrib(x: SEXP, which: SEXP, value: SEXP) {
         if x.is_null() || which.is_null() {
             return;
         }
-        if try_set_atomic_names(x, which, value) {
+        if try_set_pairlist_names(x, which, value) || try_set_atomic_names(x, which, value) {
             return;
         }
         let t = TYPEOF(x);

@@ -882,11 +882,6 @@ pub unsafe fn do_attr_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         let _x = protect(x);
 
         let attr_name = elt_to_string(which, 0);
-        let value = if attr_name == "names" && TYPEOF(value) == SEXPTYPE::LISTSXP {
-            crate::eval::attrib_core::pairlist_to_names(value)
-        } else {
-            value
-        };
         crate::eval::attrib_core::setAttrib(
             x,
             Rf_install(CString::new(attr_name).unwrap_or_default().as_ptr()),
