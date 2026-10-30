@@ -3,7 +3,7 @@
 use super::{
     encoding::{self, TextEncoding},
     ffi::SEXPTYPE,
-    memory::WorkspaceReservation,
+    memory::{SendWorkspaceReservation, WorkspaceReservation},
     object::{Sexp, SexpError, SexpMut, SexpResult},
     owner::RuntimeAccess,
     payload::PayloadLease,
@@ -54,6 +54,26 @@ impl PreparedDiagnostic {
         Diagnostic::from_workspace(access, parent, self.message.into_bytes(), self.admission)
     }
 
+    /// Retain the exact admitted String capacity across a Send-only unwind or
+    /// host handoff. Validation happens while the original owner is active;
+    /// the returned value needs no runtime access to release its charge.
+    pub(crate) fn into_send(
+        self,
+        access: &RuntimeAccess,
+        parent: &Sexp<'_>,
+    ) -> SexpResult<SendDiagnostic> {
+        access.require_active()?;
+        access.domain().link(parent)?;
+        let ledger = parent.allocation()?.heap_identity().byte_ledger();
+        if !self.admission.belongs_to(&ledger) {
+            return Err(SexpError::HeapDomainMismatch);
+        }
+        Ok(SendDiagnostic {
+            message: self.message,
+            _admission: self.admission.into_send(),
+        })
+    }
+
     #[cfg(test)]
     pub(crate) fn as_str(&self) -> &str {
         &self.message
@@ -68,6 +88,33 @@ impl PreparedDiagnostic {
     #[cfg(test)]
     pub(crate) fn into_message(self) -> String {
         self.message
+    }
+}
+
+/// A move-only, thread-safe diagnostic. The String drops before its charge;
+/// there is deliberately no API to detach or clone unaccounted bytes.
+pub(crate) struct SendDiagnostic {
+    message: String,
+    _admission: SendWorkspaceReservation,
+}
+
+impl SendDiagnostic {
+    pub(crate) fn as_str(&self) -> &str {
+        &self.message
+    }
+}
+
+impl std::fmt::Debug for SendDiagnostic {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("SendDiagnostic")
+            .field(&self.message)
+            .finish()
+    }
+}
+
+impl std::fmt::Display for SendDiagnostic {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message)
     }
 }
 

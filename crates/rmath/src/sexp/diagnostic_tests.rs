@@ -8,6 +8,163 @@ fn bytes(diagnostic: &Diagnostic) -> Vec<u8> {
         .collect()
 }
 
+fn prepared_text(parent: &Sexp<'_>, text: &str) -> PreparedDiagnostic {
+    let ledger = parent.allocation().unwrap().heap_identity().byte_ledger();
+    let mut ticket = ledger.reserve(text.len()).unwrap();
+    let mut message = String::new();
+    message.try_reserve_exact(text.len()).unwrap();
+    ticket.try_resize(message.capacity()).unwrap();
+    message.push_str(text);
+    PreparedDiagnostic::from_admitted_string(message, ticket).unwrap()
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[test]
+fn send_diagnostic_keeps_original_charge_through_unwind_and_session_close() {
+    let mut session = RSession::new_for_gc_tests();
+    let (diagnostic, ledger, bytes) = session.with_active(|| {
+        let owner = session.owner_token().unwrap();
+        let parent = owner.node_factory().character("anchor").unwrap();
+        let ledger = parent.allocation().unwrap().heap_identity().byte_ledger();
+        let prepared = prepared_text(&parent, "non-ASCII: á中😀");
+        let bytes = prepared.capacity();
+        assert_eq!(ledger.workspace_bytes_for_test(), bytes);
+        let resident = owner
+            .with_arena(|arena| arena.total_bytes_allocated())
+            .unwrap();
+        owner
+            .with_arena(|arena| arena.set_budget(ArenaBudget::new(resident + bytes, 0)))
+            .unwrap();
+        assert!(ledger.reserve(1).is_none());
+        let weak = owner.weak_owner().unwrap();
+        let diagnostic = with_runtime(&weak, |access| prepared.into_send(access, &parent))
+            .unwrap()
+            .unwrap();
+        assert_eq!(ledger.workspace_bytes_for_test(), bytes);
+        (diagnostic, ledger, bytes)
+    });
+    session.close();
+    assert_eq!(ledger.workspace_bytes_for_test(), bytes);
+    let payload = std::thread::spawn(move || {
+        catch_unwind(AssertUnwindSafe(|| std::panic::panic_any(diagnostic))).unwrap_err()
+    })
+    .join()
+    .unwrap();
+    let diagnostic = payload.downcast::<SendDiagnostic>().unwrap();
+    assert_eq!(diagnostic.as_str(), "non-ASCII: á中😀");
+    assert_eq!(ledger.workspace_bytes_for_test(), bytes);
+    std::thread::spawn(move || drop(diagnostic)).join().unwrap();
+    assert_eq!(ledger.workspace_bytes_for_test(), 0);
+}
+
+#[test]
+fn send_diagnostic_rejects_foreign_admission_and_releases_it() {
+    let original = RSession::new_for_gc_tests();
+    let (prepared, ledger) = original.with_active(|| {
+        let parent = original
+            .owner_token()
+            .unwrap()
+            .node_factory()
+            .character("original")
+            .unwrap();
+        let ledger = parent.allocation().unwrap().heap_identity().byte_ledger();
+        (prepared_text(&parent, "owned by the original"), ledger)
+    });
+    assert!(ledger.workspace_bytes_for_test() > 0);
+    let other = RSession::new_for_gc_tests();
+    other.with_active(|| {
+        let owner = other.owner_token().unwrap();
+        let parent = owner.node_factory().character("foreign").unwrap();
+        let weak = owner.weak_owner().unwrap();
+        let result = with_runtime(&weak, |access| prepared.into_send(access, &parent)).unwrap();
+        assert!(matches!(result, Err(SexpError::HeapDomainMismatch)));
+    });
+    assert_eq!(ledger.workspace_bytes_for_test(), 0);
+}
+
+#[test]
+fn send_diagnostic_budget_denial_recovers_at_the_same_limit() {
+    let session = RSession::new_for_gc_tests();
+    session.with_active(|| {
+        let owner = session.owner_token().unwrap();
+        let parent = owner.node_factory().character("anchor").unwrap();
+        let ledger = parent.allocation().unwrap().heap_identity().byte_ledger();
+        let prepared = prepared_text(&parent, "funded message");
+        let capacity = prepared.capacity();
+        let resident = owner
+            .with_arena(|arena| arena.total_bytes_allocated())
+            .unwrap();
+        let limit = resident + capacity;
+        owner
+            .with_arena(|arena| arena.set_budget(ArenaBudget::new(limit, 0)))
+            .unwrap();
+        let weak = owner.weak_owner().unwrap();
+        let message = with_runtime(&weak, |access| prepared.into_send(access, &parent))
+            .unwrap()
+            .unwrap();
+        assert!(ledger.reserve(1).is_none());
+        drop(message);
+        assert_eq!(ledger.workspace_bytes_for_test(), 0);
+        assert!(ledger.reserve(1).is_some());
+        assert_eq!(
+            owner.with_arena(|arena| arena.budget().max_bytes).unwrap(),
+            limit
+        );
+    });
+}
+
+#[test]
+fn send_diagnostic_cannot_publish_after_owner_revocation() {
+    let mut session = RSession::new_for_gc_tests();
+    let (prepared, parent, ledger, weak) = session.with_active(|| {
+        let owner = session.owner_token().unwrap();
+        let parent = owner
+            .node_factory()
+            .character("anchor")
+            .unwrap()
+            .into_owned()
+            .unwrap();
+        let ledger = parent.allocation().unwrap().heap_identity().byte_ledger();
+        let prepared = prepared_text(&parent, "not published after close");
+        (prepared, parent, ledger, owner.weak_owner().unwrap())
+    });
+    assert!(ledger.workspace_bytes_for_test() > 0);
+    session.close();
+    let result = with_runtime(&weak, |access| prepared.into_send(access, &parent));
+    assert!(matches!(result, Err(SexpError::RootUnavailable)));
+    assert_eq!(ledger.workspace_bytes_for_test(), 0);
+}
+
+#[test]
+fn send_diagnostic_rejects_foreign_parent_before_publication() {
+    let original = RSession::new_for_gc_tests();
+    let parent = original.with_active(|| {
+        original
+            .owner_token()
+            .unwrap()
+            .node_factory()
+            .character("anchor")
+            .unwrap()
+            .into_owned()
+            .unwrap()
+    });
+    let original_ledger = parent.allocation().unwrap().heap_identity().byte_ledger();
+    let prepared = original.with_active(|| prepared_text(&parent, "must not be published"));
+    let other = RSession::new_for_gc_tests();
+    other.with_active(|| {
+        let owner = other.owner_token().unwrap();
+        let weak = owner.weak_owner().unwrap();
+        let before = owner.with_arena(|arena| arena.workspace_bytes()).unwrap();
+        let result = with_runtime(&weak, |access| prepared.into_send(access, &parent)).unwrap();
+        assert!(matches!(result, Err(SexpError::UnownedPointer { .. })));
+        assert_eq!(
+            owner.with_arena(|arena| arena.workspace_bytes()).unwrap(),
+            before
+        );
+    });
+    assert_eq!(original_ledger.workspace_bytes_for_test(), 0);
+}
+
 #[test]
 fn owned_diagnostic_copy_denial_recovers_with_smaller_message_at_unchanged_limit() {
     let session = RSession::new_for_gc_tests();
