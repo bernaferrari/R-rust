@@ -686,7 +686,7 @@ fn atomic_names_assignment_benchmark() {
 }
 
 #[test]
-fn atomic_names_leaves_classed_input_and_pads_short_input() {
+fn atomic_names_coerces_classed_input_and_pads_short_input() {
     let session = RSession::new_for_gc_tests();
     let owner = session.owner_token().unwrap();
     let factory = owner.node_factory();
@@ -701,14 +701,15 @@ fn atomic_names_leaves_classed_input_and_pads_short_input() {
         let class = crate::sexp::constructors::Rf_mkString(c"factor".as_ptr());
         let class = factory.wrap(class).unwrap();
         super::setAttrib(source.as_raw(), super::R_ClassSymbol(), class.as_raw());
-        assert!(!super::try_set_atomic_names(
+        assert!(super::try_set_atomic_names(
             target.as_raw(),
             name,
             source.as_raw()
         ));
-        super::setAttrib(target.as_raw(), name, source.as_raw());
     }
-    assert_eq!(target.try_attrib().unwrap().try_car().unwrap(), source);
+    let names = target.try_attrib().unwrap().try_car().unwrap();
+    assert_eq!(names.typeof_(), SEXPTYPE::STRSXP);
+    assert!(names.is_object());
     assert!(source.is_object());
     let short = factory
         .allocate(|a| Some(a.alloc_vector(SEXPTYPE::INTSXP, 2)))
@@ -1321,5 +1322,191 @@ fn padded_names_metadata_change_during_publication_does_not_publish() {
         );
         assert!(result.unwrap_err().is::<crate::sexp::context::RError>());
         assert!(target.try_attrib().unwrap().is_nil());
+    });
+}
+
+#[test]
+fn classed_atomic_names_survive_gc_and_reject_revocation() {
+    for revoke in [false, true] {
+        let session = RSession::new_for_gc_tests();
+        session.with_active_in(|instance| unsafe {
+            let owner = session.owner_token().unwrap();
+            let target = owner
+                .node_factory()
+                .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::INTSXP, 2)))
+                .unwrap();
+            let calls = Rc::new(Cell::new(0));
+            let class = session
+                .register_altrep_class(
+                    "classed-names-provider",
+                    Provider {
+                        size: 2,
+                        calls: calls.clone(),
+                        callback: Rc::new(move || {
+                            if revoke {
+                                crate::sexp::instance::revoke_instance_availability(instance);
+                            }
+                        }),
+                    },
+                )
+                .unwrap();
+            let input = AltrepBuilder::new(class).build().unwrap();
+            let class_value = crate::sexp::constructors::Rf_mkString(c"factor".as_ptr());
+            let _class_root = crate::sexp::protect::protect(class_value);
+            super::setAttrib(input.as_raw(), super::R_ClassSymbol(), class_value);
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                super::setAttrib(target.as_raw(), super::R_NamesSymbol(), input.as_raw());
+            }));
+            assert!(calls.get() > 0);
+            if revoke {
+                assert!(result.unwrap_err().is::<crate::sexp::context::RError>());
+                assert!(target.try_attrib().unwrap().is_nil());
+            } else {
+                result.unwrap();
+                owner.full_gc().unwrap();
+                let names = target.try_attrib().unwrap().try_car().unwrap();
+                assert_eq!(names.typeof_(), SEXPTYPE::STRSXP);
+                assert!(names.try_string_elt(0).unwrap().try_char_eq(b"1").unwrap());
+                assert!(names.try_string_elt(1).unwrap().try_char_eq(b"2").unwrap());
+                let class = super::getAttrib(names.as_raw(), super::R_ClassSymbol());
+                let class = owner.node_factory().wrap(class).unwrap();
+                assert!(
+                    class
+                        .try_string_elt(0)
+                        .unwrap()
+                        .try_char_eq(b"factor")
+                        .unwrap()
+                );
+            }
+        });
+    }
+}
+
+#[test]
+fn classed_names_metadata_change_during_publication_is_rejected() {
+    use crate::sexp::{ffi::NodeBody, heap::ResolvedLink, object::SexpMut};
+    let session = RSession::new_for_gc_tests();
+    session.with_active(|| unsafe {
+        let token = session.owner_token().unwrap();
+        let factory = token.node_factory();
+        let target = factory
+            .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::INTSXP, 2)))
+            .unwrap()
+            .into_owned()
+            .unwrap();
+        let input = factory
+            .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::INTSXP, 2)))
+            .unwrap()
+            .into_owned()
+            .unwrap();
+        let class = token
+            .sexp(crate::sexp::constructors::Rf_mkString(c"factor".as_ptr()))
+            .unwrap()
+            .into_owned()
+            .unwrap();
+        super::setAttrib(input.as_raw(), super::R_ClassSymbol(), class.as_raw());
+        let name = token
+            .sexp(super::R_NamesSymbol())
+            .unwrap()
+            .into_owned()
+            .unwrap();
+        let heap = target.allocation().unwrap().heap_identity();
+        let name_link = name.link_in(&heap).unwrap();
+        let changed = Rc::new(Cell::new(false));
+        let callback_changed = changed.clone();
+        let callback_input = input.clone();
+        let nil = factory.nil().into_owned().unwrap();
+        crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+            if callback_changed.get() {
+                return;
+            }
+            let final_cell_exists =
+                crate::sexp::instance::with_required_current_instance(|runtime| {
+                    (*runtime).arena.active_nodes().any(|pointer| {
+                        let Some(node) = (*runtime).arena.node_token(pointer) else {
+                            return false;
+                        };
+                        let Some(header) = node.heap_identity().node_snapshot(&node) else {
+                            return false;
+                        };
+                        let NodeBody::List(cell) = header.data else {
+                            return false;
+                        };
+                        if header.sxpinfo.type_of() != SEXPTYPE::LISTSXP || cell.tagval != name_link
+                        {
+                            return false;
+                        }
+                        let Some(ResolvedLink::Node { allocation, .. }) =
+                            heap.resolve_link(cell.carval)
+                        else {
+                            return false;
+                        };
+                        heap.node_snapshot(&allocation).is_some_and(|value| {
+                            value.sxpinfo.type_of() == SEXPTYPE::STRSXP && !value.attrib.is_null()
+                        })
+                    })
+                });
+            if final_cell_exists {
+                callback_changed.set(true);
+                SexpMut::try_from_checked(callback_input.clone())
+                    .unwrap()
+                    .try_set_attribute(&nil)
+                    .unwrap();
+            }
+        }));
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            crate::mainutils::memory_main::R_gc_torture(1, 1, 0);
+            super::setAttrib(target.as_raw(), name.as_raw(), input.as_raw());
+        }));
+        crate::mainutils::memory_main::R_gc_torture(0, 0, 0);
+        assert!(
+            changed.get(),
+            "source metadata must change during publication"
+        );
+        assert!(result.unwrap_err().is::<crate::sexp::context::RError>());
+        assert!(target.try_attrib().unwrap().is_nil());
+    });
+}
+
+#[test]
+fn classed_names_allocation_denial_does_not_publish() {
+    use crate::sexp::memory::ArenaBudget;
+    let session = RSession::new_for_gc_tests();
+    session.with_active(|| unsafe {
+        let owner = session.owner_token().unwrap();
+        let factory = owner.node_factory();
+        let target = factory
+            .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::INTSXP, 10_000)))
+            .unwrap();
+        let input = factory
+            .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::INTSXP, 1)))
+            .unwrap();
+        let class = owner
+            .sexp(crate::sexp::constructors::Rf_mkString(c"factor".as_ptr()))
+            .unwrap()
+            .into_owned()
+            .unwrap();
+        super::setAttrib(input.as_raw(), super::R_ClassSymbol(), class.as_raw());
+        let name = super::R_NamesSymbol();
+        owner.full_gc().unwrap();
+        let resident = owner
+            .with_arena(|arena| arena.total_bytes_allocated())
+            .unwrap();
+        owner
+            .with_arena(|arena| arena.set_budget(ArenaBudget::new(resident + 4096, usize::MAX)))
+            .unwrap();
+        let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            super::setAttrib(target.as_raw(), name, input.as_raw());
+        }))
+        .unwrap_err();
+        let error = error.downcast::<crate::sexp::context::RError>().unwrap();
+        assert_eq!(
+            error.message,
+            "R allocation failed: memory or node budget exceeded"
+        );
+        assert!(target.try_attrib().unwrap().is_nil());
+        owner
+            .with_arena(|arena| arena.set_budget(ArenaBudget::unlimited()))
+            .unwrap();
     });
 }

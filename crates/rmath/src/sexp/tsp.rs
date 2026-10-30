@@ -14,14 +14,14 @@ fn checked<T>(result: super::object::SexpResult<T>) -> Result<T> {
 /// The checkpoint is a generation-qualified identity, not an owning root;
 /// the current attribute chain and the caller's object remain rooted.
 #[derive(Default)]
-struct CycleDetector {
+pub(super) struct CycleDetector {
     checkpoint: Option<super::heap::NodeLink>,
     power: usize,
     distance: usize,
 }
 
 impl CycleDetector {
-    fn observe(&mut self, identity: super::heap::NodeLink) -> Result<()> {
+    pub(super) fn observe(&mut self, identity: super::heap::NodeLink) -> Result<()> {
         let Some(checkpoint) = self.checkpoint else {
             self.checkpoint = Some(identity);
             self.power = 1;

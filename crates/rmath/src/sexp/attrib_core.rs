@@ -320,7 +320,6 @@ pub(crate) unsafe fn try_set_atomic_names(x: SEXP, which: SEXP, value: SEXP) -> 
             |_, _| None,
             |access, object, input| {
                 if object.is_s4()
-                    || input.is_object()
                     || input.is_s4()
                     || !matches!(
                         object.typeof_(),
@@ -345,6 +344,7 @@ pub(crate) unsafe fn try_set_atomic_names(x: SEXP, which: SEXP, value: SEXP) -> 
                 {
                     return Ok(false);
                 }
+                let input_is_object = input.is_object();
                 let dimensions = super::tsp::attribute(access, object, b"dim")?;
                 let dimension_rank = if dimensions.is_nil() {
                     None
@@ -410,6 +410,14 @@ pub(crate) unsafe fn try_set_atomic_names(x: SEXP, which: SEXP, value: SEXP) -> 
                     })
                     .map_err(|error| error.to_string())?;
                 access.require_active().map_err(|error| error.to_string())?;
+                if input.is_object() != input_is_object {
+                    return Err("names metadata changed during assignment".into());
+                }
+                let classed_metadata = if input_is_object && input.typeof_() != SEXPTYPE::STRSXP {
+                    Some(copy_classed_names_attributes(access, input, &normalized)?)
+                } else {
+                    None
+                };
                 let mut source_metadata = None;
                 let normalized = if input_size == size {
                     normalized
@@ -460,6 +468,27 @@ pub(crate) unsafe fn try_set_atomic_names(x: SEXP, which: SEXP, value: SEXP) -> 
                 }
                 validate_dimensions()?;
                 let published = if one_dimensional {
+                    // GNU normalizes the single axis as dimnames.  A nonempty
+                    // factor is converted as a factor at that stage, but names
+                    // coercion has already made its storage character.
+                    if size != 0 {
+                        let class = super::tsp::attribute(access, &normalized, b"class")?;
+                        if class.typeof_() == SEXPTYPE::STRSXP {
+                            for index in 0..class.len() {
+                                let item = class
+                                    .try_string_elt(index)
+                                    .and_then(super::object::Sexp::into_owned)
+                                    .map_err(|error| error.to_string())?;
+                                access.require_active().map_err(|error| error.to_string())?;
+                                if item
+                                    .try_char_eq(b"factor")
+                                    .map_err(|error| error.to_string())?
+                                {
+                                    return Err("malformed factor".into());
+                                }
+                            }
+                        }
+                    }
                     let domain = access.domain();
                     let allocator = access.allocator(&domain).map_err(|e| e.to_string())?;
                     let list = allocator
@@ -488,6 +517,12 @@ pub(crate) unsafe fn try_set_atomic_names(x: SEXP, which: SEXP, value: SEXP) -> 
                         ));
                     }
                     validate_dimensions()?;
+                    if input.is_object() != input_is_object {
+                        return Err("names metadata changed during assignment".into());
+                    }
+                    if let Some(snapshot) = &classed_metadata {
+                        snapshot.validate(access, input)?;
+                    }
                     if let Some((source, snapshot)) = &source_metadata {
                         snapshot.validate(access, source)?;
                     }
@@ -497,6 +532,126 @@ pub(crate) unsafe fn try_set_atomic_names(x: SEXP, which: SEXP, value: SEXP) -> 
             },
         )
     }
+}
+
+struct ClassedNamesSnapshot {
+    original: super::object::Sexp<'static>,
+    copied: super::object::Sexp<'static>,
+    is_object: bool,
+}
+
+impl ClassedNamesSnapshot {
+    fn validate(
+        &self,
+        access: &super::owner::RuntimeAccess,
+        source: &super::object::Sexp<'static>,
+    ) -> Result<(), String> {
+        let domain = access.domain();
+        if source.is_object() != self.is_object {
+            return Err("names metadata changed during assignment".into());
+        }
+        let current = source
+            .try_attrib()
+            .and_then(super::object::Sexp::into_owned)
+            .map_err(|e| e.to_string())?;
+        if current != self.original {
+            return Err("names metadata changed during assignment".into());
+        }
+        let mut source_cell = current;
+        let mut copied = self.copied.clone();
+        let mut verify = super::tsp::CycleDetector::default();
+        while !source_cell.is_nil() && !copied.is_nil() {
+            verify.observe(domain.link(&source_cell).map_err(|e| e.to_string())?)?;
+            if source_cell.try_tag().map_err(|e| e.to_string())?
+                != copied.try_tag().map_err(|e| e.to_string())?
+                || source_cell.try_car().map_err(|e| e.to_string())?
+                    != copied.try_car().map_err(|e| e.to_string())?
+            {
+                return Err("names metadata changed during assignment".into());
+            }
+            source_cell = source_cell
+                .try_cdr()
+                .and_then(super::object::Sexp::into_owned)
+                .map_err(|e| e.to_string())?;
+            copied = copied
+                .try_cdr()
+                .and_then(super::object::Sexp::into_owned)
+                .map_err(|e| e.to_string())?;
+        }
+        if !source_cell.is_nil() || !copied.is_nil() {
+            return Err("names metadata changed during assignment".into());
+        }
+        access.require_active().map_err(|e| e.to_string())
+    }
+}
+
+/// Copy attribute cells in source order without sharing their mutable links.
+/// Allocation can reenter R, so validate the whole captured chain before
+/// installing it on the private normalized value.
+fn copy_classed_names_attributes(
+    access: &super::owner::RuntimeAccess,
+    source: &super::object::Sexp<'static>,
+    normalized: &super::object::Sexp<'static>,
+) -> Result<ClassedNamesSnapshot, String> {
+    let domain = access.domain();
+    let allocator = access.allocator(&domain).map_err(|e| e.to_string())?;
+    let original = source
+        .try_attrib()
+        .and_then(super::object::Sexp::into_owned)
+        .map_err(|e| e.to_string())?;
+    let mut cursor = original.clone();
+    let mut head = domain.nil();
+    let mut tail: Option<super::object::Sexp<'static>> = None;
+    let mut seen = super::tsp::CycleDetector::default();
+    while !cursor.is_nil() {
+        seen.observe(domain.link(&cursor).map_err(|e| e.to_string())?)?;
+        let tag = cursor
+            .try_tag()
+            .and_then(super::object::Sexp::into_owned)
+            .map_err(|e| e.to_string())?;
+        let value = cursor
+            .try_car()
+            .and_then(super::object::Sexp::into_owned)
+            .map_err(|e| e.to_string())?;
+        let next = cursor
+            .try_cdr()
+            .and_then(super::object::Sexp::into_owned)
+            .map_err(|e| e.to_string())?;
+        let new = allocator
+            .pairlist_cell(&value, &domain.nil(), &tag)
+            .map_err(|error| match error {
+                super::object::SexpError::AllocationFailed { .. } => {
+                    "R allocation failed: memory or node budget exceeded".to_owned()
+                }
+                other => other.to_string(),
+            })?;
+        access.require_active().map_err(|e| e.to_string())?;
+        if let Some(previous) = tail {
+            super::object::SexpMut::try_from_checked(previous)
+                .and_then(|mut node| node.try_set_pairlist_cdr(&new))
+                .map_err(|e| e.to_string())?;
+        } else {
+            head = new.clone();
+        }
+        tail = Some(new);
+        cursor = next;
+    }
+    let snapshot = ClassedNamesSnapshot {
+        original,
+        copied: head.clone(),
+        is_object: source.is_object(),
+    };
+    snapshot.validate(access, source)?;
+    super::object::SexpMut::try_from_checked(normalized.clone())
+        .and_then(|mut value| value.try_set_attribute(&head))
+        .map_err(|e| e.to_string())?;
+    access
+        .with_native(|owner| unsafe {
+            super::accessors::SET_OBJECT(normalized.as_raw(), i32::from(snapshot.is_object));
+            owner.require_active()
+        })
+        .map_err(|e| e.to_string())?;
+    Ok(snapshot)
 }
 
 /// GNU resizing retains the names of a names value and fills their new slots
