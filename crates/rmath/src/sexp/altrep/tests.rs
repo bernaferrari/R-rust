@@ -321,34 +321,107 @@ fn expanded_cache_outlives_original_and_releases_final_buffer_lease() {
     let s = RSession::new_for_gc_tests();
     let token = s.owner_token().unwrap();
     let before;
+    let before_workspace;
     let cache;
     let payload;
+    let weak_payload;
+    let original_node;
+    let cache_node;
     {
         let x = new_sequence(token, SEXPTYPE::REALSXP, 4.0, 0.5, 8).unwrap();
-        before = unsafe { (*token.as_ptr()).arena.total_bytes_allocated() };
+        original_node = x.allocation().unwrap().clone();
+        (before, before_workspace) = token
+            .with_arena(|arena| (arena.total_bytes_allocated(), arena.workspace_bytes()))
+            .unwrap();
         force_materialization(&x).unwrap();
         cache = data2(&x).unwrap();
+        cache_node = cache.allocation().unwrap().clone();
         assert_eq!(cache.len(), 8);
+        assert_ne!(original_node.id(), cache_node.id());
+        assert_eq!(
+            original_node.id().page_cookie(),
+            cache_node.id().page_cookie()
+        );
         assert_eq!(cache.header().payload, x.header().payload);
         payload = x.header().payload;
+        let header = cache.header();
+        let lease = header.payload_lease().unwrap();
+        let payload_bytes = lease.storage_bytes();
+        weak_payload = lease.downgrade();
+        drop(header);
+        assert_eq!(payload_bytes, 8 * std::mem::size_of::<f64>());
         let mut cache_mut = SexpMut::try_from_checked(cache.clone()).unwrap();
         cache_mut.try_set_real_elt(1, 99.0).unwrap();
         assert_eq!(x.real_elt(1), Some(99.0));
-        let after = unsafe { (*token.as_ptr()).arena.total_bytes_allocated() };
+        let after = token
+            .with_arena(|arena| arena.total_bytes_allocated())
+            .unwrap();
         assert_eq!(
-            after - before,
-            std::mem::size_of::<crate::sexp::ffi::SexprecCore>() + 8 * std::mem::size_of::<f64>()
+            token.with_arena(|arena| arena.workspace_bytes()).unwrap(),
+            before_workspace
         );
+        // The cache uses a distinct, already-admitted slot in the original
+        // page. Only its new, shared dense payload adds physical bytes.
+        assert_eq!(after - before, payload_bytes);
     }
     s.with_active(|| token.full_gc().unwrap());
+    assert!(!original_node.is_live());
+    assert!(cache_node.is_live());
+    assert!(weak_payload.upgrade().is_some());
     assert_eq!(cache.real_elt(1), Some(99.0));
     assert_eq!(cache.real_elt(7), Some(7.5));
     // The original header is gone; the independently rooted cache is sole owner.
     drop(cache);
     s.with_active(|| token.full_gc().unwrap());
-    assert!(!s.with_active(|| unsafe {
-        crate::sexp::memory::with_arena(|a| a.tracks_payload_link(payload))
+    assert!(!cache_node.is_live());
+    assert!(weak_payload.upgrade().is_none());
+    assert!(!s.with_active(|| {
+        token
+            .with_arena(|arena| arena.tracks_payload_link(payload))
+            .unwrap()
     }));
+}
+
+#[test]
+fn compact_sequence_materialization_denial_recovers_at_the_same_byte_limit() {
+    let session = RSession::new_for_gc_tests();
+    let owner = session.owner_token().unwrap();
+    let value = new_sequence(owner, SEXPTYPE::REALSXP, 4.0, 0.5, 8).unwrap();
+    let (resident, original_budget) = owner
+        .with_arena(|arena| (arena.total_bytes_allocated(), arena.budget()))
+        .unwrap();
+    let limit = resident + 8 * std::mem::size_of::<f64>();
+    let held = owner
+        .with_arena(|arena| {
+            arena.set_budget(ArenaBudget::new(limit, 0));
+            arena.reserve_workspace(1).unwrap()
+        })
+        .unwrap();
+    assert!(force_materialization(&value).is_err());
+    assert!(value.header().payload.is_empty());
+    assert_eq!(value.real_elt(1), Some(4.5));
+    assert_eq!(
+        owner.with_arena(|arena| arena.workspace_bytes()).unwrap(),
+        1
+    );
+    assert_eq!(
+        owner.with_arena(|arena| arena.budget().max_bytes).unwrap(),
+        limit
+    );
+    drop(held);
+    force_materialization(&value).unwrap();
+    assert_eq!(value.real_elt(1), Some(4.5));
+    assert_eq!(
+        owner.with_arena(|arena| arena.budget().max_bytes).unwrap(),
+        limit
+    );
+    assert_eq!(
+        owner.with_arena(|arena| arena.workspace_bytes()).unwrap(),
+        0
+    );
+    owner
+        .with_arena(|arena| arena.set_budget(original_budget))
+        .unwrap();
 }
 #[test]
 fn replacing_attributes_keeps_payload_owned_after_cache_is_swept() {
