@@ -46,6 +46,11 @@ impl NodeLink {
     pub(crate) fn page_cookie(self) -> u64 {
         u64::from(self.page_cookie)
     }
+    /// Compare against an already retained singleton lease without resolving
+    /// an arbitrary link into a new lease or borrowing its backing directory.
+    pub(crate) fn matches_singleton(self, lease: &SingletonLease) -> bool {
+        self.singleton_identity() == Some((lease.kind(), lease.identity_cookie()))
+    }
     fn singleton(kind: SingletonKind, cookie: u64) -> Option<Self> {
         (cookie != 0).then_some(Self {
             heap_cookie: 0,
@@ -1600,6 +1605,30 @@ mod tests {
         }
         assert!(NodeLink::singleton(SingletonKind::Nil, 0).is_none());
         assert!(NodeLink::NULL.singleton_identity().is_none());
+    }
+
+    #[test]
+    fn singleton_link_matches_only_the_exact_retained_lease() {
+        let session = super::super::RSession::new_for_gc_tests();
+        let factory = session.owner_token().unwrap().node_factory();
+        let nil = factory.nil();
+        let lease = super::super::globals::immutable_singleton_lease(nil.as_raw()).unwrap();
+        let link = NodeLink::singleton(lease.kind(), lease.identity_cookie()).unwrap();
+        assert!(link.matches_singleton(&lease));
+        assert!(!NodeLink::NULL.matches_singleton(&lease));
+        let other_cookie = lease.identity_cookie() ^ (1_u64 << 32);
+        if other_cookie != 0 {
+            assert!(
+                !NodeLink::singleton(lease.kind(), other_cookie)
+                    .unwrap()
+                    .matches_singleton(&lease)
+            );
+        }
+        assert!(
+            !NodeLink::singleton(SingletonKind::True, lease.identity_cookie())
+                .unwrap()
+                .matches_singleton(&lease)
+        );
     }
 
     #[test]

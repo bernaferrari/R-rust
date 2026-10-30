@@ -573,21 +573,22 @@ fn atomic_names_checked_header_probe_rejects_foreign_singleton_and_stale() {
             .unwrap()
     });
     let domain = factory.domain();
-    assert!(domain.has_equal_plain_character_input(target.as_raw(), names.as_raw()));
-    assert!(!domain.has_equal_plain_character_input(target.as_raw(), target.as_raw()));
-    assert!(!domain.has_equal_plain_character_input(target.as_raw(), foreign.as_raw()));
-    assert!(!domain.has_equal_plain_character_input(foreign.as_raw(), names.as_raw()));
-    assert!(!domain.has_equal_plain_character_input(factory.nil().as_raw(), names.as_raw()));
+    let name = unsafe { super::R_NamesSymbol() };
+    assert!(domain.has_equal_plain_character_input(target.as_raw(), names.as_raw(), name));
+    assert!(!domain.has_equal_plain_character_input(target.as_raw(), target.as_raw(), name));
+    assert!(!domain.has_equal_plain_character_input(target.as_raw(), foreign.as_raw(), name));
+    assert!(!domain.has_equal_plain_character_input(foreign.as_raw(), names.as_raw(), name));
+    assert!(!domain.has_equal_plain_character_input(factory.nil().as_raw(), names.as_raw(), name));
     let stale = factory
         .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::STRSXP, 2)))
         .unwrap();
-    assert!(!domain.has_equal_plain_character_input(target.as_raw(), stale.as_raw()));
+    assert!(!domain.has_equal_plain_character_input(target.as_raw(), stale.as_raw(), name));
     let stale_raw = stale.as_raw();
     let allocation = stale.allocation().unwrap().clone();
     drop(stale);
     owner.full_gc().unwrap();
     assert!(!allocation.is_live());
-    assert!(!domain.has_equal_plain_character_input(target.as_raw(), stale_raw));
+    assert!(!domain.has_equal_plain_character_input(target.as_raw(), stale_raw, name));
 }
 
 #[test]
@@ -722,4 +723,151 @@ fn atomic_names_leaves_classed_input_and_pads_short_input() {
     let names = target.try_attrib().unwrap().try_car().unwrap();
     assert_eq!(names.len(), 3);
     assert!(names.try_string_elt(2).unwrap().is_na_string());
+}
+
+#[test]
+fn one_dimensional_names_survive_gc_and_reject_revocation() {
+    use crate::sexp::object::SexpMut;
+    for revoke in [false, true] {
+        let session = RSession::new_for_gc_tests();
+        session.with_active_in(|instance| {
+            let owner = session.owner_token().unwrap();
+            let factory = owner.node_factory();
+            let target = factory
+                .allocate(|a| Some(a.alloc_vector(SEXPTYPE::INTSXP, 3)))
+                .unwrap();
+            let dimension = factory
+                .allocate(|a| Some(a.alloc_vector(SEXPTYPE::INTSXP, 1)))
+                .unwrap();
+            let mut dimension = SexpMut::try_from_checked(dimension).unwrap();
+            dimension.try_set_integer_elt(0, 3).unwrap();
+            let dimension = dimension.freeze();
+            unsafe { super::setAttrib(target.as_raw(), super::R_DimSymbol(), dimension.as_raw()) };
+            let original = target.try_attrib().unwrap().into_owned().unwrap();
+            let calls = Rc::new(Cell::new(0));
+            let class = session
+                .register_altrep_class(
+                    "one-dim-names",
+                    Provider {
+                        size: 2,
+                        calls: calls.clone(),
+                        callback: Rc::new(move || {
+                            if revoke {
+                                unsafe {
+                                    crate::sexp::instance::revoke_instance_availability(instance)
+                                }
+                            }
+                        }),
+                    },
+                )
+                .unwrap();
+            let input = AltrepBuilder::new(class).build().unwrap();
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+                super::setAttrib(target.as_raw(), super::R_NamesSymbol(), input.as_raw());
+            }));
+            if revoke {
+                assert!(result.unwrap_err().is::<crate::sexp::context::RError>());
+                assert_eq!(target.try_attrib().unwrap(), original);
+                assert!(original.try_cdr().unwrap().is_nil());
+            } else {
+                result.unwrap();
+                assert_eq!(calls.get(), 2);
+                owner.full_gc().unwrap();
+                let dimnames = original.try_cdr().unwrap();
+                assert!(dimnames.try_tag_name_eq(b"dimnames").unwrap());
+                let names = dimnames.try_car().unwrap().try_vector_elt(0).unwrap();
+                assert!(names.try_string_elt(0).unwrap().try_char_eq(b"1").unwrap());
+                assert!(names.try_string_elt(1).unwrap().try_char_eq(b"2").unwrap());
+                assert!(names.try_string_elt(2).unwrap().is_na_string());
+            }
+        });
+    }
+}
+
+#[test]
+fn one_dimensional_names_denial_preserves_existing_dimensions() {
+    use crate::sexp::{memory::ArenaBudget, object::SexpMut};
+    let session = RSession::new_for_gc_tests();
+    let owner = session.owner_token().unwrap();
+    let factory = owner.node_factory();
+    let target = factory
+        .allocate(|a| Some(a.alloc_vector(SEXPTYPE::INTSXP, 10000)))
+        .unwrap();
+    let dimension = factory
+        .allocate(|a| Some(a.alloc_vector(SEXPTYPE::INTSXP, 1)))
+        .unwrap();
+    let mut dimension = SexpMut::try_from_checked(dimension).unwrap();
+    dimension.try_set_integer_elt(0, 10000).unwrap();
+    let dimension = dimension.freeze();
+    let input = factory
+        .allocate(|a| Some(a.alloc_vector(SEXPTYPE::STRSXP, 0)))
+        .unwrap();
+    unsafe { super::setAttrib(target.as_raw(), super::R_DimSymbol(), dimension.as_raw()) };
+    let original = target.try_attrib().unwrap().into_owned().unwrap();
+    let name = unsafe { super::R_NamesSymbol() };
+    owner.full_gc().unwrap();
+    let resident = owner.with_arena(|a| a.total_bytes_allocated()).unwrap();
+    owner
+        .with_arena(|a| a.set_budget(ArenaBudget::new(resident + 4096, usize::MAX)))
+        .unwrap();
+    let failure = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+        super::setAttrib(target.as_raw(), name, input.as_raw());
+    }))
+    .unwrap_err();
+    let error = failure.downcast::<crate::sexp::context::RError>().unwrap();
+    assert_eq!(
+        error.message,
+        "R allocation failed: memory or node budget exceeded"
+    );
+    assert_eq!(target.try_attrib().unwrap(), original);
+    assert_eq!(original.try_car().unwrap(), dimension);
+    assert!(original.try_cdr().unwrap().is_nil());
+    owner
+        .with_arena(|a| a.set_budget(ArenaBudget::unlimited()))
+        .unwrap();
+}
+
+#[test]
+fn one_dimensional_names_fast_fallback_reuses_existing_vector_attribute() {
+    use crate::sexp::memory::ArenaBudget;
+    let session = RSession::new_for_gc_tests();
+    let owner = session.owner_token().unwrap();
+    let factory = owner.node_factory();
+    let target = factory
+        .allocate(|a| Some(a.alloc_vector(SEXPTYPE::INTSXP, 3)))
+        .unwrap();
+    let old = factory
+        .allocate(|a| Some(a.alloc_vector(SEXPTYPE::STRSXP, 3)))
+        .unwrap();
+    let replacement = factory
+        .allocate(|a| Some(a.alloc_vector(SEXPTYPE::STRSXP, 3)))
+        .unwrap();
+    let name = unsafe { super::R_NamesSymbol() };
+    unsafe { super::setAttrib(target.as_raw(), name, old.as_raw()) };
+    assert!(factory.domain().has_equal_plain_character_input(
+        target.as_raw(),
+        replacement.as_raw(),
+        name
+    ));
+    let attribute = target.try_attrib().unwrap().into_owned().unwrap();
+    owner.full_gc().unwrap();
+    let resident = owner.with_arena(|a| a.total_bytes_allocated()).unwrap();
+    owner
+        .with_arena(|a| a.set_budget(ArenaBudget::new(resident, usize::MAX)))
+        .unwrap();
+    unsafe { super::setAttrib(target.as_raw(), name, replacement.as_raw()) };
+    assert_eq!(target.try_attrib().unwrap(), attribute);
+    assert_eq!(attribute.try_car().unwrap(), replacement);
+    owner
+        .with_arena(|a| a.set_budget(ArenaBudget::unlimited()))
+        .unwrap();
+    let dimensions = factory
+        .allocate(|a| Some(a.alloc_vector(SEXPTYPE::INTSXP, 1)))
+        .unwrap();
+    unsafe { super::setAttrib(target.as_raw(), super::R_DimSymbol(), dimensions.as_raw()) };
+    assert!(!factory.domain().has_equal_plain_character_input(
+        target.as_raw(),
+        replacement.as_raw(),
+        name
+    ));
 }

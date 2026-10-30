@@ -69,7 +69,12 @@ impl<'session> NodeDomain<'session> {
     /// Test copied, non-ALTREP vector lengths only after both live allocations
     /// are known to belong to this domain. This callback-free check takes no
     /// roots and is valid only within an already pinned, active runtime scope.
-    pub(crate) fn has_equal_plain_character_input(&self, target: SEXP, input: SEXP) -> bool {
+    pub(crate) fn has_equal_plain_character_input(
+        &self,
+        target: SEXP,
+        input: SEXP,
+        names: SEXP,
+    ) -> bool {
         if !self.availability.is_live() {
             return false;
         }
@@ -98,6 +103,39 @@ impl<'session> NodeDomain<'session> {
             || input.sxpinfo.type_of() != crate::sexp::ffi::SEXPTYPE::STRSXP
         {
             return false;
+        }
+        if !target.attrib.is_null() {
+            // A single existing names cell cannot contain dimensions. Check
+            // both its generation-qualified tag and its terminal tail using
+            // copied headers, without allocation or a callback.
+            let Some((_, name_node)) = crate::sexp::memory::checked_projection(names) else {
+                return false;
+            };
+            if !name_node.belongs_to(&self.heap) {
+                return false;
+            }
+            let Some(name_link) = name_node.link() else {
+                return false;
+            };
+            let Some(crate::sexp::heap::ResolvedLink::Node { allocation, .. }) =
+                self.heap.resolve_link(target.attrib)
+            else {
+                return false;
+            };
+            let Some(attribute) = self.heap.node_snapshot(&allocation) else {
+                return false;
+            };
+            let crate::sexp::ffi::NodeBody::List(cell) = attribute.data else {
+                return false;
+            };
+            if attribute.sxpinfo.type_of() != crate::sexp::ffi::SEXPTYPE::LISTSXP
+                || cell.tagval != name_link
+            {
+                return false;
+            }
+            if !cell.cdrval.is_null() && !cell.cdrval.matches_singleton(&self.singletons.nil()) {
+                return false;
+            }
         }
         matches!((target.data, input.data),
             (crate::sexp::ffi::NodeBody::Vector(target), crate::sexp::ffi::NodeBody::Vector(input))

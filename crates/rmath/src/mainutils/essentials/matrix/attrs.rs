@@ -180,6 +180,20 @@ pub unsafe fn do_names_set(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
         let _value = protect(value);
 
         let t = TYPEOF(x);
+        if (value.is_null() || value == R_NilValue())
+            && (t == SEXPTYPE::LGLSXP
+                || t == SEXPTYPE::INTSXP
+                || t == SEXPTYPE::REALSXP
+                || t == SEXPTYPE::CPLXSXP
+                || t == SEXPTYPE::STRSXP
+                || t == SEXPTYPE::RAWSXP
+                || t == SEXPTYPE::VECSXP
+                || t == SEXPTYPE::EXPRSXP)
+            && crate::sexp::attrib_core::try_clear_one_dimensional_names(x)
+        {
+            crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+            return x;
+        }
         if t == SEXPTYPE::LISTSXP || t == SEXPTYPE::LANGSXP {
             namesgets_pairlist(x, value);
         } else {

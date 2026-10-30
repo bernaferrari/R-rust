@@ -310,7 +310,7 @@ pub(crate) unsafe fn try_set_atomic_names(x: SEXP, which: SEXP, value: SEXP) -> 
             && token
                 .node_factory()
                 .domain()
-                .has_equal_plain_character_input(x, value)
+                .has_equal_plain_character_input(x, value, which)
         {
             return false;
         }
@@ -345,32 +345,29 @@ pub(crate) unsafe fn try_set_atomic_names(x: SEXP, which: SEXP, value: SEXP) -> 
                 {
                     return Ok(false);
                 }
-                // Only one-dimensional arrays redirect names into dimnames.
                 let dimensions = super::tsp::attribute(access, object, b"dim")?;
-                let dimension_rank = if !dimensions.is_nil() {
+                let dimension_rank = if dimensions.is_nil() {
+                    None
+                } else {
                     if dimensions.typeof_() != SEXPTYPE::INTSXP {
                         return Ok(false);
                     }
                     let rank = dimensions.len();
                     access.require_active().map_err(|error| error.to_string())?;
-                    if rank == 1 {
-                        return Ok(false);
-                    }
                     if super::tsp::attribute(access, object, b"dim")? != dimensions {
                         return Err("dimensions changed during names assignment".into());
                     }
                     Some(rank)
-                } else {
-                    None
                 };
+                let one_dimensional = dimension_rank == Some(1);
                 let validate_dimensions = || {
                     if super::tsp::attribute(access, object, b"dim")? != dimensions {
                         return Err("dimensions changed during names assignment".into());
                     }
-                    if let Some(rank) = dimension_rank {
-                        let current_rank = dimensions.len();
+                    if let Some(expected_rank) = dimension_rank {
+                        let rank = dimensions.len();
                         access.require_active().map_err(|error| error.to_string())?;
-                        if current_rank != rank
+                        if rank != expected_rank
                             || super::tsp::attribute(access, object, b"dim")? != dimensions
                         {
                             return Err("dimensions changed during names assignment".into());
@@ -382,6 +379,13 @@ pub(crate) unsafe fn try_set_atomic_names(x: SEXP, which: SEXP, value: SEXP) -> 
                 access.require_active().map_err(|error| error.to_string())?;
                 let input_size = input.len();
                 access.require_active().map_err(|error| error.to_string())?;
+                // For other vectors an already-sized character value needs no
+                // normalization. Preserve the existing replacement path,
+                // which does not allocate an extra attribute cell.
+                if !one_dimensional && input.typeof_() == SEXPTYPE::STRSXP && input_size == size {
+                    validate_dimensions()?;
+                    return Ok(false);
+                }
                 // Resizing names that themselves carry attributes has
                 // distinct metadata rules. Exact-length coercion preserves
                 // those attributes through coerceToString.
@@ -395,7 +399,13 @@ pub(crate) unsafe fn try_set_atomic_names(x: SEXP, which: SEXP, value: SEXP) -> 
                 }
                 let (name, normalized) = access
                     .with_native(|owner| {
-                        let name = owner.sexp(which)?.into_owned()?;
+                        let name = owner
+                            .sexp(if one_dimensional {
+                                R_DimNamesSymbol()
+                            } else {
+                                which
+                            })?
+                            .into_owned()?;
                         let pointer = if input.typeof_() == SEXPTYPE::STRSXP {
                             input.as_raw()
                         } else {
@@ -450,7 +460,27 @@ pub(crate) unsafe fn try_set_atomic_names(x: SEXP, which: SEXP, value: SEXP) -> 
                     ));
                 }
                 validate_dimensions()?;
-                super::tsp::install_checked(access, object, &name, &normalized, || {
+                let published = if one_dimensional {
+                    let domain = access.domain();
+                    let allocator = access.allocator(&domain).map_err(|e| e.to_string())?;
+                    let list = allocator
+                        .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::VECSXP, 1)))
+                        .map_err(|error| match error {
+                            super::object::SexpError::AllocationFailed { .. } => {
+                                "R allocation failed: memory or node budget exceeded".to_owned()
+                            }
+                            other => other.to_string(),
+                        })?;
+                    let mut list = super::object::SexpMut::try_from_checked(list)
+                        .map_err(|e| e.to_string())?;
+                    let element = if size == 0 { domain.nil() } else { normalized };
+                    list.try_set_vector_elt(0, element)
+                        .map_err(|e| e.to_string())?;
+                    list.freeze()
+                } else {
+                    normalized
+                };
+                super::tsp::install_checked(access, object, &name, &published, || {
                     let current_size = object.len();
                     access.require_active().map_err(|error| error.to_string())?;
                     if current_size != size {
@@ -459,6 +489,65 @@ pub(crate) unsafe fn try_set_atomic_names(x: SEXP, which: SEXP, value: SEXP) -> 
                         ));
                     }
                     validate_dimensions()
+                })?;
+                Ok(true)
+            },
+        )
+    }
+}
+
+/// `names(x) <- NULL` removes dimnames for a one-dimensional array, while
+/// `attr(x, "names") <- NULL` leaves that attribute alone.
+pub(crate) unsafe fn try_clear_one_dimensional_names(x: SEXP) -> bool {
+    unsafe {
+        run_tsp(
+            x,
+            R_NilValue(),
+            |_, _| None,
+            |access, object, _| {
+                if object.is_s4()
+                    || !matches!(
+                        object.typeof_(),
+                        SEXPTYPE::LGLSXP
+                            | SEXPTYPE::INTSXP
+                            | SEXPTYPE::REALSXP
+                            | SEXPTYPE::CPLXSXP
+                            | SEXPTYPE::STRSXP
+                            | SEXPTYPE::RAWSXP
+                            | SEXPTYPE::VECSXP
+                            | SEXPTYPE::EXPRSXP
+                    )
+                {
+                    return Ok(false);
+                }
+                let dimensions = super::tsp::attribute(access, object, b"dim")?;
+                if dimensions.is_nil() || dimensions.typeof_() != SEXPTYPE::INTSXP {
+                    return Ok(false);
+                }
+                let rank = dimensions.len();
+                access.require_active().map_err(|error| error.to_string())?;
+                if super::tsp::attribute(access, object, b"dim")? != dimensions {
+                    return Err("dimensions changed during names assignment".into());
+                }
+                if rank != 1 {
+                    return Ok(false);
+                }
+                let name = access
+                    .with_native(|owner| owner.sexp(R_DimNamesSymbol())?.into_owned())
+                    .map_err(|error| error.to_string())?;
+                let nil = access.domain().nil();
+                super::tsp::install_checked(access, object, &name, &nil, || {
+                    if super::tsp::attribute(access, object, b"dim")? != dimensions {
+                        return Err("dimensions changed during names assignment".into());
+                    }
+                    let current_rank = dimensions.len();
+                    access.require_active().map_err(|error| error.to_string())?;
+                    if current_rank != 1
+                        || super::tsp::attribute(access, object, b"dim")? != dimensions
+                    {
+                        return Err("dimensions changed during names assignment".into());
+                    }
+                    Ok(())
                 })?;
                 Ok(true)
             },
