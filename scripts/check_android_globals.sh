@@ -101,7 +101,7 @@ scan_kind() {
     scan_kind "lazy-static" '^\s*lazy_static!\s*\{'
     scan_kind "lazy-static-ref" '^\s*static\s+ref\b'
     scan_kind "sync-static" \
-        '^\s*static\s+(?!ref\b)[A-Za-z_][A-Za-z0-9_]*\s*:\s*.*\b(?:OnceLock|LazyLock|Mutex|RwLock|Atomic[A-Za-z]+)\b' \
+        '^\s*static\s+(?!ref\b)[A-Za-z_][A-Za-z0-9_]*\s*:\s*.*\b(?:OnceLock|LazyLock|Mutex|RwLock|Atomic[A-Za-z0-9_]+)\b' \
         '-P'
 } | while IFS=$'\t' read -r file kind line text; do
     [[ -n "$file" ]] || continue
