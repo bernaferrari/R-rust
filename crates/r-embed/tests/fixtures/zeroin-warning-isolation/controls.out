@@ -1,0 +1,6 @@
+outer-eval|outer:NA/NaN replaced by maximum positive value|inner-eval|inner:Inf replaced by maximum positive value
+1 1
+1 TRUE
+1 NA/NaN replaced by maximum positive value
+1 -Inf replaced by maximally negative value
+2 TRUE

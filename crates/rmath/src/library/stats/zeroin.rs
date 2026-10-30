@@ -178,46 +178,20 @@ unsafe extern "C-unwind" fn zeroin_call(x: f64, info: *mut core::ffi::c_void) ->
     }
 }
 fn finite_uniroot(v: f64) -> f64 {
-    if v.is_nan() {
-        UNIROOT_NOTE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        f64::MAX
+    let (message, replacement) = if v.is_nan() {
+        (c"NA/NaN replaced by maximum positive value", f64::MAX)
     } else if v == f64::NEG_INFINITY {
-        UNIROOT_NEG.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        f64::MIN
+        (c"-Inf replaced by maximally negative value", f64::MIN)
     } else if v.is_infinite() {
-        UNIROOT_POS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        f64::MAX
+        (c"Inf replaced by maximum positive value", f64::MAX)
     } else {
-        v
-    }
+        return v;
+    };
+    // GNU signals at the evaluation that produced the value.  In particular,
+    // handlers may run nested optimizers or turn this warning into an error.
+    unsafe { crate::mainutils::errors::Rf_warning1(message.as_ptr()) };
+    replacement
 }
-
-fn flush_uniroot_warnings() {
-    let na = UNIROOT_NOTE.swap(0, std::sync::atomic::Ordering::Relaxed);
-    let neg = UNIROOT_NEG.swap(0, std::sync::atomic::Ordering::Relaxed);
-    let pos = UNIROOT_POS.swap(0, std::sync::atomic::Ordering::Relaxed);
-    unsafe {
-        if na > 0 {
-            crate::mainutils::errors::Rf_warning1(
-                c"NA/NaN replaced by maximum positive value".as_ptr(),
-            );
-        }
-        if neg > 0 {
-            crate::mainutils::errors::Rf_warning1(
-                c"-Inf replaced by maximally negative value".as_ptr(),
-            );
-        }
-        if pos > 0 {
-            crate::mainutils::errors::Rf_warning1(
-                c"Inf replaced by maximum positive value".as_ptr(),
-            );
-        }
-    }
-}
-
-static UNIROOT_NOTE: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
-static UNIROOT_NEG: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
-static UNIROOT_POS: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
 
 /// GNU `uniroot(f, interval)`.
 pub unsafe fn do_uniroot(
@@ -319,7 +293,6 @@ pub unsafe fn do_optimize(
         }
         let xmin = 0.5 * (lo + hi);
         let fmin = zeroin_call(xmin, info);
-        flush_uniroot_warnings();
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
         let _r = protect(result);
         SET_VECTOR_ELT(result, 0, Rf_ScalarReal(xmin));
@@ -1156,7 +1129,6 @@ pub unsafe fn zeroin2(
             &mut tol,
             &mut maxit,
         );
-        flush_uniroot_warnings();
         let out = Rf_allocVector(SEXPTYPE::REALSXP, 3);
         *REAL(out) = root;
         *REAL(out).add(1) = maxit as f64;
@@ -1285,7 +1257,6 @@ pub unsafe fn do_fmin(
         let mut ctx = ZeroinCtx { fun, rho };
         let info = &mut ctx as *mut _ as *mut core::ffi::c_void;
         let x = brent_fmin(xmin, xmax, info, tol);
-        flush_uniroot_warnings();
         let out = Rf_allocVector(SEXPTYPE::REALSXP, 1);
         *REAL(out) = x;
         out
