@@ -25,7 +25,6 @@ fn pairlist_names_match_pinned_gnu() {
 }
 
 #[test]
-#[ignore = "pairlist and language names semantics tracked by rport-n39t1"]
 fn pairlist_target_names_match_pinned_gnu() {
     for portable in [false, true] {
         let mut session = if portable {
@@ -74,6 +73,30 @@ fn pairlist_replacement_distinguishes_na_string_from_missing() {
             .unwrap();
         assert_eq!(
             output, "pairlist(`NA` = 1, 2)\nf(`NA` = 1, 2)\n",
+            "portable={portable}"
+        );
+    }
+}
+
+#[test]
+fn pairlist_one_dimensional_names_use_dimnames() {
+    for portable in [false, true] {
+        let mut session = if portable {
+            RSession::new_with_path_policy(RuntimePathPolicy::new(Vec::new(), std::env::temp_dir()))
+        } else {
+            RSession::new()
+        }
+        .unwrap();
+        let output = session
+            .eval(
+                r#"
+            x <- pairlist(1,2); attr(x,"dim") <- 2L; attr(x,"names") <- pairlist("é","日本")
+            dput(dimnames(x)); dput(names(x))
+        "#,
+            )
+            .unwrap();
+        assert_eq!(
+            output, "list(c(\"é\", \"日本\"))\nc(\"é\", \"日本\")\n",
             "portable={portable}"
         );
     }

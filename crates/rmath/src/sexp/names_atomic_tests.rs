@@ -1921,3 +1921,116 @@ fn pairlist_names_reject_mutation_during_first_allocation() {
         assert!(target.try_attrib().unwrap().is_nil());
     });
 }
+
+#[test]
+fn pairlist_names_target_rechecks_owner_and_tags_after_callbacks() {
+    use crate::sexp::object::SexpMut;
+    for mode in 0..3 {
+        let session = RSession::new_for_gc_tests();
+        session.with_active_in(|instance| unsafe {
+            let owner = session.owner_token().unwrap();
+            let factory = owner.node_factory();
+            let nil = factory.nil().into_owned().unwrap();
+            let tail = factory
+                .pairlist_cell(&nil, &nil, &nil)
+                .unwrap()
+                .into_owned()
+                .unwrap();
+            let target = factory
+                .pairlist_cell(&nil, &tail, &nil)
+                .unwrap()
+                .into_owned()
+                .unwrap();
+            let other_tag = factory
+                .wrap(crate::sexp::symbol::Rf_install(c"changed".as_ptr()))
+                .unwrap()
+                .into_owned()
+                .unwrap();
+            let callback_tail = tail.clone();
+            let callback_tag = other_tag.clone();
+            let calls = Rc::new(Cell::new(0));
+            let callback_calls = calls.clone();
+            let class = session
+                .register_altrep_class(
+                    "pairlist-target-owner",
+                    Provider {
+                        size: 1,
+                        calls: Rc::new(Cell::new(0)),
+                        callback: Rc::new(move || {
+                            if callback_calls.replace(callback_calls.get() + 1) == 0 {
+                                if mode == 1 {
+                                    crate::sexp::instance::revoke_instance_availability(instance);
+                                } else if mode == 2 {
+                                    SexpMut::try_from_checked(callback_tail.clone())
+                                        .unwrap()
+                                        .try_set_pairlist_tag(&callback_tag)
+                                        .unwrap();
+                                }
+                            }
+                        }),
+                    },
+                )
+                .unwrap();
+            let child = AltrepBuilder::new(class).build().unwrap();
+            let input = factory
+                .pairlist_cell(&child, &nil, &nil)
+                .unwrap()
+                .into_owned()
+                .unwrap();
+            let before = owner.with_arena(|arena| arena.workspace_bytes()).unwrap();
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                super::setAttrib(target.as_raw(), super::R_NamesSymbol(), input.as_raw());
+            }));
+            assert!(calls.get() > 0);
+            if mode == 0 {
+                result.unwrap();
+                owner.full_gc().unwrap();
+                assert!(target.try_tag_name_eq(b"1").unwrap());
+                assert!(tail.try_tag().unwrap().is_nil());
+            } else {
+                assert!(result.unwrap_err().is::<crate::sexp::context::RError>());
+                assert!(target.try_tag().unwrap().is_nil());
+                if mode == 2 {
+                    assert_eq!(tail.try_tag().unwrap(), other_tag);
+                }
+            }
+            if mode != 1 {
+                assert_eq!(
+                    owner.with_arena(|arena| arena.workspace_bytes()).unwrap(),
+                    before
+                );
+            }
+        });
+    }
+}
+
+#[test]
+fn pairlist_names_target_allocation_denial_does_not_change_tags() {
+    use crate::sexp::memory::ArenaBudget;
+    let session = RSession::new_for_gc_tests();
+    session.with_active(|| unsafe {
+        let owner = session.owner_token().unwrap();
+        let factory = owner.node_factory();
+        let nil = factory.nil();
+        let original_tag = factory
+            .wrap(crate::sexp::symbol::Rf_install(c"original".as_ptr()))
+            .unwrap();
+        let target = factory.pairlist_cell(&nil, &nil, &original_tag).unwrap();
+        let child = factory
+            .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::INTSXP, 1)))
+            .unwrap();
+        let input = factory.pairlist_cell(&child, &nil, &nil).unwrap();
+        owner.full_gc().unwrap();
+        owner
+            .with_arena(|arena| arena.set_budget(ArenaBudget::new(1, 1)))
+            .unwrap();
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            super::setAttrib(target.as_raw(), super::R_NamesSymbol(), input.as_raw());
+        }));
+        assert!(result.unwrap_err().is::<crate::sexp::context::RError>());
+        assert_eq!(target.try_tag().unwrap(), original_tag);
+        owner
+            .with_arena(|arena| arena.set_budget(ArenaBudget::unlimited()))
+            .unwrap();
+    });
+}

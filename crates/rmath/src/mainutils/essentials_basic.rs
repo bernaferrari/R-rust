@@ -709,9 +709,6 @@ pub unsafe fn do_names(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         if t == SEXPTYPE::ENVSXP {
             return names_from_environment(x);
         }
-        if t == SEXPTYPE::LISTSXP || t == SEXPTYPE::LANGSXP {
-            return names_from_pairlist(x);
-        }
         // Get names attribute
         let names = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"names".as_ptr()));
         if !names.is_null() && names != R_NilValue() {
@@ -813,28 +810,6 @@ unsafe fn collect_env_binding_names(mut frame: SEXP, names: &mut Vec<String>) {
                 names.push(name);
             }
             frame = CDR(frame);
-        }
-    }
-}
-
-unsafe fn names_from_pairlist(list: SEXP) -> SEXP {
-    unsafe {
-        let mut names = Vec::new();
-        let mut has_name = false;
-        let mut cell = list;
-        while !cell.is_null() && cell != R_NilValue() {
-            if let Some(name) = tag_name(TAG(cell)) {
-                has_name = true;
-                names.push(name);
-            } else {
-                names.push(String::new());
-            }
-            cell = CDR(cell);
-        }
-        if has_name {
-            string_vector(&names)
-        } else {
-            R_NilValue()
         }
     }
 }

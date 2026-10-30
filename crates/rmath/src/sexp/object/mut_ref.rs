@@ -123,6 +123,16 @@ impl<'a> SexpMut<'a> {
             .set_checked_edge(crate::sexp::ffi::EdgeField::ListCar, value)
     }
 
+    pub(crate) fn try_set_pairlist_tag(&mut self, tag: &Sexp<'_>) -> SexpResult<()> {
+        self.inner.expect_any_type(
+            "pairlist",
+            &[SEXPTYPE::LISTSXP, SEXPTYPE::LANGSXP, SEXPTYPE::DOTSXP],
+        )?;
+        tag.expect_any_type("symbol or NULL", &[SEXPTYPE::SYMSXP, SEXPTYPE::NILSXP])?;
+        self.inner
+            .set_checked_edge(crate::sexp::ffi::EdgeField::ListTag, tag)
+    }
+
     pub(crate) fn try_set_pairlist_cdr(&mut self, rest: &Sexp<'_>) -> SexpResult<()> {
         self.inner.expect_any_type(
             "pairlist",

@@ -96,7 +96,17 @@ pub unsafe fn getAttrib(x: SEXP, which: SEXP) -> SEXP {
         }
 
         let attrib = ATTRIB(x);
-
+        // GNU resolves names of a one-dimensional array through dimnames
+        // before consulting pairlist tags or stored attributes.
+        if which == R_NamesSymbol() && !attrib.is_null() && attrib != R_NilValue() {
+            let dim = getAttrib(x, R_DimSymbol());
+            if TYPEOF(dim) == SEXPTYPE::INTSXP && XLENGTH(dim) == 1 {
+                let dimnames = getAttrib(x, R_DimNamesSymbol());
+                if TYPEOF(dimnames) == SEXPTYPE::VECSXP && XLENGTH(dimnames) > 0 {
+                    return super::accessors::VECTOR_ELT(dimnames, 0);
+                }
+            }
+        }
         // Linear search through attribute pairlist
         let mut current = attrib;
         while !current.is_null() && current != R_NilValue() {
@@ -317,6 +327,8 @@ pub(crate) unsafe fn try_set_pairlist_names(x: SEXP, which: SEXP, value: SEXP) -
                             | SEXPTYPE::RAWSXP
                             | SEXPTYPE::VECSXP
                             | SEXPTYPE::EXPRSXP
+                            | SEXPTYPE::LISTSXP
+                            | SEXPTYPE::LANGSXP
                     )
                 {
                     Some(false)
@@ -327,6 +339,67 @@ pub(crate) unsafe fn try_set_pairlist_names(x: SEXP, which: SEXP, value: SEXP) -
             |access, object, input| {
                 let domain = access.domain();
                 let allocator = access.allocator(&domain).map_err(|e| e.to_string())?;
+                let cons_target = matches!(object.typeof_(), SEXPTYPE::LISTSXP | SEXPTYPE::LANGSXP);
+                let mut target_count = 0usize;
+                if cons_target {
+                    let mut cell = object.clone();
+                    let mut seen = super::tsp::CycleDetector::default();
+                    while !cell.is_nil() {
+                        if !matches!(cell.typeof_(), SEXPTYPE::LISTSXP | SEXPTYPE::LANGSXP) {
+                            return Err("improper target pairlist in names assignment".into());
+                        }
+                        seen.observe(domain.link(&cell).map_err(|e| e.to_string())?)?;
+                        target_count = target_count.checked_add(1).ok_or("pairlist is too long")?;
+                        cell = cell
+                            .try_cdr()
+                            .and_then(super::object::Sexp::into_owned)
+                            .map_err(|e| e.to_string())?;
+                    }
+                }
+                let target_bytes = target_count
+                    .checked_mul(std::mem::size_of::<(
+                        super::object::Sexp<'static>,
+                        super::object::Sexp<'static>,
+                        super::object::Sexp<'static>,
+                    )>())
+                    .ok_or("R allocation failed: memory or node budget exceeded")?;
+                let mut target_workspace = access
+                    .with_arena(|arena| arena.reserve_workspace(target_bytes))
+                    .map_err(|e| e.to_string())?
+                    .ok_or("R allocation failed: memory or node budget exceeded")?;
+                let mut target_cells = Vec::new();
+                target_cells
+                    .try_reserve_exact(target_count)
+                    .map_err(|_| "R allocation failed: memory or node budget exceeded")?;
+                target_workspace
+                    .try_resize(
+                        target_cells
+                            .capacity()
+                            .checked_mul(std::mem::size_of::<(
+                                super::object::Sexp<'static>,
+                                super::object::Sexp<'static>,
+                                super::object::Sexp<'static>,
+                            )>())
+                            .ok_or("R allocation failed: memory or node budget exceeded")?,
+                    )
+                    .ok_or("R allocation failed: memory or node budget exceeded")?;
+                let mut target_cursor = object.clone();
+                for _ in 0..target_count {
+                    let tag = target_cursor
+                        .try_tag()
+                        .and_then(super::object::Sexp::into_owned)
+                        .map_err(|e| e.to_string())?;
+                    let car = target_cursor
+                        .try_car()
+                        .and_then(super::object::Sexp::into_owned)
+                        .map_err(|e| e.to_string())?;
+                    let next = target_cursor
+                        .try_cdr()
+                        .and_then(super::object::Sexp::into_owned)
+                        .map_err(|e| e.to_string())?;
+                    target_cells.push((target_cursor, tag, car));
+                    target_cursor = next;
+                }
                 let dimensions = super::tsp::attribute(access, object, b"dim")?;
                 let rank = if dimensions.is_nil() {
                     None
@@ -336,7 +409,11 @@ pub(crate) unsafe fn try_set_pairlist_names(x: SEXP, which: SEXP, value: SEXP) -
                     }
                     Some(dimensions.len())
                 };
-                let size = object.len();
+                let size = if cons_target {
+                    i64::try_from(target_count).map_err(|_| "pairlist is too long")?
+                } else {
+                    object.len()
+                };
                 let mut cursor = input.clone();
                 let mut seen = super::tsp::CycleDetector::default();
                 let mut count = 0i64;
@@ -402,11 +479,37 @@ pub(crate) unsafe fn try_set_pairlist_names(x: SEXP, which: SEXP, value: SEXP) -
                 }
                 let validate = || -> Result<(), String> {
                     access.require_active().map_err(|e| e.to_string())?;
-                    if object.len() != size
+                    if (!cons_target && object.len() != size)
                         || super::tsp::attribute(access, object, b"dim")? != dimensions
                         || rank.is_some_and(|n| dimensions.len() != n)
                     {
                         return Err("target changed during names assignment".into());
+                    }
+                    if cons_target {
+                        let mut cell = object.clone();
+                        for (saved, tag, car) in &target_cells {
+                            if cell != *saved
+                                || cell
+                                    .try_tag()
+                                    .and_then(super::object::Sexp::into_owned)
+                                    .map_err(|e| e.to_string())?
+                                    != *tag
+                                || cell
+                                    .try_car()
+                                    .and_then(super::object::Sexp::into_owned)
+                                    .map_err(|e| e.to_string())?
+                                    != *car
+                            {
+                                return Err("target changed during names assignment".into());
+                            }
+                            cell = cell
+                                .try_cdr()
+                                .and_then(super::object::Sexp::into_owned)
+                                .map_err(|e| e.to_string())?;
+                        }
+                        if !cell.is_nil() {
+                            return Err("target changed during names assignment".into());
+                        }
                     }
                     let mut cell = input.clone();
                     let mut seen = super::tsp::CycleDetector::default();
@@ -476,6 +579,64 @@ pub(crate) unsafe fn try_set_pairlist_names(x: SEXP, which: SEXP, value: SEXP) -
                         .map_err(|e| e.to_string())?;
                 }
                 let output = output.freeze();
+                if cons_target && rank != Some(1) {
+                    let bytes = target_count
+                        .checked_mul(std::mem::size_of::<super::object::Sexp<'static>>())
+                        .ok_or("R allocation failed: memory or node budget exceeded")?;
+                    let mut tag_workspace = access
+                        .with_arena(|arena| arena.reserve_workspace(bytes))
+                        .map_err(|e| e.to_string())?
+                        .ok_or("R allocation failed: memory or node budget exceeded")?;
+                    let mut tags = Vec::new();
+                    tags.try_reserve_exact(target_count)
+                        .map_err(|_| "R allocation failed: memory or node budget exceeded")?;
+                    tag_workspace
+                        .try_resize(
+                            tags.capacity()
+                                .checked_mul(std::mem::size_of::<super::object::Sexp<'static>>())
+                                .ok_or("R allocation failed: memory or node budget exceeded")?,
+                        )
+                        .ok_or("R allocation failed: memory or node budget exceeded")?;
+                    for index in 0..size {
+                        let character = output
+                            .try_string_elt(index)
+                            .and_then(super::object::Sexp::into_owned)
+                            .map_err(|e| e.to_string())?;
+                        let tag = if character.is_na_string()
+                            || character.try_char_len().map_err(|e| e.to_string())? == 0
+                        {
+                            domain.nil()
+                        } else {
+                            let length = usize::try_from(
+                                character.try_char_len().map_err(|e| e.to_string())?,
+                            )
+                            .map_err(|_| "symbol name is too long")?;
+                            let _text_workspace = access
+                                .with_arena(|arena| arena.reserve_workspace(length))
+                                .map_err(|e| e.to_string())?
+                                .ok_or("R allocation failed: memory or node budget exceeded")?;
+                            let text = character.try_as_string().map_err(|e| e.to_string())?;
+                            access
+                                .with_native(|owner| {
+                                    let symbol = crate::sexp::symbol::Rf_installChar(
+                                        text.as_ptr().cast(),
+                                        text.len() as i64,
+                                    );
+                                    owner.sexp(symbol)?.into_owned()
+                                })
+                                .map_err(|e| e.to_string())?
+                        };
+                        tags.push(tag);
+                        access.require_active().map_err(|e| e.to_string())?;
+                    }
+                    validate()?;
+                    for ((cell, _, _), tag) in target_cells.iter().zip(&tags) {
+                        super::object::SexpMut::try_from_checked(cell.clone())
+                            .and_then(|mut cell| cell.try_set_pairlist_tag(tag))
+                            .map_err(|e| e.to_string())?;
+                    }
+                    return Ok(true);
+                }
                 let one_dimensional = rank == Some(1);
                 let name = access
                     .with_native(|owner| {
