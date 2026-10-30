@@ -1,3 +1,33 @@
 # path	kind	declaration	class	android_policy	owner	notes
 # Individual declarations require review. Previous file-level classifications are
 # retained in android-platform-global-allowlist.tsv as historical context only.
+crates/rmath/src/intl/intl_exports.rs	immutable-static	libintl_version	constant-version	allow-immutable	rport-9g89c	Fixed five-byte version value; no interior mutability or session data.
+crates/rmath/src/intl/printf_args.rs	immutable-static	NULL_STRING	constant-fallback	allow-immutable	rport-9g89c	Fixed NUL-terminated byte slice used as a const fallback pointer.
+crates/rmath/src/intl/printf_args.rs	immutable-static	WIDE_NULL_STRING	constant-fallback	allow-immutable	rport-9g89c	Fixed u32 array used as a const wide-string fallback pointer.
+crates/rmath/src/library/graphics/plot3d.rs	immutable-static	AXIS_START	constant-geometry	allow-immutable	rport-9g89c	Fixed integer lookup table; graphics code reads indices only.
+crates/rmath/src/library/graphics/plot3d.rs	immutable-static	EDGE	constant-geometry	allow-immutable	rport-9g89c	Fixed integer lookup table; graphics code reads indices only.
+crates/rmath/src/library/graphics/plot3d.rs	immutable-static	FACE	constant-geometry	allow-immutable	rport-9g89c	Fixed integer lookup table; graphics code reads indices only.
+crates/rmath/src/library/graphics/plot3d.rs	immutable-static	TICK_VECTOR	constant-geometry	allow-immutable	rport-9g89c	Fixed integer lookup table; graphics code reads indices only.
+crates/rmath/src/library/graphics/plot3d.rs	immutable-static	VERTEX	constant-geometry	allow-immutable	rport-9g89c	Fixed integer lookup table; graphics code reads indices only.
+crates/rmath/src/library/stats/srunmed.rs	immutable-static	BIG_dbl	constant-numeric	allow-immutable	rport-9g89c	Fixed floating-point sentinel read by running-median calculations.
+crates/rmath/src/mainutils/datetime/basics.rs	immutable-static	ltnames	constant-names	allow-immutable	rport-9g89c	Fixed array of immutable POSIXlt component name literals.
+crates/rmath/src/mainutils/datetime/basics.rs	immutable-static	month_days	constant-calendar	allow-immutable	rport-9g89c	Fixed integer array for non-leap-year month lengths.
+crates/rmath/src/mainutils/errors/state.rs	immutable-static	R_MAXCALLS	constant-limit	allow-immutable	rport-9g89c	Fixed integer traceback limit with no interior mutability.
+crates/rmath/src/mainutils/errors/state.rs	immutable-static	R_NSHOWCALLS	constant-limit	allow-immutable	rport-9g89c	Fixed usize traceback display limit read by traceback formatting.
+crates/rmath/src/mainutils/raw.rs	immutable-static	utf8_table1	constant-encoding	allow-immutable	rport-9g89c	Fixed integer encoding limits read by UTF-8 conversion.
+crates/rmath/src/mainutils/raw.rs	immutable-static	utf8_table2	constant-encoding	allow-immutable	rport-9g89c	Fixed integer lead-byte masks read by UTF-8 conversion.
+crates/rmath/src/mainutils/util_main.rs	immutable-static	UTF8_TABLE1	constant-encoding	allow-immutable	rport-9g89c	Fixed u32 encoding limits read by UTF-8 conversion.
+crates/rmath/src/mainutils/util_main.rs	immutable-static	UTF8_TABLE2	constant-encoding	allow-immutable	rport-9g89c	Fixed u8 lead-byte masks read by UTF-8 conversion.
+crates/rmath/src/mainutils/util_main.rs	immutable-static	UTF8_TABLE4	constant-encoding	allow-immutable	rport-9g89c	Fixed u8 lead-byte lengths read by UTF-8 conversion.
+crates/rmath/src/mainutils/util_main.rs	immutable-static	TRUENAMES	constant-names	allow-immutable	rport-9g89c	Fixed immutable string literals read during logical parsing.
+crates/rmath/src/mainutils/util_main.rs	immutable-static	FALSENAMES	constant-names	allow-immutable	rport-9g89c	Fixed immutable string literals read during logical parsing.
+crates/rmath/src/tzone/utils.rs	immutable-static	WILDABBR	constant-timezone	allow-immutable	rport-9g89c	Fixed byte slice copied into timezone buffers.
+crates/rmath/src/tzone/utils.rs	immutable-static	MON_LENGTHS	constant-calendar	allow-immutable	rport-9g89c	Fixed integer month-length tables read by timezone calculations.
+crates/rmath/src/tzone/utils.rs	immutable-static	YEAR_LENGTHS	constant-calendar	allow-immutable	rport-9g89c	Fixed integer year-length table read by timezone calculations.
+crates/rmath/src/mainutils/format.rs	immutable-static	TBL	constant-format	allow-immutable	rport-9g89c	Fixed f64 power-of-ten table indexed by formatting calculations.
+crates/rmath/src/mainutils/names/mod.rs	immutable-static	SPEC_NAMES	constant-names	allow-immutable	rport-9g89c	Fixed slice of immutable byte strings for special symbol names.
+crates/rmath/src/mainutils/printarray.rs	immutable-static	EMPTY_CSTR	constant-fallback	allow-immutable	rport-9g89c	Fixed one-byte NUL array with no interior mutability.
+crates/rmath/src/mainutils/util_main.rs	immutable-static	S2U	constant-encoding	allow-immutable	rport-9g89c	Fixed u32 symbol-to-Unicode mapping read by conversion functions.
+crates/rmath/src/mainutils/util_main.rs	immutable-static	S2UNICODE	constant-encoding	allow-immutable	rport-9g89c	Fixed u32 symbol-to-Unicode mapping read by conversion functions.
+crates/rmath/src/tre/regapi.rs	immutable-static	TRE_ERROR_MESSAGES	constant-errors	allow-immutable	rport-9g89c	Fixed immutable error message literals indexed by regex error code.
+crates/rmath/src/trio/trio/core.rs	immutable-static	INTERNAL_NULL_STRING	constant-fallback	allow-immutable	rport-9g89c	Fixed byte slice written into formatting output for a null string.
