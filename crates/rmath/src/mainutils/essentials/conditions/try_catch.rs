@@ -307,13 +307,13 @@ pub unsafe fn do_tryCatch(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
                     payload.downcast_ref::<crate::sexp::context::RSignal>()
                 {
                     if let crate::sexp::context::RSignal::Error { message } = signal {
-                        message.clone()
+                        message.as_str()
                     } else {
                         run_finally();
                         std::panic::resume_unwind(payload);
                     }
                 } else if let Some(error) = payload.downcast_ref::<crate::sexp::context::RError>() {
-                    error.message.clone()
+                    error.message.as_str()
                 } else {
                     run_finally();
                     std::panic::resume_unwind(payload);
@@ -325,7 +325,7 @@ pub unsafe fn do_tryCatch(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
                     .map_or(std::ptr::null_mut(), |value| value.as_raw());
                 let mut original: SEXP = std::ptr::null_mut();
                 if !slot_cond.is_null() {
-                    if condition_message_of(slot_cond).as_deref() == Some(message.as_str()) {
+                    if condition_message_of(slot_cond).as_deref() == Some(message) {
                         original = slot_cond;
                     } else {
                         set_signalled_condition(std::ptr::null_mut());
@@ -336,7 +336,7 @@ pub unsafe fn do_tryCatch(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
                     original
                 } else {
                     simple_error_condition_at(
-                        &message,
+                        message,
                         caught_call.as_ref().map(|value| value.as_raw()),
                     )
                 };

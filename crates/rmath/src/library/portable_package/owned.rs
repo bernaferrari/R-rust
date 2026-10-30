@@ -105,17 +105,10 @@ fn execute<T>(
     authority.require_active().map_err(|e| e.to_string())?;
     match result {
         Ok(result) => result,
-        Err(payload) => {
-            if let Some(error) = payload.downcast_ref::<crate::sexp::context::RError>() {
-                Err(error.message.clone())
-            } else if let Some(crate::sexp::context::RSignal::Error { message }) =
-                payload.downcast_ref::<crate::sexp::context::RSignal>()
-            {
-                Err(message.clone())
-            } else {
-                std::panic::resume_unwind(payload)
-            }
-        }
+        Err(payload) => match crate::sexp::context::take_error_message(payload) {
+            Ok(message) => Err(message),
+            Err(payload) => std::panic::resume_unwind(payload),
+        },
     }
 }
 

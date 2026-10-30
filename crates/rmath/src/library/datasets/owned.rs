@@ -11,6 +11,45 @@ use crate::sexp::{
 #[path = "mutation_tests.rs"]
 mod mutation_tests;
 
+#[cfg(test)]
+mod error_handoff_tests {
+    use super::*;
+    use crate::sexp::{
+        context::{RError, RSignal},
+        session::RSession,
+    };
+
+    #[test]
+    fn dataset_adapter_moves_errors_and_preserves_other_signals() {
+        let session = RSession::new_for_gc_tests();
+        session.with_active(|| {
+            let anchor = session
+                .owner_token()
+                .unwrap()
+                .node_factory()
+                .character("anchor")
+                .unwrap()
+                .into_owned()
+                .unwrap();
+            let mut message = String::with_capacity(128);
+            message.push_str("dataset failure á中😀");
+            let pointer = message.as_ptr();
+            let error =
+                execute::<()>(&anchor, |_| std::panic::panic_any(RError { message })).unwrap_err();
+            assert_eq!(error.as_ptr(), pointer);
+            assert_eq!(error, "dataset failure á中😀");
+            let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                execute::<()>(&anchor, |_| std::panic::panic_any(RSignal::Break))
+            }))
+            .unwrap_err();
+            assert!(matches!(
+                *panic.downcast::<RSignal>().unwrap(),
+                RSignal::Break
+            ));
+        });
+    }
+}
+
 fn execute<T>(
     anchor: &Sexp<'static>,
     operation: impl FnOnce(&RuntimeAccess) -> Result<T, String>,
@@ -27,13 +66,10 @@ fn execute<T>(
     authority.require_active().map_err(|e| e.to_string())?;
     match result {
         Ok(result) => result,
-        Err(payload) => {
-            if let Some(error) = payload.downcast_ref::<crate::sexp::context::RError>() {
-                Err(error.message.clone())
-            } else {
-                std::panic::resume_unwind(payload)
-            }
-        }
+        Err(payload) => match payload.downcast::<crate::sexp::context::RError>() {
+            Ok(error) => Err(error.message),
+            Err(payload) => std::panic::resume_unwind(payload),
+        },
     }
 }
 

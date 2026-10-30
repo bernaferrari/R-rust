@@ -52,17 +52,10 @@ pub(super) fn selected_source(content: &str) -> Result<String, String> {
     owner.require_active().map_err(|error| error.to_string())?;
     let result = match result {
         Ok(value) => value.map_err(|error| error.to_string())?,
-        Err(payload) => {
-            if let Some(error) = payload.downcast_ref::<crate::sexp::context::RError>() {
-                return Err(error.message.clone());
-            }
-            if let Some(crate::sexp::context::RSignal::Error { message }) =
-                payload.downcast_ref::<crate::sexp::context::RSignal>()
-            {
-                return Err(message.clone());
-            }
-            std::panic::resume_unwind(payload)
-        }
+        Err(payload) => match crate::sexp::context::take_error_message(payload) {
+            Ok(message) => return Err(message),
+            Err(payload) => std::panic::resume_unwind(payload),
+        },
     };
     let mut calls = Vec::new();
     for index in 0..result.len() {

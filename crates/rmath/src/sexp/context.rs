@@ -546,6 +546,26 @@ pub fn r_error(msg: impl Into<String>) -> ! {
     });
 }
 
+/// Extract an owned R error message without copying its allocation. An
+/// unrecognized panic keeps its original box so callers can resume it.
+pub(crate) fn take_error_message(
+    payload: Box<dyn std::any::Any + Send>,
+) -> Result<String, Box<dyn std::any::Any + Send>> {
+    match payload.downcast::<RError>() {
+        Ok(error) => Ok(error.message),
+        Err(payload) => match payload.downcast::<RSignal>() {
+            Ok(signal) if matches!(&*signal, RSignal::Error { .. }) => {
+                let RSignal::Error { message } = *signal else {
+                    unreachable!()
+                };
+                Ok(message)
+            }
+            Ok(signal) => Err(signal),
+            Err(payload) => Err(payload),
+        },
+    }
+}
+
 // ---------------------------------------------------------------------------
 // RSignal — discriminated control flow signals
 // ---------------------------------------------------------------------------

@@ -606,23 +606,14 @@ pub(crate) fn capture_printed_value(x: Sexp<'_>) -> Result<RCapturedOutput, Prin
             message: error.to_string(),
             captured,
         }),
-        Err(payload) => {
-            let message = if !original.is_live() {
-                Some(super::super::object::SexpError::RootUnavailable.to_string())
-            } else if let Some(error) = payload.downcast_ref::<super::super::context::RError>() {
-                Some(error.message.clone())
-            } else if let Some(super::super::context::RSignal::Error { message }) =
-                payload.downcast_ref::<super::super::context::RSignal>()
-            {
-                Some(message.clone())
-            } else {
-                None
-            };
-            match message {
-                Some(message) => Err(PrintedOutputError { message, captured }),
-                None => std::panic::resume_unwind(payload),
-            }
-        }
+        Err(_payload) if !original.is_live() => Err(PrintedOutputError {
+            message: super::super::object::SexpError::RootUnavailable.to_string(),
+            captured,
+        }),
+        Err(payload) => match super::super::context::take_error_message(payload) {
+            Ok(message) => Err(PrintedOutputError { message, captured }),
+            Err(payload) => std::panic::resume_unwind(payload),
+        },
     }
 }
 

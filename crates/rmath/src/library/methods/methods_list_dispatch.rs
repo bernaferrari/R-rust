@@ -7,6 +7,7 @@
  *  fail explicitly instead of returning NULL as if dispatch had succeeded.
  */
 
+use std::borrow::Cow;
 use std::ffi::{CStr, CString};
 use std::os::raw::c_int;
 use std::ptr;
@@ -94,13 +95,13 @@ unsafe fn eval_dispatch_arg(fname: SEXP, ev: SEXP, arg_sym: SEXP) -> SEXP {
 /// Extract the message GNU's `argEvalCleanup` would format, i.e.
 /// `conditionMessage(err)` for an error-class condition; `None` means the
 /// unwind is not an error (GNU's handler would not have fired).
-fn dispatch_arg_error_message(payload: &(dyn std::any::Any + Send)) -> Option<String> {
+fn dispatch_arg_error_message(payload: &(dyn std::any::Any + Send)) -> Option<Cow<'_, str>> {
     if let Some(err) = payload.downcast_ref::<RError>() {
-        return Some(err.message.clone());
+        return Some(Cow::Borrowed(&err.message));
     }
     let signal = payload.downcast_ref::<RSignal>()?;
     match signal {
-        RSignal::Error { message } => Some(message.clone()),
+        RSignal::Error { message } => Some(Cow::Borrowed(message)),
         RSignal::ExitingHandler(ticket) => {
             // Borrow the transfer (no `take`) so an untouched payload can
             // still resume its original unwind.
@@ -114,7 +115,7 @@ fn dispatch_arg_error_message(payload: &(dyn std::any::Any + Send)) -> Option<St
                 return None;
             }
             let message = unsafe { named_element(condition, "message") };
-            unsafe { sexp_to_string(message) }
+            unsafe { sexp_to_string(message) }.map(Cow::Owned)
         }
         _ => None,
     }
@@ -1450,6 +1451,24 @@ pub unsafe fn R_methodsPackageMetaName(prefix: SEXP, name: SEXP, pkg: SEXP) -> S
 mod tests {
     use super::*;
     use crate::sexp::instance::{RInstance, replace_current_instance};
+
+    #[test]
+    fn dispatch_error_messages_borrow_owned_panic_storage() {
+        for signal in [false, true] {
+            let mut message = String::with_capacity(128);
+            message.push_str("dispatch failure á中😀");
+            let pointer = message.as_ptr();
+            let payload: Box<dyn std::any::Any + Send> = if signal {
+                Box::new(RSignal::Error { message })
+            } else {
+                Box::new(RError { message })
+            };
+            let actual = dispatch_arg_error_message(payload.as_ref()).unwrap();
+            assert!(matches!(actual, Cow::Borrowed(_)));
+            assert_eq!(actual.as_ptr(), pointer);
+            assert_eq!(actual, "dispatch failure á中😀");
+        }
+    }
 
     fn assert_r_error(action: impl FnOnce()) -> RError {
         let payload = std::panic::catch_unwind(std::panic::AssertUnwindSafe(action))

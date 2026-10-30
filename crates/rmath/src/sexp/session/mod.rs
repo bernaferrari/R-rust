@@ -185,21 +185,7 @@ where
 fn print_panic_r_error(
     payload: Box<dyn std::any::Any + Send>,
 ) -> Result<REvalError, Box<dyn std::any::Any + Send>> {
-    match payload.downcast::<RError>() {
-        Ok(error) => Ok(REvalError {
-            message: error.message,
-        }),
-        Err(payload) => match payload.downcast::<RSignal>() {
-            Ok(signal) if matches!(&*signal, RSignal::Error { .. }) => {
-                let RSignal::Error { message } = *signal else {
-                    unreachable!()
-                };
-                Ok(REvalError { message })
-            }
-            Ok(signal) => Err(signal),
-            Err(payload) => Err(payload),
-        },
-    }
+    crate::sexp::context::take_error_message(payload).map(|message| REvalError { message })
 }
 
 fn remember_last_value(value: SEXP) {

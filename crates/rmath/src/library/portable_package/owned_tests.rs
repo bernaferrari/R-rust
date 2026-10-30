@@ -2,6 +2,45 @@ use super::*;
 use crate::sexp::{RSession, memory::ArenaBudget};
 use std::io::Write;
 
+#[test]
+fn portable_adapter_moves_error_messages_and_propagates_other_signals() {
+    use crate::sexp::context::{RError, RSignal};
+    let session = RSession::new_for_gc_tests();
+    session.with_active(|| {
+        let anchor = session
+            .owner_token()
+            .unwrap()
+            .node_factory()
+            .character("anchor")
+            .unwrap()
+            .into_owned()
+            .unwrap();
+        for signal in [false, true] {
+            let mut message = String::with_capacity(128);
+            message.push_str("portable failure á中😀");
+            let pointer = message.as_ptr();
+            let error = execute::<()>(&anchor, |_| {
+                if signal {
+                    std::panic::panic_any(RSignal::Error { message })
+                } else {
+                    std::panic::panic_any(RError { message })
+                }
+            })
+            .unwrap_err();
+            assert_eq!(error.as_ptr(), pointer);
+            assert_eq!(error, "portable failure á中😀");
+        }
+        let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            execute::<()>(&anchor, |_| std::panic::panic_any(RSignal::Break))
+        }))
+        .unwrap_err();
+        assert!(matches!(
+            *panic.downcast::<RSignal>().unwrap(),
+            RSignal::Break
+        ));
+    });
+}
+
 fn compressed_record(decoded: &[u8]) -> Vec<u8> {
     let mut encoder = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::default());
     encoder.write_all(decoded).unwrap();

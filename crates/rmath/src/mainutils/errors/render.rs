@@ -600,11 +600,11 @@ where
                 std::panic::resume_unwind(payload);
             }
             if let Some(err) = payload.downcast_ref::<RError>() {
-                let message = err.message.clone();
-                if !error_was_last_rendered(&message) {
+                let message = err.message.as_str();
+                if !error_was_last_rendered(message) {
                     // Diverges: renders "Error in <call> : <message>" and
                     // panics with the bare-message payload.
-                    errorcall_str(call, &message);
+                    errorcall_str(call, message);
                 }
             }
             // Already attributed at the raise site (or not an RError):

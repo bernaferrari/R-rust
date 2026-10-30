@@ -8,6 +8,38 @@ use crate::sexp::{
 };
 use std::{io::Read, path::Path};
 
+#[cfg(test)]
+mod error_handoff_tests {
+    use super::*;
+    use crate::sexp::{
+        context::{RError, RSignal},
+        session::RSession,
+    };
+
+    #[test]
+    fn package_data_adapter_moves_errors_and_preserves_other_signals() {
+        let session = RSession::new_for_gc_tests();
+        session.with_active(|| {
+            let environment = session.global_env().unwrap().into_owned().unwrap();
+            let mut message = String::with_capacity(128);
+            message.push_str("package data failure á中😀");
+            let pointer = message.as_ptr();
+            let error = execute::<()>(&environment, |_| std::panic::panic_any(RError { message }))
+                .unwrap_err();
+            assert_eq!(error.as_ptr(), pointer);
+            assert_eq!(error, "package data failure á中😀");
+            let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                execute::<()>(&environment, |_| std::panic::panic_any(RSignal::Break))
+            }))
+            .unwrap_err();
+            assert!(matches!(
+                *panic.downcast::<RSignal>().unwrap(),
+                RSignal::Break
+            ));
+        });
+    }
+}
+
 fn allocation_error() -> String {
     "allocation failed while reading serialized package data".into()
 }
@@ -194,13 +226,10 @@ fn execute<T>(
     authority.require_active().map_err(|e| e.to_string())?;
     match result {
         Ok(result) => result,
-        Err(panic) => {
-            if let Some(error) = panic.downcast_ref::<crate::sexp::context::RError>() {
-                Err(error.message.clone())
-            } else {
-                std::panic::resume_unwind(panic)
-            }
-        }
+        Err(panic) => match panic.downcast::<crate::sexp::context::RError>() {
+            Ok(error) => Err(error.message),
+            Err(panic) => std::panic::resume_unwind(panic),
+        },
     }
 }
 

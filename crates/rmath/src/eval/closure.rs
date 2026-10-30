@@ -854,6 +854,25 @@ unsafe fn install_default_promises(formals: SEXP, frame: SEXP, new_env: SEXP) {
 // R_execClosure — execute a closure body in a new environment
 // ---------------------------------------------------------------------------
 
+fn closure_unwind_to_error(payload: Box<dyn std::any::Any + Send>) -> crate::sexp::context::RError {
+    use crate::sexp::context::{RError, RSignal};
+    match payload.downcast::<RError>() {
+        Ok(error) => *error,
+        Err(payload) => match payload.downcast::<RSignal>() {
+            Ok(signal) if matches!(&*signal, RSignal::Error { .. }) => {
+                let RSignal::Error { message } = *signal else {
+                    unreachable!()
+                };
+                RError { message }
+            }
+            Ok(signal) => std::panic::resume_unwind(signal),
+            Err(_payload) => RError {
+                message: "unknown error".to_string(),
+            },
+        },
+    }
+}
+
 /// Execute a closure, returning the result.
 ///
 /// Uses catch_unwind for error recovery.
@@ -883,27 +902,7 @@ pub unsafe fn R_execClosure(
 
         match result {
             Ok(val) => Ok(val),
-            Err(payload) => {
-                if let Some(err) = payload.downcast_ref::<crate::sexp::context::RError>() {
-                    Err(crate::sexp::context::RError {
-                        message: err.message.clone(),
-                    })
-                } else if let Some(signal) = payload.downcast_ref::<crate::sexp::context::RSignal>()
-                {
-                    match signal {
-                        crate::sexp::context::RSignal::Error { message } => {
-                            Err(crate::sexp::context::RError {
-                                message: message.clone(),
-                            })
-                        }
-                        _ => std::panic::resume_unwind(payload),
-                    }
-                } else {
-                    Err(crate::sexp::context::RError {
-                        message: "unknown error".to_string(),
-                    })
-                }
-            }
+            Err(payload) => Err(closure_unwind_to_error(payload)),
         }
     }
 }
@@ -913,6 +912,39 @@ mod owned_matcher_tests {
     use super::*;
     use crate::sexp::accessors::SETCDR;
     use crate::sexp::session::RSession;
+
+    #[test]
+    fn closure_error_handoff_moves_message_and_preserves_other_signals() {
+        use crate::sexp::context::{RError, RSignal};
+        for signal in [false, true] {
+            let mut message = String::with_capacity(128);
+            message.push_str("closure failure á中😀");
+            let pointer = message.as_ptr();
+            let payload: Box<dyn std::any::Any + Send> = if signal {
+                Box::new(RSignal::Error { message })
+            } else {
+                Box::new(RError { message })
+            };
+            let error = closure_unwind_to_error(payload);
+            assert_eq!(error.message.as_ptr(), pointer);
+            assert_eq!(error.message, "closure failure á中😀");
+        }
+        let payload: Box<dyn std::any::Any + Send> = Box::new(RSignal::Break);
+        let pointer = payload.as_ref() as *const _ as *const ();
+        let caught = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            closure_unwind_to_error(payload)
+        }))
+        .unwrap_err();
+        assert_eq!(caught.as_ref() as *const _ as *const (), pointer);
+        assert!(matches!(
+            *caught.downcast::<RSignal>().unwrap(),
+            RSignal::Break
+        ));
+        assert_eq!(
+            closure_unwind_to_error(Box::new(7u64)).message,
+            "unknown error"
+        );
+    }
     use std::{cell::Cell, rc::Rc};
 
     #[test]
