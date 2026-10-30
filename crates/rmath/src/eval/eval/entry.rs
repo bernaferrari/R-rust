@@ -87,7 +87,7 @@ pub unsafe fn eval_safe<'a>(expr: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, S
                 other => std::panic::panic_any(other),
             },
             Err(payload) => match payload.downcast::<crate::sexp::context::RError>() {
-                Ok(err) => Err(err.message.clone()),
+                Ok(err) => Err(err.message),
                 Err(payload) => std::panic::resume_unwind(payload),
             },
         },

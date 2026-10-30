@@ -35,9 +35,9 @@ impl ToplevelExprNoGuard {
         self.require_active()?;
         match outcome {
             Ok(value) => Ok(value),
-            Err(payload) => match print_panic_r_error(payload.as_ref()) {
-                Some(error) => Err(error),
-                None => std::panic::resume_unwind(payload),
+            Err(payload) => match print_panic_r_error(payload) {
+                Ok(error) => Err(error),
+                Err(payload) => std::panic::resume_unwind(payload),
             },
         }
     }

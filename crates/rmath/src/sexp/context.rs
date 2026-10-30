@@ -709,7 +709,7 @@ pub fn handle_loop_signal(payload: Box<dyn std::any::Any + Send>) -> LoopAction 
         },
         Err(payload) => match payload.downcast::<RError>() {
             Ok(err) => std::panic::panic_any(RSignal::Error {
-                message: err.message.clone(),
+                message: err.message,
             }),
             Err(payload) => std::panic::resume_unwind(payload),
         },
@@ -733,7 +733,7 @@ pub fn handle_closure_signal(payload: Box<dyn std::any::Any + Send>) -> SEXP {
         },
         Err(payload) => match payload.downcast::<RError>() {
             Ok(err) => std::panic::panic_any(RSignal::Error {
-                message: err.message.clone(),
+                message: err.message,
             }),
             Err(payload) => std::panic::resume_unwind(payload),
         },

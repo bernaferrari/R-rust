@@ -174,7 +174,7 @@ where
             },
             Err(payload) => match payload.downcast::<RError>() {
                 Ok(err) => Err(REvalError {
-                    message: err.message.clone(),
+                    message: err.message,
                 }),
                 Err(payload) => std::panic::resume_unwind(payload),
             },
@@ -182,15 +182,24 @@ where
     }
 }
 
-fn print_panic_r_error(payload: &(dyn std::any::Any + Send)) -> Option<REvalError> {
-    let message = if let Some(err) = payload.downcast_ref::<RError>() {
-        err.message.clone()
-    } else if let Some(RSignal::Error { message }) = payload.downcast_ref::<RSignal>() {
-        message.clone()
-    } else {
-        return None;
-    };
-    Some(REvalError { message })
+fn print_panic_r_error(
+    payload: Box<dyn std::any::Any + Send>,
+) -> Result<REvalError, Box<dyn std::any::Any + Send>> {
+    match payload.downcast::<RError>() {
+        Ok(error) => Ok(REvalError {
+            message: error.message,
+        }),
+        Err(payload) => match payload.downcast::<RSignal>() {
+            Ok(signal) if matches!(&*signal, RSignal::Error { .. }) => {
+                let RSignal::Error { message } = *signal else {
+                    unreachable!()
+                };
+                Ok(REvalError { message })
+            }
+            Ok(signal) => Err(signal),
+            Err(payload) => Err(payload),
+        },
+    }
 }
 
 fn remember_last_value(value: SEXP) {
@@ -222,6 +231,9 @@ pub use rsession::*;
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod error_transfer_tests;
 
 #[cfg(test)]
 #[path = "../gc_owner_teardown_tests.rs"]
