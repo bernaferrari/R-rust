@@ -1024,3 +1024,302 @@ fn names_replacement_attribute_probe_rejects_foreign_singleton_and_stale() {
     assert!(!allocation.is_live());
     assert!(!domain.has_no_attributes(raw));
 }
+
+#[test]
+fn padded_names_metadata_survives_gc_and_rejects_revocation() {
+    use crate::sexp::object::SexpMut;
+    for revoke in [false, true] {
+        let session = RSession::new_for_gc_tests();
+        session.with_active_in(|instance| {
+            let owner = session.owner_token().unwrap();
+            let factory = owner.node_factory();
+            let target = factory
+                .allocate(|a| Some(a.alloc_vector(SEXPTYPE::INTSXP, 3)))
+                .unwrap();
+            let input = factory
+                .allocate(|a| Some(a.alloc_vector(SEXPTYPE::STRSXP, 2)))
+                .unwrap();
+            let mut input = SexpMut::try_from_checked(input).unwrap();
+            input
+                .try_set_string_elt(0, factory.character("A").unwrap())
+                .unwrap();
+            input
+                .try_set_string_elt(1, factory.character("B").unwrap())
+                .unwrap();
+            let input = input.freeze();
+            let class = session
+                .register_altrep_class(
+                    "padded-names-metadata",
+                    CharacterProvider {
+                        callback: Rc::new(move || {
+                            if revoke {
+                                unsafe {
+                                    crate::sexp::instance::revoke_instance_availability(instance)
+                                }
+                            }
+                        }),
+                    },
+                )
+                .unwrap();
+            let nested = AltrepBuilder::new(class).build().unwrap();
+            unsafe { super::setAttrib(input.as_raw(), super::R_NamesSymbol(), nested.as_raw()) };
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+                super::setAttrib(target.as_raw(), super::R_NamesSymbol(), input.as_raw());
+            }));
+            if revoke {
+                assert!(result.unwrap_err().is::<crate::sexp::context::RError>());
+                assert!(target.try_attrib().unwrap().is_nil());
+            } else {
+                result.unwrap();
+                owner.full_gc().unwrap();
+                let names = target.try_attrib().unwrap().try_car().unwrap();
+                assert!(names.try_string_elt(2).unwrap().is_na_string());
+                let nested = names.try_attrib().unwrap().try_car().unwrap();
+                assert!(
+                    nested
+                        .try_string_elt(0)
+                        .unwrap()
+                        .try_char_eq("é".as_bytes())
+                        .unwrap()
+                );
+                assert!(
+                    nested
+                        .try_string_elt(1)
+                        .unwrap()
+                        .try_char_eq("日本".as_bytes())
+                        .unwrap()
+                );
+                assert!(nested.try_string_elt(2).unwrap().try_char_eq(b"").unwrap());
+            }
+        });
+    }
+}
+
+#[test]
+fn padded_names_metadata_denial_does_not_publish() {
+    use crate::sexp::{memory::ArenaBudget, object::SexpMut};
+    let session = RSession::new_for_gc_tests();
+    let owner = session.owner_token().unwrap();
+    let factory = owner.node_factory();
+    let target = factory
+        .allocate(|a| Some(a.alloc_vector(SEXPTYPE::INTSXP, 1024)))
+        .unwrap();
+    let input = factory
+        .allocate(|a| Some(a.alloc_vector(SEXPTYPE::STRSXP, 2)))
+        .unwrap();
+    let nested = factory
+        .allocate(|a| Some(a.alloc_vector(SEXPTYPE::STRSXP, 2)))
+        .unwrap();
+    let mut nested = SexpMut::try_from_checked(nested).unwrap();
+    nested
+        .try_set_string_elt(0, factory.character("é").unwrap())
+        .unwrap();
+    nested
+        .try_set_string_elt(1, factory.character("日本").unwrap())
+        .unwrap();
+    let nested = nested.freeze();
+    let name = unsafe { super::R_NamesSymbol() };
+    unsafe { super::setAttrib(input.as_raw(), name, nested.as_raw()) };
+    let original = input.try_attrib().unwrap().into_owned().unwrap();
+    owner.full_gc().unwrap();
+    let resident = owner.with_arena(|a| a.total_bytes_allocated()).unwrap();
+    owner
+        .with_arena(|a| a.set_budget(ArenaBudget::new(resident + 12000, usize::MAX)))
+        .unwrap();
+    let failure = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+        super::setAttrib(target.as_raw(), name, input.as_raw());
+    }))
+    .unwrap_err();
+    let error = failure.downcast::<crate::sexp::context::RError>().unwrap();
+    assert_eq!(
+        error.message,
+        "R allocation failed: memory or node budget exceeded"
+    );
+    assert!(target.try_attrib().unwrap().is_nil());
+    assert_eq!(input.try_attrib().unwrap(), original);
+    owner
+        .with_arena(|a| a.set_budget(ArenaBudget::unlimited()))
+        .unwrap();
+}
+
+struct DimnamesProvider {
+    callback: Rc<dyn Fn()>,
+    calls: Rc<Cell<usize>>,
+}
+impl AltrepClass for DimnamesProvider {
+    fn vector_type(&self) -> SEXPTYPE {
+        SEXPTYPE::VECSXP
+    }
+    fn length(&self, _: &AltrepContext<'_>) -> SexpResult<i64> {
+        Ok(1)
+    }
+    fn element<'s>(&self, context: &AltrepContext<'s>, _: i64) -> SexpResult<AltrepElement<'s>> {
+        self.calls.set(self.calls.get() + 1);
+        context.gc()?;
+        (self.callback)();
+        let value = context.alloc_vector(SEXPTYPE::STRSXP, 2)?;
+        let mut value = crate::sexp::object::SexpMut::try_from_checked(value)?;
+        value.try_set_string_elt(0, context.string("é")?)?;
+        value.try_set_string_elt(1, context.string("日本")?)?;
+        Ok(AltrepElement::List(value.freeze()))
+    }
+}
+
+#[test]
+fn padded_names_metadata_dimnames_provider_gc_and_revocation() {
+    use crate::sexp::object::SexpMut;
+    for revoke in [false, true] {
+        let session = RSession::new_for_gc_tests();
+        session.with_active_in(|instance| {
+            let owner = session.owner_token().unwrap();
+            let factory = owner.node_factory();
+            let target = factory
+                .allocate(|a| Some(a.alloc_vector(SEXPTYPE::INTSXP, 3)))
+                .unwrap();
+            let input = factory
+                .allocate(|a| Some(a.alloc_vector(SEXPTYPE::STRSXP, 2)))
+                .unwrap();
+            let dimension = factory
+                .allocate(|a| Some(a.alloc_vector(SEXPTYPE::INTSXP, 1)))
+                .unwrap();
+            let mut dimension = SexpMut::try_from_checked(dimension).unwrap();
+            dimension.try_set_integer_elt(0, 2).unwrap();
+            let dimension = dimension.freeze();
+            let calls = Rc::new(Cell::new(0));
+            let class = session
+                .register_altrep_class(
+                    "padded-dimnames-provider",
+                    DimnamesProvider {
+                        calls: calls.clone(),
+                        callback: Rc::new(move || {
+                            if revoke {
+                                unsafe {
+                                    crate::sexp::instance::revoke_instance_availability(instance)
+                                }
+                            }
+                        }),
+                    },
+                )
+                .unwrap();
+            let dimnames = AltrepBuilder::new(class).build().unwrap();
+            unsafe {
+                super::setAttrib(input.as_raw(), super::R_DimSymbol(), dimension.as_raw());
+                super::setAttrib(input.as_raw(), super::R_DimNamesSymbol(), dimnames.as_raw());
+            }
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+                super::setAttrib(target.as_raw(), super::R_NamesSymbol(), input.as_raw());
+            }));
+            if revoke {
+                assert!(result.unwrap_err().is::<crate::sexp::context::RError>());
+                assert!(target.try_attrib().unwrap().is_nil());
+            } else {
+                result.unwrap();
+                assert_eq!(calls.get(), 1);
+                owner.full_gc().unwrap();
+                let names = target.try_attrib().unwrap().try_car().unwrap();
+                let nested = names.try_attrib().unwrap().try_car().unwrap();
+                assert!(
+                    nested
+                        .try_string_elt(0)
+                        .unwrap()
+                        .try_char_eq("é".as_bytes())
+                        .unwrap()
+                );
+                assert!(
+                    nested
+                        .try_string_elt(1)
+                        .unwrap()
+                        .try_char_eq("日本".as_bytes())
+                        .unwrap()
+                );
+                assert!(nested.try_string_elt(2).unwrap().try_char_eq(b"").unwrap());
+            }
+        });
+    }
+}
+
+#[test]
+fn padded_names_metadata_change_during_publication_does_not_publish() {
+    use crate::sexp::{ffi::NodeBody, heap::ResolvedLink, object::SexpMut};
+    let session = RSession::new_for_gc_tests();
+    session.with_active(|| {
+        let token = session.owner_token().unwrap();
+        let factory = token.node_factory();
+        let target = factory
+            .allocate(|a| Some(a.alloc_vector(SEXPTYPE::INTSXP, 3)))
+            .unwrap()
+            .into_owned()
+            .unwrap();
+        let input = factory
+            .allocate(|a| Some(a.alloc_vector(SEXPTYPE::STRSXP, 2)))
+            .unwrap()
+            .into_owned()
+            .unwrap();
+        let labels = factory
+            .allocate(|a| Some(a.alloc_vector(SEXPTYPE::STRSXP, 2)))
+            .unwrap()
+            .into_owned()
+            .unwrap();
+        let name = unsafe { token.sexp(super::R_NamesSymbol()) }
+            .unwrap()
+            .into_owned()
+            .unwrap();
+        unsafe { super::setAttrib(input.as_raw(), name.as_raw(), labels.as_raw()) };
+        let heap = target.allocation().unwrap().heap_identity();
+        let name_link = name.link_in(&heap).unwrap();
+        let changed = Rc::new(Cell::new(false));
+        let callback_changed = changed.clone();
+        let callback_input = input.clone();
+        let nil = factory.nil().into_owned().unwrap();
+        crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+            if callback_changed.get() {
+                return;
+            }
+            let final_cell_exists =
+                crate::sexp::instance::with_required_current_instance(|runtime| unsafe {
+                    (*runtime).arena.active_nodes().any(|pointer| {
+                        let Some(node) = (*runtime).arena.node_token(pointer) else {
+                            return false;
+                        };
+                        let Some(header) = node.heap_identity().node_snapshot(&node) else {
+                            return false;
+                        };
+                        let NodeBody::List(cell) = header.data else {
+                            return false;
+                        };
+                        if header.sxpinfo.type_of() != SEXPTYPE::LISTSXP || cell.tagval != name_link
+                        {
+                            return false;
+                        }
+                        let Some(ResolvedLink::Node { allocation, .. }) =
+                            heap.resolve_link(cell.carval)
+                        else {
+                            return false;
+                        };
+                        let Some(value) = heap.node_snapshot(&allocation) else {
+                            return false;
+                        };
+                        value.sxpinfo.type_of() == SEXPTYPE::STRSXP && !value.attrib.is_null()
+                    })
+                });
+            if final_cell_exists {
+                callback_changed.set(true);
+                SexpMut::try_from_checked(callback_input.clone())
+                    .unwrap()
+                    .try_set_attribute(&nil)
+                    .unwrap();
+            }
+        }));
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+            crate::mainutils::memory_main::R_gc_torture(1, 1, 0);
+            super::setAttrib(target.as_raw(), name.as_raw(), input.as_raw());
+        }));
+        unsafe { crate::mainutils::memory_main::R_gc_torture(0, 0, 0) };
+        assert!(
+            changed.get(),
+            "source metadata changed during final publication allocation"
+        );
+        assert!(result.unwrap_err().is::<crate::sexp::context::RError>());
+        assert!(target.try_attrib().unwrap().is_nil());
+    });
+}

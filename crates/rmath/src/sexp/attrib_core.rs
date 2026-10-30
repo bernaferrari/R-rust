@@ -360,7 +360,7 @@ pub(crate) unsafe fn try_set_atomic_names(x: SEXP, which: SEXP, value: SEXP) -> 
                     Some(rank)
                 };
                 let one_dimensional = dimension_rank == Some(1);
-                let validate_dimensions = || {
+                let validate_dimensions = || -> Result<(), String> {
                     if super::tsp::attribute(access, object, b"dim")? != dimensions {
                         return Err("dimensions changed during names assignment".into());
                     }
@@ -384,12 +384,6 @@ pub(crate) unsafe fn try_set_atomic_names(x: SEXP, which: SEXP, value: SEXP) -> 
                 // which does not allocate an extra attribute cell.
                 if !one_dimensional && input.typeof_() == SEXPTYPE::STRSXP && input_size == size {
                     validate_dimensions()?;
-                    return Ok(false);
-                }
-                // Resizing names that themselves carry attributes has
-                // distinct metadata rules. Exact-length coercion preserves
-                // those attributes through coerceToString.
-                if input_size < size && !input.try_attrib().map_err(|e| e.to_string())?.is_nil() {
                     return Ok(false);
                 }
                 if input_size > size {
@@ -416,6 +410,7 @@ pub(crate) unsafe fn try_set_atomic_names(x: SEXP, which: SEXP, value: SEXP) -> 
                     })
                     .map_err(|error| error.to_string())?;
                 access.require_active().map_err(|error| error.to_string())?;
+                let mut source_metadata = None;
                 let normalized = if input_size == size {
                     normalized
                 } else {
@@ -449,7 +444,11 @@ pub(crate) unsafe fn try_set_atomic_names(x: SEXP, which: SEXP, value: SEXP) -> 
                             .try_set_string_elt(index, element)
                             .map_err(|e| e.to_string())?;
                     }
-                    padded.freeze()
+                    let padded = padded.freeze();
+                    let snapshot = snapshot_names_metadata(access, &normalized)?;
+                    preserve_padded_names_metadata(access, &normalized, &snapshot, &padded, size)?;
+                    source_metadata = Some((normalized, snapshot));
+                    padded
                 };
                 access.require_active().map_err(|error| error.to_string())?;
                 let current_size = object.len();
@@ -488,12 +487,167 @@ pub(crate) unsafe fn try_set_atomic_names(x: SEXP, which: SEXP, value: SEXP) -> 
                             "'names' attribute [{size}] must be the same length as the vector [{current_size}]"
                         ));
                     }
-                    validate_dimensions()
+                    validate_dimensions()?;
+                    if let Some((source, snapshot)) = &source_metadata {
+                        snapshot.validate(access, source)?;
+                    }
+                    Ok(())
                 })?;
                 Ok(true)
             },
         )
     }
+}
+
+/// GNU resizing retains the names of a names value and fills their new slots
+/// with empty strings, while dropping the value's other attributes.
+fn preserve_padded_names_metadata(
+    access: &super::owner::RuntimeAccess,
+    original: &super::object::Sexp<'static>,
+    snapshot: &NamesMetadataSnapshot,
+    padded: &super::object::Sexp<'static>,
+    size: i64,
+) -> Result<(), String> {
+    let names = &snapshot.names;
+    if names.is_nil() {
+        return Ok(());
+    }
+    if names.typeof_() != SEXPTYPE::STRSXP {
+        return Err("invalid names attribute on names value".into());
+    }
+    let length = names.len();
+    access.require_active().map_err(|error| error.to_string())?;
+    let domain = access.domain();
+    let allocator = access
+        .allocator(&domain)
+        .map_err(|error| error.to_string())?;
+    let result = allocator
+        .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::STRSXP, size)))
+        .map_err(|error| match error {
+            super::object::SexpError::AllocationFailed { .. } => {
+                "R allocation failed: memory or node budget exceeded".to_owned()
+            }
+            other => other.to_string(),
+        })?;
+    let mut result =
+        super::object::SexpMut::try_from_checked(result).map_err(|error| error.to_string())?;
+    let blank = allocator.character("").map_err(|error| match error {
+        super::object::SexpError::AllocationFailed { .. } => {
+            "R allocation failed: memory or node budget exceeded".to_owned()
+        }
+        other => other.to_string(),
+    })?;
+    for index in 0..size {
+        let value = if index < length {
+            let value = names
+                .try_string_elt(index)
+                .and_then(super::object::Sexp::into_owned)
+                .map_err(|error| error.to_string())?;
+            access.require_active().map_err(|error| error.to_string())?;
+            value
+        } else {
+            blank.clone()
+        };
+        result
+            .try_set_string_elt(index, value)
+            .map_err(|error| error.to_string())?;
+    }
+    let result = result.freeze();
+    let tag = access
+        .with_native(|owner| unsafe { owner.sexp(R_NamesSymbol())?.into_owned() })
+        .map_err(|error| error.to_string())?;
+    super::tsp::install_checked(access, padded, &tag, &result, || {
+        snapshot.validate(access, original)?;
+        if names.len() != length {
+            return Err("names metadata changed during assignment".into());
+        }
+        Ok(())
+    })
+}
+
+/// Retain the metadata links used by getAttrib(names) without reading an
+/// ALTREP dimnames element a second time during validation.
+struct NamesMetadataSnapshot {
+    direct: super::object::Sexp<'static>,
+    dimensions: Option<super::object::Sexp<'static>>,
+    dimension_rank: Option<i64>,
+    dimnames: Option<super::object::Sexp<'static>>,
+    dimnames_length: Option<i64>,
+    names: super::object::Sexp<'static>,
+    names_length: i64,
+}
+
+impl NamesMetadataSnapshot {
+    fn validate(
+        &self,
+        access: &super::owner::RuntimeAccess,
+        value: &super::object::Sexp<'static>,
+    ) -> Result<(), String> {
+        if super::tsp::attribute(access, value, b"names")? != self.direct {
+            return Err("names metadata changed during assignment".into());
+        }
+        if self.names.len() != self.names_length {
+            return Err("names metadata changed during assignment".into());
+        }
+        if let Some(dimensions) = &self.dimensions {
+            if super::tsp::attribute(access, value, b"dim")? != *dimensions
+                || Some(dimensions.len()) != self.dimension_rank
+            {
+                return Err("names metadata changed during assignment".into());
+            }
+        }
+        if let Some(dimnames) = &self.dimnames {
+            if super::tsp::attribute(access, value, b"dimnames")? != *dimnames
+                || Some(dimnames.len()) != self.dimnames_length
+            {
+                return Err("names metadata changed during assignment".into());
+            }
+        }
+        access.require_active().map_err(|error| error.to_string())
+    }
+}
+
+fn snapshot_names_metadata(
+    access: &super::owner::RuntimeAccess,
+    value: &super::object::Sexp<'static>,
+) -> Result<NamesMetadataSnapshot, String> {
+    let direct = super::tsp::attribute(access, value, b"names")?;
+    let mut snapshot = NamesMetadataSnapshot {
+        names_length: direct.len(),
+        names: direct.clone(),
+        direct,
+        dimensions: None,
+        dimension_rank: None,
+        dimnames: None,
+        dimnames_length: None,
+    };
+    if !snapshot.direct.is_nil() {
+        return Ok(snapshot);
+    }
+    let dimensions = super::tsp::attribute(access, value, b"dim")?;
+    let rank = dimensions.len();
+    snapshot.dimensions = Some(dimensions.clone());
+    snapshot.dimension_rank = Some(rank);
+    if dimensions.typeof_() != SEXPTYPE::INTSXP || rank != 1 {
+        return Ok(snapshot);
+    }
+    let dimnames = super::tsp::attribute(access, value, b"dimnames")?;
+    let length = dimnames.len();
+    snapshot.dimnames = Some(dimnames.clone());
+    snapshot.dimnames_length = Some(length);
+    if dimnames.typeof_() == SEXPTYPE::VECSXP && length != 0 {
+        let names = dimnames
+            .try_vector_elt(0)
+            .and_then(super::object::Sexp::into_owned)
+            .map_err(|error| error.to_string())?;
+        access.require_active().map_err(|error| error.to_string())?;
+        if names.typeof_() == SEXPTYPE::STRSXP {
+            snapshot.names_length = names.len();
+            snapshot.names = names;
+        }
+    }
+    snapshot.validate(access, value)?;
+    Ok(snapshot)
 }
 
 /// `names(x) <- NULL` removes dimnames for a one-dimensional array, while
