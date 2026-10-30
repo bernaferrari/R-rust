@@ -973,9 +973,9 @@ impl ConversionGeometry {
             inner,
             line,
             char_height: csi * 72.,
-            // Before the first plot, GNU's current inline cex remains 1;
-            // csi already reflects any committed cexbase layout reset.
-            cex: if has_frame { snapshot.cex } else { 1.0 },
+            // csi already incorporates the base expansion. The current
+            // inline multiplier is one outside an active drawing operation.
+            cex: 1.0,
             oma,
         }
     }
