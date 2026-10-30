@@ -1,0 +1,60 @@
+vector:0:1:names|ERROR:'names' attribute [1] must be the same length as the vector [0]
+vector:0:2:names|ERROR:'names' attribute [2] must be the same length as the vector [0]
+vector:0:3:names|ERROR:'names' attribute [2] must be the same length as the vector [0]
+vector:0:4:names|list(names = character(0), attributes = list(names = character(0)))
+vector:0:5:names|ERROR:'names' attribute [2] must be the same length as the vector [0]
+vector:1:1:names|list(names = "é", attributes = list(names = "é"))
+vector:1:2:names|ERROR:'names' attribute [2] must be the same length as the vector [1]
+vector:1:3:names|ERROR:'names' attribute [2] must be the same length as the vector [1]
+vector:1:4:names|list(names = NA_character_, attributes = list(names = NA_character_))
+vector:1:5:names|ERROR:'names' attribute [2] must be the same length as the vector [1]
+vector:2:1:names|list(names = c("é", NA), attributes = list(names = c("é", NA )))
+vector:2:2:names|list(names = c("1", "2"), attributes = list(names = c("1", "2" )))
+vector:2:3:names|list(names = c("é", "日本"), attributes = list(names = c("é",  "日本")))
+vector:2:4:names|list(names = c(NA_character_, NA_character_), attributes = list(     names = c(NA_character_, NA_character_)))
+vector:2:5:names|list(names = c("é", "日本"), attributes = list(names = c("é",  "日本")))
+vector:3:1:names|list(names = c("é", NA, NA), attributes = list(names = c("é",  NA, NA)))
+vector:3:2:names|list(names = c("1", "2", NA), attributes = list(names = c("1",  "2", NA)))
+vector:3:3:names|list(names = c("é", "日本", NA), attributes = list(names = c("é",  "日本", NA)))
+vector:3:4:names|list(names = c(NA_character_, NA_character_, NA_character_),      attributes = list(names = c(NA_character_, NA_character_,      NA_character_)))
+vector:3:5:names|list(names = c("é", "日本", NA), attributes = list(names = c("é",  "日本", NA)))
+array:0:1:names|ERROR:'names' attribute [1] must be the same length as the vector [0]
+array:0:2:names|ERROR:'names' attribute [2] must be the same length as the vector [0]
+array:0:3:names|ERROR:'names' attribute [2] must be the same length as the vector [0]
+array:0:4:names|list(names = NULL, attributes = list(dim = 0L, dimnames = list(     NULL)))
+array:0:5:names|ERROR:'names' attribute [2] must be the same length as the vector [0]
+array:1:1:names|list(names = "é", attributes = list(dim = 1L, dimnames = list(     "é")))
+array:1:2:names|ERROR:'names' attribute [2] must be the same length as the vector [1]
+array:1:3:names|ERROR:'names' attribute [2] must be the same length as the vector [1]
+array:1:4:names|list(names = NA_character_, attributes = list(dim = 1L, dimnames = list(     NA_character_)))
+array:1:5:names|ERROR:'names' attribute [2] must be the same length as the vector [1]
+array:2:1:names|list(names = c("é", NA), attributes = list(dim = 2L, dimnames = list(     c("é", NA))))
+array:2:2:names|list(names = c("1", "2"), attributes = list(dim = 2L, dimnames = list(     c("1", "2"))))
+array:2:3:names|list(names = c("é", "日本"), attributes = list(dim = 2L, dimnames = list(     c("é", "日本"))))
+array:2:4:names|list(names = c(NA_character_, NA_character_), attributes = list(     dim = 2L, dimnames = list(c(NA_character_, NA_character_))))
+array:2:5:names|list(names = c("é", "日本"), attributes = list(dim = 2L, dimnames = list(     c("é", "日本"))))
+array:3:1:names|list(names = c("é", NA, NA), attributes = list(dim = 3L, dimnames = list(     c("é", NA, NA))))
+array:3:2:names|list(names = c("1", "2", NA), attributes = list(dim = 3L, dimnames = list(     c("1", "2", NA))))
+array:3:3:names|list(names = c("é", "日本", NA), attributes = list(dim = 3L,      dimnames = list(c("é", "日本", NA))))
+array:3:4:names|list(names = c(NA_character_, NA_character_, NA_character_),      attributes = list(dim = 3L, dimnames = list(c(NA_character_,      NA_character_, NA_character_))))
+array:3:5:names|list(names = c("é", "日本", NA), attributes = list(dim = 3L,      dimnames = list(c("é", "日本", NA))))
+matrix:0:1:names|ERROR:'names' attribute [1] must be the same length as the vector [0]
+matrix:0:2:names|ERROR:'names' attribute [2] must be the same length as the vector [0]
+matrix:0:3:names|ERROR:'names' attribute [2] must be the same length as the vector [0]
+matrix:0:4:names|list(names = character(0), attributes = list(dim = 1:0, names = character(0)))
+matrix:0:5:names|ERROR:'names' attribute [2] must be the same length as the vector [0]
+matrix:1:1:names|list(names = "é", attributes = list(dim = c(1L, 1L), names = "é"))
+matrix:1:2:names|ERROR:'names' attribute [2] must be the same length as the vector [1]
+matrix:1:3:names|ERROR:'names' attribute [2] must be the same length as the vector [1]
+matrix:1:4:names|list(names = NA_character_, attributes = list(dim = c(1L, 1L),      names = NA_character_))
+matrix:1:5:names|ERROR:'names' attribute [2] must be the same length as the vector [1]
+matrix:2:1:names|list(names = c("é", NA), attributes = list(dim = 1:2, names = c("é",  NA)))
+matrix:2:2:names|list(names = c("1", "2"), attributes = list(dim = 1:2, names = c("1",  "2")))
+matrix:2:3:names|list(names = c("é", "日本"), attributes = list(dim = 1:2,      names = c("é", "日本")))
+matrix:2:4:names|list(names = c(NA_character_, NA_character_), attributes = list(     dim = 1:2, names = c(NA_character_, NA_character_)))
+matrix:2:5:names|list(names = c("é", "日本"), attributes = list(dim = 1:2,      names = c("é", "日本")))
+matrix:3:1:names|list(names = c("é", NA, NA), attributes = list(dim = c(1L, 3L ), names = c("é", NA, NA)))
+matrix:3:2:names|list(names = c("1", "2", NA), attributes = list(dim = c(1L, 3L ), names = c("1", "2", NA)))
+matrix:3:3:names|list(names = c("é", "日本", NA), attributes = list(dim = c(1L,  3L), names = c("é", "日本", NA)))
+matrix:3:4:names|list(names = c(NA_character_, NA_character_, NA_character_),      attributes = list(dim = c(1L, 3L), names = c(NA_character_,      NA_character_, NA_character_)))
+matrix:3:5:names|list(names = c("é", "日本", NA), attributes = list(dim = c(1L,  3L), names = c("é", "日本", NA)))
