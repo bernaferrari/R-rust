@@ -555,6 +555,73 @@ pub(crate) unsafe fn try_clear_one_dimensional_names(x: SEXP) -> bool {
     }
 }
 
+/// The names replacement primitive drops attributes on its character value;
+/// attr replacement deliberately retains them. Return an owned plain copy
+/// only when the replacement value actually has attributes.
+pub(crate) unsafe fn plain_names_replacement(
+    x: SEXP,
+    value: SEXP,
+) -> Option<super::object::Sexp<'static>> {
+    unsafe {
+        if value.is_null() || value == R_NilValue() {
+            return None;
+        }
+        let token = super::owner::OwnerToken::current()
+            .unwrap_or_else(|error| super::context::r_error(error.to_string()));
+        let pin = token
+            .pin()
+            .unwrap_or_else(|error| super::context::r_error(error.to_string()));
+        token
+            .require_active()
+            .unwrap_or_else(|error| super::context::r_error(error.to_string()));
+        if pin.is_some() && token.node_factory().domain().has_no_attributes(value) {
+            return None;
+        }
+        run_tsp(
+            x,
+            value,
+            |_, _| None,
+            |access, _object, input| {
+                if input.typeof_() != SEXPTYPE::STRSXP
+                    || input
+                        .try_attrib()
+                        .map_err(|error| error.to_string())?
+                        .is_nil()
+                {
+                    return Ok(None);
+                }
+                let size = input.len();
+                access.require_active().map_err(|error| error.to_string())?;
+                let domain = access.domain();
+                let allocator = access
+                    .allocator(&domain)
+                    .map_err(|error| error.to_string())?;
+                let output = allocator
+                    .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::STRSXP, size)))
+                    .map_err(|error| match error {
+                        super::object::SexpError::AllocationFailed { .. } => {
+                            "R allocation failed: memory or node budget exceeded".to_owned()
+                        }
+                        other => other.to_string(),
+                    })?;
+                let mut output = super::object::SexpMut::try_from_checked(output)
+                    .map_err(|error| error.to_string())?;
+                for index in 0..size {
+                    let value = input
+                        .try_string_elt(index)
+                        .and_then(super::object::Sexp::into_owned)
+                        .map_err(|error| error.to_string())?;
+                    access.require_active().map_err(|error| error.to_string())?;
+                    output
+                        .try_set_string_elt(index, value)
+                        .map_err(|error| error.to_string())?;
+                }
+                Ok(Some(output.freeze()))
+            },
+        )
+    }
+}
+
 fn tsp_parameters(
     access: &super::owner::RuntimeAccess,
     object: &super::object::Sexp<'static>,

@@ -283,6 +283,8 @@ pub unsafe fn do_namesgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP 
         x = crate::mainutils::duplicate::shallow_duplicate_if_shared(x);
         let _x = protect(x);
         let _v = protect(val);
+        let plain = crate::sexp::attrib_core::plain_names_replacement(x, val);
+        let val = plain.as_ref().map_or(val, |value| value.as_raw());
         if val == R_NilValue()
             && !x.is_null()
             && x != R_NilValue()

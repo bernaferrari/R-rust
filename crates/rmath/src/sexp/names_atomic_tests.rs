@@ -871,3 +871,156 @@ fn one_dimensional_names_fast_fallback_reuses_existing_vector_attribute() {
         name
     ));
 }
+
+#[test]
+fn names_replacement_plain_copy_survives_gc_and_rejects_revocation() {
+    for revoke in [false, true] {
+        let session = RSession::new_for_gc_tests();
+        session.with_active_in(|instance| {
+            let owner = session.owner_token().unwrap();
+            let factory = owner.node_factory();
+            let target = factory
+                .allocate(|a| Some(a.alloc_vector(SEXPTYPE::INTSXP, 2)))
+                .unwrap();
+            let marker = factory
+                .allocate(|a| Some(a.alloc_vector(SEXPTYPE::INTSXP, 1)))
+                .unwrap();
+            let class = session
+                .register_altrep_class(
+                    "plain-names-replacement",
+                    CharacterProvider {
+                        callback: Rc::new(move || {
+                            if revoke {
+                                unsafe {
+                                    crate::sexp::instance::revoke_instance_availability(instance)
+                                }
+                            }
+                        }),
+                    },
+                )
+                .unwrap();
+            let input = AltrepBuilder::new(class).build().unwrap();
+            unsafe {
+                super::setAttrib(
+                    input.as_raw(),
+                    super::Rf_install(c"marker".as_ptr()),
+                    marker.as_raw(),
+                )
+            };
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+                super::plain_names_replacement(target.as_raw(), input.as_raw())
+            }));
+            if revoke {
+                assert!(result.unwrap_err().is::<crate::sexp::context::RError>());
+                assert!(target.try_attrib().unwrap().is_nil());
+            } else {
+                let result = result.unwrap().unwrap();
+                owner.full_gc().unwrap();
+                assert!(result.try_attrib().unwrap().is_nil());
+                assert!(
+                    result
+                        .try_string_elt(0)
+                        .unwrap()
+                        .try_char_eq("é".as_bytes())
+                        .unwrap()
+                );
+                assert!(
+                    result
+                        .try_string_elt(1)
+                        .unwrap()
+                        .try_char_eq("日本".as_bytes())
+                        .unwrap()
+                );
+                assert!(!input.try_attrib().unwrap().is_nil());
+            }
+        });
+    }
+}
+
+#[test]
+fn names_replacement_plain_copy_denial_preserves_source_and_target() {
+    use crate::sexp::memory::ArenaBudget;
+    let session = RSession::new_for_gc_tests();
+    let owner = session.owner_token().unwrap();
+    let factory = owner.node_factory();
+    let target = factory
+        .allocate(|a| Some(a.alloc_vector(SEXPTYPE::INTSXP, 1024)))
+        .unwrap();
+    let input = factory
+        .allocate(|a| Some(a.alloc_vector(SEXPTYPE::STRSXP, 1024)))
+        .unwrap();
+    let marker = factory
+        .allocate(|a| Some(a.alloc_vector(SEXPTYPE::INTSXP, 1)))
+        .unwrap();
+    unsafe {
+        super::setAttrib(
+            input.as_raw(),
+            super::Rf_install(c"marker".as_ptr()),
+            marker.as_raw(),
+        )
+    };
+    let original = input.try_attrib().unwrap().into_owned().unwrap();
+    owner.full_gc().unwrap();
+    let resident = owner.with_arena(|a| a.total_bytes_allocated()).unwrap();
+    owner
+        .with_arena(|a| a.set_budget(ArenaBudget::new(resident + 4096, usize::MAX)))
+        .unwrap();
+    let failure = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+        super::plain_names_replacement(target.as_raw(), input.as_raw())
+    }))
+    .unwrap_err();
+    let error = failure.downcast::<crate::sexp::context::RError>().unwrap();
+    assert_eq!(
+        error.message,
+        "R allocation failed: memory or node budget exceeded"
+    );
+    assert_eq!(input.try_attrib().unwrap(), original);
+    assert!(target.try_attrib().unwrap().is_nil());
+    owner
+        .with_arena(|a| a.set_budget(ArenaBudget::unlimited()))
+        .unwrap();
+}
+
+#[test]
+fn names_replacement_attribute_probe_rejects_foreign_singleton_and_stale() {
+    let other = RSession::new_for_gc_tests();
+    let foreign = other
+        .owner_token()
+        .unwrap()
+        .node_factory()
+        .allocate(|a| Some(a.alloc_vector(SEXPTYPE::STRSXP, 2)))
+        .unwrap()
+        .into_owned()
+        .unwrap();
+    let session = RSession::new_for_gc_tests();
+    let owner = session.owner_token().unwrap();
+    let _pin = owner.pin().unwrap();
+    let factory = owner.node_factory();
+    let local = factory
+        .allocate(|a| Some(a.alloc_vector(SEXPTYPE::STRSXP, 2)))
+        .unwrap();
+    let marker = factory
+        .allocate(|a| Some(a.alloc_vector(SEXPTYPE::INTSXP, 1)))
+        .unwrap();
+    let domain = factory.domain();
+    assert!(domain.has_no_attributes(local.as_raw()));
+    assert!(!domain.has_no_attributes(foreign.as_raw()));
+    assert!(!domain.has_no_attributes(factory.nil().as_raw()));
+    unsafe {
+        super::setAttrib(
+            local.as_raw(),
+            super::Rf_install(c"marker".as_ptr()),
+            marker.as_raw(),
+        )
+    };
+    assert!(!domain.has_no_attributes(local.as_raw()));
+    let stale = factory
+        .allocate(|a| Some(a.alloc_vector(SEXPTYPE::STRSXP, 1)))
+        .unwrap();
+    let raw = stale.as_raw();
+    let allocation = stale.allocation().unwrap().clone();
+    drop(stale);
+    owner.full_gc().unwrap();
+    assert!(!allocation.is_live());
+    assert!(!domain.has_no_attributes(raw));
+}

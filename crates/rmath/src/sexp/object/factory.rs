@@ -24,6 +24,20 @@ pub(crate) struct NodeDomain<'session> {
 }
 
 impl<'session> NodeDomain<'session> {
+    /// Inspect a live same-domain header without allocating or calling R.
+    /// Callers must pin the active original runtime for the duration.
+    pub(crate) fn has_no_attributes(&self, value: SEXP) -> bool {
+        if !self.availability.is_live() {
+            return false;
+        }
+        let Some((projection, node)) = crate::sexp::memory::checked_projection(value) else {
+            return false;
+        };
+        node.belongs_to(&self.heap)
+            && crate::sexp::memory::checked_snapshot(projection, &node)
+                .is_some_and(|header| header.attrib.is_null())
+    }
+
     fn from_snapshot(
         owner: &StoredOwner<'session>,
         heap: HeapIdentity,

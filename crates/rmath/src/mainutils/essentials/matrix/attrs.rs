@@ -178,6 +178,8 @@ pub unsafe fn do_names_set(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
             value = crate::mainutils::coerce::coerceVector(value, SEXPTYPE::STRSXP.as_c_int());
         }
         let _value = protect(value);
+        let plain = crate::sexp::attrib_core::plain_names_replacement(x, value);
+        let value = plain.as_ref().map_or(value, |value| value.as_raw());
 
         let t = TYPEOF(x);
         if (value.is_null() || value == R_NilValue())
