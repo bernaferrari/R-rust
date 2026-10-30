@@ -45,6 +45,21 @@ fn test_only(attrs: &[Attribute]) -> bool {
                 && attr.parse_args::<Meta>().is_ok_and(|m| requires_test(&m)))
     })
 }
+// `cfg_attr` may apply a path override under any production configuration.
+// Without module-graph resolution, even an in-tree-looking path needs review.
+fn may_override_module_path(meta: &Meta) -> bool {
+    match meta {
+        Meta::NameValue(value) if value.path.is_ident("path") => true,
+        Meta::List(list) if list.path.is_ident("cfg_attr") => {
+            use syn::parse::Parser;
+            let parser = syn::punctuated::Punctuated::<Meta, syn::Token![,]>::parse_terminated;
+            parser.parse2(list.tokens.clone()).map_or(true, |items| {
+                items.iter().skip(1).any(may_override_module_path)
+            })
+        }
+        _ => false,
+    }
+}
 fn cfgs(attrs: &[Attribute]) -> Vec<String> {
     attrs
         .iter()
@@ -261,6 +276,17 @@ impl<'a> Visit<'a> for Scanner {
 
     fn visit_item_mod(&mut self, item: &'a ItemMod) {
         self.scoped(&item.attrs, Some(item.ident.to_string()), |s| {
+            if item
+                .attrs
+                .iter()
+                .any(|attr| may_override_module_path(&attr.meta))
+            {
+                s.errors.push(format!(
+                    "{}: module {} has an unresolved path override; audit its source",
+                    s.path,
+                    s.scope.join("::")
+                ));
+            }
             visit::visit_item_mod(s, item)
         });
     }
@@ -589,6 +615,31 @@ mod tests {
         }
         let scanner = inventory("const TEXT: &str = include_str!(\"data.txt\");");
         assert!(scanner.errors.is_empty());
+    }
+
+    #[test]
+    fn rejects_unresolved_module_path_overrides() {
+        for source in [
+            "#[path = \"../outside.rs\"] mod outside;",
+            "#[cfg_attr(target_os = \"android\", path = \"../outside.rs\")] mod outside;",
+            "#[cfg_attr(unix, cfg_attr(target_os = \"android\", path = \"../outside.rs\"))] mod outside;",
+        ] {
+            let scanner = inventory(source);
+            assert!(
+                !scanner.errors.is_empty(),
+                "module path must be reviewed: {source}"
+            );
+        }
+        assert!(
+            inventory("#[cfg(test)] #[path = \"../tests.rs\"] mod only_test;")
+                .errors
+                .is_empty()
+        );
+        assert!(
+            inventory("#[cfg_attr(unix, allow(dead_code))] mod normal;")
+                .errors
+                .is_empty()
+        );
     }
 
     #[test]
