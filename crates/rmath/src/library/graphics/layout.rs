@@ -48,7 +48,7 @@ enum RegionUnits {
 
 /// Raster-unit rectangles with y growing downward (portable device
 /// convention), converted from GNU's y-up dev coordinates.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct Regions {
     /// [left, top, right, bottom] of the whole device.
     pub device: [f64; 4],
@@ -461,6 +461,19 @@ impl LayoutState {
         font_scale: f64,
     ) {
         let (width, height) = device_size_raster();
+        self.refresh_to_size(width, height, cexbase, mex, font_scale);
+    }
+
+    /// Refresh a detached layout snapshot from already-captured dimensions.
+    /// This performs no device callbacks and does not mutate live par state.
+    pub(crate) fn refresh_to_size(
+        &mut self,
+        width: f64,
+        height: f64,
+        cexbase: f64,
+        mex: f64,
+        font_scale: f64,
+    ) {
         if self.width == width && self.height == height {
             return;
         }
@@ -841,6 +854,13 @@ impl LayoutState {
         self.current_figure = 1;
         self.reset(cexbase, mex, font_scale);
         true
+    }
+
+    /// Scalar conversion yardsticks without allocating temporary R vectors.
+    #[cfg(feature = "renderplot-device")]
+    pub(crate) fn conversion_yardsticks(&self) -> (f64, [f64; 4]) {
+        let csi = self.y_dev_to_inches(self.y_ndc_per_char * self.height);
+        (csi, self.oma)
     }
 
     /// Y-down raster rectangles for the drawing layer.

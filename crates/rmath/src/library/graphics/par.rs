@@ -1111,6 +1111,36 @@ fn logical_false_value(value: &ParValue) -> bool {
     }
 }
 
+/// Detached conversion inputs captured without calling into the device while
+/// the live graphics-parameter state is borrowed.
+#[cfg(feature = "renderplot-device")]
+#[derive(PartialEq)]
+pub(crate) struct ConversionLayoutSnapshot {
+    pub regions: Regions,
+    pub csi: f64,
+    pub mex: f64,
+    pub cex: f64,
+    pub oma: [f64; 4],
+}
+
+#[cfg(feature = "renderplot-device")]
+pub(crate) fn conversion_layout_snapshot(width: f64, height: f64) -> ConversionLayoutSnapshot {
+    with_par_state(|state| {
+        let cex = real_override(state, "cex", 1.0);
+        let mex = real_override(state, "mex", 1.0);
+        let mut layout = state.layout.clone();
+        layout.refresh_to_size(width, height, cex, mex, 1.0);
+        let (csi, oma) = layout.conversion_yardsticks();
+        ConversionLayoutSnapshot {
+            regions: layout.regions(),
+            csi,
+            mex,
+            cex,
+            oma,
+        }
+    })
+}
+
 /// Current device/inner/figure/plot regions in raster units.
 pub(crate) fn current_regions() -> Regions {
     with_par_state(|state| state.layout.regions())

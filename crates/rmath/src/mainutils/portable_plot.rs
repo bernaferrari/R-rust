@@ -16,10 +16,13 @@ use r_graphics_engine::{
 use std::ffi::CString;
 use std::os::raw::c_int;
 
+#[cfg(test)]
+#[path = "portable_plot_conversion_tests.rs"]
+mod conversion_tests;
 pub(crate) mod graphics_natives;
 mod mtext;
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct Coordinates {
     pub limits: [f64; 4],
     pub rect: [f32; 4],
@@ -931,6 +934,9 @@ pub(crate) unsafe fn native_clip(args: SEXP) -> SEXP {
 /// xNDCPerLine/xNDCPerChar with cra[1] = 1.2 * startps.
 struct ConversionGeometry {
     c: Coordinates,
+    /// GNU leaves the user-to-device transform zeroed until the first frame.
+    has_frame: bool,
+    preplot_regions: Option<crate::library::graphics::layout::Regions>,
     inner: [f64; 4],
     /// Device units per margin line.
     line: f64,
@@ -941,30 +947,35 @@ struct ConversionGeometry {
 }
 
 impl ConversionGeometry {
-    fn capture(c: Coordinates) -> Self {
-        let csi = par_numbers("csi").first().copied().unwrap_or(0.2);
-        let mex = par_numbers("mex").first().copied().unwrap_or(1.);
-        let line = csi * 72. * mex;
-        let oma = par_numbers("oma");
-        let oma = [
-            oma.first().copied().unwrap_or(0.),
-            oma.get(1).copied().unwrap_or(0.),
-            oma.get(2).copied().unwrap_or(0.),
-            oma.get(3).copied().unwrap_or(0.),
-        ];
+    fn capture(
+        c: Coordinates,
+        has_frame: bool,
+        snapshot: &crate::library::graphics::par::ConversionLayoutSnapshot,
+    ) -> Self {
+        let csi = snapshot.csi;
+        let line = csi * 72. * snapshot.mex;
+        let oma = snapshot.oma;
         let margin = |lines: f64| lines * line;
-        let inner = [
-            f64::from(c.device[0]) + margin(oma[1]),
-            f64::from(c.device[1]) + margin(oma[2]),
-            f64::from(c.device[2]) - margin(oma[3]),
-            f64::from(c.device[3]) - margin(oma[0]),
-        ];
+        let inner = if !has_frame {
+            snapshot.regions.inner
+        } else {
+            [
+                f64::from(c.device[0]) + margin(oma[1]),
+                f64::from(c.device[1]) + margin(oma[2]),
+                f64::from(c.device[2]) - margin(oma[3]),
+                f64::from(c.device[3]) - margin(oma[0]),
+            ]
+        };
         Self {
             c,
+            has_frame,
+            preplot_regions: (!has_frame).then_some(snapshot.regions),
             inner,
             line,
             char_height: csi * 72.,
-            cex: par_numbers("cex").first().copied().unwrap_or(1.),
+            // Before the first plot, GNU's current inline cex remains 1;
+            // csi already reflects any committed cexbase layout reset.
+            cex: if has_frame { snapshot.cex } else { 1.0 },
             oma,
         }
     }
@@ -984,6 +995,39 @@ fn bad_units_error(vertical: bool) -> ! {
 /// single-axis conversion and error like GNU's BadUnitsError.
 fn location_to_device(g: &ConversionGeometry, vertical: bool, code: i32, v: f64) -> f64 {
     let c = &g.c;
+    let figure = g
+        .preplot_regions
+        .map(|r| r.figure)
+        .unwrap_or_else(|| c.figure.map(f64::from));
+    let plot = g
+        .preplot_regions
+        .map(|r| r.plot)
+        .unwrap_or_else(|| c.rect.map(f64::from));
+    // Retain the existing f32 span arithmetic for established frames;
+    // only the pre-frame path has exact f64 layout regions.
+    let figure_width = if g.has_frame {
+        f64::from(c.figure[2] - c.figure[0])
+    } else {
+        figure[2] - figure[0]
+    };
+    let figure_height = if g.has_frame {
+        f64::from(c.figure[3] - c.figure[1])
+    } else {
+        figure[3] - figure[1]
+    };
+    let plot_width = if g.has_frame {
+        f64::from(c.rect[2] - c.rect[0])
+    } else {
+        plot[2] - plot[0]
+    };
+    let plot_height = if g.has_frame {
+        f64::from(c.rect[3] - c.rect[1])
+    } else {
+        plot[3] - plot[1]
+    };
+    if !g.has_frame && (code == 12 || (!vertical && matches!(code, 8 | 10))) {
+        return if vertical { g.inner[3] } else { g.inner[0] };
+    }
     if vertical {
         // Device y grows downward: the ndc/nic/nfc/npc origins and the
         // inches/lines/chars origins sit at the bottom edge.
@@ -994,14 +1038,14 @@ fn location_to_device(g: &ConversionGeometry, vertical: bool, code: i32, v: f64)
             2 => bottom - (g.oma[0] - v) * g.line,
             4 => f64::from(c.device[1]) + (g.oma[2] - v) * g.line,
             6 => g.inner[3] - v * (g.inner[3] - g.inner[1]),
-            7 => f64::from(c.figure[3]) - v * f64::from(c.figure[3] - c.figure[1]),
-            8 => f64::from(c.rect[3]) + v * g.line,
-            10 => f64::from(c.rect[1]) - v * g.line,
+            7 => figure[3] - v * figure_height,
+            8 => plot[3] + v * g.line,
+            10 => plot[1] - v * g.line,
             12 => user_y_to_device(c, v),
             13 => bottom - v * 72.,
             14 => bottom - v * g.line,
             15 => bottom - v * g.cex * g.char_height,
-            16 => f64::from(c.rect[3]) - v * f64::from(c.rect[3] - c.rect[1]),
+            16 => plot[3] - v * plot_height,
             _ => bad_units_error(vertical),
         }
     } else {
@@ -1012,13 +1056,13 @@ fn location_to_device(g: &ConversionGeometry, vertical: bool, code: i32, v: f64)
             1 => left + v * f64::from(c.device[2] - c.device[0]),
             2 | 4 => g.inner[0] + v * (g.inner[2] - g.inner[0]),
             6 => g.inner[0] + v * (g.inner[2] - g.inner[0]),
-            7 => f64::from(c.figure[0]) + v * f64::from(c.figure[2] - c.figure[0]),
+            7 => figure[0] + v * figure_width,
             8 | 10 => user_x_to_device(c, v),
             12 => user_x_to_device(c, v),
             13 => left + v * 72.,
             14 => left + v * g.line,
             15 => left + v * g.cex * g.char_height,
-            16 => f64::from(c.rect[0]) + v * f64::from(c.rect[2] - c.rect[0]),
+            16 => plot[0] + v * plot_width,
             _ => bad_units_error(vertical),
         }
     }
@@ -1027,22 +1071,60 @@ fn location_to_device(g: &ConversionGeometry, vertical: bool, code: i32, v: f64)
 /// Convert a device-space location to a GNU GUnit coordinate system.
 fn device_to_location(g: &ConversionGeometry, vertical: bool, code: i32, d: f64) -> f64 {
     let c = &g.c;
+    let figure = g
+        .preplot_regions
+        .map(|r| r.figure)
+        .unwrap_or_else(|| c.figure.map(f64::from));
+    let plot = g
+        .preplot_regions
+        .map(|r| r.plot)
+        .unwrap_or_else(|| c.rect.map(f64::from));
+    // Retain the existing f32 span arithmetic for established frames;
+    // only the pre-frame path has exact f64 layout regions.
+    let figure_width = if g.has_frame {
+        f64::from(c.figure[2] - c.figure[0])
+    } else {
+        figure[2] - figure[0]
+    };
+    let figure_height = if g.has_frame {
+        f64::from(c.figure[3] - c.figure[1])
+    } else {
+        figure[3] - figure[1]
+    };
+    let plot_width = if g.has_frame {
+        f64::from(c.rect[2] - c.rect[0])
+    } else {
+        plot[2] - plot[0]
+    };
+    let plot_height = if g.has_frame {
+        f64::from(c.rect[3] - c.rect[1])
+    } else {
+        plot[3] - plot[1]
+    };
+    if !g.has_frame && (code == 12 || (!vertical && matches!(code, 8 | 10))) {
+        let from_origin = if vertical {
+            g.inner[3] - d
+        } else {
+            d - g.inner[0]
+        };
+        return from_origin / 0.0;
+    }
     if vertical {
         let bottom = f64::from(c.device[3]);
         match code {
             0 => d,
-            1 => (bottom - d) / f64::from(c.device[3] - c.device[1]),
+            1 => (d - bottom) / f64::from(c.device[1] - c.device[3]),
             2 => g.oma[0] - (bottom - d) / g.line,
             4 => g.oma[2] - (d - f64::from(c.device[1])) / g.line,
             6 => (g.inner[3] - d) / (g.inner[3] - g.inner[1]),
-            7 => (f64::from(c.figure[3]) - d) / f64::from(c.figure[3] - c.figure[1]),
-            8 => (d - f64::from(c.rect[3])) / g.line,
-            10 => (f64::from(c.rect[1]) - d) / g.line,
+            7 => (figure[3] - d) / figure_height,
+            8 => (d - plot[3]) / g.line,
+            10 => (plot[1] - d) / g.line,
             12 => device_y_to_user(c, d),
             13 => (bottom - d) / 72.,
             14 => (bottom - d) / g.line,
             15 => (bottom - d) / (g.cex * g.char_height),
-            16 => (f64::from(c.rect[3]) - d) / f64::from(c.rect[3] - c.rect[1]),
+            16 => (plot[3] - d) / plot_height,
             _ => bad_units_error(vertical),
         }
     } else {
@@ -1052,13 +1134,13 @@ fn device_to_location(g: &ConversionGeometry, vertical: bool, code: i32, d: f64)
             1 => (d - left) / f64::from(c.device[2] - c.device[0]),
             2 | 4 => (d - g.inner[0]) / (g.inner[2] - g.inner[0]),
             6 => (d - g.inner[0]) / (g.inner[2] - g.inner[0]),
-            7 => (d - f64::from(c.figure[0])) / f64::from(c.figure[2] - c.figure[0]),
+            7 => (d - figure[0]) / figure_width,
             8 | 10 => device_x_to_user(c, d),
             12 => device_x_to_user(c, d),
             13 => (d - left) / 72.,
             14 => (d - left) / g.line,
             15 => (d - left) / (g.cex * g.char_height),
-            16 => (d - f64::from(c.rect[0])) / f64::from(c.rect[2] - c.rect[0]),
+            16 => (d - plot[0]) / plot_width,
             _ => bad_units_error(vertical),
         }
     }
@@ -1068,30 +1150,165 @@ fn device_to_location(g: &ConversionGeometry, vertical: bool, code: i32, d: f64)
 /// `grconvertY`. Converts locations between the graphics coordinate systems
 /// through device space, like GConvertX/GConvertY.
 pub(crate) unsafe fn native_convert(args: SEXP, vertical: bool) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if TYPEOF(x) != SEXPTYPE::REALSXP {
+    use crate::sexp::{
+        object::{SexpError, SexpMut},
+        owner::OwnerToken,
+    };
+    let owner = unsafe { OwnerToken::current() }
+        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+    let _pin = owner
+        .pin()
+        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        owner.require_active()?;
+        let args = owner.sexp(args)?;
+        let x = args.try_car()?;
+        if x.typeof_() != SEXPTYPE::REALSXP {
             base_error("invalid 'x' argument");
         }
-        let from = crate::mainutils::coerce::asInteger(CADR(args));
+        let length = x.len();
+        let rest = args.try_cdr()?;
+        let from_arg = rest.try_car()?;
+        let to_cell = rest.try_cdr()?;
+        let to_arg = to_cell.try_car()?;
+        let from = unsafe { crate::mainutils::coerce::asInteger(from_arg.as_raw()) };
+        owner.require_active()?;
         if from == crate::sexp::ffi::NA_INTEGER || !(1..=17).contains(&from) {
             base_error("invalid 'from' argument");
         }
-        let to = crate::mainutils::coerce::asInteger(CADDR(args));
+        let to = unsafe { crate::mainutils::coerce::asInteger(to_arg.as_raw()) };
+        owner.require_active()?;
         if to == crate::sexp::ffi::NA_INTEGER || !(1..=17).contains(&to) {
             base_error("invalid 'to' argument");
         }
-        let (from, to) = (from - 1, to - 1);
-        let geometry = ConversionGeometry::capture(current());
-        let result = crate::mainutils::duplicate::Rf_duplicate(x);
-        for index in 0..XLENGTH(result) as usize {
-            let value = *REAL(result).add(index);
-            let device = location_to_device(&geometry, vertical, from, value);
-            *REAL(result).add(index) = device_to_location(&geometry, vertical, to, device);
+        if args.try_car()? != x
+            || args.try_cdr()? != rest
+            || rest.try_car()? != from_arg
+            || rest.try_cdr()? != to_cell
+            || to_cell.try_car()? != to_arg
+            || x.typeof_() != SEXPTYPE::REALSXP
+            || x.len() != length
+        {
+            return Err(SexpError::EvaluationFailed {
+                message: "graphics input changed during conversion".into(),
+            });
         }
-        result
+        let (installed, recording, backend) = with_required_current_instance(|inst| unsafe {
+            (
+                (*inst).portable_graphics.current,
+                (*inst).graphics_recording.clone(),
+                (*inst).current_renderplot_backend,
+            )
+        });
+        let (width, height) = if let Some(c) = installed {
+            (
+                f64::from(c.device[2] - c.device[0]),
+                f64::from(c.device[3] - c.device[1]),
+            )
+        } else {
+            let scene = recording.as_ref().ok_or(SexpError::EvaluationFailed {
+                message: "graphics device dimensions unavailable".into(),
+            })?;
+            let scene = scene
+                .try_borrow()
+                .map_err(|_| SexpError::EvaluationFailed {
+                    message: "graphics recording is busy".into(),
+                })?;
+            let (w, h) = scene.dimensions();
+            (f64::from(w), f64::from(h))
+        };
+        owner.require_active()?;
+        let snapshot = crate::library::graphics::par::conversion_layout_snapshot(width, height);
+        let (coordinates, has_frame) = if let Some(c) = installed {
+            (c, true)
+        } else {
+            let rect = |r: [f64; 4]| [r[0] as f32, r[1] as f32, r[2] as f32, r[3] as f32];
+            (
+                Coordinates {
+                    limits: [0.0, 1.0, 0.0, 1.0],
+                    rect: rect(snapshot.regions.plot),
+                    figure: rect(snapshot.regions.figure),
+                    device: rect(snapshot.regions.device),
+                    log: [false, false],
+                },
+                false,
+            )
+        };
+        let geometry = ConversionGeometry::capture(coordinates, has_frame, &snapshot);
+        let check_state = || -> crate::sexp::object::SexpResult<()> {
+            owner.require_active()?;
+            let (now_installed, now_recording, now_backend) =
+                with_required_current_instance(|inst| unsafe {
+                    (
+                        (*inst).portable_graphics.current,
+                        (*inst).graphics_recording.clone(),
+                        (*inst).current_renderplot_backend,
+                    )
+                });
+            let same_recording = match (&recording, &now_recording) {
+                (None, None) => true,
+                (Some(a), Some(b)) => std::rc::Rc::ptr_eq(a, b),
+                _ => false,
+            };
+            let same_backend = match (backend, now_backend) {
+                (None, None) => true,
+                (Some(a), Some(b)) => std::ptr::eq(a, b),
+                _ => false,
+            };
+            if now_installed != installed
+                || !same_recording
+                || !same_backend
+                || crate::library::graphics::par::conversion_layout_snapshot(width, height)
+                    != snapshot
+                || args.try_car()? != x
+                || args.try_cdr()? != rest
+                || rest.try_car()? != from_arg
+                || rest.try_cdr()? != to_cell
+                || to_cell.try_car()? != to_arg
+                || x.typeof_() != SEXPTYPE::REALSXP
+                || x.len() != length
+            {
+                return Err(SexpError::EvaluationFailed {
+                    message: "graphics state changed during conversion".into(),
+                });
+            }
+            Ok(())
+        };
+        let raw = unsafe { crate::mainutils::duplicate::Rf_duplicate(x.as_raw()) };
+        check_state()?;
+        let result = owner.sexp(raw)?;
+        if result.typeof_() != SEXPTYPE::REALSXP || result.len() != length || x.len() != length {
+            return Err(SexpError::EvaluationFailed {
+                message: "graphics input changed during conversion".into(),
+            });
+        }
+        let mut result = SexpMut::try_from_checked(result)?;
+        for index in 0..length {
+            let value = result.try_real_elt(index);
+            check_state()?;
+            let device = location_to_device(&geometry, vertical, from - 1, value?);
+            let converted = device_to_location(&geometry, vertical, to - 1, device);
+            let written = result.try_set_real_elt(index, converted);
+            check_state()?;
+            written?;
+            if result.len() != length || x.len() != length {
+                return Err(SexpError::EvaluationFailed {
+                    message: "graphics input changed during conversion".into(),
+                });
+            }
+        }
+        Ok(result.freeze().as_raw())
+    }));
+    owner
+        .require_active()
+        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+    match outcome {
+        Ok(Ok(value)) => value,
+        Ok(Err(error)) => crate::sexp::context::r_error(error.to_string()),
+        Err(payload) => std::panic::resume_unwind(payload),
     }
 }
+
 fn line(target: &mut dyn DrawTarget, a: Point, b: Point, stroke: Stroke) {
     if [a.x, a.y, b.x, b.y].iter().any(|v| !v.is_finite()) {
         return;
@@ -1968,6 +2185,8 @@ mod tests {
     /// lines of 14.4 units, plot rectangle at plt [0.117, 0.94, 0.146, 0.883].
     fn default_pdf_geometry() -> super::ConversionGeometry {
         super::ConversionGeometry {
+            has_frame: true,
+            preplot_regions: None,
             c: Coordinates {
                 limits: [0., 1., 0., 1.],
                 rect: [59.04, 59.04, 473.76, 430.56],
