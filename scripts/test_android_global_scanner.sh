@@ -16,7 +16,14 @@ unsafe extern "C" { static FOREIGN: u32; }
 #[cfg(test)] mod arbitrary { static ONLY_TEST: AtomicU32 = AtomicU32::new(0); }
 RUST
 cd "$root"
+scripts/cargo_dev.sh run -q -p rport-android-global-audit -- "$fixture" "$fixture/inventory"
+fixture_fingerprint="$(awk -F '\t' '$3 == "HEAP" { print $4 }' "$fixture/inventory")"
+if [[ ! "$fixture_fingerprint" =~ ^[0-9a-f]{64}$ ]]; then
+    echo 'Scanner did not provide a source fingerprint' >&2; exit 1
+fi
 check() {
+    awk -v hash="$fixture_fingerprint" 'BEGIN { FS=OFS="\t" } NF==7 { $8=hash } { print }' "$manifest" > "$fixture/manifest-next"
+    mv -f "$fixture/manifest-next" "$manifest"
     scripts/cargo_dev.sh run -q -p rport-android-global-audit -- --check "$fixture" "$manifest"
 }
 : > "$manifest"
@@ -38,6 +45,12 @@ fi
 printf 'crates/rmath/src/atomics.rs\tsync-static\tID\tfixture\tallow-process\ttest\tfixture\ncrates/rmath/src/atomics.rs\tsync-static\tFLAG\tfixture\tallow-process\ttest\tfixture\n' >> "$manifest"
 printf 'crates/rmath/src/atomics.rs\timmutable-static\tALIASED\tfixture\tallow-process\ttest\tfixture\ncrates/rmath/src/atomics.rs\tforeign-static\tFOREIGN\tfixture\tallow-process\ttest\tfixture\n' >> "$manifest"
 check
+cp -f "$fixture/crates/rmath/src/atomics.rs" "$fixture/atomics-original.rs"
+sed 's/AtomicU32::new(1)/AtomicU32::new(2)/' "$fixture/atomics-original.rs" > "$fixture/crates/rmath/src/atomics.rs"
+if check > "$fixture/output" 2>&1 || ! rg -q 'source fingerprint changed' "$fixture/output"; then
+    echo 'Scanner accepted a changed declaration under an old approval' >&2; exit 1
+fi
+cp -f "$fixture/atomics-original.rs" "$fixture/crates/rmath/src/atomics.rs"
 printf 'crates/rmath/src/atomics.rs\tsync-static\tSTALE\tfixture\tallow-process\ttest\tfixture\n' >> "$manifest"
 if check > "$fixture/output" 2>&1 || ! rg -q 'stale manifest declaration: .*STALE' "$fixture/output"; then
     echo 'Scanner failed to reject a stale declaration' >&2; exit 1

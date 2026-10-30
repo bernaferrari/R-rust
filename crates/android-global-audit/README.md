@@ -2,7 +2,7 @@
 
 Run `scripts/cargo_dev.sh run -p rport-android-global-audit -- . OUTPUT` from
 the repository root. The output is a sorted, tab-separated inventory of path,
-kind, and scoped declaration identifier. Duplicate identifiers, source parse
+kind, scoped declaration identifier, and SHA-256 source-file fingerprint. Duplicate identifiers, source parse
 failures, Rust `include!` invocations, and visibly global declarations in other
 macro bodies, and unresolved module path overrides are errors. Direct module
 path overrides are accepted only when every possible literal path resolves to a
@@ -12,7 +12,9 @@ The scanner excludes conditions requiring `test` and the legacy `support`
 directories; other configuration conditions are recorded rather than evaluated.
 
 The Android release gate compares this inventory with the declaration-level
-manifest. Classification is an inventory, not an approval of session isolation. It detects mutable
+manifest. Each classification carries the source-file fingerprint reviewed; a
+change to any byte in that file requires re-review. This does not detect changes
+in imported types or macro definitions elsewhere. Classification is an inventory, not an approval of session isolation. It detects mutable
 statics (including immutable and foreign declarations) and declarations inside
 `thread_local!` and `lazy_static!`. All immutable statics need review because
 type aliases and wrappers can hide interior mutability; their inventory kind is

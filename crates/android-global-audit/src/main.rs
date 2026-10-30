@@ -1,6 +1,7 @@
 //! Inventory mutable global declarations without approving them by file name.
 #![forbid(unsafe_code)]
 use quote::ToTokens;
+use sha2::{Digest, Sha256};
 use std::{
     collections::{BTreeMap, BTreeSet},
     env, fs,
@@ -18,6 +19,7 @@ struct Key {
     path: String,
     kind: &'static str,
     name: String,
+    fingerprint: String,
 }
 
 fn requires_test(meta: &Meta) -> bool {
@@ -145,6 +147,7 @@ struct Scanner {
     conditions: Vec<String>,
     found: BTreeMap<Key, usize>,
     errors: Vec<String>,
+    fingerprint: String,
     source_file: Option<PathBuf>,
     source_files: std::rc::Rc<BTreeSet<PathBuf>>,
 }
@@ -156,6 +159,7 @@ impl Scanner {
             conditions: vec![],
             found: BTreeMap::new(),
             errors: vec![],
+            fingerprint: "0".repeat(64),
             source_file: None,
             source_files: std::rc::Rc::new(BTreeSet::new()),
         }
@@ -196,6 +200,7 @@ impl Scanner {
                 path: self.path.clone(),
                 kind,
                 name,
+                fingerprint: self.fingerprint.clone(),
             })
             .or_default() += 1;
     }
@@ -431,6 +436,10 @@ fn scan(root: &Path) -> Result<Vec<Key>, String> {
             }
         };
         let mut scanner = Scanner::new(path);
+        scanner.fingerprint = Sha256::digest(source.as_bytes())
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect();
         scanner.source_file = Some(file);
         scanner.source_files = source_files.clone();
         scanner.visit_file(&syntax);
@@ -453,16 +462,16 @@ fn scan(root: &Path) -> Result<Vec<Key>, String> {
     Ok(found.into_keys().collect())
 }
 fn check_manifest(keys: &[Key], manifest: &str) -> Result<(), String> {
-    let mut allowed = BTreeSet::new();
+    let mut allowed = BTreeMap::new();
     let mut errors = Vec::new();
     for (index, line) in manifest.lines().enumerate() {
         if line.trim().is_empty() || line.starts_with('#') {
             continue;
         }
         let fields: Vec<_> = line.split('\t').collect();
-        if fields.len() != 7 || fields.iter().any(|v| v.trim().is_empty()) {
+        if fields.len() != 8 || fields.iter().any(|v| v.trim().is_empty()) {
             errors.push(format!(
-                "manifest line {}: expected seven nonempty tab-separated fields",
+                "manifest line {}: expected eight nonempty tab-separated fields",
                 index + 1
             ));
             continue;
@@ -496,19 +505,47 @@ fn check_manifest(keys: &[Key], manifest: &str) -> Result<(), String> {
             continue;
         }
         let identity = format!("{}\t{}\t{}", fields[0], fields[1], fields[2]);
-        if !allowed.insert(identity.clone()) {
+        let fingerprint = fields[7];
+        if fingerprint.len() != 64
+            || !fingerprint
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        {
+            errors.push(format!(
+                "manifest line {}: invalid SHA-256 fingerprint",
+                index + 1
+            ));
+            continue;
+        }
+        if allowed
+            .insert(identity.clone(), fingerprint.to_owned())
+            .is_some()
+        {
             errors.push(format!("duplicate manifest declaration: {identity}"));
         }
     }
-    let found: BTreeSet<String> = keys
+    let found: BTreeMap<String, &str> = keys
         .iter()
-        .map(|k| format!("{}\t{}\t{}", k.path, k.kind, k.name))
+        .map(|k| {
+            (
+                format!("{}\t{}\t{}", k.path, k.kind, k.name),
+                k.fingerprint.as_str(),
+            )
+        })
         .collect();
-    for key in found.difference(&allowed) {
-        errors.push(format!("unclassified declaration: {key}"));
+    for (key, fingerprint) in &found {
+        match allowed.get(key) {
+            None => errors.push(format!("unclassified declaration: {key}")),
+            Some(approved) if approved != fingerprint => {
+                errors.push(format!("source fingerprint changed: {key}"))
+            }
+            _ => {}
+        }
     }
-    for key in allowed.difference(&found) {
-        errors.push(format!("stale manifest declaration: {key}"));
+    for key in allowed.keys() {
+        if !found.contains_key(key) {
+            errors.push(format!("stale manifest declaration: {key}"));
+        }
     }
     if errors.is_empty() {
         Ok(())
@@ -523,7 +560,7 @@ fn main() -> ExitCode {
         [root, output] => scan(Path::new(root)).and_then(|keys| {
             let text = keys
                 .iter()
-                .map(|k| format!("{}\t{}\t{}\n", k.path, k.kind, k.name))
+                .map(|k| format!("{}\t{}\t{}\t{}\n", k.path, k.kind, k.name, k.fingerprint))
                 .collect::<String>();
             fs::write(output, text).map_err(|e| format!("cannot write inventory: {e}"))
         }),
@@ -690,11 +727,21 @@ mod tests {
     fn manifest_checks_each_declaration_and_rejects_invalid_entries() {
         let scanner = inventory("static ONE: AtomicU32 = init(); static TWO: AtomicU32 = init();");
         let keys: Vec<_> = scanner.found.into_keys().collect();
-        let one = "fixture.rs\tsync-static\tONE\tfixture\tallow-process\ttest\tverified\n";
-        let two = "fixture.rs\tsync-static\tTWO\tfixture\tallow-process\ttest\tverified\n";
+        let hash = "0".repeat(64);
+        let one = format!(
+            "fixture.rs\tsync-static\tONE\tfixture\tallow-process\ttest\tverified\t{hash}\n"
+        );
+        let two = format!(
+            "fixture.rs\tsync-static\tTWO\tfixture\tallow-process\ttest\tverified\t{hash}\n"
+        );
         assert!(check_manifest(&keys, &format!("{one}{two}")).is_ok());
         assert!(
-            check_manifest(&keys, one)
+            check_manifest(&keys, &format!("{one}fixture.rs\tsync-static\tTWO\tfixture\tallow-process\ttest\tverified\tbad\n"))
+                .unwrap_err()
+                .contains("invalid SHA-256 fingerprint")
+        );
+        assert!(
+            check_manifest(&keys, &one)
                 .unwrap_err()
                 .contains("unclassified declaration: fixture.rs\tsync-static\tTWO")
         );
@@ -703,16 +750,18 @@ mod tests {
                 .unwrap_err()
                 .contains("duplicate manifest")
         );
-        assert!(check_manifest(&keys, &format!("{one}{two}fixture.rs\tsync-static\tGONE\tfixture\tallow-process\ttest\tverified\n")).unwrap_err().contains("stale manifest"));
+        assert!(check_manifest(&keys, &format!("{one}{two}fixture.rs\tsync-static\tGONE\tfixture\tallow-process\ttest\tverified\t{hash}\n")).unwrap_err().contains("stale manifest"));
         assert!(
             check_manifest(&keys, "fixture.rs\tlegacy-file-only\n")
                 .unwrap_err()
-                .contains("expected seven")
+                .contains("expected eight")
         );
         assert!(
             check_manifest(
                 &keys,
-                &format!("{one}fixture.rs\tsync-static\tTWO\tfixture\tunknown\ttest\tverified\n")
+                &format!(
+                    "{one}fixture.rs\tsync-static\tTWO\tfixture\tunknown\ttest\tverified\t{hash}\n"
+                )
             )
             .unwrap_err()
             .contains("invalid policy")

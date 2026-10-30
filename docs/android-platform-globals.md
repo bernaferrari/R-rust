@@ -7,6 +7,10 @@ sessionized, so each discovered declaration must be classified in
 `docs/android-platform-global-allowlist.tsv` is historical context only; it
 does not approve individual declarations.
 
+Every reviewed declaration records its source file's SHA-256; editing that file
+invalidates its classifications until reviewed again. This does not track changes
+in external type definitions or macro expansions.
+
 This check verifies that declarations are inventoried. A passing inventory does
 not approve `sessionize` or `platform-replace` entries as safe. The remaining
 condition class filters, parser warnings, formatting and dispatch context,

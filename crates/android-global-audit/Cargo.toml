@@ -9,3 +9,4 @@ publish = false
 syn = { version = "2", features = ["full", "visit", "parsing"] }
 quote = "1"
 proc-macro2 = "1"
+sha2 = "0.11"
