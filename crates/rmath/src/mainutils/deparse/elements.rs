@@ -459,7 +459,7 @@ pub unsafe fn vector2buff(vector: SEXP, d: *mut LocalParseData) {
                 if !vec.is_null() {
                     for i in 0..tlen as usize {
                         let c = *vec.add(i);
-                        if !ISNAN(c.r) && !ISNAN(c.i) {
+                        if !crate::sexp::ffi::R_IsNA(c.r) && !crate::sexp::ffi::R_IsNA(c.i) {
                             all_na = false;
                             break;
                         }
@@ -542,8 +542,12 @@ pub unsafe fn vector2buff(vector: SEXP, d: *mut LocalParseData) {
                         let vec = COMPLEX(vector);
                         if !vec.is_null() {
                             let c = *vec.add(i);
-                            if all_na && ISNAN(c.r) && ISNAN(c.i) {
-                                strp = b"NA_complex_\0".as_ptr() as *const c_char;
+                            if crate::sexp::ffi::R_IsNA(c.r) && crate::sexp::ffi::R_IsNA(c.i) {
+                                strp = if all_na {
+                                    c"NA_complex_".as_ptr()
+                                } else {
+                                    c"NA".as_ptr()
+                                };
                             } else if ISNAN(c.r) || !R_FINITE(c.i) {
                                 with_deparse_runtime(|state| {
                                     let cplx_buf = &mut state.cplx_buf;
