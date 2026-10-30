@@ -49,11 +49,32 @@ if check > "$fixture/output" 2>&1 || ! rg -q 'macro include may declare global s
     echo 'Scanner failed to reject a Rust include outside the inventory' >&2; exit 1
 fi
 rm -f "$fixture/crates/rmath/src/include.rs"
+printf 'crates/rmath/src/atomics.rs\tsync-static\tHEAP\tfixture\tallow-process\ttest\tfixture\ncrates/rmath/src/atomics.rs\tsync-static\tID\tfixture\tallow-process\ttest\tfixture\ncrates/rmath/src/atomics.rs\tsync-static\tFLAG\tfixture\tallow-process\ttest\tfixture\ncrates/rmath/src/atomics.rs\timmutable-static\tALIASED\tfixture\tallow-process\ttest\tfixture\ncrates/rmath/src/atomics.rs\tforeign-static\tFOREIGN\tfixture\tallow-process\ttest\tfixture\n' > "$manifest"
+: > "$fixture/crates/rmath/src/inside.rs"
+cat > "$fixture/crates/rmath/src/path.rs" <<'RUST'
+#[path = "inside.rs"] mod inside;
+RUST
+check
+: > "$fixture/crates/rmath/outside.rs"
 cat > "$fixture/crates/rmath/src/path.rs" <<'RUST'
 #[cfg_attr(target_os = "android", path = "../outside.rs")]
 mod outside;
 RUST
 if check > "$fixture/output" 2>&1 || ! rg -q 'module outside has an unresolved path override' "$fixture/output"; then
     echo 'Scanner failed to reject an unresolved module path' >&2; exit 1
+fi
+mkdir -p "$fixture/crates/rmath/src/support"
+: > "$fixture/crates/rmath/src/support/ignored.rs"
+cat > "$fixture/crates/rmath/src/path.rs" <<'RUST'
+#[path = "support/ignored.rs"] mod ignored;
+RUST
+if check > "$fixture/output" 2>&1 || ! rg -q 'module ignored has an unresolved path override' "$fixture/output"; then
+    echo 'Scanner accepted an excluded source path' >&2; exit 1
+fi
+cat > "$fixture/crates/rmath/src/path.rs" <<'RUST'
+mod nested { #[path = "inside.rs"] mod inner; }
+RUST
+if check > "$fixture/output" 2>&1 || ! rg -q 'module nested::inner has an unresolved path override' "$fixture/output"; then
+    echo 'Scanner accepted an ambiguous nested source path' >&2; exit 1
 fi
 printf 'Android global declaration scanner coverage passed.\n'

@@ -41,8 +41,10 @@ files conservatively, so separately included test-only files can still appear.
 It does not resolve arbitrary macro expansions or the module graph; a passing inventory is not a complete semantic global-state audit.
 Rust `include!` invocations and macro bodies that visibly declare globals or
 contain an `include!` outside recognized macros are errors; included Rust code
-may lie outside the scanned tree. Module path overrides, including those nested
-in `cfg_attr`, are also rejected until the module graph can be verified.
+may lie outside the scanned tree. A direct module path override is accepted only
+when every literal path, including those nested in `cfg_attr`, resolves to a
+file in the scanned set. Overrides in nested scopes remain rejected until their
+module paths can be verified.
 
 The declaration-level manifest starts unclassified: existing file-level policy
 entries must be reviewed for each declaration rather than automatically copied.

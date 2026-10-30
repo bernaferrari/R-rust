@@ -4,9 +4,10 @@ Run `scripts/cargo_dev.sh run -p rport-android-global-audit -- . OUTPUT` from
 the repository root. The output is a sorted, tab-separated inventory of path,
 kind, and scoped declaration identifier. Duplicate identifiers, source parse
 failures, Rust `include!` invocations, and visibly global declarations in other
-macro bodies, and module path overrides are errors. Unresolved includes and
-`#[path]` / `cfg_attr(..., path = ...)` can load code outside the scanned tree
-and require review; `include_str!` and `include_bytes!` are data.
+macro bodies, and unresolved module path overrides are errors. Direct module
+path overrides are accepted only when every possible literal path resolves to a
+file in the scanned set; nested module paths remain unresolved. Includes can
+load code outside the scanned tree and require review; `include_str!` and `include_bytes!` are data.
 The scanner excludes conditions requiring `test` and the legacy `support`
 directories; other configuration conditions are recorded rather than evaluated.
 

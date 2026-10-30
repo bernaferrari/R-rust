@@ -45,19 +45,37 @@ fn test_only(attrs: &[Attribute]) -> bool {
                 && attr.parse_args::<Meta>().is_ok_and(|m| requires_test(&m)))
     })
 }
-// `cfg_attr` may apply a path override under any production configuration.
-// Without module-graph resolution, even an in-tree-looking path needs review.
-fn may_override_module_path(meta: &Meta) -> bool {
+// Gather every conditional path, regardless of target configuration.
+fn module_paths(meta: &Meta, paths: &mut Vec<String>) -> Result<(), ()> {
     match meta {
-        Meta::NameValue(value) if value.path.is_ident("path") => true,
+        Meta::NameValue(value) if value.path.is_ident("path") => {
+            if let syn::Expr::Lit(syn::ExprLit {
+                lit: syn::Lit::Str(path),
+                ..
+            }) = &value.value
+            {
+                paths.push(path.value());
+                Ok(())
+            } else {
+                Err(())
+            }
+        }
         Meta::List(list) if list.path.is_ident("cfg_attr") => {
             use syn::parse::Parser;
             let parser = syn::punctuated::Punctuated::<Meta, syn::Token![,]>::parse_terminated;
-            parser.parse2(list.tokens.clone()).map_or(true, |items| {
-                items.iter().skip(1).any(may_override_module_path)
-            })
+            let items = parser.parse2(list.tokens.clone()).map_err(|_| ())?;
+            if items.len() < 2 {
+                return Err(());
+            }
+            for item in items.iter().skip(1) {
+                module_paths(item, paths)?;
+            }
+            Ok(())
         }
-        _ => false,
+        Meta::Path(path) | Meta::List(syn::MetaList { path, .. }) if path.is_ident("path") => {
+            Err(())
+        }
+        _ => Ok(()),
     }
 }
 fn cfgs(attrs: &[Attribute]) -> Vec<String> {
@@ -127,6 +145,8 @@ struct Scanner {
     conditions: Vec<String>,
     found: BTreeMap<Key, usize>,
     errors: Vec<String>,
+    source_file: Option<PathBuf>,
+    source_files: std::rc::Rc<BTreeSet<PathBuf>>,
 }
 impl Scanner {
     fn new(path: String) -> Self {
@@ -136,6 +156,8 @@ impl Scanner {
             conditions: vec![],
             found: BTreeMap::new(),
             errors: vec![],
+            source_file: None,
+            source_files: std::rc::Rc::new(BTreeSet::new()),
         }
     }
     fn scoped(&mut self, attrs: &[Attribute], name: Option<String>, f: impl FnOnce(&mut Self)) {
@@ -276,11 +298,22 @@ impl<'a> Visit<'a> for Scanner {
 
     fn visit_item_mod(&mut self, item: &'a ItemMod) {
         self.scoped(&item.attrs, Some(item.ident.to_string()), |s| {
-            if item
+            let mut paths = Vec::new();
+            let parsed = item
                 .attrs
                 .iter()
-                .any(|attr| may_override_module_path(&attr.meta))
-            {
+                .try_for_each(|attr| module_paths(&attr.meta, &mut paths));
+            let all_in_inventory = paths.iter().all(|path| {
+                if item.content.is_some() || s.scope.len() != 1 {
+                    return false;
+                }
+                s.source_file
+                    .as_ref()
+                    .and_then(|file| file.parent())
+                    .and_then(|parent| parent.join(path).canonicalize().ok())
+                    .is_some_and(|file| s.source_files.contains(&file))
+            });
+            if parsed.is_err() || !all_in_inventory {
                 s.errors.push(format!(
                     "{}: module {} has an unresolved path override; audit its source",
                     s.path,
@@ -372,6 +405,15 @@ fn scan(root: &Path) -> Result<Vec<Key>, String> {
     let mut files = vec![];
     collect_files(&root.join("crates/rmath/src"), &mut files)?;
     files.sort();
+    let source_files = std::rc::Rc::new(
+        files
+            .iter()
+            .map(|file| {
+                file.canonicalize()
+                    .map_err(|error| format!("{}: {error}", file.display()))
+            })
+            .collect::<Result<BTreeSet<_>, _>>()?,
+    );
     let mut found = BTreeMap::new();
     let mut errors = vec![];
     for file in files {
@@ -389,6 +431,8 @@ fn scan(root: &Path) -> Result<Vec<Key>, String> {
             }
         };
         let mut scanner = Scanner::new(path);
+        scanner.source_file = Some(file);
+        scanner.source_files = source_files.clone();
         scanner.visit_file(&syntax);
         errors.extend(scanner.errors);
         for (key, count) in scanner.found {
