@@ -2033,6 +2033,51 @@ mod tests {
         }
     }
 
+    unsafe extern "C" fn switch_device_from_callback(
+        _event: c_int,
+        _device: *mut c_void,
+        _data: SEXP,
+    ) -> SEXP {
+        let nested = crate::sexp::session::RSession::construct_detached(
+            crate::sexp::session::RSession::new_for_gc_tests,
+        );
+        nested.with_active(|| {
+            set_plot_parameter("xlog", ParValue::Logical(vec![1]));
+        });
+        unsafe { crate::library::grdevices::device_registry::selectDevice(2) };
+        set_plot_parameter("ylog", ParValue::Logical(vec![1]));
+        unsafe { R_NilValue() }
+    }
+
+    #[test]
+    fn graphics_callback_keeps_parameters_in_original_session_and_device() {
+        let outer = crate::sexp::session::RSession::new_for_gc_tests();
+        outer.with_active(|| unsafe {
+            use crate::library::grdevices::device_registry::{curDevice, selectDevice};
+            use crate::mainutils::engine::{GEhandleEvent, GEregisterSystem, GEunregisterSystem};
+            selectDevice(0);
+            assert_eq!(curDevice(), 1);
+            set_plot_parameter("xlog", ParValue::Logical(vec![1]));
+            selectDevice(0);
+            assert_eq!(curDevice(), 2);
+            assert_eq!(parameter("xlog"), ParValue::Logical(vec![0]));
+            selectDevice(1);
+
+            let mut registration = -1;
+            GEregisterSystem(Some(switch_device_from_callback), &mut registration);
+            assert!(registration >= 0);
+            GEhandleEvent(0, std::ptr::null_mut(), R_NilValue());
+            GEunregisterSystem(registration);
+
+            assert_eq!(curDevice(), 2);
+            assert_eq!(parameter("xlog"), ParValue::Logical(vec![0]));
+            assert_eq!(parameter("ylog"), ParValue::Logical(vec![1]));
+            selectDevice(1);
+            assert_eq!(parameter("xlog"), ParValue::Logical(vec![1]));
+            assert_eq!(parameter("ylog"), ParValue::Logical(vec![0]));
+        });
+    }
+
     #[test]
     fn par_updates_are_session_local() {
         let mut left = crate::android::RSession::new();
