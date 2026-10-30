@@ -139,6 +139,12 @@ pub unsafe fn do_names_get(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
 /// as cell tags (including the head of a call as `""`).
 pub unsafe fn do_names_set(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
+        let owner = crate::sexp::owner::OwnerToken::current()
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        let _pin = owner
+            .pin()
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        let _args_root = protect(args);
         // applydefine wraps LANGSXP targets as EVPROMISEs so a later
         // Rf_eval of the replacement call does not treat the call as
         // code. Direct handler dispatch never forces those promises,
@@ -146,11 +152,17 @@ pub unsafe fn do_names_set(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
         let mut x = CAR(args);
         if TYPEOF(x) == SEXPTYPE::PROMSXP {
             x = crate::sexp::envir::forcePromise(x);
+            owner
+                .require_active()
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
             crate::sexp::accessors::SETCAR(args, x);
         }
         let mut value = CAR(CDR(args));
         if TYPEOF(value) == SEXPTYPE::PROMSXP {
             value = crate::sexp::envir::forcePromise(value);
+            owner
+                .require_active()
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
             crate::sexp::accessors::SETCAR(CDR(args), value);
         }
         let mut ans = R_NilValue();
@@ -165,20 +177,48 @@ pub unsafe fn do_names_set(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
             1,
         ) != 0
         {
+            owner
+                .require_active()
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
             return ans;
         }
+        owner
+            .require_active()
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
         x = CAR(args);
         value = CAR(CDR(args));
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
         x = crate::mainutils::duplicate::shallow_duplicate_if_shared(x);
+        owner
+            .require_active()
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
         let _x = protect(x);
-        if !value.is_null() && value != R_NilValue() && TYPEOF(value) != SEXPTYPE::STRSXP {
-            value = crate::mainutils::coerce::coerceVector(value, SEXPTYPE::STRSXP.as_c_int());
+        let _original_value = protect(value);
+        if !value.is_null() && value != R_NilValue() {
+            if crate::sexp::attrib_core::isObject(value) != 0 {
+                let arguments = Rf_cons(value, R_NilValue());
+                let _arguments = protect(arguments);
+                value = crate::mainutils::base_wrappers::apply(
+                    "names_value_as_character",
+                    "function(value) as.character(value)",
+                    arguments,
+                    rho,
+                    true,
+                );
+            } else if TYPEOF(value) != SEXPTYPE::STRSXP {
+                value = crate::mainutils::coerce::coerceVector(value, SEXPTYPE::STRSXP.as_c_int());
+            }
+            owner
+                .require_active()
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
         }
         let _value = protect(value);
         let plain = crate::sexp::attrib_core::plain_names_replacement(x, value);
+        owner
+            .require_active()
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
         let value = plain.as_ref().map_or(value, |value| value.as_raw());
 
         let t = TYPEOF(x);
@@ -201,6 +241,9 @@ pub unsafe fn do_names_set(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
         } else {
             crate::sexp::attrib_core::setAttrib(x, Rf_install(c"names".as_ptr()), value);
         }
+        owner
+            .require_active()
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
         x
     }
