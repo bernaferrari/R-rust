@@ -267,7 +267,7 @@ unsafe fn namesgets_pairlist(list: SEXP, value: SEXP) {
                 SETTAG(cell, R_NilValue());
             } else {
                 let label = crate::mainutils::essentials::elt_to_string(value, i);
-                if label.is_empty() || label == "NA" {
+                if label.is_empty() || is_string_na(value, i) {
                     SETTAG(cell, R_NilValue());
                 } else {
                     let c_name = std::ffi::CString::new(label).unwrap_or_default();
