@@ -1,4 +1,59 @@
 use super::*;
+
+#[test]
+fn checked_besseli_k_warning_revocation_stops_reflection() {
+    let facade = Rc::new(RefCell::new(Some(RSession::new_for_gc_tests())));
+    let weak = facade
+        .borrow()
+        .as_ref()
+        .unwrap()
+        .owner_token()
+        .unwrap()
+        .weak_owner()
+        .unwrap();
+    let pin = weak.pin().unwrap();
+    let original = pin.as_ptr();
+    let ledger = unsafe { (*original).heap_identity.byte_ledger() };
+    let before = ledger.workspace_bytes_for_test();
+    let messages = Rc::new(RefCell::new(Vec::new()));
+    let seen = messages.clone();
+    let revoke = facade.clone();
+    let _warnings = WarningScope::new(move |message| {
+        seen.borrow_mut().push(message.to_owned());
+        if seen.borrow().len() == 2 {
+            drop(revoke.borrow_mut().take());
+        }
+    });
+    let error = catch_unwind(AssertUnwindSafe(|| unsafe {
+        crate::sexp::session::with_instance_active(original, || {
+            let f = weak.node_factory().unwrap();
+            let arguments = three(
+                &f,
+                &reals(&f, &[1e-320]),
+                &reals(&f, &[-2.25]),
+                &reals(&f, &[1.0]),
+            );
+            native_i(&f, &arguments, false)
+        })
+    }))
+    .unwrap_err();
+    assert_eq!(
+        &*messages.borrow(),
+        &[
+            "bessel_i(9.99989e-321,nu=2.25): precision lost in result",
+            "bessel_k(9.99989e-321): ncalc (=-1) != nb (=3); alpha=0.25. Arg. out of range?"
+        ]
+    );
+    assert!(!weak.is_live());
+    assert_eq!(
+        error
+            .downcast_ref::<crate::sexp::context::RError>()
+            .unwrap()
+            .message,
+        crate::sexp::object::SexpError::RootUnavailable.to_string()
+    );
+    assert_eq!(ledger.workspace_bytes_for_test(), before);
+}
 fn three(f: &SessionNodeFactory<'_>, a: &Sexp<'_>, b: &Sexp<'_>, c: &Sexp<'_>) -> Sexp<'static> {
     let tail = f.pairlist_cell(c, &f.nil(), &f.nil()).unwrap();
     let tail = f.pairlist_cell(b, &tail, &f.nil()).unwrap();

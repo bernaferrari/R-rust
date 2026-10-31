@@ -189,6 +189,39 @@ pub fn bessel_k_ex(x: f64, alpha: f64, expo: f64, bk: &mut [f64]) -> f64 {
     bk[(nb - 1) as usize]
 }
 
+/// Callback-free K calculation with the kernel's diagnostic status.
+#[derive(Clone, Copy, Debug)]
+pub struct BesselKCalculation {
+    pub value: f64,
+    pub ncalc: i32,
+    pub count: i32,
+    pub fraction: f64,
+}
+
+pub fn bessel_k_positive_status(
+    x: f64,
+    order: f64,
+    expo: f64,
+    work: &mut [f64],
+) -> Option<BesselKCalculation> {
+    if x.is_nan() || x < 0.0 || !order.is_finite() || order < 0.0 || order > MAX_ALPHA_K {
+        return None;
+    }
+    let count = (floor(order) as i32).checked_add(1)?;
+    if work.len() < count as usize {
+        return None;
+    }
+    let fraction = order - f64::from(count - 1);
+    let mut ncalc = 0;
+    k_bessel(x, fraction, count, expo as i32, work, &mut ncalc);
+    Some(BesselKCalculation {
+        value: work[count as usize - 1],
+        ncalc,
+        count,
+        fraction,
+    })
+}
+
 /// Internal routine: K_bessel
 ///
 /// This routine calculates modified Bessel functions
@@ -611,6 +644,60 @@ mod imp {
 
     pub fn bessel_k_c(x: f64, alpha: f64, expo: f64) -> f64 {
         bessel_k(x, alpha, expo)
+    }
+}
+
+#[cfg(test)]
+mod status_tests {
+    use super::*;
+
+    #[test]
+    fn k_status_reports_initialized_subnormal_controls_without_callbacks() {
+        fn unexpected(_: &str) {
+            panic!("status API invoked warning hook")
+        }
+        struct Reset;
+        impl Drop for Reset {
+            fn drop(&mut self) {
+                crate::error::set_warning_hook(None);
+            }
+        }
+        crate::error::set_warning_hook(Some(unexpected));
+        let _reset = Reset;
+        for order in [1.0, 2.25] {
+            for scaling in [1.0, 2.0] {
+                let mut work = [42.0; 4];
+                let result = bessel_k_positive_status(1e-320, order, scaling, &mut work).unwrap();
+                assert_eq!(result.ncalc, -1);
+                assert_eq!(result.count, order.floor() as i32 + 1);
+                assert_eq!(result.value, 42.0);
+            }
+        }
+        for scaling in [0.0, 3.0] {
+            let result = bessel_k_positive_status(1.0, 1.0, scaling, &mut [42.0; 2]).unwrap();
+            assert_eq!((result.ncalc, result.count, result.value), (-2, 2, 42.0));
+        }
+        // The ordinary grid reaches libm's ARM inline assembly, which Miri
+        // cannot interpret; subnormal and invalid-input controls run above.
+        #[cfg(not(miri))]
+        for x in [0.0, 1e-100, 0.5, 1.0, 1000.0, f64::INFINITY] {
+            for order in [0.0_f64, 0.5, 1.0, 10.25] {
+                for scaling in [1.0, 2.0] {
+                    let mut old = vec![0.0; order as usize + 1];
+                    let expected = bessel_k_ex(x, order, scaling, &mut old);
+                    let mut work = vec![0.0; order as usize + 1];
+                    let result = bessel_k_positive_status(x, order, scaling, &mut work).unwrap();
+                    assert_eq!(
+                        result.value.to_bits(),
+                        expected.to_bits(),
+                        "x={x}, order={order}, scaling={scaling}"
+                    );
+                }
+            }
+        }
+        assert!(bessel_k_positive_status(1.0, 2.0, 1.0, &mut [0.0; 2]).is_none());
+        assert!(bessel_k_positive_status(-1.0, 0.0, 1.0, &mut [0.0]).is_none());
+        assert!(bessel_k_positive_status(1.0, f64::INFINITY, 1.0, &mut [0.0]).is_none());
     }
 }
 

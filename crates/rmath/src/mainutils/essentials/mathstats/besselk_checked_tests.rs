@@ -1,4 +1,96 @@
 use super::*;
+
+#[test]
+fn checked_besselk_subnormal_ncalc_warning_is_catchable() {
+    let session = RSession::new_for_gc_tests();
+    let owner = session.owner_token().unwrap();
+    let weak = owner.weak_owner().unwrap();
+    session.with_active(|| {
+        let f = weak.node_factory().unwrap();
+        let baseline = owner.with_arena(|a| a.workspace_bytes()).unwrap();
+        let count = Rc::new(Cell::new(0));
+        let seen = count.clone();
+        let callback = weak.clone();
+        let _warnings = WarningScope::new(move |message| {
+            assert_eq!(
+                message,
+                "bessel_k(9.99989e-321): ncalc (=-1) != nb (=2); alpha=0. Arg. out of range?"
+            );
+            seen.set(seen.get() + 1);
+            let charged = crate::sexp::owner::with_runtime(&callback, |access| {
+                access.with_arena(|a| a.workspace_bytes())
+            })
+            .unwrap()
+            .unwrap();
+            assert!(charged >= baseline + 2 * size_of::<f64>());
+            unsafe { crate::sexp::gengc::full_gc() };
+        });
+        let result = native_k(
+            &f,
+            &three(
+                &f,
+                &reals(&f, &[1e-320]),
+                &reals(&f, &[1.0]),
+                &reals(&f, &[1.0]),
+            ),
+            false,
+        );
+        assert_eq!(result.try_real_elt(0).unwrap(), 0.0);
+        assert_eq!(count.get(), 1);
+        assert_eq!(owner.with_arena(|a| a.workspace_bytes()).unwrap(), baseline);
+    });
+}
+
+#[test]
+fn checked_besselk_ncalc_warning_stops_after_owner_revocation() {
+    let facade = Rc::new(RefCell::new(Some(RSession::new_for_gc_tests())));
+    let weak = facade
+        .borrow()
+        .as_ref()
+        .unwrap()
+        .owner_token()
+        .unwrap()
+        .weak_owner()
+        .unwrap();
+    let pin = weak.pin().unwrap();
+    let original = pin.as_ptr();
+    let ledger = unsafe { (*original).heap_identity.byte_ledger() };
+    let before = ledger.workspace_bytes_for_test();
+    let seen = Rc::new(Cell::new(0));
+    let calls = seen.clone();
+    let revoke = facade.clone();
+    let _warnings = WarningScope::new(move |message| {
+        assert_eq!(
+            message,
+            "bessel_k(9.99989e-321): ncalc (=-1) != nb (=2); alpha=0. Arg. out of range?"
+        );
+        calls.set(calls.get() + 1);
+        drop(revoke.borrow_mut().take());
+    });
+    let error = catch_unwind(AssertUnwindSafe(|| unsafe {
+        crate::sexp::session::with_instance_active(original, || {
+            let f = weak.node_factory().unwrap();
+            let arguments = three(
+                &f,
+                &reals(&f, &[1e-320]),
+                &reals(&f, &[1.0]),
+                &reals(&f, &[1.0]),
+            );
+            native_k(&f, &arguments, false)
+        })
+    }))
+    .unwrap_err();
+    assert_eq!(seen.get(), 1);
+    assert!(!weak.is_live());
+    assert_eq!(
+        error
+            .downcast_ref::<crate::sexp::context::RError>()
+            .unwrap()
+            .message,
+        crate::sexp::object::SexpError::RootUnavailable.to_string()
+    );
+    assert_eq!(ledger.workspace_bytes_for_test(), before);
+}
 fn three(f: &SessionNodeFactory<'_>, a: &Sexp<'_>, b: &Sexp<'_>, c: &Sexp<'_>) -> Sexp<'static> {
     let tail = f.pairlist_cell(c, &f.nil(), &f.nil()).unwrap();
     let tail = f.pairlist_cell(b, &tail, &f.nil()).unwrap();

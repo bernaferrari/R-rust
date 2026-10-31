@@ -174,12 +174,13 @@ pub(super) fn evaluate(
                                 let reflected = if k == k.floor() {
                                     0.0
                                 } else {
-                                    let value = crate::special::bessel_k::bessel_k_ex(
+                                    let value = super::bessel_k_checked::positive(
+                                        access,
                                         x,
                                         -k,
                                         scaling,
                                         workspace.values(),
-                                    );
+                                    )?;
                                     access.require_active()?;
                                     check()?;
                                     value
@@ -200,12 +201,13 @@ pub(super) fn evaluate(
                                 scaling,
                                 workspace.values(),
                             )?,
-                            Operation::BesselK => crate::special::bessel_k::bessel_k_ex(
+                            Operation::BesselK => super::bessel_k_checked::positive(
+                                access,
                                 x,
                                 k,
                                 scaling,
                                 workspace.values(),
-                            ),
+                            )?,
                             Operation::BesselY if x >= 0.0 && k < 0.0 => {
                                 let first = if k - k.floor() == 0.5 {
                                     0.0

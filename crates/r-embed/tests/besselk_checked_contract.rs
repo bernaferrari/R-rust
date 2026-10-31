@@ -18,6 +18,18 @@ events <- character()
 z <- withCallingHandlers(besselK(-1,0),warning=function(w){stopifnot(identical(conditionCall(w),quote(besselK(-1,0))));events <<- c(events,conditionMessage(w));gc();invokeRestart("muffleWarning")})
 stopifnot(is.nan(z),identical(events,c("value out of range in 'bessel_k'","NaNs produced")))
 old <- options(warn=2);z <- tryCatch(besselK(-1,0),error=function(e)conditionMessage(e));options(old);stopifnot(is.character(z),abs(besselK(1,0)-a[1])<1e-14)
+for(n in c(1,2.25)) for(s in c(FALSE,TRUE)) {
+  events <- character()
+  z <- withCallingHandlers(besselK(1e-320,n,s),warning=function(w){events <<- c(events,conditionMessage(w));gc();invokeRestart("muffleWarning")})
+  expected <- if(n == 1) "bessel_k(9.99989e-321): ncalc (=-1) != nb (=2); alpha=0. Arg. out of range?" else "bessel_k(9.99989e-321): ncalc (=-1) != nb (=3); alpha=0.25. Arg. out of range?"
+  stopifnot(length(z)==1, identical(events,expected))
+}
+old <- options(warn=2); z <- tryCatch(besselK(1e-320,1),error=function(e)conditionMessage(e));options(old)
+stopifnot(is.character(z),grepl("ncalc",z,fixed=TRUE),abs(besselK(1,0)-a[1])<1e-14)
+for(sc in c(0,3)) {
+  events <- character(); z <- withCallingHandlers(.Internal(besselK(1,1,sc)),warning=function(w){events <<- c(events,conditionMessage(w));invokeRestart("muffleWarning")})
+  stopifnot(length(z)==1, length(events)>=1, identical(events[1],"bessel_k(1): ncalc (=-2) != nb (=2); alpha=0. Arg. out of range?"))
+}
 for(f in list(function()besselK("x",0),function()besselK(1,"x"),function().Internal(besselK(1,0,"x")),function()besselK(1+1i,0)))stopifnot(is.character(tryCatch(f(),error=function(e)conditionMessage(e))))
 cat("besselk-checked-contract-ok\n")
 "#;

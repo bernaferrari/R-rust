@@ -22,6 +22,13 @@ for(x in c(-0.0,0.0)){events<-character();z<-withCallingHandlers(besselI(x,c(0,1
 events<-character();z<-withCallingHandlers(besselI(c(NA_real_,NaN),500),warning=function(w){events<<-c(events,conditionMessage(w));invokeRestart("muffleWarning")});stopifnot(identical(z,c(NA_real_,NaN)),length(events)==0)
 stopifnot(identical(besselI(Inf,0),Inf),identical(besselI(Inf,0,TRUE),0))
 stopifnot(abs(.Internal(besselI(1,0,1.9))-besselI(1,0))<1e-14,abs(.Internal(besselI(1,0,2.9))-besselI(1,0,TRUE))<1e-14)
+for(sc in c(FALSE,TRUE)) for(n in c(-1.25,-2.25)) {
+ events<-character();z<-withCallingHandlers(besselI(1e-320,n,sc),warning=function(w){events<<-c(events,conditionMessage(w));gc();invokeRestart("muffleWarning")})
+ k<-if(n == -1.25) "bessel_k(9.99989e-321): ncalc (=-1) != nb (=2); alpha=0.25. Arg. out of range?" else "bessel_k(9.99989e-321): ncalc (=-1) != nb (=3); alpha=0.25. Arg. out of range?"
+ expected<-if(n == -1.25) k else c("bessel_i(9.99989e-321,nu=2.25): precision lost in result",k)
+ if(!identical(events,expected)) stop(paste("n",n,"events",paste(events,collapse=" | "),"expected",paste(expected,collapse=" | ")))
+ stopifnot(length(z)==1)
+}
 cat("besseli-diagnostic-contract-ok\n")
 "#;
 // Invalid-scale public GNU values are indeterminate; these diagnostic controls

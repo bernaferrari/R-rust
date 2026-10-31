@@ -531,6 +531,8 @@ mod bessel_diagnostic;
 mod bessel_i_checked;
 #[path = "bessel_j_checked.rs"]
 mod bessel_j_checked;
+#[path = "bessel_k_checked.rs"]
+mod bessel_k_checked;
 #[path = "bessel_scaling.rs"]
 mod bessel_scaling;
 #[path = "bessel_workspace.rs"]

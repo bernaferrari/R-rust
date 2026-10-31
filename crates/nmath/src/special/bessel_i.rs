@@ -347,8 +347,10 @@ fn i_bessel(x: f64, alpha: f64, nb: i32, ize: i32, bi: &mut [f64]) -> i32 {
                             aa = 0.0;
                         }
                         bi[i] = aa + aa * bb / empal;
-                        if bi[i] == 0.0 && ncalc > (i as i32) {
-                            ncalc = (i - 1) as i32;
+                        // GNU's loop index n is one-based; `i` addresses the
+                        // same element in this zero-based slice.
+                        if bi[i] == 0.0 && ncalc > (i as i32 + 1) {
+                            ncalc = i as i32;
                         }
                     }
                 }
@@ -559,6 +561,15 @@ mod workspace_parity_tests {
 #[cfg(test)]
 mod status_tests {
     use super::*;
+    #[test]
+    fn small_x_ncalc_uses_gnu_one_based_threshold() {
+        for scale in [1.0, 2.0] {
+            let short = bessel_i_positive_status(1e-320, 1.25, scale, &mut [0.0; 2]).unwrap();
+            let longer = bessel_i_positive_status(1e-320, 2.25, scale, &mut [0.0; 3]).unwrap();
+            assert_eq!((short.ncalc, short.count), (2, 2));
+            assert_eq!((longer.ncalc, longer.count), (1, 3));
+        }
+    }
     #[test]
     fn positive_status_preserves_scaling_bits_and_rejects_invalid_shapes() {
         for x in [-0.0, 0.0, 1e-300, 1.0, 12.3456789, 1000.0, f64::INFINITY] {
