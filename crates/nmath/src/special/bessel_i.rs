@@ -8,12 +8,14 @@
 // with or without exponential scaling.
 
 use crate::constants::*;
+use crate::diagnostics::{General, Text};
 use crate::error::*;
 use crate::special::bessel_k::{bessel_k, bessel_k_ex};
 use crate::special::cospi::sinpi;
 use crate::special::gamma::gammafn;
 use crate::special::mlutils::R_pow_di;
 use crate::utils::*;
+use core::fmt::Write;
 use libm::*;
 
 // =====================================================================
@@ -29,6 +31,27 @@ const EXPARG_BESS: f64 = 709.0;
 const XLRG_BESS_IJ: f64 = 1e5;
 /// `M_bessel_ik_max_alpha` from Rmath.h. Orders above this must not allocate.
 pub const MAX_ALPHA_I: f64 = 1e9;
+
+fn warn_incomplete(x: f64, fraction: f64, count: i32, ncalc: i32) {
+    let mut message = Text::<256>::new();
+    if ncalc < 0 {
+        write!(
+            &mut message,
+            "bessel_i({}): ncalc (={ncalc}) != nb (={count}); alpha={}. Arg. out of range?\n",
+            General(x),
+            General(fraction)
+        )
+    } else {
+        write!(
+            &mut message,
+            "bessel_i({},nu={}): precision lost in result\n",
+            General(x),
+            General(fraction + f64::from(count) - 1.0)
+        )
+    }
+    .expect("bounded Bessel I diagnostic");
+    ml_warn_message(message.text());
+}
 
 /// Minimum of two ints
 #[inline(always)]
@@ -416,11 +439,7 @@ pub fn bessel_i(x: f64, alpha: f64, expo: f64) -> f64 {
     let mut bi = vec![0.0; nb as usize];
     let ncalc = i_bessel(x, alpha_mod, nb, ize, &mut bi);
     if ncalc != nb {
-        if ncalc < 0 {
-            ml_warning(ME_RANGE, "bessel_i");
-        } else {
-            ml_warning(ME_PRECISION, "bessel_i");
-        }
+        warn_incomplete(x, alpha_mod, nb, ncalc);
     }
     bi[(nb - 1) as usize]
 }
@@ -435,6 +454,7 @@ pub fn bessel_i_c(x: f64, alpha: f64, expo: f64) -> f64 {
 // =====================================================================
 
 /// Modified version of bessel_i(), accepting a work array instead of allocating one.
+/// The work array remains exclusively borrowed throughout warning callbacks.
 pub fn bessel_i_ex(x: f64, alpha: f64, expo: f64, bi: &mut [f64]) -> f64 {
     // NaNs propagated correctly
     if isnan(x) || isnan(alpha) {
@@ -469,11 +489,7 @@ pub fn bessel_i_ex(x: f64, alpha: f64, expo: f64, bi: &mut [f64]) -> f64 {
 
     let ncalc = i_bessel(x, alpha_mod, nb, ize, bi);
     if ncalc != nb {
-        if ncalc < 0 {
-            ml_warning(ME_RANGE, "bessel_i");
-        } else {
-            ml_warning(ME_PRECISION, "bessel_i");
-        }
+        warn_incomplete(x, alpha_mod, nb, ncalc);
     }
     bi[(nb - 1) as usize]
 }
@@ -533,6 +549,69 @@ pub unsafe fn bessel_i_ex_c(x: f64, alpha: f64, expo: f64, bi: *mut f64, nb: i32
     }
     let bi_slice = unsafe { std::slice::from_raw_parts_mut(bi, nb as usize) };
     bessel_i_ex(x, alpha, expo, bi_slice)
+}
+
+#[cfg(test)]
+mod shared_warning_tests {
+    use super::*;
+    use std::cell::RefCell;
+    thread_local! {
+        static WARNINGS: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
+    }
+    fn record(message: &str) {
+        WARNINGS.with(|warnings| warnings.borrow_mut().push(message.to_owned()));
+    }
+    fn stop(message: &str) {
+        record(message);
+        panic!("warning promoted to error");
+    }
+    fn reenter(message: &str) {
+        record(message);
+        let mut other = [0.0];
+        assert_eq!(bessel_i_ex(0.0, 0.0, 1.0, &mut other), 1.0);
+    }
+    struct Reset;
+    impl Drop for Reset {
+        fn drop(&mut self) {
+            crate::error::set_warning_hook(None);
+        }
+    }
+    #[test]
+    fn shared_i_reports_gnu_precision_range_and_reflection_warnings() {
+        WARNINGS.with(|warnings| warnings.borrow_mut().clear());
+        crate::error::set_warning_hook(Some(record));
+        let _reset = Reset;
+        assert_eq!(bessel_i(1.0, 500.0, 1.0), 0.0);
+        assert_eq!(bessel_i_ex(1.0, 500.0, 2.0, &mut [0.0; 501]), 0.0);
+        assert_eq!(bessel_i_ex(1.0, 0.0, 3.0, &mut [42.0]), 0.0);
+        let _ = bessel_i_ex(1e-320, -2.25, 1.0, &mut [0.0; 3]);
+        WARNINGS.with(|warnings| assert_eq!(&*warnings.borrow(), &[
+            "bessel_i(1,nu=500): precision lost in result\n",
+            "bessel_i(1,nu=500): precision lost in result\n",
+            "bessel_i(1): ncalc (=-1) != nb (=1); alpha=0. Arg. out of range?\n",
+            "bessel_i(9.99989e-321,nu=2.25): precision lost in result\n",
+            "bessel_k(9.99989e-321): ncalc (=-1) != nb (=3); alpha=0.25. Arg. out of range?\n",
+        ]));
+    }
+
+    #[test]
+    fn shared_i_warning_reentry_and_unwind_preserve_workspace() {
+        WARNINGS.with(|warnings| warnings.borrow_mut().clear());
+        let _reset = Reset;
+        crate::error::set_warning_hook(Some(reenter));
+        let mut work = [0.0; 501];
+        assert_eq!(bessel_i_ex(1.0, 500.0, 1.0, &mut work), 0.0);
+        WARNINGS.with(|warnings| assert_eq!(warnings.borrow().len(), 1));
+        WARNINGS.with(|warnings| warnings.borrow_mut().clear());
+        crate::error::set_warning_hook(Some(stop));
+        let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            bessel_i_ex(1.0, -500.25, 1.0, &mut work)
+        }));
+        assert!(error.is_err());
+        WARNINGS.with(|warnings| assert_eq!(warnings.borrow().len(), 1));
+        crate::error::set_warning_hook(Some(record));
+        assert_eq!(bessel_i_ex(0.0, 0.0, 1.0, &mut work), 1.0);
+    }
 }
 
 #[cfg(test)]

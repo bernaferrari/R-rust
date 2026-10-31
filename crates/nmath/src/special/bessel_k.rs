@@ -679,7 +679,7 @@ mod shared_warning_tests {
         WARNINGS.with(|warnings| assert_eq!(&*warnings.borrow(), &[
             "bessel_k(9.99989e-321): ncalc (=-1) != nb (=2); alpha=0. Arg. out of range?\n",
             "bessel_k(9.99989e-321): ncalc (=-1) != nb (=3); alpha=0.25. Arg. out of range?\n",
-            "full precision may not have been achieved in 'bessel_i'\n",
+                "bessel_i(9.99989e-321,nu=2.25): precision lost in result\n",
             "bessel_k(9.99989e-321): ncalc (=-1) != nb (=3); alpha=0.25. Arg. out of range?\n",
         ]));
     }

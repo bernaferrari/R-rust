@@ -816,7 +816,11 @@ fn bessel_warning_uses_its_detached_session_owner() {
     let setup = session.eval("options(warn=2)");
     assert!(!matches!(setup.typed, RValue::Error(_)), "{setup:?}");
     other.core.with_active_in(|p| {
-        for (func, x, alpha) in [(RBesselFunc::J, 1.0, 500.0), (RBesselFunc::K, 1e-320, 1.0)] {
+        for (func, x, alpha) in [
+            (RBesselFunc::J, 1.0, 500.0),
+            (RBesselFunc::K, 1e-320, 1.0),
+            (RBesselFunc::I, 1.0, 500.0),
+        ] {
             let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 session.bessel(func, x, alpha, false)
             }));
@@ -860,53 +864,62 @@ fn bessel_warning_stops_after_owner_revocation() {
         (RBesselFunc::K, 1e-320, 1.0),
         (RBesselFunc::I, 1e-320, -1.25),
     ] {
-        let session = RSession {
-            core: CoreRSession::construct_detached(CoreRSession::new_for_gc_tests),
-            result_limit: None,
-        };
-        let other = RSession {
-            core: CoreRSession::construct_detached(CoreRSession::new_for_gc_tests),
-            result_limit: None,
-        };
-        let owner = session.core.owner_token().unwrap().weak_owner().unwrap();
-        let pin = owner.pin().unwrap();
-        let ledger = unsafe { (*pin.as_ptr()).heap_identity.byte_ledger() };
-        let workspace_before = ledger.workspace_bytes_for_test();
-        let revoked = std::rc::Rc::new(std::cell::Cell::new(false));
-        let seen = revoked.clone();
-        session.core.with_active_in(|p| {
-            crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
-                if !seen.replace(true) {
-                    unsafe { crate::sexp::instance::revoke_instance_availability(p) };
-                }
-            }));
-            unsafe {
-                (*p).memory_state.gc_force_gap = 1;
-                (*p).memory_state.gc_force_wait = 1;
-            }
-        });
-        other.core.with_active_in(|p| {
-            let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                session.bessel(func, x, alpha, false)
-            }))
-            .unwrap_err();
-            assert_eq!(
-                error
-                    .downcast_ref::<crate::sexp::context::RError>()
-                    .unwrap()
-                    .message,
-                crate::sexp::object::SexpError::RootUnavailable.to_string()
-            );
-            assert!(revoked.get());
-            assert!(!owner.is_live());
-            assert_eq!(
-                unsafe { crate::sexp::owner::OwnerToken::current().unwrap().as_ptr() },
-                p
-            );
-            assert_eq!(unsafe { (*p).error_state.collect_warnings }, 0);
-        });
-        assert_eq!(ledger.workspace_bytes_for_test(), workspace_before);
+        bessel_warning_revocation_case(func, x, alpha);
     }
+}
+
+#[test]
+fn bessel_i_precision_warning_stops_after_owner_revocation() {
+    bessel_warning_revocation_case(RBesselFunc::I, 1.0, -500.25);
+}
+
+fn bessel_warning_revocation_case(func: RBesselFunc, x: f64, alpha: f64) {
+    let session = RSession {
+        core: CoreRSession::construct_detached(CoreRSession::new_for_gc_tests),
+        result_limit: None,
+    };
+    let other = RSession {
+        core: CoreRSession::construct_detached(CoreRSession::new_for_gc_tests),
+        result_limit: None,
+    };
+    let owner = session.core.owner_token().unwrap().weak_owner().unwrap();
+    let pin = owner.pin().unwrap();
+    let ledger = unsafe { (*pin.as_ptr()).heap_identity.byte_ledger() };
+    let workspace_before = ledger.workspace_bytes_for_test();
+    let revoked = std::rc::Rc::new(std::cell::Cell::new(false));
+    let seen = revoked.clone();
+    session.core.with_active_in(|p| {
+        crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+            if !seen.replace(true) {
+                unsafe { crate::sexp::instance::revoke_instance_availability(p) };
+            }
+        }));
+        unsafe {
+            (*p).memory_state.gc_force_gap = 1;
+            (*p).memory_state.gc_force_wait = 1;
+        }
+    });
+    other.core.with_active_in(|p| {
+        let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            session.bessel(func, x, alpha, false)
+        }))
+        .unwrap_err();
+        assert_eq!(
+            error
+                .downcast_ref::<crate::sexp::context::RError>()
+                .unwrap()
+                .message,
+            crate::sexp::object::SexpError::RootUnavailable.to_string()
+        );
+        assert!(revoked.get());
+        assert!(!owner.is_live());
+        assert_eq!(
+            unsafe { crate::sexp::owner::OwnerToken::current().unwrap().as_ptr() },
+            p
+        );
+        assert_eq!(unsafe { (*p).error_state.collect_warnings }, 0);
+    });
+    assert_eq!(ledger.workspace_bytes_for_test(), workspace_before);
 }
 
 #[test]
@@ -1124,7 +1137,7 @@ fn bessel_k_warning_reentry_keeps_session_workspace_charged() {
         );
         assert_eq!(
             events[1].0,
-            "full precision may not have been achieved in 'bessel_i'\n"
+            "bessel_i(9.99989e-321,nu=2.25): precision lost in result\n"
         );
         assert_eq!(
             events[2].0,

@@ -1,4 +1,4 @@
-//! Checked I diagnostic boundaries; legacy scalar callbacks are unchanged.
+//! Checked I calculation and original-owner diagnostic boundaries.
 #![forbid(unsafe_code)]
 use super::bessel_diagnostic::{General, Text, emit, format_error};
 use crate::sexp::{

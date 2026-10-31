@@ -154,7 +154,7 @@ fn checked_besseli_diagnostic_status_messages_and_legacy_controls() {
         );
         assert_eq!(
             &*messages.borrow(),
-            &["full precision may not have been achieved in 'bessel_i'\n"]
+            &["bessel_i(1,nu=500): precision lost in result\n"]
         );
         messages.borrow_mut().clear();
         for (n, scale, expected) in [
