@@ -600,7 +600,16 @@ pub fn bessel_y_positive_status(
 }
 
 /// C FFI wrapper for bessel_y_ex
-pub fn bessel_y_ex_c(x: f64, alpha: f64, by: *mut f64, nb: i32) -> f64 {
+/// # Safety
+/// For a non-null `by` and positive `nb`, `by` must point to `nb` initialized,
+/// properly aligned `f64` values in one live allocation, exclusively accessible
+/// for the whole call, including any reentrant warning hooks. Prefer
+/// [`bessel_y_ex`] when a safe mutable slice is available.
+///
+/// ```compile_fail
+/// rmath_nmath::special::bessel_y::bessel_y_ex_c(1.0, 0.0, std::ptr::null_mut(), 1);
+/// ```
+pub unsafe fn bessel_y_ex_c(x: f64, alpha: f64, by: *mut f64, nb: i32) -> f64 {
     if by.is_null() || nb <= 0 {
         return ML_NAN;
     }

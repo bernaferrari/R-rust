@@ -516,7 +516,16 @@ pub fn bessel_i_positive_status(
 }
 
 /// C FFI wrapper for bessel_i_ex
-pub fn bessel_i_ex_c(x: f64, alpha: f64, expo: f64, bi: *mut f64, nb: i32) -> f64 {
+/// # Safety
+/// For a non-null `bi` and positive `nb`, `bi` must point to `nb` initialized,
+/// properly aligned `f64` values in one live allocation, exclusively accessible
+/// for the whole call, including any reentrant warning hooks. Prefer
+/// [`bessel_i_ex`] when a safe mutable slice is available.
+///
+/// ```compile_fail
+/// rmath_nmath::special::bessel_i::bessel_i_ex_c(1.0, 0.0, 1.0, std::ptr::null_mut(), 1);
+/// ```
+pub unsafe fn bessel_i_ex_c(x: f64, alpha: f64, expo: f64, bi: *mut f64, nb: i32) -> f64 {
     if bi.is_null() || nb <= 0 {
         return ML_NAN;
     }

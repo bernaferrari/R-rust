@@ -121,6 +121,36 @@ mod ffi {
 mod tests {
     use super::*;
 
+    #[test]
+    fn raw_workspace_entries_match_slice_entries() {
+        let mut raw = [0.0; 4];
+        let mut safe = [0.0; 4];
+        unsafe {
+            assert_eq!(
+                crate::special::bessel_i::bessel_i_ex_c(2.0, 2.0, 1.0, raw.as_mut_ptr(), 4),
+                crate::special::bessel_i::bessel_i_ex(2.0, 2.0, 1.0, &mut safe)
+            );
+            assert_eq!(
+                crate::special::bessel_j::bessel_j_ex_c(2.0, 2.0, raw.as_mut_ptr(), 4),
+                crate::special::bessel_j::bessel_j_ex(2.0, 2.0, &mut safe)
+            );
+            assert_eq!(
+                crate::special::bessel_y::bessel_y_ex_c(2.0, 2.0, raw.as_mut_ptr(), 4),
+                crate::special::bessel_y::bessel_y_ex(2.0, 2.0, &mut safe)
+            );
+            assert!(
+                crate::special::bessel_i::bessel_i_ex_c(2.0, 2.0, 1.0, std::ptr::null_mut(), 4)
+                    .is_nan()
+            );
+            assert!(
+                crate::special::bessel_j::bessel_j_ex_c(2.0, 2.0, std::ptr::null_mut(), 4).is_nan()
+            );
+            assert!(
+                crate::special::bessel_y::bessel_y_ex_c(2.0, 2.0, std::ptr::null_mut(), 4).is_nan()
+            );
+        }
+    }
+
     fn approx_eq(a: f64, b: f64, tol: f64) -> bool {
         if a.is_nan() && b.is_nan() {
             return true;
