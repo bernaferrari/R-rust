@@ -87,6 +87,18 @@ pub fn dnt_inner(x: f64, df: f64, ncp: f64, log_p: bool) -> f64 {
 
 #[must_use]
 pub fn pnt_inner(t: f64, df: f64, ncp: f64, lower_tail: bool, log_p: bool) -> f64 {
+    pnt_with_limit::<1000>(t, df, ncp, lower_tail, log_p)
+}
+
+// The production instantiation retains GNU's fixed 1000-iteration limit.
+// A smaller test instantiation exercises the otherwise rare exhaustion branch.
+fn pnt_with_limit<const ITRMAX: i32>(
+    t: f64,
+    df: f64,
+    ncp: f64,
+    lower_tail: bool,
+    log_p: bool,
+) -> f64 {
     let mut lower_tail = lower_tail;
 
     let albeta: f64;
@@ -107,7 +119,7 @@ pub fn pnt_inner(t: f64, df: f64, ncp: f64, lower_tail: bool, log_p: bool) -> f6
     let mut xodd: f64;
 
     /* note - itrmax and errmax may be changed to suit one's needs. */
-    let itrmax: i32 = 1000;
+    let itrmax: i32 = ITRMAX;
     let errmax: f64 = 1.0e-12;
 
     if df <= 0.0 {
@@ -211,7 +223,7 @@ pub fn pnt_inner(t: f64, df: f64, ncp: f64, lower_tail: bool, log_p: bool) -> f6
                 crate::error::ml_warning(crate::constants::ME_PRECISION, "pnt");
                 break;
             }
-            if s <= 0.0 && it > 2 {
+            if s <= 0.0 && it > 1 {
                 break;
             }
             errbd = 2.0 * s * (xodd - godd);
@@ -221,7 +233,7 @@ pub fn pnt_inner(t: f64, df: f64, ncp: f64, lower_tail: bool, log_p: bool) -> f6
             it += 1;
         }
         if it > itrmax {
-            crate::error::ml_warning(crate::constants::ME_PRECISION, "pnt");
+            crate::error::ml_warning(crate::constants::ME_NOCONV, "pnt");
         }
     } else {
         /* x = t = 0 */
@@ -408,5 +420,96 @@ mod noncentral_log_endpoint_tests {
                 assert_eq!(kernel(0.0, lower, true), kernel(1.0, lower, false));
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod warning_tests {
+    use super::*;
+    use std::cell::RefCell;
+
+    thread_local! {
+        static WARNINGS: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
+    }
+    fn record(message: &str) {
+        WARNINGS.with(|warnings| warnings.borrow_mut().push(message.to_owned()));
+    }
+    fn stop(message: &str) {
+        record(message);
+        panic!("warning promoted to error");
+    }
+    struct Reset;
+    impl Drop for Reset {
+        fn drop(&mut self) {
+            crate::error::set_warning_hook(None);
+        }
+    }
+    #[test]
+    fn normal_limit_matches_pinned_gnu_neighbors() {
+        WARNINGS.with(|warnings| warnings.borrow_mut().clear());
+        crate::error::set_warning_hook(Some(record));
+        let _reset = Reset;
+        for (t, df, ncp, expected) in [
+            (1.0, 10.0, 2.0, 0.15851505953749501),
+            (-2.0, 5.0, 1.0, 0.0058964622900392616),
+            (40.0, 10.0, 38.5, 0.52215206434178218),
+        ] {
+            let actual = pnt_inner(t, df, ncp, true, false);
+            assert!(
+                (actual - expected).abs() < 1e-12,
+                "{t}, {df}, {ncp}: {actual}"
+            );
+        }
+        WARNINGS.with(|warnings| assert!(warnings.borrow().is_empty()));
+    }
+
+    // Pinned GNU with a two-iteration limit; the normal GNU kernel was
+    // instrumented to confirm this input reaches the second-iteration exit.
+    #[test]
+    fn two_iteration_boundary_matches_pinned_gnu() {
+        WARNINGS.with(|warnings| warnings.borrow_mut().clear());
+        crate::error::set_warning_hook(Some(record));
+        let _reset = Reset;
+        let result = pnt_with_limit::<2>(
+            2022.5067499243628,
+            3015.4821127636951,
+            0.0025750311311942531,
+            true,
+            false,
+        );
+        assert!((result - 0.99999999999999989).abs() < 1e-14);
+        WARNINGS.with(|warnings| {
+            assert_eq!(
+                &*warnings.borrow(),
+                &["full precision may not have been achieved in 'pnt{final}'\n"]
+            )
+        });
+    }
+
+    // Pinned GNU pnt.c with only itrmax changed to one supplies this oracle.
+    #[test]
+    fn bounded_exhaustion_matches_pinned_gnu_warning() {
+        WARNINGS.with(|warnings| warnings.borrow_mut().clear());
+        crate::error::set_warning_hook(Some(record));
+        let _reset = Reset;
+        let value = pnt_with_limit::<1>(1.0, 10.0, 2.0, true, false);
+        assert!((value - 0.14907506573616536).abs() < 1e-14, "{value}");
+        WARNINGS
+            .with(|warnings| assert_eq!(&*warnings.borrow(), &["convergence failed in 'pnt'\n"]));
+        WARNINGS.with(|warnings| warnings.borrow_mut().clear());
+        assert!(
+            (pnt_with_limit::<1>(0.0, 10.0, 2.0, true, false) - 0.022750131948179212).abs() < 1e-14
+        );
+        WARNINGS.with(|warnings| assert!(warnings.borrow().is_empty()));
+        crate::error::set_warning_hook(Some(stop));
+        assert!(
+            std::panic::catch_unwind(|| pnt_with_limit::<1>(1.0, 10.0, 2.0, true, false)).is_err()
+        );
+        WARNINGS
+            .with(|warnings| assert_eq!(&*warnings.borrow(), &["convergence failed in 'pnt'\n"]));
+        crate::error::set_warning_hook(Some(record));
+        assert!(
+            (pnt_with_limit::<1>(0.0, 10.0, 2.0, true, false) - 0.022750131948179212).abs() < 1e-14
+        );
     }
 }
