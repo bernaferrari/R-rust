@@ -816,15 +816,17 @@ fn bessel_warning_uses_its_detached_session_owner() {
     let setup = session.eval("options(warn=2)");
     assert!(!matches!(setup.typed, RValue::Error(_)), "{setup:?}");
     other.core.with_active_in(|p| {
-        let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            session.bessel(RBesselFunc::J, 1.0, 500.0, false)
-        }));
-        assert!(error.is_err(), "warn=2 must stop the calculation");
-        assert_eq!(
-            unsafe { crate::sexp::owner::OwnerToken::current().unwrap().as_ptr() },
-            p
-        );
-        assert_eq!(unsafe { (*p).error_state.collect_warnings }, 0);
+        for (func, x, alpha) in [(RBesselFunc::J, 1.0, 500.0), (RBesselFunc::K, 1e-320, 1.0)] {
+            let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                session.bessel(func, x, alpha, false)
+            }));
+            assert!(error.is_err(), "warn=2 must stop the {func:?} calculation");
+            assert_eq!(
+                unsafe { crate::sexp::owner::OwnerToken::current().unwrap().as_ptr() },
+                p
+            );
+            assert_eq!(unsafe { (*p).error_state.collect_warnings }, 0);
+        }
     });
     let reset = session.eval("options(warn=0)");
     assert!(!matches!(reset.typed, RValue::Error(_)), "{reset:?}");
@@ -853,52 +855,58 @@ fn bessel_warning_uses_its_detached_session_owner() {
 
 #[test]
 fn bessel_warning_stops_after_owner_revocation() {
-    let session = RSession {
-        core: CoreRSession::construct_detached(CoreRSession::new_for_gc_tests),
-        result_limit: None,
-    };
-    let other = RSession {
-        core: CoreRSession::construct_detached(CoreRSession::new_for_gc_tests),
-        result_limit: None,
-    };
-    let owner = session.core.owner_token().unwrap().weak_owner().unwrap();
-    let pin = owner.pin().unwrap();
-    let ledger = unsafe { (*pin.as_ptr()).heap_identity.byte_ledger() };
-    let workspace_before = ledger.workspace_bytes_for_test();
-    let revoked = std::rc::Rc::new(std::cell::Cell::new(false));
-    let seen = revoked.clone();
-    session.core.with_active_in(|p| {
-        crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
-            if !seen.replace(true) {
-                unsafe { crate::sexp::instance::revoke_instance_availability(p) };
+    for (func, x, alpha) in [
+        (RBesselFunc::J, 1.0, -500.25),
+        (RBesselFunc::K, 1e-320, 1.0),
+        (RBesselFunc::I, 1e-320, -1.25),
+    ] {
+        let session = RSession {
+            core: CoreRSession::construct_detached(CoreRSession::new_for_gc_tests),
+            result_limit: None,
+        };
+        let other = RSession {
+            core: CoreRSession::construct_detached(CoreRSession::new_for_gc_tests),
+            result_limit: None,
+        };
+        let owner = session.core.owner_token().unwrap().weak_owner().unwrap();
+        let pin = owner.pin().unwrap();
+        let ledger = unsafe { (*pin.as_ptr()).heap_identity.byte_ledger() };
+        let workspace_before = ledger.workspace_bytes_for_test();
+        let revoked = std::rc::Rc::new(std::cell::Cell::new(false));
+        let seen = revoked.clone();
+        session.core.with_active_in(|p| {
+            crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+                if !seen.replace(true) {
+                    unsafe { crate::sexp::instance::revoke_instance_availability(p) };
+                }
+            }));
+            unsafe {
+                (*p).memory_state.gc_force_gap = 1;
+                (*p).memory_state.gc_force_wait = 1;
             }
-        }));
-        unsafe {
-            (*p).memory_state.gc_force_gap = 1;
-            (*p).memory_state.gc_force_wait = 1;
-        }
-    });
-    other.core.with_active_in(|p| {
-        let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            session.bessel(RBesselFunc::J, 1.0, -500.25, false)
-        }))
-        .unwrap_err();
-        assert_eq!(
-            error
-                .downcast_ref::<crate::sexp::context::RError>()
-                .unwrap()
-                .message,
-            crate::sexp::object::SexpError::RootUnavailable.to_string()
-        );
-        assert!(revoked.get());
-        assert!(!owner.is_live());
-        assert_eq!(
-            unsafe { crate::sexp::owner::OwnerToken::current().unwrap().as_ptr() },
-            p
-        );
-        assert_eq!(unsafe { (*p).error_state.collect_warnings }, 0);
-    });
-    assert_eq!(ledger.workspace_bytes_for_test(), workspace_before);
+        });
+        other.core.with_active_in(|p| {
+            let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                session.bessel(func, x, alpha, false)
+            }))
+            .unwrap_err();
+            assert_eq!(
+                error
+                    .downcast_ref::<crate::sexp::context::RError>()
+                    .unwrap()
+                    .message,
+                crate::sexp::object::SexpError::RootUnavailable.to_string()
+            );
+            assert!(revoked.get());
+            assert!(!owner.is_live());
+            assert_eq!(
+                unsafe { crate::sexp::owner::OwnerToken::current().unwrap().as_ptr() },
+                p
+            );
+            assert_eq!(unsafe { (*p).error_state.collect_warnings }, 0);
+        });
+        assert_eq!(ledger.workspace_bytes_for_test(), workspace_before);
+    }
 }
 
 #[test]
@@ -1051,6 +1059,88 @@ fn bessel_workspace_remains_charged_during_warning_gc() {
                 .with_arena(|a| a.workspace_bytes())
                 .unwrap()
         }),
+        baseline
+    );
+}
+
+#[test]
+fn bessel_k_warning_reentry_keeps_session_workspace_charged() {
+    thread_local! {
+        static EVENTS: std::cell::RefCell<Vec<(String, usize)>> = const { std::cell::RefCell::new(Vec::new()) };
+    }
+    fn inspect(message: &str) {
+        let owner = unsafe { crate::sexp::owner::OwnerToken::current().unwrap() };
+        let bytes = owner.with_arena(|arena| arena.workspace_bytes()).unwrap();
+        EVENTS.with(|events| events.borrow_mut().push((message.to_owned(), bytes)));
+        unsafe { crate::sexp::gengc::full_gc() };
+        assert_eq!(crate::special::bessel_j::bessel_j(0.0, 0.0), 1.0);
+        assert_eq!(
+            owner.with_arena(|arena| arena.workspace_bytes()).unwrap(),
+            bytes
+        );
+    }
+    struct ResetHook;
+    impl Drop for ResetHook {
+        fn drop(&mut self) {
+            crate::nmath::error::set_warning_hook(Some(
+                crate::mainutils::errors::nmath_warning_hook,
+            ));
+        }
+    }
+    let session = RSession {
+        core: CoreRSession::construct_detached(CoreRSession::new_for_gc_tests),
+        result_limit: None,
+    };
+    let other = RSession {
+        core: CoreRSession::construct_detached(CoreRSession::new_for_gc_tests),
+        result_limit: None,
+    };
+    let baseline = session.core.with_active(|| {
+        session
+            .core
+            .owner_token()
+            .unwrap()
+            .with_arena(|a| a.workspace_bytes())
+            .unwrap()
+    });
+    EVENTS.with(|events| events.borrow_mut().clear());
+    crate::nmath::error::set_warning_hook(Some(inspect));
+    let _reset = ResetHook;
+    other.core.with_active_in(|p| {
+        assert_eq!(session.bessel(RBesselFunc::K, 1e-320, 1.0, false), 0.0);
+        let _ = session.bessel(RBesselFunc::I, 1e-320, -2.25, false);
+        assert_eq!(
+            unsafe { crate::sexp::owner::OwnerToken::current().unwrap().as_ptr() },
+            p
+        );
+        assert_eq!(unsafe { (*p).error_state.collect_warnings }, 0);
+    });
+    EVENTS.with(|events| {
+        let events = events.borrow();
+        assert_eq!(events.len(), 3);
+        assert_eq!(
+            events[0].0,
+            "bessel_k(9.99989e-321): ncalc (=-1) != nb (=2); alpha=0. Arg. out of range?\n"
+        );
+        assert_eq!(
+            events[1].0,
+            "full precision may not have been achieved in 'bessel_i'\n"
+        );
+        assert_eq!(
+            events[2].0,
+            "bessel_k(9.99989e-321): ncalc (=-1) != nb (=3); alpha=0.25. Arg. out of range?\n"
+        );
+        assert!(events[0].1 >= baseline + 2 * size_of::<f64>());
+        assert!(events[1].1 >= baseline + 3 * size_of::<f64>());
+        assert!(events[2].1 >= baseline + 3 * size_of::<f64>());
+    });
+    assert_eq!(
+        session.core.with_active(|| session
+            .core
+            .owner_token()
+            .unwrap()
+            .with_arena(|a| a.workspace_bytes())
+            .unwrap()),
         baseline
     );
 }

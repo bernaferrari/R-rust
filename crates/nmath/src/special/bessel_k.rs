@@ -8,7 +8,9 @@
 // with or without exponential scaling.
 
 use crate::constants::*;
+use crate::diagnostics::{General, Text};
 use crate::error::*;
+use core::fmt::Write;
 use libm::*;
 
 // Constants from bessel.h
@@ -20,6 +22,27 @@ const DBL_MIN: f64 = 2.2250738585072014e-308;
 const M_SQRT_2dPI: f64 = 0.79788456080286535587989211986876; // sqrt(2/pi)
 /// `M_bessel_ik_max_alpha` from Rmath.h.
 pub const MAX_ALPHA_K: f64 = 1e9;
+
+fn warn_incomplete(x: f64, fraction: f64, count: i32, ncalc: i32) {
+    let mut message = Text::<256>::new();
+    if ncalc < 0 {
+        write!(
+            &mut message,
+            "bessel_k({}): ncalc (={ncalc}) != nb (={count}); alpha={}. Arg. out of range?\n",
+            General(x),
+            General(fraction)
+        )
+    } else {
+        write!(
+            &mut message,
+            "bessel_k({},nu={}): precision lost in result\n",
+            General(x),
+            General(fraction + f64::from(count) - 1.0)
+        )
+    }
+    .expect("bounded Bessel K diagnostic");
+    ml_warn_message(message.text());
+}
 
 // Mathematical constants
 const A: f64 = 0.11593151565841244881; // LOG(2) - Euler's constant
@@ -121,19 +144,7 @@ pub fn bessel_k(x: f64, alpha: f64, expo: f64) -> f64 {
     k_bessel(x, alpha, nb, ize, &mut bk, &mut ncalc);
 
     if ncalc != nb {
-        /* error input */
-        if ncalc < 0 {
-            eprintln!(
-                "bessel_k({}): ncalc (={}) != nb (={}); alpha={}. Arg. out of range?\n",
-                x, ncalc, nb, alpha
-            );
-        } else {
-            eprintln!(
-                "bessel_k({},nu={}): precision lost in result\n",
-                x,
-                alpha + (nb as f64) - 1.0
-            );
-        }
+        warn_incomplete(x, alpha, nb, ncalc);
     }
     bk[(nb - 1) as usize]
 }
@@ -147,7 +158,8 @@ pub fn bessel_k(x: f64, alpha: f64, expo: f64) -> f64 {
 /// * `x` - Non-negative argument
 /// * `alpha` - Order (non-negative, can be fractional)
 /// * `expo` - Scaling type: 1.0 for unscaled K, 2.0 for exponentially scaled K*exp(x)
-/// * `bk` - Work array of sufficient length (at least `1 + floor(|alpha|)` elements)
+/// * `bk` - Work array of sufficient length (at least `1 + floor(|alpha|)`
+///   elements), exclusively borrowed throughout the call and warning hooks.
 pub fn bessel_k_ex(x: f64, alpha: f64, expo: f64, bk: &mut [f64]) -> f64 {
     /* NaNs propagated correctly */
     if isnan(x) || isnan(alpha) {
@@ -172,19 +184,7 @@ pub fn bessel_k_ex(x: f64, alpha: f64, expo: f64, bk: &mut [f64]) -> f64 {
     k_bessel(x, alpha, nb, ize, bk, &mut ncalc);
 
     if ncalc != nb {
-        /* error input */
-        if ncalc < 0 {
-            eprintln!(
-                "bessel_k({}): ncalc (={}) != nb (={}); alpha={}. Arg. out of range?\n",
-                x, ncalc, nb, alpha
-            );
-        } else {
-            eprintln!(
-                "bessel_k({},nu={}): precision lost in result\n",
-                x,
-                alpha + (nb as f64) - 1.0
-            );
-        }
+        warn_incomplete(x, alpha, nb, ncalc);
     }
     bk[(nb - 1) as usize]
 }
@@ -644,6 +644,60 @@ mod imp {
 
     pub fn bessel_k_c(x: f64, alpha: f64, expo: f64) -> f64 {
         bessel_k(x, alpha, expo)
+    }
+}
+
+#[cfg(test)]
+mod shared_warning_tests {
+    use super::*;
+    use std::cell::RefCell;
+    thread_local! {
+        static WARNINGS: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
+    }
+    fn record(message: &str) {
+        WARNINGS.with(|warnings| warnings.borrow_mut().push(message.to_owned()));
+    }
+    fn stop(message: &str) {
+        record(message);
+        panic!("warning promoted to error");
+    }
+    struct Reset;
+    impl Drop for Reset {
+        fn drop(&mut self) {
+            crate::error::set_warning_hook(None);
+        }
+    }
+    #[test]
+    fn shared_k_reports_subnormal_and_reflected_i_warnings() {
+        WARNINGS.with(|warnings| warnings.borrow_mut().clear());
+        crate::error::set_warning_hook(Some(record));
+        let _reset = Reset;
+        assert_eq!(bessel_k(1e-320, 1.0, 1.0), 0.0);
+        assert_eq!(bessel_k_ex(1e-320, 2.25, 2.0, &mut [42.0; 3]), 42.0);
+        let mut work = [0.0; 3];
+        let _ = crate::special::bessel_i::bessel_i_ex(1e-320, -2.25, 1.0, &mut work);
+        WARNINGS.with(|warnings| assert_eq!(&*warnings.borrow(), &[
+            "bessel_k(9.99989e-321): ncalc (=-1) != nb (=2); alpha=0. Arg. out of range?\n",
+            "bessel_k(9.99989e-321): ncalc (=-1) != nb (=3); alpha=0.25. Arg. out of range?\n",
+            "full precision may not have been achieved in 'bessel_i'\n",
+            "bessel_k(9.99989e-321): ncalc (=-1) != nb (=3); alpha=0.25. Arg. out of range?\n",
+        ]));
+    }
+
+    #[test]
+    fn shared_k_warning_unwind_keeps_workspace_usable() {
+        WARNINGS.with(|warnings| warnings.borrow_mut().clear());
+        crate::error::set_warning_hook(Some(stop));
+        let _reset = Reset;
+        let mut work = [42.0; 2];
+        let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            bessel_k_ex(1e-320, 1.0, 1.0, &mut work)
+        }));
+        assert!(error.is_err());
+        assert_eq!(work[1], 42.0);
+        WARNINGS.with(|warnings| assert_eq!(warnings.borrow().len(), 1));
+        crate::error::set_warning_hook(Some(record));
+        assert!(bessel_k_ex(0.0, 0.0, 1.0, &mut work).is_infinite());
     }
 }
 
