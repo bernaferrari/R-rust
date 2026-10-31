@@ -34,6 +34,7 @@ stopifnot(identical(prior_grown[1:2],prior_grown[3:4]),length(events)==2)
 frac <- .Internal(besselI(1,0,c(1.1,1.9,2.1,2.9)))
 canonical <- .Internal(besselI(1,0,c(1,1,2,2)))
 stopifnot(identical(frac,canonical))
+stopifnot(isTRUE(all.equal(besselI(nu=0,x=1),besselI(1,0),tolerance=1e-14)))
 cat("besseli-checked-contract-ok\n")
 "#;
 #[test]

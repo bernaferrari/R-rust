@@ -551,7 +551,7 @@ unsafe fn checked_math2(
     b: SEXP,
     operation: choose_checked::Operation,
 ) -> SEXP {
-    unsafe { checked_math(call, a, b, None, operation, None) }
+    unsafe { checked_math(call, a, b, None, operation, None, None, None) }
 }
 unsafe fn checked_math(
     call: SEXP,
@@ -560,6 +560,8 @@ unsafe fn checked_math(
     c: Option<SEXP>,
     operation: choose_checked::Operation,
     environment: Option<SEXP>,
+    warning_call: Option<SEXP>,
+    warning_op: Option<SEXP>,
 ) -> SEXP {
     use crate::sexp::{object::Sexp, owner::OwnerToken};
     let owner = unsafe { OwnerToken::current() }
@@ -579,11 +581,25 @@ unsafe fn checked_math(
             .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
     };
     let call = root(call);
+    let warning_op = warning_op.map(root);
     let mut a = root(a);
     let mut b = root(b);
     let mut c = c.map(root);
     let environment = environment.map(root);
     active();
+    let warning_call = warning_call.map(root).or_else(|| {
+        warning_op.as_ref().and_then(|op| unsafe {
+            let name = match operation {
+                choose_checked::Operation::BesselJ => c"besselJ",
+                choose_checked::Operation::BesselY => c"besselY",
+                _ => return None,
+            };
+            let symbol = crate::sexp::symbol::Rf_install(name.as_ptr());
+            active();
+            let symbol = root(symbol);
+            bessel_internal_warning_call(op.as_raw(), symbol.as_raw()).map(root)
+        })
+    });
     if let Some(environment) = environment {
         let conversion = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
             bessel_scaling::prepare(owner, c.take(), environment)
@@ -657,7 +673,9 @@ unsafe fn checked_math(
             *value = root(raw);
         }
     }
-    let _warning_call = crate::mainutils::errors::mathlib_warning_call_guard(call.as_raw());
+    let _warning_call = crate::mainutils::errors::mathlib_warning_call_guard(
+        warning_call.as_ref().unwrap_or(&call).as_raw(),
+    );
     let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         crate::sexp::owner::with_runtime(&weak, |access| {
             choose_checked::evaluate(access, a, b, c, operation)
@@ -760,15 +778,39 @@ pub unsafe fn do_besselI_internal(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -
     }
 }
 
+// Internal dispatch may construct its primitive on demand, so it need not
+// equal the symbol's INTERNAL slot. The public fallback is the distinct base
+// binding; internal warnings use the enclosing call instead.
+unsafe fn bessel_internal_warning_call(op: SEXP, symbol: SEXP) -> Option<SEXP> {
+    unsafe {
+        if op.is_null()
+            || op == crate::sexp::globals::R_NilValue()
+            || crate::sexp::accessors::SYMVALUE(symbol) == op
+        {
+            return None;
+        }
+        Some(crate::mainutils::errors::condition_caller_call())
+    }
+}
+
 /// R's `besselJ(x, nu)` — Bessel function of the first kind.
-pub unsafe fn do_besselJ(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_besselJ(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let a = CAR(args);
         let b = CAR(CDR(args));
         if let Err(message) = validate_math2_inputs(a, b) {
             crate::mainutils::errors::errorcall_str(call, message);
         }
-        checked_math2(call, a, b, choose_checked::Operation::BesselJ)
+        checked_math(
+            call,
+            a,
+            b,
+            None,
+            choose_checked::Operation::BesselJ,
+            None,
+            None,
+            (!op.is_null()).then_some(op),
+        )
     }
 }
 
@@ -866,19 +908,30 @@ unsafe fn bessel_scaled_entry(
             c.as_ref().map(Sexp::as_raw),
             operation,
             public.then_some(environment.as_raw()),
+            (!public).then(|| crate::mainutils::errors::condition_caller_call()),
+            None,
         )
     }
 }
 
 /// R's `besselY(x, nu)` — Bessel function of the second kind.
-pub unsafe fn do_besselY(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_besselY(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let a = CAR(args);
         let b = CAR(CDR(args));
         if let Err(message) = validate_math2_inputs(a, b) {
             crate::mainutils::errors::errorcall_str(call, message);
         }
-        checked_math2(call, a, b, choose_checked::Operation::BesselY)
+        checked_math(
+            call,
+            a,
+            b,
+            None,
+            choose_checked::Operation::BesselY,
+            None,
+            None,
+            (!op.is_null()).then_some(op),
+        )
     }
 }
 

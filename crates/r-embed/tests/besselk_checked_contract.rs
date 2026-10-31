@@ -40,6 +40,7 @@ stopifnot(identical(prior_grown[1:2],prior_grown[3:4]),length(events)==2)
 frac <- .Internal(besselK(1,0,c(1.1,1.9,2.1,2.9)))
 canonical <- .Internal(besselK(1,0,c(1,1,2,2)))
 stopifnot(identical(frac,canonical))
+stopifnot(isTRUE(all.equal(besselK(nu=0,x=1),besselK(1,0),tolerance=1e-14)))
 cat("besselk-checked-contract-ok\n")
 "#;
 #[test]

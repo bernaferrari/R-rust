@@ -1213,7 +1213,9 @@ unsafe fn load_file_sources(base_env: SEXP, staging: SEXP, files: &[UpstreamFile
         for pass in 0..MAX_PASSES {
             let mut bound_any = false;
             for (index, file) in files.iter().enumerate() {
-                if file.exports.iter().all(|name| defined_in(base_env, name)) {
+                if file.exports.iter().all(|name| {
+                    defined_in(base_env, name) && !bessel_primitive_needs_wrapper(base_env, name)
+                }) {
                     continue;
                 }
                 let needs_parse = pass == 0
@@ -1329,7 +1331,8 @@ unsafe fn error_swallowing_handler(staging: SEXP) -> Option<(SEXP, SEXP)> {
     }
 }
 
-/// Copy `names` bound in `staging` but still unbound in `base_env`.
+/// Copy staged names into `base_env`, replacing only the initial Bessel
+/// primitive fallbacks with their upstream closures.
 ///
 /// Dependency-consistency filter: an S3 generic is copied ONLY IF its
 /// primary default method (`name.default`) is either already bound in
@@ -1342,12 +1345,18 @@ unsafe fn copy_exports(base_env: SEXP, staging: SEXP, names: &[&str]) -> bool {
     let mut copied = false;
     for name in names {
         unsafe {
-            if defined_in(base_env, name) {
+            let replacing_bessel = bessel_primitive_needs_wrapper(base_env, name);
+            if defined_in(base_env, name) && !replacing_bessel {
                 continue;
             }
             let symbol = Rf_install_in_current(name);
             let value = R_findVarInFrame(staging, symbol);
             if value.is_null() || value == R_UnboundValue() {
+                continue;
+            }
+            if replacing_bessel
+                && super::accessors::TYPEOF(value) != crate::sexp::ffi::SEXPTYPE::CLOSXP
+            {
                 continue;
             }
             if calls_use_method(value) && !default_method_reachable(base_env, staging, name) {
@@ -1600,6 +1609,25 @@ unsafe fn load_profile_common_bindings(base_env: SEXP) {
         // drop it immediately after the Common.R sources are evaluated.
         let library_site = Rf_install_in_current(".Library.site");
         crate::sexp::envir::remove_binding_raw(crate::sexp::globals::R_GlobalEnv(), library_site);
+    }
+}
+
+// GNU exports these as closures. The portable bootstrap initially installs
+// primitive fallbacks; replace only those fallbacks with the upstream wrappers.
+unsafe fn bessel_primitive_needs_wrapper(env: SEXP, name: &str) -> bool {
+    if !matches!(name, "besselI" | "besselJ" | "besselK" | "besselY")
+        || unsafe { env != super::globals::R_BaseEnv() }
+    {
+        return false;
+    }
+    unsafe {
+        let value = R_findVarInFrame(env, Rf_install_in_current(name));
+        if value.is_null() || value == R_UnboundValue() {
+            return false;
+        }
+        let kind = super::accessors::TYPEOF(value);
+        kind == crate::sexp::ffi::SEXPTYPE::BUILTINSXP
+            || kind == crate::sexp::ffi::SEXPTYPE::SPECIALSXP
     }
 }
 
