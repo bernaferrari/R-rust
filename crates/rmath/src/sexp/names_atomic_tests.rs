@@ -2146,8 +2146,7 @@ fn pairlist_names_rejects_in_place_one_dimensional_change() {
 }
 
 #[test]
-#[ignore = "nested names mutation semantics and tracking: rport-45qwy"]
-fn pairlist_names_rejects_nested_in_place_change() {
+fn pairlist_names_observes_nested_change_before_conversion() {
     use crate::sexp::object::SexpMut;
     let session = RSession::new_for_gc_tests();
     session.with_active(|| unsafe {
@@ -2201,10 +2200,10 @@ fn pairlist_names_rejects_nested_in_place_change() {
             super::setAttrib(target.as_raw(), super::R_NamesSymbol(), input.as_raw());
         }));
         assert!(calls.get() > 0);
-        assert!(
-            result.is_err(),
-            "nested input scalar changed while names were computed"
-        );
-        assert!(target.try_attrib().unwrap().is_nil());
+        result.unwrap();
+        owner.full_gc().unwrap();
+        let names = target.try_attrib().unwrap().try_car().unwrap();
+        assert!(names.try_string_elt(0).unwrap().try_char_eq(b"1").unwrap());
+        assert!(names.try_string_elt(1).unwrap().try_char_eq(b"99").unwrap());
     });
 }
