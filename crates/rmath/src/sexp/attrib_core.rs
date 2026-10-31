@@ -299,8 +299,8 @@ unsafe fn run_tsp<T>(
     }
 }
 
-// Dense scalar contents are copied without entering an ALTREP provider. This
-// lets publication detect an in-place mutation that preserves the CAR identity.
+// Snapshot a dense scalar without entering an ALTREP provider so a target
+// dimension mutation can be detected before names are published.
 #[derive(PartialEq)]
 enum PairlistNameScalar {
     Opaque,
@@ -491,10 +491,7 @@ pub(crate) unsafe fn try_set_pairlist_names(x: SEXP, which: SEXP, value: SEXP) -
                 }
                 let capacity = usize::try_from(count).map_err(|_| "pairlist is too long")?;
                 let bytes = capacity
-                    .checked_mul(std::mem::size_of::<(
-                        super::object::Sexp<'static>,
-                        PairlistNameScalar,
-                    )>())
+                    .checked_mul(std::mem::size_of::<super::object::Sexp<'static>>())
                     .ok_or("R allocation failed: memory or node budget exceeded")?;
                 let mut workspace = access
                     .with_arena(|arena| arena.reserve_workspace(bytes))
@@ -528,8 +525,9 @@ pub(crate) unsafe fn try_set_pairlist_names(x: SEXP, which: SEXP, value: SEXP) -
                     if !child.is_vector() || child.len() > 1 {
                         return Err("incompatible 'names' argument".into());
                     }
-                    let contents = pairlist_name_scalar(&child)?;
-                    snapshot.push((child, contents));
+                    // Keep the child rooted, but read its value when its turn
+                    // arrives: GNU observes earlier callbacks' mutations.
+                    snapshot.push(child);
                     cursor = cursor
                         .try_cdr()
                         .and_then(super::object::Sexp::into_owned)
@@ -588,12 +586,8 @@ pub(crate) unsafe fn try_set_pairlist_names(x: SEXP, which: SEXP, value: SEXP) -
                             .try_car()
                             .and_then(super::object::Sexp::into_owned)
                             .map_err(|e| e.to_string())?;
-                        let (saved, contents) = &snapshot[index as usize];
-                        if current != *saved
-                            || !current.is_vector()
-                            || current.len() > 1
-                            || pairlist_name_scalar(&current)? != *contents
-                        {
+                        let saved = &snapshot[index as usize];
+                        if current != *saved || !current.is_vector() || current.len() > 1 {
                             return Err("pairlist changed during names assignment".into());
                         }
                         cell = cell
@@ -621,7 +615,7 @@ pub(crate) unsafe fn try_set_pairlist_names(x: SEXP, which: SEXP, value: SEXP) -
                     let character = if index >= count {
                         empty.as_ref().expect("padding character").clone()
                     } else {
-                        let child = snapshot[index as usize].0.clone();
+                        let child = snapshot[index as usize].clone();
                         let converted = access
                             .with_native(|owner| {
                                 let pointer = crate::mainutils::coerce::coerceVector(

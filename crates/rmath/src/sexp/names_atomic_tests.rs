@@ -2036,7 +2036,7 @@ fn pairlist_names_target_allocation_denial_does_not_change_tags() {
 }
 
 #[test]
-fn pairlist_names_rejects_in_place_change_to_retained_scalar() {
+fn pairlist_names_observes_later_scalar_mutation() {
     use crate::sexp::object::SexpMut;
     let session = RSession::new_for_gc_tests();
     session.with_active(|| unsafe {
@@ -2081,11 +2081,11 @@ fn pairlist_names_rejects_in_place_change_to_retained_scalar() {
             super::setAttrib(target.as_raw(), super::R_NamesSymbol(), input.as_raw());
         }));
         assert!(calls.get() > 0);
-        assert!(
-            result.is_err(),
-            "input scalar changed while names were computed"
-        );
-        assert!(target.try_attrib().unwrap().is_nil());
+        result.unwrap();
+        owner.full_gc().unwrap();
+        let names = target.try_attrib().unwrap().try_car().unwrap();
+        assert!(names.try_string_elt(0).unwrap().try_char_eq(b"1").unwrap());
+        assert!(names.try_string_elt(1).unwrap().try_char_eq(b"99").unwrap());
     });
 }
 
