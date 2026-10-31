@@ -1004,11 +1004,22 @@ fn compatibility_as_vector_uses_second_stateful_mode() {
     let class = session
         .register_altrep_class("compat-as-vector-stateful", Mode(reads.clone()))
         .unwrap();
-    let mode = AltrepBuilder::new(class).build().unwrap();
-    let result = factory.wrap(as_vector_safe(source, mode).unwrap()).unwrap();
-    assert_eq!(reads.get(), 2);
-    assert_eq!(result.typeof_(), SEXPTYPE::REALSXP);
-    assert_eq!(result.try_real_elt(0).unwrap(), 7.0);
+    for api in [1, 2, 3] {
+        reads.set(0);
+        let mode = AltrepBuilder::new(class.clone()).build().unwrap();
+        let raw = if api == 3 {
+            let nil = factory.nil();
+            let tail = factory.pairlist_cell(&mode, &nil, &nil).unwrap();
+            let args = factory.pairlist_cell(&source, &tail, &nil).unwrap();
+            unsafe { do_coerce(nil.as_raw(), nil.as_raw(), args.as_raw(), nil.as_raw()) }
+        } else {
+            convert(source.clone(), mode, api).unwrap()
+        };
+        let result = factory.wrap(raw).unwrap();
+        assert_eq!(reads.get(), 2, "api={api}");
+        assert_eq!(result.typeof_(), SEXPTYPE::REALSXP, "api={api}");
+        assert_eq!(result.try_real_elt(0).unwrap(), 7.0);
+    }
 }
 
 #[test]
@@ -1024,14 +1035,16 @@ fn compatibility_as_vector_any_preserves_list_and_strips_atomic_attributes() {
         .unwrap();
     decorate(&atomic);
     decorate(&list);
-    let atomic_result = factory
-        .wrap(as_vector_safe(atomic.clone(), any.clone()).unwrap())
-        .unwrap();
-    assert!(atomic_result.try_attrib().unwrap().is_nil());
-    assert!(!atomic.try_attrib().unwrap().is_nil());
-    let list_result = factory
-        .wrap(as_vector_safe(list.clone(), any).unwrap())
-        .unwrap();
-    assert_eq!(list_result, list);
-    assert!(!list_result.try_attrib().unwrap().is_nil());
+    for api in [1, 2] {
+        let atomic_result = factory
+            .wrap(convert(atomic.clone(), any.clone(), api).unwrap())
+            .unwrap();
+        assert!(atomic_result.try_attrib().unwrap().is_nil(), "api={api}");
+        assert!(!atomic.try_attrib().unwrap().is_nil());
+        let list_result = factory
+            .wrap(convert(list.clone(), any.clone(), api).unwrap())
+            .unwrap();
+        assert_eq!(list_result, list);
+        assert!(!list_result.try_attrib().unwrap().is_nil());
+    }
 }

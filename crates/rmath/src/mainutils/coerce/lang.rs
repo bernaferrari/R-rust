@@ -310,13 +310,13 @@ pub unsafe fn do_isinfinite(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> S
 }
 
 // ---------------------------------------------------------------------------
-// do_coerce -- R-level coercion entry point
+// do_coerce -- Rust compatibility coercion entry point
 // ---------------------------------------------------------------------------
 
-/// R-level coercion entry point (`do_coerce`).
+/// Rust compatibility entry for mode-based vector coercion.
 ///
-/// This dispatches to `ascommon` for the actual coercion, matching R's
-/// behavior for `as.vector()`, `as.expression()`, `as.list()`, etc.
+/// GNU R has no separate `do_coerce` primitive; this wrapper follows the
+/// checked `as.vector` coercion path without claiming to dispatch R methods.
 pub unsafe fn do_coerce(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let args_s =

@@ -24,7 +24,8 @@
 //!   Scalar accessors:
 //!     asLogical, asLogical2, asInteger, asReal, asComplex
 //!   R-level entry points:
-//!     do_coerce, do_asCharacterFactor, asCharacterFactor
+//!     do_asCharacterFactor, asCharacterFactor
+//!     do_coerce -- Rust compatibility alias for checked as.vector coercion
 //!     do_asatomic, do_asvector, do_typeof, do_is, do_isvector
 //!     do_isna, do_isnan, do_isfinite, do_isinfinite
 
