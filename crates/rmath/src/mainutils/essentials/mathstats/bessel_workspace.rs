@@ -43,6 +43,16 @@ impl Workspace {
             _reservation: reservation,
         })
     }
+    /// Grow without losing earlier elements. Both buffers remain admitted while
+    /// they overlap, and newly created elements are initialized to zero.
+    pub(crate) fn ensure_len(&mut self, access: &RuntimeAccess, length: usize) -> SexpResult<()> {
+        if length > self.values.len() {
+            let mut replacement = Self::new(access, length)?;
+            replacement.values[..self.values.len()].copy_from_slice(&self.values);
+            *self = replacement;
+        }
+        Ok(())
+    }
     pub(crate) fn values(&mut self) -> &mut [f64] {
         &mut self.values
     }
@@ -77,6 +87,20 @@ mod tests {
                     .unwrap();
                 let mut values = Workspace::new(access, 3).unwrap();
                 assert_eq!(values.values(), [0.0; 3]);
+                values.values().copy_from_slice(&[1.0, 2.0, 3.0]);
+                let allocated = owner.with_arena(|a| a.total_bytes_allocated()).unwrap();
+                let charged = owner.with_arena(|a| a.workspace_bytes()).unwrap();
+                owner
+                    .with_arena(|a| a.set_budget(ArenaBudget::new(allocated + charged + 39, 0)))
+                    .unwrap();
+                assert!(values.ensure_len(access, 5).is_err());
+                assert_eq!(values.values(), [1.0, 2.0, 3.0]);
+                assert_eq!(owner.with_arena(|a| a.workspace_bytes()).unwrap(), charged);
+                owner
+                    .with_arena(|a| a.set_budget(ArenaBudget::unlimited()))
+                    .unwrap();
+                values.ensure_len(access, 5).unwrap();
+                assert_eq!(values.values(), [1.0, 2.0, 3.0, 0.0, 0.0]);
                 assert!(
                     owner.with_arena(|a| a.workspace_bytes()).unwrap() >= before_workspace + 24
                 );

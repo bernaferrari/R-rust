@@ -31,6 +31,15 @@ for(sc in c(0,3)) {
   stopifnot(length(z)==1, length(events)>=1, identical(events[1],"bessel_k(1): ncalc (=-2) != nb (=2); alpha=0. Arg. out of range?"))
 }
 for(f in list(function()besselK("x",0),function()besselK(1,"x"),function().Internal(besselK(1,0,"x")),function()besselK(1+1i,0)))stopifnot(is.character(tryCatch(f(),error=function(e)conditionMessage(e))))
+# GNU reuses the initialized work array between internal vector elements.
+prior <- suppressWarnings(.Internal(besselK(c(1,1),0,c(1,3))))
+stopifnot(identical(prior[1],prior[2]))
+events <- character()
+prior_grown <- withCallingHandlers(.Internal(besselK(1,c(0,2,0,2),c(1,1,3,3))), warning=function(w){events <<- c(events,conditionMessage(w));invokeRestart("muffleWarning")})
+stopifnot(identical(prior_grown[1:2],prior_grown[3:4]),length(events)==2)
+frac <- .Internal(besselK(1,0,c(1.1,1.9,2.1,2.9)))
+canonical <- .Internal(besselK(1,0,c(1,1,2,2)))
+stopifnot(identical(frac,canonical))
 cat("besselk-checked-contract-ok\n")
 "#;
 #[test]

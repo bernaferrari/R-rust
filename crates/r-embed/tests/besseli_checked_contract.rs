@@ -25,6 +25,15 @@ for(x in c(-0.0,0.0)){z <- besselI(x,c(0,1,2,-.5,-1.5));stopifnot(identical(z,c(
 stopifnot(identical(.Internal(besselI(c(NA_real_,NaN,1),c(NaN,0,NA_real_),1)),c(NA_real_,NaN,NA_real_)))
 events <- character(); z <- withCallingHandlers(besselI(1,-500.5),warning=function(w){stopifnot(identical(conditionCall(w),quote(besselI(1,-500.5))));events <<- c(events,conditionMessage(w));gc();invokeRestart("muffleWarning")})
 stopifnot(identical(z,Inf),length(events)==1)
+# GNU reuses the initialized work array between internal vector elements.
+prior <- suppressWarnings(.Internal(besselI(c(1,1),0,c(1,3))))
+stopifnot(identical(prior[1],prior[2]))
+events <- character()
+prior_grown <- withCallingHandlers(.Internal(besselI(1,c(0,2,0,2),c(1,1,3,3))), warning=function(w){events <<- c(events,conditionMessage(w));invokeRestart("muffleWarning")})
+stopifnot(identical(prior_grown[1:2],prior_grown[3:4]),length(events)==2)
+frac <- .Internal(besselI(1,0,c(1.1,1.9,2.1,2.9)))
+canonical <- .Internal(besselI(1,0,c(1,1,2,2)))
+stopifnot(identical(frac,canonical))
 cat("besseli-checked-contract-ok\n")
 "#;
 #[test]

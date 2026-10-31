@@ -1,6 +1,63 @@
 use super::*;
 
 #[test]
+fn checked_besselk_reused_workspace_survives_warning_gc_and_reentry() {
+    let session = RSession::new_for_gc_tests();
+    let owner = session.owner_token().unwrap();
+    let weak = owner.weak_owner().unwrap();
+    session.with_active(|| {
+        let f = weak.node_factory().unwrap();
+        let baseline = owner.with_arena(|a| a.workspace_bytes()).unwrap();
+        let seen = Rc::new(Cell::new(0));
+        let count = seen.clone();
+        let nested_owner = weak.clone();
+        let _warnings = WarningScope::new(move |message| {
+            assert!(message.starts_with("bessel_k(1): ncalc (=-2)"));
+            count.set(count.get() + 1);
+            let charged = crate::sexp::owner::with_runtime(&nested_owner, |access| {
+                access.with_arena(|a| a.workspace_bytes())
+            })
+            .unwrap()
+            .unwrap();
+            assert!(charged >= baseline + 3 * size_of::<f64>());
+            unsafe { crate::sexp::gengc::full_gc() };
+            let f = nested_owner.node_factory().unwrap();
+            let nested = native_k(
+                &f,
+                &three(
+                    &f,
+                    &reals(&f, &[1.0]),
+                    &reals(&f, &[0.0]),
+                    &reals(&f, &[1.0]),
+                ),
+                false,
+            );
+            assert!((nested.try_real_elt(0).unwrap() - 0.42102443824070834).abs() < 1e-14);
+        });
+        let result = native_k(
+            &f,
+            &three(
+                &f,
+                &reals(&f, &[1.0]),
+                &reals(&f, &[0.0, 2.0, 0.0, 2.0]),
+                &reals(&f, &[1.0, 1.0, 3.0, 3.0]),
+            ),
+            false,
+        );
+        assert_eq!(
+            result.try_real_elt(0).unwrap(),
+            result.try_real_elt(2).unwrap()
+        );
+        assert_eq!(
+            result.try_real_elt(1).unwrap(),
+            result.try_real_elt(3).unwrap()
+        );
+        assert_eq!(seen.get(), 2);
+        assert_eq!(owner.with_arena(|a| a.workspace_bytes()).unwrap(), baseline);
+    });
+}
+
+#[test]
 fn checked_besselk_subnormal_ncalc_warning_is_catchable() {
     let session = RSession::new_for_gc_tests();
     let owner = session.owner_token().unwrap();

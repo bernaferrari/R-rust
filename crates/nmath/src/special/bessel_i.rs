@@ -382,8 +382,7 @@ fn i_bessel(x: f64, alpha: f64, nb: i32, ize: i32, bi: &mut [f64]) -> i32 {
         return ncalc;
     }
 
-    // argument out of range
-    bi[0] = 0.0;
+    // GNU leaves the initialized caller workspace untouched on invalid input.
     min0(nb, 0) - 1
 }
 
@@ -577,13 +576,21 @@ mod shared_warning_tests {
         }
     }
     #[test]
+    fn invalid_scaling_preserves_initialized_workspace() {
+        let _reset = Reset;
+        crate::error::set_warning_hook(Some(record));
+        let mut work = [42.0];
+        assert_eq!(bessel_i_ex(1.0, 0.0, 3.0, &mut work), 42.0);
+    }
+
+    #[test]
     fn shared_i_reports_gnu_precision_range_and_reflection_warnings() {
         WARNINGS.with(|warnings| warnings.borrow_mut().clear());
         crate::error::set_warning_hook(Some(record));
         let _reset = Reset;
         assert_eq!(bessel_i(1.0, 500.0, 1.0), 0.0);
         assert_eq!(bessel_i_ex(1.0, 500.0, 2.0, &mut [0.0; 501]), 0.0);
-        assert_eq!(bessel_i_ex(1.0, 0.0, 3.0, &mut [42.0]), 0.0);
+        assert_eq!(bessel_i_ex(1.0, 0.0, 3.0, &mut [42.0]), 42.0);
         let _ = bessel_i_ex(1e-320, -2.25, 1.0, &mut [0.0; 3]);
         WARNINGS.with(|warnings| assert_eq!(&*warnings.borrow(), &[
             "bessel_i(1,nu=500): precision lost in result\n",
@@ -681,7 +688,7 @@ mod status_tests {
         for scale in [0.0, 3.0] {
             let status = bessel_i_positive_status(1.0, 0.0, scale, &mut [9.0]).unwrap();
             assert_eq!(status.ncalc, -1);
-            assert_eq!(status.value, 0.0);
+            assert_eq!(status.value, 9.0);
         }
     }
 }

@@ -60,6 +60,9 @@ pub(super) fn evaluate(
             access.require_active()?;
         }
         let mut nan = false;
+        // GNU's Math3B retains the I/K workspace for the whole vector. Keep
+        // initialized values available to later scalar calls and callbacks.
+        let mut retained_workspace: Option<super::bessel_workspace::Workspace> = None;
         for i in 0..length {
             check()?;
             let x = a.try_real_elt(i % na)?;
@@ -124,8 +127,22 @@ pub(super) fn evaluate(
                                 }
                             })?
                         };
-                        let mut workspace =
-                            super::bessel_workspace::Workspace::new(access, length)?;
+                        let mut transient_workspace;
+                        let workspace =
+                            if matches!(operation, Operation::BesselI | Operation::BesselK) {
+                                if let Some(workspace) = &mut retained_workspace {
+                                    workspace.ensure_len(access, length)?;
+                                } else {
+                                    retained_workspace = Some(
+                                        super::bessel_workspace::Workspace::new(access, length)?,
+                                    );
+                                }
+                                retained_workspace.as_mut().expect("workspace initialized")
+                            } else {
+                                transient_workspace =
+                                    super::bessel_workspace::Workspace::new(access, length)?;
+                                &mut transient_workspace
+                            };
                         let value = match operation {
                             // These branches return before scalar allocation;
                             // retain existing shared range-warning text.
