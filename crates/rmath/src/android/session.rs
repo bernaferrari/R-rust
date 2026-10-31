@@ -547,11 +547,57 @@ impl RSession {
 
     /// Compute a Bessel function.
     pub fn bessel(&self, func: RBesselFunc, x: f64, alpha: f64, scaled: bool) -> f64 {
-        self.core.with_active(|| match func {
-            RBesselFunc::J => crate::special::bessel::bessel_j(x, alpha),
-            RBesselFunc::Y => crate::special::bessel::bessel_y(x, alpha),
-            RBesselFunc::I => crate::special::bessel::bessel_i(x, alpha, scaled),
-            RBesselFunc::K => crate::special::bessel::bessel_k(x, alpha, scaled),
+        self.core.with_active(|| {
+            let owner = self
+                .core
+                .owner_token()
+                .and_then(|owner| owner.weak_owner())
+                .unwrap_or_else(|| crate::sexp::context::r_error("session is closed"));
+            let result = crate::sexp::owner::with_runtime(&owner, |access| {
+                let limit = match func {
+                    RBesselFunc::J => crate::special::bessel_j::MAX_ALPHA_J,
+                    RBesselFunc::Y => crate::special::bessel_y::MAX_ALPHA_Y,
+                    RBesselFunc::I => crate::special::bessel_i::MAX_ALPHA_I,
+                    RBesselFunc::K => crate::special::bessel_k::MAX_ALPHA_K,
+                };
+                // These paths return before the scalar kernels allocate work.
+                if x.is_nan() || alpha.is_nan() || x < 0.0 || alpha.abs() > limit {
+                    return Ok(match func {
+                        RBesselFunc::J => crate::special::bessel::bessel_j(x, alpha),
+                        RBesselFunc::Y => crate::special::bessel::bessel_y(x, alpha),
+                        RBesselFunc::I => crate::special::bessel::bessel_i(x, alpha, scaled),
+                        RBesselFunc::K => crate::special::bessel::bessel_k(x, alpha, scaled),
+                    });
+                }
+                let length = (alpha.abs().floor() as usize)
+                    .checked_add(1)
+                    .ok_or_else(|| crate::sexp::object::SexpError::EvaluationFailed {
+                        message: "Bessel workspace dimension overflow".into(),
+                    })?;
+                let mut workspace =
+                    crate::mainutils::essentials::BesselWorkspace::new(access, length)?;
+                let scaling = if scaled { 2.0 } else { 1.0 };
+                let value = match func {
+                    RBesselFunc::J => {
+                        crate::special::bessel_j::bessel_j_ex(x, alpha, workspace.values())
+                    }
+                    RBesselFunc::Y => {
+                        crate::special::bessel_y::bessel_y_ex(x, alpha, workspace.values())
+                    }
+                    RBesselFunc::I => {
+                        crate::special::bessel_i::bessel_i_ex(x, alpha, scaling, workspace.values())
+                    }
+                    RBesselFunc::K => {
+                        crate::special::bessel_k::bessel_k_ex(x, alpha, scaling, workspace.values())
+                    }
+                };
+                access.require_active()?;
+                Ok(value)
+            })
+            .and_then(|result| result);
+            result.unwrap_or_else(|error: crate::sexp::object::SexpError| {
+                crate::sexp::context::r_error(error.to_string())
+            })
         })
     }
 

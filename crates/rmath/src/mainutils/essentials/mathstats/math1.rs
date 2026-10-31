@@ -535,6 +535,7 @@ mod bessel_j_checked;
 mod bessel_scaling;
 #[path = "bessel_workspace.rs"]
 mod bessel_workspace;
+pub(crate) use bessel_workspace::Workspace as BesselWorkspace;
 #[path = "bessel_y_checked.rs"]
 mod bessel_y_checked;
 #[path = "choose_checked.rs"]

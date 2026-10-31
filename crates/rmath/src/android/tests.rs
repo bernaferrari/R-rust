@@ -862,6 +862,9 @@ fn bessel_warning_stops_after_owner_revocation() {
         result_limit: None,
     };
     let owner = session.core.owner_token().unwrap().weak_owner().unwrap();
+    let pin = owner.pin().unwrap();
+    let ledger = unsafe { (*pin.as_ptr()).heap_identity.byte_ledger() };
+    let workspace_before = ledger.workspace_bytes_for_test();
     let revoked = std::rc::Rc::new(std::cell::Cell::new(false));
     let seen = revoked.clone();
     session.core.with_active_in(|p| {
@@ -895,6 +898,155 @@ fn bessel_warning_stops_after_owner_revocation() {
         );
         assert_eq!(unsafe { (*p).error_state.collect_warnings }, 0);
     });
+    assert_eq!(ledger.workspace_bytes_for_test(), workspace_before);
+}
+
+#[test]
+fn bessel_workspace_obeys_session_budget() {
+    let session = RSession {
+        core: CoreRSession::construct_detached(CoreRSession::new_for_gc_tests),
+        result_limit: None,
+    };
+    session.core.with_active(|| {
+        let owner = session.core.owner_token().unwrap();
+        let (bytes, workspace) = owner
+            .with_arena(|arena| (arena.total_bytes_allocated(), arena.workspace_bytes()))
+            .unwrap();
+        owner
+            .with_arena(|arena| {
+                arena.set_budget(crate::sexp::memory::ArenaBudget::new(bytes + workspace, 0))
+            })
+            .unwrap();
+        for func in [
+            RBesselFunc::J,
+            RBesselFunc::I,
+            RBesselFunc::Y,
+            RBesselFunc::K,
+        ] {
+            let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                session.bessel(func, 30.0, 10.0, false)
+            }))
+            .unwrap_err();
+            assert!(
+                error
+                    .downcast_ref::<crate::sexp::context::RError>()
+                    .unwrap()
+                    .message
+                    .contains("Bessel workspace exceeds session allocation limit"),
+                "{func:?}"
+            );
+            assert_eq!(
+                owner.with_arena(|a| a.workspace_bytes()).unwrap(),
+                workspace
+            );
+        }
+        owner
+            .with_arena(|arena| arena.set_budget(crate::sexp::memory::ArenaBudget::unlimited()))
+            .unwrap();
+        assert!(
+            session
+                .bessel(RBesselFunc::J, 30.0, 10.0, false)
+                .is_finite()
+        );
+    });
+}
+
+#[test]
+fn bessel_workspace_matches_scalar_values() {
+    let session = RSession {
+        core: CoreRSession::construct_detached(CoreRSession::new_for_gc_tests),
+        result_limit: None,
+    };
+    session.core.with_active(|| {
+        for func in [
+            RBesselFunc::J,
+            RBesselFunc::I,
+            RBesselFunc::Y,
+            RBesselFunc::K,
+        ] {
+            for (x, alpha) in [
+                (0.0, 0.0),
+                (0.0, -2.25),
+                (1e-300, 5.5),
+                (2.0, 0.0),
+                (2.0, 2.25),
+                (2.0, -2.25),
+                (2.0, -2.5),
+                (30.0, 10.0),
+                (1.0, 500.0),
+                (1.0, -500.25),
+                (f64::INFINITY, 0.0),
+            ] {
+                for scaled in [false, true] {
+                    let expected = match func {
+                        RBesselFunc::J => crate::special::bessel::bessel_j(x, alpha),
+                        RBesselFunc::Y => crate::special::bessel::bessel_y(x, alpha),
+                        RBesselFunc::I => crate::special::bessel::bessel_i(x, alpha, scaled),
+                        RBesselFunc::K => crate::special::bessel::bessel_k(x, alpha, scaled),
+                    };
+                    let actual = session.bessel(func, x, alpha, scaled);
+                    assert_eq!(
+                        actual.to_bits(),
+                        expected.to_bits(),
+                        "{func:?} x={x} alpha={alpha} scaled={scaled}"
+                    );
+                }
+            }
+        }
+    });
+}
+
+#[test]
+fn bessel_workspace_remains_charged_during_warning_gc() {
+    thread_local! {
+        static OBSERVED: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    }
+    fn inspect(_: &str) {
+        let owner = unsafe { crate::sexp::owner::OwnerToken::current().unwrap() };
+        let bytes = owner.with_arena(|arena| arena.workspace_bytes()).unwrap();
+        OBSERVED.with(|value| value.set(bytes));
+        unsafe { crate::sexp::gengc::full_gc() };
+        assert_eq!(
+            owner.with_arena(|arena| arena.workspace_bytes()).unwrap(),
+            bytes
+        );
+    }
+    struct ResetHook;
+    impl Drop for ResetHook {
+        fn drop(&mut self) {
+            crate::nmath::error::set_warning_hook(Some(
+                crate::mainutils::errors::nmath_warning_hook,
+            ));
+        }
+    }
+    let session = RSession {
+        core: CoreRSession::construct_detached(CoreRSession::new_for_gc_tests),
+        result_limit: None,
+    };
+    let baseline = session.core.with_active(|| {
+        session
+            .core
+            .owner_token()
+            .unwrap()
+            .with_arena(|a| a.workspace_bytes())
+            .unwrap()
+    });
+    OBSERVED.with(|value| value.set(0));
+    crate::nmath::error::set_warning_hook(Some(inspect));
+    let _reset = ResetHook;
+    assert_eq!(session.bessel(RBesselFunc::J, 1.0, 500.0, false), 0.0);
+    assert!(OBSERVED.with(|value| value.get()) >= baseline + 501 * size_of::<f64>());
+    assert_eq!(
+        session.core.with_active(|| {
+            session
+                .core
+                .owner_token()
+                .unwrap()
+                .with_arena(|a| a.workspace_bytes())
+                .unwrap()
+        }),
+        baseline
+    );
 }
 
 #[test]

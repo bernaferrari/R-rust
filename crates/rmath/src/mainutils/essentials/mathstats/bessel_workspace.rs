@@ -5,7 +5,7 @@ use crate::sexp::{
     object::{SexpError, SexpResult},
     owner::RuntimeAccess,
 };
-pub(super) struct Workspace {
+pub(crate) struct Workspace {
     // Storage must disappear before its original-owner credit is released.
     values: Vec<f64>,
     _reservation: WorkspaceReservation,
@@ -16,7 +16,7 @@ fn failure() -> SexpError {
     }
 }
 impl Workspace {
-    pub(super) fn new(access: &RuntimeAccess, length: usize) -> SexpResult<Self> {
+    pub(crate) fn new(access: &RuntimeAccess, length: usize) -> SexpResult<Self> {
         let bytes = length
             .checked_mul(size_of::<f64>())
             .filter(|&n| n <= isize::MAX as usize)
@@ -43,7 +43,7 @@ impl Workspace {
             _reservation: reservation,
         })
     }
-    pub(super) fn values(&mut self) -> &mut [f64] {
+    pub(crate) fn values(&mut self) -> &mut [f64] {
         &mut self.values
     }
 }

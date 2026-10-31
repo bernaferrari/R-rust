@@ -33,6 +33,7 @@ mod lm;
 mod lm_diag;
 mod matchenv;
 mod math1;
+pub(crate) use math1::BesselWorkspace;
 mod math2;
 mod misc_stats;
 mod multivariate;
