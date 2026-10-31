@@ -598,19 +598,12 @@ pub fn bessel_j(x: f64, alpha: f64) -> f64 {
 
     let mut b = vec![0.0; nb as usize];
     let ncalc = j_bessel(x, alpha_mod, nb, &mut b);
-    let mut result = b[(nb - 1) as usize];
     if ncalc != nb {
-        /* error input */
-        if ncalc < 0 {
-            warn_incomplete(x, alpha_mod, nb, ncalc);
-        } else {
-            // MATHLIB_WARNING2 -- precision lost. Orders past the last
-            // successful term underflow; GNU leaves those entries at 0.
-            warn_incomplete(x, alpha_mod, nb, ncalc);
-            if !result.is_finite() {
-                result = 0.0;
-            }
-        }
+        warn_incomplete(x, alpha_mod, nb, ncalc);
+    }
+    let mut result = b[(nb - 1) as usize];
+    if ncalc >= 0 && ncalc != nb && !result.is_finite() {
+        result = 0.0;
     }
     result
 }
@@ -630,7 +623,8 @@ pub fn bessel_j_c(x: f64, alpha: f64) -> f64 {
 /// # Arguments
 /// * `x` - Non-negative argument
 /// * `alpha` - Order (may be negative)
-/// * `bj` - Work array (must be large enough, typically nb elements)
+/// * `bj` - Work array (must be large enough, typically nb elements). It is
+///   exclusively borrowed throughout the call, including warning callbacks.
 ///
 /// # Returns
 /// J_alpha(x)
@@ -666,17 +660,12 @@ pub fn bessel_j_ex(x: f64, alpha: f64, bj: &mut [f64]) -> f64 {
     let alpha_mod = alpha - ((nb - 1) as f64); // ==> alpha' in [0, 1)
 
     let ncalc = j_bessel(x, alpha_mod, nb, bj);
-    let mut result = bj[(nb - 1) as usize];
     if ncalc != nb {
-        /* error input */
-        if ncalc < 0 {
-            warn_incomplete(x, alpha_mod, nb, ncalc);
-        } else {
-            warn_incomplete(x, alpha_mod, nb, ncalc);
-            if !result.is_finite() {
-                result = 0.0;
-            }
-        }
+        warn_incomplete(x, alpha_mod, nb, ncalc);
+    }
+    let mut result = bj[(nb - 1) as usize];
+    if ncalc >= 0 && ncalc != nb && !result.is_finite() {
+        result = 0.0;
     }
     result
 }
@@ -759,6 +748,14 @@ mod shared_diagnostic_tests {
         record(message);
         panic!("warning promoted to error");
     }
+    fn reenter_with_separate_workspace(message: &str) {
+        record(message);
+        let first = WARNINGS.with(|warnings| warnings.borrow().len() == 1);
+        if first {
+            let mut other = [0.0; 501];
+            assert_eq!(bessel_j_ex(1.0, 500.0, &mut other), 0.0);
+        }
+    }
     struct WarningScope;
     impl WarningScope {
         fn new() -> Self {
@@ -811,6 +808,23 @@ mod shared_diagnostic_tests {
         WARNINGS.with(|warnings| assert_eq!(warnings.borrow().len(), 1));
         crate::error::set_warning_hook(Some(record));
         assert_eq!(bessel_j_ex(1.0, 0.0, &mut work), bessel_j(1.0, 0.0));
+    }
+
+    #[test]
+    fn warning_reentry_with_an_independent_workspace_preserves_results() {
+        let _scope = WarningScope::new();
+        crate::error::set_warning_hook(Some(reenter_with_separate_workspace));
+        let mut work = [0.0; 501];
+        assert_eq!(bessel_j_ex(1.0, 500.0, &mut work), 0.0);
+        WARNINGS.with(|warnings| {
+            assert_eq!(
+                &*warnings.borrow(),
+                &[
+                    "bessel_j(1,nu=500): precision lost in result\n",
+                    "bessel_j(1,nu=500): precision lost in result\n"
+                ]
+            );
+        });
     }
 }
 
