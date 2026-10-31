@@ -943,11 +943,17 @@ fn bessel_workspace_obeys_session_budget() {
         owner
             .with_arena(|arena| arena.set_budget(crate::sexp::memory::ArenaBudget::unlimited()))
             .unwrap();
-        assert!(
-            session
-                .bessel(RBesselFunc::J, 30.0, 10.0, false)
-                .is_finite()
-        );
+        for func in [
+            RBesselFunc::J,
+            RBesselFunc::I,
+            RBesselFunc::Y,
+            RBesselFunc::K,
+        ] {
+            assert!(
+                session.bessel(func, 30.0, 10.0, false).is_finite(),
+                "{func:?}"
+            );
+        }
     });
 }
 
