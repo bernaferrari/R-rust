@@ -796,6 +796,50 @@ mod shared_diagnostic_tests {
     }
 
     #[test]
+    fn reflected_j_and_y_warnings_match_gnu_order() {
+        let _scope = WarningScope::new();
+        let mut work = [0.0; 501];
+        assert_eq!(bessel_j(1.0, -500.25), f64::INFINITY);
+        assert_eq!(bessel_y(1.0, -500.25), f64::NEG_INFINITY);
+        assert_eq!(bessel_j_ex(1.0, -500.25, &mut work), f64::INFINITY);
+        assert_eq!(bessel_y_ex(1.0, -500.25, &mut work), f64::NEG_INFINITY);
+        WARNINGS.with(|warnings| {
+            assert_eq!(
+                &*warnings.borrow(),
+                &[
+                    "bessel_j(1,nu=500.25): precision lost in result\n",
+                    "bessel_y(1,nu=500.25): precision lost in result\n",
+                    "bessel_y(1,nu=500.25): precision lost in result\n",
+                    "bessel_j(1,nu=500.25): precision lost in result\n",
+                    "bessel_j(1,nu=500.25): precision lost in result\n",
+                    "bessel_y(1,nu=500.25): precision lost in result\n",
+                    "bessel_y(1,nu=500.25): precision lost in result\n",
+                    "bessel_j(1,nu=500.25): precision lost in result\n",
+                ]
+            )
+        });
+    }
+
+    #[test]
+    fn reflected_y_warning_unwind_stops_j_and_preserves_workspace() {
+        let _scope = WarningScope::new();
+        crate::error::set_warning_hook(Some(stop_on_warning));
+        let mut work = [0.0; 501];
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            bessel_y_ex(1.0, -500.25, &mut work)
+        }));
+        assert!(result.is_err());
+        WARNINGS.with(|warnings| {
+            assert_eq!(
+                &*warnings.borrow(),
+                &["bessel_y(1,nu=500.25): precision lost in result\n"]
+            )
+        });
+        crate::error::set_warning_hook(Some(record));
+        assert_eq!(bessel_j_ex(1.0, 0.0, &mut work), bessel_j(1.0, 0.0));
+    }
+
+    #[test]
     fn warning_unwind_stops_reflection_and_leaves_workspace_usable() {
         let _scope = WarningScope::new();
         crate::error::set_warning_hook(Some(stop_on_warning));

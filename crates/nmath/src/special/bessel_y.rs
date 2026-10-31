@@ -10,9 +10,11 @@
 // for non-negative argument x and non-negative order nu.
 
 use crate::constants::*;
+use crate::diagnostics::{General, Text};
 use crate::error::*;
 use crate::special::bessel_j::{bessel_j, bessel_j_ex};
 use crate::special::cospi::{cospi, sinpi};
+use core::fmt::Write;
 use libm::*;
 
 // =====================================================================
@@ -21,6 +23,38 @@ use libm::*;
 
 /// `M_bessel_y_max_alpha` from Rmath.h. Y stays at the old shared JY cap.
 pub const MAX_ALPHA_Y: f64 = 1e7;
+
+fn warn_order_cap(alpha: f64) {
+    let mut message = Text::<128>::new();
+    write!(
+        &mut message,
+        "besselY(x, nu): nu={} too large for bessel_y() algorithm",
+        General(alpha)
+    )
+    .expect("bounded Bessel Y cap diagnostic");
+    ml_warn_message(message.text());
+}
+
+fn warn_incomplete(x: f64, fraction: f64, count: i32, ncalc: i32) {
+    let mut message = Text::<256>::new();
+    if ncalc < -1 {
+        write!(
+            &mut message,
+            "bessel_y({}): ncalc (={ncalc}) != nb (={count}); alpha={}. Arg. out of range?\n",
+            General(x),
+            General(fraction)
+        )
+    } else {
+        write!(
+            &mut message,
+            "bessel_y({},nu={}): precision lost in result\n",
+            General(x),
+            General(fraction + f64::from(count) - 1.0)
+        )
+    }
+    .expect("bounded Bessel Y diagnostic");
+    ml_warn_message(message.text());
+}
 
 const XLRG_BESS_Y: f64 = 1e8;
 const THRESH_BESS_Y: f64 = 16.0;
@@ -473,26 +507,18 @@ pub fn bessel_y(x: f64, alpha: f64) -> f64 {
         };
         return part1 - part2;
     } else if alpha > MAX_ALPHA_Y {
-        ml_warn_message(&format!(
-            "besselY(x, nu): nu={alpha} > {MAX_ALPHA_Y} =: max_alpha_y too large for bessel_y() algorithm"
-        ));
+        warn_order_cap(alpha);
         return ML_NAN;
     }
     let nb = 1 + (na as i32); /* nb-1 <= alpha < nb */
     let alpha_mod = alpha - ((nb - 1) as f64);
     let mut by = vec![0.0; nb as usize];
     let ncalc = y_bessel(x, alpha_mod, nb, &mut by);
+    if ncalc == -1 {
+        return ML_POSINF;
+    }
     if ncalc != nb {
-        /* error input */
-        if ncalc == -1 {
-            return ML_POSINF;
-        } else if ncalc < -1 {
-            // MATHLIB_WARNING4 -- precision warning, no return
-            let _ = (x, ncalc, nb, alpha);
-        } else {
-            /* ncalc >= 0 -- precision lost */
-            let _ = (x, alpha + (nb as f64) - 1.0);
-        }
+        warn_incomplete(x, alpha_mod, nb, ncalc);
     }
     by[(nb - 1) as usize]
 }
@@ -511,7 +537,7 @@ pub fn bessel_y_c(x: f64, alpha: f64) -> f64 {
 /// # Arguments
 /// * `x` - Non-negative argument
 /// * `alpha` - Order (may be negative)
-/// * `by` - Work array (must be large enough)
+/// * `by` - Work array (must be large enough), exclusively borrowed through warning callbacks.
 ///
 /// # Returns
 /// Y_alpha(x)
@@ -540,25 +566,17 @@ pub fn bessel_y_ex(x: f64, alpha: f64, by: &mut [f64]) -> f64 {
         };
         return part1 - part2;
     } else if alpha > MAX_ALPHA_Y {
-        ml_warn_message(&format!(
-            "besselY(x, nu): nu={alpha} > {MAX_ALPHA_Y} =: max_alpha_y, too large for bessel_y() algorithm"
-        ));
+        warn_order_cap(alpha);
         return ML_NAN;
     }
     let nb = 1 + (na as i32); /* nb-1 <= alpha < nb */
     let alpha_mod = alpha - ((nb - 1) as f64);
     let ncalc = y_bessel(x, alpha_mod, nb, by);
+    if ncalc == -1 {
+        return ML_POSINF;
+    }
     if ncalc != nb {
-        /* error input */
-        if ncalc == -1 {
-            return ML_POSINF;
-        } else if ncalc < -1 {
-            // MATHLIB_WARNING4 -- precision warning
-            let _ = (x, ncalc, nb, alpha);
-        } else {
-            /* ncalc >= 0 -- precision lost */
-            let _ = (x, alpha + (nb as f64) - 1.0);
-        }
+        warn_incomplete(x, alpha_mod, nb, ncalc);
     }
     by[(nb - 1) as usize]
 }
@@ -615,6 +633,49 @@ pub unsafe fn bessel_y_ex_c(x: f64, alpha: f64, by: *mut f64, nb: i32) -> f64 {
     }
     let by_slice = unsafe { std::slice::from_raw_parts_mut(by, nb as usize) };
     bessel_y_ex(x, alpha, by_slice)
+}
+
+#[cfg(test)]
+mod shared_warning_tests {
+    use super::*;
+    use std::cell::RefCell;
+    thread_local! {
+        static WARNINGS: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
+    }
+    fn record(message: &str) {
+        WARNINGS.with(|warnings| warnings.borrow_mut().push(message.to_owned()));
+        let mut other = [0.0];
+        assert_eq!(bessel_j_ex(0.0, 0.0, &mut other), 1.0);
+    }
+    struct Reset;
+    impl Drop for Reset {
+        fn drop(&mut self) {
+            crate::error::set_warning_hook(None);
+        }
+    }
+    #[test]
+    fn shared_y_gnu_warnings_and_independent_reentry() {
+        WARNINGS.with(|warnings| warnings.borrow_mut().clear());
+        crate::error::set_warning_hook(Some(record));
+        let _reset = Reset;
+        assert_eq!(bessel_y(1.0, 500.25), f64::NEG_INFINITY);
+        assert_eq!(bessel_y_ex(1.0, 500.25, &mut [0.0; 501]), f64::NEG_INFINITY);
+        assert!(bessel_y(1.0, 10_000_001.0).is_nan());
+        assert!(bessel_y_ex(1.0, 10_000_001.0, &mut [0.0]).is_nan());
+        assert!(bessel_y(1.0, f64::INFINITY).is_nan());
+        WARNINGS.with(|warnings| {
+            assert_eq!(
+                &*warnings.borrow(),
+                &[
+                    "bessel_y(1,nu=500.25): precision lost in result\n",
+                    "bessel_y(1,nu=500.25): precision lost in result\n",
+                    "besselY(x, nu): nu=1e+07 too large for bessel_y() algorithm",
+                    "besselY(x, nu): nu=1e+07 too large for bessel_y() algorithm",
+                    "besselY(x, nu): nu=inf too large for bessel_y() algorithm",
+                ]
+            )
+        });
+    }
 }
 
 #[cfg(test)]

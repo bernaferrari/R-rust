@@ -820,6 +820,7 @@ fn bessel_warning_uses_its_detached_session_owner() {
             (RBesselFunc::J, 1.0, 500.0),
             (RBesselFunc::K, 1e-320, 1.0),
             (RBesselFunc::I, 1.0, 500.0),
+            (RBesselFunc::Y, 1.0, 500.0),
         ] {
             let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 session.bessel(func, x, alpha, false)
@@ -866,6 +867,12 @@ fn bessel_warning_stops_after_owner_revocation() {
     ] {
         bessel_warning_revocation_case(func, x, alpha);
     }
+}
+
+#[test]
+fn bessel_y_precision_warning_stops_after_owner_revocation() {
+    bessel_warning_revocation_case(RBesselFunc::Y, 1.0, -500.25);
+    bessel_warning_revocation_case(RBesselFunc::J, 1.0, -500.5);
 }
 
 #[test]
@@ -1123,6 +1130,14 @@ fn bessel_k_warning_reentry_keeps_session_workspace_charged() {
         assert_eq!(session.bessel(RBesselFunc::K, 1e-320, 1.0, false), 0.0);
         let _ = session.bessel(RBesselFunc::I, 1e-320, -2.25, false);
         assert_eq!(
+            session.bessel(RBesselFunc::J, 1.0, -500.25, false),
+            f64::INFINITY
+        );
+        assert_eq!(
+            session.bessel(RBesselFunc::Y, 1.0, -500.25, false),
+            f64::NEG_INFINITY
+        );
+        assert_eq!(
             unsafe { crate::sexp::owner::OwnerToken::current().unwrap().as_ptr() },
             p
         );
@@ -1130,7 +1145,7 @@ fn bessel_k_warning_reentry_keeps_session_workspace_charged() {
     });
     EVENTS.with(|events| {
         let events = events.borrow();
-        assert_eq!(events.len(), 3);
+        assert_eq!(events.len(), 7);
         assert_eq!(
             events[0].0,
             "bessel_k(9.99989e-321): ncalc (=-1) != nb (=2); alpha=0. Arg. out of range?\n"
@@ -1143,6 +1158,15 @@ fn bessel_k_warning_reentry_keeps_session_workspace_charged() {
             events[2].0,
             "bessel_k(9.99989e-321): ncalc (=-1) != nb (=3); alpha=0.25. Arg. out of range?\n"
         );
+        for (index, expected) in [
+            (3, "bessel_j(1,nu=500.25): precision lost in result\n"),
+            (4, "bessel_y(1,nu=500.25): precision lost in result\n"),
+            (5, "bessel_y(1,nu=500.25): precision lost in result\n"),
+            (6, "bessel_j(1,nu=500.25): precision lost in result\n"),
+        ] {
+            assert_eq!(events[index].0, expected);
+            assert!(events[index].1 >= baseline + 501 * size_of::<f64>());
+        }
         assert!(events[0].1 >= baseline + 2 * size_of::<f64>());
         assert!(events[1].1 >= baseline + 3 * size_of::<f64>());
         assert!(events[2].1 >= baseline + 3 * size_of::<f64>());

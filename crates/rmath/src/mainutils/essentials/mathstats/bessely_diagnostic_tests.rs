@@ -101,10 +101,14 @@ fn checked_bessely_diagnostic_messages_and_legacy_callbacks() {
         assert!(
             crate::special::bessel_y::bessel_y_positive_status(1.0, 500.0, &mut work).is_some()
         );
-        assert!(
-            messages.borrow().is_empty(),
-            "unchecked shared callers gain no callbacks"
+        assert_eq!(
+            &*messages.borrow(),
+            &[
+                "bessel_y(1,nu=500): precision lost in result\n",
+                "bessel_y(1,nu=500): precision lost in result\n"
+            ]
         );
+        messages.borrow_mut().clear();
         let z = native_y(
             &f,
             &args(&f, &reals(&f, &[1.0]), &reals(&f, &[1e8 + 1.0])),
