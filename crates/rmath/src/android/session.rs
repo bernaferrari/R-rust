@@ -547,12 +547,12 @@ impl RSession {
 
     /// Compute a Bessel function.
     pub fn bessel(&self, func: RBesselFunc, x: f64, alpha: f64, scaled: bool) -> f64 {
-        match func {
+        self.core.with_active(|| match func {
             RBesselFunc::J => crate::special::bessel::bessel_j(x, alpha),
             RBesselFunc::Y => crate::special::bessel::bessel_y(x, alpha),
             RBesselFunc::I => crate::special::bessel::bessel_i(x, alpha, scaled),
             RBesselFunc::K => crate::special::bessel::bessel_k(x, alpha, scaled),
-        }
+        })
     }
 
     /// Probability density function for the normal distribution.

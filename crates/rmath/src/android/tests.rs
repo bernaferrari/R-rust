@@ -786,6 +786,118 @@ fn test_session_bessel() {
 }
 
 #[test]
+fn bessel_warning_uses_its_detached_session_owner() {
+    let mut session = RSession::new();
+    let other = RSession::new();
+    let first = session.bessel(RBesselFunc::J, 1.0, 500.0, false);
+    assert_eq!(first, 0.0);
+    assert_eq!(
+        session
+            .core
+            .with_active_in(|p| unsafe { (*p).error_state.collect_warnings }),
+        1
+    );
+    other.core.with_active_in(|p| {
+        assert_eq!(unsafe { (*p).error_state.collect_warnings }, 0);
+        let value = session.bessel(RBesselFunc::J, 1.0, 500.0, false);
+        assert_eq!(value, 0.0);
+        assert_eq!(unsafe { (*p).error_state.collect_warnings }, 0);
+        assert_eq!(
+            unsafe { crate::sexp::owner::OwnerToken::current().unwrap().as_ptr() },
+            p
+        );
+    });
+    assert_eq!(
+        session
+            .core
+            .with_active_in(|p| unsafe { (*p).error_state.collect_warnings }),
+        2
+    );
+    let setup = session.eval("options(warn=2)");
+    assert!(!matches!(setup.typed, RValue::Error(_)), "{setup:?}");
+    other.core.with_active_in(|p| {
+        let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            session.bessel(RBesselFunc::J, 1.0, 500.0, false)
+        }));
+        assert!(error.is_err(), "warn=2 must stop the calculation");
+        assert_eq!(
+            unsafe { crate::sexp::owner::OwnerToken::current().unwrap().as_ptr() },
+            p
+        );
+        assert_eq!(unsafe { (*p).error_state.collect_warnings }, 0);
+    });
+    let reset = session.eval("options(warn=0)");
+    assert!(!matches!(reset.typed, RValue::Error(_)), "{reset:?}");
+    assert_eq!(session.bessel(RBesselFunc::J, 1.0, 500.0, false), 0.0);
+    for func in [
+        RBesselFunc::J,
+        RBesselFunc::I,
+        RBesselFunc::Y,
+        RBesselFunc::K,
+    ] {
+        let before = session
+            .core
+            .with_active_in(|p| unsafe { (*p).error_state.collect_warnings });
+        other.core.with_active_in(|p| {
+            assert!(session.bessel(func, -1.0, 0.0, false).is_nan());
+            assert_eq!(unsafe { (*p).error_state.collect_warnings }, 0);
+        });
+        assert_eq!(
+            session
+                .core
+                .with_active_in(|p| unsafe { (*p).error_state.collect_warnings }),
+            before + 1
+        );
+    }
+}
+
+#[test]
+fn bessel_warning_stops_after_owner_revocation() {
+    let session = RSession {
+        core: CoreRSession::construct_detached(CoreRSession::new_for_gc_tests),
+        result_limit: None,
+    };
+    let other = RSession {
+        core: CoreRSession::construct_detached(CoreRSession::new_for_gc_tests),
+        result_limit: None,
+    };
+    let owner = session.core.owner_token().unwrap().weak_owner().unwrap();
+    let revoked = std::rc::Rc::new(std::cell::Cell::new(false));
+    let seen = revoked.clone();
+    session.core.with_active_in(|p| {
+        crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+            if !seen.replace(true) {
+                unsafe { crate::sexp::instance::revoke_instance_availability(p) };
+            }
+        }));
+        unsafe {
+            (*p).memory_state.gc_force_gap = 1;
+            (*p).memory_state.gc_force_wait = 1;
+        }
+    });
+    other.core.with_active_in(|p| {
+        let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            session.bessel(RBesselFunc::J, 1.0, -500.25, false)
+        }))
+        .unwrap_err();
+        assert_eq!(
+            error
+                .downcast_ref::<crate::sexp::context::RError>()
+                .unwrap()
+                .message,
+            crate::sexp::object::SexpError::RootUnavailable.to_string()
+        );
+        assert!(revoked.get());
+        assert!(!owner.is_live());
+        assert_eq!(
+            unsafe { crate::sexp::owner::OwnerToken::current().unwrap().as_ptr() },
+            p
+        );
+        assert_eq!(unsafe { (*p).error_state.collect_warnings }, 0);
+    });
+}
+
+#[test]
 fn test_session_dnorm_pnorm() {
     let session = RSession::new();
     let d = session.dnorm(0.0, 0.0, 1.0, false);
