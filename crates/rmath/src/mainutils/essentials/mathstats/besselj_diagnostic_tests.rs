@@ -137,7 +137,7 @@ fn checked_besselj_diagnostic_messages_cap_and_legacy_callbacks() {
         );
         assert_eq!(
             &*messages.borrow(),
-            &["full precision may not have been achieved in 'bessel_j'\n"]
+            &["bessel_j(1,nu=500): precision lost in result\n"]
         );
         messages.borrow_mut().clear();
         for (n, expected) in [

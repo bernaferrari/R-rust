@@ -8,19 +8,61 @@
 // Additional code for nu == alpha < 0  MM
 
 use crate::constants::*;
+use crate::diagnostics::{General, Text};
 use crate::error::*;
 use crate::special::bessel_y::{bessel_y, bessel_y_ex};
 use crate::special::cospi::{cospi, sinpi};
 use crate::special::gamma_cody::Rf_gamma_cody;
 use crate::utils::*;
 use libm::*;
+use std::fmt::Write;
 
 // =====================================================================
 // Constants from bessel.h
 // =====================================================================
 
-/// `M_bessel_j_max_alpha` from Rmath.h. Raised from the shared 1e7 JY cap.
-pub const MAX_ALPHA_J: f64 = 1e9;
+/// GNU R's shared scalar and workspace order limit.
+pub const MAX_ALPHA_J: f64 = 1e7;
+
+fn warn_order_cap(alpha: f64, workspace: bool) {
+    let mut message = Text::<256>::new();
+    if workspace {
+        write!(
+            &mut message,
+            "besselJ(x, nu): nu={} > 1e7; too large for bessel_j() algorithm",
+            General(alpha)
+        )
+    } else {
+        write!(
+            &mut message,
+            "besselJ(x, nu): nu={} too large for bessel_j() algorithm",
+            General(alpha)
+        )
+    }
+    .expect("bounded Bessel order diagnostic");
+    ml_warn_message(message.text());
+}
+
+fn warn_incomplete(x: f64, fraction: f64, count: i32, ncalc: i32) {
+    let mut message = Text::<256>::new();
+    if ncalc < 0 {
+        write!(
+            &mut message,
+            "bessel_j({}): ncalc (={ncalc}) != nb (={count}); alpha={}. Arg. out of range?\n",
+            General(x),
+            General(fraction)
+        )
+    } else {
+        write!(
+            &mut message,
+            "bessel_j({},nu={}): precision lost in result\n",
+            General(x),
+            General(fraction + f64::from(count) - 1.0)
+        )
+    }
+    .expect("bounded Bessel calculation diagnostic");
+    ml_warn_message(message.text());
+}
 
 const NSIG_BESS: f64 = 16.0;
 const ENSIG_BESS: f64 = 1e16;
@@ -548,9 +590,7 @@ pub fn bessel_j(x: f64, alpha: f64) -> f64 {
         };
         return part1 + part2;
     } else if alpha > MAX_ALPHA_J {
-        ml_warn_message(&format!(
-            "besselJ(x, nu): nu={alpha} > max_alpha_j (= {MAX_ALPHA_J}): too large for bessel_j() algorithm"
-        ));
+        warn_order_cap(alpha, false);
         return ML_NAN;
     }
     let nb = 1 + (na as i32); /* nb-1 <= alpha < nb */
@@ -562,12 +602,11 @@ pub fn bessel_j(x: f64, alpha: f64) -> f64 {
     if ncalc != nb {
         /* error input */
         if ncalc < 0 {
-            // MATHLIB_WARNING4 -- just issue a warning
-            ml_warning(ME_RANGE, "bessel_j");
+            warn_incomplete(x, alpha_mod, nb, ncalc);
         } else {
             // MATHLIB_WARNING2 -- precision lost. Orders past the last
             // successful term underflow; GNU leaves those entries at 0.
-            ml_warning(ME_PRECISION, "bessel_j");
+            warn_incomplete(x, alpha_mod, nb, ncalc);
             if !result.is_finite() {
                 result = 0.0;
             }
@@ -620,9 +659,7 @@ pub fn bessel_j_ex(x: f64, alpha: f64, bj: &mut [f64]) -> f64 {
         };
         return part1 + part2;
     } else if alpha > MAX_ALPHA_J {
-        ml_warn_message(&format!(
-            "besselJ(x, nu): nu={alpha} > max_alpha_j (= {MAX_ALPHA_J}): too large for bessel_j() algorithm"
-        ));
+        warn_order_cap(alpha, true);
         return ML_NAN;
     }
     let nb: i32 = 1 + (na as i32); /* nb-1 <= alpha < nb */
@@ -633,9 +670,9 @@ pub fn bessel_j_ex(x: f64, alpha: f64, bj: &mut [f64]) -> f64 {
     if ncalc != nb {
         /* error input */
         if ncalc < 0 {
-            ml_warning(ME_RANGE, "bessel_j");
+            warn_incomplete(x, alpha_mod, nb, ncalc);
         } else {
-            ml_warning(ME_PRECISION, "bessel_j");
+            warn_incomplete(x, alpha_mod, nb, ncalc);
             if !result.is_finite() {
                 result = 0.0;
             }
@@ -705,6 +742,76 @@ pub unsafe fn bessel_j_ex_c(x: f64, alpha: f64, bj: *mut f64, nb: i32) -> f64 {
     }
     let bj_slice = unsafe { std::slice::from_raw_parts_mut(bj, nb as usize) };
     bessel_j_ex(x, alpha, bj_slice)
+}
+
+#[cfg(test)]
+mod shared_diagnostic_tests {
+    use super::*;
+    use std::cell::RefCell;
+
+    thread_local! {
+        static WARNINGS: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
+    }
+    fn record(message: &str) {
+        WARNINGS.with(|warnings| warnings.borrow_mut().push(message.to_owned()));
+    }
+    fn stop_on_warning(message: &str) {
+        record(message);
+        panic!("warning promoted to error");
+    }
+    struct WarningScope;
+    impl WarningScope {
+        fn new() -> Self {
+            WARNINGS.with(|warnings| warnings.borrow_mut().clear());
+            crate::error::set_warning_hook(Some(record));
+            Self
+        }
+    }
+    impl Drop for WarningScope {
+        fn drop(&mut self) {
+            crate::error::set_warning_hook(None);
+        }
+    }
+
+    #[test]
+    fn scalar_and_workspace_diagnostics_match_gnu_controls() {
+        let _scope = WarningScope::new();
+        let mut work = [0.0; 501];
+        assert_eq!(bessel_j(1.0, 500.25), 0.0);
+        assert_eq!(bessel_j_ex(1.0, 500.25, &mut work), 0.0);
+        assert!(bessel_j(1.0, 10_000_001.0).is_nan());
+        assert!(bessel_j_ex(1.0, 10_000_001.0, &mut [0.0]).is_nan());
+        assert!(bessel_j(1.0, f64::INFINITY).is_nan());
+        assert!(bessel_j_ex(1.0, f64::INFINITY, &mut [0.0]).is_nan());
+        WARNINGS.with(|warnings| {
+            assert_eq!(
+                &*warnings.borrow(),
+                &[
+                    "bessel_j(1,nu=500.25): precision lost in result\n",
+                    "bessel_j(1,nu=500.25): precision lost in result\n",
+                    "besselJ(x, nu): nu=1e+07 too large for bessel_j() algorithm",
+                    "besselJ(x, nu): nu=1e+07 > 1e7; too large for bessel_j() algorithm",
+                    "besselJ(x, nu): nu=inf too large for bessel_j() algorithm",
+                    "besselJ(x, nu): nu=inf > 1e7; too large for bessel_j() algorithm",
+                ]
+            );
+        });
+    }
+
+    #[test]
+    fn warning_unwind_stops_reflection_and_leaves_workspace_usable() {
+        let _scope = WarningScope::new();
+        crate::error::set_warning_hook(Some(stop_on_warning));
+        let mut work = [42.0];
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            bessel_j_ex(1.0, -10_000_001.0, &mut work)
+        }));
+        assert!(result.is_err());
+        assert_eq!(work, [42.0]);
+        WARNINGS.with(|warnings| assert_eq!(warnings.borrow().len(), 1));
+        crate::error::set_warning_hook(Some(record));
+        assert_eq!(bessel_j_ex(1.0, 0.0, &mut work), bessel_j(1.0, 0.0));
+    }
 }
 
 #[cfg(test)]
