@@ -10,6 +10,7 @@
 use crate::constants::*;
 use crate::diagnostics::{General, Text};
 use crate::error::*;
+use crate::special::bessel::BesselWorkspace;
 use crate::special::bessel_k::{bessel_k, bessel_k_ex};
 use crate::special::cospi::sinpi;
 use crate::special::gamma::gammafn;
@@ -75,7 +76,7 @@ fn min0(x: i32, y: i32) -> i32 {
 ///
 /// # Returns
 /// - `ncalc`: Number of orders successfully calculated
-fn i_bessel(x: f64, alpha: f64, nb: i32, ize: i32, bi: &mut [f64]) -> i32 {
+fn i_bessel<W: BesselWorkspace + ?Sized>(x: f64, alpha: f64, nb: i32, ize: i32, bi: &mut W) -> i32 {
     let const_ = 1.585;
 
     let nu: f64 = alpha;
@@ -436,7 +437,7 @@ pub fn bessel_i(x: f64, alpha: f64, expo: f64) -> f64 {
     let alpha_mod = alpha - ((nb - 1) as f64);
 
     let mut bi = vec![0.0; nb as usize];
-    let ncalc = i_bessel(x, alpha_mod, nb, ize, &mut bi);
+    let ncalc = i_bessel(x, alpha_mod, nb, ize, &mut bi[..]);
     if ncalc != nb {
         warn_incomplete(x, alpha_mod, nb, ncalc);
     }
@@ -508,6 +509,16 @@ pub fn bessel_i_positive_status(
     order: f64,
     expo: f64,
     work: &mut [f64],
+) -> Option<BesselICalculation> {
+    bessel_i_positive_status_with_workspace(x, order, expo, work)
+}
+
+/// Callback-free status over initialized, exclusively borrowed indexed storage.
+pub fn bessel_i_positive_status_with_workspace<W: BesselWorkspace + ?Sized>(
+    x: f64,
+    order: f64,
+    expo: f64,
+    work: &mut W,
 ) -> Option<BesselICalculation> {
     if x.is_nan()
         || x < 0.0

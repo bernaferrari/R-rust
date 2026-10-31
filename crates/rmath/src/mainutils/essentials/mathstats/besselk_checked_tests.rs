@@ -58,6 +58,38 @@ fn checked_besselk_reused_workspace_survives_warning_gc_and_reentry() {
 }
 
 #[test]
+fn checked_besselk_grows_after_warning_changes_later_order() {
+    let session = RSession::new_for_gc_tests();
+    let owner = session.owner_token().unwrap();
+    let weak = owner.weak_owner().unwrap();
+    session.with_active(|| {
+        let f = weak.node_factory().unwrap();
+        let baseline = owner.with_arena(|a| a.workspace_bytes()).unwrap();
+        let orders = reals(&f, &[1.0, 1.0]);
+        let later_order = orders.clone();
+        let observed = Rc::new(Cell::new(0));
+        let count = observed.clone();
+        let _warnings = WarningScope::new(move |message| {
+            assert!(message.starts_with("bessel_k(9.99989e-321): ncalc (=-1)"));
+            count.set(count.get() + 1);
+            let mut values = SexpMut::try_from_checked(later_order.clone()).unwrap();
+            values.try_set_real_elt(1, 20.0).unwrap();
+            unsafe { crate::sexp::gengc::full_gc() };
+        });
+        let arguments = three(&f, &reals(&f, &[1e-320, 1.0]), &orders, &reals(&f, &[1.0]));
+        let result = native_k(&f, &arguments, false);
+        assert_eq!(observed.get(), 1);
+        assert_eq!(orders.try_real_elt(1).unwrap(), 20.0);
+        let expected = crate::special::bessel_k::bessel_k(1.0, 20.0, 1.0);
+        assert_eq!(
+            result.try_real_elt(1).unwrap().to_bits(),
+            expected.to_bits()
+        );
+        assert_eq!(owner.with_arena(|a| a.workspace_bytes()).unwrap(), baseline);
+    });
+}
+
+#[test]
 fn checked_besselk_subnormal_ncalc_warning_is_catchable() {
     let session = RSession::new_for_gc_tests();
     let owner = session.owner_token().unwrap();

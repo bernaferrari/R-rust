@@ -12,19 +12,25 @@ pub(super) fn positive(
     x: f64,
     order: f64,
     scaling: f64,
-    work: &mut [f64],
+    work: &mut super::bessel_workspace::SegmentedWorkspace,
 ) -> SexpResult<f64> {
     access.require_active()?;
     let magnitude = order.abs();
     if x < 0.0 || magnitude > crate::special::bessel_k::MAX_ALPHA_K {
-        let value = crate::special::bessel_k::bessel_k_ex(x, order, scaling, work);
+        let value = crate::special::bessel_k::bessel_k_ex(x, order, scaling, &mut []);
         access.require_active()?;
         return Ok(value);
     }
-    let result = crate::special::bessel_k::bessel_k_positive_status(x, magnitude, scaling, work)
-        .ok_or_else(|| SexpError::EvaluationFailed {
-            message: "invalid checked Bessel K calculation".into(),
-        })?;
+    let result = if let Some(contiguous) = work.contiguous_mut() {
+        crate::special::bessel_k::bessel_k_positive_status(x, magnitude, scaling, contiguous)
+    } else {
+        crate::special::bessel_k::bessel_k_positive_status_with_workspace(
+            x, magnitude, scaling, work,
+        )
+    }
+    .ok_or_else(|| SexpError::EvaluationFailed {
+        message: "invalid checked Bessel K calculation".into(),
+    })?;
     if result.ncalc != result.count {
         let mut message = Text::new();
         if result.ncalc < 0 {

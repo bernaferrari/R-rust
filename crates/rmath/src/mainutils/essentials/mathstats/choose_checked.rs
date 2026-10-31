@@ -62,7 +62,7 @@ pub(super) fn evaluate(
         let mut nan = false;
         // GNU's Math3B retains the I/K workspace for the whole vector. Keep
         // initialized values available to later scalar calls and callbacks.
-        let mut retained_workspace: Option<super::bessel_workspace::Workspace> = None;
+        let mut retained_workspace: Option<super::bessel_workspace::SegmentedWorkspace> = None;
         for i in 0..length {
             check()?;
             let x = a.try_real_elt(i % na)?;
@@ -127,22 +127,20 @@ pub(super) fn evaluate(
                                 }
                             })?
                         };
-                        let mut transient_workspace;
-                        let workspace =
-                            if matches!(operation, Operation::BesselI | Operation::BesselK) {
-                                if let Some(workspace) = &mut retained_workspace {
-                                    workspace.ensure_len(access, length)?;
-                                } else {
-                                    retained_workspace = Some(
-                                        super::bessel_workspace::Workspace::new(access, length)?,
-                                    );
-                                }
-                                retained_workspace.as_mut().expect("workspace initialized")
+                        let mut transient_workspace = None;
+                        if matches!(operation, Operation::BesselI | Operation::BesselK) {
+                            if let Some(workspace) = &mut retained_workspace {
+                                workspace.ensure_len(access, length)?;
                             } else {
-                                transient_workspace =
-                                    super::bessel_workspace::Workspace::new(access, length)?;
-                                &mut transient_workspace
-                            };
+                                retained_workspace =
+                                    Some(super::bessel_workspace::SegmentedWorkspace::new(
+                                        access, length,
+                                    )?);
+                            }
+                        } else {
+                            transient_workspace =
+                                Some(super::bessel_workspace::Workspace::new(access, length)?);
+                        }
                         let value = match operation {
                             // These branches return before scalar allocation;
                             // retain existing shared range-warning text.
@@ -156,7 +154,10 @@ pub(super) fn evaluate(
                                         access,
                                         x,
                                         -k,
-                                        workspace.values(),
+                                        transient_workspace
+                                            .as_mut()
+                                            .expect("J/Y workspace initialized")
+                                            .values(),
                                     )?;
                                     access.require_active()?;
                                     check()?;
@@ -169,7 +170,10 @@ pub(super) fn evaluate(
                                         access,
                                         x,
                                         -k,
-                                        workspace.values(),
+                                        transient_workspace
+                                            .as_mut()
+                                            .expect("J/Y workspace initialized")
+                                            .values(),
                                     )? * crate::special::cospi::sinpi(k)
                                 };
                                 access.require_active()?;
@@ -184,7 +188,9 @@ pub(super) fn evaluate(
                                     x,
                                     -k,
                                     scaling,
-                                    workspace.values(),
+                                    retained_workspace
+                                        .as_mut()
+                                        .expect("I/K workspace initialized"),
                                 )?;
                                 access.require_active()?;
                                 check()?;
@@ -196,7 +202,9 @@ pub(super) fn evaluate(
                                         x,
                                         -k,
                                         scaling,
-                                        workspace.values(),
+                                        retained_workspace
+                                            .as_mut()
+                                            .expect("I/K workspace initialized"),
                                     )?;
                                     access.require_active()?;
                                     check()?;
@@ -216,14 +224,18 @@ pub(super) fn evaluate(
                                 x,
                                 k,
                                 scaling,
-                                workspace.values(),
+                                retained_workspace
+                                    .as_mut()
+                                    .expect("I/K workspace initialized"),
                             )?,
                             Operation::BesselK => super::bessel_k_checked::positive(
                                 access,
                                 x,
                                 k,
                                 scaling,
-                                workspace.values(),
+                                retained_workspace
+                                    .as_mut()
+                                    .expect("I/K workspace initialized"),
                             )?,
                             Operation::BesselY if x >= 0.0 && k < 0.0 => {
                                 let first = if k - k.floor() == 0.5 {
@@ -233,7 +245,10 @@ pub(super) fn evaluate(
                                         access,
                                         x,
                                         -k,
-                                        workspace.values(),
+                                        transient_workspace
+                                            .as_mut()
+                                            .expect("J/Y workspace initialized")
+                                            .values(),
                                     )?;
                                     access.require_active()?;
                                     check()?;
@@ -246,7 +261,10 @@ pub(super) fn evaluate(
                                         access,
                                         x,
                                         -k,
-                                        workspace.values(),
+                                        transient_workspace
+                                            .as_mut()
+                                            .expect("J/Y workspace initialized")
+                                            .values(),
                                     )?;
                                     access.require_active()?;
                                     check()?;
@@ -254,12 +272,24 @@ pub(super) fn evaluate(
                                 };
                                 first - reflected
                             }
-                            Operation::BesselY => {
-                                super::bessel_y_checked::positive(access, x, k, workspace.values())?
-                            }
-                            _ => {
-                                super::bessel_j_checked::positive(access, x, k, workspace.values())?
-                            }
+                            Operation::BesselY => super::bessel_y_checked::positive(
+                                access,
+                                x,
+                                k,
+                                transient_workspace
+                                    .as_mut()
+                                    .expect("J/Y workspace initialized")
+                                    .values(),
+                            )?,
+                            _ => super::bessel_j_checked::positive(
+                                access,
+                                x,
+                                k,
+                                transient_workspace
+                                    .as_mut()
+                                    .expect("J/Y workspace initialized")
+                                    .values(),
+                            )?,
                         };
                         access.require_active()?;
                         check()?;

@@ -9,6 +9,23 @@
 // The underlying implementations live in bessel_i.rs, bessel_j.rs,
 // bessel_k.rs, and bessel_y.rs, ported from R's nmath library.
 
+/// Initialized, exclusively borrowed storage for a Bessel work array.
+/// Implementations may use noncontiguous storage while preserving indexed
+/// reads and writes. Callers must ensure `len()` remains stable during a
+/// calculation.
+pub trait BesselWorkspace: core::ops::IndexMut<usize, Output = f64> {
+    fn len(&self) -> usize;
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+}
+
+impl BesselWorkspace for [f64] {
+    fn len(&self) -> usize {
+        <[f64]>::len(self)
+    }
+}
+
 use crate::special::bessel_i::bessel_i as bessel_i_impl;
 use crate::special::bessel_j::bessel_j as bessel_j_impl;
 use crate::special::bessel_k::bessel_k as bessel_k_impl;

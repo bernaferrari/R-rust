@@ -10,6 +10,7 @@
 use crate::constants::*;
 use crate::diagnostics::{General, Text};
 use crate::error::*;
+use crate::special::bessel::BesselWorkspace;
 use core::fmt::Write;
 use libm::*;
 
@@ -141,7 +142,7 @@ pub fn bessel_k(x: f64, alpha: f64, expo: f64) -> f64 {
 
     let mut bk = vec![0.0; nb as usize];
     let mut ncalc: i32 = 0;
-    k_bessel(x, alpha, nb, ize, &mut bk, &mut ncalc);
+    k_bessel(x, alpha, nb, ize, &mut bk[..], &mut ncalc);
 
     if ncalc != nb {
         warn_incomplete(x, alpha, nb, ncalc);
@@ -204,6 +205,16 @@ pub fn bessel_k_positive_status(
     expo: f64,
     work: &mut [f64],
 ) -> Option<BesselKCalculation> {
+    bessel_k_positive_status_with_workspace(x, order, expo, work)
+}
+
+/// Callback-free status over initialized, exclusively borrowed indexed storage.
+pub fn bessel_k_positive_status_with_workspace<W: BesselWorkspace + ?Sized>(
+    x: f64,
+    order: f64,
+    expo: f64,
+    work: &mut W,
+) -> Option<BesselKCalculation> {
     if x.is_nan() || x < 0.0 || !order.is_finite() || order < 0.0 || order > MAX_ALPHA_K {
         return None;
     }
@@ -228,7 +239,14 @@ pub fn bessel_k_positive_status(
 /// of the third kind, K_(N+ALPHA) (X), for non-negative
 /// argument X, and non-negative order N+ALPHA, with or without
 /// exponential scaling.
-fn k_bessel(x: f64, alpha: f64, nb: i32, ize: i32, bk: &mut [f64], ncalc: &mut i32) {
+fn k_bessel<W: BesselWorkspace + ?Sized>(
+    x: f64,
+    alpha: f64,
+    nb: i32,
+    ize: i32,
+    bk: &mut W,
+    ncalc: &mut i32,
+) {
     let ex = x;
     let mut nu = alpha;
     *ncalc = min0(nb, 0) - 2;
@@ -537,7 +555,7 @@ fn k_bessel(x: f64, alpha: f64, nb: i32, ize: i32, bk: &mut [f64], ncalc: &mut i
 ///
 /// This corresponds to lines 489-559 of the original C code (the shared tail
 /// after the three main computation branches).
-fn k_bessel_forward(
+fn k_bessel_forward<W: BesselWorkspace + ?Sized>(
     ex: f64,
     nu: f64,
     twonu: f64,
@@ -545,7 +563,7 @@ fn k_bessel_forward(
     k: i32,
     _ize: i32,
     nb: i32,
-    bk: &mut [f64],
+    bk: &mut W,
     ncalc: &mut i32,
     bk1: f64,
     bk2: f64,
