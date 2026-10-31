@@ -916,8 +916,11 @@ pub unsafe fn DispatchOrEval(
 
                 // usemethod reads its call and promises from the active
                 // context, including when a primitive is invoked at top level.
+                // GNU CTXT_RETURN includes CTXT_FUNCTION; the port uses
+                // independent flags, so set both for stack queries.
                 let _context_guard = crate::sexp::context::begin_context_guard(
-                    crate::sexp::context::ctxt_flags::CTXT_RETURN,
+                    crate::sexp::context::ctxt_flags::CTXT_RETURN
+                        | crate::sexp::context::ctxt_flags::CTXT_FUNCTION,
                     call,
                     rho1,
                     rho,
@@ -1491,6 +1494,50 @@ mod owned_argument_tests {
             (*instance).memory_state.gc_force_wait = 1;
         });
         notifications
+    }
+
+    #[test]
+    fn primitive_dispatch_function_frame_survives_gc_and_other_session() {
+        let session = RSession::new_for_gc_tests();
+        let other = RSession::new_for_gc_tests();
+        session.with_active(|| unsafe {
+            let owner = session.owner_token().unwrap();
+            let factory = SessionNodeFactory::new(owner);
+            let call = parse_arguments(&session, &factory, "as.logical(x)");
+            let call_raw = call.as_raw();
+            let env = crate::sexp::globals::R_GlobalEnv();
+            let nil = crate::sexp::globals::R_NilValue();
+            let guard = crate::sexp::context::begin_context_guard(
+                crate::sexp::context::ctxt_flags::CTXT_RETURN
+                    | crate::sexp::context::ctxt_flags::CTXT_FUNCTION,
+                call_raw,
+                env,
+                env,
+                None,
+                nil,
+                nil,
+            );
+            drop(call);
+            crate::sexp::gengc::full_gc();
+            let context = crate::sexp::context::R_GlobalContext();
+            assert!(!context.is_null());
+            assert_eq!((*context).call.as_raw(), call_raw);
+            assert_ne!(
+                (*context).callflag & crate::sexp::context::ctxt_flags::CTXT_FUNCTION,
+                0
+            );
+            let depth = crate::eval::context::framedepth(context);
+            assert!(depth >= 1);
+            other.with_active(|| {
+                assert_ne!(crate::sexp::context::R_GlobalContext(), context);
+                crate::sexp::gengc::full_gc();
+            });
+            assert_eq!(crate::sexp::context::R_GlobalContext(), context);
+            assert_eq!(crate::eval::context::framedepth(context), depth);
+            assert_eq!((*context).call.as_raw(), call_raw);
+            drop(guard);
+            assert_ne!(crate::sexp::context::R_GlobalContext(), context);
+        });
     }
 
     #[test]

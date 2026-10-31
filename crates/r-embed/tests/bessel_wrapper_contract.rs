@@ -37,9 +37,7 @@ fn public_bessel_wrappers() {
     }
 }
 
-// The primitive generic frame is omitted by current S3 dispatch: rport-vlmeo.
 #[test]
-#[ignore = "rport-vlmeo: primitive generic call frame is missing"]
 fn scaling_method_sees_gnu_primitive_generic_frame() {
     let mut session = RSession::new().unwrap();
     session.eval(r#"

@@ -15,7 +15,7 @@ use super::*;
 /// Dispatch an S3 method by creating the dispatch environment and calling
 /// the method function.
 unsafe fn dispatchMethod(
-    _op: SEXP,
+    op: SEXP,
     sxp: SEXP,
     dotClass: SEXP,
     cptr: *mut RCNTXT,
@@ -47,14 +47,18 @@ unsafe fn dispatchMethod(
         );
         let _newvars_guard = protect(newvars);
 
-        // GNU UseMethod rewrites the generic frame's call so
-        // sys.call(sys.parent()) is `abc.expression(e0)`, not `abc(e0)`.
+        // Existing closure-generic dispatch retains its method-call rewrite.
+        // Primitive dispatch keeps the generic frame's original call.
         let mut newcall = R_NilValue();
         if !cptr.is_null() {
             newcall = crate::mainutils::duplicate::shallow_duplicate((*cptr).call.as_raw());
             if !newcall.is_null() && newcall != R_NilValue() {
                 SETCAR(newcall, method);
-                (*cptr).call.replace_from_raw(newcall);
+                // A primitive generic's synthetic dispatch frame must retain
+                // the original call while the method has its own call frame.
+                if !op.is_null() && TYPEOF(op) == SEXPTYPE::CLOSXP {
+                    (*cptr).call.replace_from_raw(newcall);
+                }
             }
         }
 
