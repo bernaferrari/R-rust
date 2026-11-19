@@ -32,7 +32,7 @@ libm = { version = "0.2.16", default-features = false, features = ["force-soft-f
 num = "0.4"
 hashbrown.workspace = true
 allocator-api2 = "0.2"
-flate2 = { version = "1.1", default-features = false, features = ["zlib-rs"] }
+flate2 = { version = "1.1", default-features = false, features = ["rust_backend"] }
 bzip2 = "0.6"
 lzma-rs = "0.3"
 lzma-rust2 = { version = "0.21", default-features = false, features = ["std", "xz", "encoder"] }
