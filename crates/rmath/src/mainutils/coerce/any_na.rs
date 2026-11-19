@@ -2,7 +2,7 @@
 //! rather than to an ephemeral child argument list.
 use crate::sexp::{
     ffi::{NA_INTEGER, SEXP, SEXPTYPE},
-    object::Sexp,
+    object::{Sexp, SexpMut},
     owner::OwnerToken,
 };
 
@@ -11,9 +11,9 @@ pub fn any_na_impl(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> bool {
     let pin = owner.pin().expect("live anyNA owner");
     let f = owner.node_factory();
     let args = f.wrap(args).expect("anyNA argument owner");
-    let _call = (!call.is_null()).then(|| f.wrap(call).expect("anyNA call owner"));
+    let call_value = (!call.is_null()).then(|| f.wrap(call).expect("anyNA call owner"));
     let _op = (!op.is_null()).then(|| f.wrap(op).expect("anyNA operation owner"));
-    let _env = (!env.is_null()).then(|| f.wrap(env).expect("anyNA environment owner"));
+    let env_value = (!env.is_null()).then(|| f.wrap(env).expect("anyNA environment owner"));
     let check = || {
         if let Some(pin) = &pin {
             pin.require_live().expect("live anyNA owner after callback");
@@ -31,7 +31,21 @@ pub fn any_na_impl(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> bool {
     } else {
         false
     };
-    let result = scan(&x, recursive, env, &owner, &check);
+    let dispatch = call_value
+        .as_ref()
+        .filter(|call| !call.is_nil())
+        .and_then(|call| {
+            env_value
+                .as_ref()
+                .filter(|env| !env.is_nil())
+                .map(|_| NestedDispatch {
+                    call,
+                    op,
+                    args: &args,
+                    env,
+                })
+        });
+    let result = scan(&x, recursive, env, &owner, dispatch, &check);
     check();
     result
 }
@@ -112,22 +126,89 @@ fn scan<'s>(
     recursive: bool,
     env: SEXP,
     owner: &OwnerToken<'_>,
+    dispatch: Option<NestedDispatch<'_, 's>>,
     check: &impl Fn(),
 ) -> bool {
     if !recursive || !is_list(x) || x.is_object() {
         return leaf(x, recursive, env, check);
     }
     let mut stack = work::Stack::new(owner);
-    let mut pending = Some(x.clone());
-    while let Some(value) = pending {
+    stack.push(x.clone());
+    while let Some(value) = stack.next(check) {
+        if dispatch
+            .as_ref()
+            .is_some_and(|dispatch| dispatch.test(&value, check))
+        {
+            return true;
+        }
         if is_list(&value) && !value.is_object() {
             stack.push(value);
         } else if leaf(&value, true, env, check) {
             return true;
         }
-        pending = stack.next(check);
     }
     false
+}
+
+struct NestedDispatch<'a, 's> {
+    call: &'a Sexp<'s>,
+    op: SEXP,
+    args: &'a Sexp<'s>,
+    env: SEXP,
+}
+
+impl NestedDispatch<'_, '_> {
+    fn test(&self, value: &Sexp<'_>, check: &impl Fn()) -> bool {
+        if !value.is_object() && unsafe { super::IS_S4_OBJECT(value.as_raw()) } == 0 {
+            return false;
+        }
+        let factory = self
+            .args
+            .node_factory()
+            .expect("anyNA nested dispatch owner");
+        let copy = |value: &Sexp<'_>| {
+            let raw = unsafe { crate::mainutils::duplicate::shallow_duplicate(value.as_raw()) };
+            check();
+            factory.wrap(raw).expect("anyNA nested dispatch copy")
+        };
+        let args = copy(self.args);
+        let call = copy(self.call);
+        let mut args = SexpMut::try_from_checked(args).expect("anyNA nested arguments");
+        args.try_set_pairlist_car(value)
+            .expect("anyNA nested value");
+        let args = args.freeze();
+        {
+            let call_args = call.try_cdr().expect("anyNA nested call arguments");
+            let mut call_args = SexpMut::try_from_checked(call_args).expect("anyNA nested call");
+            call_args
+                .try_set_pairlist_car(value)
+                .expect("anyNA nested call value");
+        }
+
+        let mut answer = unsafe { crate::sexp::globals::R_NilValue() };
+        let dispatched = unsafe {
+            crate::eval::dispatch::DispatchOrEval(
+                call.as_raw(),
+                self.op,
+                c"anyNA".as_ptr(),
+                args.as_raw(),
+                self.env,
+                &mut answer,
+                0,
+                1,
+            ) != 0
+        };
+        check();
+        if !dispatched {
+            return false;
+        }
+        let answer = factory.wrap(answer).expect("anyNA nested dispatch result");
+        // GNU's recursive dispatch checks the integer result of asLogical.
+        // FALSE falls through to the default traversal and NA short-circuits.
+        let found = unsafe { super::asLogical(answer.as_raw()) } != 0;
+        check();
+        found
+    }
 }
 
 mod work;

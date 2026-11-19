@@ -19,6 +19,9 @@ const fixtures = resolve(root, 'crates/r-embed/tests/fixtures');
 const contracts = [
   // Check defaults before later contracts intentionally change session options.
   [resolve(fixtures, 'quote-options-contract.R'), resolve(fixtures, 'quote-options-contract.out')],
+  [resolve(fixtures, 'anyna-dispatch/contract.R'), resolve(fixtures, 'anyna-dispatch/contract.out')],
+  [resolve(root, 'tests/conformance/cases/600_smooth.R'),
+    resolve(root, 'tests/conformance/golden/600_smooth.out')],
   ...readdirSync(resolve(root, 'tests/conformance/cases'))
     .filter(name => /^\d+_utf8_(?:substring|string)_.*\.R$/.test(name))
     .sort()
