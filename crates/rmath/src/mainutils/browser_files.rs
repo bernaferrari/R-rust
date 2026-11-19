@@ -1,17 +1,19 @@
 //! Bounded files supplied by an embedding host.
 
 use crate::sexp::instance::with_current_instance;
+use crate::sexp::memory::{RArena, TransientReservation};
 use std::collections::HashMap;
 use std::io;
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub const MAX_FILE_BYTES: usize = 1024 * 1024;
+pub const MAX_FILE_PATH_BYTES: usize = 255;
 pub const MAX_SESSION_BYTES: usize = 8 * 1024 * 1024;
 pub const MAX_FILE_COUNT: usize = 128;
 
 struct StoredFile {
-    bytes: Vec<u8>,
+    bytes: FileBytes,
     mtime: f64,
     atime: f64,
     ctime: f64,
@@ -92,8 +94,12 @@ pub fn set_time_current(path: &str, secs: f64) -> bool {
 }
 
 pub fn write_current(path: &str, bytes: &[u8]) -> Result<(), String> {
-    with_current_instance(|instance| unsafe { (*instance).browser_files.put(path, bytes) })
-        .ok_or_else(|| "no active R session".to_string())?
+    with_current_instance(|instance| unsafe {
+        (*instance)
+            .browser_files
+            .put_with_arena(path, bytes, Some(&mut (*instance).arena))
+    })
+    .ok_or_else(|| "no active R session".to_string())?
 }
 
 pub fn remove_current(path: &str) -> bool {
@@ -109,8 +115,12 @@ pub fn list_current() -> Vec<String> {
 /// Copy one flat key onto another. A missing source is false and does not
 /// create `to` or read the host.
 pub fn copy_current(from: &str, to: &str) -> bool {
-    with_current_instance(|instance| unsafe { (*instance).browser_files.copy(from, to) })
-        .unwrap_or(false)
+    with_current_instance(|instance| unsafe {
+        (*instance)
+            .browser_files
+            .copy_with_arena(from, to, Some(&mut (*instance).arena))
+    })
+    .unwrap_or(false)
 }
 
 /// Write binary or text data using the current session's existing file policy.
@@ -118,8 +128,6 @@ pub fn write_bytes_or_host(path: &str, bytes: &[u8]) -> std::io::Result<()> {
     let enabled = with_current_instance(|instance| unsafe { (*instance).browser_files_enabled })
         .unwrap_or(false);
     if contains_current(path) || enabled {
-        BrowserFileStore::validate_file(path, bytes.len()).map_err(io::Error::other)?;
-        let _copy = reserve(bytes.len())?;
         return write_current(path, bytes).map_err(std::io::Error::other);
     }
     std::fs::write(path, bytes)
@@ -129,10 +137,30 @@ pub fn write_text_or_host(path: &str, bytes: &[u8]) -> std::io::Result<()> {
     write_bytes_or_host(path, bytes)
 }
 
-/// Retain native input-byte admission through its consumer's callbacks.
+/// Hold the budget charge for the lifetime of a file buffer.
 pub(crate) struct FileBytes {
     bytes: Vec<u8>,
-    _reservation: Option<crate::sexp::memory::TransientReservation>,
+    _reservation: Option<TransientReservation>,
+}
+
+impl FileBytes {
+    fn copy(bytes: &[u8], arena: Option<&mut RArena>) -> Result<Self, String> {
+        let _reservation = arena
+            .map(|arena| {
+                arena
+                    .try_reserve_transient(bytes.len())
+                    .ok_or_else(|| "browser file exceeds session memory limit".to_string())
+            })
+            .transpose()?;
+        let mut data = Vec::new();
+        data.try_reserve_exact(bytes.len())
+            .map_err(|_| "could not allocate browser file data".to_string())?;
+        data.extend_from_slice(bytes);
+        Ok(Self {
+            bytes: data,
+            _reservation,
+        })
+    }
 }
 
 impl std::ops::Deref for FileBytes {
@@ -346,7 +374,7 @@ impl BrowserFileStore {
 
     pub fn validate_path(path: &str) -> Result<(), String> {
         if path.is_empty()
-            || path.len() > 255
+            || path.len() > MAX_FILE_PATH_BYTES
             || path.starts_with('/')
             || path.contains('\\')
             || path.contains(':')
@@ -368,7 +396,7 @@ impl BrowserFileStore {
     }
 
     pub fn read(&self, path: &str) -> Option<&[u8]> {
-        self.files.get(path).map(|file| file.bytes.as_slice())
+        self.files.get(path).map(|file| &*file.bytes)
     }
 
     pub fn info(&self, path: &str) -> Option<BrowserFileInfo> {
@@ -408,31 +436,42 @@ impl BrowserFileStore {
         Ok(())
     }
 
-    pub fn put(&mut self, path: &str, bytes: &[u8]) -> Result<(), String> {
-        Self::validate_file(path, bytes.len())?;
-        let old = self.files.get(path).map_or(0, |file| file.bytes.len());
-        if old == 0 && !self.files.contains_key(path) && self.files.len() >= MAX_FILE_COUNT {
+    fn total_after_write(&self, path: &str, size: usize) -> Result<usize, String> {
+        Self::validate_file(path, size)?;
+        let existing = self.files.get(path);
+        if existing.is_none() && self.files.len() >= MAX_FILE_COUNT {
             return Err(format!(
                 "browser file store exceeds {} file limit",
                 MAX_FILE_COUNT
             ));
         }
-        let total = self
-            .total_bytes
-            .saturating_sub(old)
-            .saturating_add(bytes.len());
+        let old = existing.map_or(0, |file| file.bytes.len());
+        let total = self.total_bytes - old + size;
         if total > MAX_SESSION_BYTES {
             return Err(format!(
                 "browser file store exceeds {} byte limit",
                 MAX_SESSION_BYTES
             ));
         }
+        Ok(total)
+    }
+
+    fn publish(&mut self, path: &str, bytes: FileBytes, total: usize) -> Result<(), String> {
+        if !self.files.contains_key(path) {
+            self.files
+                .try_reserve(1)
+                .map_err(|_| "could not allocate browser file entry".to_string())?;
+        }
+        let mut key = String::new();
+        key.try_reserve_exact(path.len())
+            .map_err(|_| "could not allocate browser file path".to_string())?;
+        key.push_str(path);
         let now = self.now();
         let ctime = self.files.get(path).map(|file| file.ctime).unwrap_or(now);
         self.files.insert(
-            path.to_owned(),
+            key,
             StoredFile {
-                bytes: bytes.to_vec(),
+                bytes,
                 mtime: now,
                 atime: now,
                 ctime,
@@ -440,6 +479,23 @@ impl BrowserFileStore {
         );
         self.total_bytes = total;
         Ok(())
+    }
+
+    pub fn put(&mut self, path: &str, bytes: &[u8]) -> Result<(), String> {
+        self.put_with_arena(path, bytes, None)
+    }
+
+    fn put_with_arena(
+        &mut self,
+        path: &str,
+        bytes: &[u8],
+        arena: Option<&mut RArena>,
+    ) -> Result<(), String> {
+        let total = self.total_after_write(path, bytes.len())?;
+        // During replacement the old file stays charged until publication
+        // drops its bytes. An admission or allocation failure leaves it intact.
+        let data = FileBytes::copy(bytes, arena)?;
+        self.publish(path, data, total)
     }
 
     pub fn clear(&mut self) {
@@ -458,10 +514,20 @@ impl BrowserFileStore {
     /// Duplicate bytes under a new flat key. Missing `from` is false.
     /// A rejected `to` leaves both keys as they were.
     pub fn copy(&mut self, from: &str, to: &str) -> bool {
-        let Some(bytes) = self.files.get(from).map(|file| file.bytes.clone()) else {
+        self.copy_with_arena(from, to, None)
+    }
+
+    fn copy_with_arena(&mut self, from: &str, to: &str, arena: Option<&mut RArena>) -> bool {
+        let Some(bytes) = self.read(from) else {
             return false;
         };
-        self.put(to, &bytes).is_ok()
+        let Ok(total) = self.total_after_write(to, bytes.len()) else {
+            return false;
+        };
+        let Ok(data) = FileBytes::copy(bytes, arena) else {
+            return false;
+        };
+        self.publish(to, data, total).is_ok()
     }
 
     pub fn names(&self) -> Vec<String> {
@@ -475,6 +541,36 @@ impl BrowserFileStore {
 mod tests {
     use super::*;
     use crate::sexp::{memory::ArenaBudget, session::RSession};
+
+    fn admitted_bytes(session: &mut RSession) -> usize {
+        session
+            .with_arena(|arena| arena.total_bytes_allocated() + arena.workspace_bytes())
+            .unwrap()
+    }
+
+    #[test]
+    fn stored_files_charge_the_session_through_copy_replace_and_remove() {
+        let mut session = RSession::new_for_gc_tests();
+        let baseline = admitted_bytes(&mut session);
+        session.set_arena_budget(ArenaBudget::new(baseline + 6, 0));
+        session.put_browser_file("source.csv", b"1,2\n").unwrap();
+        assert_eq!(admitted_bytes(&mut session), baseline + 4);
+
+        session.with_active(|| {
+            assert!(!copy_current("source.csv", "copy.csv"));
+            assert!(!contains_current("copy.csv"));
+            assert!(write_current("source.csv", b"123").is_err());
+            assert_eq!(read_current("source.csv").unwrap(), b"1,2\n");
+            write_current("source.csv", b"3\n").unwrap();
+            assert!(copy_current("source.csv", "copy.csv"));
+        });
+        assert_eq!(admitted_bytes(&mut session), baseline + 4);
+        assert!(session.remove_browser_file("source.csv"));
+        assert_eq!(admitted_bytes(&mut session), baseline + 2);
+        assert_eq!(session.get_browser_file("copy.csv").unwrap(), b"3\n");
+        assert!(session.remove_browser_file("copy.csv"));
+        assert_eq!(admitted_bytes(&mut session), baseline);
+    }
 
     #[test]
     fn file_store_explicit_clock_preserves_creation_and_touch_semantics() {
@@ -508,9 +604,7 @@ mod tests {
         let mut session = RSession::new_for_gc_tests();
         session.enable_browser_files();
         session.put_browser_file("saved.rds", &[1, 2, 3]).unwrap();
-        let baseline = session
-            .with_arena(|arena| arena.total_bytes_allocated())
-            .unwrap();
+        let baseline = admitted_bytes(&mut session);
         session.set_arena_budget(ArenaBudget::new(baseline + 3, 0));
         session.with_active(|| {
             let bytes = read_admitted_bytes_or_host("saved.rds").unwrap();
@@ -531,9 +625,7 @@ mod tests {
         session.enable_browser_files();
         session.put_browser_file("note.txt", b"hello").unwrap();
         session.put_browser_file("bad.txt", &[0xff]).unwrap();
-        let baseline = session
-            .with_arena(|arena| arena.total_bytes_allocated())
-            .unwrap();
+        let baseline = admitted_bytes(&mut session);
         session.set_arena_budget(ArenaBudget::new(baseline + 5, 0));
         session.with_active(|| {
             let text = read_text_or_host("note.txt").unwrap();
@@ -592,9 +684,7 @@ mod tests {
             }
             assert_eq!(&*read_text_or_host("small.xz").unwrap(), "answer <- 42\n");
         });
-        let baseline = session
-            .with_arena(|arena| arena.total_bytes_allocated())
-            .unwrap();
+        let baseline = admitted_bytes(&mut session);
         session.set_arena_budget(ArenaBudget::new(baseline + 256 * 1024, 0));
         session.with_active(|| {
             assert!(read_text_or_host("bomb.gz").is_err());

@@ -335,13 +335,13 @@ impl RSession {
 
     pub fn put_browser_file(&mut self, path: &str, bytes: &[u8]) -> Result<(), String> {
         let _guard = self.activate();
-        unsafe {
-            let result = (*self.instance).browser_files.put(path, bytes);
-            if result.is_ok() {
+        let result = crate::mainutils::browser_files::write_current(path, bytes);
+        if result.is_ok() {
+            unsafe {
                 (*self.instance).browser_files_enabled = true;
             }
-            result
         }
+        result
     }
     pub fn get_browser_file(&mut self, path: &str) -> Option<Vec<u8>> {
         let _guard = self.activate();
