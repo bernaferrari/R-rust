@@ -5,7 +5,7 @@
     {"id": "model-persistence", "workflow": "Fit and predict a linear model with categorical inputs and save the results as RDS", "case": "1209_everyday_model_persistence"},
     {"id": "categorical-analysis", "workflow": "Inspect and summarize categorical data with missing and unused levels", "case": "1210_everyday_categorical_analysis"},
     {"id": "calendar-analysis", "workflow": "Parse timestamps and summarize observations by local day across a time-zone transition", "case": "1211_everyday_calendar_analysis"},
-    {"id": "reproducible-resampling", "workflow": "Run a seeded resampling analysis and reproduce its estimates in a fresh session"},
+    {"id": "reproducible-resampling", "workflow": "Run a seeded resampling analysis and reproduce its estimates in a fresh session", "case": "1216_everyday_seeded_resampling"},
     {"id": "binomial-model", "workflow": "Fit a binomial model with missing observations and export probabilities for new rows", "case": "1213_everyday_binomial_model"},
     {"id": "missing-data-cleaning", "workflow": "Clean, filter and summarize measurements with missing values and non-finite inputs", "case": "1212_everyday_missing_data_cleaning"},
     {"id": "compressed-data", "workflow": "Read compressed delimited data and export a cleaned table"},

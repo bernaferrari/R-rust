@@ -38,6 +38,7 @@ const contracts = [
     '1213_everyday_binomial_model',
     '1214_everyday_matrix_analysis',
     '1215_everyday_seasonal_forecast',
+    '1216_everyday_seeded_resampling',
   ].map(name => [
     resolve(root, 'tests/conformance/cases', name + '.R'),
     resolve(root, 'tests/conformance/golden', name + '.out'),
