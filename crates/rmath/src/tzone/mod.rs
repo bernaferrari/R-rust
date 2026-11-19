@@ -16,7 +16,9 @@
  */
 
 use std::env;
+#[cfg(not(target_arch = "wasm32"))]
 use std::fs::File;
+#[cfg(not(target_arch = "wasm32"))]
 use std::io::Read;
 
 use crate::sexp::instance::with_required_current_instance;
@@ -26,6 +28,8 @@ use crate::sexp::instance::with_required_current_instance;
 // ---------------------------------------------------------------------------
 
 // Split from the original single-file module; pure code movement.
+#[cfg(any(target_arch = "wasm32", test))]
+mod bundled;
 mod consts;
 mod load;
 mod localtime;
@@ -37,6 +41,8 @@ mod utils;
 #[cfg(test)]
 mod tests;
 
+#[cfg(target_arch = "wasm32")]
+pub(crate) use bundled::bundled_zone_names;
 pub(crate) use consts::*;
 pub(crate) use load::*;
 pub(crate) use localtime::*;

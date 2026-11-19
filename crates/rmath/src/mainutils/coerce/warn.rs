@@ -273,21 +273,14 @@ pub unsafe fn SHALLOW_DUPLICATE_ATTRIB(to: SEXP, from: SEXP) {
             if !isNull(dimnames) {
                 setAttrib(to, R_DimNamesSymbol(), dimnames);
             }
-            let names = getAttrib(from, R_NamesSymbol());
-            if !isNull(names) {
-                setAttrib(to, R_NamesSymbol(), names);
-            }
-            // Coercion before subassignment must retain raw `tsp` and custom
-            // metadata too. Internal transfer must not revalidate attributes
-            // against a temporary result (which may be enlarged afterward).
+            // Copy stored metadata. Looking up names through getAttrib on a
+            // one-dimensional array exposes its axis labels as vector names.
+            // Setting those names would replace the already copied dimnames
+            // list and lose the axis name.
             let mut attr = attr_from;
             while !isNull(attr) {
                 let tag = TAG(attr);
-                if tag != R_ClassSymbol()
-                    && tag != R_DimSymbol()
-                    && tag != R_DimNamesSymbol()
-                    && tag != R_NamesSymbol()
-                {
+                if tag != R_ClassSymbol() && tag != R_DimSymbol() && tag != R_DimNamesSymbol() {
                     crate::sexp::attrib_core::installAttrib(to, tag, CAR(attr));
                 }
                 attr = CDR(attr);

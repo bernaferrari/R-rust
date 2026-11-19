@@ -103,7 +103,7 @@ pub unsafe fn do_dot_POSIXct(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> S
     }
 }
 
-/// R's `OlsonNames()` — known IANA timezone names from the system zoneinfo DB.
+/// R's `OlsonNames()` — known IANA timezone names on the current host.
 pub unsafe fn do_OlsonNames(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let zones = olson_names();
@@ -123,6 +123,14 @@ pub unsafe fn do_OlsonNames(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> 
     }
 }
 
+#[cfg(target_arch = "wasm32")]
+fn olson_names() -> Vec<String> {
+    crate::tzone::bundled_zone_names()
+        .map(str::to_owned)
+        .collect()
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 fn olson_names() -> Vec<String> {
     let mut names = BTreeSet::new();
     for root in ["/var/db/timezone/zoneinfo", "/usr/share/zoneinfo"] {
@@ -131,6 +139,7 @@ fn olson_names() -> Vec<String> {
     names.into_iter().collect()
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn collect_olson_names(root: &Path, relative: &Path, names: &mut BTreeSet<String>) {
     let current = root.join(relative);
     let Ok(entries) = std::fs::read_dir(current) else {
@@ -162,6 +171,7 @@ fn collect_olson_names(root: &Path, relative: &Path, names: &mut BTreeSet<String
     }
 }
 
+#[cfg(any(not(target_arch = "wasm32"), test))]
 pub(crate) fn skip_olson_component(name: &str) -> bool {
     let metadata_extension = Path::new(name)
         .extension()

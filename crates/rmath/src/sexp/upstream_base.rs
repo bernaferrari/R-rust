@@ -1617,7 +1617,7 @@ unsafe fn load_profile_common_bindings(base_env: SEXP) {
 unsafe fn bootstrap_builtin_needs_closure(env: SEXP, name: &str) -> bool {
     if !matches!(
         name,
-        "besselI" | "besselJ" | "besselK" | "besselY" | "difftime"
+        "as.Date" | "besselI" | "besselJ" | "besselK" | "besselY" | "difftime"
     ) || unsafe { env != super::globals::R_BaseEnv() }
     {
         return false;

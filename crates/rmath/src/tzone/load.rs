@@ -135,39 +135,8 @@ fn copy_to_tzname_buf(g: &mut TzGlobals, which: usize, abbr: &[u8]) {
 // tzload
 // ---------------------------------------------------------------------------
 
-pub(crate) fn tzload(name: Option<&str>, sp: &mut state, doextend: bool) -> i32 {
-    sp.goback = 0;
-    sp.goahead = 0;
-
-    let effective_name: String;
-    let sname: String;
-    let name_ref: &str;
-
-    match name {
-        Some(n) => {
-            effective_name = n.to_string();
-            sname = effective_name.clone();
-            name_ref = &effective_name;
-        }
-        None => {
-            let tz_info = get_tzinfo();
-            if tz_info == "unknown" {
-                effective_name = TZDEFAULT.to_string();
-            } else {
-                effective_name = tz_info;
-            }
-            sname = effective_name.clone();
-            name_ref = &effective_name;
-        }
-    }
-
-    #[allow(clippy::manual_strip)]
-    let name_stripped = if name_ref.starts_with(':') {
-        &name_ref[1..]
-    } else {
-        name_ref
-    };
-
+#[cfg(not(target_arch = "wasm32"))]
+fn read_system_zone(name_stripped: &str) -> Option<Vec<u8>> {
     // Build the full path
     let fullname: String;
     let name_to_use: &str;
@@ -203,37 +172,53 @@ pub(crate) fn tzload(name: Option<&str>, sp: &mut state, doextend: bool) -> i32 
     // configured zoneinfo dir, then the platform zoneinfo database
     // (/usr/share/zoneinfo on macOS/Linux — what the system libc would
     // use), then UTC.
-    let mut file = match File::open(name_to_use) {
-        Ok(f) => f,
-        Err(_) => {
-            let candidates = [
-                format!("/usr/share/zoneinfo/{name_stripped}"),
-                format!("/var/db/timezone/zoneinfo/{name_stripped}"),
-            ];
-            let mut opened = None;
-            for candidate in &candidates {
-                if let Ok(f) = File::open(candidate) {
-                    opened = Some(f);
-                    break;
-                }
-            }
-            match opened {
-                Some(f) => f,
-                None => {
-                    rf_warning(&format!("unknown timezone '{sname}'"));
-                    return -1;
-                }
+    let file = File::open(name_to_use).ok().or_else(|| {
+        [
+            format!("/usr/share/zoneinfo/{name_stripped}"),
+            format!("/var/db/timezone/zoneinfo/{name_stripped}"),
+        ]
+        .into_iter()
+        .find_map(|candidate| File::open(candidate).ok())
+    })?;
+
+    // Bound host reads before parsing. This covers both TZif blocks at the
+    // parser's supported count limits, plus the POSIX rule suffix.
+    const MAX_TZIF_BYTES: usize = 64 * 1024;
+    let mut data = Vec::new();
+    file.take((MAX_TZIF_BYTES + 1) as u64)
+        .read_to_end(&mut data)
+        .ok()?;
+    (!data.is_empty() && data.len() <= MAX_TZIF_BYTES).then_some(data)
+}
+
+pub(crate) fn tzload(name: Option<&str>, sp: &mut state, doextend: bool) -> i32 {
+    sp.goback = 0;
+    sp.goahead = 0;
+
+    let default_name;
+    let name = match name {
+        Some(name) => name,
+        None => {
+            default_name = get_tzinfo();
+            if default_name == "unknown" {
+                TZDEFAULT
+            } else {
+                &default_name
             }
         }
     };
+    let name_stripped = name.strip_prefix(':').unwrap_or(name);
 
-    // Read the file content
-    // C code uses a union buffer of size:
-    //   2 * sizeof(tzhead) + 2 * sizeof(state) + 4 * TZ_MAX_TIMES
-    // We'll just read the whole file into a Vec.
-    let mut data = Vec::new();
-    if file.read_to_end(&mut data).is_err() || data.is_empty() {
-        rf_warning(&format!("unknown timezone '{}'", sname));
+    #[cfg(not(target_arch = "wasm32"))]
+    let data = read_system_zone(name_stripped);
+    #[cfg(target_arch = "wasm32")]
+    let data = super::bundled::load(name_stripped);
+    let Some(mut data) = data else {
+        rf_warning(&format!("unknown timezone '{name}'"));
+        return -1;
+    };
+
+    if !data.starts_with(b"TZif") {
         return -1;
     }
 

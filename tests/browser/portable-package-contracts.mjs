@@ -32,6 +32,9 @@ const contracts = [
     '1207_factor_drop_missing_level',
     '1208_everyday_csv_summary',
     '1209_everyday_model_persistence',
+    '1210_everyday_categorical_analysis',
+    '1211_everyday_calendar_analysis',
+    '1212_everyday_missing_data_cleaning',
   ].map(name => [
     resolve(root, 'tests/conformance/cases', name + '.R'),
     resolve(root, 'tests/conformance/golden', name + '.out'),
