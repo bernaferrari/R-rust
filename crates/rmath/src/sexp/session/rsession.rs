@@ -118,6 +118,12 @@ impl RSession {
         };
         unsafe {
             set_current_instance(instance);
+            // Error rendering reads this option while handling allocation
+            // failures. Intern it per runtime before callers can lower the
+            // session memory budget, so rendering the original error does not
+            // itself fail while allocating the option symbol.
+            let _show_error_locations_symbol =
+                crate::sexp::symbol::Rf_install(c"show.error.locations".as_ptr());
             install_state(&mut (*instance).math_state as *mut MathState);
             install_rng(&mut (*instance).rng_state as *mut RngState);
             // Route the nmath samplers through the full R-level RNG dispatch

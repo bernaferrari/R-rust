@@ -30,8 +30,13 @@ pub(crate) unsafe fn eval_gnu_adapter(
         let owned_words = owned_instruction_words(&code_owned);
         let words = owned_words.as_slice();
         let (supported, switches) =
-            super::super::bytecode::validate_gnu_adapter_with_owned_constants(words, &constants)
-                .unwrap_or_else(|message| bc_error(message));
+            super::super::bytecode::validate_gnu_adapter_with_owned_constants(
+                words,
+                &constants,
+                &consts_owned,
+                &code_owned,
+            )
+            .unwrap_or_else(|message| bc_error(message));
         if !supported {
             bc_mismatch("unsupported tagged GNU bytecode stream (outside bounded adapter)");
         }

@@ -114,13 +114,15 @@ pub(crate) unsafe fn read_bc_source(
         if TYPEOF(code) != SEXPTYPE::INTSXP {
             return Err("GNU bytecode instructions must be integers".into());
         }
-        let n = XLENGTH(code) as usize;
-        let words = if n == 0 {
-            &[]
-        } else {
-            std::slice::from_raw_parts(INTEGER(code), n)
-        };
-        crate::eval::bytecode::validate_gnu_bytecode_stream(words)?;
+        {
+            let n = XLENGTH(code) as usize;
+            let words = if n == 0 {
+                &[]
+            } else {
+                std::slice::from_raw_parts(INTEGER(code), n)
+            };
+            crate::eval::bytecode::validate_gnu_bytecode_stream(words)?;
+        }
         let count = reader.read_object_vector_length()?;
         if count == 0 {
             return Err("GNU compiled closure has no source expression".into());
@@ -172,7 +174,7 @@ pub(crate) unsafe fn read_bc_source(
         // Keep source fallback for every validated GNU stream outside the
         // bounded adapter. This avoids treating a private opcode collision as
         // GNU execution and preserves the existing interpreted behavior.
-        if !crate::eval::bytecode::validate_gnu_adapter_with_constants(words, constants)? {
+        if !crate::eval::bytecode::validate_gnu_adapter_with_constants(code, constants)? {
             return Ok(VECTOR_ELT(constants, 0));
         }
 

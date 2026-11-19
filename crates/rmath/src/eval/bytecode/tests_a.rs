@@ -545,11 +545,8 @@ fn bounded_gnu_adapter_proves_branch_targets_and_stack_shape() {
             .unwrap_err()
             .contains("stack depth 1")
     );
-    assert!(
-        validate_gnu_adapter_stream(&[12, 18, 19, 1], 0)
-            .unwrap_err()
-            .contains("stack depth 1")
-    );
+    // GNU RETURN pops the top result and discards lower operands.
+    assert_eq!(validate_gnu_adapter_stream(&[12, 18, 19, 1], 0), Ok(true));
     assert!(
         validate_gnu_adapter_stream(&[12, 18], 0)
             .unwrap_err()
@@ -741,7 +738,7 @@ fn accepts_pinned_compiler_fixture_stream() {
 }
 
 #[test]
-fn gnu_dup_validator_rejects_underflow_and_unbalanced_deep_returns() {
+fn gnu_dup_validator_rejects_underflow_and_accepts_discarded_deep_operands() {
     assert!(
         validate_gnu_adapter_stream(&[12, 5, 1], 0)
             .unwrap_err()
@@ -750,10 +747,8 @@ fn gnu_dup_validator_rejects_underflow_and_unbalanced_deep_returns() {
     let mut words = vec![12, 17];
     words.extend(std::iter::repeat_n(5, 64));
     words.push(1);
-    assert!(
-        validate_gnu_adapter_stream(&words, 0)
-            .unwrap_err()
-            .contains("requires stack depth 1, found 65")
-    );
+    // Pinned GNU mkCode returns NULL with all65 operands on the stack;
+    // RETURN discards the lower64 rather than requiring an exact depth.
+    assert_eq!(validate_gnu_adapter_stream(&words, 0), Ok(true));
     assert!(validate_gnu_adapter_stream(&[12, 17, 5, 4, 1], 0).unwrap());
 }

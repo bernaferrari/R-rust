@@ -217,16 +217,40 @@ mod transform_tests {
                 fft(input, inverse);
             }))
             .expect_err("FFT workspace limit must be recoverable");
+            let error = failure.downcast_ref::<crate::sexp::context::RError>();
             assert!(
-                failure
-                    .downcast_ref::<crate::sexp::context::RError>()
-                    .is_some_and(|error| error.message.contains("FFT workspace"))
+                error.is_some_and(|error| error.message.contains("FFT workspace")),
+                "expected an FFT workspace error, got {error:?}"
             );
 
             session.set_arena_budget(crate::sexp::memory::ArenaBudget::unlimited());
             let result = fft(input, inverse);
             assert_eq!(LENGTH(result), 4);
         }
+    }
+
+    #[test]
+    fn low_budget_error_reporting_preserves_the_original_error() {
+        let mut session = crate::sexp::session::RSession::new();
+        let retained_bytes = session
+            .with_arena(|arena| arena.total_bytes_allocated())
+            .unwrap();
+        // The error condition itself needs a small, fixed amount of arena
+        // space. Leave that room while still exercising the low-budget path.
+        session.set_arena_budget(crate::sexp::memory::ArenaBudget::new(
+            retained_bytes + 255,
+            0,
+        ));
+        let failure = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+            crate::mainutils::errors::Rf_error(c"direct low-budget sentinel".as_ptr());
+        }))
+        .expect_err("Rf_error must remain an R error under a low memory limit");
+        assert_eq!(
+            failure
+                .downcast_ref::<crate::sexp::context::RError>()
+                .map(|error| error.message.as_str()),
+            Some("direct low-budget sentinel")
+        );
     }
 
     #[test]
