@@ -118,7 +118,7 @@ pub(crate) unsafe fn ensure_namespace_info(
                 CString::new(package).unwrap_or_default().as_ptr(),
             ),
         );
-        let version = std::fs::read_to_string(package_dir.join("DESCRIPTION"))
+        let version = read_package_text(&package_dir.join("DESCRIPTION"))
             .ok()
             .and_then(|content| description_fields(&content).remove("Version"))
             .unwrap_or_else(|| {
