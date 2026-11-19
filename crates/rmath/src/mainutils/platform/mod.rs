@@ -22,6 +22,8 @@ use crate::sexp::protect::protect;
 
 mod datetime;
 mod files;
+#[cfg(not(target_arch = "wasm32"))]
+mod native_copy;
 mod sysinfo;
 #[cfg(test)]
 mod tests;

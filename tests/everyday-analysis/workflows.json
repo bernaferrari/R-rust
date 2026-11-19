@@ -13,7 +13,7 @@
     {"id": "base-plot-export", "workflow": "Generate and export a labeled, layered base R plot"},
     {"id": "grid-layout", "workflow": "Lay out a multi-panel grid figure and replay it at a different size"},
     {"id": "series-forecast", "workflow": "Fit and forecast a seasonal time series with validation on held-out observations", "case": "1215_everyday_seasonal_forecast"},
-    {"id": "multi-file-script", "workflow": "Run a multi-file analysis after copying an existing script directory"},
+    {"id": "multi-file-script", "workflow": "Run a multi-file analysis after copying an existing script directory", "case": "1218_everyday_multifile_project"},
     {"id": "fresh-session-restore", "workflow": "Restore saved analysis objects and reproduce results in a fresh session"},
     {"id": "pure-r-package", "workflow": "Install or provision a pinned pure-R package, load it and use it in an analysis"},
     {"id": "package-native-code", "workflow": "Provision a package that uses compiled numerical code and run its analysis example"},

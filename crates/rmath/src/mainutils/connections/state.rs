@@ -102,6 +102,7 @@ pub struct RConn {
     pub raw_data: Vec<u8>,
     /// The admitted file version held by an open browser connection.
     pub(super) browser_snapshot: Option<Rc<FileBytes>>,
+    pub(super) browser_path: Option<String>,
     pub(super) browser_read_filter: BrowserReadFilter,
     /// Text lines buffer (for textConnection reading).
     pub text_data: String,
@@ -144,6 +145,7 @@ impl RConn {
             raw_pos: 0,
             raw_data: Vec::new(),
             browser_snapshot: None,
+            browser_path: None,
             browser_read_filter: BrowserReadFilter::TextGzip,
             text_data: String::new(),
             text_pos: 0,
@@ -742,10 +744,12 @@ pub(super) fn append_browser_file(
     bytes: &[u8],
     sep: &[u8],
 ) -> Result<(), String> {
-    let snapshot = browser_files::write_snapshot_current(
-        &conn.description,
-        &[conn.buffered_bytes(), bytes, sep],
-    )?;
+    let path = conn
+        .browser_path
+        .as_deref()
+        .ok_or("browser connection is not open")?;
+    let snapshot =
+        browser_files::write_snapshot_current(path, &[conn.buffered_bytes(), bytes, sep])?;
     conn.raw_pos = snapshot.len();
     conn.browser_snapshot = Some(snapshot);
     Ok(())

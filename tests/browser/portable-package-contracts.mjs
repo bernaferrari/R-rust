@@ -40,6 +40,7 @@ const contracts = [
     '1215_everyday_seasonal_forecast',
     '1216_everyday_seeded_resampling',
     '1217_everyday_compressed_table',
+    '1218_everyday_multifile_project',
   ].map(name => [
     resolve(root, 'tests/conformance/cases', name + '.R'),
     resolve(root, 'tests/conformance/golden', name + '.out'),

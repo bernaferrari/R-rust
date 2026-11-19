@@ -94,7 +94,13 @@ pub fn R_tmpnam2(prefix: &str, tempdir: &str, fileext: &str) -> Option<String> {
         let r1 = next_tempfile_serial()?;
         let name = format!("{}/{}{:08x}{:016x}{}", tempdir, prefix, pid, r1, fileext);
 
-        if !R_FileExists(&name) {
+        let exists = if super::browser_files::enabled() {
+            super::browser_files::contains_current(&name)
+                || super::browser_files::dir_exists_current(&name)
+        } else {
+            R_FileExists(&name)
+        };
+        if !exists {
             return Some(name);
         }
     }

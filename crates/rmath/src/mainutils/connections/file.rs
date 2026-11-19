@@ -203,7 +203,8 @@ fn open_browser_file(conn: &mut RConn, mode: &str) -> Result<(), String> {
     if matches!(conn.browser_read_filter, BrowserReadFilter::Gzip) && !mode.starts_with('r') {
         return Err("browser gzfile connections only support read modes".into());
     }
-    let snapshot = browser_files::open_snapshot_current(&conn.description, open_mode)?;
+    let path = browser_files::absolute_current(&conn.description)?;
+    let snapshot = browser_files::open_snapshot_current(&path, open_mode)?;
     let decode_gzip = match conn.browser_read_filter {
         BrowserReadFilter::TextGzip => matches!(mode, "r" | "rt"),
         BrowserReadFilter::Raw => false,
@@ -225,6 +226,7 @@ fn open_browser_file(conn: &mut RConn, mode: &str) -> Result<(), String> {
         0
     };
     conn.browser_snapshot = Some(snapshot);
+    conn.browser_path = Some(path);
     conn.kind = ConnKind::BrowserFile;
     conn.mode.clear();
     conn.mode.push_str(mode);
@@ -1045,6 +1047,7 @@ pub fn close_connection_inner(conn: &mut RConn) {
 
     conn.isopen = false;
     conn.browser_snapshot = None;
+    conn.browser_path = None;
 
     // Close file handles
     if let Some(mut writer) = conn.writer.take() {

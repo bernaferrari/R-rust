@@ -490,6 +490,11 @@ pub(crate) unsafe fn context_index_arg(args: SEXP, default: c_int) -> c_int {
 /// R's `getwd()` — get working directory.
 pub unsafe fn do_getwd(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
+        use crate::mainutils::browser_files;
+        if browser_files::enabled() {
+            let path = CString::new(browser_files::getcwd_current()).unwrap_or_default();
+            return Rf_mkString(path.as_ptr());
+        }
         match std::env::current_dir() {
             Ok(path) => {
                 let s = path.to_string_lossy();
@@ -504,31 +509,41 @@ pub unsafe fn do_getwd(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP 
 /// R's `setwd(dir)` — set working directory.
 pub unsafe fn do_setwd(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let allowed = crate::sexp::instance::with_required_current_instance(|inst| {
-            (*inst).eval_state.capabilities.allow_environment_mutation
-        });
-        if !allowed {
-            std::panic::panic_any(crate::sexp::context::RError {
-                message: "changing the working directory is disabled for this session".into(),
-            });
-        }
+        use crate::mainutils::browser_files;
         let dir_arg = CAR(args);
-        if dir_arg.is_null() {
-            return R_NilValue();
+        if crate::sexp::accessors::TYPEOF(dir_arg) != SEXPTYPE::STRSXP
+            || XLENGTH(dir_arg) != 1
+            || STRING_ELT(dir_arg, 0) == crate::sexp::globals::R_NaString()
+        {
+            crate::sexp::context::r_error("invalid 'dir' argument");
         }
         let path = elt_to_string(dir_arg, 0);
-        match std::env::set_current_dir(&path) {
-            Ok(()) => {
-                crate::sexp::globals::set_R_Visible(FALSE);
-                let cstr = CString::new(path).unwrap_or_default();
-                Rf_mkString(cstr.as_ptr())
+        let previous = if browser_files::enabled() {
+            browser_files::chdir_current(&path)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error))
+        } else {
+            let allowed = crate::sexp::instance::with_required_current_instance(|inst| {
+                (*inst).eval_state.capabilities.allow_environment_mutation
+            });
+            if !allowed {
+                crate::sexp::context::r_error(
+                    "changing the working directory is disabled for this session",
+                );
             }
-            Err(_) => {
-                std::panic::panic_any(crate::sexp::context::RError {
-                    message: format!("cannot change working directory to '{}'", path),
-                });
+            let previous = std::env::current_dir();
+            if std::env::set_current_dir(&path).is_err() {
+                crate::sexp::context::r_error(format!(
+                    "cannot change working directory to '{path}'"
+                ));
             }
-        }
+            let Ok(previous) = previous else {
+                return R_NilValue();
+            };
+            previous.to_string_lossy().into_owned()
+        };
+        crate::sexp::globals::set_R_Visible(FALSE);
+        let path = CString::new(previous).unwrap_or_default();
+        Rf_mkString(path.as_ptr())
     }
 }
 
@@ -642,8 +657,7 @@ fn unlink_glob(pat: &str, name: &str) -> bool {
 
 pub unsafe fn do_unlink(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        // Browser mode is a flat key store. Delegate before any host read so a
-        // missing path, including recursive=TRUE, cannot fall through to std::fs.
+        // Browser paths are resolved only inside the owning session.
         if crate::mainutils::browser_files::enabled() {
             return crate::mainutils::platform::do_unlink(call, op, args, rho);
         }

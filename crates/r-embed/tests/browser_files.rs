@@ -136,7 +136,7 @@ fn browser_mode_creates_files_without_import_and_opens_deferred_connections() {
     assert_eq!(std::fs::read(&probe).unwrap(), b"HOSTSECRET");
     assert_eq!(
         s.eval(&format!(
-            "identical(unlink('copied.txt'), TRUE) && !file.exists('copied.txt') && identical(unlink('copied.txt'), FALSE) && identical(unlink('{probe_r}', recursive = TRUE), FALSE) && identical(unlink('missing-virtual', recursive = TRUE), FALSE)"
+            "identical(unlink('copied.txt'), 0L) && !file.exists('copied.txt') && identical(unlink('copied.txt'), 0L) && identical(unlink('{probe_r}', recursive = TRUE), 0L) && identical(unlink('missing-virtual', recursive = TRUE), 0L)"
         ))
         .unwrap()
         .trim(),
@@ -145,7 +145,7 @@ fn browser_mode_creates_files_without_import_and_opens_deferred_connections() {
     assert_eq!(std::fs::read(&probe).unwrap(), b"HOSTSECRET");
     assert_eq!(
         s.eval(
-            "writeLines('nested', 'dir/child.txt'); identical(list.files('dir'), character(0)) && 'dir/child.txt' %in% list.files() && identical(readLines('dir/child.txt'), 'nested') && identical(unlink('dir', recursive = TRUE), FALSE) && identical(readLines('dir/child.txt'), 'nested') && identical(unlink('dir/child.txt'), TRUE) && identical(unlink(c('later.txt', 'no-such')), c(TRUE, FALSE))",
+            "stopifnot(dir.create('dir')); writeLines('nested', 'dir/child.txt'); identical(list.files('dir'), 'child.txt') && 'dir' %in% list.files() && identical(readLines('dir/child.txt'), 'nested') && identical(unlink('dir'), 1L) && identical(unlink('dir', recursive = TRUE), 0L) && !file.exists('dir/child.txt') && identical(unlink(c('later.txt', 'no-such')), 0L)",
         )
         .unwrap()
         .trim(),
@@ -162,4 +162,35 @@ fn browser_mode_creates_files_without_import_and_opens_deferred_connections() {
     );
     assert!(s.export_file("created.txt").is_err());
     assert_eq!(std::fs::read(&probe).unwrap(), b"HOSTSECRET");
+}
+
+#[test]
+fn browser_working_directories_and_open_connections_stay_in_their_session() {
+    let mut left = RSession::new().unwrap();
+    let mut right = RSession::new().unwrap();
+    left.import_file("project/code.R", b"answer <- 42\n")
+        .unwrap();
+    right
+        .import_file("project/code.R", b"answer <- 9\n")
+        .unwrap();
+    assert!(
+        left.import_file("project", b"would replace directory")
+            .is_err()
+    );
+    left.eval("stopifnot(identical(getwd(), '/'), identical(setwd('project'), '/')); con <- file('out.txt', 'w')")
+        .unwrap();
+    assert!(left.import_file("../escape", b"invalid import").is_err());
+    left.import_file("root.txt", b"root\n").unwrap();
+    assert!(left.eval("setwd('../..')").is_err());
+    left.eval("stopifnot(identical(getwd(), '/project')); source('./code.R'); stopifnot(answer == 42); setwd('..'); writeLines('kept', con); close(con)")
+        .unwrap();
+    assert_eq!(left.export_file("project/out.txt").unwrap(), b"kept\n");
+    assert_eq!(left.export_file("root.txt").unwrap(), b"root\n");
+    assert!(left.export_file("out.txt").is_err());
+    right
+        .eval(
+            "stopifnot(identical(getwd(), '/')); source('project/code.R'); stopifnot(answer == 9)",
+        )
+        .unwrap();
+    assert!(right.export_file("project/out.txt").is_err());
 }

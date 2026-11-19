@@ -54,6 +54,9 @@ pub unsafe fn do_fileappend(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 
         for i in 0..n {
             let ok = match (path_at(file1, i % n1), path_at(file2, i % n2)) {
+                (Some(destination), Some(source)) if crate::mainutils::browser_files::enabled() => {
+                    crate::mainutils::browser_files::append_current(&destination, &source)
+                }
                 (Some(destination), Some(source)) => append_file(&destination, &source),
                 _ => false,
             };
@@ -134,11 +137,12 @@ pub unsafe fn do_fileremove(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 
         for (i, path) in paths.iter().enumerate() {
             if let Some(path) = path {
-                *pa.add(i) = if fs::remove_file(path).is_ok() {
-                    TRUE
+                let removed = if crate::mainutils::browser_files::enabled() {
+                    crate::mainutils::browser_files::remove_current(path)
                 } else {
-                    FALSE
+                    fs::remove_file(path).is_ok()
                 };
+                *pa.add(i) = if removed { TRUE } else { FALSE };
             } else {
                 *pa.add(i) = crate::sexp::ffi::NA_INTEGER;
             }
@@ -415,7 +419,7 @@ pub unsafe fn do_fileinfo(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
             if let Some(info) = crate::mainutils::browser_files::info_current(path) {
                 *crate::sexp::accessors::REAL(size_col).add(i) = info.size as f64;
                 *crate::sexp::accessors::LOGICAL(isdir_col).add(i) = FALSE;
-                *crate::sexp::accessors::INTEGER(mode_col).add(i) = 0o644;
+                *crate::sexp::accessors::INTEGER(mode_col).add(i) = info.mode as c_int;
                 *crate::sexp::accessors::REAL(mtime_col).add(i) = info.mtime;
                 *crate::sexp::accessors::REAL(ctime_col).add(i) = info.ctime;
                 *crate::sexp::accessors::REAL(atime_col).add(i) = info.atime;
@@ -423,9 +427,22 @@ pub unsafe fn do_fileinfo(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
                 continue;
             }
             if crate::mainutils::browser_files::enabled() {
-                *crate::sexp::accessors::REAL(size_col).add(i) = crate::sexp::ffi::NA_REAL;
-                *crate::sexp::accessors::LOGICAL(isdir_col).add(i) = crate::sexp::ffi::NA_INTEGER;
-                *crate::sexp::accessors::INTEGER(mode_col).add(i) = crate::sexp::ffi::NA_INTEGER;
+                let directory = crate::mainutils::browser_files::dir_exists_current(path);
+                *crate::sexp::accessors::REAL(size_col).add(i) = if directory {
+                    0.0
+                } else {
+                    crate::sexp::ffi::NA_REAL
+                };
+                *crate::sexp::accessors::LOGICAL(isdir_col).add(i) = if directory {
+                    TRUE
+                } else {
+                    crate::sexp::ffi::NA_INTEGER
+                };
+                *crate::sexp::accessors::INTEGER(mode_col).add(i) = if directory {
+                    0o755
+                } else {
+                    crate::sexp::ffi::NA_INTEGER
+                };
                 *crate::sexp::accessors::REAL(mtime_col).add(i) = crate::sexp::ffi::NA_REAL;
                 *crate::sexp::accessors::REAL(ctime_col).add(i) = crate::sexp::ffi::NA_REAL;
                 *crate::sexp::accessors::REAL(atime_col).add(i) = crate::sexp::ffi::NA_REAL;
@@ -749,7 +766,9 @@ pub unsafe fn do_direxists(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
             } else {
                 let c = CStr::from_ptr(crate::sexp::accessors::CHAR(elt));
                 let path = c.to_str().unwrap_or("");
-                *pa.add(i) = if crate::library::datasets::is_directory(path) {
+                *pa.add(i) = if crate::library::datasets::is_directory(path)
+                    || crate::mainutils::browser_files::dir_exists_current(path)
+                {
                     TRUE
                 } else if crate::mainutils::browser_files::enabled()
                     || crate::mainutils::browser_files::contains_current(path)
@@ -810,23 +829,32 @@ pub unsafe fn do_listfiles(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
             })
         }
 
-        // Keys are flat. Only the session root is a directory; any other path
-        // is missing and must not be read from the host.
         fn collect_browser_list_files(
             path: &str,
             options: ListFilesOptions<'_>,
+            omit_dotdot: bool,
             entries: &mut Vec<String>,
         ) {
-            if path != "." && !path.is_empty() {
+            let Some(children) = crate::mainutils::browser_files::entries_current(path) else {
                 return;
+            };
+            if options.all_files && !omit_dotdot && !options.recursive && options.pattern.is_none()
+            {
+                push_dir_dots(path, options.full_names, entries);
             }
-            for name in crate::mainutils::browser_files::list_current() {
-                if !options.all_files && name.starts_with('.') {
+            for (name, is_dir) in children {
+                if (!options.recursive && name.contains('/'))
+                    || (!options.all_files && name.split('/').any(|part| part.starts_with('.')))
+                    || (options.recursive && is_dir && !options.include_dirs)
+                    || !pattern_matches(name.rsplit('/').next().unwrap_or(&name), options)
+                {
                     continue;
                 }
-                if pattern_matches(&name, options) {
-                    entries.push(name);
-                }
+                entries.push(if options.full_names {
+                    format!("{}/{name}", path.trim_end_matches('/'))
+                } else {
+                    name
+                });
             }
         }
 
@@ -946,7 +974,7 @@ pub unsafe fn do_listfiles(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
         let browser_store = crate::mainutils::browser_files::enabled();
         let mut visit_path = |path: String| {
             if browser_store {
-                collect_browser_list_files(&path, options, &mut entries);
+                collect_browser_list_files(&path, options, omit_dotdot, &mut entries);
                 return;
             }
             if options.all_files && !omit_dotdot && !options.recursive && pattern_string.is_none() {
@@ -1077,30 +1105,63 @@ pub unsafe fn do_listdirs(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         let do_recursive = logical_arg(recursive, true);
         let mut entries: Vec<String> = Vec::new();
 
-        if paths.is_null() || paths == R_NilValue() || LENGTH(paths) == 0 {
-            collect_dirs(
-                std::path::Path::new("."),
-                std::path::Path::new(""),
-                do_full,
-                do_recursive,
-                do_recursive,
-                &mut entries,
-            );
+        if crate::mainutils::browser_files::enabled() {
+            let mut visit = |path: &str| {
+                let Some(children) = crate::mainutils::browser_files::entries_current(path) else {
+                    return;
+                };
+                if do_recursive {
+                    entries.push(if do_full {
+                        path.to_owned()
+                    } else {
+                        String::new()
+                    });
+                }
+                entries.extend(children.into_iter().filter_map(|(name, directory)| {
+                    (directory && (do_recursive || !name.contains('/'))).then(|| {
+                        if do_full {
+                            format!("{}/{name}", path.trim_end_matches('/'))
+                        } else {
+                            name
+                        }
+                    })
+                }));
+            };
+            if paths.is_null() || paths == R_NilValue() {
+                visit(".");
+            } else {
+                for i in 0..LENGTH(paths) as usize {
+                    if let Some(path) = path_at(paths, i) {
+                        visit(&path);
+                    }
+                }
+            }
+            entries.sort();
         } else {
-            for i in 0..LENGTH(paths) as usize {
-                if let Some(path) = path_at(paths, i) {
-                    collect_dirs(
-                        std::path::Path::new(&path),
-                        std::path::Path::new(""),
-                        do_full,
-                        do_recursive,
-                        do_recursive,
-                        &mut entries,
-                    );
+            if paths.is_null() || paths == R_NilValue() || LENGTH(paths) == 0 {
+                collect_dirs(
+                    std::path::Path::new("."),
+                    std::path::Path::new(""),
+                    do_full,
+                    do_recursive,
+                    do_recursive,
+                    &mut entries,
+                );
+            } else {
+                for i in 0..LENGTH(paths) as usize {
+                    if let Some(path) = path_at(paths, i) {
+                        collect_dirs(
+                            std::path::Path::new(&path),
+                            std::path::Path::new(""),
+                            do_full,
+                            do_recursive,
+                            do_recursive,
+                            &mut entries,
+                        );
+                    }
                 }
             }
         }
-
         let ans = Rf_allocVector3(
             SEXPTYPE::STRSXP.as_c_int(),
             entries.len() as crate::sexp::ffi::R_xlen_t,
@@ -1170,6 +1231,7 @@ pub unsafe fn do_fileexists(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
                 *pa.add(i) = if crate::library::datasets::path_exists(path)
                     || crate::library::builtin_files::path_exists(path)
                     || crate::mainutils::browser_files::contains_current(path)
+                    || crate::mainutils::browser_files::dir_exists_current(path)
                 {
                     TRUE
                 } else if crate::mainutils::browser_files::enabled() {
@@ -1260,31 +1322,20 @@ pub unsafe fn do_fileaccess(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
     }
 }
 
-/// Remove flat store keys. Missing paths are FALSE and are not looked up on
-/// the host, even when `recursive` is TRUE.
+/// Remove literal paths from the session tree. Return GNU's aggregate status.
 unsafe fn unlink_browser_files(args: SEXP) -> SEXP {
     unsafe {
-        use crate::sexp::accessors::{CAR, LENGTH, LOGICAL};
-        use crate::sexp::constructors::Rf_allocVector3;
-        use crate::sexp::ffi::{FALSE, SEXPTYPE, TRUE};
-        use crate::sexp::globals::R_NilValue;
-
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return Rf_allocVector3(SEXPTYPE::LGLSXP.as_c_int(), 0);
+        use crate::sexp::accessors::{CADR, CAR, LENGTH};
+        use crate::sexp::constructors::Rf_ScalarInteger;
+        let paths = CAR(args);
+        let recursive = crate::mainutils::coerce::asLogical(CADR(args)) == 1;
+        let mut success = true;
+        for i in 0..LENGTH(paths) as usize {
+            if let Some(path) = path_at(paths, i) {
+                success &= crate::mainutils::browser_files::unlink_current(&path, recursive);
+            }
         }
-        let n = LENGTH(x);
-        let ans = Rf_allocVector3(SEXPTYPE::LGLSXP.as_c_int(), n as crate::sexp::ffi::R_xlen_t);
-        let _guard = protect(ans);
-        let out = LOGICAL(ans);
-        for i in 0..n as usize {
-            let removed = match path_at(x, i) {
-                Some(path) => crate::mainutils::browser_files::remove_current(&path),
-                None => false,
-            };
-            *out.add(i) = if removed { TRUE } else { FALSE };
-        }
-        ans
+        Rf_ScalarInteger(i32::from(!success))
     }
 }
 

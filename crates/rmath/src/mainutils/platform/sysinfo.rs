@@ -188,115 +188,137 @@ pub unsafe fn do_sysgetpid(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> S
     unsafe { crate::sexp::constructors::Rf_ScalarInteger(process_id() as c_int) }
 }
 
-/// R's `dir.create()` — create directory/directories.
+/// R's `dir.create()` — create a directory, optionally making its parents.
 pub unsafe fn do_dircreate(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
-        use crate::sexp::accessors::{CADR, CAR, CDR, LENGTH, STRING_ELT};
-        use crate::sexp::constructors::Rf_allocVector3;
-        use crate::sexp::ffi::{FALSE, SEXPTYPE, TRUE};
-        use crate::sexp::globals::R_NilValue;
-        use std::fs;
-
-        let s = CAR(args);
-        let recursive = CADR(args);
-        let showWarnings = CDR(CDR(args));
-        let _ = showWarnings; // suppress unused warning
-        let ans = Rf_allocVector3(
-            SEXPTYPE::LGLSXP.as_c_int(),
-            LENGTH(s) as crate::sexp::ffi::R_xlen_t,
-        );
-        let _ans_guard = protect(ans);
-        let pa = crate::sexp::accessors::LOGICAL(ans);
-        let do_recursive = if recursive.is_null() || recursive == R_NilValue() {
-            false
-        } else {
-            let v = *crate::sexp::accessors::LOGICAL(recursive);
-            v != 0 && v != crate::sexp::ffi::NA_INTEGER
-        };
-
-        for i in 0..LENGTH(s) as usize {
-            let elt = STRING_ELT(s, i as crate::sexp::ffi::R_xlen_t);
-            if elt.is_null() || elt == R_NilValue() {
-                *pa.add(i) = crate::sexp::ffi::NA_INTEGER;
-            } else {
-                let c = CStr::from_ptr(crate::sexp::accessors::CHAR(elt));
-                let path = c.to_str().unwrap_or("");
-                // platform.c rejects an expanded path that does not fit in
-                // `dir[R_PATH_MAX]` before strcpy. R_PATH_MAX is PATH_MAX.
-                #[cfg(not(target_arch = "wasm32"))]
-                let path_max = libc::PATH_MAX as usize;
-                #[cfg(target_arch = "wasm32")]
-                let path_max = 4096;
-                if path.len() >= path_max {
-                    crate::sexp::context::r_error("invalid 'path' argument");
-                }
-                let result = if do_recursive {
-                    fs::create_dir_all(path)
-                } else {
-                    fs::create_dir(path)
-                };
-                *pa.add(i) = if result
-                    .and_then(|_| set_path_mode(path, 0o777 & !current_file_creation_umask()))
-                    .is_ok()
-                {
-                    TRUE
-                } else {
-                    FALSE
-                };
-            }
+        use crate::mainutils::coerce::{asInteger, asLogical};
+        use crate::sexp::accessors::{CADR, CAR, CDDR, CDR, LENGTH, STRING_ELT};
+        use crate::sexp::constructors::Rf_ScalarLogical;
+        use crate::sexp::context::r_error;
+        use crate::sexp::ffi::{SEXPTYPE, TRUE};
+        use crate::sexp::globals::R_NaString;
+        let path = CAR(args);
+        if crate::sexp::accessors::TYPEOF(path) != SEXPTYPE::STRSXP || LENGTH(path) != 1 {
+            r_error("invalid 'path' argument");
         }
-        ans
+        let value = STRING_ELT(path, 0);
+        if value == R_NaString() {
+            r_error("invalid 'path' argument");
+        }
+        let path = CStr::from_ptr(crate::sexp::accessors::CHAR(value))
+            .to_str()
+            .unwrap_or("");
+        #[cfg(not(target_arch = "wasm32"))]
+        let path_max = libc::PATH_MAX as usize;
+        #[cfg(target_arch = "wasm32")]
+        let path_max = 4096;
+        if path.is_empty() || path.len() >= path_max {
+            r_error("invalid 'path' argument");
+        }
+        let flags = CDR(args);
+        let warnings = asLogical(CAR(flags)) == TRUE;
+        let recursive = asLogical(CADR(flags)) == TRUE;
+        let mode = asInteger(CAR(CDDR(flags)));
+        let result = if crate::mainutils::browser_files::enabled() {
+            crate::mainutils::browser_files::mkdir_current(path, recursive)
+                .map_err(std::io::Error::other)
+        } else if recursive && !std::path::Path::new(path).is_dir() {
+            std::fs::create_dir_all(path)
+                .and_then(|_| set_path_mode(path, mode as u32 & !current_file_creation_umask()))
+        } else {
+            std::fs::create_dir(path)
+                .and_then(|_| set_path_mode(path, mode as u32 & !current_file_creation_umask()))
+        };
+        if let Err(error) = &result
+            && warnings
+            && let Ok(message) =
+                CString::new(format!("cannot create dir '{path}', reason '{error}'"))
+        {
+            crate::mainutils::errors::Rf_warning1(message.as_ptr());
+        }
+        Rf_ScalarLogical(i32::from(result.is_ok()))
     }
 }
 
-/// R's `file.copy()` — copy file(s).
+/// The GNU R wrapper handles arbitrary source and destination vectors. This
+/// internal branch copies one or more paths into a single existing directory.
 pub unsafe fn do_filecopy(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        use crate::sexp::accessors::{CADR, CAR, LENGTH, STRING_ELT};
+        use crate::mainutils::coerce::asLogical;
+        use crate::sexp::accessors::{CAR, CDR, LENGTH, STRING_ELT};
         use crate::sexp::constructors::Rf_allocVector3;
         use crate::sexp::ffi::{FALSE, SEXPTYPE, TRUE};
-        use crate::sexp::globals::R_NilValue;
-        use std::fs;
+        use crate::sexp::globals::R_NaString;
 
         let from = CAR(args);
-        let to = CADR(args);
+        let mut rest = CDR(args);
+        let to_arg = CAR(rest);
+        let mut flag = || {
+            rest = CDR(rest);
+            asLogical(CAR(rest)) == TRUE
+        };
+        let overwrite = flag();
+        let recursive = flag();
+        let copy_mode = flag();
+        let copy_date = flag();
         let n = LENGTH(from);
-        let ans = Rf_allocVector3(SEXPTYPE::LGLSXP.as_c_int(), n as crate::sexp::ffi::R_xlen_t);
-        let _ans_guard = protect(ans);
-        let pa = crate::sexp::accessors::LOGICAL(ans);
+        let ans = Rf_allocVector3(SEXPTYPE::LGLSXP.as_c_int(), n.into());
+        let _ans = protect(ans);
+        let output = crate::sexp::accessors::LOGICAL(ans);
+        let target = if LENGTH(to_arg) == 1 {
+            let value = STRING_ELT(to_arg, 0);
+            (value != R_NaString())
+                .then(|| CStr::from_ptr(crate::sexp::accessors::CHAR(value)).to_bytes())
+        } else {
+            None
+        };
 
         for i in 0..n as usize {
-            let f = STRING_ELT(from, i as crate::sexp::ffi::R_xlen_t);
-            let t = STRING_ELT(to, i as crate::sexp::ffi::R_xlen_t);
-            if f.is_null() || t.is_null() || f == R_NilValue() || t == R_NilValue() {
-                *pa.add(i) = crate::sexp::ffi::NA_INTEGER;
-            } else {
-                let fc = CStr::from_ptr(crate::sexp::accessors::CHAR(f))
-                    .to_str()
-                    .unwrap_or("");
-                let tc = CStr::from_ptr(crate::sexp::accessors::CHAR(t))
-                    .to_str()
-                    .unwrap_or("");
-                if crate::mainutils::browser_files::enabled() {
-                    *pa.add(i) = if crate::mainutils::browser_files::copy_current(fc, tc) {
-                        TRUE
-                    } else {
-                        FALSE
-                    };
-                    continue;
-                }
-                let dest = std::path::Path::new(tc);
-                let dest = if dest.is_dir() {
-                    dest.join(std::path::Path::new(fc).file_name().unwrap_or_default())
-                } else {
-                    dest.to_path_buf()
-                };
-                *pa.add(i) = if fs::copy(fc, &dest).is_ok() {
-                    TRUE
-                } else {
-                    FALSE
-                };
+            let source = STRING_ELT(from, i as crate::sexp::ffi::R_xlen_t);
+            *output.add(i) = FALSE;
+            let Some(target) = target else { continue };
+            if source == R_NaString() {
+                continue;
             }
+            let source = CStr::from_ptr(crate::sexp::accessors::CHAR(source)).to_bytes();
+            let copied = if crate::mainutils::browser_files::enabled() {
+                let (Ok(source), Ok(target)) =
+                    (std::str::from_utf8(source), std::str::from_utf8(target))
+                else {
+                    continue;
+                };
+                crate::mainutils::browser_files::copy_into_directory_current(
+                    source, target, overwrite, recursive, copy_mode, copy_date,
+                )
+                .is_ok()
+            } else {
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    let (Ok(source), Ok(target)) =
+                        (std::str::from_utf8(source), std::str::from_utf8(target))
+                    else {
+                        continue;
+                    };
+                    let source = std::path::Path::new(source);
+                    let target = std::path::Path::new(target);
+                    super::native_copy::copy_into_directory(
+                        source,
+                        target,
+                        super::native_copy::CopyOptions {
+                            overwrite,
+                            recursive,
+                            copy_mode,
+                            copy_date,
+                        },
+                    )
+                    .is_ok()
+                }
+                #[cfg(target_arch = "wasm32")]
+                {
+                    false
+                }
+            };
+            *output.add(i) = i32::from(copied);
         }
         ans
     }
@@ -358,6 +380,23 @@ pub unsafe fn do_l10n_info(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> S
     }
 }
 
+unsafe fn chmod_browser(paths: SEXP, mode: u32) -> SEXP {
+    unsafe {
+        use crate::sexp::accessors::{LENGTH, LOGICAL};
+        use crate::sexp::constructors::Rf_allocVector3;
+        let n = LENGTH(paths);
+        let result = Rf_allocVector3(crate::sexp::ffi::SEXPTYPE::LGLSXP.as_c_int(), n.into());
+        let _guard = protect(result);
+        let out = LOGICAL(result);
+        for i in 0..n as usize {
+            *out.add(i) = i32::from(path_at(paths, i).is_some_and(|path| {
+                crate::mainutils::browser_files::set_mode_current(&path, mode)
+            }));
+        }
+        result
+    }
+}
+
 /// R's `Sys.chmod()` — change file permissions.
 #[cfg(not(target_arch = "wasm32"))]
 pub unsafe fn do_syschmod(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
@@ -393,6 +432,9 @@ pub unsafe fn do_syschmod(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEX
 
         let n = LENGTH(paths);
         let mode_val = parse_octal_mode_arg(mode).unwrap_or(0o777);
+        if crate::mainutils::browser_files::enabled() {
+            return chmod_browser(paths, mode_val);
+        }
 
         let ans = Rf_allocVector3(SEXPTYPE::LGLSXP.as_c_int(), n as crate::sexp::ffi::R_xlen_t);
         let _ans_guard = protect(ans);
@@ -412,44 +454,13 @@ pub unsafe fn do_syschmod(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEX
     }
 }
 
-/// WASM M1 stub for `do_syschmod`: `std::os::unix::fs::PermissionsExt`
-/// does not exist on wasm32. Mirrors upstream R's no-chmod fallback
-/// (platform.c `do_syschmod` `#else` branch): warn of insufficient OS
-/// support on this platform and return an all-FALSE logical vector
-/// (unsupported-operation path).
+/// Web sessions update the permissions of their own stored files.
 #[cfg(target_arch = "wasm32")]
 pub unsafe fn do_syschmod(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
-        use crate::sexp::accessors::{CAR, CDR, LENGTH, LOGICAL};
-        use crate::sexp::constructors::Rf_allocVector3;
-        use crate::sexp::ffi::{FALSE, SEXPTYPE};
-        use crate::sexp::globals::R_NilValue;
-
-        let mut paths = R_NilValue();
-        let mut current = args;
-        while !current.is_null() && current != R_NilValue() {
-            let value = CAR(current);
-            match platform_tag_name(current).as_deref() {
-                Some("paths") => paths = value,
-                Some(_) => {}
-                None => {
-                    if paths == R_NilValue() {
-                        paths = value;
-                    }
-                }
-            }
-            current = CDR(current);
-        }
-
-        crate::mainutils::errors::Rf_warning(c"insufficient OS support on this platform".as_ptr());
-        let n = LENGTH(paths);
-        let ans = Rf_allocVector3(SEXPTYPE::LGLSXP.as_c_int(), n as crate::sexp::ffi::R_xlen_t);
-        let _ans_guard = protect(ans);
-        let pa = LOGICAL(ans);
-        for i in 0..n as usize {
-            *pa.add(i) = FALSE;
-        }
-        ans
+        use crate::sexp::accessors::{CADR, CAR};
+        let mode = parse_octal_mode_arg(CADR(args)).unwrap_or(0o777);
+        chmod_browser(CAR(args), mode)
     }
 }
 

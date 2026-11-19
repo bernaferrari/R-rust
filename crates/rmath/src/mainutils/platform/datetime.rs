@@ -472,26 +472,35 @@ pub(crate) fn set_path_mode(_path: &str, _mode: u32) -> std::io::Result<()> {
     Ok(())
 }
 
-#[cfg(unix)]
 pub(crate) fn create_file_with_session_umask(path: &str) -> std::io::Result<()> {
-    use std::os::unix::fs::OpenOptionsExt;
-
-    let mode = 0o666 & !current_file_creation_umask();
-    std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(mode)
-        .open(path)
-        .and_then(|_| set_path_mode(path, mode))
-}
-
-#[cfg(not(unix))]
-pub(crate) fn create_file_with_session_umask(path: &str) -> std::io::Result<()> {
-    std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(path)
-        .map(|_| ())
+    if crate::mainutils::browser_files::enabled() {
+        return crate::mainutils::browser_files::write_current(path, &[])
+            .map_err(std::io::Error::other);
+    }
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    let mode = {
+        use std::os::unix::fs::OpenOptionsExt;
+        let mode = 0o666 & !current_file_creation_umask();
+        options.mode(mode);
+        mode
+    };
+    match options.open(path) {
+        Ok(_file) => {
+            #[cfg(unix)]
+            set_path_mode(path, mode)?;
+            Ok(())
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+            std::fs::OpenOptions::new()
+                .write(true)
+                .truncate(true)
+                .open(path)
+                .map(drop)
+        }
+        Err(error) => Err(error),
+    }
 }
 
 pub(crate) unsafe fn platform_tag_name(cell: SEXP) -> Option<String> {

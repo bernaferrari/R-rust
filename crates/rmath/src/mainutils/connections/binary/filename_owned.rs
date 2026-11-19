@@ -272,10 +272,14 @@ impl Sink {
             })
             .map_err(|e| e.to_string())?;
         if browser {
-            access
+            let path = access
                 .with_native(|_| {
-                    crate::mainutils::browser_files::write_current(&path, &[])
-                        .map_err(|message| SexpError::EvaluationFailed { message })
+                    use crate::mainutils::browser_files;
+                    let path = browser_files::absolute_current(&path)
+                        .map_err(|message| SexpError::EvaluationFailed { message })?;
+                    browser_files::write_current(&path, &[])
+                        .map_err(|message| SexpError::EvaluationFailed { message })?;
+                    Ok(path)
                 })
                 .map_err(|e| e.to_string())?;
             Ok(Self::Browser(path))

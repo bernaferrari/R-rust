@@ -39,13 +39,20 @@ pub(super) fn package_file_exists(path: &Path) -> bool {
     }
 }
 
-// Browser directories are prefixes over bounded, validated file keys.
 pub(super) fn package_directory_entries(path: &Path) -> io::Result<Vec<PathBuf>> {
     if browser_files::enabled() {
+        let key = path.strip_prefix("/").unwrap_or(path);
         Ok(browser_files::list_current()
             .into_iter()
             .map(PathBuf::from)
-            .filter(|entry| entry.parent() == Some(path))
+            .filter(|entry| entry.parent() == Some(key))
+            .map(|entry| {
+                if path.is_absolute() {
+                    Path::new("/").join(entry)
+                } else {
+                    entry
+                }
+            })
             .collect())
     } else if path.is_dir() {
         Ok(std::fs::read_dir(path)?
@@ -67,12 +74,25 @@ fn find_browser_package(package: &str, roots: &[PathBuf]) -> Option<PathBuf> {
     {
         return None;
     }
-    roots.iter().map(|root| root.join(package)).find(|dir| {
-        dir.join("DESCRIPTION").to_str().is_some_and(|key| {
-            browser_files::BrowserFileStore::validate_path(key).is_ok()
-                && browser_files::contains_current(key)
+    let anchor = browser_files::getcwd_current() != "/";
+    roots
+        .iter()
+        .filter_map(|root| {
+            let dir = root.join(package);
+            let key = dir.join("DESCRIPTION");
+            let key = key.to_str()?;
+            if browser_files::BrowserFileStore::validate_path(key).is_err()
+                || !browser_files::contains_current(&format!("/{key}"))
+            {
+                return None;
+            }
+            Some(if anchor {
+                Path::new("/").join(dir)
+            } else {
+                dir
+            })
         })
-    })
+        .next()
 }
 
 /// Try to find a package by name in this session's configured library paths.

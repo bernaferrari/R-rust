@@ -2,7 +2,9 @@
 
 use crate::sexp::instance::with_current_instance;
 use crate::sexp::memory::{RArena, TransientReservation};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+
+mod paths;
 use std::io;
 use std::rc::Rc;
 #[cfg(not(target_arch = "wasm32"))]
@@ -20,6 +22,7 @@ struct StoredFile {
     mtime: f64,
     atime: f64,
     ctime: f64,
+    mode: u32,
 }
 
 /// Timestamps are Unix seconds, including a fractional part.
@@ -29,11 +32,14 @@ pub struct BrowserFileInfo {
     pub mtime: f64,
     pub atime: f64,
     pub ctime: f64,
+    pub mode: u32,
 }
 
 #[derive(Default)]
 pub struct BrowserFileStore {
     files: HashMap<String, StoredFile>,
+    directories: HashSet<String>,
+    cwd: String,
     total_bytes: usize,
     #[cfg(test)]
     test_clock: Option<f64>,
@@ -77,23 +83,41 @@ pub fn read_bytes_or_host(path: &str) -> io::Result<Vec<u8>> {
 
 pub fn read_current(path: &str) -> Option<Vec<u8>> {
     with_current_instance(|instance| unsafe {
-        (*instance).browser_files.read(path).map(<[u8]>::to_vec)
+        {
+            let store = &(*instance).browser_files;
+            store
+                .resolve(path)
+                .ok()
+                .and_then(|key| store.read(&key).map(<[u8]>::to_vec))
+        }
     })
     .flatten()
 }
 
 pub fn contains_current(path: &str) -> bool {
-    with_current_instance(|instance| unsafe { (*instance).browser_files.contains(path) })
-        .unwrap_or(false)
+    with_current_instance(|instance| unsafe {
+        let store = &(*instance).browser_files;
+        store.resolve(path).is_ok_and(|key| store.contains(&key))
+    })
+    .unwrap_or(false)
 }
 
 pub fn info_current(path: &str) -> Option<BrowserFileInfo> {
-    with_current_instance(|instance| unsafe { (*instance).browser_files.info(path) }).flatten()
+    with_current_instance(|instance| unsafe {
+        let store = &(*instance).browser_files;
+        store.info(&store.resolve(path).ok()?)
+    })
+    .flatten()
 }
 
 pub fn set_time_current(path: &str, secs: f64) -> bool {
-    with_current_instance(|instance| unsafe { (*instance).browser_files.set_file_time(path, secs) })
-        .unwrap_or(false)
+    with_current_instance(|instance| unsafe {
+        let store = &mut (*instance).browser_files;
+        store
+            .resolve(path)
+            .is_ok_and(|key| store.set_file_time(&key, secs))
+    })
+    .unwrap_or(false)
 }
 
 pub fn write_current(path: &str, bytes: &[u8]) -> Result<(), String> {
@@ -103,9 +127,31 @@ pub fn write_current(path: &str, bytes: &[u8]) -> Result<(), String> {
 /// Write and return one admitted file version shared by the store and caller.
 pub(crate) fn write_snapshot_current(path: &str, parts: &[&[u8]]) -> Result<Rc<FileBytes>, String> {
     with_current_instance(|instance| unsafe {
+        let store = &mut (*instance).browser_files;
+        let key = store.resolve(path)?;
+        store.require_parent(&key)?;
+        store.put_with_arena(&key, parts, Some(&mut (*instance).arena))
+    })
+    .ok_or_else(|| "no active R session".to_string())?
+}
+
+/// Import keys are rooted at the embedding boundary, independently of R's cwd.
+pub(crate) fn import_current(path: &str, bytes: &[u8]) -> Result<(), String> {
+    BrowserFileStore::validate_path(path)?;
+    with_current_instance(|instance| unsafe {
         (*instance)
             .browser_files
-            .put_with_arena(path, parts, Some(&mut (*instance).arena))
+            .put_import(path, bytes, Some(&mut (*instance).arena))
+    })
+    .ok_or_else(|| "no active R session".to_string())?
+}
+
+pub(crate) fn absolute_current(path: &str) -> Result<String, String> {
+    with_current_instance(|instance| unsafe {
+        (*instance)
+            .browser_files
+            .resolve(path)
+            .map(|key| format!("/{key}"))
     })
     .ok_or_else(|| "no active R session".to_string())?
 }
@@ -122,7 +168,8 @@ pub(crate) fn open_snapshot_current(
 ) -> Result<Rc<FileBytes>, String> {
     with_current_instance(|instance| unsafe {
         let store = &mut (*instance).browser_files;
-        BrowserFileStore::validate_path(path)?;
+        let key = store.resolve(path)?;
+        let path = key.as_ref();
         match mode {
             BrowserOpenMode::Read => store
                 .files
@@ -130,6 +177,7 @@ pub(crate) fn open_snapshot_current(
                 .map(|file| Rc::clone(&file.bytes))
                 .ok_or_else(|| "browser file not found".to_string()),
             BrowserOpenMode::Append | BrowserOpenMode::Truncate => {
+                store.require_parent(path)?;
                 if matches!(mode, BrowserOpenMode::Append) {
                     let now = store.now();
                     if let Some(file) = store.files.get_mut(path) {
@@ -162,8 +210,11 @@ pub(crate) fn gunzip_snapshot(source: Rc<FileBytes>) -> io::Result<Rc<FileBytes>
 }
 
 pub fn remove_current(path: &str) -> bool {
-    with_current_instance(|instance| unsafe { (*instance).browser_files.remove(path) })
-        .unwrap_or(false)
+    with_current_instance(|instance| unsafe {
+        let store = &mut (*instance).browser_files;
+        store.resolve(path).is_ok_and(|key| store.remove(&key))
+    })
+    .unwrap_or(false)
 }
 
 pub fn list_current() -> Vec<String> {
@@ -171,15 +222,101 @@ pub fn list_current() -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// Copy one flat key onto another. A missing source is false and does not
-/// create `to` or read the host.
-pub fn copy_current(from: &str, to: &str) -> bool {
+pub(crate) fn append_current(destination: &str, source: &str) -> bool {
+    with_current_instance(|instance| unsafe {
+        let store = &mut (*instance).browser_files;
+        let Ok(from) = store.resolve(source) else {
+            return false;
+        };
+        let Ok(to) = store.resolve(destination) else {
+            return false;
+        };
+        let Some(input) = store
+            .files
+            .get(from.as_ref())
+            .map(|file| Rc::clone(&file.bytes))
+        else {
+            return false;
+        };
+        let saved = store
+            .files
+            .get(to.as_ref())
+            .map(|file| Rc::clone(&file.bytes));
+        store.require_parent(&to).is_ok()
+            && store
+                .put_with_arena(
+                    &to,
+                    &[saved.as_deref().map_or(&[][..], |bytes| bytes), &input],
+                    Some(&mut (*instance).arena),
+                )
+                .is_ok()
+    })
+    .unwrap_or(false)
+}
+
+pub(crate) fn set_mode_current(path: &str, mode: u32) -> bool {
+    with_current_instance(|instance| unsafe {
+        let store = &mut (*instance).browser_files;
+        let Ok(key) = store.resolve(path) else {
+            return false;
+        };
+        let Some(file) = store.files.get_mut(key.as_ref()) else {
+            return false;
+        };
+        file.mode = mode & 0o777;
+        true
+    })
+    .unwrap_or(false)
+}
+
+pub(crate) fn dir_exists_current(path: &str) -> bool {
+    with_current_instance(|instance| unsafe {
+        let store = &(*instance).browser_files;
+        store.resolve(path).is_ok_and(|key| store.directory(&key))
+    })
+    .unwrap_or(false)
+}
+
+pub(crate) fn mkdir_current(path: &str, recursive: bool) -> Result<(), String> {
+    with_current_instance(|instance| unsafe {
+        (*instance).browser_files.create_directory(path, recursive)
+    })
+    .ok_or_else(|| "no active R session".to_string())?
+}
+
+pub(crate) fn getcwd_current() -> String {
+    with_current_instance(|instance| unsafe { (*instance).browser_files.working_directory() })
+        .unwrap_or_default()
+}
+
+pub(crate) fn chdir_current(path: &str) -> Result<String, String> {
+    with_current_instance(|instance| unsafe { (*instance).browser_files.change_directory(path) })
+        .ok_or_else(|| "no active R session".to_string())?
+}
+
+pub(crate) fn entries_current(path: &str) -> Option<Vec<(String, bool)>> {
+    with_current_instance(|instance| unsafe { (*instance).browser_files.entries(path) }).flatten()
+}
+
+pub(crate) fn unlink_current(path: &str, recursive: bool) -> bool {
+    with_current_instance(|instance| unsafe { (*instance).browser_files.unlink(path, recursive) })
+        .unwrap_or(false)
+}
+
+pub(crate) fn copy_into_directory_current(
+    from: &str,
+    to: &str,
+    overwrite: bool,
+    recursive: bool,
+    copy_mode: bool,
+    copy_date: bool,
+) -> Result<(), String> {
     with_current_instance(|instance| unsafe {
         (*instance)
             .browser_files
-            .copy_with_arena(from, to, Some(&mut (*instance).arena))
+            .copy_into_directory(from, to, overwrite, recursive, copy_mode, copy_date)
     })
-    .unwrap_or(false)
+    .ok_or_else(|| "no active R session".to_string())?
 }
 
 /// Write binary or text data using the current session's existing file policy.
@@ -423,6 +560,10 @@ fn read_buffer_or_host(path: &str) -> io::Result<FileBuffer> {
     };
     let mut input = FileBuffer::new(limit);
     let stored = with_current_instance(|instance| unsafe {
+        let Some(key) = (*instance).browser_files.resolve(path).ok() else {
+            return Ok::<bool, io::Error>(false);
+        };
+        let path = key.as_ref();
         let Some(len) = (*instance).browser_files.read(path).map(<[u8]>::len) else {
             return Ok::<bool, io::Error>(false);
         };
@@ -530,6 +671,7 @@ impl BrowserFileStore {
             mtime: file.mtime,
             atime: file.atime,
             ctime: file.ctime,
+            mode: file.mode,
         })
     }
 
@@ -560,6 +702,9 @@ impl BrowserFileStore {
 
     fn total_after_write(&self, path: &str, size: usize) -> Result<usize, String> {
         Self::validate_file(path, size)?;
+        if self.directory(path) {
+            return Err(format!("'{path}' is a browser directory"));
+        }
         let existing = self.files.get(path);
         if existing.is_none() && self.files.len() >= MAX_FILE_COUNT {
             return Err(format!(
@@ -589,7 +734,11 @@ impl BrowserFileStore {
             .map_err(|_| "could not allocate browser file path".to_string())?;
         key.push_str(path);
         let now = self.now();
-        let ctime = self.files.get(path).map(|file| file.ctime).unwrap_or(now);
+        let (ctime, mode) = self
+            .files
+            .get(path)
+            .map(|file| (file.ctime, file.mode))
+            .unwrap_or((now, 0o644));
         self.files.insert(
             key,
             StoredFile {
@@ -597,6 +746,7 @@ impl BrowserFileStore {
                 mtime: now,
                 atime: now,
                 ctime,
+                mode,
             },
         );
         self.total_bytes = total;
@@ -604,7 +754,22 @@ impl BrowserFileStore {
     }
 
     pub fn put(&mut self, path: &str, bytes: &[u8]) -> Result<(), String> {
-        self.put_with_arena(path, &[bytes], None).map(drop)
+        self.put_import(path, bytes, None)
+    }
+
+    fn put_import(
+        &mut self,
+        path: &str,
+        bytes: &[u8],
+        arena: Option<&mut RArena>,
+    ) -> Result<(), String> {
+        Self::validate_path(path)?;
+        let parent = path.rsplit_once('/').map_or("", |(parent, _)| parent);
+        let missing = self.missing_directories(parent)?;
+        self.reserve_directories(missing.len())?;
+        self.put_with_arena(path, &[bytes], arena)?;
+        self.directories.extend(missing);
+        Ok(())
     }
 
     fn put_with_arena(
@@ -627,6 +792,8 @@ impl BrowserFileStore {
 
     pub fn clear(&mut self) {
         self.files.clear();
+        self.directories.clear();
+        self.cwd.clear();
         self.total_bytes = 0;
     }
 
@@ -636,25 +803,6 @@ impl BrowserFileStore {
         };
         self.total_bytes = self.total_bytes.saturating_sub(file.bytes.len());
         true
-    }
-
-    /// Duplicate bytes under a new flat key. Missing `from` is false.
-    /// A rejected `to` leaves both keys as they were.
-    pub fn copy(&mut self, from: &str, to: &str) -> bool {
-        self.copy_with_arena(from, to, None)
-    }
-
-    fn copy_with_arena(&mut self, from: &str, to: &str, arena: Option<&mut RArena>) -> bool {
-        let Some(bytes) = self.read(from) else {
-            return false;
-        };
-        let Ok(total) = self.total_after_write(to, bytes.len()) else {
-            return false;
-        };
-        let Ok(data) = FileBytes::copy_parts(&[bytes], bytes.len(), arena) else {
-            return false;
-        };
-        self.publish(to, Rc::new(data), total).is_ok()
     }
 
     pub fn names(&self) -> Vec<String> {
@@ -682,27 +830,26 @@ mod tests {
     #[test]
     fn stored_files_charge_the_session_through_copy_replace_and_remove() {
         let mut session = RSession::new_for_gc_tests();
-        session.with_active_in(|owner| unsafe {
-            (*owner).browser_files.set_test_clock(1.0);
-        });
         let baseline = admitted_bytes(&mut session);
         session.set_arena_budget(ArenaBudget::new(baseline + 6, 0));
         session.put_browser_file("source.csv", b"1,2\n").unwrap();
         assert_eq!(admitted_bytes(&mut session), baseline + 4);
 
         session.with_active(|| {
-            assert!(!copy_current("source.csv", "copy.csv"));
-            assert!(!contains_current("copy.csv"));
+            mkdir_current("copies", false).unwrap();
+            copy_into_directory_current("source.csv", "copies", false, false, true, false).unwrap();
             assert!(write_current("source.csv", b"123").is_err());
             assert_eq!(read_current("source.csv").unwrap(), b"1,2\n");
             write_current("source.csv", b"3\n").unwrap();
-            assert!(copy_current("source.csv", "copy.csv"));
         });
-        assert_eq!(admitted_bytes(&mut session), baseline + 4);
+        assert_eq!(admitted_bytes(&mut session), baseline + 6);
         assert!(session.remove_browser_file("source.csv"));
-        assert_eq!(admitted_bytes(&mut session), baseline + 2);
-        assert_eq!(session.get_browser_file("copy.csv").unwrap(), b"3\n");
-        assert!(session.remove_browser_file("copy.csv"));
+        assert_eq!(admitted_bytes(&mut session), baseline + 4);
+        assert_eq!(
+            session.get_browser_file("copies/source.csv").unwrap(),
+            b"1,2\n"
+        );
+        assert!(session.remove_browser_file("copies/source.csv"));
         assert_eq!(admitted_bytes(&mut session), baseline);
     }
 
@@ -909,16 +1056,22 @@ mod tests {
     }
 
     #[test]
-    fn copy_duplicates_bytes_and_a_missing_source_writes_nothing() {
+    fn directory_copy_admits_all_payloads_before_publishing() {
         let mut store = BrowserFileStore::default();
-        store.put("note.txt", b"hello").unwrap();
-        assert!(!store.copy("missing.txt", "other.txt"));
-        assert!(store.read("other.txt").is_none());
-        assert!(store.copy("note.txt", "other.txt"));
-        assert_eq!(store.read("other.txt"), Some(b"hello".as_slice()));
-        assert_eq!(store.read("note.txt"), Some(b"hello".as_slice()));
-        assert!(store.remove("note.txt"));
-        assert!(!store.remove("note.txt"));
-        assert_eq!(store.names(), vec!["other.txt".to_string()]);
+        store.create_directory("target", false).unwrap();
+        let full = vec![7; MAX_FILE_BYTES];
+        for i in 0..5 {
+            store.put(&format!("source/{i}"), &full).unwrap();
+        }
+        assert!(
+            store
+                .copy_into_directory("source", "target", true, true, true, false)
+                .is_err()
+        );
+        assert_eq!(store.names().len(), 5);
+        assert_eq!(store.entries("target"), Some(Vec::new()));
+        assert_eq!(store.read("source/0"), Some(full.as_slice()));
+        assert!(store.put("source", b"would replace directory").is_err());
+        assert!(store.put("source/0/child", b"would replace file").is_err());
     }
 }

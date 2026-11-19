@@ -335,7 +335,7 @@ impl RSession {
 
     pub fn put_browser_file(&mut self, path: &str, bytes: &[u8]) -> Result<(), String> {
         let _guard = self.activate();
-        let result = crate::mainutils::browser_files::write_current(path, bytes);
+        let result = crate::mainutils::browser_files::import_current(path, bytes);
         if result.is_ok() {
             unsafe {
                 (*self.instance).browser_files_enabled = true;

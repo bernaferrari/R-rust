@@ -209,9 +209,7 @@ pub unsafe fn do_tempfile(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         let n2 = tmpdir.map(|sx| XLENGTH(sx)).unwrap_or(1).max(1);
         let n3 = fileext.map(|sx| XLENGTH(sx)).unwrap_or(1).max(1);
         let n = n1.max(n2).max(n3);
-        let default_tmp = crate::sexp::instance::with_required_current_instance(|inst| {
-            (*inst).path_policy.temp_dir().to_path_buf()
-        });
+        let default_tmp = session_temp_dir();
         let ans = Rf_allocVector3(SEXPTYPE::STRSXP, n);
         let _ans = protect(ans);
         for i in 0..n {
@@ -240,7 +238,9 @@ pub unsafe fn do_tempfile(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 pub unsafe fn do_tempdir(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let temp_dir = session_temp_dir();
-        let _ = std::fs::create_dir_all(&temp_dir);
+        if !crate::mainutils::browser_files::enabled() {
+            let _ = std::fs::create_dir_all(&temp_dir);
+        }
         Rf_mkString(
             CString::new(temp_dir.to_string_lossy().as_ref())
                 .unwrap_or_default()
@@ -250,6 +250,15 @@ pub unsafe fn do_tempdir(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEX
 }
 
 fn session_temp_dir() -> PathBuf {
+    use crate::mainutils::browser_files;
+    if browser_files::enabled() {
+        let path = "/tmp";
+        if !browser_files::dir_exists_current(path) {
+            browser_files::mkdir_current(path, false)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error));
+        }
+        return PathBuf::from(path);
+    }
     crate::sexp::instance::with_required_current_instance(|inst| unsafe {
         (*inst).path_policy.temp_dir().to_path_buf()
     })
