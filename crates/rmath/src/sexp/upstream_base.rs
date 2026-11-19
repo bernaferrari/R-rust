@@ -1214,7 +1214,7 @@ unsafe fn load_file_sources(base_env: SEXP, staging: SEXP, files: &[UpstreamFile
             let mut bound_any = false;
             for (index, file) in files.iter().enumerate() {
                 if file.exports.iter().all(|name| {
-                    defined_in(base_env, name) && !bessel_primitive_needs_wrapper(base_env, name)
+                    defined_in(base_env, name) && !bootstrap_builtin_needs_closure(base_env, name)
                 }) {
                     continue;
                 }
@@ -1331,8 +1331,8 @@ unsafe fn error_swallowing_handler(staging: SEXP) -> Option<(SEXP, SEXP)> {
     }
 }
 
-/// Copy staged names into `base_env`, replacing only the initial Bessel
-/// primitive fallbacks with their upstream closures.
+/// Copy staged names into `base_env`, replacing selected bootstrap
+/// fallbacks with their upstream closures.
 ///
 /// Dependency-consistency filter: an S3 generic is copied ONLY IF its
 /// primary default method (`name.default`) is either already bound in
@@ -1345,8 +1345,8 @@ unsafe fn copy_exports(base_env: SEXP, staging: SEXP, names: &[&str]) -> bool {
     let mut copied = false;
     for name in names {
         unsafe {
-            let replacing_bessel = bessel_primitive_needs_wrapper(base_env, name);
-            if defined_in(base_env, name) && !replacing_bessel {
+            let replacing_builtin = bootstrap_builtin_needs_closure(base_env, name);
+            if defined_in(base_env, name) && !replacing_builtin {
                 continue;
             }
             let symbol = Rf_install_in_current(name);
@@ -1354,7 +1354,7 @@ unsafe fn copy_exports(base_env: SEXP, staging: SEXP, names: &[&str]) -> bool {
             if value.is_null() || value == R_UnboundValue() {
                 continue;
             }
-            if replacing_bessel
+            if replacing_builtin
                 && super::accessors::TYPEOF(value) != crate::sexp::ffi::SEXPTYPE::CLOSXP
             {
                 continue;
@@ -1614,9 +1614,11 @@ unsafe fn load_profile_common_bindings(base_env: SEXP) {
 
 // GNU exports these as closures. The portable bootstrap initially installs
 // primitive fallbacks; replace only those fallbacks with the upstream wrappers.
-unsafe fn bessel_primitive_needs_wrapper(env: SEXP, name: &str) -> bool {
-    if !matches!(name, "besselI" | "besselJ" | "besselK" | "besselY")
-        || unsafe { env != super::globals::R_BaseEnv() }
+unsafe fn bootstrap_builtin_needs_closure(env: SEXP, name: &str) -> bool {
+    if !matches!(
+        name,
+        "besselI" | "besselJ" | "besselK" | "besselY" | "difftime"
+    ) || unsafe { env != super::globals::R_BaseEnv() }
     {
         return false;
     }

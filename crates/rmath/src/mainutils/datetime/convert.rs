@@ -427,29 +427,6 @@ pub unsafe fn convert_posixct_to_posixlt(x: SEXP, tz: &str) -> SEXP {
     }
 }
 
-/// GNU `.Internal(as.POSIXct(x, tz))` for a POSIXlt list.
-pub unsafe fn convert_posixlt_to_posixct(x: SEXP, tz: &str) -> SEXP {
-    unsafe {
-        let is_utc = tz_is_utc(tz);
-        let tzsi = TzSetup::prepare();
-        if !is_utc && !tz.is_empty() {
-            tzsi.set(tz);
-        }
-        do_asPOSIXct(
-            std::ptr::null_mut(),
-            std::ptr::null_mut(),
-            Rf_cons(
-                x,
-                Rf_cons(
-                    Rf_mkString(CString::new(tz).unwrap_or_default().as_ptr()),
-                    R_NilValue(),
-                ),
-            ),
-            std::ptr::null_mut(),
-        )
-    }
-}
-
 // ---------------------------------------------------------------------------
 // do_asPOSIXlt -- .Internal(as.POSIXlt(x, tz))
 // ---------------------------------------------------------------------------
@@ -488,11 +465,6 @@ pub unsafe fn do_asPOSIXct(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
     unsafe {
         let x = CAR(args);
         let _x_guard = protect(x);
-        if TYPEOF(x) != SEXPTYPE::VECSXP {
-            std::panic::panic_any(RError {
-                message: "a valid \"POSIXlt\" object is a list of at least 9 elements".to_string(),
-            });
-        }
         let stz = CADR(args);
         let tz = if stz.is_null() || stz == R_NilValue() || stz == R_MissingArg() {
             String::new()
@@ -501,7 +473,25 @@ pub unsafe fn do_asPOSIXct(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
         } else {
             String::new()
         };
-        let is_utc = tz_is_utc(&tz);
+        convert_posixlt_to_posixct(x, &tz)
+    }
+}
+
+/// Convert fields in their requested time zone. Both native and GNU-facing
+/// callers use the same owner-scoped override before calling mktime.
+pub unsafe fn convert_posixlt_to_posixct(x: SEXP, tz: &str) -> SEXP {
+    unsafe {
+        let _x_guard = protect(x);
+        if TYPEOF(x) != SEXPTYPE::VECSXP || XLENGTH(x) < 9 {
+            std::panic::panic_any(RError {
+                message: "a valid \"POSIXlt\" object is a list of at least 9 elements".to_string(),
+            });
+        }
+        let is_utc = tz_is_utc(tz);
+        let tz_setup = TzSetup::prepare();
+        if !is_utc && !tz.is_empty() {
+            tz_setup.set(tz);
+        }
 
         let mut n: R_xlen_t = 0;
         let mut nlen = [0i64; 9];
