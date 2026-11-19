@@ -31,20 +31,14 @@ fn repeated_child_names_restore_the_correct_parent_coordinates() {
     session
         .render_with_dimensions("library(grid); grid.newpage(); pushViewport(viewport(name='outer')); pushViewport(viewport(name='left',width=.2)); left<-convertWidth(unit(1,'npc'),'inches',TRUE); upViewport(); pushViewport(viewport(name='right',width=.7)); right<-convertWidth(unit(1,'npc'),'inches',TRUE); upViewport(); seekViewport('left'); left_again<-convertWidth(unit(1,'npc'),'inches',TRUE); upViewport(); seekViewport('right'); right_again<-convertWidth(unit(1,'npc'),'inches',TRUE); upViewport()", 200, 100)
         .unwrap();
-    let values = session
-        .eval("paste(left, right, left_again, right_again, sep=',')")
+    session
+        .eval(
+            "stopifnot(abs(left - 0.2 * 200 / 96) < 1e-6,
+                       abs(right - 0.7 * 200 / 96) < 1e-6,
+                       abs(left - left_again) < 1e-12,
+                       abs(right - right_again) < 1e-12)",
+        )
         .unwrap();
-    let values = values
-        .trim_start_matches("[1] \"")
-        .trim_end_matches('"')
-        .split(',')
-        .map(|v| v.parse::<f64>().unwrap())
-        .collect::<Vec<_>>();
-    assert_eq!(values.len(), 4);
-    assert!((values[0] - 0.2 * 200. / 96.).abs() < 1e-6);
-    assert!((values[1] - 0.7 * 200. / 96.).abs() < 1e-6);
-    assert!((values[0] - values[2]).abs() < 1e-12);
-    assert!((values[1] - values[3]).abs() < 1e-12);
 }
 
 #[test]

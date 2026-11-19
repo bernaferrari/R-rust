@@ -22,7 +22,7 @@ fn graphics_generics_are_invisible_but_explicit_print_null_is_visible() {
     let visible_method = session.eval(
         "x <- structure(1:3, class='visibility_probe'); plot.visibility_probe <- function(x, ...) 42; plot(x)",
     );
-    assert_eq!(visible_method.output, "[1] 42");
+    assert_eq!(visible_method.output, "[1] 42\n");
 
     let invisible_method =
         session.eval("plot.visibility_probe <- function(x, ...) invisible(42); plot(x)");
