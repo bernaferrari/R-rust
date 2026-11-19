@@ -118,10 +118,22 @@ pub(crate) unsafe fn ensure_namespace_info(
                 CString::new(package).unwrap_or_default().as_ptr(),
             ),
         );
+        let version = std::fs::read_to_string(package_dir.join("DESCRIPTION"))
+            .ok()
+            .and_then(|content| description_fields(&content).remove("Version"))
+            .unwrap_or_else(|| {
+                if is_builtin_package_dependency(package) {
+                    crate::mainutils::compatibility_target::NUMERIC_VERSION.to_owned()
+                } else {
+                    String::new()
+                }
+            });
         crate::sexp::accessors::SET_STRING_ELT(
             spec,
             1,
-            crate::sexp::constructors::Rf_mkChar(c"".as_ptr()),
+            crate::sexp::constructors::Rf_mkChar(
+                CString::new(version).unwrap_or_default().as_ptr(),
+            ),
         );
         crate::sexp::attrib_core::setAttrib(
             spec,

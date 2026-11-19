@@ -48,13 +48,14 @@ impl RuntimePathPolicy {
     }
 
     pub fn from_env() -> Self {
-        // GNU startup: .libPaths() starts at unique(c(R_LIBS_USER dirs,
-        // R_LIBS_SITE dirs, .Library)), keeping only directories that exist
+        // GNU startup: .libPaths() starts at unique(c(R_LIBS dirs, R_LIBS_USER
+        // dirs, R_LIBS_SITE dirs, .Library)), keeping only directories that exist
         // (stock filters with dir.exists() before normalizePath). With
         // R_HOME set, .Library is R_HOME/library; otherwise the cached
         // oracle build's library is the dev-machine .Library stand-in, so
         // --vanilla Rscript parity prints exactly the libraries that exist.
         let mut library_paths = Vec::new();
+        extend_env_paths(&mut library_paths, "R_LIBS");
         extend_env_paths(&mut library_paths, "R_LIBS_USER");
         extend_env_paths(&mut library_paths, "R_LIBS_SITE");
 

@@ -392,18 +392,37 @@ pub unsafe fn do_load_namespace(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) 
     }
 }
 
-unsafe fn namespace_version_ok(package: &str, check: SEXP) -> bool {
+fn installed_package_version(package: &str) -> Option<String> {
     unsafe {
-        let op = list_named_string(check, "op").unwrap_or_else(|| "==".to_string());
-        let want = list_named_version(check, "version");
-        let have = installed_package_version(package);
-        version_cmp(&have, &want, &op)
+        if let Some(namespace) = cached_namespace_by_name(package) {
+            let info = crate::sexp::envir::R_findVarInFrame(
+                namespace,
+                Rf_install(c".__NAMESPACE__.".as_ptr()),
+            );
+            if TYPEOF(info) == SEXPTYPE::ENVSXP {
+                let spec = crate::sexp::envir::R_findVarInFrame(info, Rf_install(c"spec".as_ptr()));
+                if TYPEOF(spec) == SEXPTYPE::STRSXP && XLENGTH(spec) >= 2 {
+                    let version = elt_to_string(spec, 1);
+                    if !version.is_empty() {
+                        return Some(version);
+                    }
+                }
+            }
+        }
     }
+
+    package_description_fields(package)
+        .ok()
+        .and_then(|mut fields| fields.remove("Version"))
+        .or_else(|| {
+            is_builtin_package_dependency(package)
+                .then(|| crate::mainutils::compatibility_target::NUMERIC_VERSION.to_owned())
+        })
 }
 
 unsafe fn list_named_string(list: SEXP, name: &str) -> Option<String> {
     unsafe {
-        let value = list_named(list, name)?;
+        let value = list_named(list, name).filter(|&value| value != R_NilValue())?;
         Some(elt_to_string(value, 0))
     }
 }
@@ -439,11 +458,6 @@ unsafe fn list_named(list: SEXP, name: &str) -> Option<SEXP> {
         }
         None
     }
-}
-
-fn installed_package_version(_package: &str) -> Vec<i32> {
-    // Matches do_getRversion / do_getNamespaceVersion: 4.4.1.
-    vec![4, 4, 1]
 }
 
 fn parse_version(text: &str) -> Vec<i32> {
@@ -490,14 +504,32 @@ pub unsafe fn do_require_namespace(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEX
                     message: "invalid 'versionCheck' argument".to_string(),
                 });
             }
-            if !namespace_version_ok(&package, check) {
-                if !is_quiet {
-                    eprintln!(
-                        "Failed with error:  'namespace '{package}' 4.4.1 is already loaded, but > 4.4.1 is required'"
-                    );
+            if let Some(op) = list_named_string(check, "op")
+                && list_named(check, "version").is_some_and(|version| version != R_NilValue())
+            {
+                let want = list_named_version(check, "version");
+                let Some(have) = installed_package_version(&package) else {
+                    return Rf_ScalarLogical(FALSE);
+                };
+                if !version_cmp(&parse_version(&have), &want, &op) {
+                    if !is_quiet {
+                        let want = want
+                            .iter()
+                            .map(i32::to_string)
+                            .collect::<Vec<_>>()
+                            .join(".");
+                        let state = if cached_namespace_by_name(&package).is_some() {
+                            "is already loaded"
+                        } else {
+                            "was found"
+                        };
+                        eprintln!(
+                            "Failed with error:  ‘namespace ‘{package}’ {have} {state}, but {op} {want} is required’"
+                        );
+                    }
+                    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+                    return Rf_ScalarLogical(FALSE);
                 }
-                crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-                return Rf_ScalarLogical(FALSE);
             }
         }
 

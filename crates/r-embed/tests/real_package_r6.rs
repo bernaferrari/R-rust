@@ -134,4 +134,17 @@ c1 <- Counter$new()$inc()$inc()
         .eval(r#"grepl("Q2", capture.output(print(Q2))[1])"#)
         .expect("R11 eval");
     assert_eq!(r11.trim_end(), "[1] TRUE");
+
+    session
+        .eval_script(
+            r#"
+.libPaths(character())
+stopifnot(identical(getNamespaceVersion("R6"), c(version = "2.6.1")),
+          requireNamespace("R6", quietly = TRUE,
+                           versionCheck = list(op = "==", version = package_version("2.6.1"))),
+          !requireNamespace("R6", quietly = TRUE,
+                            versionCheck = list(op = ">=", version = package_version("3.0.0"))))
+"#,
+        )
+        .expect("loaded R6 retains its real version without the original library path");
 }
