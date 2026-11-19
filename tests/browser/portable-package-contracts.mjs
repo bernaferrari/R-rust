@@ -25,6 +25,7 @@ const contracts = [
     '1201_pbeta_bgrat_underflow',
     '1202_posixlt_difftime',
     '1203_posix_character_na',
+    '1204_posixlt_replacement_precision',
   ].map(name => [
     resolve(root, 'tests/conformance/cases', name + '.R'),
     resolve(root, 'tests/conformance/golden', name + '.out'),

@@ -52,6 +52,12 @@ class EmbeddedSourcesTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'provenance'):
             validate(self.root)
 
+    def test_wrong_file_revision_rejects(self):
+        self.manifest['files']['base/R/identity.R']['source_commit'] = '0' * 40
+        self.save()
+        with self.assertRaisesRegex(ValueError, 'unexpected upstream R revision'):
+            validate(self.root)
+
     def test_ignored_reference_input_rejects_even_with_packaged_assets_present(self):
         self.rust.write_text('const SOURCE: &str = include_str!("../../../r-source/file.R");\n')
         with self.assertRaisesRegex(ValueError, 'ignored r-source'):

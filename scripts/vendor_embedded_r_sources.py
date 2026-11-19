@@ -37,12 +37,17 @@ def vendor(root, source):
     blobs = {}
     for name in selected_sources(root):
         upstream = 'src/library/' + name
-        expected = subprocess.check_output(['git', '-C', str(source), 'show', f'{COMMIT}:{upstream}'])
-        if (source / upstream).read_bytes() != expected:
+        # POSIXlt replacement must use the same definitions as the oracle.
+        commit = (json.loads((root / 'oracle/r-oracle.json').read_text())['source']['commit']
+                  if name == 'base/R/datetime.R' else COMMIT)
+        expected = subprocess.check_output(['git', '-C', str(source), 'show', f'{commit}:{upstream}'])
+        if commit == COMMIT and (source / upstream).read_bytes() != expected:
             raise ValueError('upstream working file differs from pinned Git blob: ' + upstream)
         blobs[name] = expected
         files[name] = {'source_path': upstream, 'bytes': len(expected),
                        'sha256': hashlib.sha256(expected).hexdigest()}
+        if commit != COMMIT:
+            files[name]['source_commit'] = commit
     license_bytes = subprocess.check_output(['git', '-C', str(source), 'show', f'{COMMIT}:COPYING'])
     destination = root / 'crates/rmath/upstream'
     destination.mkdir(parents=True, exist_ok=True)

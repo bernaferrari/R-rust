@@ -31,6 +31,10 @@ def validate(root):
             raise ValueError('packaged R path escapes asset storage: ' + name)
         if row.get('source_path') != 'src/library/' + name:
             raise ValueError('unexpected upstream R path: ' + name)
+        expected_commit = (json.loads((root / 'oracle/r-oracle.json').read_text())['source']['commit']
+                           if name == 'base/R/datetime.R' else COMMIT)
+        if row.get('source_commit', COMMIT) != expected_commit:
+            raise ValueError('unexpected upstream R revision: ' + name)
         data = target.read_bytes()
         if len(data) != row.get('bytes') or hashlib.sha256(data).hexdigest() != row.get('sha256'):
             raise ValueError('embedded R content differs from pinned manifest: ' + name)
