@@ -54,7 +54,7 @@ pub(super) unsafe fn save(
     let result = if browser_files::enabled() || browser_files::contains_current(&path) {
         browser_files::write_current(&path, payload).map_err(io::Error::other)
     } else {
-        write_host_atomically(&path, payload)
+        crate::mainutils::platform::publish_host_file(&path, |file| file.write_all(payload))
     };
     result.unwrap_or_else(|error| fail(format!("cannot save workspace to '{path}': {error}")));
 }
@@ -175,91 +175,4 @@ unsafe fn workspace_path(file: SEXP, diagnostic: &str) -> String {
         }
         path.to_owned()
     }
-}
-
-#[cfg(target_arch = "wasm32")]
-fn write_host_atomically(_path: &str, _bytes: &[u8]) -> io::Result<()> {
-    Err(io::Error::new(
-        io::ErrorKind::Unsupported,
-        "host workspace files are unavailable",
-    ))
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-fn write_host_atomically(path: &str, bytes: &[u8]) -> io::Result<()> {
-    use std::{
-        fs::{self, OpenOptions},
-        path::{Path, PathBuf},
-    };
-    struct TemporaryWorkspace(Option<PathBuf>);
-    impl Drop for TemporaryWorkspace {
-        fn drop(&mut self) {
-            if let Some(path) = &self.0 {
-                let _ = fs::remove_file(path);
-            }
-        }
-    }
-
-    let destination = Path::new(path);
-    // Keep an existing symlink and atomically replace the regular file it
-    // names, as direct R writes do. A dangling symlink is recoverable.
-    let resolved;
-    let destination = match fs::symlink_metadata(destination) {
-        Ok(metadata) if metadata.file_type().is_symlink() => {
-            resolved = fs::canonicalize(destination)?;
-            resolved.as_path()
-        }
-        Ok(_) => destination,
-        Err(error) if error.kind() == io::ErrorKind::NotFound => destination,
-        Err(error) => return Err(error),
-    };
-    let permissions = match fs::metadata(destination) {
-        Ok(metadata) if metadata.is_file() => {
-            // Opening without truncation checks the original file's write
-            // permission. Renaming alone checks only its directory.
-            OpenOptions::new().write(true).open(destination)?;
-            Some(metadata.permissions())
-        }
-        Ok(_) => {
-            return Err(io::Error::other(
-                "workspace destination is not a regular file",
-            ));
-        }
-        Err(error) if error.kind() == io::ErrorKind::NotFound => None,
-        Err(error) => return Err(error),
-    };
-    let parent = destination
-        .parent()
-        .filter(|path| !path.as_os_str().is_empty())
-        .unwrap_or_else(|| Path::new("."));
-    let parent = parent
-        .to_str()
-        .ok_or_else(|| io::Error::other("invalid workspace directory"))?;
-    for _ in 0..100 {
-        let temporary = crate::mainutils::sysutils::R_tmpnam2(".rport-workspace-", parent, ".tmp")
-            .ok_or_else(|| io::Error::other("cannot choose temporary workspace name"))?;
-        let mut options = OpenOptions::new();
-        options.write(true).create_new(true);
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::OpenOptionsExt;
-            options.mode(0o600);
-        }
-        let mut file = match options.open(&temporary) {
-            Ok(file) => file,
-            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
-            Err(error) => return Err(error),
-        };
-        let mut cleanup = TemporaryWorkspace(Some(PathBuf::from(temporary)));
-        file.write_all(bytes)?;
-        if let Some(permissions) = permissions {
-            file.set_permissions(permissions)?;
-        }
-        file.sync_all()?;
-        drop(file);
-        fs::rename(cleanup.0.as_ref().expect("staged path"), destination)?;
-        cleanup.0 = None;
-        return Ok(());
-    }
-    Err(io::Error::other("cannot create temporary workspace file"))
 }

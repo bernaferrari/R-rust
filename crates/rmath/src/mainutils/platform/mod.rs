@@ -20,6 +20,7 @@ use crate::sexp::protect::protect;
 // Standalone utility: R_Date
 // ---------------------------------------------------------------------------
 
+mod atomic_file;
 mod datetime;
 mod files;
 #[cfg(not(target_arch = "wasm32"))]
@@ -28,6 +29,7 @@ mod sysinfo;
 #[cfg(test)]
 mod tests;
 
+pub(crate) use atomic_file::publish_host_file;
 pub use datetime::*;
 pub use files::*;
 pub use sysinfo::*;
