@@ -224,7 +224,7 @@ pub unsafe fn do_formatPOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -
         };
         let tzone = getAttrib(x, Rf_install(c"tzone".as_ptr()));
         // GNU: if the format includes %Z or %z, set TZ from the tzone attr.
-        let mut saved_tz: Option<Option<String>> = None;
+        let mut _timezone = None;
         {
             let mut tz1: Option<String> = None;
             if !tzone.is_null()
@@ -250,8 +250,9 @@ pub unsafe fn do_formatPOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -
                     s.contains("%Z") || s.contains("%z")
                 });
                 if need_tz {
-                    saved_tz = Some(crate::tzone::timezone_override());
-                    crate::tzone::set_timezone_override(Some(tz.clone()));
+                    let timezone = TzSetup::prepare();
+                    timezone.set(tz);
+                    _timezone = Some(timezone);
                 }
             }
         }
@@ -447,9 +448,6 @@ pub unsafe fn do_formatPOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -
             setAttrib(ans, R_NamesSymbol(), nm3);
         }
 
-        if let Some(prev) = saved_tz {
-            crate::tzone::set_timezone_override(prev);
-        }
         ans
     }
 }

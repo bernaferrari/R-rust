@@ -282,8 +282,8 @@ pub(crate) fn gmtsub(
     tmp: &mut stm,
 ) -> Option<*mut stm> {
     if g.gmt_is_set == 0 {
-        g.gmt_is_set = 1;
         gmtload(&mut g.gmtmem);
+        g.gmt_is_set = 1;
     }
     timesub(timep, offset, &g.gmtmem, tmp)
 }

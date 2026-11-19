@@ -192,6 +192,19 @@ fn read_system_zone(name_stripped: &str) -> Option<Vec<u8>> {
 }
 
 pub(crate) fn tzload(name: Option<&str>, sp: &mut state, doextend: bool) -> i32 {
+    #[cfg(not(target_arch = "wasm32"))]
+    let read_zone = read_system_zone;
+    #[cfg(target_arch = "wasm32")]
+    let read_zone = super::bundled::read_zone;
+    tzload_with(name, sp, doextend, read_zone)
+}
+
+pub(super) fn tzload_with<B: std::ops::Deref<Target = [u8]>>(
+    name: Option<&str>,
+    sp: &mut state,
+    doextend: bool,
+    read_zone: impl FnOnce(&str) -> Option<B>,
+) -> i32 {
     sp.goback = 0;
     sp.goahead = 0;
 
@@ -209,22 +222,18 @@ pub(crate) fn tzload(name: Option<&str>, sp: &mut state, doextend: bool) -> i32 
     };
     let name_stripped = name.strip_prefix(':').unwrap_or(name);
 
-    #[cfg(not(target_arch = "wasm32"))]
-    let data = read_system_zone(name_stripped);
-    #[cfg(target_arch = "wasm32")]
-    let data = super::bundled::load(name_stripped);
-    let Some(mut data) = data else {
+    let Some(bytes) = read_zone(name_stripped) else {
         rf_warning(&format!("unknown timezone '{name}'"));
         return -1;
     };
 
+    let mut data = &*bytes;
     if !data.starts_with(b"TZif") {
         return -1;
     }
 
     // Parse the file -- loop over stored sizes (4 then 8 bytes for v2+)
     let mut stored: usize = 4;
-    let mut nread = data.len();
 
     loop {
         if data.len() < std::mem::size_of::<tzhead>() {
@@ -264,7 +273,7 @@ pub(crate) fn tzload(name: Option<&str>, sp: &mut state, doextend: bool) -> i32 
             + (ttisstdcnt as usize)                   // ttisstds
             + (ttisgmtcnt as usize); // ttisgmts
 
-        if nread - p < needed {
+        if data.len() - p < needed {
             return -1;
         }
 
@@ -370,13 +379,8 @@ pub(crate) fn tzload(name: Option<&str>, sp: &mut state, doextend: bool) -> i32 
             break;
         }
 
-        // For version 2+, shift the data for the second pass
-        nread -= p;
-        // Copy remaining data to the front of the buffer
-        for i in 0..nread {
-            data[i] = data[p + i];
-        }
-        data.truncate(nread);
+        // For version 2+, advance to the next block without copying it.
+        data = &data[p..];
 
         // For signed 64-bit time_t, we're done after processing 8-byte entries
         // (stored >= sizeof(time_t) for time_t = i64)
@@ -388,10 +392,8 @@ pub(crate) fn tzload(name: Option<&str>, sp: &mut state, doextend: bool) -> i32 
     }
 
     // Handle POSIX TZ extension in the file
-    if doextend && nread > 2 {
-        // After the loop, data contains the remaining bytes after the last pass.
-        // Re-read data from the current position.
-        let remaining = &data[..nread];
+    if doextend && data.len() > 2 {
+        let remaining = data;
         if remaining[0] == b'\n'
             && remaining[remaining.len() - 1] == b'\n'
             && (sp.typecnt as usize) + 2 <= TZ_MAX_TYPES

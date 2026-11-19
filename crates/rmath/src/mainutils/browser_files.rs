@@ -253,12 +253,19 @@ fn memory_error() -> io::Error {
 }
 
 fn reserve(bytes: usize) -> io::Result<Option<crate::sexp::memory::TransientReservation>> {
-    with_current_instance(|instance| unsafe {
-        (*instance)
-            .arena
-            .try_reserve_transient(bytes)
-            .ok_or_else(memory_error)
-            .map(Some)
+    with_current_instance(|instance| {
+        if crate::sexp::memory::is_arena_lent(instance) {
+            return Err(memory_error());
+        }
+        // This touches only the arena's workspace ledger. It cannot collect
+        // or call R while a sibling field (such as timezone state) is lent.
+        unsafe {
+            (*instance)
+                .arena
+                .try_reserve_transient(bytes)
+                .ok_or_else(memory_error)
+                .map(Some)
+        }
     })
     .unwrap_or(Ok(None))
 }
@@ -273,13 +280,14 @@ pub(crate) fn admit_text(text: String) -> io::Result<FileText> {
     })
 }
 
-/// Read a bounded source slice from a trusted embedded zlib stream.
-pub(crate) fn read_embedded_zlib_text(
+/// Decode a byte range from a trusted embedded zlib stream. The returned
+/// bytes keep their arena reservation through parsing or evaluation.
+pub(crate) fn read_embedded_zlib_bytes(
     compressed: &[u8],
     offset: usize,
     length: usize,
     max_end: usize,
-) -> io::Result<FileText> {
+) -> io::Result<FileBytes> {
     use io::Read;
 
     if offset.checked_add(length).is_none_or(|end| end > max_end) {
@@ -288,10 +296,11 @@ pub(crate) fn read_embedded_zlib_text(
             "invalid packed source range",
         ));
     }
-    // The decoder may use transient storage even for a short source topic.
-    let _decoder = reserve(128 * 1024)?;
+    // Allow room for miniz's 32 KiB dictionary and its inflate state.
+    // The input slice already implements BufRead, so no input copy is needed.
+    let _decoder = reserve(64 * 1024)?;
     let reservation = reserve(length)?;
-    let mut decoder = flate2::read::ZlibDecoder::new(compressed);
+    let mut decoder = flate2::bufread::ZlibDecoder::new(compressed);
     if io::copy(&mut decoder.by_ref().take(offset as u64), &mut io::sink())? != offset as u64 {
         return Err(io::Error::new(
             io::ErrorKind::UnexpectedEof,
@@ -304,12 +313,25 @@ pub(crate) fn read_embedded_zlib_text(
         .map_err(|_| memory_error())?;
     bytes.resize(length, 0);
     decoder.read_exact(&mut bytes)?;
-    let text = String::from_utf8(bytes)
-        .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
-    Ok(FileText {
-        text,
+    Ok(FileBytes {
+        bytes,
         _reservation: reservation,
     })
+}
+
+pub(crate) fn read_embedded_zlib_text(
+    compressed: &[u8],
+    offset: usize,
+    length: usize,
+    max_end: usize,
+) -> io::Result<FileText> {
+    let FileBytes {
+        bytes,
+        _reservation,
+    } = read_embedded_zlib_bytes(compressed, offset, length, max_end)?;
+    let text = String::from_utf8(bytes)
+        .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+    Ok(FileText { text, _reservation })
 }
 
 struct FileBuffer {
