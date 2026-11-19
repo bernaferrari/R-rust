@@ -332,8 +332,6 @@ pub unsafe fn do_sprintf(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         };
         let mut nargs: c_int = 0;
         let mut nfmt: c_int = 0;
-        let nprotect: c_int = 0;
-
         let mut fmt: [c_char; MAXLINE + 1] = [0; MAXLINE + 1];
         let mut fmt2: [c_char; MAXLINE + 10] = [0; MAXLINE + 10];
         let mut bit: [c_char; MAXLINE + 1] = [0; MAXLINE + 1];
@@ -395,28 +393,25 @@ pub unsafe fn do_sprintf(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             tmp_args = CDR(tmp_args);
         }
 
-        let mut maxlen: c_int = nfmt;
-        for i in 0..nargs as usize {
-            if maxlen < lens[i] {
-                maxlen = lens[i];
-            }
-        }
-        if maxlen != 0 && nfmt != 0 && maxlen % nfmt != 0 {
-            error(b"arguments cannot be recycled to the same length\0".as_ptr() as *const c_char);
-        }
-        for i in 0..nargs as usize {
-            if lens[i] != 0 && maxlen % lens[i] != 0 {
-                error(
-                    b"arguments cannot be recycled to the same length\0".as_ptr() as *const c_char,
+        let recycling_length = |lengths: &[c_int]| {
+            let length = lengths.iter().copied().fold(nfmt, c_int::max);
+            if length % nfmt != 0 || lengths.iter().any(|n| length % n != 0) {
+                crate::mainutils::errors::errorcall_str(
+                    call,
+                    "arguments cannot be recycled to the same length",
                 );
             }
-        }
+            length
+        };
+        let mut maxlen = recycling_length(&lens[..nargs as usize]);
 
         let mut outbuff = RStringBuffer::new();
-
+        let mut coercion_roots = Vec::new();
         let mut ans: SEXP = ptr::null_mut();
+        let mut _answer_root = None;
 
-        for ns in 0..maxlen as R_xlen_t {
+        let mut ns: R_xlen_t = 0;
+        while ns < R_xlen_t::from(maxlen) {
             let mut outputString = R_AllocStringBuffer(0, &mut outbuff);
             *outputString = 0;
 
@@ -743,6 +738,7 @@ pub unsafe fn do_sprintf(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                                     let msg = format!("invalid format specification '{shown}'\0");
                                     error(msg.as_ptr() as *const c_char);
                                 }
+                                let mut coerced = false;
                                 match spec as u8 {
                                     b'd' | b'i' | b'o' | b'x' | b'X' => {
                                         if TYPEOF(_this) == REALSXP {
@@ -760,7 +756,7 @@ pub unsafe fn do_sprintf(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                                             }
                                             if exactly_integer {
                                                 _this = coerceVector(_this, INTSXP);
-                                                a[nthis as usize] = _this;
+                                                coerced = true;
                                             }
                                         }
                                     }
@@ -778,16 +774,7 @@ pub unsafe fn do_sprintf(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                                             );
                                             let _tmp_guard = protect(tmp);
                                             _this = crate::eval::eval::Rf_eval(tmp, env);
-                                            a[nthis as usize] = _this;
-                                            let new_len = LENGTH(_this);
-                                            if new_len == 0 {
-                                                error(
-                                                    b"coercion has changed vector length to 0\0"
-                                                        .as_ptr()
-                                                        as *const c_char,
-                                                );
-                                            }
-                                            lens[nthis as usize] = new_len;
+                                            coerced = true;
                                         }
                                     }
                                     b's' => {
@@ -810,16 +797,7 @@ pub unsafe fn do_sprintf(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                                             );
                                             let _tmp_guard = protect(tmp);
                                             _this = crate::eval::eval::Rf_eval(tmp, env);
-                                            a[nthis as usize] = _this;
-                                            let new_len = LENGTH(_this);
-                                            if new_len == 0 {
-                                                error(
-                                                    b"coercion has changed vector length to 0\0"
-                                                        .as_ptr()
-                                                        as *const c_char,
-                                                );
-                                            }
-                                            lens[nthis as usize] = new_len;
+                                            coerced = true;
                                             let restored = R_AllocStringBuffer(
                                                 saved.len() as i64,
                                                 &mut outbuff,
@@ -832,6 +810,25 @@ pub unsafe fn do_sprintf(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                                         }
                                     }
                                     _ => {}
+                                }
+                                if coerced {
+                                    // Later S3 coercions may allocate or collect before this
+                                    // argument is formatted again.
+                                    coercion_roots.push(protect(_this));
+                                    let index = nthis as usize;
+                                    a[index] = _this;
+                                    let new_len = crate::sexp::constructors::Rf_length(_this);
+                                    if new_len == 0 {
+                                        crate::mainutils::errors::errorcall_str(
+                                            call,
+                                            "coercion has changed vector length to 0",
+                                        );
+                                    }
+                                    let shrinks_maximum = lens[index] == maxlen && new_len < maxlen;
+                                    lens[index] = new_len;
+                                    if shrinks_maximum {
+                                        maxlen = recycling_length(&lens[..nargs as usize]);
+                                    }
                                 }
                             }
 
@@ -1054,6 +1051,7 @@ pub unsafe fn do_sprintf(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 
             if ns == 0 {
                 ans = Rf_allocVector(STRSXP, maxlen);
+                _answer_root = Some(protect(ans));
             }
             owner
                 .require_active()
@@ -1074,6 +1072,7 @@ pub unsafe fn do_sprintf(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                 })
                 .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
             SET_STRING_ELT(ans, ns, character.as_raw());
+            ns += 1;
         }
 
         let mut nunused: c_int = 0;
