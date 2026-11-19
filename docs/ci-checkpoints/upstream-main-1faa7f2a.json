@@ -1,0 +1,901 @@
+{
+  "execution": {
+    "source_commit": "1faa7f2a9801dacc1dcb58ffaa909768746d709a",
+    "source_sha256": "ff0b62ca12dd181311e37d49e6c17d28e8525635a2a07cbbf6643e04f3c0c15a",
+    "inventory_sha256": "f02e91a5502ca14510ed5a96cd9616487052c22bd5f7208cdd466f8e838997e3",
+    "oracle_manifest_sha256": "b2400cc9d83720c794199ebe51856bb88a0aa2e38ee8db276c7c27f04473c679",
+    "pinned_oracle_required": true,
+    "profile": "release",
+    "runtime": {
+      "cargo_features": [
+        "default",
+        "faer",
+        "rust-backend",
+        "r-graphics-engine",
+        "renderplot-device"
+      ],
+      "device": {
+        "font": "bundled DejaVu Sans",
+        "height": 504,
+        "name": "renderplot-scene",
+        "output": "owned display list",
+        "width": 504
+      },
+      "gnu_device_policy": "Rscript default device; driver device calls unchanged",
+      "name": "graphics",
+      "numerical_backend": "faer",
+      "package_policy": "native",
+      "top_level_evaluation_mode": "Script"
+    },
+    "case_timeout_seconds": 1800.0,
+    "strict": true
+  },
+  "execution_complete": true,
+  "full_inventory_complete": true,
+  "strict_pass": false,
+  "unattempted_cases": [],
+  "suites": {
+    "curated": {
+      "pass": 15,
+      "fail": 0,
+      "skip": 0
+    },
+    "whole": {
+      "pass": 22,
+      "fail": 18,
+      "skip": 30
+    }
+  },
+  "cases": [
+    {
+      "kind": "curated",
+      "case": "001_arith_true_power_ieee.R",
+      "path": "tests/upstream-core/cases/001_arith_true_power_ieee.R",
+      "status": "pass",
+      "detail": "",
+      "disposition": "pass",
+      "owner": "-",
+      "reason": "-"
+    },
+    {
+      "kind": "curated",
+      "case": "002_arith_attributes_complex.R",
+      "path": "tests/upstream-core/cases/002_arith_attributes_complex.R",
+      "status": "pass",
+      "detail": "",
+      "disposition": "pass",
+      "owner": "-",
+      "reason": "-"
+    },
+    {
+      "kind": "curated",
+      "case": "003_eval_etc_parser_relops.R",
+      "path": "tests/upstream-core/cases/003_eval_etc_parser_relops.R",
+      "status": "pass",
+      "detail": "",
+      "disposition": "pass",
+      "owner": "-",
+      "reason": "-"
+    },
+    {
+      "kind": "curated",
+      "case": "004_eval_etc_closure_calls.R",
+      "path": "tests/upstream-core/cases/004_eval_etc_closure_calls.R",
+      "status": "pass",
+      "detail": "",
+      "disposition": "pass",
+      "owner": "-",
+      "reason": "-"
+    },
+    {
+      "kind": "curated",
+      "case": "005_conditions_trycatch.R",
+      "path": "tests/upstream-core/cases/005_conditions_trycatch.R",
+      "status": "pass",
+      "detail": "",
+      "disposition": "pass",
+      "owner": "-",
+      "reason": "-"
+    },
+    {
+      "kind": "curated",
+      "case": "006_subset_vector_edges.R",
+      "path": "tests/upstream-core/cases/006_subset_vector_edges.R",
+      "status": "pass",
+      "detail": "",
+      "disposition": "pass",
+      "owner": "-",
+      "reason": "-"
+    },
+    {
+      "kind": "curated",
+      "case": "007_sequence_rep_apply.R",
+      "path": "tests/upstream-core/cases/007_sequence_rep_apply.R",
+      "status": "pass",
+      "detail": "",
+      "disposition": "pass",
+      "owner": "-",
+      "reason": "-"
+    },
+    {
+      "kind": "curated",
+      "case": "008_data_frame_factor_table.R",
+      "path": "tests/upstream-core/cases/008_data_frame_factor_table.R",
+      "status": "pass",
+      "detail": "",
+      "disposition": "pass",
+      "owner": "-",
+      "reason": "-"
+    },
+    {
+      "kind": "curated",
+      "case": "009_any_all_na_list_inputs.R",
+      "path": "tests/upstream-core/cases/009_any_all_na_list_inputs.R",
+      "status": "pass",
+      "detail": "",
+      "disposition": "pass",
+      "owner": "-",
+      "reason": "-"
+    },
+    {
+      "kind": "curated",
+      "case": "010_structure_attribute_remap.R",
+      "path": "tests/upstream-core/cases/010_structure_attribute_remap.R",
+      "status": "pass",
+      "detail": "",
+      "disposition": "pass",
+      "owner": "-",
+      "reason": "-"
+    },
+    {
+      "kind": "curated",
+      "case": "011_complex_arithmetic_identities.R",
+      "path": "tests/upstream-core/cases/011_complex_arithmetic_identities.R",
+      "status": "pass",
+      "detail": "",
+      "disposition": "pass",
+      "owner": "-",
+      "reason": "-"
+    },
+    {
+      "kind": "curated",
+      "case": "012_primitive_accounting_smoke.R",
+      "path": "tests/upstream-core/cases/012_primitive_accounting_smoke.R",
+      "status": "pass",
+      "detail": "",
+      "disposition": "pass",
+      "owner": "-",
+      "reason": "-"
+    },
+    {
+      "kind": "curated",
+      "case": "013_eval_fns_parse_deparse_smoke.R",
+      "path": "tests/upstream-core/cases/013_eval_fns_parse_deparse_smoke.R",
+      "status": "pass",
+      "detail": "",
+      "disposition": "pass",
+      "owner": "-",
+      "reason": "-"
+    },
+    {
+      "kind": "curated",
+      "case": "014_simple_true_core_vectors.R",
+      "path": "tests/upstream-core/cases/014_simple_true_core_vectors.R",
+      "status": "pass",
+      "detail": "",
+      "disposition": "pass",
+      "owner": "-",
+      "reason": "-"
+    },
+    {
+      "kind": "curated",
+      "case": "015_empty_vector_format_io.R",
+      "path": "tests/upstream-core/cases/015_empty_vector_format_io.R",
+      "status": "pass",
+      "detail": "",
+      "disposition": "pass",
+      "owner": "-",
+      "reason": "-"
+    },
+    {
+      "kind": "whole",
+      "case": "CRANtools.R",
+      "path": "tests/upstream-r/vendor/CRANtools.R",
+      "status": "skip",
+      "detail": "declared skip",
+      "disposition": "skip",
+      "owner": "rport-2gpp.2",
+      "reason": "requires installed package metadata and CRAN repository tooling"
+    },
+    {
+      "kind": "whole",
+      "case": "PCRE.R",
+      "path": "tests/upstream-r/vendor/PCRE.R",
+      "status": "skip",
+      "detail": "declared skip",
+      "disposition": "skip",
+      "owner": "rport-2gpp.1",
+      "reason": "requires the complete upstream PCRE and base-regex surface"
+    },
+    {
+      "kind": "whole",
+      "case": "any-all.R",
+      "path": "tests/upstream-r/vendor/any-all.R",
+      "status": "pass",
+      "detail": "",
+      "disposition": "pass",
+      "owner": "-",
+      "reason": "-"
+    },
+    {
+      "kind": "whole",
+      "case": "arith-true.R",
+      "path": "tests/upstream-r/vendor/arith-true.R",
+      "status": "pass",
+      "detail": "",
+      "disposition": "pass",
+      "owner": "-",
+      "reason": "-"
+    },
+    {
+      "kind": "whole",
+      "case": "arith.R",
+      "path": "tests/upstream-r/vendor/arith.R",
+      "status": "pass",
+      "detail": "",
+      "disposition": "pass",
+      "owner": "-",
+      "reason": "-"
+    },
+    {
+      "kind": "whole",
+      "case": "array-subset.R",
+      "path": "tests/upstream-r/vendor/array-subset.R",
+      "status": "pass",
+      "detail": "",
+      "disposition": "pass",
+      "owner": "-",
+      "reason": "-"
+    },
+    {
+      "kind": "whole",
+      "case": "classes-methods.R",
+      "path": "tests/upstream-r/vendor/classes-methods.R",
+      "status": "fail",
+      "detail": "Rust output diverged from stock R",
+      "disposition": "pass",
+      "owner": "-",
+      "reason": "-"
+    },
+    {
+      "kind": "whole",
+      "case": "complex.R",
+      "path": "tests/upstream-r/vendor/complex.R",
+      "status": "pass",
+      "detail": "",
+      "disposition": "pass",
+      "owner": "-",
+      "reason": "-"
+    },
+    {
+      "kind": "whole",
+      "case": "conditions.R",
+      "path": "tests/upstream-r/vendor/conditions.R",
+      "status": "pass",
+      "detail": "",
+      "disposition": "pass",
+      "owner": "-",
+      "reason": "-"
+    },
+    {
+      "kind": "whole",
+      "case": "d-p-q-r-tests.R",
+      "path": "tests/upstream-r/vendor/d-p-q-r-tests.R",
+      "status": "fail",
+      "detail": "Rust output diverged from stock R",
+      "disposition": "pass",
+      "owner": "-",
+      "reason": "-"
+    },
+    {
+      "kind": "whole",
+      "case": "d-p-q-r-tst-2.R",
+      "path": "tests/upstream-r/vendor/d-p-q-r-tst-2.R",
+      "status": "fail",
+      "detail": "Rust output diverged from stock R",
+      "disposition": "pass",
+      "owner": "-",
+      "reason": "-"
+    },
+    {
+      "kind": "whole",
+      "case": "datasets.R",
+      "path": "tests/upstream-r/vendor/datasets.R",
+      "status": "pass",
+      "detail": "",
+      "disposition": "pass",
+      "owner": "-",
+      "reason": "-"
+    },
+    {
+      "kind": "whole",
+      "case": "datetime.R",
+      "path": "tests/upstream-r/vendor/datetime.R",
+      "status": "fail",
+      "detail": "Rust output diverged from stock R",
+      "disposition": "pass",
+      "owner": "-",
+      "reason": "-"
+    },
+    {
+      "kind": "whole",
+      "case": "datetime2.R",
+      "path": "tests/upstream-r/vendor/datetime2.R",
+      "status": "pass",
+      "detail": "",
+      "disposition": "pass",
+      "owner": "-",
+      "reason": "-"
+    },
+    {
+      "kind": "whole",
+      "case": "datetime3.R",
+      "path": "tests/upstream-r/vendor/datetime3.R",
+      "status": "fail",
+      "detail": "Rust runner exited non-zero",
+      "disposition": "pass",
+      "owner": "-",
+      "reason": "-"
+    },
+    {
+      "kind": "whole",
+      "case": "datetime4.R",
+      "path": "tests/upstream-r/vendor/datetime4.R",
+      "status": "fail",
+      "detail": "Rust output diverged from stock R",
+      "disposition": "pass",
+      "owner": "-",
+      "reason": "-"
+    },
+    {
+      "kind": "whole",
+      "case": "datetime5.R",
+      "path": "tests/upstream-r/vendor/datetime5.R",
+      "status": "pass",
+      "detail": "",
+      "disposition": "pass",
+      "owner": "-",
+      "reason": "-"
+    },
+    {
+      "kind": "whole",
+      "case": "demos.R",
+      "path": "tests/upstream-r/vendor/demos.R",
+      "status": "fail",
+      "detail": "Rust output diverged from stock R",
+      "disposition": "pass",
+      "owner": "-",
+      "reason": "-"
+    },
+    {
+      "kind": "whole",
+      "case": "demos2.R",
+      "path": "tests/upstream-r/vendor/demos2.R",
+      "status": "fail",
+      "detail": "Rust runner exited non-zero",
+      "disposition": "pass",
+      "owner": "-",
+      "reason": "-"
+    },
+    {
+      "kind": "whole",
+      "case": "download.file.R",
+      "path": "tests/upstream-r/vendor/download.file.R",
+      "status": "skip",
+      "detail": "declared skip",
+      "disposition": "skip",
+      "owner": "rport-2gpp.4",
+      "reason": "requires hermetic network and download-method adapters"
+    },
+    {
+      "kind": "whole",
+      "case": "eval-etc-2.R",
+      "path": "tests/upstream-r/vendor/eval-etc-2.R",
+      "status": "skip",
+      "detail": "declared skip",
+      "disposition": "skip",
+      "owner": "rport-2gpp.1",
+      "reason": "requires complete evaluator introspection and call-context behavior"
+    },
+    {
+      "kind": "whole",
+      "case": "eval-etc.R",
+      "path": "tests/upstream-r/vendor/eval-etc.R",
+      "status": "pass",
+      "detail": "",
+      "disposition": "pass",
+      "owner": "-",
+      "reason": "-"
+    },
+    {
+      "kind": "whole",
+      "case": "eval-fns.R",
+      "path": "tests/upstream-r/vendor/eval-fns.R",
+      "status": "pass",
+      "detail": "",
+      "disposition": "pass",
+      "owner": "-",
+      "reason": "-"
+    },
+    {
+      "kind": "whole",
+      "case": "gct-foot.R",
+      "path": "tests/upstream-r/vendor/gct-foot.R",
+      "status": "skip",
+      "detail": "declared skip",
+      "disposition": "skip",
+      "owner": "rport-2gpp.5",
+      "reason": "requires the upstream GC-torture prelude and timing normalization"
+    },
+    {
+      "kind": "whole",
+      "case": "iconv.R",
+      "path": "tests/upstream-r/vendor/iconv.R",
+      "status": "fail",
+      "detail": "Rust output diverged from stock R",
+      "disposition": "pass",
+      "owner": "-",
+      "reason": "-"
+    },
+    {
+      "kind": "whole",
+      "case": "iec60559.R",
+      "path": "tests/upstream-r/vendor/iec60559.R",
+      "status": "pass",
+      "detail": "",
+      "disposition": "pass",
+      "owner": "-",
+      "reason": "-"
+    },
+    {
+      "kind": "whole",
+      "case": "internet.R",
+      "path": "tests/upstream-r/vendor/internet.R",
+      "status": "skip",
+      "detail": "declared skip",
+      "disposition": "skip",
+      "owner": "rport-2gpp.4",
+      "reason": "requires hermetic internet capability and proxy behavior"
+    },
+    {
+      "kind": "whole",
+      "case": "internet2.R",
+      "path": "tests/upstream-r/vendor/internet2.R",
+      "status": "skip",
+      "detail": "declared skip",
+      "disposition": "skip",
+      "owner": "rport-2gpp.4",
+      "reason": "requires hermetic HTTP server and URL-connection behavior"
+    },
+    {
+      "kind": "whole",
+      "case": "isas-tests.Rin",
+      "path": "tests/upstream-r/vendor/isas-tests.Rin",
+      "status": "skip",
+      "detail": "declared skip",
+      "disposition": "skip",
+      "owner": "rport-2gpp.5",
+      "reason": "requires configure-time substitution and the complete internal type-predicate suite"
+    },
+    {
+      "kind": "whole",
+      "case": "lapack.R",
+      "path": "tests/upstream-r/vendor/lapack.R",
+      "status": "skip",
+      "detail": "declared skip",
+      "disposition": "skip",
+      "owner": "rport-2gpp.2",
+      "reason": "requires complete LAPACK routines and exact numerical contracts"
+    },
+    {
+      "kind": "whole",
+      "case": "libcurl.R",
+      "path": "tests/upstream-r/vendor/libcurl.R",
+      "status": "skip",
+      "detail": "declared skip",
+      "disposition": "skip",
+      "owner": "rport-2gpp.4",
+      "reason": "requires hermetic libcurl multi-download and network behavior"
+    },
+    {
+      "kind": "whole",
+      "case": "lm-tests.R",
+      "path": "tests/upstream-r/vendor/lm-tests.R",
+      "status": "pass",
+      "detail": "",
+      "disposition": "pass",
+      "owner": "-",
+      "reason": "-"
+    },
+    {
+      "kind": "whole",
+      "case": "method-dispatch.R",
+      "path": "tests/upstream-r/vendor/method-dispatch.R",
+      "status": "pass",
+      "detail": "",
+      "disposition": "pass",
+      "owner": "-",
+      "reason": "-"
+    },
+    {
+      "kind": "whole",
+      "case": "misc-devel.R",
+      "path": "tests/upstream-r/vendor/misc-devel.R",
+      "status": "skip",
+      "detail": "declared skip",
+      "disposition": "skip",
+      "owner": "rport-2gpp.4",
+      "reason": "requires localhost sockets and host connection edge behavior"
+    },
+    {
+      "kind": "whole",
+      "case": "no-segfault.Rin",
+      "path": "tests/upstream-r/vendor/no-segfault.Rin",
+      "status": "skip",
+      "detail": "declared skip",
+      "disposition": "skip",
+      "owner": "rport-2gpp.5",
+      "reason": "requires configure-time substitution and isolated fatal-error stress execution"
+    },
+    {
+      "kind": "whole",
+      "case": "ok-errors.R",
+      "path": "tests/upstream-r/vendor/ok-errors.R",
+      "status": "pass",
+      "detail": "",
+      "disposition": "pass",
+      "owner": "-",
+      "reason": "-"
+    },
+    {
+      "kind": "whole",
+      "case": "p-qbeta-strict-tst.R",
+      "path": "tests/upstream-r/vendor/p-qbeta-strict-tst.R",
+      "status": "fail",
+      "detail": "Rust output diverged from stock R",
+      "disposition": "pass",
+      "owner": "-",
+      "reason": "-"
+    },
+    {
+      "kind": "whole",
+      "case": "p-r-random-tests.R",
+      "path": "tests/upstream-r/vendor/p-r-random-tests.R",
+      "status": "fail",
+      "detail": "Rust output diverged from stock R",
+      "disposition": "pass",
+      "owner": "-",
+      "reason": "-"
+    },
+    {
+      "kind": "whole",
+      "case": "primitives.R",
+      "path": "tests/upstream-r/vendor/primitives.R",
+      "status": "pass",
+      "detail": "",
+      "disposition": "pass",
+      "owner": "-",
+      "reason": "-"
+    },
+    {
+      "kind": "whole",
+      "case": "print-tests.R",
+      "path": "tests/upstream-r/vendor/print-tests.R",
+      "status": "pass",
+      "detail": "",
+      "disposition": "pass",
+      "owner": "-",
+      "reason": "-"
+    },
+    {
+      "kind": "whole",
+      "case": "r-strict-tst.R",
+      "path": "tests/upstream-r/vendor/r-strict-tst.R",
+      "status": "fail",
+      "detail": "Rust output diverged from stock R",
+      "disposition": "pass",
+      "owner": "-",
+      "reason": "-"
+    },
+    {
+      "kind": "whole",
+      "case": "reg-BLAS.R",
+      "path": "tests/upstream-r/vendor/reg-BLAS.R",
+      "status": "skip",
+      "detail": "declared skip",
+      "disposition": "skip",
+      "owner": "rport-2gpp.2",
+      "reason": "requires complete BLAS backend and numerical error contracts"
+    },
+    {
+      "kind": "whole",
+      "case": "reg-IO.R",
+      "path": "tests/upstream-r/vendor/reg-IO.R",
+      "status": "pass",
+      "detail": "",
+      "disposition": "pass",
+      "owner": "-",
+      "reason": "-"
+    },
+    {
+      "kind": "whole",
+      "case": "reg-IO2.R",
+      "path": "tests/upstream-r/vendor/reg-IO2.R",
+      "status": "skip",
+      "detail": "declared skip",
+      "disposition": "skip",
+      "owner": "rport-2gpp.4",
+      "reason": "requires complete file-system and connection edge behavior"
+    },
+    {
+      "kind": "whole",
+      "case": "reg-S4-examples.R",
+      "path": "tests/upstream-r/vendor/reg-S4-examples.R",
+      "status": "skip",
+      "detail": "declared skip",
+      "disposition": "skip",
+      "owner": "rport-2gpp.2",
+      "reason": "requires installed methods examples and complete S4 dispatch"
+    },
+    {
+      "kind": "whole",
+      "case": "reg-S4.R",
+      "path": "tests/upstream-r/vendor/reg-S4.R",
+      "status": "pass",
+      "detail": "",
+      "disposition": "pass",
+      "owner": "-",
+      "reason": "-"
+    },
+    {
+      "kind": "whole",
+      "case": "reg-encodings.R",
+      "path": "tests/upstream-r/vendor/reg-encodings.R",
+      "status": "skip",
+      "detail": "declared skip",
+      "disposition": "skip",
+      "owner": "rport-2gpp.4",
+      "reason": "requires platform encoding tables and locale matrices"
+    },
+    {
+      "kind": "whole",
+      "case": "reg-examples1.R",
+      "path": "tests/upstream-r/vendor/reg-examples1.R",
+      "status": "skip",
+      "detail": "declared skip",
+      "disposition": "skip",
+      "owner": "rport-2gpp.2",
+      "reason": "requires installed base package examples and datasets"
+    },
+    {
+      "kind": "whole",
+      "case": "reg-examples2.R",
+      "path": "tests/upstream-r/vendor/reg-examples2.R",
+      "status": "skip",
+      "detail": "declared skip",
+      "disposition": "skip",
+      "owner": "rport-2gpp.2",
+      "reason": "requires installed package examples and namespace machinery"
+    },
+    {
+      "kind": "whole",
+      "case": "reg-examples3.R",
+      "path": "tests/upstream-r/vendor/reg-examples3.R",
+      "status": "skip",
+      "detail": "declared skip",
+      "disposition": "skip",
+      "owner": "rport-2gpp.2",
+      "reason": "requires installed package examples, graphics, and datasets"
+    },
+    {
+      "kind": "whole",
+      "case": "reg-large.R",
+      "path": "tests/upstream-r/vendor/reg-large.R",
+      "status": "skip",
+      "detail": "declared skip",
+      "disposition": "skip",
+      "owner": "rport-2gpp.5",
+      "reason": "requires memory-intensive long-vector and allocation stress support"
+    },
+    {
+      "kind": "whole",
+      "case": "reg-packages.R",
+      "path": "tests/upstream-r/vendor/reg-packages.R",
+      "status": "skip",
+      "detail": "declared skip",
+      "disposition": "skip",
+      "owner": "rport-2gpp.2",
+      "reason": "requires source and binary package installation and loading"
+    },
+    {
+      "kind": "whole",
+      "case": "reg-plot-latin1.R",
+      "path": "tests/upstream-r/vendor/reg-plot-latin1.R",
+      "status": "fail",
+      "detail": "Rust runner exited non-zero",
+      "disposition": "pass",
+      "owner": "-",
+      "reason": "-"
+    },
+    {
+      "kind": "whole",
+      "case": "reg-plot.R",
+      "path": "tests/upstream-r/vendor/reg-plot.R",
+      "status": "skip",
+      "detail": "declared skip",
+      "disposition": "skip",
+      "owner": "rport-2gpp.3",
+      "reason": "requires complete graphics, grid, device, and PDF comparison behavior"
+    },
+    {
+      "kind": "whole",
+      "case": "reg-tests-1a.R",
+      "path": "tests/upstream-r/vendor/reg-tests-1a.R",
+      "status": "fail",
+      "detail": "Rust output diverged from stock R",
+      "disposition": "pass",
+      "owner": "-",
+      "reason": "-"
+    },
+    {
+      "kind": "whole",
+      "case": "reg-tests-1b.R",
+      "path": "tests/upstream-r/vendor/reg-tests-1b.R",
+      "status": "fail",
+      "detail": "Rust runner exited non-zero",
+      "disposition": "pass",
+      "owner": "-",
+      "reason": "-"
+    },
+    {
+      "kind": "whole",
+      "case": "reg-tests-1c.R",
+      "path": "tests/upstream-r/vendor/reg-tests-1c.R",
+      "status": "fail",
+      "detail": "Rust runner exited non-zero",
+      "disposition": "pass",
+      "owner": "-",
+      "reason": "-"
+    },
+    {
+      "kind": "whole",
+      "case": "reg-tests-1d.R",
+      "path": "tests/upstream-r/vendor/reg-tests-1d.R",
+      "status": "fail",
+      "detail": "Rust runner exited non-zero",
+      "disposition": "pass",
+      "owner": "-",
+      "reason": "-"
+    },
+    {
+      "kind": "whole",
+      "case": "reg-tests-1e.R",
+      "path": "tests/upstream-r/vendor/reg-tests-1e.R",
+      "status": "skip",
+      "detail": "declared skip",
+      "disposition": "skip",
+      "owner": "rport-2gpp.5",
+      "reason": "requires broad parser, evaluator, ALTREP, and long-vector regression parity"
+    },
+    {
+      "kind": "whole",
+      "case": "reg-tests-2.R",
+      "path": "tests/upstream-r/vendor/reg-tests-2.R",
+      "status": "skip",
+      "detail": "declared skip",
+      "disposition": "skip",
+      "owner": "rport-2gpp.5",
+      "reason": "requires broad long-tail base runtime regression parity"
+    },
+    {
+      "kind": "whole",
+      "case": "reg-tests-3.R",
+      "path": "tests/upstream-r/vendor/reg-tests-3.R",
+      "status": "skip",
+      "detail": "declared skip",
+      "disposition": "skip",
+      "owner": "rport-2gpp.5",
+      "reason": "requires broad long-tail package, compiler, and runtime regression parity"
+    },
+    {
+      "kind": "whole",
+      "case": "reg-translation.R",
+      "path": "tests/upstream-r/vendor/reg-translation.R",
+      "status": "skip",
+      "detail": "declared skip",
+      "disposition": "skip",
+      "owner": "rport-2gpp.4",
+      "reason": "requires gettext catalogs and deterministic locale translation behavior"
+    },
+    {
+      "kind": "whole",
+      "case": "reg-win.R",
+      "path": "tests/upstream-r/vendor/reg-win.R",
+      "status": "skip",
+      "detail": "declared skip",
+      "disposition": "skip",
+      "owner": "rport-2gpp.4",
+      "reason": "requires a Windows execution matrix and Windows host interfaces"
+    },
+    {
+      "kind": "whole",
+      "case": "simple-true.R",
+      "path": "tests/upstream-r/vendor/simple-true.R",
+      "status": "pass",
+      "detail": "",
+      "disposition": "pass",
+      "owner": "-",
+      "reason": "-"
+    },
+    {
+      "kind": "whole",
+      "case": "sockets.R",
+      "path": "tests/upstream-r/vendor/sockets.R",
+      "status": "skip",
+      "detail": "declared skip",
+      "disposition": "skip",
+      "owner": "rport-2gpp.4",
+      "reason": "requires hermetic server, client, and parallel socket behavior"
+    },
+    {
+      "kind": "whole",
+      "case": "structure.R",
+      "path": "tests/upstream-r/vendor/structure.R",
+      "status": "pass",
+      "detail": "",
+      "disposition": "pass",
+      "owner": "-",
+      "reason": "-"
+    },
+    {
+      "kind": "whole",
+      "case": "test-system.R",
+      "path": "tests/upstream-r/vendor/test-system.R",
+      "status": "skip",
+      "detail": "declared skip",
+      "disposition": "skip",
+      "owner": "rport-2gpp.4",
+      "reason": "requires hermetic process execution and platform shell behavior"
+    },
+    {
+      "kind": "whole",
+      "case": "timezone.R",
+      "path": "tests/upstream-r/vendor/timezone.R",
+      "status": "pass",
+      "detail": "",
+      "disposition": "pass",
+      "owner": "-",
+      "reason": "-"
+    },
+    {
+      "kind": "whole",
+      "case": "utf8-regex.R",
+      "path": "tests/upstream-r/vendor/utf8-regex.R",
+      "status": "skip",
+      "detail": "declared skip",
+      "disposition": "skip",
+      "owner": "rport-2gpp.4",
+      "reason": "requires complete UTF-8 regex and locale behavior"
+    },
+    {
+      "kind": "whole",
+      "case": "utf8.R",
+      "path": "tests/upstream-r/vendor/utf8.R",
+      "status": "fail",
+      "detail": "Rust output diverged from stock R",
+      "disposition": "pass",
+      "owner": "-",
+      "reason": "-"
+    }
+  ]
+}

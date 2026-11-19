@@ -6,8 +6,8 @@ Use Beads to track failures and missing coverage.
 
 | Gate | Measure | Verified reference |
 | --- | --- | --- |
-| Pinned GNU R conformance | Passes, failures, timeouts, unattempted cases and verdict changes on unchanged fixtures | 1,261/1,261 passed at `90588275`. [Receipt](ci-checkpoints/gnu-conformance-complete-2026-10-25.json) |
-| Unmodified GNU R drivers | Whole and curated results, with skipped and unattempted drivers counted explicitly | 19 passed, 20 failed and 31 skipped whole drivers at `ceeb9571`. All 15 curated slices passed. [Receipt](ci-checkpoints/conformance-browser-ceeb9571.json) |
+| Pinned GNU R conformance | Passes, failures, timeouts, unattempted cases and verdict changes on unchanged fixtures | 1,264/1,264 passed at `1faa7f2a`. [Receipt](ci-checkpoints/gnu-conformance-main-1faa7f2a.json) |
+| Unmodified GNU R drivers | Whole and curated results, with skipped and unattempted drivers counted explicitly | 22 passed, 18 failed and 30 skipped whole drivers at `1faa7f2a`. All 15 curated slices passed. [Receipt](ci-checkpoints/upstream-main-1faa7f2a.json) |
 | Safety | Public API audit, targeted strict Miri checks, and recovery under the original memory and node limits | [Public API audit and strict Miri scope](safe-api-audit.md) |
 | Production Wasm | Optimized bytes and SHA-256, public runtime contracts, and Chromium pass/fail/flaky counts under unchanged deadlines | 290 public contracts and 290 recovery checks at `90588275`. [Receipt](ci-checkpoints/gnu-conformance-complete-2026-10-25.json) |
 
@@ -50,6 +50,39 @@ tracks native registration coverage separately.
   check passed in 5.79 seconds with native packages and 7.83 seconds with
   portable packages. The `anyNA()` fixtures passed under both package policies.
 
+## Main verification
+
+- All 1,264 pinned GNU R fixtures passed at `1faa7f2a` on macOS arm64.
+  There were no timeouts or skips. The corpus and oracle fingerprints match
+  the preceding 1,263-pass run. Only `600_smooth` changed verdict.
+  [Complete case receipt](ci-checkpoints/gnu-conformance-main-1faa7f2a.json)
+- The unmodified upstream run completed all 85 dispositions at the same
+  commit with the graphics runtime and native package policy. All 15
+  curated slices passed. Of 70 whole drivers, 22 passed, 18 failed the
+  strict gate and 30 were declared skips. The strict comparisons include
+  process-specific addresses and timing differences as well as runtime
+  behavior. [Driver results](ci-checkpoints/upstream-main-1faa7f2a.json)
+- Duplication workspace admission at `f25f1244` passed 70 native tests, three
+  strict-provenance Miri checks and 294 production Wasm contracts. The original
+  warm native S4 checks passed with both package policies in 6.57 and
+  9.33 seconds under the original memory, node and time limits.
+- At `376e4942`, native and Wasm fixtures matched GNU for `pbeta()` warning
+  attribution and POSIXlt differences in explicit time zones. All 18 underflow
+  warning lines also matched in the unmodified beta driver. Other numerical and
+  timing differences still fail that whole driver. `datetime3.R` advanced from
+  subtraction to a separate character-conversion failure. Both tests in the
+  original embedding target for missing subscripts and Fisher overflow passed.
+- The same runtime sources produced a 25,913,321-byte Wasm module with SHA-256
+  `bb90f757ba2ac4ae1ed8daa67b223472e8250574545c319fea2cde9073099228`.
+  The package passed 298 public Wasm contracts and all 77 Chromium tests on macOS
+  arm64. Both warm Chromium S4 runs completed in 10.58 and 10.44 seconds.
+  The optimized native warm S4 checks passed under both package policies in
+  6.60 and 7.87 seconds.
+- Hosted Chromium at `1faa7f2a` passed 75 of 77 tests. The fresh S4 worker
+  and the FFT/RNG aggregate missed their original deadlines. All 29 FFT/RNG
+  case bodies completed, using 89.37 seconds of the 90-second aggregate
+  budget. [Hosted run](https://github.com/bernaferrari/R-rust/actions/runs/44594984309)
+
 ## Re-run GNU R parity
 
 Run from a clean checkout. The pinned oracle installer prints its binary
@@ -71,7 +104,7 @@ python3 scripts/conformance_shards.py --input-dir "$report_dir" --shard-count 6 
     --source-commit "$commit" --json "$report_dir/union.json" \
     --markdown "$report_dir/union.md"
 python3 scripts/conformance_delta.py \
-    docs/ci-checkpoints/gnu-conformance-complete-2026-10-25-cases.json \
+    docs/ci-checkpoints/gnu-conformance-main-1faa7f2a.json \
     "$report_dir/union.json"
 ```
 
