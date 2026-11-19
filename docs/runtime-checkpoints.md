@@ -6,10 +6,10 @@ Use Beads to track failures and missing coverage.
 
 | Gate | Measure | Verified reference |
 | --- | --- | --- |
-| Pinned GNU R conformance | Passes, failures, timeouts, unattempted cases and verdict changes on unchanged fixtures | 1,264/1,264 passed at `1faa7f2a`. [Receipt](ci-checkpoints/gnu-conformance-main-1faa7f2a.json) |
+| Pinned GNU R conformance | Passes, failures, timeouts, unattempted cases and verdict changes on unchanged fixtures | 1,270/1,270 passed at `b6a90a8f`. [Receipt](ci-checkpoints/gnu-conformance-main-b6a90a8f.json) |
 | Unmodified GNU R drivers | Whole and curated results, with skipped and unattempted drivers counted explicitly | 22 passed, 18 failed and 30 skipped whole drivers at `1faa7f2a`. All 15 curated slices passed. [Receipt](ci-checkpoints/upstream-main-1faa7f2a.json) |
 | Safety | Public API audit, targeted strict Miri checks, and recovery under the original memory and node limits | [Public API audit and strict Miri scope](safe-api-audit.md) |
-| Production Wasm | Optimized bytes and SHA-256, public runtime contracts, and Chromium pass/fail/flaky counts under unchanged deadlines | 290 public contracts and 290 recovery checks at `90588275`. [Receipt](ci-checkpoints/gnu-conformance-complete-2026-10-25.json) |
+| Production Wasm | Optimized bytes and SHA-256, public runtime contracts, and Chromium pass/fail/flaky counts under unchanged deadlines | 308 public contracts with recovery checks at `75c58c7b`. Chromium passed 77/77 at `376e4942` on macOS arm64 and at `ad04d62f` on hosted Linux. |
 
 The [capability inventory](capability-evidence.md) gives the current fixture
 and disposition counts. The [GNU R API inventory](gnu-r-api-inventory.md)
@@ -82,6 +82,69 @@ tracks native registration coverage separately.
   and the FFT/RNG aggregate missed their original deadlines. All 29 FFT/RNG
   case bodies completed, using 89.37 seconds of the 90-second aggregate
   budget. [Hosted run](https://github.com/bernaferrari/R-rust/actions/runs/44594984309)
+- The full macOS arm64 run at `376e4942` passed 1,266 pinned GNU R fixtures
+  with zero failures, skips or timeouts. Both new fixtures passed and every
+  unchanged fixture kept its verdict. The public embedding release tests
+  selected by CI passed all 84 tests across 33 targets on the same host.
+  [Complete case receipt](ci-checkpoints/gnu-conformance-main-376e4942.json)
+- At `0a506c11`, symbol comparison reuses validated headers and preserves
+  ownership and type checks. The focused native and strict Miri checks passed.
+  Six matched pairs with optimized Wasm reduced median Node session startup
+  from 3.06 to 2.86 seconds on macOS arm64. All seven original S4 and FFT/RNG
+  Chromium checks passed on that host.
+- At `a11657b0`, `as.character.POSIXt()` preserves missing values formed by
+  numeric date arithmetic. The integrated optimized module was 25,942,717
+  bytes with SHA-256
+  `3cd3929025a6fb629caad07ebacc7a1a62924ca1519f61153a9e795e9e302845`.
+  All 300 public Wasm contracts and their recovery checks passed.
+- Hosted Linux at `ad04d62f` passed all 77 Chromium tests under the original
+  deadlines, including the original FFT/RNG aggregate in 85.79 seconds.
+  The exact GNU gate completed 1,265 cases with one failure because pinned
+  GNU on Linux differed from the saved macOS `covratio()` value by a few
+  rounding bits. At `d33e8300` each finite value is checked against a relative
+  bound of eight times double machine epsilon. The printed output is still
+  compared exactly. [Hosted run](https://github.com/bernaferrari/R-rust/actions/runs/44599578151)
+- At `b044a4d4`, the datetime source is authenticated against the GNU oracle
+  revision. Vector and scalar POSIXlt replacement match GNU across UTC and
+  GMT near year 10,000 and at the double-precision boundary. The optimized
+  package passed 302 Wasm contracts and their recovery checks. It measured
+  25,943,590 bytes with SHA-256
+  `e0ff500752bb17c652457bab5d541542b80377d84c7587cc5bb25b558a73fe7c`.
+  All 1,268 pinned GNU fixtures passed, including the amended `covratio()`
+  fixture and two new date fixtures. There were no verdict changes on unchanged
+  fixtures.
+- At `eea08fe9`, `sprintf()` recomputes recycling after a coercion shortens
+  its longest argument. Coerced values and the result stay rooted across
+  allocation and collection. The optimized package passed 304 public contracts
+  with recovery checks. The unmodified `reg-tests-1b.R` advanced from the
+  formatting assertion to a separate stats namespace version assertion.
+- At `b6a90a8f`, native and Wasm agree with the pinned clock fixture. `Sys.Date()`
+  reads the owning session's time zone, and the JavaScript host supplies
+  current time for `Sys.time()` and time-only `strptime()`. The unmodified
+  native `datetime3.R` exits successfully. The strict output comparison still
+  differs, including warning attribution and object listing order. The combined
+  release build passed 306 public Wasm contracts and their recovery checks. All
+  1,270 exact GNU R cases passed without skips or timeouts. Four additions and
+  the amended `covratio()` fixture passed. Every unchanged verdict held.
+  [Complete case receipt](ci-checkpoints/gnu-conformance-main-b6a90a8f.json)
+- At `75c58c7b`, factor subsetting retains the explicit `NA` level when dropping
+  unused levels, including in compiled calls. All 14 targeted factor and
+  subsetting fixtures matched GNU. The unmodified `reg-tests-1d.R` proceeds to
+  a separate `xtabs()` dimension-name mismatch. The 25,969,708-byte release
+  package passed all 308 public contracts and their recovery checks. Its
+  SHA-256 is `dbd63a7061b9248e02d9dfb96ee52d5f1b9a916df24b725c42d2f82188305af6`.
+  That package also passed all seven original Chromium S4 and FFT/RNG tests on
+  macOS arm64 under the original deadlines, including the 29-case aggregate.
+- The line-table test profile allowed hosted Linux workspace shard 0 to link
+  and execute its complete partition. It caught two tests with stale console
+  expectations. At `174855f3`, all nine tests in the two affected graphics
+  targets pass in the optimized native profile on macOS arm64. Hosted debug
+  confirmation is pending. [Hosted shard](https://github.com/bernaferrari/R-rust/actions/runs/44599578151/job/135827127414)
+- At `174855f3`, six native release test routines passed the selected probes
+  across seven pinned pure-R packages unpacked into a fresh bundled library.
+  The screen covers source loading and selected package behavior. General
+  package installation and compiled extension workflows need more evidence.
+  [Package inventory](../tests/real-packages/manifest.toml)
 
 ## Re-run GNU R parity
 
