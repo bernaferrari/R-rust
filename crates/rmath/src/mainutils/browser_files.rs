@@ -272,7 +272,8 @@ pub(crate) fn set_mode_current(path: &str, mode: u32) -> bool {
 pub(crate) fn dir_exists_current(path: &str) -> bool {
     with_current_instance(|instance| unsafe {
         let store = &(*instance).browser_files;
-        store.resolve(path).is_ok_and(|key| store.directory(&key))
+        (*instance).browser_files_enabled
+            && store.resolve(path).is_ok_and(|key| store.directory(&key))
     })
     .unwrap_or(false)
 }

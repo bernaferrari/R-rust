@@ -40,10 +40,11 @@ local({
     stopifnot(!file.copy(input, output, recursive = TRUE, overwrite = FALSE),
               identical(readLines(file.path(project, "observations.csv")), "kept"),
               file.exists(file.path(project, "error.R")))
-    tryCatch(source(file.path(project, "error.R"), chdir = TRUE),
-             error = function(error) stopifnot(identical(conditionMessage(error),
-                                                       "project error")))
-    stopifnot(identical(getwd(), caller),
+    caught <- tryCatch({
+        source(file.path(project, "error.R"), chdir = TRUE)
+        FALSE
+    }, error = function(error) identical(conditionMessage(error), "project error"))
+    stopifnot(caught, identical(getwd(), caller),
               file.copy(input, output, recursive = TRUE, overwrite = TRUE),
               identical(readLines(file.path(project, "observations.csv")),
                         readLines(file.path(input, "observations.csv"))))

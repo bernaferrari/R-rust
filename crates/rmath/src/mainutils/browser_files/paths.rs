@@ -38,6 +38,9 @@ impl BrowserFileStore {
             match part {
                 "" | "." => {}
                 ".." => {
+                    if !self.directory(&parts.join("/")) {
+                        return Err("browser parent path is not a directory".into());
+                    }
                     parts
                         .pop()
                         .ok_or("browser path goes above the session root")?;
