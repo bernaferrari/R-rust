@@ -9,7 +9,7 @@ Use Beads to track failures and missing coverage.
 | Pinned GNU R conformance | Passes, failures, timeouts, unattempted cases and verdict changes on unchanged fixtures | 1,270/1,270 passed at `b6a90a8f`. [Receipt](ci-checkpoints/gnu-conformance-main-b6a90a8f.json) |
 | Unmodified GNU R drivers | Whole and curated results, with skipped and unattempted drivers counted explicitly | 22 passed, 18 failed and 30 skipped whole drivers at `1faa7f2a`. All 15 curated slices passed. [Receipt](ci-checkpoints/upstream-main-1faa7f2a.json) |
 | Safety | Public API audit, targeted strict Miri checks, and recovery under the original memory and node limits | [Public API audit and strict Miri scope](safe-api-audit.md) |
-| Production Wasm | Optimized bytes and SHA-256, public runtime contracts, and Chromium pass/fail/flaky counts under unchanged deadlines | 308 public contracts with recovery checks at `75c58c7b`. Chromium passed 77/77 at `376e4942` on macOS arm64 and at `ad04d62f` on hosted Linux. |
+| Production Wasm | Optimized bytes and SHA-256, public runtime contracts, and Chromium pass/fail/flaky counts under unchanged deadlines | 312 public contracts with recovery checks at `46d421ff`. Chromium passed 77/77 at `376e4942` on macOS arm64 and at `ad04d62f` on hosted Linux. |
 
 The [capability inventory](capability-evidence.md) gives the current fixture
 and disposition counts. The [GNU R API inventory](gnu-r-api-inventory.md)
@@ -147,6 +147,17 @@ user workflows have passed on native Rport and production Wasm.
   The screen covers source loading and selected package behavior. General
   package installation and compiled extension workflows need more evidence.
   [Package inventory](../tests/real-packages/manifest.toml)
+- At `46d421ff`, browser file writes and copies charge the owning session and
+  retain the old file when a replacement is refused. Closed sessions return
+  file-operation errors. Wasm upload bounds are checked before data is copied
+  into linear memory. All four optimized public file tests, nine store tests
+  and the focused strict-provenance Miri test passed. The optimized Wasm module
+  passed 312 public contracts with recovery checks. It measured 25,947,736
+  bytes with SHA-256
+  `449303d18adb733eaee805e67db2b54f98b2d3ad459bc8cd6829ce2ea002ede9`.
+- Hosted Linux at `ad04d62f` linked and admitted all nine workspace debug
+  partitions. Two passed, two completed with failed tests, and five reached
+  the existing partition deadline. [Hosted run](https://github.com/bernaferrari/R-rust/actions/runs/44599578151)
 
 ## Re-run GNU R parity
 
