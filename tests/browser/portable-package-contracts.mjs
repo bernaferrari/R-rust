@@ -37,6 +37,7 @@ const contracts = [
     '1212_everyday_missing_data_cleaning',
     '1213_everyday_binomial_model',
     '1214_everyday_matrix_analysis',
+    '1215_everyday_seasonal_forecast',
   ].map(name => [
     resolve(root, 'tests/conformance/cases', name + '.R'),
     resolve(root, 'tests/conformance/golden', name + '.out'),
