@@ -931,7 +931,7 @@ pub unsafe fn do_demo(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 pub unsafe fn do_example(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         if let Some((topic, source)) = portable_example_source(args) {
-            let result = run_portable_example(source, &topic, args, rho);
+            let result = run_portable_example(&source, &topic, args, rho);
             crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
             return result;
         }
@@ -981,7 +981,7 @@ pub unsafe fn do_portable_example(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP)
             crate::sexp::globals::set_R_Visible(TRUE);
             return Rf_ScalarLogical(FALSE);
         };
-        let _ = run_portable_example(source, &topic, args, rho);
+        let _ = run_portable_example(&source, &topic, args, rho);
         crate::sexp::globals::set_R_Visible(FALSE);
         Rf_ScalarLogical(TRUE)
     }
@@ -1037,7 +1037,9 @@ fn example_echo_offset(source: &str) -> c_int {
 /// Resolve an embedded package example only for image-backed sessions with
 /// no filesystem package path. Normal installed-package help lookup remains
 /// owned by `utils::example`, including its package and library precedence.
-unsafe fn portable_example_source(args: SEXP) -> Option<(String, &'static str)> {
+unsafe fn portable_example_source(
+    args: SEXP,
+) -> Option<(String, crate::mainutils::browser_files::FileText)> {
     unsafe {
         let topic_arg = CAR(args);
         if topic_arg.is_null() || topic_arg == R_NilValue() || topic_arg == R_MissingArg() {
@@ -1089,8 +1091,11 @@ unsafe fn portable_example_source(args: SEXP) -> Option<(String, &'static str)> 
             return None;
         }
         for package in packages {
-            if let Some(source) = crate::library::portable_package::example_source(&package, &topic)
-            {
+            let source = crate::library::portable_package::example_source(&package, &topic)
+                .unwrap_or_else(|error| {
+                    base_error(format!("cannot read example '{topic}': {error}"))
+                });
+            if let Some(source) = source {
                 return Some((topic, source));
             }
         }

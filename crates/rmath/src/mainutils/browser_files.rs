@@ -273,6 +273,45 @@ pub(crate) fn admit_text(text: String) -> io::Result<FileText> {
     })
 }
 
+/// Read a bounded source slice from a trusted embedded zlib stream.
+pub(crate) fn read_embedded_zlib_text(
+    compressed: &[u8],
+    offset: usize,
+    length: usize,
+    max_end: usize,
+) -> io::Result<FileText> {
+    use io::Read;
+
+    if offset.checked_add(length).is_none_or(|end| end > max_end) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "invalid packed source range",
+        ));
+    }
+    // The decoder may use transient storage even for a short source topic.
+    let _decoder = reserve(128 * 1024)?;
+    let reservation = reserve(length)?;
+    let mut decoder = flate2::read::ZlibDecoder::new(compressed);
+    if io::copy(&mut decoder.by_ref().take(offset as u64), &mut io::sink())? != offset as u64 {
+        return Err(io::Error::new(
+            io::ErrorKind::UnexpectedEof,
+            "truncated packed source",
+        ));
+    }
+    let mut bytes = Vec::new();
+    bytes
+        .try_reserve_exact(length)
+        .map_err(|_| memory_error())?;
+    bytes.resize(length, 0);
+    decoder.read_exact(&mut bytes)?;
+    let text = String::from_utf8(bytes)
+        .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+    Ok(FileText {
+        text,
+        _reservation: reservation,
+    })
+}
+
 struct FileBuffer {
     bytes: Vec<u8>,
     reservation: Option<crate::sexp::memory::TransientReservation>,
