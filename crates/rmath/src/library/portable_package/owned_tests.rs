@@ -127,3 +127,58 @@ fn decoder_workspace_threshold_cleanup_and_full_gc_are_accounted() {
     drop(reservation);
     assert!(reserve_available(&anchor, workspace));
 }
+
+#[test]
+fn packed_database_reads_logical_ranges_with_bounded_workspace() {
+    let mut session = RSession::new_for_gc_tests();
+    let anchor = session
+        .owner_token()
+        .unwrap()
+        .node_factory()
+        .character("anchor")
+        .unwrap()
+        .into_owned()
+        .unwrap();
+    let gzip = |bytes: &[u8]| {
+        let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+        encoder.write_all(bytes).unwrap();
+        encoder.finish().unwrap()
+    };
+    let first = gzip(b"abcdef");
+    let second = gzip(b"ghijkl");
+    let bytes = [first.as_slice(), second.as_slice()].concat();
+    let boundary = |plain: u32, packed: usize| {
+        let mut entry = [0; 8];
+        entry[..4].copy_from_slice(&plain.to_be_bytes());
+        entry[4..].copy_from_slice(&(packed as u32).to_be_bytes());
+        entry
+    };
+    let ends = [
+        boundary(0, 0),
+        boundary(6, first.len()),
+        boundary(12, bytes.len()),
+    ];
+    let decode = |range| {
+        execute(&anchor, |access| {
+            decode_packed_range(access, &bytes, &ends, range)
+        })
+    };
+    let baseline = allocated_bytes(&anchor);
+    let workspace = PORTABLE_ZLIB_DECODER_SCRATCH + 5;
+    session.set_arena_budget(ArenaBudget::new(baseline + workspace - 1, 0));
+    assert!(decode(4..9).is_err());
+    session.set_arena_budget(ArenaBudget::new(baseline + workspace, 0));
+    let (actual, reservation) = decode(4..9).unwrap();
+    assert_eq!(actual, b"efghi");
+    assert_eq!(reservation.bytes(), 5);
+    assert!(!reserve_available(
+        &anchor,
+        PORTABLE_ZLIB_DECODER_SCRATCH + 1
+    ));
+    drop(reservation);
+    assert_eq!(decode(6..9).unwrap().0, b"ghi");
+    assert_eq!(decode(10..12).unwrap().0, b"kl");
+    assert!(decode(12..12).unwrap().0.is_empty());
+    assert!(decode(10..13).is_err());
+    assert!(reserve_available(&anchor, workspace));
+}

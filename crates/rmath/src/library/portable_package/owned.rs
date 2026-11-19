@@ -1,12 +1,15 @@
 //! Original package operands and decoded graphs own their original heap.
 #![forbid(unsafe_code)]
-use super::{LazyDatabase, PackageImage};
+use super::{DatabaseContents, LazyDatabase, PackageImage};
 use crate::sexp::{
     SEXPTYPE,
     object::{Sexp, SexpError, SexpMut, SexpResult},
     owner::{RuntimeAccess, StoredOwner, with_runtime},
 };
 use std::io::{Cursor, Read};
+use std::ops::Range;
+
+type DecodedRecord = (Vec<u8>, crate::sexp::memory::TransientReservation);
 
 // flate2 1.1.10's zlib-rs 0.6.3 inflate backend allocates one slab containing
 // its fixed inflate state and 32 KiB history window. The state has 3,256
@@ -50,7 +53,7 @@ fn decode_record(
     access: &RuntimeAccess,
     record: &[u8],
     expected: usize,
-) -> SexpResult<(Vec<u8>, crate::sexp::memory::TransientReservation)> {
+) -> SexpResult<DecodedRecord> {
     let capacity = expected
         .checked_add(1)
         .ok_or_else(|| failure("portable package record is too large"))?;
@@ -80,6 +83,84 @@ fn decode_record(
     }
     drop(decoder_reservation);
     Ok((decoded, input_reservation))
+}
+
+impl DatabaseContents {
+    fn len(&self) -> usize {
+        match self {
+            Self::Original(bytes) => bytes.len(),
+            #[cfg(any(test, target_arch = "wasm32"))]
+            Self::Packed { ends, .. } => ends.last().map(logical_end).unwrap_or_default(),
+        }
+    }
+}
+
+#[cfg(any(test, target_arch = "wasm32"))]
+fn logical_end(entry: &[u8; 8]) -> usize {
+    u32::from_be_bytes([entry[0], entry[1], entry[2], entry[3]]) as usize
+}
+
+#[cfg(any(test, target_arch = "wasm32"))]
+fn packed_end(entry: &[u8; 8]) -> usize {
+    u32::from_be_bytes([entry[4], entry[5], entry[6], entry[7]]) as usize
+}
+
+#[cfg(any(test, target_arch = "wasm32"))]
+fn decode_packed_range(
+    access: &RuntimeAccess,
+    bytes: &[u8],
+    ends: &[[u8; 8]],
+    range: Range<usize>,
+) -> SexpResult<DecodedRecord> {
+    let reservation = reserve_decompression_workspace(access, range.len())?;
+    let mut decoded = Vec::new();
+    if range.is_empty() {
+        return Ok((decoded, reservation));
+    }
+    decoded
+        .try_reserve_exact(range.len())
+        .map_err(|_| SexpError::AllocationFailed {
+            object: "portable package decompression workspace",
+        })?;
+    decoded.resize(range.len(), 0);
+    let _scratch = reserve_decoder_scratch(access)?;
+    let corrupt = || failure("portable package database is corrupt");
+
+    let first = ends.partition_point(|end| logical_end(end) <= range.start);
+    let mut position = range.start;
+    let blocks = ends
+        .get(first.checked_sub(1).ok_or_else(corrupt)?..)
+        .ok_or_else(corrupt)?;
+    for [start, end] in blocks.array_windows::<2>() {
+        // Discard the block prefix while decoding. Even the largest block
+        // only needs scratch plus the requested serialized record in memory.
+        let offset = position
+            .checked_sub(logical_end(start))
+            .ok_or_else(corrupt)?;
+        let until = logical_end(end).min(range.end);
+        let count = until.checked_sub(position).ok_or_else(corrupt)?;
+        let packed = bytes
+            .get(packed_end(start)..packed_end(end))
+            .ok_or_else(corrupt)?;
+        let mut decoder = flate2::bufread::GzDecoder::new(packed);
+        let skipped = std::io::copy(
+            &mut decoder.by_ref().take(offset as u64),
+            &mut std::io::sink(),
+        )
+        .map_err(|_| corrupt())?;
+        if skipped != offset as u64 {
+            return Err(corrupt());
+        }
+        let start = position - range.start;
+        decoder
+            .read_exact(&mut decoded[start..start + count])
+            .map_err(|_| corrupt())?;
+        position = until;
+        if position == range.end {
+            return Ok((decoded, reservation));
+        }
+    }
+    Err(corrupt())
 }
 
 fn failure(message: impl Into<String>) -> SexpError {
@@ -167,7 +248,7 @@ fn key_range(
     image: &LazyDatabase,
     access: &RuntimeAccess,
     key: &Sexp<'static>,
-) -> SexpResult<std::ops::Range<usize>> {
+) -> SexpResult<Range<usize>> {
     access.domain().link(key)?;
     if key.typeof_() != SEXPTYPE::INTSXP {
         return Err(failure("bad offset/length argument"));
@@ -185,7 +266,7 @@ fn key_range(
     let length = usize::try_from(length).map_err(|_| failure("bad offset/length argument"))?;
     let end = offset
         .checked_add(length)
-        .filter(|end| *end <= image.bytes.len())
+        .filter(|end| *end <= image.contents.len())
         .ok_or_else(|| failure("read failed"))?;
     Ok(offset..end)
 }
@@ -200,7 +281,15 @@ pub(super) fn read_database(
             return Ok(None);
         }
         let range = key_range(image, access, &key)?;
-        raw(access, &image.bytes[range]).map(Some)
+        match image.contents {
+            DatabaseContents::Original(bytes) => raw(access, &bytes[range]),
+            #[cfg(any(test, target_arch = "wasm32"))]
+            DatabaseContents::Packed { bytes, ends } => {
+                let (decoded, _reservation) = decode_packed_range(access, bytes, ends, range)?;
+                raw(access, &decoded)
+            }
+        }
+        .map(Some)
     })
 }
 
@@ -233,18 +322,21 @@ pub(super) fn fetch(
             compressed.try_logical_elt(0)?
         };
         access.require_active()?;
-        if compressed_value != 1 {
-            return Err(failure("portable package database compression is invalid"));
-        }
         let range = key_range(image, access, &key)?;
-        let bytes = &image.bytes[range];
-        let prefix: [u8; 4] = bytes
-            .get(..4)
-            .ok_or_else(|| failure("portable package database is corrupt"))?
-            .try_into()
-            .map_err(|_| failure("portable package database is corrupt"))?;
-        let expected = u32::from_be_bytes(prefix) as usize;
-        let (decoded, decompression_reservation) = decode_record(access, bytes, expected)?;
+        let (decoded, decompression_reservation) = match image.contents {
+            DatabaseContents::Original(bytes) if compressed_value == 1 => {
+                let bytes = &bytes[range];
+                let prefix = bytes
+                    .first_chunk::<4>()
+                    .ok_or_else(|| failure("portable package database is corrupt"))?;
+                decode_record(access, bytes, u32::from_be_bytes(*prefix) as usize)?
+            }
+            #[cfg(any(test, target_arch = "wasm32"))]
+            DatabaseContents::Packed { bytes, ends } if compressed_value == 0 => {
+                decode_packed_range(access, bytes, ends, range)?
+            }
+            _ => return Err(failure("portable package database compression is invalid")),
+        };
         let result = super::bridge::decode_owned_bytes(access, &decoded, &hook)?;
         // Decoder scratch was released before entering unserialize. The
         // serialized Vec and its ticket stay live across restoration hooks.

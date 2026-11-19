@@ -1,4 +1,4 @@
-//! Original pinned package images share one namespace and lazy-record lifecycle.
+//! Pinned GNU package images share one namespace and lazy-record lifecycle.
 use crate::sexp::object::{Sexp, SexpResult};
 use std::collections::HashSet;
 use std::sync::OnceLock;
@@ -25,15 +25,26 @@ macro_rules! image {
         image!($name, $assets, $sysdata, None)
     };
     ($name:literal, $assets:literal, $sysdata:expr, $imports:expr) => {
+        image!(
+            $name,
+            $assets,
+            $sysdata,
+            $imports,
+            LazyDatabase {
+                path: concat!("<builtin:", $name, ">/R/", $name, ".rdb"),
+                contents: DatabaseContents::Original(include_bytes!(concat!(
+                    $assets, "/", $name, ".rdb"
+                ))),
+                index: include_bytes!(concat!($assets, "/index.rds")),
+            }
+        )
+    };
+    ($name:literal, $assets:literal, $sysdata:expr, $imports:expr, $database:expr) => {
         PackageImage {
             name: $name,
             version: "4.7.0",
             directory: concat!("<builtin:", $name, ">"),
-            database: LazyDatabase {
-                path: concat!("<builtin:", $name, ">/R/", $name, ".rdb"),
-                bytes: include_bytes!(concat!($assets, "/", $name, ".rdb")),
-                index: include_bytes!(concat!($assets, "/index.rds")),
-            },
+            database: $database,
             sysdata: $sysdata,
             namespace_source: include_str!(concat!($assets, "/NAMESPACE")),
             exports: include_bytes!(concat!($assets, "/exports.rds")),
@@ -71,19 +82,36 @@ static UTILS: PackageImage = image!(
     "assets/utils",
     Some(LazyDatabase {
         path: "<builtin:utils>/R/sysdata.rdb",
-        bytes: include_bytes!("assets/utils/sysdata.rdb"),
+        contents: DatabaseContents::Original(include_bytes!("assets/utils/sysdata.rdb")),
         index: include_bytes!("assets/utils/sysdata-index.rds"),
     })
 );
 
+const TOOLS_SYSDATA: Option<LazyDatabase> = Some(LazyDatabase {
+    path: "<builtin:tools>/R/sysdata.rdb",
+    contents: DatabaseContents::Original(include_bytes!("assets/tools/sysdata.rdb")),
+    index: include_bytes!("assets/tools/sysdata-index.rds"),
+});
+
+#[cfg(not(target_arch = "wasm32"))]
+static TOOLS: PackageImage = image!("tools", "assets/tools", TOOLS_SYSDATA);
+
+#[cfg(target_arch = "wasm32")]
 static TOOLS: PackageImage = image!(
     "tools",
     "assets/tools",
-    Some(LazyDatabase {
-        path: "<builtin:tools>/R/sysdata.rdb",
-        bytes: include_bytes!("assets/tools/sysdata.rdb"),
-        index: include_bytes!("assets/tools/sysdata-index.rds"),
-    })
+    TOOLS_SYSDATA,
+    None,
+    LazyDatabase {
+        path: "<builtin:tools>/R/tools.rdb",
+        contents: DatabaseContents::Packed {
+            bytes: include_bytes!("assets/tools/wasm.data"),
+            ends: include_bytes!("assets/tools/wasm.blocks")
+                .as_chunks::<8>()
+                .0,
+        },
+        index: include_bytes!("assets/tools/wasm.index.rds"),
+    }
 );
 
 pub(crate) fn image(name: &str) -> Option<&'static PackageImage> {
@@ -163,8 +191,17 @@ pub(crate) fn is_namespace_s3_method_name(name: &str) -> bool {
 
 pub(crate) struct LazyDatabase {
     pub(crate) path: &'static str,
-    bytes: &'static [u8],
+    contents: DatabaseContents,
     index: &'static [u8],
+}
+
+enum DatabaseContents {
+    Original(&'static [u8]),
+    #[cfg(any(test, target_arch = "wasm32"))]
+    Packed {
+        bytes: &'static [u8],
+        ends: &'static [[u8; 8]],
+    },
 }
 
 fn databases() -> impl Iterator<Item = &'static LazyDatabase> {
