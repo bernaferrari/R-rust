@@ -15,6 +15,23 @@ The [capability inventory](capability-evidence.md) gives the current fixture
 and disposition counts. The [GNU R API inventory](gnu-r-api-inventory.md)
 tracks native registration coverage separately.
 
+## November 19, 2026 checkpoint
+
+- The full pinned GNU run at `dfc8abe5` passed 1,263 of 1,264 cases with zero
+  timeouts or skips. All three added fixtures passed. The comparison found
+  one changed verdict on an unchanged fixture. [Complete case receipt](ci-checkpoints/gnu-conformance-complete-2026-11-19-cases.json)
+- The single failure was `600_smooth`. At `c5007ff3`, its unchanged fixture
+  matches GNU again. A direct comparison also matched the length, names and
+  values of the native result for each of the six smoother modes.
+- All 15 curated upstream slices passed at `dfc8abe5` with the graphics
+  runtime and native package policy.
+- The TRE suite passed 100 tests. Targeted strict Miri checks passed for
+  zero-headroom diagnostics and TRE stack owner revocation. The original warm
+  S4 check passed in 12.27 seconds with native packages and 12.00 seconds with
+  portable packages under its 60-second, 64 MiB and 500,000-node limits.
+- The arm64 Android crates passed cross-compilation. The separate global-state
+  audit reported 75 unclassified declarations.
+
 ## Re-run GNU R parity
 
 Run from a clean checkout. The pinned oracle installer prints its binary
