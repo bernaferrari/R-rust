@@ -6,10 +6,10 @@ Use Beads to track failures and missing coverage.
 
 | Gate | Measure | Verified reference |
 | --- | --- | --- |
-| Pinned GNU R conformance | Passes, failures, timeouts, unattempted cases and verdict changes on unchanged fixtures | 1,270/1,270 passed at `b6a90a8f`. [Receipt](ci-checkpoints/gnu-conformance-main-b6a90a8f.json) |
+| Pinned GNU R conformance | Passes, failures, timeouts, unattempted cases and verdict changes on unchanged fixtures | 1,281/1,281 passed at `eddd0913`. [Receipt](ci-checkpoints/gnu-conformance-main-eddd0913.json) |
 | Unmodified GNU R drivers | Whole and curated results, with skipped and unattempted drivers counted explicitly | 22 passed, 18 failed and 30 skipped whole drivers at `1faa7f2a`. All 15 curated slices passed. [Receipt](ci-checkpoints/upstream-main-1faa7f2a.json) |
 | Safety | Public API audit, targeted strict Miri checks, and recovery under the original memory and node limits | [Public API audit and strict Miri scope](safe-api-audit.md) |
-| Production Wasm | Optimized bytes and SHA-256, public runtime contracts, and Chromium pass/fail/flaky counts under unchanged deadlines | 328 public contract executions at `eddd0913`. Chromium passed 77/77 at `c7fa992f` on macOS arm64 and at `ad04d62f` on hosted Linux. |
+| Production Wasm | Optimized bytes and SHA-256, public runtime contracts, and Chromium pass/fail/flaky counts under unchanged deadlines | 328 public contract executions at `2f30ab7a`. Chromium passed 77/77 at `c7fa992f` on macOS arm64 and at `ad04d62f` on hosted Linux. |
 
 The [capability inventory](capability-evidence.md) gives the current fixture
 and disposition counts. The [GNU R API inventory](gnu-r-api-inventory.md)
@@ -174,6 +174,42 @@ user workflows have passed on native Rport and production Wasm.
   At `169031b1` the same runtime also passed the file import, export,
   and reload workflow in independent native and browser sessions.
   [Workflow receipt](ci-checkpoints/everyday-analysis-v1-169031b1.json)
+- All 1,281 native cases passed at `eddd0913` with zero timeouts, skips, or
+  unattempted cases. All 11 additions passed and unchanged cases kept their
+  verdicts against the prior full run at `b6a90a8f`.
+  [Complete case receipt](ci-checkpoints/gnu-conformance-main-eddd0913.json)
+
+## Wasm footprint
+
+The optimized `eddd0913` module left **28,359 bytes** under 25 MiB. Its code
+section used 14,023,273 bytes and its data section used 12,136,792. The largest
+exact embedded files were the `tools` (2,360,298 bytes), `stats` (1,857,724),
+`methods` (1,361,830), and `utils` (1,043,845) lazy-load databases and the
+compressed DejaVu font faces (860,516).
+[Baseline size receipt](ci-checkpoints/wasm-size-eddd0913.json)
+
+At `2f30ab7a`, the optimized module used **25,583,620 bytes**, leaving
+**630,780 bytes**. It passed all 328 production contract executions and
+recovery checks. The packers verified byte-for-byte equality for all 597
+timezone names and all 1,721 bundled example aliases. The native portable
+example test matched GNU prompts and output. Examples decompress on lookup.
+[Packed size receipt](ci-checkpoints/wasm-size-2f30ab7a.json)
+
+An offline repacking experiment on the seven lazy-load databases preserved
+their serialized GNU records and reduced the payload from 7,415,880 to
+6,117,695 bytes before the new index. That experiment has no runtime change.
+The next check is to measure cold-start and per-package costs before choosing
+which database to repack. The largest candidate for a separate asset is
+`tools`. It stayed unloaded in the default browser session and during a
+linear-model run.
+
+```bash
+python3 scripts/wasm_size_report.py "$report_dir/pkg/r_wasm_bg.wasm"
+```
+
+The report counts exact contiguous asset matches in the module’s data
+section. A file split by the optimizer or transformed during linking can
+contribute bytes without appearing in the asset list.
 
 ## Re-run GNU R parity
 
