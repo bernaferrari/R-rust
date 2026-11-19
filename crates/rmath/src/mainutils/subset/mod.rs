@@ -21,7 +21,7 @@
 //!   VectorSubset(), MatrixSubset(), ArraySubset()
 //!   ExtractArg(), ExtractDropArg(), ExtractExactArg()
 //!   scalarIndex(), findASubIndex()
-//!   errorcallNotSubsettable(), errorcallMissingSubs(),
+//!   errorcallNotSubsettable(),
 //!   errorcallOutOfBounds(), errorcallOutOfBoundsSEXP()
 //!   VECTOR_ELT_FIX_NAMED(), R_DispatchOrEvalSP()
 //!   pstrmatch()
@@ -373,13 +373,6 @@ use crate::eval::attrib_core::setAttrib;
 unsafe fn errorcallNotSubsettable(_x: SEXP, _call: SEXP) {
     std::panic::panic_any(RError {
         message: "object of type is not subsettable".to_string(),
-    });
-}
-
-/// Report missing subscript error.
-unsafe fn errorcallMissingSubs(_x: SEXP, _call: SEXP) {
-    std::panic::panic_any(RError {
-        message: "subscript is missing".to_string(),
     });
 }
 

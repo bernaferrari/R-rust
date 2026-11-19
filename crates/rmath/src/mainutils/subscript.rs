@@ -442,7 +442,7 @@ pub unsafe fn get1index(
             }
         } else if stype == SEXPTYPE::SYMSXP {
             if s == R_MissingArg() {
-                error("missing subscript");
+                crate::mainutils::errors::signal_missing_subscript(call, None);
             }
 
             // Symbol subscript: match against names

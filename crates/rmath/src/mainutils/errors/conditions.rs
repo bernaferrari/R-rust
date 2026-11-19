@@ -1092,20 +1092,24 @@ pub unsafe fn R_makeMissingSubscriptError1(call: SEXP) -> SEXP {
         )
     }
 }
-/// `x[[]]` / `x[[]] <-`: class `MissingSubscriptError`, message
-/// `"missing subscript"`, with `call` and `object` fields.
+/// Signal a missing subscript with the object when the caller has it.
 pub unsafe fn R_MissingSubscriptError(x: SEXP, call: SEXP) -> ! {
+    unsafe { signal_missing_subscript(call, Some(x)) }
+}
+
+pub(crate) unsafe fn signal_missing_subscript(call: SEXP, object: Option<SEXP>) -> ! {
     unsafe {
-        let c_msg = std::ffi::CString::new("missing subscript").unwrap_or_default();
         let cond = R_makeErrorCondition(
             call,
-            b"MissingSubscriptError\0".as_ptr() as *const c_char,
+            c"MissingSubscriptError".as_ptr(),
             std::ptr::null(),
-            1,
-            c_msg.as_ptr(),
+            c_int::from(object.is_some()),
+            c"missing subscript".as_ptr(),
         );
         let _guard = protect(cond);
-        R_setConditionField(cond, 2, b"object\0".as_ptr() as *const c_char, x);
+        if let Some(x) = object {
+            R_setConditionField(cond, 2, c"object".as_ptr(), x);
+        }
         R_signalErrorCondition(cond, call);
         unreachable!()
     }

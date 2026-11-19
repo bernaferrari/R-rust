@@ -110,19 +110,12 @@ pub unsafe fn do_subset2_dflt(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
         let nsubs = length_int(subs);
 
         if nsubs == 0 {
-            crate::mainutils::errors::R_MissingSubscriptError(x, call);
+            errorcall(call, "no index specified");
         }
 
-        /* Handle NULL case */
         if isNull(x) {
-            if !isNull(subs) && !isNull(CAR(subs)) && isSymbol(CAR(subs)) {
-                let pn = PRINTNAME(CAR(subs));
-                if !isNull(pn) {
-                    let c = CHAR(pn);
-                    if !c.is_null() && *c == 0 {
-                        errorcallMissingSubs(x, call);
-                    }
-                }
+            if CAR(subs) == crate::sexp::globals::R_MissingArg() {
+                crate::mainutils::errors::R_MissingSubscriptError(x, call);
             }
             return x;
         }
