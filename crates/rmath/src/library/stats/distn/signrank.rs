@@ -31,7 +31,7 @@ fn dimensions(n: i32) -> Result<(usize, usize), String> {
         .checked_add(1)
         .filter(|&n| {
             n.checked_mul(size_of::<f64>())
-                .is_some_and(|b| b <= isize::MAX as usize)
+                .is_some_and(|b| isize::try_from(b).is_ok())
         })
         .ok_or_else(|| "signed-rank table is too large".to_string())?;
     Ok((total as usize, length))
@@ -92,8 +92,7 @@ fn table(owner: OwnerToken<'_>, n: i32) -> Sexp<'static> {
     };
     // The replaced root drops after this field borrow ends; its physical storage
     // remains charged until the arena reclaims it. Old/new allocation overlaps.
-    let old =
-        unsafe { std::mem::replace(&mut (*owner.as_ptr()).signed_rank_cache, Some(replacement)) };
+    let old = unsafe { (*owner.as_ptr()).signed_rank_cache.replace(replacement) };
     drop(old);
     active(owner);
     value
@@ -324,7 +323,7 @@ mod tests {
         let session = RSession::new_for_gc_tests();
         let owner = session.owner_token().unwrap();
         let weak = owner.weak_owner().unwrap();
-        let facade = std::rc::Rc::new(std::cell::RefCell::new(None));
+        let facade = std::rc::Rc::new(std::cell::RefCell::new(None::<RSession>));
         let closer = facade.clone();
         let called = std::rc::Rc::new(std::cell::Cell::new(false));
         let observed = called.clone();
@@ -338,10 +337,9 @@ mod tests {
                         .memory_state
                         .gc_force_gap = 0;
                 }
-                closer
-                    .borrow_mut()
-                    .as_mut()
-                    .map(|session: &mut RSession| session.close());
+                if let Some(session) = closer.borrow_mut().as_mut() {
+                    session.close();
+                }
             }))
         });
         session.with_active_in(|owner| unsafe {
@@ -364,7 +362,7 @@ mod tests {
         match result {
             Err(_) => {}
             Ok(value) => assert!(value.is_err()),
-        };
+        }
         drop(facade.borrow_mut().take());
     }
     #[test]

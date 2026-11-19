@@ -200,7 +200,7 @@ fn registered_flag_providers_collect_revoke_and_are_skipped_for_empty_data() {
             match outcome {
                 Err(_) => {}
                 Ok(value) => assert!(value.is_err()),
-            };
+            }
             // Materialized owned data remains physically readable; provider
             // execution through the revoked owner must fail.
             assert_eq!(input.try_real_elt(0), Ok(0.0));

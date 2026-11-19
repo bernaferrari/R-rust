@@ -61,7 +61,7 @@ cat(paste(sprintf("%.8f", as.vector(fitted(m))), collapse=","), "\n", sep="")
         .collect();
     assert_eq!(raw.len(), 3);
     assert!((raw[0].trim().parse::<f64>().unwrap() - 0.39973305453352825).abs() < 1e-9);
-    assert!((raw[1].trim().parse::<f64>().unwrap() - 5.0655330164816164).abs() < 1e-8);
+    assert!((raw[1].trim().parse::<f64>().unwrap() - 5.065_533_016_481_616).abs() < 1e-8);
     assert_vector(
         &csv_values(&format!("lev={}", raw[2]), "lev="),
         &[
@@ -103,13 +103,13 @@ cat(paste(sprintf("%.8f", as.vector(fitted(m))), collapse=","), "\n", sep="")
         .unwrap()
         .parse::<f64>()
         .unwrap();
-    assert!((beta - 0.64566988298904726).abs() < 1e-8);
+    assert!((beta - 0.645_669_882_989_047_3).abs() < 1e-8);
     let edf = lines[3]
         .strip_prefix("edf=")
         .unwrap()
         .parse::<f64>()
         .unwrap();
-    assert!((edf - 5.0655330166365786).abs() < 1e-8);
+    assert!((edf - 5.065_533_016_636_579).abs() < 1e-8);
     assert_vector(
         &csv_values(lines[4], "smoothed="),
         &[

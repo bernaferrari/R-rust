@@ -162,6 +162,34 @@ fn wait_for_callback_until(
     }
 }
 
+/// Poll `operation_status` until the operation reaches a terminal state.
+pub(crate) fn wait_for_terminal_status(
+    session: &crate::uniffi::session::RSession,
+    op_id: u64,
+) -> crate::uniffi::operation::OperationStatus {
+    use crate::uniffi::operation::OperationStatus;
+    use std::time::Duration;
+
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        let status = session.operation_status(op_id);
+        if matches!(
+            status,
+            OperationStatus::Succeeded { .. }
+                | OperationStatus::Failed { .. }
+                | OperationStatus::Cancelled
+                | OperationStatus::Expired
+        ) {
+            return status;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "operation {op_id} did not reach a terminal state"
+        );
+        std::thread::sleep(Duration::from_millis(5));
+    }
+}
+
 #[cfg(test)]
 mod callback_wait_tests {
     use super::*;
@@ -189,33 +217,5 @@ mod callback_wait_tests {
         assert!(
             matches!(found, CallbackEvent::Output { operation_id: 1, line } if line == "ready")
         );
-    }
-}
-
-/// Poll `operation_status` until the operation reaches a terminal state.
-pub(crate) fn wait_for_terminal_status(
-    session: &crate::uniffi::session::RSession,
-    op_id: u64,
-) -> crate::uniffi::operation::OperationStatus {
-    use crate::uniffi::operation::OperationStatus;
-    use std::time::Duration;
-
-    let deadline = Instant::now() + Duration::from_secs(5);
-    loop {
-        let status = session.operation_status(op_id);
-        if matches!(
-            status,
-            OperationStatus::Succeeded { .. }
-                | OperationStatus::Failed { .. }
-                | OperationStatus::Cancelled
-                | OperationStatus::Expired
-        ) {
-            return status;
-        }
-        assert!(
-            Instant::now() < deadline,
-            "operation {op_id} did not reach a terminal state"
-        );
-        std::thread::sleep(Duration::from_millis(5));
     }
 }

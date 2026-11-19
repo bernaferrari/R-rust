@@ -72,7 +72,7 @@ pub(super) fn materialize(owner: OwnerToken<'_>, index: i32) -> SexpResult<Sexp<
                     call(
                         &factory,
                         c"!",
-                        &[call(&factory, c"is.function", &[f.clone()])?],
+                        &[call(&factory, c"is.function", std::slice::from_ref(&f))?],
                     )?,
                     call(
                         &factory,
@@ -117,12 +117,15 @@ pub(super) fn materialize(owner: OwnerToken<'_>, index: i32) -> SexpResult<Sexp<
                     call(
                         &factory,
                         c"!",
-                        &[call(&factory, c"is.character", &[id.clone()])?],
+                        &[call(&factory, c"is.character", std::slice::from_ref(&id))?],
                     )?,
                     call(
                         &factory,
                         c"<-",
-                        &[id.clone(), call(&factory, c"as.integer", &[id.clone()])?],
+                        &[
+                            id.clone(),
+                            call(&factory, c"as.integer", std::slice::from_ref(&id))?,
+                        ],
                     )?,
                 ],
             )?;

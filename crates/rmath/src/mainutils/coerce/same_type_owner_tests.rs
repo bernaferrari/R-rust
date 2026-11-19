@@ -793,7 +793,7 @@ fn compatibility_large_and_byte_modes_fit_same_budget_without_input_string_copy(
                 assert_eq!(result.unwrap(), source.as_raw())
             } else {
                 assert_eq!(result.unwrap_err(), "invalid 'mode' argument")
-            };
+            }
             assert_eq!(
                 convert(source.clone(), valid.clone(), api).unwrap(),
                 source.as_raw()

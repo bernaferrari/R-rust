@@ -19,7 +19,7 @@ impl Workspace {
     pub(crate) fn new(access: &RuntimeAccess, length: usize) -> SexpResult<Self> {
         let bytes = length
             .checked_mul(size_of::<f64>())
-            .filter(|&n| n <= isize::MAX as usize)
+            .filter(|&n| isize::try_from(n).is_ok())
             .ok_or_else(failure)?;
         let mut reservation = access
             .with_arena(|a| a.reserve_workspace(bytes))?
@@ -127,7 +127,7 @@ impl SegmentedWorkspace {
             .ok_or_else(failure)?;
         let bytes = capacity
             .checked_mul(size_of::<Segment>())
-            .filter(|&n| n <= isize::MAX as usize)
+            .filter(|&n| isize::try_from(n).is_ok())
             .ok_or_else(failure)?;
         let mut reservation = access
             .with_arena(|a| a.reserve_workspace(bytes))?

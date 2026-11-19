@@ -319,7 +319,7 @@ fn checked_pairlist_cycles_fail_without_recursive_walk_and_recover() {
     let mut mutable = SexpMut::try_from_checked(pair.clone()).unwrap();
     mutable.try_set_pairlist_cdr(&pair).unwrap();
     let pair = mutable.freeze();
-    let a = args(&f, &list(&f, &[pair.clone()]));
+    let a = args(&f, &list(&f, std::slice::from_ref(&pair)));
     owner.full_gc().unwrap();
     assert_error(&f, &a);
     assert_eq!(owner.with_arena(|a| a.workspace_bytes()).unwrap(), 0);

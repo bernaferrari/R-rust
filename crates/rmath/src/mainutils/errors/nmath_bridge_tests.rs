@@ -32,7 +32,7 @@ fn nmath_bridge_actual_storage_is_admitted_through_unwind() {
         assert_eq!(error.downcast_ref::<u32>(), Some(&713));
         assert!(once.get());
         assert!(
-            peak.get() >= before + message.len() + 1,
+            peak.get() > before + message.len(),
             "C-string storage must remain admitted through callback; observed {}, before {}",
             peak.get(),
             before
@@ -171,8 +171,7 @@ fn nmath_bridge_revocation_refunds_original_not_replacement() {
             crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
                 if !first.replace(true) {
                     assert!(
-                        accounting.workspace_bytes_for_test()
-                            >= before + "revoking bridge".len() + 1
+                        accounting.workspace_bytes_for_test() > before + "revoking bridge".len()
                     );
                     drop(revoked.borrow_mut().take());
                     let next = RSession::new_for_gc_tests();

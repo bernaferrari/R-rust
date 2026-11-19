@@ -65,7 +65,7 @@ fn deriv_outer_graph_survives_real_collection_before_auxiliary_builders() {
         let result = result
             .expect("outer derivative graph must retain all intermediates across real collection");
         assert_eq!(result.typeof_(), SEXPTYPE::EXPRSXP);
-        session.with_active(|| crate::sexp::gengc::full_gc());
+        session.with_active(crate::sexp::gengc::full_gc);
         assert!(session.define_var("collected_deriv_program", result));
         assert!(source(&mut session,"local({x<-2;y<-3;v<-eval(collected_deriv_program);identical(as.numeric(v),10)&&identical(as.numeric(attr(v,'gradient')),c(7,2))&&identical(as.numeric(attr(v,'hessian')),c(2,1,1,0))})").try_to_bool().unwrap());
     }

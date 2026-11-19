@@ -19,7 +19,7 @@ use std::io::{Cursor, Read};
 const PORTABLE_ZLIB_DECODER_SCRATCH: usize = 64 * 1024;
 
 fn decompressed_input_workspace(capacity: usize, record_len: usize) -> Option<usize> {
-    Some(capacity.checked_add(record_len)?)
+    capacity.checked_add(record_len)
 }
 
 fn reserve_decompression_workspace(

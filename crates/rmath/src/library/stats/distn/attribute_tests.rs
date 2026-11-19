@@ -148,7 +148,7 @@ fn owner_revocation_during_attribute_copy_prevents_publication() {
     let target = reals(&session, &[1.0]);
     let child = reals(&session, &[59.0]);
     note(&session, &source, &child);
-    let facade = Rc::new(RefCell::new(None));
+    let facade = Rc::new(RefCell::new(None::<RSession>));
     let closer = facade.clone();
     let called = Rc::new(Cell::new(false));
     let observed = called.clone();
@@ -162,10 +162,9 @@ fn owner_revocation_during_attribute_copy_prevents_publication() {
                     .memory_state
                     .gc_force_gap = 0;
             }
-            closer
-                .borrow_mut()
-                .as_mut()
-                .map(|session: &mut RSession| session.close());
+            if let Some(session) = closer.borrow_mut().as_mut() {
+                session.close();
+            }
         }))
     });
     session.with_active_in(|owner| unsafe {
@@ -188,7 +187,7 @@ fn owner_revocation_during_attribute_copy_prevents_publication() {
     match outcome {
         Err(_) => {}
         Ok(value) => assert!(value.is_err()),
-    };
+    }
     drop(facade.borrow_mut().take());
 }
 

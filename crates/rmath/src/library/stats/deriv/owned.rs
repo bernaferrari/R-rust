@@ -341,7 +341,7 @@ where
             &mut self.active_workspace.borrow_mut(),
             "derivative expression path",
         )?;
-        active.push(link.clone());
+        active.push(link);
         Ok(link)
     }
 

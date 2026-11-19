@@ -38,6 +38,8 @@ pub(super) enum Classification<'s> {
 
 /// Validate and retain both arguments before any element callback. The
 /// adapter performs R's numeric coercion only for the indicated branch.
+// Retain the invalid class as a checked root without allocating to report it.
+#[allow(clippy::result_large_err)]
 pub(super) fn prepare<'s>(
     owner: StoredOwner<'s>,
     input: Sexp<'s>,

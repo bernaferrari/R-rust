@@ -39,7 +39,7 @@ pub(super) unsafe fn evaluate(call: SEXP, op: SEXP, args: SEXP, rho: SEXP, minim
         };
         let source = arguments.try_car().expect("extrema input");
         let mut input = source.clone();
-        if input.is_object() && !is_data_frame(&factory, &input, &check) {
+        if input.is_object() && !is_data_frame(&factory, &input, check) {
             let symbol = crate::sexp::symbol::Rf_install(c"xtfrm".as_ptr());
             check();
             let function = factory.wrap(symbol).expect("root xtfrm symbol");

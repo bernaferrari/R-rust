@@ -113,7 +113,7 @@ pub(super) unsafe fn evaluate(
         let shape = if matches!(kind, Predicate::Nan) {
             None
         } else {
-            Some(snapshot_shape(&factory, &input, &check))
+            Some(snapshot_shape(&factory, &input, check))
         };
         let mut output = SexpMut::try_from_checked(output).expect("mutable predicate result");
         for i in 0..length {
@@ -147,7 +147,7 @@ pub(super) unsafe fn evaluate(
                 .expect("write predicate result element");
         }
         let output = output.freeze();
-        let (dims, names) = shape.unwrap_or_else(|| snapshot_shape(&factory, &input, &check));
+        let (dims, names) = shape.unwrap_or_else(|| snapshot_shape(&factory, &input, check));
         apply_shape(&output, &dims, &names, check);
         output.as_raw()
     }

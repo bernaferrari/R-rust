@@ -34,7 +34,7 @@ impl BufferError {
 fn required_bytes(length: usize) -> Result<usize, BufferError> {
     length
         .checked_add(1)
-        .filter(|&n| n <= isize::MAX as usize)
+        .filter(|&n| isize::try_from(n).is_ok())
         .ok_or(BufferError::LengthOverflow)
 }
 impl WarningBuffer {

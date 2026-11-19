@@ -272,9 +272,9 @@ pub(super) unsafe fn numeric(
         let copy_shape = !internal
             && !operation
                 .and_then(crate::eval::primitive::PrimitiveDescriptor::from_sexp)
-                .is_some_and(|x| x.name.ends_with(".int"));
+                .is_some_and(|x| x.name.as_bytes().ends_with(b".int"));
         if copy_shape && inputs.values[0].value.len() == length {
-            shape(&f, &inputs.values[0].value, &result, &check);
+            shape(&f, &inputs.values[0].value, &result, check);
         }
         check();
         Some(result.as_raw())

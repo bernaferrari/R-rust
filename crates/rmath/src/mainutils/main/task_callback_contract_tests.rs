@@ -48,14 +48,14 @@ fn task_callback_public_names_and_current_positions_match_gnu() {
     let session = RSession::new_without_default_packages();
     let result = source(
         &session,
-        r#"local({
+        r"local({
       f<-function(...) TRUE
       a<-addTaskCallback(f,name='left'); b<-addTaskCallback(f,name='right')
       removeTaskCallback(1L); c<-addTaskCallback(f,name='after')
       answer<-list(indices=c(unname(a),unname(b),unname(c)), labels=c(names(a),names(b),names(c)), current=getTaskCallbackNames())
       removeTaskCallback(1L); removeTaskCallback(1L)
       answer
-    })"#,
+    })",
     );
     let indices = result.try_vector_elt(0).unwrap();
     assert_eq!(
@@ -91,7 +91,7 @@ fn task_callback_public_explicit_null_is_present_and_omitted_data_is_missing() {
     let session = RSession::new_without_default_packages();
     source(
         &session,
-        r#"{callback_data_seen<-character();callback_f<-function(expr,value,ok,visible,data){gc();callback_data_seen<<-c(callback_data_seen,if(missing(data))'missing' else if(is.null(data))'NULL' else as.character(data));TRUE};addTaskCallback(callback_f,name='omit');addTaskCallback(callback_f,data=NULL,name='null');addTaskCallback(callback_f,data=17L,name='value')}"#,
+        r"{callback_data_seen<-character();callback_f<-function(expr,value,ok,visible,data){gc();callback_data_seen<<-c(callback_data_seen,if(missing(data))'missing' else if(is.null(data))'NULL' else as.character(data));TRUE};addTaskCallback(callback_f,name='omit');addTaskCallback(callback_f,data=NULL,name='null');addTaskCallback(callback_f,data=17L,name='value')}",
     );
     session
         .with_active(|| unsafe { Rf_callToplevelHandlers(R_NilValue(), R_NilValue(), TRUE, TRUE) });
@@ -111,7 +111,7 @@ fn task_callback_public_positions_survive_iteration_mutation() {
     let session = RSession::new_without_default_packages();
     source(
         &session,
-        r#"{callback_order<-character();addTaskCallback(function(...){callback_order<<-c(callback_order,'A');removeTaskCallback(2L);addTaskCallback(function(...){callback_order<<-c(callback_order,'D');FALSE},name='D');TRUE},name='A');addTaskCallback(function(...){callback_order<<-c(callback_order,'B');TRUE},name='B');addTaskCallback(function(...){gc();callback_order<<-c(callback_order,'C');removeTaskCallback('A');FALSE},name='C')}"#,
+        r"{callback_order<-character();addTaskCallback(function(...){callback_order<<-c(callback_order,'A');removeTaskCallback(2L);addTaskCallback(function(...){callback_order<<-c(callback_order,'D');FALSE},name='D');TRUE},name='A');addTaskCallback(function(...){callback_order<<-c(callback_order,'B');TRUE},name='B');addTaskCallback(function(...){gc();callback_order<<-c(callback_order,'C');removeTaskCallback('A');FALSE},name='C')}",
     );
     session
         .with_active(|| unsafe { Rf_callToplevelHandlers(R_NilValue(), R_NilValue(), TRUE, TRUE) });
@@ -231,7 +231,7 @@ fn task_callback_duplicate_names_metadata_and_native_selectors_match_gnu() {
     let session = RSession::new_without_default_packages();
     let result = source(
         &session,
-        r#"local({
+        r"local({
       f<-function(...)TRUE
       a<-addTaskCallback(f,name='same');b<-addTaskCallback(f,name='same')
       native_remove<-.Call(.C_R_removeTaskCallback,TRUE)
@@ -243,7 +243,7 @@ fn task_callback_duplicate_names_metadata_and_native_selectors_match_gnu() {
       bad_arity<-inherits(try(.Call(.C_R_getTaskCallbackNames,1L),silent=TRUE),'try-error')
       hidden<-inherits(try(getNativeSymbolInfo('R_addTaskCallback'),silent=TRUE),'try-error')
       list(native_remove,remaining,malformed,after_error,counts,bad_arity,hidden,length(getTaskCallbackNames()))
-    })"#,
+    })",
     );
     assert_eq!(result.vector_elt(0).unwrap().logical_elt(0), Some(TRUE));
     assert_eq!(

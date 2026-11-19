@@ -86,7 +86,7 @@ fn allocate_with<T>(
     owner.require_active().map_err(|e| e.to_string())?;
     let bytes = length
         .checked_mul(size_of::<T>())
-        .filter(|&n| n <= isize::MAX as usize)
+        .filter(|&n| isize::try_from(n).is_ok())
         .ok_or_else(memory_error)?;
     let previous = reservation.bytes();
     reservation

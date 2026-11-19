@@ -56,7 +56,7 @@ impl Workspace {
         owner.require_active().map_err(|e| e.to_string())?;
         let bytes = length
             .checked_mul(size_of::<f64>())
-            .filter(|&n| n <= isize::MAX as usize)
+            .filter(|&n| isize::try_from(n).is_ok())
             .ok_or_else(memory_error)?;
         let mut reservation = owner
             .with_arena(|a| a.reserve_workspace(bytes))
