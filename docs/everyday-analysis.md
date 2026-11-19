@@ -11,6 +11,13 @@ workflow stays in the denominator. A pass requires a measured result, and an
 unmeasured workflow earns no credit. Silent wrong results, crashes and data
 loss in supported workflows block release even when the score is high.
 
+At `bc598c83`, the smaller production Wasm package and native Rport both
+passed **13 of 20 workflows (65%)**. All 12 selected native GNU conformance
+cases passed. The package repeated the CSV round trip, all nine workspace
+interchange combinations, and the pinned R6 analysis.
+[Scorecard](ci-checkpoints/everyday-analysis-v1-bc598c83.json)
+[Production Wasm receipt](ci-checkpoints/wasm-bundle-bc598c83.json)
+
 At `a0d25066`, **13 of 20 workflows (65%)** passed on both native Rport and
 optimized Wasm. The pinned R6 2.6.1 package constructed an analysis object
 and returned the same result on GNU R, native Rport, and Wasm. The browser
