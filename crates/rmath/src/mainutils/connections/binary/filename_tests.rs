@@ -383,7 +383,7 @@ fn budget_headroom(session: &RSession, bytes: usize) {
     session.with_active_in(|instance| unsafe {
         let arena = &mut (*instance).arena;
         arena.set_budget(crate::sexp::memory::ArenaBudget::new(
-            arena.total_bytes_allocated() + bytes,
+            arena.total_bytes_allocated() + arena.workspace_bytes() + bytes,
             0,
         ));
     });
