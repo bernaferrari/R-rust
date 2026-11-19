@@ -271,7 +271,7 @@ pub unsafe fn WriteItemInternal(
 
         if stype == SEXPTYPE::LGLSXP || stype == SEXPTYPE::INTSXP {
             writer.write_i32(flags);
-            let len = XLENGTH(s);
+            let len = vector_length_for_write(s, writer);
             writer.write_i32(len as c_int);
             let int_data = INTEGER(s);
             for i in 0..len as isize {
@@ -279,7 +279,7 @@ pub unsafe fn WriteItemInternal(
             }
         } else if stype == SEXPTYPE::REALSXP {
             writer.write_i32(flags);
-            let len = XLENGTH(s);
+            let len = vector_length_for_write(s, writer);
             writer.write_i32(len as c_int);
             let real_data = REAL(s);
             for i in 0..len as isize {
@@ -287,7 +287,7 @@ pub unsafe fn WriteItemInternal(
             }
         } else if stype == SEXPTYPE::CPLXSXP {
             writer.write_i32(flags);
-            let len = XLENGTH(s);
+            let len = vector_length_for_write(s, writer);
             writer.write_i32(len as c_int);
             let cpx_data = COMPLEX(s);
             for i in 0..len as isize {
@@ -297,7 +297,7 @@ pub unsafe fn WriteItemInternal(
             }
         } else if stype == SEXPTYPE::STRSXP {
             writer.write_i32(flags);
-            let len = XLENGTH(s);
+            let len = vector_length_for_write(s, writer);
             writer.write_i32(len as c_int);
             for i in 0..len {
                 let elt = STRING_ELT(s, i as R_xlen_t);
@@ -305,7 +305,7 @@ pub unsafe fn WriteItemInternal(
             }
         } else if stype == SEXPTYPE::RAWSXP {
             writer.write_i32(flags);
-            let len = XLENGTH(s);
+            let len = vector_length_for_write(s, writer);
             writer.write_i32(len as c_int);
             let raw_data = RAW(s);
             for i in 0..len as isize {
@@ -313,14 +313,18 @@ pub unsafe fn WriteItemInternal(
             }
         } else if stype == SEXPTYPE::VECSXP || stype == SEXPTYPE::EXPRSXP {
             writer.write_i32(flags);
-            let len = XLENGTH(s);
+            let len = vector_length_for_write(s, writer);
             writer.write_i32(len as c_int);
             for i in 0..len {
                 let elt = VECTOR_ELT(s, i as R_xlen_t);
                 WriteItemInternal(elt, ref_table, writer);
             }
         } else {
-            // Unknown type: write flags + nothing (best effort)
+            if writer.strict_workspace && stype != SEXPTYPE::S4SXP {
+                error(&format!(
+                    "cannot save unsupported workspace object type {stype}"
+                ));
+            }
             writer.write_i32(flags);
         }
 
@@ -329,6 +333,14 @@ pub unsafe fn WriteItemInternal(
             WriteItemInternal(ATTRIB(s), ref_table, writer);
         }
     }
+}
+
+unsafe fn vector_length_for_write(s: SEXP, writer: &BinaryWriter) -> R_xlen_t {
+    let len = unsafe { XLENGTH(s) };
+    if writer.strict_workspace && c_int::try_from(len).is_err() {
+        unsafe { error("cannot save unsupported long workspace vector") };
+    }
+    len
 }
 
 /// Emit one GNU ALTREP_SXP compact-sequence record: class info list, state

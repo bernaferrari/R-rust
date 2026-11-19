@@ -160,7 +160,22 @@ impl Write for InputBytes {
 
 pub(super) fn expand(
     bytes: &[u8],
+    reserve: impl FnMut(usize) -> io::Result<WorkspaceReservation>,
+) -> io::Result<Option<InputBytes>> {
+    expand_container(bytes, reserve, false)
+}
+
+pub(super) fn expand_workspace(
+    bytes: &[u8],
+    reserve: impl FnMut(usize) -> io::Result<WorkspaceReservation>,
+) -> io::Result<Option<InputBytes>> {
+    expand_container(bytes, reserve, true)
+}
+
+fn expand_container(
+    bytes: &[u8],
     mut reserve: impl FnMut(usize) -> io::Result<WorkspaceReservation>,
+    complete: bool,
 ) -> io::Result<Option<InputBytes>> {
     enum Codec {
         Gzip,
@@ -177,6 +192,7 @@ pub(super) fn expand(
         return Ok(None);
     };
     let workspace = match codec {
+        Codec::Gzip if complete => 192 * 1024 + bytes.len().saturating_mul(3).min(192 * 1024),
         Codec::Gzip => 128 * 1024,
         Codec::Bzip2 => 4 * 1024 * 1024,
         Codec::Xz => 16 * 1024 * 1024,
@@ -184,6 +200,7 @@ pub(super) fn expand(
     let _decoder_workspace = reserve(workspace)?;
     let mut output = InputBytes::new(reserve(0)?, 0)?;
     match codec {
+        Codec::Gzip if complete => output.read_from(flate2::bufread::MultiGzDecoder::new(bytes))?,
         Codec::Gzip => output.read_from(flate2::read::GzDecoder::new(bytes))?,
         Codec::Bzip2 => output.read_from(bzip2::read::BzDecoder::new(bytes))?,
         Codec::Xz => output.read_from(lzma_rust2::XzReader::new_mem_limit(

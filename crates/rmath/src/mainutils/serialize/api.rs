@@ -476,24 +476,83 @@ pub unsafe fn R_serialize_with_xdr(
         } else {
             asLogical(ascii)
         };
-        let ascii_format = ascii_value != 0;
-        let xdr_format =
-            !ascii_format && (xdr.is_null() || xdr == R_NilValue() || asLogical(xdr) != 0);
-
-        // Build the header
-        let mut writer = BinaryWriter::admitted(&owner);
-        writer.set_persist_hook(fun);
-        writer.write_byte(if ascii_format {
-            b'A'
-        } else if xdr_format {
-            b'X'
+        let format = if ascii_value != 0 {
+            SnapshotFormat::Ascii {
+                hex: ascii_value == crate::sexp::ffi::NA_LOGICAL,
+            }
+        } else if xdr.is_null() || xdr == R_NilValue() || asLogical(xdr) != 0 {
+            SnapshotFormat::Xdr
         } else {
-            b'B'
+            SnapshotFormat::Native
+        };
+        let data = serialize_snapshot(&owner, object, fun, version, format, &[]);
+        let raw = Rf_allocVector3(SEXPTYPE::RAWSXP, data.len() as R_xlen_t);
+        if raw.is_null() {
+            error("serialize exceeds session memory limit");
+        }
+        if !data.is_empty() {
+            let raw_ptr = RAW(raw);
+            ptr::copy_nonoverlapping(data.as_ptr(), raw_ptr, data.len());
+        }
+        raw
+    }
+}
+
+/// Encode a complete, arena-admitted workspace before publishing its file.
+pub(crate) unsafe fn serialize_workspace_snapshot(
+    owner: &crate::sexp::owner::OwnerToken<'_>,
+    bindings: SEXP,
+    version: c_int,
+    ascii: bool,
+) -> SerializedBytes {
+    let prefix: &[u8] = match (version, ascii) {
+        (2, false) => b"RDX2\n",
+        (3, false) => b"RDX3\n",
+        (2, true) => b"RDA2\n",
+        (3, true) => b"RDA3\n",
+        _ => unsafe { error(&format!("version {version} not supported")) },
+    };
+    unsafe {
+        let format = if ascii {
+            SnapshotFormat::Ascii { hex: false }
+        } else {
+            SnapshotFormat::Xdr
+        };
+        serialize_snapshot(owner, bindings, R_NilValue(), version, format, prefix)
+    }
+}
+
+enum SnapshotFormat {
+    Ascii { hex: bool },
+    Xdr,
+    Native,
+}
+
+unsafe fn serialize_snapshot(
+    owner: &crate::sexp::owner::OwnerToken<'_>,
+    object: SEXP,
+    hook: SEXP,
+    version: c_int,
+    format: SnapshotFormat,
+    prefix: &[u8],
+) -> SerializedBytes {
+    unsafe {
+        let _object_guard = protect(object);
+        let _hook_guard = protect(hook);
+        // Build the header
+        let mut writer = BinaryWriter::admitted(owner);
+        writer.strict_workspace = !prefix.is_empty();
+        writer.write_bytes(prefix);
+        writer.set_persist_hook(hook);
+        writer.write_byte(match format {
+            SnapshotFormat::Ascii { .. } => b'A',
+            SnapshotFormat::Xdr => b'X',
+            SnapshotFormat::Native => b'B',
         });
         writer.write_byte(b'\n');
-        writer.set_ascii_body(ascii_format);
-        writer.set_ascii_hex(ascii_value == crate::sexp::ffi::NA_LOGICAL);
-        writer.set_xdr_body(xdr_format);
+        writer.set_ascii_body(matches!(format, SnapshotFormat::Ascii { .. }));
+        writer.set_ascii_hex(matches!(format, SnapshotFormat::Ascii { hex: true }));
+        writer.set_xdr_body(matches!(format, SnapshotFormat::Xdr));
         writer.version = version;
 
         // Version info
@@ -516,23 +575,13 @@ pub unsafe fn R_serialize_with_xdr(
         }
 
         // Serialize the object
-        let mut ref_table = WriteHashTable::for_owner(&owner);
+        let mut ref_table = WriteHashTable::for_owner(owner);
         WriteItemInternal(object, &mut ref_table, &mut writer);
 
         owner
             .require_active()
             .unwrap_or_else(|e| error(&e.to_string()));
-        // Create RAWSXP from the serialized bytes
-        let data = writer.into_output();
-        let raw = Rf_allocVector3(SEXPTYPE::RAWSXP, data.len() as R_xlen_t);
-        if raw.is_null() {
-            error("serialize exceeds session memory limit");
-        }
-        if !data.is_empty() {
-            let raw_ptr = RAW(raw);
-            ptr::copy_nonoverlapping(data.as_ptr(), raw_ptr, data.len());
-        }
-        raw
+        writer.into_output()
     }
 }
 
@@ -1065,6 +1114,36 @@ pub(crate) fn unserialize_native_snapshot(
     let result = unsafe { unserialize_owned_input(owner, data, None, hook_data, lazy_restore) };
     owner.require_active()?;
     owner.sexp(result)?.into_owned()
+}
+
+/// Expand a complete workspace before parsing its magic and serialized body.
+pub(crate) fn expand_workspace_snapshot(
+    owner: &crate::sexp::owner::OwnerToken<'_>,
+    bytes: &[u8],
+) -> std::io::Result<Option<super::owned_input::InputBytes>> {
+    super::owned_input::expand_workspace(bytes, |size| {
+        owner
+            .with_arena(|arena| arena.reserve_workspace(size))
+            .map_err(|error| std::io::Error::other(error.to_string()))?
+            .ok_or_else(super::owned_input::memory_error)
+    })
+}
+
+pub(crate) fn decode_workspace_snapshot(
+    owner: &crate::sexp::owner::OwnerToken<'_>,
+    body: &[u8],
+    ascii: bool,
+) -> crate::sexp::object::SexpResult<crate::sexp::object::Sexp<'static>> {
+    let mut reader = BinaryReader::new(body);
+    // SAFETY: the caller keeps the complete, admitted body alive through
+    // decoding; no R payload loan is live.
+    let decoded = unsafe { decode_stream_object(owner, &mut reader) };
+    owner.require_active()?;
+    let trailing = &body[reader.pos..];
+    if !(trailing.is_empty() || ascii && trailing.iter().all(u8::is_ascii_whitespace)) {
+        crate::sexp::context::r_error("unexpected data after workspace");
+    }
+    owner.sexp(decoded)?.into_owned()
 }
 
 /// Parse the stream header (format, versions, native encoding) and decode the

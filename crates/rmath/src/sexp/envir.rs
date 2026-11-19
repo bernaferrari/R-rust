@@ -1090,6 +1090,127 @@ pub unsafe fn define_var_safe(symbol: Sexp<'_>, value: Sexp<'_>, rho: Sexp<'_>) 
     true
 }
 
+/// Publish a validated workspace without an allocation or active binding
+/// callback between the first restored binding and the last one.
+pub(crate) fn publish_workspace_bindings(
+    owner: super::owner::OwnerToken<'_>,
+    target: &Sexp<'_>,
+    bindings: &Sexp<'_>,
+    count: usize,
+) -> EnvResult<()> {
+    let factory = owner.node_factory();
+    let graph_error = |error: SexpError| error.to_string();
+    if !target.is_environment() {
+        return Err("invalid 'envir' argument".into());
+    }
+    if target.as_raw() == unsafe { R_EmptyEnv() } {
+        return Err("cannot assign values in the empty environment".into());
+    }
+
+    // A private frame coalesces repeated names in file order. Its binding
+    // cells can be transferred to the destination after final validation.
+    let temporary = unsafe { NewEnvironment(R_NilValue(), R_EmptyEnv(), R_NilValue()) };
+    let temporary = factory.wrap(temporary).map_err(graph_error)?;
+    if !temporary.is_environment() {
+        return Err("cannot stage workspace bindings".into());
+    }
+    for item in PairlistIter::new(bindings.clone()) {
+        let symbol = item.try_tag().map_err(graph_error)?;
+        let value = item.try_car().map_err(graph_error)?;
+        if !unsafe { define_var_safe(symbol, value, temporary.clone()) } {
+            return Err("invalid workspace binding".into());
+        }
+    }
+
+    // Allocation (including deferred collection while staging) has finished
+    // before we inspect the current destination and resolve its exact cells.
+    let bytes = count
+        .checked_mul(std::mem::size_of::<(SEXP, Option<SEXP>)>())
+        .ok_or("workspace binding plan is too large")?;
+    let mut reservation = owner
+        .with_arena(|arena| arena.reserve_workspace(bytes))
+        .map_err(graph_error)?
+        .ok_or("workspace binding plan exceeds session memory limit")?;
+    let mut plan = Vec::new();
+    plan.try_reserve_exact(count)
+        .map_err(|_| "cannot allocate workspace binding plan")?;
+    let actual = plan
+        .capacity()
+        .checked_mul(std::mem::size_of::<(SEXP, Option<SEXP>)>())
+        .ok_or("workspace binding plan is too large")?;
+    reservation
+        .try_resize(actual)
+        .ok_or("workspace binding plan exceeds session memory limit")?;
+    for cell in PairlistIter::new(temporary.try_frame().map_err(graph_error)?) {
+        let symbol = cell.try_tag().map_err(graph_error)?;
+        let name = || unsafe {
+            std::ffi::CStr::from_ptr(CHAR(PRINTNAME(symbol.as_raw())))
+                .to_string_lossy()
+                .into_owned()
+        };
+        let raw = symbol.as_raw();
+        if binding_is_locked_raw(target.as_raw(), raw) {
+            return Err(format!(
+                "cannot change value of locked binding for '{}'",
+                name()
+            ));
+        }
+        if binding_is_active_raw(target.as_raw(), raw) {
+            return Err(format!(
+                "cannot restore into active binding for '{}'",
+                name()
+            ));
+        }
+        let existing = definition_cell(target, &symbol)?;
+        if existing.is_none() && environment_is_locked_raw(target.as_raw()) {
+            return Err("cannot add bindings to a locked environment".into());
+        }
+        plan.push((cell.as_raw(), existing.as_ref().map(Sexp::as_raw)));
+    }
+
+    owner.require_active().map_err(graph_error)?;
+    // The roots retain the selected cells while we assemble a detached
+    // frame. Admit the remembered-set edges before changing the destination.
+    unsafe {
+        let instance = owner.as_ptr();
+        let remember = |parent, child| {
+            super::gengc::write_barrier_in(instance, parent, child)
+                .then_some(())
+                .ok_or("cannot admit workspace binding write barrier")
+        };
+        let target = target.as_raw();
+        let frame = FRAME(target);
+        let mut new_frame = frame;
+        let peer = base_binding_peer(target);
+        for &(staged, existing) in plan.iter().rev() {
+            if let Some(cell) = existing {
+                remember(cell, CAR(staged))?;
+            } else {
+                remember(staged, new_frame)?;
+                SETCDR(staged, new_frame);
+                new_frame = staged;
+            }
+        }
+        if new_frame != frame {
+            remember(target, new_frame)?;
+            if let Some(peer) = peer {
+                remember(peer, new_frame)?;
+            }
+        }
+        for (staged, existing) in plan {
+            if let Some(cell) = existing {
+                SETCAR(cell, CAR(staged));
+                super::accessors::SET_MISSING(cell, 0);
+            }
+        }
+        if new_frame != frame {
+            SET_FRAME(target, new_frame);
+            mirror_base_frame(target, peer);
+        }
+    }
+    Ok(())
+}
+
 // ---------------------------------------------------------------------------
 // setVar — safe version with inheritance
 // ---------------------------------------------------------------------------
