@@ -547,7 +547,7 @@ pub unsafe fn do_as_character_POSIXt(call: SEXP, op: SEXP, args: SEXP, env: SEXP
             let mon = posixlt_int_elt(VECTOR_ELT(lt, 4), iu);
             let year = posixlt_int_elt(VECTOR_ELT(lt, 5), iu);
             let time = f64::from(hour) + f64::from(minu) + s;
-            let is_na = s.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN;
+            let is_na = crate::sexp::ffi::is_na_real(s);
             let ok = time.is_finite()
                 && hour != NA_INTEGER
                 && minu != NA_INTEGER

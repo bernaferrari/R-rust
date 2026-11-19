@@ -20,7 +20,12 @@ const contracts = [
   // Check defaults before later contracts intentionally change session options.
   [resolve(fixtures, 'quote-options-contract.R'), resolve(fixtures, 'quote-options-contract.out')],
   [resolve(fixtures, 'anyna-dispatch/contract.R'), resolve(fixtures, 'anyna-dispatch/contract.out')],
-  ...['600_smooth', '1201_pbeta_bgrat_underflow', '1202_posixlt_difftime'].map(name => [
+  ...[
+    '600_smooth',
+    '1201_pbeta_bgrat_underflow',
+    '1202_posixlt_difftime',
+    '1203_posix_character_na',
+  ].map(name => [
     resolve(root, 'tests/conformance/cases', name + '.R'),
     resolve(root, 'tests/conformance/golden', name + '.out'),
   ]),
