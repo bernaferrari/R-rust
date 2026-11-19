@@ -12,6 +12,8 @@ pub const MAX_FILE_BYTES: usize = 1024 * 1024;
 pub const MAX_FILE_PATH_BYTES: usize = 255;
 pub const MAX_SESSION_BYTES: usize = 8 * 1024 * 1024;
 pub const MAX_FILE_COUNT: usize = 128;
+const GZIP_MAGIC: [u8; 2] = [0x1f, 0x8b];
+const GZIP_WORKSPACE_BYTES: usize = 128 * 1024;
 
 struct StoredFile {
     bytes: Rc<FileBytes>,
@@ -143,6 +145,22 @@ pub(crate) fn open_snapshot_current(
     .ok_or_else(|| "no active R session".to_string())?
 }
 
+/// Decode all gzip members into a connection-owned, admitted snapshot.
+/// Plain files keep their original snapshot without allocating another copy.
+pub(crate) fn gunzip_snapshot(source: Rc<FileBytes>) -> io::Result<Rc<FileBytes>> {
+    if !source.starts_with(&GZIP_MAGIC) {
+        return Ok(source);
+    }
+    // The extra field can allocate 64 KiB before any data is read. The
+    // filename and comment are individually limited to 64 KiB by flate2;
+    // also cover their old and new capacities during growth.
+    let header_workspace = 64 * 1024 + source.len().saturating_mul(3).min(192 * 1024);
+    let _workspace = reserve(GZIP_WORKSPACE_BYTES + header_workspace)?;
+    let mut decoded = FileBuffer::new(MAX_SESSION_BYTES);
+    decoded.read_from(flate2::bufread::MultiGzDecoder::new(&**source))?;
+    Ok(Rc::new(decoded.into_bytes()))
+}
+
 pub fn remove_current(path: &str) -> bool {
     with_current_instance(|instance| unsafe { (*instance).browser_files.remove(path) })
         .unwrap_or(false)
@@ -230,7 +248,7 @@ impl std::ops::Deref for FileText {
 fn memory_error() -> io::Error {
     io::Error::new(
         io::ErrorKind::OutOfMemory,
-        "file text exceeds session memory limit",
+        "file data exceeds session memory limit",
     )
 }
 
@@ -246,7 +264,7 @@ fn reserve(bytes: usize) -> io::Result<Option<crate::sexp::memory::TransientRese
 }
 
 /// Admit an already owned text buffer (e.g. a connection snapshot) for its
-/// remaining lifetime. Newly read buffers use `TextBuffer` admission first.
+/// remaining lifetime. Newly read buffers use `FileBuffer` admission first.
 pub(crate) fn admit_text(text: String) -> io::Result<FileText> {
     let reservation = reserve(text.capacity())?;
     Ok(FileText {
@@ -255,18 +273,25 @@ pub(crate) fn admit_text(text: String) -> io::Result<FileText> {
     })
 }
 
-struct TextBuffer {
+struct FileBuffer {
     bytes: Vec<u8>,
     reservation: Option<crate::sexp::memory::TransientReservation>,
     limit: usize,
 }
 
-impl TextBuffer {
+impl FileBuffer {
     fn new(limit: usize) -> Self {
         Self {
             bytes: Vec::new(),
             reservation: None,
             limit,
+        }
+    }
+
+    fn into_bytes(self) -> FileBytes {
+        FileBytes {
+            bytes: self.bytes,
+            _reservation: self.reservation,
         }
     }
 
@@ -294,7 +319,7 @@ impl TextBuffer {
     }
 }
 
-impl io::Write for TextBuffer {
+impl io::Write for FileBuffer {
     fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
         let len = self
             .bytes
@@ -328,14 +353,14 @@ impl io::Write for TextBuffer {
     }
 }
 
-fn read_buffer_or_host(path: &str) -> io::Result<TextBuffer> {
+fn read_buffer_or_host(path: &str) -> io::Result<FileBuffer> {
     let browser = enabled();
     let limit = if browser {
         MAX_SESSION_BYTES
     } else {
         usize::MAX
     };
-    let mut input = TextBuffer::new(limit);
+    let mut input = FileBuffer::new(limit);
     let stored = with_current_instance(|instance| unsafe {
         let Some(len) = (*instance).browser_files.read(path).map(<[u8]>::len) else {
             return Ok::<bool, io::Error>(false);
@@ -366,20 +391,16 @@ fn read_buffer_or_host(path: &str) -> io::Result<TextBuffer> {
 }
 
 pub(crate) fn read_admitted_bytes_or_host(path: &str) -> io::Result<FileBytes> {
-    let input = read_buffer_or_host(path)?;
-    Ok(FileBytes {
-        bytes: input.bytes,
-        _reservation: input.reservation,
-    })
+    Ok(read_buffer_or_host(path)?.into_bytes())
 }
 
 pub(crate) fn read_text_or_host(path: &str) -> io::Result<FileText> {
     let input = read_buffer_or_host(path)?;
     let limit = input.limit;
     let bytes = &input.bytes;
-    let mut output = TextBuffer::new(limit);
-    if bytes.starts_with(&[0x1f, 0x8b]) {
-        let _workspace = reserve(128 * 1024)?;
+    let mut output = FileBuffer::new(limit);
+    if bytes.starts_with(&GZIP_MAGIC) {
+        let _workspace = reserve(GZIP_WORKSPACE_BYTES)?;
         output.read_from(flate2::read::GzDecoder::new(&bytes[..]))?;
     } else if bytes.starts_with(b"BZh") {
         // bzip2's largest block is 900k; charge its decoder tables too.

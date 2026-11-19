@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 const assert = require('node:assert/strict');
 const path = require('node:path');
+const { gzipSync } = require('node:zlib');
 function checkImportBoundaries(session) {
   const maxFileBytes = 1024 * 1024;
   const buffer = new Uint8Array(maxFileBytes + 2);
@@ -35,6 +36,29 @@ function checkConnectionSnapshots(session) {
   return 3;
 }
 
+function checkBrowserGzipReads(session) {
+  const wire = Buffer.concat([gzipSync('sample\tcount\n'), gzipSync('one\t1\ntwo\t2\n')]);
+  session.import_file('binary/table.tsv', wire);
+  session.eval_checked(`
+    data <- read.delim('binary/table.tsv', colClasses = c('character', 'integer'))
+    stopifnot(identical(data$sample, c('one', 'two')), identical(data$count, 1:2))
+    stream <- gzfile('binary/table.tsv')
+    open(stream, 'rb')
+    stopifnot(identical(rawToChar(readBin(stream, 'raw', 64L)), 'sample\\tcount\\none\\t1\\ntwo\\t2\\n'))
+    close(stream)
+    stream <- gzfile('binary/table.tsv', 'rt')
+    stopifnot(identical(class(stream), c('gzfile', 'connection')), readLines(stream, n = 1L) == 'sample\\tcount')
+    close(stream)
+    stream <- file('binary/table.tsv', 'rb')
+    stopifnot(identical(readBin(stream, 'raw', 2L), as.raw(c(31, 139))))
+    close(stream)
+    rm(data, stream)
+  `);
+  assert.deepEqual(session.export_file('binary/table.tsv'), Uint8Array.from(wire));
+  session.remove_file('binary/table.tsv');
+  return 7;
+}
+
 module.exports = { checkImportBoundaries };
 
 if (require.main === module) {
@@ -47,6 +71,7 @@ if (require.main === module) {
       session.import_file('binary/input.bin', Uint8Array.of(9,8,7,6));
       checks += checkImportBoundaries(session);
       checks += checkConnectionSnapshots(session);
+      checks += checkBrowserGzipReads(session);
       for (const source of [
         "identical(readBin(con=as.raw(c(9,8,7,6)), 'raw', 2L), as.raw(c(9,8)))",
         "identical(writeBin(con=raw(), c(1L,256L), size=2L, endian='big'), as.raw(c(0,1,1,0)))",

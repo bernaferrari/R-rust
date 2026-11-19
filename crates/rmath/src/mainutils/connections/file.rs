@@ -76,14 +76,15 @@ fn file_logical(
     })
 }
 
-unsafe fn file_value(
+unsafe fn connection_value(
     access: &crate::sexp::owner::RuntimeAccess,
+    class: &str,
 ) -> crate::sexp::object::SexpResult<crate::sexp::SexpMut<'static>> {
     use crate::sexp::SexpMut;
     let domain = access.domain();
     let allocator = access.allocator(&domain)?;
     let ans = allocator.allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::INTSXP, 1)))?;
-    let classes = allocator.strings(&["file", "connection"])?;
+    let classes = allocator.strings(&[class, "connection"])?;
     let symbol = access.with_native(|owner| unsafe {
         owner
             .sexp(crate::eval::attrib_core::R_ClassSymbol())?
@@ -140,7 +141,7 @@ unsafe fn construct_file(
 
         // Every R allocation, including class attributes, finishes before
         // selecting a table slot. No provider sees a half-published resource.
-        let mut ans = file_value(access)?;
+        let mut ans = connection_value(access, "file")?;
         let virtual_anonymous = anonymous && (browser_mode || cfg!(target_arch = "wasm32"));
         let mut conn = if virtual_anonymous {
             let anchor = access.domain().wrap(ans.as_raw())?.allocation()?.clone();
@@ -163,6 +164,9 @@ unsafe fn construct_file(
                 ConnKind::File
             };
             let mut conn = RConn::new("file", &description, &open_mode, kind);
+            if raw {
+                conn.browser_read_filter = BrowserReadFilter::Raw;
+            }
             if !deferred
                 && !matches!(&conn.kind, ConnKind::BrowserFile)
                 && let Err(e) = open_maybe_compressed(&mut conn, &open_mode)
@@ -196,13 +200,32 @@ fn open_browser_file(conn: &mut RConn, mode: &str) -> Result<(), String> {
             );
         }
     };
+    if matches!(conn.browser_read_filter, BrowserReadFilter::Gzip) && !mode.starts_with('r') {
+        return Err("browser gzfile connections only support read modes".into());
+    }
     let snapshot = browser_files::open_snapshot_current(&conn.description, open_mode)?;
+    let decode_gzip = match conn.browser_read_filter {
+        BrowserReadFilter::TextGzip => matches!(mode, "r" | "rt"),
+        BrowserReadFilter::Raw => false,
+        BrowserReadFilter::Gzip => true,
+    };
+    let snapshot = if decode_gzip {
+        browser_files::gunzip_snapshot(snapshot).map_err(|error| {
+            format!(
+                "cannot decompress browser file '{}': {error}",
+                conn.description
+            )
+        })?
+    } else {
+        snapshot
+    };
     conn.raw_pos = if mode.starts_with('a') {
         snapshot.len()
     } else {
         0
     };
     conn.browser_snapshot = Some(snapshot);
+    conn.kind = ConnKind::BrowserFile;
     conn.mode.clear();
     conn.mode.push_str(mode);
     conn.text = !mode.contains('b');
@@ -612,14 +635,18 @@ pub unsafe fn do_gzfile(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> S
         let open_now = !open.is_empty();
         let open_mode = if !open_now { "rb".to_string() } else { open };
 
+        if crate::mainutils::browser_files::enabled()
+            || crate::mainutils::browser_files::contains_current(&description)
+        {
+            return construct_browser_gzfile(&description, &open_mode, open_now);
+        }
         let mut conn = RConn::new("gzfile", &description, &open_mode, ConnKind::GzFile);
+        conn.browser_read_filter = BrowserReadFilter::Gzip;
         conn.canseek = false;
         conn.text = !open_mode.contains('b');
 
-        if open_now {
-            if let Err(e) = open_gz_conn(&mut conn, &open_mode) {
-                r_error(&format!("cannot open file '{}': {}", description, e));
-            }
+        if open_now && let Err(e) = open_gz_conn(&mut conn, &open_mode) {
+            r_error(&format!("cannot open file '{}': {}", description, e));
         }
 
         let ncon = next_connection();
@@ -633,6 +660,33 @@ pub unsafe fn do_gzfile(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> S
         ans
     }
 }
+
+fn construct_browser_gzfile(description: &str, mode: &str, open_now: bool) -> SEXP {
+    use crate::sexp::owner::{OwnerToken, with_runtime};
+    let owner =
+        unsafe { OwnerToken::current() }.unwrap_or_else(|error| r_error(&error.to_string()));
+    let weak = owner
+        .weak_owner()
+        .unwrap_or_else(|| r_error("browser gzfile requires a managed runtime"));
+    with_runtime(&weak, |access| {
+        // Finish R allocations and find a table slot before admitting decoded bytes.
+        let mut ans = unsafe { connection_value(access, "gzfile") }?;
+        let ncon = next_connection();
+        ans.try_set_integer_elt(0, ncon as c_int)?;
+        let mut conn = RConn::new("gzfile", description, mode, ConnKind::BrowserFile);
+        conn.browser_read_filter = BrowserReadFilter::Gzip;
+        conn.canseek = false;
+        conn.text = !mode.contains('b');
+        if open_now && let Err(error) = open_browser_file(&mut conn, mode) {
+            r_error(&format!("cannot open file '{description}': {error}"));
+        }
+        connection_table()[ncon] = Some(Box::new(conn));
+        Ok(ans.freeze().as_raw())
+    })
+    .and_then(|result| result)
+    .unwrap_or_else(|error| r_error(&error.to_string()))
+}
+
 pub unsafe fn do_gzcon(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let scon = CAR(args);
@@ -808,7 +862,11 @@ pub unsafe fn do_open(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEX
         } else {
             requested
         };
-        if matches!(conn.kind, ConnKind::BrowserFile) {
+        if matches!(conn.kind, ConnKind::BrowserFile)
+            || matches!(conn.kind, ConnKind::GzFile)
+                && matches!(conn.browser_read_filter, BrowserReadFilter::Gzip)
+                && crate::mainutils::browser_files::enabled()
+        {
             open_browser_file(conn, &open_mode).unwrap_or_else(|message| r_error(&message));
             return R_NilValue();
         }

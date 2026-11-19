@@ -59,6 +59,13 @@ pub enum ConnKind {
     Null,
 }
 
+#[derive(Clone, Copy)]
+pub(super) enum BrowserReadFilter {
+    TextGzip,
+    Raw,
+    Gzip,
+}
+
 /// A single R connection.
 ///
 /// This mirrors R's `Rconn` struct from Rconnections.h, but uses Rust
@@ -95,6 +102,7 @@ pub struct RConn {
     pub raw_data: Vec<u8>,
     /// The admitted file version held by an open browser connection.
     pub(super) browser_snapshot: Option<Rc<FileBytes>>,
+    pub(super) browser_read_filter: BrowserReadFilter,
     /// Text lines buffer (for textConnection reading).
     pub text_data: String,
     /// Current position in text_data.
@@ -136,6 +144,7 @@ impl RConn {
             raw_pos: 0,
             raw_data: Vec::new(),
             browser_snapshot: None,
+            browser_read_filter: BrowserReadFilter::TextGzip,
             text_data: String::new(),
             text_pos: 0,
 

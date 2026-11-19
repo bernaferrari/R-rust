@@ -395,6 +395,105 @@ fn named_browser_file_is_deferred_without_creating_a_host_file() {
     assert!(session.list_browser_files().is_empty());
 }
 
+// Ordinary Python gzip.GzipFile members named table.tsv, with mtime=0.
+const GZIP_TABLE_HEADER: &[u8] = b"\x1f\x8b\x08\x08\0\0\0\0\0\xfftable.tsv\0\
+    \x2b\x4e\xcc\x2d\xc8\x49\xe5\x4c\xce\x2f\xcd\x2b\xe1\x02\0\xb4\xcf\x5c\x41\x0d\0\0\0";
+const GZIP_TABLE_ROWS: &[u8] = b"\x1f\x8b\x08\x08\0\0\0\0\0\xfftable.tsv\0\
+    \xcb\xcf\x4b\xe5\x34\xe4\x2a\x29\xcf\xe7\x34\xe2\x02\0\x57\xef\xbb\xef\x0c\0\0\0";
+
+#[test]
+fn browser_gzip_text_detection_and_explicit_reads_preserve_raw_file_bytes() {
+    let mut session = RSession::new_for_gc_tests();
+    session.enable_browser_files();
+    session.with_active_in(|owner| unsafe { (*owner).browser_files.set_test_clock(1.0) });
+    let wire = [GZIP_TABLE_HEADER, GZIP_TABLE_ROWS].concat();
+    session.put_browser_file("table.tsv", &wire).unwrap();
+    session.put_browser_file("plain.txt", b"plain\n").unwrap();
+    session.with_active(|| {
+        let mut text = RConn::new("file", "table.tsv", "rt", ConnKind::BrowserFile);
+        open_browser_file(&mut text, "rt").unwrap();
+        assert_eq!(
+            read_raw_line(&mut text, false).as_deref(),
+            Some("sample\tcount")
+        );
+        assert_eq!(read_raw_line(&mut text, false).as_deref(), Some("one\t1"));
+        assert_eq!(read_raw_line(&mut text, false).as_deref(), Some("two\t2"));
+
+        let mut raw = RConn::new("file", "table.tsv", "r", ConnKind::BrowserFile);
+        raw.browser_read_filter = BrowserReadFilter::Raw;
+        open_browser_file(&mut raw, "r").unwrap();
+        assert_eq!(&**raw.browser_snapshot.as_deref().unwrap(), wire.as_slice());
+        open_browser_file(&mut raw, "rb").unwrap();
+        assert_eq!(&**raw.browser_snapshot.as_deref().unwrap(), wire.as_slice());
+
+        let mut explicit = RConn::new("gzfile", "table.tsv", "rb", ConnKind::BrowserFile);
+        explicit.browser_read_filter = BrowserReadFilter::Gzip;
+        open_browser_file(&mut explicit, "rb").unwrap();
+        assert_eq!(
+            &**explicit.browser_snapshot.as_deref().unwrap(),
+            b"sample\tcount\none\t1\ntwo\t2\n"
+        );
+        close_connection_inner(&mut explicit);
+        let mut plain = RConn::new("gzfile", "plain.txt", "rt", ConnKind::BrowserFile);
+        plain.browser_read_filter = BrowserReadFilter::Gzip;
+        open_browser_file(&mut plain, "rt").unwrap();
+        assert_eq!(read_raw_line(&mut plain, false).as_deref(), Some("plain"));
+    });
+    assert_eq!(session.get_browser_file("table.tsv").unwrap(), wire);
+}
+
+#[test]
+fn browser_gzip_denials_leave_connection_and_file_intact_and_release_workspace() {
+    use crate::sexp::memory::ArenaBudget;
+
+    let mut session = RSession::new_for_gc_tests();
+    session.enable_browser_files();
+    session.with_active_in(|owner| unsafe { (*owner).browser_files.set_test_clock(1.0) });
+    let wire = GZIP_TABLE_ROWS;
+    session.put_browser_file("valid.tsv.gz", wire).unwrap();
+    let truncated = &wire[..wire.len() - 4];
+    session
+        .put_browser_file("truncated.tsv.gz", truncated)
+        .unwrap();
+    session.with_active_in(|owner| unsafe {
+        let scratch = (*owner).arena.workspace_bytes();
+        let base = (*owner).arena.total_bytes_allocated() + scratch;
+        (*owner).arena.set_budget(ArenaBudget::new(base + 64, 0));
+        let mut reader = RConn::new("file", "valid.tsv.gz", "r", ConnKind::BrowserFile);
+        assert!(
+            open_browser_file(&mut reader, "rt")
+                .unwrap_err()
+                .contains("session memory limit")
+        );
+        assert!(!reader.isopen && reader.browser_snapshot.is_none());
+        assert_eq!(reader.mode, "r");
+        assert_eq!((*owner).arena.workspace_bytes(), scratch);
+
+        (*owner)
+            .arena
+            .set_budget(ArenaBudget::new(base + 256 * 1024, 0));
+        let mut damaged = RConn::new("file", "truncated.tsv.gz", "r", ConnKind::BrowserFile);
+        assert!(open_browser_file(&mut damaged, "r").is_err());
+        assert!(!damaged.isopen && damaged.browser_snapshot.is_none());
+        assert_eq!((*owner).arena.workspace_bytes(), scratch);
+
+        open_browser_file(&mut reader, "rt").unwrap();
+        assert_eq!(read_raw_line(&mut reader, false).as_deref(), Some("one\t1"));
+        assert!((*owner).arena.workspace_bytes() > scratch);
+        close_connection_inner(&mut reader);
+        assert_eq!((*owner).arena.workspace_bytes(), scratch);
+
+        reader.browser_read_filter = BrowserReadFilter::Gzip;
+        assert!(open_browser_file(&mut reader, "wb").is_err());
+        assert_eq!((*owner).arena.workspace_bytes(), scratch);
+    });
+    assert_eq!(session.get_browser_file("valid.tsv.gz").unwrap(), wire);
+    assert_eq!(
+        session.get_browser_file("truncated.tsv.gz").unwrap(),
+        truncated
+    );
+}
+
 #[test]
 fn browser_connections_share_the_charge_and_release_replaced_versions_on_close() {
     use crate::mainutils::browser_files;
