@@ -49,6 +49,13 @@ impl RegexWorkspace {
         buffer.try_reserve_capacity(capacity)?;
         Ok(buffer)
     }
+
+    pub(crate) fn try_reservation(&self, bytes: usize) -> Result<WorkspaceReservation, ()> {
+        if !self.is_live() {
+            return Err(());
+        }
+        self.ledger.reserve(bytes).ok_or(())
+    }
     pub(super) fn new(ledger: MemoryLedger, availability: InstanceLiveness) -> Self {
         Self {
             ledger,
@@ -101,6 +108,12 @@ pub(crate) struct WorkspaceBuffer<T> {
 }
 
 impl<T> WorkspaceBuffer<T> {
+    pub(crate) fn is_live(&self) -> bool {
+        self.availability
+            .as_ref()
+            .is_none_or(|owner| owner.is_live())
+    }
+
     pub(crate) fn try_push(&mut self, value: T) -> Result<(), ()> {
         self.try_reserve_capacity(self.values.len().checked_add(1).ok_or(())?)?;
         self.values.push(value);

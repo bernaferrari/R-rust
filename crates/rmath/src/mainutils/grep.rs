@@ -51,8 +51,8 @@ mod replacement_memory_tests;
 #[cfg(test)]
 mod replacement_tests;
 pub(crate) mod workspace;
-pub(crate) use workspace::RegexWorkspace;
-use workspace::{TextBuilder, WorkspaceBuffer, WorkspaceText};
+pub(crate) use workspace::{RegexWorkspace, WorkspaceBuffer};
+use workspace::{TextBuilder, WorkspaceText};
 
 pub(crate) type RegexIndices = WorkspaceBuffer<R_xlen_t>;
 pub(crate) type RegexCaptures = WorkspaceBuffer<Option<RegexMatch>>;

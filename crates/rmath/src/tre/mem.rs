@@ -112,6 +112,10 @@ fn allocation_layout(size: usize) -> Option<Layout> {
     Layout::from_size_align(XALLOC_HEADER.checked_add(size)?, TRE_ALIGNMENT).ok()
 }
 
+pub(crate) fn xallocation_size(size: usize) -> Option<usize> {
+    allocation_layout(size).map(|layout| layout.size())
+}
+
 pub unsafe fn xmalloc(size: usize) -> *mut c_void {
     unsafe {
         if size == 0 {

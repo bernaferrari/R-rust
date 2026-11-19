@@ -1998,9 +1998,14 @@ unsafe fn tre_ast_to_tnfa(
     counts: *mut c_int,
     offs: *const c_int,
     storage: &mut Option<&mut super::owned_arena::OwnedArena>,
+    workspace: &crate::mainutils::grep::RegexWorkspace,
 ) -> c_int {
     unsafe {
-        let stack = stack::tre_stack_new(1024, 256 * 1024, 4096);
+        let stack = if storage.is_some() {
+            stack::tre_stack_new_owned(1024, workspace)
+        } else {
+            stack::tre_stack_new(1024, 256 * 1024, 4096)
+        };
         if stack.is_null() {
             return REG_ESPACE as c_int;
         }
@@ -2207,11 +2212,15 @@ unsafe fn tre_compile_tables(
         let mut counts: *mut c_int = ptr::null_mut();
         let mut offs: *mut c_int = ptr::null_mut();
 
-        let stack = stack::tre_stack_new(512, 10240, 128);
+        let stack = if owned_tables {
+            stack::tre_stack_new_owned(512, &workspace)
+        } else {
+            stack::tre_stack_new(512, 10240, 128)
+        };
         if stack.is_null() {
             return REG_ESPACE as c_int;
         }
-        let Ok(mut arena) = mem::tre_mem_struct::new(workspace) else {
+        let Ok(mut arena) = mem::tre_mem_struct::new(workspace.clone()) else {
             stack::tre_stack_destroy(stack);
             return REG_ESPACE as c_int;
         };
@@ -2432,7 +2441,14 @@ unsafe fn tre_compile_tables(
         for i in 0..parse_ctx.position as isize {
             *counts.offset(i) = 0;
         }
-        let _errcode = tre_ast_to_tnfa(tree, ptr::null_mut(), counts, ptr::null(), &mut storage);
+        let _errcode = tre_ast_to_tnfa(
+            tree,
+            ptr::null_mut(),
+            counts,
+            ptr::null(),
+            &mut storage,
+            &workspace,
+        );
         if _errcode != REG_OK {
             return compile_error(mem, stack, counts, offs, preg, tnfa, _errcode, owned_tables);
         }
@@ -2460,7 +2476,7 @@ unsafe fn tre_compile_tables(
         (*tnfa).transitions = transitions;
         (*tnfa).num_transitions = add as u32;
 
-        let _errcode = tre_ast_to_tnfa(tree, transitions, counts, offs, &mut storage);
+        let _errcode = tre_ast_to_tnfa(tree, transitions, counts, offs, &mut storage, &workspace);
         if _errcode != REG_OK as c_int {
             return compile_error(mem, stack, counts, offs, preg, tnfa, _errcode, owned_tables);
         }
