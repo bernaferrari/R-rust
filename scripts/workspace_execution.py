@@ -117,7 +117,8 @@ def toolchain(root):
             "cargo": subprocess.check_output([CARGO, "--version"], cwd=root, text=True),
             "build_environment": {name: os.environ.get(name) for name in (
                 "RUSTFLAGS", "CARGO_ENCODED_RUSTFLAGS", "RUSTDOCFLAGS", "CARGO_BUILD_TARGET",
-                "CARGO_PROFILE_TEST_OPT_LEVEL", "CARGO_PROFILE_TEST_DEBUG_ASSERTIONS")}}
+                "CARGO_PROFILE_TEST_OPT_LEVEL", "CARGO_PROFILE_TEST_DEBUG_ASSERTIONS",
+                "CARGO_PROFILE_TEST_DEBUG")}}
 
 
 def executable_environment(root, metadata, cargo_lines):
