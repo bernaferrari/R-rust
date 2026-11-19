@@ -6,8 +6,8 @@
 //! `read.dcf()` function for parsing Debian Control Format files
 //! (used for DESCRIPTION files in R packages).
 
+use std::collections::HashSet;
 use std::ffi::CString;
-use std::fs;
 use std::os::raw::c_int;
 use std::ptr;
 
@@ -36,6 +36,43 @@ fn utf8_sub_bytes(bytes: &[u8]) -> String {
         }
     }
     out
+}
+
+fn reserve_dcf(bytes: usize) -> crate::sexp::memory::TransientReservation {
+    crate::sexp::memory::with_arena(|arena| arena.try_reserve_transient(bytes)).unwrap_or_else(
+        || crate::sexp::context::r_error("DCF workspace exceeds session memory limit"),
+    )
+}
+
+fn reserve_browser_table(
+    content: &str,
+    requested: usize,
+    requested_bytes: usize,
+) -> crate::sexp::memory::TransientReservation {
+    let rows = 1 + content.lines().filter(|line| is_blank_line(line)).count();
+    let fields = if requested == 0 {
+        let _names = reserve_dcf(content.lines().count().saturating_mul(64));
+        content
+            .lines()
+            .filter(|line| !is_continuation_line(line) && !line.starts_with('#'))
+            .filter_map(parse_field_line)
+            .map(|(field, _)| field)
+            .collect::<HashSet<_>>()
+            .len()
+    } else {
+        requested
+    };
+    // A wide rectangular result can take far more space than the file.
+    // Charge record slots, growth, and copied values through publication.
+    let slots = rows
+        .saturating_mul(fields)
+        .saturating_mul(2 * std::mem::size_of::<Option<String>>());
+    reserve_dcf(
+        slots
+            .saturating_add(rows.saturating_mul(2 * std::mem::size_of::<Vec<Option<String>>>()))
+            .saturating_add(content.len().saturating_mul(4))
+            .saturating_add(requested_bytes),
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -197,14 +234,45 @@ pub unsafe fn do_readDCF(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
         // Read the file content as raw bytes and repair invalid UTF-8 byte
         // sequences ("<xx>", as upstream dcf.c's mkCharUTF8sub() does), so
         // that field names and values become valid UTF-8 strings.
-        let content_bytes = match crate::library::builtin_files::file_bytes(&filename) {
-            Some(bytes) => bytes.to_vec(),
-            None => match fs::read(&filename) {
-                Ok(b) => b,
+        let browser = crate::mainutils::browser_files::enabled();
+        let stored;
+        let content_bytes = if let Some(bytes) =
+            crate::library::builtin_files::file_bytes(&filename)
+        {
+            bytes
+        } else {
+            stored = match crate::mainutils::browser_files::read_admitted_bytes_or_host(&filename) {
+                Ok(bytes) => bytes,
+                Err(error) if error.kind() == std::io::ErrorKind::OutOfMemory => {
+                    crate::sexp::context::r_error("DCF workspace exceeds session memory limit")
+                }
                 Err(_) => return R_NilValue(),
-            },
+            };
+            &*stored
         };
-        let content = utf8_sub_bytes(&content_bytes);
+        let _text_budget = browser.then(|| reserve_dcf(content_bytes.len().saturating_mul(4)));
+        let content = utf8_sub_bytes(content_bytes);
+        let _table_budget = browser.then(|| {
+            let mut requested_bytes = 0usize;
+            let count = if !fields_sexp.is_null() && TYPEOF(fields_sexp) == SEXPTYPE::STRSXP {
+                XLENGTH(fields_sexp)
+            } else {
+                0
+            };
+            for i in 0..count {
+                let element = STRING_ELT(fields_sexp, i);
+                if !element.is_null() {
+                    let chars = CHAR(element);
+                    if !chars.is_null() {
+                        requested_bytes = requested_bytes
+                            .saturating_add(std::ffi::CStr::from_ptr(chars).to_bytes().len());
+                    }
+                }
+            }
+            requested_bytes = requested_bytes
+                .saturating_add((count as usize).saturating_mul(2 * std::mem::size_of::<String>()));
+            reserve_browser_table(&content, count as usize, requested_bytes)
+        });
 
         // fields argument: a STRSXP vector of field names to extract
         // If empty (length 0), we use dynamic mode (all fields)
@@ -259,11 +327,7 @@ pub unsafe fn do_readDCF(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
         let mut field_fold = true;
         let mut n_eblanklines: usize = 0;
 
-        let lines: Vec<&str> = content.lines().collect();
-
-        for raw_line in &lines {
-            let line = *raw_line;
-
+        for line in content.lines() {
             if is_blank_line(line) {
                 // Blank line: end current record if we were recording one
                 if !blank_skip {
@@ -339,11 +403,7 @@ pub unsafe fn do_readDCF(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
                 // Try to match against known fields
                 let mut matched_field_idx: Option<usize> = None;
                 for m in 0..field_names.len() {
-                    let whatlen = field_names[m].len();
-                    if line.len() > whatlen
-                        && line.chars().nth(whatlen) == Some(':')
-                        && line[..whatlen] == field_names[m]
-                    {
+                    if field_name == field_names[m] {
                         matched_field_idx = Some(m);
                         break;
                     } else {
@@ -414,7 +474,10 @@ pub unsafe fn do_readDCF(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
         let nrows = records.len();
 
         // Build the result STRSXP: column-major (nrows * nfields)
-        let total = (nrows * nfields) as c_int;
+        let total = nrows
+            .checked_mul(nfields)
+            .and_then(|n| c_int::try_from(n).ok())
+            .unwrap_or_else(|| crate::sexp::context::r_error("DCF table has too many cells"));
         let retval = Rf_allocVector(SEXPTYPE::STRSXP, total);
         if retval.is_null() {
             return R_NilValue();
