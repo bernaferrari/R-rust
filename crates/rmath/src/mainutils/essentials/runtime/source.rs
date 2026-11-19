@@ -9,7 +9,7 @@ use std::os::raw::{c_char, c_int};
 #[allow(unused_imports)]
 use std::path::{Path, PathBuf};
 
-use crate::mainutils::essentials::*;
+use crate::mainutils::{browser_files, essentials::*};
 
 use super::eval::parse_source_expression_vector;
 
@@ -42,6 +42,54 @@ use crate::sexp::symbol::Rf_install;
 // Complete R runtime — source, sys.source, demo, example
 // ---------------------------------------------------------------------------
 
+enum SourceDirectoryGuard {
+    Browser {
+        _directory: browser_files::BrowserDirectoryGuard,
+    },
+    Host(PathBuf),
+}
+
+impl SourceDirectoryGuard {
+    fn enter(filename: &str, chdir: bool) -> Option<Self> {
+        if !chdir {
+            return None;
+        }
+        let parent = r_dirname(filename);
+        if parent == "." {
+            return None;
+        }
+        if browser_files::enabled() {
+            return Some(Self::Browser {
+                _directory: browser_files::scoped_directory(&parent)
+                    .unwrap_or_else(|error| base_error(error)),
+            });
+        }
+        let allowed = crate::sexp::instance::with_required_current_instance(|instance| unsafe {
+            (*instance)
+                .eval_state
+                .capabilities
+                .allow_environment_mutation
+        });
+        if !allowed {
+            base_error("changing the working directory is disabled for this session");
+        }
+        let previous = std::env::current_dir()
+            .unwrap_or_else(|_| base_error("cannot 'chdir' as current directory is unknown"));
+        std::env::set_current_dir(&parent).unwrap_or_else(|_| {
+            base_error(format!("cannot change working directory to '{parent}'"))
+        });
+        Some(Self::Host(previous))
+    }
+}
+
+impl Drop for SourceDirectoryGuard {
+    fn drop(&mut self) {
+        if let Self::Host(previous) = self {
+            let _ = std::env::set_current_dir(previous);
+        }
+    }
+}
+
 /// GNU `source(file, local, echo, print.eval, exprs, ...)`.
 /// `exprs=` (and the `expr=` partial match used by eval-etc.R) evaluates
 /// already-parsed expressions with optional echo/auto-print.
@@ -72,6 +120,11 @@ pub unsafe fn do_source(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         // reg-S4.R getSrcref). Character paths still go through the
         // host/browser file reader.
         if crate::mainutils::connections::inherits_class(file_arg, "connection") {
+            if parsed.chdir {
+                crate::mainutils::errors::Rf_warning1(
+                    c"'chdir = TRUE' makes no sense for a connection".as_ptr(),
+                );
+            }
             let idx = crate::mainutils::coerce::asInteger(file_arg);
             let mut bytes = Vec::new();
             loop {
@@ -108,7 +161,7 @@ pub unsafe fn do_source(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             if (normalized == "utf-8" || normalized == "utf8")
                 && !crate::mainutils::platform::locale_is_utf8()
             {
-                if let Ok(raw) = std::fs::read(&file_path) {
+                if let Ok(raw) = browser_files::read_admitted_bytes_or_host(&file_path) {
                     let (content, invalid) = translate_utf8_source_to_native(&raw);
                     if invalid {
                         if let Ok(message) = std::ffi::CString::new(format!(
@@ -118,6 +171,7 @@ pub unsafe fn do_source(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                             crate::mainutils::errors::Rf_warning1(message.as_ptr());
                         }
                     }
+                    let _directory = SourceDirectoryGuard::enter(&file_path, parsed.chdir);
                     return eval_source_text_with_options(
                         &content,
                         env,
@@ -135,21 +189,24 @@ pub unsafe fn do_source(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 }
             }
         }
-        match crate::mainutils::browser_files::read_text_or_host(&file_path) {
-            Ok(content) => eval_source_text_with_options(
-                &content,
-                env,
-                &file_path,
-                parsed.echo,
-                parsed.print_eval.unwrap_or(parsed.echo),
-                &parsed.prompt,
-                &parsed.continue_echo,
-                parsed.skip_echo,
-                parsed.keep_source,
-                parsed.cutoff,
-                parsed.deparse_opts,
-                parsed.max_deparse_length,
-            ),
+        match browser_files::read_text_or_host(&file_path) {
+            Ok(content) => {
+                let _directory = SourceDirectoryGuard::enter(&file_path, parsed.chdir);
+                eval_source_text_with_options(
+                    &content,
+                    env,
+                    &file_path,
+                    parsed.echo,
+                    parsed.print_eval.unwrap_or(parsed.echo),
+                    &parsed.prompt,
+                    &parsed.continue_echo,
+                    parsed.skip_echo,
+                    parsed.keep_source,
+                    parsed.cutoff,
+                    parsed.deparse_opts,
+                    parsed.max_deparse_length,
+                )
+            }
             Err(e) => {
                 base_error(format!("cannot open file '{}': {}", file_path, e));
             }
@@ -190,6 +247,7 @@ struct SourceCallArgs {
     exprs: Option<SEXP>,
     local: Option<SEXP>,
     echo: bool,
+    chdir: bool,
     print_eval: Option<bool>,
     prompt: String,
     continue_echo: String,
@@ -209,6 +267,7 @@ fn source_call_args(args: SEXP) -> SourceCallArgs {
         let mut exprs = None;
         let mut local = None;
         let mut echo = false;
+        let mut chdir = false;
         let mut print_eval = None;
         let mut prompt = None;
         let mut continue_echo = None;
@@ -229,6 +288,7 @@ fn source_call_args(args: SEXP) -> SourceCallArgs {
                 Some(name) if name == "exprs" || name.starts_with("expr") => exprs = Some(value),
                 Some("local") => local = Some(value),
                 Some("echo") => echo = logical_arg(value, false),
+                Some("chdir") => chdir = logical_arg(value, false),
                 Some("print.eval") | Some("print.") => print_eval = Some(logical_arg(value, true)),
                 Some("prompt.echo") => prompt = Some(elt_to_string(value, 0)),
                 Some("continue.echo") => continue_echo = Some(elt_to_string(value, 0)),
@@ -270,8 +330,11 @@ fn source_call_args(args: SEXP) -> SourceCallArgs {
                 Some(_) => {}
 
                 None => {
-                    if positional == 0 {
-                        first_positional = Some(value);
+                    match positional {
+                        0 => first_positional = Some(value),
+                        1 if local.is_none() => local = Some(value),
+                        11 => chdir = logical_arg(value, false),
+                        _ => {}
                     }
                     positional += 1;
                 }
@@ -286,6 +349,7 @@ fn source_call_args(args: SEXP) -> SourceCallArgs {
             exprs,
             local,
             echo,
+            chdir,
             print_eval,
             prompt: prompt.unwrap_or_else(option_prompt),
             continue_echo: continue_echo.unwrap_or_else(option_continue),
@@ -563,6 +627,7 @@ pub unsafe fn do_sys_source(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SE
     unsafe {
         let file_arg = arg_by_name_or_position(args, &["file"], 0);
         let envir_arg = arg_by_name_or_position(args, &["envir"], 1);
+        let chdir = logical_arg(arg_by_name_or_position(args, &["chdir"], 2), false);
 
         if file_arg.is_null() || file_arg == R_NilValue() {
             eprintln!("sys.source: no file specified");
@@ -580,6 +645,7 @@ pub unsafe fn do_sys_source(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SE
 
         match crate::mainutils::browser_files::read_text_or_host(&file_path) {
             Ok(content) => {
+                let _directory = SourceDirectoryGuard::enter(&file_path, chdir);
                 let _ = eval_source_text_with_name(
                     &content,
                     target_env,

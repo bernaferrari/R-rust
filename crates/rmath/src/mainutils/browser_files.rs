@@ -295,6 +295,40 @@ pub(crate) fn chdir_current(path: &str) -> Result<String, String> {
         .ok_or_else(|| "no active R session".to_string())?
 }
 
+/// Restore the cwd in the original live session after R evaluation unwinds.
+pub(crate) struct BrowserDirectoryGuard {
+    owner: crate::sexp::heap::HeapIdentity,
+    previous: String,
+}
+
+pub(crate) fn scoped_directory(path: &str) -> Result<BrowserDirectoryGuard, String> {
+    with_current_instance(|instance| unsafe {
+        let store = &mut (*instance).browser_files;
+        let previous = store.cwd.clone();
+        store.change_directory(path)?;
+        Ok(BrowserDirectoryGuard {
+            owner: (*instance).heap_identity.clone(),
+            previous,
+        })
+    })
+    .ok_or_else(|| "no active R session".to_string())?
+}
+
+impl Drop for BrowserDirectoryGuard {
+    fn drop(&mut self) {
+        with_current_instance(|instance| unsafe {
+            if self.owner.same_domain(&(*instance).heap_identity) {
+                let store = &mut (*instance).browser_files;
+                store.cwd = if store.directory(&self.previous) {
+                    std::mem::take(&mut self.previous)
+                } else {
+                    String::new()
+                };
+            }
+        });
+    }
+}
+
 pub(crate) fn entries_current(path: &str) -> Option<Vec<(String, bool)>> {
     with_current_instance(|instance| unsafe { (*instance).browser_files.entries(path) }).flatten()
 }
