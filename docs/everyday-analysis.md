@@ -11,6 +11,13 @@ workflow stays in the denominator. A pass requires a measured result, and an
 unmeasured workflow earns no credit. Silent wrong results, crashes and data
 loss in supported workflows block release even when the score is high.
 
+The first run passed 2 of 20 workflows on both native Rport and optimized
+Wasm. It verified CSV import, joining, grouping and export, plus linear
+model fitting, prediction and RDS persistence. The other 18 workflows have
+no measured outcome yet. The native shards ran at `89d670fe` and the Wasm
+module used the same runtime sources with the new fixtures enabled.
+[Baseline receipt](ci-checkpoints/everyday-analysis-v1-89d670fe.json)
+
 Use a pinned strict GNU release report or the individual authenticated shards
 that contain the workflow fixtures. For Wasm, use the output of the production
 contract runner and the same module it executed. The scorecard verifies the
