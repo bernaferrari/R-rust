@@ -205,7 +205,8 @@ pub unsafe fn asS4(s: SEXP, flag: c_int, complete: c_int) -> SEXP {
             SET_S4_OBJECT(s);
         } else {
             if complete != FALSE {
-                let value = crate::mainutils::subassign::R_getS4DataSlot(s, SEXPTYPE::ANYSXP.into());
+                let value =
+                    crate::mainutils::subassign::R_getS4DataSlot(s, SEXPTYPE::ANYSXP.into());
                 if value != R_NilValue() && IS_S4_OBJECT(value) == FALSE {
                     return value;
                 }

@@ -85,10 +85,8 @@ unsafe fn model_frame_drop_time_series_attributes(value: SEXP) -> SEXP {
     unsafe {
         if value.is_null()
             || value == R_NilValue()
-            || crate::sexp::attrib_core::getAttrib(
-                value,
-                crate::sexp::attrib_core::R_TspSymbol(),
-            ) == R_NilValue()
+            || crate::sexp::attrib_core::getAttrib(value, crate::sexp::attrib_core::R_TspSymbol())
+                == R_NilValue()
         {
             return value;
         }
@@ -663,7 +661,13 @@ mod weighted_revocation_tests {
         let (result, _, _) = session.eval_script_with_output_capture(
             "lm(c(1, 2, 4) ~ 1, weights = local({ gc(); c(1, 1, 8) }))",
         );
-        assert!(revoked.get(), "the explicit GC in the weight promise must run");
-        assert!(result.is_err(), "a revoked owner must not publish a weighted model");
+        assert!(
+            revoked.get(),
+            "the explicit GC in the weight promise must run"
+        );
+        assert!(
+            result.is_err(),
+            "a revoked owner must not publish a weighted model"
+        );
     }
 }

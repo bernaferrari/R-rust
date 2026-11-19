@@ -958,7 +958,9 @@ pub unsafe fn coerceVectorList(v: SEXP, type_: SEXPTYPE) -> SEXP {
         }
 
         let target_name = CStr::from_ptr(type2char(type_.into())).to_string_lossy();
-        error(&format!("'list' object cannot be coerced to type '{target_name}'"));
+        error(&format!(
+            "'list' object cannot be coerced to type '{target_name}'"
+        ));
     }
 }
 
@@ -1103,10 +1105,8 @@ pub unsafe fn ascommon(call: SEXP, u: SEXP, type_: c_int) -> SEXP {
             return v;
         }
 
-        let source_name =
-            CStr::from_ptr(type2char(TYPEOF(u))).to_string_lossy();
-        let target_name =
-            CStr::from_ptr(type2char(type_)).to_string_lossy();
+        let source_name = CStr::from_ptr(type2char(TYPEOF(u))).to_string_lossy();
+        let target_name = CStr::from_ptr(type2char(type_)).to_string_lossy();
         errorcall(
             call,
             &format!("cannot coerce type '{source_name}' to vector of type '{target_name}'"),

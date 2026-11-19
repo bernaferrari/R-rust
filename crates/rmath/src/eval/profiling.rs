@@ -91,9 +91,7 @@ use crate::sexp::symbol::{
 /// The symbol is uninterned and rooted in `ProfilingState::in_bc_interpreter`,
 /// so no user R value can collide with it by pointer identity.
 pub(crate) unsafe fn get_R_InBCInterpreter() -> SEXP {
-    unsafe {
-        with_required_current_instance(|instance| get_R_InBCInterpreter_in(instance))
-    }
+    unsafe { with_required_current_instance(|instance| get_R_InBCInterpreter_in(instance)) }
 }
 
 pub(crate) unsafe fn get_R_InBCInterpreter_in(instance: *mut RInstance) -> SEXP {
@@ -153,9 +151,7 @@ pub(crate) struct SrcrefGuard {
 
 impl SrcrefGuard {
     pub(crate) unsafe fn push(new_srcref: SEXP) -> Self {
-        unsafe {
-            with_required_current_instance(|instance| Self::push_in(instance, new_srcref))
-        }
+        unsafe { with_required_current_instance(|instance| Self::push_in(instance, new_srcref)) }
     }
 
     pub(crate) unsafe fn push_in(instance: *mut RInstance, new_srcref: SEXP) -> Self {
@@ -307,9 +303,7 @@ unsafe fn get_R_ToplevelContext() -> *mut RCNTXT {
 /// Mirrors GNU R's `findLocTable()` in `src/main/eval.c`.
 unsafe fn find_loc_table(constants: SEXP, tclass: &CStr) -> SEXP {
     unsafe {
-        if constants.is_null()
-            || constants == R_NilValue()
-            || TYPEOF(constants) != SEXPTYPE::VECSXP
+        if constants.is_null() || constants == R_NilValue() || TYPEOF(constants) != SEXPTYPE::VECSXP
         {
             return R_NilValue();
         }
@@ -330,10 +324,7 @@ unsafe fn find_loc_table(constants: SEXP, tclass: &CStr) -> SEXP {
 /// Resolve the srcref for a snapshotted `(bcbody, relpc)` pair.
 unsafe fn find_bc_interpreter_srcref_from(body: SEXP, relpc: isize) -> SEXP {
     unsafe {
-        if body.is_null()
-            || body == R_NilValue()
-            || TYPEOF(body) != SEXPTYPE::BCODESXP
-            || relpc < 0
+        if body.is_null() || body == R_NilValue() || TYPEOF(body) != SEXPTYPE::BCODESXP || relpc < 0
         {
             return R_NilValue();
         }

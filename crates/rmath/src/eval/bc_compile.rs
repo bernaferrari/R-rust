@@ -999,63 +999,64 @@ impl BytecodeCompiler {
         unsafe {
             self.emit(opcodes::OP_RETURN);
             let has_srcrefs = self.srcrefs_index.iter().any(|&idx| idx >= 0);
-            let (bcode_owned, srcref_table_and_class) = with_required_current_instance(|inst| unsafe {
-                with_arena_in(inst, |arena| {
-                    let extra_consts = usize::from(has_srcrefs);
-                    let consts = arena.alloc_vector(
-                        SEXPTYPE::VECSXP,
-                        (self.consts.len() + 1 + extra_consts) as i64,
-                    );
-                    let _consts_guard = own_operand(consts);
-                    crate::sexp::accessors::SET_VECTOR_ELT(consts, 0, source_expr);
-                    for (index, constant) in self.consts.iter().enumerate() {
-                        crate::sexp::accessors::SET_VECTOR_ELT(
-                            consts,
-                            (index + 1) as i64,
-                            constant.as_raw(),
+            let (bcode_owned, srcref_table_and_class) =
+                with_required_current_instance(|inst| unsafe {
+                    with_arena_in(inst, |arena| {
+                        let extra_consts = usize::from(has_srcrefs);
+                        let consts = arena.alloc_vector(
+                            SEXPTYPE::VECSXP,
+                            (self.consts.len() + 1 + extra_consts) as i64,
                         );
-                    }
-                    let srcref_table_and_class = if has_srcrefs {
-                        let table =
-                            arena.alloc_vector(SEXPTYPE::INTSXP, self.srcrefs_index.len() as i64);
-                        let mut table_mut = SexpMut::try_from_checked(own_operand(table))
-                            .expect("fresh mutable srcrefsIndex");
-                        for (index, sref_idx) in self.srcrefs_index.iter().enumerate() {
-                            assert!(table_mut.set_integer_elt(index as i64, *sref_idx));
+                        let _consts_guard = own_operand(consts);
+                        crate::sexp::accessors::SET_VECTOR_ELT(consts, 0, source_expr);
+                        for (index, constant) in self.consts.iter().enumerate() {
+                            crate::sexp::accessors::SET_VECTOR_ELT(
+                                consts,
+                                (index + 1) as i64,
+                                constant.as_raw(),
+                            );
                         }
-                        let table_owned = own_operand(table);
-                        let cls = arena.alloc_vector(SEXPTYPE::STRSXP, 1);
-                        let cls_owned = own_operand(cls);
-                        let cls_char = arena.alloc_charsxp(b"srcrefsIndex");
-                        crate::sexp::accessors::SET_STRING_ELT(cls, 0, cls_char);
-                        crate::sexp::accessors::SET_VECTOR_ELT(
-                            consts,
-                            (self.consts.len() + 1) as i64,
-                            table,
-                        );
-                        Some((table_owned, cls_owned))
-                    } else {
-                        None
-                    };
-                    let code = arena.alloc_vector(SEXPTYPE::INTSXP, self.code.len() as i64);
-                    let mut code_mut =
-                        SexpMut::try_from_checked(own_operand(code)).expect("fresh mutable code");
-                    for (index, instruction) in self.code.iter().enumerate() {
-                        assert!(code_mut.set_integer_elt(index as i64, *instruction));
-                    }
+                        let srcref_table_and_class = if has_srcrefs {
+                            let table = arena
+                                .alloc_vector(SEXPTYPE::INTSXP, self.srcrefs_index.len() as i64);
+                            let mut table_mut = SexpMut::try_from_checked(own_operand(table))
+                                .expect("fresh mutable srcrefsIndex");
+                            for (index, sref_idx) in self.srcrefs_index.iter().enumerate() {
+                                assert!(table_mut.set_integer_elt(index as i64, *sref_idx));
+                            }
+                            let table_owned = own_operand(table);
+                            let cls = arena.alloc_vector(SEXPTYPE::STRSXP, 1);
+                            let cls_owned = own_operand(cls);
+                            let cls_char = arena.alloc_charsxp(b"srcrefsIndex");
+                            crate::sexp::accessors::SET_STRING_ELT(cls, 0, cls_char);
+                            crate::sexp::accessors::SET_VECTOR_ELT(
+                                consts,
+                                (self.consts.len() + 1) as i64,
+                                table,
+                            );
+                            Some((table_owned, cls_owned))
+                        } else {
+                            None
+                        };
+                        let code = arena.alloc_vector(SEXPTYPE::INTSXP, self.code.len() as i64);
+                        let mut code_mut = SexpMut::try_from_checked(own_operand(code))
+                            .expect("fresh mutable code");
+                        for (index, instruction) in self.code.iter().enumerate() {
+                            assert!(code_mut.set_integer_elt(index as i64, *instruction));
+                        }
 
-                    let stack_hint = arena.alloc_vector(SEXPTYPE::INTSXP, 1);
-                    let mut hint_mut = SexpMut::try_from_checked(own_operand(stack_hint))
-                        .expect("fresh mutable stack hint");
-                    assert!(hint_mut.set_integer_elt(0, self.stack_hint.max(4)));
+                        let stack_hint = arena.alloc_vector(SEXPTYPE::INTSXP, 1);
+                        let mut hint_mut = SexpMut::try_from_checked(own_operand(stack_hint))
+                            .expect("fresh mutable stack hint");
+                        assert!(hint_mut.set_integer_elt(0, self.stack_hint.max(4)));
 
-                    let bcode = arena.alloc_vector(SEXPTYPE::BCODESXP, 3);
-                    crate::sexp::accessors::SET_VECTOR_ELT(bcode, 0, code);
-                    crate::sexp::accessors::SET_VECTOR_ELT(bcode, 1, consts);
-                    crate::sexp::accessors::SET_VECTOR_ELT(bcode, 2, stack_hint);
-                    (own_operand(bcode), srcref_table_and_class)
-                })
-            });
+                        let bcode = arena.alloc_vector(SEXPTYPE::BCODESXP, 3);
+                        crate::sexp::accessors::SET_VECTOR_ELT(bcode, 0, code);
+                        crate::sexp::accessors::SET_VECTOR_ELT(bcode, 1, consts);
+                        crate::sexp::accessors::SET_VECTOR_ELT(bcode, 2, stack_hint);
+                        (own_operand(bcode), srcref_table_and_class)
+                    })
+                });
             if let Some((table_owned, cls_owned)) = srcref_table_and_class {
                 crate::sexp::attrib_core::setAttrib(
                     table_owned.as_raw(),

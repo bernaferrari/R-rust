@@ -367,7 +367,13 @@ unsafe fn write_compact_sequence(
             *p.add(1) = origin;
             *p.add(2) = step;
         }
-        writer.write_i32(PackFlags(ALTREP_SXP, serialized_gp_bits(s), OBJECT(s), 0, 0));
+        writer.write_i32(PackFlags(
+            ALTREP_SXP,
+            serialized_gp_bits(s),
+            OBJECT(s),
+            0,
+            0,
+        ));
         WriteItemInternal(info, ref_table, writer);
         WriteItemInternal(state, ref_table, writer);
         WriteItemInternal(ATTRIB(s), ref_table, writer);

@@ -249,11 +249,7 @@ unsafe fn bind_srcfile_to_srcref_int(sr: SEXP, srcfile: SEXP) {
             0,
             crate::sexp::constructors::Rf_mkChar(c"srcref".as_ptr()),
         );
-        crate::sexp::attrib_core::setAttrib(
-            sr,
-            crate::sexp::attrib_core::R_ClassSymbol(),
-            class,
-        );
+        crate::sexp::attrib_core::setAttrib(sr, crate::sexp::attrib_core::R_ClassSymbol(), class);
         crate::sexp::accessors::SET_OBJECT(sr, 1);
         crate::sexp::attrib_core::setAttrib(
             sr,

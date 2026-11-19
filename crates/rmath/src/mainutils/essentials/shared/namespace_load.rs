@@ -457,10 +457,7 @@ pub(crate) unsafe fn ensure_methods_primitive_generic(op: SEXP) {
     }
 }
 
-pub(crate) unsafe fn ensure_methods_primitive_generic_for_object(
-    op: SEXP,
-    object: SEXP,
-) -> bool {
+pub(crate) unsafe fn ensure_methods_primitive_generic_for_object(op: SEXP, object: SEXP) -> bool {
     unsafe {
         if op.is_null() {
             return false;
@@ -479,17 +476,13 @@ pub(crate) unsafe fn ensure_methods_primitive_generic_for_object(
         // when this owner's method table has no class-specific entry. Use the
         // current owner generic table as evidence first. Unknown or
         // multi-argument signatures take the full path to preserve dispatch.
-        let table = crate::sexp::envir::R_findVarInFrame(
-            ns,
-            Rf_install(c".BasicFunsList".as_ptr()),
-        );
+        let table =
+            crate::sexp::envir::R_findVarInFrame(ns, Rf_install(c".BasicFunsList".as_ptr()));
         if table.is_null() || table == R_NilValue() || TYPEOF(table) != SEXPTYPE::VECSXP {
             return true;
         }
-        let names = crate::sexp::attrib_core::getAttrib(
-            table,
-            crate::sexp::attrib_core::R_NamesSymbol(),
-        );
+        let names =
+            crate::sexp::attrib_core::getAttrib(table, crate::sexp::attrib_core::R_NamesSymbol());
         if names.is_null() || names == R_NilValue() || TYPEOF(names) != SEXPTYPE::STRSXP {
             return true;
         }
@@ -521,10 +514,8 @@ pub(crate) unsafe fn ensure_methods_primitive_generic_for_object(
         {
             return true;
         }
-        let sig_length = crate::sexp::envir::R_findVarInFrame(
-            generic_env,
-            Rf_install(c".SigLength".as_ptr()),
-        );
+        let sig_length =
+            crate::sexp::envir::R_findVarInFrame(generic_env, Rf_install(c".SigLength".as_ptr()));
         if sig_length.is_null()
             || sig_length == R_NilValue()
             || TYPEOF(sig_length) != SEXPTYPE::INTSXP
@@ -533,10 +524,8 @@ pub(crate) unsafe fn ensure_methods_primitive_generic_for_object(
         {
             return true;
         }
-        let methods_table = crate::sexp::envir::R_findVarInFrame(
-            generic_env,
-            Rf_install(c".AllMTable".as_ptr()),
-        );
+        let methods_table =
+            crate::sexp::envir::R_findVarInFrame(generic_env, Rf_install(c".AllMTable".as_ptr()));
         if methods_table.is_null()
             || methods_table == R_NilValue()
             || TYPEOF(methods_table) != SEXPTYPE::ENVSXP

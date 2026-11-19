@@ -272,10 +272,7 @@ fn summary_method_call<'s>(
     }
 }
 
-fn admit_summary_dispatch_result<'s>(
-    factory: &SessionNodeFactory<'s>,
-    value: SEXP,
-) -> Sexp<'s> {
+fn admit_summary_dispatch_result<'s>(factory: &SessionNodeFactory<'s>, value: SEXP) -> Sexp<'s> {
     factory
         .require_active()
         .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
@@ -930,10 +927,10 @@ pub unsafe fn DispatchOrEval(
                 );
                 let s4_object = crate::mainutils::coerce::IS_S4_OBJECT(x) != FALSE;
                 let s4_generic_ready = s4_object
-                    && crate::mainutils::essentials::ensure_methods_primitive_generic_for_object(op, x);
-                if s4_generic_ready
-                    && crate::mainutils::objects::R_has_methods(op) != FALSE
-                {
+                    && crate::mainutils::essentials::ensure_methods_primitive_generic_for_object(
+                        op, x,
+                    );
+                if s4_generic_ready && crate::mainutils::objects::R_has_methods(op) != FALSE {
                     let value =
                         crate::mainutils::objects::R_possible_dispatch(call, op, pargs, rho, TRUE);
                     if !value.is_null() {
@@ -1610,7 +1607,9 @@ mod owned_argument_tests {
         let session = RSession::new_for_gc_tests();
         let factory = SessionNodeFactory::new(session.owner_token().unwrap());
         let nil = factory.nil();
-        let call_head = factory.wrap(unsafe { Rf_install(c"sum".as_ptr()) }).unwrap();
+        let call_head = factory
+            .wrap(unsafe { Rf_install(c"sum".as_ptr()) })
+            .unwrap();
         let value = factory
             .wrap(unsafe { crate::sexp::constructors::Rf_ScalarInteger(1) })
             .unwrap();

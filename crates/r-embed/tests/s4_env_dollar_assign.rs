@@ -60,7 +60,10 @@ fn sealed_primitive_any_method_redefinition_errors_like_gnu() {
         .unwrap()
         .eval("methods::setMethod('$<-', 'ANY', function(x,name,value) x)")
         .expect_err("GNU seals the primitive `$<-` ANY method");
-    assert!(error.to_string().contains("sealed"), "unexpected error: {error}");
+    assert!(
+        error.to_string().contains("sealed"),
+        "unexpected error: {error}"
+    );
 }
 
 #[test]
@@ -94,7 +97,9 @@ fn s4_primitive_methods_remain_owner_local_across_session_switches() {
     assert_eq!(define(&mut first, 101).trim(), "[1] 101");
     assert_eq!(define(&mut second, 202).trim(), "[1] 202");
     let first_again = first
-        .eval("z <- methods::new('NlenzOwnerBox'); z$a <- 303L; get('a', methods::slot(z, '.xData'))")
+        .eval(
+            "z <- methods::new('NlenzOwnerBox'); z$a <- 303L; get('a', methods::slot(z, '.xData'))",
+        )
         .unwrap();
     assert_eq!(first_again.trim(), "[1] 101");
 }

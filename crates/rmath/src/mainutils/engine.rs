@@ -878,7 +878,9 @@ pub unsafe fn GEhandleEvent(event: c_int, dev: *mut c_void, data: SEXP) -> SEXP 
                         let value = factory
                             .wrap(callback_result)
                             .and_then(|value| value.into_owned())
-                            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                            .unwrap_or_else(|error| {
+                                crate::sexp::context::r_error(error.to_string())
+                            });
                         if value.as_raw() != R_NilValue() {
                             result = Some(value);
                         }
@@ -886,7 +888,9 @@ pub unsafe fn GEhandleEvent(event: c_int, dev: *mut c_void, data: SEXP) -> SEXP 
                 }
             }
         }
-        result.as_ref().map_or_else(nil_value, |value| value.as_raw())
+        result
+            .as_ref()
+            .map_or_else(nil_value, |value| value.as_raw())
     }
 }
 
@@ -1393,16 +1397,7 @@ pub unsafe fn GEPretty(lo: *mut c_double, up: *mut c_double, ndiv: *mut c_int) {
     let mut ns = lo_value;
     let mut nu = up_value;
     let high_u_fact = [0.8_f64, 1.7_f64, 1.125_f64];
-    let unit = R_pretty(
-        &mut ns,
-        &mut nu,
-        ndiv,
-        1,
-        0.25,
-        high_u_fact.as_ptr(),
-        2,
-        0,
-    );
+    let unit = R_pretty(&mut ns, &mut nu, ndiv, 1, 0.25, high_u_fact.as_ptr(), 2, 0);
     const ROUNDING_EPS: f64 = 1e-10;
     if nu >= ns + 1.0 {
         let mut modified = false;
@@ -2140,7 +2135,9 @@ mod tests {
     }
 
     unsafe extern "C" fn switch_graphics_owner(
-        _event: c_int, _dev: *mut c_void, data: SEXP,
+        _event: c_int,
+        _dev: *mut c_void,
+        data: SEXP,
     ) -> SEXP {
         let _ = data;
         FOREIGN_INSTANCE.with(|foreign| unsafe {
@@ -2150,7 +2147,9 @@ mod tests {
     }
 
     unsafe extern "C" fn count_graphics_callback(
-        _event: c_int, _dev: *mut c_void, _data: SEXP,
+        _event: c_int,
+        _dev: *mut c_void,
+        _data: SEXP,
     ) -> SEXP {
         FOLLOWING_CALLBACKS.with(|count| count.set(count.get() + 1));
         std::ptr::null_mut()
@@ -2189,14 +2188,18 @@ mod tests {
     }
 
     unsafe extern "C" fn drop_graphics_owner(
-        _event: c_int, _dev: *mut c_void, _data: SEXP,
+        _event: c_int,
+        _dev: *mut c_void,
+        _data: SEXP,
     ) -> SEXP {
         EVENT_OWNER.with(|slot| drop(slot.borrow_mut().take()));
         std::ptr::null_mut()
     }
 
     unsafe extern "C" fn close_and_replace_event_device(
-        _event: c_int, _dev: *mut c_void, _data: SEXP,
+        _event: c_int,
+        _dev: *mut c_void,
+        _data: SEXP,
     ) -> SEXP {
         unsafe {
             let number = device_registry::curDevice();
@@ -2207,7 +2210,9 @@ mod tests {
     }
 
     unsafe extern "C" fn switch_event_device(
-        _event: c_int, _dev: *mut c_void, _data: SEXP,
+        _event: c_int,
+        _dev: *mut c_void,
+        _data: SEXP,
     ) -> SEXP {
         unsafe { device_registry::selectDevice(2) };
         std::ptr::null_mut()
@@ -2227,11 +2232,17 @@ mod tests {
             GEregisterSystem(Some(count_graphics_callback), &mut second);
             let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 GEhandleEvent(0, device, std::ptr::null_mut())
-            })).expect_err("closing the original device must stop dispatch");
+            }))
+            .expect_err("closing the original device must stop dispatch");
             GEunregisterSystem(first);
             GEunregisterSystem(second);
-            let error = error.downcast_ref::<crate::sexp::context::RError>().unwrap();
-            assert_eq!(error.message, "graphics device was closed during event callback");
+            let error = error
+                .downcast_ref::<crate::sexp::context::RError>()
+                .unwrap();
+            assert_eq!(
+                error.message,
+                "graphics device was closed during event callback"
+            );
             FOLLOWING_CALLBACKS.with(|count| assert_eq!(count.get(), 0));
         });
     }
@@ -2258,7 +2269,9 @@ mod tests {
     }
 
     unsafe extern "C" fn reset_event_registry(
-        _event: c_int, _dev: *mut c_void, _data: SEXP,
+        _event: c_int,
+        _dev: *mut c_void,
+        _data: SEXP,
     ) -> SEXP {
         device_registry::reset_registry_for_tests();
         unsafe { device_registry::selectDevice(0) };
@@ -2278,11 +2291,17 @@ mod tests {
             GEregisterSystem(Some(count_graphics_callback), &mut second);
             let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 GEhandleEvent(0, device, std::ptr::null_mut())
-            })).expect_err("registry reset must invalidate the original device");
+            }))
+            .expect_err("registry reset must invalidate the original device");
             GEunregisterSystem(first);
             GEunregisterSystem(second);
-            let error = error.downcast_ref::<crate::sexp::context::RError>().unwrap();
-            assert_eq!(error.message, "graphics device was closed during event callback");
+            let error = error
+                .downcast_ref::<crate::sexp::context::RError>()
+                .unwrap();
+            assert_eq!(
+                error.message,
+                "graphics device was closed during event callback"
+            );
             FOLLOWING_CALLBACKS.with(|count| assert_eq!(count.get(), 0));
         });
     }
@@ -2295,7 +2314,11 @@ mod tests {
             let mut native_descriptor = 0_u64;
             let mut registration = -1;
             GEregisterSystem(Some(count_graphics_callback), &mut registration);
-            GEhandleEvent(0, (&mut native_descriptor as *mut u64).cast(), std::ptr::null_mut());
+            GEhandleEvent(
+                0,
+                (&mut native_descriptor as *mut u64).cast(),
+                std::ptr::null_mut(),
+            );
             GEunregisterSystem(registration);
             FOLLOWING_CALLBACKS.with(|count| assert_eq!(count.get(), 1));
         });
@@ -2341,7 +2364,11 @@ mod tests {
             })
         }
         .expect_err("revoked owner must abort event dispatch");
-        assert!(error.downcast_ref::<crate::sexp::context::RError>().is_some());
+        assert!(
+            error
+                .downcast_ref::<crate::sexp::context::RError>()
+                .is_some()
+        );
         EVENT_OWNER.with(|slot| assert!(slot.borrow().is_none()));
         FOLLOWING_CALLBACKS.with(|count| assert_eq!(count.get(), 0));
     }
@@ -2354,8 +2381,13 @@ mod tests {
 
     unsafe extern "C" fn collect_event_value(_event: c_int, _dev: *mut c_void, data: SEXP) -> SEXP {
         crate::sexp::gengc::full_gc();
-        let pointer = if data.is_null() { EVENT_VALUE.with(|slot| slot.get()) } else { data };
-        EVENT_VALUE_ALIVE.with(|alive| alive.set(crate::sexp::memory::checked_projection(pointer).is_some()));
+        let pointer = if data.is_null() {
+            EVENT_VALUE.with(|slot| slot.get())
+        } else {
+            data
+        };
+        EVENT_VALUE_ALIVE
+            .with(|alive| alive.set(crate::sexp::memory::checked_projection(pointer).is_some()));
         std::ptr::null_mut()
     }
 
@@ -2404,8 +2436,13 @@ mod tests {
         );
         let value = foreign.with_active(|| unsafe {
             let raw = Rf_ScalarInteger(123);
-            crate::sexp::owner::OwnerToken::current().unwrap().node_factory()
-                .wrap(raw).unwrap().into_owned().unwrap()
+            crate::sexp::owner::OwnerToken::current()
+                .unwrap()
+                .node_factory()
+                .wrap(raw)
+                .unwrap()
+                .into_owned()
+                .unwrap()
         });
         session.with_active(|| unsafe {
             EVENT_VALUE.with(|slot| slot.set(value.as_raw()));
@@ -2416,8 +2453,12 @@ mod tests {
             }));
             GEunregisterSystem(index);
             EVENT_VALUE.with(|slot| slot.set(std::ptr::null_mut()));
-            assert!(error.expect_err("foreign value must be rejected")
-                .downcast_ref::<crate::sexp::context::RError>().is_some());
+            assert!(
+                error
+                    .expect_err("foreign value must be rejected")
+                    .downcast_ref::<crate::sexp::context::RError>()
+                    .is_some()
+            );
         });
     }
 
@@ -2429,8 +2470,13 @@ mod tests {
         );
         let value = foreign.with_active(|| unsafe {
             let raw = Rf_ScalarInteger(19);
-            crate::sexp::owner::OwnerToken::current().unwrap().node_factory()
-                .wrap(raw).unwrap().into_owned().unwrap()
+            crate::sexp::owner::OwnerToken::current()
+                .unwrap()
+                .node_factory()
+                .wrap(raw)
+                .unwrap()
+                .into_owned()
+                .unwrap()
         });
         session.with_active(|| unsafe {
             FOLLOWING_CALLBACKS.with(|count| count.set(0));
@@ -2440,8 +2486,12 @@ mod tests {
                 GEhandleEvent(0, std::ptr::null_mut(), value.as_raw())
             }));
             GEunregisterSystem(index);
-            assert!(error.expect_err("foreign input must be rejected")
-                .downcast_ref::<crate::sexp::context::RError>().is_some());
+            assert!(
+                error
+                    .expect_err("foreign input must be rejected")
+                    .downcast_ref::<crate::sexp::context::RError>()
+                    .is_some()
+            );
             FOLLOWING_CALLBACKS.with(|count| assert_eq!(count.get(), 0));
         });
     }
@@ -2456,8 +2506,12 @@ mod tests {
             let input_error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 GEhandleEvent(0, std::ptr::null_mut(), stale)
             }));
-            assert!(input_error.expect_err("collected input must be rejected")
-                .downcast_ref::<crate::sexp::context::RError>().is_some());
+            assert!(
+                input_error
+                    .expect_err("collected input must be rejected")
+                    .downcast_ref::<crate::sexp::context::RError>()
+                    .is_some()
+            );
             EVENT_VALUE.with(|slot| slot.set(stale));
             let mut index = -1;
             GEregisterSystem(Some(return_event_value), &mut index);
@@ -2466,8 +2520,12 @@ mod tests {
             }));
             GEunregisterSystem(index);
             EVENT_VALUE.with(|slot| slot.set(std::ptr::null_mut()));
-            assert!(result_error.expect_err("collected result must be rejected")
-                .downcast_ref::<crate::sexp::context::RError>().is_some());
+            assert!(
+                result_error
+                    .expect_err("collected result must be rejected")
+                    .downcast_ref::<crate::sexp::context::RError>()
+                    .is_some()
+            );
         });
     }
 
@@ -2477,13 +2535,22 @@ mod tests {
         session.with_active(|| unsafe {
             let mut index = -1;
             GEregisterSystem(Some(echo_graphics_event), &mut index);
-            assert_eq!(GEhandleEvent(GE_CheckPlot, std::ptr::null_mut(), std::ptr::null_mut()), R_NilValue());
-            assert_eq!(GEhandleEvent(GE_CheckPlot, std::ptr::null_mut(), R_NilValue()), R_NilValue());
+            assert_eq!(
+                GEhandleEvent(GE_CheckPlot, std::ptr::null_mut(), std::ptr::null_mut()),
+                R_NilValue()
+            );
+            assert_eq!(
+                GEhandleEvent(GE_CheckPlot, std::ptr::null_mut(), R_NilValue()),
+                R_NilValue()
+            );
             for singleton in [
                 crate::sexp::globals::R_MissingArg(),
                 crate::sexp::globals::R_UnboundValue(),
             ] {
-                assert_eq!(GEhandleEvent(GE_CheckPlot, std::ptr::null_mut(), singleton), singleton);
+                assert_eq!(
+                    GEhandleEvent(GE_CheckPlot, std::ptr::null_mut(), singleton),
+                    singleton
+                );
             }
             GEunregisterSystem(index);
         });

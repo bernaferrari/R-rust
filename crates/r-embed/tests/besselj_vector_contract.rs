@@ -1,4 +1,4 @@
-use r_embed::{RSession,RuntimePathPolicy};
+use r_embed::{RSession, RuntimePathPolicy};
 const CONTROLS: &str = r#"
 z <- besselJ(1,c(0,1,2));stopifnot(length(z)==3,all(abs(z-c(.76519768655796661,.44005058574493355,.11490348493190049))<1e-14))
 x <- structure(1:3,names=c("a","b","c"));z <- besselJ(x,c(0,1,2));stopifnot(identical(names(z),names(x)),all(abs(z-c(.76519768655796661,.57672480775687340,.48609126058589108))<1e-14))
@@ -11,4 +11,13 @@ stopifnot(all(is.nan(z)),identical(events,c("value out of range in 'bessel_j'","
 cat("besselj-vector-contract-ok\n")
 "#;
 #[test]
-fn public_besselj_vector_orders(){for mut s in [RSession::new().unwrap(),RSession::new_with_path_policy(RuntimePathPolicy::new(Vec::new(),std::env::temp_dir())).unwrap()]{let out=s.eval(CONTROLS).unwrap();assert!(out.contains("besselj-vector-contract-ok"),"{out}");}}
+fn public_besselj_vector_orders() {
+    for mut s in [
+        RSession::new().unwrap(),
+        RSession::new_with_path_policy(RuntimePathPolicy::new(Vec::new(), std::env::temp_dir()))
+            .unwrap(),
+    ] {
+        let out = s.eval(CONTROLS).unwrap();
+        assert!(out.contains("besselj-vector-contract-ok"), "{out}");
+    }
+}

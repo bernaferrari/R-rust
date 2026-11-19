@@ -73,8 +73,14 @@ fn check_title_cex_parity(session: &mut RSession, policy: &str) {
         "plot(1:2, main='', sub='', xlab='', ylab=''); title('TITLE', cex=1:4)",
         policy,
     );
-    assert_eq!(base, scalar, "GNU title cex=2 is accepted and ignored; policy={policy}");
-    assert_eq!(base, vector, "GNU title vector cex is accepted and ignored; policy={policy}");
+    assert_eq!(
+        base, scalar,
+        "GNU title cex=2 is accepted and ignored; policy={policy}"
+    );
+    assert_eq!(
+        base, vector,
+        "GNU title vector cex is accepted and ignored; policy={policy}"
+    );
 
     let scaled = render(
         session,

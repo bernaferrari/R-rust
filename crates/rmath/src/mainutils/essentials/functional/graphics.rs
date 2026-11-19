@@ -491,16 +491,8 @@ pub(super) unsafe fn record_plot_window(args: SEXP) {
                 (a + extra, b - extra)
             }
         };
-        let (mut x0, mut x1) = apply_limit(
-            (x0, x1),
-            "xlim",
-            log_x,
-        );
-        let (mut y0, mut y1) = apply_limit(
-            (y0, y1),
-            "ylim",
-            log_y,
-        );
+        let (mut x0, mut x1) = apply_limit((x0, x1), "xlim", log_x);
+        let (mut y0, mut y1) = apply_limit((y0, y1), "ylim", log_y);
         let clamp_plot_log = |v: &mut f64| {
             if *v == f64::INFINITY || *v >= 308.25035 {
                 *v = (0.99 * f64::MAX).log10();
@@ -520,22 +512,8 @@ pub(super) unsafe fn record_plot_window(args: SEXP) {
         let (ya0, ya1, yn) = pretty_axp(y0, y1);
         use crate::library::graphics::par::{ParValue, set_plot_parameter};
         set_plot_parameter("usr", ParValue::Real(vec![x0, x1, y0, y1]));
-        set_plot_parameter(
-            "xlog",
-            ParValue::Logical(vec![if log_x {
-                1
-            } else {
-                0
-            }]),
-        );
-        set_plot_parameter(
-            "ylog",
-            ParValue::Logical(vec![if log_y {
-                1
-            } else {
-                0
-            }]),
-        );
+        set_plot_parameter("xlog", ParValue::Logical(vec![if log_x { 1 } else { 0 }]));
+        set_plot_parameter("ylog", ParValue::Logical(vec![if log_y { 1 } else { 0 }]));
         if log_x {
             let (a, b) = if x0 <= x1 { (x0, x1) } else { (x1, x0) };
             let lo = a.ceil().clamp(-307.0, 308.0);
@@ -985,7 +963,8 @@ mod log_axis_isolation_tests {
     use crate::sexp::session::RSession;
 
     fn run(session: &mut RSession, log: &str) -> String {
-        let code = format!("invisible(plot(1:10, log='{log}')); cat(par('xlog'), par('ylog'), '\\n')");
+        let code =
+            format!("invisible(plot(1:10, log='{log}')); cat(par('xlog'), par('ylog'), '\\n')");
         let (result, output, _) = session.eval_script_with_output_capture(&code);
         assert!(result.is_ok(), "plot failed: {output:?}");
         output.stdout
@@ -1038,11 +1017,14 @@ mod log_axis_isolation_tests {
              cat(par('xlog'), par('ylog'), par('col'), paste(par('mar'), collapse=','), '\\n')",
         );
         result.expect("device switching script should evaluate");
-        assert_eq!(output.stdout, concat!(
-            "TRUE FALSE red 1,2,3,4 \n",
-            "FALSE TRUE blue 4,3,2,1 \n",
-            "FALSE FALSE black 5.1,4.1,4.1,2.1 \n",
-        ));
+        assert_eq!(
+            output.stdout,
+            concat!(
+                "TRUE FALSE red 1,2,3,4 \n",
+                "FALSE TRUE blue 4,3,2,1 \n",
+                "FALSE FALSE black 5.1,4.1,4.1,2.1 \n",
+            )
+        );
     }
 
     #[test]

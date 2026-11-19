@@ -2104,7 +2104,6 @@ mod tests {
         // runtime owner; raw RInstance::new() only creates unowned storage.
         let session = crate::sexp::session::RSession::new_for_gc_tests();
         session.with_active(|| unsafe {
-
             let mar = Rf_allocVector3(SEXPTYPE::REALSXP, 4);
             let _mar_guard = protect(mar);
             let mar_values = REAL(mar);

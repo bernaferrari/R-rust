@@ -447,10 +447,8 @@ pub unsafe fn do_scale(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             crate::sexp::attrib_core::R_DimSymbol(),
             result_dim,
         );
-        let input_dimnames = crate::sexp::attrib_core::getAttrib(
-            x,
-            crate::sexp::attrib_core::R_DimNamesSymbol(),
-        );
+        let input_dimnames =
+            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimNamesSymbol());
         let result_dimnames = if !input_dimnames.is_null() && input_dimnames != R_NilValue() {
             input_dimnames
         } else {
@@ -554,21 +552,19 @@ pub unsafe fn do_scale(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 };
             }
         }
-        let colnames = if TYPEOF(result_dimnames) == SEXPTYPE::VECSXP
-            && XLENGTH(result_dimnames) > 1
-        {
-            VECTOR_ELT(result_dimnames, 1)
-        } else {
-            R_NilValue()
-        };
+        let colnames =
+            if TYPEOF(result_dimnames) == SEXPTYPE::VECSXP && XLENGTH(result_dimnames) > 1 {
+                VECTOR_ELT(result_dimnames, 1)
+            } else {
+                R_NilValue()
+            };
         let set_scale_metadata = |name: &'static [u8], values: &[f64]| {
             let attribute = Rf_allocVector3(SEXPTYPE::REALSXP, values.len() as R_xlen_t);
             let _a = protect(attribute);
             for (i, value) in values.iter().enumerate() {
                 *REAL(attribute).add(i) = *value;
             }
-            if TYPEOF(colnames) == SEXPTYPE::STRSXP
-                && XLENGTH(colnames) == values.len() as R_xlen_t
+            if TYPEOF(colnames) == SEXPTYPE::STRSXP && XLENGTH(colnames) == values.len() as R_xlen_t
             {
                 crate::sexp::attrib_core::setAttrib(
                     attribute,

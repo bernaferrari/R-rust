@@ -177,9 +177,9 @@
 #![allow(unknown_lints)]
 
 pub mod constants;
+pub mod diagnostics;
 pub mod dist;
 pub mod dpq;
-pub mod diagnostics;
 pub mod error;
 pub mod fprec;
 pub mod rng;

@@ -400,9 +400,7 @@ pub unsafe fn do_dollar_set(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SE
                     Rf_install(c"$<-".as_ptr()),
                 );
                 let _primitive_guard = protect(primitive);
-                return crate::mainutils::subassign::do_subassign3(
-                    _call, primitive, args, rho,
-                );
+                return crate::mainutils::subassign::do_subassign3(_call, primitive, args, rho);
             }
             if crate::eval::attrib_core::isObject(object) != 0 {
                 let fixed = crate::mainutils::subset::fixSubset3Args(
@@ -497,9 +495,7 @@ pub unsafe fn do_dollar_set(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SE
         // remain protected across slot access and any runtime allocation.
         if TYPEOF(object) == SEXPTYPE::OBJSXP {
             let name = Rf_install(CString::new(field.as_str()).unwrap_or_default().as_ptr());
-            return crate::mainutils::subassign::R_subassign3_dflt(
-                _call, object, name, value,
-            );
+            return crate::mainutils::subassign::R_subassign3_dflt(_call, object, name, value);
         }
         if TYPEOF(object) == SEXPTYPE::LISTSXP
             || TYPEOF(object) == SEXPTYPE::LANGSXP

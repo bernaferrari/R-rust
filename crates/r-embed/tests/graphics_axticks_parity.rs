@@ -45,10 +45,8 @@ fn native_plot_installs_gnu_log_and_linear_axis_parameters() {
 
 #[test]
 fn portable_plot_installs_gnu_log_and_linear_axis_parameters() {
-    let mut session = RSession::new_with_path_policy(RuntimePathPolicy::new(
-        Vec::new(),
-        std::env::temp_dir(),
-    ))
-    .unwrap();
+    let mut session =
+        RSession::new_with_path_policy(RuntimePathPolicy::new(Vec::new(), std::env::temp_dir()))
+            .unwrap();
     check_ax_ticks(&mut session);
 }

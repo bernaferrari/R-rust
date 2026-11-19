@@ -312,10 +312,7 @@ unsafe fn strict_get_environment(environment: SEXP) -> SEXP {
             base_error("use of NULL environment is defunct");
         }
         let environment = if crate::mainutils::coerce::IS_S4_OBJECT(environment) != FALSE {
-            crate::mainutils::subassign::R_getS4DataSlot(
-                environment,
-                SEXPTYPE::ANYSXP.as_c_int(),
-            )
+            crate::mainutils::subassign::R_getS4DataSlot(environment, SEXPTYPE::ANYSXP.as_c_int())
         } else {
             environment
         };

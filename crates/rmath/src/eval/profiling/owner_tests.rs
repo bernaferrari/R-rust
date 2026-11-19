@@ -913,18 +913,12 @@ fn owner_profile_typed_eval_checks_cancellation_before_metadata_allocation() {
 #[test]
 fn sourced_script_line_profiling_emits_gnu_file_and_line_markers_for_ast_and_private_bytecode() {
     let session = RSession::new_for_gc_tests();
-    let script_path = std::env::temp_dir().join(format!(
-        "rport-lineprof-script-{}.R",
-        std::process::id()
-    ));
-    let ast_prof_path = std::env::temp_dir().join(format!(
-        "rport-lineprof-ast-{}.out",
-        std::process::id()
-    ));
-    let bc_prof_path = std::env::temp_dir().join(format!(
-        "rport-lineprof-bc-{}.out",
-        std::process::id()
-    ));
+    let script_path =
+        std::env::temp_dir().join(format!("rport-lineprof-script-{}.R", std::process::id()));
+    let ast_prof_path =
+        std::env::temp_dir().join(format!("rport-lineprof-ast-{}.out", std::process::id()));
+    let bc_prof_path =
+        std::env::temp_dir().join(format!("rport-lineprof-bc-{}.out", std::process::id()));
     // Line 1: comment
     // Line 2: outer_fn <- function() {
     // Line 3:   x <- 1L
@@ -973,15 +967,11 @@ inner_fn <- function() {
         let script_str = script_path.to_str().unwrap().replace('\\', "/");
         let source_code = format!("source(\"{script_str}\", keep.source = TRUE)");
         let source_expr = owner
-            .with_arena(|arena| {
-                crate::eval::parser::parse(&source_code, arena, factory.clone())
-            })
+            .with_arena(|arena| crate::eval::parser::parse(&source_code, arena, factory.clone()))
             .unwrap()
             .unwrap();
-        let _ = crate::eval::eval::Rf_eval(
-            source_expr.as_raw(),
-            crate::sexp::globals::R_GlobalEnv(),
-        );
+        let _ =
+            crate::eval::eval::Rf_eval(source_expr.as_raw(), crate::sexp::globals::R_GlobalEnv());
 
         let sampled = std::rc::Rc::new(std::cell::Cell::new(false));
         let sampled_cb = sampled.clone();
@@ -1009,10 +999,7 @@ inner_fn <- function() {
             .with_arena(|arena| crate::eval::parser::parse("outer_fn()", arena, factory.clone()))
             .unwrap()
             .unwrap();
-        let _ = crate::eval::eval::Rf_eval(
-            call_expr.as_raw(),
-            crate::sexp::globals::R_GlobalEnv(),
-        );
+        let _ = crate::eval::eval::Rf_eval(call_expr.as_raw(), crate::sexp::globals::R_GlobalEnv());
         R_EndProfiling();
 
         let ast_output = std::fs::read_to_string(&ast_prof_path).unwrap();
@@ -1035,10 +1022,7 @@ inner_fn <- compiler::cmpfun(inner_fn)
                 .with_arena(|arena| crate::eval::parser::parse(stmt, arena, factory.clone()))
                 .unwrap()
                 .unwrap();
-            let _ = crate::eval::eval::Rf_eval(
-                expr.as_raw(),
-                crate::sexp::globals::R_GlobalEnv(),
-            );
+            let _ = crate::eval::eval::Rf_eval(expr.as_raw(), crate::sexp::globals::R_GlobalEnv());
         }
         let outer_val = crate::sexp::envir::R_findVarInFrame(
             crate::sexp::globals::R_GlobalEnv(),
@@ -1071,10 +1055,7 @@ inner_fn <- compiler::cmpfun(inner_fn)
             PROFBUFSIZ as i32,
             rpe_type::RPE_ELAPSED,
         );
-        let _ = crate::eval::eval::Rf_eval(
-            call_expr.as_raw(),
-            crate::sexp::globals::R_GlobalEnv(),
-        );
+        let _ = crate::eval::eval::Rf_eval(call_expr.as_raw(), crate::sexp::globals::R_GlobalEnv());
         R_EndProfiling();
 
         let bc_output = std::fs::read_to_string(&bc_prof_path).unwrap();
@@ -1100,10 +1081,8 @@ fn gnu_bytecode_srcrefs_index_resolves_line_profiling_and_survives_gc() {
     use crate::sexp::constructors::Rf_ScalarInteger;
 
     let session = RSession::new_for_gc_tests();
-    let prof_path = std::env::temp_dir().join(format!(
-        "rport-lineprof-gnu-bc-{}.out",
-        std::process::id()
-    ));
+    let prof_path =
+        std::env::temp_dir().join(format!("rport-lineprof-gnu-bc-{}.out", std::process::id()));
 
     session.with_active(|| unsafe {
         let owner = session.owner_token().unwrap();
@@ -1254,8 +1233,14 @@ fn gnu_bytecode_srcrefs_index_resolves_line_profiling_and_survives_gc() {
         R_EndProfiling();
 
         assert_eq!(*INTEGER(result), 99);
-        assert!(in_bc_seen.get(), "GNU bcEval must set R_Srcref to R_InBCInterpreter");
-        assert!(bcode_node.is_live(), "GNU bcbody must stay rooted across profiling GC");
+        assert!(
+            in_bc_seen.get(),
+            "GNU bcEval must set R_Srcref to R_InBCInterpreter"
+        );
+        assert!(
+            bcode_node.is_live(),
+            "GNU bcbody must stay rooted across profiling GC"
+        );
 
         let output = std::fs::read_to_string(&prof_path).unwrap();
         assert!(

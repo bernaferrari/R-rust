@@ -56,7 +56,8 @@ fn current_R_print() -> RPrint {
         // Character coercion snapshots print defaults, while OutDec remains live.
         if crate::sexp::instance::with_current_instance(|inst| {
             (*inst).eval_state.character_print_active
-        }) == Some(true) {
+        }) == Some(true)
+        {
             if let Some(print) = stored {
                 return print;
             }

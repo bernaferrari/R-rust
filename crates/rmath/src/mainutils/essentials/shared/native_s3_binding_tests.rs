@@ -4,9 +4,7 @@ use crate::sexp::session::RSession;
 fn package_method_builtin_is_not_inherited_before_namespace_registration() {
     let session = RSession::new_without_default_packages();
     session.with_active(|| unsafe {
-        assert!(crate::library::portable_package::is_namespace_s3_method_name(
-            "predict.loess"
-        ));
+        assert!(crate::library::portable_package::is_namespace_s3_method_name("predict.loess"));
         assert!(
             super::cached_namespace_by_name("stats").is_none(),
             "the control must run before the stats namespace is loaded"

@@ -174,8 +174,14 @@ mod tests {
                 .0
                 .is_err()
         }));
-        assert!(revoked_from_method.get(), "the explicit method GC callback must revoke its original owner");
-        assert!(!weak.is_live(), "the callback must revoke the original session capability");
+        assert!(
+            revoked_from_method.get(),
+            "the explicit method GC callback must revoke its original owner"
+        );
+        assert!(
+            !weak.is_live(),
+            "the callback must revoke the original session capability"
+        );
         assert!(
             evaluation.is_err() || evaluation.is_ok_and(|was_error| was_error),
             "a revoked assignment must not publish success"
@@ -187,12 +193,21 @@ mod tests {
         let (replacement_setup, _, _) = replacement.eval_code_with_output_capture(
             "methods::setClass('NlenzReplacementBox', contains='environment'); methods::setMethod('$<-', 'NlenzReplacementBox', function(x,name,value) { gc(); methods::slot(x, '.xData')[[name]] <- 19L; x }); z <- methods::new('NlenzReplacementBox')",
         );
-        assert!(replacement_setup.is_ok(), "replacement session setup failed: {replacement_setup:?}");
-        let (replacement_result, replacement_output, _) = replacement.eval_code_with_output_capture(
-            "z$a <- 1L; get('a', methods::slot(z, '.xData'))",
+        assert!(
+            replacement_setup.is_ok(),
+            "replacement session setup failed: {replacement_setup:?}"
         );
-        assert!(replacement_result.is_ok(), "replacement session dispatch failed: {replacement_result:?}");
-        assert_eq!(replacement_result.unwrap().integer_elt(0), Some(19), "replacement method returned unexpected value: {replacement_output:?}");
+        let (replacement_result, replacement_output, _) = replacement
+            .eval_code_with_output_capture("z$a <- 1L; get('a', methods::slot(z, '.xData'))");
+        assert!(
+            replacement_result.is_ok(),
+            "replacement session dispatch failed: {replacement_result:?}"
+        );
+        assert_eq!(
+            replacement_result.unwrap().integer_elt(0),
+            Some(19),
+            "replacement method returned unexpected value: {replacement_output:?}"
+        );
     }
 
     #[test]

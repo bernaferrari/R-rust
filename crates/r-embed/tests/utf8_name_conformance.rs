@@ -46,7 +46,10 @@ fn utf8_syntactic_names_match_gnu() {
                 "{ x<-setNames(c(1L,2L),c('á','β')); identical(eval(parse(text=deparse(x))),x) }",
             ),
             ("pipe call", "identical(2 |> identity(),2)"),
-            ("pipe placeholder", "identical(2 |> list(value = _),list(value=2))"),
+            (
+                "pipe placeholder",
+                "identical(2 |> list(value = _),list(value=2))",
+            ),
         ] {
             let result = session
                 .eval(expression)

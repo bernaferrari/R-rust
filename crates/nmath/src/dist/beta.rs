@@ -1609,7 +1609,10 @@ mod boundary_convergence_tests {
             assert!((lower / expected - 1.0).abs() < 1e-12, "{shape}: {lower}");
             assert_eq!(super::qbeta_inner(-1e300, shape, shape, false, true), 1.0);
         }
-        assert_eq!(super::qbeta_inner(f64::NEG_INFINITY, 0.5, 0.5, true, true), 0.0);
+        assert_eq!(
+            super::qbeta_inner(f64::NEG_INFINITY, 0.5, 0.5, true, true),
+            0.0
+        );
         assert_eq!(super::qbeta_inner(0.0, 0.5, 0.5, true, true), 1.0);
         assert!((super::qbeta_inner(-1.0, 0.5, 0.5, true, true) - 0.298373474295751).abs() < 1e-14);
     }

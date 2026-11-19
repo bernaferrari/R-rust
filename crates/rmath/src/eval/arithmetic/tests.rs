@@ -196,11 +196,7 @@ fn test_real_modulo_na_by_zero_is_nan_but_integer_path_stays_na() {
             assert!(!crate::sexp::ffi::R_IsNA(value));
         }
 
-        let integer_result = real_binary(
-            "%%",
-            Rf_ScalarInteger(NA_INTEGER),
-            Rf_ScalarInteger(0),
-        );
+        let integer_result = real_binary("%%", Rf_ScalarInteger(NA_INTEGER), Rf_ScalarInteger(0));
         assert_eq!(TYPEOF(integer_result), SEXPTYPE::INTSXP);
         assert_eq!(*INTEGER(integer_result), NA_INTEGER);
     }

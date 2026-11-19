@@ -692,7 +692,10 @@ mod chartr_workspace_tests {
 
     #[test]
     fn chartr_uses_cached_altrep_length_without_provider_reentry() {
-        use std::{cell::{Cell, RefCell}, rc::Rc};
+        use std::{
+            cell::{Cell, RefCell},
+            rc::Rc,
+        };
 
         let facade = Rc::new(RefCell::new(Some(RSession::new_for_gc_tests())));
         let length_calls = Rc::new(Cell::new(0));
