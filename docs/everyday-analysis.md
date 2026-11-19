@@ -11,6 +11,15 @@ workflow stays in the denominator. A pass requires a measured result, and an
 unmeasured workflow earns no credit. Silent wrong results, crashes and data
 loss in supported workflows block release even when the score is high.
 
+At `a0d25066`, **13 of 20 workflows (65%)** passed on both native Rport and
+optimized Wasm. The pinned R6 2.6.1 package constructed an analysis object
+and returned the same result on GNU R, native Rport, and Wasm. The browser
+session loads explicitly supplied R sources from its private package library.
+The check also covers unavailable packages, incomplete metadata, version
+constraints, native compilation refusal, and session isolation.
+[Scorecard](ci-checkpoints/everyday-analysis-v1-a0d25066.json)
+[R6 receipt](ci-checkpoints/everyday-r6-a0d25066.json)
+
 At `56a3fe41`, **12 of 20 workflows (60%)** passed on both native Rport and
 optimized Wasm. The workspace workflow saved a fitted model and its source
 data from GNU R, native Rport and production Wasm. Fresh sessions on all three
@@ -66,3 +75,7 @@ JSON output and pass it as `--session-report` to the scorecard.
 
 Set `--workflow fresh-session-restore` to run the nine GNU, native and Wasm
 workspace combinations. Pass that JSON as a second `--session-report`.
+
+Set `--workflow pure-r-package` to install the pinned R6 source on GNU R and
+verify the same analysis through native Rport and the production Wasm package.
+Pass its JSON as a third `--session-report`.

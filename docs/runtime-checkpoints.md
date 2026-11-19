@@ -9,7 +9,7 @@ Use Beads to track failures and missing coverage.
 | Pinned GNU R conformance | Passes, failures, timeouts, unattempted cases and verdict changes on unchanged fixtures | 1,281/1,281 passed at `eddd0913`. [Receipt](ci-checkpoints/gnu-conformance-main-eddd0913.json) |
 | Unmodified GNU R drivers | Whole and curated results, with skipped and unattempted drivers counted explicitly | 22 passed, 18 failed and 30 skipped whole drivers at `1faa7f2a`. All 15 curated slices passed. [Receipt](ci-checkpoints/upstream-main-1faa7f2a.json) |
 | Safety | Public API audit, targeted strict Miri checks, and recovery under the original memory and node limits | [Public API audit and strict Miri scope](safe-api-audit.md) |
-| Production Wasm | Optimized bytes and SHA-256, public runtime contracts, and Chromium pass/fail/flaky counts under unchanged deadlines | 328 public contract executions at `56a3fe41`. Chromium passed 77/77 at `c7fa992f` on macOS arm64 and at `ad04d62f` on hosted Linux. |
+| Production Wasm | Optimized bytes and SHA-256, public runtime contracts, and Chromium pass/fail/flaky counts under unchanged deadlines | 328 public contract executions at `a0d25066`. Chromium passed 77/77 at `c7fa992f` on macOS arm64 and at `ad04d62f` on hosted Linux. |
 
 The [capability inventory](capability-evidence.md) gives the current fixture
 and disposition counts. The [GNU R API inventory](gnu-r-api-inventory.md)
@@ -53,6 +53,15 @@ user workflows have passed on native Rport and production Wasm.
   portable packages. The `anyNA()` fixtures passed under both package policies.
 
 ## Main verification
+
+- At `a0d25066`, all 328 production Wasm contract executions passed. The
+  full generated package measured 25,694,029 bytes, leaving 520,371 bytes
+  below 25 MiB. The optimized module measured 25,658,995 bytes with SHA-256
+  `6184a09e372d4f454e422be814966ec1241ebe81b80fc7db7cf81914e23ddcdc`.
+  The exact package passed the pinned R6 analysis and all nine workspace
+  interchange combinations. All 12 selected native GNU conformance cases passed.
+  [Workflow receipt](ci-checkpoints/everyday-analysis-v1-a0d25066.json)
+
 
 - All 1,264 pinned GNU R fixtures passed at `1faa7f2a` on macOS arm64.
   There were no timeouts or skips. The corpus and oracle fingerprints match
