@@ -12,7 +12,13 @@ use std::ffi::CStr;
 use std::os::raw::{c_char, c_double, c_int};
 #[cfg(test)]
 use std::ptr;
-use std::{cell::RefCell, collections::HashSet};
+use std::{cell::RefCell, hash::RandomState};
+
+use allocator_api2::vec::Vec as AllocVec;
+use hashbrown::HashSet;
+
+mod workspace;
+use workspace::TraversalAllocator;
 
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::Rf_allocVector3;
@@ -21,46 +27,6 @@ use crate::sexp::constructors::Rf_cons;
 use crate::sexp::ffi::{R_xlen_t, Rbyte, Rcomplex, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::object::{Sexp, SexpError, SexpResult};
-
-/// Metadata belongs to one copy operation. Reentrant public calls get a fresh
-/// state; recursive child copies share it without a field loan across callbacks.
-#[derive(Default)]
-struct DuplicationState {
-    active: RefCell<HashSet<crate::sexp::heap::NodeLink>>,
-}
-
-struct DuplicationFrame<'operation> {
-    state: &'operation DuplicationState,
-    key: crate::sexp::heap::NodeLink,
-}
-
-impl DuplicationState {
-    fn enter(&self, source: &Sexp<'_>) -> SexpResult<DuplicationFrame<'_>> {
-        let key = source
-            .allocation()?
-            .link()
-            .ok_or(SexpError::StaleAllocation)?;
-        let mut active = self.active.borrow_mut();
-        if active.contains(&key) {
-            return Err(SexpError::EvaluationFailed {
-                message: "cyclic object graph cannot be duplicated".into(),
-            });
-        }
-        active
-            .try_reserve(1)
-            .map_err(|_| SexpError::AllocationFailed {
-                object: "duplication traversal",
-            })?;
-        active.insert(key);
-        Ok(DuplicationFrame { state: self, key })
-    }
-}
-
-impl Drop for DuplicationFrame<'_> {
-    fn drop(&mut self) {
-        self.state.active.borrow_mut().remove(&self.key);
-    }
-}
 
 fn duplication_failure(error: SexpError) -> ! {
     crate::sexp::context::r_error(error.to_string())
@@ -431,17 +397,13 @@ unsafe fn fill_matrix_byrow_iterate<F>(
 // Core duplicate functions
 // ---------------------------------------------------------------------------
 
-/// Core recursive duplication function.
+/// Core duplication function.
 ///
 /// `deep`: if nonzero, performs deep copy; if zero, performs shallow copy
 /// (shared subtrees for pairlists/vectors, but new atomic vectors are copied).
+///
+/// Both native input and result stay owned through result admission.
 unsafe fn duplicate1(s: SEXP, deep: c_int) -> SEXP {
-    unsafe { duplicate1_in(s, deep, &DuplicationState::default()) }
-}
-
-/// Keep both native input and result physically owned through flag copying and
-/// result admission. The traversal guard ends on every error and Rust unwind.
-unsafe fn duplicate1_in(s: SEXP, deep: c_int, state: &DuplicationState) -> SEXP {
     if s.is_null() {
         return s;
     }
@@ -469,7 +431,7 @@ unsafe fn duplicate1_in(s: SEXP, deep: c_int, state: &DuplicationState) -> SEXP 
         .expect("managed duplication owner");
     let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         crate::sexp::owner::with_runtime(original, |access| {
-            duplicate_iterative(source.clone(), deep, state, access)
+            duplicate_iterative(source.clone(), deep, access)
         })
         .unwrap_or_else(|error| duplication_failure(error))
         .unwrap_or_else(|error| duplication_failure(error))
@@ -550,9 +512,23 @@ fn prepare_value_attempt<'source>(
     let node = source.allocation()?;
     let heap = node.heap_identity();
     let mut header = heap.node_snapshot(node).ok_or(SexpError::StaleAllocation)?;
-    let mut attributes = snapshot_attributes(source, access)?;
     let mut flags = flags;
     let kind = flags.type_of();
+    let mut attributes = match snapshot_attributes(source, access) {
+        Err(SexpError::AllocationFailed {
+            object: "pairlist snapshot workspace",
+        }) if allow_gc_retry => {
+            // The attribute ticket can hit the limit before the vector
+            // snapshot does. Refresh the source after collection either way.
+            access.with_native(|owner| owner.full_gc().map(|_| ()))?;
+            let refreshed = heap.node_snapshot(node).ok_or(SexpError::StaleAllocation)?;
+            if refreshed.sxpinfo.type_of() != kind {
+                return Err(SexpError::StaleAllocation);
+            }
+            return prepare_value_attempt(source, refreshed.sxpinfo, access, false);
+        }
+        outcome => outcome?,
+    };
     let (mut length, mut truelength) = match header.data {
         crate::sexp::ffi::NodeBody::Vector(vector) => (
             usize::try_from(vector.length)
@@ -1249,11 +1225,11 @@ fn apply_pairlist_flags(copy: &Sexp<'_>, flags: crate::sexp::ffi::SxpInfo) -> Se
 }
 
 /// A suspended copy retains its actual selected values, unfinished output,
-/// original path guard and provider guard. Moving a frame never moves a heap
+/// checked path identity and provider guard. Moving a frame never moves a heap
 /// node, and popping it releases only that occurrence's active-path identity.
-struct OwnedCopyFrame<'operation, 'source> {
+struct OwnedCopyFrame<'source> {
     _source: Sexp<'source>,
-    _path: DuplicationFrame<'operation>,
+    key: crate::sexp::heap::NodeLink,
     _provider: Option<crate::sexp::altrep::OperationGuard>,
     body: CopyContinuation<'source>,
 }
@@ -1325,12 +1301,11 @@ impl<'source> CopyRequest<'source> {
     }
 }
 
-// Frames move directly into the fallibly reserved continuation vector. Boxing
-// this transient variant would add an infallible allocation for every node.
-#[allow(clippy::large_enum_variant)]
-enum PreparedCopy<'operation, 'source> {
-    Ready(Sexp<'source>),
-    Frame(OwnedCopyFrame<'operation, 'source>),
+// Both containers are private to this copy. A reentrant copy gets its own
+// traversal and is still charged to its original owner's ledger.
+struct CopyTraversal<'workspace, 'source> {
+    frames: AllocVec<OwnedCopyFrame<'source>, TraversalAllocator<'workspace>>,
+    active: HashSet<crate::sexp::heap::NodeLink, RandomState, TraversalAllocator<'workspace>>,
 }
 
 enum CopyStep<'source> {
@@ -1354,16 +1329,31 @@ fn identity_kind(kind: SEXPTYPE) -> bool {
     )
 }
 
-fn prepare_copy<'operation, 'source>(
-    request: CopyRequest<'source>,
-    state: &'operation DuplicationState,
+fn retry_traversal_admission<T>(
     access: &crate::sexp::owner::RuntimeAccess,
-) -> SexpResult<PreparedCopy<'operation, 'source>> {
+    mut reserve: impl FnMut() -> SexpResult<T>,
+) -> SexpResult<T> {
+    match reserve() {
+        Err(SexpError::AllocationFailed { .. }) => {
+            // The allocator itself never enters the interpreter. All source
+            // and continuation roots remain owned across this bounded retry.
+            access.with_native(|owner| owner.full_gc().map(|_| ()))?;
+            reserve()
+        }
+        outcome => outcome,
+    }
+}
+
+fn start_copy<'source>(
+    request: CopyRequest<'source>,
+    traversal: &mut CopyTraversal<'_, 'source>,
+    access: &crate::sexp::owner::RuntimeAccess,
+) -> SexpResult<Option<Sexp<'source>>> {
     access.require_active()?;
     let source = request.source;
     let kind = source.typeof_();
     if request.cells.is_none() && identity_kind(kind) {
-        return Ok(PreparedCopy::Ready(source));
+        return Ok(Some(source));
     }
     if let Some(singleton) = crate::sexp::globals::immutable_singleton_lease(source.as_raw()) {
         let copy = if kind == SEXPTYPE::LGLSXP {
@@ -1371,10 +1361,33 @@ fn prepare_copy<'operation, 'source>(
         } else {
             source
         };
-        return Ok(PreparedCopy::Ready(copy));
+        return Ok(Some(copy));
     }
-    let path = state.enter(&source)?;
     let node = source.allocation()?;
+    let key = node.link().ok_or(SexpError::StaleAllocation)?;
+    if traversal.active.contains(&key) {
+        return Err(SexpError::EvaluationFailed {
+            message: "cyclic object graph cannot be duplicated".into(),
+        });
+    }
+    // Reserve both containers before copy preparation can allocate R objects
+    // or call a provider. Only requests that suspend need storage.
+    retry_traversal_admission(access, || {
+        traversal
+            .frames
+            .try_reserve(1)
+            .map_err(|_| SexpError::AllocationFailed {
+                object: "duplication continuations",
+            })?;
+        traversal
+            .active
+            .try_reserve(1)
+            .map_err(|_| SexpError::AllocationFailed {
+                object: "duplication active path",
+            })?;
+        Ok(())
+    })?;
+    traversal.active.insert(key);
     let flags = match &request.cells {
         Some(cells) => {
             cells
@@ -1428,12 +1441,13 @@ fn prepare_copy<'operation, 'source>(
             });
         }
     };
-    Ok(PreparedCopy::Frame(OwnedCopyFrame {
+    traversal.frames.push(OwnedCopyFrame {
         _source: source,
-        _path: path,
+        key,
         _provider: provider,
         body,
-    }))
+    });
+    Ok(None)
 }
 
 fn publish_attributes(
@@ -1580,31 +1594,35 @@ impl<'source> ClosureContinuation<'source> {
     }
 }
 
-fn duplicate_iterative<'operation, 'source>(
+fn duplicate_iterative<'source>(
     source: Sexp<'source>,
     deep: c_int,
-    state: &'operation DuplicationState,
     access: &crate::sexp::owner::RuntimeAccess,
 ) -> SexpResult<Sexp<'source>> {
-    let mut frames: Vec<OwnedCopyFrame<'operation, 'source>> = Vec::new();
+    access.require_active()?;
+    if identity_kind(source.typeof_()) {
+        return Ok(source);
+    }
+    let workspace = RefCell::new(retry_traversal_admission(access, || {
+        access
+            .with_arena(|arena| arena.reserve_workspace(0))?
+            .ok_or(SexpError::AllocationFailed {
+                object: "duplication traversal workspace",
+            })
+    })?);
+    let allocator = TraversalAllocator(&workspace);
+    let mut traversal = CopyTraversal {
+        frames: AllocVec::new_in(allocator),
+        active: HashSet::with_hasher_in(RandomState::new(), allocator),
+    };
     let mut next = Some(CopyRequest::value(source));
     let mut result = None;
     loop {
         access.require_active()?;
         if let Some(request) = next.take() {
-            // Reserve before preparing a child: no allocation/provider runs
-            // unless its owning continuation can be retained fallibly.
-            frames
-                .try_reserve(1)
-                .map_err(|_| SexpError::AllocationFailed {
-                    object: "duplication continuations",
-                })?;
-            match prepare_copy(request, state, access)? {
-                PreparedCopy::Ready(value) => result = Some(value),
-                PreparedCopy::Frame(frame) => frames.push(frame),
-            }
+            result = start_copy(request, &mut traversal, access)?;
         }
-        let Some(frame) = frames.last_mut() else {
+        let Some(frame) = traversal.frames.last_mut() else {
             return result.ok_or(SexpError::MissingData {
                 sexptype: SEXPTYPE::NILSXP,
             });
@@ -1617,7 +1635,8 @@ fn duplicate_iterative<'operation, 'source>(
         match step {
             CopyStep::Child(request) => next = Some(request),
             CopyStep::Done(value) => {
-                frames.pop();
+                traversal.active.remove(&frame.key);
+                traversal.frames.pop();
                 result = Some(value);
             }
         }

@@ -2,7 +2,10 @@
 
 use super::*;
 use crate::sexp::{object::SexpMut, session::RSession};
-use std::{cell::Cell, rc::Rc};
+use std::{
+    cell::{Cell, RefCell},
+    rc::Rc,
+};
 
 const MIXED_DEPTH: usize = 32_768;
 const WORKER_ENV: &str = "RPORT_OWNED_DUPLICATION_DEPTH_WORKER";
@@ -161,14 +164,12 @@ fn owning_depth_repeated_paths_copy_independently_and_cycles_release_frames() {
     mutation.try_set_vector_elt(0, branch.clone()).unwrap();
     mutation.try_set_vector_elt(1, branch).unwrap();
     drop(mutation);
-    let state = DuplicationState::default();
     let owner = source.runtime_owner.as_ref().unwrap();
     let copy = crate::sexp::owner::with_runtime(owner, |access| {
-        duplicate_iterative(source.clone(), 1, &state, access)
+        duplicate_iterative(source.clone(), 1, access)
     })
     .unwrap()
     .unwrap();
-    assert!(state.active.borrow().is_empty());
     let mut first = copy.try_vector_elt(0).unwrap();
     let mut second = copy.try_vector_elt(1).unwrap();
     for _ in 0..12 {
@@ -201,13 +202,12 @@ fn owning_depth_repeated_paths_copy_independently_and_cycles_release_frames() {
         .unwrap();
     let protections = crate::sexp::protect::R_ProtectCount();
     let error = crate::sexp::owner::with_runtime(owner, |access| {
-        duplicate_iterative(cycle.clone(), 1, &state, access)
+        duplicate_iterative(cycle.clone(), 1, access)
     })
     .unwrap()
     .expect_err("mixed deep cycle must be a finite typed error");
     assert!(matches!(error, SexpError::EvaluationFailed { ref message }
         if message == "cyclic object graph cannot be duplicated"));
-    assert!(state.active.borrow().is_empty());
     assert_eq!(crate::sexp::protect::R_ProtectCount(), protections);
     let shallow = factory
         .wrap(unsafe { shallow_duplicate(cycle.as_raw()) })
@@ -217,12 +217,11 @@ fn owning_depth_repeated_paths_copy_independently_and_cycles_release_frames() {
         cycle.try_vector_elt(0).unwrap()
     );
     let recovery = crate::sexp::owner::with_runtime(owner, |access| {
-        duplicate_iterative(source.clone(), 1, &state, access)
+        duplicate_iterative(source.clone(), 1, access)
     })
     .unwrap()
     .unwrap();
     assert_eq!(recovery.len(), 2);
-    assert!(state.active.borrow().is_empty());
 }
 
 struct CollectAtLeaf {
@@ -330,6 +329,7 @@ fn owning_depth_provider_revocation_cleans_all_suspended_paths() {
         .build()
         .unwrap();
     let source = nested_vectors(&session, leaf, 12).into_owned().unwrap();
+    let original_ledger = source.allocation().unwrap().heap_identity().byte_ledger();
     let original = source.runtime_owner.as_ref().unwrap().clone();
     let holder = Rc::new(RefCell::new(Some(session)));
     let callback_holder = holder.clone();
@@ -343,14 +343,13 @@ fn owning_depth_provider_revocation_cleans_all_suspended_paths() {
         drop(callback_holder.borrow_mut().take());
         *installed.borrow_mut() = Some(RSession::new_for_gc_tests());
     }));
-    let state = DuplicationState::default();
     let outcome = crate::sexp::owner::with_runtime(&original, |access| {
-        duplicate_iterative(source.clone(), 1, &state, access)
+        duplicate_iterative(source.clone(), 1, access)
     });
     assert!(matches!(outcome, Err(SexpError::RootUnavailable)));
     assert!(reached.get());
     assert!(holder.borrow().is_none());
-    assert!(state.active.borrow().is_empty());
+    assert_eq!(original_ledger.workspace_bytes_for_test(), 0);
     assert!(original.pin().is_err());
     let replacement = replacement.borrow();
     let replacement = replacement.as_ref().unwrap();
@@ -369,4 +368,51 @@ fn owning_depth_provider_revocation_cleans_all_suspended_paths() {
             131
         );
     });
+}
+
+#[test]
+fn owning_depth_budget_denial_releases_workspace_and_allows_retry() {
+    use crate::sexp::memory::ArenaBudget;
+
+    let session = RSession::new_for_gc_tests();
+    let factory = session.owner_token().unwrap().node_factory();
+    let leaf = factory
+        .wrap(unsafe { crate::sexp::constructors::Rf_ScalarInteger(137) })
+        .unwrap();
+    let source = nested_vectors(&session, leaf, 12);
+    let environment = factory
+        .wrap(unsafe { crate::sexp::globals::R_GlobalEnv() })
+        .unwrap();
+    let owner = source.runtime_owner.as_ref().unwrap();
+    crate::sexp::owner::with_runtime(owner, |access| {
+        access.with_native(|owner| owner.full_gc().map(|_| ()))?;
+        access.with_arena(|arena| {
+            arena.set_budget(ArenaBudget::new(arena.total_bytes_allocated() - 1, 0));
+        })?;
+        assert_eq!(
+            duplicate_iterative(environment.clone(), 1, access)?,
+            environment,
+        );
+        access.with_arena(|arena| {
+            arena.set_budget(ArenaBudget::new(arena.total_bytes_allocated(), 0));
+        })?;
+        assert!(matches!(
+            duplicate_iterative(source.clone(), 1, access),
+            Err(SexpError::AllocationFailed {
+                object: "duplication continuations"
+            })
+        ));
+        access.with_arena(|arena| {
+            assert_eq!(arena.workspace_bytes(), 0);
+            arena.set_budget(ArenaBudget::unlimited());
+        })?;
+        let mut copy = duplicate_iterative(source.clone(), 1, access)?;
+        for _ in 0..12 {
+            copy = copy.try_vector_elt(0)?;
+        }
+        assert_eq!(copy.try_integer_elt(0)?, 137);
+        access.with_arena(|arena| assert_eq!(arena.workspace_bytes(), 0))
+    })
+    .unwrap()
+    .unwrap();
 }
