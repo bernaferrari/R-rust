@@ -14,6 +14,7 @@ import tempfile
 import tomllib
 
 from conformance_shards import file_digest, source_identity
+from everyday_pdf import EXPECTED_SCATTERPLOT, inspect_scatterplot
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = ROOT / 'tests/everyday-analysis/sessions'
@@ -29,20 +30,24 @@ def configure_environment():
     return env
 
 
-def build_native_runner(directory, env):
+def build_native_runner(directory, env, renderplot=False):
     # Use the same exact Cargo artifact receipt and snapshot as the parity gate.
     script = r'''
 set -euo pipefail
 ROOT_DIR="$1"
 source "$ROOT_DIR/scripts/conformance_artifacts.sh"
-rlib="$(conformance_build_rmath --locked)"
+graphics=()
+if [[ "$3" == renderplot ]]; then
+    graphics=(--features renderplot-device)
+fi
+rlib="$(conformance_build_rmath --locked "${graphics[@]}")"
 cp -f "$rlib" "$2/librmath.rlib"
 rustc --edition=2024 "$ROOT_DIR/tests/conformance/src/main.rs" \
     -L dependency="$(conformance_dependency_dir)" \
     --extern rmath="$2/librmath.rlib" -o "$2/native-r"
 '''
-    subprocess.run(['bash', '-c', script, 'build-native-runner', ROOT, directory],
-                   cwd=ROOT, env=env, check=True)
+    subprocess.run(['bash', '-c', script, 'build-native-runner', ROOT, directory,
+                    'renderplot' if renderplot else 'base'], cwd=ROOT, env=env, check=True)
     return [str(directory / 'native-r')]
 
 
@@ -131,10 +136,48 @@ def run_pure_r_package(gnu, native, directory, env, fixture, wasm_module):
     return wasm_sha256, run(gnu, gnu_library), dict(native=run(native, native_library), wasm=wasm), digest
 
 
+def run_plot_export(gnu, native, directory, env, fixture, wasm_module):
+    outputs = {}
+    evidence = {}
+    wasm_dir = directory / 'wasm'
+    wasm_dir.mkdir()
+    wasm = json.loads(subprocess.check_output(
+        ['node', ROOT / 'tests/browser/everyday-pdf.mjs', wasm_module, fixture, wasm_dir],
+        cwd=ROOT, env=env, timeout=300, text=True))
+    for side, command in {'gnu': gnu, 'native': native, 'wasm': None}.items():
+        work = directory / side
+        if command is not None:
+            work.mkdir()
+        pdf = work / 'weekly-observations.pdf'
+        output = wasm['output'] if command is None else subprocess.check_output(
+            [*command, fixture / 'plot.R'], cwd=work, env=env, timeout=300, text=True)
+        manifest, counts = inspect_scatterplot(pdf)
+        outputs[side] = dict(output=output, **manifest)
+        evidence[side] = dict(pdf_sha256=file_digest(pdf), pdf_bytes=pdf.stat().st_size,
+                              pixel_counts=counts)
+    if any(outputs['gnu'][key] != value for key, value in EXPECTED_SCATTERPLOT.items()):
+        raise ValueError('the pinned GNU plot does not satisfy the independent artifact checks')
+    native_dir = directory / 'native'
+    target = native_dir / 'protected.pdf'
+    shutil.copyfile(native_dir / 'weekly-observations.pdf', target)
+    before = file_digest(target)
+    safety = subprocess.check_output([*native, fixture / 'safety.R'], cwd=native_dir,
+                                     env=env, timeout=300, text=True)
+    evidence['native']['preserved_sha256'] = file_digest(target)
+    evidence['wasm']['preserved_sha256'] = wasm['preserved_sha256']
+    if (evidence['native']['preserved_sha256'] != before
+            or evidence['wasm']['preserved_sha256'] != evidence['wasm']['pdf_sha256']
+            or safety != wasm['safety']):
+        raise ValueError('a failed PDF export did not preserve the existing file')
+    if safety != 'Retained the previous file after refusing unsupported PDF content\n':
+        raise ValueError('missing PDF failure and recovery evidence')
+    return wasm['wasm_sha256'], outputs.pop('gnu'), outputs, evidence
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('wasm_package', type=Path)
-    parser.add_argument('--workflow', choices=('file-round-trip', 'fresh-session-restore', 'pure-r-package'),
+    parser.add_argument('--workflow', choices=('file-round-trip', 'fresh-session-restore', 'pure-r-package', 'base-plot-export'),
                         default='file-round-trip')
     args = parser.parse_args()
     rscript = shutil.which('Rscript')
@@ -150,11 +193,15 @@ def main():
     wasm_module = args.wasm_package.resolve()
     with tempfile.TemporaryDirectory(prefix='rport-analysis-sessions.') as scratch:
         directory = Path(scratch)
-        native_runner = build_native_runner(directory, env)
+        native_runner = build_native_runner(directory, env, renderplot=args.workflow == 'base-plot-export')
         gnu = [rscript, '--vanilla']
         artifacts = {}
         archive_digest = None
-        if args.workflow == 'pure-r-package':
+        pdf_evidence = None
+        if args.workflow == 'base-plot-export':
+            wasm_sha256, expected, outcomes, pdf_evidence = run_plot_export(
+                gnu, native_runner, directory, env, fixture, wasm_module)
+        elif args.workflow == 'pure-r-package':
             wasm_sha256, expected, outcomes, archive_digest = run_pure_r_package(
                 gnu, native_runner, directory, env, fixture, wasm_module)
         elif args.workflow == 'fresh-session-restore':
@@ -179,6 +226,8 @@ def main():
             report['workspace_sha256'] = artifacts
         if archive_digest:
             report['archive_sha256'] = archive_digest
+        if pdf_evidence:
+            report['pdf_evidence'] = pdf_evidence
         print(json.dumps(report, indent=2))
         return int(any(outcome != expected for outcome in outcomes.values()))
 

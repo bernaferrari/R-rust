@@ -9,8 +9,10 @@ from pathlib import Path
 
 if __package__:
     from .conformance_shards import file_digest, rows_from_report
+    from .everyday_pdf import EXPECTED_SCATTERPLOT
 else:
     from conformance_shards import file_digest, rows_from_report
+    from everyday_pdf import EXPECTED_SCATTERPLOT
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -71,7 +73,7 @@ def session_workflow_results(path, native_policy, wasm_digest):
     workflow = report['workflow']
     provenance = ('source_commit', 'source_sha256', 'oracle_manifest_sha256')
     if (report['schema_version'] != 1
-            or workflow not in ('file-round-trip', 'fresh-session-restore', 'pure-r-package')
+            or workflow not in ('file-round-trip', 'fresh-session-restore', 'pure-r-package', 'base-plot-export')
             or any(report[name] != native_policy[name] for name in provenance)
             or report['wasm_sha256'] != wasm_digest):
         raise ValueError('session report differs in workflow, source, oracle or Wasm artifact')
@@ -88,6 +90,16 @@ def session_workflow_results(path, native_policy, wasm_digest):
         if (report['archive_sha256'] != file_digest(archive)
                 or not isinstance(expected['output'], str) or not expected['output'].strip()):
             raise ValueError('package report must contain the pinned archive digest and GNU output')
+    elif workflow == 'base-plot-export':
+        evidence = report['pdf_evidence']
+        if (set(evidence) != {'gnu', 'native', 'wasm'}
+                or any(not is_sha256(row['pdf_sha256']) or row['pdf_bytes'] <= 1000
+                       for row in evidence.values())
+                or any(evidence[side]['preserved_sha256'] != evidence[side]['pdf_sha256']
+                       for side in ('native', 'wasm'))
+                or any(expected.get(key) != value for key, value in EXPECTED_SCATTERPLOT.items())
+                or not expected.get('output')):
+            raise ValueError('PDF report requires valid artifacts and the verified GNU plot')
     else:
         engines = {'gnu', 'native', 'wasm'}
         artifacts = report['workspace_sha256']

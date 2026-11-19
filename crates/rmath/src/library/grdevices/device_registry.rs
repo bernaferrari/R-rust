@@ -1417,12 +1417,17 @@ pub unsafe extern "C" fn killDevice(dev: c_int) {
 /// Explicit R closure publishes a complete device file. Forced destruction
 /// drops pending output, so an aborted evaluation cannot replace a prior file.
 pub(super) fn close_device(label: c_int) -> Result<(), String> {
+    #[cfg(feature = "renderplot-device")]
+    let owner =
+        unsafe { crate::sexp::owner::OwnerToken::current() }.map_err(|error| error.to_string())?;
     let Some(_removed) = remove_device(label) else {
         return Ok(());
     };
     #[cfg(feature = "renderplot-device")]
     if let Some(pdf) = _removed.pdf {
+        let _pin = owner.pin().map_err(|error| error.to_string())?;
         update_device_names(c"", label, current_device_label());
+        owner.require_active().map_err(|error| error.to_string())?;
         let capture = pdf
             .capture
             .borrow_mut()
