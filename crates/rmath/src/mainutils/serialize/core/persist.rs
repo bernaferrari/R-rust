@@ -204,17 +204,15 @@ pub(crate) unsafe fn write_gnu_bc_payload(
         {
             error("invalid GNU constant bytecode payload");
         }
-        let code_len = XLENGTH(code) as usize;
         let code_ptr = INTEGER(code);
         if code_ptr.is_null() {
             error("GNU bytecode instruction stream has a null data pointer");
         }
-        let words = std::slice::from_raw_parts(code_ptr, code_len);
         let constant_count = XLENGTH(constants) as usize;
         if constant_count > i32::MAX as usize {
             error("GNU bytecode constant pool is too large to serialize");
         }
-        match crate::eval::bytecode::validate_gnu_adapter_with_constants(words, constants) {
+        match crate::eval::bytecode::validate_gnu_adapter_with_constants(code, constants) {
             Ok(true) => {}
             Ok(false) => error("unsupported GNU bytecode stream cannot be serialized"),
             Err(message) => error(&message),

@@ -2,6 +2,9 @@
 
 use super::*;
 
+const MAX_PROOF_STATES: usize = 65_536;
+const MAX_STATES_PER_PC: usize = 8;
+
 /// Validate the integer instruction vector stored by GNU R's BCODESXP
 /// serializer.  The first integer is the bytecode ABI version; each
 /// subsequent opcode consumes the exact operand count from GNU R's table.
@@ -271,9 +274,12 @@ pub fn validate_gnu_return_stream(
 /// `Ok(false)` means the stream is well-framed but uses an opcode outside the
 /// adapter, so deserialization may retain the source expression. `Err` means
 /// an operand in an otherwise supported stream is malformed and must not be
-/// hidden by source fallback.
+/// hidden by source fallback. Proof is bounded to 65,536 words/proof steps and
+/// eight distinct states per instruction. Detached callers have no runtime
+/// ledger and use a standalone proof workspace capped at 16 MiB. Exhaustion
+/// conservatively retains source.
 pub fn validate_gnu_adapter_stream(code: &[c_int], constant_count: usize) -> Result<bool, String> {
-    validate_gnu_adapter_impl(code, constant_count, None)
+    validate_gnu_adapter_impl(code, constant_count, None, None, None)
 }
 
 /// Native deserialization boundary. Snapshot instructions and acquire the
@@ -281,17 +287,31 @@ pub fn validate_gnu_adapter_stream(code: &[c_int], constant_count: usize) -> Res
 /// # Safety
 /// The inputs are live projections of the active interpreter on entry.
 pub unsafe fn validate_gnu_adapter_with_constants(
-    code: &[c_int],
+    code: SEXP,
     constants: SEXP,
 ) -> Result<bool, String> {
-    let mut instructions = Vec::new();
-    instructions
-        .try_reserve_exact(code.len())
-        .map_err(|_| "cannot reserve bytecode validation instructions")?;
-    instructions.extend_from_slice(code);
     let owner =
         unsafe { crate::sexp::owner::OwnerToken::current() }.map_err(|error| error.to_string())?;
     let pin = owner.pin().map_err(|error| error.to_string())?;
+    let code = owner
+        .sexp(code)
+        .and_then(Sexp::into_owned)
+        .map_err(|error| error.to_string())?;
+    if code.typeof_() != SEXPTYPE::INTSXP {
+        return Err("GNU bytecode instructions must be integers".into());
+    }
+    let code_len =
+        usize::try_from(code.len()).map_err(|_| "invalid bytecode instruction length")?;
+    let mut instructions = Vec::new();
+    instructions
+        .try_reserve_exact(code_len)
+        .map_err(|_| "cannot reserve bytecode validation instructions")?;
+    for index in 0..code_len {
+        instructions.push(
+            code.try_integer_elt(index as i64)
+                .map_err(|error| error.to_string())?,
+        );
+    }
     let pool = owner
         .sexp(constants)
         .and_then(Sexp::into_owned)
@@ -310,7 +330,8 @@ pub unsafe fn validate_gnu_adapter_with_constants(
                 .map_err(|error| error.to_string())?,
         );
     }
-    let (supported, _tables) = validate_gnu_adapter_with_owned_constants(&instructions, &entries)?;
+    let (supported, _tables) =
+        validate_gnu_adapter_with_owned_constants(&instructions, &entries, &pool, &code)?;
     if let Some(pin) = &pin {
         pin.require_live().map_err(|error| error.to_string())?;
     }
@@ -412,9 +433,25 @@ pub(crate) fn validate_gnu_adapter_impl(
     code: &[c_int],
     constant_count: usize,
     switches: Option<&std::collections::BTreeMap<usize, Vec<usize>>>,
+    ledger: Option<&crate::sexp::memory::MemoryLedger>,
+    admission_denied: Option<&std::cell::Cell<bool>>,
 ) -> Result<bool, String> {
     validate_gnu_bytecode_stream(code)?;
 
+    // Detached callers have no owning runtime to charge. Both entry paths
+    // still bound proof work and native storage, and exhaustion retains source.
+    if code.len() > MAX_PROOF_STATES {
+        return Ok(false);
+    }
+    let detached = ledger.is_none();
+    let detached_ledger;
+    let ledger = match ledger {
+        Some(ledger) => ledger,
+        None => {
+            detached_ledger = crate::sexp::memory::MemoryLedger::new();
+            &detached_ledger
+        }
+    };
     let mut pc = 1usize;
     let mut boundaries = vec![false; code.len()];
     let mut branches = Vec::new();
@@ -938,49 +975,147 @@ pub(crate) fn validate_gnu_adapter_impl(
         return Ok(false);
     }
 
-    let mut depths = vec![None; code.len()];
-    let mut loop_stacks: Vec<Option<Vec<usize>>> = vec![None; code.len()];
-    let mut pending = vec![(1usize, 0usize, Vec::new(), Vec::new())];
-    let mut call_stacks: Vec<Option<Vec<usize>>> = vec![None; code.len()];
+    use super::validation_workspace::ProofWorkspace;
+    let workspace = match if detached {
+        ProofWorkspace::bounded(ledger, 16 * 1024 * 1024, MAX_PROOF_STATES)
+    } else {
+        ProofWorkspace::new(ledger, MAX_PROOF_STATES)
+    } {
+        Ok(workspace) => workspace,
+        Err(error) => {
+            if let Some(denied) = admission_denied {
+                denied.set(true);
+            }
+            return Err(error);
+        }
+    };
+    let result = prove_gnu_adapter_cfg(code, &boundaries, switches, &workspace);
+    if let Some(denied) = admission_denied {
+        denied.set(workspace.admission_denied());
+    }
+    if workspace.exhausted() {
+        // Deterministic proof-work exhaustion and the detached byte ceiling
+        // retain source. Native owner-ledger denial remains an error.
+        Ok(false)
+    } else {
+        result
+    }
+}
+
+/// Each distinct incoming operand/frame state is proved independently. A
+/// join may retain discarded operands (notably GNU's shadowable SWITCH stop
+/// handler); merging such states by depth would either lose safety or reject
+/// valid bytecode. The first state stays on the ordinary indexed fast path.
+fn prove_gnu_adapter_cfg(
+    code: &[c_int],
+    boundaries: &[bool],
+    switches: Option<&std::collections::BTreeMap<usize, Vec<usize>>>,
+    workspace: &super::validation_workspace::ProofWorkspace,
+) -> Result<bool, String> {
+    use super::validation_workspace::{MarkerArena, MarkerStack, ProofBuffer};
+    use std::num::NonZeroUsize;
+    type State = (usize, usize, MarkerStack, MarkerStack);
+    struct Alternative {
+        next: Option<NonZeroUsize>,
+        depth: usize,
+        loops: MarkerStack,
+        calls: MarkerStack,
+    }
+    // Operand depth grows by at most three per processed instruction. The
+    // bounded work budget keeps usize::MAX distinct from every valid depth.
+    let mut depths = ProofBuffer::filled(workspace, code.len(), || usize::MAX)?;
+    let mut loop_stacks = ProofBuffer::filled(workspace, code.len(), MarkerStack::default)?;
+    let mut call_stacks = ProofBuffer::filled(workspace, code.len(), MarkerStack::default)?;
+    let mut alternative_heads: ProofBuffer<Option<NonZeroUsize>> =
+        ProofBuffer::filled(workspace, code.len(), || None)?;
+    let mut alternatives: ProofBuffer<Alternative> = ProofBuffer::new(workspace)?;
+    let mut markers = MarkerArena::new(workspace)?;
+    let mut pending: ProofBuffer<State> = ProofBuffer::new(workspace)?;
+    pending.try_push((1, 0, MarkerStack::default(), MarkerStack::default()))?;
+    let mut processed = 0usize;
     let mut saw_return = false;
     while let Some((instruction_pc, depth, loop_stack, mut call_stack)) = pending.pop() {
+        // Bound duplicate edges as well as distinct states: a dense SWITCH
+        // table must not turn a finite state budget into quadratic work.
+        workspace.spend_work()?;
         if instruction_pc >= code.len() || !boundaries[instruction_pc] {
             return Err(format!(
                 "GNU bytecode control flow reaches invalid instruction {instruction_pc}"
             ));
         }
-        if let Some(previous) = depths[instruction_pc] {
-            if previous != depth
-                || loop_stacks[instruction_pc].as_ref() != Some(&loop_stack)
-                || call_stacks[instruction_pc].as_ref() != Some(&call_stack)
+        let previous = depths[instruction_pc];
+        if previous != usize::MAX {
+            if previous == depth
+                && loop_stacks[instruction_pc] == loop_stack
+                && call_stacks[instruction_pc] == call_stack
             {
-                // Merge disagreement: GNU compiler can produce CFGs our
-                // stack-effect model does not yet prove. Not malformed —
-                // fall back to the retained source expression.
+                continue;
+            }
+            let mut cursor = alternative_heads[instruction_pc];
+            let mut states = 1usize;
+            let mut seen = false;
+            while let Some(index) = cursor {
+                let alternative = &alternatives[index.get() - 1];
+                if alternative.depth == depth
+                    && alternative.loops == loop_stack
+                    && alternative.calls == call_stack
+                {
+                    seen = true;
+                    break;
+                }
+                states += 1;
+                cursor = alternative.next;
+            }
+            if seen {
+                continue;
+            }
+            if states >= MAX_STATES_PER_PC || processed >= MAX_PROOF_STATES {
                 return Ok(false);
             }
-            continue;
+            let index = alternatives.len();
+            alternatives.try_push(Alternative {
+                next: alternative_heads[instruction_pc],
+                depth,
+                loops: loop_stack,
+                calls: call_stack,
+            })?;
+            alternative_heads[instruction_pc] = NonZeroUsize::new(index + 1);
+        } else {
+            if processed >= MAX_PROOF_STATES {
+                return Ok(false);
+            }
+            depths[instruction_pc] = depth;
+            loop_stacks[instruction_pc] = loop_stack;
+            call_stacks[instruction_pc] = call_stack;
         }
-
-        if call_stack.last().is_some_and(|marker| *marker >= depth) {
+        processed += 1;
+        if markers
+            .last(call_stack)
+            .is_some_and(|marker| marker >= depth)
+        {
             return Err("GNU bytecode consumed an active call frame".into());
         }
-        call_stacks[instruction_pc] = Some(call_stack.clone());
-        depths[instruction_pc] = Some(depth);
-        loop_stacks[instruction_pc] = Some(loop_stack.clone());
+        // Every opcode queues at most two edges except SWITCH, whose table
+        // is checked separately below before any edge clones are allocated.
+        if pending.len() > MAX_PROOF_STATES - 2 {
+            return Ok(false);
+        }
         let opcode = code[instruction_pc];
         let Ok(next) = gnu_next_pc(instruction_pc, opcode, code.len()) else {
             return Ok(false);
         };
         match opcode {
             GNU_OP_RETURN | GNU_OP_RETURNJMP => {
-                if !call_stack.is_empty() {
+                if markers.len(call_stack) != 0 {
                     return Err("GNU RETURN exits an unfinished call".into());
                 }
-                let required_depth = loop_stack.len() + 1;
-                if depth != required_depth {
+                // GNU and our executor return the top operand; discarded
+                // values below it are valid, including after a returning
+                // shadowed stop in a generated SWITCH error alternative.
+                let required_depth = markers.len(loop_stack) + 1;
+                if depth < required_depth {
                     return Err(format!(
-                        "GNU RETURN at instruction {instruction_pc} requires stack depth {required_depth}, found {depth}"
+                        "GNU RETURN at instruction {instruction_pc} requires at least stack depth {required_depth}, found {depth}"
                     ));
                 }
                 saw_return = true;
@@ -992,8 +1127,11 @@ pub(crate) fn validate_gnu_adapter_impl(
                 let targets = switches
                     .and_then(|all| all.get(&instruction_pc))
                     .ok_or("GNU SWITCH has no validated targets")?;
+                if targets.len() > MAX_PROOF_STATES - pending.len() {
+                    return Ok(false);
+                }
                 for target in targets {
-                    pending.push((*target, depth - 1, loop_stack.clone(), call_stack.clone()));
+                    pending.try_push((*target, depth - 1, loop_stack, call_stack))?;
                 }
             }
             GNU_OP_BRIFNOT => {
@@ -1002,13 +1140,13 @@ pub(crate) fn validate_gnu_adapter_impl(
                         "GNU BRIFNOT at instruction {instruction_pc} has an empty stack"
                     ));
                 }
-                pending.push((next, depth - 1, loop_stack.clone(), call_stack.clone()));
-                pending.push((
+                pending.try_push((next, depth - 1, loop_stack, call_stack))?;
+                pending.try_push((
                     code[instruction_pc + 2] as usize,
                     depth - 1,
                     loop_stack,
-                    call_stack.clone(),
-                ));
+                    call_stack,
+                ))?;
             }
             GNU_OP_AND1ST | GNU_OP_OR1ST => {
                 if depth == 0 {
@@ -1016,13 +1154,13 @@ pub(crate) fn validate_gnu_adapter_impl(
                         "GNU short-circuit opcode {opcode} at instruction {instruction_pc} has an empty stack"
                     ));
                 }
-                pending.push((next, depth, loop_stack.clone(), call_stack.clone()));
-                pending.push((
+                pending.try_push((next, depth, loop_stack, call_stack))?;
+                pending.try_push((
                     code[instruction_pc + 2] as usize,
                     depth,
                     loop_stack,
-                    call_stack.clone(),
-                ));
+                    call_stack,
+                ))?;
             }
             GNU_OP_AND2ND | GNU_OP_OR2ND => {
                 if depth < 2 {
@@ -1030,21 +1168,21 @@ pub(crate) fn validate_gnu_adapter_impl(
                         "GNU short-circuit opcode {opcode} at instruction {instruction_pc} has stack depth {depth}, requires 2"
                     ));
                 }
-                pending.push((next, depth - 1, loop_stack, call_stack.clone()));
+                pending.try_push((next, depth - 1, loop_stack, call_stack))?;
             }
-            GNU_OP_GOTO => pending.push((
+            GNU_OP_GOTO => pending.try_push((
                 code[instruction_pc + 1] as usize,
                 depth,
                 loop_stack,
-                call_stack.clone(),
-            )),
+                call_stack,
+            ))?,
             GNU_OP_DUP => {
                 if depth == 0 {
                     return Err(format!(
                         "GNU DUP at instruction {instruction_pc} has an empty stack"
                     ));
                 }
-                pending.push((next, depth + 1, loop_stack, call_stack.clone()));
+                pending.try_push((next, depth + 1, loop_stack, call_stack))?;
             }
             GNU_OP_POP | GNU_OP_PRINTVALUE | GNU_OP_SETLOOPVAL => {
                 if depth == 0 || (opcode == GNU_OP_SETLOOPVAL && depth < 2) {
@@ -1052,7 +1190,7 @@ pub(crate) fn validate_gnu_adapter_impl(
                         "GNU opcode {opcode} at instruction {instruction_pc} has stack depth {depth}"
                     ));
                 }
-                pending.push((next, depth - 1, loop_stack, call_stack.clone()));
+                pending.try_push((next, depth - 1, loop_stack, call_stack))?;
             }
             GNU_OP_SETVAR | GNU_OP_SETVAR2 => {
                 if depth == 0 {
@@ -1060,7 +1198,7 @@ pub(crate) fn validate_gnu_adapter_impl(
                         "GNU SETVAR at instruction {instruction_pc} has an empty stack"
                     ));
                 }
-                pending.push((next, depth, loop_stack, call_stack.clone()));
+                pending.try_push((next, depth, loop_stack, call_stack))?;
             }
             GNU_OP_STARTASSIGN => {
                 if depth == 0 {
@@ -1071,7 +1209,7 @@ pub(crate) fn validate_gnu_adapter_impl(
                 if depth + 3 > 64 {
                     return Ok(false);
                 }
-                pending.push((next, depth + 3, loop_stack, call_stack.clone()));
+                pending.try_push((next, depth + 3, loop_stack, call_stack))?;
             }
             GNU_OP_ENDASSIGN => {
                 if depth < 3 {
@@ -1079,7 +1217,7 @@ pub(crate) fn validate_gnu_adapter_impl(
                         "GNU ENDASSIGN at instruction {instruction_pc} has stack depth {depth}, requires 3"
                     ));
                 }
-                pending.push((next, depth - 2, loop_stack, call_stack.clone()));
+                pending.try_push((next, depth - 2, loop_stack, call_stack))?;
             }
             GNU_OP_STARTASSIGN2 => {
                 if depth == 0 {
@@ -1090,7 +1228,7 @@ pub(crate) fn validate_gnu_adapter_impl(
                 if depth + 3 > 64 {
                     return Ok(false);
                 }
-                pending.push((next, depth + 3, loop_stack, call_stack.clone()));
+                pending.try_push((next, depth + 3, loop_stack, call_stack))?;
             }
             GNU_OP_ENDASSIGN2 => {
                 if depth < 3 {
@@ -1098,7 +1236,7 @@ pub(crate) fn validate_gnu_adapter_impl(
                         "GNU ENDASSIGN2 at instruction {instruction_pc} has stack depth {depth}, requires 3"
                     ));
                 }
-                pending.push((next, depth - 2, loop_stack, call_stack.clone()));
+                pending.try_push((next, depth - 2, loop_stack, call_stack))?;
             }
             GNU_OP_DOLLAR => {
                 if depth == 0 {
@@ -1106,7 +1244,7 @@ pub(crate) fn validate_gnu_adapter_impl(
                         "GNU DOLLAR at instruction {instruction_pc} has an empty stack"
                     ));
                 }
-                pending.push((next, depth, loop_stack, call_stack.clone()));
+                pending.try_push((next, depth, loop_stack, call_stack))?;
             }
             GNU_OP_DOLLARGETS => {
                 if depth < 2 {
@@ -1114,7 +1252,7 @@ pub(crate) fn validate_gnu_adapter_impl(
                         "GNU DOLLARGETS at instruction {instruction_pc} has stack depth {depth}, requires 2"
                     ));
                 }
-                pending.push((next, depth - 1, loop_stack, call_stack.clone()));
+                pending.try_push((next, depth - 1, loop_stack, call_stack))?;
             }
             GNU_OP_STARTSUBSET | GNU_OP_STARTSUBSET2 => {
                 if depth == 0 {
@@ -1125,15 +1263,15 @@ pub(crate) fn validate_gnu_adapter_impl(
                 if depth + 1 > 64 {
                     return Ok(false);
                 }
-                let mut entered = call_stack.clone();
-                entered.push(depth - 1);
-                pending.push((next, depth, loop_stack.clone(), entered));
-                pending.push((
+                let mut entered = call_stack;
+                entered = markers.push(entered, depth - 1)?;
+                pending.try_push((next, depth, loop_stack, entered))?;
+                pending.try_push((
                     code[instruction_pc + 2] as usize,
                     depth,
                     loop_stack,
-                    call_stack.clone(),
-                ));
+                    call_stack,
+                ))?;
             }
             GNU_OP_STARTSUBSET_N | GNU_OP_STARTSUBSET2_N => {
                 if depth == 0 {
@@ -1141,13 +1279,13 @@ pub(crate) fn validate_gnu_adapter_impl(
                         "GNU STARTSUBSET_N at instruction {instruction_pc} has an empty stack"
                     ));
                 }
-                pending.push((next, depth, loop_stack.clone(), call_stack.clone()));
-                pending.push((
+                pending.try_push((next, depth, loop_stack, call_stack))?;
+                pending.try_push((
                     code[instruction_pc + 2] as usize,
                     depth,
                     loop_stack,
-                    call_stack.clone(),
-                ));
+                    call_stack,
+                ))?;
             }
             GNU_OP_STARTSUBASSIGN | GNU_OP_STARTSUBASSIGN2 => {
                 if depth < 2 {
@@ -1158,26 +1296,26 @@ pub(crate) fn validate_gnu_adapter_impl(
                 if depth + 1 > 64 {
                     return Ok(false);
                 }
-                let mut entered = call_stack.clone();
-                entered.push(depth - 2);
-                pending.push((next, depth, loop_stack.clone(), entered));
-                pending.push((
+                let mut entered = call_stack;
+                entered = markers.push(entered, depth - 2)?;
+                pending.try_push((next, depth, loop_stack, entered))?;
+                pending.try_push((
                     code[instruction_pc + 2] as usize,
                     depth - 1,
                     loop_stack,
-                    call_stack.clone(),
-                ));
+                    call_stack,
+                ))?;
             }
             GNU_OP_DOMISSING => {
-                if call_stack.is_empty() {
+                if markers.len(call_stack) == 0 {
                     return Err(format!(
                         "GNU DOMISSING at instruction {instruction_pc} has no active call frame"
                     ));
                 }
-                pending.push((next, depth + 1, loop_stack, call_stack));
+                pending.try_push((next, depth + 1, loop_stack, call_stack))?;
             }
             GNU_OP_DFLTSUBSET | GNU_OP_DFLTSUBSET2 => {
-                let Some(marker) = call_stack.pop() else {
+                let Some(marker) = markers.pop(&mut call_stack) else {
                     return Err(format!(
                         "GNU DFLTSUBSET at instruction {instruction_pc} has no active STARTSUBSET frame"
                     ));
@@ -1187,7 +1325,7 @@ pub(crate) fn validate_gnu_adapter_impl(
                         "GNU DFLTSUBSET at instruction {instruction_pc} has stack depth {depth}, requires object"
                     ));
                 }
-                pending.push((next, marker + 1, loop_stack, call_stack));
+                pending.try_push((next, marker + 1, loop_stack, call_stack))?;
             }
             GNU_OP_STARTSUBASSIGN_N | GNU_OP_STARTSUBASSIGN2_N => {
                 if depth < 2 {
@@ -1195,16 +1333,16 @@ pub(crate) fn validate_gnu_adapter_impl(
                         "GNU STARTSUBASSIGN_N at instruction {instruction_pc} has stack depth {depth}, requires 2"
                     ));
                 }
-                pending.push((next, depth, loop_stack.clone(), call_stack.clone()));
-                pending.push((
+                pending.try_push((next, depth, loop_stack, call_stack))?;
+                pending.try_push((
                     code[instruction_pc + 2] as usize,
                     depth - 1,
                     loop_stack,
-                    call_stack.clone(),
-                ));
+                    call_stack,
+                ))?;
             }
             GNU_OP_DFLTSUBASSIGN | GNU_OP_DFLTSUBASSIGN2 => {
-                let Some(marker) = call_stack.pop() else {
+                let Some(marker) = markers.pop(&mut call_stack) else {
                     return Err(format!(
                         "GNU DFLTSUBASSIGN at instruction {instruction_pc} has no active STARTSUBASSIGN frame"
                     ));
@@ -1214,7 +1352,7 @@ pub(crate) fn validate_gnu_adapter_impl(
                         "GNU DFLTSUBASSIGN at instruction {instruction_pc} has stack depth {depth}, requires lhs and rhs"
                     ));
                 }
-                pending.push((next, marker + 1, loop_stack, call_stack));
+                pending.try_push((next, marker + 1, loop_stack, call_stack))?;
             }
             GNU_OP_VECSUBSET | GNU_OP_VECSUBSET2 => {
                 if depth < 2 {
@@ -1222,7 +1360,7 @@ pub(crate) fn validate_gnu_adapter_impl(
                         "GNU VECSUBSET at instruction {instruction_pc} has stack depth {depth}, requires 2"
                     ));
                 }
-                pending.push((next, depth - 1, loop_stack, call_stack.clone()));
+                pending.try_push((next, depth - 1, loop_stack, call_stack))?;
             }
             GNU_OP_MATSUBSET => {
                 if depth < 3 {
@@ -1230,7 +1368,7 @@ pub(crate) fn validate_gnu_adapter_impl(
                         "GNU MATSUBSET at instruction {instruction_pc} has stack depth {depth}, requires 3"
                     ));
                 }
-                pending.push((next, depth - 2, loop_stack, call_stack.clone()));
+                pending.try_push((next, depth - 2, loop_stack, call_stack))?;
             }
             GNU_OP_MATSUBSET2 => {
                 if depth < 3 {
@@ -1238,7 +1376,7 @@ pub(crate) fn validate_gnu_adapter_impl(
                         "GNU MATSUBSET2 at instruction {instruction_pc} has stack depth {depth}, requires 3"
                     ));
                 }
-                pending.push((next, depth - 2, loop_stack, call_stack.clone()));
+                pending.try_push((next, depth - 2, loop_stack, call_stack))?;
             }
             GNU_OP_SUBSET_N | GNU_OP_SUBSET2_N => {
                 let rank = code[instruction_pc + 2];
@@ -1258,7 +1396,7 @@ pub(crate) fn validate_gnu_adapter_impl(
                         "GNU {name} at instruction {instruction_pc} has stack depth {depth}, requires {needed}"
                     ));
                 }
-                pending.push((next, depth - rank as usize, loop_stack, call_stack.clone()));
+                pending.try_push((next, depth - rank as usize, loop_stack, call_stack))?;
             }
             GNU_OP_SUBASSIGN_N | GNU_OP_SUBASSIGN2_N => {
                 let rank = code[instruction_pc + 2];
@@ -1278,12 +1416,7 @@ pub(crate) fn validate_gnu_adapter_impl(
                         "GNU {name} at instruction {instruction_pc} has stack depth {depth}, requires {needed}"
                     ));
                 }
-                pending.push((
-                    next,
-                    depth - rank as usize - 1,
-                    loop_stack,
-                    call_stack.clone(),
-                ));
+                pending.try_push((next, depth - rank as usize - 1, loop_stack, call_stack))?;
             }
             GNU_OP_VECSUBASSIGN | GNU_OP_VECSUBASSIGN2 => {
                 if depth < 3 {
@@ -1291,7 +1424,7 @@ pub(crate) fn validate_gnu_adapter_impl(
                         "GNU VECSUBASSIGN at instruction {instruction_pc} has stack depth {depth}, requires 3"
                     ));
                 }
-                pending.push((next, depth - 2, loop_stack, call_stack.clone()));
+                pending.try_push((next, depth - 2, loop_stack, call_stack))?;
             }
             GNU_OP_MATSUBASSIGN => {
                 if depth < 4 {
@@ -1299,7 +1432,7 @@ pub(crate) fn validate_gnu_adapter_impl(
                         "GNU MATSUBASSIGN at instruction {instruction_pc} has stack depth {depth}, requires 4"
                     ));
                 }
-                pending.push((next, depth - 3, loop_stack, call_stack.clone()));
+                pending.try_push((next, depth - 3, loop_stack, call_stack))?;
             }
             GNU_OP_MATSUBASSIGN2 => {
                 if depth < 4 {
@@ -1307,7 +1440,7 @@ pub(crate) fn validate_gnu_adapter_impl(
                         "GNU MATSUBASSIGN2 at instruction {instruction_pc} has stack depth {depth}, requires 4"
                     ));
                 }
-                pending.push((next, depth - 3, loop_stack, call_stack.clone()));
+                pending.try_push((next, depth - 3, loop_stack, call_stack))?;
             }
             GNU_OP_STARTFOR => {
                 if depth == 0 {
@@ -1318,52 +1451,52 @@ pub(crate) fn validate_gnu_adapter_impl(
                 let raw_target = code[instruction_pc + 3] as usize;
                 let step_pc = gnu_for_step_from_start_target(code, raw_target)?;
                 let mut entered = loop_stack;
-                entered.push(step_pc);
-                pending.push((raw_target, depth, entered, call_stack.clone()));
+                entered = markers.push(entered, step_pc)?;
+                pending.try_push((raw_target, depth, entered, call_stack))?;
             }
             GNU_OP_STEPFOR => {
-                if loop_stack.last() != Some(&instruction_pc) {
+                if markers.last(loop_stack) != Some(instruction_pc) {
                     return Err(format!(
                         "GNU STEPFOR at instruction {instruction_pc} is not the active for loop"
                     ));
                 }
-                pending.push((next, depth, loop_stack.clone(), call_stack.clone()));
-                pending.push((
+                pending.try_push((next, depth, loop_stack, call_stack))?;
+                pending.try_push((
                     code[instruction_pc + 1] as usize,
                     depth,
                     loop_stack,
-                    call_stack.clone(),
-                ));
+                    call_stack,
+                ))?;
             }
             GNU_OP_ENDFOR => {
                 let mut exited = loop_stack;
-                if exited.pop().is_none() {
+                if markers.pop(&mut exited).is_none() {
                     return Err(format!(
                         "GNU ENDFOR at instruction {instruction_pc} has no active for loop"
                     ));
                 }
-                pending.push((next, depth, exited, call_stack.clone()));
+                pending.try_push((next, depth, exited, call_stack))?;
             }
             GNU_OP_BASEGUARD => {
-                pending.push((next, depth, loop_stack.clone(), call_stack.clone()));
-                pending.push((
+                pending.try_push((next, depth, loop_stack, call_stack))?;
+                pending.try_push((
                     code[instruction_pc + 2] as usize,
                     depth + 1,
                     loop_stack,
-                    call_stack.clone(),
-                ));
+                    call_stack,
+                ))?;
             }
             GNU_OP_LDCONST | GNU_OP_GETVAR | GNU_OP_GETVAR_MISSOK | GNU_OP_DDVAL
             | GNU_OP_DDVAL_MISSOK | GNU_OP_LDNULL | GNU_OP_LDTRUE | GNU_OP_LDFALSE => {
-                pending.push((next, depth + 1, loop_stack, call_stack.clone()));
+                pending.try_push((next, depth + 1, loop_stack, call_stack))?;
             }
             GNU_OP_DODOTS => {
                 // Argument splicing: the number of pushed cells is only
                 // known at runtime; CALL pops back to the frame marker.
-                pending.push((next, depth, loop_stack, call_stack.clone()));
+                pending.try_push((next, depth, loop_stack, call_stack))?;
             }
             GNU_OP_MAKECLOSURE | GNU_OP_CALLSPECIAL => {
-                pending.push((next, depth + 1, loop_stack, call_stack.clone()));
+                pending.try_push((next, depth + 1, loop_stack, call_stack))?;
             }
             GNU_OP_ADD | GNU_OP_SUB | GNU_OP_MUL | GNU_OP_DIV | GNU_OP_EXPT | GNU_OP_EQ
             | GNU_OP_NE | GNU_OP_LT | GNU_OP_LE | GNU_OP_GE | GNU_OP_GT | GNU_OP_AND
@@ -1373,7 +1506,7 @@ pub(crate) fn validate_gnu_adapter_impl(
                         "GNU binary opcode {opcode} at instruction {instruction_pc} has stack depth {depth}, requires 2"
                     ));
                 }
-                pending.push((next, depth - 1, loop_stack, call_stack.clone()));
+                pending.try_push((next, depth - 1, loop_stack, call_stack))?;
             }
             GNU_OP_UMINUS | GNU_OP_UPLUS | GNU_OP_SQRT | GNU_OP_EXP | GNU_OP_NOT | GNU_OP_LOG
             | GNU_OP_MATH1 | GNU_OP_ISNULL | GNU_OP_ISLOGICAL | GNU_OP_ISINTEGER
@@ -1384,7 +1517,7 @@ pub(crate) fn validate_gnu_adapter_impl(
                         "GNU unary opcode {opcode} at instruction {instruction_pc} has empty stack"
                     ));
                 }
-                pending.push((next, depth, loop_stack, call_stack.clone()));
+                pending.try_push((next, depth, loop_stack, call_stack))?;
             }
             GNU_OP_GETFUN
             | GNU_OP_GETBUILTIN
@@ -1404,13 +1537,13 @@ pub(crate) fn validate_gnu_adapter_impl(
                         | GNU_OP_GETGLOBFUN
                         | GNU_OP_GETSYMFUN
                 ) {
-                    call_stack.push(depth);
-                } else if call_stack.is_empty() {
+                    call_stack = markers.push(call_stack, depth)?;
+                } else if markers.len(call_stack) == 0 {
                     return Err(format!(
                         "GNU argument opcode {opcode} has no active GETFUN call"
                     ));
                 }
-                pending.push((next, depth + 1, loop_stack, call_stack));
+                pending.try_push((next, depth + 1, loop_stack, call_stack))?;
             }
             GNU_OP_DOTSERR => {
                 // GNU emits DOTSERR as a tail error; no RETURN follows.
@@ -1427,10 +1560,10 @@ pub(crate) fn validate_gnu_adapter_impl(
                         "GNU DOTCALL at instruction {instruction_pc} has stack depth {depth}, requires {needed}"
                     ));
                 }
-                pending.push((next, depth - nargs as usize, loop_stack, call_stack.clone()));
+                pending.try_push((next, depth - nargs as usize, loop_stack, call_stack))?;
             }
             GNU_OP_VISIBLE => {
-                pending.push((next, depth, loop_stack, call_stack.clone()));
+                pending.try_push((next, depth, loop_stack, call_stack))?;
             }
             GNU_OP_INCLNK | GNU_OP_DECLNK | GNU_OP_DECLNK_N => {
                 let needed = if matches!(opcode, GNU_OP_INCLNK) {
@@ -1443,10 +1576,10 @@ pub(crate) fn validate_gnu_adapter_impl(
                         "GNU link opcode {opcode} at instruction {instruction_pc} has stack depth {depth}, requires {needed}"
                     ));
                 }
-                pending.push((next, depth, loop_stack, call_stack.clone()));
+                pending.try_push((next, depth, loop_stack, call_stack))?;
             }
             GNU_OP_INCLNKSTK => {
-                pending.push((next, depth + 1, loop_stack, call_stack.clone()));
+                pending.try_push((next, depth + 1, loop_stack, call_stack))?;
             }
             GNU_OP_DECLNKSTK => {
                 if depth < 2 {
@@ -1454,42 +1587,42 @@ pub(crate) fn validate_gnu_adapter_impl(
                         "GNU DECLNKSTK at instruction {instruction_pc} has stack depth {depth}, requires 2"
                     ));
                 }
-                pending.push((next, depth - 1, loop_stack, call_stack.clone()));
+                pending.try_push((next, depth - 1, loop_stack, call_stack))?;
             }
             GNU_OP_PUSHARG => {
-                let Some(marker) = call_stack.last() else {
+                let Some(marker) = markers.last(call_stack) else {
                     return Err("GNU PUSHARG has no active call argument".into());
                 };
-                if depth <= *marker + 1 {
+                if depth <= marker + 1 {
                     return Err("GNU PUSHARG has no preceding argument".into());
                 }
-                pending.push((next, depth, loop_stack, call_stack));
+                pending.try_push((next, depth, loop_stack, call_stack))?;
             }
             GNU_OP_CHECKFUN => {
                 if depth == 0 {
                     return Err("GNU CHECKFUN has an empty stack".into());
                 }
                 let mut entered = call_stack;
-                entered.push(depth - 1);
-                pending.push((next, depth, loop_stack, entered));
+                entered = markers.push(entered, depth - 1)?;
+                pending.try_push((next, depth, loop_stack, entered))?;
             }
             GNU_OP_SETTAG => {
-                let Some(marker) = call_stack.last() else {
+                let Some(marker) = markers.last(call_stack) else {
                     return Err("GNU SETTAG has no active GETFUN call".into());
                 };
-                if depth <= *marker + 1 {
+                if depth <= marker + 1 {
                     return Err("GNU SETTAG has no preceding call argument".into());
                 }
-                pending.push((next, depth, loop_stack, call_stack));
+                pending.try_push((next, depth, loop_stack, call_stack))?;
             }
             GNU_OP_CALL | GNU_OP_CALLBUILTIN => {
-                let Some(marker) = call_stack.pop() else {
+                let Some(marker) = markers.pop(&mut call_stack) else {
                     return Err("GNU CALL has no active GETFUN call".into());
                 };
-                pending.push((next, marker + 1, loop_stack, call_stack));
+                pending.try_push((next, marker + 1, loop_stack, call_stack))?;
             }
             GNU_OP_SETTER_CALL => {
-                let Some(marker) = call_stack.pop() else {
+                let Some(marker) = markers.pop(&mut call_stack) else {
                     return Err(format!(
                         "GNU SETTER_CALL at instruction {instruction_pc} has no active GETFUN call"
                     ));
@@ -1504,10 +1637,10 @@ pub(crate) fn validate_gnu_adapter_impl(
                         "GNU SETTER_CALL at instruction {instruction_pc} has no function"
                     ));
                 }
-                pending.push((next, marker - 1, loop_stack, call_stack));
+                pending.try_push((next, marker - 1, loop_stack, call_stack))?;
             }
             GNU_OP_GETTER_CALL => {
-                let Some(marker) = call_stack.pop() else {
+                let Some(marker) = markers.pop(&mut call_stack) else {
                     return Err(format!(
                         "GNU GETTER_CALL at instruction {instruction_pc} has no active GETFUN call"
                     ));
@@ -1522,7 +1655,7 @@ pub(crate) fn validate_gnu_adapter_impl(
                         "GNU GETTER_CALL at instruction {instruction_pc} has no function"
                     ));
                 }
-                pending.push((next, marker + 1, loop_stack, call_stack));
+                pending.try_push((next, marker + 1, loop_stack, call_stack))?;
             }
             GNU_OP_SWAP => {
                 if depth < 2 {
@@ -1530,7 +1663,7 @@ pub(crate) fn validate_gnu_adapter_impl(
                         "GNU SWAP at instruction {instruction_pc} has stack depth {depth}, requires 2"
                     ));
                 }
-                pending.push((next, depth, loop_stack, call_stack.clone()));
+                pending.try_push((next, depth, loop_stack, call_stack))?;
             }
             GNU_OP_DUP2ND => {
                 if depth < 2 {
@@ -1538,23 +1671,23 @@ pub(crate) fn validate_gnu_adapter_impl(
                         "GNU DUP2ND at instruction {instruction_pc} has stack depth {depth}, requires 2"
                     ));
                 }
-                pending.push((next, depth + 1, loop_stack, call_stack.clone()));
+                pending.try_push((next, depth + 1, loop_stack, call_stack))?;
             }
-            GNU_OP_INVISIBLE => pending.push((next, depth, loop_stack, call_stack.clone())),
+            GNU_OP_INVISIBLE => pending.try_push((next, depth, loop_stack, call_stack))?,
             GNU_OP_DOLOOPNEXT | GNU_OP_DOLOOPBREAK => {
                 gnu_enclosing_loop(code, instruction_pc, opcode)?;
             }
             GNU_OP_STARTLOOPCNTXT => {
-                pending.push((next, depth, loop_stack.clone(), call_stack.clone()));
-                pending.push((
+                pending.try_push((next, depth, loop_stack, call_stack))?;
+                pending.try_push((
                     code[instruction_pc + 2] as usize,
                     depth,
                     loop_stack,
-                    call_stack.clone(),
-                ));
+                    call_stack,
+                ))?;
             }
             GNU_OP_ENDLOOPCNTXT => {
-                pending.push((next, depth, loop_stack, call_stack.clone()));
+                pending.try_push((next, depth, loop_stack, call_stack))?;
             }
             _ => unreachable!(),
         }

@@ -22,6 +22,65 @@ impl OwnedSwitch {
             .collect()
     }
 
+    /// Recheck mutable R tables after a collecting validation retry without
+    /// constructing a second set of native target buffers.
+    pub(super) fn revalidate_snapshot(
+        &self,
+        code: &[i32],
+        pool: &[Sexp<'static>],
+        pc: usize,
+    ) -> Result<(), String> {
+        let changed = || "GNU SWITCH tables changed during validation collection".to_string();
+        let constant = |operand: usize| -> Result<&Sexp<'static>, String> {
+            code.get(pc + 1 + operand)
+                .and_then(|index| usize::try_from(*index).ok())
+                .and_then(|index| pool.get(index))
+                .ok_or_else(changed)
+        };
+        let offsets_match = |value: &Sexp<'static>, frozen: &[usize]| -> Result<(), String> {
+            if value.typeof_() != SEXPTYPE::INTSXP || value.len() != frozen.len() as i64 {
+                return Err(changed());
+            }
+            for (index, target) in frozen.iter().enumerate() {
+                if usize::try_from(
+                    value
+                        .try_integer_elt(index as i64)
+                        .map_err(|error| error.to_string())?,
+                )
+                .ok()
+                    != Some(*target)
+                {
+                    return Err(changed());
+                }
+            }
+            Ok(())
+        };
+        if constant(0)? != &self.call {
+            return Err(changed());
+        }
+        offsets_match(constant(3)?, &self.numeric)?;
+        let names = constant(1)?;
+        match &self.names {
+            None if names.is_null_value() => {}
+            Some(frozen)
+                if names.typeof_() == SEXPTYPE::STRSXP && names.len() == frozen.len() as i64 =>
+            {
+                offsets_match(constant(2)?, &self.characters)?;
+                for (index, name) in frozen.iter().enumerate() {
+                    if names
+                        .try_string_elt(index as i64)
+                        .map_err(|error| error.to_string())?
+                        != *name
+                    {
+                        return Err(changed());
+                    }
+                }
+            }
+            _ => return Err(changed()),
+        }
+        Ok(())
+    }
+
     pub(super) fn select(
         &self,
         value: &Sexp<'static>,

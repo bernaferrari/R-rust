@@ -143,9 +143,6 @@ mod eval_expression_tests {
                 .unwrap()
                 .into_owned()
                 .unwrap();
-            let words = (0..instructions.len())
-                .map(|index| instructions.integer_elt(index).unwrap())
-                .collect::<Vec<_>>();
             let constants = owner
                 .sexp(crate::eval::bc_eval::BCODE_CONSTS(body.as_raw()))
                 .unwrap()
@@ -153,7 +150,7 @@ mod eval_expression_tests {
                 .unwrap();
             assert!(
                 crate::eval::bytecode::validate_gnu_adapter_with_constants(
-                    &words,
+                    instructions.as_raw(),
                     constants.as_raw()
                 )
                 .unwrap()

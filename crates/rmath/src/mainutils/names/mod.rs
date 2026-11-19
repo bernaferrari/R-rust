@@ -815,6 +815,8 @@ type InternalBuiltinHandler = unsafe fn(SEXP, SEXP, SEXP, SEXP) -> SEXP;
 
 fn internal_builtin_handler(name: &str) -> Option<InternalBuiltinHandler> {
     match name {
+        "La_chol" => Some(crate::mainutils::essentials::do_chol),
+        "La_chol2inv" => Some(crate::mainutils::essentials::do_chol2inv),
         "builtins" => Some(do_builtins),
         "besselK" => Some(crate::mainutils::essentials::do_besselK_internal),
         "besselI" => Some(crate::mainutils::essentials::do_besselI_internal),

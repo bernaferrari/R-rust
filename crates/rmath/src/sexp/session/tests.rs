@@ -5,6 +5,26 @@ use crate::sexp::instance::{
 use crate::sexp::protect::{R_PreserveObject, R_ReleaseObject, with_preserved_objects};
 
 #[test]
+fn error_rendering_option_symbol_is_preinterned_per_session_owner() {
+    let left = RSession::new_for_gc_tests();
+    let right = RSession::new_for_gc_tests();
+    let installed = |session: &RSession| {
+        session.with_active_in(|instance| unsafe {
+            assert!(
+                (*instance)
+                    .symbols
+                    .contains_key("show.error.locations"),
+                "bootstrap must intern the option before user code runs"
+            );
+            crate::sexp::symbol::Rf_install(c"show.error.locations".as_ptr())
+        })
+    };
+    let left_symbol = installed(&left);
+    let right_symbol = installed(&right);
+    assert_ne!(left_symbol, right_symbol, "symbols must stay owner-local");
+}
+
+#[test]
 fn explicit_path_policy_bootstrap_restores_original_dispatch_on_unwind() {
     let prior = RSession::new_for_gc_tests();
     let original = prior.instance_ptr();

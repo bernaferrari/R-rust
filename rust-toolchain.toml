@@ -1,7 +1,4 @@
-# Pin the exact toolchain this port is developed and verified against.
-# Any rustup-managed cargo/rustc invocation inside this repository resolves
-# to this version (see https://rust-lang.github.io/rustup/overrides.html).
-# CI installs `stable`; when stable moves past this pin, CI must be updated
-# deliberately rather than drifting with upstream Rust releases.
+# Latest stable, the same channel CI installs.
+# Kani and the Wasm unwind build keep their own nightlies.
 [toolchain]
-channel = "1.96.0"
+channel = "stable"
