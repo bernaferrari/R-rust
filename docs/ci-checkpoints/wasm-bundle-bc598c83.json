@@ -1,0 +1,55 @@
+{
+  "source_commit": "bc598c8344191f9c9f4535c43ef74f11d71295f4",
+  "wasm_sha256": "99d554d05c4839f244f0f04106cd5654acab510b1b256c6b849f80cb5258c447",
+  "files": {
+    "package.json": 365,
+    "r_wasm.d.ts": 6452,
+    "r_wasm.js": 25125,
+    "r_wasm_bg.wasm": 24879630,
+    "r_wasm_bg.wasm.d.ts": 2615,
+    "rust-runtime-optimization.json": 476
+  },
+  "bundle_bytes": 24914663,
+  "byte_limit": 26214400,
+  "headroom_bytes": 1299737,
+  "gradle_task": ":webApp:checkWasmProductionBundleSize",
+  "excludes_rebuilding_rust": true,
+  "production_contracts": [
+    164,
+    164
+  ],
+  "chromium_budget": {
+    "expected": 7,
+    "unexpected": 0,
+    "flaky": 0,
+    "skipped": 0,
+    "s4_evaluation_ms": [
+      11479.9,
+      9048.5,
+      10130.8,
+      10226.6,
+      7854.2,
+      7815.5
+    ]
+  },
+  "node_timing_ms": {
+    "baseline": {
+      "bootstrap": 2802.0,
+      "first": 199.1,
+      "warm": 33.5
+    },
+    "candidate": {
+      "bootstrap": 2903.6,
+      "first": 210.8,
+      "warm": 33.5
+    },
+    "baseline_source": "a0d25066",
+    "alternating_pairs": 7
+  },
+  "byte_equivalence": {
+    "tools_variables": 936,
+    "tools_references": 40,
+    "base_sources": 118
+  },
+  "wasm_timezone_admission_and_retry": "pass"
+}

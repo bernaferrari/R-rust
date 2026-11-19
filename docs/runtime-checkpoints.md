@@ -9,7 +9,7 @@ Use Beads to track failures and missing coverage.
 | Pinned GNU R conformance | Passes, failures, timeouts, unattempted cases and verdict changes on unchanged fixtures | 1,281/1,281 passed at `eddd0913`. [Receipt](ci-checkpoints/gnu-conformance-main-eddd0913.json) |
 | Unmodified GNU R drivers | Whole and curated results, with skipped and unattempted drivers counted explicitly | 22 passed, 18 failed and 30 skipped whole drivers at `1faa7f2a`. All 15 curated slices passed. [Receipt](ci-checkpoints/upstream-main-1faa7f2a.json) |
 | Safety | Public API audit, targeted strict Miri checks, and recovery under the original memory and node limits | [Public API audit and strict Miri scope](safe-api-audit.md) |
-| Production Wasm | Optimized bytes and SHA-256, public runtime contracts, and Chromium pass/fail/flaky counts under unchanged deadlines | 328 public contract executions at `a0d25066`. Chromium passed 77/77 at `c7fa992f` on macOS arm64 and at `ad04d62f` on hosted Linux. |
+| Production Wasm | Optimized bytes and SHA-256, public runtime contracts, and Chromium pass/fail/flaky counts under unchanged deadlines | 328 public contract executions at `bc598c83`. Chromium passed 77/77 at `c7fa992f` on macOS arm64 and at `ad04d62f` on hosted Linux. |
 
 The [capability inventory](capability-evidence.md) gives the current fixture
 and disposition counts. The [GNU R API inventory](gnu-r-api-inventory.md)
@@ -193,8 +193,7 @@ user workflows have passed on native Rport and production Wasm.
 The optimized `eddd0913` module left **28,359 bytes** under 25 MiB. Its code
 section used 14,023,273 bytes and its data section used 12,136,792. The
 complete generated Rust package was 26,221,075 bytes, 6,675 over that limit.
-The largest
-exact embedded files were the `tools` (2,360,298 bytes), `stats` (1,857,724),
+The largest exact embedded files were the `tools` (2,360,298 bytes), `stats` (1,857,724),
 `methods` (1,361,830), and `utils` (1,043,845) lazy-load databases and the
 compressed DejaVu font faces (860,516).
 [Baseline size receipt](ci-checkpoints/wasm-size-eddd0913.json)
@@ -221,13 +220,34 @@ built module passed all 328 production contract executions and workspace
 interchange in both directions with GNU R.
 [Workspace build size receipt](ci-checkpoints/wasm-size-56a3fe41.json)
 
-An offline repacking experiment on the seven lazy-load databases preserved
-their serialized GNU records and reduced the payload from 7,415,880 to
-6,117,695 bytes before the new index. That experiment has no runtime change.
-The next check is to measure cold-start and per-package costs before choosing
-which database to repack. The largest candidate for a separate asset is
-`tools`. It stayed unloaded in the default browser session and during a
-linear-model run.
+At `bc598c83`, the production Workbench budget gate measured **24,914,663
+bytes**, leaving **1,299,737 bytes (1.24 MiB)** below 25 MiB. The generated
+package is 779,365 bytes smaller than at `a0d25066`. The optimized module is
+24,879,630 bytes with SHA-256
+`99d554d05c4839f244f0f04106cd5654acab510b1b256c6b849f80cb5258c447`.
+[Module size receipt](ci-checkpoints/wasm-size-bc598c83.json)
+[Gradle bundle receipt](ci-checkpoints/wasm-bundle-bc598c83.json)
+
+Wasm packs all 976 `tools` records in independently compressed blocks.
+The records and block directory use 2,029,333 bytes, compared with
+2,360,298 bytes for the previous database. All variable and reference
+records matched byte for byte. Native Rport still reads the original GNU
+database. Build-time compression reduced the 118 embedded base R source
+files from 730,596 to 236,647 bytes before linking. Each source is decoded
+as needed and its original bytes reach the parser.
+
+Across seven alternating pairs on macOS arm64 with the same Node version,
+median session initialization was 2.80 seconds on the previous package and
+2.90 seconds on the new one. Median first use of `tools` was 199 and 211 ms.
+The repeat call took 34 ms on each package. Those samples combine the base
+source, package data and timezone changes.
+
+The same module passed all 328 production contract executions and all
+seven original Chromium deadline checks. The focused native tests passed
+for packed range reads, budget cleanup, timezone retry, and base initialization.
+The timezone fix also passed both strict-provenance Miri tests. In production
+Wasm, a known timezone reports a resource error when the lookup exceeds
+the session budget. Freeing memory lets the same session retry successfully.
 
 ```bash
 python3 scripts/wasm_size_report.py "$report_dir/pkg"
