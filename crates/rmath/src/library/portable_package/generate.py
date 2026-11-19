@@ -24,9 +24,29 @@ if args.output.exists() and any(args.output.iterdir()):
 args.output.mkdir(parents=True, exist_ok=True)
 script = Path(__file__).with_suffix(".R")
 result = subprocess.run([args.rscript, "--vanilla", str(script), args.package, str(args.output)], check=True, capture_output=True, text=True, timeout=120)
-(args.output / "generation.log").write_text(result.stdout + result.stderr)
+generators = [script, Path(__file__)]
+log = result.stdout + result.stderr
+if args.package == "tools":
+    packer = script.with_name("pack_tools.R")
+    packed = subprocess.run(
+        [args.rscript, "--vanilla", str(packer), str(args.output), str(args.output)],
+        check=True, capture_output=True, text=True, timeout=120,
+    )
+    log += packed.stdout + packed.stderr
+    generators.append(packer)
+(args.output / "generation.log").write_text(log)
+
+
 def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
 files = {p.name: {"bytes": p.stat().st_size, "sha256": digest(p)} for p in sorted(args.output.iterdir()) if p.is_file()}
-(args.output / "manifest.json").write_text(json.dumps({"source": pinned["source"], "runtime": pinned["runtime"], "oracle_manifest_sha256": digest(manifest), "generator_sha256": {"generate.R": digest(script), "generate.py": digest(Path(__file__))}, "files": files}, indent=2)+"\n")
-print(result.stdout, end="")
+(args.output / "manifest.json").write_text(json.dumps({
+    "source": pinned["source"],
+    "runtime": pinned["runtime"],
+    "oracle_manifest_sha256": digest(manifest),
+    "generator_sha256": {p.name: digest(p) for p in generators},
+    "files": files,
+}, indent=2) + "\n")
+print(log, end="")
