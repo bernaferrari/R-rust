@@ -5,7 +5,15 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 WASM_TOOLCHAIN="nightly-2026-08-25"
 export RUSTUP_TOOLCHAIN="$WASM_TOOLCHAIN"
-export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$ROOT_DIR/target/wasm-unwind}"
+if [[ -n "${CARGO_TARGET_DIR:-}" ]]; then
+    # Cargo can reuse a path dependency from a different worktree when both
+    # builds use the same target directory. Keep each checkout's fingerprints
+    # under the caller's chosen cache root. The output package path is unchanged.
+    checkout_key="$(python3 -c 'import hashlib, sys; print(hashlib.sha256(sys.argv[1].encode()).hexdigest()[:16])' "$ROOT_DIR")"
+    export CARGO_TARGET_DIR="$CARGO_TARGET_DIR/rport-checkouts/$checkout_key"
+else
+    export CARGO_TARGET_DIR="$ROOT_DIR/target/wasm-unwind"
+fi
 export RUSTFLAGS="${RUSTFLAGS:+$RUSTFLAGS }-Cpanic=unwind -Clink-arg=--max-memory=268435456"
 # build-std needs rust-src from this exact toolchain. Keep setup explicit in CI.
 if ! rustup run "$WASM_TOOLCHAIN" rustc --version >/dev/null 2>&1; then
