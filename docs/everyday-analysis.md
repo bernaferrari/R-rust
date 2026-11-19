@@ -11,6 +11,14 @@ workflow stays in the denominator. A pass requires a measured result, and an
 unmeasured workflow earns no credit. Silent wrong results, crashes and data
 loss in supported workflows block release even when the score is high.
 
+At `169031b1`, **11 of 20 workflows (55%)** passed on native Rport and
+optimized Wasm. The new checks cover seasonal forecasting, seeded resampling,
+gzip tabular import, and reloading exported analysis data in a separate
+session. The CSV exported by each target matched the GNU file byte for byte.
+The optimized runtime completed all 328 contract executions and recovery
+checks. [Scorecard](ci-checkpoints/everyday-analysis-v1-169031b1.json)
+[Fresh-session file receipt](ci-checkpoints/everyday-file-round-trip-169031b1.json)
+
 At `c7fa992f`, 7 of 20 workflows passed on both native Rport and optimized
 Wasm, up from 2. The five additions cover missing data, categorical
 summaries, local dates across daylight saving time, binomial probability

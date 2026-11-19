@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "source_commit": "169031b1d2a8a8a3a7aac445eb1fb7086ff881a9",
+  "source_sha256": "a717842469ba64fb999cd09e286e3399b3ede17b7ed0af63391bed6295c1035a",
+  "wasm_sha256": "2cd9d9b6e582c07abb9d929175363810ef611078809da215aafb8db5fc22a582",
+  "oracle_manifest_sha256": "b2400cc9d83720c794199ebe51856bb88a0aa2e38ee8db276c7c27f04473c679",
+  "workflow": "file-round-trip",
+  "fixture_sha256": {
+    "import.R": "4b7b1bfa911490a6d0823c7e048dc4bf8a122ebc8890b1d8f8477999a2df79f3",
+    "input.csv": "1e4ede5c5106fc419f00554d850b68cbe65e41f676ae1b112274bdc99657d531",
+    "reload.R": "8fcfff57516982ec2573f246be7720edf612310af013b6d84db8ab8711d628c6"
+  },
+  "expected": {
+    "outputs": [
+      "Exported site means from imported measurements\n",
+      "Fresh session read both exported site means\n"
+    ],
+    "export_sha256": "44bc21a1539e9af7b732754d55d5191e6fc9bb4607b3d7aca61e349078894e40"
+  },
+  "native": {
+    "outputs": [
+      "Exported site means from imported measurements\n",
+      "Fresh session read both exported site means\n"
+    ],
+    "export_sha256": "44bc21a1539e9af7b732754d55d5191e6fc9bb4607b3d7aca61e349078894e40"
+  },
+  "wasm": {
+    "outputs": [
+      "Exported site means from imported measurements\n",
+      "Fresh session read both exported site means\n"
+    ],
+    "export_sha256": "44bc21a1539e9af7b732754d55d5191e6fc9bb4607b3d7aca61e349078894e40"
+  }
+}

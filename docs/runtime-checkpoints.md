@@ -9,7 +9,7 @@ Use Beads to track failures and missing coverage.
 | Pinned GNU R conformance | Passes, failures, timeouts, unattempted cases and verdict changes on unchanged fixtures | 1,270/1,270 passed at `b6a90a8f`. [Receipt](ci-checkpoints/gnu-conformance-main-b6a90a8f.json) |
 | Unmodified GNU R drivers | Whole and curated results, with skipped and unattempted drivers counted explicitly | 22 passed, 18 failed and 30 skipped whole drivers at `1faa7f2a`. All 15 curated slices passed. [Receipt](ci-checkpoints/upstream-main-1faa7f2a.json) |
 | Safety | Public API audit, targeted strict Miri checks, and recovery under the original memory and node limits | [Public API audit and strict Miri scope](safe-api-audit.md) |
-| Production Wasm | Optimized bytes and SHA-256, public runtime contracts, and Chromium pass/fail/flaky counts under unchanged deadlines | 322 public contract executions and 77/77 Chromium tests at `c7fa992f` on macOS arm64. Chromium passed 77/77 at `ad04d62f` on hosted Linux. |
+| Production Wasm | Optimized bytes and SHA-256, public runtime contracts, and Chromium pass/fail/flaky counts under unchanged deadlines | 328 public contract executions at `eddd0913`. Chromium passed 77/77 at `c7fa992f` on macOS arm64 and at `ad04d62f` on hosted Linux. |
 
 The [capability inventory](capability-evidence.md) gives the current fixture
 and disposition counts. The [GNU R API inventory](gnu-r-api-inventory.md)
@@ -166,6 +166,14 @@ user workflows have passed on native Rport and production Wasm.
   identical runtime sources at `8566c58b`. Its SHA-256 is
   `7c71e037abe5c88c209dfcff29d35d575237c68b540b4e415ff0906892d71345`.
   [Workflow receipt](ci-checkpoints/everyday-analysis-v1-c7fa992f.json)
+- At `eddd0913`, the browser reads ordinary gzip files through bounded
+  connection snapshots. Strict Miri covered denied allocation, truncated
+  gzip, and recovery with the miniz backend. All 328 production contract
+  executions passed with the 26,186,041-byte module. Its SHA-256 is
+  `2cd9d9b6e582c07abb9d929175363810ef611078809da215aafb8db5fc22a582`.
+  At `169031b1` the same runtime also passed the file import, export,
+  and reload workflow in independent native and browser sessions.
+  [Workflow receipt](ci-checkpoints/everyday-analysis-v1-169031b1.json)
 
 ## Re-run GNU R parity
 
