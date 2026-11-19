@@ -486,6 +486,47 @@ pub unsafe fn CAD5R(x: SEXP) -> SEXP {
 // Symbol accessors
 // ---------------------------------------------------------------------------
 
+/// Match interned symbols by identity and other symbols by their C-string
+/// names. Reuse the same validated header for the kind check and name edge.
+pub(crate) fn symbol_name_bytes_equal(left: SEXP, right: SEXP) -> bool {
+    if left.is_null() || right.is_null() {
+        return false;
+    }
+    let Some(left_read) = header_read(left, "unowned header read") else {
+        return false;
+    };
+    if left_read.snapshot.sxpinfo.type_of() != SEXPTYPE::SYMSXP {
+        return false;
+    }
+    if left == right {
+        return true;
+    }
+    let Some(right_read) = header_read(right, "unowned header read") else {
+        return false;
+    };
+    if right_read.snapshot.sxpinfo.type_of() != SEXPTYPE::SYMSXP {
+        return false;
+    }
+
+    let left_name = graph_edge_from_read(&left_read, EdgeField::SymbolName);
+    let right_name = graph_edge_from_read(&right_read, EdgeField::SymbolName);
+    if left_name.is_null() || right_name.is_null() {
+        return false;
+    }
+
+    // SAFETY: both names resolve from validated original headers. No R call
+    // can retire their nodes or alter the sealed bytes during comparison.
+    unsafe {
+        let left_chars = CHAR(left_name);
+        let right_chars = CHAR(right_name);
+        if left_chars.is_null() || right_chars.is_null() {
+            return false;
+        }
+        std::ffi::CStr::from_ptr(left_chars).to_bytes()
+            == std::ffi::CStr::from_ptr(right_chars).to_bytes()
+    }
+}
+
 /// Get the print name (CHARSXP) of a symbol.
 pub unsafe fn PRINTNAME(x: SEXP) -> SEXP {
     graph_edge(x, EdgeField::SymbolName)

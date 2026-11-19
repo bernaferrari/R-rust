@@ -7,11 +7,10 @@
 //! separate chaining for collision resolution.
 
 use std::collections::HashMap;
-use std::ffi::CStr;
 use std::os::raw::c_char;
 use std::ptr;
 
-use super::accessors::{CHAR, PRINTNAME, TYPEOF};
+use super::accessors::PRINTNAME;
 use super::ffi::{NodeBody, R_xlen_t, SEXP, SEXPTYPE, SexprecCore};
 use super::instance::RInstance;
 
@@ -87,39 +86,7 @@ pub(crate) fn symbol_name_from_ptr_in(inst: *mut RInstance, sym: SEXP) -> Option
     }
 }
 
-/// Compare two symbols by interned identity first, then by printed name bytes.
-///
-/// The Rust runtime can still encounter distinct SYMSXP handles with the same
-/// printed name while older translated paths are being consolidated. Environment
-/// and argument matching must follow R's symbol-name semantics rather than raw
-/// allocation identity in those cases.
-pub(crate) fn symbol_name_bytes_equal(left: SEXP, right: SEXP) -> bool {
-    unsafe {
-        if left.is_null() || right.is_null() {
-            return false;
-        }
-        if TYPEOF(left) != SEXPTYPE::SYMSXP || TYPEOF(right) != SEXPTYPE::SYMSXP {
-            return false;
-        }
-        if left == right {
-            return true;
-        }
-
-        let left_name = PRINTNAME(left);
-        let right_name = PRINTNAME(right);
-        if left_name.is_null() || right_name.is_null() {
-            return false;
-        }
-
-        let left_chars = CHAR(left_name);
-        let right_chars = CHAR(right_name);
-        if left_chars.is_null() || right_chars.is_null() {
-            return false;
-        }
-
-        CStr::from_ptr(left_chars).to_bytes() == CStr::from_ptr(right_chars).to_bytes()
-    }
-}
+pub(crate) use super::accessors::symbol_name_bytes_equal;
 
 // ---------------------------------------------------------------------------
 // Symbol interning
@@ -495,6 +462,24 @@ mod tests {
 
         assert_eq!(left_a, left_b);
         assert_ne!(left_a, right_a);
+    }
+
+    #[test]
+    fn symbol_comparison_checks_each_projection_once() {
+        use crate::sexp::memory::projection_directory_probe_count;
+
+        let _session = RSession::new_for_gc_tests();
+        let left = unsafe { Rf_install(c"left_symbol_name".as_ptr()) };
+        let right = unsafe { Rf_install(c"right_symbol_name".as_ptr()) };
+
+        let before = projection_directory_probe_count();
+        assert!(symbol_name_bytes_equal(left, left));
+        assert_eq!(projection_directory_probe_count() - before, 1);
+
+        let before = projection_directory_probe_count();
+        assert!(!symbol_name_bytes_equal(left, right));
+        // Two symbol headers and two sealed character projections.
+        assert_eq!(projection_directory_probe_count() - before, 4);
     }
 
     #[test]
