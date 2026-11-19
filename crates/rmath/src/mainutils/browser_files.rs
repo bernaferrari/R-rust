@@ -135,6 +135,35 @@ pub(crate) fn write_snapshot_current(path: &str, parts: &[&[u8]]) -> Result<Rc<F
     .ok_or_else(|| "no active R session".to_string())?
 }
 
+/// Generate a bounded file without replacing the destination on failure.
+#[cfg(feature = "renderplot-device")]
+pub(crate) fn publish_generated_current(
+    path: &str,
+    generate: impl FnOnce(&mut dyn io::Write) -> io::Result<()>,
+) -> io::Result<()> {
+    let (owner, key) = with_current_instance(|instance| unsafe {
+        let store = &(*instance).browser_files;
+        let key = store.resolve(path)?;
+        store.require_parent(&key)?;
+        Ok::<_, String>(((*instance).heap_identity.clone(), key.into_owned()))
+    })
+    .ok_or_else(|| io::Error::other("no active R session"))?
+    .map_err(io::Error::other)?;
+    let mut output = FileBuffer::new(MAX_FILE_BYTES);
+    // Generated output calls only the Rust serializer. It cannot evaluate R.
+    generate(&mut output)?;
+    with_current_instance(|instance| unsafe {
+        if !owner.same_domain(&(*instance).heap_identity) {
+            return Err("original file session is no longer active".to_string());
+        }
+        let store = &mut (*instance).browser_files;
+        let total = store.total_after_write(&key, output.bytes.len())?;
+        store.publish(&key, Rc::new(output.into_bytes()), total)
+    })
+    .ok_or_else(|| io::Error::other("no active R session"))?
+    .map_err(io::Error::other)
+}
+
 /// Import keys are rooted at the embedding boundary, independently of R's cwd.
 pub(crate) fn import_current(path: &str, bytes: &[u8]) -> Result<(), String> {
     BrowserFileStore::validate_path(path)?;
