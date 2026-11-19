@@ -74,17 +74,18 @@ def embedded_files(data, root):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('module', type=Path)
+    parser.add_argument('module_or_package', type=Path, help='Wasm file or generated package directory')
     parser.add_argument('--source-root', type=Path, default=ROOT)
     parser.add_argument('--byte-limit', type=int, default=25 * 1024 * 1024)
     args = parser.parse_args()
-    module = args.module.read_bytes()
+    package = args.module_or_package if args.module_or_package.is_dir() else None
+    module = (package / 'r_wasm_bg.wasm' if package else args.module_or_package).read_bytes()
     try:
         sizes, data = measure(module)
     except ValueError as error:
         parser.error(str(error))
     assets = embedded_files(data, args.source_root)
-    print(json.dumps({
+    report = {
         'sha256': hashlib.sha256(module).hexdigest(),
         'bytes': len(module),
         'byte_limit': args.byte_limit,
@@ -94,7 +95,12 @@ def main():
         'matched_asset_bytes': sum(asset['bytes'] for asset in assets),
         'largest_exact_assets': assets[:20],
         'asset_scope': 'Tracked files above 4 KiB with exact, contiguous, non-overlapping matches in the data section',
-    }, indent=2))
+    }
+    if package:
+        package_bytes = sum(path.stat().st_size for path in package.rglob('*') if path.is_file())
+        report.update(package_bytes=package_bytes,
+                      package_headroom_bytes=args.byte_limit - package_bytes)
+    print(json.dumps(report, indent=2))
 
 
 if __name__ == '__main__':

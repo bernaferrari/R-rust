@@ -95,8 +95,17 @@ val rustRuntimeResources = layout.buildDirectory.dir("generated/rustRuntimeResou
 val buildRustRuntime by tasks.registering(Exec::class) {
     val repository = rootProject.projectDir.parentFile.parentFile
     workingDir(repository)
-    inputs.files(fileTree(repository.resolve("crates")) { include("**/*.rs", "**/*.R", "**/*.ttf", "**/Cargo.toml"); exclude("**/target/**") })
-    inputs.files(repository.resolve("Cargo.lock"), repository.resolve("Cargo.toml"), repository.resolve("scripts/build_wasm_runtime.sh"))
+    inputs.files(
+        fileTree(repository.resolve("crates")) {
+            include("**/*.rs", "**/*.R", "**/*.ttf", "**/Cargo.toml")
+            include("**/assets/**", "rmath/src/tzone/zoneinfo/**")
+            exclude("**/target/**")
+        },
+        repository.resolve("Cargo.lock"),
+        repository.resolve("Cargo.toml"),
+        repository.resolve("scripts/build_wasm_runtime.sh"),
+        repository.resolve("scripts/optimize_wasm_runtime.py"),
+    )
     outputs.dir(rustRuntimeResources)
     commandLine("bash", "scripts/build_wasm_runtime.sh", "--target", "web", "--release",
         "--out-dir", rustRuntimeResources.get().dir("rust-runtime").asFile.absolutePath)
