@@ -1,4 +1,5 @@
 import { runDefaultByteDiagnostics } from './default-byte-diagnostic-contract.mjs';
+import binaryAdmission from './binary-admission.cjs';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync } from 'node:fs';
@@ -138,6 +139,8 @@ for (let generation = 0; generation < 2; generation++) {
     }
     const defaultChecks = runDefaultByteDiagnostics(session, generation);
     console.log(JSON.stringify({ generation, default_byte_diagnostic_checks: defaultChecks }));
+    const importChecks = binaryAdmission.checkImportBoundaries(session);
+    console.log(JSON.stringify({ generation, browser_file_import_checks: importChecks }));
     const name = session.eval_checked("tempfile(pattern='rport',fileext='.tmp')");
     assert.equal(temporaryNames.has(name), false, 'Uncreated names must remain distinct across fresh sessions');
     temporaryNames.add(name);

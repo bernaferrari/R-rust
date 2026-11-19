@@ -24,6 +24,7 @@ pub use rmath::android::{
 };
 
 pub use packages::RPackageInfo;
+pub use rmath::{MAX_BROWSER_FILE_BYTES, MAX_BROWSER_FILE_PATH_BYTES};
 pub use session::{
     AndroidRuntimePaths, CancellationToken, EvalOutput, InteractiveOutput, RSession, ReadGuard,
     ValueHandle, WriteGuard,

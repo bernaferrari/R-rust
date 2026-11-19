@@ -89,10 +89,53 @@ const WASM_OUTPUT_LIMIT_BYTES: usize = 1024 * 1024;
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 impl WasmRSession {
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn import_file(&mut self, path: String, bytes: Vec<u8>) -> Result<(), JsError> {
         self.with_session(|s| {
             s.import_file(&path, &bytes)
                 .map_err(|e| JsError::new(&e.to_string()))
+        })
+    }
+
+    /// Borrow the incoming JS objects and check their sizes before copying
+    /// either into the linear heap.
+    #[cfg(target_arch = "wasm32")]
+    pub fn import_file(
+        &mut self,
+        path: &js_sys::JsString,
+        bytes: &js_sys::Uint8Array,
+    ) -> Result<(), JsError> {
+        self.with_session(|session| {
+            let length = bytes.length();
+            let limit = r_embed::MAX_BROWSER_FILE_BYTES;
+            if length as usize > limit {
+                return Err(JsError::new(&format!(
+                    "browser file exceeds {limit} byte limit"
+                )));
+            }
+            if path.length() as usize > r_embed::MAX_BROWSER_FILE_PATH_BYTES {
+                return Err(JsError::new(
+                    "browser file paths must be non-empty relative paths",
+                ));
+            }
+            let path = path
+                .as_string()
+                .ok_or_else(|| JsError::new("browser file path must be a string"))?;
+            // A view with an explicit length keeps this copy bounded if the
+            // source view tracks the length of a growable shared buffer.
+            let view = js_sys::Uint8Array::new_with_byte_offset_and_length(
+                &bytes.buffer(),
+                bytes.byte_offset(),
+                length,
+            );
+            let mut data = Vec::new();
+            data.try_reserve_exact(length as usize)
+                .map_err(|_| JsError::new("could not allocate browser file upload"))?;
+            data.resize(length as usize, 0);
+            view.copy_to(&mut data);
+            session
+                .import_file(&path, &data)
+                .map_err(|error| JsError::new(&error.to_string()))
         })
     }
     pub fn export_file(&mut self, path: String) -> Result<Vec<u8>, JsError> {

@@ -199,6 +199,9 @@ pub(crate) mod mainutils;
 #[allow(dead_code, non_camel_case_types)]
 pub(crate) mod modules;
 pub(crate) use mainutils as main;
+pub use mainutils::browser_files::{
+    MAX_FILE_BYTES as MAX_BROWSER_FILE_BYTES, MAX_FILE_PATH_BYTES as MAX_BROWSER_FILE_PATH_BYTES,
+};
 pub use rmath_nmath as nmath;
 #[allow(dead_code, non_camel_case_types)]
 pub(crate) mod sexp;
