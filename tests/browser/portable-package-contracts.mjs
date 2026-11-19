@@ -29,6 +29,8 @@ const contracts = [
     '1205_sprintf_coercion_length',
     '1206_current_local_date',
     '1207_factor_drop_missing_level',
+    '1208_everyday_csv_summary',
+    '1209_everyday_model_persistence',
   ].map(name => [
     resolve(root, 'tests/conformance/cases', name + '.R'),
     resolve(root, 'tests/conformance/golden', name + '.out'),
