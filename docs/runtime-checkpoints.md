@@ -65,7 +65,9 @@ node tests/browser/portable-package-contracts.mjs "$report_dir/pkg"
 (
     cd website
     pnpm install --frozen-lockfile
-    CI=1 RPORT_WASM_PKG="$report_dir/pkg" \
+    export RPORT_WASM_PKG="$report_dir/pkg"
+    pnpm build
+    CI=1 \
         PLAYWRIGHT_JSON_OUTPUT_FILE="$report_dir/playwright.json" \
         pnpm test:e2e --reporter=line,json
 )
