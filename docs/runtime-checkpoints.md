@@ -32,6 +32,11 @@ tracks native registration coverage separately.
 - The arm64 Android crates passed cross-compilation. The separate global-state
   audit reported 75 unclassified declarations.
 
+- The Gradle production bundle gate accepted 25,850,514 bytes of Rust runtime
+  assets, leaving 363,886 bytes under 25 MiB. The optimized module is
+  `af1b3732c64821371d562464e3f32582e3e0378577ebe9f7af5131e074c118e4` by SHA-256.
+  That module passed 290 public Wasm contracts across two fresh sessions.
+
 ## Re-run GNU R parity
 
 Run from a clean checkout. The pinned oracle installer prints its binary
@@ -73,7 +78,9 @@ scripts/upstream_core_slices.sh --strict --timeout 1800 --runtime-profile graphi
 
 Use the [release gate](release-gate.md) for the workspace and platform checks.
 For a runtime change, exercise its denial and recovery paths directly and record
-the scope of any strict Miri run.
+the scope of any strict Miri run. The Wasm release wrapper defaults to Cargo
+optimization level `2` before Binaryen optimization. It honors an explicit
+caller override.
 
 ```bash
 scripts/audit_safe_api.sh

@@ -12,15 +12,7 @@ if ! rustup run "$WASM_TOOLCHAIN" rustc --version >/dev/null 2>&1; then
     echo "Install prerequisites: rustup toolchain install $WASM_TOOLCHAIN --profile minimal --component rust-src --target wasm32-unknown-unknown" >&2
     exit 2
 fi
-# Skip wasm-pack's old bundled optimizer, which crashes on Rust's Wasm EH.
-# Release assets use the separately pinned, verified Binaryen below.
-# Optional GPU builds stay separate from the default CPU distribution.
-if [[ -n "${RPORT_WASM_FEATURES:-}" ]]; then
-    wasm-pack build crates/r-wasm --no-opt "$@" -- -Zbuild-std=std,panic_unwind --features "$RPORT_WASM_FEATURES"
-else
-    wasm-pack build crates/r-wasm --no-opt "$@" -- -Zbuild-std=std,panic_unwind
-fi
-
+WASM_PACK_ARGS=("$@")
 OUTPUT_DIR="pkg"
 OPTIMIZE=1
 while (($# > 0)); do
@@ -31,6 +23,21 @@ while (($# > 0)); do
         *) shift ;;
     esac
 done
+if [[ "$OPTIMIZE" == 1 ]]; then
+    # Level 2 keeps the distributed Wasm within the size and browser time
+    # budgets while preserving the caller's explicit profile override.
+    export CARGO_PROFILE_RELEASE_OPT_LEVEL="${CARGO_PROFILE_RELEASE_OPT_LEVEL:-2}"
+fi
+
+# Skip wasm-pack's old bundled optimizer, which crashes on Rust's Wasm EH.
+# Release assets use the separately pinned, verified Binaryen below.
+# Optional GPU builds stay separate from the default CPU distribution.
+if [[ -n "${RPORT_WASM_FEATURES:-}" ]]; then
+    wasm-pack build crates/r-wasm --no-opt "${WASM_PACK_ARGS[@]}" -- -Zbuild-std=std,panic_unwind --features "$RPORT_WASM_FEATURES"
+else
+    wasm-pack build crates/r-wasm --no-opt "${WASM_PACK_ARGS[@]}" -- -Zbuild-std=std,panic_unwind
+fi
+
 if [[ "$OPTIMIZE" == 1 ]]; then
     if [[ "$OUTPUT_DIR" != /* ]]; then OUTPUT_DIR="$ROOT_DIR/crates/r-wasm/$OUTPUT_DIR"; fi
     python3 "$ROOT_DIR/scripts/optimize_wasm_runtime.py" --package "$OUTPUT_DIR"
