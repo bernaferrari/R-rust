@@ -396,6 +396,91 @@ fn named_browser_file_is_deferred_without_creating_a_host_file() {
 }
 
 #[test]
+fn browser_connections_share_the_charge_and_release_replaced_versions_on_close() {
+    use crate::mainutils::browser_files;
+    use crate::sexp::memory::ArenaBudget;
+
+    let mut session = RSession::new_for_gc_tests();
+    session.enable_browser_files();
+    session.with_active_in(|owner| unsafe {
+        (*owner).browser_files.set_test_clock(1.0);
+        let arena = &mut (*owner).arena;
+        let scratch = arena.workspace_bytes();
+        // Two four-byte versions fit. Opening more readers of either file
+        // version cannot consume any of those eight bytes.
+        arena.set_budget(ArenaBudget::new(
+            arena.total_bytes_allocated() + scratch + 8,
+            0,
+        ));
+        browser_files::write_current("shared.txt", b"old\n").unwrap();
+        let mut first = RConn::new("file", "shared.txt", "r", ConnKind::BrowserFile);
+        let mut second = RConn::new("file", "shared.txt", "r", ConnKind::BrowserFile);
+        open_browser_file(&mut first, "r").unwrap();
+        for _ in 0..4 {
+            open_browser_file(&mut second, "r").unwrap();
+            assert_eq!((*owner).arena.workspace_bytes(), scratch + 4);
+            close_connection_inner(&mut second);
+        }
+        open_browser_file(&mut second, "r").unwrap();
+        assert!(Rc::ptr_eq(
+            first.browser_snapshot.as_ref().unwrap(),
+            second.browser_snapshot.as_ref().unwrap(),
+        ));
+        browser_files::write_current("shared.txt", b"new\n").unwrap();
+        assert_eq!((*owner).arena.workspace_bytes(), scratch + 8);
+        assert_eq!(read_raw_line(&mut first, false).as_deref(), Some("old"));
+        close_connection_inner(&mut first);
+        assert_eq!((*owner).arena.workspace_bytes(), scratch + 8);
+        close_connection_inner(&mut second);
+        assert_eq!((*owner).arena.workspace_bytes(), scratch + 4);
+
+        open_browser_file(&mut second, "r").unwrap();
+        assert!(browser_files::remove_current("shared.txt"));
+        assert_eq!((*owner).arena.workspace_bytes(), scratch + 4);
+        assert_eq!(read_raw_line(&mut second, false).as_deref(), Some("new"));
+        close_connection_inner(&mut second);
+        assert_eq!((*owner).arena.workspace_bytes(), scratch);
+    });
+}
+
+#[test]
+fn browser_append_admits_one_candidate_and_keeps_the_old_file_on_refusal() {
+    use crate::mainutils::browser_files;
+    use crate::sexp::memory::ArenaBudget;
+
+    let mut session = RSession::new_for_gc_tests();
+    session.enable_browser_files();
+    session.with_active_in(|owner| unsafe {
+        (*owner).browser_files.set_test_clock(1.0);
+        let scratch = (*owner).arena.workspace_bytes();
+        let baseline = (*owner).arena.total_bytes_allocated() + scratch;
+        (*owner).arena.set_budget(ArenaBudget::new(baseline + 5, 0));
+        browser_files::write_current("append.txt", b"a\n").unwrap();
+        let mut writer = RConn::new("file", "append.txt", "a", ConnKind::BrowserFile);
+        open_browser_file(&mut writer, "a").unwrap();
+        let error = append_browser_file(&mut writer, b"b", b"\n").unwrap_err();
+        assert!(error.contains("session memory limit"));
+        assert_eq!(writer.raw_pos, 2);
+        assert_eq!(browser_files::read_current("append.txt").unwrap(), b"a\n");
+        assert_eq!((*owner).arena.workspace_bytes(), scratch + 2);
+
+        // Exactly the two-byte original and four-byte replacement fit.
+        (*owner).arena.set_budget(ArenaBudget::new(baseline + 6, 0));
+        append_browser_file(&mut writer, b"b", b"\n").unwrap();
+        assert_eq!(writer.raw_pos, 4);
+        assert_eq!(
+            browser_files::read_current("append.txt").unwrap(),
+            b"a\nb\n"
+        );
+        assert_eq!((*owner).arena.workspace_bytes(), scratch + 4);
+        close_connection_inner(&mut writer);
+        assert_eq!((*owner).arena.workspace_bytes(), scratch + 4);
+        assert!(browser_files::remove_current("append.txt"));
+        assert_eq!((*owner).arena.workspace_bytes(), scratch);
+    });
+}
+
+#[test]
 fn anonymous_browser_file_is_owned_open_read_write_and_recovers_after_budget_rejection() {
     let mut session = RSession::new_for_gc_tests();
     session.enable_browser_files();

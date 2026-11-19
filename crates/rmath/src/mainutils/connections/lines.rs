@@ -435,9 +435,8 @@ pub unsafe fn do_writeLines(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) 
             ConnKind::BrowserFile => {
                 for j in 0..text_len {
                     let line = string_elt(text, j);
-                    let mut bytes = line.into_bytes();
-                    bytes.extend_from_slice(sep_str.as_bytes());
-                    write_bytes_to_conn(conn, &bytes);
+                    append_browser_file(conn, line.as_bytes(), sep_str.as_bytes())
+                        .unwrap_or_else(|message| r_error(&message));
                 }
             }
             ConnKind::File => {

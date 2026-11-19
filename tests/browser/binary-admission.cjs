@@ -16,6 +16,25 @@ function checkImportBoundaries(session) {
   return 5;
 }
 
+function checkConnectionSnapshots(session) {
+  session.import_file('binary/snapshots.bin', Uint8Array.of(97, 10));
+  session.eval_checked(`
+    reader <- file('binary/snapshots.bin', 'rb')
+    writer <- file('binary/snapshots.bin', 'ab')
+    writeBin(as.raw(c(98, 10)), writer)
+    close(writer)
+    stopifnot(identical(readBin(reader, 'raw', 4L), as.raw(c(97, 10))))
+    close(reader)
+    reader <- file('binary/snapshots.bin', 'r')
+    stopifnot(identical(readLines(reader), c('a', 'b')))
+    close(reader)
+    rm(reader, writer)
+  `);
+  assert.deepEqual(session.export_file('binary/snapshots.bin'), Uint8Array.of(97, 10, 98, 10));
+  session.remove_file('binary/snapshots.bin');
+  return 3;
+}
+
 module.exports = { checkImportBoundaries };
 
 if (require.main === module) {
@@ -27,6 +46,7 @@ if (require.main === module) {
     try {
       session.import_file('binary/input.bin', Uint8Array.of(9,8,7,6));
       checks += checkImportBoundaries(session);
+      checks += checkConnectionSnapshots(session);
       for (const source of [
         "identical(readBin(con=as.raw(c(9,8,7,6)), 'raw', 2L), as.raw(c(9,8)))",
         "identical(writeBin(con=raw(), c(1L,256L), size=2L, endian='big'), as.raw(c(0,1,1,0)))",

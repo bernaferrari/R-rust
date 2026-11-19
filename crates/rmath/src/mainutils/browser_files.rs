@@ -4,6 +4,7 @@ use crate::sexp::instance::with_current_instance;
 use crate::sexp::memory::{RArena, TransientReservation};
 use std::collections::HashMap;
 use std::io;
+use std::rc::Rc;
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -13,7 +14,7 @@ pub const MAX_SESSION_BYTES: usize = 8 * 1024 * 1024;
 pub const MAX_FILE_COUNT: usize = 128;
 
 struct StoredFile {
-    bytes: FileBytes,
+    bytes: Rc<FileBytes>,
     mtime: f64,
     atime: f64,
     ctime: f64,
@@ -94,10 +95,50 @@ pub fn set_time_current(path: &str, secs: f64) -> bool {
 }
 
 pub fn write_current(path: &str, bytes: &[u8]) -> Result<(), String> {
+    write_snapshot_current(path, &[bytes]).map(drop)
+}
+
+/// Write and return one admitted file version shared by the store and caller.
+pub(crate) fn write_snapshot_current(path: &str, parts: &[&[u8]]) -> Result<Rc<FileBytes>, String> {
     with_current_instance(|instance| unsafe {
         (*instance)
             .browser_files
-            .put_with_arena(path, bytes, Some(&mut (*instance).arena))
+            .put_with_arena(path, parts, Some(&mut (*instance).arena))
+    })
+    .ok_or_else(|| "no active R session".to_string())?
+}
+
+pub(crate) enum BrowserOpenMode {
+    Read,
+    Truncate,
+    Append,
+}
+
+pub(crate) fn open_snapshot_current(
+    path: &str,
+    mode: BrowserOpenMode,
+) -> Result<Rc<FileBytes>, String> {
+    with_current_instance(|instance| unsafe {
+        let store = &mut (*instance).browser_files;
+        BrowserFileStore::validate_path(path)?;
+        match mode {
+            BrowserOpenMode::Read => store
+                .files
+                .get(path)
+                .map(|file| Rc::clone(&file.bytes))
+                .ok_or_else(|| "browser file not found".to_string()),
+            BrowserOpenMode::Append | BrowserOpenMode::Truncate => {
+                if matches!(mode, BrowserOpenMode::Append) {
+                    let now = store.now();
+                    if let Some(file) = store.files.get_mut(path) {
+                        file.mtime = now;
+                        file.atime = now;
+                        return Ok(Rc::clone(&file.bytes));
+                    }
+                }
+                store.put_with_arena(path, &[], Some(&mut (*instance).arena))
+            }
+        }
     })
     .ok_or_else(|| "no active R session".to_string())?
 }
@@ -144,18 +185,20 @@ pub(crate) struct FileBytes {
 }
 
 impl FileBytes {
-    fn copy(bytes: &[u8], arena: Option<&mut RArena>) -> Result<Self, String> {
+    fn copy_parts(parts: &[&[u8]], len: usize, arena: Option<&mut RArena>) -> Result<Self, String> {
         let _reservation = arena
             .map(|arena| {
                 arena
-                    .try_reserve_transient(bytes.len())
+                    .try_reserve_transient(len)
                     .ok_or_else(|| "browser file exceeds session memory limit".to_string())
             })
             .transpose()?;
         let mut data = Vec::new();
-        data.try_reserve_exact(bytes.len())
+        data.try_reserve_exact(len)
             .map_err(|_| "could not allocate browser file data".to_string())?;
-        data.extend_from_slice(bytes);
+        for bytes in parts {
+            data.extend_from_slice(bytes);
+        }
         Ok(Self {
             bytes: data,
             _reservation,
@@ -396,7 +439,7 @@ impl BrowserFileStore {
     }
 
     pub fn read(&self, path: &str) -> Option<&[u8]> {
-        self.files.get(path).map(|file| &*file.bytes)
+        self.files.get(path).map(|file| &**file.bytes)
     }
 
     pub fn info(&self, path: &str) -> Option<BrowserFileInfo> {
@@ -428,10 +471,7 @@ impl BrowserFileStore {
     fn validate_file(path: &str, length: usize) -> Result<(), String> {
         Self::validate_path(path)?;
         if length > MAX_FILE_BYTES {
-            return Err(format!(
-                "browser file exceeds {} byte limit",
-                MAX_FILE_BYTES
-            ));
+            return Err(file_size_error());
         }
         Ok(())
     }
@@ -456,7 +496,7 @@ impl BrowserFileStore {
         Ok(total)
     }
 
-    fn publish(&mut self, path: &str, bytes: FileBytes, total: usize) -> Result<(), String> {
+    fn publish(&mut self, path: &str, bytes: Rc<FileBytes>, total: usize) -> Result<(), String> {
         if !self.files.contains_key(path) {
             self.files
                 .try_reserve(1)
@@ -482,20 +522,25 @@ impl BrowserFileStore {
     }
 
     pub fn put(&mut self, path: &str, bytes: &[u8]) -> Result<(), String> {
-        self.put_with_arena(path, bytes, None)
+        self.put_with_arena(path, &[bytes], None).map(drop)
     }
 
     fn put_with_arena(
         &mut self,
         path: &str,
-        bytes: &[u8],
+        parts: &[&[u8]],
         arena: Option<&mut RArena>,
-    ) -> Result<(), String> {
-        let total = self.total_after_write(path, bytes.len())?;
-        // During replacement the old file stays charged until publication
-        // drops its bytes. An admission or allocation failure leaves it intact.
-        let data = FileBytes::copy(bytes, arena)?;
-        self.publish(path, data, total)
+    ) -> Result<Rc<FileBytes>, String> {
+        let len = parts
+            .iter()
+            .try_fold(0usize, |len, bytes| len.checked_add(bytes.len()))
+            .ok_or_else(file_size_error)?;
+        let total = self.total_after_write(path, len)?;
+        // The old version stays charged for as long as the store or an open
+        // connection holds it. Failed admission leaves all versions intact.
+        let data = Rc::new(FileBytes::copy_parts(parts, len, arena)?);
+        self.publish(path, Rc::clone(&data), total)?;
+        Ok(data)
     }
 
     pub fn clear(&mut self) {
@@ -524,10 +569,10 @@ impl BrowserFileStore {
         let Ok(total) = self.total_after_write(to, bytes.len()) else {
             return false;
         };
-        let Ok(data) = FileBytes::copy(bytes, arena) else {
+        let Ok(data) = FileBytes::copy_parts(&[bytes], bytes.len(), arena) else {
             return false;
         };
-        self.publish(to, data, total).is_ok()
+        self.publish(to, Rc::new(data), total).is_ok()
     }
 
     pub fn names(&self) -> Vec<String> {
@@ -535,6 +580,10 @@ impl BrowserFileStore {
         names.sort();
         names
     }
+}
+
+fn file_size_error() -> String {
+    format!("browser file exceeds {MAX_FILE_BYTES} byte limit")
 }
 
 #[cfg(test)]

@@ -18,6 +18,7 @@ use flate2::Compression as GzCompression;
 use flate2::read::GzDecoder;
 use flate2::write::GzEncoder;
 
+use crate::mainutils::browser_files::{self, FileBytes};
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::context::RError;
@@ -92,6 +93,8 @@ pub struct RConn {
     pub raw_pos: usize,
     /// Raw data buffer (for rawConnection).
     pub raw_data: Vec<u8>,
+    /// The admitted file version held by an open browser connection.
+    pub(super) browser_snapshot: Option<Rc<FileBytes>>,
     /// Text lines buffer (for textConnection reading).
     pub text_data: String,
     /// Current position in text_data.
@@ -132,6 +135,7 @@ impl RConn {
 
             raw_pos: 0,
             raw_data: Vec::new(),
+            browser_snapshot: None,
             text_data: String::new(),
             text_pos: 0,
 
@@ -140,6 +144,13 @@ impl RConn {
             reader: None,
             writer: None,
             pushback: Vec::new(),
+        }
+    }
+
+    fn buffered_bytes(&self) -> &[u8] {
+        match self.kind {
+            ConnKind::BrowserFile => self.browser_snapshot.as_deref().map_or(&[], |bytes| bytes),
+            _ => &self.raw_data,
         }
     }
 }
@@ -488,22 +499,17 @@ pub(crate) fn connection_fgetc(n: c_int) -> c_int {
             .as_mut()
             .map(|reader| reader.read(&mut byte))
             .unwrap_or(Ok(0)),
-        ConnKind::BrowserFile => {
-            if conn.raw_pos >= conn.raw_data.len() {
-                Ok(0)
-            } else {
-                byte[0] = conn.raw_data[conn.raw_pos];
+        ConnKind::BrowserFile
+        | ConnKind::RawConnection
+        | ConnKind::GzFile
+        | ConnKind::BzFile
+        | ConnKind::XzFile => {
+            if let Some(&value) = conn.buffered_bytes().get(conn.raw_pos) {
+                byte[0] = value;
                 conn.raw_pos += 1;
                 Ok(1)
-            }
-        }
-        ConnKind::GzFile | ConnKind::BzFile | ConnKind::XzFile => {
-            if conn.raw_pos >= conn.raw_data.len() {
-                Ok(0)
             } else {
-                byte[0] = conn.raw_data[conn.raw_pos];
-                conn.raw_pos += 1;
-                Ok(1)
+                Ok(0)
             }
         }
         ConnKind::Pipe => conn
@@ -512,15 +518,6 @@ pub(crate) fn connection_fgetc(n: c_int) -> c_int {
             .and_then(|child| child.stdout.as_mut())
             .map(|stdout| stdout.read(&mut byte))
             .unwrap_or(Ok(0)),
-        ConnKind::RawConnection => {
-            if conn.raw_pos >= conn.raw_data.len() {
-                Ok(0)
-            } else {
-                byte[0] = conn.raw_data[conn.raw_pos];
-                conn.raw_pos += 1;
-                Ok(1)
-            }
-        }
         ConnKind::TextConnection => {
             let data = conn.text_data.as_bytes();
             if conn.text_pos >= data.len() {
@@ -640,18 +637,14 @@ pub fn read_pushback_line(conn: &mut RConn, skip_nul: bool) -> Option<String> {
 }
 
 pub fn read_raw_line(conn: &mut RConn, skip_nul: bool) -> Option<String> {
-    if conn.raw_pos >= conn.raw_data.len() {
+    let remaining = conn.buffered_bytes().get(conn.raw_pos..)?;
+    if remaining.is_empty() {
         return None;
     }
-    let start = conn.raw_pos;
-    let (relative_end, relative_after) = line_terminator(&conn.raw_data[start..])
-        .unwrap_or((conn.raw_data.len() - start, conn.raw_data.len() - start));
-    let end = start + relative_end;
-    conn.raw_pos = start + relative_after;
-    Some(nul_normalized_line(
-        conn.raw_data[start..end].to_vec(),
-        skip_nul,
-    ))
+    let (end, after) = line_terminator(remaining).unwrap_or((remaining.len(), remaining.len()));
+    let line = nul_normalized_line(remaining[..end].to_vec(), skip_nul);
+    conn.raw_pos += after;
+    Some(line)
 }
 
 /// Write bytes to a connection using the Rust connection table.
@@ -718,11 +711,12 @@ pub(crate) fn connection_read_all(n: c_int) -> Vec<u8> {
             | ConnKind::BzFile
             | ConnKind::XzFile
     ) {
-        if conn.raw_pos >= conn.raw_data.len() {
-            return Vec::new();
-        }
-        let bytes = conn.raw_data[conn.raw_pos..].to_vec();
-        conn.raw_pos = conn.raw_data.len();
+        let bytes = conn
+            .buffered_bytes()
+            .get(conn.raw_pos..)
+            .unwrap_or_default()
+            .to_vec();
+        conn.raw_pos += bytes.len();
         return bytes;
     }
     let mut bytes = Vec::new();
@@ -732,6 +726,20 @@ pub(crate) fn connection_read_all(n: c_int) -> Vec<u8> {
         }
     }
     bytes
+}
+
+pub(super) fn append_browser_file(
+    conn: &mut RConn,
+    bytes: &[u8],
+    sep: &[u8],
+) -> Result<(), String> {
+    let snapshot = browser_files::write_snapshot_current(
+        &conn.description,
+        &[conn.buffered_bytes(), bytes, sep],
+    )?;
+    conn.raw_pos = snapshot.len();
+    conn.browser_snapshot = Some(snapshot);
+    Ok(())
 }
 
 pub(crate) fn write_bytes_to_conn(conn: &mut RConn, bytes: &[u8]) {
@@ -749,24 +757,7 @@ pub(crate) fn write_bytes_to_conn(conn: &mut RConn, bytes: &[u8]) {
             }
         }
         ConnKind::BrowserFile => {
-            if bytes.len()
-                > crate::mainutils::browser_files::MAX_FILE_BYTES
-                    .saturating_sub(conn.raw_data.len())
-            {
-                r_error("browser file exceeds 1048576 byte limit");
-            }
-            let mut candidate = conn.raw_data.clone();
-            candidate.extend_from_slice(bytes);
-            if candidate.len() > crate::mainutils::browser_files::MAX_FILE_BYTES {
-                r_error("browser file exceeds 1048576 byte limit");
-            }
-            if let Err(message) =
-                crate::mainutils::browser_files::write_current(&conn.description, &candidate)
-            {
-                r_error(&message);
-            }
-            conn.raw_data = candidate;
-            conn.raw_pos = conn.raw_data.len();
+            append_browser_file(conn, bytes, &[]).unwrap_or_else(|message| r_error(&message))
         }
         ConnKind::GzFile | ConnKind::BzFile | ConnKind::XzFile => {
             conn.raw_data.extend_from_slice(bytes);

@@ -155,68 +155,62 @@ unsafe fn construct_file(
             conn.canwrite = true;
             conn
         } else {
-            let kind = if crate::mainutils::browser_files::read_current(&description).is_some()
-                || browser_mode
+            let kind = if browser_mode
+                || crate::mainutils::browser_files::contains_current(&description)
             {
                 ConnKind::BrowserFile
             } else {
                 ConnKind::File
             };
             let mut conn = RConn::new("file", &description, &open_mode, kind);
-            if !deferred {
-                if matches!(&conn.kind, ConnKind::BrowserFile) {
-                    open_browser_file(&mut conn, &open_mode);
-                } else if let Err(e) = open_maybe_compressed(&mut conn, &open_mode) {
-                    r_error(&format!("cannot open file '{}': {}", description, e));
-                }
+            if !deferred
+                && !matches!(&conn.kind, ConnKind::BrowserFile)
+                && let Err(e) = open_maybe_compressed(&mut conn, &open_mode)
+            {
+                r_error(&format!("cannot open file '{}': {}", description, e));
             }
             conn
         };
-        conn.canseek = !raw;
-        conn.text = !open_mode.contains('b');
         access.require_active()?;
         let ncon = next_connection();
         ans.try_set_integer_elt(0, ncon as c_int)?;
+        if !deferred && matches!(conn.kind, ConnKind::BrowserFile) {
+            open_browser_file(&mut conn, &open_mode).unwrap_or_else(|message| r_error(&message));
+        }
+        conn.canseek = !raw;
+        conn.text = !open_mode.contains('b');
         connection_table()[ncon] = Some(Box::new(conn));
         Ok(ans.freeze())
     }
 }
 
-/// Open a file and return (file, optional reader, optional writer).
-#[allow(clippy::type_complexity)]
-fn open_browser_file(conn: &mut RConn, mode: &str) {
-    use crate::mainutils::browser_files;
-    if !matches!(
-        mode,
-        "r" | "rt" | "rb" | "w" | "wt" | "wb" | "a" | "at" | "ab"
-    ) {
-        r_error(
-            "browser files support read, write and append modes; update modes are not implemented",
-        );
-    }
-    if let Err(message) = browser_files::BrowserFileStore::validate_path(&conn.description) {
-        r_error(&message);
-    }
-    let data = if mode.starts_with('w') {
-        Vec::new()
-    } else {
-        match browser_files::read_current(&conn.description) {
-            Some(bytes) => bytes,
-            None if mode.starts_with('a') => Vec::new(),
-            None => r_error("browser file not found"),
+fn open_browser_file(conn: &mut RConn, mode: &str) -> Result<(), String> {
+    use crate::mainutils::browser_files::{self, BrowserOpenMode};
+    let open_mode = match mode {
+        "r" | "rt" | "rb" => BrowserOpenMode::Read,
+        "w" | "wt" | "wb" => BrowserOpenMode::Truncate,
+        "a" | "at" | "ab" => BrowserOpenMode::Append,
+        _ => {
+            return Err(
+                "browser files support read, write and append modes; update modes are not implemented".into(),
+            );
         }
     };
-    if !mode.starts_with('r') {
-        if let Err(message) = browser_files::write_current(&conn.description, &data) {
-            r_error(&message);
-        }
-    }
-    conn.raw_pos = if mode.starts_with('a') { data.len() } else { 0 };
-    conn.raw_data = data;
+    let snapshot = browser_files::open_snapshot_current(&conn.description, open_mode)?;
+    conn.raw_pos = if mode.starts_with('a') {
+        snapshot.len()
+    } else {
+        0
+    };
+    conn.browser_snapshot = Some(snapshot);
+    conn.mode.clear();
+    conn.mode.push_str(mode);
+    conn.text = !mode.contains('b');
     conn.canseek = false;
     conn.isopen = true;
     conn.canread = mode.starts_with('r');
     conn.canwrite = !conn.canread;
+    Ok(())
 }
 
 type OpenFileHandles = (File, Option<BufReader<File>>, Option<BufWriter<File>>);
@@ -814,10 +808,13 @@ pub unsafe fn do_open(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEX
         } else {
             requested
         };
+        if matches!(conn.kind, ConnKind::BrowserFile) {
+            open_browser_file(conn, &open_mode).unwrap_or_else(|message| r_error(&message));
+            return R_NilValue();
+        }
         conn.mode = open_mode.clone();
         conn.text = !open_mode.contains('b');
         match &conn.kind {
-            ConnKind::BrowserFile => open_browser_file(conn, &open_mode),
             ConnKind::File => {
                 if open_maybe_compressed(conn, &open_mode).is_err() {
                     r_error("cannot open the connection");
@@ -989,6 +986,7 @@ pub fn close_connection_inner(conn: &mut RConn) {
     }
 
     conn.isopen = false;
+    conn.browser_snapshot = None;
 
     // Close file handles
     if let Some(mut writer) = conn.writer.take() {
