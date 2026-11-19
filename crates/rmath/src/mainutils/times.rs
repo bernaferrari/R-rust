@@ -25,27 +25,24 @@
 #![allow(non_snake_case, non_upper_case_globals, dead_code, unused_variables)]
 
 use std::os::raw::c_uint;
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 use std::time::SystemTime;
 
 /// Returns the current time as a double (seconds since the Unix epoch,
 /// with sub-second precision).
 ///
 /// This is a Rust port of `currentTime()` from src/main/times.c.
-/// It uses `SystemTime` which provides nanosecond precision on supported
-/// platforms. `SystemTime::now` panics on bare `wasm32-unknown-unknown`
-/// before a fallback can run, so this clock is the Unix epoch there.
+/// The JavaScript host supplies the wall clock for `wasm32-unknown-unknown`.
+/// Other targets use `SystemTime`.
 ///
 /// Note: the `n_leapseconds` subtraction from the original C code is
 /// intentionally omitted, as POSIX leap seconds are disallowed.
 pub fn currentTime() -> f64 {
-    // Bare wasm selects std's unsupported time module; SystemTime::now
-    // panics with "time not implemented on this platform".
-    #[cfg(target_arch = "wasm32")]
+    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
     {
-        0.0
+        js_sys::Date::now() * 1e-3
     }
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
     {
         match SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
             Ok(dur) => dur.as_secs() as f64 + dur.subsec_nanos() as f64 * 1e-9,
@@ -108,13 +105,6 @@ pub unsafe fn do_systime() -> f64 {
 #[cfg(test)]
 mod tests {
     use super::currentTime;
-
-    /// Bare wasm has no wall clock. `Sys.time` stays at the Unix epoch.
-    #[cfg(target_arch = "wasm32")]
-    #[test]
-    fn currentTime_is_unix_epoch_on_bare_wasm() {
-        assert_eq!(currentTime(), 0.0);
-    }
 
     #[test]
     fn currentTime_is_finite() {

@@ -93,12 +93,9 @@ fn sys_info_user() -> String {
 /// R's `Sys.time()` — current time as REALSXP (seconds since epoch).
 pub unsafe fn do_Sys_time(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        use std::time::{SystemTime, UNIX_EPOCH};
-        let dur = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default();
-        let secs = dur.as_secs() as f64 + dur.subsec_nanos() as f64 / 1e9;
+        let secs = crate::mainutils::times::currentTime();
         let result = Rf_ScalarReal(secs);
+        let _result = protect(result);
         // Set class to c("POSIXct", "POSIXt").
         let class = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
         if !class.is_null() {

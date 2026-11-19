@@ -48,6 +48,9 @@ faer = { version = "0.24", default-features = false, features = ["std", "linalg"
 
 r-graphics-engine = { path = "../r-graphics-engine", optional = true }
 
+[target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
+js-sys = "0.3"
+
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 # libc is native-only: the portable engine surface (types, printf, heap,
 # env, time, string/mem, stdio) is libc-free; the remaining libc users

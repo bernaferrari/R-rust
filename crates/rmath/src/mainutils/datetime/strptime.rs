@@ -8,12 +8,12 @@ use super::*;
 /// Ported from `glibc_fix()` in datetime.c.
 fn glibc_fix(tm: &mut stm, invalid: &mut bool) {
     unsafe {
-        // SystemTime works on every target (wasm yields the epoch,
-        // matching the previous wasm-libc facade behavior).
-        let t: time_t = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_secs() as i64)
-            .unwrap_or(0);
+        let now = crate::mainutils::times::currentTime();
+        if !now.is_finite() {
+            *invalid = true;
+            return;
+        }
+        let t = now.floor() as time_t;
         let mut tm0: tz_tm = std::mem::zeroed();
         if unsafe { R_localtime_r(&t, &mut tm0) }.is_null() {
             return;
