@@ -1,0 +1,5 @@
+samples <- read.csv("input.csv", colClasses = c("character", "character", "integer"))
+stopifnot(identical(samples$sample, c("001", "002", "003", "004")))
+summary <- aggregate(reading ~ site, data = samples, FUN = mean)
+write.csv(summary, "export.csv", row.names = FALSE)
+cat("Exported site means from imported measurements\n")

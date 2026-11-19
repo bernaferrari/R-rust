@@ -8,9 +8,9 @@ import json
 from pathlib import Path
 
 if __package__:
-    from .conformance_shards import rows_from_report
+    from .conformance_shards import file_digest, rows_from_report
 else:
-    from conformance_shards import rows_from_report
+    from conformance_shards import file_digest, rows_from_report
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -66,14 +66,34 @@ def wasm_results(log, module):
     return digest, cases
 
 
-def score(workflows, native, wasm):
+def file_round_trip_results(path, native_policy, wasm_digest):
+    report = json.loads(path.read_text())
+    provenance = ('source_commit', 'source_sha256', 'oracle_manifest_sha256')
+    if (report['schema_version'] != 1 or report['workflow'] != 'file-round-trip'
+            or any(report[name] != native_policy[name] for name in provenance)
+            or report['wasm_sha256'] != wasm_digest):
+        raise ValueError('session report differs in workflow, source, oracle or Wasm artifact')
+    fixture = ROOT / 'tests/everyday-analysis/sessions/file-round-trip'
+    if report['fixture_sha256'] != {p.name: file_digest(p) for p in sorted(fixture.iterdir())}:
+        raise ValueError('session report differs in file round-trip fixtures')
+    expected = report['expected']
+    if (len(expected['outputs']) != 2 or not all(expected['outputs'])
+            or len(expected['export_sha256']) != 64):
+        raise ValueError('session report must contain both GNU outputs and the exported file digest')
+    return {side: 'pass' if report[side] == expected else 'fail' for side in ('native', 'wasm')}
+
+
+def score(workflows, native, wasm, sessions=None):
     if not workflows or len({row['id'] for row in workflows}) != len(workflows):
         raise ValueError('expected a nonempty workflow inventory with distinct IDs')
     mapped = [row['case'] for row in workflows if 'case' in row]
     if len(set(mapped)) != len(mapped):
         raise ValueError('a fixture cannot count for more than one workflow')
-    rows = [dict(row, native=native.get(row.get('case'), 'unmeasured'),
-                 wasm=wasm.get(row.get('case'), 'unmeasured')) for row in workflows]
+    sessions = sessions or {}
+    rows = [dict(row, **sessions.get(row['id'], {
+        'native': native.get(row.get('case'), 'unmeasured'),
+        'wasm': wasm.get(row.get('case'), 'unmeasured'),
+    })) for row in workflows]
     totals = {}
     for platform in ('native', 'wasm'):
         counts = Counter(row[platform] for row in rows)
@@ -87,12 +107,17 @@ def main():
     parser.add_argument('--native-report', action='append', type=Path, required=True)
     parser.add_argument('--wasm-log', type=Path, required=True)
     parser.add_argument('--wasm-module', type=Path, required=True)
+    parser.add_argument('--session-report', type=Path)
     args = parser.parse_args()
     try:
         inventory = json.loads((ROOT / 'tests/everyday-analysis/workflows.json').read_text())
         native_policy, native = native_results(args.native_report)
         wasm_sha256, wasm = wasm_results(args.wasm_log, args.wasm_module)
-        workflows, totals = score(inventory['workflows'], native, wasm)
+        sessions = {}
+        if args.session_report:
+            sessions['file-round-trip'] = file_round_trip_results(
+                args.session_report, native_policy, wasm_sha256)
+        workflows, totals = score(inventory['workflows'], native, wasm, sessions)
     except (KeyError, OSError, ValueError) as err:
         parser.error(str(err))
     print(json.dumps({'inventory_version': inventory['version'], 'workflow_count': len(workflows),

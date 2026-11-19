@@ -20,8 +20,8 @@ prediction and rank-deficient models. The optimized Wasm artifact passed all
 
 The first run passed 2 of 20 workflows on both native Rport and optimized
 Wasm. It verified CSV import, joining, grouping and export, plus linear
-model fitting, prediction and RDS persistence. The other 18 workflows have
-no measured outcome yet. The native shards ran at `89d670fe` and the Wasm
+model fitting, prediction and RDS persistence. The other 18 workflows had
+no measured outcome in that run. The native shards ran at `89d670fe` and the Wasm
 module used the same runtime sources with the new fixtures enabled.
 [Baseline receipt](ci-checkpoints/everyday-analysis-v1-89d670fe.json)
 
@@ -42,3 +42,8 @@ python3 scripts/everyday_analysis_scorecard.py \
 Repeat `--native-report` when using selected shards from the same source and
 corpus. The JSON includes the inventory version, the native execution identity,
 the Wasm digest and each workflow's outcome.
+
+To verify a CSV export in a fresh session, run
+`python3 scripts/everyday_analysis_sessions.py "$report_dir/pkg"`. It compares
+the exported file and two independent sessions against pinned GNU R. Save its
+JSON output and pass it as `--session-report` to the scorecard.

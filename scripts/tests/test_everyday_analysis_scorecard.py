@@ -50,6 +50,25 @@ class EverydayScorecardTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'native reports differ'):
             scorecard.native_results(paths)
 
+    def test_fresh_session_report_requires_matching_artifact_and_export(self):
+        provenance = {'source_commit': 'commit', 'source_sha256': 'runtime',
+                      'oracle_manifest_sha256': 'oracle'}
+        fixture = scorecard.ROOT / 'tests/everyday-analysis/sessions/file-round-trip'
+        fixture_hashes = {p.name: scorecard.file_digest(p) for p in sorted(fixture.iterdir())}
+        expected = {'outputs': ['wrote the file\n', 'read the file\n'],
+                    'export_sha256': 'a' * 64}
+        changed = dict(expected, export_sha256='b' * 64)
+        path = self.directory / 'sessions.json'
+        path.write_text(json.dumps(dict(
+            schema_version=1, **provenance, workflow='file-round-trip',
+            wasm_sha256='module', fixture_sha256=fixture_hashes,
+            expected=expected, native=expected, wasm=changed,
+        )))
+        self.assertEqual(scorecard.file_round_trip_results(path, provenance, 'module'),
+                         {'native': 'pass', 'wasm': 'fail'})
+        with self.assertRaisesRegex(ValueError, 'session report differs'):
+            scorecard.file_round_trip_results(path, provenance, 'other-module')
+
 
 if __name__ == '__main__':
     unittest.main()
