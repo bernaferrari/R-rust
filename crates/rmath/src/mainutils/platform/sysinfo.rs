@@ -240,19 +240,25 @@ pub unsafe fn do_dircreate(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
     }
 }
 
-/// The GNU R wrapper handles arbitrary source and destination vectors. This
-/// internal branch copies one or more paths into a single existing directory.
+/// File copies use the same staged publication for a target file and a tree.
 pub unsafe fn do_filecopy(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe { copy_paths(args, true) }
+}
+
+pub unsafe fn do_filecopy_files(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe { copy_paths(args, false) }
+}
+
+unsafe fn copy_paths(args: SEXP, into_directory: bool) -> SEXP {
     unsafe {
-        use crate::mainutils::coerce::asLogical;
-        use crate::sexp::accessors::{CAR, CDR, LENGTH, STRING_ELT};
+        use crate::mainutils::{browser_files, coerce::asLogical};
+        use crate::sexp::accessors::{CAR, CDR, LENGTH};
         use crate::sexp::constructors::Rf_allocVector3;
-        use crate::sexp::ffi::{FALSE, SEXPTYPE, TRUE};
-        use crate::sexp::globals::R_NaString;
+        use crate::sexp::ffi::{SEXPTYPE, TRUE};
 
         let from = CAR(args);
         let mut rest = CDR(args);
-        let to_arg = CAR(rest);
+        let to = CAR(rest);
         let mut flag = || {
             rest = CDR(rest);
             asLogical(CAR(rest)) == TRUE
@@ -265,59 +271,49 @@ pub unsafe fn do_filecopy(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         let ans = Rf_allocVector3(SEXPTYPE::LGLSXP.as_c_int(), n.into());
         let _ans = protect(ans);
         let output = crate::sexp::accessors::LOGICAL(ans);
-        let target = if LENGTH(to_arg) == 1 {
-            let value = STRING_ELT(to_arg, 0);
-            (value != R_NaString())
-                .then(|| CStr::from_ptr(crate::sexp::accessors::CHAR(value)).to_bytes())
-        } else {
-            None
-        };
-
+        let target_count = LENGTH(to);
+        let browser = browser_files::enabled();
+        let valid_count = target_count == if into_directory { 1 } else { n };
         for i in 0..n as usize {
-            let source = STRING_ELT(from, i as crate::sexp::ffi::R_xlen_t);
-            *output.add(i) = FALSE;
-            let Some(target) = target else { continue };
-            if source == R_NaString() {
-                continue;
-            }
-            let source = CStr::from_ptr(crate::sexp::accessors::CHAR(source)).to_bytes();
-            let copied = if crate::mainutils::browser_files::enabled() {
-                let (Ok(source), Ok(target)) =
-                    (std::str::from_utf8(source), std::str::from_utf8(target))
-                else {
-                    continue;
-                };
-                crate::mainutils::browser_files::copy_into_directory_current(
-                    source, target, overwrite, recursive, copy_mode, copy_date,
-                )
-                .is_ok()
-            } else {
-                #[cfg(not(target_arch = "wasm32"))]
-                {
-                    let (Ok(source), Ok(target)) =
-                        (std::str::from_utf8(source), std::str::from_utf8(target))
-                    else {
-                        continue;
-                    };
-                    let source = std::path::Path::new(source);
-                    let target = std::path::Path::new(target);
-                    super::native_copy::copy_into_directory(
-                        source,
-                        target,
-                        super::native_copy::CopyOptions {
-                            overwrite,
-                            recursive,
-                            copy_mode,
-                            copy_date,
-                        },
-                    )
-                    .is_ok()
-                }
-                #[cfg(target_arch = "wasm32")]
-                {
-                    false
-                }
-            };
+            let target_index = if into_directory { 0 } else { i };
+            let copied = valid_count
+                && path_at(from, i).zip(path_at(to, target_index)).is_some_and(
+                    |(source, target)| {
+                        if browser {
+                            return browser_files::copy_current(
+                                &source,
+                                &target,
+                                into_directory,
+                                overwrite,
+                                recursive,
+                                copy_mode,
+                                copy_date,
+                            )
+                            .is_ok();
+                        }
+                        #[cfg(not(target_arch = "wasm32"))]
+                        {
+                            let options = super::native_copy::CopyOptions {
+                                overwrite,
+                                recursive,
+                                copy_mode,
+                                copy_date,
+                            };
+                            let source = std::path::Path::new(&source);
+                            let target = std::path::Path::new(&target);
+                            if into_directory {
+                                super::native_copy::copy_into_directory(source, target, options)
+                                    .is_ok()
+                            } else {
+                                super::native_copy::copy_to_file(source, target, options).is_ok()
+                            }
+                        }
+                        #[cfg(target_arch = "wasm32")]
+                        {
+                            false
+                        }
+                    },
+                );
             *output.add(i) = i32::from(copied);
         }
         ans

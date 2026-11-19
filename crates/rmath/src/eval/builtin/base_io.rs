@@ -72,6 +72,10 @@ pub(super) const BASE_IO: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::platform::do_filecopy,
     },
     EvaluatedBuiltin {
+        name: "file.copy.files",
+        handler: crate::mainutils::platform::do_filecopy_files,
+    },
+    EvaluatedBuiltin {
         name: "file.access",
         handler: crate::mainutils::platform::do_fileaccess,
     },

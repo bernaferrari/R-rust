@@ -23,6 +23,28 @@ pub(super) fn copy_into_directory(
     copy_with_mask(from, destination_dir, options, mode_mask)
 }
 
+pub(super) fn copy_to_file(from: &Path, to: &Path, mut options: CopyOptions) -> io::Result<()> {
+    let name = to
+        .file_name()
+        .ok_or_else(|| invalid("invalid copy destination"))?;
+    let parent = to
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
+    let destination = fs::canonicalize(parent)?.join(name);
+    options.recursive = false;
+    #[cfg(unix)]
+    let mode_mask = 0o777 & !super::current_file_creation_umask();
+    #[cfg(not(unix))]
+    let mode_mask = 0o777;
+    CopyTree {
+        options,
+        mode_mask,
+        ancestors: Vec::new(),
+    }
+    .copy_entry(from, &destination)
+}
+
 fn copy_with_mask(
     from: &Path,
     destination_dir: &Path,

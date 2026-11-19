@@ -194,3 +194,22 @@ fn browser_working_directories_and_open_connections_stay_in_their_session() {
         .unwrap();
     assert!(right.export_file("project/out.txt").is_err());
 }
+
+#[test]
+fn browser_file_copy_keeps_existing_destination_on_quota_refusal() {
+    let mut session = RSession::new().unwrap();
+    let full = vec![b'a'; 1024 * 1024];
+    session.import_file("source.bin", &full).unwrap();
+    let destination = b"keep these bytes";
+    session.import_file("dest.bin", destination).unwrap();
+    for i in 0..6 {
+        session.import_file(&format!("fill-{i}"), &full).unwrap();
+    }
+    session
+        .import_file("last", &full[destination.len()..])
+        .unwrap();
+    session
+        .eval("stopifnot(identical(file.copy('source.bin', 'dest.bin', overwrite = TRUE), FALSE))")
+        .unwrap();
+    assert_eq!(session.export_file("dest.bin").unwrap(), destination);
+}

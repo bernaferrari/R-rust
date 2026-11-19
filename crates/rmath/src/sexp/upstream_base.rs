@@ -33,10 +33,12 @@ struct UpstreamFile {
 
 #[derive(Clone, Copy)]
 enum UpstreamSource {
-    #[cfg(any(test, not(target_arch = "wasm32")))]
     Text(&'static str),
     #[cfg(target_arch = "wasm32")]
-    Packed { bytes: &'static [u8], length: usize },
+    Packed {
+        bytes: &'static [u8],
+        length: usize,
+    },
 }
 
 macro_rules! upstream_source {
@@ -821,7 +823,6 @@ const UPSTREAM_FILES: &[UpstreamFile] = &[
             "file.access",
             "file.append",
             "file.choose",
-            "file.copy",
             "file.create",
             "file.exists",
             "file.info",
@@ -843,6 +844,10 @@ const UPSTREAM_FILES: &[UpstreamFile] = &[
             "system.file",
             "unlink",
         ],
+    },
+    UpstreamFile {
+        source: UpstreamSource::Text(include_str!("atomic_file_copy.R")),
+        exports: &["file.copy"],
     },
     UpstreamFile {
         source: upstream_source!("dates.R"),
@@ -1248,7 +1253,6 @@ unsafe fn load_file_sources(base_env: SEXP, staging: SEXP, files: &[UpstreamFile
                         #[cfg(target_arch = "wasm32")]
                         let expanded;
                         let source = match file.source {
-                            #[cfg(any(test, not(target_arch = "wasm32")))]
                             UpstreamSource::Text(text) => text,
                             #[cfg(target_arch = "wasm32")]
                             UpstreamSource::Packed { bytes, length } => {

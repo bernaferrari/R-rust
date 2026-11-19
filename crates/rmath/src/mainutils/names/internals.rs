@@ -568,6 +568,14 @@ pub(super) const INTERNALS_FUNTAB: &[FunTabEntry] = &[
         PPinfo::new(PP_FUNCALL, PREC_FN, 0),
     ),
     FunTabEntry::new(
+        b"file.copy.files\0",
+        None,
+        0,
+        11,
+        6,
+        PPinfo::new(PP_FUNCALL, PREC_FN, 0),
+    ),
+    FunTabEntry::new(
         b"close\0",
         None,
         0,

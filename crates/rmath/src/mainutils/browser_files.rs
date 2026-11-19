@@ -338,18 +338,25 @@ pub(crate) fn unlink_current(path: &str, recursive: bool) -> bool {
         .unwrap_or(false)
 }
 
-pub(crate) fn copy_into_directory_current(
+pub(crate) fn copy_current(
     from: &str,
     to: &str,
+    into_directory: bool,
     overwrite: bool,
     recursive: bool,
     copy_mode: bool,
     copy_date: bool,
 ) -> Result<(), String> {
     with_current_instance(|instance| unsafe {
-        (*instance)
-            .browser_files
-            .copy_into_directory(from, to, overwrite, recursive, copy_mode, copy_date)
+        (*instance).browser_files.copy(
+            from,
+            to,
+            into_directory,
+            overwrite,
+            recursive,
+            copy_mode,
+            copy_date,
+        )
     })
     .ok_or_else(|| "no active R session".to_string())?
 }
@@ -872,7 +879,7 @@ mod tests {
 
         session.with_active(|| {
             mkdir_current("copies", false).unwrap();
-            copy_into_directory_current("source.csv", "copies", false, false, true, false).unwrap();
+            copy_current("source.csv", "copies", true, false, false, true, false).unwrap();
             assert!(write_current("source.csv", b"123").is_err());
             assert_eq!(read_current("source.csv").unwrap(), b"1,2\n");
             write_current("source.csv", b"3\n").unwrap();
@@ -1100,7 +1107,7 @@ mod tests {
         }
         assert!(
             store
-                .copy_into_directory("source", "target", true, true, true, false)
+                .copy("source", "target", true, true, true, true, false)
                 .is_err()
         );
         assert_eq!(store.names().len(), 5);

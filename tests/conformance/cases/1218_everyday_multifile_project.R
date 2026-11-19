@@ -1,4 +1,4 @@
-local({
+(function() {
     work <- tempfile("analysis-project-")
     stopifnot(dir.create(work))
     on.exit(unlink(work, recursive = TRUE))
@@ -35,6 +35,10 @@ local({
     stopifnot(identical(readLines(report), c('"group","score","label"',
                                               '"ctrl",3,"Control"', '"trt",6,"Treatment"')))
 
+    duplicate <- file.path(work, "archived report.csv")
+    stopifnot(file.copy(report, duplicate),
+              identical(readLines(duplicate), readLines(report)),
+              !file.copy(report, duplicate))
     writeLines("stop('project error')", file.path(input, "error.R"))
     writeLines("kept", file.path(project, "observations.csv"))
     stopifnot(!file.copy(input, output, recursive = TRUE, overwrite = FALSE),
@@ -49,4 +53,4 @@ local({
               identical(readLines(file.path(project, "observations.csv")),
                         readLines(file.path(input, "observations.csv"))))
     cat("Copied and ran a multi-file analysis with unchanged inputs\n")
-})
+})()

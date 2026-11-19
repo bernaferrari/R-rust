@@ -164,29 +164,35 @@ impl BrowserFileStore {
         true
     }
 
-    pub(super) fn copy_into_directory(
+    pub(super) fn copy(
         &mut self,
         from: &str,
-        directory: &str,
+        to: &str,
+        into_directory: bool,
         overwrite: bool,
         recursive: bool,
         copy_mode: bool,
         copy_date: bool,
     ) -> Result<(), String> {
         let source = self.resolve(from)?.into_owned();
-        let directory = self.resolve(directory)?.into_owned();
-        if !self.directory(&directory) {
-            return Err("destination is not a browser directory".into());
-        }
-        let basename = source
-            .rsplit('/')
-            .next()
-            .filter(|name| !name.is_empty())
-            .ok_or("cannot copy the browser root directory")?;
-        let target = if directory.is_empty() {
-            basename.to_owned()
+        let destination = self.resolve(to)?.into_owned();
+        let target = if into_directory {
+            if !self.directory(&destination) {
+                return Err("destination is not a browser directory".into());
+            }
+            let basename = source
+                .rsplit('/')
+                .next()
+                .filter(|name| !name.is_empty())
+                .ok_or("cannot copy the browser root directory")?;
+            if destination.is_empty() {
+                basename.to_owned()
+            } else {
+                format!("{destination}/{basename}")
+            }
         } else {
-            format!("{directory}/{basename}")
+            self.require_parent(&destination)?;
+            destination
         };
         if target == source || descendant(&target, &source).is_some() {
             return Err("cannot copy a browser path onto or inside itself".into());
