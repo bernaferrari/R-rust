@@ -20,31 +20,30 @@ pub(crate) struct PackageImage {
     examples_data: &'static [u8],
 }
 
-macro_rules! image {
-    ($name:literal, $assets:literal, $sysdata:expr) => {
-        image!($name, $assets, $sysdata, None)
-    };
-    ($name:literal, $assets:literal, $sysdata:expr, $imports:expr) => {
-        image!(
-            $name,
-            $assets,
-            $sysdata,
-            $imports,
-            LazyDatabase {
-                path: concat!("<builtin:", $name, ">/R/", $name, ".rdb"),
-                contents: DatabaseContents::Original(include_bytes!(concat!(
-                    $assets, "/", $name, ".rdb"
-                ))),
-                index: include_bytes!(concat!($assets, "/index.rds")),
-            }
-        )
-    };
-    ($name:literal, $assets:literal, $sysdata:expr, $imports:expr, $database:expr) => {
-        PackageImage {
+macro_rules! package_image {
+    ($static_name:ident, $name:literal, $assets:literal, $sysdata:expr, $imports:expr) => {
+        static $static_name: PackageImage = PackageImage {
             name: $name,
             version: "4.7.0",
             directory: concat!("<builtin:", $name, ">"),
-            database: $database,
+            database: LazyDatabase {
+                path: concat!("<builtin:", $name, ">/R/", $name, ".rdb"),
+                #[cfg(not(target_arch = "wasm32"))]
+                contents: DatabaseContents::Original(include_bytes!(concat!(
+                    $assets, "/", $name, ".rdb"
+                ))),
+                #[cfg(target_arch = "wasm32")]
+                contents: DatabaseContents::Packed {
+                    bytes: include_bytes!(concat!($assets, "/wasm.data")),
+                    ends: include_bytes!(concat!($assets, "/wasm.blocks"))
+                        .as_chunks::<8>()
+                        .0,
+                },
+                #[cfg(not(target_arch = "wasm32"))]
+                index: include_bytes!(concat!($assets, "/index.rds")),
+                #[cfg(target_arch = "wasm32")]
+                index: include_bytes!(concat!($assets, "/wasm.index.rds")),
+            },
             sysdata: $sysdata,
             namespace_source: include_str!(concat!($assets, "/NAMESPACE")),
             exports: include_bytes!(concat!($assets, "/exports.rds")),
@@ -53,65 +52,54 @@ macro_rules! image {
             envhook: include_str!(concat!($assets, "/envhook.R")),
             examples_index: include_bytes!(concat!($assets, "/examples.index")),
             examples_data: include_bytes!(concat!($assets, "/examples.data")),
-        }
+        };
     };
 }
 
-static METHODS: PackageImage = image!("methods", "../methods/portable/assets", None);
-static GRDEVICES: PackageImage = image!("grDevices", "assets/grDevices", None);
-static GRAPHICS: PackageImage = image!(
+package_image!(METHODS, "methods", "../methods/portable/assets", None, None);
+package_image!(GRDEVICES, "grDevices", "assets/grDevices", None, None);
+package_image!(
+    GRAPHICS,
     "graphics",
     "assets/graphics",
     None,
     Some(include_bytes!("assets/graphics/imports.rds"))
 );
-static STATS: PackageImage = image!(
+package_image!(
+    STATS,
     "stats",
     "assets/stats",
     None,
     Some(include_bytes!("assets/stats/imports.rds"))
 );
-static STATS4: PackageImage = image!(
+package_image!(
+    STATS4,
     "stats4",
     "assets/stats4",
     None,
     Some(include_bytes!("assets/stats4/imports.rds"))
 );
-static UTILS: PackageImage = image!(
+package_image!(
+    UTILS,
     "utils",
     "assets/utils",
     Some(LazyDatabase {
         path: "<builtin:utils>/R/sysdata.rdb",
         contents: DatabaseContents::Original(include_bytes!("assets/utils/sysdata.rdb")),
         index: include_bytes!("assets/utils/sysdata-index.rds"),
-    })
+    }),
+    None
 );
-
-const TOOLS_SYSDATA: Option<LazyDatabase> = Some(LazyDatabase {
-    path: "<builtin:tools>/R/sysdata.rdb",
-    contents: DatabaseContents::Original(include_bytes!("assets/tools/sysdata.rdb")),
-    index: include_bytes!("assets/tools/sysdata-index.rds"),
-});
-
-#[cfg(not(target_arch = "wasm32"))]
-static TOOLS: PackageImage = image!("tools", "assets/tools", TOOLS_SYSDATA);
-
-#[cfg(target_arch = "wasm32")]
-static TOOLS: PackageImage = image!(
+package_image!(
+    TOOLS,
     "tools",
     "assets/tools",
-    TOOLS_SYSDATA,
-    None,
-    LazyDatabase {
-        path: "<builtin:tools>/R/tools.rdb",
-        contents: DatabaseContents::Packed {
-            bytes: include_bytes!("assets/tools/wasm.data"),
-            ends: include_bytes!("assets/tools/wasm.blocks")
-                .as_chunks::<8>()
-                .0,
-        },
-        index: include_bytes!("assets/tools/wasm.index.rds"),
-    }
+    Some(LazyDatabase {
+        path: "<builtin:tools>/R/sysdata.rdb",
+        contents: DatabaseContents::Original(include_bytes!("assets/tools/sysdata.rdb")),
+        index: include_bytes!("assets/tools/sysdata-index.rds"),
+    }),
+    None
 );
 
 pub(crate) fn image(name: &str) -> Option<&'static PackageImage> {

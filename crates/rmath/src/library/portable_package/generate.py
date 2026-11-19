@@ -26,14 +26,13 @@ script = Path(__file__).with_suffix(".R")
 result = subprocess.run([args.rscript, "--vanilla", str(script), args.package, str(args.output)], check=True, capture_output=True, text=True, timeout=120)
 generators = [script, Path(__file__)]
 log = result.stdout + result.stderr
-if args.package == "tools":
-    packer = script.with_name("pack_tools.R")
-    packed = subprocess.run(
-        [args.rscript, "--vanilla", str(packer), str(args.output), str(args.output)],
-        check=True, capture_output=True, text=True, timeout=120,
-    )
-    log += packed.stdout + packed.stderr
-    generators.append(packer)
+packer = script.with_name("pack_database.R")
+packed = subprocess.run(
+    [args.rscript, "--vanilla", str(packer), str(args.output), str(args.output), args.package],
+    check=True, capture_output=True, text=True, timeout=120,
+)
+log += packed.stdout + packed.stderr
+generators.append(packer)
 (args.output / "generation.log").write_text(log)
 
 

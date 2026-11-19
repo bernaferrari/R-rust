@@ -1,6 +1,7 @@
-# Repack the checked-in GNU tools database for the Wasm package image.
+# Repack a pinned GNU lazy-load database into independently readable Wasm blocks.
 args <- commandArgs(TRUE)
-stopifnot(length(args) == 2L, identical(R.version[["svn rev"]], "90451"))
+stopifnot(length(args) == 3L, identical(R.version[["svn rev"]], "90451"))
+package <- args[[3L]]
 source <- args[[1L]]
 out <- args[[2L]]
 dir.create(out, recursive=TRUE, showWarnings=FALSE)
@@ -14,7 +15,8 @@ records <- keys[!duplicated(ids)]
 records <- records[order(vapply(records, `[[`, 0L, 1L))]
 remapped <- setNames(vector("list", length(records)), vapply(records, key_id, ""))
 
-input <- file(file.path(source, "tools.rdb"), "rb")
+database <- file.path(source, paste0(package, ".rdb"))
+input <- file(database, "rb")
 data <- file(file.path(out, "wasm.data"), "wb")
 blocks <- file(file.path(out, "wasm.blocks"), "wb")
 logical_end <- 0L
@@ -23,7 +25,7 @@ pending <- list()
 pending_bytes <- 0L
 block_bytes <- 64L * 1024L
 writeBin(c(logical_end, packed_end), blocks, size=4L, endian="big")
-tmp <- tempfile("rport-tools-block-")
+tmp <- tempfile("rport-wasm-block-")
 flush_block <- function() {
     plain <- do.call(c, pending)
     stream <- gzfile(tmp, "wb", compression=9L)
@@ -54,7 +56,7 @@ for (key in records) {
     pending_bytes <- pending_bytes + expected
 }
 flush_block()
-stopifnot(original_end == file.size(file.path(source, "tools.rdb")))
+stopifnot(original_end == file.size(database))
 close(blocks)
 close(data)
 close(input)
@@ -65,4 +67,4 @@ index$variables <- lapply(index$variables, remap)
 index$references <- lapply(index$references, remap)
 index$compressed <- FALSE
 saveRDS(index, file.path(out, "wasm.index.rds"), version=2, compress=FALSE)
-cat(length(records), "GNU tools records;", logical_end, "logical bytes;", packed_end, "packed bytes\n")
+cat(length(records), "GNU", package, "records;", logical_end, "logical bytes;", packed_end, "packed bytes\n")
