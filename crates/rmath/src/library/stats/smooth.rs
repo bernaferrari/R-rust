@@ -314,15 +314,12 @@ pub unsafe fn Rsm(x: SEXP, stype: SEXP, send: SEXP) -> SEXP {
         let type_ = asInteger(stype);
         let n = XLENGTH(x);
 
-        let ans = Rf_allocVector(SEXPTYPE::VECSXP, n as c_int);
+        let ans = Rf_allocVector(SEXPTYPE::VECSXP, 2);
         let _ans_guard = protect(ans);
         let y = Rf_allocVector(SEXPTYPE::REALSXP, n as c_int);
         SET_VECTOR_ELT(ans, 0, y);
-        let nm = Rf_allocVector(SEXPTYPE::STRSXP, 2);
-        setAttrib(ans, R_NamesSymbol(), nm);
-        SET_STRING_ELT(nm, 0, Rf_mkChar(b"y\0".as_ptr() as *const _));
 
-        if type_ <= 5 {
+        let second_name = if type_ <= 5 {
             let mut iter: c_int = 0;
             match type_ {
                 1 => {
@@ -368,14 +365,19 @@ pub unsafe fn Rsm(x: SEXP, stype: SEXP, send: SEXP) -> SEXP {
                 _ => {} // intentionally unhandled: unknown smooth method
             }
             SET_VECTOR_ELT(ans, 1, Rf_ScalarInteger(iter));
-            SET_STRING_ELT(nm, 1, Rf_mkChar(b"iter\0".as_ptr() as *const _));
+            c"iter"
         } else {
             // type > 5: ~ "S"
             let changed = sm_split3(REAL(x), REAL(y), n, iend != 0);
             SET_VECTOR_ELT(ans, 1, Rf_ScalarLogical(if changed { 1 } else { 0 }));
-            SET_STRING_ELT(nm, 1, Rf_mkChar(b"changed\0".as_ptr() as *const _));
-        }
+            c"changed"
+        };
 
+        let names = Rf_allocVector(SEXPTYPE::STRSXP, 2);
+        let _names_guard = protect(names);
+        SET_STRING_ELT(names, 0, Rf_mkChar(c"y".as_ptr()));
+        SET_STRING_ELT(names, 1, Rf_mkChar(second_name.as_ptr()));
+        setAttrib(ans, R_NamesSymbol(), names);
         ans
     }
 }
