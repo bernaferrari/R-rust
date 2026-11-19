@@ -1,5 +1,7 @@
 #![forbid(unsafe_code)]
 //! Fixed error-state bytes are copied before any runtime lend or constructor.
+use std::ops::Range;
+
 use crate::sexp::{
     encoding::{self, Mode, NulText, TextEncoding},
     ffi::SEXPTYPE,
@@ -81,7 +83,7 @@ impl Snapshot {
         text
     }
 
-    pub(super) fn bare_host_text(&self) -> String {
+    pub(super) fn bare_bytes(&self) -> &[u8] {
         let mut payload = self.as_bytes();
         if let Some(rest) = payload.strip_prefix(b"Error in ") {
             if let Some(index) = rest.windows(3).position(|part| part == b" : ") {
@@ -94,7 +96,7 @@ impl Snapshot {
                 payload = rest;
             }
         }
-        Self::host_text(payload)
+        payload
     }
 
     /// GNU errors.c layout, before the optional Calls fragment. All inputs
@@ -104,48 +106,49 @@ impl Snapshot {
         call: Option<&Self>,
         location: &[u8],
         utf8: bool,
-    ) -> Self {
+    ) -> (Self, Option<Range<usize>>) {
         let mut output = Self::empty();
-        if let Some(call) = call {
-            if b"Error in ".len() + b"\n  ".len() + body.len() < super::BUFSIZE {
-                output.append(b"Error in ");
-                output.append(call.as_bytes());
-                output.append(location);
-                output.append(b" : ");
-                let first = body
-                    .as_bytes()
-                    .iter()
-                    .position(|&b| b == b'\n')
-                    .unwrap_or(body.len());
-                let width = |bytes: &[u8]| -> i64 {
-                    if !utf8 {
-                        return bytes.len() as i64;
-                    }
-                    let Ok(text) = std::str::from_utf8(bytes) else {
-                        return -1;
-                    };
-                    let count = text.chars().count();
-                    if count >= 2000 {
-                        count as i64
-                    } else {
-                        text.chars()
-                            .map(crate::mainutils::unicode_width::columns)
-                            .sum::<usize>() as i64
-                    }
-                };
-                if 14 + width(call.as_bytes()) + width(&body.as_bytes()[..first])
-                    > super::LONGWARN as i64
-                {
-                    output.append(b"\n  ");
+        if let Some(call) =
+            call.filter(|_| b"Error in ".len() + b"\n  ".len() + body.len() < super::BUFSIZE)
+        {
+            output.append(b"Error in ");
+            output.append(call.as_bytes());
+            output.append(location);
+            output.append(b" : ");
+            let first = body
+                .as_bytes()
+                .iter()
+                .position(|&b| b == b'\n')
+                .unwrap_or(body.len());
+            let width = |bytes: &[u8]| -> i64 {
+                if !utf8 {
+                    return bytes.len() as i64;
                 }
-                output.append(body.as_bytes());
-            } else {
-                output.append(b"Error: ");
-                output.append(body.as_bytes());
+                let Ok(text) = std::str::from_utf8(bytes) else {
+                    return -1;
+                };
+                let count = text.chars().count();
+                if count >= 2000 {
+                    count as i64
+                } else {
+                    text.chars()
+                        .map(crate::mainutils::unicode_width::columns)
+                        .sum::<usize>() as i64
+                }
+            };
+            if 14 + width(call.as_bytes()) + width(&body.as_bytes()[..first])
+                > super::LONGWARN as i64
+            {
+                output.append(b"\n  ");
             }
         } else {
             output.append(b"Error: ");
-            output.append(body.as_bytes());
+        }
+        let body_start = output.len();
+        output.append(body.as_bytes());
+        let body_range = (output.len() - body_start == body.len())
+            .then(|| (output.len() - body.bare_bytes().len())..output.len());
+        if call.is_none() {
             output.append(location);
         }
         if output.len() > super::BUFSIZE - 1 {
@@ -155,7 +158,7 @@ impl Snapshot {
         } else if output.as_bytes().last() != Some(&b'\n') {
             output.append_bounded(b"\n");
         }
-        output
+        (output, body_range)
     }
 
     pub(super) fn append_trace(&mut self, trace: &[u8]) {

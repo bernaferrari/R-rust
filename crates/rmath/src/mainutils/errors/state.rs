@@ -123,12 +123,6 @@ fn error_value(value: SEXP) -> crate::sexp::instance::RuntimeValue {
     })
 }
 
-pub(super) fn set_last_rendered_message(message: Option<super::RenderedMessage>) {
-    let previous =
-        with_error_state(|state| std::mem::replace(&mut state.last_rendered_message, message));
-    drop(previous);
-}
-
 /// Whether `message` is the error most recently rendered into the error
 /// buffer by `verrorcall_dflt`. Used by the top-level renderer and the
 /// builtin-dispatch attribution wrapper to trust/distrust the error buffer
@@ -138,15 +132,15 @@ pub fn error_was_last_rendered(message: &str) -> bool {
         state
             .last_rendered_message
             .as_ref()
-            .map(|text| text.as_str())
-            == Some(message)
+            .is_some_and(|key| key.matches(&state.error_buffer, message))
     })
 }
 
 /// Clear the last-rendered marker at the start of a top-level evaluation so
 /// renders from a previous script are never trusted.
 pub fn clear_last_rendered_message() {
-    set_last_rendered_message(None);
+    let previous = with_error_state(|state| state.last_rendered_message.take());
+    drop(previous);
 }
 
 /// Record whether the current error was raised with an empty call
@@ -457,15 +451,11 @@ pub unsafe fn R_curErrorBuf() -> *const c_char {
 pub fn try_last_rendered_message(message: &str) -> Option<String> {
     instance::with_current_instance(|instance| unsafe {
         let state = &(*instance).error_state;
-        if state
+        state
             .last_rendered_message
             .as_ref()
-            .map(|text| text.as_str())
-            != Some(message)
-        {
-            return None;
-        }
-        Some(super::byte_buffer::Snapshot::stored(&state.error_buffer))
+            .filter(|key| key.matches(&state.error_buffer, message))
+            .map(|_| super::byte_buffer::Snapshot::stored(&state.error_buffer))
     })
     .flatten()
     .map(|snapshot| super::byte_buffer::Snapshot::host_text(snapshot.as_bytes()))
@@ -491,11 +481,18 @@ pub(super) fn error_buffer_snapshot() -> super::byte_buffer::Snapshot {
 }
 
 pub(super) fn set_error_buffer_snapshot(message: super::byte_buffer::Snapshot) {
-    let bytes = message.into_array();
-    with_error_state(|state| {
-        state.error_buffer = bytes;
-        state.last_rendered_message = None;
+    set_rendered_error_buffer(message, None);
+}
+
+pub(super) fn set_rendered_error_buffer(
+    message: super::byte_buffer::Snapshot,
+    key: Option<super::RenderedMessage>,
+) {
+    let previous = with_error_state(|state| {
+        state.error_buffer = message.into_array();
+        std::mem::replace(&mut state.last_rendered_message, key)
     });
+    drop(previous);
 }
 
 /// Set the error message buffer (C FFI).

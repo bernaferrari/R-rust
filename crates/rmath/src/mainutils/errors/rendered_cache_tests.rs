@@ -56,37 +56,38 @@ fn owned_render_cache_replacement_releases_previous_charge_and_compares_exactly(
 }
 
 #[test]
-fn owned_render_cache_denied_replacement_preserves_previous_buffer_charge_and_flags() {
+fn zero_headroom_default_error_preserves_message_and_replaces_previous_render() {
     let session = RSession::new_for_gc_tests();
     let owner = session.owner_token().unwrap();
     R_SetShowErrorMessages(false);
+
     let first = render_literal(c"first message");
-    let old_buffer = state::error_buffer_snapshot();
-    let capacity =
-        state::with_error_state(|s| s.last_rendered_message.as_ref().unwrap().capacity());
     let before = owner.with_arena(|a| a.total_bytes_allocated()).unwrap();
     let expressions = R_Expressions();
     owner
-        .with_arena(|a| a.set_budget(crate::sexp::memory::ArenaBudget::new(1, 0)))
+        .with_arena(|a| a.set_budget(crate::sexp::memory::ArenaBudget::new(before, 0)))
         .unwrap();
-    let error = render_literal(c"a replacement requiring a new admitted buffer");
-    assert!(error.message.contains("rendered error message cache"));
+
+    let replacement = render_literal(c"Error: replacement with a\xffb");
+    assert_eq!(replacement.message, "replacement with a\\xffb");
+    assert_eq!(
+        state::try_last_rendered_message(&replacement.message).as_deref(),
+        Some("Error: Error: replacement with a\\xffb\n")
+    );
+    assert!(!state::error_was_last_rendered(&first.message));
+    assert!(!state::error_was_last_rendered("replacement with a"));
     assert_eq!(R_GetInError(), 0);
     assert_eq!(R_Expressions(), expressions);
-    assert_eq!(
-        state::error_buffer_snapshot().as_bytes(),
-        old_buffer.as_bytes()
-    );
-    assert!(state::error_was_last_rendered(&first.message));
     owner
         .with_arena(|a| {
-            assert_eq!(a.budget().max_bytes, 1);
+            assert_eq!(a.budget().max_bytes, before);
             assert_eq!(a.total_bytes_allocated(), before);
-            assert_eq!(a.workspace_bytes(), capacity);
+            assert_eq!(a.workspace_bytes(), 0);
         })
         .unwrap();
-    state::clear_last_rendered_message();
-    assert_eq!(owner.with_arena(|a| a.workspace_bytes()).unwrap(), 0);
+
+    R_SetErrmessage("arbitrary replacement");
+    assert!(!state::error_was_last_rendered(&replacement.message));
 }
 
 #[test]
@@ -98,7 +99,7 @@ fn owned_render_cache_copy_keeps_independent_text_and_releases_on_panic() {
         let mut source = String::from("source é \\xff");
         let text = RenderedMessage::copy(&weak, &source).unwrap();
         source.clear();
-        assert_eq!(text.as_str(), "source é \\xff");
+        assert!(text.matches(&[], "source é \\xff"));
         assert_eq!(
             owner.with_arena(|a| a.workspace_bytes()).unwrap(),
             text.capacity()
@@ -167,7 +168,7 @@ fn owned_render_cache_physical_copy_outlives_revoked_owner_and_releases_original
         let before = owner
             .with_arena(|a| a.total_bytes_allocated() + a.workspace_bytes())
             .unwrap();
-        assert_eq!(copy.as_str(), "retained copy");
+        assert!(copy.matches(&[], "retained copy"));
         assert!(RenderedMessage::copy(&weak, "revoked copy").is_err());
         drop(copy);
         assert_eq!(ledger.workspace_bytes_for_test(), 0);

@@ -176,9 +176,9 @@ pub(super) fn strip_call_prefix(message: &str) -> String {
 /// values convert to logical.
 pub(super) unsafe fn show_error_locations_enabled() -> bool {
     unsafe {
-        let opt_owner = crate::sexp::context::own_control_value(GetOption1(Rf_install(
-            b"show.error.locations\0".as_ptr() as *const c_char,
-        )));
+        let opt_owner = crate::sexp::context::own_control_value(
+            crate::mainutils::options::existing_option("show.error.locations"),
+        );
         let opt = opt_owner.as_raw();
         if opt.is_null() || isNull(opt) != 0 || XLENGTH(opt) != 1 {
             return false;
@@ -187,9 +187,9 @@ pub(super) unsafe fn show_error_locations_enabled() -> bool {
             return true;
         }
         if TYPEOF(opt) == SEXPTYPE::STRSXP {
-            let pattern = Rf_mkString(b"top\0".as_ptr() as *const c_char);
-            let _pattern_guard = protect(pattern);
-            return crate::mainutils::match_mod::pmatch(pattern, opt, 0) != 0;
+            let tag = STRING_ELT(opt, 0);
+            // All prefixes of "top" are ASCII in the supported encodings.
+            return crate::mainutils::match_mod::psmatch(c"top".as_ptr(), CHAR(tag), 0) != 0;
         }
         false
     }
@@ -266,7 +266,8 @@ pub(super) unsafe fn verrorcall_bytes(call: SEXP, raw_input: super::byte_buffer:
             b"Error: ".len()
         };
         let tmp_cap = (warn_len + 1).saturating_sub(head_len).saturating_sub(1);
-        let tmp = raw_input.clipped(tmp_cap, crate::mainutils::platform::locale_is_utf8());
+        let utf8 = crate::mainutils::platform::locale_is_utf8();
+        let tmp = raw_input.clipped(tmp_cap, utf8);
 
         // errors.c:804-819 — resolve the `(from <loc>)` marker before
         // rendering: gated by show.error.locations. A top-level
@@ -323,12 +324,8 @@ pub(super) unsafe fn verrorcall_bytes(call: SEXP, raw_input: super::byte_buffer:
         } else {
             None
         };
-        let mut err_msg = Snapshot::render_error(
-            &tmp,
-            dcall.as_ref(),
-            location_mark.as_bytes(),
-            crate::mainutils::platform::locale_is_utf8(),
-        );
+        let (mut err_msg, body_range) =
+            Snapshot::render_error(&tmp, dcall.as_ref(), location_mark.as_bytes(), utf8);
         if r_show_error_calls() && has_call {
             let trace = R_ConciseTraceback(call, 0);
             _guard.require_active();
@@ -341,24 +338,23 @@ pub(super) unsafe fn verrorcall_bytes(call: SEXP, raw_input: super::byte_buffer:
         // printing). Strip any prefix that a raise site baked into its text so
         // the payload stays clean; the rendered errbuf above keeps the full
         // attribution for stderr.
-        let payload_message = tmp.bare_host_text();
+        let payload_message = Snapshot::host_text(tmp.bare_bytes());
         let cache_owner = crate::sexp::owner::OwnerToken::from_raw(_guard.owner.as_ptr())
             .weak_owner()
             .expect("managed renderer owner");
+        let err_msg = err_msg.normalized(utf8);
         let cached_message = super::RenderedMessage::copy(&cache_owner, &payload_message)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            .ok()
+            .or_else(|| {
+                // A full arena must still report the original error. Reuse
+                // the bare body when it survived the fixed-buffer render.
+                let range = body_range?;
+                (err_msg.as_bytes().get(range.clone())? == tmp.bare_bytes())
+                    .then_some(super::RenderedMessage::InBuffer(range))
+            });
 
-        // Write to thread-local errbuf via R_SetErrmessage
-        super::state::set_error_buffer_snapshot(
-            err_msg.normalized(crate::mainutils::platform::locale_is_utf8()),
-        );
-
-        // Record that this exact error message was rendered into the error
-        // buffer so the top-level renderer (and the builtin-dispatch
-        // attribution wrapper) trust the buffer for this error only —
-        // renders from previously caught errors must not leak into later
-        // results (upstream: caught errors never reach this printer).
-        set_last_rendered_message(Some(cached_message));
+        _guard.require_active();
+        super::state::set_rendered_error_buffer(err_msg, cached_message);
 
         // Emission contract, exactly once:
         // - When no output capture is active (standalone embedding), write

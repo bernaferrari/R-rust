@@ -1,15 +1,21 @@
 #![forbid(unsafe_code)]
-//! The rendered-message key owns its exact original-runtime buffer charge.
+//! Match the error buffer to its bare host message.
+
+use std::ops::Range;
+
 use crate::sexp::{
     memory::WorkspaceReservation,
     object::{SexpError, SexpResult},
     owner::{WeakOwner, with_runtime},
 };
 
-pub(crate) struct RenderedMessage {
-    // Destroy the physical buffer before releasing its accounting ticket.
-    text: String,
-    _admission: WorkspaceReservation,
+pub(crate) enum RenderedMessage {
+    Owned {
+        // Destroy the physical buffer before releasing its accounting ticket.
+        text: String,
+        _admission: WorkspaceReservation,
+    },
+    InBuffer(Range<usize>),
 }
 
 impl RenderedMessage {
@@ -27,19 +33,35 @@ impl RenderedMessage {
             admission.try_resize(text.capacity()).ok_or_else(failure)?;
             text.push_str(source);
             access.require_active()?;
-            Ok(Self {
+            Ok(Self::Owned {
                 text,
                 _admission: admission,
             })
         })?
     }
 
-    pub(crate) fn as_str(&self) -> &str {
-        &self.text
+    pub(super) fn matches(&self, buffer: &[u8], message: &str) -> bool {
+        match self {
+            Self::Owned { text, .. } => text == message,
+            Self::InBuffer(range) => {
+                let Some(bytes) = buffer.get(range.clone()) else {
+                    return false;
+                };
+                let mut remaining = Some(message);
+                crate::sexp::output::visit_capture_text(bytes, |part| {
+                    remaining = remaining.and_then(|text| text.strip_prefix(part));
+                    remaining.is_some()
+                });
+                remaining == Some("")
+            }
+        }
     }
 
     #[cfg(test)]
     pub(crate) fn capacity(&self) -> usize {
-        self.text.capacity()
+        match self {
+            Self::Owned { text, .. } => text.capacity(),
+            Self::InBuffer(_) => 0,
+        }
     }
 }

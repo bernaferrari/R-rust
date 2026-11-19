@@ -508,12 +508,16 @@ unsafe fn FixupScipen(scipen: SEXP, warn: warn_type) -> c_int {
 unsafe fn GetOptionByName(name: &str) -> SEXP {
     unsafe {
         InitOptions();
-        let nil = R_NilValue();
-
-        crate::sexp::instance::with_required_current_instance(|inst| {
-            (*inst).options.get(name).map_or(nil, Sexp::as_raw)
-        })
+        existing_option(name)
     }
+}
+
+/// Read the option map without initializing defaults or interning a name.
+pub(crate) unsafe fn existing_option(name: &str) -> SEXP {
+    let nil = unsafe { R_NilValue() };
+    crate::sexp::instance::with_required_current_instance(|inst| unsafe {
+        (*inst).options.get(name).map_or(nil, Sexp::as_raw)
+    })
 }
 
 /// Resolve an option tag symbol to its UTF-8 name.
