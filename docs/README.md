@@ -25,6 +25,7 @@ reviews remain available in Git history.
 ## Maintain and release
 
 - [Release checks](release-gate.md)
+- [Runtime checkpoints and comparisons](runtime-checkpoints.md)
 - [Platform release matrix](platform-release-matrix.md)
 - [Artifact packaging](release-packaging.md)
 - [Upstream source map](upstream-port-map.md)
