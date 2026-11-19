@@ -66,21 +66,37 @@ def wasm_results(log, module):
     return digest, cases
 
 
-def file_round_trip_results(path, native_policy, wasm_digest):
+def session_workflow_results(path, native_policy, wasm_digest):
     report = json.loads(path.read_text())
+    workflow = report['workflow']
     provenance = ('source_commit', 'source_sha256', 'oracle_manifest_sha256')
-    if (report['schema_version'] != 1 or report['workflow'] != 'file-round-trip'
+    if (report['schema_version'] != 1 or workflow not in ('file-round-trip', 'fresh-session-restore')
             or any(report[name] != native_policy[name] for name in provenance)
             or report['wasm_sha256'] != wasm_digest):
         raise ValueError('session report differs in workflow, source, oracle or Wasm artifact')
-    fixture = ROOT / 'tests/everyday-analysis/sessions/file-round-trip'
+    fixture = ROOT / 'tests/everyday-analysis/sessions' / workflow
     if report['fixture_sha256'] != {p.name: file_digest(p) for p in sorted(fixture.iterdir())}:
-        raise ValueError('session report differs in file round-trip fixtures')
+        raise ValueError('session report differs in workflow fixtures')
     expected = report['expected']
-    if (len(expected['outputs']) != 2 or not all(expected['outputs'])
-            or len(expected['export_sha256']) != 64):
-        raise ValueError('session report must contain both GNU outputs and the exported file digest')
-    return {side: 'pass' if report[side] == expected else 'fail' for side in ('native', 'wasm')}
+    if workflow == 'file-round-trip':
+        if (len(expected['outputs']) != 2 or not all(expected['outputs'])
+                or not is_sha256(expected['export_sha256'])):
+            raise ValueError('session report must contain both GNU outputs and the exported file digest')
+    else:
+        engines = {'gnu', 'native', 'wasm'}
+        artifacts = report['workspace_sha256']
+        if (set(artifacts) != engines or not all(map(is_sha256, artifacts.values()))
+                or set(expected['restored']) != engines
+                or not expected['saved'] or not all(expected['restored'].values())
+                or report['gnu'] != expected):
+            raise ValueError('workspace report must prove each origin restores in pinned GNU R')
+    return workflow, {
+        side: 'pass' if report[side] == expected else 'fail' for side in ('native', 'wasm')
+    }
+
+
+def is_sha256(value):
+    return isinstance(value, str) and len(value) == 64 and all(c in '0123456789abcdef' for c in value)
 
 
 def score(workflows, native, wasm, sessions=None):
@@ -107,16 +123,18 @@ def main():
     parser.add_argument('--native-report', action='append', type=Path, required=True)
     parser.add_argument('--wasm-log', type=Path, required=True)
     parser.add_argument('--wasm-module', type=Path, required=True)
-    parser.add_argument('--session-report', type=Path)
+    parser.add_argument('--session-report', action='append', type=Path, default=[])
     args = parser.parse_args()
     try:
         inventory = json.loads((ROOT / 'tests/everyday-analysis/workflows.json').read_text())
         native_policy, native = native_results(args.native_report)
         wasm_sha256, wasm = wasm_results(args.wasm_log, args.wasm_module)
         sessions = {}
-        if args.session_report:
-            sessions['file-round-trip'] = file_round_trip_results(
-                args.session_report, native_policy, wasm_sha256)
+        for path in args.session_report:
+            workflow, outcome = session_workflow_results(path, native_policy, wasm_sha256)
+            if workflow in sessions:
+                raise ValueError(f'duplicate session report for {workflow}')
+            sessions[workflow] = outcome
         workflows, totals = score(inventory['workflows'], native, wasm, sessions)
     except (KeyError, OSError, ValueError) as err:
         parser.error(str(err))

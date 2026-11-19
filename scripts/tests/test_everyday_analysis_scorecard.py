@@ -64,10 +64,30 @@ class EverydayScorecardTests(unittest.TestCase):
             wasm_sha256='module', fixture_sha256=fixture_hashes,
             expected=expected, native=expected, wasm=changed,
         )))
-        self.assertEqual(scorecard.file_round_trip_results(path, provenance, 'module'),
-                         {'native': 'pass', 'wasm': 'fail'})
+        self.assertEqual(scorecard.session_workflow_results(path, provenance, 'module'),
+                         ('file-round-trip', {'native': 'pass', 'wasm': 'fail'}))
         with self.assertRaisesRegex(ValueError, 'session report differs'):
-            scorecard.file_round_trip_results(path, provenance, 'other-module')
+            scorecard.session_workflow_results(path, provenance, 'other-module')
+
+    def test_workspace_requires_gnu_to_restore_all_produced_files(self):
+        provenance = {'source_commit': 'commit', 'source_sha256': 'runtime',
+                      'oracle_manifest_sha256': 'oracle'}
+        fixture = scorecard.ROOT / 'tests/everyday-analysis/sessions/fresh-session-restore'
+        fixture_hashes = {p.name: scorecard.file_digest(p) for p in sorted(fixture.iterdir())}
+        origins = ('gnu', 'native', 'wasm')
+        expected = {'saved': 'saved\n', 'restored': dict.fromkeys(origins, 'restored\n')}
+        report = dict(schema_version=1, **provenance, workflow='fresh-session-restore',
+                      wasm_sha256='module', fixture_sha256=fixture_hashes,
+                      workspace_sha256=dict.fromkeys(origins, 'a' * 64),
+                      expected=expected, native=expected, wasm=expected, gnu=expected)
+        path = self.directory / 'workspace.json'
+        path.write_text(json.dumps(report))
+        self.assertEqual(scorecard.session_workflow_results(path, provenance, 'module'),
+                         ('fresh-session-restore', {'native': 'pass', 'wasm': 'pass'}))
+        report['gnu'] = dict(saved=expected['saved'], restored={'gnu': 'restored\n'})
+        path.write_text(json.dumps(report))
+        with self.assertRaisesRegex(ValueError, 'each origin restores in pinned GNU R'):
+            scorecard.session_workflow_results(path, provenance, 'module')
 
 
 if __name__ == '__main__':

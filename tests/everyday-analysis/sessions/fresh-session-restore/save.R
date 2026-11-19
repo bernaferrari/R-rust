@@ -1,0 +1,5 @@
+observations <- data.frame(hours = 1:6, score = c(3, 5, 8, 10, 12, 15))
+analysis <- lm(score ~ hours, data = observations)
+save(observations, analysis, file = "analysis.RData")
+stopifnot(file.exists("analysis.RData"))
+cat("Saved observations and fitted model\n")

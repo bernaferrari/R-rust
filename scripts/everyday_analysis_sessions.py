@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Run the fresh-session file workflow against pinned GNU R and production Wasm."""
+"""Run fresh-session workflows against pinned GNU R and production Wasm."""
 
 import argparse
+import gzip
 import json
 import os
 from pathlib import Path
@@ -13,7 +14,7 @@ import tempfile
 from conformance_shards import file_digest, source_identity
 
 ROOT = Path(__file__).resolve().parents[1]
-FIXTURE = ROOT / 'tests/everyday-analysis/sessions/file-round-trip'
+FIXTURES = ROOT / 'tests/everyday-analysis/sessions'
 
 
 def configure_environment():
@@ -43,23 +44,63 @@ rustc --edition=2024 "$ROOT_DIR/tests/conformance/src/main.rs" \
     return [str(directory / 'native-r')]
 
 
-def run_native_pair(command, directory, env):
+def run_native_pair(command, directory, env, fixture):
     first = directory / 'first'
     second = directory / 'fresh'
     first.mkdir(parents=True)
     second.mkdir()
-    shutil.copyfile(FIXTURE / 'input.csv', first / 'input.csv')
-    outputs = [subprocess.check_output([*command, FIXTURE / 'import.R'], cwd=first,
+    shutil.copyfile(fixture / 'input.csv', first / 'input.csv')
+    outputs = [subprocess.check_output([*command, fixture / 'import.R'], cwd=first,
                                       env=env, timeout=300, text=True)]
     shutil.copyfile(first / 'export.csv', second / 'export.csv')
-    outputs.append(subprocess.check_output([*command, FIXTURE / 'reload.R'], cwd=second,
+    outputs.append(subprocess.check_output([*command, fixture / 'reload.R'], cwd=second,
                                          env=env, timeout=300, text=True))
     return {'outputs': outputs, 'export_sha256': file_digest(first / 'export.csv')}
+
+
+def run_workspace(commands, directory, env, fixture, wasm_module):
+    filename = 'analysis.RData'
+    saved = {}
+    for engine, command in commands.items():
+        writer = directory / f'{engine}-writer'
+        writer.mkdir()
+        saved[engine] = subprocess.check_output(
+            [*command, fixture / 'save.R'], cwd=writer, env=env, timeout=300, text=True)
+        shutil.copyfile(writer / filename, directory / f'{engine}.RData')
+
+    wasm = json.loads(subprocess.check_output(
+        ['node', ROOT / 'tests/browser/everyday-workspace-restore.mjs',
+         wasm_module, fixture, directory], cwd=ROOT, env=env, timeout=300, text=True))
+    wasm_digest = wasm.pop('wasm_sha256')
+    origins = ('gnu', 'native', 'wasm')
+    artifacts = {}
+    for origin in origins:
+        workspace = directory / f'{origin}.RData'
+        with gzip.open(workspace, 'rb') as stream:
+            if stream.read(7) != b'RDX3\nX\n':
+                raise ValueError(f'{origin} did not save a standard XDR version 3 workspace')
+        artifacts[origin] = file_digest(workspace)
+
+    outcomes = {'wasm': wasm}
+    for engine, command in commands.items():
+        restored = {}
+        for origin in origins:
+            reader = directory / f'{engine}-from-{origin}'
+            reader.mkdir()
+            shutil.copyfile(directory / f'{origin}.RData', reader / filename)
+            restored[origin] = subprocess.check_output(
+                [*command, fixture / 'reload.R'], cwd=reader, env=env, timeout=300, text=True)
+        outcomes[engine] = dict(saved=saved[engine], restored=restored)
+    expected = dict(saved=saved['gnu'],
+                    restored=dict.fromkeys(origins, outcomes['gnu']['restored']['gnu']))
+    return wasm_digest, expected, outcomes, artifacts
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('wasm_package', type=Path)
+    parser.add_argument('--workflow', choices=('file-round-trip', 'fresh-session-restore'),
+                        default='file-round-trip')
     args = parser.parse_args()
     rscript = shutil.which('Rscript')
     if not rscript:
@@ -70,25 +111,35 @@ def main():
     subprocess.run([sys.executable, ROOT / 'scripts/validate_r_oracle.py', '--runtime', rscript],
                    cwd=ROOT, env=env, stdout=sys.stderr, check=True)
     source = source_identity(ROOT)
+    fixture = FIXTURES / args.workflow
+    wasm_module = args.wasm_package.resolve()
     with tempfile.TemporaryDirectory(prefix='rport-analysis-sessions.') as scratch:
         directory = Path(scratch)
         native_runner = build_native_runner(directory, env)
-        expected = run_native_pair([rscript, '--vanilla'], directory / 'gnu', env)
-        native = run_native_pair(native_runner, directory / 'native', env)
-        wasm_module = args.wasm_package.resolve()
-        wasm = json.loads(subprocess.check_output(
-            ['node', ROOT / 'tests/browser/everyday-session-file.mjs', wasm_module, FIXTURE],
-            cwd=ROOT, env=env, timeout=300, text=True))
-        wasm_sha256 = wasm.pop('wasm_sha256')
+        gnu = [rscript, '--vanilla']
+        if args.workflow == 'fresh-session-restore':
+            wasm_sha256, expected, outcomes, artifacts = run_workspace(
+                {'gnu': gnu, 'native': native_runner}, directory, env, fixture, wasm_module)
+        else:
+            expected = run_native_pair(gnu, directory / 'gnu', env, fixture)
+            native = run_native_pair(native_runner, directory / 'native', env, fixture)
+            wasm = json.loads(subprocess.check_output(
+                ['node', ROOT / 'tests/browser/everyday-session-file.mjs', wasm_module, fixture],
+                cwd=ROOT, env=env, timeout=300, text=True))
+            wasm_sha256 = wasm.pop('wasm_sha256')
+            outcomes = dict(native=native, wasm=wasm)
+            artifacts = {}
         if wasm_sha256 != file_digest(wasm_module / 'r_wasm_bg.wasm'):
             parser.error('the Wasm report does not match the production module')
         report = dict(schema_version=1, **source, wasm_sha256=wasm_sha256,
                       oracle_manifest_sha256=file_digest(ROOT / 'oracle/r-oracle.json'),
-                      workflow='file-round-trip',
-                      fixture_sha256={p.name: file_digest(p) for p in sorted(FIXTURE.iterdir())},
-                      expected=expected, native=native, wasm=wasm)
+                      workflow=args.workflow,
+                      fixture_sha256={p.name: file_digest(p) for p in sorted(fixture.iterdir())},
+                      expected=expected, **outcomes)
+        if artifacts:
+            report['workspace_sha256'] = artifacts
         print(json.dumps(report, indent=2))
-        return int(native != expected or wasm != expected)
+        return int(any(outcome != expected for outcome in outcomes.values()))
 
 
 if __name__ == '__main__':
