@@ -89,8 +89,7 @@ pub(crate) unsafe fn ensure_namespace_info(
                 continue;
             };
             let symbol = Rf_install(cname.as_ptr());
-            let value = crate::sexp::envir::R_findVarInFrame(package_env, symbol);
-            if value.is_null() || value == crate::sexp::globals::R_UnboundValue() {
+            if !export_present(symbol) {
                 continue;
             }
             crate::sexp::envir::defineVar(symbol, symbol, exports);
@@ -230,7 +229,7 @@ pub(crate) fn reject_unsupported_internal_data(
         package_dir.join("R").join("sysdata.rdb"),
         package_dir.join("R").join("sysdata.rdx"),
     ] {
-        if path.is_file() {
+        if package_file_exists(&path) {
             return Err(format!(
                 "package '{}' uses unsupported internal serialized data {}; this pure-R Android runtime supports R source files and data/*.R only",
                 package,
@@ -247,7 +246,8 @@ pub(crate) fn package_lazy_db_base(package_dir: &Path, package: &str) -> PathBuf
 
 pub(crate) fn package_has_lazy_db(package_dir: &Path, package: &str) -> bool {
     let base = package_lazy_db_base(package_dir, package);
-    base.with_extension("rdx").is_file() && base.with_extension("rdb").is_file()
+    package_file_exists(&base.with_extension("rdx"))
+        && package_file_exists(&base.with_extension("rdb"))
 }
 
 pub(crate) fn reject_unsupported_lazyload_code(
@@ -255,16 +255,11 @@ pub(crate) fn reject_unsupported_lazyload_code(
     package_dir: &Path,
 ) -> Result<(), String> {
     let r_dir = package_dir.join("R");
-    if !r_dir.is_dir() {
-        return Ok(());
-    }
-
     let mut has_rdb = false;
     let mut has_rdx = false;
-    let entries = std::fs::read_dir(&r_dir)
+    let entries = package_directory_entries(&r_dir)
         .map_err(|err| format!("could not read R directory for package '{package}': {err}"))?;
-    for entry in entries.filter_map(Result::ok) {
-        let path = entry.path();
+    for path in entries {
         let Some(ext) = path.extension().and_then(|ext| ext.to_str()) else {
             continue;
         };
@@ -273,6 +268,12 @@ pub(crate) fn reject_unsupported_lazyload_code(
         } else if ext.eq_ignore_ascii_case("rdx") {
             has_rdx = true;
         }
+    }
+
+    if crate::mainutils::browser_files::enabled() && (has_rdb || has_rdx) {
+        return Err(format!(
+            "package '{package}' uses an unsupported compiled R lazy-load database in the browser"
+        ));
     }
 
     if has_rdb ^ has_rdx {
@@ -481,11 +482,13 @@ pub(crate) unsafe fn source_package_r_files(
 ) -> Result<(), String> {
     unsafe {
         let r_dir = package_dir.join("R");
-        if !r_dir.is_dir() {
+        let entries = package_directory_entries(&r_dir)
+            .map_err(|err| format!("could not read R directory for package '{package}': {err}"))?;
+        if entries.is_empty() {
             return Ok(());
         }
 
-        let description = std::fs::read_to_string(package_dir.join("DESCRIPTION"))
+        let description = read_package_text(&package_dir.join("DESCRIPTION"))
             .map(|content| description_fields(&content))
             .unwrap_or_default();
         let collate_files = description
@@ -493,10 +496,8 @@ pub(crate) unsafe fn source_package_r_files(
             .map(|value| description_file_list(value))
             .unwrap_or_default();
 
-        let mut files = std::fs::read_dir(&r_dir)
-            .map_err(|err| format!("could not read R directory for package '{package}': {err}"))?
-            .filter_map(Result::ok)
-            .map(|entry| entry.path())
+        let mut files = entries
+            .into_iter()
             .filter(|path| {
                 path.extension()
                     .and_then(|ext| ext.to_str())
@@ -516,7 +517,7 @@ pub(crate) unsafe fn source_package_r_files(
                     ));
                 }
                 let file = r_dir.join(&file_name);
-                if !file.is_file() {
+                if !package_file_exists(&file) {
                     return Err(format!(
                         "package '{}' Collate entry '{}' does not exist",
                         package, file_name
@@ -546,18 +547,16 @@ pub(crate) unsafe fn source_package_r_files(
                 .loading_package_dir
                 .replace(normalized_package_dir(package_dir))
         });
-        let sourced: Result<(), String> =
-            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                for file in files {
-                    source_r_file_into_env(&file, package_env)?;
-                }
-                Ok(())
-            }))
-            .unwrap_or_else(|payload| std::panic::resume_unwind(payload));
+        let sourced = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            for file in files {
+                source_r_file_into_env(&file, package_env)?;
+            }
+            Ok::<_, String>(())
+        }));
         crate::sexp::instance::with_required_current_instance(|inst| {
             (*inst).loading_package_dir = saved_package_dir;
         });
-        sourced?;
+        sourced.unwrap_or_else(|payload| std::panic::resume_unwind(payload))?;
 
         if package_has_lazy_db(package_dir, package) {
             let filebase = package_lazy_db_base(package_dir, package);
@@ -575,12 +574,21 @@ pub(crate) unsafe fn source_package_lazy_data(
 ) -> Result<Vec<String>, String> {
     unsafe {
         let data_dir = package_dir.join("data");
-        if !data_dir.is_dir() {
+        let entries = package_directory_entries(&data_dir).map_err(|err| {
+            format!("could not read data directory for package '{package}': {err}")
+        })?;
+        if entries.is_empty() {
             return Ok(Vec::new());
         }
 
         let rdata_base = data_dir.join("Rdata");
-        if rdata_base.with_extension("rdx").is_file() {
+        let has_lazy_db = package_file_exists(&rdata_base.with_extension("rdx"));
+        if has_lazy_db {
+            if crate::mainutils::browser_files::enabled() {
+                return Err(format!(
+                    "package '{package}' uses an unsupported serialized data database in the browser"
+                ));
+            }
             eager_lazy_load_package_db(&rdata_base, package_env, &[])?;
         } else if !package_declares_lazy_data(package_dir)? {
             // Ordinary source datasets belong to explicit data(..., envir=).
@@ -591,10 +599,8 @@ pub(crate) unsafe fn source_package_lazy_data(
         let before = frame_binding_names(package_env, true)
             .into_iter()
             .collect::<BTreeSet<_>>();
-        let mut files = std::fs::read_dir(&data_dir)
-            .map_err(|err| format!("could not read data directory for package '{package}': {err}"))?
-            .filter_map(Result::ok)
-            .map(|entry| entry.path())
+        let mut files = entries
+            .into_iter()
             .filter(|path| {
                 path.extension()
                     .and_then(|ext| ext.to_str())
@@ -608,7 +614,7 @@ pub(crate) unsafe fn source_package_lazy_data(
         }
 
         let mut names = frame_binding_names(package_env, true);
-        if !rdata_base.with_extension("rdx").is_file() {
+        if !has_lazy_db {
             names.retain(|name| !before.contains(name.as_str()));
         }
         names.retain(|name| !name.starts_with('.'));

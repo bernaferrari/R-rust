@@ -70,6 +70,13 @@ pub(crate) unsafe fn load_package_namespace(
             return Ok((env, directives));
         }
 
+        if crate::mainutils::browser_files::enabled() {
+            check_package_compilation(package, &package_dir.join("DESCRIPTION"))?;
+            if !package_file_exists(&package_dir.join("NAMESPACE")) {
+                return Err(format!("browser package '{package}' has no NAMESPACE"));
+            }
+        }
+
         // GNU `makeNamespace`: the namespace's enclosure chain ends at
         // `.BaseNamespaceEnv` (parent `.GlobalEnv`), not `baseenv()`
         // (parent `emptyenv()`). `getFunction` stops at `isBaseNamespace`;
@@ -176,6 +183,9 @@ pub(crate) unsafe fn load_package_namespace(
 }
 
 pub(crate) fn normalized_package_dir(package_dir: &Path) -> PathBuf {
+    if crate::mainutils::browser_files::enabled() {
+        return package_dir.to_path_buf();
+    }
     std::fs::canonicalize(package_dir).unwrap_or_else(|_| package_dir.to_path_buf())
 }
 
@@ -205,7 +215,14 @@ pub(crate) fn cache_package_namespace(package: &str, package_dir: &Path, package
 
 pub(crate) fn uncache_package_namespace(package: &str) {
     crate::sexp::instance::with_required_current_instance(|inst| unsafe {
-        (*inst).package_namespace_cache.remove(package);
+        let previous = (*inst).package_namespace_cache.remove(package);
+        // Browser source files can be repaired after a failed load and
+        // replaced after unload. A live namespace keeps its original exports.
+        if (*inst).browser_files_enabled
+            && let Some((directory, _)) = previous
+        {
+            (*inst).namespace_directives_cache.remove(&directory);
+        }
     });
 }
 
@@ -358,7 +375,7 @@ pub(crate) unsafe fn load_package_data_set(
 
 pub(crate) unsafe fn source_r_file_into_env(file: &Path, env: SEXP) -> Result<(), String> {
     unsafe {
-        let code = std::fs::read_to_string(file)
+        let code = read_package_text(file)
             .map_err(|err| format!("could not read {}: {err}", file.display()))?;
         let parser_factory = crate::eval::parser::active_factory();
         let expr = crate::sexp::memory::with_arena(|arena| {

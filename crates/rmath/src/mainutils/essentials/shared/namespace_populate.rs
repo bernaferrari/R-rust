@@ -47,6 +47,22 @@ pub(crate) unsafe fn populate_package_namespace(
             // The namespace metadata must exist before registration records
             // its declarations; the final refresh also publishes later exports.
             ensure_namespace_info(package, package_dir, package_env, Some(directives));
+            if crate::mainutils::browser_files::enabled() {
+                let exports = namespace_export_environment(package_env)
+                    .ok_or_else(|| format!("browser package '{package}' has no exports table"))?;
+                for name in &directives.exports {
+                    let key = CString::new(name.as_str()).map_err(|_| {
+                        format!("browser package '{package}' has an invalid export")
+                    })?;
+                    let value =
+                        crate::sexp::envir::R_findVarInFrame(exports, Rf_install(key.as_ptr()));
+                    if value == crate::sexp::globals::R_UnboundValue() {
+                        return Err(format!(
+                            "browser package '{package}' is missing export '{name}'"
+                        ));
+                    }
+                }
+            }
             register_namespace_s3_methods(
                 package,
                 package_env,

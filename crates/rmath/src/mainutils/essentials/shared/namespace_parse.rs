@@ -21,20 +21,22 @@ pub(crate) fn read_namespace_directives(
         return Ok(Some(hit));
     }
     let namespace = package_dir.join("NAMESPACE");
-    if !namespace.is_file() {
+    if !package_file_exists(&namespace) {
         return Ok(None);
     }
-    let content = std::fs::read_to_string(&namespace)
+    let content = read_package_text(&namespace)
         .map_err(|err| format!("could not read {}: {err}", namespace.display()))?;
-    let content = if parse_namespace_calls(&strip_namespace_comments(&content))
+    let selected;
+    let source = if parse_namespace_calls(&strip_namespace_comments(&content))
         .iter()
         .any(|(name, _)| name == "if")
     {
-        namespace_conditions::selected_source(&content)?
+        selected = namespace_conditions::selected_source(&content)?;
+        selected.as_str()
     } else {
-        content
+        &content
     };
-    let directives = parse_namespace_directives(&content);
+    let directives = parse_namespace_directives(source);
     if let Some(owner) = owner {
         owner.require_active().map_err(|error| error.to_string())?;
         unsafe {

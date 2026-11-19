@@ -73,7 +73,7 @@ pub(crate) unsafe fn load_pure_r_package_recursive(
 ) -> Result<(), String> {
     unsafe {
         let description = package_dir.join("DESCRIPTION");
-        if !description.is_file() {
+        if !package_file_exists(&description) {
             return Err(format!("package '{}' has no DESCRIPTION", package));
         }
         if loading_packages.iter().any(|entry| entry == package) {
@@ -84,12 +84,7 @@ pub(crate) unsafe fn load_pure_r_package_recursive(
                 package
             ));
         }
-        if package_needs_compilation(&description)? && !is_builtin_package_dependency(package) {
-            return Err(format!(
-                "package '{}' declares NeedsCompilation: yes; this pure-R Android runtime does not load compiled package code",
-                package
-            ));
-        }
+        check_package_compilation(package, &description)?;
 
         loading_packages.push(package.to_string());
         let result = (|| {
@@ -154,18 +149,41 @@ pub(crate) unsafe fn load_package_dependencies(
 }
 
 pub(crate) fn package_needs_compilation(description: &Path) -> Result<bool, String> {
-    let content = std::fs::read_to_string(description)
-        .map_err(|err| format!("could not read {}: {err}", description.display()))?;
-    Ok(description_fields(&content)
-        .get("NeedsCompilation")
-        .is_some_and(|value| {
-            value.eq_ignore_ascii_case("yes") || value.eq_ignore_ascii_case("true")
-        }))
+    Ok(needs_compilation(&read_package_description(description)?))
+}
+
+pub(super) fn check_package_compilation(package: &str, description: &Path) -> Result<(), String> {
+    let browser = crate::mainutils::browser_files::enabled();
+    let fields = read_package_description(description)?;
+    if browser && fields.get("Package").map(String::as_str) != Some(package) {
+        return Err(format!(
+            "browser package '{package}' has a mismatched DESCRIPTION name"
+        ));
+    }
+    if needs_compilation(&fields) && !is_builtin_package_dependency(package) {
+        let runtime = if browser { "browser" } else { "pure-R Android" };
+        return Err(format!(
+            "package '{package}' declares NeedsCompilation: yes; this {runtime} runtime does not load compiled package code"
+        ));
+    }
+    Ok(())
+}
+
+fn read_package_description(description: &Path) -> Result<BTreeMap<String, String>, String> {
+    read_package_text(description)
+        .map(|content| description_fields(&content))
+        .map_err(|err| format!("could not read {}: {err}", description.display()))
+}
+
+fn needs_compilation(fields: &BTreeMap<String, String>) -> bool {
+    fields.get("NeedsCompilation").is_some_and(|value| {
+        value.eq_ignore_ascii_case("yes") || value.eq_ignore_ascii_case("true")
+    })
 }
 
 pub(crate) fn package_declares_lazy_data(package_dir: &Path) -> Result<bool, String> {
     let description = package_dir.join("DESCRIPTION");
-    let content = std::fs::read_to_string(&description)
+    let content = read_package_text(&description)
         .map_err(|err| format!("could not read {}: {err}", description.display()))?;
     Ok(description_fields(&content)
         .get("LazyData")
@@ -276,7 +294,7 @@ pub(crate) fn description_package_list(value: &str) -> Vec<String> {
 
 pub(crate) fn package_depends_names(package_dir: &Path) -> Result<Vec<String>, String> {
     let description = package_dir.join("DESCRIPTION");
-    let content = std::fs::read_to_string(&description)
+    let content = read_package_text(&description)
         .map_err(|err| format!("could not read {}: {err}", description.display()))?;
     Ok(description_fields(&content)
         .get("Depends")
