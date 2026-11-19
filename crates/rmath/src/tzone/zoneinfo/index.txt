@@ -1,597 +1,597 @@
-Africa/Abidjan	0	55
-Africa/Accra	0	55
-Africa/Addis_Ababa	55	106
-Africa/Algiers	161	271
-Africa/Asmara	55	106
-Africa/Asmera	55	106
-Africa/Bamako	0	55
-Africa/Bangui	432	92
-Africa/Banjul	0	55
-Africa/Bissau	524	73
-Africa/Blantyre	597	58
-Africa/Brazzaville	432	92
-Africa/Bujumbura	597	58
-Africa/Cairo	655	702
-Africa/Casablanca	1357	426
-Africa/Ceuta	1783	313
-Africa/Conakry	0	55
-Africa/Dakar	0	55
-Africa/Dar_es_Salaam	55	106
-Africa/Djibouti	55	106
-Africa/Douala	432	92
-Africa/El_Aaiun	2096	377
-Africa/Freetown	0	55
-Africa/Gaborone	597	58
-Africa/Harare	597	58
-Africa/Johannesburg	2473	101
-Africa/Juba	2574	249
-Africa/Kampala	55	106
-Africa/Khartoum	2823	249
-Africa/Kigali	597	58
-Africa/Kinshasa	432	92
-Africa/Lagos	432	92
-Africa/Libreville	432	92
-Africa/Lome	0	55
-Africa/Luanda	432	92
-Africa/Lubumbashi	597	58
-Africa/Lusaka	597	58
-Africa/Malabo	432	92
-Africa/Maputo	597	58
-Africa/Maseru	2473	101
-Africa/Mbabane	2473	101
-Africa/Mogadishu	55	106
-Africa/Monrovia	3072	80
-Africa/Nairobi	55	106
-Africa/Ndjamena	3152	79
-Africa/Niamey	432	92
-Africa/Nouakchott	0	55
-Africa/Ouagadougou	0	55
-Africa/Porto-Novo	432	92
-Africa/Sao_Tome	3231	86
-Africa/Timbuktu	0	55
-Africa/Tripoli	3317	245
-Africa/Tunis	3562	250
-Africa/Windhoek	3812	363
-America/Adak	4175	552
-America/Anchorage	4727	550
-America/Anguilla	5277	94
-America/Antigua	5277	94
-America/Araguaina	5371	333
-America/Argentina/Buenos_Aires	5704	408
-America/Argentina/Catamarca	6112	413
-America/Argentina/ComodRivadavia	6112	413
-America/Argentina/Cordoba	6525	409
-America/Argentina/Jujuy	6934	405
-America/Argentina/La_Rioja	7339	417
-America/Argentina/Mendoza	7756	416
-America/Argentina/Rio_Gallegos	8172	411
-America/Argentina/Salta	8583	403
-America/Argentina/San_Juan	8986	417
-America/Argentina/San_Luis	9403	417
-America/Argentina/Tucuman	9820	423
-America/Argentina/Ushuaia	10243	412
-America/Aruba	5277	94
-America/Asuncion	10655	578
-America/Atikokan	11233	76
-America/Atka	4175	552
-America/Bahia	11309	384
-America/Bahia_Banderas	11693	396
-America/Barbados	12089	163
-America/Belem	12252	223
-America/Belize	12475	564
-America/Blanc-Sablon	5277	94
-America/Boa_Vista	13039	243
-America/Bogota	13282	96
-America/Boise	13378	554
-America/Buenos_Aires	5704	408
-America/Cambridge_Bay	13932	500
-America/Campo_Grande	14432	520
-America/Cancun	14952	308
-America/Caracas	15260	109
-America/Catamarca	6112	413
-America/Cayenne	15369	80
-America/Cayman	11233	76
-America/Chicago	15449	901
-America/Chihuahua	16350	393
-America/Ciudad_Juarez	16743	414
-America/Coral_Harbour	11233	76
-America/Cordoba	6525	409
-America/Costa_Rica	17157	128
-America/Coyhaique	17285	732
-America/Creston	18017	137
-America/Cuiaba	18154	511
-America/Curacao	5277	94
-America/Danmarkshavn	18665	239
-America/Dawson	18904	562
-America/Dawson_Creek	19466	387
-America/Denver	19853	568
-America/Detroit	20421	505
-America/Dominica	5277	94
-America/Edmonton	20926	683
-America/Eirunepe	21609	248
-America/El_Salvador	21857	96
-America/Ensenada	21953	722
-America/Fort_Nelson	22675	732
-America/Fort_Wayne	23407	318
-America/Fortaleza	23725	274
-America/Glace_Bay	23999	490
-America/Godthab	24489	509
-America/Goose_Bay	24998	853
-America/Grand_Turk	25851	476
-America/Grenada	5277	94
-America/Guadeloupe	5277	94
-America/Guatemala	26327	115
-America/Guayaquil	26442	97
-America/Guyana	26539	101
-America/Halifax	26640	863
-America/Havana	27503	599
-America/Hermosillo	28102	149
-America/Indiana/Indianapolis	23407	318
-America/Indiana/Knox	28251	565
-America/Indiana/Marengo	28816	336
-America/Indiana/Petersburg	29152	400
-America/Indiana/Tell_City	29552	315
-America/Indiana/Vevay	29867	224
-America/Indiana/Vincennes	30091	333
-America/Indiana/Winamac	30424	358
-America/Indianapolis	23407	318
-America/Inuvik	30782	451
-America/Iqaluit	31233	486
-America/Jamaica	31719	187
-America/Jujuy	6934	405
-America/Juneau	31906	541
-America/Kentucky/Louisville	32447	680
-America/Kentucky/Monticello	33127	549
-America/Knox_IN	28251	565
-America/Kralendijk	5277	94
-America/La_Paz	33676	92
-America/Lima	33768	161
-America/Los_Angeles	33929	680
-America/Louisville	32447	680
-America/Lower_Princes	5277	94
-America/Maceio	34609	283
-America/Managua	34892	172
-America/Manaus	35064	232
-America/Marigot	5277	94
-America/Martinique	35296	96
-America/Matamoros	35392	247
-America/Mazatlan	35639	383
-America/Mendoza	7756	416
-America/Menominee	36022	515
-America/Merida	36537	359
-America/Metlakatla	36896	343
-America/Mexico_City	37239	426
-America/Miquelon	37665	317
-America/Moncton	37982	776
-America/Monterrey	38758	392
-America/Montevideo	39150	563
-America/Montreal	39713	868
-America/Montserrat	5277	94
-America/Nassau	39713	868
-America/New_York	40581	887
-America/Nipigon	39713	868
-America/Nome	41468	553
-America/Noronha	42021	274
-America/North_Dakota/Beulah	42295	572
-America/North_Dakota/Center	42867	552
-America/North_Dakota/New_Salem	43419	552
-America/Nuuk	24489	509
-America/Ojinaga	43971	415
-America/Panama	11233	76
-America/Pangnirtung	31233	486
-America/Paramaribo	44386	103
-America/Phoenix	18017	137
-America/Port-au-Prince	44489	320
-America/Port_of_Spain	5277	94
-America/Porto_Acre	44809	237
-America/Porto_Velho	45046	222
-America/Puerto_Rico	5277	94
-America/Punta_Arenas	45268	656
-America/Rainy_River	45924	674
-America/Rankin_Inlet	46598	450
-America/Recife	47048	273
-America/Regina	47321	364
-America/Resolute	47685	449
-America/Rio_Branco	44809	237
-America/Rosario	6525	409
-America/Santa_Isabel	21953	722
-America/Santarem	48134	233
-America/Santiago	48367	732
-America/Santo_Domingo	49099	191
-America/Sao_Paulo	49290	521
-America/Scoresbysund	49811	527
-America/Shiprock	19853	568
-America/Sitka	50338	538
-America/St_Barthelemy	5277	94
-America/St_Johns	50876	977
-America/St_Kitts	5277	94
-America/St_Lucia	5277	94
-America/St_Thomas	5277	94
-America/St_Vincent	5277	94
-America/Swift_Current	51853	209
-America/Tegucigalpa	52062	106
-America/Thule	52168	257
-America/Thunder_Bay	39713	868
-America/Tijuana	21953	722
-America/Toronto	39713	868
-America/Tortola	5277	94
-America/Vancouver	52425	841
-America/Virgin	5277	94
-America/Whitehorse	53266	560
-America/Winnipeg	45924	674
-America/Yakutat	53826	521
-America/Yellowknife	20926	683
-Antarctica/Casey	54347	158
-Antarctica/Davis	54505	105
-Antarctica/DumontDUrville	54610	79
-Antarctica/Macquarie	54689	517
-Antarctica/Mawson	55206	74
-Antarctica/McMurdo	55280	561
-Antarctica/Palmer	55841	499
-Antarctica/Rothera	56340	56
-Antarctica/South_Pole	55280	561
-Antarctica/Syowa	56396	61
-Antarctica/Troll	56457	72
-Antarctica/Vostok	56529	84
-Arctic/Longyearbyen	56613	389
-Asia/Aden	56396	61
-Asia/Almaty	57002	342
-Asia/Amman	57344	500
-Asia/Anadyr	57844	419
-Asia/Aqtau	58263	339
-Asia/Aqtobe	58602	341
-Asia/Ashgabat	58943	211
-Asia/Ashkhabad	58943	211
-Asia/Atyrau	59154	344
-Asia/Baghdad	59498	342
-Asia/Bahrain	59840	77
-Asia/Baku	59917	406
-Asia/Bangkok	60323	75
-Asia/Barnaul	60398	418
-Asia/Beirut	60816	408
-Asia/Bishkek	61224	347
-Asia/Brunei	61571	185
-Asia/Calcutta	61756	131
-Asia/Chita	61887	415
-Asia/Choibalsan	62302	328
-Asia/Chongqing	62630	218
-Asia/Chungking	62630	218
-Asia/Colombo	62848	146
-Asia/Dacca	62994	136
-Asia/Damascus	63130	653
-Asia/Dhaka	62994	136
-Asia/Dili	63783	90
-Asia/Dubai	63873	61
-Asia/Dushanbe	63934	203
-Asia/Famagusta	64137	508
-Asia/Gaza	64645	1461
-Asia/Harbin	62630	218
-Asia/Hebron	66106	1470
-Asia/Ho_Chi_Minh	67576	138
-Asia/Hong_Kong	67714	427
-Asia/Hovd	68141	326
-Asia/Irkutsk	68467	421
-Asia/Istanbul	68888	643
-Asia/Jakarta	69531	151
-Asia/Jayapura	69682	88
-Asia/Jerusalem	69770	602
-Asia/Kabul	70372	81
-Asia/Kamchatka	70453	402
-Asia/Karachi	70855	158
-Asia/Kashgar	71013	60
-Asia/Kathmandu	71073	83
-Asia/Katmandu	71073	83
-Asia/Khandyga	71156	437
-Asia/Kolkata	61756	131
-Asia/Krasnoyarsk	71593	407
-Asia/Kuala_Lumpur	72000	149
-Asia/Kuching	61571	185
-Asia/Kuwait	56396	61
-Asia/Macao	72149	442
-Asia/Macau	72149	442
-Asia/Magadan	72591	417
-Asia/Makassar	73008	101
-Asia/Manila	73109	157
-Asia/Muscat	63873	61
-Asia/Nicosia	73266	330
-Asia/Novokuznetsk	73596	399
-Asia/Novosibirsk	73995	416
-Asia/Omsk	74411	406
-Asia/Oral	74817	351
-Asia/Phnom_Penh	60323	75
-Asia/Pontianak	75168	147
-Asia/Pyongyang	75315	96
-Asia/Qatar	59840	77
-Asia/Qostanay	75411	348
-Asia/Qyzylorda	75759	350
-Asia/Rangoon	76109	101
-Asia/Riyadh	56396	61
-Asia/Saigon	67576	138
-Asia/Sakhalin	76210	424
-Asia/Samarkand	76634	204
-Asia/Seoul	76838	243
-Asia/Shanghai	62630	218
-Asia/Singapore	72000	149
-Asia/Srednekolymsk	77081	410
-Asia/Taipei	77491	290
-Asia/Tashkent	77781	203
-Asia/Tbilisi	77984	362
-Asia/Tehran	78346	458
-Asia/Tel_Aviv	69770	602
-Asia/Thimbu	78804	77
-Asia/Thimphu	78804	77
-Asia/Tokyo	78881	111
-Asia/Tomsk	78992	419
-Asia/Ujung_Pandang	73008	101
-Asia/Ulaanbaatar	62302	328
-Asia/Ulan_Bator	62302	328
-Asia/Urumqi	71013	60
-Asia/Ust-Nera	79411	434
-Asia/Vientiane	60323	75
-Asia/Vladivostok	79845	412
-Asia/Yakutsk	80257	408
-Asia/Yangon	76109	101
-Asia/Yekaterinburg	80665	418
-Asia/Yerevan	81083	390
-Atlantic/Azores	81473	741
-Atlantic/Bermuda	82214	568
-Atlantic/Canary	82782	262
-Atlantic/Cape_Verde	83044	95
-Atlantic/Faeroe	83139	235
-Atlantic/Faroe	83139	235
-Atlantic/Jan_Mayen	56613	389
-Atlantic/Madeira	83374	714
-Atlantic/Reykjavik	0	55
-Atlantic/South_Georgia	84088	64
-Atlantic/St_Helena	0	55
-Atlantic/Stanley	84152	443
-Australia/ACT	84595	473
-Australia/Adelaide	85068	492
-Australia/Brisbane	85560	151
-Australia/Broken_Hill	85711	501
-Australia/Canberra	84595	473
-Australia/Currie	86212	524
-Australia/Darwin	86736	127
-Australia/Eucla	86863	165
-Australia/Hobart	86212	524
-Australia/LHI	87028	398
-Australia/Lindeman	87426	171
-Australia/Lord_Howe	87028	398
-Australia/Melbourne	87597	475
-Australia/NSW	84595	473
-Australia/North	86736	127
-Australia/Perth	88072	158
-Australia/Queensland	85560	151
-Australia/South	85068	492
-Australia/Sydney	84595	473
-Australia/Tasmania	86212	524
-Australia/Victoria	87597	475
-Australia/West	88072	158
-Australia/Yancowinna	85711	501
-Brazil/Acre	44809	237
-Brazil/DeNoronha	42021	274
-Brazil/East	49290	521
-Brazil/West	35064	232
-CET	88230	592
-CST6CDT	15449	901
-Canada/Atlantic	26640	863
-Canada/Central	45924	674
-Canada/Eastern	39713	868
-Canada/Mountain	20926	683
-Canada/Newfoundland	50876	977
-Canada/Pacific	52425	841
-Canada/Saskatchewan	47321	364
-Canada/Yukon	53266	560
-Chile/Continental	48367	732
-Chile/EasterIsland	88822	628
-Cuba	27503	599
-EET	89450	390
-EST	11233	76
-EST5EDT	40581	887
-Egypt	655	702
-Eire	89840	750
-Etc/GMT	90590	34
-Etc/GMT+0	90590	34
-Etc/GMT+1	90624	41
-Etc/GMT+10	90665	42
-Etc/GMT+11	90707	42
-Etc/GMT+12	90749	42
-Etc/GMT+2	90791	41
-Etc/GMT+3	90832	41
-Etc/GMT+4	90873	41
-Etc/GMT+5	90914	41
-Etc/GMT+6	90955	41
-Etc/GMT+7	90996	41
-Etc/GMT+8	91037	41
-Etc/GMT+9	91078	41
-Etc/GMT-0	90590	34
-Etc/GMT-1	91119	41
-Etc/GMT-10	91160	43
-Etc/GMT-11	91203	43
-Etc/GMT-12	91246	43
-Etc/GMT-13	91289	43
-Etc/GMT-14	91332	43
-Etc/GMT-2	91375	41
-Etc/GMT-3	91416	41
-Etc/GMT-4	91457	41
-Etc/GMT-5	91498	41
-Etc/GMT-6	91539	40
-Etc/GMT-7	91579	41
-Etc/GMT-8	91620	41
-Etc/GMT-9	91661	42
-Etc/GMT0	90590	34
-Etc/Greenwich	90590	34
-Etc/UCT	91703	34
-Etc/UTC	91703	34
-Etc/Universal	91703	34
-Etc/Zulu	91703	34
-Europe/Amsterdam	88230	592
-Europe/Andorra	91737	209
-Europe/Astrakhan	91946	404
-Europe/Athens	89450	390
-Europe/Belfast	92350	800
-Europe/Belgrade	93150	261
-Europe/Berlin	56613	389
-Europe/Bratislava	93411	398
-Europe/Brussels	88230	592
-Europe/Bucharest	93809	366
-Europe/Budapest	94175	421
-Europe/Busingen	94596	269
-Europe/Chisinau	94865	660
-Europe/Copenhagen	56613	389
-Europe/Dublin	89840	750
-Europe/Gibraltar	95525	637
-Europe/Guernsey	92350	800
-Europe/Helsinki	96162	264
-Europe/Isle_of_Man	92350	800
-Europe/Istanbul	68888	643
-Europe/Jersey	92350	800
-Europe/Kaliningrad	96426	509
-Europe/Kiev	96935	333
-Europe/Kirov	97268	407
-Europe/Kyiv	96935	333
-Europe/Lisbon	97675	749
-Europe/Ljubljana	93150	261
-Europe/London	92350	800
-Europe/Luxembourg	88230	592
-Europe/Madrid	98424	501
-Europe/Malta	98925	509
-Europe/Mariehamn	96162	264
-Europe/Minsk	99434	462
-Europe/Monaco	99896	595
-Europe/Moscow	100491	525
-Europe/Nicosia	73266	330
-Europe/Oslo	56613	389
-Europe/Paris	99896	595
-Europe/Podgorica	93150	261
-Europe/Prague	93411	398
-Europe/Riga	101016	413
-Europe/Rome	101429	518
-Europe/Samara	101947	409
-Europe/San_Marino	101429	518
-Europe/Sarajevo	93150	261
-Europe/Saratov	102356	403
-Europe/Simferopol	102759	500
-Europe/Skopje	93150	261
-Europe/Sofia	103259	342
-Europe/Stockholm	56613	389
-Europe/Tallinn	103601	398
-Europe/Tirane	103999	331
-Europe/Tiraspol	94865	660
-Europe/Ulyanovsk	104330	424
-Europe/Uzhgorod	96935	333
-Europe/Vaduz	94596	269
-Europe/Vatican	101429	518
-Europe/Vienna	104754	359
-Europe/Vilnius	105113	407
-Europe/Volgograd	105520	420
-Europe/Warsaw	105940	510
-Europe/Zagreb	93150	261
-Europe/Zaporozhye	96935	333
-Europe/Zurich	94596	269
-GB	92350	800
-GB-Eire	92350	800
-GMT	90590	34
-GMT+0	90590	34
-GMT-0	90590	34
-GMT0	90590	34
-Greenwich	90590	34
-HST	106450	125
-Hongkong	67714	427
-Iceland	0	55
-Indian/Antananarivo	55	106
-Indian/Chagos	106575	76
-Indian/Christmas	60323	75
-Indian/Cocos	76109	101
-Indian/Comoro	55	106
-Indian/Kerguelen	106651	75
-Indian/Mahe	63873	61
-Indian/Maldives	106651	75
-Indian/Mauritius	106726	95
-Indian/Mayotte	55	106
-Indian/Reunion	63873	61
-Iran	78346	458
-Israel	69770	602
-Jamaica	31719	187
-Japan	78881	111
-Kwajalein	106821	132
-Libya	3317	245
-MET	88230	592
-MST	18017	137
-MST7MDT	19853	568
-Mexico/BajaNorte	21953	722
-Mexico/BajaSur	35639	383
-Mexico/General	37239	426
-NZ	55280	561
-NZ-CHAT	106953	431
-Navajo	19853	568
-PRC	62630	218
-PST8PDT	33929	680
-Pacific/Apia	107384	240
-Pacific/Auckland	55280	561
-Pacific/Bougainville	107624	115
-Pacific/Chatham	106953	431
-Pacific/Chuuk	54610	79
-Pacific/Easter	88822	628
-Pacific/Efate	107739	187
-Pacific/Enderbury	107926	94
-Pacific/Fakaofo	108020	83
-Pacific/Fiji	108103	210
-Pacific/Funafuti	108313	62
-Pacific/Galapagos	108375	91
-Pacific/Gambier	108466	61
-Pacific/Guadalcanal	108527	62
-Pacific/Guam	108589	204
-Pacific/Honolulu	106450	125
-Pacific/Johnston	106450	125
-Pacific/Kanton	107926	94
-Pacific/Kiritimati	108793	96
-Pacific/Kosrae	108889	149
-Pacific/Kwajalein	106821	132
-Pacific/Majuro	108313	62
-Pacific/Marquesas	109038	68
-Pacific/Midway	109106	71
-Pacific/Nauru	109177	101
-Pacific/Niue	109278	80
-Pacific/Norfolk	109358	141
-Pacific/Noumea	109499	109
-Pacific/Pago_Pago	109106	71
-Pacific/Palau	109608	72
-Pacific/Pitcairn	109680	80
-Pacific/Pohnpei	108527	62
-Pacific/Ponape	108527	62
-Pacific/Port_Moresby	54610	79
-Pacific/Rarotonga	109760	232
-Pacific/Saipan	108589	204
-Pacific/Samoa	109106	71
-Pacific/Tahiti	109992	63
-Pacific/Tarawa	108313	62
-Pacific/Tongatapu	110055	130
-Pacific/Truk	54610	79
-Pacific/Wake	108313	62
-Pacific/Wallis	108313	62
-Pacific/Yap	54610	79
-Poland	105940	510
-Portugal	97675	749
-ROC	77491	290
-ROK	76838	243
-Singapore	72000	149
-Turkey	68888	643
-UCT	91703	34
-US/Alaska	4727	550
-US/Aleutian	4175	552
-US/Arizona	18017	137
-US/Central	15449	901
-US/East-Indiana	23407	318
-US/Eastern	40581	887
-US/Hawaii	106450	125
-US/Indiana-Starke	28251	565
-US/Michigan	20421	505
-US/Mountain	19853	568
-US/Pacific	33929	680
-US/Samoa	109106	71
-UTC	91703	34
-Universal	91703	34
-W-SU	100491	525
-WET	97675	749
-Zulu	91703	34
+Africa/Abidjan	0
+Africa/Accra	0
+Africa/Addis_Ababa	1
+Africa/Algiers	2
+Africa/Asmara	1
+Africa/Asmera	1
+Africa/Bamako	0
+Africa/Bangui	3
+Africa/Banjul	0
+Africa/Bissau	4
+Africa/Blantyre	5
+Africa/Brazzaville	3
+Africa/Bujumbura	5
+Africa/Cairo	6
+Africa/Casablanca	7
+Africa/Ceuta	8
+Africa/Conakry	0
+Africa/Dakar	0
+Africa/Dar_es_Salaam	1
+Africa/Djibouti	1
+Africa/Douala	3
+Africa/El_Aaiun	9
+Africa/Freetown	0
+Africa/Gaborone	5
+Africa/Harare	5
+Africa/Johannesburg	10
+Africa/Juba	11
+Africa/Kampala	1
+Africa/Khartoum	12
+Africa/Kigali	5
+Africa/Kinshasa	3
+Africa/Lagos	3
+Africa/Libreville	3
+Africa/Lome	0
+Africa/Luanda	3
+Africa/Lubumbashi	5
+Africa/Lusaka	5
+Africa/Malabo	3
+Africa/Maputo	5
+Africa/Maseru	10
+Africa/Mbabane	10
+Africa/Mogadishu	1
+Africa/Monrovia	13
+Africa/Nairobi	1
+Africa/Ndjamena	14
+Africa/Niamey	3
+Africa/Nouakchott	0
+Africa/Ouagadougou	0
+Africa/Porto-Novo	3
+Africa/Sao_Tome	15
+Africa/Timbuktu	0
+Africa/Tripoli	16
+Africa/Tunis	17
+Africa/Windhoek	18
+America/Adak	19
+America/Anchorage	20
+America/Anguilla	21
+America/Antigua	21
+America/Araguaina	22
+America/Argentina/Buenos_Aires	23
+America/Argentina/Catamarca	24
+America/Argentina/ComodRivadavia	24
+America/Argentina/Cordoba	25
+America/Argentina/Jujuy	26
+America/Argentina/La_Rioja	27
+America/Argentina/Mendoza	28
+America/Argentina/Rio_Gallegos	29
+America/Argentina/Salta	30
+America/Argentina/San_Juan	31
+America/Argentina/San_Luis	32
+America/Argentina/Tucuman	33
+America/Argentina/Ushuaia	34
+America/Aruba	21
+America/Asuncion	35
+America/Atikokan	36
+America/Atka	19
+America/Bahia	37
+America/Bahia_Banderas	38
+America/Barbados	39
+America/Belem	40
+America/Belize	41
+America/Blanc-Sablon	21
+America/Boa_Vista	42
+America/Bogota	43
+America/Boise	44
+America/Buenos_Aires	23
+America/Cambridge_Bay	45
+America/Campo_Grande	46
+America/Cancun	47
+America/Caracas	48
+America/Catamarca	24
+America/Cayenne	49
+America/Cayman	36
+America/Chicago	50
+America/Chihuahua	51
+America/Ciudad_Juarez	52
+America/Coral_Harbour	36
+America/Cordoba	25
+America/Costa_Rica	53
+America/Coyhaique	54
+America/Creston	55
+America/Cuiaba	56
+America/Curacao	21
+America/Danmarkshavn	57
+America/Dawson	58
+America/Dawson_Creek	59
+America/Denver	60
+America/Detroit	61
+America/Dominica	21
+America/Edmonton	62
+America/Eirunepe	63
+America/El_Salvador	64
+America/Ensenada	65
+America/Fort_Nelson	66
+America/Fort_Wayne	67
+America/Fortaleza	68
+America/Glace_Bay	69
+America/Godthab	70
+America/Goose_Bay	71
+America/Grand_Turk	72
+America/Grenada	21
+America/Guadeloupe	21
+America/Guatemala	73
+America/Guayaquil	74
+America/Guyana	75
+America/Halifax	76
+America/Havana	77
+America/Hermosillo	78
+America/Indiana/Indianapolis	67
+America/Indiana/Knox	79
+America/Indiana/Marengo	80
+America/Indiana/Petersburg	81
+America/Indiana/Tell_City	82
+America/Indiana/Vevay	83
+America/Indiana/Vincennes	84
+America/Indiana/Winamac	85
+America/Indianapolis	67
+America/Inuvik	86
+America/Iqaluit	87
+America/Jamaica	88
+America/Jujuy	26
+America/Juneau	89
+America/Kentucky/Louisville	90
+America/Kentucky/Monticello	91
+America/Knox_IN	79
+America/Kralendijk	21
+America/La_Paz	92
+America/Lima	93
+America/Los_Angeles	94
+America/Louisville	90
+America/Lower_Princes	21
+America/Maceio	95
+America/Managua	96
+America/Manaus	97
+America/Marigot	21
+America/Martinique	98
+America/Matamoros	99
+America/Mazatlan	100
+America/Mendoza	28
+America/Menominee	101
+America/Merida	102
+America/Metlakatla	103
+America/Mexico_City	104
+America/Miquelon	105
+America/Moncton	106
+America/Monterrey	107
+America/Montevideo	108
+America/Montreal	109
+America/Montserrat	21
+America/Nassau	109
+America/New_York	110
+America/Nipigon	109
+America/Nome	111
+America/Noronha	112
+America/North_Dakota/Beulah	113
+America/North_Dakota/Center	114
+America/North_Dakota/New_Salem	115
+America/Nuuk	70
+America/Ojinaga	116
+America/Panama	36
+America/Pangnirtung	87
+America/Paramaribo	117
+America/Phoenix	55
+America/Port-au-Prince	118
+America/Port_of_Spain	21
+America/Porto_Acre	119
+America/Porto_Velho	120
+America/Puerto_Rico	21
+America/Punta_Arenas	121
+America/Rainy_River	122
+America/Rankin_Inlet	123
+America/Recife	124
+America/Regina	125
+America/Resolute	126
+America/Rio_Branco	119
+America/Rosario	25
+America/Santa_Isabel	65
+America/Santarem	127
+America/Santiago	128
+America/Santo_Domingo	129
+America/Sao_Paulo	130
+America/Scoresbysund	131
+America/Shiprock	60
+America/Sitka	132
+America/St_Barthelemy	21
+America/St_Johns	133
+America/St_Kitts	21
+America/St_Lucia	21
+America/St_Thomas	21
+America/St_Vincent	21
+America/Swift_Current	134
+America/Tegucigalpa	135
+America/Thule	136
+America/Thunder_Bay	109
+America/Tijuana	65
+America/Toronto	109
+America/Tortola	21
+America/Vancouver	137
+America/Virgin	21
+America/Whitehorse	138
+America/Winnipeg	122
+America/Yakutat	139
+America/Yellowknife	62
+Antarctica/Casey	140
+Antarctica/Davis	141
+Antarctica/DumontDUrville	142
+Antarctica/Macquarie	143
+Antarctica/Mawson	144
+Antarctica/McMurdo	145
+Antarctica/Palmer	146
+Antarctica/Rothera	147
+Antarctica/South_Pole	145
+Antarctica/Syowa	148
+Antarctica/Troll	149
+Antarctica/Vostok	150
+Arctic/Longyearbyen	151
+Asia/Aden	148
+Asia/Almaty	152
+Asia/Amman	153
+Asia/Anadyr	154
+Asia/Aqtau	155
+Asia/Aqtobe	156
+Asia/Ashgabat	157
+Asia/Ashkhabad	157
+Asia/Atyrau	158
+Asia/Baghdad	159
+Asia/Bahrain	160
+Asia/Baku	161
+Asia/Bangkok	162
+Asia/Barnaul	163
+Asia/Beirut	164
+Asia/Bishkek	165
+Asia/Brunei	166
+Asia/Calcutta	167
+Asia/Chita	168
+Asia/Choibalsan	169
+Asia/Chongqing	170
+Asia/Chungking	170
+Asia/Colombo	171
+Asia/Dacca	172
+Asia/Damascus	173
+Asia/Dhaka	172
+Asia/Dili	174
+Asia/Dubai	175
+Asia/Dushanbe	176
+Asia/Famagusta	177
+Asia/Gaza	178
+Asia/Harbin	170
+Asia/Hebron	179
+Asia/Ho_Chi_Minh	180
+Asia/Hong_Kong	181
+Asia/Hovd	182
+Asia/Irkutsk	183
+Asia/Istanbul	184
+Asia/Jakarta	185
+Asia/Jayapura	186
+Asia/Jerusalem	187
+Asia/Kabul	188
+Asia/Kamchatka	189
+Asia/Karachi	190
+Asia/Kashgar	191
+Asia/Kathmandu	192
+Asia/Katmandu	192
+Asia/Khandyga	193
+Asia/Kolkata	167
+Asia/Krasnoyarsk	194
+Asia/Kuala_Lumpur	195
+Asia/Kuching	166
+Asia/Kuwait	148
+Asia/Macao	196
+Asia/Macau	196
+Asia/Magadan	197
+Asia/Makassar	198
+Asia/Manila	199
+Asia/Muscat	175
+Asia/Nicosia	200
+Asia/Novokuznetsk	201
+Asia/Novosibirsk	202
+Asia/Omsk	203
+Asia/Oral	204
+Asia/Phnom_Penh	162
+Asia/Pontianak	205
+Asia/Pyongyang	206
+Asia/Qatar	160
+Asia/Qostanay	207
+Asia/Qyzylorda	208
+Asia/Rangoon	209
+Asia/Riyadh	148
+Asia/Saigon	180
+Asia/Sakhalin	210
+Asia/Samarkand	211
+Asia/Seoul	212
+Asia/Shanghai	170
+Asia/Singapore	195
+Asia/Srednekolymsk	213
+Asia/Taipei	214
+Asia/Tashkent	215
+Asia/Tbilisi	216
+Asia/Tehran	217
+Asia/Tel_Aviv	187
+Asia/Thimbu	218
+Asia/Thimphu	218
+Asia/Tokyo	219
+Asia/Tomsk	220
+Asia/Ujung_Pandang	198
+Asia/Ulaanbaatar	169
+Asia/Ulan_Bator	169
+Asia/Urumqi	191
+Asia/Ust-Nera	221
+Asia/Vientiane	162
+Asia/Vladivostok	222
+Asia/Yakutsk	223
+Asia/Yangon	209
+Asia/Yekaterinburg	224
+Asia/Yerevan	225
+Atlantic/Azores	226
+Atlantic/Bermuda	227
+Atlantic/Canary	228
+Atlantic/Cape_Verde	229
+Atlantic/Faeroe	230
+Atlantic/Faroe	230
+Atlantic/Jan_Mayen	151
+Atlantic/Madeira	231
+Atlantic/Reykjavik	0
+Atlantic/South_Georgia	232
+Atlantic/St_Helena	0
+Atlantic/Stanley	233
+Australia/ACT	234
+Australia/Adelaide	235
+Australia/Brisbane	236
+Australia/Broken_Hill	237
+Australia/Canberra	234
+Australia/Currie	238
+Australia/Darwin	239
+Australia/Eucla	240
+Australia/Hobart	238
+Australia/LHI	241
+Australia/Lindeman	242
+Australia/Lord_Howe	241
+Australia/Melbourne	243
+Australia/NSW	234
+Australia/North	239
+Australia/Perth	244
+Australia/Queensland	236
+Australia/South	235
+Australia/Sydney	234
+Australia/Tasmania	238
+Australia/Victoria	243
+Australia/West	244
+Australia/Yancowinna	237
+Brazil/Acre	119
+Brazil/DeNoronha	112
+Brazil/East	130
+Brazil/West	97
+CET	245
+CST6CDT	50
+Canada/Atlantic	76
+Canada/Central	122
+Canada/Eastern	109
+Canada/Mountain	62
+Canada/Newfoundland	133
+Canada/Pacific	137
+Canada/Saskatchewan	125
+Canada/Yukon	138
+Chile/Continental	128
+Chile/EasterIsland	246
+Cuba	77
+EET	247
+EST	36
+EST5EDT	110
+Egypt	6
+Eire	248
+Etc/GMT	249
+Etc/GMT+0	249
+Etc/GMT+1	250
+Etc/GMT+10	251
+Etc/GMT+11	252
+Etc/GMT+12	253
+Etc/GMT+2	254
+Etc/GMT+3	255
+Etc/GMT+4	256
+Etc/GMT+5	257
+Etc/GMT+6	258
+Etc/GMT+7	259
+Etc/GMT+8	260
+Etc/GMT+9	261
+Etc/GMT-0	249
+Etc/GMT-1	262
+Etc/GMT-10	263
+Etc/GMT-11	264
+Etc/GMT-12	265
+Etc/GMT-13	266
+Etc/GMT-14	267
+Etc/GMT-2	268
+Etc/GMT-3	269
+Etc/GMT-4	270
+Etc/GMT-5	271
+Etc/GMT-6	272
+Etc/GMT-7	273
+Etc/GMT-8	274
+Etc/GMT-9	275
+Etc/GMT0	249
+Etc/Greenwich	249
+Etc/UCT	276
+Etc/UTC	276
+Etc/Universal	276
+Etc/Zulu	276
+Europe/Amsterdam	245
+Europe/Andorra	277
+Europe/Astrakhan	278
+Europe/Athens	247
+Europe/Belfast	279
+Europe/Belgrade	280
+Europe/Berlin	151
+Europe/Bratislava	281
+Europe/Brussels	245
+Europe/Bucharest	282
+Europe/Budapest	283
+Europe/Busingen	284
+Europe/Chisinau	285
+Europe/Copenhagen	151
+Europe/Dublin	248
+Europe/Gibraltar	286
+Europe/Guernsey	279
+Europe/Helsinki	287
+Europe/Isle_of_Man	279
+Europe/Istanbul	184
+Europe/Jersey	279
+Europe/Kaliningrad	288
+Europe/Kiev	289
+Europe/Kirov	290
+Europe/Kyiv	289
+Europe/Lisbon	291
+Europe/Ljubljana	280
+Europe/London	279
+Europe/Luxembourg	245
+Europe/Madrid	292
+Europe/Malta	293
+Europe/Mariehamn	287
+Europe/Minsk	294
+Europe/Monaco	295
+Europe/Moscow	296
+Europe/Nicosia	200
+Europe/Oslo	151
+Europe/Paris	295
+Europe/Podgorica	280
+Europe/Prague	281
+Europe/Riga	297
+Europe/Rome	298
+Europe/Samara	299
+Europe/San_Marino	298
+Europe/Sarajevo	280
+Europe/Saratov	300
+Europe/Simferopol	301
+Europe/Skopje	280
+Europe/Sofia	302
+Europe/Stockholm	151
+Europe/Tallinn	303
+Europe/Tirane	304
+Europe/Tiraspol	285
+Europe/Ulyanovsk	305
+Europe/Uzhgorod	289
+Europe/Vaduz	284
+Europe/Vatican	298
+Europe/Vienna	306
+Europe/Vilnius	307
+Europe/Volgograd	308
+Europe/Warsaw	309
+Europe/Zagreb	280
+Europe/Zaporozhye	289
+Europe/Zurich	284
+GB	279
+GB-Eire	279
+GMT	249
+GMT+0	249
+GMT-0	249
+GMT0	249
+Greenwich	249
+HST	310
+Hongkong	181
+Iceland	0
+Indian/Antananarivo	1
+Indian/Chagos	311
+Indian/Christmas	162
+Indian/Cocos	209
+Indian/Comoro	1
+Indian/Kerguelen	312
+Indian/Mahe	175
+Indian/Maldives	312
+Indian/Mauritius	313
+Indian/Mayotte	1
+Indian/Reunion	175
+Iran	217
+Israel	187
+Jamaica	88
+Japan	219
+Kwajalein	314
+Libya	16
+MET	245
+MST	55
+MST7MDT	60
+Mexico/BajaNorte	65
+Mexico/BajaSur	100
+Mexico/General	104
+NZ	145
+NZ-CHAT	315
+Navajo	60
+PRC	170
+PST8PDT	94
+Pacific/Apia	316
+Pacific/Auckland	145
+Pacific/Bougainville	317
+Pacific/Chatham	315
+Pacific/Chuuk	142
+Pacific/Easter	246
+Pacific/Efate	318
+Pacific/Enderbury	319
+Pacific/Fakaofo	320
+Pacific/Fiji	321
+Pacific/Funafuti	322
+Pacific/Galapagos	323
+Pacific/Gambier	324
+Pacific/Guadalcanal	325
+Pacific/Guam	326
+Pacific/Honolulu	310
+Pacific/Johnston	310
+Pacific/Kanton	319
+Pacific/Kiritimati	327
+Pacific/Kosrae	328
+Pacific/Kwajalein	314
+Pacific/Majuro	322
+Pacific/Marquesas	329
+Pacific/Midway	330
+Pacific/Nauru	331
+Pacific/Niue	332
+Pacific/Norfolk	333
+Pacific/Noumea	334
+Pacific/Pago_Pago	330
+Pacific/Palau	335
+Pacific/Pitcairn	336
+Pacific/Pohnpei	325
+Pacific/Ponape	325
+Pacific/Port_Moresby	142
+Pacific/Rarotonga	337
+Pacific/Saipan	326
+Pacific/Samoa	330
+Pacific/Tahiti	338
+Pacific/Tarawa	322
+Pacific/Tongatapu	339
+Pacific/Truk	142
+Pacific/Wake	322
+Pacific/Wallis	322
+Pacific/Yap	142
+Poland	309
+Portugal	291
+ROC	214
+ROK	212
+Singapore	195
+Turkey	184
+UCT	276
+US/Alaska	20
+US/Aleutian	19
+US/Arizona	55
+US/Central	50
+US/East-Indiana	67
+US/Eastern	110
+US/Hawaii	310
+US/Indiana-Starke	79
+US/Michigan	61
+US/Mountain	60
+US/Pacific	94
+US/Samoa	330
+UTC	276
+Universal	276
+W-SU	296
+WET	291
+Zulu	276
