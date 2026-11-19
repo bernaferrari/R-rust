@@ -196,6 +196,8 @@ check_unique_case_numbers() {
     fi
 }
 
+check_unique_case_numbers
+
 RUSTFLAGS_FOR_BUILD="${RUSTFLAGS:-}"
 if [[ "$RUSTFLAGS_FOR_BUILD" != *"-Awarnings"* ]]; then
     RUSTFLAGS_FOR_BUILD="${RUSTFLAGS_FOR_BUILD:+$RUSTFLAGS_FOR_BUILD }-Awarnings"
@@ -888,9 +890,6 @@ main() {
     local xpassed=0
     local failed=0
     local skipped=0
-
-
-    check_unique_case_numbers
 
     if [[ "$MODE" == "--regen-goldens" ]]; then
         regen_normal_goldens
