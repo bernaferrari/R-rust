@@ -417,17 +417,14 @@ pub(super) unsafe fn measure(args: SEXP, height: bool) -> SEXP {
             vec![false; labels.len()]
         };
 
-        let (backend, coordinates) =
-            crate::sexp::instance::with_required_current_instance(|instance| {
-                (
-                    (*instance).current_renderplot_backend,
-                    (*instance).portable_graphics.current,
-                )
-            });
-        let backend = backend.unwrap_or_else(|| {
-            base_error("string metrics require an active portable graphics device")
+        let coordinates = crate::sexp::instance::with_required_current_instance(|instance| {
+            (*instance).portable_graphics.current
         });
-        let target = &*backend;
+        use r_graphics_engine::DrawTarget;
+        let target =
+            crate::library::grdevices::device_registry::active_target().unwrap_or_else(|| {
+                base_error("string metrics require an active portable graphics device")
+            });
         let (width, device_height) = target.dimensions();
         let factor = match units {
             3 => 1. / 72.,
@@ -471,7 +468,7 @@ pub(super) unsafe fn measure(args: SEXP, height: bool) -> SEXP {
                             .map(|line| f64::from(target.measure_text(line, &params).width))
                             .fold(0., f64::max),
                         Label::Math(expression) => {
-                            let layout = expression.layout(target, &params);
+                            let layout = expression.layout(&target, &params);
                             f64::from(if height {
                                 layout.ascent + layout.descent
                             } else {

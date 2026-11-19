@@ -685,8 +685,8 @@ pub unsafe fn dispatch(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let operation = string(arg_by_name_or_position(args, &["operation"], 0), "");
         let data = arg_by_name_or_position(args, &["data"], 1);
-        let target = device();
-        let dims = (&*target).dimensions();
+        let mut target = device();
+        let dims = target.dimensions();
         let mut state = with_required_current_instance(|p| (*p).portable_grid.clone());
         state.ensure(dims);
         let parent = state.frames.last().unwrap().clone();
@@ -702,7 +702,7 @@ pub unsafe fn dispatch(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 state = GridState::default();
                 state.ensure(dims);
                 state.display_list = kept;
-                (&mut *target).clear(Color::WHITE);
+                (&mut target).clear(Color::WHITE);
             }
             "push" => {
                 let frame = push(data, &parent);
@@ -922,8 +922,8 @@ pub unsafe fn dispatch(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 frame.gp = gp(field(data, "gp"), &frame.gp);
                 let primitive = string(field(data, "primitive"), "");
                 let drawing = field(data, "data");
-                let commands = draw_commands(&primitive, drawing, &frame, &*target);
-                let target = &mut *target;
+                let commands = draw_commands(&primitive, drawing, &frame, &target);
+                let target = &mut target;
                 target.set_clip(frame.clip);
                 for c in commands {
                     match c {

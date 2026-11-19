@@ -2234,67 +2234,126 @@ pub unsafe extern "C-unwind" fn PostScript(args: SEXP) -> SEXP {
     }
 }
 
-/// Create a PDF graphics device (pdf() function in R).
-///
-/// Opens the requested file and returns. Drawing commands are not written yet.
+/// Open the ordinary grDevices PDF with a device-owned recording.
 pub unsafe extern "C-unwind" fn PDF(args: SEXP) -> SEXP {
     unsafe {
-        if !args.is_null() && args != R_NilValue() {
-            let file = CADR(args);
-            if !file.is_null() && TYPEOF(file) == SEXPTYPE::STRSXP && LENGTH(file) > 0 {
-                let chars = CHAR(STRING_ELT(file, 0));
-                if !chars.is_null() {
-                    if let Ok(path) = CStr::from_ptr(chars).to_str() {
-                        if !path.is_empty() {
-                            let _ = std::fs::write(path, b"%PDF-1.4\n");
-                        }
-                    }
-                }
-            }
-        }
-        crate::library::grdevices::device_registry::selectDevice(0);
-        let base = crate::sexp::globals::R_BaseEnv();
-        let sym = crate::sexp::symbol::Rf_install(c".Devices".as_ptr());
-        let old = crate::sexp::envir::R_findVarInFrame(base, sym);
-        let n = if !old.is_null()
-            && old != crate::sexp::globals::R_UnboundValue()
-            && TYPEOF(old) == SEXPTYPE::VECSXP
-        {
-            XLENGTH(old)
+        use crate::sexp::context::r_error;
+        let mut args = if args.is_null() {
+            R_NilValue()
         } else {
-            0
+            CDR(args)
         };
-        let devices = crate::sexp::constructors::Rf_allocVector(SEXPTYPE::VECSXP, (n + 1) as i32);
-        for i in 0..n {
-            SET_VECTOR_ELT(devices, i, VECTOR_ELT(old, i));
+        let mut next = || {
+            if args == R_NilValue() {
+                return R_NilValue();
+            }
+            let value = CAR(args);
+            args = CDR(args);
+            value
+        };
+        let file = next();
+
+        #[cfg(not(feature = "renderplot-device"))]
+        {
+            if file != R_NilValue() {
+                r_error("file-backed PDF graphics require the portable graphics device");
+            }
+            super::device_registry::open_null_pdf();
         }
-        if n == 0 {
-            SET_VECTOR_ELT(devices, 0, Rf_mkString(c"null device".as_ptr()));
+        #[cfg(feature = "renderplot-device")]
+        {
+            use crate::library::graphics::par::{ParValue, set_plot_parameter};
+            use crate::mainutils::coerce::{asLogical, asReal};
+            let paper = pdf_string(next(), "special");
+            let family = pdf_string(next(), "Helvetica");
+            let _encoding = next();
+            let bg = pdf_string(next(), "transparent");
+            let fg = pdf_string(next(), "black");
+            let number = |value, default| {
+                if value == R_NilValue() {
+                    default
+                } else {
+                    asReal(value)
+                }
+            };
+            let width = number(next(), 7.0);
+            let height = number(next(), 7.0);
+            let points = number(next(), 12.0);
+            let onefile = next();
+            if file != R_NilValue() && onefile != R_NilValue() && asLogical(onefile) != 1 {
+                r_error("onefile = FALSE is not supported by this PDF device");
+            }
+            let _pagecentre = next();
+            let _title = next();
+            let fonts = next();
+            let version_major = number(next(), 1.0);
+            let version_minor = number(next(), 4.0);
+            let color_model = pdf_string(next(), "srgb");
+            let _dingbats = next();
+            let _kerning = next();
+            let _odd_even = next();
+            let compress = next();
+            let compress = compress == R_NilValue() || asLogical(compress) == 1;
+            if paper != "special" || !matches!(color_model.as_str(), "srgb" | "rgb") {
+                r_error("the PDF device requires paper = 'special' and an RGB color model");
+            }
+            let dimension = |inches: f64| {
+                let points = (inches * 72.0).round();
+                if !(1.0..=f64::from(u16::MAX)).contains(&points) {
+                    r_error("invalid PDF device dimensions");
+                }
+                points as u32
+            };
+            if file != R_NilValue()
+                && (!matches!(family.as_str(), "Helvetica" | "sans")
+                    || (fonts != R_NilValue() && LENGTH(fonts) > 0)
+                    || (version_major, version_minor) != (1.0, 4.0))
+            {
+                r_error("the PDF device supports the bundled sans faces and PDF version 1.4");
+            }
+            let dimensions = (dimension(width), dimension(height));
+            if !points.is_finite() || points < 1.0 || points > f64::from(i32::MAX) {
+                r_error("invalid PDF point size");
+            }
+            let output = if file == R_NilValue() {
+                None
+            } else {
+                let path = pdf_string(file, "");
+                if path.is_empty() || path.contains('%') || path.starts_with('|') {
+                    r_error("the PDF device requires a literal file name");
+                }
+                Some(
+                    super::pdf_output::PdfOutput::new(&path).unwrap_or_else(|error| {
+                        r_error(format!("cannot open PDF '{path}': {error}"))
+                    }),
+                )
+            };
+            super::device_registry::open_pdf(output, width, height, dimensions, compress);
+            set_plot_parameter("bg", ParValue::String(bg));
+            set_plot_parameter("col", ParValue::String(fg.clone()));
+            set_plot_parameter("fg", ParValue::String(fg));
+            set_plot_parameter("ps", ParValue::Integer(vec![points.round() as i32]));
         }
-        SET_VECTOR_ELT(
-            devices,
-            if n == 0 { 0i64 } else { n },
-            Rf_mkString(c"pdf".as_ptr()),
-        );
-        // The n==0 arm wrote null device at 0 and then overwrites it. Fix below.
-        if n == 0 {
-            let both = crate::sexp::constructors::Rf_allocVector(SEXPTYPE::VECSXP, 2);
-            SET_VECTOR_ELT(both, 0, Rf_mkString(c"null device".as_ptr()));
-            SET_VECTOR_ELT(both, 1, Rf_mkString(c"pdf".as_ptr()));
-            crate::sexp::envir::defineVar(sym, both, base);
-        } else {
-            crate::sexp::envir::defineVar(sym, devices, base);
-        }
-        // GNU initDevice() sets .Device to the newly opened device's name;
-        // lag.plot() and friends test `.Device == "null device"` before
-        // calling dev.new(), so a stale "null device" makes them reopen a
-        // device (and dev.new() then announces "Rplots1.pdf").
-        crate::sexp::envir::defineVar(
-            crate::sexp::symbol::Rf_install(c".Device".as_ptr()),
-            Rf_mkString(c"pdf".as_ptr()),
-            base,
-        );
         R_NilValue()
+    }
+}
+
+#[cfg(feature = "renderplot-device")]
+unsafe fn pdf_string(value: SEXP, default: &str) -> String {
+    unsafe {
+        if value == R_NilValue() {
+            return default.to_owned();
+        }
+        if TYPEOF(value) != SEXPTYPE::STRSXP
+            || LENGTH(value) != 1
+            || STRING_ELT(value, 0) == crate::sexp::globals::R_NaString()
+        {
+            crate::sexp::context::r_error("invalid PDF device argument");
+        }
+        CStr::from_ptr(CHAR(STRING_ELT(value, 0)))
+            .to_str()
+            .unwrap_or_else(|_| crate::sexp::context::r_error("invalid PDF argument encoding"))
+            .to_owned()
     }
 }
 

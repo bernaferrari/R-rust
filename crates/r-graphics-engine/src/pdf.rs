@@ -19,9 +19,15 @@ const FIRST_RESOURCE: usize = 4;
 /// arc operation are currently unsupported. Use a bounded sink to limit output
 /// and publish the result only on success, since I/O errors can occur mid-write.
 pub fn write_pdf<W: Write>(pages: &[Scene], output: &mut W) -> io::Result<()> {
-    if pages.is_empty() {
-        return Err(invalid("a PDF needs at least one page"));
-    }
+    write_pdf_with_compression(pages, output, true)
+}
+
+/// Control page stream compression. Embedded font streams remain compressed.
+pub fn write_pdf_with_compression<W: Write>(
+    pages: &[Scene],
+    output: &mut W,
+    compress_pages: bool,
+) -> io::Result<()> {
     let resources = Resources::collect(pages)?;
     let first_page = FIRST_RESOURCE + resources.font_ids.iter().flatten().count() * FONT_OBJECTS;
     let object_count = pages
@@ -49,7 +55,11 @@ pub fn write_pdf<W: Write>(pages: &[Scene], output: &mut W) -> io::Result<()> {
             "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {width} {height}] /Resources 3 0 R /Contents {} 0 R >>\nendobj",
             id + 1
         )?;
-        pdf.compressed_stream(format_args!(""), |out| write_page(out, page, &resources))?;
+        if compress_pages {
+            pdf.compressed_stream(format_args!(""), |out| write_page(out, page, &resources))?;
+        } else {
+            pdf.stream(format_args!(""), |out| write_page(out, page, &resources))?;
+        }
     }
     pdf.finish()
 }

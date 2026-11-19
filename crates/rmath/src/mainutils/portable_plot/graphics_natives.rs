@@ -115,7 +115,7 @@ unsafe fn erase(args: SEXP) -> SEXP {
     unsafe {
         let fill = colors(arg(args, "col"), transparent()).remove(0);
         if fill.a != 0 {
-            let target = &mut *renderer();
+            let target = &mut renderer();
             let (w, h) = target.dimensions();
             target.set_clip(None);
             let mut rect = Path::rect(0., 0., w as f32, h as f32);
@@ -145,7 +145,7 @@ unsafe fn path(args: SEXP) -> SEXP {
             base_error("invalid 'x' or 'y' (in 'GPath')");
         }
         let stroke = style(args, point_size(args));
-        let target = &mut *renderer();
+        let target = &mut renderer();
         target.set_clip(Some(clip_rect(c, args)));
         let mut start = 0usize;
         for (index, count) in nper.iter().map(|v| *v as usize).enumerate() {
@@ -222,7 +222,7 @@ unsafe fn symbols(args: SEXP) -> SEXP {
         }
         let bg = colors(b[5], transparent());
         let fg = colors(b[6], transparent());
-        let target = &mut *renderer();
+        let target = &mut renderer();
         target.set_clip(Some(clip_rect(c, args)));
         match symbol_type {
             1 => {
@@ -640,7 +640,7 @@ unsafe fn xspline(args: SEXP) -> SEXP {
             return ans;
         }
         let stroke = style(args, point_size(args)).stroke(0);
-        let target = &mut *renderer();
+        let target = &mut renderer();
         target.set_clip(Some(clip_rect(c, args)));
         let mut commands = Vec::new();
         for (i, p) in points.iter().enumerate() {
@@ -838,7 +838,7 @@ unsafe fn dend(args: SEXP) -> SEXP {
         let mut params =
             crate::library::graphics::text_metrics::drawing_parameters(args, 1).remove(0);
         params.text_color = style.color(0);
-        let target = &mut *renderer();
+        let target = &mut renderer();
         // The label offset is the width of "m" converted to user units.
         let m_width = Label::Text("m".into()).dimensions(target, &params).0 as f64;
         let offset = m_width / 72. * user_per_inch(&c, true);
@@ -886,7 +886,7 @@ unsafe fn dendwindow(args: SEXP) -> SEXP {
             base_error("invalid dendrogram input");
         }
         let params = crate::library::graphics::text_metrics::drawing_parameters(args, 1).remove(0);
-        let target = &mut *renderer();
+        let target = &mut renderer();
         let offset = Label::Text("m".into()).dimensions(target, &params).0 as f64 / 72.;
         let mut ymax = heights[0];
         let mut ymin = heights[0];
@@ -1043,7 +1043,7 @@ pub(crate) unsafe fn persp_render(input: &PerspInput) {
             log: [false, false],
         };
         install(c);
-        let target = &mut *renderer();
+        let target = &mut renderer();
         target.set_clip(Some(c.rect));
         let line_color = par_color("col", Color::BLACK);
         let mut edge_done = [false; 12];
@@ -1425,7 +1425,7 @@ pub(crate) unsafe fn filledcontour_render(
                 }
             })
             .collect();
-        let target = &mut *renderer();
+        let target = &mut renderer();
         target.set_clip(Some(c.rect));
         let nx = x.len();
         let mut px = [0f64; 8];
@@ -1480,7 +1480,5 @@ pub(crate) unsafe fn filledcontour_render(
 
 /// Backend check shared with the plot3d drawing hooks.
 pub(crate) fn renderplot_backend_active() -> bool {
-    crate::sexp::instance::with_required_current_instance(|inst| unsafe {
-        (*inst).current_renderplot_backend.is_some()
-    })
+    crate::library::grdevices::device_registry::has_active_target()
 }

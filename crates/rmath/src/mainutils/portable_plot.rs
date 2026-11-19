@@ -496,8 +496,8 @@ unsafe fn coordinate_values(value: SEXP) -> Vec<f64> {
         result.unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
     }
 }
-fn renderer() -> *mut dyn DrawTarget {
-    with_required_current_instance(|inst| unsafe { (*inst).current_renderplot_backend })
+fn renderer() -> crate::library::grdevices::target::GraphicsTarget {
+    crate::library::grdevices::device_registry::active_target()
         .unwrap_or_else(|| base_error("plot requires an active graphics device"))
 }
 fn current() -> Coordinates {
@@ -508,10 +508,10 @@ fn current() -> Coordinates {
 /// Whether this RenderPlot backend has produced a frame. Its frame state is
 /// separate from the session's registry devices.
 pub(crate) fn renderplot_frame_started() -> Option<bool> {
-    with_required_current_instance(|inst| unsafe {
-        let backend = (*inst).current_renderplot_backend.is_some();
-        let frame = (*inst).portable_graphics.current.is_some();
-        backend.then_some(frame)
+    crate::library::grdevices::device_registry::has_active_target().then(|| {
+        with_required_current_instance(|inst| unsafe {
+            (*inst).portable_graphics.current.is_some()
+        })
     })
 }
 
@@ -693,7 +693,7 @@ unsafe fn coordinates(args: SEXP, x: &[f64], y: &[f64], new: bool) -> (Coordinat
                 false,
             );
         }
-        let (w, h) = (&*renderer()).dimensions();
+        let (w, h) = renderer().dimensions();
         // A portable device uses 72 device units per inch. GNU captures the
         // base character expansion at plot.new; changing cex while annotating
         // that plot does not change its physical margin unit.
@@ -920,7 +920,7 @@ pub(crate) unsafe fn native_clip(args: SEXP) -> SEXP {
             xpd: xpd_region_code(xpd),
         });
         // GESetClip applies the clip to the device immediately.
-        let target = &mut *renderer();
+        let target = &mut renderer();
         target.set_clip(Some(rect));
         invisible()
     }
@@ -1193,18 +1193,21 @@ pub(crate) unsafe fn native_convert(args: SEXP, vertical: bool) -> SEXP {
                 message: "graphics input changed during conversion".into(),
             });
         }
-        let (installed, recording, backend) = with_required_current_instance(|inst| unsafe {
+        let (installed, recording) = with_required_current_instance(|inst| unsafe {
             (
                 (*inst).portable_graphics.current,
                 (*inst).graphics_recording.clone(),
-                (*inst).current_renderplot_backend,
             )
         });
+        let backend = crate::library::grdevices::device_registry::active_target();
         let (width, height) = if let Some(c) = installed {
             (
                 f64::from(c.device[2] - c.device[0]),
                 f64::from(c.device[3] - c.device[1]),
             )
+        } else if let Some(target) = backend.as_ref().filter(|target| target.is_pdf()) {
+            let (w, h) = target.dimensions();
+            (f64::from(w), f64::from(h))
         } else {
             let scene = recording.as_ref().ok_or(SexpError::EvaluationFailed {
                 message: "graphics device dimensions unavailable".into(),
@@ -1237,22 +1240,21 @@ pub(crate) unsafe fn native_convert(args: SEXP, vertical: bool) -> SEXP {
         let geometry = ConversionGeometry::capture(coordinates, has_frame, &snapshot);
         let check_state = || -> crate::sexp::object::SexpResult<()> {
             owner.require_active()?;
-            let (now_installed, now_recording, now_backend) =
-                with_required_current_instance(|inst| unsafe {
-                    (
-                        (*inst).portable_graphics.current,
-                        (*inst).graphics_recording.clone(),
-                        (*inst).current_renderplot_backend,
-                    )
-                });
+            let (now_installed, now_recording) = with_required_current_instance(|inst| unsafe {
+                (
+                    (*inst).portable_graphics.current,
+                    (*inst).graphics_recording.clone(),
+                )
+            });
+            let now_backend = crate::library::grdevices::device_registry::active_target();
             let same_recording = match (&recording, &now_recording) {
                 (None, None) => true,
                 (Some(a), Some(b)) => std::rc::Rc::ptr_eq(a, b),
                 _ => false,
             };
-            let same_backend = match (backend, now_backend) {
+            let same_backend = match (&backend, &now_backend) {
                 (None, None) => true,
-                (Some(a), Some(b)) => std::ptr::eq(a, b),
+                (Some(a), Some(b)) => a.same_device(b),
                 _ => false,
             };
             if now_installed != installed
@@ -2422,7 +2424,7 @@ pub(crate) unsafe fn plot_default(_: SEXP, _: SEXP, args: SEXP, _: SEXP) -> SEXP
         let axes = scalar(args, "axes", 1.) != 0.;
         let frame = scalar(args, "frame.plot", if axes { 1. } else { 0. }) != 0.;
         let title_labels = title_labels(args);
-        let target = &mut *renderer();
+        let target = &mut renderer();
         if clear {
             target.clear(page_background());
         }
@@ -2448,9 +2450,7 @@ pub(crate) unsafe fn draw_builtin(name: &str, args: SEXP) -> SEXP {
             // is "no active device and default getOption(\"device\") is invalid".
             // A live renderplot backend is the device, so that lookup must not
             // open the default pdf in the working directory.
-            let backend_open = with_required_current_instance(|inst| unsafe {
-                (*inst).current_renderplot_backend.is_some()
-            });
+            let backend_open = crate::library::grdevices::device_registry::has_active_target();
             if !backend_open {
                 let _dev = crate::library::grdevices::device_registry::GEcurrentDevice();
             }
@@ -2459,7 +2459,7 @@ pub(crate) unsafe fn draw_builtin(name: &str, args: SEXP) -> SEXP {
             // GNewPlot follows GReset with GForceClip: the manual clip()
             // rectangle never survives into a new plot.
             clear_manual_clip();
-            let target = &mut *renderer();
+            let target = &mut renderer();
             target.set_clip(None);
             if clear {
                 target.clear(page_background());
@@ -2484,7 +2484,7 @@ pub(crate) unsafe fn draw_builtin(name: &str, args: SEXP) -> SEXP {
         }
         if name == "title" {
             let labels = title_labels(args);
-            titles(&mut *renderer(), c, &labels);
+            titles(&mut renderer(), c, &labels);
             return invisible();
         }
         // Text has GNU's own cex normalization and does not use point radii.
@@ -2508,7 +2508,7 @@ pub(crate) unsafe fn draw_builtin(name: &str, args: SEXP) -> SEXP {
                     base_error("invalid plot type");
                 }
                 draw_xy(
-                    &mut *renderer(),
+                    &mut renderer(),
                     c,
                     &x,
                     &y,
@@ -2527,7 +2527,7 @@ pub(crate) unsafe fn draw_builtin(name: &str, args: SEXP) -> SEXP {
                 let length = scalar(args, "length", 0.25) as f32 * 96.;
                 let angle = scalar(args, "angle", 30.).to_radians() as f32;
                 let code = scalar(args, "code", 2.) as i32;
-                let target = &mut *renderer();
+                let target = &mut renderer();
                 target.set_clip(Some(clip_rect(c, args)));
                 for i in 0..n {
                     let p = c.map(cols[0][i % cols[0].len()], cols[1][i % cols[1].len()]);
@@ -2577,7 +2577,7 @@ pub(crate) unsafe fn draw_builtin(name: &str, args: SEXP) -> SEXP {
                 } else {
                     None
                 };
-                let target = &mut *renderer();
+                let target = &mut renderer();
                 target.set_clip(Some(clip_rect(c, args)));
                 if let Some((a, b)) = coefficients {
                     target.draw_path(&abline_path(c, a, b, untf, style.stroke(0)));
@@ -2609,7 +2609,7 @@ pub(crate) unsafe fn draw_builtin(name: &str, args: SEXP) -> SEXP {
                 let fill = colors(arg(args, "col"), transparent());
                 let border = colors(arg(args, "border"), par_color("fg", Color::BLACK));
                 let n = cols.iter().map(Vec::len).max().unwrap();
-                let target = &mut *renderer();
+                let target = &mut renderer();
                 target.set_clip(Some(clip_rect(c, args)));
                 for i in 0..n {
                     let a = c.map(cols[0][i % cols[0].len()], cols[1][i % cols[1].len()]);
@@ -2631,7 +2631,7 @@ pub(crate) unsafe fn draw_builtin(name: &str, args: SEXP) -> SEXP {
                 let (x, y) = xy(args);
                 let fill = colors(arg(args, "col"), transparent());
                 let border = colors(arg(args, "border"), Color::BLACK);
-                let target = &mut *renderer();
+                let target = &mut renderer();
                 target.set_clip(Some(clip_rect(c, args)));
                 let mut commands = vec![];
                 let mut polygon = 0;
@@ -2682,7 +2682,7 @@ pub(crate) unsafe fn draw_builtin(name: &str, args: SEXP) -> SEXP {
                 let count = x.len().max(y.len());
                 let parameters =
                     crate::library::graphics::text_metrics::drawing_parameters(args, count);
-                let target = &mut *renderer();
+                let target = &mut renderer();
                 target.set_clip(Some(clip_rect(c, args)));
                 for (i, mut text_params) in parameters.into_iter().enumerate() {
                     text_params.text_angle = angle;
@@ -2696,7 +2696,7 @@ pub(crate) unsafe fn draw_builtin(name: &str, args: SEXP) -> SEXP {
                 }
                 target.set_clip(None);
             }
-            "box" => box_path(&mut *renderer(), c, style.color(0)),
+            "box" => box_path(&mut renderer(), c, style.color(0)),
             "axis" => {
                 let a = bindings(args, &["side", "at", "labels"]);
                 let side = values(a[0]);
@@ -2726,7 +2726,7 @@ pub(crate) unsafe fn draw_builtin(name: &str, args: SEXP) -> SEXP {
                     style.color(0)
                 };
                 let ticks = axis(
-                    &mut *renderer(),
+                    &mut renderer(),
                     c,
                     side[0] as usize,
                     &at,
@@ -2768,7 +2768,7 @@ unsafe fn raster_image_input(args: SEXP, native_payload: bool) -> SEXP {
             base_error("rasterImage on logarithmic axes is not supported");
         }
         let clip = clip_rect(coords, args);
-        let target = &mut *renderer();
+        let target = &mut renderer();
         target.set_clip(Some(clip));
         crate::mainutils::graphics_raster::draw_raster_image(&request, target, |x, y| {
             let point = coords.map(x, y);

@@ -10,7 +10,13 @@ use crate::sexp::globals::R_NilValue;
 use crate::sexp::instance::with_required_current_instance;
 
 #[cfg(feature = "renderplot-device")]
-use r_graphics_engine::{Color, Path, PathCommand, PlotParameters, Point, Stroke};
+use super::{
+    pdf_capture::PdfCapture,
+    pdf_output::PdfOutput,
+    target::{Capture, GraphicsTarget},
+};
+#[cfg(feature = "renderplot-device")]
+use r_graphics_engine::{Color, DrawTarget, Path, PathCommand, PlotParameters, Point, Stroke};
 
 const DEFAULT_WIDTH_INCHES: c_double = 7.0;
 const DEFAULT_HEIGHT_INCHES: c_double = 7.0;
@@ -73,10 +79,34 @@ pub(crate) struct GEDeviceDesc {
     pub holdflush_level: c_int,
     pub ask: bool,
     plot_frame_started: bool,
+    #[cfg(feature = "renderplot-device")]
+    pdf: Option<PdfDevice>,
+    #[cfg(feature = "renderplot-device")]
+    portable_state: Option<Box<DeviceDrawingState>>,
+}
+
+#[cfg(feature = "renderplot-device")]
+struct PdfDevice {
+    output: Option<PdfOutput>,
+    capture: Capture,
+    compress: bool,
+}
+
+#[cfg(feature = "renderplot-device")]
+#[derive(Default)]
+struct DeviceDrawingState {
+    graphics: crate::mainutils::portable_plot::GraphicsState,
+    grid: crate::mainutils::portable_grid::GridState,
 }
 
 impl GEDeviceDesc {
     fn new(label: c_int) -> Self {
+        let side = (DEFAULT_WIDTH_INCHES as usize) * DEFAULT_DPI as usize;
+        let canvas = vec![OPAQUE_WHITE_NATIVE; side * side];
+        Self::descriptor(label, canvas)
+    }
+
+    fn descriptor(label: c_int, canvas: Vec<c_int>) -> Self {
         Self {
             label,
             displayListOn: 0,
@@ -97,16 +127,25 @@ impl GEDeviceDesc {
             height: DEFAULT_HEIGHT_INCHES,
             pixel_width: (DEFAULT_WIDTH_INCHES as c_int) * DEFAULT_DPI,
             pixel_height: (DEFAULT_HEIGHT_INCHES as c_int) * DEFAULT_DPI,
-            canvas: vec![
-                OPAQUE_WHITE_NATIVE;
-                ((DEFAULT_WIDTH_INCHES as c_int)
-                    * DEFAULT_DPI
-                    * (DEFAULT_HEIGHT_INCHES as c_int)
-                    * DEFAULT_DPI) as usize
-            ],
+            canvas,
             holdflush_level: 0,
             ask: false,
             plot_frame_started: false,
+            #[cfg(feature = "renderplot-device")]
+            pdf: None,
+            #[cfg(feature = "renderplot-device")]
+            portable_state: None,
+        }
+    }
+
+    fn is_pdf(&self) -> bool {
+        #[cfg(feature = "renderplot-device")]
+        {
+            self.pdf.is_some()
+        }
+        #[cfg(not(feature = "renderplot-device"))]
+        {
+            false
         }
     }
 }
@@ -325,6 +364,112 @@ fn with_registry<R>(f: impl FnOnce(&mut DeviceRegistry) -> R) -> R {
     with_required_current_instance(|instance| {
         f(unsafe { &mut (*instance).graphics_device_registry })
     })
+}
+
+/// Registry transitions lend only the device and drawing-state fields. The
+/// callback changes the selected descriptor without invoking interpreter code.
+fn transition<R>(f: impl FnOnce(&mut DeviceRegistry) -> R) -> R {
+    with_required_current_instance(|instance| unsafe {
+        let registry = &mut (*instance).graphics_device_registry;
+        #[cfg(feature = "renderplot-device")]
+        let previous = (
+            registry.current_external(),
+            (*registry.current_ptr()).is_pdf(),
+        );
+        let result = f(registry);
+        #[cfg(feature = "renderplot-device")]
+        {
+            let current = registry.current_external();
+            if previous.0 != current
+                && (previous.1
+                    || (*registry.current_ptr()).is_pdf()
+                    || registry.devices.iter().any(|device| device.is_pdf()))
+            {
+                let drawing = DeviceDrawingState {
+                    graphics: std::mem::take(&mut (*instance).portable_graphics),
+                    grid: std::mem::take(&mut (*instance).portable_grid),
+                };
+                if let Some(old) = registry.device_ptr(previous.0).as_mut() {
+                    old.portable_state = Some(Box::new(drawing));
+                }
+                let target = &mut *registry.current_ptr();
+                let DeviceDrawingState { graphics, grid } =
+                    target.portable_state.take().map(|s| *s).unwrap_or_default();
+                (*instance).portable_graphics = graphics;
+                (*instance).portable_grid = grid;
+            }
+        }
+        result
+    })
+}
+
+#[cfg(feature = "renderplot-device")]
+pub(super) fn open_pdf(
+    output: Option<PdfOutput>,
+    width: f64,
+    height: f64,
+    dimensions: (u32, u32),
+    compress: bool,
+) {
+    let capture =
+        PdfCapture::new(dimensions).unwrap_or_else(|error| crate::sexp::context::r_error(error));
+    let label = transition(|registry| {
+        let label = registry.next_label;
+        let next = label.checked_add(1);
+        if registry.devices.len() >= 63 || next.is_none() {
+            return None;
+        }
+        let mut device = GEDeviceDesc::descriptor(label, Vec::new());
+        device.width = width;
+        device.height = height;
+        device.pixel_width = dimensions.0 as i32;
+        device.pixel_height = dimensions.1 as i32;
+        device.haveTransparency = 2;
+        device.haveTransparentBg = 2;
+        device.haveRaster = 1;
+        device.haveCapture = 1;
+        device.pdf = Some(PdfDevice {
+            output,
+            capture: std::rc::Rc::new(std::cell::RefCell::new(Some(capture))),
+            compress,
+        });
+        registry.devices.push(Box::new(device));
+        registry.next_label = next.unwrap();
+        registry.current_label = label;
+        Some(label)
+    })
+    .unwrap_or_else(|| crate::sexp::context::r_error("too many open graphics devices"));
+    remember_device_name(c"pdf", label);
+}
+
+#[cfg(not(feature = "renderplot-device"))]
+pub(super) fn open_null_pdf() {
+    let label = with_registry(|registry| registry.open_new_device());
+    remember_device_name(c"pdf", label);
+}
+
+#[cfg(feature = "renderplot-device")]
+pub(crate) fn active_target() -> Option<GraphicsTarget> {
+    let capture = with_registry(|registry| unsafe {
+        (*registry.current_ptr())
+            .pdf
+            .as_ref()
+            .map(|pdf| pdf.capture.clone())
+    });
+    capture.map(GraphicsTarget::pdf).or_else(GraphicsTarget::ui)
+}
+
+#[cfg(feature = "renderplot-device")]
+pub(crate) fn has_active_target() -> bool {
+    active_target().is_some()
+}
+
+#[cfg(feature = "renderplot-device")]
+fn target_for_device(device: pGEDevDesc) -> Option<GraphicsTarget> {
+    let capture = with_device_mut(device, |device| {
+        device.pdf.as_ref().map(|pdf| pdf.capture.clone())
+    })?;
+    capture.map(GraphicsTarget::pdf).or_else(GraphicsTarget::ui)
 }
 
 fn with_device_mut<R>(gdd: pGEDevDesc, f: impl FnOnce(&mut GEDeviceDesc) -> R) -> Option<R> {
@@ -666,6 +811,15 @@ pub(crate) fn set_clip(
     _x2: c_double,
     _y2: c_double,
 ) -> bool {
+    #[cfg(feature = "renderplot-device")]
+    if let Some(mut target) = target_for_device(gdd).filter(GraphicsTarget::is_pdf) {
+        target.set_clip(Some([
+            _x1.min(_x2) as f32,
+            _y1.min(_y2) as f32,
+            _x1.max(_x2) as f32,
+            _y1.max(_y2) as f32,
+        ]));
+    }
     is_registered_device(gdd)
 }
 
@@ -678,6 +832,9 @@ pub(crate) fn draw_line(
     style: DrawStyle,
 ) -> bool {
     let res = with_device_mut(gdd, |device| {
+        if device.is_pdf() {
+            return true;
+        }
         let (Some(x0), Some(y0), Some(x1), Some(y1)) = (
             round_pixel(x0),
             round_pixel(y0),
@@ -693,25 +850,21 @@ pub(crate) fn draw_line(
 
     #[cfg(feature = "renderplot-device")]
     {
-        with_required_current_instance(|inst| {
-            if let Some(p) = unsafe { (*inst).current_renderplot_backend } {
-                if let Some(r) = unsafe { p.as_mut() } {
-                    let path = Path {
-                        commands: vec![
-                            PathCommand::MoveTo(x0 as f32, y0 as f32),
-                            PathCommand::LineTo(x1 as f32, y1 as f32),
-                        ],
-                        fill: transparent_color(),
-                        stroke: Stroke::new(
-                            style.stroke_width.max(0.0) as f32,
-                            render_color_from_native(style.stroke_color),
-                        ),
-                        anti_alias: true,
-                    };
-                    r.draw_path(&path);
-                }
-            }
-        });
+        if let Some(mut r) = target_for_device(gdd) {
+            let path = Path {
+                commands: vec![
+                    PathCommand::MoveTo(x0 as f32, y0 as f32),
+                    PathCommand::LineTo(x1 as f32, y1 as f32),
+                ],
+                fill: transparent_color(),
+                stroke: Stroke::new(
+                    style.stroke_width.max(0.0) as f32,
+                    render_color_from_native(style.stroke_color),
+                ),
+                anti_alias: true,
+            };
+            r.draw_path(&path);
+        }
     }
 
     res
@@ -723,6 +876,9 @@ pub(crate) fn draw_polyline(
     style: DrawStyle,
 ) -> bool {
     let res = with_device_mut(gdd, |device| {
+        if device.is_pdf() {
+            return true;
+        }
         for pair in points.windows(2) {
             let (Some(x0), Some(y0), Some(x1), Some(y1)) = (
                 round_pixel(pair[0].0),
@@ -740,29 +896,24 @@ pub(crate) fn draw_polyline(
 
     #[cfg(feature = "renderplot-device")]
     {
-        with_required_current_instance(|inst| {
-            if let Some(p) = unsafe { (*inst).current_renderplot_backend } {
-                if let Some(r) = unsafe { p.as_mut() } {
-                    if points.len() >= 2 {
-                        let mut cmds =
-                            vec![PathCommand::MoveTo(points[0].0 as f32, points[0].1 as f32)];
-                        for p in &points[1..] {
-                            cmds.push(PathCommand::LineTo(p.0 as f32, p.1 as f32));
-                        }
-                        let path = Path {
-                            commands: cmds,
-                            fill: transparent_color(),
-                            stroke: Stroke::new(
-                                style.stroke_width.max(0.0) as f32,
-                                render_color_from_native(style.stroke_color),
-                            ),
-                            anti_alias: true,
-                        };
-                        r.draw_path(&path);
-                    }
+        if let Some(mut r) = target_for_device(gdd) {
+            if points.len() >= 2 {
+                let mut cmds = vec![PathCommand::MoveTo(points[0].0 as f32, points[0].1 as f32)];
+                for p in &points[1..] {
+                    cmds.push(PathCommand::LineTo(p.0 as f32, p.1 as f32));
                 }
+                let path = Path {
+                    commands: cmds,
+                    fill: transparent_color(),
+                    stroke: Stroke::new(
+                        style.stroke_width.max(0.0) as f32,
+                        render_color_from_native(style.stroke_color),
+                    ),
+                    anti_alias: true,
+                };
+                r.draw_path(&path);
             }
-        });
+        }
     }
     res
 }
@@ -773,6 +924,9 @@ pub(crate) fn draw_polygon(
     style: DrawStyle,
 ) -> bool {
     let res = with_device_mut(gdd, |device| {
+        if device.is_pdf() {
+            return true;
+        }
         let points: Vec<_> = points
             .iter()
             .filter_map(|(x, y)| Some((round_pixel(*x)?, round_pixel(*y)?)))
@@ -789,34 +943,29 @@ pub(crate) fn draw_polygon(
 
     #[cfg(feature = "renderplot-device")]
     {
-        with_required_current_instance(|inst| {
-            if let Some(p) = unsafe { (*inst).current_renderplot_backend } {
-                if let Some(r) = unsafe { p.as_mut() } {
-                    if points.len() >= 2 {
-                        let mut cmds =
-                            vec![PathCommand::MoveTo(points[0].0 as f32, points[0].1 as f32)];
-                        cmds.extend(
-                            points[1..]
-                                .iter()
-                                .map(|p| PathCommand::LineTo(p.0 as f32, p.1 as f32)),
-                        );
-                        if !cmds.is_empty() {
-                            cmds.push(PathCommand::Close);
-                        }
-                        let path = Path {
-                            commands: cmds,
-                            fill: render_color_from_native(style.fill_color),
-                            stroke: Stroke::new(
-                                style.stroke_width.max(0.0) as f32,
-                                render_color_from_native(style.stroke_color),
-                            ),
-                            anti_alias: true,
-                        };
-                        r.draw_path(&path);
-                    }
+        if let Some(mut r) = target_for_device(gdd) {
+            if points.len() >= 2 {
+                let mut cmds = vec![PathCommand::MoveTo(points[0].0 as f32, points[0].1 as f32)];
+                cmds.extend(
+                    points[1..]
+                        .iter()
+                        .map(|p| PathCommand::LineTo(p.0 as f32, p.1 as f32)),
+                );
+                if !cmds.is_empty() {
+                    cmds.push(PathCommand::Close);
                 }
+                let path = Path {
+                    commands: cmds,
+                    fill: render_color_from_native(style.fill_color),
+                    stroke: Stroke::new(
+                        style.stroke_width.max(0.0) as f32,
+                        render_color_from_native(style.stroke_color),
+                    ),
+                    anti_alias: true,
+                };
+                r.draw_path(&path);
             }
-        });
+        }
     }
     res
 }
@@ -830,6 +979,9 @@ pub(crate) fn draw_rect(
     style: DrawStyle,
 ) -> bool {
     let res = with_device_mut(gdd, |device| {
+        if device.is_pdf() {
+            return true;
+        }
         let (Some(x0), Some(y0), Some(x1), Some(y1)) = (
             round_pixel(x0),
             round_pixel(y0),
@@ -849,19 +1001,15 @@ pub(crate) fn draw_rect(
 
     #[cfg(feature = "renderplot-device")]
     {
-        with_required_current_instance(|inst| {
-            if let Some(p) = unsafe { (*inst).current_renderplot_backend } {
-                if let Some(r) = unsafe { p.as_mut() } {
-                    let path = Path::rect(x0 as f32, y0 as f32, (x1 - x0) as f32, (y1 - y0) as f32)
-                        .with_fill(render_color_from_native(style.fill_color))
-                        .with_stroke(Stroke::new(
-                            style.stroke_width.max(0.0) as f32,
-                            render_color_from_native(style.stroke_color),
-                        ));
-                    r.draw_path(&path);
-                }
-            }
-        });
+        if let Some(mut r) = target_for_device(gdd) {
+            let path = Path::rect(x0 as f32, y0 as f32, (x1 - x0) as f32, (y1 - y0) as f32)
+                .with_fill(render_color_from_native(style.fill_color))
+                .with_stroke(Stroke::new(
+                    style.stroke_width.max(0.0) as f32,
+                    render_color_from_native(style.stroke_color),
+                ));
+            r.draw_path(&path);
+        }
     }
     res
 }
@@ -874,6 +1022,9 @@ pub(crate) fn draw_circle(
     style: DrawStyle,
 ) -> bool {
     let res = with_device_mut(gdd, |device| {
+        if device.is_pdf() {
+            return true;
+        }
         let (Some(cx), Some(cy)) = (round_pixel(x), round_pixel(y)) else {
             return true;
         };
@@ -897,20 +1048,16 @@ pub(crate) fn draw_circle(
 
     #[cfg(feature = "renderplot-device")]
     {
-        with_required_current_instance(|inst| {
-            if let Some(p) = unsafe { (*inst).current_renderplot_backend } {
-                if let Some(r) = unsafe { p.as_mut() } {
-                    let rr = radius as f32;
-                    let path = Path::circle(x as f32, y as f32, rr)
-                        .with_fill(render_color_from_native(style.fill_color))
-                        .with_stroke(Stroke::new(
-                            style.stroke_width.max(0.0) as f32,
-                            render_color_from_native(style.stroke_color),
-                        ));
-                    r.draw_path(&path);
-                }
-            }
-        });
+        if let Some(mut r) = target_for_device(gdd) {
+            let rr = radius as f32;
+            let path = Path::circle(x as f32, y as f32, rr)
+                .with_fill(render_color_from_native(style.fill_color))
+                .with_stroke(Stroke::new(
+                    style.stroke_width.max(0.0) as f32,
+                    render_color_from_native(style.stroke_color),
+                ));
+            r.draw_path(&path);
+        }
     }
     res
 }
@@ -923,6 +1070,9 @@ pub(crate) fn draw_circle(
 /// without pulling fonts into the core interpreter.
 pub(crate) fn draw_text(gdd: pGEDevDesc, x: c_double, y: c_double, text: &str, col: c_int) -> bool {
     let res = with_device_mut(gdd, |device| {
+        if device.is_pdf() {
+            return true;
+        }
         let (Some(base_x), Some(base_y)) = (round_pixel(x), round_pixel(y)) else {
             return true;
         };
@@ -965,26 +1115,22 @@ pub(crate) fn draw_text(gdd: pGEDevDesc, x: c_double, y: c_double, text: &str, c
 
     #[cfg(feature = "renderplot-device")]
     {
-        with_required_current_instance(|inst| {
-            if let Some(p) = unsafe { (*inst).current_renderplot_backend } {
-                if let Some(r) = unsafe { p.as_mut() } {
-                    // forward to the high-quality renderer (fontdue text etc.)
-                    let params = PlotParameters {
-                        font_size: 12.0,
-                        text_color: render_color_from_native(col),
-                        ..Default::default()
-                    };
-                    r.draw_text(
-                        text,
-                        Point {
-                            x: x as f32,
-                            y: y as f32,
-                        },
-                        &params,
-                    );
-                }
-            }
-        });
+        if let Some(mut r) = target_for_device(gdd) {
+            // forward to the high-quality renderer (fontdue text etc.)
+            let params = PlotParameters {
+                font_size: 12.0,
+                text_color: render_color_from_native(col),
+                ..Default::default()
+            };
+            r.draw_text(
+                text,
+                Point {
+                    x: x as f32,
+                    y: y as f32,
+                },
+                &params,
+            );
+        }
     }
     res
 }
@@ -1000,6 +1146,20 @@ pub(crate) fn draw_raster(
     width: c_double,
     height: c_double,
 ) -> bool {
+    #[cfg(feature = "renderplot-device")]
+    if with_device_mut(gdd, |device| {
+        if let Some(pdf) = &device.pdf {
+            if let Some(capture) = pdf.capture.borrow_mut().as_mut() {
+                capture.reject_raster();
+            }
+            true
+        } else {
+            false
+        }
+    }) == Some(true)
+    {
+        return true;
+    }
     with_device_mut(gdd, |device| {
         if raster.is_null() || w <= 0 || h <= 0 || width == 0.0 || height == 0.0 {
             return true;
@@ -1042,6 +1202,16 @@ pub(crate) fn draw_raster(
 unsafe fn open_default_device() {
     unsafe {
         let defdev = crate::mainutils::options::GetOption(c"device".as_ptr());
+        #[cfg(not(feature = "renderplot-device"))]
+        if crate::sexp::accessors::TYPEOF(defdev) == SEXPTYPE::STRSXP
+            && crate::sexp::accessors::XLENGTH(defdev) == 1
+            && std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(
+                crate::sexp::accessors::STRING_ELT(defdev, 0),
+            )) == c"pdf"
+        {
+            open_null_pdf();
+            return;
+        }
         let missing = defdev.is_null() || defdev == R_NilValue();
         if !missing && crate::sexp::accessors::TYPEOF(defdev) == SEXPTYPE::CLOSXP {
             let call = crate::sexp::constructors::Rf_cons(defdev, R_NilValue());
@@ -1088,6 +1258,10 @@ fn renderplot_scene_is_device() -> bool {
 /// `dev.cur()` names the device from baseenv `.Devices`. A renderplot scene
 /// has no file, so the list entry must exist without evaluating `pdf()`.
 fn remember_device_name(name: &std::ffi::CStr, device_label: c_int) {
+    update_device_names(name, device_label, device_label);
+}
+
+fn update_device_names(name: &std::ffi::CStr, device_label: c_int, current_label: c_int) {
     unsafe {
         let base = crate::sexp::globals::R_BaseEnv();
         let sym = crate::sexp::symbol::Rf_install(c".Devices".as_ptr());
@@ -1105,7 +1279,7 @@ fn remember_device_name(name: &std::ffi::CStr, device_label: c_int) {
         // are closed. `.Devices` is indexed by the external label, not by the
         // number of currently open devices.
         let slot = i64::from(device_label - 1);
-        let needed = n.max(slot + 1);
+        let needed = n.max(slot + 1).max(i64::from(current_label));
         let devices = Rf_allocVector(SEXPTYPE::VECSXP, needed as i32);
         let _devices_guard = crate::sexp::protect::protect(devices);
         for i in 0..n {
@@ -1124,14 +1298,13 @@ fn remember_device_name(name: &std::ffi::CStr, device_label: c_int) {
         }
         let start = if n == 0 { 1 } else { n };
         for i in start..needed {
-            let label = crate::sexp::constructors::Rf_mkString(c"null device".as_ptr());
+            let label = crate::sexp::constructors::Rf_mkString(c"".as_ptr());
             crate::sexp::accessors::SET_VECTOR_ELT(devices, i, label);
         }
         let current_name = crate::sexp::constructors::Rf_mkString(name.as_ptr());
         crate::sexp::accessors::SET_VECTOR_ELT(devices, slot, current_name);
         crate::sexp::envir::defineVar(sym, devices, base);
-        let current = crate::sexp::constructors::Rf_mkString(name.as_ptr());
-        let _current_guard = crate::sexp::protect::protect(current);
+        let current = crate::sexp::accessors::VECTOR_ELT(devices, i64::from(current_label - 1));
         crate::sexp::envir::defineVar(
             crate::sexp::symbol::Rf_install(c".Device".as_ptr()),
             current,
@@ -1193,21 +1366,76 @@ pub unsafe extern "C" fn prevDevice(dev: c_int) -> c_int {
 }
 
 pub unsafe extern "C" fn selectDevice(dev: c_int) -> c_int {
-    with_registry(|registry| registry.select_external(dev + 1) - 1)
+    transition(|registry| registry.select_external(dev + 1) - 1)
+}
+
+struct RemovedDevice {
+    descriptor: usize,
+    no_devices: bool,
+    #[cfg(feature = "renderplot-device")]
+    pdf: Option<PdfDevice>,
+}
+
+fn remove_device(label: c_int) -> Option<RemovedDevice> {
+    let removed = transition(|registry| {
+        let position = registry.position_of(label)?;
+        let device = &mut registry.devices[position];
+        let descriptor = device.as_ref() as *const GEDeviceDesc as usize;
+        #[cfg(feature = "renderplot-device")]
+        let pdf = device.pdf.take();
+        registry.kill_external(label);
+        Some(RemovedDevice {
+            descriptor,
+            no_devices: registry.no_devices(),
+            #[cfg(feature = "renderplot-device")]
+            pdf,
+        })
+    })?;
+    let was_pdf = {
+        #[cfg(feature = "renderplot-device")]
+        {
+            removed.pdf.is_some()
+        }
+        #[cfg(not(feature = "renderplot-device"))]
+        {
+            false
+        }
+    };
+    let retain_on_null = !was_pdf && removed.no_devices && renderplot_scene_is_device();
+    crate::library::graphics::par::forget_device_parameters(
+        label,
+        removed.descriptor,
+        retain_on_null,
+    );
+    Some(removed)
 }
 
 pub unsafe extern "C" fn killDevice(dev: c_int) {
-    let label = dev + 1;
-    let removed = with_registry(|registry| {
-        let position = registry.position_of(label)?;
-        let descriptor = registry.devices[position].as_ref() as *const GEDeviceDesc as usize;
-        registry.kill_external(label);
-        Some((descriptor, registry.no_devices()))
-    });
-    if let Some((descriptor, no_devices)) = removed {
-        let retain_on_null = no_devices && renderplot_scene_is_device();
-        crate::library::graphics::par::forget_device_parameters(label, descriptor, retain_on_null);
+    remove_device(dev.saturating_add(1));
+}
+
+/// Explicit R closure publishes a complete device file. Forced destruction
+/// drops pending output, so an aborted evaluation cannot replace a prior file.
+pub(super) fn close_device(label: c_int) -> Result<(), String> {
+    let Some(_removed) = remove_device(label) else {
+        return Ok(());
+    };
+    #[cfg(feature = "renderplot-device")]
+    if let Some(pdf) = _removed.pdf {
+        update_device_names(c"", label, current_device_label());
+        let capture = pdf
+            .capture
+            .borrow_mut()
+            .take()
+            .ok_or("PDF device is already closed")?;
+        if let Some(output) = pdf.output {
+            let pages = capture.finish()?;
+            output
+                .publish(&pages.pages, pdf.compress)
+                .map_err(|error| error.to_string())?;
+        }
     }
+    Ok(())
 }
 
 pub unsafe extern "C" fn NoDevices() -> c_int {
@@ -1224,7 +1452,7 @@ pub unsafe extern "C" fn GEcopyDisplayList(_devnum: c_int) {}
 
 pub unsafe extern "C" fn GECap(_gdd: pGEDevDesc) -> SEXP {
     unsafe {
-        if _gdd.is_null() {
+        if _gdd.is_null() || (*_gdd).is_pdf() {
             return R_NilValue();
         }
         let width = (*_gdd).pixel_width;

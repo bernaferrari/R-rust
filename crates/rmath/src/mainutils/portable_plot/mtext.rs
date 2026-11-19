@@ -283,7 +283,7 @@ pub(super) unsafe fn draw(c: Coordinates, args: SEXP) -> SEXP {
             c.device[2] - margin(3),
             c.device[3] - margin(0),
         ];
-        let target = &mut *renderer();
+        let target = &mut renderer();
         // C_mtext promotes its clip to the whole device, even for inner labels.
         target.set_clip(Some(c.device));
         for (i, mut params) in parameters.into_iter().enumerate() {

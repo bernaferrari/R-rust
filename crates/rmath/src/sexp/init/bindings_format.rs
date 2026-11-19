@@ -72,14 +72,10 @@ pub(crate) unsafe fn install(base_env: SEXP) {
         eval_base_binding(base_env, "prop.table", "proportions");
         eval_base_binding(base_env, "marginSums", include_str!("../gnu_margin_sums.R"));
         eval_base_binding(base_env, "C_PDF", "\"C_PDF\"");
-        eval_base_binding(
-            base_env,
-            "pdf",
-            "function(file = \"Rplots.pdf\", ...) .External(C_PDF, file)",
-        );
-        eval_base_binding(base_env, "dev.off", "function(...) 1L");
+        eval_base_binding(base_env, "pdf", "function(...) grDevices::pdf(...)");
+        eval_base_binding(base_env, "dev.off", "function(...) grDevices::dev.off(...)");
         eval_base_binding(base_env, "postscript", "function(...) invisible(NULL)");
-        eval_base_binding(base_env, "legend", "function(...) invisible(NULL)");
+        eval_base_binding(base_env, "legend", "function(...) graphics::legend(...)");
         eval_base_binding(base_env, "dev.hold", "function(...) invisible(NULL)");
         eval_base_binding(base_env, "dev.flush", "function(...) invisible(NULL)");
         eval_base_binding(base_env, "frame", "function(...) invisible(NULL)");

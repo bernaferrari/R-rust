@@ -329,14 +329,14 @@ pub(crate) unsafe fn replay(_: SEXP, _: SEXP, args: SEXP, _: SEXP) -> SEXP {
         };
         let scene = Scene::decode(bytes)
             .unwrap_or_else(|e| base_error(format!("invalid recorded plot: {e}")));
-        let target = with_required_current_instance(|inst| (*inst).current_renderplot_backend)
+        let mut target = crate::library::grdevices::device_registry::active_target()
             .unwrap_or_else(|| base_error("no active graphics device"));
         let state = decode_portable_state(recording).unwrap_or_else(|e| base_error(e));
         let source_dimensions = scene.dimensions();
-        let target_dimensions = (&*target).dimensions();
+        let target_dimensions = r_graphics_engine::DrawTarget::dimensions(&target);
         let grid_state = decode_grid_state(recording, source_dimensions, target_dimensions)
             .unwrap_or_else(|e| base_error(e));
-        scene.replay_scaled(&mut *target);
+        scene.replay_scaled(&mut target);
         if let Some(state) = state {
             restore_portable_state(state, source_dimensions, target_dimensions);
         }

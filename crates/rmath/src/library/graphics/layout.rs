@@ -936,16 +936,16 @@ impl LayoutState {
 
 #[cfg(feature = "renderplot-device")]
 fn device_size_raster() -> (f64, f64) {
-    crate::sexp::instance::with_current_instance(|inst| unsafe {
-        match (*inst).current_renderplot_backend {
-            Some(backend) => {
-                let (w, h) = (*backend).dimensions();
-                (f64::from(w), f64::from(h))
-            }
-            None => (DEFAULT_PAGE[0], DEFAULT_PAGE[1]),
-        }
-    })
-    .unwrap_or((DEFAULT_PAGE[0], DEFAULT_PAGE[1]))
+    use r_graphics_engine::DrawTarget;
+    if !crate::sexp::instance::has_current_instance() {
+        return (DEFAULT_PAGE[0], DEFAULT_PAGE[1]);
+    }
+    crate::library::grdevices::device_registry::active_target()
+        .map(|target| {
+            let (w, h) = target.dimensions();
+            (f64::from(w), f64::from(h))
+        })
+        .unwrap_or((DEFAULT_PAGE[0], DEFAULT_PAGE[1]))
 }
 
 #[cfg(not(feature = "renderplot-device"))]

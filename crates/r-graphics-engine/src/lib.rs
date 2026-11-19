@@ -460,7 +460,7 @@ fn draw_raster_image_as_quads(
 mod pdf;
 mod scene;
 
-pub use pdf::write_pdf;
+pub use pdf::{write_pdf, write_pdf_with_compression};
 pub use scene::{DisplayList, DrawOperation, Scene};
 
 pub mod math;

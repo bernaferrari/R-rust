@@ -206,15 +206,16 @@ pub unsafe fn devoff(args: SEXP) -> SEXP {
         if dev_num == 1 {
             Rf_error(b"cannot shut down device 1 (the null device)\0".as_ptr() as *const c_char);
         }
-        // Check device number is valid (64 is max num devices)
-        if dev_num > 0 && dev_num < 64 {
+        if dev_num > 1 {
             let gdd = GEgetDevice(dev_num - 1);
             if !gdd.is_null() && (*gdd).lock != 0 {
                 Rf_warning(b"Killing locked device\0".as_ptr() as *const c_char);
                 (*gdd).lock = 0;
             }
         }
-        killDevice(*INTEGER(CAR(args)).add(0) - 1);
+        device_registry::close_device(dev_num).unwrap_or_else(|error| {
+            crate::sexp::context::r_error(format!("cannot finish PDF: {error}"))
+        });
         R_NilValue()
     }
 }

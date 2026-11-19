@@ -11,11 +11,13 @@ mod group;
 mod init;
 mod mask;
 mod patterns;
-#[cfg(all(test, feature = "renderplot-device"))]
+#[cfg(feature = "renderplot-device")]
 mod pdf_capture;
-#[cfg(all(test, feature = "renderplot-device"))]
+#[cfg(feature = "renderplot-device")]
 mod pdf_output;
 mod stubs;
+#[cfg(feature = "renderplot-device")]
+pub(crate) mod target;
 
 unsafe extern "C-unwind" fn c_pdf(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
     unsafe { devps::PDF(args) }

@@ -360,8 +360,8 @@ impl Frame {
         })
     }
 }
-pub(crate) fn device() -> *mut dyn DrawTarget {
-    with_required_current_instance(|p| unsafe { (*p).current_renderplot_backend })
+pub(crate) fn device() -> crate::library::grdevices::target::GraphicsTarget {
+    crate::library::grdevices::device_registry::active_target()
         .unwrap_or_else(|| base_error("grid requires an active graphics device"))
 }
 pub(crate) unsafe fn field(x: SEXP, name: &str) -> SEXP {
@@ -480,7 +480,7 @@ pub(crate) unsafe fn label_box(item: SEXP, index: usize, style: &Gp) -> (f64, f6
         } else {
             &owned[index % owned.len()]
         };
-        let (w, h) = label.dimensions(&*device(), &params);
+        let (w, h) = label.dimensions(&device(), &params);
         let (w, h) = (f64::from(w), f64::from(h));
         if !w.is_finite() || !h.is_finite() {
             base_error("grid unit conversion overflow");

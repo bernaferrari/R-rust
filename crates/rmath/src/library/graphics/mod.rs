@@ -20,9 +20,7 @@ unsafe extern "C-unwind" fn c_par(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -
 
 #[cfg(feature = "renderplot-device")]
 fn renderplot_backend_active() -> bool {
-    crate::sexp::instance::with_required_current_instance(|inst| unsafe {
-        (*inst).current_renderplot_backend.is_some()
-    })
+    crate::library::grdevices::device_registry::has_active_target()
 }
 
 unsafe fn external_routine_name(args: SEXP) -> String {

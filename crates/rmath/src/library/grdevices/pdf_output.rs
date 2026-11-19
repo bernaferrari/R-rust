@@ -31,14 +31,14 @@ impl PdfOutput {
             .map_err(|_| io::Error::other("invalid PDF destination encoding"))
     }
 
-    pub(super) fn publish(&self, pages: &[Scene]) -> io::Result<()> {
+    pub(super) fn publish(&self, pages: &[Scene], compress_pages: bool) -> io::Result<()> {
         match self {
             Self::Browser(path) => browser_files::publish_generated_current(path, |mut output| {
-                r_graphics_engine::write_pdf(pages, &mut output)
+                r_graphics_engine::write_pdf_with_compression(pages, &mut output, compress_pages)
             }),
-            Self::Host(path) => {
-                platform::publish_host_file(path, |file| r_graphics_engine::write_pdf(pages, file))
-            }
+            Self::Host(path) => platform::publish_host_file(path, |file| {
+                r_graphics_engine::write_pdf_with_compression(pages, file, compress_pages)
+            }),
         }
     }
 }
@@ -63,7 +63,7 @@ mod tests {
             let mut page = Scene::new(432, 288);
             let pixel = RasterImage::new(1, 1, vec![0; 4]).unwrap();
             page.draw_image(&pixel, [1., 0., 0., 1., 0., 0.], false);
-            assert!(output.publish(&[page]).is_err());
+            assert!(output.publish(&[page], true).is_err());
             assert_eq!(
                 browser_files::read_current("reports/plot.pdf").unwrap(),
                 b"previous result"
@@ -73,7 +73,7 @@ mod tests {
             let mut rectangle = Path::rect(25., 30., 20., 20.);
             rectangle.stroke = Stroke::new(1.0, Color::BLACK);
             page.draw_path(&rectangle);
-            output.publish(&[page]).unwrap();
+            output.publish(&[page], true).unwrap();
             let produced = browser_files::read_current("reports/plot.pdf").unwrap();
             assert!(produced.starts_with(b"%PDF-"));
             assert!(produced.ends_with(b"%%EOF\n"));

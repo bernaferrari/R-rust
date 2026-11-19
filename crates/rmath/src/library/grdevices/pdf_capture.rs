@@ -66,6 +66,11 @@ impl PdfCapture {
         ));
     }
 
+    pub(super) fn reject_raster(&mut self) {
+        self.error
+            .get_or_insert("PDF raster images are not supported");
+    }
+
     pub(super) fn finish(mut self) -> Result<PdfPages, &'static str> {
         self.finish_page();
         if let Some(error) = self.error {
@@ -132,7 +137,15 @@ impl DrawTarget for PdfCapture {
     }
 
     fn clear(&mut self, color: Color) {
-        self.finish_page();
+        if self
+            .operations
+            .iter()
+            .any(|op| !matches!(op, DrawOperation::Clip(_)))
+        {
+            self.finish_page();
+        } else {
+            self.operations.clear();
+        }
         self.record(0, || Ok(DrawOperation::Clear(color)));
     }
 
