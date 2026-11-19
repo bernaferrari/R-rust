@@ -39,9 +39,17 @@ fn utf8_sub_bytes(bytes: &[u8]) -> String {
 }
 
 fn reserve_dcf(bytes: usize) -> crate::sexp::memory::TransientReservation {
-    crate::sexp::memory::with_arena(|arena| arena.try_reserve_transient(bytes)).unwrap_or_else(
-        || crate::sexp::context::r_error("DCF workspace exceeds session memory limit"),
-    )
+    unsafe { crate::sexp::owner::OwnerToken::current() }
+        .ok()
+        .and_then(|owner| {
+            owner
+                .with_arena(|arena| arena.try_reserve_transient(bytes))
+                .ok()
+                .flatten()
+        })
+        .unwrap_or_else(|| {
+            crate::sexp::context::r_error("DCF workspace exceeds session memory limit")
+        })
 }
 
 fn reserve_browser_table(
