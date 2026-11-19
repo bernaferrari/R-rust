@@ -74,6 +74,7 @@ const contracts = [
     'invalid-utf8-print-contract',
     'complex-print-public-contract',
     'stats-namespace-public-contract',
+    'tools-portable-package-contract',
     'get-lazy-mode-public-contract',
     'correlation-public-contract',
     'palette-public-contract',
