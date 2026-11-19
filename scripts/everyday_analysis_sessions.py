@@ -9,7 +9,9 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+import tarfile
 import tempfile
+import tomllib
 
 from conformance_shards import file_digest, source_identity
 
@@ -96,10 +98,43 @@ def run_workspace(commands, directory, env, fixture, wasm_module):
     return wasm_digest, expected, outcomes, artifacts
 
 
+def run_pure_r_package(gnu, native, directory, env, fixture, wasm_module):
+    package_root = ROOT / 'tests/real-packages'
+    with (package_root / 'manifest.toml').open('rb') as source:
+        package = next(row for row in tomllib.load(source)['package'] if row['name'] == 'R6')
+    archive = package_root / package['tarball']
+    digest = file_digest(archive)
+    if digest != package['sha256'] or package['needs_compilation']:
+        raise ValueError('expected the pinned pure-R R6 archive')
+    gnu_library = directory / 'gnu-library'
+    native_library = directory / 'native-library'
+    gnu_library.mkdir()
+    native_library.mkdir()
+    r = Path(gnu[0]).resolve().with_name('R')
+    subprocess.run([r, 'CMD', 'INSTALL', '--no-html', '-l', gnu_library, archive],
+                   cwd=directory, env=env, stdout=sys.stderr, check=True, timeout=300)
+    with tarfile.open(archive) as package_archive:
+        package_archive.extractall(native_library, filter='data')
+
+    def run(command, library):
+        package_env = dict(env, R_LIBS=str(library), R_LIBS_USER='', R_LIBS_SITE='')
+        return {'output': subprocess.check_output(
+            [*command, fixture / 'analysis.R'], cwd=directory,
+            env=package_env, timeout=300, text=True)}
+
+    wasm = json.loads(subprocess.check_output(
+        ['node', ROOT / 'tests/browser/everyday-pure-r-package.mjs', wasm_module],
+        cwd=ROOT, env=env, timeout=300, text=True))
+    wasm_sha256 = wasm.pop('wasm_sha256')
+    if wasm.pop('archive_sha256') != digest:
+        raise ValueError('Wasm used a different package archive')
+    return wasm_sha256, run(gnu, gnu_library), dict(native=run(native, native_library), wasm=wasm), digest
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('wasm_package', type=Path)
-    parser.add_argument('--workflow', choices=('file-round-trip', 'fresh-session-restore'),
+    parser.add_argument('--workflow', choices=('file-round-trip', 'fresh-session-restore', 'pure-r-package'),
                         default='file-round-trip')
     args = parser.parse_args()
     rscript = shutil.which('Rscript')
@@ -117,7 +152,12 @@ def main():
         directory = Path(scratch)
         native_runner = build_native_runner(directory, env)
         gnu = [rscript, '--vanilla']
-        if args.workflow == 'fresh-session-restore':
+        artifacts = {}
+        archive_digest = None
+        if args.workflow == 'pure-r-package':
+            wasm_sha256, expected, outcomes, archive_digest = run_pure_r_package(
+                gnu, native_runner, directory, env, fixture, wasm_module)
+        elif args.workflow == 'fresh-session-restore':
             wasm_sha256, expected, outcomes, artifacts = run_workspace(
                 {'gnu': gnu, 'native': native_runner}, directory, env, fixture, wasm_module)
         else:
@@ -128,7 +168,6 @@ def main():
                 cwd=ROOT, env=env, timeout=300, text=True))
             wasm_sha256 = wasm.pop('wasm_sha256')
             outcomes = dict(native=native, wasm=wasm)
-            artifacts = {}
         if wasm_sha256 != file_digest(wasm_module / 'r_wasm_bg.wasm'):
             parser.error('the Wasm report does not match the production module')
         report = dict(schema_version=1, **source, wasm_sha256=wasm_sha256,
@@ -138,6 +177,8 @@ def main():
                       expected=expected, **outcomes)
         if artifacts:
             report['workspace_sha256'] = artifacts
+        if archive_digest:
+            report['archive_sha256'] = archive_digest
         print(json.dumps(report, indent=2))
         return int(any(outcome != expected for outcome in outcomes.values()))
 

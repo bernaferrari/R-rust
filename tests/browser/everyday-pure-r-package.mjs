@@ -34,7 +34,7 @@ try {
   assert.throws(() => session.eval_checked('library(R6)'), /missing export/);
   assert.equal(session.eval_checked('"R6" %in% loadedNamespaces()'), '[1] FALSE\n');
   for (const source of sources) session.import_file('packages/' + source, readArchiveFile(source));
-  const script = readFileSync(new URL('fixtures/r6-analysis.R', fixtureRoot), 'utf8');
+  const script = readFileSync(new URL('../everyday-analysis/sessions/pure-r-package/analysis.R', import.meta.url), 'utf8');
   result = session.eval_checked(script);
   assert.equal(result, 'Loaded R6 2.6.1; analyzed observations with mean 7\n');
   assert.equal(session.eval_checked('find.package("R6")'), '[1] "packages/R6"\n');
@@ -56,4 +56,6 @@ try {
   fresh.free();
 }
 
-console.log(JSON.stringify({ wasm_sha256: sha256(moduleBytes), output: result }));
+console.log(JSON.stringify({
+  wasm_sha256: sha256(moduleBytes), archive_sha256: sha256(readFileSync(archive)), output: result,
+}));

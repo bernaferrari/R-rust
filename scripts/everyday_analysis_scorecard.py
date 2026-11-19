@@ -70,7 +70,8 @@ def session_workflow_results(path, native_policy, wasm_digest):
     report = json.loads(path.read_text())
     workflow = report['workflow']
     provenance = ('source_commit', 'source_sha256', 'oracle_manifest_sha256')
-    if (report['schema_version'] != 1 or workflow not in ('file-round-trip', 'fresh-session-restore')
+    if (report['schema_version'] != 1
+            or workflow not in ('file-round-trip', 'fresh-session-restore', 'pure-r-package')
             or any(report[name] != native_policy[name] for name in provenance)
             or report['wasm_sha256'] != wasm_digest):
         raise ValueError('session report differs in workflow, source, oracle or Wasm artifact')
@@ -82,6 +83,11 @@ def session_workflow_results(path, native_policy, wasm_digest):
         if (len(expected['outputs']) != 2 or not all(expected['outputs'])
                 or not is_sha256(expected['export_sha256'])):
             raise ValueError('session report must contain both GNU outputs and the exported file digest')
+    elif workflow == 'pure-r-package':
+        archive = ROOT / 'tests/real-packages/vendor/R6_2.6.1.tar.gz'
+        if (report['archive_sha256'] != file_digest(archive)
+                or not isinstance(expected['output'], str) or not expected['output'].strip()):
+            raise ValueError('package report must contain the pinned archive digest and GNU output')
     else:
         engines = {'gnu', 'native', 'wasm'}
         artifacts = report['workspace_sha256']

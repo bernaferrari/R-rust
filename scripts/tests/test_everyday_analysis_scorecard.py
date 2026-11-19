@@ -89,6 +89,25 @@ class EverydayScorecardTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'each origin restores in pinned GNU R'):
             scorecard.session_workflow_results(path, provenance, 'module')
 
+    def test_pure_r_package_requires_the_pinned_archive(self):
+        provenance = {'source_commit': 'commit', 'source_sha256': 'runtime',
+                      'oracle_manifest_sha256': 'oracle'}
+        fixture = scorecard.ROOT / 'tests/everyday-analysis/sessions/pure-r-package'
+        archive = scorecard.ROOT / 'tests/real-packages/vendor/R6_2.6.1.tar.gz'
+        expected = {'output': 'Loaded R6 and computed a mean\n'}
+        report = dict(schema_version=1, **provenance, workflow='pure-r-package',
+                      wasm_sha256='module', archive_sha256=scorecard.file_digest(archive),
+                      fixture_sha256={'analysis.R': scorecard.file_digest(fixture / 'analysis.R')},
+                      expected=expected, native=expected, wasm=expected)
+        path = self.directory / 'package.json'
+        path.write_text(json.dumps(report))
+        self.assertEqual(scorecard.session_workflow_results(path, provenance, 'module'),
+                         ('pure-r-package', {'native': 'pass', 'wasm': 'pass'}))
+        report['archive_sha256'] = '0' * 64
+        path.write_text(json.dumps(report))
+        with self.assertRaisesRegex(ValueError, 'pinned archive digest'):
+            scorecard.session_workflow_results(path, provenance, 'module')
+
 
 if __name__ == '__main__':
     unittest.main()
