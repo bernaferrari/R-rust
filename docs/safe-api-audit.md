@@ -6,6 +6,7 @@ The Android and app-facing Rust boundary is intentionally safe and owned:
   cancellation tokens, and PNG plot bytes as Rust-owned values.
 - `r-uniffi` exposes UniFFI records/enums/objects only. Kotlin callers never
   receive raw interpreter pointers.
+- `r-wasm` uses owned values across the browser and Node.js boundaries.
 - Remaining raw `SEXP` projections, `SEXPTYPE`, and C scalar types stay inside
   the crate-private interpreter. Checked node identities and owning handles
   replace raw storage as the core is modernized.
@@ -24,6 +25,7 @@ The release gate runs this script by default.
 | --- | --- | --- |
 | `r-uniffi` | UniFFI records, enums, and `RSession` object | No `unsafe`; no raw `SEXP`; owned values only |
 | `r-embed` | Safe Rust `RSession`, `RValue`, package and plot APIs | No `unsafe`; no raw `SEXP`; owned values only |
+| `r-wasm` | `WasmRSession` and owned values through wasm-bindgen | No `unsafe` or raw `SEXP` in the crate source |
 | `rmath::android` | Rust session facade over the interpreter core | Owned `RValue` surface; internal raw access stays below this layer |
 | `rmath::sexp` | Crate-private runtime implementation | Raw `SEXP` and internal checked handles are inaccessible to downstream crates |
 
