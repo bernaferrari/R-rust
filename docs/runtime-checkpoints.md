@@ -14,6 +14,8 @@ Use Beads to track failures and missing coverage.
 The [capability inventory](capability-evidence.md) gives the current fixture
 and disposition counts. The [GNU R API inventory](gnu-r-api-inventory.md)
 tracks native registration coverage separately.
+The [everyday-analysis scorecard](everyday-analysis.md) tracks which complete
+user workflows have passed on native Rport and production Wasm.
 
 ## November 19, 2026 checkpoint
 
