@@ -11,6 +11,13 @@ workflow stays in the denominator. A pass requires a measured result, and an
 unmeasured workflow earns no credit. Silent wrong results, crashes and data
 loss in supported workflows block release even when the score is high.
 
+At `c7fa992f`, 7 of 20 workflows passed on both native Rport and optimized
+Wasm, up from 2. The five additions cover missing data, categorical
+summaries, local dates across daylight saving time, binomial probability
+prediction and rank-deficient models. The optimized Wasm artifact passed all
+322 public contract executions and all 77 Chromium tests on macOS arm64.
+[Seven-workflow receipt](ci-checkpoints/everyday-analysis-v1-c7fa992f.json)
+
 The first run passed 2 of 20 workflows on both native Rport and optimized
 Wasm. It verified CSV import, joining, grouping and export, plus linear
 model fitting, prediction and RDS persistence. The other 18 workflows have
