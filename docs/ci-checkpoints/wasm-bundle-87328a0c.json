@@ -1,0 +1,24 @@
+{
+  "source_commit": "87328a0cb744adb14b34a180a917453d5f3f2a00",
+  "wasm_sha256": "40b2af9bed9ce6f853f3806afc3aa253b464f0ef46d457964571d9fb1d2ac19b",
+  "wasm_module_bytes": 24903717,
+  "generated_package_bytes": 24938751,
+  "workbench_bundle_bytes": 24938750,
+  "workbench_headroom_bytes": 1275650,
+  "byte_limit": 26214400,
+  "production_wasm_contracts_per_generation": [
+    166,
+    166
+  ],
+  "native_pinned_strict_cases": 17,
+  "browser_deadline_tests": {
+    "expected": 7,
+    "unexpected": 0,
+    "flaky": 0,
+    "skipped": 0
+  },
+  "wasm_project_boundary_checks": [
+    "Copied and ran a multi-file analysis with unchanged inputs",
+    "Session cwd, open connection, import boundary and quota preservation checks passed"
+  ]
+}

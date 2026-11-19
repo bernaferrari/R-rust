@@ -9,7 +9,7 @@ Use Beads to track failures and missing coverage.
 | Pinned GNU R conformance | Passes, failures, timeouts, unattempted cases and verdict changes on unchanged fixtures | 1,281/1,281 passed at `eddd0913`. [Receipt](ci-checkpoints/gnu-conformance-main-eddd0913.json) |
 | Unmodified GNU R drivers | Whole and curated results, with skipped and unattempted drivers counted explicitly | 22 passed, 18 failed and 30 skipped whole drivers at `1faa7f2a`. All 15 curated slices passed. [Receipt](ci-checkpoints/upstream-main-1faa7f2a.json) |
 | Safety | Public API audit, targeted strict Miri checks, and recovery under the original memory and node limits | [Public API audit and strict Miri scope](safe-api-audit.md) |
-| Production Wasm | Optimized bytes and SHA-256, public runtime contracts, and Chromium pass/fail/flaky counts under unchanged deadlines | 328 public contract executions at `bc598c83`. Chromium passed 77/77 at `c7fa992f` on macOS arm64 and at `ad04d62f` on hosted Linux. |
+| Production Wasm | Optimized bytes and SHA-256, public runtime contracts, and Chromium pass/fail/flaky counts under unchanged deadlines | 332 public contract executions at `87328a0c`. Chromium passed 77/77 at `c7fa992f` on macOS arm64 and at `ad04d62f` on hosted Linux. |
 
 The [capability inventory](capability-evidence.md) gives the current fixture
 and disposition counts. The [GNU R API inventory](gnu-r-api-inventory.md)
@@ -53,6 +53,16 @@ user workflows have passed on native Rport and production Wasm.
   portable packages. The `anyNA()` fixtures passed under both package policies.
 
 ## Main verification
+
+- At `87328a0c`, 17 selected cases passed pinned native GNU conformance.
+  The exact optimized Wasm module passed 332 contracts across two fresh
+  generations and seven Chromium deadline checks. The project workflow
+  also verified session-local paths, output connection identity after
+  changing directories, rejected traversal, and quota-safe replacement.
+  The Workbench bundle uses 24,938,750 bytes and leaves 1,275,650 bytes
+  below the 25 MiB cap.
+  [Production receipt](ci-checkpoints/wasm-bundle-87328a0c.json)
+
 
 - At `a0d25066`, all 328 production Wasm contract executions passed. The
   full generated package measured 25,694,029 bytes, leaving 520,371 bytes

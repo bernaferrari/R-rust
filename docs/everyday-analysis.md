@@ -11,6 +11,15 @@ workflow stays in the denominator. A pass requires a measured result, and an
 unmeasured workflow earns no credit. Silent wrong results, crashes and data
 loss in supported workflows block release even when the score is high.
 
+At `87328a0c`, **14 of 20 workflows (70%)** passed on both native Rport and
+production Wasm. An ordinary multi-file project now copies its nested source
+tree, reads sibling CSV input through `source(chdir = TRUE)`, writes the
+same grouped report as pinned GNU R, and restores the caller’s working
+directory after both success and error. The workflow also verifies merge
+conflicts, output cleanup and unchanged inputs.
+[Scorecard](ci-checkpoints/everyday-analysis-v1-87328a0c.json)
+[Production Wasm receipt](ci-checkpoints/wasm-bundle-87328a0c.json)
+
 At `bc598c83`, the smaller production Wasm package and native Rport both
 passed **13 of 20 workflows (65%)**. All 12 selected native GNU conformance
 cases passed. The package repeated the CSV round trip, all nine workspace
@@ -86,3 +95,15 @@ workspace combinations. Pass that JSON as a second `--session-report`.
 Set `--workflow pure-r-package` to install the pinned R6 source on GNU R and
 verify the same analysis through native Rport and the production Wasm package.
 Pass its JSON as a third `--session-report`.
+
+## Project files in Wasm
+
+R code resolves absolute paths inside its own virtual filesystem. Relative
+paths use the session’s working directory. Host imports, exports and file
+lists use validated keys relative to the session root. Directory copies,
+metadata and connection writes stay inside the session. A quota refusal
+during a copy leaves the previous destination intact. Browser paths do not
+create links, and file modes are stored as virtual metadata. New native
+files copied by `file.copy()` require a filesystem supporting hard links
+for exclusive publication. Native directory copies reject destination
+symlinks.
