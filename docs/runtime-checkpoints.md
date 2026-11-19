@@ -32,10 +32,23 @@ tracks native registration coverage separately.
 - The arm64 Android crates passed cross-compilation. The separate global-state
   audit reported 75 unclassified declarations.
 
-- The Gradle production bundle gate accepted 25,850,514 bytes of Rust runtime
-  assets, leaving 363,886 bytes under 25 MiB. The optimized module is
-  `af1b3732c64821371d562464e3f32582e3e0378577ebe9f7af5131e074c118e4` by SHA-256.
-  That module passed 290 public Wasm contracts across two fresh sessions.
+- At `56952f29`, the Gradle production bundle gate accepted 25,850,514 bytes
+  of Rust runtime assets. The module passed all 77 Chromium tests and 290
+  public Wasm contracts on macOS arm64. The Chromium run includes the
+  original 29-case FFT/RNG aggregate and all six S4 workflows. The
+  size-only Cargo level `s` experiment missed a fresh S4 deadline. The
+  release wrapper uses level `2`.
+- At `e3e0859a`, the Gradle production bundle gate accepted 25,916,546 bytes
+  of Rust runtime assets, leaving 297,854 bytes under 25 MiB. The optimized
+  module SHA-256 is
+  `5252ab439471f5915243c0194473ea133e5ad9aa841d29cf02059986d93830cd`.
+  It passed all 294 public Wasm contracts and both unchanged warm Chromium
+  S4 workflows in 10.02 and 10.32 seconds. Those checks include the new
+  recursive `anyNA()` and unchanged `smooth()` fixtures.
+- Pairlist snapshot admission passed 17 native tests and four targeted
+  strict Miri checks. On the same runtime, the original release-mode S4
+  check passed in 5.79 seconds with native packages and 7.83 seconds with
+  portable packages. The `anyNA()` fixtures passed under both package policies.
 
 ## Re-run GNU R parity
 
