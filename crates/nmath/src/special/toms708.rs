@@ -28,8 +28,10 @@
 // work for very large (but finite) {a,b}
 
 use crate::constants::*;
+use crate::diagnostics::{General, Text};
 use crate::dpq::*;
 use crate::utils::*;
+use core::fmt::Write;
 use libm::*;
 // Note: gammafn/lgammafn are available from crate::special::gamma if needed in future
 // but the TOMS 708 implementation uses its own gamln/gamln1 internally.
@@ -1198,7 +1200,19 @@ fn bgrat(a: f64, b: f64, x: f64, y: f64, w: &mut f64, eps: f64, ierr: &mut i32, 
     let z = -nu * lnx;
 
     if b * z == 0.0 {
-        // THE EXPANSION CANNOT BE COMPUTED
+        // Keep the numerical fallback, and tell callers the expansion failed.
+        let mut message = Text::<192>::new();
+        write!(
+            &mut message,
+            "bgrat(a={}, b={}, x={}, y={}): z={}, b*z == 0 underflow, hence inaccurate pbeta()",
+            General(a),
+            General(b),
+            General(x),
+            General(y),
+            General(z),
+        )
+        .expect("bounded bgrat underflow diagnostic");
+        crate::error::ml_warn_message(message.text());
         *ierr = 1;
         return;
     }

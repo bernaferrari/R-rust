@@ -1,0 +1,12 @@
+TRUE FALSE
+bgrat(a=21, b=1e-15, x=1, y=2.5e-312): z=5.125e-311, b*z == 0 underflow, hence inaccurate pbeta()
+bgrat(a=21, b=1e-15, x=1, y=8e-311): z=1.64e-309, b*z == 0 underflow, hence inaccurate pbeta()
+FALSE FALSE
+bgrat(a=21, b=1e-15, x=1, y=2.5e-312): z=5.125e-311, b*z == 0 underflow, hence inaccurate pbeta()
+bgrat(a=21, b=1e-15, x=1, y=8e-311): z=1.64e-309, b*z == 0 underflow, hence inaccurate pbeta()
+TRUE TRUE
+bgrat(a=21, b=1e-15, x=1, y=2.5e-312): z=5.125e-311, b*z == 0 underflow, hence inaccurate pbeta()
+bgrat(a=21, b=1e-15, x=1, y=8e-311): z=1.64e-309, b*z == 0 underflow, hence inaccurate pbeta()
+FALSE TRUE
+bgrat(a=21, b=1e-15, x=1, y=2.5e-312): z=5.125e-311, b*z == 0 underflow, hence inaccurate pbeta()
+bgrat(a=21, b=1e-15, x=1, y=8e-311): z=1.64e-309, b*z == 0 underflow, hence inaccurate pbeta()
