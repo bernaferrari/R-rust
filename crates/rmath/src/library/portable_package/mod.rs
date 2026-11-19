@@ -100,30 +100,45 @@ pub(crate) fn image(name: &str) -> Option<&'static PackageImage> {
 }
 
 /// Return the pinned GNU `tools::Rd2ex` source for a package help alias.
-/// The index stores byte offsets into immutable embedded source data, so
-/// browser runtimes can run examples through text connections without files.
-pub(crate) fn example_source(package: &str, topic: &str) -> Option<&'static str> {
-    let image = image(package)?;
-    for record in image.examples_index.split(|byte| *byte == b'\n') {
-        let mut fields = record.split(|byte| *byte == b'\t');
-        let Some(name) = fields.next() else {
-            continue;
-        };
-        if name != topic.as_bytes() {
-            continue;
-        }
-        let offset = std::str::from_utf8(fields.next()?)
-            .ok()?
-            .parse::<usize>()
-            .ok()?;
-        let length = std::str::from_utf8(fields.next()?)
-            .ok()?
-            .parse::<usize>()
-            .ok()?;
-        let end = offset.checked_add(length)?;
-        return std::str::from_utf8(image.examples_data.get(offset..end)?).ok();
+/// The index stores uncompressed byte ranges. Only the requested topic stays
+/// in memory while the interpreter evaluates it.
+pub(crate) fn example_source(
+    package: &str,
+    topic: &str,
+) -> std::io::Result<Option<crate::mainutils::browser_files::FileText>> {
+    const MAX_EXAMPLE_ARCHIVE_BYTES: usize = 256 * 1024;
+
+    let Some(image) = image(package) else {
+        return Ok(None);
+    };
+    let entry = image
+        .examples_index
+        .split(|byte| *byte == b'\n')
+        .find_map(|record| {
+            let mut fields = record.split(|byte| *byte == b'\t');
+            if fields.next()? != topic.as_bytes() {
+                return None;
+            }
+            let offset = std::str::from_utf8(fields.next()?)
+                .ok()?
+                .parse::<usize>()
+                .ok()?;
+            let length = std::str::from_utf8(fields.next()?)
+                .ok()?
+                .parse::<usize>()
+                .ok()?;
+            Some((offset, length))
+        });
+    match entry {
+        Some((offset, length)) => crate::mainutils::browser_files::read_embedded_zlib_text(
+            image.examples_data,
+            offset,
+            length,
+            MAX_EXAMPLE_ARCHIVE_BYTES,
+        )
+        .map(Some),
+        None => Ok(None),
     }
-    None
 }
 
 /// Whether a registered primitive name is also supplied by an embedded
@@ -191,15 +206,24 @@ mod example_asset_tests {
 
     #[test]
     fn pinned_examples_cover_aliases_and_multiple_package_images() {
-        let new = example_source("methods", "new").expect("methods::new example");
-        let initialize =
-            example_source("methods", "initialize").expect("methods::initialize alias");
-        assert_eq!(new, initialize);
+        let new = example_source("methods", "new")
+            .unwrap()
+            .expect("methods::new example");
+        let initialize = example_source("methods", "initialize")
+            .unwrap()
+            .expect("methods::initialize alias");
+        assert_eq!(&*new, &*initialize);
         assert!(new.contains("setClass(\"trackCurve\""));
 
-        let filter = example_source("stats", "filter").expect("stats::filter example");
+        let filter = example_source("stats", "filter")
+            .unwrap()
+            .expect("stats::filter example");
         assert!(filter.contains("filter(x, rep(1, 3))"));
-        assert!(example_source("methods", "__missing_topic__").is_none());
+        assert!(
+            example_source("methods", "__missing_topic__")
+                .unwrap()
+                .is_none()
+        );
     }
 }
 

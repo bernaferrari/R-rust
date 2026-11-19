@@ -25,12 +25,13 @@ stopifnot(length(selected)==1L)
 dput(selected[[1L]][[3L]],file=file.path(out,"envhook.R"))
 
 # Keep package examples available to runtimes whose package images have no
-# filesystem library tree. Store the exact output of GNU tools::Rd2ex, indexed
-# by every help alias, so `example()` can source it from a textConnection.
+# filesystem library tree. Compress the exact output of GNU tools::Rd2ex as
+# one stream per package. Every help alias uses its uncompressed byte range.
 aliases <- readRDS(file.path(p, "help", "aliases.rds"))
 topics <- names(aliases)
 example_index <- file(file.path(out, "examples.index"), open="wt", encoding="UTF-8")
-example_data <- file(file.path(out, "examples.data"), open="wb")
+example_plain <- tempfile("rport-example-source-")
+example_data <- file(example_plain, open="wb")
 offset <- 0
 example_docs <- 0L
 for (rdfile in unique(unname(aliases))) {
@@ -56,4 +57,9 @@ for (rdfile in unique(unname(aliases))) {
 }
 close(example_index)
 close(example_data)
+stopifnot(offset <= 256L * 1024L)
+example_bytes <- readBin(example_plain, "raw", n=offset)
+stopifnot(length(example_bytes) == offset)
+writeBin(memCompress(example_bytes, type="gzip"), file.path(out, "examples.data"))
+unlink(example_plain)
 cat(paste0("Pinned GNU ", package, " ", R.version$platform, " variables ", length(index$variables), " references ", length(index$references), " exports ", length(getNamespaceExports(ns)), " example docs ", example_docs, " bytes ", offset, "\n"))
