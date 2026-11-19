@@ -343,23 +343,32 @@ impl RSession {
         self.session_id
     }
     pub fn enable_browser_files(&mut self) {
-        self.inner.enable_browser_files();
+        if self.active {
+            self.inner.enable_browser_files();
+        }
     }
     pub fn import_file(&mut self, path: &str, bytes: &[u8]) -> Result<(), RSessionError> {
-        self.inner
+        self.browser_file_session()?
             .import_file(path, bytes)
             .map_err(RSessionError::EvalError)
     }
     pub fn export_file(&mut self, path: &str) -> Result<Vec<u8>, RSessionError> {
-        self.inner
+        self.browser_file_session()?
             .export_file(path)
             .ok_or_else(|| RSessionError::EvalError(format!("browser file not found: {path}")))
     }
     pub fn list_files(&mut self) -> Result<Vec<String>, RSessionError> {
-        Ok(self.inner.list_files())
+        Ok(self.browser_file_session()?.list_files())
     }
     pub fn remove_file(&mut self, path: &str) -> Result<bool, RSessionError> {
-        Ok(self.inner.remove_file(path))
+        Ok(self.browser_file_session()?.remove_file(path))
+    }
+
+    fn browser_file_session(&mut self) -> Result<&mut rmath::android::RSession, RSessionError> {
+        if !self.active {
+            return Err(RSessionError::EvalError("Session closed".into()));
+        }
+        Ok(&mut self.inner)
     }
 
     /// Evaluate an R expression, returning the output as a string.

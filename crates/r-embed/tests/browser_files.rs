@@ -1,4 +1,24 @@
-use r_embed::RSession;
+use r_embed::{RSession, RSessionError};
+
+#[test]
+fn closed_browser_file_operations_report_the_session_error() {
+    let mut session = RSession::new().unwrap();
+    session.import_file("saved.csv", b"value\n42\n").unwrap();
+    session.close();
+    session.close();
+    session.enable_browser_files();
+
+    for result in [
+        session.import_file("saved.csv", b"new"),
+        session.export_file("saved.csv").map(drop),
+        session.list_files().map(drop),
+        session.remove_file("saved.csv").map(drop),
+    ] {
+        assert!(
+            matches!(result, Err(RSessionError::EvalError(message)) if message == "Session closed")
+        );
+    }
+}
 #[test]
 fn browser_files_standard_io_and_isolation() {
     let mut s = RSession::new().unwrap();

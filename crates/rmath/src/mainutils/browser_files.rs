@@ -551,6 +551,9 @@ mod tests {
     #[test]
     fn stored_files_charge_the_session_through_copy_replace_and_remove() {
         let mut session = RSession::new_for_gc_tests();
+        session.with_active_in(|owner| unsafe {
+            (*owner).browser_files.set_test_clock(1.0);
+        });
         let baseline = admitted_bytes(&mut session);
         session.set_arena_budget(ArenaBudget::new(baseline + 6, 0));
         session.put_browser_file("source.csv", b"1,2\n").unwrap();
