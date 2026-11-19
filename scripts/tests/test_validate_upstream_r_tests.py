@@ -40,8 +40,9 @@ class UpstreamCorpusValidationTests(unittest.TestCase):
         self.assertEqual(report.imported_files, 245)
         self.assertEqual(report.total, 70)
         self.assertEqual(report.expected_failures, 0)
-        self.assertEqual(report.skipped, 31)
-        self.assertEqual(report.runnable, 39)
+        # Coverage can grow as skipped drivers become runnable.
+        self.assertLessEqual(report.skipped, 30)
+        self.assertGreaterEqual(report.runnable, 40)
 
     def make_corpus(
         self,
