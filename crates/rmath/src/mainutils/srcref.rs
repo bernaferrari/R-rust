@@ -234,8 +234,38 @@ pub(crate) unsafe fn attach_srcrefs_with_spans(
     }
 }
 
-/// GNU parse attaches a `srcref` to each `function()` call. Bind the
-/// enclosing `srcfilecopy` so `as.character.srcref` can recover text.
+unsafe fn bind_srcfile_to_srcref_int(sr: SEXP, srcfile: SEXP) {
+    unsafe {
+        if sr.is_null()
+            || sr == crate::sexp::globals::R_NilValue()
+            || TYPEOF(sr) != SEXPTYPE::INTSXP
+        {
+            return;
+        }
+        let class = crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+        let _cg = crate::sexp::protect::protect(class);
+        SET_STRING_ELT(
+            class,
+            0,
+            crate::sexp::constructors::Rf_mkChar(c"srcref".as_ptr()),
+        );
+        crate::sexp::attrib_core::setAttrib(
+            sr,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            class,
+        );
+        crate::sexp::accessors::SET_OBJECT(sr, 1);
+        crate::sexp::attrib_core::setAttrib(
+            sr,
+            crate::sexp::symbol::Rf_install(c"srcfile".as_ptr()),
+            srcfile,
+        );
+    }
+}
+
+/// GNU parse attaches a `srcref` to each `function()` call and `{` block. Bind
+/// the enclosing `srcfilecopy` so `as.character.srcref` and `Rprof(line.profiling)`
+/// can recover filenames and line numbers.
 unsafe fn attach_srcfile_to_function_srcrefs(expr: SEXP, srcfile: SEXP) {
     unsafe {
         if expr.is_null() || expr == crate::sexp::globals::R_NilValue() {
@@ -243,40 +273,30 @@ unsafe fn attach_srcfile_to_function_srcrefs(expr: SEXP, srcfile: SEXP) {
         }
         let ty = TYPEOF(expr);
         if ty == SEXPTYPE::LANGSXP {
+            let srcref_sym = crate::sexp::symbol::Rf_install(c"srcref".as_ptr());
+            let sr = crate::sexp::attrib_core::getAttrib(expr, srcref_sym);
+            if !sr.is_null() && sr != crate::sexp::globals::R_NilValue() {
+                if TYPEOF(sr) == SEXPTYPE::INTSXP {
+                    bind_srcfile_to_srcref_int(sr, srcfile);
+                } else if TYPEOF(sr) == SEXPTYPE::VECSXP {
+                    let n = XLENGTH(sr);
+                    for i in 0..n {
+                        bind_srcfile_to_srcref_int(VECTOR_ELT(sr, i), srcfile);
+                    }
+                }
+            }
             let head = CAR(expr);
             if !head.is_null()
                 && TYPEOF(head) == SEXPTYPE::SYMSXP
                 && std::ffi::CStr::from_ptr(CHAR(PRINTNAME(head))).to_bytes() == b"function"
             {
-                let mut sr = crate::sexp::attrib_core::getAttrib(
-                    expr,
-                    crate::sexp::symbol::Rf_install(c"srcref".as_ptr()),
-                );
-                if sr.is_null() || sr == crate::sexp::globals::R_NilValue() {
-                    sr = CADDDR(expr);
-                }
-                if !sr.is_null()
-                    && sr != crate::sexp::globals::R_NilValue()
-                    && TYPEOF(sr) == SEXPTYPE::INTSXP
+                let fourth = CADDDR(expr);
+                if !fourth.is_null()
+                    && fourth != crate::sexp::globals::R_NilValue()
+                    && TYPEOF(fourth) == SEXPTYPE::INTSXP
+                    && fourth != sr
                 {
-                    let class = crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::STRSXP, 1);
-                    let _cg = crate::sexp::protect::protect(class);
-                    SET_STRING_ELT(
-                        class,
-                        0,
-                        crate::sexp::constructors::Rf_mkChar(c"srcref".as_ptr()),
-                    );
-                    crate::sexp::attrib_core::setAttrib(
-                        sr,
-                        crate::sexp::attrib_core::R_ClassSymbol(),
-                        class,
-                    );
-                    crate::sexp::accessors::SET_OBJECT(sr, 1);
-                    crate::sexp::attrib_core::setAttrib(
-                        sr,
-                        crate::sexp::symbol::Rf_install(c"srcfile".as_ptr()),
-                        srcfile,
-                    );
+                    bind_srcfile_to_srcref_int(fourth, srcfile);
                 }
             }
             let mut cell = CDR(expr);
@@ -379,8 +399,10 @@ unsafe fn attach_whole_source_parse_data(srcfile: SEXP, src: &str) {
 pub(crate) fn set_current_srcref_location(expr: SEXP, vector: SEXP, index: usize) {
     unsafe {
         let _ = expr;
-        let loc = if vector.is_null() || vector == crate::sexp::globals::R_NilValue() {
-            None
+        let (loc, active_srcref) = if vector.is_null()
+            || vector == crate::sexp::globals::R_NilValue()
+        {
+            (None, crate::sexp::globals::R_NilValue())
         } else {
             // Upstream eval.c reads the expression vector's srcref list
             // by index (per-element attributes are NULL).
@@ -402,11 +424,11 @@ pub(crate) fn set_current_srcref_location(expr: SEXP, vector: SEXP, index: usize
                 || TYPEOF(srcref) != SEXPTYPE::INTSXP
                 || XLENGTH(srcref) < 3
             {
-                None
+                (None, crate::sexp::globals::R_NilValue())
             } else {
                 let line = INTEGER_ELT(srcref, 2);
                 if line <= 0 {
-                    None
+                    (None, srcref)
                 } else {
                     let srcfile = crate::sexp::attrib_core::getAttrib(
                         srcref,
@@ -437,12 +459,13 @@ pub(crate) fn set_current_srcref_location(expr: SEXP, vector: SEXP, index: usize
                         } else {
                             String::new()
                         };
-                    Some((filename, line))
+                    (Some((filename, line)), srcref)
                 }
             }
         };
         crate::sexp::instance::with_required_current_instance(|inst| unsafe {
             (*inst).error_state.current_srcref_location = loc;
+            crate::eval::profiling::set_current_srcref_in(inst, active_srcref);
         });
     }
 }

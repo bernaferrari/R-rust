@@ -7,25 +7,42 @@ impl<'arena, 'session> Parser<'arena, 'session> {
 
     /// { expr; expr; ... }
     pub(crate) fn parse_block(&mut self) -> Result<SEXP, ParseError> {
+        let lbrace_span = self.spans.get(self.pos).copied().unwrap_or((0, 0));
         self.advance(); // consume '{'
         self.skip_terminators();
 
         let mut exprs = Vec::new();
+        let mut stmt_spans = Vec::new();
         while self.peek() != &Token::RBrace && self.peek() != &Token::Eof {
-            exprs.push(self.parse_expr()?);
+            let stmt_start = self
+                .spans
+                .get(self.pos)
+                .map(|&(a, _)| a)
+                .unwrap_or(lbrace_span.0);
+            let expr = self.parse_expr()?;
+            let stmt_end = if self.pos > 0 {
+                self.spans
+                    .get(self.pos - 1)
+                    .map(|&(_, b)| b)
+                    .unwrap_or(stmt_start)
+            } else {
+                stmt_start
+            };
+            exprs.push(expr);
+            stmt_spans.push((stmt_start, stmt_end));
             self.skip_terminators();
         }
         self.expect(&Token::RBrace)?;
 
-        if exprs.is_empty() {
+        let call = if exprs.is_empty() {
             unsafe {
                 let brace_sym = Rf_install(c"{".as_ptr());
-                self.lang2(brace_sym, R_NilValue())
+                self.lang2(brace_sym, R_NilValue())?
             }
         } else if exprs.len() == 1 {
             unsafe {
                 let brace_sym = Rf_install(c"{".as_ptr());
-                self.lang2(brace_sym, exprs.pop().unwrap_or_else(|| R_NilValue()))
+                self.lang2(brace_sym, exprs.pop().unwrap_or_else(|| R_NilValue()))?
             }
         } else {
             unsafe {
@@ -39,9 +56,45 @@ impl<'arena, 'session> Parser<'arena, 'session> {
                 if !call.is_null() {
                     crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
                 }
-                Ok(call)
+                call
+            }
+        };
+
+        if self.keep_srcrefs && !call.is_null() {
+            unsafe {
+                let src: String = self.source.iter().collect();
+                let list_len = (1 + stmt_spans.len()) as i64;
+                let srcref_list = self.arena.alloc_vector(SEXPTYPE::VECSXP, list_len);
+                if srcref_list.is_null() {
+                    return Err(self.allocation_error());
+                }
+                for (i, &(start, end)) in std::iter::once(&lbrace_span)
+                    .chain(stmt_spans.iter())
+                    .enumerate()
+                {
+                    let lloc = crate::mainutils::srcref::srcref_lloc(&src, start, end);
+                    let srcref = self.arena.alloc_vector(SEXPTYPE::INTSXP, 8);
+                    if srcref.is_null() {
+                        return Err(self.allocation_error());
+                    }
+                    let p = INTEGER(srcref);
+                    for (j, v) in lloc.iter().enumerate() {
+                        *p.add(j) = *v;
+                    }
+                    let cls = self.scalar_string("srcref")?;
+                    let class_cell = self.cons(cls, R_NilValue())?;
+                    SETTAG(class_cell, crate::sexp::attrib_core::R_ClassSymbol());
+                    SET_ATTRIB(srcref, class_cell);
+                    crate::sexp::accessors::SET_OBJECT(srcref, 1);
+                    crate::sexp::accessors::SET_VECTOR_ELT(srcref_list, i as i64, srcref);
+                }
+                let attr_cell = self.cons(srcref_list, R_NilValue())?;
+                SETTAG(attr_cell, Rf_install(c"srcref".as_ptr()));
+                SET_ATTRIB(call, attr_cell);
             }
         }
+
+        Ok(call)
     }
 
     // -----------------------------------------------------------------------

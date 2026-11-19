@@ -164,6 +164,8 @@ pub struct RCNTXT {
     /// cleanup function data (cenddata in R)
     pub cenddata: *mut std::os::raw::c_void,
     pub srcref: ContextValue,
+    pub bcbody: ContextValue,
+    pub relpc: isize,
 }
 
 impl RCNTXT {
@@ -196,6 +198,8 @@ impl RCNTXT {
             cend: None,
             cenddata: ptr::null_mut(),
             srcref: ContextValue::empty(),
+            bcbody: ContextValue::empty(),
+            relpc: -1,
         }
     }
 }
@@ -319,14 +323,21 @@ pub unsafe fn Rf_begincontext_in(
     let closure = unsafe { ContextValue::from_raw_in(instance, closure) };
     let promiseargs = unsafe { ContextValue::from_raw_in(instance, promiseargs) };
     let callfun = ContextValue(closure.owned());
-    let srcref = unsafe {
-        crate::sexp::attrib_core::getAttrib(
-            call.as_raw(),
-            crate::sexp::symbol::Rf_install(c"srcref".as_ptr()),
-        )
+    let active_srcref = unsafe { (*instance).eval_state.profiling.sref.owned() };
+    let bcbody = ContextValue(unsafe { (*instance).eval_state.profiling.bcbody.owned() });
+    let relpc = unsafe { (*instance).eval_state.profiling.bcrelpc };
+    let srcref = if let Some(sref) = active_srcref {
+        ContextValue(Some(sref))
+    } else {
+        let srcref = unsafe {
+            crate::sexp::attrib_core::getAttrib(
+                call.as_raw(),
+                crate::sexp::symbol::Rf_install(c"srcref".as_ptr()),
+            )
+        };
+        require_context_owner_live(owner_pin.as_ref());
+        unsafe { ContextValue::from_raw_in(instance, srcref) }
     };
-    require_context_owner_live(owner_pin.as_ref());
-    let srcref = unsafe { ContextValue::from_raw_in(instance, srcref) };
     let ctx = Rc::new(std::cell::UnsafeCell::new(RCNTXT {
         callflag,
         call,
@@ -337,6 +348,8 @@ pub unsafe fn Rf_begincontext_in(
         closure,
         promiseargs,
         srcref,
+        bcbody,
+        relpc,
         ..RCNTXT::new()
     }));
 

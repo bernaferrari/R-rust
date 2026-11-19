@@ -182,6 +182,9 @@ pub(crate) type RuntimeValue = super::context::ContextValue;
 
 pub(crate) struct ProfilingState {
     pub sref: RuntimeValue,
+    pub in_bc_interpreter: RuntimeValue,
+    pub bcbody: RuntimeValue,
+    pub bcrelpc: isize,
     pub profiling: c_int,
     pub mem_profiling: c_int,
     pub gc_profiling: c_int,
@@ -209,6 +212,9 @@ impl Default for ProfilingState {
     fn default() -> Self {
         ProfilingState {
             sref: RuntimeValue::empty(),
+            in_bc_interpreter: RuntimeValue::empty(),
+            bcbody: RuntimeValue::empty(),
+            bcrelpc: -1,
             profiling: 0,
             mem_profiling: 0,
             gc_profiling: 0,
@@ -863,6 +869,9 @@ impl Drop for RInstance {
         self.eval_state.parse_error_file = RuntimeValue::empty();
         self.eval_state.exec_token = RuntimeValue::empty();
         self.eval_state.profiling.sref = RuntimeValue::empty();
+        self.eval_state.profiling.in_bc_interpreter = RuntimeValue::empty();
+        self.eval_state.profiling.bcbody = RuntimeValue::empty();
+        self.eval_state.profiling.bcrelpc = -1;
         self.eval_state.profiling.srcfiles = Vec::new();
         self.eval_state.profiling.srcfiles_reservation = None;
         self.eval_state.profiling.srcfile_bytes_used = 0;
@@ -1209,6 +1218,8 @@ mod owned_evaluator_root_tests {
                 2 => &raw mut (*instance).eval_state.exec_token,
                 3 => &raw mut (*instance).eval_state.profiling.sref,
                 4 => &raw mut (*instance).eval_state.profiling.srcfiles_buffer,
+                5 => &raw mut (*instance).eval_state.profiling.in_bc_interpreter,
+                6 => &raw mut (*instance).eval_state.profiling.bcbody,
                 _ => unreachable!(),
             }
         }
@@ -1219,7 +1230,7 @@ mod owned_evaluator_root_tests {
         let session = RSession::new_for_gc_tests();
         session.with_active_in(|instance| unsafe {
             let owner = crate::sexp::owner::OwnerToken::from_raw(instance);
-            for index in 0..5 {
+            for index in 0..7 {
                 let value = owner
                     .node_factory()
                     .allocate(|arena| {
@@ -1277,7 +1288,7 @@ mod owned_evaluator_root_tests {
         });
         session.with_active_in(|instance| unsafe {
             let owner = crate::sexp::owner::OwnerToken::from_raw(instance);
-            for index in 0..5 {
+            for index in 0..7 {
                 let value = owner
                     .node_factory()
                     .allocate(|arena| {

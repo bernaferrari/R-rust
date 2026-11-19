@@ -1379,8 +1379,10 @@ pub unsafe fn run_onexits() {
 // ---------------------------------------------------------------------------
 
 /// Set the current source reference.
-pub unsafe fn set_R_Srcref(_srcref: SEXP) {
-    // In the full implementation, this sets a thread-local global
+pub unsafe fn set_R_Srcref(srcref: SEXP) {
+    unsafe {
+        super::profiling::set_current_srcref(srcref);
+    }
 }
 
 // ---------------------------------------------------------------------------

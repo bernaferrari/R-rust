@@ -82,11 +82,206 @@ use crate::sexp::symbol::{
 };
 
 // ---------------------------------------------------------------------------
-// Stubs for functions not yet ported
+// Active source-reference & bytecode-interpreter location tracking
 // ---------------------------------------------------------------------------
 
-unsafe fn get_R_InBCInterpreter() -> SEXP {
-    unsafe { R_NilValue() }
+/// Return the per-instance `R_InBCInterpreter` sentinel symbol.
+///
+/// Mirrors GNU R's `R_InBCInterpreter = mkSymMarker(mkChar("<in-bc-interp>"))`.
+/// The symbol is uninterned and rooted in `ProfilingState::in_bc_interpreter`,
+/// so no user R value can collide with it by pointer identity.
+pub(crate) unsafe fn get_R_InBCInterpreter() -> SEXP {
+    unsafe {
+        with_required_current_instance(|instance| get_R_InBCInterpreter_in(instance))
+    }
+}
+
+pub(crate) unsafe fn get_R_InBCInterpreter_in(instance: *mut RInstance) -> SEXP {
+    unsafe {
+        let existing = (*instance).eval_state.profiling.in_bc_interpreter.as_raw();
+        if !existing.is_null() && existing != R_NilValue() {
+            return existing;
+        }
+        let owner = crate::sexp::owner::OwnerToken::from_raw(instance);
+        let Ok(marker) = owner.node_factory().allocate(|arena| {
+            let node = arena.alloc_node(SEXPTYPE::SYMSXP);
+            if node.is_null() {
+                return None;
+            }
+            let name = arena.alloc_charsxp(b"<in-bc-interp>");
+            if name.is_null() {
+                return None;
+            }
+            crate::sexp::accessors::SET_PRINTNAME(node, name);
+            Some(node)
+        }) else {
+            return R_NilValue();
+        };
+        let raw = marker.as_raw();
+        (*instance).eval_state.profiling.in_bc_interpreter =
+            crate::sexp::instance::RuntimeValue::from_raw_in(instance, raw);
+        raw
+    }
+}
+
+/// Update the active `R_Srcref` on the current runtime instance.
+pub(crate) unsafe fn set_current_srcref(srcref: SEXP) {
+    unsafe {
+        with_required_current_instance(|instance| set_current_srcref_in(instance, srcref));
+    }
+}
+
+/// Update the active `R_Srcref` on an explicit runtime instance.
+pub(crate) unsafe fn set_current_srcref_in(instance: *mut RInstance, srcref: SEXP) {
+    unsafe {
+        if srcref.is_null() || srcref == R_NilValue() {
+            (*instance).eval_state.profiling.sref = crate::sexp::instance::RuntimeValue::empty();
+        } else {
+            (*instance).eval_state.profiling.sref =
+                crate::sexp::instance::RuntimeValue::from_raw_in(instance, srcref);
+        }
+    }
+}
+
+/// RAII guard that saves and restores `eval_state.profiling.sref` on the
+/// original runtime owner, including across panics/unwinds.
+pub(crate) struct SrcrefGuard {
+    instance: *mut RInstance,
+    pin: Option<crate::sexp::owner::OwnerPin>,
+    prev_sref: crate::sexp::instance::RuntimeValue,
+}
+
+impl SrcrefGuard {
+    pub(crate) unsafe fn push(new_srcref: SEXP) -> Self {
+        unsafe {
+            with_required_current_instance(|instance| Self::push_in(instance, new_srcref))
+        }
+    }
+
+    pub(crate) unsafe fn push_in(instance: *mut RInstance, new_srcref: SEXP) -> Self {
+        unsafe {
+            let pin = crate::sexp::context::pin_context_owner_in(instance);
+            let prev_sref = std::mem::replace(
+                &mut (*instance).eval_state.profiling.sref,
+                crate::sexp::instance::RuntimeValue::empty(),
+            );
+            set_current_srcref_in(instance, new_srcref);
+            Self {
+                instance,
+                pin,
+                prev_sref,
+            }
+        }
+    }
+
+    pub(crate) unsafe fn update(&self, new_srcref: SEXP) {
+        unsafe {
+            if self
+                .pin
+                .as_ref()
+                .is_none_or(|pin| pin.require_live().is_ok())
+            {
+                set_current_srcref_in(self.instance, new_srcref);
+            }
+        }
+    }
+}
+
+impl Drop for SrcrefGuard {
+    fn drop(&mut self) {
+        let prev = std::mem::replace(
+            &mut self.prev_sref,
+            crate::sexp::instance::RuntimeValue::empty(),
+        );
+        if self
+            .pin
+            .as_ref()
+            .is_none_or(|pin| pin.require_live().is_ok())
+        {
+            unsafe {
+                (*self.instance).eval_state.profiling.sref = prev;
+            }
+        }
+    }
+}
+
+/// RAII guard for active bytecode evaluation (`bcEval` / `eval_gnu_adapter`).
+///
+/// Mirrors GNU R's `save_bcEval_globals` / `restore_bcEval_globals`: saves
+/// `(R_Srcref, R_BCbody, bcrelpc)`, sets `R_Srcref = R_InBCInterpreter`,
+/// roots `bcbody`, and restores the prior state on exit or unwind if the
+/// original runtime is still live.
+pub(crate) struct BcEvalSrcrefGuard {
+    instance: *mut RInstance,
+    pin: Option<crate::sexp::owner::OwnerPin>,
+    prev_sref: crate::sexp::instance::RuntimeValue,
+    prev_bcbody: crate::sexp::instance::RuntimeValue,
+    prev_bcrelpc: isize,
+}
+
+impl BcEvalSrcrefGuard {
+    pub(crate) unsafe fn enter(body: SEXP, initial_pc: isize) -> Self {
+        unsafe {
+            with_required_current_instance(|instance| {
+                let pin = crate::sexp::context::pin_context_owner_in(instance);
+                let in_bc = get_R_InBCInterpreter_in(instance);
+                let prev_sref = std::mem::replace(
+                    &mut (*instance).eval_state.profiling.sref,
+                    crate::sexp::instance::RuntimeValue::from_raw_in(instance, in_bc),
+                );
+                let prev_bcbody = std::mem::replace(
+                    &mut (*instance).eval_state.profiling.bcbody,
+                    crate::sexp::instance::RuntimeValue::from_raw_in(instance, body),
+                );
+                let prev_bcrelpc =
+                    std::mem::replace(&mut (*instance).eval_state.profiling.bcrelpc, initial_pc);
+                Self {
+                    instance,
+                    pin,
+                    prev_sref,
+                    prev_bcbody,
+                    prev_bcrelpc,
+                }
+            })
+        }
+    }
+
+    #[inline]
+    pub(crate) unsafe fn set_pc(&self, pc: isize) {
+        unsafe {
+            if self
+                .pin
+                .as_ref()
+                .is_none_or(|pin| pin.require_live().is_ok())
+            {
+                (*self.instance).eval_state.profiling.bcrelpc = pc;
+            }
+        }
+    }
+}
+
+impl Drop for BcEvalSrcrefGuard {
+    fn drop(&mut self) {
+        let prev_sref = std::mem::replace(
+            &mut self.prev_sref,
+            crate::sexp::instance::RuntimeValue::empty(),
+        );
+        let prev_bcbody = std::mem::replace(
+            &mut self.prev_bcbody,
+            crate::sexp::instance::RuntimeValue::empty(),
+        );
+        if self
+            .pin
+            .as_ref()
+            .is_none_or(|pin| pin.require_live().is_ok())
+        {
+            unsafe {
+                (*self.instance).eval_state.profiling.sref = prev_sref;
+                (*self.instance).eval_state.profiling.bcbody = prev_bcbody;
+                (*self.instance).eval_state.profiling.bcrelpc = self.prev_bcrelpc;
+            }
+        }
+    }
 }
 
 unsafe fn get_R_ToplevelContext() -> *mut RCNTXT {
@@ -106,8 +301,78 @@ unsafe fn get_R_ToplevelContext() -> *mut RCNTXT {
     }
 }
 
-unsafe fn R_findBCInterpreterSrcref(_cptr: *mut RCNTXT) -> SEXP {
-    unsafe { R_NilValue() }
+/// Scan a bytecode constant pool from the end for a location table (`INTSXP`
+/// whose class inherits `tclass`, e.g. `"srcrefsIndex"`).
+///
+/// Mirrors GNU R's `findLocTable()` in `src/main/eval.c`.
+unsafe fn find_loc_table(constants: SEXP, tclass: &CStr) -> SEXP {
+    unsafe {
+        if constants.is_null()
+            || constants == R_NilValue()
+            || TYPEOF(constants) != SEXPTYPE::VECSXP
+        {
+            return R_NilValue();
+        }
+        let n = LENGTH(constants);
+        for i in (0..n).rev() {
+            let entry = crate::sexp::accessors::VECTOR_ELT(constants, i as i64);
+            if !entry.is_null()
+                && TYPEOF(entry) == SEXPTYPE::INTSXP
+                && crate::mainutils::objects::inherits2(entry, tclass.as_ptr()) != 0
+            {
+                return entry;
+            }
+        }
+        R_NilValue()
+    }
+}
+
+/// Resolve the srcref for a snapshotted `(bcbody, relpc)` pair.
+unsafe fn find_bc_interpreter_srcref_from(body: SEXP, relpc: isize) -> SEXP {
+    unsafe {
+        if body.is_null()
+            || body == R_NilValue()
+            || TYPEOF(body) != SEXPTYPE::BCODESXP
+            || relpc < 0
+        {
+            return R_NilValue();
+        }
+        let body = crate::sexp::context::own_control_value(body);
+        let constants = crate::sexp::context::own_control_value(
+            crate::eval::bc_eval::BCODE_CONSTS(body.as_raw()),
+        );
+        let table = find_loc_table(constants.as_raw(), c"srcrefsIndex");
+        if table.is_null() || table == R_NilValue() || TYPEOF(table) != SEXPTYPE::INTSXP {
+            return R_NilValue();
+        }
+        let table_len = LENGTH(table) as isize;
+        if relpc >= table_len {
+            return R_NilValue();
+        }
+        let cidx = *INTEGER(table).offset(relpc);
+        if cidx < 0 || cidx >= LENGTH(constants.as_raw()) {
+            return R_NilValue();
+        }
+        crate::sexp::accessors::VECTOR_ELT(constants.as_raw(), cidx as i64)
+    }
+}
+
+/// Return the srcref for the current bytecode instruction (when `cptr` is null)
+/// or for the bytecode instruction active when `cptr` was pushed.
+///
+/// Mirrors GNU R's `R_findBCInterpreterSrcref()` in `src/main/eval.c`.
+pub(crate) unsafe fn R_findBCInterpreterSrcref(cptr: *mut RCNTXT) -> SEXP {
+    unsafe {
+        let (body, relpc) = if cptr.is_null() {
+            with_profiling_state(|state| (state.bcbody.owned(), state.bcrelpc))
+        } else {
+            ((*cptr).bcbody.owned(), (*cptr).relpc)
+        };
+        let body_raw = body
+            .as_ref()
+            .map_or(ptr::null_mut(), |value| value.as_raw());
+        find_bc_interpreter_srcref_from(body_raw, relpc)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -983,6 +1248,9 @@ unsafe fn doprof(_sig: c_int) {
             ptr::null_mut()
         };
         let current_srcref = with_profiling_state(|state| state.sref.owned());
+        let (current_bcbody, current_relpc) =
+            with_profiling_state(|state| (state.bcbody.owned(), state.bcrelpc));
+        let in_bc_owner = with_profiling_state(|state| state.in_bc_interpreter.owned());
         let mut frame_count = 0usize;
         let mut cptr = super::runtime::global_context();
         while !cptr.is_null() {
@@ -1010,31 +1278,36 @@ unsafe fn doprof(_sig: c_int) {
                 (*cptr).callflag,
                 (*cptr).call.owned(),
                 (*cptr).srcref.owned(),
+                (*cptr).bcbody.owned(),
+                (*cptr).relpc,
             )) {
                 with_profiling_state(|state| state.profiling_error = 3);
                 return;
             }
             cptr = findProfContext(cptr, eval_internal);
         }
+        let in_bc = in_bc_owner
+            .as_ref()
+            .map_or(ptr::null_mut(), |value| value.as_raw());
         if with_profiling_state(|state| state.line_profiling) != 0 {
             let srcref = current_srcref
                 .as_ref()
                 .map_or(ptr::null_mut(), |value| value.as_raw());
-            lineprof(
-                &mut pb,
-                if srcref == get_R_InBCInterpreter() {
-                    R_findBCInterpreterSrcref(ptr::null_mut())
-                } else {
-                    srcref
-                },
-            );
+            let resolved = if !in_bc.is_null() && srcref == in_bc {
+                let body_raw = current_bcbody
+                    .as_ref()
+                    .map_or(ptr::null_mut(), |value| value.as_raw());
+                find_bc_interpreter_srcref_from(body_raw, current_relpc)
+            } else {
+                srcref
+            };
+            lineprof(&mut pb, resolved);
         }
         if !epoch.unchanged() {
             return;
         }
         let (frames, frame_reservation) = frames.into_parts();
-        for (cell, callflag, call_owner, srcref_owner) in frames {
-            let cptr = cell.get();
+        for (_cell, callflag, call_owner, srcref_owner, bcbody_owner, relpc) in frames {
             let call = call_owner
                 .as_ref()
                 .map_or(ptr::null_mut(), |value| value.as_raw());
@@ -1127,9 +1400,11 @@ unsafe fn doprof(_sig: c_int) {
                     let srcref_val = srcref_owner
                         .as_ref()
                         .map_or(ptr::null_mut(), |value| value.as_raw());
-                    let in_bc = get_R_InBCInterpreter();
-                    if srcref_val == in_bc {
-                        lineprof(&mut pb, R_findBCInterpreterSrcref(cptr));
+                    if !in_bc.is_null() && srcref_val == in_bc {
+                        let body_raw = bcbody_owner
+                            .as_ref()
+                            .map_or(ptr::null_mut(), |value| value.as_raw());
+                        lineprof(&mut pb, find_bc_interpreter_srcref_from(body_raw, relpc));
                     } else {
                         lineprof(&mut pb, srcref_val);
                     }

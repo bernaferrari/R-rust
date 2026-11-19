@@ -76,7 +76,7 @@ unsafe fn dispatch_special_by_name(
                 .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
         );
         match name {
-            "{" => do_begin(CDR(call), rho),
+            "{" => do_begin_with_call(call, CDR(call), rho),
             "(" => {
                 // `(` is an evaluated builtin. evalList splices `...`
                 // before the arity check, so `(...)` is the first dotted
@@ -796,19 +796,55 @@ unsafe fn do_function(call: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 ///
 /// Evaluates each expression in sequence, returning the last.
 pub unsafe fn do_begin(args: SEXP, rho: SEXP) -> SEXP {
+    unsafe { do_begin_with_call(R_NilValue(), args, rho) }
+}
+
+/// Implement the `{` special form with GNU R's per-statement `R_Srcref`
+/// tracking (`eval.c:do_begin`).
+pub(crate) unsafe fn do_begin_with_call(call: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         if args.is_null() || args == R_NilValue() {
             return R_NilValue();
         }
 
+        let srcrefs = if !call.is_null() && call != R_NilValue() {
+            let s = crate::sexp::attrib_core::getAttrib(
+                call,
+                crate::sexp::attrib_core::R_SrcRefSymbol(),
+            );
+            if !s.is_null() && s != R_NilValue() && TYPEOF(s) == SEXPTYPE::VECSXP {
+                Some(crate::sexp::context::own_control_value(s))
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+        let srcref_guard = if srcrefs.is_some() {
+            Some(super::profiling::SrcrefGuard::push(R_NilValue()))
+        } else {
+            None
+        };
+
         let mut result = R_NilValue();
         let mut current = args;
+        let mut index: i64 = 1;
         while !current.is_null() && current != R_NilValue() {
             // Run the collection safe point BEFORE evaluating the next
             // expression: `result` holds the previous statement's value and is
             // returned unprotected, so no safe point may run once it is
             // produced (that would be a use-after-free on collection).
             crate::sexp::gengc::maybe_collect_at_eval_safe_point();
+            if let (Some(list), Some(guard)) = (&srcrefs, &srcref_guard) {
+                let raw_list = list.as_raw();
+                let stmt_sref = if index < crate::sexp::accessors::XLENGTH(raw_list) {
+                    crate::sexp::accessors::VECTOR_ELT(raw_list, index)
+                } else {
+                    R_NilValue()
+                };
+                guard.update(stmt_sref);
+            }
+            index += 1;
             result = Rf_eval(CAR(current), rho);
             current = CDR(current);
         }

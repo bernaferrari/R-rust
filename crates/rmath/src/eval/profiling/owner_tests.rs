@@ -908,3 +908,365 @@ fn owner_profile_typed_eval_checks_cancellation_before_metadata_allocation() {
         token.reset();
     });
 }
+
+#[cfg(not(miri))]
+#[test]
+fn sourced_script_line_profiling_emits_gnu_file_and_line_markers_for_ast_and_private_bytecode() {
+    let session = RSession::new_for_gc_tests();
+    let script_path = std::env::temp_dir().join(format!(
+        "rport-lineprof-script-{}.R",
+        std::process::id()
+    ));
+    let ast_prof_path = std::env::temp_dir().join(format!(
+        "rport-lineprof-ast-{}.out",
+        std::process::id()
+    ));
+    let bc_prof_path = std::env::temp_dir().join(format!(
+        "rport-lineprof-bc-{}.out",
+        std::process::id()
+    ));
+    // Line 1: comment
+    // Line 2: outer_fn <- function() {
+    // Line 3:   x <- 1L
+    // Line 4:   inner_fn()
+    // Line 5: }
+    // Line 6: inner_fn <- function() {
+    // Line 7:   y <- 2L
+    // Line 8:   trigger_sample()
+    // Line 9: }
+    let script = "\
+# line 1
+outer_fn <- function() {
+  x <- 1L
+  inner_fn()
+}
+inner_fn <- function() {
+  y <- 2L
+  trigger_sample()
+}
+";
+    std::fs::write(&script_path, script).unwrap();
+
+    session.with_active(|| unsafe {
+        let owner = session.owner_token().unwrap();
+        let factory = owner.node_factory();
+        // trigger_sample() forces a deterministic sample via a GC callback
+        // while keeping the call stack inside inner_fn() at line 8.
+        let trigger_fn = owner
+            .with_arena(|arena| {
+                crate::eval::parser::parse("function() { gc(); 1L }", arena, factory.clone())
+            })
+            .unwrap()
+            .unwrap();
+        let trigger_fn = factory
+            .wrap(crate::eval::eval::Rf_eval(
+                trigger_fn.as_raw(),
+                crate::sexp::globals::R_GlobalEnv(),
+            ))
+            .unwrap();
+        crate::sexp::envir::defineVar(
+            Rf_install(c"trigger_sample".as_ptr()),
+            trigger_fn.as_raw(),
+            crate::sexp::globals::R_GlobalEnv(),
+        );
+
+        let script_str = script_path.to_str().unwrap().replace('\\', "/");
+        let source_code = format!("source(\"{script_str}\", keep.source = TRUE)");
+        let source_expr = owner
+            .with_arena(|arena| {
+                crate::eval::parser::parse(&source_code, arena, factory.clone())
+            })
+            .unwrap()
+            .unwrap();
+        let _ = crate::eval::eval::Rf_eval(
+            source_expr.as_raw(),
+            crate::sexp::globals::R_GlobalEnv(),
+        );
+
+        let sampled = std::rc::Rc::new(std::cell::Cell::new(false));
+        let sampled_cb = sampled.clone();
+        crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+            if !sampled_cb.replace(true) {
+                R_WriteProfile(0);
+            }
+        }));
+
+        // 1) Interpreted AST execution
+        let ast_filename = factory.character(ast_prof_path.to_str().unwrap()).unwrap();
+        R_InitProfiling(
+            ast_filename.as_raw(),
+            FALSE,
+            1.0,
+            FALSE,
+            FALSE,
+            TRUE,
+            FALSE,
+            100,
+            PROFBUFSIZ as i32,
+            rpe_type::RPE_ELAPSED,
+        );
+        let call_expr = owner
+            .with_arena(|arena| crate::eval::parser::parse("outer_fn()", arena, factory.clone()))
+            .unwrap()
+            .unwrap();
+        let _ = crate::eval::eval::Rf_eval(
+            call_expr.as_raw(),
+            crate::sexp::globals::R_GlobalEnv(),
+        );
+        R_EndProfiling();
+
+        let ast_output = std::fs::read_to_string(&ast_prof_path).unwrap();
+        assert!(
+            ast_output.contains(&format!("#File 1: {script_str}")),
+            "AST profile missing #File 1 header:\n{ast_output}"
+        );
+        assert!(
+            ast_output.contains("\"trigger_sample\" 1#8 \"inner_fn\" 1#4 \"outer_fn\""),
+            "AST profile missing expected GNU line markers:\n{ast_output}"
+        );
+
+        // 2) Private bytecode execution via compiler::cmpfun
+        let compile_code = "\
+outer_fn <- compiler::cmpfun(outer_fn)
+inner_fn <- compiler::cmpfun(inner_fn)
+";
+        for stmt in compile_code.lines() {
+            let expr = owner
+                .with_arena(|arena| crate::eval::parser::parse(stmt, arena, factory.clone()))
+                .unwrap()
+                .unwrap();
+            let _ = crate::eval::eval::Rf_eval(
+                expr.as_raw(),
+                crate::sexp::globals::R_GlobalEnv(),
+            );
+        }
+        let outer_val = crate::sexp::envir::R_findVarInFrame(
+            crate::sexp::globals::R_GlobalEnv(),
+            Rf_install(c"outer_fn".as_ptr()),
+        );
+        let inner_val = crate::sexp::envir::R_findVarInFrame(
+            crate::sexp::globals::R_GlobalEnv(),
+            Rf_install(c"inner_fn".as_ptr()),
+        );
+        assert_eq!(
+            TYPEOF(crate::sexp::accessors::BODY(outer_val)),
+            SEXPTYPE::BCODESXP
+        );
+        assert_eq!(
+            TYPEOF(crate::sexp::accessors::BODY(inner_val)),
+            SEXPTYPE::BCODESXP
+        );
+
+        sampled.set(false);
+        let bc_filename = factory.character(bc_prof_path.to_str().unwrap()).unwrap();
+        R_InitProfiling(
+            bc_filename.as_raw(),
+            FALSE,
+            1.0,
+            FALSE,
+            FALSE,
+            TRUE,
+            FALSE,
+            100,
+            PROFBUFSIZ as i32,
+            rpe_type::RPE_ELAPSED,
+        );
+        let _ = crate::eval::eval::Rf_eval(
+            call_expr.as_raw(),
+            crate::sexp::globals::R_GlobalEnv(),
+        );
+        R_EndProfiling();
+
+        let bc_output = std::fs::read_to_string(&bc_prof_path).unwrap();
+        assert!(
+            bc_output.contains(&format!("#File 1: {script_str}")),
+            "Private bytecode profile missing #File 1 header:\n{bc_output}"
+        );
+        assert!(
+            bc_output.contains("\"trigger_sample\" 1#8 \"inner_fn\" 1#4 \"outer_fn\""),
+            "Private bytecode profile missing expected GNU line markers:\n{bc_output}"
+        );
+    });
+
+    let _ = std::fs::remove_file(script_path);
+    let _ = std::fs::remove_file(ast_prof_path);
+    let _ = std::fs::remove_file(bc_prof_path);
+}
+
+#[cfg(not(miri))]
+#[test]
+fn gnu_bytecode_srcrefs_index_resolves_line_profiling_and_survives_gc() {
+    use crate::sexp::accessors::{SET_OBJECT, SET_STRING_ELT, SET_VECTOR_ELT};
+    use crate::sexp::constructors::Rf_ScalarInteger;
+
+    let session = RSession::new_for_gc_tests();
+    let prof_path = std::env::temp_dir().join(format!(
+        "rport-lineprof-gnu-bc-{}.out",
+        std::process::id()
+    ));
+
+    session.with_active(|| unsafe {
+        let owner = session.owner_token().unwrap();
+        let factory = owner.node_factory();
+        let nil = factory.nil();
+
+        // Build a srcfile environment with an active filename binding that
+        // allocates and triggers GC while resolving the filename.
+        let srcfile_env = factory
+            .wrap(crate::sexp::memory_ext::NewEnvironment(
+                nil.as_raw(),
+                nil.as_raw(),
+                crate::sexp::globals::R_GlobalEnv(),
+            ))
+            .unwrap();
+        let filename_fn = owner
+            .with_arena(|arena| {
+                crate::eval::parser::parse(
+                    "function() { gc(); \"gnu-bc-script.R\" }",
+                    arena,
+                    factory.clone(),
+                )
+            })
+            .unwrap()
+            .unwrap();
+        let filename_fn = factory
+            .wrap(crate::eval::eval::Rf_eval(
+                filename_fn.as_raw(),
+                crate::sexp::globals::R_GlobalEnv(),
+            ))
+            .unwrap();
+        crate::sexp::envir::make_active_binding_raw(
+            srcfile_env.as_raw(),
+            Rf_install(c"filename".as_ptr()),
+            filename_fn.as_raw(),
+        );
+
+        let srcref = factory.wrap(Rf_ScalarInteger(42)).unwrap();
+        crate::sexp::attrib_core::setAttrib(
+            srcref.as_raw(),
+            Rf_install(c"srcfile".as_ptr()),
+            srcfile_env.as_raw(),
+        );
+
+        // Active binding in global env that triggers R_WriteProfile(0) when
+        // GNU_OP_GETVAR evaluates it, while R_Srcref == get_R_InBCInterpreter().
+        let trigger_sym = factory.wrap(Rf_install(c"gnu_bc_probe".as_ptr())).unwrap();
+        let sampled = std::rc::Rc::new(std::cell::Cell::new(false));
+        let in_bc_seen = std::rc::Rc::new(std::cell::Cell::new(false));
+        let sampled_cb = sampled.clone();
+        let in_bc_cb = in_bc_seen.clone();
+        crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+            if !sampled_cb.replace(true) {
+                let mut cptr = crate::eval::runtime::global_context();
+                let mut found = false;
+                while !cptr.is_null() {
+                    if (*cptr).srcref.as_raw() == get_R_InBCInterpreter() {
+                        found = true;
+                        break;
+                    }
+                    cptr = (*cptr).nextcontext;
+                }
+                in_bc_cb.set(found);
+                R_WriteProfile(0);
+            }
+        }));
+        let probe_fn = owner
+            .with_arena(|arena| {
+                crate::eval::parser::parse("function() { gc(); 99L }", arena, factory.clone())
+            })
+            .unwrap()
+            .unwrap();
+        let probe_fn = factory
+            .wrap(crate::eval::eval::Rf_eval(
+                probe_fn.as_raw(),
+                crate::sexp::globals::R_GlobalEnv(),
+            ))
+            .unwrap();
+        crate::sexp::envir::make_active_binding_raw(
+            crate::sexp::globals::R_GlobalEnv(),
+            trigger_sym.as_raw(),
+            probe_fn.as_raw(),
+        );
+
+        // GNU v12 bytecode: [VERSION, GETVAR, 1, RETURN]
+        // Constants: [0: source_expr, 1: gnu_bc_probe, 2: srcref(42), 3: srcrefsIndex]
+        let code = factory.wrap(Rf_allocVector(SEXPTYPE::INTSXP, 4)).unwrap();
+        let code_ptr = INTEGER(code.as_raw());
+        *code_ptr = crate::eval::bytecode::GNU_BC_MAX_VERSION;
+        *code_ptr.add(1) = crate::eval::bytecode::GNU_OP_GETVAR;
+        *code_ptr.add(2) = 1;
+        *code_ptr.add(3) = crate::eval::bytecode::GNU_OP_RETURN;
+
+        let srcrefs_index = factory.wrap(Rf_allocVector(SEXPTYPE::INTSXP, 4)).unwrap();
+        let idx_ptr = INTEGER(srcrefs_index.as_raw());
+        *idx_ptr = -1;
+        *idx_ptr.add(1) = 2; // GETVAR -> consts[2] (line 42)
+        *idx_ptr.add(2) = 2;
+        *idx_ptr.add(3) = 2;
+        let idx_class = factory.wrap(Rf_allocVector(SEXPTYPE::STRSXP, 1)).unwrap();
+        SET_STRING_ELT(
+            idx_class.as_raw(),
+            0,
+            crate::sexp::constructors::Rf_mkChar(c"srcrefsIndex".as_ptr()),
+        );
+        crate::sexp::attrib_core::setAttrib(
+            srcrefs_index.as_raw(),
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            idx_class.as_raw(),
+        );
+        SET_OBJECT(srcrefs_index.as_raw(), 1);
+
+        let consts = factory.wrap(Rf_allocVector(SEXPTYPE::VECSXP, 4)).unwrap();
+        SET_VECTOR_ELT(consts.as_raw(), 0, trigger_sym.as_raw());
+        SET_VECTOR_ELT(consts.as_raw(), 1, trigger_sym.as_raw());
+        SET_VECTOR_ELT(consts.as_raw(), 2, srcref.as_raw());
+        SET_VECTOR_ELT(consts.as_raw(), 3, srcrefs_index.as_raw());
+
+        let stack_hint = factory.wrap(Rf_ScalarInteger(8)).unwrap();
+        let marker = factory
+            .wrap(Rf_ScalarInteger(
+                crate::eval::bytecode::GNU_BC_DIALECT_MARKER,
+            ))
+            .unwrap();
+        let bcode = factory.wrap(Rf_allocVector(SEXPTYPE::BCODESXP, 5)).unwrap();
+        SET_VECTOR_ELT(bcode.as_raw(), 0, code.as_raw());
+        SET_VECTOR_ELT(bcode.as_raw(), 1, consts.as_raw());
+        SET_VECTOR_ELT(bcode.as_raw(), 2, stack_hint.as_raw());
+        SET_VECTOR_ELT(bcode.as_raw(), 3, marker.as_raw());
+        SET_VECTOR_ELT(bcode.as_raw(), 4, trigger_sym.as_raw());
+        let bcode_node = bcode.allocation().unwrap().clone();
+
+        let prof_filename = factory.character(prof_path.to_str().unwrap()).unwrap();
+        R_InitProfiling(
+            prof_filename.as_raw(),
+            FALSE,
+            1.0,
+            FALSE,
+            FALSE,
+            TRUE,
+            FALSE,
+            100,
+            PROFBUFSIZ as i32,
+            rpe_type::RPE_ELAPSED,
+        );
+        let result =
+            crate::eval::bc_eval::bcEval(bcode.as_raw(), crate::sexp::globals::R_GlobalEnv());
+        R_EndProfiling();
+
+        assert_eq!(*INTEGER(result), 99);
+        assert!(in_bc_seen.get(), "GNU bcEval must set R_Srcref to R_InBCInterpreter");
+        assert!(bcode_node.is_live(), "GNU bcbody must stay rooted across profiling GC");
+
+        let output = std::fs::read_to_string(&prof_path).unwrap();
+        assert!(
+            output.contains("#File 1: gnu-bc-script.R"),
+            "GNU bytecode profile missing #File 1 header:\n{output}"
+        );
+        assert!(
+            output.contains("1#42 "),
+            "GNU bytecode profile missing line 42 from srcrefsIndex:\n{output}"
+        );
+    });
+
+    let _ = std::fs::remove_file(prof_path);
+}

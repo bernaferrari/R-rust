@@ -47,6 +47,9 @@ pub(crate) fn reset_gc_test_arena(arena: &mut RArena) {
         (*instance).eval_state.parse_error_file = instance::RuntimeValue::empty();
         (*instance).eval_state.exec_token = instance::RuntimeValue::empty();
         (*instance).eval_state.profiling.sref = instance::RuntimeValue::empty();
+        (*instance).eval_state.profiling.in_bc_interpreter = instance::RuntimeValue::empty();
+        (*instance).eval_state.profiling.bcbody = instance::RuntimeValue::empty();
+        (*instance).eval_state.profiling.bcrelpc = -1;
         (*instance).eval_state.profiling.srcfiles.clear();
         (*instance).eval_state.profiling.srcfile_bytes_used = 0;
         (*instance).eval_state.profiling.srcfiles_buffer = instance::RuntimeValue::empty();

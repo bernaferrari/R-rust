@@ -687,6 +687,15 @@ unsafe fn eval_source_text_with_options(
         for (i, (e, _, _)) in spans.iter().enumerate() {
             crate::sexp::accessors::SET_VECTOR_ELT(vec_sexp, i as i64, e.clone().as_raw());
         }
+        crate::mainutils::srcref::attach_srcrefs_with_spans(
+            &spans
+                .iter()
+                .map(|(e, start, end)| (e.clone().as_raw(), *start, *end))
+                .collect::<Vec<_>>(),
+            content,
+            filename,
+            vec_sexp,
+        );
         let mut lastshown: i32 = 0;
         let mut result = R_NilValue();
         let mut last_visible = FALSE;
@@ -716,6 +725,7 @@ unsafe fn eval_source_text_with_options(
                 );
                 lastshown = lastl;
             }
+            crate::mainutils::srcref::set_current_srcref_location(expr, vec_sexp, i);
             result = crate::eval::eval::Rf_eval(expr, env);
             last_visible = crate::sexp::globals::R_Visible();
             if print_eval && last_visible != FALSE {
@@ -729,6 +739,11 @@ unsafe fn eval_source_text_with_options(
                 );
             }
         }
+        crate::mainutils::srcref::set_current_srcref_location(
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            0,
+        );
         if lastshown < nlines {
             echo_original_lines(
                 &lines,

@@ -36,6 +36,8 @@ fn compiler_error(message: impl Into<String>) -> ! {
 struct BytecodeCompiler {
     consts: Vec<Sexp<'static>>,
     code: Vec<c_int>,
+    srcrefs_index: Vec<c_int>,
+    current_srcref: c_int,
     stack_hint: c_int,
     /// Enclosing compile environment. Nested function() constants capture
     /// this so formals resolve in the call frame and base operators remain
@@ -53,6 +55,8 @@ impl BytecodeCompiler {
         BytecodeCompiler {
             consts: Vec::new(),
             code: Vec::new(),
+            srcrefs_index: Vec::new(),
+            current_srcref: -1,
             stack_hint: 8,
             rho: unsafe { own_operand(rho) },
             compiled_local_funs: Vec::new(),
@@ -82,7 +86,11 @@ impl BytecodeCompiler {
         self.code
             .try_reserve(1)
             .unwrap_or_else(|_| compiler_error("cannot grow bytecode instruction stream"));
+        self.srcrefs_index
+            .try_reserve(1)
+            .unwrap_or_else(|_| compiler_error("cannot grow bytecode srcref index"));
         self.code.push(opcode);
+        self.srcrefs_index.push(self.current_srcref);
     }
 
     fn emit_operand(&mut self, opcode: c_int, operand: c_int) {
@@ -100,7 +108,19 @@ impl BytecodeCompiler {
                 return true;
             }
 
-            match TYPEOF(expr) {
+            let prev_srcref = self.current_srcref;
+            let expr_srcref = crate::sexp::attrib_core::getAttrib(
+                expr,
+                crate::sexp::attrib_core::R_SrcRefSymbol(),
+            );
+            if !expr_srcref.is_null()
+                && expr_srcref != R_NilValue()
+                && TYPEOF(expr_srcref) == SEXPTYPE::INTSXP
+            {
+                self.current_srcref = self.add_const(expr_srcref);
+            }
+
+            let compiled = match TYPEOF(expr) {
                 t if t == SEXPTYPE::LGLSXP => {
                     let idx = self.add_const(expr);
                     self.emit_operand(opcodes::OP_PUSHCONST, idx);
@@ -144,7 +164,9 @@ impl BytecodeCompiler {
                 t if t == SEXPTYPE::CLOSXP => self.compile_closure_expr(expr),
                 t if t == SEXPTYPE::LANGSXP || t == SEXPTYPE::LISTSXP => self.compile_call(expr),
                 _ => false,
-            }
+            };
+            self.current_srcref = prev_srcref;
+            compiled
         }
     }
 
@@ -926,15 +948,43 @@ impl BytecodeCompiler {
                 return true;
             }
 
+            let block_srcrefs = {
+                let s = crate::sexp::attrib_core::getAttrib(
+                    expr,
+                    crate::sexp::attrib_core::R_SrcRefSymbol(),
+                );
+                if !s.is_null() && s != R_NilValue() && TYPEOF(s) == SEXPTYPE::VECSXP {
+                    Some(own_operand(s))
+                } else {
+                    None
+                }
+            };
+
             let last = exprs.len().saturating_sub(1);
+            let prev_srcref = self.current_srcref;
             for (index, body) in exprs.into_iter().enumerate() {
+                if let Some(list) = &block_srcrefs {
+                    let raw_list = list.as_raw();
+                    let slot = (index + 1) as i64;
+                    if slot < crate::sexp::accessors::XLENGTH(raw_list) {
+                        let stmt_sref = crate::sexp::accessors::VECTOR_ELT(raw_list, slot);
+                        if !stmt_sref.is_null()
+                            && stmt_sref != R_NilValue()
+                            && TYPEOF(stmt_sref) == SEXPTYPE::INTSXP
+                        {
+                            self.current_srcref = self.add_const(stmt_sref);
+                        }
+                    }
+                }
                 if !self.compile_expr(body.as_raw()) {
+                    self.current_srcref = prev_srcref;
                     return false;
                 }
                 if index != last {
                     self.emit(opcodes::OP_POP);
                 }
             }
+            self.current_srcref = prev_srcref;
             true
         }
     }
@@ -948,10 +998,14 @@ impl BytecodeCompiler {
     unsafe fn finish(&mut self, source_expr: SEXP) -> SEXP {
         unsafe {
             self.emit(opcodes::OP_RETURN);
-            with_required_current_instance(|inst| unsafe {
+            let has_srcrefs = self.srcrefs_index.iter().any(|&idx| idx >= 0);
+            let (bcode_owned, srcref_table_and_class) = with_required_current_instance(|inst| unsafe {
                 with_arena_in(inst, |arena| {
-                    let consts =
-                        arena.alloc_vector(SEXPTYPE::VECSXP, (self.consts.len() + 1) as i64);
+                    let extra_consts = usize::from(has_srcrefs);
+                    let consts = arena.alloc_vector(
+                        SEXPTYPE::VECSXP,
+                        (self.consts.len() + 1 + extra_consts) as i64,
+                    );
                     let _consts_guard = own_operand(consts);
                     crate::sexp::accessors::SET_VECTOR_ELT(consts, 0, source_expr);
                     for (index, constant) in self.consts.iter().enumerate() {
@@ -961,6 +1015,28 @@ impl BytecodeCompiler {
                             constant.as_raw(),
                         );
                     }
+                    let srcref_table_and_class = if has_srcrefs {
+                        let table =
+                            arena.alloc_vector(SEXPTYPE::INTSXP, self.srcrefs_index.len() as i64);
+                        let mut table_mut = SexpMut::try_from_checked(own_operand(table))
+                            .expect("fresh mutable srcrefsIndex");
+                        for (index, sref_idx) in self.srcrefs_index.iter().enumerate() {
+                            assert!(table_mut.set_integer_elt(index as i64, *sref_idx));
+                        }
+                        let table_owned = own_operand(table);
+                        let cls = arena.alloc_vector(SEXPTYPE::STRSXP, 1);
+                        let cls_owned = own_operand(cls);
+                        let cls_char = arena.alloc_charsxp(b"srcrefsIndex");
+                        crate::sexp::accessors::SET_STRING_ELT(cls, 0, cls_char);
+                        crate::sexp::accessors::SET_VECTOR_ELT(
+                            consts,
+                            (self.consts.len() + 1) as i64,
+                            table,
+                        );
+                        Some((table_owned, cls_owned))
+                    } else {
+                        None
+                    };
                     let code = arena.alloc_vector(SEXPTYPE::INTSXP, self.code.len() as i64);
                     let mut code_mut =
                         SexpMut::try_from_checked(own_operand(code)).expect("fresh mutable code");
@@ -977,10 +1053,18 @@ impl BytecodeCompiler {
                     crate::sexp::accessors::SET_VECTOR_ELT(bcode, 0, code);
                     crate::sexp::accessors::SET_VECTOR_ELT(bcode, 1, consts);
                     crate::sexp::accessors::SET_VECTOR_ELT(bcode, 2, stack_hint);
-                    own_operand(bcode)
+                    (own_operand(bcode), srcref_table_and_class)
                 })
-            })
-            .as_raw()
+            });
+            if let Some((table_owned, cls_owned)) = srcref_table_and_class {
+                crate::sexp::attrib_core::setAttrib(
+                    table_owned.as_raw(),
+                    crate::sexp::attrib_core::R_ClassSymbol(),
+                    cls_owned.as_raw(),
+                );
+                crate::sexp::accessors::SET_OBJECT(table_owned.as_raw(), 1);
+            }
+            bcode_owned.as_raw()
         }
     }
 }

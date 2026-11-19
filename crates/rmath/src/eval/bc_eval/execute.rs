@@ -37,6 +37,7 @@ pub(crate) unsafe fn eval_gnu_adapter(
         }
 
         let mut pc = 1usize;
+        let bc_srcref_guard = super::super::profiling::BcEvalSrcrefGuard::enter(body, 1);
         let mut prot_top: usize = 0;
         let mut stack = R_bcstack_t::new(4);
         let mut for_loops: Vec<GnuForLoopState> = Vec::new();
@@ -50,6 +51,7 @@ pub(crate) unsafe fn eval_gnu_adapter(
         while pc < words.len() {
             pin.require_live()
                 .unwrap_or_else(|error| bc_error(error.to_string()));
+            bc_srcref_guard.set_pc(pc as isize);
             if instructions_since_check == 0 {
                 collect_at_instruction_boundary(pin);
             }

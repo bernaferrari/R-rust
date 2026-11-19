@@ -80,6 +80,7 @@ pub(crate) unsafe fn bc_eval_private(
             .unwrap_or_else(|_| bc_error("bytecode instruction stream is too long"));
 
         let mut pc: c_int = 0;
+        let bc_srcref_guard = super::super::profiling::BcEvalSrcrefGuard::enter(body, 0);
         let capacity = usize::try_from(stack_depth)
             .unwrap_or_else(|_| bc_error("negative bytecode stack hint"));
         let mut stack = R_bcstack_t::new(capacity.min(code.len()));
@@ -93,6 +94,7 @@ pub(crate) unsafe fn bc_eval_private(
         while pc < code_len {
             pin.require_live()
                 .unwrap_or_else(|error| bc_error(error.to_string()));
+            bc_srcref_guard.set_pc(pc as isize);
             if instructions_since_check == 0 {
                 collect_at_instruction_boundary(pin);
             }

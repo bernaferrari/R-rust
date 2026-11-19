@@ -168,6 +168,11 @@ pub(crate) unsafe fn applyClosureWithFrameVars(
             promised_args,
         );
         let ctx = ctx_guard.context();
+        let closure_srcref = crate::sexp::attrib_core::getAttrib(
+            op,
+            crate::sexp::attrib_core::R_SrcRefSymbol(),
+        );
+        let _srcref_guard = super::profiling::SrcrefGuard::push_in(instance, closure_srcref);
 
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             crate::eval::eval::Rf_eval(body, newrho)
