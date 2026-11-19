@@ -9,7 +9,7 @@ Use Beads to track failures and missing coverage.
 | Pinned GNU R conformance | Passes, failures, timeouts, unattempted cases and verdict changes on unchanged fixtures | 1,281/1,281 passed at `eddd0913`. [Receipt](ci-checkpoints/gnu-conformance-main-eddd0913.json) |
 | Unmodified GNU R drivers | Whole and curated results, with skipped and unattempted drivers counted explicitly | 22 passed, 18 failed and 30 skipped whole drivers at `1faa7f2a`. All 15 curated slices passed. [Receipt](ci-checkpoints/upstream-main-1faa7f2a.json) |
 | Safety | Public API audit, targeted strict Miri checks, and recovery under the original memory and node limits | [Public API audit and strict Miri scope](safe-api-audit.md) |
-| Production Wasm | Optimized bytes and SHA-256, public runtime contracts, and Chromium pass/fail/flaky counts under unchanged deadlines | 328 public contract executions at `2f30ab7a`. Chromium passed 77/77 at `c7fa992f` on macOS arm64 and at `ad04d62f` on hosted Linux. |
+| Production Wasm | Optimized bytes and SHA-256, public runtime contracts, and Chromium pass/fail/flaky counts under unchanged deadlines | 328 public contract executions at `56a3fe41`. Chromium passed 77/77 at `c7fa992f` on macOS arm64 and at `ad04d62f` on hosted Linux. |
 
 The [capability inventory](capability-evidence.md) gives the current fixture
 and disposition counts. The [GNU R API inventory](gnu-r-api-inventory.md)
@@ -182,7 +182,9 @@ user workflows have passed on native Rport and production Wasm.
 ## Wasm footprint
 
 The optimized `eddd0913` module left **28,359 bytes** under 25 MiB. Its code
-section used 14,023,273 bytes and its data section used 12,136,792. The largest
+section used 14,023,273 bytes and its data section used 12,136,792. The
+complete generated Rust package was 26,221,075 bytes, 6,675 over that limit.
+The largest
 exact embedded files were the `tools` (2,360,298 bytes), `stats` (1,857,724),
 `methods` (1,361,830), and `utils` (1,043,845) lazy-load databases and the
 compressed DejaVu font faces (860,516).
@@ -195,6 +197,21 @@ timezone names and all 1,721 bundled example aliases. The native portable
 example test matched GNU prompts and output. Examples decompress on lookup.
 [Packed size receipt](ci-checkpoints/wasm-size-2f30ab7a.json)
 
+The named profiling build at `2f30ab7a` attributed about 9.15 MB of optimized
+function bodies to `rmath` symbols and 0.53 MB to `faer`. The production
+optimizer verified that the profile and shipping module have identical
+standard sections. The attribution includes code inlined into those symbols.
+One of seven browser budget checks timed out while running the packed module.
+Two isolated repeats on each of the baseline and packed modules passed that
+cold S4 check with the original deadline.
+
+With the workspace safety change at `56a3fe41`, the full generated Rust
+package is **25,642,009 bytes**, leaving **572,391 bytes** below the 25 MiB
+budget. The Wasm module itself is 25,606,975 bytes. That independently
+built module passed all 328 production contract executions and workspace
+interchange in both directions with GNU R.
+[Workspace build size receipt](ci-checkpoints/wasm-size-56a3fe41.json)
+
 An offline repacking experiment on the seven lazy-load databases preserved
 their serialized GNU records and reduced the payload from 7,415,880 to
 6,117,695 bytes before the new index. That experiment has no runtime change.
@@ -204,12 +221,12 @@ which database to repack. The largest candidate for a separate asset is
 linear-model run.
 
 ```bash
-python3 scripts/wasm_size_report.py "$report_dir/pkg/r_wasm_bg.wasm"
+python3 scripts/wasm_size_report.py "$report_dir/pkg"
 ```
 
-The report counts exact contiguous asset matches in the module’s data
-section. A file split by the optimizer or transformed during linking can
-contribute bytes without appearing in the asset list.
+The report gives the module and full package sizes. It counts exact contiguous
+asset matches in the module’s data section. A file split by the optimizer or
+transformed during linking can contribute bytes without appearing in the list.
 
 ## Re-run GNU R parity
 

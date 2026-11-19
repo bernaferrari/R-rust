@@ -11,6 +11,14 @@ workflow stays in the denominator. A pass requires a measured result, and an
 unmeasured workflow earns no credit. Silent wrong results, crashes and data
 loss in supported workflows block release even when the score is high.
 
+At `56a3fe41`, **12 of 20 workflows (60%)** passed on both native Rport and
+optimized Wasm. The workspace workflow saved a fitted model and its source
+data from GNU R, native Rport and production Wasm. Fresh sessions on all three
+engines read every file and returned the same predictions. The module also
+completed all 328 production contract executions and recovery checks.
+[Scorecard](ci-checkpoints/everyday-analysis-v1-56a3fe41.json)
+[Workspace interchange receipt](ci-checkpoints/everyday-workspace-56a3fe41.json)
+
 At `169031b1`, **11 of 20 workflows (55%)** passed on native Rport and
 optimized Wasm. The new checks cover seasonal forecasting, seeded resampling,
 gzip tabular import, and reloading exported analysis data in a separate
@@ -55,3 +63,6 @@ To verify a CSV export in a fresh session, run
 `python3 scripts/everyday_analysis_sessions.py "$report_dir/pkg"`. It compares
 the exported file and two independent sessions against pinned GNU R. Save its
 JSON output and pass it as `--session-report` to the scorecard.
+
+Set `--workflow fresh-session-restore` to run the nine GNU, native and Wasm
+workspace combinations. Pass that JSON as a second `--session-report`.

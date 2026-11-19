@@ -1,0 +1,108 @@
+{
+  "sha256": "ee0f2c261a0867b3473899f51f71696a4ab7cf88fea67a1351fdb792eebfdf5f",
+  "bytes": 25606975,
+  "byte_limit": 26214400,
+  "headroom_bytes": 607425,
+  "section_payload_bytes": {
+    "type": 3273,
+    "import": 889,
+    "function": 11753,
+    "table": 11,
+    "memory": 6,
+    "tag": 3,
+    "global": 31,
+    "export": 905,
+    "element": 8802,
+    "data-count": 2,
+    "code": 13883409,
+    "data": 11697547,
+    "custom": 296
+  },
+  "module_and_section_headers_bytes": 48,
+  "matched_asset_bytes": 9678249,
+  "largest_exact_assets": [
+    {
+      "path": "crates/rmath/src/library/portable_package/assets/tools/tools.rdb",
+      "bytes": 2360298
+    },
+    {
+      "path": "crates/rmath/src/library/portable_package/assets/stats/stats.rdb",
+      "bytes": 1857724
+    },
+    {
+      "path": "crates/rmath/src/library/methods/portable/assets/methods.rdb",
+      "bytes": 1361830
+    },
+    {
+      "path": "crates/rmath/src/library/portable_package/assets/utils/utils.rdb",
+      "bytes": 1043845
+    },
+    {
+      "path": "crates/r-graphics-engine/assets/DejaVuSans.faces.xz",
+      "bytes": 860516
+    },
+    {
+      "path": "crates/rmath/src/library/portable_package/assets/graphics/graphics.rdb",
+      "bytes": 336632
+    },
+    {
+      "path": "crates/rmath/src/library/portable_package/assets/grDevices/grDevices.rdb",
+      "bytes": 268167
+    },
+    {
+      "path": "crates/rmath/src/library/portable_package/assets/stats4/stats4.rdb",
+      "bytes": 187384
+    },
+    {
+      "path": "crates/rmath/src/library/datasets/assets/Rdata.rdb",
+      "bytes": 132204
+    },
+    {
+      "path": "crates/rmath/src/library/portable_package/assets/stats/examples.data",
+      "bytes": 83564
+    },
+    {
+      "path": "crates/rmath/upstream/base/R/namespace.R",
+      "bytes": 81434
+    },
+    {
+      "path": "crates/rmath/upstream/base/R/datetime.R",
+      "bytes": 62151
+    },
+    {
+      "path": "crates/rmath/upstream/base/R/dataframe.R",
+      "bytes": 61247
+    },
+    {
+      "path": "crates/rmath/src/tzone/zoneinfo/zones.bin",
+      "bytes": 56502
+    },
+    {
+      "path": "crates/rmath/src/library/methods/portable/assets/index.rds",
+      "bytes": 45029
+    },
+    {
+      "path": "crates/rmath/upstream/base/R/library.R",
+      "bytes": 42278
+    },
+    {
+      "path": "crates/rmath/src/library/portable_package/assets/tools/index.rds",
+      "bytes": 41964
+    },
+    {
+      "path": "crates/rmath/src/library/portable_package/assets/stats/index.rds",
+      "bytes": 35590
+    },
+    {
+      "path": "crates/rmath/src/library/portable_package/assets/graphics/examples.data",
+      "bytes": 28041
+    },
+    {
+      "path": "crates/rmath/upstream/base/R/zzz.R",
+      "bytes": 27241
+    }
+  ],
+  "asset_scope": "Tracked files above 4 KiB with exact, contiguous, non-overlapping matches in the data section",
+  "package_bytes": 25642009,
+  "package_headroom_bytes": 572391
+}

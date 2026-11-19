@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "source_commit": "56a3fe419a0c679b985b9fe664ba3403bc30456d",
+  "source_sha256": "40f7556a7c2ea3e768b881fc4d6c2db60a28906d67cb85ed368e7f944e07f84f",
+  "wasm_sha256": "ee0f2c261a0867b3473899f51f71696a4ab7cf88fea67a1351fdb792eebfdf5f",
+  "oracle_manifest_sha256": "b2400cc9d83720c794199ebe51856bb88a0aa2e38ee8db276c7c27f04473c679",
+  "workflow": "fresh-session-restore",
+  "fixture_sha256": {
+    "reload.R": "9d8c9c9d16c3505530c8af92d571a9a0a6a8d7f31d3890b6447ff80ef8813a3a",
+    "save.R": "65333869ec9d1005ae7dfed9c520861871e18c2aa19bfc5ba707dce300ea2980"
+  },
+  "expected": {
+    "saved": "Saved observations and fitted model\n",
+    "restored": {
+      "gnu": "Fresh session reproduced the saved model predictions\n",
+      "native": "Fresh session reproduced the saved model predictions\n",
+      "wasm": "Fresh session reproduced the saved model predictions\n"
+    }
+  },
+  "wasm": {
+    "saved": "Saved observations and fitted model\n",
+    "restored": {
+      "gnu": "Fresh session reproduced the saved model predictions\n",
+      "native": "Fresh session reproduced the saved model predictions\n",
+      "wasm": "Fresh session reproduced the saved model predictions\n"
+    }
+  },
+  "gnu": {
+    "saved": "Saved observations and fitted model\n",
+    "restored": {
+      "gnu": "Fresh session reproduced the saved model predictions\n",
+      "native": "Fresh session reproduced the saved model predictions\n",
+      "wasm": "Fresh session reproduced the saved model predictions\n"
+    }
+  },
+  "native": {
+    "saved": "Saved observations and fitted model\n",
+    "restored": {
+      "gnu": "Fresh session reproduced the saved model predictions\n",
+      "native": "Fresh session reproduced the saved model predictions\n",
+      "wasm": "Fresh session reproduced the saved model predictions\n"
+    }
+  },
+  "workspace_sha256": {
+    "gnu": "017876573b6bce532654e0a0c7e05040233f0c5dc00037978ceb788f47163766",
+    "native": "3d79c546d5114e098aca5d372db061900cd869265c4636b35aa30f8d38ebc7ae",
+    "wasm": "3d79c546d5114e098aca5d372db061900cd869265c4636b35aa30f8d38ebc7ae"
+  }
+}
