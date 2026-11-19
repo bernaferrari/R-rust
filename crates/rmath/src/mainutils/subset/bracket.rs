@@ -245,9 +245,7 @@ pub unsafe fn do_subset(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 }
 
 /// The default `[` tail after S3 dispatch failed: `do_subset_dflt` plus the
-/// base S3 `[.factor` fixup. Stock R dispatches factor subsetting to the
-/// `[.factor` method; this port carries no `[.factor` closure in base, so
-/// the method's observable behavior is reproduced here. The AST `[` builtin
+/// base S3 `[.factor` fallback for sessions without the GNU closure. The AST `[` builtin
 /// (`do_subset`) and the compiled DFLTSUBSET / MATSUBSET / SUBSET_N default
 /// paths share this tail, keeping interpreted and compiled subsetting
 /// identical.
@@ -262,6 +260,18 @@ pub unsafe fn subset_default_after_failed_dispatch(
     env: SEXP,
 ) -> SEXP {
     unsafe {
+        let orig = CAR(ans);
+        let is_factor = has_class_factor(orig);
+        if is_factor && !call.is_null() && TYPEOF(call) == SEXPTYPE::LANGSXP {
+            let method = CAR(call);
+            // NextMethod is inside an active factor method. Return the original
+            // integer codes so that method can restore levels before dropping them.
+            if TYPEOF(method) == SEXPTYPE::SYMSXP
+                && std::ffi::CStr::from_ptr(CHAR(PRINTNAME(method))) == c"[.default"
+            {
+                return do_subset_dflt(call, op, ans, env);
+            }
+        }
         // Peek `drop` first: do_subset_dflt's ExtractDropArg REMOVES it
         // from the evaluated argument list. The internal `[` default is
         // drop = TRUE, but the fixup below emulates the S3 `[.factor`
@@ -272,7 +282,7 @@ pub unsafe fn subset_default_after_failed_dispatch(
             while !isNull(cell) {
                 if TAG(cell) == sym_Drop() {
                     drop = asLogical(CAR(cell));
-                    if drop == NA_LOGICAL && has_class_factor(CAR(ans)) {
+                    if drop == NA_LOGICAL && is_factor {
                         // `if (drop)` with NA in upstream [.factor.
                         errorcall(call, "missing value where TRUE/FALSE needed");
                     }
@@ -294,8 +304,7 @@ pub unsafe fn subset_default_after_failed_dispatch(
         // class; with drop = TRUE unused levels are dropped (the factor()
         // rebuild keeps used levels in code order, remaps the codes, and
         // drops the contrasts attribute).
-        let orig = CAR(ans);
-        if has_class_factor(orig) {
+        if is_factor {
             let _r_guard = protect(result);
             let _o_guard = protect(orig);
             let levels = getAttrib(orig, crate::eval::attrib_core::R_LevelsSymbol());

@@ -28,6 +28,7 @@ const contracts = [
     '1204_posixlt_replacement_precision',
     '1205_sprintf_coercion_length',
     '1206_current_local_date',
+    '1207_factor_drop_missing_level',
   ].map(name => [
     resolve(root, 'tests/conformance/cases', name + '.R'),
     resolve(root, 'tests/conformance/golden', name + '.out'),
