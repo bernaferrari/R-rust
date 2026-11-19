@@ -70,6 +70,219 @@ fn typed_failure(operation: impl FnOnce(), expected: &str) {
     assert!(error.message.contains(expected), "{}", error.message);
 }
 
+fn snapshot_for_test<'source>(source: &Sexp<'source>) -> SexpResult<PairlistSnapshot<'source>> {
+    let owner = source
+        .runtime_owner
+        .as_ref()
+        .expect("managed fixture owner");
+    crate::sexp::owner::with_runtime(owner, |access| snapshot_pairlist(source, access))?
+}
+
+fn attribute_snapshot_for_test<'source>(
+    source: &Sexp<'source>,
+) -> SexpResult<Option<AttributeSnapshot<'source>>> {
+    let owner = source
+        .runtime_owner
+        .as_ref()
+        .expect("managed fixture owner");
+    crate::sexp::owner::with_runtime(owner, |access| snapshot_attributes(source, access))?
+}
+
+#[test]
+fn pairlist_snapshot_workspace_denial_refunds_and_recovers() {
+    let session = RSession::new_for_gc_tests();
+    let (source, _, _) = sized_fixture(&session, 24);
+    let bytes = 24usize
+        .checked_mul(std::mem::size_of::<PairlistCellSnapshot<'_>>())
+        .unwrap();
+    let resident =
+        session.with_active_in(|owner| unsafe { (*owner).arena.total_bytes_allocated() });
+    session.with_active_in(|owner| unsafe {
+        (*owner)
+            .arena
+            .set_budget(crate::sexp::memory::ArenaBudget::new(
+                resident + bytes - 1,
+                0,
+            ));
+    });
+
+    assert!(matches!(
+        snapshot_for_test(&source),
+        Err(SexpError::AllocationFailed {
+            object: "pairlist snapshot workspace"
+        })
+    ));
+    let after_denial = session.with_active_in(|owner| unsafe { (*owner).arena.workspace_bytes() });
+    assert_eq!(after_denial, 0, "denied admission must refund its ticket");
+    typed_failure(
+        || unsafe {
+            shallow_duplicate(source.as_raw());
+        },
+        "failed to allocate pairlist snapshot workspace",
+    );
+    assert_eq!(
+        session.with_active_in(|owner| unsafe { (*owner).arena.workspace_bytes() }),
+        0,
+        "the public duplication error boundary must refund denied workspace"
+    );
+
+    session.with_active_in(|owner| unsafe {
+        (*owner)
+            .arena
+            .set_budget(crate::sexp::memory::ArenaBudget::new(resident + bytes, 0));
+    });
+    let snapshot = snapshot_for_test(&source).unwrap();
+    assert_eq!(snapshot.cells.len(), 24);
+    assert_eq!(snapshot.cells.capacity(), 24);
+    assert_eq!(snapshot._reservation.bytes(), bytes);
+    assert_eq!(
+        session.with_active_in(|owner| unsafe { (*owner).arena.workspace_bytes() }),
+        bytes,
+        "live snapshot storage must remain admitted"
+    );
+    drop(snapshot);
+    assert_eq!(
+        session.with_active_in(|owner| unsafe { (*owner).arena.workspace_bytes() }),
+        0,
+        "dropping snapshot storage must refund its original-owner charge"
+    );
+
+    session.with_active_in(|owner| unsafe {
+        (*owner)
+            .arena
+            .set_budget(crate::sexp::memory::ArenaBudget::unlimited());
+    });
+    let copy = source
+        .node_factory()
+        .unwrap()
+        .wrap(unsafe { shallow_duplicate(source.as_raw()) })
+        .unwrap();
+    assert_sized_values(&copy, 24);
+}
+
+#[test]
+fn attribute_pairlist_snapshot_admits_exact_cap_and_recovers_after_denial() {
+    let session = RSession::new_for_gc_tests();
+    let factory = session.owner_token().unwrap().node_factory();
+    let value = factory
+        .wrap(unsafe { crate::sexp::constructors::Rf_ScalarInteger(73) })
+        .unwrap();
+    let tag = factory
+        .wrap(unsafe { crate::sexp::symbol::Rf_install(c"snapshot_probe".as_ptr()) })
+        .unwrap();
+    let attributes = factory.pairlist_cell(&value, &factory.nil(), &tag).unwrap();
+    let raw_vector = unsafe { crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::INTSXP, 1) };
+    unsafe { SET_ATTRIB(raw_vector, attributes.as_raw()) };
+    let source = factory.wrap(raw_vector).unwrap();
+    let bytes = std::mem::size_of::<PairlistCellSnapshot<'_>>();
+    let resident =
+        session.with_active_in(|owner| unsafe { (*owner).arena.total_bytes_allocated() });
+    session.with_active_in(|owner| unsafe {
+        (*owner)
+            .arena
+            .set_budget(crate::sexp::memory::ArenaBudget::new(
+                resident + bytes - 1,
+                0,
+            ));
+    });
+
+    assert!(matches!(
+        attribute_snapshot_for_test(&source),
+        Err(SexpError::AllocationFailed {
+            object: "pairlist snapshot workspace"
+        })
+    ));
+    assert_eq!(
+        session.with_active_in(|owner| unsafe { (*owner).arena.workspace_bytes() }),
+        0,
+        "attribute denial must refund its original-owner reservation"
+    );
+
+    session.with_active_in(|owner| unsafe {
+        (*owner)
+            .arena
+            .set_budget(crate::sexp::memory::ArenaBudget::new(resident + bytes, 0));
+    });
+    let snapshot = attribute_snapshot_for_test(&source).unwrap().unwrap();
+    assert_eq!(snapshot.pairlist.cells.len(), 1);
+    assert_eq!(snapshot.pairlist.cells.capacity(), 1);
+    assert_eq!(snapshot.pairlist._reservation.bytes(), bytes);
+    assert_eq!(
+        session.with_active_in(|owner| unsafe { (*owner).arena.workspace_bytes() }),
+        bytes,
+        "attribute cells must retain their admitted exact capacity"
+    );
+    drop(snapshot);
+    assert_eq!(
+        session.with_active_in(|owner| unsafe { (*owner).arena.workspace_bytes() }),
+        0
+    );
+
+    session.with_active_in(|owner| unsafe {
+        (*owner)
+            .arena
+            .set_budget(crate::sexp::memory::ArenaBudget::unlimited());
+    });
+    let copy = factory
+        .wrap(unsafe { shallow_duplicate(source.as_raw()) })
+        .unwrap();
+    let copied_attr = copy.try_attrib().unwrap();
+    assert_eq!(
+        copied_attr.try_car().unwrap().try_integer_elt(0).unwrap(),
+        73
+    );
+    assert!(copied_attr.try_tag_name_eq(b"snapshot_probe").unwrap());
+}
+
+#[test]
+fn attribute_snapshot_ticket_survives_provider_gc_until_attribute_copy_finishes() {
+    let session = RSession::new_for_gc_tests();
+    let factory = session.owner_token().unwrap().node_factory();
+    let reads = Rc::new(RefCell::new(Vec::new()));
+    let workspace_peak = Rc::new(Cell::new(0));
+    let class = session
+        .register_altrep_class(
+            "attribute-snapshot-workspace",
+            CollectingPairlistValue {
+                value: 91,
+                reads: reads.clone(),
+                workspace_peak: workspace_peak.clone(),
+            },
+        )
+        .unwrap();
+    let lazy = crate::sexp::altrep::AltrepBuilder::new(class)
+        .build()
+        .unwrap();
+    let tag = factory
+        .wrap(unsafe { crate::sexp::symbol::Rf_install(c"snapshot_probe".as_ptr()) })
+        .unwrap();
+    let attributes = factory.pairlist_cell(&lazy, &factory.nil(), &tag).unwrap();
+    let raw_vector = unsafe { crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::INTSXP, 1) };
+    unsafe { SET_ATTRIB(raw_vector, attributes.as_raw()) };
+    let source = factory.wrap(raw_vector).unwrap();
+    let workspace_before =
+        session.with_active_in(|owner| unsafe { (*owner).arena.workspace_bytes() });
+
+    let copy = factory.wrap(unsafe { duplicate(source.as_raw()) }).unwrap();
+
+    assert_eq!(*reads.borrow(), [91]);
+    assert!(
+        workspace_peak.get() >= std::mem::size_of::<PairlistCellSnapshot<'_>>(),
+        "attribute snapshot charge must remain while its copied value runs GC"
+    );
+    let copied_attr = copy.try_attrib().unwrap();
+    assert_eq!(
+        copied_attr.try_car().unwrap().try_integer_elt(0).unwrap(),
+        91
+    );
+    assert!(copied_attr.try_tag_name_eq(b"snapshot_probe").unwrap());
+    assert_eq!(
+        session.with_active_in(|owner| unsafe { (*owner).arena.workspace_bytes() }),
+        workspace_before,
+        "attribute snapshot charge must refund after callback and copy cleanup"
+    );
+}
+
 fn assert_values(copy: &Sexp<'_>) {
     let mut cell = copy.clone();
     for index in 0..3 {
@@ -203,6 +416,49 @@ fn owning_pairlist_rejects_tail_cycles_and_malformed_cdr_before_allocating() {
         SETCDR(last.as_raw(), factory.nil().as_raw());
     }
     assert_values(&factory.wrap(unsafe { duplicate(source.as_raw()) }).unwrap());
+}
+
+#[test]
+fn pairlist_snapshot_brent_detects_varied_cycles_after_nonzero_tails() {
+    let session = RSession::new_for_gc_tests();
+    for (prefix, cycle_len) in [(0, 1), (0, 2), (0, 3), (1, 2), (2, 1), (2, 3)] {
+        let total = prefix + cycle_len;
+        let (head, _, _) = sized_fixture(&session, total);
+        let factory = head.node_factory().unwrap();
+        let mut cells = Vec::with_capacity(total as usize);
+        let mut current = head.clone();
+        for _ in 0..total {
+            cells.push(current.clone());
+            current = current.try_cdr().unwrap();
+        }
+        let last = cells.last().unwrap();
+        let cycle_start = &cells[prefix as usize];
+        unsafe { SETCDR(last.as_raw(), cycle_start.as_raw()) };
+
+        let before_nodes = session
+            .owner_token()
+            .unwrap()
+            .with_arena(|arena| arena.node_count())
+            .unwrap();
+        assert!(
+            matches!(
+                snapshot_for_test(&head),
+                Err(SexpError::EvaluationFailed { message })
+                    if message.contains("cyclic pairlist tail")
+            ),
+            "prefix={prefix}, cycle_len={cycle_len}"
+        );
+        assert_eq!(
+            session
+                .owner_token()
+                .unwrap()
+                .with_arena(|arena| arena.node_count())
+                .unwrap(),
+            before_nodes,
+            "cycle must be rejected before allocating the snapshot"
+        );
+        unsafe { SETCDR(last.as_raw(), factory.nil().as_raw()) };
+    }
 }
 
 #[test]
@@ -404,6 +660,49 @@ fn owning_pairlist_callback_can_drop_original_session_without_publishing_copy() 
 }
 
 #[test]
+fn pairlist_snapshot_workspace_refunds_when_callback_revokes_owner() {
+    let session = RSession::new_for_gc_tests();
+    let source = fixture(&session, SEXPTYPE::LANGSXP).0.into_owned().unwrap();
+    let original = source.runtime_owner.as_ref().unwrap().clone();
+    // Keep the physical RInstance available only so this test can inspect the
+    // original ledger after the session is revoked. It grants no live access.
+    let inspection_pin = original.pin().unwrap();
+    let session_holder = Rc::new(RefCell::new(Some(session)));
+    let holder = session_holder.clone();
+    let observed_workspace = Rc::new(Cell::new(0));
+    let observed = observed_workspace.clone();
+    let notified = Rc::new(Cell::new(false));
+    let called = notified.clone();
+    crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+        if called.replace(true) {
+            return;
+        }
+        observed.set(unsafe {
+            (*crate::sexp::owner::OwnerToken::current().unwrap().as_ptr())
+                .arena
+                .workspace_bytes()
+        });
+        drop(holder.borrow_mut().take());
+    }));
+    force_next_gc(session_holder.borrow().as_ref().unwrap());
+    typed_failure(
+        || unsafe {
+            duplicate(source.as_raw());
+        },
+        "owner could not retain its root",
+    );
+    assert!(notified.get());
+    assert!(observed_workspace.get() >= 3 * std::mem::size_of::<PairlistCellSnapshot<'_>>());
+    assert_eq!(
+        unsafe { (*inspection_pin.as_ptr()).arena.workspace_bytes() },
+        0,
+        "unwinding a revoked copy must release its original-owner snapshot ticket"
+    );
+    drop(inspection_pin);
+    assert!(original.pin().is_err());
+}
+
+#[test]
 fn owning_pairlist_detached_tail_collects_cells_but_keeps_saved_values() {
     let session = RSession::new_for_gc_tests();
     let (source, cars, tails) = fixture(&session, SEXPTYPE::LANGSXP);
@@ -506,7 +805,7 @@ fn owning_pairlist_rejects_reused_tail_generation_before_reading_payload() {
     assert_ne!(replacement.allocation().unwrap().link().unwrap(), old_link);
     let before = crate::sexp::protect::R_ProtectCount();
     assert!(matches!(
-        snapshot_pairlist(&source),
+        snapshot_for_test(&source),
         Err(SexpError::StaleAllocation)
     ));
     typed_failure(
@@ -529,6 +828,7 @@ fn owning_pairlist_rejects_reused_tail_generation_before_reading_payload() {
 struct CollectingPairlistValue {
     value: i32,
     reads: Rc<RefCell<Vec<i32>>>,
+    workspace_peak: Rc<Cell<usize>>,
 }
 impl crate::sexp::altrep::AltrepClass for CollectingPairlistValue {
     fn vector_type(&self) -> SEXPTYPE {
@@ -543,6 +843,10 @@ impl crate::sexp::altrep::AltrepClass for CollectingPairlistValue {
         _: i64,
     ) -> SexpResult<crate::sexp::altrep::AltrepElement<'s>> {
         self.reads.borrow_mut().push(self.value);
+        let owner = unsafe { crate::sexp::owner::OwnerToken::current() }.unwrap();
+        let workspace = unsafe { (*owner.as_ptr()).arena.workspace_bytes() };
+        self.workspace_peak
+            .set(self.workspace_peak.get().max(workspace));
         context.gc()?;
         Ok(crate::sexp::altrep::AltrepElement::Integer(self.value))
     }
@@ -553,6 +857,9 @@ fn owning_pairlist_collecting_providers_keep_source_order_after_detachment() {
     let session = RSession::new_for_gc_tests();
     let factory = session.owner_token().unwrap().node_factory();
     let reads = Rc::new(RefCell::new(Vec::new()));
+    let workspace_peak = Rc::new(Cell::new(0));
+    let workspace_before =
+        session.with_active_in(|owner| unsafe { (*owner).arena.workspace_bytes() });
     let mut source = factory.nil();
     for value in (10..13).rev() {
         let class = session
@@ -561,6 +868,7 @@ fn owning_pairlist_collecting_providers_keep_source_order_after_detachment() {
                 CollectingPairlistValue {
                     value,
                     reads: reads.clone(),
+                    workspace_peak: workspace_peak.clone(),
                 },
             )
             .unwrap();
@@ -600,8 +908,17 @@ fn owning_pairlist_collecting_providers_keep_source_order_after_detachment() {
         "each provider performs actual collection"
     );
     assert_eq!(*reads.borrow(), [10, 11, 12]);
+    assert!(
+        workspace_peak.get() >= 3 * std::mem::size_of::<PairlistCellSnapshot<'_>>(),
+        "pairlist snapshot admission must remain live during provider GC"
+    );
     assert_values(&copied);
     assert!(source.try_cdr().unwrap().is_nil());
+    assert_eq!(
+        session.with_active_in(|owner| unsafe { (*owner).arena.workspace_bytes() }),
+        workspace_before,
+        "snapshot workspace must be refunded after provider callbacks and copy cleanup"
+    );
     assert_eq!(crate::sexp::protect::R_ProtectCount(), before);
 }
 fn sized_fixture(session: &RSession, count: i32) -> (Sexp<'_>, Vec<CheckedNode>, Vec<CheckedNode>) {
@@ -683,7 +1000,10 @@ fn owning_pairlist_thirty_two_and_sixty_four_allocate_exactly_linear_nodes() {
         let (source, _, _) = sized_fixture(&session, count);
         let factory = source.node_factory().unwrap();
         // Header snapshots and owning leases allocate Rust bookkeeping only.
-        assert_eq!(snapshot_pairlist(&source).unwrap().len(), count as usize);
+        assert_eq!(
+            snapshot_for_test(&source).unwrap().cells.len(),
+            count as usize
+        );
         for deep in [false, true] {
             let before = session
                 .owner_token()

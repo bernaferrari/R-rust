@@ -498,20 +498,21 @@ enum CopyValues<'source> {
 
 struct AttributeSnapshot<'source> {
     source: Sexp<'source>,
-    cells: Vec<PairlistCellSnapshot<'source>>,
+    pairlist: PairlistSnapshot<'source>,
 }
 
 fn snapshot_attributes<'source>(
     source: &Sexp<'source>,
+    access: &crate::sexp::owner::RuntimeAccess,
 ) -> SexpResult<Option<AttributeSnapshot<'source>>> {
     let attributes = source.try_attrib()?;
     if attributes.is_nil() {
         return Ok(None);
     }
-    let cells = snapshot_pairlist(&attributes)?;
+    let pairlist = snapshot_pairlist(&attributes, access)?;
     Ok(Some(AttributeSnapshot {
         source: attributes,
-        cells,
+        pairlist,
     }))
 }
 
@@ -549,7 +550,7 @@ fn prepare_value_attempt<'source>(
     let node = source.allocation()?;
     let heap = node.heap_identity();
     let mut header = heap.node_snapshot(node).ok_or(SexpError::StaleAllocation)?;
-    let mut attributes = snapshot_attributes(source)?;
+    let mut attributes = snapshot_attributes(source, access)?;
     let mut flags = flags;
     let kind = flags.type_of();
     let (mut length, mut truelength) = match header.data {
@@ -616,7 +617,7 @@ fn prepare_value_attempt<'source>(
             }
             header = refreshed;
             flags = header.sxpinfo;
-            attributes = snapshot_attributes(source)?;
+            attributes = snapshot_attributes(source, access)?;
             (length, truelength) = match header.data {
                 crate::sexp::ffi::NodeBody::Vector(vector) => (
                     usize::try_from(vector.length)
@@ -790,7 +791,7 @@ fn prepare_closure<'source>(
     let formals = source.try_formals()?;
     let body = source.try_body()?;
     let environment = source.try_cloenv()?;
-    let attributes = snapshot_attributes(source)?;
+    let attributes = snapshot_attributes(source, access)?;
     let source_node = source.allocation()?;
     let flags = source_node
         .heap_identity()
@@ -1072,67 +1073,156 @@ struct PairlistCellSnapshot<'source> {
     flags: crate::sexp::ffi::SxpInfo,
 }
 
-/// Resolve each original edge once before allocations or provider callbacks.
-/// Only child values are retained; detached source tail cells may be collected.
-fn snapshot_pairlist<'source>(
-    source: &Sexp<'source>,
-) -> SexpResult<Vec<PairlistCellSnapshot<'source>>> {
-    let mut cells = Vec::new();
-    let mut seen = HashSet::new();
+struct PairlistSnapshot<'source> {
+    cells: Vec<PairlistCellSnapshot<'source>>,
+    // Vec drops before its reservation; keep the original owner's transient
+    // charge alive for the complete retained-storage lifetime.
+    _reservation: crate::sexp::memory::WorkspaceReservation,
+}
+
+/// Validate one pairlist spine node without retaining an arena or payload
+/// borrow across the caller. Nil can be the process singleton outside the
+/// source heap; non-nil foreign/stale nodes remain typed errors.
+fn pairlist_snapshot_node(
+    current: &Sexp<'_>,
+) -> SexpResult<Option<(crate::sexp::heap::NodeLink, crate::sexp::ffi::SexprecCore)>> {
+    let node = match current.allocation() {
+        Ok(node) => node,
+        Err(SexpError::UnownedPointer { .. }) if current.is_nil() => return Ok(None),
+        Err(SexpError::UnownedPointer { .. }) => {
+            return Err(SexpError::TypeMismatch {
+                expected: "pairlist tail",
+                actual: current.typeof_(),
+            });
+        }
+        Err(error) => return Err(error),
+    };
+    let key = node.link().ok_or(SexpError::StaleAllocation)?;
+    let header = node
+        .heap_identity()
+        .node_snapshot(&node)
+        .ok_or(SexpError::StaleAllocation)?;
+    let kind = header.sxpinfo.type_of();
+    if kind == SEXPTYPE::NILSXP {
+        return Ok(None);
+    }
+    if !matches!(
+        kind,
+        SEXPTYPE::LISTSXP | SEXPTYPE::LANGSXP | SEXPTYPE::DOTSXP
+    ) {
+        return Err(SexpError::TypeMismatch {
+            expected: "pairlist tail",
+            actual: kind,
+        });
+    }
+    if !matches!(header.data, crate::sexp::ffi::NodeBody::List(_)) {
+        return Err(SexpError::TypeMismatch {
+            expected: "pairlist storage",
+            actual: kind,
+        });
+    }
+    Ok(Some((key, header)))
+}
+
+fn count_pairlist_cells_reject_cycle(source: &Sexp<'_>) -> SexpResult<usize> {
     let mut current = source.clone();
+    let mut _checkpoint: Option<Sexp<'_>> = None;
+    let mut checkpoint_key = None;
+    let mut power = 1usize;
+    let mut span = 0usize;
+    let mut count = 0usize;
     loop {
-        let node = match current.allocation() {
-            Ok(node) => node,
-            Err(SexpError::UnownedPointer { .. }) => {
-                if current.is_nil() {
-                    break;
-                }
-                return Err(SexpError::TypeMismatch {
-                    expected: "pairlist tail",
-                    actual: current.typeof_(),
-                });
-            }
-            Err(error) => return Err(error),
+        // Brent's checkpoint cycle detector needs one cursor: every checked
+        // header both validates and counts a cell. The checkpoint owns its
+        // Sexp root, while its cached NodeLink avoids rereading that header.
+        let Some((key, header)) = pairlist_snapshot_node(&current)? else {
+            return Ok(count);
         };
-        let key = node.link().ok_or(SexpError::StaleAllocation)?;
-        if seen.contains(&key) {
+        if checkpoint_key == Some(key) {
             return Err(SexpError::EvaluationFailed {
                 message: "cyclic pairlist tail cannot be duplicated".into(),
             });
         }
-        seen.try_reserve(1)
-            .map_err(|_| SexpError::AllocationFailed {
-                object: "pairlist traversal",
+
+        count = count.checked_add(1).ok_or(SexpError::AllocationFailed {
+            object: "pairlist snapshot size",
+        })?;
+        if checkpoint_key.is_none() {
+            _checkpoint = Some(current.clone());
+            checkpoint_key = Some(key);
+            power = 2;
+            span = 0;
+        } else {
+            span = span.checked_add(1).ok_or(SexpError::AllocationFailed {
+                object: "pairlist snapshot size",
             })?;
-        seen.insert(key);
-        let header = node
-            .heap_identity()
-            .node_snapshot(node)
-            .ok_or(SexpError::StaleAllocation)?;
+            if span == power {
+                _checkpoint = Some(current.clone());
+                checkpoint_key = Some(key);
+                power = power.saturating_mul(2);
+                span = 0;
+            }
+        }
+        let crate::sexp::ffi::NodeBody::List(list) = header.data else {
+            unreachable!("pairlist node validation checked list storage")
+        };
+        current = current.checked_child(list.cdrval)?;
+    }
+}
+
+/// Resolve each original edge once before allocations or provider callbacks.
+/// Only child values are retained; detached source tail cells may be collected.
+fn snapshot_pairlist<'source>(
+    source: &Sexp<'source>,
+    access: &crate::sexp::owner::RuntimeAccess,
+) -> SexpResult<PairlistSnapshot<'source>> {
+    // Validate and count in one Brent pass before allocating, avoiding both a
+    // dynamic cycle set and a separate length traversal.
+    let count = count_pairlist_cells_reject_cycle(source)?;
+    let bytes = count
+        .checked_mul(std::mem::size_of::<PairlistCellSnapshot<'source>>())
+        .ok_or(SexpError::AllocationFailed {
+            object: "pairlist snapshot size",
+        })?;
+    let mut reservation = access
+        .with_arena(|arena| arena.reserve_workspace(bytes))?
+        .ok_or(SexpError::AllocationFailed {
+            object: "pairlist snapshot workspace",
+        })?;
+    let mut cells = Vec::new();
+    cells
+        .try_reserve_exact(count)
+        .map_err(|_| SexpError::AllocationFailed {
+            object: "pairlist snapshot",
+        })?;
+    // `try_reserve_exact` has no R callback/finalizer path. Reconcile the
+    // admitted logical capacity before retaining or publishing any snapshot
+    // edges, including allocator-reported excess capacity.
+    let actual_bytes = cells
+        .capacity()
+        .checked_mul(std::mem::size_of::<PairlistCellSnapshot<'source>>())
+        .ok_or(SexpError::AllocationFailed {
+            object: "pairlist snapshot size",
+        })?;
+    reservation
+        .try_resize(actual_bytes)
+        .ok_or(SexpError::AllocationFailed {
+            object: "pairlist snapshot workspace",
+        })?;
+    // From this point through the final edge capture, the code only reads
+    // checked headers and creates owner leases. It does not evaluate R, call
+    // ALTREP providers, collect, or run finalizers, so Brent validation and
+    // the count cannot be invalidated between passes.
+    let mut current = source.clone();
+    for _ in 0..count {
+        let (_, header) = pairlist_snapshot_node(&current)?.ok_or(SexpError::StaleAllocation)?;
         let kind = header.sxpinfo.type_of();
-        if kind == SEXPTYPE::NILSXP {
-            break;
-        }
-        if !matches!(
-            kind,
-            SEXPTYPE::LISTSXP | SEXPTYPE::LANGSXP | SEXPTYPE::DOTSXP
-        ) {
-            return Err(SexpError::TypeMismatch {
-                expected: "pairlist tail",
-                actual: kind,
-            });
-        }
         let crate::sexp::ffi::NodeBody::List(list) = header.data else {
             return Err(SexpError::TypeMismatch {
                 expected: "pairlist storage",
                 actual: kind,
             });
         };
-        cells
-            .try_reserve(1)
-            .map_err(|_| SexpError::AllocationFailed {
-                object: "pairlist snapshot",
-            })?;
         cells.push(PairlistCellSnapshot {
             value: current.checked_child(list.carval)?,
             tag: current.checked_child(list.tagval)?,
@@ -1141,7 +1231,10 @@ fn snapshot_pairlist<'source>(
         });
         current = current.checked_child(list.cdrval)?;
     }
-    Ok(cells)
+    Ok(PairlistSnapshot {
+        cells,
+        _reservation: reservation,
+    })
 }
 
 fn apply_pairlist_flags(copy: &Sexp<'_>, flags: crate::sexp::ffi::SxpInfo) -> SexpResult<()> {
@@ -1196,7 +1289,7 @@ enum PairlistPending {
 
 struct PairlistContinuation<'source> {
     domain: crate::sexp::object::NodeDomain<'source>,
-    cells: Vec<PairlistCellSnapshot<'source>>,
+    snapshot: PairlistSnapshot<'source>,
     head: Option<Sexp<'source>>,
     tail: Option<Sexp<'source>>,
     next_cell: usize,
@@ -1213,7 +1306,7 @@ struct CopyRequest<'source> {
     source: Sexp<'source>,
     /// Attribute spines were selected before any provider/allocation callback.
     /// They must not be traversed again when the parent later suspends.
-    cells: Option<Vec<PairlistCellSnapshot<'source>>>,
+    cells: Option<PairlistSnapshot<'source>>,
 }
 
 impl<'source> CopyRequest<'source> {
@@ -1227,7 +1320,7 @@ impl<'source> CopyRequest<'source> {
     fn attributes(snapshot: AttributeSnapshot<'source>) -> Self {
         Self {
             source: snapshot.source,
-            cells: Some(snapshot.cells),
+            cells: Some(snapshot.pairlist),
         }
     }
 }
@@ -1285,6 +1378,7 @@ fn prepare_copy<'operation, 'source>(
     let flags = match &request.cells {
         Some(cells) => {
             cells
+                .cells
                 .first()
                 .ok_or(SexpError::MissingData { sexptype: kind })?
                 .flags
@@ -1304,12 +1398,13 @@ fn prepare_copy<'operation, 'source>(
     };
     let body = match flags.type_of() {
         SEXPTYPE::LISTSXP | SEXPTYPE::LANGSXP | SEXPTYPE::DOTSXP => {
+            let snapshot = match request.cells {
+                Some(snapshot) => snapshot,
+                None => snapshot_pairlist(&source, access)?,
+            };
             CopyContinuation::Pairlist(PairlistContinuation {
                 domain: source.node_factory()?.into(),
-                cells: match request.cells {
-                    Some(cells) => cells,
-                    None => snapshot_pairlist(&source)?,
-                },
+                snapshot,
                 head: None,
                 tail: None,
                 next_cell: 0,
@@ -1408,7 +1503,7 @@ impl<'source> PairlistContinuation<'source> {
         let domain = &self.domain;
         loop {
             if let Some(value) = result.take() {
-                let saved = &self.cells[self.next_cell];
+                let saved = &self.snapshot.cells[self.next_cell];
                 match std::mem::replace(&mut self.pending, PairlistPending::None) {
                     PairlistPending::Value => {
                         let cell = access.allocator(domain)?.pairlist_cell(
@@ -1442,13 +1537,13 @@ impl<'source> PairlistContinuation<'source> {
                     PairlistPending::None => unreachable!("no suspended pairlist child"),
                 }
             }
-            let Some(saved) = self.cells.get(self.next_cell) else {
+            let Some(saved) = self.snapshot.cells.get(self.next_cell) else {
                 let copy = self.head.as_ref().expect("nonempty pairlist snapshot");
                 let node = copy.allocation()?;
                 node.heap_identity()
-                    .retype_node(node, self.cells[0].flags.type_of())
+                    .retype_node(node, self.snapshot.cells[0].flags.type_of())
                     .ok_or(SexpError::StaleAllocation)?;
-                apply_pairlist_flags(copy, self.cells[0].flags)?;
+                apply_pairlist_flags(copy, self.snapshot.cells[0].flags)?;
                 access.require_active()?;
                 return Ok(CopyStep::Done(copy.clone()));
             };
