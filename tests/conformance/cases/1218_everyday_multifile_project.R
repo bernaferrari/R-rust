@@ -1,4 +1,4 @@
-(function() {
+project_path <- (function() {
     work <- tempfile("analysis-project-")
     stopifnot(dir.create(work))
     on.exit(unlink(work, recursive = TRUE))
@@ -53,4 +53,6 @@
               identical(readLines(file.path(project, "observations.csv")),
                         readLines(file.path(input, "observations.csv"))))
     cat("Copied and ran a multi-file analysis with unchanged inputs\n")
+    work
 })()
+stopifnot(!dir.exists(project_path))
