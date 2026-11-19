@@ -1,8 +1,13 @@
 use std::env;
+use std::fs;
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
+    if env::var_os("CARGO_CFG_TARGET_ARCH").as_deref() == Some(std::ffi::OsStr::new("wasm32")) {
+        pack_upstream_base_sources().expect("pack embedded GNU base sources");
+    }
     let backend = if env::var_os("CARGO_FEATURE_FORTRAN_BACKEND").is_some() {
         "system-fortran"
     } else {
@@ -45,4 +50,31 @@ fn main() {
             dst.display()
         );
     }
+}
+
+fn pack_upstream_base_sources() -> io::Result<()> {
+    let source_dir = Path::new("upstream/base/R");
+    println!("cargo:rerun-if-changed={}", source_dir.display());
+    let output = PathBuf::from(env::var_os("OUT_DIR").expect("Cargo build output"));
+    pack_r_directory(source_dir, &output.join("upstream-base"))
+}
+
+fn pack_r_directory(source_dir: &Path, packed_dir: &Path) -> io::Result<()> {
+    fs::create_dir_all(packed_dir)?;
+    for file in fs::read_dir(source_dir)? {
+        let file = file?;
+        let path = file.path();
+        let out = packed_dir.join(file.file_name());
+        let file_type = file.file_type()?;
+        if file_type.is_dir() {
+            pack_r_directory(&path, &out)?;
+        } else if file_type.is_file() && path.extension().is_some_and(|ext| ext == "R") {
+            let source = fs::read(path)?;
+            let stream = fs::File::create(out)?;
+            let mut encoder = flate2::write::ZlibEncoder::new(stream, flate2::Compression::best());
+            encoder.write_all(&source)?;
+            encoder.finish()?;
+        }
+    }
+    Ok(())
 }

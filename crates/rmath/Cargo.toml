@@ -58,6 +58,9 @@ js-sys = "0.3"
 libc = "0.2"
 
 
+[build-dependencies]
+flate2 = { version = "1.1", default-features = false, features = ["rust_backend"] }
+
 [[bench]]
 name = "bench_eval"
 harness = false
