@@ -416,10 +416,12 @@ pub(crate) fn is_replacement_function_head(value: &Sexp<'static>) -> bool {
     if value.typeof_() != SEXPTYPE::LANGSXP {
         return false;
     }
-    unsafe {
-        let Some(operator) = crate::eval::bc_compile::symbol_name_from_sexp(
-            crate::sexp::accessors::CAR(value.as_raw()),
-        ) else {
+    {
+        let Some(operator) =
+            crate::eval::bc_compile::symbol_name_from_sexp(crate::sexp::accessors::CAR(
+                value.as_raw(),
+            ))
+        else {
             return false;
         };
         if !matches!(operator.as_str(), "::" | ":::") {
