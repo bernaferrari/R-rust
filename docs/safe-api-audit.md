@@ -34,10 +34,11 @@ The release gate runs this script by default.
 Use `python3 scripts/unsafe_syntax_report.py` with ast-grep installed
 to count Rust unsafe blocks, function declarations and pointer types in
 the core runtime and desktop CLI. Compare source trees with
-`--source-root`. The report counts written syntax, including inline
-tests, and excludes comments, strings and macro expansions. Validate
-changes at the affected runtime entry points before counting a
-checkpoint as verified.
+`--source-root` and use `--production` to exclude explicit test-only
+items and modules. Both modes exclude comments, strings and macro
+expansions. At `094136f0`, the full count was 23,308 and the production
+count was 18,034. Record both counts and verify changes at the affected
+runtime entry points before counting a checkpoint toward `rport-mk395`.
 
 The app boundary is clean, but the core interpreter still contains raw and
 unsafe internals. Track the remaining ownership and execution work through:
