@@ -62,7 +62,7 @@ fn CHECK_ASSERTIONS(
 }
 
 #[inline]
-unsafe fn CHECK_CHAR_CLASSES(
+fn CHECK_CHAR_CLASSES(
     trans_i: *const tre_tnfa_transition_t,
     tnfa: *const tre_tnfa_t,
     eflags: c_int,
@@ -91,7 +91,7 @@ unsafe fn CHECK_CHAR_CLASSES(
 }
 
 #[allow(clippy::if_same_then_else)]
-pub unsafe fn tre_tnfa_run_backtrack(
+pub fn tre_tnfa_run_backtrack(
     tnfa: *const tre_tnfa_t,
     string: *const c_void,
     len: c_int,
@@ -757,7 +757,7 @@ pub unsafe fn tre_tnfa_run_backtrack(
     }
 }
 
-unsafe fn libc_memcmp(s1: *const u8, s1_offset: usize, s2: *const u8, n: c_int) -> c_int {
+fn libc_memcmp(s1: *const u8, s1_offset: usize, s2: *const u8, n: c_int) -> c_int {
     unsafe {
         if n <= 0 {
             return 0;
