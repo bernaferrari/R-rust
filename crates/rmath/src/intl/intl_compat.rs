@@ -1,3 +1,4 @@
+#![warn(unused_unsafe)]
 //! Port of intl-compat.c -- Compatibility wrappers for gettext functions.
 //!
 //! This file provides stub implementations for gettext functions that are
@@ -17,11 +18,8 @@ pub fn bindtextdomain(domainname: *const c_char, dirname: *const c_char) -> *mut
 }
 
 /// Alias for `bind_textdomain_codeset()` that calls the libintl_ version.
-pub fn bind_textdomain_codeset(
-    domainname: *const c_char,
-    codeset: *const c_char,
-) -> *mut c_char {
-    unsafe { crate::intl::bindtextdom::libintl_bind_textdomain_codeset(domainname, codeset) }
+pub fn bind_textdomain_codeset(domainname: *const c_char, codeset: *const c_char) -> *mut c_char {
+    crate::intl::bindtextdom::libintl_bind_textdomain_codeset(domainname, codeset)
 }
 
 #[cfg(test)]
@@ -31,24 +29,22 @@ mod tests {
     #[test]
     fn test_bindtextdomain_alias() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            let result = bindtextdomain(
-                b"test\0" as *const u8 as *const c_char,
-                b"/usr/share/locale\0" as *const u8 as *const c_char,
-            );
-            assert!(!result.is_null());
-        }
+
+        let result = bindtextdomain(
+            b"test\0" as *const u8 as *const c_char,
+            b"/usr/share/locale\0" as *const u8 as *const c_char,
+        );
+        assert!(!result.is_null());
     }
 
     #[test]
     fn test_bind_textdomain_codeset_alias() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            let result = bind_textdomain_codeset(
-                b"test\0" as *const u8 as *const c_char,
-                b"UTF-8\0" as *const u8 as *const c_char,
-            );
-            assert!(!result.is_null());
-        }
+
+        let result = bind_textdomain_codeset(
+            b"test\0" as *const u8 as *const c_char,
+            b"UTF-8\0" as *const u8 as *const c_char,
+        );
+        assert!(!result.is_null());
     }
 }

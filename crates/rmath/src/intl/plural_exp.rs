@@ -1,3 +1,4 @@
+#![warn(unused_unsafe)]
 //! Plural expression evaluation for GNU gettext.
 //!
 //! Ported from `plural-exp.c` in the GNU gettext `intl/` library.
@@ -13,7 +14,7 @@ use std::ptr;
 use super::types::*;
 
 fn PLURAL_PARSE(_arg: *mut parse_args) -> c_int {
-    unsafe { super::plural_parse::libintl_gettextparse(_arg) }
+    super::plural_parse::libintl_gettextparse(_arg)
 }
 
 fn boxed_expression(
@@ -159,12 +160,10 @@ pub fn libintl_gettext_extract_plural(
 ///
 /// This is the standalone (non-_LIBC, non-IN_LIBINTL) implementation.
 pub fn plural_eval(pexp: *const expression, n: c_ulong) -> c_ulong {
-    unsafe {
-        if pexp.is_null() {
-            return 0;
-        }
-        plural_eval_internal(pexp, n)
+    if pexp.is_null() {
+        return 0;
     }
+    plural_eval_internal(pexp, n)
 }
 
 /// Recursive internal evaluator for plural expression trees.
@@ -297,68 +296,60 @@ mod tests {
         let plural = boxed_germanic_plural();
 
         // n=1 -> n!=1 is false -> plural form 0 (singular)
-        let result = unsafe { plural_eval(plural, 1) };
+        let result = plural_eval(plural, 1);
         assert_eq!(result, 0);
 
         // n=0 -> n!=1 is true -> plural form 1 (plural)
-        let result = unsafe { plural_eval(plural, 0) };
+        let result = plural_eval(plural, 0);
         assert_eq!(result, 1);
 
         // n=2 -> n!=1 is true -> plural form 1 (plural)
-        let result = unsafe { plural_eval(plural, 2) };
+        let result = plural_eval(plural, 2);
         assert_eq!(result, 1);
 
         // n=5 -> n!=1 is true -> plural form 1 (plural)
-        let result = unsafe { plural_eval(plural, 5) };
+        let result = plural_eval(plural, 5);
         assert_eq!(result, 1);
     }
 
     #[test]
     fn test_plural_eval_null() {
-        unsafe {
-            let result = plural_eval(ptr::null(), 42);
-            assert_eq!(result, 0);
-        }
+        let result = plural_eval(ptr::null(), 42);
+        assert_eq!(result, 0);
     }
 
     #[test]
     fn test_extract_plural_null_entry() {
-        unsafe {
-            let mut pluralp: *const expression = ptr::null();
-            let mut npluralsp: c_ulong = 0;
-            libintl_gettext_extract_plural(ptr::null(), &mut pluralp, &mut npluralsp);
-            assert_eq!(npluralsp, 2);
-            assert!(!pluralp.is_null());
-        }
+        let mut pluralp: *const expression = ptr::null();
+        let mut npluralsp: c_ulong = 0;
+        libintl_gettext_extract_plural(ptr::null(), &mut pluralp, &mut npluralsp);
+        assert_eq!(npluralsp, 2);
+        assert!(!pluralp.is_null());
     }
 
     #[test]
     fn test_extract_plural_no_fields() {
-        unsafe {
-            let entry = b"Project-Id-Version: foo 1.0\n\0".as_ptr() as *const c_char;
-            let mut pluralp: *const expression = ptr::null();
-            let mut npluralsp: c_ulong = 0;
-            libintl_gettext_extract_plural(entry, &mut pluralp, &mut npluralsp);
-            // No plural= or nplurals= fields -> fall back to Germanic.
-            assert_eq!(npluralsp, 2);
-            assert!(!pluralp.is_null());
-        }
+        let entry = b"Project-Id-Version: foo 1.0\n\0".as_ptr() as *const c_char;
+        let mut pluralp: *const expression = ptr::null();
+        let mut npluralsp: c_ulong = 0;
+        libintl_gettext_extract_plural(entry, &mut pluralp, &mut npluralsp);
+        // No plural= or nplurals= fields -> fall back to Germanic.
+        assert_eq!(npluralsp, 2);
+        assert!(!pluralp.is_null());
     }
 
     #[test]
     fn test_extract_plural_valid_nplurals() {
-        unsafe {
-            let entry = b"nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\0"
-                .as_ptr() as *const c_char;
-            let mut pluralp: *const expression = ptr::null();
-            let mut npluralsp: c_ulong = 0;
-            libintl_gettext_extract_plural(entry, &mut pluralp, &mut npluralsp);
-            assert_eq!(npluralsp, 3);
-            assert!(!pluralp.is_null());
-            assert_eq!(plural_eval(pluralp, 1), 0);
-            assert_eq!(plural_eval(pluralp, 5), 2);
-            assert_eq!(plural_eval(pluralp, 21), 0);
-        }
+        let entry = b"nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\0"
+            .as_ptr() as *const c_char;
+        let mut pluralp: *const expression = ptr::null();
+        let mut npluralsp: c_ulong = 0;
+        libintl_gettext_extract_plural(entry, &mut pluralp, &mut npluralsp);
+        assert_eq!(npluralsp, 3);
+        assert!(!pluralp.is_null());
+        assert_eq!(plural_eval(pluralp, 1), 0);
+        assert_eq!(plural_eval(pluralp, 5), 2);
+        assert_eq!(plural_eval(pluralp, 21), 0);
     }
 
     #[test]

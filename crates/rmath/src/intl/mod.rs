@@ -1,3 +1,4 @@
+#![warn(unused_unsafe)]
 //! GNU gettext internationalization (i18n) support.
 //!
 //! This module provides a Rust port of the GNU gettext `intl/` library,

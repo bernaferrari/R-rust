@@ -1,3 +1,4 @@
+#![warn(unused_unsafe)]
 //! Port of dcngettext.c -- Domain/charset-specific plural translation wrapper.
 //!
 //! Look up MSGID in the DOMAINNAME message catalog for the current CATEGORY
@@ -17,7 +18,7 @@ pub fn libintl_dcngettext(
     n: c_ulong,
     category: types::c_int,
 ) -> *mut c_char {
-    unsafe { crate::intl::dcigettext::libintl_dcigettext(domainname, msgid1, msgid2, n, category) }
+    crate::intl::dcigettext::libintl_dcigettext(domainname, msgid1, msgid2, n, category)
 }
 
 /// Alias for `libintl_dcngettext` (unprefixed, for compatibility).
@@ -28,7 +29,7 @@ pub fn dcngettext(
     n: c_ulong,
     category: types::c_int,
 ) -> *mut c_char {
-    unsafe { libintl_dcngettext(domainname, msgid1, msgid2, n, category) }
+    libintl_dcngettext(domainname, msgid1, msgid2, n, category)
 }
 
 #[cfg(test)]
@@ -38,24 +39,20 @@ mod tests {
     #[test]
     fn test_singular_returns_msgid1() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            let msgid1 = b"file\0" as *const u8 as *const c_char;
-            let msgid2 = b"files\0" as *const u8 as *const c_char;
-            let result =
-                libintl_dcngettext(std::ptr::null(), msgid1, msgid2, 1, types::LC_MESSAGES);
-            assert_eq!(result, msgid1 as *mut c_char);
-        }
+
+        let msgid1 = b"file\0" as *const u8 as *const c_char;
+        let msgid2 = b"files\0" as *const u8 as *const c_char;
+        let result = libintl_dcngettext(std::ptr::null(), msgid1, msgid2, 1, types::LC_MESSAGES);
+        assert_eq!(result, msgid1 as *mut c_char);
     }
 
     #[test]
     fn test_plural_no_catalog_returns_msgid1() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            let msgid1 = b"file\0" as *const u8 as *const c_char;
-            let msgid2 = b"files\0" as *const u8 as *const c_char;
-            let result =
-                libintl_dcngettext(std::ptr::null(), msgid1, msgid2, 5, types::LC_MESSAGES);
-            assert_eq!(result, msgid1 as *mut c_char);
-        }
+
+        let msgid1 = b"file\0" as *const u8 as *const c_char;
+        let msgid2 = b"files\0" as *const u8 as *const c_char;
+        let result = libintl_dcngettext(std::ptr::null(), msgid1, msgid2, 5, types::LC_MESSAGES);
+        assert_eq!(result, msgid1 as *mut c_char);
     }
 }

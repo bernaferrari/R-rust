@@ -1,5 +1,6 @@
 #![allow(unused_variables)]
 #![allow(unused_assignments)]
+#![warn(unused_unsafe)]
 //! Port of vasnprintf.c -- Extended printf implementation with automatic memory allocation.
 //!
 //! The C version is ~4677 lines and provides a full vasnprintf implementation
@@ -382,7 +383,7 @@ pub fn libintl_vasnprintf(
     format: *const c_char,
     _args: *mut c_void,
 ) -> *mut c_char {
-    unsafe { format_string(resultbuf, lengthp, format) }
+    format_string(resultbuf, lengthp, format)
 }
 
 // ---------------------------------------------------------------------------

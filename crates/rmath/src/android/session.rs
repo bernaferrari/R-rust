@@ -1,3 +1,4 @@
+#![warn(unused_unsafe)]
 use super::*;
 
 // ---------------------------------------------------------------------------
@@ -87,7 +88,7 @@ fn result_from_eval(
                 original,
             );
         }
-        if unsafe { crate::mainutils::errors::collect_warnings() } > 0 {
+        if crate::mainutils::errors::collect_warnings() > 0 {
             if let Some(block) = unsafe { crate::mainutils::errors::take_warnings_block() } {
                 captured.stderr.push_str(&block);
                 captured.interleaved.push_str(&block);
@@ -142,7 +143,7 @@ fn error_result_with_captured(
     let details = original.and_then(|owner| {
         with_output_authority(owner, || {
             let rendered = crate::mainutils::errors::try_last_rendered_message(&message);
-            let warnings = if unsafe { crate::mainutils::errors::collect_warnings() } > 0 {
+            let warnings = if crate::mainutils::errors::collect_warnings() > 0 {
                 unsafe { crate::mainutils::errors::take_warnings_block() }
             } else {
                 None

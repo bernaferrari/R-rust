@@ -1,3 +1,4 @@
+#![warn(unused_unsafe)]
 //! Port of printf.c -- Printf implementation with POSIX/XSI positional arguments.
 //!
 //! The C version provides formatted output functions that handle the `$` positional
@@ -76,11 +77,7 @@ fn libintl_vasnprintf(
 ///
 /// If the format string contains '$' (positional arguments), uses the internal
 /// vasnprintf implementation. Otherwise, delegates to the system vfprintf.
-pub fn libintl_vfprintf(
-    _stream: *mut c_void,
-    format: *const c_char,
-    args: *mut c_void,
-) -> c_int {
+pub fn libintl_vfprintf(_stream: *mut c_void, format: *const c_char, args: *mut c_void) -> c_int {
     unsafe {
         // Check if format contains '$'.
         let has_dollar = if !format.is_null() {
@@ -127,15 +124,11 @@ pub fn libintl_vfprintf(
 
 /// Write formatted output to stdout.
 pub fn libintl_vprintf(format: *const c_char, args: *mut c_void) -> c_int {
-    unsafe { libintl_vfprintf(ptr::null_mut(), format, args) }
+    libintl_vfprintf(ptr::null_mut(), format, args)
 }
 
 /// Write formatted output to a string buffer.
-pub fn libintl_vsprintf(
-    resultbuf: *mut c_char,
-    format: *const c_char,
-    args: *mut c_void,
-) -> c_int {
+pub fn libintl_vsprintf(resultbuf: *mut c_char, format: *const c_char, args: *mut c_void) -> c_int {
     unsafe {
         let mut length: usize = 0;
         let result = libintl_vasnprintf(resultbuf, &mut length, format, args);
@@ -237,11 +230,7 @@ pub fn libintl_printf(format: *const c_char, _args: *const c_void) -> c_int {
 }
 
 /// Alias for `libintl_fprintf`.
-pub fn libintl_fprintf(
-    _stream: *mut c_void,
-    format: *const c_char,
-    _args: *const c_void,
-) -> c_int {
+pub fn libintl_fprintf(_stream: *mut c_void, format: *const c_char, _args: *const c_void) -> c_int {
     let _ = format;
     -1
 }
@@ -308,11 +297,8 @@ mod tests {
 
     #[test]
     fn test_vasnprintf_null_format() {
-        unsafe {
-            let mut length: usize = 0;
-            let result =
-                libintl_vasnprintf(ptr::null_mut(), &mut length, ptr::null(), ptr::null_mut());
-            assert!(result.is_null());
-        }
+        let mut length: usize = 0;
+        let result = libintl_vasnprintf(ptr::null_mut(), &mut length, ptr::null(), ptr::null_mut());
+        assert!(result.is_null());
     }
 }

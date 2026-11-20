@@ -1,3 +1,4 @@
+#![warn(unused_unsafe)]
 //! Binary search tree (red-black tree) implementation.
 //!
 //! Ported from `tsearch.c` in the GNU gettext `intl/` library (originally
@@ -497,20 +498,15 @@ fn trecurse(vroot: *const c_void, action: action_fn_t, level: c_int) {
 ///
 /// For non-leaf nodes, `action` is called three times (preorder, postorder,
 /// endorder).  For leaf nodes, `action` is called once (leaf).
-pub fn twalk(
-    vroot: *const c_void,
-    action: Option<extern "C" fn(*const c_void, VISIT, c_int)>,
-) {
-    unsafe {
-        if vroot.is_null() {
-            return;
-        }
-        let action = match action {
-            Some(f) => f,
-            None => return,
-        };
-        trecurse(vroot, action, 0);
+pub fn twalk(vroot: *const c_void, action: Option<extern "C" fn(*const c_void, VISIT, c_int)>) {
+    if vroot.is_null() {
+        return;
     }
+    let action = match action {
+        Some(f) => f,
+        None => return,
+    };
+    trecurse(vroot, action, 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -539,16 +535,14 @@ fn tdestroy_recurse(root: *mut node_t, freefct: free_fn_t) {
 /// Destroy an entire tree, calling `freefct` on each node's key and then
 /// freeing the node itself.
 pub fn tdestroy(vroot: *mut c_void, freefct: Option<extern "C" fn(*mut c_void)>) {
-    unsafe {
-        if vroot.is_null() {
-            return;
-        }
-        let freefct = match freefct {
-            Some(f) => f,
-            None => return,
-        };
-        tdestroy_recurse(vroot as *mut node_t, freefct);
+    if vroot.is_null() {
+        return;
     }
+    let freefct = match freefct {
+        Some(f) => f,
+        None => return,
+    };
+    tdestroy_recurse(vroot as *mut node_t, freefct);
 }
 
 // ---------------------------------------------------------------------------
@@ -577,15 +571,13 @@ mod tests {
 
     #[test]
     fn test_tsearch_null_rootp() {
-        unsafe {
-            let val: i32 = 42;
-            let result = tsearch(
-                &val as *const i32 as *const c_void,
-                ptr::null_mut(),
-                Some(int_compar),
-            );
-            assert!(result.is_null());
-        }
+        let val: i32 = 42;
+        let result = tsearch(
+            &val as *const i32 as *const c_void,
+            ptr::null_mut(),
+            Some(int_compar),
+        );
+        assert!(result.is_null());
     }
 
     #[test]
@@ -738,29 +730,25 @@ mod tests {
 
     #[test]
     fn test_tfind_null_rootp() {
-        unsafe {
-            let val: i32 = 42;
-            let result = tfind(
-                &val as *const i32 as *const c_void,
-                ptr::null(),
-                Some(int_compar),
-            );
-            assert!(result.is_null());
-        }
+        let val: i32 = 42;
+        let result = tfind(
+            &val as *const i32 as *const c_void,
+            ptr::null(),
+            Some(int_compar),
+        );
+        assert!(result.is_null());
     }
 
     #[test]
     fn test_tdelete_nonexistent() {
-        unsafe {
-            let rootp = make_root();
-            let val: i32 = 999;
-            let result = tdelete(
-                &val as *const i32 as *const c_void,
-                rootp as *mut c_void,
-                Some(int_compar),
-            );
-            assert!(result.is_null());
-            drop_root(rootp);
-        }
+        let rootp = make_root();
+        let val: i32 = 999;
+        let result = tdelete(
+            &val as *const i32 as *const c_void,
+            rootp as *mut c_void,
+            Some(int_compar),
+        );
+        assert!(result.is_null());
+        drop_root(rootp);
     }
 }

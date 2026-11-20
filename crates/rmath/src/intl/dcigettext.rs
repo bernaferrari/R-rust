@@ -1,3 +1,4 @@
+#![warn(unused_unsafe)]
 //! Port of dcigettext.c -- Core gettext lookup logic.
 //!
 //! This is the main implementation file for GNU gettext. It implements
@@ -590,60 +591,52 @@ mod tests {
 
     #[test]
     fn test_dcigettext_null_msgid() {
-        unsafe {
-            let result = libintl_dcigettext(ptr::null(), ptr::null(), ptr::null(), 1, LC_MESSAGES);
-            assert!(result.is_null());
-        }
+        let result = libintl_dcigettext(ptr::null(), ptr::null(), ptr::null(), 1, LC_MESSAGES);
+        assert!(result.is_null());
     }
 
     #[test]
     fn test_dcigettext_empty_msgid() {
-        unsafe {
-            let msgid = b"\0" as *const u8 as *const c_char;
-            let result = libintl_dcigettext(ptr::null(), msgid, ptr::null(), 1, LC_MESSAGES);
-            assert_eq!(result, msgid as *mut c_char);
-        }
+        let msgid = b"\0" as *const u8 as *const c_char;
+        let result = libintl_dcigettext(ptr::null(), msgid, ptr::null(), 1, LC_MESSAGES);
+        assert_eq!(result, msgid as *mut c_char);
     }
 
     #[test]
     fn test_dcigettext_returns_msgid() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            let msgid = b"hello world\0" as *const u8 as *const c_char;
-            let result = libintl_dcigettext(
-                b"nonexistent_domain\0" as *const u8 as *const c_char,
-                msgid,
-                ptr::null(),
-                1,
-                LC_MESSAGES,
-            );
-            // With no catalog loaded, should return msgid.
-            assert_eq!(result, msgid as *mut c_char);
-        }
+
+        let msgid = b"hello world\0" as *const u8 as *const c_char;
+        let result = libintl_dcigettext(
+            b"nonexistent_domain\0" as *const u8 as *const c_char,
+            msgid,
+            ptr::null(),
+            1,
+            LC_MESSAGES,
+        );
+        // With no catalog loaded, should return msgid.
+        assert_eq!(result, msgid as *mut c_char);
     }
 
     #[test]
     fn test_dcigettext_plural() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            let msgid1 = b"file\0" as *const u8 as *const c_char;
-            let msgid2 = b"files\0" as *const u8 as *const c_char;
-            let result = libintl_dcigettext(ptr::null(), msgid1, msgid2, 1, LC_MESSAGES);
-            // With no catalog loaded, should return msgid1 for n=1.
-            assert_eq!(result, msgid1 as *mut c_char);
-        }
+
+        let msgid1 = b"file\0" as *const u8 as *const c_char;
+        let msgid2 = b"files\0" as *const u8 as *const c_char;
+        let result = libintl_dcigettext(ptr::null(), msgid1, msgid2, 1, LC_MESSAGES);
+        // With no catalog loaded, should return msgid1 for n=1.
+        assert_eq!(result, msgid1 as *mut c_char);
     }
 
     #[test]
     fn test_c_streq() {
-        unsafe {
-            let a = b"hello\0".as_ptr() as *const c_char;
-            let b = b"hello\0".as_ptr() as *const c_char;
-            let c = b"world\0".as_ptr() as *const c_char;
-            assert!(c_streq(a, b));
-            assert!(!c_streq(a, c));
-            assert!(c_streq(ptr::null(), ptr::null()));
-            assert!(!c_streq(a, ptr::null()));
-        }
+        let a = b"hello\0".as_ptr() as *const c_char;
+        let b = b"hello\0".as_ptr() as *const c_char;
+        let c = b"world\0".as_ptr() as *const c_char;
+        assert!(c_streq(a, b));
+        assert!(!c_streq(a, c));
+        assert!(c_streq(ptr::null(), ptr::null()));
+        assert!(!c_streq(a, ptr::null()));
     }
 }

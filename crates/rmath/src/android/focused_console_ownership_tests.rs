@@ -1,3 +1,4 @@
+#![warn(unused_unsafe)]
 //! Focused production console ownership paths without full base bootstrap.
 //! The existing full-base console cases and GNU oracle fixtures remain separate.
 

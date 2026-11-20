@@ -1,4 +1,5 @@
 #![allow(non_camel_case_types)]
+#![warn(unused_unsafe)]
 //! Internal types for the GNU gettext internationalization subsystem.
 //!
 //! Ported from the C headers: gettextP.h, plural-exp.h, loadinfo.h, gmo.h.

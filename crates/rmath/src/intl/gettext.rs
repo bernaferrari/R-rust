@@ -1,3 +1,4 @@
+#![warn(unused_unsafe)]
 //! Port of gettext.c -- Translation wrapper.
 //!
 //! Look up MSGID in the current default message catalog for the current
@@ -17,14 +18,12 @@ use crate::intl::types;
 /// # Safety
 /// `msgid` must be a valid pointer to a NUL-terminated C string.
 pub fn libintl_gettext(msgid: *const c_char) -> *mut c_char {
-    unsafe {
-        crate::intl::dcgettext::libintl_dcgettext(std::ptr::null(), msgid, types::LC_MESSAGES)
-    }
+    crate::intl::dcgettext::libintl_dcgettext(std::ptr::null(), msgid, types::LC_MESSAGES)
 }
 
 /// Alias for `libintl_gettext` (unprefixed, for compatibility).
 pub fn gettext(msgid: *const c_char) -> *mut c_char {
-    unsafe { libintl_gettext(msgid) }
+    libintl_gettext(msgid)
 }
 
 #[cfg(test)]
@@ -34,10 +33,9 @@ mod tests {
     #[test]
     fn test_returns_msgid() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            let msgid = b"hello world\0" as *const u8 as *const c_char;
-            let result = libintl_gettext(msgid);
-            assert_eq!(result, msgid as *mut c_char);
-        }
+
+        let msgid = b"hello world\0" as *const u8 as *const c_char;
+        let result = libintl_gettext(msgid);
+        assert_eq!(result, msgid as *mut c_char);
     }
 }

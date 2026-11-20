@@ -1,3 +1,4 @@
+#![warn(unused_unsafe)]
 //! Rust port of R's graphapp GUI library.
 //!
 //! GraphApp is a cross-platform GUI library originally written in C,

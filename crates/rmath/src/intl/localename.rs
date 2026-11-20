@@ -1,3 +1,4 @@
+#![warn(unused_unsafe)]
 //! Port of localename.c -- Locale name handling.
 //!
 //! Determines the name of the currently selected locale for a given category.
@@ -55,19 +56,17 @@ fn category_env_name(category: c_int) -> &'static str {
 ///
 /// Follows the POSIX precedence: LC_ALL, LC_xxx, LANG.
 fn get_locale_from_env(category: c_int) -> *const c_char {
-    unsafe {
-        if let Some(locale) = alloc_env_var("LC_ALL") {
-            return locale;
-        }
-        if let Some(locale) = alloc_env_var(category_env_name(category)) {
-            return locale;
-        }
-        if let Some(locale) = alloc_env_var("LANG") {
-            return locale;
-        }
-
-        c_strdup(b"C\0".as_ptr() as *const c_char)
+    if let Some(locale) = alloc_env_var("LC_ALL") {
+        return locale;
     }
+    if let Some(locale) = alloc_env_var(category_env_name(category)) {
+        return locale;
+    }
+    if let Some(locale) = alloc_env_var("LANG") {
+        return locale;
+    }
+
+    c_strdup(b"C\0".as_ptr() as *const c_char)
 }
 
 // ---------------------------------------------------------------------------
@@ -76,11 +75,9 @@ fn get_locale_from_env(category: c_int) -> *const c_char {
 
 #[cfg(target_os = "macos")]
 fn get_locale_from_cf(category: c_int) -> *const c_char {
-    unsafe {
-        // On macOS, we could query CFLocaleCopyCurrent() for the locale.
-        // For the standalone port, we fall through to the environment.
-        get_locale_from_env(category)
-    }
+    // On macOS, we could query CFLocaleCopyCurrent() for the locale.
+    // For the standalone port, we fall through to the environment.
+    get_locale_from_env(category)
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -99,7 +96,7 @@ fn get_locale_from_cf(category: c_int) -> *const c_char {
 /// # Safety
 /// The caller owns the returned pointer and must release it with `c_free`.
 pub fn _nl_locale_name(category: c_int) -> *const c_char {
-    unsafe { get_locale_from_cf(category) }
+    get_locale_from_cf(category)
 }
 
 /// Canonicalize a locale name.
@@ -194,10 +191,8 @@ mod tests {
 
     #[test]
     fn test_canonicalize_null() {
-        unsafe {
-            _nl_locale_name_canonicalize(ptr::null_mut());
-            // Should not crash.
-        }
+        _nl_locale_name_canonicalize(ptr::null_mut());
+        // Should not crash.
     }
 
     #[test]

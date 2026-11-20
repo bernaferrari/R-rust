@@ -1,5 +1,6 @@
 #![allow(non_snake_case, non_upper_case_globals, dead_code)]
 #![allow(clippy::missing_safety_doc)]
+#![warn(unused_unsafe)]
 
 //! Drawing context management for GraphApp.
 //!
@@ -74,10 +75,9 @@ pub fn fix_brush(dc: *mut c_void, obj: drawing, brush: *mut c_void) {
     if obj.is_null() || dc.is_null() {
         return;
     }
-    unsafe {
-        if get_context(obj).is_null() {
-            add_context(obj, dc, brush);
-        }
+
+    if get_context(obj).is_null() {
+        add_context(obj, dc, brush);
     }
 }
 
@@ -92,17 +92,15 @@ mod tests {
         let dc = 2usize as *mut c_void;
         let old = 3usize as *mut c_void;
 
-        unsafe {
-            init_contexts();
-            add_context(obj, dc, old);
-            assert_eq!(get_context(obj), dc);
+        init_contexts();
+        add_context(obj, dc, old);
+        assert_eq!(get_context(obj), dc);
 
-            remove_context(obj);
-            assert_eq!(get_context(obj), old);
+        remove_context(obj);
+        assert_eq!(get_context(obj), old);
 
-            del_context(obj);
-            assert!(get_context(obj).is_null());
-        }
+        del_context(obj);
+        assert!(get_context(obj).is_null());
     }
 
     #[test]
@@ -112,16 +110,14 @@ mod tests {
         let dc = 5usize as *mut c_void;
         let brush = 6usize as *mut c_void;
 
-        unsafe {
-            init_contexts();
-            fix_brush(dc, obj, brush);
-            assert_eq!(get_context(obj), dc);
+        init_contexts();
+        fix_brush(dc, obj, brush);
+        assert_eq!(get_context(obj), dc);
 
-            remove_context(obj);
-            assert_eq!(get_context(obj), brush);
+        remove_context(obj);
+        assert_eq!(get_context(obj), brush);
 
-            finish_contexts();
-            assert!(get_context(obj).is_null());
-        }
+        finish_contexts();
+        assert!(get_context(obj).is_null());
     }
 }

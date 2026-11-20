@@ -1,4 +1,5 @@
 #![allow(deprecated)] // translated tests exercise the Sexp compat setters
+#![warn(unused_unsafe)]
 use super::tests::{literal_string_vector, string_vector, unique_test_root};
 use super::*;
 #[test]

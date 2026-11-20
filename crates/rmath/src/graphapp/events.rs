@@ -1,5 +1,6 @@
 #![allow(non_snake_case, non_upper_case_globals, dead_code)]
 #![allow(clippy::missing_safety_doc)]
+#![warn(unused_unsafe)]
 
 //! Event handling for GraphApp.
 //!
@@ -53,9 +54,8 @@ pub fn doevent() -> c_int {
     });
 
     if let Some(timeout) = timeout {
-        unsafe {
-            timeout(data);
-        }
+        timeout(data);
+
         1
     } else {
         0
@@ -126,26 +126,23 @@ mod tests {
     #[test]
     fn timer_callback_runs_once_per_scheduled_event() {
         let _session = crate::sexp::session::RSession::new_for_gc_tests();
-        unsafe {
-            init_events();
-            TIMER_CALLS.with(|calls| calls.set(0));
 
-            settimerfn(Some(record_timer), std::ptr::null_mut());
-            assert_eq!(peekevent(), 0);
+        init_events();
+        TIMER_CALLS.with(|calls| calls.set(0));
 
-            assert_eq!(settimer(1), 1);
-            assert_eq!(peekevent(), 1);
-            assert_eq!(doevent(), 1);
-            assert_eq!(peekevent(), 0);
+        settimerfn(Some(record_timer), std::ptr::null_mut());
+        assert_eq!(peekevent(), 0);
 
-            TIMER_CALLS.with(|calls| assert_eq!(calls.get(), 1));
-        }
+        assert_eq!(settimer(1), 1);
+        assert_eq!(peekevent(), 1);
+        assert_eq!(doevent(), 1);
+        assert_eq!(peekevent(), 0);
+
+        TIMER_CALLS.with(|calls| assert_eq!(calls.get(), 1));
     }
 
     #[test]
     fn currenttime_is_nonzero() {
-        unsafe {
-            assert!(currenttime() > 0);
-        }
+        assert!(currenttime() > 0);
     }
 }

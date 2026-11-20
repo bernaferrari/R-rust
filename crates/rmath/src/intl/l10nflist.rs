@@ -1,3 +1,4 @@
+#![warn(unused_unsafe)]
 //! Port of l10nflist.c -- Locale file list management.
 //!
 //! Constructs locale file pathnames and manages the list of loaded locale
@@ -442,28 +443,26 @@ mod tests {
 
     #[test]
     fn test_make_l10nflist_search() {
-        unsafe {
-            let mut list: *mut loaded_l10nfile = ptr::null_mut();
-            let lang = b"en\0";
-            let file = b"messages.mo\0";
+        let mut list: *mut loaded_l10nfile = ptr::null_mut();
+        let lang = b"en\0";
+        let file = b"messages.mo\0";
 
-            // Search only (do_allocate = 0).
-            let result = _nl_make_l10nflist(
-                &mut list,
-                ptr::null(),
-                0,
-                0,
-                lang.as_ptr() as *const c_char,
-                ptr::null(),
-                ptr::null(),
-                ptr::null(),
-                ptr::null(),
-                file.as_ptr() as *const c_char,
-                0,
-            );
-            // Should not find anything since the list is empty.
-            assert!(result.is_null());
-        }
+        // Search only (do_allocate = 0).
+        let result = _nl_make_l10nflist(
+            &mut list,
+            ptr::null(),
+            0,
+            0,
+            lang.as_ptr() as *const c_char,
+            ptr::null(),
+            ptr::null(),
+            ptr::null(),
+            ptr::null(),
+            file.as_ptr() as *const c_char,
+            0,
+        );
+        // Should not find anything since the list is empty.
+        assert!(result.is_null());
     }
 
     #[test]

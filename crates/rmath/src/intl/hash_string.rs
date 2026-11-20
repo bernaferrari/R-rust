@@ -1,3 +1,4 @@
+#![warn(unused_unsafe)]
 //! Port of hash-string.c -- String hashing function (PJW hash).
 //!
 //! Implements the so-called `hashpjw' function by P.J. Weinberger
@@ -40,12 +41,12 @@ pub fn __hash_string(str_param: *const c_char) -> u32 {
 
 /// Alias for `__hash_string` (non-prefixed version).
 pub fn hash_string(str_param: *const c_char) -> u32 {
-    unsafe { __hash_string(str_param) }
+    __hash_string(str_param)
 }
 
 /// Alias for `__hash_string` (libintl-prefixed version).
 pub fn libintl_hash_string(str_param: *const c_char) -> u32 {
-    unsafe { __hash_string(str_param) }
+    __hash_string(str_param)
 }
 
 #[cfg(test)]
@@ -54,37 +55,29 @@ mod tests {
 
     #[test]
     fn test_empty_string() {
-        unsafe {
-            let s = b"\0" as *const u8 as *const c_char;
-            assert_eq!(__hash_string(s), 0);
-        }
+        let s = b"\0" as *const u8 as *const c_char;
+        assert_eq!(__hash_string(s), 0);
     }
 
     #[test]
     fn test_single_char() {
-        unsafe {
-            let s = b"a\0" as *const u8 as *const c_char;
-            // hval = 0 << 4 + 'a' = 97, no g overflow
-            assert_eq!(__hash_string(s), 97);
-        }
+        let s = b"a\0" as *const u8 as *const c_char;
+        // hval = 0 << 4 + 'a' = 97, no g overflow
+        assert_eq!(__hash_string(s), 97);
     }
 
     #[test]
     fn test_deterministic() {
-        unsafe {
-            let s = b"hello\0" as *const u8 as *const c_char;
-            let h1 = __hash_string(s);
-            let h2 = __hash_string(s);
-            assert_eq!(h1, h2);
-        }
+        let s = b"hello\0" as *const u8 as *const c_char;
+        let h1 = __hash_string(s);
+        let h2 = __hash_string(s);
+        assert_eq!(h1, h2);
     }
 
     #[test]
     fn test_different_strings_different_hashes() {
-        unsafe {
-            let s1 = b"hello\0" as *const u8 as *const c_char;
-            let s2 = b"world\0" as *const u8 as *const c_char;
-            assert_ne!(__hash_string(s1), __hash_string(s2));
-        }
+        let s1 = b"hello\0" as *const u8 as *const c_char;
+        let s2 = b"world\0" as *const u8 as *const c_char;
+        assert_ne!(__hash_string(s1), __hash_string(s2));
     }
 }

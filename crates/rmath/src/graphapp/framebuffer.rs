@@ -1,5 +1,6 @@
 #![allow(non_snake_case, non_upper_case_globals, dead_code)]
 #![allow(clippy::missing_safety_doc)]
+#![warn(unused_unsafe)]
 
 //! In-memory framebuffer for headless rendering.
 //!
@@ -621,11 +622,7 @@ pub fn get_framebuffer(obj: objptr) -> Option<MutPtr<Framebuffer>> {
     }
 }
 
-pub fn attach_framebuffer(
-    obj: objptr,
-    width: c_int,
-    height: c_int,
-) -> Option<*mut Framebuffer> {
+pub fn attach_framebuffer(obj: objptr, width: c_int, height: c_int) -> Option<*mut Framebuffer> {
     unsafe {
         if obj.is_null() {
             return None;

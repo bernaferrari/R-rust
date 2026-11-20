@@ -1,3 +1,4 @@
+#![warn(unused_unsafe)]
 //! Port of explodename.c -- Locale name parsing.
 //!
 //! Split a locale name into its pieces: language, modifier, territory, codeset.
@@ -334,26 +335,24 @@ mod tests {
 
     #[test]
     fn test_empty_language_returns_zero() {
-        unsafe {
-            let mut name = b"\0".to_vec();
-            let mut lang: *const c_char = std::ptr::null();
-            let mut mod_: *const c_char = std::ptr::null();
-            let mut terr: *const c_char = std::ptr::null();
-            let mut cs: *const c_char = std::ptr::null();
-            let mut norm_cs: *const c_char = std::ptr::null();
+        let mut name = b"\0".to_vec();
+        let mut lang: *const c_char = std::ptr::null();
+        let mut mod_: *const c_char = std::ptr::null();
+        let mut terr: *const c_char = std::ptr::null();
+        let mut cs: *const c_char = std::ptr::null();
+        let mut norm_cs: *const c_char = std::ptr::null();
 
-            let mask = _nl_explode_name(
-                name.as_mut_ptr() as *mut c_char,
-                &mut lang,
-                &mut mod_,
-                &mut terr,
-                &mut cs,
-                &mut norm_cs,
-            );
+        let mask = _nl_explode_name(
+            name.as_mut_ptr() as *mut c_char,
+            &mut lang,
+            &mut mod_,
+            &mut terr,
+            &mut cs,
+            &mut norm_cs,
+        );
 
-            // Empty name: language == cp, so cp is set to end of string, mask stays 0.
-            assert_eq!(mask, 0);
-        }
+        // Empty name: language == cp, so cp is set to end of string, mask stays 0.
+        assert_eq!(mask, 0);
     }
 
     #[test]

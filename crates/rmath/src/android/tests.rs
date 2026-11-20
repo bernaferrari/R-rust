@@ -1,4 +1,5 @@
 #![allow(deprecated)] // translated tests exercise the Sexp compat setters
+#![warn(unused_unsafe)]
 use super::*;
 use std::path::Path;
 
@@ -722,24 +723,24 @@ fn test_typed_values_expose_raw_and_complex_without_print_parsing() {
 
     let mut arena = crate::sexp::memory::RArena::new();
     let complex = unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ Sexp::from_raw(arena.alloc_vector(SEXPTYPE::CPLXSXP, 2)) }.unwrap();
-    unsafe {
-        /* SAFETY: fixture has no outstanding payload borrows. */
-        complex
-            .clone()
-            .try_set_complex_elt(0, crate::sexp::Rcomplex { r: 1.0, i: -2.0 })
-    }
-    .unwrap();
-    unsafe {
-        /* SAFETY: fixture has no outstanding payload borrows. */
-        complex.clone().try_set_complex_elt(
+
+    /* SAFETY: fixture has no outstanding payload borrows. */
+    complex
+        .clone()
+        .try_set_complex_elt(0, crate::sexp::Rcomplex { r: 1.0, i: -2.0 })
+        .unwrap();
+
+    /* SAFETY: fixture has no outstanding payload borrows. */
+    complex
+        .clone()
+        .try_set_complex_elt(
             1,
             crate::sexp::Rcomplex {
                 r: crate::sexp::NA_REAL,
                 i: 0.0,
             },
         )
-    }
-    .unwrap();
+        .unwrap();
 
     assert_eq!(
         RValue::from_sexp(complex),
@@ -1039,7 +1040,7 @@ fn bessel_workspace_remains_charged_during_warning_gc() {
         let owner = unsafe { crate::sexp::owner::OwnerToken::current().unwrap() };
         let bytes = owner.with_arena(|arena| arena.workspace_bytes()).unwrap();
         OBSERVED.with(|value| value.set(bytes));
-        unsafe { crate::sexp::gengc::full_gc() };
+        crate::sexp::gengc::full_gc();
         assert_eq!(
             owner.with_arena(|arena| arena.workspace_bytes()).unwrap(),
             bytes
@@ -1092,7 +1093,7 @@ fn bessel_k_warning_reentry_keeps_session_workspace_charged() {
         let owner = unsafe { crate::sexp::owner::OwnerToken::current().unwrap() };
         let bytes = owner.with_arena(|arena| arena.workspace_bytes()).unwrap();
         EVENTS.with(|events| events.borrow_mut().push((message.to_owned(), bytes)));
-        unsafe { crate::sexp::gengc::full_gc() };
+        crate::sexp::gengc::full_gc();
         assert_eq!(crate::special::bessel_j::bessel_j(0.0, 0.0), 1.0);
         assert_eq!(
             owner.with_arena(|arena| arena.workspace_bytes()).unwrap(),

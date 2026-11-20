@@ -1,3 +1,4 @@
+#![warn(unused_unsafe)]
 //! Port of printf-parse.c -- Printf format string parsing.
 //!
 //! Parses a printf format string into a structured representation
@@ -98,11 +99,7 @@ fn size_overflow_p(size: usize) -> bool {
 /// # Safety
 /// `format` must be a valid pointer to a NUL-terminated C string.
 /// `d` and `a` must be valid pointers.
-pub fn printf_parse(
-    format: *const c_char,
-    d: *mut char_directives,
-    a: *mut arguments,
-) -> c_int {
+pub fn printf_parse(format: *const c_char, d: *mut char_directives, a: *mut arguments) -> c_int {
     unsafe {
         if format.is_null() || d.is_null() || a.is_null() {
             return -1;
@@ -735,23 +732,21 @@ mod tests {
 
     #[test]
     fn test_parse_simple_string() {
-        unsafe {
-            let fmt = b"hello world\0".as_ptr() as *const c_char;
-            let mut dirs = char_directives {
-                count: 0,
-                dir: ptr::null_mut(),
-                max_width_length: 0,
-                max_precision_length: 0,
-            };
-            let mut args = arguments {
-                count: 0,
-                arg: ptr::null_mut(),
-            };
-            let result = printf_parse(fmt, &mut dirs, &mut args);
-            assert_eq!(result, 0);
-            assert_eq!(dirs.count, 0);
-            assert_eq!(args.count, 0);
-        }
+        let fmt = b"hello world\0".as_ptr() as *const c_char;
+        let mut dirs = char_directives {
+            count: 0,
+            dir: ptr::null_mut(),
+            max_width_length: 0,
+            max_precision_length: 0,
+        };
+        let mut args = arguments {
+            count: 0,
+            arg: ptr::null_mut(),
+        };
+        let result = printf_parse(fmt, &mut dirs, &mut args);
+        assert_eq!(result, 0);
+        assert_eq!(dirs.count, 0);
+        assert_eq!(args.count, 0);
     }
 
     #[test]
@@ -801,23 +796,21 @@ mod tests {
 
     #[test]
     fn test_parse_width_and_precision() {
-        unsafe {
-            let fmt = b"%10.5d\0".as_ptr() as *const c_char;
-            let mut dirs = char_directives {
-                count: 0,
-                dir: ptr::null_mut(),
-                max_width_length: 0,
-                max_precision_length: 0,
-            };
-            let mut args = arguments {
-                count: 0,
-                arg: ptr::null_mut(),
-            };
-            let result = printf_parse(fmt, &mut dirs, &mut args);
-            assert_eq!(result, 0);
-            assert_eq!(dirs.count, 1);
-            assert_eq!(dirs.max_width_length, 2);
-        }
+        let fmt = b"%10.5d\0".as_ptr() as *const c_char;
+        let mut dirs = char_directives {
+            count: 0,
+            dir: ptr::null_mut(),
+            max_width_length: 0,
+            max_precision_length: 0,
+        };
+        let mut args = arguments {
+            count: 0,
+            arg: ptr::null_mut(),
+        };
+        let result = printf_parse(fmt, &mut dirs, &mut args);
+        assert_eq!(result, 0);
+        assert_eq!(dirs.count, 1);
+        assert_eq!(dirs.max_width_length, 2);
     }
 
     #[test]

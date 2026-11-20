@@ -1,3 +1,4 @@
+#![warn(unused_unsafe)]
 //! Android embedding layer for the crates R interpreter.
 //!
 //! This module provides a clean, safe API surface for embedding the R

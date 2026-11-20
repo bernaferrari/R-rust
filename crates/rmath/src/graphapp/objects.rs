@@ -1,5 +1,6 @@
 #![allow(non_snake_case, non_upper_case_globals, dead_code)]
 #![allow(clippy::missing_safety_doc)]
+#![warn(unused_unsafe)]
 
 //! Object management for GraphApp.
 //!
@@ -353,14 +354,12 @@ pub fn tree_search(top: object, handle: *mut c_void, id: c_int, key: c_int) -> o
 
 /// Find an object in the tree.
 pub fn find_object(handle: *mut c_void, id: c_int, key: c_int) -> object {
-    unsafe {
-        tree_search(
-            with_graphapp_runtime(|runtime| runtime.objects.base_object),
-            handle,
-            id,
-            key,
-        )
-    }
+    tree_search(
+        with_graphapp_runtime(|runtime| runtime.objects.base_object),
+        handle,
+        id,
+        key,
+    )
 }
 
 /// Remove a menu item from the hierarchy.
@@ -395,12 +394,12 @@ pub fn finish_objects() {
 
 /// Find next valid sibling (visible, enabled, not a label).
 pub fn find_next_valid_sibling(obj: object) -> object {
-    unsafe { find_valid_sibling(obj, true) }
+    find_valid_sibling(obj, true)
 }
 
 /// Find previous valid sibling.
 pub fn find_prev_valid_sibling(obj: object) -> object {
-    unsafe { find_valid_sibling(obj, false) }
+    find_valid_sibling(obj, false)
 }
 
 fn find_valid_sibling(obj: object, next_dir: bool) -> object {
@@ -429,9 +428,7 @@ fn find_valid_sibling(obj: object, next_dir: bool) -> object {
 
 /// Delete an object (public API).
 pub fn delobj(obj: objptr) {
-    unsafe {
-        if !obj.is_null() {
-            decrease_refcount(obj);
-        }
+    if !obj.is_null() {
+        decrease_refcount(obj);
     }
 }

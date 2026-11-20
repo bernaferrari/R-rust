@@ -1,5 +1,6 @@
 #![allow(non_snake_case, non_upper_case_globals, dead_code)]
 #![allow(clippy::missing_safety_doc)]
+#![warn(unused_unsafe)]
 
 //! Image handling for GraphApp.
 //!
@@ -423,51 +424,47 @@ pub fn get_image_pixel(img: image, x: c_int, y: c_int) -> rgb {
 /// Get monochrome pixel value.
 #[allow(clippy::if_same_then_else)]
 pub fn get_monochrome_pixel(img: image, x: c_int, y: c_int) -> rgb {
-    unsafe {
-        let pixel = get_image_pixel(img, x, y);
-        if pixel == Transparent {
-            Transparent
+    let pixel = get_image_pixel(img, x, y);
+    if pixel == Transparent {
+        Transparent
+    } else {
+        // Simple threshold
+        let r = getred(pixel);
+        let g = getgreen(pixel);
+        let b = getblue(pixel);
+        let max = r.max(g).max(b);
+        let min = r.min(g).min(b);
+        if min > 0xE0 {
+            White
+        } else if max < 0x60 {
+            Black
         } else {
-            // Simple threshold
-            let r = getred(pixel);
-            let g = getgreen(pixel);
-            let b = getblue(pixel);
-            let max = r.max(g).max(b);
-            let min = r.min(g).min(b);
-            if min > 0xE0 {
-                White
-            } else if max < 0x60 {
-                Black
-            } else {
-                Black
-            }
+            Black
         }
     }
 }
 
 /// Get grey pixel value.
 pub fn get_grey_pixel(img: image, x: c_int, y: c_int) -> rgb {
-    unsafe {
-        let pixel = get_image_pixel(img, x, y);
-        if pixel == Transparent {
-            Transparent
+    let pixel = get_image_pixel(img, x, y);
+    if pixel == Transparent {
+        Transparent
+    } else {
+        let r = getred(pixel);
+        let g = getgreen(pixel);
+        let b = getblue(pixel);
+        let max = r.max(g).max(b);
+        let min = r.min(g).min(b);
+        if min > 0xE0 {
+            White
+        } else if max < 0x10 {
+            Black
+        } else if max < 0x60 {
+            DarkGrey
+        } else if max < 0xD0 {
+            Grey
         } else {
-            let r = getred(pixel);
-            let g = getgreen(pixel);
-            let b = getblue(pixel);
-            let max = r.max(g).max(b);
-            let min = r.min(g).min(b);
-            if min > 0xE0 {
-                White
-            } else if max < 0x10 {
-                Black
-            } else if max < 0x60 {
-                DarkGrey
-            } else if max < 0xD0 {
-                Grey
-            } else {
-                LightGrey
-            }
+            LightGrey
         }
     }
 }

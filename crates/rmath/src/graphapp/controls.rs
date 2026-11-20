@@ -1,5 +1,6 @@
 #![allow(non_snake_case, non_upper_case_globals, dead_code)]
 #![allow(clippy::missing_safety_doc)]
+#![warn(unused_unsafe)]
 
 //! Control management for GraphApp.
 //!
@@ -39,7 +40,7 @@ fn list_length(list: *const *const c_char) -> c_int {
 }
 
 fn alloc_drawstate(dest: drawing) -> drawstate {
-    let state = unsafe { memory::memalloc_bytes(std::mem::size_of::<drawstruct>()) as drawstate };
+    let state = memory::memalloc_bytes(std::mem::size_of::<drawstruct>()) as drawstate;
     if state.is_null() {
         return ptr::null_mut();
     }
@@ -51,12 +52,7 @@ fn alloc_drawstate(dest: drawing) -> drawstate {
     state
 }
 
-fn new_control_object(
-    kind: c_int,
-    text: *const c_char,
-    r: rect,
-    with_drawstate: bool,
-) -> control {
+fn new_control_object(kind: c_int, text: *const c_char, r: rect, with_drawstate: bool) -> control {
     unsafe {
         objects::init_objects();
         let parent = windows::get_current_window();
@@ -222,9 +218,7 @@ pub fn setim(c: control, fn_: imfn) {
 }
 
 pub fn clear(c: control) {
-    unsafe {
-        draw(c);
-    }
+    draw(c);
 }
 pub fn draw(c: control) {
     unsafe {
@@ -237,9 +231,7 @@ pub fn draw(c: control) {
     }
 }
 pub fn redraw(c: control) {
-    unsafe {
-        draw(c);
-    }
+    draw(c);
 }
 pub fn resize(c: control, r: rect) {
     unsafe {
@@ -472,7 +464,7 @@ pub fn parentwindow(c: control) -> window {
 }
 
 pub fn newcontrol(text: *const c_char, r: rect) -> control {
-    unsafe { new_control_object(ControlObject, text, r, false) }
+    new_control_object(ControlObject, text, r, false)
 }
 pub fn newdrawing(r: rect, fn_: drawfn) -> drawing {
     unsafe {
@@ -545,16 +537,14 @@ pub fn newradiobutton(text: *const c_char, r: rect, fn_: actionfn) -> radiobutto
     }
 }
 pub fn newradiogroup() -> radiogroup {
-    unsafe { new_control_object(RadiogroupObject, ptr::null(), rect::default(), false) }
+    new_control_object(RadiogroupObject, ptr::null(), rect::default(), false)
 }
 pub fn newscrollbar(r: rect, max: c_int, pagesize: c_int, _fn_: scrollfn) -> scrollbar {
-    unsafe {
-        let scrollbar = new_control_object(ScrollbarObject, ptr::null(), r, false);
-        if !scrollbar.is_null() {
-            changescrollbar(scrollbar, 0, max, pagesize);
-        }
-        scrollbar
+    let scrollbar = new_control_object(ScrollbarObject, ptr::null(), r, false);
+    if !scrollbar.is_null() {
+        changescrollbar(scrollbar, 0, max, pagesize);
     }
+    scrollbar
 }
 pub fn changescrollbar(s: scrollbar, where_: c_int, max: c_int, size: c_int) {
     unsafe {
@@ -581,7 +571,7 @@ pub fn newlabel(text: *const c_char, r: rect, alignment: c_int) -> label {
     }
 }
 pub fn newfield(text: *const c_char, r: rect) -> field {
-    unsafe { new_control_object(FieldObject, text, r, true) }
+    new_control_object(FieldObject, text, r, true)
 }
 pub fn newpassword(text: *const c_char, r: rect) -> field {
     unsafe {
@@ -593,20 +583,15 @@ pub fn newpassword(text: *const c_char, r: rect) -> field {
     }
 }
 pub fn newtextbox(text: *const c_char, r: rect) -> textbox {
-    unsafe { new_control_object(TextboxObject, text, r, true) }
+    new_control_object(TextboxObject, text, r, true)
 }
 pub fn newtextarea(text: *const c_char, r: rect) -> textbox {
-    unsafe { newtextbox(text, r) }
+    newtextbox(text, r)
 }
 pub fn newrichtextarea(text: *const c_char, r: rect) -> textbox {
-    unsafe { newtextbox(text, r) }
+    newtextbox(text, r)
 }
-pub fn newlistbox(
-    list: *const *const c_char,
-    r: rect,
-    _fn_: scrollfn,
-    dble: actionfn,
-) -> listbox {
+pub fn newlistbox(list: *const *const c_char, r: rect, _fn_: scrollfn, dble: actionfn) -> listbox {
     unsafe {
         let listbox = new_control_object(ListboxObject, first_list_item(list), r, false);
         if !listbox.is_null() {
@@ -635,12 +620,7 @@ pub fn newdropfield(list: *const *const c_char, r: rect, fn_: scrollfn) -> listb
         listbox
     }
 }
-pub fn newmultilist(
-    list: *const *const c_char,
-    r: rect,
-    fn_: scrollfn,
-    dble: actionfn,
-) -> listbox {
+pub fn newmultilist(list: *const *const c_char, r: rect, fn_: scrollfn, dble: actionfn) -> listbox {
     unsafe {
         let listbox = newlistbox(list, r, fn_, dble);
         if !listbox.is_null() {
@@ -748,11 +728,9 @@ pub fn undotext(_t: textbox) {}
 pub fn cuttext(_t: textbox) {}
 pub fn copytext(_t: textbox) {}
 pub fn cleartext(t: textbox) {
-    unsafe {
-        if !t.is_null() {
-            settext(t, ptr::null());
-            selecttext(t, 0, 0);
-        }
+    if !t.is_null() {
+        settext(t, ptr::null());
+        selecttext(t, 0, 0);
     }
 }
 pub fn pastetext(_t: textbox) {}
@@ -844,30 +822,28 @@ pub fn fontheight(f: font) -> c_int {
     unsafe { if f.is_null() { 0 } else { (*f).value.max(1) } }
 }
 pub fn fontascent(f: font) -> c_int {
-    let height = unsafe { fontheight(f) };
+    let height = fontheight(f);
     (height * 3) / 4
 }
 pub fn fontdescent(f: font) -> c_int {
-    unsafe { fontheight(f).saturating_sub(fontascent(f)) }
+    fontheight(f).saturating_sub(fontascent(f))
 }
 
 // Height alias
 pub fn getheight(f: font) -> c_int {
-    unsafe { fontheight(f) }
+    fontheight(f)
 }
 pub fn getdescent(f: font) -> c_int {
-    unsafe { fontdescent(f) }
+    fontdescent(f)
 }
 
 // Image control
 pub fn newbitmap(width: c_int, height: c_int, depth: c_int) -> bitmap {
-    unsafe { new_bitmap_object(width, height, depth) }
+    new_bitmap_object(width, height, depth)
 }
 pub fn loadbitmap(name: *const c_char) -> bitmap {
-    unsafe {
-        let img = loadimage(name);
-        imagetobitmap(img)
-    }
+    let img = loadimage(name);
+    imagetobitmap(img)
 }
 pub fn imagetobitmap(img: image) -> bitmap {
     unsafe {
@@ -883,14 +859,12 @@ pub fn imagetobitmap(img: image) -> bitmap {
     }
 }
 pub fn createbitmap(width: c_int, height: c_int, depth: c_int, data: *mut GAbyte) -> bitmap {
-    unsafe {
-        let bitmap = new_bitmap_object(width, height, depth);
-        set_bitmap_pixels(bitmap, data);
-        bitmap
-    }
+    let bitmap = new_bitmap_object(width, height, depth);
+    set_bitmap_pixels(bitmap, data);
+    bitmap
 }
 pub fn setbitmapdata(b: bitmap, data: *mut GAbyte) {
-    unsafe { set_bitmap_pixels(b, data) }
+    set_bitmap_pixels(b, data)
 }
 pub fn getbitmapdata(b: bitmap, data: *mut GAbyte) {
     unsafe {
@@ -931,21 +905,15 @@ pub fn newcursor(hotspot: point, img: image) -> cursor {
         cursor
     }
 }
-pub fn createcursor(
-    offset: point,
-    _white_mask: *mut GAbyte,
-    _black_shape: *mut GAbyte,
-) -> cursor {
-    unsafe { newcursor(offset, ptr::null_mut()) }
+pub fn createcursor(offset: point, _white_mask: *mut GAbyte, _black_shape: *mut GAbyte) -> cursor {
+    newcursor(offset, ptr::null_mut())
 }
 pub fn loadcursor(name: *const c_char) -> cursor {
-    unsafe {
-        let cursor = newcursor(point::default(), ptr::null_mut());
-        if !cursor.is_null() {
-            settext(cursor, name);
-        }
-        cursor
+    let cursor = newcursor(point::default(), ptr::null_mut());
+    if !cursor.is_null() {
+        settext(cursor, name);
     }
+    cursor
 }
 
 // Image load/save
@@ -1062,20 +1030,18 @@ mod tests {
 
     #[test]
     fn draw_ignores_hidden_controls() {
-        unsafe {
-            let (mut control, mut call) = make_control();
-            let control = &mut *control as control;
+        let (mut control, mut call) = make_control();
+        let control = &mut *control as control;
 
-            REDRAW_CALLS.with(|calls| calls.set(0));
-            call.redraw = Some(record_redraw);
+        REDRAW_CALLS.with(|calls| calls.set(0));
+        call.redraw = Some(record_redraw);
 
-            draw(control);
-            REDRAW_CALLS.with(|calls| assert_eq!(calls.get(), 0));
+        draw(control);
+        REDRAW_CALLS.with(|calls| assert_eq!(calls.get(), 0));
 
-            show_control(control);
-            draw(control);
-            REDRAW_CALLS.with(|calls| assert_eq!(calls.get(), 1));
-        }
+        show_control(control);
+        draw(control);
+        REDRAW_CALLS.with(|calls| assert_eq!(calls.get(), 1));
     }
 
     #[test]

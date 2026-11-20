@@ -1,3 +1,4 @@
+#![warn(unused_unsafe)]
 //! Domain finding logic for GNU gettext.
 //!
 //! Ported from `finddomain.c` in the GNU gettext `intl/` library.
@@ -247,13 +248,12 @@ mod tests {
     #[test]
     fn test_find_domain_null_locale() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            let dirname = b"/usr/share/locale\0".as_ptr() as *const c_char;
-            let domain = b"messages\0".as_ptr() as *const c_char;
-            let result = _nl_find_domain(dirname, ptr::null_mut(), domain, ptr::null_mut());
-            // With a null locale, explode_name returns 0, and we should
-            // get a non-null result when do_allocate is set.
-            assert!(!result.is_null());
-        }
+
+        let dirname = b"/usr/share/locale\0".as_ptr() as *const c_char;
+        let domain = b"messages\0".as_ptr() as *const c_char;
+        let result = _nl_find_domain(dirname, ptr::null_mut(), domain, ptr::null_mut());
+        // With a null locale, explode_name returns 0, and we should
+        // get a non-null result when do_allocate is set.
+        assert!(!result.is_null());
     }
 }
