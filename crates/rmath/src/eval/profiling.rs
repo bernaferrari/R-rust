@@ -1486,7 +1486,7 @@ fn doprof_null(_sig: c_int) {
 /// and explicit `R_WriteProfile` calls service the owning runtime, including on
 /// single-threaded Android hosts.
 #[cfg(not(target_arch = "wasm32"))]
-unsafe fn R_EndProfiling() {
+fn R_EndProfiling() {
     unsafe {
         with_profiling_state(|state| {
             state.profile_generation = state.profile_generation.wrapping_add(1);

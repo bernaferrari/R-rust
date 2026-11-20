@@ -38,7 +38,7 @@ pub(crate) fn read_operand(
     }
 }
 
-pub(crate) unsafe fn read_jump_target(
+pub(crate) fn read_jump_target(
     code_ptr: &[c_int],
     pc: &mut c_int,
     code_len: c_int,
