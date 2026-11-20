@@ -6,7 +6,7 @@ use super::*;
 
 /// R's `read.csv(file, header=TRUE, sep=",")` — read a CSV file (simplified).
 /// Returns a list (data.frame) of columns as REALSXP vectors.
-pub unsafe fn do_read_csv(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_read_csv(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let header = Rf_ScalarLogical(1);
         let _h = protect(header);
@@ -23,7 +23,7 @@ pub unsafe fn do_read_csv(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 /// R's `write.csv(x, file, row.names=TRUE)` — write a CSV file (simplified).
-pub unsafe fn do_write_csv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_write_csv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let file_arg = if CDR(args).is_null() || CDR(args) == R_NilValue() {
@@ -298,7 +298,7 @@ enum TableColClass {
     Infer,
 }
 
-unsafe fn parse_table_col_classes(arg: SEXP, col_names: &[String]) -> Vec<TableColClass> {
+fn parse_table_col_classes(arg: SEXP, col_names: &[String]) -> Vec<TableColClass> {
     unsafe {
         let ncols = col_names.len();
         let mut declared: Vec<Option<TableColClass>> = vec![None; ncols];
@@ -431,7 +431,7 @@ fn infer_table_col_class(fields: &[&TableField], na_strings: &[String]) -> Table
 /// separators/newlines inside quoted fields), comment characters,
 /// na.strings, colClasses (typed, "NULL" to skip, NA to infer), header
 /// handling, and blank-line skipping.
-pub unsafe fn do_read_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_read_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let named_only = usize::MAX;
         let file_arg = arg_by_name_or_position(args, &["file"], 0);
