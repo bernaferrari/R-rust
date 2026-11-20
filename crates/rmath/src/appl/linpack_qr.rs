@@ -20,100 +20,69 @@
  */
 
 use std::os::raw::c_int;
+use std::slice::{from_raw_parts, from_raw_parts_mut};
 
 // ---------------------------------------------------------------------------
 // BLAS helpers (local to this module)
 // ---------------------------------------------------------------------------
 
-fn daxpy(n: c_int, da: f64, dx: *const f64, incx: c_int, dy: *mut f64, incy: c_int) {
-    if n <= 0 || da == 0.0 {
+/// Compute dy = dy + da * dx element-wise over the overlapping prefix.
+fn daxpy(da: f64, dx: &[f64], dy: &mut [f64]) {
+    if da == 0.0 {
         return;
     }
-    unsafe {
-        let mut ix: isize = 0;
-        let mut iy: isize = 0;
-        // GNU builds the reference BLAS with default `-ffp-contract=fast`,
-        // fusing `dy += da*dx` into an FMA; mirror that arithmetic so that
-        // identical inputs (e.g. y equal to a model-matrix column) cancel
-        // exactly, as LINPACK's least-squares cancellation requires.
-        for _ in 0..n {
-            *dy.offset(iy) = da.mul_add(*dx.offset(ix), *dy.offset(iy));
-            ix += incx as isize;
-            iy += incy as isize;
-        }
+    // GNU builds the reference BLAS with default `-ffp-contract=fast`,
+    // fusing `dy += da*dx` into an FMA; mirror that arithmetic so that
+    // identical inputs (e.g. y equal to a model-matrix column) cancel
+    // exactly, as LINPACK's least-squares cancellation requires.
+    for (y, &x) in dy.iter_mut().zip(dx.iter()) {
+        *y = da.mul_add(x, *y);
     }
 }
 
-fn ddot(n: c_int, dx: *const f64, incx: c_int, dy: *const f64, incy: c_int) -> f64 {
+/// Compute the dot product of the overlapping prefixes of `dx` and `dy`.
+fn ddot(dx: &[f64], dy: &[f64]) -> f64 {
     let mut sum = 0.0f64;
-    if n <= 0 {
-        return sum;
-    }
-    unsafe {
-        let mut ix: isize = 0;
-        let mut iy: isize = 0;
-        // FMA-contracted accumulation, matching the reference BLAS compiled
-        // with `-ffp-contract=fast` (see daxpy note above).
-        for _ in 0..n {
-            sum = (*dx.offset(ix)).mul_add(*dy.offset(iy), sum);
-            ix += incx as isize;
-            iy += incy as isize;
-        }
+    // FMA-contracted accumulation, matching the reference BLAS compiled
+    // with `-ffp-contract=fast` (see daxpy note above).
+    for (&x, &y) in dx.iter().zip(dy.iter()) {
+        sum = x.mul_add(y, sum);
     }
     sum
 }
 
-fn dscal(n: c_int, da: f64, dx: *mut f64, incx: c_int) {
-    if n <= 0 || da == 1.0 {
+/// Scale a vector: dx = dx * da.
+fn dscal(da: f64, dx: &mut [f64]) {
+    if da == 1.0 {
         return;
     }
-    unsafe {
-        let mut ix: isize = 0;
-        for _ in 0..n {
-            *dx.offset(ix) *= da;
-            ix += incx as isize;
-        }
+    for x in dx.iter_mut() {
+        *x *= da;
     }
 }
 
-fn dcopy(n: c_int, dx: *const f64, incx: c_int, dy: *mut f64, incy: c_int) {
-    if n <= 0 {
-        return;
-    }
-    unsafe {
-        let mut ix: isize = 0;
-        let mut iy: isize = 0;
-        for _ in 0..n {
-            *dy.offset(iy) = *dx.offset(ix);
-            ix += incx as isize;
-            iy += incy as isize;
-        }
+/// Copy dy = dx over the overlapping prefix.
+fn dcopy(dx: &[f64], dy: &mut [f64]) {
+    for (y, &x) in dy.iter_mut().zip(dx.iter()) {
+        *y = x;
     }
 }
 
 /// Euclidean norm of a vector: sqrt(sum(x[i]^2))
-fn dnrm2(n: c_int, x: *const f64, incx: c_int) -> f64 {
-    if n <= 0 {
-        return 0.0;
-    }
-    unsafe {
-        let mut ix: isize = 0;
-        let mut ssq = 0.0f64;
-        let mut scale = 0.0f64;
-        for _ in 0..n {
-            let xi = *x.offset(ix);
-            if xi != 0.0 {
-                if scale < xi.abs() {
-                    ssq = 1.0 + ssq * (scale / xi).powi(2);
-                    scale = xi.abs();
-                } else {
-                    ssq += (xi / scale).powi(2);
-                }
+fn dnrm2(x: &[f64]) -> f64 {
+    let mut ssq = 0.0f64;
+    let mut scale = 0.0f64;
+    for &xi in x {
+        if xi != 0.0 {
+            if scale < xi.abs() {
+                ssq = 1.0 + ssq * (scale / xi).powi(2);
+                scale = xi.abs();
+            } else {
+                ssq += (xi / scale).powi(2);
             }
-            ix += incx as isize;
         }
-        scale * ssq.sqrt()
     }
+    scale * ssq.sqrt()
 }
 
 // ---------------------------------------------------------------------------
@@ -137,7 +106,7 @@ fn dnrm2(n: c_int, x: *const f64, incx: c_int) -> f64 {
 /// - `work`: work array, length p*2
 ///
 /// # Safety
-/// All pointers must be valid.
+/// All pointers must be valid for the documented extents.
 pub unsafe fn dqrdc2(
     x: *mut f64,
     ldx: c_int,
@@ -149,119 +118,137 @@ pub unsafe fn dqrdc2(
     jpvt: *mut c_int,
     work: *mut f64,
 ) {
-    let ldx = ldx as usize;
-    let n = n as usize;
-    let p = p as usize;
-
     unsafe {
-        // Compute norms of columns of x
-        if n > 0 {
-            for j in 0..p {
-                let norm = dnrm2(n as c_int, x.add(j * ldx), 1);
-                *qraux.add(j) = norm;
-                *work.add(j) = norm;
-                *work.add(p + j) = norm;
-                if *work.add(p + j) == 0.0 {
-                    *work.add(p + j) = 1.0;
-                }
+        let (ldx, n, p) = (ldx as usize, n as usize, p as usize);
+        // The Fortran entry documents x as (ldx, p) and the scratch vectors
+        // as p (qraux, jpvt) and 2*p (work) elements.
+        dqrdc2_impl(
+            from_raw_parts_mut(x, ldx * p),
+            ldx,
+            n,
+            p,
+            tol,
+            &mut *k,
+            from_raw_parts_mut(qraux, p),
+            from_raw_parts_mut(jpvt, p),
+            from_raw_parts_mut(work, 2 * p),
+        );
+    }
+}
+
+fn dqrdc2_impl(
+    x: &mut [f64],
+    ldx: usize,
+    n: usize,
+    p: usize,
+    tol: f64,
+    k: &mut c_int,
+    qraux: &mut [f64],
+    jpvt: &mut [c_int],
+    work: &mut [f64],
+) {
+    // Compute norms of columns of x
+    if n > 0 {
+        for j in 0..p {
+            let norm = dnrm2(&x[j * ldx..j * ldx + n]);
+            qraux[j] = norm;
+            work[j] = norm;
+            work[p + j] = norm;
+            if work[p + j] == 0.0 {
+                work[p + j] = 1.0;
             }
         }
+    }
 
-        // Householder reduction
-        let lup = if n < p { n } else { p };
-        let mut k_val = p + 1usize;
+    // Householder reduction
+    let lup = if n < p { n } else { p };
+    let mut k_val = p + 1usize;
 
-        let mut l: usize = 0;
-        while l < lup {
+    let mut l: usize = 0;
+    while l < lup {
+        crate::eval::limits::poll_computation();
+        // Cycle columns from l to p-1 to find one with non-negligible norm
+        loop {
             crate::eval::limits::poll_computation();
-            // Cycle columns from l to p-1 to find one with non-negligible norm
-            loop {
-                crate::eval::limits::poll_computation();
-                if l + 1 >= k_val || *qraux.add(l) >= *work.add(p + l) * tol {
-                    break;
-                }
-                // Shift columns left
-                for i in 0..n {
-                    let t = *x.add(i + l * ldx);
-                    for j in l..(p - 1) {
-                        *x.add(i + j * ldx) = *x.add(i + (j + 1) * ldx);
-                    }
-                    *x.add(i + (p - 1) * ldx) = t;
-                }
-                // Shift jpvt, qraux, work
-                let tmp_jpvt = *jpvt.add(l);
-                let tmp_qraux = *qraux.add(l);
-                let tmp_work1 = *work.add(l);
-                let tmp_work2 = *work.add(p + l);
-                for j in l..(p - 1) {
-                    *jpvt.add(j) = *jpvt.add(j + 1);
-                    *qraux.add(j) = *qraux.add(j + 1);
-                    *work.add(j) = *work.add(j + 1);
-                    *work.add(p + j) = *work.add(p + j + 1);
-                }
-                *jpvt.add(p - 1) = tmp_jpvt;
-                *qraux.add(p - 1) = tmp_qraux;
-                *work.add(p - 1) = tmp_work1;
-                *work.add(2 * p - 1) = tmp_work2;
-                k_val -= 1;
+            if l + 1 >= k_val || qraux[l] >= work[p + l] * tol {
+                break;
             }
+            // Shift columns left
+            for i in 0..n {
+                let t = x[i + l * ldx];
+                for j in l..(p - 1) {
+                    x[i + j * ldx] = x[i + (j + 1) * ldx];
+                }
+                x[i + (p - 1) * ldx] = t;
+            }
+            // Shift jpvt, qraux, work
+            let tmp_jpvt = jpvt[l];
+            let tmp_qraux = qraux[l];
+            let tmp_work1 = work[l];
+            let tmp_work2 = work[p + l];
+            for j in l..(p - 1) {
+                jpvt[j] = jpvt[j + 1];
+                qraux[j] = qraux[j + 1];
+                work[j] = work[j + 1];
+                work[p + j] = work[p + j + 1];
+            }
+            jpvt[p - 1] = tmp_jpvt;
+            qraux[p - 1] = tmp_qraux;
+            work[p - 1] = tmp_work1;
+            work[2 * p - 1] = tmp_work2;
+            k_val -= 1;
+        }
 
-            if l + 1 != n {
-                // Compute Householder transformation for column l
-                let nrmxl = dnrm2((n - l) as c_int, x.add(l + l * ldx), 1);
-                if nrmxl != 0.0 {
-                    let signed_norm = if *x.add(l + l * ldx) != 0.0 {
-                        nrmxl.copysign(*x.add(l + l * ldx))
-                    } else {
-                        nrmxl
-                    };
-                    dscal((n - l) as c_int, 1.0 / signed_norm, x.add(l + l * ldx), 1);
-                    *x.add(l + l * ldx) = 1.0 + *x.add(l + l * ldx);
+        if l + 1 != n {
+            // Compute Householder transformation for column l
+            let nrmxl = dnrm2(&x[l + l * ldx..l + l * ldx + (n - l)]);
+            if nrmxl != 0.0 {
+                let signed_norm = if x[l + l * ldx] != 0.0 {
+                    nrmxl.copysign(x[l + l * ldx])
+                } else {
+                    nrmxl
+                };
+                dscal(1.0 / signed_norm, &mut x[l + l * ldx..l + l * ldx + (n - l)]);
+                x[l + l * ldx] = 1.0 + x[l + l * ldx];
 
-                    // Apply transformation to remaining columns
-                    if p > l {
-                        for j in (l + 1)..p {
-                            let t = -ddot(
-                                (n - l) as c_int,
-                                x.add(l + l * ldx),
-                                1,
-                                x.add(l + j * ldx),
-                                1,
-                            ) / *x.add(l + l * ldx);
-                            daxpy(
-                                (n - l) as c_int,
-                                t,
-                                x.add(l + l * ldx),
-                                1,
-                                x.add(l + j * ldx),
-                                1,
-                            );
-                            if *qraux.add(j) != 0.0 {
-                                let tt = 1.0 - (*x.add(l + j * ldx) / *qraux.add(j)).powi(2);
-                                let tt = tt.max(0.0);
-                                // Re-compute norms if large reduction
-                                if tt.abs() >= 1e-6 {
-                                    *qraux.add(j) *= tt.sqrt();
-                                } else {
-                                    *qraux.add(j) =
-                                        dnrm2((n - l - 1) as c_int, x.add(l + 1 + j * ldx), 1);
-                                    *work.add(j) = *qraux.add(j);
-                                }
+                // Apply transformation to remaining columns
+                if p > l {
+                    for j in (l + 1)..p {
+                        let t = -ddot(
+                            &x[l + l * ldx..l + l * ldx + (n - l)],
+                            &x[l + j * ldx..l + j * ldx + (n - l)],
+                        ) / x[l + l * ldx];
+                        // The read column l precedes the written column j.
+                        let (head, tail) = x.split_at_mut(l + j * ldx);
+                        daxpy(
+                            t,
+                            &head[l + l * ldx..l + l * ldx + (n - l)],
+                            &mut tail[..(n - l)],
+                        );
+                        if qraux[j] != 0.0 {
+                            let tt = 1.0 - (x[l + j * ldx] / qraux[j]).powi(2);
+                            let tt = tt.max(0.0);
+                            // Re-compute norms if large reduction
+                            if tt.abs() >= 1e-6 {
+                                qraux[j] *= tt.sqrt();
+                            } else {
+                                qraux[j] = dnrm2(&x[l + 1 + j * ldx..l + 1 + j * ldx + (n - l - 1)]);
+                                work[j] = qraux[j];
                             }
                         }
                     }
-
-                    // Save transformation
-                    *qraux.add(l) = *x.add(l + l * ldx);
-                    *x.add(l + l * ldx) = -signed_norm;
                 }
-            }
-            l += 1;
-        }
 
-        let rank = if k_val - 1 < n { k_val - 1 } else { n };
-        *k = rank as c_int;
+                // Save transformation
+                qraux[l] = x[l + l * ldx];
+                x[l + l * ldx] = -signed_norm;
+            }
+        }
+        l += 1;
     }
+
+    let rank = if k_val - 1 < n { k_val - 1 } else { n };
+    *k = rank as c_int;
 }
 
 // ---------------------------------------------------------------------------
@@ -291,7 +278,7 @@ pub unsafe fn dqrdc2(
 /// - `info`: 0 on success, index of first zero diagonal if singular
 ///
 /// # Safety
-/// All pointers must be valid.
+/// All pointers must be valid for the documented extents.
 pub unsafe fn dqrsl(
     x: *mut f64,
     ldx: c_int,
@@ -307,154 +294,202 @@ pub unsafe fn dqrsl(
     job: c_int,
     info: *mut c_int,
 ) {
-    let ldx = ldx as usize;
-    let n = n as usize;
-    let k = k as usize;
-
     unsafe {
-        *info = 0;
+        let (ldx, n, k) = (ldx as usize, n as usize, k as usize);
+        // The Fortran entry documents x as (ldx, k); the touched columns are
+        // bounded by ju = min(k, n-1) < k and ldx >= n.
+        dqrsl_impl(
+            from_raw_parts_mut(x, ldx * k),
+            ldx,
+            n,
+            k,
+            from_raw_parts(qraux, k),
+            from_raw_parts(y, n),
+            from_raw_parts_mut(qy, n),
+            from_raw_parts_mut(qty, n),
+            from_raw_parts_mut(b, k),
+            from_raw_parts_mut(rsd, n),
+            from_raw_parts_mut(xb, n),
+            job,
+            &mut *info,
+        );
+    }
+}
 
-        let cqy = job / 10000 != 0;
-        let cqty = job % 10000 != 0;
-        let cb = job % 1000 / 100 != 0;
-        let cr = job % 100 / 10 != 0;
-        let cxb = job % 10 != 0;
-        let ju = if k < n - 1 { k } else { n - 1 };
+#[allow(clippy::too_many_arguments)]
+fn dqrsl_impl(
+    x: &mut [f64],
+    ldx: usize,
+    n: usize,
+    k: usize,
+    qraux: &[f64],
+    y: &[f64],
+    qy: &mut [f64],
+    qty: &mut [f64],
+    b: &mut [f64],
+    rsd: &mut [f64],
+    xb: &mut [f64],
+    job: c_int,
+    info: &mut c_int,
+) {
+    *info = 0;
 
-        // Special action when n == 1
-        if ju == 0 {
-            if cqy {
-                *qy = *y;
-            }
-            if cqty {
-                *qty = *y;
-            }
-            if cxb {
-                *xb = *y;
-            }
-            if !cb {
-                if cr {
-                    *rsd = 0.0;
-                }
-                return;
-            }
-            if *x != 0.0 {
-                *b = *y / *x;
-            } else {
-                *info = 1;
-            }
+    let cqy = job / 10000 != 0;
+    let cqty = job % 10000 != 0;
+    let cb = job % 1000 / 100 != 0;
+    let cr = job % 100 / 10 != 0;
+    let cxb = job % 10 != 0;
+    let ju = if k < n - 1 { k } else { n - 1 };
+
+    // Special action when n == 1
+    if ju == 0 {
+        if cqy {
+            qy[0] = y[0];
+        }
+        if cqty {
+            qty[0] = y[0];
+        }
+        if cxb {
+            xb[0] = y[0];
+        }
+        if !cb {
             if cr {
-                *rsd = 0.0;
+                rsd[0] = 0.0;
             }
             return;
         }
-
-        // Set up to compute qy or qty
-        if cqy {
-            dcopy(n as c_int, y, 1, qy, 1);
-        }
-        if cqty {
-            dcopy(n as c_int, y, 1, qty, 1);
-        }
-
-        // Compute qy
-        if cqy {
-            let mut jj: usize = 0;
-            while jj < ju {
-                let j = ju - 1 - jj;
-                if *qraux.add(j) == 0.0 {
-                    jj += 1;
-                    continue;
-                }
-                let temp = *x.add(j + j * ldx);
-                *x.add(j + j * ldx) = *qraux.add(j);
-                let t = -ddot((n - j) as c_int, x.add(j + j * ldx), 1, qy.add(j), 1)
-                    / *x.add(j + j * ldx);
-                daxpy((n - j) as c_int, t, x.add(j + j * ldx), 1, qy.add(j), 1);
-                *x.add(j + j * ldx) = temp;
-                jj += 1;
-            }
-        }
-
-        // Compute trans(q)*y
-        if cqty {
-            for j in 0..ju {
-                if *qraux.add(j) == 0.0 {
-                    continue;
-                }
-                let temp = *x.add(j + j * ldx);
-                *x.add(j + j * ldx) = *qraux.add(j);
-                let t = -ddot((n - j) as c_int, x.add(j + j * ldx), 1, qty.add(j), 1)
-                    / *x.add(j + j * ldx);
-                daxpy((n - j) as c_int, t, x.add(j + j * ldx), 1, qty.add(j), 1);
-                *x.add(j + j * ldx) = temp;
-            }
-        }
-
-        // Set up to compute b, rsd, or xb
-        if cb {
-            dcopy(k as c_int, qty, 1, b, 1);
-        }
-        if cxb {
-            dcopy(k as c_int, qty, 1, xb, 1);
-        }
-        if cr && k < n {
-            dcopy((n - k) as c_int, qty.add(k), 1, rsd.add(k), 1);
-        }
-        if cxb && k < n {
-            for i in k..n {
-                *xb.add(i) = 0.0;
-            }
+        if x[0] != 0.0 {
+            b[0] = y[0] / x[0];
+        } else {
+            *info = 1;
         }
         if cr {
-            for i in 0..k {
-                *rsd.add(i) = 0.0;
-            }
+            rsd[0] = 0.0;
         }
+        return;
+    }
 
-        // Compute b
-        if cb {
-            let mut jj: usize = 0;
-            while jj < k {
-                let j = k - 1 - jj;
-                if *x.add(j + j * ldx) != 0.0 {
-                    *b.add(j) = *b.add(j) / *x.add(j + j * ldx);
-                    if j != 0 {
-                        let t = -*b.add(j);
-                        daxpy(j as c_int, t, x.add(j * ldx), 1, b, 1);
-                    }
-                } else {
-                    *info = j as c_int;
-                    break;
-                }
+    // Set up to compute qy or qty
+    if cqy {
+        dcopy(&y[..n], &mut qy[..n]);
+    }
+    if cqty {
+        dcopy(&y[..n], &mut qty[..n]);
+    }
+
+    // Compute qy
+    if cqy {
+        let mut jj: usize = 0;
+        while jj < ju {
+            let j = ju - 1 - jj;
+            if qraux[j] == 0.0 {
                 jj += 1;
+                continue;
             }
+            let temp = x[j + j * ldx];
+            x[j + j * ldx] = qraux[j];
+            let t = -ddot(&x[j + j * ldx..j + j * ldx + (n - j)], &qy[j..j + (n - j)])
+                / x[j + j * ldx];
+            daxpy(
+                t,
+                &x[j + j * ldx..j + j * ldx + (n - j)],
+                &mut qy[j..j + (n - j)],
+            );
+            x[j + j * ldx] = temp;
+            jj += 1;
         }
+    }
 
-        // Compute rsd or xb
-        if cr || cxb {
-            let mut jj: usize = 0;
-            while jj < ju {
-                let j = ju - 1 - jj;
-                if *qraux.add(j) == 0.0 {
-                    jj += 1;
-                    continue;
-                }
-                let temp = *x.add(j + j * ldx);
-                *x.add(j + j * ldx) = *qraux.add(j);
-                if cr {
-                    let t = -ddot((n - j) as c_int, x.add(j + j * ldx), 1, rsd.add(j), 1)
-                        / *x.add(j + j * ldx);
-                    daxpy((n - j) as c_int, t, x.add(j + j * ldx), 1, rsd.add(j), 1);
-                }
-                if cxb {
-                    let t = -ddot((n - j) as c_int, x.add(j + j * ldx), 1, xb.add(j), 1)
-                        / *x.add(j + j * ldx);
-                    daxpy((n - j) as c_int, t, x.add(j + j * ldx), 1, xb.add(j), 1);
-                }
-                *x.add(j + j * ldx) = temp;
-                jj += 1;
+    // Compute trans(q)*y
+    if cqty {
+        for j in 0..ju {
+            if qraux[j] == 0.0 {
+                continue;
             }
+            let temp = x[j + j * ldx];
+            x[j + j * ldx] = qraux[j];
+            let t = -ddot(&x[j + j * ldx..j + j * ldx + (n - j)], &qty[j..j + (n - j)])
+                / x[j + j * ldx];
+            daxpy(
+                t,
+                &x[j + j * ldx..j + j * ldx + (n - j)],
+                &mut qty[j..j + (n - j)],
+            );
+            x[j + j * ldx] = temp;
+        }
+    }
+
+    // Set up to compute b, rsd, or xb
+    if cb {
+        dcopy(&qty[..k], &mut b[..k]);
+    }
+    if cxb {
+        dcopy(&qty[..k], &mut xb[..k]);
+    }
+    if cr && k < n {
+        dcopy(&qty[k..n], &mut rsd[k..n]);
+    }
+    if cxb && k < n {
+        for i in k..n {
+            xb[i] = 0.0;
+        }
+    }
+    if cr {
+        for i in 0..k {
+            rsd[i] = 0.0;
+        }
+    }
+
+    // Compute b
+    if cb {
+        let mut jj: usize = 0;
+        while jj < k {
+            let j = k - 1 - jj;
+            if x[j + j * ldx] != 0.0 {
+                b[j] = b[j] / x[j + j * ldx];
+                if j != 0 {
+                    let t = -b[j];
+                    daxpy(t, &x[j * ldx..j * ldx + j], &mut b[..j]);
+                }
+            } else {
+                *info = j as c_int;
+                break;
+            }
+            jj += 1;
+        }
+    }
+
+    // Compute rsd or xb
+    if cr || cxb {
+        let mut jj: usize = 0;
+        while jj < ju {
+            let j = ju - 1 - jj;
+            if qraux[j] == 0.0 {
+                jj += 1;
+                continue;
+            }
+            let temp = x[j + j * ldx];
+            x[j + j * ldx] = qraux[j];
+            if cr {
+                let t = -ddot(&x[j + j * ldx..j + j * ldx + (n - j)], &rsd[j..j + (n - j)])
+                    / x[j + j * ldx];
+                daxpy(
+                    t,
+                    &x[j + j * ldx..j + j * ldx + (n - j)],
+                    &mut rsd[j..j + (n - j)],
+                );
+            }
+            if cxb {
+                let t = -ddot(&x[j + j * ldx..j + j * ldx + (n - j)], &xb[j..j + (n - j)])
+                    / x[j + j * ldx];
+                daxpy(
+                    t,
+                    &x[j + j * ldx..j + j * ldx + (n - j)],
+                    &mut xb[j..j + (n - j)],
+                );
+            }
+            x[j + j * ldx] = temp;
+            jj += 1;
         }
     }
 }
