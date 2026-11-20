@@ -100,7 +100,6 @@ fn table(owner: OwnerToken<'_>, n: i32) -> Sexp<'static> {
 struct Counts {
     n: Option<i32>,
     total: usize,
-    pointer: *const f64,
     // Keeps the immutable published dense buffer alive during pure arithmetic.
     values: Option<Sexp<'static>>,
     bounded_search: bool,
@@ -110,7 +109,6 @@ impl Counts {
         Self {
             n: None,
             total: 0,
-            pointer: std::ptr::null(),
             values: None,
             bounded_search,
         }
@@ -121,7 +119,6 @@ impl Counts {
                 dimensions(n).unwrap_or_else(|e| crate::mainutils::essentials::base_error(e));
             let values = table(owner, n);
             active(owner);
-            self.pointer = unsafe { REAL(values.as_raw()) };
             self.total = total;
             self.values = Some(values);
             self.n = Some(n);
@@ -132,48 +129,54 @@ impl Counts {
             }
             return 0.0;
         }
-        let k = (k as usize).min(self.total - k as usize);
+        let k = (k as usize).min(self.total - k as usize) as R_xlen_t;
         // Once the table is acquired, the pure nmath scalar algorithm calls
-        // only this copied read: no R callback or allocation crosses the loan.
-        unsafe { *self.pointer.add(k) }
+        // only this checked read: no R callback or allocation crosses the loan.
+        self.values
+            .as_ref()
+            .and_then(|values| values.try_real_elt(k).ok())
+            .unwrap_or_else(|| {
+                crate::mainutils::essentials::base_error("signed-rank table read out of bounds")
+            })
     }
 }
-pub(super) unsafe fn evaluate(sa: SEXP, sb: SEXP, sI: SEXP, sJ: SEXP, kind: Kind) -> SEXP {
+pub(super) fn evaluate(sa: SEXP, sb: SEXP, sI: SEXP, sJ: SEXP, kind: Kind) -> SEXP {
+    // SAFETY: the raw ABI caller retains the active runtime across dispatch.
     let owner = unsafe { OwnerToken::current() }
         .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
     active(owner);
-    if !unsafe { isNumeric(owner, sa) } || !unsafe { isNumeric(owner, sb) } {
+    if !isNumeric(owner, sa) || !isNumeric(owner, sb) {
         crate::mainutils::essentials::base_error("Non-numeric argument to mathematical function");
     }
     let na = XLENGTH(sa);
     let nb = XLENGTH(sb);
     let n = if na == 0 || nb == 0 { 0 } else { na.max(nb) };
+    // SAFETY: the owner is active. The legacy allocator keeps its typed
+    // resource error and GC retry semantics before the result is rooted.
     let result = unsafe { Rf_allocVector3(SEXPTYPE::REALSXP, n) };
     active(owner);
     let _result = unsafe { protect(result) };
     active(owner);
     if n == 0 {
         if na == 0 {
-            unsafe { copy_math_attributes(owner, result, sa) }
+            copy_math_attributes(owner, result, sa)
         }
         return result;
     }
-    let sa = unsafe { coerceVector(sa, SEXPTYPE::REALSXP.as_c_int()) };
+    // SAFETY: numeric inputs were validated; coercion may run providers.
+    let sa = unsafe { crate::main::coerce::coerceVector(sa, SEXPTYPE::REALSXP.as_c_int()) };
     active(owner);
     let _sa = unsafe { protect(sa) };
     active(owner);
-    let sb = unsafe { coerceVector(sb, SEXPTYPE::REALSXP.as_c_int()) };
+    let sb = unsafe { crate::main::coerce::coerceVector(sb, SEXPTYPE::REALSXP.as_c_int()) };
     active(owner);
     let _sb = unsafe { protect(sb) };
     active(owner);
     let inputs = [(sa, na), (sb, nb)];
     prepare_inputs(owner, &inputs);
     let (lower, log) = match kind {
-        Kind::Density => (true, unsafe { as_integer(owner, sI) } != 0),
-        _ => (
-            unsafe { as_integer(owner, sI) } != 0,
-            unsafe { as_integer(owner, sJ) } != 0,
-        ),
+        Kind::Density => (true, as_integer(owner, sI) != 0),
+        _ => (as_integer(owner, sI) != 0, as_integer(owner, sJ) != 0),
     };
     check_inputs(owner, &inputs);
     let a = owner
@@ -235,10 +238,10 @@ pub(super) unsafe fn evaluate(sa: SEXP, sb: SEXP, sI: SEXP, sJ: SEXP, kind: Kind
             .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
     }
     if warn {
-        unsafe { nans_produced() };
+        nans_produced();
     }
     active(owner);
-    unsafe { finish_math_attributes(owner, result, &inputs, n) };
+    finish_math_attributes(owner, result, &inputs, n);
     result
 }
 

@@ -23,47 +23,41 @@ use crate::sexp::globals::*;
 use crate::sexp::protect::*;
 
 // ---------------------------------------------------------------------------
-// External declarations
-// ---------------------------------------------------------------------------
-
-unsafe fn coerceVector(x: SEXP, type_: c_int) -> SEXP {
-    unsafe { crate::main::coerce::coerceVector(x, type_) }
-}
-
-// ---------------------------------------------------------------------------
 // Helper: isNumeric
 // ---------------------------------------------------------------------------
 
-unsafe fn isNumeric(owner: crate::sexp::owner::OwnerToken<'_>, x: SEXP) -> bool {
-    unsafe {
-        owner
-            .require_active()
-            .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
-        if x.is_null() {
-            return false;
-        }
-        let t = TYPEOF(x);
-        // GNU isNumeric accepts logicals but excludes integer factors. Without
-        // this guard attribute copying could attach factor class to REAL output.
-        let numeric = t == SEXPTYPE::REALSXP
-            || t == SEXPTYPE::LGLSXP
-            || (t == SEXPTYPE::INTSXP
-                && crate::mainutils::objects::inherits2(x, c"factor".as_ptr()) == 0);
-        owner
-            .require_active()
-            .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
-        numeric
+fn isNumeric(owner: crate::sexp::owner::OwnerToken<'_>, x: SEXP) -> bool {
+    owner
+        .require_active()
+        .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
+    if x.is_null() {
+        return false;
     }
+    let t = TYPEOF(x);
+    // GNU isNumeric accepts logicals but excludes integer factors. Without
+    // this guard attribute copying could attach factor class to REAL output.
+    // SAFETY: the owner is active, so the class lookup runs under the live
+    // runtime even though the checked operand also carries the factor test.
+    let numeric = t == SEXPTYPE::REALSXP
+        || t == SEXPTYPE::LGLSXP
+        || (t == SEXPTYPE::INTSXP
+            && unsafe { crate::mainutils::objects::inherits2(x, c"factor".as_ptr()) } == 0);
+    owner
+        .require_active()
+        .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
+    numeric
 }
 
 // ---------------------------------------------------------------------------
 // Helper: asInteger
 // ---------------------------------------------------------------------------
 
-unsafe fn as_integer(owner: crate::sexp::owner::OwnerToken<'_>, value: SEXP) -> c_int {
+fn as_integer(owner: crate::sexp::owner::OwnerToken<'_>, value: SEXP) -> c_int {
     owner
         .require_active()
         .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
+    // SAFETY: the owner is active; integer coercion may evaluate providers
+    // and condition handlers under the live runtime.
     let value = unsafe { crate::main::coerce::asInteger(value) };
     owner
         .require_active()
@@ -104,7 +98,7 @@ fn check_inputs(owner: crate::sexp::owner::OwnerToken<'_>, inputs: &[(SEXP, R_xl
 
 // Stock SHALLOW_DUPLICATE_ATTRIB, with checked roots retaining the exact source
 // attribute graph across allocation/collection and original-owner rechecks.
-unsafe fn copy_math_attributes(owner: crate::sexp::owner::OwnerToken<'_>, to: SEXP, from: SEXP) {
+fn copy_math_attributes(owner: crate::sexp::owner::OwnerToken<'_>, to: SEXP, from: SEXP) {
     owner
         .require_active()
         .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
@@ -117,11 +111,15 @@ unsafe fn copy_math_attributes(owner: crate::sexp::owner::OwnerToken<'_>, to: SE
     let attributes = source
         .try_attrib()
         .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
+    // SAFETY: the owner is active; the checked attribute root keeps the source
+    // graph live across duplication and protection.
     let copied = unsafe { crate::main::duplicate::shallow_duplicate(attributes.as_raw()) };
     let _copied = unsafe { protect(copied) };
     owner
         .require_active()
         .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
+    // SAFETY: both checked objects remain rooted while their headers are
+    // rewritten to mirror GNU's attribute copy.
     unsafe {
         SET_ATTRIB(target.as_raw(), copied);
         SET_OBJECT(target.as_raw(), OBJECT(source.as_raw()));
@@ -135,7 +133,7 @@ unsafe fn copy_math_attributes(owner: crate::sexp::owner::OwnerToken<'_>, to: SE
         .require_active()
         .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
 }
-unsafe fn finish_math_attributes(
+fn finish_math_attributes(
     owner: crate::sexp::owner::OwnerToken<'_>,
     result: SEXP,
     inputs: &[(SEXP, R_xlen_t)],
@@ -143,7 +141,7 @@ unsafe fn finish_math_attributes(
 ) {
     for &(source, n) in inputs {
         if n == length {
-            unsafe { copy_math_attributes(owner, result, source) };
+            copy_math_attributes(owner, result, source);
             break;
         }
     }
@@ -151,7 +149,8 @@ unsafe fn finish_math_attributes(
 
 /// GNU `FINISH_MathN`: `warning(_("NaNs produced"))` when a finite input
 /// produced a NaN. eprintln is not a warning condition (`assertWarning`).
-unsafe fn nans_produced() {
+fn nans_produced() {
+    // SAFETY: the caller dispatches the warning under an active owner.
     unsafe {
         crate::mainutils::errors::Rf_warning1(c"NaNs produced".as_ptr());
     }
@@ -176,9 +175,10 @@ fn math_recycle<const N: usize, const F: usize>(
     checked(owner.require_active());
     let source = arguments.map(|raw| checked(owner.sexp(raw)));
     for operand in &source {
-        // SAFETY: the checked operand roots its entire graph. The existing
+        // The checked operand roots its entire graph. The existing
         // predicate also checks the original owner across class lookup.
-        if !unsafe { isNumeric(owner, operand.as_raw()) } {
+        if !isNumeric(owner, operand.as_raw()) {
+            // SAFETY: the owner is active; error dispatch may longjmp.
             unsafe { Rf_error(c"Non-numeric argument to mathematical function".as_ptr()) };
             unreachable!("Rf_error does not return");
         }
@@ -202,8 +202,7 @@ fn math_recycle<const N: usize, const F: usize>(
     if empty {
         let result = allocate_result();
         if lengths[0] == 0 {
-            // SAFETY: both checked objects remain rooted during shallow copy.
-            unsafe { copy_math_attributes(owner, result.as_raw(), source[0].as_raw()) };
+            copy_math_attributes(owner, result.as_raw(), source[0].as_raw());
         }
         return result.as_raw();
     }
@@ -211,7 +210,9 @@ fn math_recycle<const N: usize, const F: usize>(
     let inputs = source.map(|operand| {
         checked(owner.require_active());
         // SAFETY: the checked operand roots its graph across coercion.
-        let raw = unsafe { coerceVector(operand.as_raw(), SEXPTYPE::REALSXP.as_c_int()) };
+        let raw = unsafe {
+            crate::main::coerce::coerceVector(operand.as_raw(), SEXPTYPE::REALSXP.as_c_int())
+        };
         checked(owner.require_active());
         checked(owner.sexp(raw))
     });
@@ -223,9 +224,9 @@ fn math_recycle<const N: usize, const F: usize>(
     }
     let flags = flags.map(|raw| {
         let value = checked(owner.sexp(raw));
-        // SAFETY: the flag remains rooted while integer coercion can run
+        // The flag remains rooted while integer coercion can run
         // providers or condition handlers. as_integer checks the original owner.
-        unsafe { as_integer(owner, value.as_raw()) != 0 }
+        as_integer(owner, value.as_raw()) != 0
     });
     checked(owner.require_active());
     for (input, length) in inputs.iter().zip(lengths) {
@@ -260,23 +261,21 @@ fn math_recycle<const N: usize, const F: usize>(
 
     let result = result.freeze();
     if produced_nan {
-        // SAFETY: the result and operands remain rooted during warning dispatch.
-        unsafe { nans_produced() };
+        nans_produced();
     }
     if let Some(position) = lengths.iter().position(|&length| length == n) {
-        // SAFETY: both checked objects remain rooted across attribute copying.
-        unsafe { copy_math_attributes(owner, result.as_raw(), inputs[position].as_raw()) };
+        copy_math_attributes(owner, result.as_raw(), inputs[position].as_raw());
     }
     result.as_raw()
 }
 
-unsafe fn math2_1(a: SEXP, b: SEXP, i: SEXP, compute: fn(c_double, c_double, bool) -> f64) -> SEXP {
+fn math2_1(a: SEXP, b: SEXP, i: SEXP, compute: fn(c_double, c_double, bool) -> f64) -> SEXP {
     // SAFETY: the raw ABI caller retains the active runtime across dispatch.
     let owner = checked(unsafe { crate::sexp::owner::OwnerToken::current() });
     math_recycle(owner, [a, b], [i], |[a, b], [i]| compute(a, b, i))
 }
 
-unsafe fn math2_2(
+fn math2_2(
     a: SEXP,
     b: SEXP,
     i: SEXP,
@@ -288,7 +287,7 @@ unsafe fn math2_2(
     math_recycle(owner, [a, b], [i, j], |[a, b], [i, j]| compute(a, b, i, j))
 }
 
-unsafe fn math3_1(
+fn math3_1(
     a: SEXP,
     b: SEXP,
     c: SEXP,
@@ -300,7 +299,7 @@ unsafe fn math3_1(
     math_recycle(owner, [a, b, c], [i], |[a, b, c], [i]| compute(a, b, c, i))
 }
 
-unsafe fn math3_2(
+fn math3_2(
     a: SEXP,
     b: SEXP,
     c: SEXP,
@@ -315,7 +314,7 @@ unsafe fn math3_2(
     })
 }
 
-unsafe fn math4_1(
+fn math4_1(
     a: SEXP,
     b: SEXP,
     c: SEXP,
@@ -330,7 +329,7 @@ unsafe fn math4_1(
     })
 }
 
-unsafe fn math4_2(
+fn math4_2(
     a: SEXP,
     b: SEXP,
     c: SEXP,
@@ -353,110 +352,110 @@ unsafe fn math4_2(
 
 // --- dchisq(x, df, log) ---
 
-pub unsafe fn do_dchisq(sa: SEXP, sb: SEXP, sI: SEXP) -> SEXP {
-    unsafe { math2_1(sa, sb, sI, chisq::dchisq_inner) }
+pub fn do_dchisq(sa: SEXP, sb: SEXP, sI: SEXP) -> SEXP {
+    math2_1(sa, sb, sI, chisq::dchisq_inner)
 }
 
 // --- dexp(x, scale, log) ---
 
-pub unsafe fn do_dexp(sa: SEXP, sb: SEXP, sI: SEXP) -> SEXP {
-    unsafe { math2_1(sa, sb, sI, exponential::dexp_inner) }
+pub fn do_dexp(sa: SEXP, sb: SEXP, sI: SEXP) -> SEXP {
+    math2_1(sa, sb, sI, exponential::dexp_inner)
 }
 
 // --- dgeom(x, p, log) ---
 
-pub unsafe fn do_dgeom(sa: SEXP, sb: SEXP, sI: SEXP) -> SEXP {
-    unsafe { math2_1(sa, sb, sI, geometric::dgeom_inner) }
+pub fn do_dgeom(sa: SEXP, sb: SEXP, sI: SEXP) -> SEXP {
+    math2_1(sa, sb, sI, geometric::dgeom_inner)
 }
 
 // --- dpois(x, lambda, log) ---
 
-pub unsafe fn do_dpois(sa: SEXP, sb: SEXP, sI: SEXP) -> SEXP {
-    unsafe { math2_1(sa, sb, sI, poisson::dpois_inner) }
+pub fn do_dpois(sa: SEXP, sb: SEXP, sI: SEXP) -> SEXP {
+    math2_1(sa, sb, sI, poisson::dpois_inner)
 }
 
 // --- dt(x, df, log) ---
 
-pub unsafe fn do_dt(sa: SEXP, sb: SEXP, sI: SEXP) -> SEXP {
-    unsafe { math2_1(sa, sb, sI, t_dist::dt_inner) }
+pub fn do_dt(sa: SEXP, sb: SEXP, sI: SEXP) -> SEXP {
+    math2_1(sa, sb, sI, t_dist::dt_inner)
 }
 
 // --- dsignrank(x, n, log) ---
 
-pub unsafe fn do_dsignrank(sa: SEXP, sb: SEXP, sI: SEXP) -> SEXP {
-    unsafe { signrank::evaluate(sa, sb, sI, R_NilValue(), signrank::Kind::Density) }
+pub fn do_dsignrank(sa: SEXP, sb: SEXP, sI: SEXP) -> SEXP {
+    signrank::evaluate(sa, sb, sI, R_NilValue(), signrank::Kind::Density)
 }
 
 // --- pchisq(x, df, lower_tail, log_p) ---
 
-pub unsafe fn do_pchisq(sa: SEXP, sb: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    unsafe { math2_2(sa, sb, sI, sJ, chisq::pchisq_inner) }
+pub fn do_pchisq(sa: SEXP, sb: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+    math2_2(sa, sb, sI, sJ, chisq::pchisq_inner)
 }
 
 // --- qchisq(p, df, lower_tail, log_p) ---
 
-pub unsafe fn do_qchisq(sa: SEXP, sb: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    unsafe { math2_2(sa, sb, sI, sJ, chisq::qchisq_inner) }
+pub fn do_qchisq(sa: SEXP, sb: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+    math2_2(sa, sb, sI, sJ, chisq::qchisq_inner)
 }
 
 // --- pexp(x, scale, lower_tail, log_p) ---
 
-pub unsafe fn do_pexp(sa: SEXP, sb: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    unsafe { math2_2(sa, sb, sI, sJ, exponential::pexp_inner) }
+pub fn do_pexp(sa: SEXP, sb: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+    math2_2(sa, sb, sI, sJ, exponential::pexp_inner)
 }
 
 // --- qexp(p, scale, lower_tail, log_p) ---
 
-pub unsafe fn do_qexp(sa: SEXP, sb: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    unsafe { math2_2(sa, sb, sI, sJ, exponential::qexp_inner) }
+pub fn do_qexp(sa: SEXP, sb: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+    math2_2(sa, sb, sI, sJ, exponential::qexp_inner)
 }
 
 // --- pgeom(x, p, lower_tail, log_p) ---
 
-pub unsafe fn do_pgeom(sa: SEXP, sb: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    unsafe { math2_2(sa, sb, sI, sJ, geometric::pgeom_inner) }
+pub fn do_pgeom(sa: SEXP, sb: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+    math2_2(sa, sb, sI, sJ, geometric::pgeom_inner)
 }
 
 // --- qgeom(p, prob, lower_tail, log_p) ---
 
-pub unsafe fn do_qgeom(sa: SEXP, sb: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    unsafe { math2_2(sa, sb, sI, sJ, geometric::qgeom_inner) }
+pub fn do_qgeom(sa: SEXP, sb: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+    math2_2(sa, sb, sI, sJ, geometric::qgeom_inner)
 }
 
 // --- ppois(x, lambda, lower_tail, log_p) ---
 
-pub unsafe fn do_ppois(sa: SEXP, sb: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    unsafe { math2_2(sa, sb, sI, sJ, poisson::ppois_inner) }
+pub fn do_ppois(sa: SEXP, sb: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+    math2_2(sa, sb, sI, sJ, poisson::ppois_inner)
 }
 
 // --- qpois(p, lambda, lower_tail, log_p) ---
 
-pub unsafe fn do_qpois(sa: SEXP, sb: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    unsafe { math2_2(sa, sb, sI, sJ, poisson::qpois_inner) }
+pub fn do_qpois(sa: SEXP, sb: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+    math2_2(sa, sb, sI, sJ, poisson::qpois_inner)
 }
 
 // --- pt(x, df, lower_tail, log_p) ---
 
-pub unsafe fn do_pt(sa: SEXP, sb: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    unsafe { math2_2(sa, sb, sI, sJ, t_dist::pt_inner) }
+pub fn do_pt(sa: SEXP, sb: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+    math2_2(sa, sb, sI, sJ, t_dist::pt_inner)
 }
 
 // --- qt(p, df, lower_tail, log_p) ---
 
-pub unsafe fn do_qt(sa: SEXP, sb: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    unsafe { math2_2(sa, sb, sI, sJ, t_dist::qt_inner) }
+pub fn do_qt(sa: SEXP, sb: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+    math2_2(sa, sb, sI, sJ, t_dist::qt_inner)
 }
 
 // --- psignrank(x, n, lower_tail, log_p) ---
 
-pub unsafe fn do_psignrank(sa: SEXP, sb: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    unsafe { signrank::evaluate(sa, sb, sI, sJ, signrank::Kind::Cdf) }
+pub fn do_psignrank(sa: SEXP, sb: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+    signrank::evaluate(sa, sb, sI, sJ, signrank::Kind::Cdf)
 }
 
 // --- qsignrank(p, n, lower_tail, log_p) ---
 
-pub unsafe fn do_qsignrank(sa: SEXP, sb: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    unsafe { signrank::evaluate(sa, sb, sI, sJ, signrank::Kind::Quantile) }
+pub fn do_qsignrank(sa: SEXP, sb: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+    signrank::evaluate(sa, sb, sI, sJ, signrank::Kind::Quantile)
 }
 
 // ===========================================================================
@@ -465,92 +464,92 @@ pub unsafe fn do_qsignrank(sa: SEXP, sb: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
 
 // --- dbeta(x, a, b, log) ---
 
-pub unsafe fn do_dbeta(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP) -> SEXP {
-    unsafe { math3_1(sa, sb, sc, sI, beta::dbeta_inner) }
+pub fn do_dbeta(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP) -> SEXP {
+    math3_1(sa, sb, sc, sI, beta::dbeta_inner)
 }
 
 // --- dbinom(x, n, p, log) ---
 
-pub unsafe fn do_dbinom(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP) -> SEXP {
-    unsafe { math3_1(sa, sb, sc, sI, binomial::dbinom_inner) }
+pub fn do_dbinom(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP) -> SEXP {
+    math3_1(sa, sb, sc, sI, binomial::dbinom_inner)
 }
 
 // --- dcauchy(x, location, scale, log) ---
 
-pub unsafe fn do_dcauchy(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP) -> SEXP {
-    unsafe { math3_1(sa, sb, sc, sI, cauchy::dcauchy_inner) }
+pub fn do_dcauchy(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP) -> SEXP {
+    math3_1(sa, sb, sc, sI, cauchy::dcauchy_inner)
 }
 
 // --- df(x, df1, df2, log) ---
 
-pub unsafe fn do_df(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP) -> SEXP {
-    unsafe { math3_1(sa, sb, sc, sI, f_dist::df_inner) }
+pub fn do_df(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP) -> SEXP {
+    math3_1(sa, sb, sc, sI, f_dist::df_inner)
 }
 
 // --- dgamma(x, shape, scale, log) ---
 
-pub unsafe fn do_dgamma(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP) -> SEXP {
-    unsafe { math3_1(sa, sb, sc, sI, gamma::dgamma_inner) }
+pub fn do_dgamma(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP) -> SEXP {
+    math3_1(sa, sb, sc, sI, gamma::dgamma_inner)
 }
 
 // --- dlnorm(x, meanlog, sdlog, log) ---
 
-pub unsafe fn do_dlnorm(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP) -> SEXP {
-    unsafe { math3_1(sa, sb, sc, sI, lnorm::dlnorm_inner) }
+pub fn do_dlnorm(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP) -> SEXP {
+    math3_1(sa, sb, sc, sI, lnorm::dlnorm_inner)
 }
 
 // --- dlogis(x, location, scale, log) ---
 
-pub unsafe fn do_dlogis(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP) -> SEXP {
-    unsafe { math3_1(sa, sb, sc, sI, logistic::dlogis_inner) }
+pub fn do_dlogis(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP) -> SEXP {
+    math3_1(sa, sb, sc, sI, logistic::dlogis_inner)
 }
 
 // --- dnbinom(x, size, prob, log) ---
 
-pub unsafe fn do_dnbinom(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP) -> SEXP {
-    unsafe { math3_1(sa, sb, sc, sI, nbinom::dnbinom_inner) }
+pub fn do_dnbinom(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP) -> SEXP {
+    math3_1(sa, sb, sc, sI, nbinom::dnbinom_inner)
 }
 
 // --- dnbinom_mu(x, size, mu, log) ---
 
-pub unsafe fn do_dnbinom_mu(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP) -> SEXP {
-    unsafe { math3_1(sa, sb, sc, sI, nbinom::dnbinom_mu_inner) }
+pub fn do_dnbinom_mu(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP) -> SEXP {
+    math3_1(sa, sb, sc, sI, nbinom::dnbinom_mu_inner)
 }
 
 // --- dnorm(x, mean, sd, log) ---
 
-pub unsafe fn do_dnorm(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP) -> SEXP {
-    unsafe { math3_1(sa, sb, sc, sI, normal::dnorm4_inner) }
+pub fn do_dnorm(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP) -> SEXP {
+    math3_1(sa, sb, sc, sI, normal::dnorm4_inner)
 }
 
 // --- dweibull(x, shape, scale, log) ---
 
-pub unsafe fn do_dweibull(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP) -> SEXP {
-    unsafe { math3_1(sa, sb, sc, sI, weibull::dweibull_inner) }
+pub fn do_dweibull(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP) -> SEXP {
+    math3_1(sa, sb, sc, sI, weibull::dweibull_inner)
 }
 
 // --- dunif(x, min, max, log) ---
 
-pub unsafe fn do_dunif(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP) -> SEXP {
-    unsafe { math3_1(sa, sb, sc, sI, uniform::dunif_inner) }
+pub fn do_dunif(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP) -> SEXP {
+    math3_1(sa, sb, sc, sI, uniform::dunif_inner)
 }
 
 // --- dnt(x, df, ncp, log) ---
 
-pub unsafe fn do_dnt(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP) -> SEXP {
-    unsafe { math3_1(sa, sb, sc, sI, nt_dist::dnt_inner) }
+pub fn do_dnt(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP) -> SEXP {
+    math3_1(sa, sb, sc, sI, nt_dist::dnt_inner)
 }
 
 // --- dnchisq(x, df, ncp, log) ---
 
-pub unsafe fn do_dnchisq(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP) -> SEXP {
-    unsafe { math3_1(sa, sb, sc, sI, nchisq::dnchisq_inner) }
+pub fn do_dnchisq(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP) -> SEXP {
+    math3_1(sa, sb, sc, sI, nchisq::dnchisq_inner)
 }
 
 // --- dwilcox(x, m, n, log) ---
 
-pub unsafe fn do_dwilcox(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP) -> SEXP {
-    unsafe { math3_1(sa, sb, sc, sI, wilcox::dwilcox_inner) }
+pub fn do_dwilcox(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP) -> SEXP {
+    math3_1(sa, sb, sc, sI, wilcox::dwilcox_inner)
 }
 
 // ===========================================================================
@@ -559,152 +558,152 @@ pub unsafe fn do_dwilcox(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP) -> SEXP {
 
 // --- pbeta, qbeta ---
 
-pub unsafe fn do_pbeta(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    unsafe { math3_2(sa, sb, sc, sI, sJ, beta::pbeta_inner) }
+pub fn do_pbeta(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+    math3_2(sa, sb, sc, sI, sJ, beta::pbeta_inner)
 }
 
-pub unsafe fn do_qbeta(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    unsafe { math3_2(sa, sb, sc, sI, sJ, beta::qbeta_inner) }
+pub fn do_qbeta(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+    math3_2(sa, sb, sc, sI, sJ, beta::qbeta_inner)
 }
 
 // --- pbinom, qbinom ---
 
-pub unsafe fn do_pbinom(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    unsafe { math3_2(sa, sb, sc, sI, sJ, binomial::pbinom_inner) }
+pub fn do_pbinom(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+    math3_2(sa, sb, sc, sI, sJ, binomial::pbinom_inner)
 }
 
-pub unsafe fn do_qbinom(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    unsafe { math3_2(sa, sb, sc, sI, sJ, binomial::qbinom_inner) }
+pub fn do_qbinom(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+    math3_2(sa, sb, sc, sI, sJ, binomial::qbinom_inner)
 }
 
 // --- pcauchy, qcauchy ---
 
-pub unsafe fn do_pcauchy(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    unsafe { math3_2(sa, sb, sc, sI, sJ, cauchy::pcauchy_inner) }
+pub fn do_pcauchy(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+    math3_2(sa, sb, sc, sI, sJ, cauchy::pcauchy_inner)
 }
 
-pub unsafe fn do_qcauchy(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    unsafe { math3_2(sa, sb, sc, sI, sJ, cauchy::qcauchy_inner) }
+pub fn do_qcauchy(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+    math3_2(sa, sb, sc, sI, sJ, cauchy::qcauchy_inner)
 }
 
 // --- pf, qf ---
 
-pub unsafe fn do_pf(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    unsafe { math3_2(sa, sb, sc, sI, sJ, f_dist::pf_inner) }
+pub fn do_pf(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+    math3_2(sa, sb, sc, sI, sJ, f_dist::pf_inner)
 }
 
-pub unsafe fn do_qf(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    unsafe { math3_2(sa, sb, sc, sI, sJ, f_dist::qf_inner) }
+pub fn do_qf(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+    math3_2(sa, sb, sc, sI, sJ, f_dist::qf_inner)
 }
 
 // --- pgamma, qgamma ---
 
-pub unsafe fn do_pgamma(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    unsafe { math3_2(sa, sb, sc, sI, sJ, gamma::pgamma_inner) }
+pub fn do_pgamma(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+    math3_2(sa, sb, sc, sI, sJ, gamma::pgamma_inner)
 }
 
-pub unsafe fn do_qgamma(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    unsafe { math3_2(sa, sb, sc, sI, sJ, gamma::qgamma_inner) }
+pub fn do_qgamma(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+    math3_2(sa, sb, sc, sI, sJ, gamma::qgamma_inner)
 }
 
 // --- plnorm, qlnorm ---
 
-pub unsafe fn do_plnorm(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    unsafe { math3_2(sa, sb, sc, sI, sJ, lnorm::plnorm_inner) }
+pub fn do_plnorm(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+    math3_2(sa, sb, sc, sI, sJ, lnorm::plnorm_inner)
 }
 
-pub unsafe fn do_qlnorm(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    unsafe { math3_2(sa, sb, sc, sI, sJ, lnorm::qlnorm_inner) }
+pub fn do_qlnorm(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+    math3_2(sa, sb, sc, sI, sJ, lnorm::qlnorm_inner)
 }
 
 // --- plogis, qlogis ---
 
-pub unsafe fn do_plogis(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    unsafe { math3_2(sa, sb, sc, sI, sJ, logistic::plogis_inner) }
+pub fn do_plogis(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+    math3_2(sa, sb, sc, sI, sJ, logistic::plogis_inner)
 }
 
-pub unsafe fn do_qlogis(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    unsafe { math3_2(sa, sb, sc, sI, sJ, logistic::qlogis_inner) }
+pub fn do_qlogis(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+    math3_2(sa, sb, sc, sI, sJ, logistic::qlogis_inner)
 }
 
 // --- pnbinom, qnbinom ---
 
-pub unsafe fn do_pnbinom(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    unsafe { math3_2(sa, sb, sc, sI, sJ, nbinom::pnbinom_inner) }
+pub fn do_pnbinom(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+    math3_2(sa, sb, sc, sI, sJ, nbinom::pnbinom_inner)
 }
 
-pub unsafe fn do_qnbinom(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    unsafe { math3_2(sa, sb, sc, sI, sJ, nbinom::qnbinom_inner) }
+pub fn do_qnbinom(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+    math3_2(sa, sb, sc, sI, sJ, nbinom::qnbinom_inner)
 }
 
 // --- pnbinom_mu, qnbinom_mu ---
 
-pub unsafe fn do_pnbinom_mu(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    unsafe { math3_2(sa, sb, sc, sI, sJ, nbinom::pnbinom_mu_inner) }
+pub fn do_pnbinom_mu(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+    math3_2(sa, sb, sc, sI, sJ, nbinom::pnbinom_mu_inner)
 }
 
-pub unsafe fn do_qnbinom_mu(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    unsafe { math3_2(sa, sb, sc, sI, sJ, nbinom::qnbinom_mu_inner) }
+pub fn do_qnbinom_mu(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+    math3_2(sa, sb, sc, sI, sJ, nbinom::qnbinom_mu_inner)
 }
 
 // --- pnorm, qnorm ---
 
-pub unsafe fn do_pnorm(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    unsafe { math3_2(sa, sb, sc, sI, sJ, normal::pnorm5_inner) }
+pub fn do_pnorm(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+    math3_2(sa, sb, sc, sI, sJ, normal::pnorm5_inner)
 }
 
-pub unsafe fn do_qnorm(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    unsafe { math3_2(sa, sb, sc, sI, sJ, normal::qnorm5_inner) }
+pub fn do_qnorm(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+    math3_2(sa, sb, sc, sI, sJ, normal::qnorm5_inner)
 }
 
 // --- pweibull, qweibull ---
 
-pub unsafe fn do_pweibull(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    unsafe { math3_2(sa, sb, sc, sI, sJ, weibull::pweibull_inner) }
+pub fn do_pweibull(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+    math3_2(sa, sb, sc, sI, sJ, weibull::pweibull_inner)
 }
 
-pub unsafe fn do_qweibull(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    unsafe { math3_2(sa, sb, sc, sI, sJ, weibull::qweibull_inner) }
+pub fn do_qweibull(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+    math3_2(sa, sb, sc, sI, sJ, weibull::qweibull_inner)
 }
 
 // --- punif, qunif ---
 
-pub unsafe fn do_punif(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    unsafe { math3_2(sa, sb, sc, sI, sJ, uniform::punif_inner) }
+pub fn do_punif(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+    math3_2(sa, sb, sc, sI, sJ, uniform::punif_inner)
 }
 
-pub unsafe fn do_qunif(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    unsafe { math3_2(sa, sb, sc, sI, sJ, uniform::qunif_inner) }
+pub fn do_qunif(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+    math3_2(sa, sb, sc, sI, sJ, uniform::qunif_inner)
 }
 
 // --- pnt, qnt ---
 
-pub unsafe fn do_pnt(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    unsafe { math3_2(sa, sb, sc, sI, sJ, nt_dist::pnt_inner) }
+pub fn do_pnt(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+    math3_2(sa, sb, sc, sI, sJ, nt_dist::pnt_inner)
 }
 
-pub unsafe fn do_qnt(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    unsafe { math3_2(sa, sb, sc, sI, sJ, nt_dist::qnt_inner) }
+pub fn do_qnt(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+    math3_2(sa, sb, sc, sI, sJ, nt_dist::qnt_inner)
 }
 
 // --- pnchisq, qnchisq ---
 
-pub unsafe fn do_pnchisq(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    unsafe { math3_2(sa, sb, sc, sI, sJ, nchisq::pnchisq_inner) }
+pub fn do_pnchisq(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+    math3_2(sa, sb, sc, sI, sJ, nchisq::pnchisq_inner)
 }
 
-pub unsafe fn do_qnchisq(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    unsafe { math3_2(sa, sb, sc, sI, sJ, nchisq::qnchisq_inner) }
+pub fn do_qnchisq(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+    math3_2(sa, sb, sc, sI, sJ, nchisq::qnchisq_inner)
 }
 
 // --- pwilcox, qwilcox ---
 
-pub unsafe fn do_pwilcox(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    unsafe { math3_2(sa, sb, sc, sI, sJ, wilcox::pwilcox_inner) }
+pub fn do_pwilcox(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+    math3_2(sa, sb, sc, sI, sJ, wilcox::pwilcox_inner)
 }
 
-pub unsafe fn do_qwilcox(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    unsafe { math3_2(sa, sb, sc, sI, sJ, wilcox::qwilcox_inner) }
+pub fn do_qwilcox(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+    math3_2(sa, sb, sc, sI, sJ, wilcox::qwilcox_inner)
 }
 
 // ===========================================================================
@@ -713,99 +712,99 @@ pub unsafe fn do_qwilcox(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SE
 
 // --- dhyper(x, r, b, n, log) ---
 
-pub unsafe fn do_dhyper(sa: SEXP, sb: SEXP, sc: SEXP, sd: SEXP, sI: SEXP) -> SEXP {
-    unsafe { math4_1(sa, sb, sc, sd, sI, hypergeometric::dhyper_inner) }
+pub fn do_dhyper(sa: SEXP, sb: SEXP, sc: SEXP, sd: SEXP, sI: SEXP) -> SEXP {
+    math4_1(sa, sb, sc, sd, sI, hypergeometric::dhyper_inner)
 }
 
 // --- dnbeta(x, a, b, ncp, log) ---
 
-pub unsafe fn do_dnbeta(sa: SEXP, sb: SEXP, sc: SEXP, sd: SEXP, sI: SEXP) -> SEXP {
-    unsafe { math4_1(sa, sb, sc, sd, sI, nbeta::dnbeta_inner) }
+pub fn do_dnbeta(sa: SEXP, sb: SEXP, sc: SEXP, sd: SEXP, sI: SEXP) -> SEXP {
+    math4_1(sa, sb, sc, sd, sI, nbeta::dnbeta_inner)
 }
 
 // --- dnf(x, df1, df2, ncp, log) ---
 
-pub unsafe fn do_dnf(sa: SEXP, sb: SEXP, sc: SEXP, sd: SEXP, sI: SEXP) -> SEXP {
-    unsafe { math4_1(sa, sb, sc, sd, sI, nf_dist::dnf_inner) }
+pub fn do_dnf(sa: SEXP, sb: SEXP, sc: SEXP, sd: SEXP, sI: SEXP) -> SEXP {
+    math4_1(sa, sb, sc, sd, sI, nf_dist::dnf_inner)
 }
 
 // --- phyper, qhyper ---
 
-pub unsafe fn do_phyper(sa: SEXP, sb: SEXP, sc: SEXP, sd: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    unsafe { math4_2(sa, sb, sc, sd, sI, sJ, hypergeometric::phyper_inner) }
+pub fn do_phyper(sa: SEXP, sb: SEXP, sc: SEXP, sd: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+    math4_2(sa, sb, sc, sd, sI, sJ, hypergeometric::phyper_inner)
 }
 
-pub unsafe fn do_qhyper(sa: SEXP, sb: SEXP, sc: SEXP, sd: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    unsafe { math4_2(sa, sb, sc, sd, sI, sJ, hypergeometric::qhyper_inner) }
+pub fn do_qhyper(sa: SEXP, sb: SEXP, sc: SEXP, sd: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+    math4_2(sa, sb, sc, sd, sI, sJ, hypergeometric::qhyper_inner)
 }
 
 // --- pnbeta, qnbeta ---
 
-pub unsafe fn do_pnbeta(sa: SEXP, sb: SEXP, sc: SEXP, sd: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    unsafe { math4_2(sa, sb, sc, sd, sI, sJ, nbeta::pnbeta_inner) }
+pub fn do_pnbeta(sa: SEXP, sb: SEXP, sc: SEXP, sd: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+    math4_2(sa, sb, sc, sd, sI, sJ, nbeta::pnbeta_inner)
 }
 
-pub unsafe fn do_qnbeta(sa: SEXP, sb: SEXP, sc: SEXP, sd: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    unsafe { math4_2(sa, sb, sc, sd, sI, sJ, nbeta::qnbeta_inner) }
+pub fn do_qnbeta(sa: SEXP, sb: SEXP, sc: SEXP, sd: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+    math4_2(sa, sb, sc, sd, sI, sJ, nbeta::qnbeta_inner)
 }
 
 // --- pnf, qnf ---
 
-pub unsafe fn do_pnf(sa: SEXP, sb: SEXP, sc: SEXP, sd: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    unsafe { math4_2(sa, sb, sc, sd, sI, sJ, nf_dist::pnf_inner) }
+pub fn do_pnf(sa: SEXP, sb: SEXP, sc: SEXP, sd: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+    math4_2(sa, sb, sc, sd, sI, sJ, nf_dist::pnf_inner)
 }
 
-pub unsafe fn do_qnf(sa: SEXP, sb: SEXP, sc: SEXP, sd: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    unsafe { math4_2(sa, sb, sc, sd, sI, sJ, nf_dist::qnf_inner) }
+pub fn do_qnf(sa: SEXP, sb: SEXP, sc: SEXP, sd: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+    math4_2(sa, sb, sc, sd, sI, sJ, nf_dist::qnf_inner)
 }
 
 // --- ptukey, qtukey ---
 
-pub unsafe fn do_ptukey(sa: SEXP, sb: SEXP, sc: SEXP, sd: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    unsafe { math4_2(sa, sb, sc, sd, sI, sJ, tukey::ptukey_inner) }
+pub fn do_ptukey(sa: SEXP, sb: SEXP, sc: SEXP, sd: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+    math4_2(sa, sb, sc, sd, sI, sJ, tukey::ptukey_inner)
 }
 
-pub unsafe fn do_qtukey(sa: SEXP, sb: SEXP, sc: SEXP, sd: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
-    unsafe { math4_2(sa, sb, sc, sd, sI, sJ, tukey::qtukey_inner) }
+pub fn do_qtukey(sa: SEXP, sb: SEXP, sc: SEXP, sd: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+    math4_2(sa, sb, sc, sd, sI, sJ, tukey::qtukey_inner)
 }
 
 // ===========================================================================
 // signrank_free / wilcox_free -- stubs (no-op, no caching in our port)
 // ===========================================================================
 
-pub unsafe fn stats_signrank_free(_args: SEXP) -> SEXP {
+pub fn stats_signrank_free(_args: SEXP) -> SEXP {
     R_NilValue()
 }
 
-pub unsafe fn stats_wilcox_free(_args: SEXP) -> SEXP {
+pub fn stats_wilcox_free(_args: SEXP) -> SEXP {
     R_NilValue()
 }
 
 pub(crate) unsafe extern "C-unwind" fn c_signrank_free(_args: SEXP) -> SEXP {
-    unsafe { stats_signrank_free(R_NilValue()) }
+    stats_signrank_free(R_NilValue())
 }
 pub(crate) unsafe extern "C-unwind" fn c_wilcox_free(_args: SEXP) -> SEXP {
-    unsafe { stats_wilcox_free(R_NilValue()) }
+    stats_wilcox_free(R_NilValue())
 }
 
 macro_rules! wrap3 {
     ($c:ident, $do:ident) => {
         unsafe extern "C-unwind" fn $c(a: SEXP, b: SEXP, c: SEXP) -> SEXP {
-            unsafe { $do(a, b, c) }
+            $do(a, b, c)
         }
     };
 }
 macro_rules! wrap4 {
     ($c:ident, $do:ident) => {
         unsafe extern "C-unwind" fn $c(a: SEXP, b: SEXP, c: SEXP, d: SEXP) -> SEXP {
-            unsafe { $do(a, b, c, d) }
+            $do(a, b, c, d)
         }
     };
 }
 macro_rules! wrap5 {
     ($c:ident, $do:ident) => {
         unsafe extern "C-unwind" fn $c(a: SEXP, b: SEXP, c: SEXP, d: SEXP, e: SEXP) -> SEXP {
-            unsafe { $do(a, b, c, d, e) }
+            $do(a, b, c, d, e)
         }
     };
 }
@@ -819,7 +818,7 @@ macro_rules! wrap6 {
             e: SEXP,
             f: SEXP,
         ) -> SEXP {
-            unsafe { $do(a, b, c, d, e, f) }
+            $do(a, b, c, d, e, f)
         }
     };
 }
