@@ -241,14 +241,14 @@ fn collect_user_gc(full: bool) -> crate::sexp::object::SexpResult<()> {
 /// Trigger a full garbage collection, retaining original cleanup authority.
 ///
 /// This is the equivalent of R's `R_gc()`.
-pub unsafe fn R_gc() {
+pub fn R_gc() {
     if let Err(failure) = collect_user_gc(true) {
          error(&failure.to_string());
     }
 }
 
 /// Trigger a lightweight garbage collection in the exact original runtime.
-pub unsafe fn R_gc_lite() {
+pub fn R_gc_lite() {
     if let Err(failure) = collect_user_gc(false) {
          error(&failure.to_string());
     }
@@ -625,7 +625,7 @@ pub unsafe fn R_MakeWeakRefC(key: SEXP, val: SEXP, fin: R_CFinalizer_t, onexit: 
 }
 
 pub unsafe fn R_WeakRefKey(w: SEXP) -> SEXP {
-    unsafe {
+    {
         if w.is_null() {
             return R_NilValue();
         }
@@ -635,7 +635,7 @@ pub unsafe fn R_WeakRefKey(w: SEXP) -> SEXP {
 }
 
 pub unsafe fn R_WeakRefValue(w: SEXP) -> SEXP {
-    unsafe {
+    {
         if w.is_null() {
             return R_NilValue();
         }
@@ -651,7 +651,7 @@ pub unsafe fn R_RegisterFinalizer(s: SEXP, fun: SEXP) {
 }
 
 pub unsafe fn R_RegisterFinalizerEx(s: SEXP, fun: SEXP, onexit: c_int) {
-    unsafe {
+    {
         if s.is_null() || fun.is_null() || fun == R_NilValue() {
             return;
         }
@@ -670,7 +670,7 @@ pub unsafe fn R_RegisterCFinalizer(s: SEXP, fun: R_CFinalizer_t) {
 }
 
 pub unsafe fn R_RegisterCFinalizerEx(s: SEXP, fun: R_CFinalizer_t, _onexit: c_int) {
-    unsafe {
+    {
         if s.is_null() {
             return;
         }
@@ -834,7 +834,7 @@ fn register_r_finalizer(obj: SEXP, fun: SEXP, onexit: bool) {
     });
 }
 
-unsafe fn validate_weak_reference_key(key: SEXP) {
+fn validate_weak_reference_key(key: SEXP) {
     {
         if key.is_null() {
             return;
@@ -846,7 +846,7 @@ unsafe fn validate_weak_reference_key(key: SEXP) {
     }
 }
 
-unsafe fn validate_weak_ref_object(w: SEXP) {
+fn validate_weak_ref_object(w: SEXP) {
     {
         if SEXPTYPE(TYPEOF(w)) != SEXPTYPE::WEAKREFSXP {
             error("not a weak reference");
@@ -1699,7 +1699,7 @@ mod tests {
     fn test_gc_does_not_crash() {
         let _session = crate::sexp::session::RSession::new();
         let session = RSession::new();
-        session.with_protected(|| unsafe {
+        session.with_protected(|| {
             R_gc();
             R_gc_lite();
             // Should not crash
@@ -2300,7 +2300,7 @@ mod owned_gc_operation_tests {
             assert_eq!(unsafe { (*instance).memory_state.in_gc }, 1);
             std::panic::panic_any(73_u32);
         }));
-        let outcome = catch_unwind(AssertUnwindSafe(|| unsafe { R_gc() }));
+        let outcome = catch_unwind(AssertUnwindSafe(||  R_gc()));
         assert_eq!(*outcome.unwrap_err().downcast::<u32>().unwrap(), 73);
         assert_eq!(unsafe { (*instance).memory_state.in_gc }, 0);
         assert_eq!(unsafe { (*instance).memory_state.gc_count }, 1);
@@ -2319,7 +2319,7 @@ mod owned_gc_operation_tests {
             R_gc();
             assert_eq!((*instance).memory_state.in_gc, 1);
         }));
-        unsafe { R_gc() };
+         R_gc();
         assert_eq!(calls.get(), 1);
         assert_eq!(unsafe { (*instance).memory_state.in_gc }, 0);
         assert_eq!(unsafe { (*instance).memory_state.gc_count }, 2);

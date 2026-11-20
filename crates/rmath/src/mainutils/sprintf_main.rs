@@ -80,7 +80,7 @@ unsafe fn warning(fmt: *const c_char, _a1: usize, _a2: usize) {
     }
 }
 
-unsafe fn isNA_STRING(s: SEXP) -> bool {
+fn isNA_STRING(s: SEXP) -> bool {
     if s.is_null() {
         return false;
     }

@@ -90,7 +90,7 @@ unsafe fn streql(s1: *const c_char, s2: *const c_char) -> c_int {
 }
 
 #[inline(always)]
-unsafe fn NA_STRING() -> SEXP {
+fn NA_STRING() -> SEXP {
      crate::mainutils::relop::NA_STRING() 
 }
 

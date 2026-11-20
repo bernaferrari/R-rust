@@ -362,7 +362,7 @@ unsafe fn coerceVector(x: SEXP, type_: c_int) -> SEXP {
 // checkArgIsSymbol: validate that the given SEXP is a symbol
 // ---------------------------------------------------------------------------
 
-unsafe fn checkArgIsSymbol(x: SEXP) -> SEXP {
+fn checkArgIsSymbol(x: SEXP) -> SEXP {
     {
         if x.is_null() || TYPEOF(x) != SYMSXP_VAL {
             r_error("argument must be a symbol");

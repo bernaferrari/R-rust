@@ -342,7 +342,7 @@ unsafe fn R_AsCharacterSymbol() -> SEXP {
     unsafe { crate::sexp::symbol::Rf_install(b"as.character\x00".as_ptr() as *const c_char) }
 }
 
-unsafe fn NA_STRING() -> SEXP {
+fn NA_STRING() -> SEXP {
      crate::mainutils::relop::NA_STRING() 
 }
 

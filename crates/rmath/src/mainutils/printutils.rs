@@ -1317,7 +1317,7 @@ pub unsafe fn Rcons_vprintf(format: *const c_char, _arg: *mut c_void) -> c_int {
 /// Print a vector index label.
 ///
 /// Prints `[i]` with left-padding to width `w`.
-pub unsafe fn VectorIndex(i: R_xlen_t, w: c_int) {
+pub fn VectorIndex(i: R_xlen_t, w: c_int) {
     {
         let iw = IndexWidth_xlen(i);
         let total_label_width = iw + 2; // "[i]" = 2 brackets + digits

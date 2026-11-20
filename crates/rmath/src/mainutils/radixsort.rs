@@ -214,7 +214,7 @@ unsafe fn flipflop() {
 }
 
 /// Free all group-stack memory.
-pub unsafe fn gsfree() {
+pub fn gsfree() {
     {
         let gs = with_radix_state(|s| s.gs);
         libc_free(gs[0] as *mut c_void);

@@ -31,7 +31,7 @@ fn error(msg: &str) {
     });
 }
 
-unsafe fn errorcall(_call: SEXP, msg: &str) {
+fn errorcall(_call: SEXP, msg: &str) {
     {
         error(msg);
     }
@@ -911,7 +911,7 @@ pub unsafe fn do_switch(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     }
 }
 
-unsafe fn switch_default(value: SEXP, current: SEXP) -> SEXP {
+fn switch_default(value: SEXP, current: SEXP) -> SEXP {
     {
         if !current.is_null() {
             error("duplicate switch defaults");
