@@ -7,19 +7,19 @@ use super::*;
 
 /// R's `crossprod(x, y)` — computes t(x) %*% y.
 /// If y is NULL, computes t(x) %*% x.
-pub unsafe fn do_crossprod(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_crossprod(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe { crate::mainutils::array::do_matprod(call, op, args, rho) }
 }
 
 /// R's `tcrossprod(x, y)` — computes x %*% t(y).
 /// If y is NULL, computes x %*% t(x).
-pub unsafe fn do_tcrossprod(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_tcrossprod(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe { crate::mainutils::array::do_matprod(call, op, args, rho) }
 }
 
 /// R's `det(x)` — determinant of a square matrix (simplified via LU-like approach).
 /// For a 2x2 matrix: det = a*d - b*c. For larger, uses LU decomposition concept.
-pub unsafe fn do_det(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_det(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -89,7 +89,7 @@ pub unsafe fn do_det(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// GNU `.Internal(La_svd(jobu, x, s, u, vt))`.
-pub unsafe fn do_la_svd(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_la_svd(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let jobu = CAR(args);
         let rest = CDR(args);
@@ -104,7 +104,7 @@ pub unsafe fn do_la_svd(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 }
 
 /// GNU `.Internal(La_svd_cmplx(jobu, x, s, u, vt))`.
-pub unsafe fn do_la_svd_cmplx(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_la_svd_cmplx(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let jobu = CAR(args);
         let rest = CDR(args);
@@ -118,12 +118,12 @@ pub unsafe fn do_la_svd_cmplx(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
     }
 }
 
-pub unsafe fn do_det_ge_real(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_det_ge_real(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe { crate::modules::lapack::lapack_impl::det_ge_real(CAR(args), CADR(args)) }
 }
 
 /// Solve through the selected LAPACK adapter using R's column-major layout.
-pub unsafe fn do_solve(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_solve(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         // Exact/partial names bind before positional arguments; NULL is an
         // actual value, distinct from an omitted right-hand side.
@@ -274,7 +274,7 @@ pub unsafe fn do_solve(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// GNU `chol(x)` — upper Cholesky factor.
-pub unsafe fn do_chol(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_chol(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let mut x = coerce_numeric_matrix(CAR(args));
         let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
@@ -400,7 +400,7 @@ pub unsafe fn do_chol(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// GNU `chol2inv(x, size = NCOL(x))` — inverse from an upper Cholesky / R factor.
-pub unsafe fn do_chol2inv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_chol2inv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let mut x = CAR(args);
         let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
@@ -468,7 +468,7 @@ pub unsafe fn do_chol2inv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 }
 
 /// GNU `norm(x, type)` — `La_dlange`. Default type `"O"`.
-pub unsafe fn do_norm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_norm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let typ = CAR(CDR(args));
@@ -484,7 +484,7 @@ pub unsafe fn do_norm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// GNU `rcond(x, norm)` — `La_dgecon`. Default norm `"O"`.
-pub unsafe fn do_rcond(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_rcond(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = coerce_numeric_matrix(CAR(args));
         let typ = CAR(CDR(args));
@@ -502,27 +502,27 @@ pub unsafe fn do_rcond(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         }
     }
 }
-pub unsafe fn do_la_dlange(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe { do_norm(call, op, args, rho) }
+pub fn do_la_dlange(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    { do_norm(call, op, args, rho) }
 }
 
-pub unsafe fn do_la_dgecon(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe { do_rcond(call, op, args, rho) }
+pub fn do_la_dgecon(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    { do_rcond(call, op, args, rho) }
 }
 
-pub unsafe fn do_la_zlange(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_la_zlange(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe { crate::modules::lapack::lapack_impl::La_zlange(CAR(args), CAR(CDR(args))) }
 }
 
-pub unsafe fn do_la_zgecon(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_la_zgecon(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe { crate::modules::lapack::lapack_impl::La_zgecon(CAR(args), CAR(CDR(args))) }
 }
 
-pub unsafe fn do_la_dtrcon(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_la_dtrcon(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe { crate::modules::lapack::lapack_impl::La_dtrcon(CAR(args), CAR(CDR(args))) }
 }
 
-pub unsafe fn do_la_dtrcon3(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_la_dtrcon3(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         crate::modules::lapack::lapack_impl::La_dtrcon3(
             CAR(args),
@@ -532,11 +532,11 @@ pub unsafe fn do_la_dtrcon3(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
     }
 }
 
-pub unsafe fn do_la_ztrcon(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_la_ztrcon(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe { crate::modules::lapack::lapack_impl::La_ztrcon(CAR(args), CAR(CDR(args))) }
 }
 
-pub unsafe fn do_la_ztrcon3(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_la_ztrcon3(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         crate::modules::lapack::lapack_impl::La_ztrcon3(
             CAR(args),
@@ -547,7 +547,7 @@ pub unsafe fn do_la_ztrcon3(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 }
 
 /// GNU `kappa` — `1/rcond`, or `smax/smin` when `exact=TRUE`.
-pub unsafe fn do_kappa(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_kappa(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let mut exact = false;
@@ -604,7 +604,7 @@ pub unsafe fn do_kappa(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 /// GNU `forwardsolve(l, x)` — `backsolve(..., upper.tri=FALSE)`.
-pub unsafe fn do_forwardsolve(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_forwardsolve(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let l = CAR(args);
         let x = CAR(CDR(args));
@@ -621,7 +621,7 @@ pub unsafe fn do_forwardsolve(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SE
     }
 }
 
-unsafe fn coerce_numeric_matrix(x: SEXP) -> SEXP {
+fn coerce_numeric_matrix(x: SEXP) -> SEXP {
     unsafe {
         if TYPEOF(x) == SEXPTYPE::INTSXP || TYPEOF(x) == SEXPTYPE::LGLSXP {
             let coerced = crate::mainutils::coerce::coerceVector(x, SEXPTYPE::REALSXP.as_c_int());
@@ -634,7 +634,7 @@ unsafe fn coerce_numeric_matrix(x: SEXP) -> SEXP {
 }
 
 /// GNU `svd(x)` — singular values via `La_svd` / `La_svd_cmplx`.
-unsafe fn thin_svd_factor(src: SEXP, rows: i32, cols: i32, is_cmplx: bool) -> SEXP {
+fn thin_svd_factor(src: SEXP, rows: i32, cols: i32, is_cmplx: bool) -> SEXP {
     unsafe {
         let ty = if is_cmplx {
             SEXPTYPE::CPLXSXP.as_c_int()
@@ -662,7 +662,7 @@ unsafe fn thin_svd_factor(src: SEXP, rows: i32, cols: i32, is_cmplx: bool) -> SE
     }
 }
 
-pub unsafe fn do_svd(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_svd(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let x = coerce_numeric_matrix(CAR(args));
 
@@ -784,7 +784,7 @@ pub unsafe fn do_svd(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// R's `which(x)` variant for arrays — returns 1-based row-major indices where x is TRUE.
-pub unsafe fn do_which_array(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_which_array(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         // Same as do_which for now — array-aware which is equivalent for logical vectors
         do_which(_call, _op, args, _rho)

@@ -2,7 +2,7 @@
 use super::*;
 
 /// R's `storage.mode(x) <- value` — coerce storage while preserving attributes.
-pub unsafe fn do_storage_mode_set(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_storage_mode_set(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         crate::mainutils::seq::check1arg(args, call, c"x".as_ptr());
         let mut x = CAR(args);
@@ -45,8 +45,8 @@ pub unsafe fn do_storage_mode_set(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) 
     }
 }
 
-pub unsafe fn storage_mode_target(value: SEXP, allow_numeric: bool) -> Result<c_int, String> {
-    unsafe {
+pub fn storage_mode_target(value: SEXP, allow_numeric: bool) -> Result<c_int, String> {
+    {
         if value.is_null()
             || value == R_NilValue()
             || TYPEOF(value) != SEXPTYPE::STRSXP
@@ -76,7 +76,7 @@ pub unsafe fn storage_mode_target(value: SEXP, allow_numeric: bool) -> Result<c_
 
 /// The raw stored `row.names` attribute, including the compact
 /// `c(NA, -n)` automatic form, without materializing it.
-pub unsafe fn row_names_stored(x: SEXP) -> SEXP {
+pub fn row_names_stored(x: SEXP) -> SEXP {
     unsafe {
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
@@ -94,10 +94,10 @@ pub unsafe fn row_names_stored(x: SEXP) -> SEXP {
 }
 
 /// Stored `row.names`, including the compact `c(NA, -n)` form.
-pub unsafe fn do_row_names_stored(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { row_names_stored(CAR(args)) }
+pub fn do_row_names_stored(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    { row_names_stored(CAR(args)) }
 }
-pub unsafe fn do_rownames(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_rownames(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -115,7 +115,7 @@ pub unsafe fn do_rownames(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 }
 
 /// R's `colnames(x)` — get column names attribute.
-pub unsafe fn do_colnames(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_colnames(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -131,13 +131,13 @@ pub unsafe fn do_colnames(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 }
 
 /// R's `names(x)` — get names attribute (alias for do_names).
-pub unsafe fn do_names_get(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_names_get(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe { do_names(_call, _op, args, _rho) }
 }
 
 /// GNU `names(x) <- value`. Pairlists and language objects store names
 /// as cell tags (including the head of a call as `""`).
-pub unsafe fn do_names_set(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_names_set(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let owner = crate::sexp::owner::OwnerToken::current()
             .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
@@ -249,7 +249,7 @@ pub unsafe fn do_names_set(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
     }
 }
 
-unsafe fn namesgets_pairlist(list: SEXP, value: SEXP) {
+fn namesgets_pairlist(list: SEXP, value: SEXP) {
     unsafe {
         if value.is_null() || value == R_NilValue() {
             let mut cell = list;
@@ -281,7 +281,7 @@ unsafe fn namesgets_pairlist(list: SEXP, value: SEXP) {
 }
 
 /// R's `dimnames(x) <- value` — set matrix/array dimension names.
-pub unsafe fn do_dimnames_set(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_dimnames_set(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let mut ans = R_NilValue();
         if crate::eval::dispatch::DispatchOrEval(
@@ -316,7 +316,7 @@ pub unsafe fn do_dimnames_set(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SE
 }
 
 /// GNU `dimnames.data.frame`: `list(row.names(x), names(x))`.
-pub(crate) unsafe fn dimnames_data_frame(x: SEXP) -> SEXP {
+pub(crate) fn dimnames_data_frame(x: SEXP) -> SEXP {
     unsafe {
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
         let _g = protect(result);
@@ -329,7 +329,7 @@ pub(crate) unsafe fn dimnames_data_frame(x: SEXP) -> SEXP {
 }
 
 /// GNU `dimnames<-.data.frame`: row.names and names, not array dimnames.
-unsafe fn dimnames_gets_data_frame(x: SEXP, value: SEXP) {
+fn dimnames_gets_data_frame(x: SEXP, value: SEXP) {
     unsafe {
         if value.is_null() || value == R_NilValue() || TYPEOF(value) != SEXPTYPE::VECSXP {
             std::panic::panic_any(RError {
@@ -364,7 +364,7 @@ unsafe fn dimnames_gets_data_frame(x: SEXP, value: SEXP) {
 /// Normalize and install an array's dimnames using GNU R's `dimnamesgets`
 /// contract.  In particular, axis labels are character vectors regardless of
 /// the vector type supplied by the caller.
-pub(super) unsafe fn set_array_dimnames(x: SEXP, value: SEXP) {
+pub(super) fn set_array_dimnames(x: SEXP, value: SEXP) {
     unsafe {
         let dimnames_sym = R_DimNamesSymbol();
         if value.is_null() || value == R_NilValue() {
@@ -477,16 +477,16 @@ pub(super) unsafe fn set_array_dimnames(x: SEXP, value: SEXP) {
 }
 
 /// R's `rownames(x) <- value` — set matrix row names through dimnames[[1]].
-pub unsafe fn do_rownames_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { set_matrix_dimname(args, 0) }
+pub fn do_rownames_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    { set_matrix_dimname(args, 0) }
 }
 
 /// R's `colnames(x) <- value` — set matrix column names through dimnames[[2]].
-pub unsafe fn do_colnames_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { set_matrix_dimname(args, 1) }
+pub fn do_colnames_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    { set_matrix_dimname(args, 1) }
 }
 
-pub unsafe fn set_matrix_dimname(args: SEXP, axis: i64) -> SEXP {
+pub fn set_matrix_dimname(args: SEXP, axis: i64) -> SEXP {
     unsafe {
         let x = CAR(args);
         let value = CAR(CDR(args));
@@ -515,7 +515,7 @@ pub unsafe fn set_matrix_dimname(args: SEXP, axis: i64) -> SEXP {
     }
 }
 
-pub unsafe fn do_class_get(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_class_get(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -526,11 +526,11 @@ pub unsafe fn do_class_get(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
 }
 
 /// R's `.class2(x)` — GNU `R_data_class2`, including S4 extends.
-pub unsafe fn do_class2(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_class2(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe { crate::mainutils::objects::R_data_class2(CAR(args)) }
 }
 
-pub unsafe fn do_class_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_class_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let value = CAR(CDR(args));
@@ -669,7 +669,7 @@ pub unsafe fn do_class_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
 }
 
 /// R's `oldClass(x)` — direct S3 class attribute without implicit defaults.
-pub unsafe fn do_oldClass(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_oldClass(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -680,7 +680,7 @@ pub unsafe fn do_oldClass(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 }
 
 /// R's `oldClass(x) <- value` — set or remove the direct S3 class attribute.
-pub unsafe fn do_oldClass_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_oldClass_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let mut x = CAR(args);
         let value = CAR(CDR(args));
@@ -700,7 +700,7 @@ pub unsafe fn do_oldClass_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
 // ---------------------------------------------------------------------------
 
 /// R's `attr(x, which)` — get arbitrary attribute by name.
-pub unsafe fn do_attr(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_attr(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let mut x = R_NilValue();
         let mut which = R_NilValue();
@@ -834,7 +834,7 @@ pub unsafe fn do_attr(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// R's `attr(x, which) <- value` — set or remove a single attribute.
-pub unsafe fn do_attr_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_attr_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let mut x = R_NilValue();
         let mut which = R_NilValue();
@@ -893,7 +893,7 @@ pub unsafe fn do_attr_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 }
 
 /// R's `attributes(x) <- value` — replace all attributes from a named list.
-pub unsafe fn do_attributes_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_attributes_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let mut x = CAR(args);
 
@@ -950,7 +950,7 @@ pub unsafe fn do_attributes_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) 
 }
 
 /// R's `comment(x)` — get the comment attribute.
-pub unsafe fn do_comment(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_comment(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -961,7 +961,7 @@ pub unsafe fn do_comment(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 }
 
 /// R's `comment(x) <- value` — set the comment attribute.
-pub unsafe fn do_comment_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_comment_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let mut x = CAR(args);
         let value = CAR(CDR(args));
@@ -976,11 +976,11 @@ pub unsafe fn do_comment_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
     }
 }
 
-pub unsafe fn comment_symbol() -> SEXP {
+pub fn comment_symbol() -> SEXP {
     unsafe { Rf_install(c"comment".as_ptr()) }
 }
 
-unsafe fn force_namespace_value(value: SEXP) -> SEXP {
+fn force_namespace_value(value: SEXP) -> SEXP {
     unsafe {
         if !value.is_null() && value != R_UnboundValue() && TYPEOF(value) == SEXPTYPE::PROMSXP {
             crate::sexp::envir::forcePromise(value)
@@ -990,7 +990,7 @@ unsafe fn force_namespace_value(value: SEXP) -> SEXP {
     }
 }
 
-unsafe fn namespace_lookup_name(value: SEXP, error: &str) -> SEXP {
+fn namespace_lookup_name(value: SEXP, error: &str) -> SEXP {
     unsafe {
         if TYPEOF(value) == SEXPTYPE::SYMSXP {
             return value;
@@ -1005,7 +1005,7 @@ unsafe fn namespace_lookup_name(value: SEXP, error: &str) -> SEXP {
 
 /// GNU's original getExportedValue closure uses the same namespace identity
 /// and export-name mapping as qualified lookup, including dotted exports.
-pub unsafe fn do_get_namespace_value(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_get_namespace_value(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let ns_arg = CAR(args);
         let base = crate::sexp::envir::R_BaseNamespace();
@@ -1029,7 +1029,7 @@ pub unsafe fn do_get_namespace_value(_call: SEXP, _op: SEXP, args: SEXP, _rho: S
     }
 }
 
-unsafe fn namespace_value(namespace: SEXP, name: SEXP, exported: bool) -> SEXP {
+fn namespace_value(namespace: SEXP, name: SEXP, exported: bool) -> SEXP {
     unsafe {
         let _namespace = protect(namespace);
         let base = crate::sexp::envir::R_BaseNamespace();
@@ -1086,7 +1086,7 @@ unsafe fn namespace_value(namespace: SEXP, name: SEXP, exported: bool) -> SEXP {
     }
 }
 
-pub unsafe fn do_namespace_get(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_namespace_get(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let package = CAR(args);
         let name = CAR(CDR(args));
@@ -1220,7 +1220,7 @@ pub unsafe fn do_namespace_get(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> 
             }
             let package_path = find_package_path(&package_name);
             if !private_lookup {
-                let exported = unsafe {
+                let exported = {
                     crate::mainutils::essentials::shared::namespace_exports_contains(
                         std::path::Path::new(&package_path),
                         namespace,
@@ -1269,7 +1269,7 @@ pub unsafe fn do_namespace_get(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> 
     }
 }
 
-unsafe fn lazy_data_value(package: &str, package_path: &str, name: &str) -> Option<SEXP> {
+fn lazy_data_value(package: &str, package_path: &str, name: &str) -> Option<SEXP> {
     unsafe {
         if package == "datasets" && package_path.is_empty() {
             return crate::library::datasets::value(name)
@@ -1297,7 +1297,7 @@ unsafe fn lazy_data_value(package: &str, package_path: &str, name: &str) -> Opti
 }
 
 /// R's `attributes(x)` — return attributes as a named list.
-pub unsafe fn do_attributes(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_attributes(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -1372,7 +1372,7 @@ pub fn structure_attr_name(name: &str) -> &str {
 /// the rename emits the upstream deprecation warning listing every renamed
 /// name in call order (`structure(.OBJSXP, dim=)` construct side; the deparse
 /// side landed separately with SyncErrDep).
-pub unsafe fn do_structure(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_structure(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let mut x = CAR(args);
         if TYPEOF(x) == SEXPTYPE::PROMSXP {
@@ -1582,7 +1582,7 @@ mod tests {
 }
 
 /// R's `attr(x, which) <- value` — set arbitrary attribute by name.
-pub unsafe fn do_setattr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_setattr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let which = CAR(CDR(args));

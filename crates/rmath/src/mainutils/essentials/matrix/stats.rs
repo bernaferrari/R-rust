@@ -7,7 +7,7 @@ use super::*;
 
 /// GNU bind.c: if any argument is S4 and no S3 cbind./rbind. method was
 /// found, call methods:::cbind / methods:::rbind (which use cbind2/rbind2).
-unsafe fn try_methods_bind(
+fn try_methods_bind(
     call: SEXP,
     args: SEXP,
     rho: SEXP,
@@ -69,7 +69,7 @@ unsafe fn try_methods_bind(
     }
 }
 
-unsafe fn eval_if_needed(x: SEXP, rho: SEXP) -> SEXP {
+fn eval_if_needed(x: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         if x.is_null() || x == R_NilValue() {
             return x;
@@ -86,7 +86,7 @@ unsafe fn eval_if_needed(x: SEXP, rho: SEXP) -> SEXP {
 /// GNU `.Internal(cbind(deparse.level, ...))` / rbind: evaluate the
 /// sentinel, then promise the data arguments so `...` expansion keeps
 /// the original expressions for deparse.level=1 names.
-unsafe fn eval_bind_internal_args<'s>(
+fn eval_bind_internal_args<'s>(
     factory: &crate::sexp::object::SessionNodeFactory<'s>,
     call: SEXP,
     args: crate::sexp::object::Sexp<'s>,
@@ -122,7 +122,7 @@ unsafe fn eval_bind_internal_args<'s>(
     }
 }
 
-unsafe fn force_bind_arg(cell: SEXP) -> SEXP {
+fn force_bind_arg(cell: SEXP) -> SEXP {
     unsafe {
         let mut arg = CAR(cell);
         while !arg.is_null() && TYPEOF(arg) == SEXPTYPE::PROMSXP {
@@ -132,7 +132,7 @@ unsafe fn force_bind_arg(cell: SEXP) -> SEXP {
     }
 }
 
-unsafe fn try_s3_bind(call: SEXP, args: SEXP, rho: SEXP, generic: &str) -> Option<SEXP> {
+fn try_s3_bind(call: SEXP, args: SEXP, rho: SEXP, generic: &str) -> Option<SEXP> {
     unsafe {
         let mut user_args = args;
         let mut ctx = crate::sexp::context::R_GlobalContext();
@@ -197,7 +197,7 @@ unsafe fn try_s3_bind(call: SEXP, args: SEXP, rho: SEXP, generic: &str) -> Optio
 }
 
 /// R's `cbind(...)` — combine vectors/matrices by columns.
-pub unsafe fn do_cbind(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_cbind(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let factory = crate::eval::parser::active_factory();
         let arguments = if args.is_null() {
@@ -266,7 +266,7 @@ pub unsafe fn do_cbind(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 .iter()
                 .all(|(arg, _, _, _)| sexp_has_class(*arg, "ts"))
         {
-            let phase = |arg: SEXP| unsafe {
+            let phase = |arg: SEXP| {
                 let tsp = crate::sexp::attrib_core::getAttrib(
                     arg,
                     crate::sexp::attrib_core::R_TspSymbol(),
@@ -384,7 +384,7 @@ pub unsafe fn do_cbind(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 /// R's `rbind(...)` — combine vectors/matrices by rows.
-pub unsafe fn do_rbind(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_rbind(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let factory = crate::eval::parser::active_factory();
         let arguments = if args.is_null() {
@@ -605,7 +605,7 @@ pub unsafe fn do_rbind(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// Each output column computes its own common type. Data-frame arguments are
 /// matched to the first frame by column name; vector/list arguments add one
 /// row and are matched by name when every element is named.
-unsafe fn rbind_data_frame(args: SEXP) -> SEXP {
+fn rbind_data_frame(args: SEXP) -> SEXP {
     unsafe {
         let mut template_cell = args;
         let mut template = force_bind_arg(template_cell);
@@ -790,7 +790,7 @@ pub fn bind_common_type(left: SEXPTYPE, right: SEXPTYPE) -> SEXPTYPE {
     }
 }
 
-pub unsafe fn bind_dims(arg: SEXP, cbind: bool) -> (R_xlen_t, R_xlen_t) {
+pub fn bind_dims(arg: SEXP, cbind: bool) -> (R_xlen_t, R_xlen_t) {
     unsafe {
         if sexp_has_class(arg, "data.frame") && TYPEOF(arg) == SEXPTYPE::VECSXP {
             let nc = XLENGTH(arg);
@@ -812,7 +812,7 @@ pub unsafe fn bind_dims(arg: SEXP, cbind: bool) -> (R_xlen_t, R_xlen_t) {
     }
 }
 
-unsafe fn next_bind_expr(expr: SEXP) -> SEXP {
+fn next_bind_expr(expr: SEXP) -> SEXP {
     {
         if expr.is_null() || expr == R_NilValue() {
             R_NilValue()
@@ -822,8 +822,8 @@ unsafe fn next_bind_expr(expr: SEXP) -> SEXP {
     }
 }
 
-unsafe fn bind_call_data_exprs(call: SEXP) -> SEXP {
-    unsafe {
+fn bind_call_data_exprs(call: SEXP) -> SEXP {
+    {
         if call.is_null() || TYPEOF(call) != SEXPTYPE::LANGSXP {
             return R_NilValue();
         }
@@ -837,7 +837,7 @@ unsafe fn bind_call_data_exprs(call: SEXP) -> SEXP {
     }
 }
 
-unsafe fn bind_expr_cell_is_deparse_level(expr_cell: SEXP) -> bool {
+fn bind_expr_cell_is_deparse_level(expr_cell: SEXP) -> bool {
     unsafe {
         if expr_cell.is_null() || expr_cell == R_NilValue() {
             return false;
@@ -863,15 +863,15 @@ unsafe fn bind_expr_cell_is_deparse_level(expr_cell: SEXP) -> bool {
     }
 }
 
-unsafe fn bind_cell_is_deparse_level(eval_cell: SEXP, expr_cell: SEXP) -> bool {
-    unsafe {
+fn bind_cell_is_deparse_level(eval_cell: SEXP, expr_cell: SEXP) -> bool {
+    {
         tag_name(eval_cell).as_deref() == Some("deparse.level")
             || bind_expr_cell_is_deparse_level(expr_cell)
     }
 }
 
 /// GNU cbind/rbind names: tag always; else level 1 = symbol, level 2 = deparse.
-unsafe fn bind_arg_label(eval_cell: SEXP, expr_cell: SEXP, deparse_level: i32) -> String {
+fn bind_arg_label(eval_cell: SEXP, expr_cell: SEXP, deparse_level: i32) -> String {
     unsafe {
         if let Some(name) = tag_name(eval_cell) {
             if name != "deparse.level" && name != "..." {
@@ -901,7 +901,7 @@ unsafe fn bind_arg_label(eval_cell: SEXP, expr_cell: SEXP, deparse_level: i32) -
     }
 }
 
-unsafe fn symbol_printname(sym: SEXP) -> String {
+fn symbol_printname(sym: SEXP) -> String {
     unsafe {
         let pname = PRINTNAME(sym);
         if pname.is_null() {
@@ -923,8 +923,8 @@ unsafe fn symbol_printname(sym: SEXP) -> String {
     }
 }
 
-unsafe fn bind_label_expr(eval_cell: SEXP, expr_cell: SEXP) -> SEXP {
-    unsafe {
+fn bind_label_expr(eval_cell: SEXP, expr_cell: SEXP) -> SEXP {
+    {
         let value = if eval_cell.is_null() {
             std::ptr::null_mut()
         } else {
@@ -941,7 +941,7 @@ unsafe fn bind_label_expr(eval_cell: SEXP, expr_cell: SEXP) -> SEXP {
     }
 }
 
-unsafe fn unwrap_promise_expr(mut x: SEXP) -> SEXP {
+fn unwrap_promise_expr(mut x: SEXP) -> SEXP {
     {
         while !x.is_null() && TYPEOF(x) == SEXPTYPE::PROMSXP {
             x = crate::sexp::accessors::PRCODE(x);
@@ -950,7 +950,7 @@ unsafe fn unwrap_promise_expr(mut x: SEXP) -> SEXP {
     }
 }
 
-unsafe fn first_rbind_colnames(
+fn first_rbind_colnames(
     entries: &[(SEXP, R_xlen_t, R_xlen_t, String)],
     ncols: R_xlen_t,
 ) -> SEXP {
@@ -995,7 +995,7 @@ unsafe fn first_rbind_colnames(
     }
 }
 
-unsafe fn first_vector_names(
+fn first_vector_names(
     entries: &[(SEXP, R_xlen_t, R_xlen_t, String)],
     nrows: R_xlen_t,
 ) -> SEXP {
@@ -1018,14 +1018,14 @@ unsafe fn first_vector_names(
     }
 }
 
-unsafe fn is_bind_matrix(arg: SEXP) -> bool {
+fn is_bind_matrix(arg: SEXP) -> bool {
     unsafe {
         let dim = crate::sexp::attrib_core::getAttrib(arg, crate::sexp::attrib_core::R_DimSymbol());
         !dim.is_null() && TYPEOF(dim) == SEXPTYPE::INTSXP && LENGTH(dim) >= 2
     }
 }
 
-unsafe fn matrix_axis_labels(arg: SEXP, axis: R_xlen_t, expected: R_xlen_t) -> Option<Vec<String>> {
+fn matrix_axis_labels(arg: SEXP, axis: R_xlen_t, expected: R_xlen_t) -> Option<Vec<String>> {
     unsafe {
         let dn =
             crate::sexp::attrib_core::getAttrib(arg, crate::sexp::attrib_core::R_DimNamesSymbol());
@@ -1048,7 +1048,7 @@ unsafe fn matrix_axis_labels(arg: SEXP, axis: R_xlen_t, expected: R_xlen_t) -> O
     }
 }
 
-unsafe fn first_cbind_rownames(
+fn first_cbind_rownames(
     entries: &[(SEXP, R_xlen_t, R_xlen_t, String)],
     nrows: R_xlen_t,
 ) -> SEXP {
@@ -1077,7 +1077,7 @@ unsafe fn first_cbind_rownames(
     }
 }
 
-unsafe fn matrix_column_vector(arg: SEXP, j: R_xlen_t, nrow: R_xlen_t) -> SEXP {
+fn matrix_column_vector(arg: SEXP, j: R_xlen_t, nrow: R_xlen_t) -> SEXP {
     unsafe {
         let ty = TYPEOF(arg);
         let out = Rf_allocVector3(ty, nrow);
@@ -1092,7 +1092,7 @@ unsafe fn matrix_column_vector(arg: SEXP, j: R_xlen_t, nrow: R_xlen_t) -> SEXP {
     }
 }
 
-unsafe fn cbind_data_frames(entries: &[(SEXP, R_xlen_t, R_xlen_t, String)]) -> SEXP {
+fn cbind_data_frames(entries: &[(SEXP, R_xlen_t, R_xlen_t, String)]) -> SEXP {
     unsafe {
         let mut columns: Vec<SEXP> = Vec::new();
         let mut names: Vec<String> = Vec::new();
@@ -1193,7 +1193,7 @@ unsafe fn cbind_data_frames(entries: &[(SEXP, R_xlen_t, R_xlen_t, String)]) -> S
     }
 }
 
-pub unsafe fn copy_bind_value(
+pub fn copy_bind_value(
     dst: SEXP,
     dst_i: R_xlen_t,
     dst_type: SEXPTYPE,
@@ -1308,7 +1308,7 @@ pub unsafe fn copy_bind_value(
     }
 }
 
-pub unsafe fn set_bind_dimnames(result: SEXP, row_names: SEXP, col_names: SEXP) {
+pub fn set_bind_dimnames(result: SEXP, row_names: SEXP, col_names: SEXP) {
     unsafe {
         let factory = crate::eval::parser::active_factory();
         let owned = |raw: SEXP| {
@@ -1347,7 +1347,7 @@ pub unsafe fn set_bind_dimnames(result: SEXP, row_names: SEXP, col_names: SEXP) 
     }
 }
 /// R's `var(x, y = NULL, na.rm = FALSE)` — variance or covariance.
-pub unsafe fn do_var(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_var(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -1462,7 +1462,7 @@ pub unsafe fn do_var(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
-unsafe fn var_matrix(x: SEXP, dim: SEXP, na_rm: bool) -> SEXP {
+fn var_matrix(x: SEXP, dim: SEXP, na_rm: bool) -> SEXP {
     unsafe {
         let nrow = *INTEGER(dim) as R_xlen_t;
         let ncol = *INTEGER(dim).add(1) as R_xlen_t;
@@ -1541,7 +1541,7 @@ unsafe fn var_matrix(x: SEXP, dim: SEXP, na_rm: bool) -> SEXP {
     }
 }
 
-unsafe fn matrix_numeric_elt(x: SEXP, index: R_xlen_t) -> f64 {
+fn matrix_numeric_elt(x: SEXP, index: R_xlen_t) -> f64 {
     unsafe {
         match TYPEOF(x) {
             t if t == SEXPTYPE::REALSXP => *REAL(x).add(index as usize),
@@ -1555,7 +1555,7 @@ unsafe fn matrix_numeric_elt(x: SEXP, index: R_xlen_t) -> f64 {
 }
 
 /// R's `sd(x, na.rm = FALSE)` — standard deviation.
-pub unsafe fn do_sd(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_sd(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         // Call do_var to get variance
         let var_args = Rf_cons(CAR(args), CDR(args));
@@ -1574,7 +1574,7 @@ pub unsafe fn do_sd(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// R's `median(x, na.rm = FALSE)` — median value.
-pub unsafe fn do_median(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_median(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -1624,7 +1624,7 @@ pub unsafe fn do_median(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 }
 
 /// R's `IQR(x, na.rm = FALSE)` — interquartile range using quantile type 7.
-pub unsafe fn do_iqr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_iqr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -1669,7 +1669,7 @@ pub unsafe fn do_iqr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// GNU `quantile(x, probs)` type 7.
-pub unsafe fn do_quantile(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_quantile(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = arg_by_name_or_position(args, &["x"], 0);
         if x.is_null() || x == R_NilValue() {
@@ -1731,7 +1731,7 @@ pub unsafe fn do_quantile(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 }
 
 /// R's `cummin(x)` — cumulative minimum.
-pub unsafe fn do_cummin(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_cummin(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let mut dispatched = R_NilValue();
         if crate::eval::dispatch::DispatchGroup(
@@ -1809,7 +1809,7 @@ pub unsafe fn do_cummin(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 /// R's `cummax(x)` — cumulative maximum.
-pub unsafe fn do_cummax(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_cummax(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let mut dispatched = R_NilValue();
         if crate::eval::dispatch::DispatchGroup(

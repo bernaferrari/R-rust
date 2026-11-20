@@ -6,7 +6,7 @@ use super::*;
 // ---------------------------------------------------------------------------
 
 /// R's `NROW(x)` — number of rows; falls back to length(x) if no dim.
-pub unsafe fn do_NROW(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_NROW(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -25,7 +25,7 @@ pub unsafe fn do_NROW(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// R's `NCOL(x)` — number of columns; returns 1 for vectors.
-pub unsafe fn do_NCOL(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_NCOL(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -44,12 +44,12 @@ pub unsafe fn do_NCOL(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// GNU default lengths shape/flag contract with rooted copied element access.
-pub unsafe fn do_lengths(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe { super::lengths::run(call, op, args, rho) }
+pub fn do_lengths(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    { super::lengths::run(call, op, args, rho) }
 }
 
 /// R's `length(x) <- value` — resize vectors with R's missing-value fill rules.
-pub unsafe fn do_length_set(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_length_set(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         crate::mainutils::seq::check1arg(args, call, c"x".as_ptr());
         let mut ans = R_NilValue();
@@ -110,7 +110,7 @@ pub unsafe fn do_length_set(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP
     }
 }
 
-unsafe fn copy_datetime_class(from: SEXP, to: SEXP) {
+fn copy_datetime_class(from: SEXP, to: SEXP) {
     unsafe {
         let class =
             crate::sexp::attrib_core::getAttrib(from, crate::sexp::attrib_core::R_ClassSymbol());
@@ -135,7 +135,7 @@ unsafe fn copy_datetime_class(from: SEXP, to: SEXP) {
     }
 }
 
-unsafe fn length_set_posixlt(x: SEXP, new_len: R_xlen_t) -> SEXP {
+fn length_set_posixlt(x: SEXP, new_len: R_xlen_t) -> SEXP {
     unsafe {
         let old = crate::mainutils::subassign::posixlt_obs_length(x);
         if old == new_len {
@@ -168,7 +168,7 @@ unsafe fn length_set_posixlt(x: SEXP, new_len: R_xlen_t) -> SEXP {
     }
 }
 
-pub unsafe fn resize_vector(x: SEXP, new_len: R_xlen_t) -> SEXP {
+pub fn resize_vector(x: SEXP, new_len: R_xlen_t) -> SEXP {
     unsafe {
         if XLENGTH(x) == new_len {
             return x;
@@ -239,7 +239,7 @@ pub unsafe fn resize_vector(x: SEXP, new_len: R_xlen_t) -> SEXP {
     }
 }
 
-pub unsafe fn resize_names(x: SEXP, result: SEXP, new_len: R_xlen_t) {
+pub fn resize_names(x: SEXP, result: SEXP, new_len: R_xlen_t) {
     unsafe {
         let names =
             crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
@@ -267,7 +267,7 @@ pub unsafe fn resize_names(x: SEXP, result: SEXP, new_len: R_xlen_t) {
     }
 }
 
-pub unsafe fn length_replacement_size(value: SEXP) -> Option<R_xlen_t> {
+pub fn length_replacement_size(value: SEXP) -> Option<R_xlen_t> {
     unsafe {
         if value.is_null() || value == R_NilValue() || XLENGTH(value) == 0 {
             return None;
@@ -295,26 +295,26 @@ pub unsafe fn length_replacement_size(value: SEXP) -> Option<R_xlen_t> {
 // ---------------------------------------------------------------------------
 
 /// R's `colSums(x, na.rm = FALSE, dims = 1)` — column sums of a matrix or array.
-pub unsafe fn do_colSums(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { do_array_margin_summary(args, false, false) }
+pub fn do_colSums(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    { do_array_margin_summary(args, false, false) }
 }
 
 /// R's `rowSums(x, na.rm = FALSE, dims = 1)` — row sums of a matrix or array.
-pub unsafe fn do_rowSums(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { do_array_margin_summary(args, true, false) }
+pub fn do_rowSums(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    { do_array_margin_summary(args, true, false) }
 }
 
 /// R's `colMeans(x, na.rm = FALSE, dims = 1)` — column means of a matrix or array.
-pub unsafe fn do_colMeans(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { do_array_margin_summary(args, false, true) }
+pub fn do_colMeans(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    { do_array_margin_summary(args, false, true) }
 }
 
 /// R's `rowMeans(x, na.rm = FALSE, dims = 1)` — row means of a matrix or array.
-pub unsafe fn do_rowMeans(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { do_array_margin_summary(args, true, true) }
+pub fn do_rowMeans(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    { do_array_margin_summary(args, true, true) }
 }
 
-pub unsafe fn do_array_margin_summary(args: SEXP, rows: bool, mean: bool) -> SEXP {
+pub fn do_array_margin_summary(args: SEXP, rows: bool, mean: bool) -> SEXP {
     unsafe {
         let mut x = arg_by_name_or_position(args, &["x"], 0);
         if x.is_null() || x == R_NilValue() {
@@ -411,7 +411,7 @@ pub unsafe fn do_array_margin_summary(args: SEXP, rows: bool, mean: bool) -> SEX
     }
 }
 
-unsafe fn complex_margin_summary(
+fn complex_margin_summary(
     x: SEXP,
     rows: bool,
     mean: bool,
@@ -497,7 +497,7 @@ unsafe fn complex_margin_summary(
     }
 }
 
-pub unsafe fn margin_summary_dims(dims_arg: SEXP, dim_len: R_xlen_t, rows: bool) -> R_xlen_t {
+pub fn margin_summary_dims(dims_arg: SEXP, dim_len: R_xlen_t, rows: bool) -> R_xlen_t {
     {
         let default = if rows && dim_len > 0 { dim_len - 1 } else { 1 };
         if dims_arg.is_null() || dims_arg == R_NilValue() {
@@ -518,14 +518,14 @@ pub unsafe fn margin_summary_dims(dims_arg: SEXP, dim_len: R_xlen_t, rows: bool)
     }
 }
 
-pub unsafe fn summarize_contiguous_cells(
+pub fn summarize_contiguous_cells(
     x: SEXP,
     start: R_xlen_t,
     len: R_xlen_t,
     na_rm: bool,
     mean: bool,
 ) -> f64 {
-    unsafe {
+    {
         let mut sum = 0.0;
         let mut count = 0i64;
         for offset in 0..len {
@@ -550,7 +550,7 @@ pub unsafe fn summarize_contiguous_cells(
     }
 }
 
-pub unsafe fn summarize_margin_cells(
+pub fn summarize_margin_cells(
     x: SEXP,
     offset: R_xlen_t,
     stride: R_xlen_t,
@@ -558,7 +558,7 @@ pub unsafe fn summarize_margin_cells(
     na_rm: bool,
     mean: bool,
 ) -> f64 {
-    unsafe {
+    {
         let mut sum = 0.0;
         let mut count = 0i64;
         for rep in 0..reps {
@@ -583,7 +583,7 @@ pub unsafe fn summarize_margin_cells(
     }
 }
 
-pub unsafe fn numeric_margin_value(x: SEXP, index: R_xlen_t) -> Option<f64> {
+pub fn numeric_margin_value(x: SEXP, index: R_xlen_t) -> Option<f64> {
     unsafe {
         let x_type = TYPEOF(x);
         let value = if x_type == SEXPTYPE::REALSXP {
@@ -605,7 +605,7 @@ pub unsafe fn numeric_margin_value(x: SEXP, index: R_xlen_t) -> Option<f64> {
     }
 }
 
-pub unsafe fn set_margin_summary_attrs(result: SEXP, dim: SEXP, axes: &[R_xlen_t], source: SEXP) {
+pub fn set_margin_summary_attrs(result: SEXP, dim: SEXP, axes: &[R_xlen_t], source: SEXP) {
     unsafe {
         if dim.is_null() || dim == R_NilValue() || axes.is_empty() {
             return;
@@ -645,13 +645,13 @@ pub unsafe fn set_margin_summary_attrs(result: SEXP, dim: SEXP, axes: &[R_xlen_t
 }
 
 /// R's `col(x)` — column indices for a matrix.
-pub unsafe fn do_col(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { rowcol_from_matrix_arg(args, false) }
+pub fn do_col(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    { rowcol_from_matrix_arg(args, false) }
 }
 
 /// R's `row(x)` — row indices for a matrix.
-pub unsafe fn do_row(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { rowcol_from_matrix_arg(args, true) }
+pub fn do_row(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    { rowcol_from_matrix_arg(args, true) }
 }
 
 /// `.Internal(col(dim(x)))` / `.Internal(row(dim(x)))` wrapper: the GNU
@@ -659,16 +659,16 @@ pub unsafe fn do_row(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 /// `col <- function(x, as.factor=FALSE) ... .Internal(col(dim(x)))` and
 /// `.row`/`.col`), while the public `col(x)`/`row(x)` handlers receive the
 /// matrix-like object and read its dim attribute.
-pub unsafe fn do_col_internal(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { rowcol_dispatch_internal_arg(args, false) }
+pub fn do_col_internal(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    { rowcol_dispatch_internal_arg(args, false) }
 }
 
 /// `.Internal(row(dim(x)))` wrapper; see `do_col_internal`.
-pub unsafe fn do_row_internal(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { rowcol_dispatch_internal_arg(args, true) }
+pub fn do_row_internal(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    { rowcol_dispatch_internal_arg(args, true) }
 }
 
-unsafe fn rowcol_dispatch_internal_arg(args: SEXP, is_row: bool) -> SEXP {
+fn rowcol_dispatch_internal_arg(args: SEXP, is_row: bool) -> SEXP {
     unsafe {
         let la = CAR(args);
         if !la.is_null() && la != R_NilValue() && TYPEOF(la) == SEXPTYPE::INTSXP && LENGTH(la) >= 1
@@ -682,7 +682,7 @@ unsafe fn rowcol_dispatch_internal_arg(args: SEXP, is_row: bool) -> SEXP {
     }
 }
 
-unsafe fn rowcol_from_matrix_arg(args: SEXP, is_row: bool) -> SEXP {
+fn rowcol_from_matrix_arg(args: SEXP, is_row: bool) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {

@@ -7,8 +7,8 @@
 
 use super::*;
 
-unsafe fn supplied_arg(args: SEXP, name: &str, position: usize) -> Option<SEXP> {
-    unsafe {
+fn supplied_arg(args: SEXP, name: &str, position: usize) -> Option<SEXP> {
+    {
         let mut current = args;
         while !current.is_null() && current != R_NilValue() {
             if tag_name(current).as_deref() == Some(name) {
@@ -32,7 +32,7 @@ unsafe fn supplied_arg(args: SEXP, name: &str, position: usize) -> Option<SEXP> 
     }
 }
 
-unsafe fn time_value(value: SEXP, default: f64) -> f64 {
+fn time_value(value: SEXP, default: f64) -> f64 {
     {
         if value.is_null() || value == R_NilValue() || XLENGTH(value) == 0 {
             return default;
@@ -41,7 +41,7 @@ unsafe fn time_value(value: SEXP, default: f64) -> f64 {
     }
 }
 
-unsafe fn set_ts_matrix_dimnames(result: SEXP, data: SEXP, nseries: R_xlen_t, args: SEXP) {
+fn set_ts_matrix_dimnames(result: SEXP, data: SEXP, nseries: R_xlen_t, args: SEXP) {
     unsafe {
         let supplied_names = supplied_arg(args, "names", 7);
         let source_dimnames =
@@ -86,7 +86,7 @@ unsafe fn set_ts_matrix_dimnames(result: SEXP, data: SEXP, nseries: R_xlen_t, ar
     }
 }
 
-unsafe fn resize_series(data: SEXP, ndata: R_xlen_t, nseries: R_xlen_t, nobs: R_xlen_t) -> SEXP {
+fn resize_series(data: SEXP, ndata: R_xlen_t, nseries: R_xlen_t, nobs: R_xlen_t) -> SEXP {
     unsafe {
         if nobs == ndata {
             return crate::mainutils::duplicate::Rf_duplicate(data);
@@ -127,7 +127,7 @@ unsafe fn resize_series(data: SEXP, ndata: R_xlen_t, nseries: R_xlen_t, nobs: R_
     }
 }
 
-unsafe fn default_ts_class(nseries: R_xlen_t) -> SEXP {
+fn default_ts_class(nseries: R_xlen_t) -> SEXP {
     unsafe {
         if nseries == 1 {
             return Rf_mkString(c"ts".as_ptr());
@@ -149,7 +149,7 @@ unsafe fn default_ts_class(nseries: R_xlen_t) -> SEXP {
 /// named or positional start/end/frequency/deltat arguments, calendar-style
 /// two-component endpoints, recycling/truncation to the requested span, and
 /// the canonical `tsp` and class attributes.
-pub unsafe fn do_ts(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_ts(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let data = supplied_arg(args, "data", 0).unwrap_or_else(|| Rf_ScalarReal(NA_REAL));
         let _data_guard = protect(data);
@@ -265,7 +265,7 @@ pub unsafe fn do_ts(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
-unsafe fn series_tsp(x: SEXP) -> (f64, f64, f64) {
+fn series_tsp(x: SEXP) -> (f64, f64, f64) {
     unsafe {
         let tsp = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_TspSymbol());
         if !tsp.is_null()
@@ -280,7 +280,7 @@ unsafe fn series_tsp(x: SEXP) -> (f64, f64, f64) {
     }
 }
 
-unsafe fn cbind_ts(args: SEXP, union: bool) -> SEXP {
+fn cbind_ts(args: SEXP, union: bool) -> SEXP {
     unsafe {
         let a = CAR(args);
         let rest = if args.is_null() || args == R_NilValue() {
@@ -361,13 +361,13 @@ unsafe fn cbind_ts(args: SEXP, union: bool) -> SEXP {
 }
 
 /// GNU `ts.union(a, b)` — align two series on the union of their times.
-pub unsafe fn do_ts_union(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { cbind_ts(args, true) }
+pub fn do_ts_union(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    { cbind_ts(args, true) }
 }
 
 /// GNU `ts.intersect(a, b)` — align two series on the overlap of their times.
-pub unsafe fn do_ts_intersect(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { cbind_ts(args, false) }
+pub fn do_ts_intersect(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    { cbind_ts(args, false) }
 }
 
 #[cfg(test)]

@@ -6,7 +6,7 @@ use super::*;
 // ---------------------------------------------------------------------------
 
 /// R's `lower.tri(x, diag=FALSE)` — TRUE for lower triangle of matrix.
-pub unsafe fn do_lower_tri(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_lower_tri(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let diag_arg = CAR(CDR(args));
@@ -47,7 +47,7 @@ pub unsafe fn do_lower_tri(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
 }
 
 /// R's `upper.tri(x, diag=FALSE)` — TRUE for upper triangle of matrix.
-pub unsafe fn do_upper_tri(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_upper_tri(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let diag_arg = CAR(CDR(args));
@@ -102,7 +102,7 @@ pub fn supported_matrix_type(t: c_int) -> bool {
         || t == SEXPTYPE::EXPRSXP
 }
 
-pub unsafe fn set_matrix_na_or_zero(x: SEXP, i: R_xlen_t) {
+pub fn set_matrix_na_or_zero(x: SEXP, i: R_xlen_t) {
     unsafe {
         match TYPEOF(x) {
             t if t == SEXPTYPE::REALSXP => *REAL(x).add(i as usize) = NA_REAL,
@@ -127,7 +127,7 @@ pub unsafe fn set_matrix_na_or_zero(x: SEXP, i: R_xlen_t) {
 /// Read element `i` of `x` as a CHARSXP, coercing non-character atomics via
 /// their string form. Returns R_NaString when the source element is NA or the
 /// index is out of range.
-pub(crate) unsafe fn str_elt_or_na(x: SEXP, i: R_xlen_t) -> SEXP {
+pub(crate) fn str_elt_or_na(x: SEXP, i: R_xlen_t) -> SEXP {
     unsafe {
         if x.is_null() || x == R_NilValue() {
             return crate::sexp::globals::R_NaString();
@@ -159,7 +159,7 @@ pub(crate) unsafe fn str_elt_or_na(x: SEXP, i: R_xlen_t) -> SEXP {
 }
 
 /// Read element `i` of `x` as an integer, coercing logical/raw; NA otherwise.
-pub(crate) unsafe fn int_elt_or_na(x: SEXP, i: R_xlen_t) -> c_int {
+pub(crate) fn int_elt_or_na(x: SEXP, i: R_xlen_t) -> c_int {
     unsafe {
         if x.is_null() || x == R_NilValue() {
             return NA_INTEGER;
@@ -179,7 +179,7 @@ pub(crate) unsafe fn int_elt_or_na(x: SEXP, i: R_xlen_t) -> c_int {
 }
 
 /// Read element `i` of a raw vector as a byte (0 when out of range).
-pub(crate) unsafe fn raw_elt_or_zero(x: SEXP, i: R_xlen_t) -> Rbyte {
+pub(crate) fn raw_elt_or_zero(x: SEXP, i: R_xlen_t) -> Rbyte {
     unsafe {
         if x.is_null() || x == R_NilValue() || TYPEOF(x) != SEXPTYPE::RAWSXP || XLENGTH(x) == 0 {
             return 0;
@@ -189,7 +189,7 @@ pub(crate) unsafe fn raw_elt_or_zero(x: SEXP, i: R_xlen_t) -> Rbyte {
 }
 
 /// Read element `i` of `x` as a complex value; NA complex otherwise.
-pub(crate) unsafe fn cplx_elt_or_na(x: SEXP, i: R_xlen_t) -> Rcomplex {
+pub(crate) fn cplx_elt_or_na(x: SEXP, i: R_xlen_t) -> Rcomplex {
     unsafe {
         if !x.is_null() && x != R_NilValue() && TYPEOF(x) == SEXPTYPE::CPLXSXP && XLENGTH(x) != 0 {
             return *COMPLEX(x).add((i % XLENGTH(x)) as usize);
@@ -200,7 +200,7 @@ pub(crate) unsafe fn cplx_elt_or_na(x: SEXP, i: R_xlen_t) -> Rcomplex {
         }
     }
 }
-pub unsafe fn set_matrix_zero(x: SEXP, i: R_xlen_t) {
+pub fn set_matrix_zero(x: SEXP, i: R_xlen_t) {
     unsafe {
         match TYPEOF(x) {
             t if t == SEXPTYPE::REALSXP => *REAL(x).add(i as usize) = 0.0,
@@ -217,7 +217,7 @@ pub unsafe fn set_matrix_zero(x: SEXP, i: R_xlen_t) {
     }
 }
 
-pub(crate) unsafe fn copy_matrix_element(dst: SEXP, dst_i: R_xlen_t, src: SEXP, src_i: R_xlen_t) {
+pub(crate) fn copy_matrix_element(dst: SEXP, dst_i: R_xlen_t, src: SEXP, src_i: R_xlen_t) {
     unsafe {
         match TYPEOF(src) {
             t if t == SEXPTYPE::REALSXP => {
@@ -244,7 +244,7 @@ pub(crate) unsafe fn copy_matrix_element(dst: SEXP, dst_i: R_xlen_t, src: SEXP, 
     }
 }
 
-pub(crate) unsafe fn set_two_dim_attr(x: SEXP, nrow: R_xlen_t, ncol: R_xlen_t) {
+pub(crate) fn set_two_dim_attr(x: SEXP, nrow: R_xlen_t, ncol: R_xlen_t) {
     unsafe {
         let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
         if dim.is_null() {
@@ -257,7 +257,7 @@ pub(crate) unsafe fn set_two_dim_attr(x: SEXP, nrow: R_xlen_t, ncol: R_xlen_t) {
     }
 }
 
-pub unsafe fn set_diagonal_identity_value(x: SEXP, i: R_xlen_t) {
+pub fn set_diagonal_identity_value(x: SEXP, i: R_xlen_t) {
     unsafe {
         match TYPEOF(x) {
             t if t == SEXPTYPE::REALSXP => *REAL(x).add(i as usize) = 1.0,
@@ -272,7 +272,7 @@ pub unsafe fn set_diagonal_identity_value(x: SEXP, i: R_xlen_t) {
     }
 }
 
-pub unsafe fn string_vector_contains_value(x: SEXP, needle: &str) -> bool {
+pub fn string_vector_contains_value(x: SEXP, needle: &str) -> bool {
     unsafe {
         if x.is_null() || TYPEOF(x) != SEXPTYPE::STRSXP {
             return false;
@@ -291,14 +291,14 @@ pub unsafe fn string_vector_contains_value(x: SEXP, needle: &str) -> bool {
     }
 }
 
-pub unsafe fn is_data_frame_object(x: SEXP) -> bool {
+pub fn is_data_frame_object(x: SEXP) -> bool {
     unsafe {
         let class = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"class".as_ptr()));
         string_vector_contains_value(class, "data.frame")
     }
 }
 
-pub(crate) unsafe fn data_frame_row_count(x: SEXP) -> R_xlen_t {
+pub(crate) fn data_frame_row_count(x: SEXP) -> R_xlen_t {
     unsafe {
         let row_names = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"row.names".as_ptr()));
         if !row_names.is_null() && row_names != R_NilValue() {
@@ -325,7 +325,7 @@ pub(crate) unsafe fn data_frame_row_count(x: SEXP) -> R_xlen_t {
     }
 }
 
-pub(crate) unsafe fn column_row_count(col: SEXP) -> R_xlen_t {
+pub(crate) fn column_row_count(col: SEXP) -> R_xlen_t {
     unsafe {
         if col.is_null() || col == R_NilValue() {
             return 0;
@@ -342,7 +342,7 @@ pub(crate) unsafe fn column_row_count(col: SEXP) -> R_xlen_t {
 }
 
 /// R's `matrix(data, nrow, ncol, byrow, dimnames)` — create a matrix.
-pub unsafe fn do_matrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_matrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let data = arg_by_name_or_position(args, &["data"], 0);
         let nrow_arg = arg_by_name_or_position(args, &["nrow"], 1);
@@ -457,7 +457,7 @@ pub unsafe fn do_matrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 }
 
 /// R's `array(data, dim, dimnames)` — create an array with recycled data.
-pub unsafe fn do_array(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_array(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let data = arg_by_name_or_position(args, &["data"], 0);
         let dim_arg = arg_by_name_or_position(args, &["dim"], 1);
@@ -532,7 +532,7 @@ pub unsafe fn do_array(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 /// upstream's `coerceVector(dims, INTSXP)`. The dim2total() checks
 /// (length-0 / NA / negative / overflow) run in do_array on the coerced
 /// vector, exactly as in trunk array.c.
-pub unsafe fn array_dimension_attribute(value: SEXP, data_len: R_xlen_t) -> Result<SEXP, String> {
+pub fn array_dimension_attribute(value: SEXP, data_len: R_xlen_t) -> Result<SEXP, String> {
     unsafe {
         if value.is_null() || value == R_NilValue() {
             let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 1);
@@ -572,7 +572,7 @@ pub unsafe fn array_dimension_attribute(value: SEXP, data_len: R_xlen_t) -> Resu
     }
 }
 
-pub unsafe fn valid_array_dimnames(dimnames: SEXP, dim: SEXP) -> bool {
+pub fn valid_array_dimnames(dimnames: SEXP, dim: SEXP) -> bool {
     unsafe {
         if dimnames.is_null() || dimnames == R_NilValue() {
             return true;
@@ -597,7 +597,7 @@ pub unsafe fn valid_array_dimnames(dimnames: SEXP, dim: SEXP) -> bool {
     }
 }
 
-pub unsafe fn retained_dimname(dimnames: SEXP, axis: R_xlen_t) -> SEXP {
+pub fn retained_dimname(dimnames: SEXP, axis: R_xlen_t) -> SEXP {
     unsafe {
         if dimnames.is_null() || dimnames == R_NilValue() || TYPEOF(dimnames) != SEXPTYPE::VECSXP {
             return R_NilValue();
@@ -609,7 +609,7 @@ pub unsafe fn retained_dimname(dimnames: SEXP, axis: R_xlen_t) -> SEXP {
     }
 }
 
-pub unsafe fn retained_dimnames(dimnames: SEXP, axes: &[R_xlen_t]) -> SEXP {
+pub fn retained_dimnames(dimnames: SEXP, axes: &[R_xlen_t]) -> SEXP {
     unsafe {
         if dimnames.is_null() || dimnames == R_NilValue() || TYPEOF(dimnames) != SEXPTYPE::VECSXP {
             return R_NilValue();
@@ -666,7 +666,7 @@ pub unsafe fn retained_dimnames(dimnames: SEXP, axes: &[R_xlen_t]) -> SEXP {
     }
 }
 
-pub unsafe fn dimension_component(value: SEXP, i: R_xlen_t) -> c_int {
+pub fn dimension_component(value: SEXP, i: R_xlen_t) -> c_int {
     unsafe {
         let kind = TYPEOF(value);
         if kind == SEXPTYPE::INTSXP.as_c_int() || kind == SEXPTYPE::LGLSXP.as_c_int() {
@@ -711,7 +711,7 @@ pub fn is_atomic_vector_type(kind: c_int) -> bool {
 }
 
 /// R's `diag(x)` — extract diagonal or create diagonal matrix.
-pub unsafe fn do_diag(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_diag(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -862,7 +862,7 @@ pub unsafe fn do_diag(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 /// R's `as.matrix(x)` — convert to matrix (simplified).
 /// For vectors, wraps as a single-column matrix.
 /// For lists/data.frames, wraps as a matrix.
-pub unsafe fn do_as_matrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_as_matrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let class =
@@ -963,7 +963,7 @@ pub unsafe fn do_as_matrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
 }
 
 /// GNU `isSymmetric(object)` — square matrix equals its transpose.
-pub unsafe fn do_is_symmetric(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_is_symmetric(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -1005,7 +1005,7 @@ pub unsafe fn do_is_symmetric(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
     }
 }
 
-unsafe fn data_matrix_row_names(frame: SEXP, rownames_force: SEXP) -> SEXP {
+fn data_matrix_row_names(frame: SEXP, rownames_force: SEXP) -> SEXP {
     unsafe {
         let force = if rownames_force.is_null() || rownames_force == R_NilValue() {
             NA_INTEGER
@@ -1044,7 +1044,7 @@ unsafe fn data_matrix_row_names(frame: SEXP, rownames_force: SEXP) -> SEXP {
     }
 }
 
-unsafe fn character_column_codes(column: SEXP, result: SEXP, offset: R_xlen_t) {
+fn character_column_codes(column: SEXP, result: SEXP, offset: R_xlen_t) {
     unsafe {
         let mut codes: std::collections::BTreeMap<Option<String>, c_int> =
             std::collections::BTreeMap::new();
@@ -1085,7 +1085,7 @@ unsafe fn character_column_codes(column: SEXP, result: SEXP, offset: R_xlen_t) {
 
 /// GNU `as.matrix.data.frame`: character columns stay character, factors
 /// become their level labels, and a mixed frame becomes character.
-pub unsafe fn data_frame_as_matrix(frame: SEXP) -> SEXP {
+pub fn data_frame_as_matrix(frame: SEXP) -> SEXP {
     unsafe {
         let mut leaves: Vec<SEXP> = Vec::new();
         // GNU as.matrix.data.frame in a single-byte locale treats names as
@@ -1397,7 +1397,7 @@ pub unsafe fn data_frame_as_matrix(frame: SEXP) -> SEXP {
 /// R's `data.matrix(frame, rownames.force = NA)`.
 /// first-occurrence integer codes, and logical/real columns select double
 /// storage just as base R does after its per-column conversion pass.
-pub unsafe fn do_data_matrix(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_data_matrix(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         if args.is_null() || args == R_NilValue() {
             base_error("argument 'frame' is missing, with no default");
@@ -1504,12 +1504,12 @@ pub unsafe fn do_data_matrix(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> S
 /// R's `as.numeric(x)` — GNU alias of `as.double`. S3 dispatch uses
 /// PRIMNAME(op) (`as.numeric.*`); S4 methods on `as.numeric` go through
 /// `R_possible_dispatch(op)` inside DispatchOrEval.
-pub unsafe fn do_as_numeric(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_as_numeric(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe { do_as_double(call, op, args, rho) }
 }
 
 /// GNU `embed(x, dimension)`.
-pub unsafe fn do_embed(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_embed(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let d_arg = CAR(CDR(args));
@@ -1545,7 +1545,7 @@ pub unsafe fn do_embed(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// GNU `toeplitz(x, r = NULL, symmetric = is.null(r))`.
-pub unsafe fn do_toeplitz(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_toeplitz(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let m =
             crate::mainutils::match_mod::match_formal_slots(call, args, &["x", "r", "symmetric"]);
@@ -1604,7 +1604,7 @@ pub unsafe fn do_toeplitz(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
     }
 }
 
-unsafe fn copy_atomic_elt(from: SEXP, fi: isize, to: SEXP, ti: isize) {
+fn copy_atomic_elt(from: SEXP, fi: isize, to: SEXP, ti: isize) {
     unsafe {
         match TYPEOF(from) {
             t if t == SEXPTYPE::INTSXP => {
@@ -1626,7 +1626,7 @@ unsafe fn copy_atomic_elt(from: SEXP, fi: isize, to: SEXP, ti: isize) {
     }
 }
 
-unsafe fn atomic_elt_equal(a: SEXP, ai: isize, b: SEXP, bi: isize) -> bool {
+fn atomic_elt_equal(a: SEXP, ai: isize, b: SEXP, bi: isize) -> bool {
     unsafe {
         if TYPEOF(a) == SEXPTYPE::REALSXP && TYPEOF(b) == SEXPTYPE::REALSXP {
             *REAL(a).add(ai as usize) == *REAL(b).add(bi as usize)
@@ -1639,7 +1639,7 @@ unsafe fn atomic_elt_equal(a: SEXP, ai: isize, b: SEXP, bi: isize) -> bool {
 }
 
 /// GNU `toeplitz2(x, nrow)` — banded Toeplitz, ncol = length(x)+1-nrow.
-pub unsafe fn do_toeplitz2(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_toeplitz2(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let nx = XLENGTH(x) as isize;
@@ -1679,7 +1679,7 @@ pub unsafe fn do_toeplitz2(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
 }
 
 /// GNU `diffinv(x, xi=0)`.
-pub unsafe fn do_diffinv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_diffinv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let n = XLENGTH(x);

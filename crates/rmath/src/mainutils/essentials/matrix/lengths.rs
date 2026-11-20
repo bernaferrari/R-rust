@@ -71,7 +71,7 @@ fn attribute<'s>(x: &Sexp<'s>, symbol: &Sexp<'_>) -> Sexp<'s> {
     cell
 }
 
-unsafe fn child_length(x: &Sexp<'_>, i: i64, class_symbol: &Sexp<'_>, check: &impl Fn()) -> i64 {
+fn child_length(x: &Sexp<'_>, i: i64, class_symbol: &Sexp<'_>, check: &impl Fn()) -> i64 {
     let child = x.try_vector_elt(i).expect("lengths checked child");
     check();
     // Preserve the existing POSIXlt observation-count policy in this bounded
@@ -108,7 +108,7 @@ unsafe fn child_length(x: &Sexp<'_>, i: i64, class_symbol: &Sexp<'_>, check: &im
     }
 }
 
-unsafe fn allocate<'s>(
+fn allocate<'s>(
     f: &SessionNodeFactory<'s>,
     kind: SEXPTYPE,
     n: i64,
@@ -120,7 +120,7 @@ unsafe fn allocate<'s>(
         .expect("lengths fresh output mutation")
 }
 
-pub(super) unsafe fn run(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub(super) fn run(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let owner = OwnerToken::current().expect("active lengths owner");
         let pin = owner.pin().expect("live lengths owner");

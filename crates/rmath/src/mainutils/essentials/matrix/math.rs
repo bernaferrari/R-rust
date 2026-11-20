@@ -4,7 +4,7 @@ use super::*;
 /// R's `%in%` operator — match operator, upstream
 /// `function(x, table) match(x, table, nomatch = 0) > 0`: an empty table
 /// yields FALSE for every element of `x` (never a zero-length result).
-pub unsafe fn do_in_operator(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_in_operator(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let table = CAR(CDR(args));
@@ -44,7 +44,7 @@ pub unsafe fn do_in_operator(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
     }
 }
 
-unsafe fn dispatch_math(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> Option<SEXP> {
+fn dispatch_math(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> Option<SEXP> {
     unsafe {
         let mut dispatched = R_NilValue();
         if crate::eval::dispatch::DispatchGroup(
@@ -63,7 +63,7 @@ unsafe fn dispatch_math(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> Option<S
     }
 }
 
-pub unsafe fn real_math1(
+pub fn real_math1(
     call: SEXP,
     op: SEXP,
     args: SEXP,
@@ -219,17 +219,17 @@ pub fn tanpi_value(x: f64) -> f64 {
 }
 
 /// R's `expm1(x)` — accurate exp(x)-1.
-pub unsafe fn do_expm1(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe { real_math1(call, op, args, rho, f64::exp_m1) }
+pub fn do_expm1(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    { real_math1(call, op, args, rho, f64::exp_m1) }
 }
 
 /// R's `log1p(x)` — accurate log(1+x).
-pub unsafe fn do_log1p(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe { real_math1(call, op, args, rho, f64::ln_1p) }
+pub fn do_log1p(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    { real_math1(call, op, args, rho, f64::ln_1p) }
 }
 
 /// R's `acosh(x)` — inverse hyperbolic cosine.
-pub unsafe fn do_acosh(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_acosh(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         if let Some(dispatched) = dispatch_math(call, op, args, rho) {
             return dispatched;
@@ -246,7 +246,7 @@ pub unsafe fn do_acosh(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 /// R's `asinh(x)` — inverse hyperbolic sine.
-pub unsafe fn do_asinh(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_asinh(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         if let Some(dispatched) = dispatch_math(call, op, args, rho) {
             return dispatched;
@@ -263,7 +263,7 @@ pub unsafe fn do_asinh(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 /// R's `atanh(x)` — inverse hyperbolic tangent.
-pub unsafe fn do_atanh(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_atanh(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         if let Some(dispatched) = dispatch_math(call, op, args, rho) {
             return dispatched;
@@ -280,22 +280,22 @@ pub unsafe fn do_atanh(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 /// R's `sinpi(x)` — sin(pi*x), exact at integer arguments.
-pub unsafe fn do_sinpi(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe { real_math1(call, op, args, rho, sinpi_value) }
+pub fn do_sinpi(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    { real_math1(call, op, args, rho, sinpi_value) }
 }
 
 /// R's `cospi(x)` — cos(pi*x), exact at integer and half-integer arguments.
-pub unsafe fn do_cospi(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe { real_math1(call, op, args, rho, cospi_value) }
+pub fn do_cospi(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    { real_math1(call, op, args, rho, cospi_value) }
 }
 
 /// R's `tanpi(x)` — tan(pi*x).
-pub unsafe fn do_tanpi(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe { real_math1(call, op, args, rho, tanpi_value) }
+pub fn do_tanpi(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    { real_math1(call, op, args, rho, tanpi_value) }
 }
 
 /// R's `sin(x)` — sine function.
-pub unsafe fn do_sin(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_sin(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         if args.is_null() || args == R_NilValue() {
             crate::mainutils::errors::errorcall_str(
@@ -350,7 +350,7 @@ pub unsafe fn do_sin(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 /// R's `cos(x)` — cosine function.
-pub unsafe fn do_cos(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_cos(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         if let Some(dispatched) = dispatch_math(call, op, args, rho) {
             return dispatched;
@@ -396,7 +396,7 @@ pub unsafe fn do_cos(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 /// R's `tan(x)` — tangent function.
-pub unsafe fn do_tan(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_tan(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         if let Some(dispatched) = dispatch_math(call, op, args, rho) {
             return dispatched;
@@ -442,7 +442,7 @@ pub unsafe fn do_tan(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 /// R's `asin(x)` — arc sine function.
-pub unsafe fn do_asin(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_asin(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         if let Some(dispatched) = dispatch_math(call, op, args, rho) {
             return dispatched;
@@ -489,7 +489,7 @@ pub unsafe fn do_asin(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 /// R's `acos(x)` — arc cosine function.
-pub unsafe fn do_acos(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_acos(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         if let Some(dispatched) = dispatch_math(call, op, args, rho) {
             return dispatched;
@@ -537,7 +537,7 @@ pub unsafe fn do_acos(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 /// R's `atan(x)` — arc tangent function.
-pub unsafe fn do_atan(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_atan(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         if let Some(dispatched) = dispatch_math(call, op, args, rho) {
             return dispatched;
@@ -585,7 +585,7 @@ pub unsafe fn do_atan(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 /// R's `atan2(y, x)` — two-argument arc tangent function.
-pub unsafe fn do_atan2(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_atan2(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let y = CAR(args);
         let x = CAR(CDR(args));
