@@ -1090,7 +1090,7 @@ pub fn trio_printf_fmt(format: &str, args: &mut FormatArgs) -> c_int {
 }
 
 /// Print to a string buffer using FormatArgs.
-pub unsafe fn trio_sprintf_fmt(buffer: *mut c_char, format: &str, args: &mut FormatArgs) -> c_int {
+pub fn trio_sprintf_fmt(buffer: *mut c_char, format: &str, args: &mut FormatArgs) -> c_int {
     let format_bytes = format.as_bytes();
 
     struct StringWriter {
@@ -1120,7 +1120,7 @@ pub unsafe fn trio_sprintf_fmt(buffer: *mut c_char, format: &str, args: &mut For
 }
 
 /// Print at most `max` characters to a string buffer using FormatArgs.
-pub unsafe fn trio_snprintf_fmt(
+pub fn trio_snprintf_fmt(
     buffer: *mut c_char,
     max: usize,
     format: &str,
@@ -1167,7 +1167,7 @@ pub unsafe fn trio_snprintf_fmt(
 }
 
 /// Scan from a string buffer using FormatArgs.
-pub unsafe fn trio_sscanf_fmt(buffer: *const c_char, format: &str, args: &mut FormatArgs) -> c_int {
+pub fn trio_sscanf_fmt(buffer: *const c_char, format: &str, args: &mut FormatArgs) -> c_int {
     let format_bytes = format.as_bytes();
     let input = if buffer.is_null() {
         &[] as &[u8]
@@ -1192,7 +1192,7 @@ pub unsafe fn trio_sscanf_fmt(buffer: *const c_char, format: &str, args: &mut Fo
 // ============================================================================
 
 /// String match (case-insensitive wildcard matching).
-pub unsafe fn trio_string_match(string: *const c_char, pattern: *const c_char) -> c_int {
+pub fn trio_string_match(string: *const c_char, pattern: *const c_char) -> c_int {
     unsafe {
         let s = std::ffi::CStr::from_ptr(string).to_str().unwrap_or("");
         let p = std::ffi::CStr::from_ptr(pattern).to_str().unwrap_or("");
@@ -1201,7 +1201,7 @@ pub unsafe fn trio_string_match(string: *const c_char, pattern: *const c_char) -
 }
 
 /// String contains (substring search).
-pub unsafe fn trio_string_contains(string: *const c_char, substring: *const c_char) -> c_int {
+pub fn trio_string_contains(string: *const c_char, substring: *const c_char) -> c_int {
     unsafe {
         let s = std::ffi::CStr::from_ptr(string).to_str().unwrap_or("");
         let sub = std::ffi::CStr::from_ptr(substring).to_str().unwrap_or("");
@@ -1256,7 +1256,7 @@ pub(crate) fn trio_match_impl(string: &str, pattern: &str) -> bool {
 // ============================================================================
 
 /// Wildcard string match (case-insensitive).
-pub unsafe fn trio_match(string: *const c_char, pattern: *const c_char) -> c_int {
+pub fn trio_match(string: *const c_char, pattern: *const c_char) -> c_int {
     unsafe {
         let s = std::ffi::CStr::from_ptr(string).to_str().unwrap_or("");
         let p = std::ffi::CStr::from_ptr(pattern).to_str().unwrap_or("");
@@ -1265,7 +1265,7 @@ pub unsafe fn trio_match(string: *const c_char, pattern: *const c_char) -> c_int
 }
 
 /// Check if string contains substring.
-pub unsafe fn trio_contains(string: *const c_char, substring: *const c_char) -> c_int {
+pub fn trio_contains(string: *const c_char, substring: *const c_char) -> c_int {
     unsafe {
         let s = std::ffi::CStr::from_ptr(string).to_str().unwrap_or("");
         let sub = std::ffi::CStr::from_ptr(substring).to_str().unwrap_or("");

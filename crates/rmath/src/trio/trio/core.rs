@@ -813,15 +813,13 @@ pub(crate) fn trio_write_string<W: Write>(
     let (s, len): (*const c_char, usize) = if string.is_null() {
         (null_str.as_ptr() as *const c_char, null_str.len())
     } else {
-        unsafe {
-            let l = cstr_len(string);
-            let effective = if NO_PRECISION != precision && (precision as usize) < l {
-                precision as usize
-            } else {
-                l
-            };
-            (string, effective)
-        }
+        let l = cstr_len(string);
+        let effective = if NO_PRECISION != precision && (precision as usize) < l {
+            precision as usize
+        } else {
+            l
+        };
+        (string, effective)
     };
 
     let mut width = width as isize;
@@ -1263,7 +1261,7 @@ pub(crate) fn trio_write_double<W: Write>(
 // Helper: strlen for C strings
 // ============================================================================
 
-unsafe fn cstr_len(s: *const c_char) -> usize {
+fn cstr_len(s: *const c_char) -> usize {
     unsafe {
         let mut len = 0usize;
         while *s.add(len) != 0 as c_char {
