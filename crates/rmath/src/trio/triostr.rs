@@ -7,306 +7,197 @@
  * BSD-style license.
  *
  * This module provides string functions used by the trio printf/scanf
- * implementation. Many functions are thin wrappers around libc/CString
- * equivalents, but are kept to match the C API exactly.
+ * implementation. Functions take CStr/slice boundaries instead of raw
+ * C-string pointers: every buffer's extent is explicit, so the bodies
+ * are entirely safe Rust.
  */
 
 use std::ffi::CStr;
-use std::os::raw::{c_char, c_int, c_long, c_ulong};
-use std::ptr;
+use std::os::raw::{c_int, c_long, c_ulong};
 
 /// Count the number of characters in a string.
-pub fn trio_length(string: *const c_char) -> usize {
-    unsafe {
-        if string.is_null() {
-            return 0;
-        }
-        let mut i = 0usize;
-        while *string.add(i) != 0 as c_char {
-            i += 1;
-        }
-        i
-    }
+pub fn trio_length(string: &CStr) -> usize {
+    string.to_bytes().len()
 }
 
 /// Count at most `max` characters in a string.
-pub fn trio_length_max(string: *const c_char, max: usize) -> usize {
-    unsafe {
-        if string.is_null() {
-            return 0;
-        }
-        let mut i = 0usize;
-        while i < max {
-            if *string.add(i) == 0 as c_char {
-                break;
-            }
-            i += 1;
-        }
-        i
-    }
+pub fn trio_length_max(string: &CStr, max: usize) -> usize {
+    string.to_bytes().len().min(max)
 }
 
-/// Append `source` at the end of `target`.
-pub fn trio_append(target: *mut c_char, source: *const c_char) -> c_int {
-    unsafe {
-        if target.is_null() || source.is_null() {
-            return 0;
-        }
-        let target_len = trio_length(target);
-        let source_len = trio_length(source);
-        ptr::copy_nonoverlapping(source, target.add(target_len), source_len);
-        *target.add(target_len + source_len) = 0;
-        1
-    }
+/// Append `source` at the end of `target` (buffer holds a C string).
+/// Appends bytes then the NUL terminator; returns 1 (or 0 if the existing
+/// buffer contains no NUL, i.e. no C string to append to).
+pub fn trio_append(target: &mut Vec<u8>, source: &CStr) -> c_int {
+    // Locate the NUL that terminates the current contents, if any.
+    let end = match target.iter().position(|&b| b == 0) {
+        Some(i) => i,
+        None => return 0,
+    };
+    target.truncate(end);
+    target.extend_from_slice(source.to_bytes_with_nul());
+    1
 }
 
-/// Append at most `max` characters from `source` to `target`.
-pub fn trio_append_max(target: *mut c_char, max: usize, source: *const c_char) -> c_int {
-    unsafe {
-        let length = trio_length(target);
-        if max > length && !source.is_null() {
-            let remaining = max - length - 1;
-            let source_len = trio_length(source).min(remaining);
-            ptr::copy_nonoverlapping(source, target.add(length), source_len);
-            *target.add(length + source_len) = 0;
-        }
-        1
+/// Append at most `max` characters (incl. NUL budget) of `source` to `target`.
+pub fn trio_append_max(target: &mut Vec<u8>, max: usize, source: &CStr) -> c_int {
+    let end = match target.iter().position(|&b| b == 0) {
+        Some(i) => i,
+        None => target.len(),
+    };
+    if max > end {
+        let remaining = max - end - 1;
+        let bytes = source.to_bytes();
+        let copy_len = bytes.len().min(remaining);
+        target.truncate(end);
+        target.extend_from_slice(&bytes[..copy_len]);
+        target.push(0);
     }
+    1
 }
 
 /// Determine if a string contains a substring.
-pub fn trio_contains(string: *const c_char, substring: *const c_char) -> c_int {
-    unsafe {
-        if string.is_null() || substring.is_null() {
-            return 0;
-        }
-        let s = CStr::from_ptr(string).to_bytes();
-        let sub = CStr::from_ptr(substring).to_bytes();
-        // Use a simple substring search
-        if sub.is_empty() {
+pub fn trio_contains(string: &CStr, substring: &CStr) -> c_int {
+    let s = string.to_bytes();
+    let sub = substring.to_bytes();
+    if sub.is_empty() {
+        return 1;
+    }
+    if s.len() < sub.len() {
+        return 0;
+    }
+    for i in 0..=(s.len() - sub.len()) {
+        if s[i..].starts_with(sub) {
             return 1;
         }
-        if s.len() < sub.len() {
-            return 0;
-        }
-        for i in 0..=(s.len() - sub.len()) {
-            if s[i..].starts_with(sub) {
-                return 1;
-            }
-        }
+    }
+    0
+}
+
+/// Copy `source` into `target`, replacing its contents (NUL-terminated).
+pub fn trio_copy(target: &mut Vec<u8>, source: &CStr) -> c_int {
+    target.clear();
+    target.extend_from_slice(source.to_bytes_with_nul());
+    1
+}
+
+/// Copy at most `max` characters (incl. NUL) of `source` to `target`.
+pub fn trio_copy_max(target: &mut Vec<u8>, max: usize, source: &CStr) -> c_int {
+    target.clear();
+    if max > 1 {
+        let bytes = source.to_bytes();
+        let copy_len = bytes.len().min(max - 1);
+        target.extend_from_slice(&bytes[..copy_len]);
+        target.push(0);
+    } else if max == 1 {
+        target.push(0);
+    }
+    1
+}
+
+/// Duplicate a string (returned buffer is NUL-terminated).
+pub fn trio_duplicate(source: &CStr) -> Vec<u8> {
+    source.to_bytes_with_nul().to_vec()
+}
+
+/// Duplicate at most `max` characters of `source` (NUL-terminated result).
+pub fn trio_duplicate_max(source: &CStr, max: usize) -> Vec<u8> {
+    let bytes = source.to_bytes();
+    let copy_len = bytes.len().min(max);
+    let mut buf = Vec::with_capacity(copy_len + 1);
+    buf.extend_from_slice(&bytes[..copy_len]);
+    buf.push(0);
+    buf
+}
+
+/// Compare two strings for equality (case-insensitive).
+pub fn trio_equal(first: &CStr, second: &CStr) -> c_int {
+    if first.to_bytes().eq_ignore_ascii_case(second.to_bytes()) {
+        1
+    } else {
         0
     }
 }
 
-/// Copy `source` to `target`.
-pub fn trio_copy(target: *mut c_char, source: *const c_char) -> c_int {
-    unsafe {
-        if target.is_null() || source.is_null() {
-            return 0;
-        }
-        let len = trio_length(source);
-        ptr::copy_nonoverlapping(source, target, len);
-        *target.add(len) = 0;
-        1
-    }
-}
-
-/// Copy at most `max` characters from `source` to `target`.
-/// Always null-terminates.
-pub fn trio_copy_max(target: *mut c_char, max: usize, source: *const c_char) -> c_int {
-    unsafe {
-        if target.is_null() || source.is_null() {
-            return 0;
-        }
-        if max > 1 {
-            let copy_len = trio_length(source).min(max - 1);
-            ptr::copy_nonoverlapping(source, target, copy_len);
-            *target.add(copy_len) = 0;
-        } else if max == 1 {
-            *target = 0;
-        }
-        1
-    }
-}
-
-/// Duplicate a string.
-pub fn trio_duplicate(source: *const c_char) -> *mut c_char {
-    unsafe {
-        if source.is_null() {
-            return ptr::null_mut();
-        }
-        let len = trio_length(source);
-        let buf = trio_create(len + 1);
-        if !buf.is_null() {
-            ptr::copy_nonoverlapping(source, buf, len);
-            *buf.add(len) = 0;
-        }
-        buf
-    }
-}
-
-/// Duplicate at most `max` characters of `source`.
-pub fn trio_duplicate_max(source: *const c_char, max: usize) -> *mut c_char {
-    unsafe {
-        if source.is_null() {
-            return ptr::null_mut();
-        }
-        let len = trio_length(source);
-        let copy_len = if len > max { max } else { len };
-        let buf = trio_create(copy_len + 1);
-        if !buf.is_null() {
-            ptr::copy_nonoverlapping(source, buf, copy_len);
-            *buf.add(copy_len) = 0;
-        }
-        buf
-    }
-}
-
-/// Compare two strings for equality (case-insensitive).
-pub fn trio_equal(first: *const c_char, second: *const c_char) -> c_int {
-    unsafe {
-        if first.is_null() || second.is_null() {
-            return 0;
-        }
-        let mut f = first;
-        let mut s = second;
-        while *f != 0 as c_char && *s != 0 as c_char {
-            let fc = trio_to_upper(*f as c_int) as u8;
-            let sc = trio_to_upper(*s as c_int) as u8;
-            if fc != sc {
-                return 0;
-            }
-            f = f.add(1);
-            s = s.add(1);
-        }
-        if *f == 0 as c_char && *s == 0 as c_char {
-            1
-        } else {
-            0
-        }
-    }
-}
-
 /// Compare two strings for equality (case-sensitive).
-pub fn trio_equal_case(first: *const c_char, second: *const c_char) -> c_int {
-    unsafe {
-        if first.is_null() || second.is_null() {
-            return 0;
-        }
-        let mut f = first;
-        let mut s = second;
-        while *f != 0 as c_char && *s != 0 as c_char {
-            if *f != *s {
-                return 0;
-            }
-            f = f.add(1);
-            s = s.add(1);
-        }
-        if *f == 0 as c_char && *s == 0 as c_char {
-            1
-        } else {
-            0
-        }
+pub fn trio_equal_case(first: &CStr, second: &CStr) -> c_int {
+    if first.to_bytes() == second.to_bytes() {
+        1
+    } else {
+        0
     }
 }
 
 /// Compare two strings up to `max` characters (case-sensitive).
-pub fn trio_equal_case_max(
-    first: *const c_char,
-    max: usize,
-    second: *const c_char,
-) -> c_int {
-    unsafe {
-        if first.is_null() || second.is_null() {
+pub fn trio_equal_case_max(first: &CStr, max: usize, second: &CStr) -> c_int {
+    let f = first.to_bytes();
+    let s = second.to_bytes();
+    for i in 0..max {
+        let fc = f.get(i).copied().unwrap_or(0);
+        let sc = s.get(i).copied().unwrap_or(0);
+        if fc != sc {
             return 0;
         }
-        for i in 0..max {
-            let fc = *first.add(i);
-            let sc = *second.add(i);
-            if fc != sc {
-                return 0;
-            }
-            if fc == 0 {
-                break;
-            }
+        if fc == 0 {
+            break;
         }
-        1
     }
+    1
 }
 
 /// Compare two strings for equality using locale collation.
-pub fn trio_equal_locale(first: *const c_char, second: *const c_char) -> c_int {
+pub fn trio_equal_locale(first: &CStr, second: &CStr) -> c_int {
     // Simplified: fall back to byte comparison (no locale support)
     trio_equal_case(first, second)
 }
 
 /// Compare two strings up to `max` characters (case-insensitive).
-pub fn trio_equal_max(first: *const c_char, max: usize, second: *const c_char) -> c_int {
-    unsafe {
-        if first.is_null() || second.is_null() {
+pub fn trio_equal_max(first: &CStr, max: usize, second: &CStr) -> c_int {
+    let f = first.to_bytes();
+    let s = second.to_bytes();
+    for i in 0..=max {
+        let fc = f.get(i).copied().unwrap_or(0);
+        let sc = s.get(i).copied().unwrap_or(0);
+        let fu = if fc.is_ascii_lowercase() {
+            fc - (b'a' - b'A')
+        } else {
+            fc
+        };
+        let su = if sc.is_ascii_lowercase() {
+            sc - (b'a' - b'A')
+        } else {
+            sc
+        };
+        if fu != su {
             return 0;
         }
-        let mut f = first;
-        let mut s = second;
-        let mut cnt = 0usize;
-        while *f != 0 as c_char && *s != 0 as c_char && cnt <= max {
-            let fc = trio_to_upper(*f as c_int) as u8;
-            let sc = trio_to_upper(*s as c_int) as u8;
-            if fc != sc {
-                break;
-            }
-            f = f.add(1);
-            s = s.add(1);
-            cnt += 1;
-        }
-        if cnt == max || (*f == 0 as c_char && *s == 0 as c_char) {
-            1
-        } else {
-            0
+        if fc == 0 {
+            return 1;
         }
     }
+    1
 }
 
 /// Get textual description of an error number.
-pub fn trio_error(_error_number: c_int) -> *const c_char {
+pub fn trio_error(_error_number: c_int) -> &'static CStr {
     // Simplified: return a static string
-    static UNKNOWN: &[u8] = b"Unknown error\0";
-    UNKNOWN.as_ptr() as *const c_char
+    c"Unknown error"
 }
 
-/// Find first occurrence of a character in a string.
-pub fn trio_index(string: *const c_char, character: c_int) -> *mut c_char {
-    unsafe {
-        if string.is_null() {
-            return ptr::null_mut();
-        }
-        let mut s = string;
-        while *s != 0 as c_char {
-            if *s as c_int == character {
-                return s as *mut c_char;
-            }
-            s = s.add(1);
-        }
-        ptr::null_mut()
-    }
+/// Find first occurrence of a character in a string; returns byte offset.
+pub fn trio_index(string: &CStr, character: c_int) -> Option<usize> {
+    string
+        .to_bytes()
+        .iter()
+        .position(|&b| b as c_int == character)
 }
 
-/// Find last occurrence of a character in a string.
-pub fn trio_index_last(string: *const c_char, character: c_int) -> *mut c_char {
-    unsafe {
-        if string.is_null() {
-            return ptr::null_mut();
-        }
-        let mut last: *mut c_char = ptr::null_mut();
-        let mut s = string;
-        while *s != 0 as c_char {
-            if *s as c_int == character {
-                last = s as *mut c_char;
-            }
-            s = s.add(1);
-        }
-        last
-    }
+/// Find last occurrence of a character in a string; returns byte offset.
+pub fn trio_index_last(string: &CStr, character: c_int) -> Option<usize> {
+    string
+        .to_bytes()
+        .iter()
+        .rposition(|&b| b as c_int == character)
 }
 
 /// Convert a character to upper case.
@@ -319,326 +210,211 @@ pub fn trio_to_upper(source: c_int) -> c_int {
     }
 }
 
-/// Convert the alphabetic letters in the string to lower-case.
-pub fn trio_lower(target: *mut c_char) -> c_int {
-    unsafe {
-        if target.is_null() {
-            return 0;
+/// Convert the alphabetic letters in the buffer to lower-case (up to NUL).
+/// Returns the number of characters processed.
+pub fn trio_lower(target: &mut [u8]) -> c_int {
+    let mut i = 0usize;
+    for b in target.iter_mut() {
+        if *b == 0 {
+            break;
         }
-        let mut i = 0usize;
-        while *target.add(i) != 0 as c_char {
-            let c = *target.add(i) as u8;
-            if c >= b'A' && c <= b'Z' {
-                *target.add(i) = (c + (b'a' - b'A')) as c_char;
-            }
-            i += 1;
+        if b.is_ascii_uppercase() {
+            *b += b'a' - b'A';
         }
-        i as c_int
+        i += 1;
     }
+    i as c_int
 }
 
-/// Convert a string to upper-case.
-pub fn trio_upper(target: *mut c_char) -> c_int {
-    unsafe {
-        if target.is_null() {
-            return 0;
+/// Convert a string to upper-case (up to NUL). Returns count processed.
+pub fn trio_upper(target: &mut [u8]) -> c_int {
+    let mut i = 0usize;
+    for b in target.iter_mut() {
+        if *b == 0 {
+            break;
         }
-        let mut i = 0usize;
-        while *target.add(i) != 0 as c_char {
-            let c = *target.add(i) as u8;
-            if c >= b'a' && c <= b'z' {
-                *target.add(i) = (c - (b'a' - b'A')) as c_char;
-            }
-            i += 1;
+        if b.is_ascii_lowercase() {
+            *b -= b'a' - b'A';
         }
-        i as c_int
+        i += 1;
     }
+    i as c_int
 }
 
 /// Compare two strings using wildcards (case-insensitive).
 ///
 /// Wildcards: `*` matches any number of characters, `?` matches a single character.
-pub fn trio_match(string: *const c_char, pattern: *const c_char) -> c_int {
-    unsafe {
-        let mut s = string;
-        let mut p = pattern;
-        while *p != b'*' as c_char {
-            if *s == 0 as c_char {
-                return if *p == 0 as c_char { 1 } else { 0 };
-            }
-            let sc = trio_to_upper(*s as c_int) as u8;
-            let pc = trio_to_upper(*p as c_int) as u8;
-            if sc != pc && *p != b'?' as c_char {
-                return 0;
-            }
-            s = s.add(1);
-            p = p.add(1);
-        }
-        // Skip consecutive stars
-        while *p == b'*' as c_char {
-            p = p.add(1);
-        }
-        if *p == 0 as c_char {
-            return 1;
-        }
-        // Use a recursive approach for wildcard matching
-        while *s != 0 as c_char {
-            if trio_match(s.add(1), p) != 0 {
-                return 1;
-            }
-            s = s.add(1);
-        }
-        // Try matching empty string against remaining pattern
-        trio_match(s, p)
+pub fn trio_match(string: &CStr, pattern: &CStr) -> c_int {
+    if match_impl(string.to_bytes(), pattern.to_bytes()) {
+        1
+    } else {
+        0
     }
 }
 
-/// Tokenize a string.
-pub fn trio_tokenize(string: *mut c_char, delimiters: *const c_char) -> *mut c_char {
-    unsafe {
-        // Simplified: find next token
-        if string.is_null() || delimiters.is_null() {
-            return ptr::null_mut();
+fn match_impl(s: &[u8], p: &[u8]) -> bool {
+    let mut si = 0usize;
+    let mut pi = 0usize;
+    while pi < p.len() && p[pi] != b'*' {
+        if si >= s.len() {
+            return pi == p.len();
         }
-        // Skip leading delimiters
-        let mut s = string;
-        while *s != 0 as c_char {
-            let mut is_delim = false;
-            let mut d = delimiters;
-            while *d != 0 as c_char {
-                if *s == *d {
-                    is_delim = true;
-                    break;
-                }
-                d = d.add(1);
-            }
-            if !is_delim {
-                break;
-            }
-            s = s.add(1);
+        let sc = s[si].to_ascii_uppercase();
+        let pc = p[pi].to_ascii_uppercase();
+        if sc != pc && p[pi] != b'?' {
+            return false;
         }
-        if *s == 0 as c_char {
-            return ptr::null_mut();
-        }
-        let token_start = s;
-        // Find end of token
-        while *s != 0 as c_char {
-            let mut is_delim = false;
-            let mut d = delimiters;
-            while *d != 0 as c_char {
-                if *s == *d {
-                    is_delim = true;
-                    break;
-                }
-                d = d.add(1);
-            }
-            if is_delim {
-                *s = 0 as c_char;
-                s = s.add(1);
-                break;
-            }
-            s = s.add(1);
-        }
-        token_start
+        si += 1;
+        pi += 1;
     }
+    // Skip consecutive stars
+    while pi < p.len() && p[pi] == b'*' {
+        pi += 1;
+    }
+    if pi >= p.len() {
+        return true;
+    }
+    // Try matching rest of pattern against each suffix
+    let mut start = si;
+    while start < s.len() {
+        if match_impl(&s[start..], &p[pi..]) {
+            return true;
+        }
+        start += 1;
+    }
+    match_impl(&s[s.len()..], &p[pi..])
+}
+
+/// Tokenize a buffer holding a C string: splits `string` at the first
+/// delimiter (writes NUL in place) and returns the token's byte offset.
+pub fn trio_tokenize(string: &mut [u8], delimiters: &CStr) -> Option<usize> {
+    let delims = delimiters.to_bytes();
+    // Skip leading delimiters
+    let mut i = 0usize;
+    while i < string.len() && string[i] != 0 && delims.contains(&string[i]) {
+        i += 1;
+    }
+    if i >= string.len() || string[i] == 0 {
+        return None;
+    }
+    let token_start = i;
+    // Find end of token
+    while i < string.len() && string[i] != 0 {
+        if delims.contains(&string[i]) {
+            string[i] = 0;
+            break;
+        }
+        i += 1;
+    }
+    Some(token_start)
 }
 
 /// Convert string to double.
-pub fn trio_to_double(source: *const c_char, _endp: *mut *mut c_char) -> f64 {
-    unsafe {
-        if source.is_null() {
-            return 0.0;
-        }
-        let s = CStr::from_ptr(source).to_str().unwrap_or("0");
-        s.parse().unwrap_or(0.0)
-    }
+pub fn trio_to_double(source: &CStr) -> f64 {
+    source.to_str().unwrap_or("0").parse().unwrap_or(0.0)
 }
 
 /// Convert string to float.
-pub fn trio_to_float(source: *const c_char, _endp: *mut *mut c_char) -> f32 {
-    unsafe {
-        if source.is_null() {
-            return 0.0;
-        }
-        let s = CStr::from_ptr(source).to_str().unwrap_or("0");
-        s.parse().unwrap_or(0.0)
-    }
+pub fn trio_to_float(source: &CStr) -> f32 {
+    source.to_str().unwrap_or("0").parse().unwrap_or(0.0)
 }
 
 /// Convert string to long.
-pub fn trio_to_long(source: *const c_char, _endp: *mut *mut c_char, base: c_int) -> c_long {
-    unsafe {
-        if source.is_null() {
-            return 0;
+pub fn trio_to_long(source: &CStr, base: c_int) -> c_long {
+    let s = source.to_str().unwrap_or("0");
+    match base {
+        10 => s.parse().unwrap_or(0),
+        16 => {
+            let trimmed = s.trim_start_matches("0x").trim_start_matches("0X");
+            u64::from_str_radix(trimmed, 16).unwrap_or(0) as c_long
         }
-        let s = CStr::from_ptr(source).to_str().unwrap_or("0");
-        match base {
-            10 => s.parse().unwrap_or(0),
-            16 => {
-                let trimmed = s.trim_start_matches("0x").trim_start_matches("0X");
-                u64::from_str_radix(trimmed, 16).unwrap_or(0) as c_long
-            }
-            8 => u64::from_str_radix(s, 8).unwrap_or(0) as c_long,
-            _ => s.parse().unwrap_or(0),
-        }
+        8 => u64::from_str_radix(s, 8).unwrap_or(0) as c_long,
+        _ => s.parse().unwrap_or(0),
     }
 }
 
 /// Convert string to unsigned long.
-pub fn trio_to_unsigned_long(
-    source: *const c_char,
-    _endp: *mut *mut c_char,
-    base: c_int,
-) -> c_ulong {
-    unsafe {
-        if source.is_null() {
-            return 0;
+pub fn trio_to_unsigned_long(source: &CStr, base: c_int) -> c_ulong {
+    let s = source.to_str().unwrap_or("0");
+    match base {
+        10 => s.parse().unwrap_or(0),
+        16 => {
+            let trimmed = s.trim_start_matches("0x").trim_start_matches("0X");
+            u64::from_str_radix(trimmed, 16).unwrap_or(0) as c_ulong
         }
-        let s = CStr::from_ptr(source).to_str().unwrap_or("0");
-        match base {
-            10 => s.parse().unwrap_or(0),
-            16 => {
-                let trimmed = s.trim_start_matches("0x").trim_start_matches("0X");
-                u64::from_str_radix(trimmed, 16).unwrap_or(0) as c_ulong
-            }
-            8 => u64::from_str_radix(s, 8).unwrap_or(0) as c_ulong,
-            _ => s.parse().unwrap_or(0),
-        }
+        8 => u64::from_str_radix(s, 8).unwrap_or(0) as c_ulong,
+        _ => s.parse().unwrap_or(0),
     }
 }
 
 /// Convert string to long double (returns bits of f64).
-pub fn trio_to_long_double(source: *const c_char, _endp: *mut *mut c_char) -> u64 {
-    unsafe {
-        if source.is_null() {
-            return 0;
-        }
-        let s = CStr::from_ptr(source).to_str().unwrap_or("0");
-        let val: f64 = s.parse().unwrap_or(0.0);
-        val.to_bits()
-    }
+pub fn trio_to_long_double(source: &CStr) -> u64 {
+    let val: f64 = source.to_str().unwrap_or("0").parse().unwrap_or(0.0);
+    val.to_bits()
 }
 
-/// Apply a function to each character in the target string.
+/// Apply a function to each character (up to NUL), writing results into
+/// `target`; NUL-terminates. Returns the number of characters processed.
 pub fn trio_span_function(
-    target: *mut c_char,
-    source: *const c_char,
-    function: unsafe extern "C" fn(c_int) -> c_int,
+    target: &mut [u8],
+    source: &CStr,
+    function: fn(c_int) -> c_int,
 ) -> usize {
-    unsafe {
-        let mut count = 0usize;
-        let mut i = 0usize;
-        while *source.add(i) != 0 as c_char {
-            *target.add(i) = function(*source.add(i) as c_int) as c_char;
-            i += 1;
-            count += 1;
-        }
-        *target.add(i) = 0 as c_char;
-        count
+    let bytes = source.to_bytes();
+    let count = bytes.len().min(target.len().saturating_sub(1));
+    for i in 0..count {
+        target[i] = function(bytes[i] as c_int) as u8;
     }
+    if count < target.len() {
+        target[count] = 0;
+    }
+    count
 }
 
-/// Find substring in string.
-pub fn trio_substring(string: *const c_char, substring: *const c_char) -> *mut c_char {
-    unsafe {
-        if string.is_null() || substring.is_null() {
-            return ptr::null_mut();
-        }
-        let s = CStr::from_ptr(string).to_bytes();
-        let sub = CStr::from_ptr(substring).to_bytes();
-        if sub.is_empty() {
-            return string as *mut c_char;
-        }
-        if s.len() < sub.len() {
-            return ptr::null_mut();
-        }
-        for i in 0..=(s.len() - sub.len()) {
-            if s[i..].starts_with(sub) {
-                return string.add(i) as *mut c_char;
-            }
-        }
-        ptr::null_mut()
+/// Find substring in string; returns byte offset of first match.
+pub fn trio_substring(string: &CStr, substring: &CStr) -> Option<usize> {
+    let s = string.to_bytes();
+    let sub = substring.to_bytes();
+    if sub.is_empty() {
+        return Some(0);
     }
+    if s.len() < sub.len() {
+        return None;
+    }
+    (0..=(s.len() - sub.len())).find(|&i| s[i..].starts_with(sub))
 }
 
-/// Find substring up to max characters.
-pub fn trio_substring_max(
-    string: *const c_char,
-    max: usize,
-    substring: *const c_char,
-) -> *mut c_char {
-    unsafe {
-        if string.is_null() || substring.is_null() {
-            return ptr::null_mut();
-        }
-        let str_len = trio_length(string);
-        let sub_len = trio_length(substring);
-        if sub_len == 0 {
-            return string as *mut c_char;
-        }
-        if str_len < sub_len {
-            return ptr::null_mut();
-        }
-        let limit = if max < str_len { max } else { str_len };
-        let mut i = 0usize;
-        while i + sub_len <= limit {
-            if ptr::eq(string.add(i), substring) {
-                // Use byte-by-byte comparison
-                let mut matched = true;
-                for j in 0..sub_len {
-                    if *string.add(i + j) != *substring.add(j) {
-                        matched = false;
-                        break;
-                    }
-                }
-                if matched {
-                    return string.add(i) as *mut c_char;
-                }
-            }
-            i += 1;
-        }
-        ptr::null_mut()
+/// Find substring within the first `max` bytes; returns byte offset.
+pub fn trio_substring_max(string: &CStr, max: usize, substring: &CStr) -> Option<usize> {
+    let s = string.to_bytes();
+    let sub = substring.to_bytes();
+    if sub.is_empty() {
+        return Some(0);
     }
+    if s.len() < sub.len() {
+        return None;
+    }
+    let limit = max.min(s.len());
+    if limit < sub.len() {
+        return None;
+    }
+    (0..=(limit - sub.len())).find(|&i| s[i..i + sub.len()] == *sub)
 }
 
 /// Calculate a hash value for a string.
-pub fn trio_hash(string: *const c_char, _hash_type: c_int) -> c_ulong {
-    unsafe {
-        let mut value: c_ulong = 0;
-        let mut p = string;
-        while *p != 0 as c_char {
-            value = value.wrapping_mul(31);
-            value += *p as c_ulong;
-            p = p.add(1);
-        }
-        value
+pub fn trio_hash(string: &CStr, _hash_type: c_int) -> c_ulong {
+    let mut value: c_ulong = 0;
+    for &b in string.to_bytes() {
+        value = value.wrapping_mul(31);
+        value += b as c_ulong;
     }
+    value
 }
 
-/// Allocate a string of given size.
-pub fn trio_create(size: usize) -> *mut c_char {
-    unsafe {
-        let layout =
-            std::alloc::Layout::from_size_align(size, 1).unwrap_or(std::alloc::Layout::new::<u8>());
-        let ptr = std::alloc::alloc(layout);
-        if ptr.is_null() {
-            ptr::null_mut()
-        } else {
-            ptr as *mut c_char
-        }
-    }
+/// Allocate a zeroed buffer of given size.
+pub fn trio_create(size: usize) -> Vec<u8> {
+    vec![0u8; size]
 }
 
-/// Free a string.
-pub fn trio_destroy(string: *mut c_char) {
-    unsafe {
-        if !string.is_null() {
-            // We don't know the original size, so we use a minimal layout
-            // In practice, trio_duplicate uses trio_create, so this should match
-            // For safety, we deallocate with size 1 (the minimum)
-            let layout = std::alloc::Layout::from_size_align(1, 1)
-                .unwrap_or_else(|_| std::alloc::Layout::new::<u8>());
-            std::alloc::dealloc(string as *mut u8, layout);
-        }
-    }
-}
+/// Free a string allocated by trio_duplicate/trio_create.
+pub fn trio_destroy(_buf: Vec<u8>) {}
