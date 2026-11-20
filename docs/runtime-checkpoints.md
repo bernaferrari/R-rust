@@ -54,6 +54,15 @@ user workflows have passed on native Rport and production Wasm.
 
 ## Main verification
 
+- At `b64ff134`, optimizer scratch uses the session’s transient
+  allocator and nested bounded fits each own their continuation state.
+  Native and production Wasm completed nested fits and recovered after
+  oversized input and callback errors. The optimized module passed all
+  332 Wasm contracts and the dependency and S4 gate. The Workbench bundle
+  uses 24,018,335 bytes and leaves 2,196,065 bytes below 25 MiB. The
+  existing bounded `nlminb()` reporting gap is tracked in
+  `rport-ckbed.23`. [Optimizer receipt](ci-checkpoints/optim-workspace-b64ff134.json)
+
 - At `720ddfb7`, `optim(method = "BFGS")` and the package numerical
   routines can use the same slice-based optimizer. It charges the
   temporary matrix and vectors to the active session before invoking
@@ -251,6 +260,14 @@ user workflows have passed on native Rport and production Wasm.
   [Complete case receipt](ci-checkpoints/gnu-conformance-main-eddd0913.json)
 
 ## Wasm footprint
+
+Disabling file-backed PDF export at `b64ff134` reduced the optimized Wasm
+module from 23,983,302 bytes to 23,810,089 bytes, a saving of 173,213
+bytes. Both builds ran the same normal optimizer. The smaller build still
+evaluated R, rendered PNG previews and supported `pdf(NULL)`. It retained
+the 860,516-byte DejaVu archive used by plot previews. The default Wasm
+ships the software renderer. WebGPU builds use an opt-in feature, and
+the module has no Quartz backend. [PDF size experiment](ci-checkpoints/wasm-pdf-export-ablation-b64ff134.json)
 
 At `d55ab963`, the 24,020,763-byte module contains 14,052,599 bytes of
 compiled code and 9,941,817 bytes of initialized data. The exact module

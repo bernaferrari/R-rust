@@ -1,0 +1,38 @@
+{
+  "runtime_commit": "b64ff1346af1b37066869b177865027cf8fe9104",
+  "binaryen_version": 133,
+  "experiment": "Two default-feature release builds in the same checkout. The second used an uninhabited PdfOutput and refused file destinations before allocating the PDF device. The normal null device and plot capture stayed reachable.",
+  "experiment_diff_sha256": "4848e40777d84971010aa7ff6a301b76012b1e24e0be3d2b486ea4af162a0f44",
+  "variants": {
+    "reference": {
+      "sha256": "2bef60b98d40a4f0b4f6e81ffd1e8d33d4b85d04ce86822e9295bd4da7c51ec1",
+      "module_bytes": 23983302,
+      "code_bytes": 14012293,
+      "data_bytes": 9944728,
+      "font_archive_bytes": 860516
+    },
+    "without-pdf": {
+      "sha256": "b4f64194ddbbb73f698c860aaa9823dcba26b46d77ee9703e26b1bfa0d7f3383",
+      "module_bytes": 23810089,
+      "code_bytes": 13974671,
+      "data_bytes": 9809115,
+      "font_archive_bytes": 860516
+    }
+  },
+  "module_bytes_saved": 173213,
+  "checks": {
+    "reference": [
+      "R evaluation",
+      "explicit PNG render",
+      "interactive PNG preview",
+      "file-backed PDF output"
+    ],
+    "without-pdf": [
+      "R evaluation",
+      "explicit PNG render",
+      "interactive PNG preview",
+      "file-backed PDF refusal",
+      "null PDF device"
+    ]
+  }
+}

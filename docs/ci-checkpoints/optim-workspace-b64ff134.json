@@ -1,0 +1,38 @@
+{
+  "runtime_commit": "b64ff1346af1b37066869b177865027cf8fe9104",
+  "pinned_gnu_r_commit": "bac583951b728e97b9786804d3b4081f0fe18df5",
+  "wasm_sha256": "2bef60b98d40a4f0b4f6e81ffd1e8d33d4b85d04ce86822e9295bd4da7c51ec1",
+  "workbench_bundle_bytes": 24018335,
+  "workbench_byte_limit": 26214400,
+  "workbench_headroom_bytes": 2196065,
+  "wasm_contracts_per_generation": [
+    166,
+    166
+  ],
+  "dependency_scanner_and_s4": {
+    "wasm_sha256": "2bef60b98d40a4f0b4f6e81ffd1e8d33d4b85d04ce86822e9295bd4da7c51ec1",
+    "dependency_scans_passed": 4,
+    "s4_after_dependency_scans": "pass"
+  },
+  "native_public_tests": [
+    "bounded_optimizer_callbacks_can_start_their_own_fit",
+    "optim_workspace_refusal_and_callback_error_release_the_reservation"
+  ],
+  "wasm_matches_pinned_gnu": [
+    "BFGS converged",
+    "CG converged",
+    "Nelder-Mead converged",
+    "L-BFGS-B converged",
+    "Hessian matched",
+    "non-positive history returns the original condition",
+    "invalid report interval matched"
+  ],
+  "nested_bounded_fit": {
+    "native": "pass",
+    "wasm": "pass",
+    "pinned_gnu_nested": "aborted on the local macOS arm64 run",
+    "pinned_gnu_individual_fits": "pass"
+  },
+  "wasm_resource_checks": "scratch refusal, callback error, dimension guard, and recovery passed",
+  "known_existing_gap": "rport-ckbed.23"
+}
