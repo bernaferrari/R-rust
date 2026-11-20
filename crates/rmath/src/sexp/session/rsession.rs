@@ -419,7 +419,7 @@ impl RSession {
     /// every bound (non-`R_UnboundValue`) symbol, dot-prefixed names included,
     /// sorted lexicographically. No raw `SEXP` crosses the boundary.
     pub fn global_binding_names(&mut self) -> Vec<String> {
-        self.with_active(|| unsafe {
+        self.with_active(|| {
             let mut names = Vec::new();
             let env = self.inst().global_env;
             let mut frame = crate::sexp::accessors::FRAME(env);

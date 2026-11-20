@@ -441,7 +441,7 @@ impl Drop for ContextGuard {
 }
 
 /// Push a context on the active instance and return an owner-bound guard.
-pub unsafe fn begin_context_guard(
+pub fn begin_context_guard(
     callflag: c_int,
     call: SEXP,
     cloenv: SEXP,
@@ -452,7 +452,7 @@ pub unsafe fn begin_context_guard(
 ) -> ContextGuard {
     instance::with_required_current_instance(|instance| unsafe {
         let instance_ptr = instance;
-        let owner_pin = unsafe { pin_context_owner_in(instance) };
+        let owner_pin = pin_context_owner_in(instance);
         let context = Rf_begincontext_in(
             instance,
             callflag,
@@ -466,7 +466,7 @@ pub unsafe fn begin_context_guard(
         ContextGuard {
             instance: instance_ptr,
             context,
-            _context_owner: unsafe { retain_context_in(instance, context) }
+            _context_owner: retain_context_in(instance, context)
                 .expect("just pushed context"),
             _owner_pin: owner_pin,
         }
@@ -602,9 +602,7 @@ pub enum RSignal {
 }
 
 /// Capture a native projection in the original active transfer scope.
-/// # Safety
-/// The projection is initialized and no payload loan overlaps this operation.
-pub(crate) unsafe fn own_control_value(value: SEXP) -> super::object::Sexp<'static> {
+pub(crate) fn own_control_value(value: SEXP) -> super::object::Sexp<'static> {
     let owner =
         unsafe { super::owner::OwnerToken::current() }.unwrap_or_else(|e| r_error(e.to_string()));
     let pin = owner
@@ -654,9 +652,7 @@ pub(crate) unsafe fn jump_transfer(target: *mut RCNTXT, mask: i32, value: SEXP) 
     super::transfer::publish(data).unwrap_or_else(|e| r_error(e.to_string()))
 }
 
-/// # Safety
-/// Both values are initialized projections of the active original owner.
-pub(crate) unsafe fn exiting_handler_transfer(target_env: SEXP, result: SEXP) -> TransferTicket {
+pub(crate) fn exiting_handler_transfer(target_env: SEXP, result: SEXP) -> TransferTicket {
     let data = super::transfer::OwnedTransfer::ExitingHandler {
         target_env: unsafe { own_control_value(target_env) },
         result: unsafe { own_control_value(result) },
@@ -664,9 +660,7 @@ pub(crate) unsafe fn exiting_handler_transfer(target_env: SEXP, result: SEXP) ->
     super::transfer::publish(data).unwrap_or_else(|e| r_error(e.to_string()))
 }
 
-/// # Safety
-/// Both values are initialized projections of the active original owner.
-pub(crate) unsafe fn restart_transfer(target: SEXP, args: SEXP) -> TransferTicket {
+pub(crate) fn restart_transfer(target: SEXP, args: SEXP) -> TransferTicket {
     let data = super::transfer::OwnedTransfer::Restart {
         target: unsafe { own_control_value(target) },
         args: unsafe { own_control_value(args) },
@@ -701,19 +695,17 @@ pub enum LoopAction {
 
 /// Run a loop body with a single `catch_unwind` context, matching upstream R's
 /// one `setjmp` per loop rather than one per iteration.
-pub unsafe fn run_hoisted_loop<F>(driver: F)
+pub fn run_hoisted_loop<F>(driver: F)
 where
     F: FnMut(),
 {
-    unsafe {
-        run_hoisted_loop_with_continue(driver, || ());
-    }
+    run_hoisted_loop_with_continue(driver, || ());
 }
 
 /// Like [`run_hoisted_loop`], but runs `on_continue` before re-entering the
 /// driver after a `next` signal. `for` loops use this to advance the index
 /// before resuming, matching C R's jump to the increment clause.
-pub unsafe fn run_hoisted_loop_with_continue<F, C>(mut driver: F, mut on_continue: C)
+pub fn run_hoisted_loop_with_continue<F, C>(mut driver: F, mut on_continue: C)
 where
     F: FnMut(),
     C: FnMut(),

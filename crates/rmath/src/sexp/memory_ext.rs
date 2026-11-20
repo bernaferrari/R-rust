@@ -227,11 +227,11 @@ pub unsafe fn allocFormalsList2(sym1: SEXP, sym2: SEXP) -> SEXP {
     unsafe {
         memory::with_arena(|arena| {
             let cdr = if sym2.is_null() {
-                unsafe { R_NilValue() }
+                R_NilValue()
             } else {
-                let cell = arena.cons(sym2, unsafe { R_NilValue() }, ptr::null_mut());
+                let cell = arena.cons(sym2, R_NilValue(), ptr::null_mut());
                 if !cell.is_null() {
-                    unsafe {
+                     {
                         crate::sexp::accessors::SET_TYPEOF(cell, SEXPTYPE::LANGSXP.as_c_int());
                     }
                 }
@@ -239,7 +239,7 @@ pub unsafe fn allocFormalsList2(sym1: SEXP, sym2: SEXP) -> SEXP {
             };
             let car = arena.cons(sym1, cdr, ptr::null_mut());
             if !car.is_null() {
-                unsafe {
+                 {
                     crate::sexp::accessors::SET_TYPEOF(car, SEXPTYPE::LANGSXP.as_c_int());
                 }
             }
@@ -253,11 +253,11 @@ pub unsafe fn allocFormalsList3(sym1: SEXP, sym2: SEXP, sym3: SEXP) -> SEXP {
     unsafe {
         memory::with_arena(|arena| {
             let c3 = if sym3.is_null() {
-                unsafe { R_NilValue() }
+                R_NilValue()
             } else {
-                let cell = arena.cons(sym3, unsafe { R_NilValue() }, ptr::null_mut());
+                let cell = arena.cons(sym3, R_NilValue(), ptr::null_mut());
                 if !cell.is_null() {
-                    unsafe {
+                     {
                         crate::sexp::accessors::SET_TYPEOF(cell, SEXPTYPE::LANGSXP.as_c_int());
                     }
                 }
@@ -268,7 +268,7 @@ pub unsafe fn allocFormalsList3(sym1: SEXP, sym2: SEXP, sym3: SEXP) -> SEXP {
             } else {
                 let cell = arena.cons(sym2, c3, ptr::null_mut());
                 if !cell.is_null() {
-                    unsafe {
+                     {
                         crate::sexp::accessors::SET_TYPEOF(cell, SEXPTYPE::LANGSXP.as_c_int());
                     }
                 }
@@ -279,7 +279,7 @@ pub unsafe fn allocFormalsList3(sym1: SEXP, sym2: SEXP, sym3: SEXP) -> SEXP {
             } else {
                 let cell = arena.cons(sym1, c2, ptr::null_mut());
                 if !cell.is_null() {
-                    unsafe {
+                     {
                         crate::sexp::accessors::SET_TYPEOF(cell, SEXPTYPE::LANGSXP.as_c_int());
                     }
                 }

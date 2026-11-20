@@ -1304,7 +1304,7 @@ unsafe fn load_file_sources(base_env: SEXP, staging: SEXP, files: &[UpstreamFile
                         );
                         let _wrapped = crate::sexp::protect::protect(wrapped);
                         let evaluated =
-                            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+                            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                                 crate::eval::eval::Rf_eval(wrapped, staging)
                             }));
                         if matches!(evaluated, Ok(value) if value == failed_marker) {
@@ -1574,7 +1574,7 @@ unsafe fn load_oracle_recovered_closures(base_env: SEXP, staging: SEXP) {
                 continue;
             };
             for expr in &exprs {
-                let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+                let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     let _ = crate::eval::eval::Rf_eval(expr.clone().as_raw(), staging);
                 }));
             }
@@ -1645,7 +1645,7 @@ unsafe fn load_profile_common_bindings(base_env: SEXP) {
                 continue;
             };
             for expr in &exprs {
-                let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+                let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     let _ = crate::eval::eval::Rf_eval(expr.clone().as_raw(), base_env);
                 }));
             }
@@ -1672,7 +1672,7 @@ unsafe fn bootstrap_builtin_needs_closure(env: SEXP, name: &str) -> bool {
             | "difftime"
             | "dir.create"
             | "file.copy"
-    ) || unsafe { env != super::globals::R_BaseEnv() }
+    ) || env != super::globals::R_BaseEnv()
     {
         return false;
     }

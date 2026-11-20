@@ -129,7 +129,7 @@ pub(crate) fn deparse_expression_one(expr: SEXP) -> String {
 }
 
 pub(crate) fn format_expression_vector(x: Sexp<'_>) -> String {
-    unsafe {
+     {
         let raw = x.as_raw();
         let n = XLENGTH(raw);
         if n == 0 {
@@ -393,7 +393,7 @@ pub(crate) unsafe fn format_try_error(x: Sexp<'_>) -> String {
             format!("{}\n", format_sexp_direct(x.clone()))
         };
         out.push('\n');
-        unsafe {
+         {
             let klass = crate::sexp::attrib_core::getAttrib(
                 x.clone().as_raw(),
                 crate::sexp::attrib_core::R_ClassSymbol(),
@@ -437,7 +437,7 @@ pub(crate) fn format_environment_public(x: Sexp<'_>) -> String {
 
 pub(crate) fn format_environment(x: Sexp<'_>) -> String {
     let raw = x.as_raw();
-    let name = unsafe {
+    let name =  {
         if raw == crate::sexp::globals::R_GlobalEnv() {
             "R_GlobalEnv".to_string()
         } else if raw == crate::sexp::globals::R_BaseEnv() {
