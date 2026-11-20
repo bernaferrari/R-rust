@@ -54,6 +54,14 @@ user workflows have passed on native Rport and production Wasm.
 
 ## Main verification
 
+- At `43308be6`, Luna removed another 518 production unsafe sites,
+  including 418 explicit blocks and 100 function declarations. Rust
+  identified 330 of those blocks as unnecessary on macOS, Linux, and
+  browser Wasm. Distribution attributes retain their current and next
+  cells across garbage collection. Serialization uses checked vector
+  storage, and empty scripts return an owned NULL. Twenty native release
+  tests and all 332 production Wasm contracts passed. [Second unsafe reduction receipt](ci-checkpoints/unsafe-reduction-43308be6.json)
+
 - At `9bdd1b88`, header and pairlist reads validate the registered
   allocation before reading its data. Distribution recycling uses
   rooted values and typed elements. Compared with `2b3002e0`, the

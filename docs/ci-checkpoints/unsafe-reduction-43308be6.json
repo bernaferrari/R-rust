@@ -1,0 +1,54 @@
+{
+  "source_commit": "43308be6e95fa0a16f124cc07bae4b29ea3a1719",
+  "baseline_commit": "a7a6e7dad02f7710b2a3bd41ad5f324c122589de",
+  "scope": [
+    "crates/rmath/src",
+    "crates/nmath/src",
+    "crates/r-host-cli/src"
+  ],
+  "baseline_written_syntax": {
+    "unsafe_blocks": 15062,
+    "unsafe_foreign_modules": 28,
+    "unsafe_function_declarations": 8515,
+    "unsafe_function_types": 213,
+    "unsafe_implementations": 5
+  },
+  "final_written_syntax": {
+    "unsafe_blocks": 14649,
+    "unsafe_foreign_modules": 28,
+    "unsafe_function_declarations": 8413,
+    "unsafe_function_types": 213,
+    "unsafe_implementations": 5
+  },
+  "net_test_only_blocks_added": 8,
+  "luna_production_explicit_blocks_removed": 418,
+  "luna_production_function_declarations_removed": 100,
+  "luna_production_sites_removed": 518,
+  "additional_integrated_production_sites_removed": 5,
+  "net_integrated_production_sites_removed": 523,
+  "luna_redundant_blocks_diagnosed_on_all_targets": 330,
+  "strict_clippy_baseline_issue": "rport-4z9aq",
+  "luna_checked_targets": [
+    "aarch64-apple-darwin",
+    "x86_64-unknown-linux-gnu",
+    "wasm32-unknown-unknown"
+  ],
+  "native": {
+    "integrated_release_tests_passed": 20,
+    "checked_type_and_accessor_tests_passed": 65,
+    "strict_provenance_miri_type_tests_passed": 2,
+    "distribution_tests_passed_with_collecting_attribute_copy": 13,
+    "primitive_metadata_tests_passed": 5,
+    "atomic_serialization_and_owned_null_unit_tests_passed": 161
+  },
+  "wasm": {
+    "wasm_sha256": "057092c9bbeb847d5b85a1a510c93598ae9bee2746d9694c6707d06feb10571f",
+    "dependency_scans_passed": 4,
+    "s4_after_dependency_scans": "pass",
+    "nlminb": "pass",
+    "distributions": "pass",
+    "namespace": "pass",
+    "named_argument_and_recycling_fixtures_passed": 2,
+    "portable_contracts_passed": 332
+  }
+}
