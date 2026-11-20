@@ -63,11 +63,11 @@ const BITWISE_SHIFT_R: c_int = 6;
 // Local helpers delegating to canonical implementations
 // ---------------------------------------------------------------------------
 
-pub unsafe fn errorcall_stub(call: SEXP, format: *const c_char) {
+pub fn errorcall_stub(call: SEXP, format: *const c_char) {
     crate::mainutils::errors::errorcall(call, format);
 }
 
-pub unsafe fn error_stub(format: *const c_char) {
+pub fn error_stub(format: *const c_char) {
     crate::mainutils::errors::errorcall(R_NilValue(), format)
 }
 
@@ -134,7 +134,7 @@ pub unsafe fn isArray(x: SEXP) -> c_int {
 }
 
 /// isNumeric -- returns 1 if x is numeric (integer or real, not logical).
-pub unsafe fn isNumeric(x: SEXP) -> c_int {
+pub fn isNumeric(x: SEXP) -> c_int {
     {
         if x.is_null() {
             return 0;
@@ -399,7 +399,7 @@ pub unsafe fn ScalarLogical(x: c_int) -> SEXP {
 }
 
 /// NA_STRING -- returns the NA string CHARSXP sentinel.
-pub unsafe fn NA_STRING() -> SEXP {
+pub fn NA_STRING() -> SEXP {
     crate::sexp::globals::R_NaString()
 }
 
@@ -461,7 +461,7 @@ pub fn is_na_int(x: c_int) -> bool {
 
 /// Check if an SEXP is a scalar string (STRSXP of length 1).
 #[inline]
-pub unsafe fn is_scalar_string(x: SEXP) -> bool {
+pub fn is_scalar_string(x: SEXP) -> bool {
     !x.is_null() && TYPEOF(x) == SEXPTYPE::STRSXP && XLENGTH(x) == 1
 }
 
@@ -1672,7 +1672,7 @@ mod tests {
     #[test]
     fn test_is_scalar_string_null() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
+        {
             assert!(!is_scalar_string(ptr::null_mut()));
         }
     }

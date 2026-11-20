@@ -25,14 +25,14 @@ use crate::sexp::symbol::Rf_install;
 // Local error helpers (same pattern as coerce.rs, objects.rs, etc.)
 // ---------------------------------------------------------------------------
 
-unsafe fn error(msg: &str) {
+fn error(msg: &str) {
     std::panic::panic_any(crate::sexp::context::RError {
         message: msg.to_string(),
     });
 }
 
 unsafe fn errorcall(_call: SEXP, msg: &str) {
-    unsafe {
+    {
         error(msg);
     }
 }
@@ -42,7 +42,7 @@ unsafe fn warningcall(call: SEXP, msg: &str) {
     unsafe { crate::mainutils::errors::warningcall(call, c.as_ptr()) };
 }
 
-unsafe fn isNull(x: SEXP) -> bool {
+fn isNull(x: SEXP) -> bool {
     crate::sexp::accessors::Rf_isNull(x) != 0
 }
 
@@ -912,7 +912,7 @@ pub unsafe fn do_switch(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 unsafe fn switch_default(value: SEXP, current: SEXP) -> SEXP {
-    unsafe {
+    {
         if !current.is_null() {
             error("duplicate switch defaults");
         }

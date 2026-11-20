@@ -710,7 +710,7 @@ pub unsafe fn R_orderVector1(
 /// Check if a vector is sorted (from sort.c).
 ///
 /// Returns 1 if unsorted, 0 if sorted.
-pub unsafe fn isUnsorted(x: *mut c_void, strictly: c_int) -> c_int {
+pub fn isUnsorted(x: *mut c_void, strictly: c_int) -> c_int {
     let data = x as *const f64;
     // We don't know the length here without SEXP, so just check adjacent pairs
     // This is a simplified implementation

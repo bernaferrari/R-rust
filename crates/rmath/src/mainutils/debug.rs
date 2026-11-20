@@ -365,7 +365,7 @@ pub unsafe fn do_untracemem(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP
 // do_retracemem — no-op, returns invisible R_NilValue
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_retracemem(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_retracemem(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     {
         let _ = (call, op, args, rho);
         set_R_Visible(FALSE);
@@ -600,7 +600,7 @@ mod tests {
     #[test]
     fn test_retracemem_no_panic() {
         let session = RSession::new();
-        session.with_protected(|| unsafe {
+        session.with_protected(|| {
             let result = do_retracemem(
                 ptr::null_mut(),
                 ptr::null_mut(),

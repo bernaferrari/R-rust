@@ -53,7 +53,7 @@ pub const NO_COMCHAR: c_int = 100000;
 ///
 /// In the original C code this is `R_INLINE` and also handles the Win32
 /// non-MBCS locale case.  This port exposes it as a regular function.
-pub unsafe fn Rspace(c: std::os::raw::c_uint) -> bool {
+pub fn Rspace(c: std::os::raw::c_uint) -> bool {
     if c == b' ' as std::os::raw::c_uint
         || c == b'\t' as std::os::raw::c_uint
         || c == b'\n' as std::os::raw::c_uint

@@ -527,7 +527,7 @@ pub unsafe fn do_storage_mode_get(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP
 }
 
 /// R's `identity(x)` — return the object unchanged.
-pub unsafe fn do_identity(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_identity(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     CAR(args)
 }
 
@@ -1719,7 +1719,7 @@ unsafe fn dispatch_as(call: SEXP, op: SEXP, args: SEXP, rho: SEXP, generic: &[u8
 /// GNU `as.double` / `as.numeric` are separate FunTab entries sharing
 /// `do_asatomic`. DispatchOrEval uses PRIMNAME(op), so `do.call(as.numeric,
 /// list(x))` looks up `as.numeric.*` not the call-head spelling.
-unsafe fn as_double_generic(op: SEXP) -> &'static [u8] {
+fn as_double_generic(op: SEXP) -> &'static [u8] {
     if crate::eval::eval::PRIMNAME(op) == "as.numeric" {
         b"as.numeric\0"
     } else {
@@ -2370,7 +2370,7 @@ unsafe fn function_as_list(fun: SEXP) -> SEXP {
     }
 }
 
-unsafe fn pairlist_len(mut list: SEXP) -> c_int {
+fn pairlist_len(mut list: SEXP) -> c_int {
     {
         let mut n = 0;
         while !list.is_null() && list != R_NilValue() {

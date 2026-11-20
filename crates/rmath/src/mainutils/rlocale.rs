@@ -67,18 +67,18 @@ pub const LOW_SURROGATE_START: c_uint = 0xdc00;
 pub const LOW_SURROGATE_END: c_uint = 0xdfff;
 
 #[inline]
-pub unsafe fn IS_HIGH_SURROGATE(wch: wint_t) -> bool {
+pub fn IS_HIGH_SURROGATE(wch: wint_t) -> bool {
     wch >= HIGH_SURROGATE_START && wch <= HIGH_SURROGATE_END
 }
 
 #[inline]
-pub unsafe fn IS_LOW_SURROGATE(wch: wint_t) -> bool {
+pub fn IS_LOW_SURROGATE(wch: wint_t) -> bool {
     wch >= LOW_SURROGATE_START && wch <= LOW_SURROGATE_END
 }
 
 #[inline]
 pub unsafe fn IS_SURROGATE_PAIR(hs: wint_t, ls: wint_t) -> bool {
-    unsafe { IS_HIGH_SURROGATE(hs) && IS_LOW_SURROGATE(ls) }
+     IS_HIGH_SURROGATE(hs) && IS_LOW_SURROGATE(ls) 
 }
 
 // -----------------------------------------------------------------------
@@ -511,7 +511,7 @@ static Ri18n_wctype_func: &[Ri18n_wctype_func_l] = &[
 ///
 /// # Safety
 /// The caller must ensure `c` is a valid Unicode code point.
-pub unsafe fn Ri18n_wcwidth(c: R_wchar_t) -> c_int {
+pub fn Ri18n_wcwidth(c: R_wchar_t) -> c_int {
     // This quickly gives one for printing ASCII characters
     if c > 0x1F && c < 0x7F {
         return 1;
@@ -645,7 +645,7 @@ pub unsafe fn Ri18n_wctype(name: *const u8) -> c_uint {
 ///
 /// `desc` should be a value returned by `Ri18n_wctype`.
 /// Returns non-zero if the character matches, 0 otherwise.
-pub unsafe fn Ri18n_iswctype(wc: wint_t, desc: c_uint) -> c_int {
+pub fn Ri18n_iswctype(wc: wint_t, desc: c_uint) -> c_int {
     Ri18n_iswctype_internal(wc, desc)
 }
 

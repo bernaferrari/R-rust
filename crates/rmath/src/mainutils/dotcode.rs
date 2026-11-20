@@ -114,20 +114,20 @@ impl R_RegisteredNativeSymbol {
 // Local error / warning helpers
 // ---------------------------------------------------------------------------
 
-unsafe fn error(msg: &str) -> ! {
+fn error(msg: &str) -> ! {
     std::panic::panic_any(crate::sexp::context::RError {
         message: msg.to_string(),
     })
 }
 
-unsafe fn errorcall(_call: SEXP, msg: &str) -> ! {
+fn errorcall(_call: SEXP, msg: &str) -> ! {
     std::panic::panic_any(crate::sexp::context::RError {
         message: msg.to_string(),
     })
 }
 
 unsafe fn native_extension_policy_error(call: SEXP, entrypoint: &str) -> ! {
-    unsafe {
+    {
         errorcall(
             call,
             &format!(
@@ -170,11 +170,11 @@ unsafe fn ported_call_name(op: SEXP) -> Option<String> {
     }
 }
 
-unsafe fn warning(msg: &str) {
+fn warning(msg: &str) {
     eprintln!("WARNING: {}", msg);
 }
 
-unsafe fn warningcall(_call: SEXP, msg: &str) {
+fn warningcall(_call: SEXP, msg: &str) {
     eprintln!("WARNING: {}", msg);
 }
 
@@ -213,7 +213,7 @@ unsafe fn CSingSymbol() -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Check that `s` is a length-1 character string that is not NA.
-unsafe fn isValidString(s: SEXP) -> bool {
+fn isValidString(s: SEXP) -> bool {
     TYPEOF(s) == SEXPTYPE::STRSXP && LENGTH(s) > 0
 }
 
@@ -246,7 +246,7 @@ unsafe fn isNativeSymbolInfo(op: SEXP) -> bool {
 // ---------------------------------------------------------------------------
 
 unsafe fn check1arg2(arg: SEXP, call: SEXP, _formal: &str) {
-    unsafe {
+    {
         if TAG(arg).is_null() || TAG(arg).is_null() {
             // Untagged — fine, it's positional
             return;
@@ -504,7 +504,7 @@ unsafe fn enctrim(args: SEXP) -> SEXP {
 // checkNativeType / comparePrimitiveTypes
 // ---------------------------------------------------------------------------
 
-unsafe fn checkNativeType(target_type: c_int, actual_type: c_int) -> bool {
+fn checkNativeType(target_type: c_int, actual_type: c_int) -> bool {
     if target_type > 0 {
         if target_type == SEXPTYPE::INTSXP || target_type == SEXPTYPE::LGLSXP {
             return actual_type == SEXPTYPE::INTSXP || actual_type == SEXPTYPE::LGLSXP;
@@ -1777,7 +1777,7 @@ pub unsafe fn do_dotcallgr(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP 
 // ---------------------------------------------------------------------------
 
 /// Find the DLL that the calling function was loaded from.
-pub unsafe fn Rf_getCallingDLL() -> SEXP {
+pub fn Rf_getCallingDLL() -> SEXP {
     {
         // Stub: return R_NilValue — namespace/DLL tracking not yet implemented
         R_NilValue()

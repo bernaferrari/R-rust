@@ -98,7 +98,7 @@ pub fn TimeToSeed() -> c_uint {
 ///
 /// The simplified signature (no SEXP arguments) is retained because this
 /// port does not yet wire into the SEXP call-dispatch table.
-pub unsafe fn do_systime() -> f64 {
+pub fn do_systime() -> f64 {
     currentTime()
 }
 

@@ -35,20 +35,20 @@ use crate::unix::dynload::{DL_FUNC, InitFunctionHashing};
 // Local error helper
 // ---------------------------------------------------------------------------
 
-unsafe fn error(msg: &str) -> ! {
+fn error(msg: &str) -> ! {
     std::panic::panic_any(crate::sexp::context::RError {
         message: msg.to_string(),
     })
 }
 
-unsafe fn errorcall(_call: SEXP, msg: &str) -> ! {
+fn errorcall(_call: SEXP, msg: &str) -> ! {
     std::panic::panic_any(crate::sexp::context::RError {
         message: msg.to_string(),
     })
 }
 
 unsafe fn native_dynamic_loading_policy_error(entrypoint: &str) -> ! {
-    unsafe {
+    {
         error(&format!(
             "{entrypoint} loads native extension code, which is disabled in this pure-R Android runtime; use bundled pure-R packages or define a host-owned native-library policy"
         ))
@@ -112,7 +112,7 @@ struct LoadedDll {
     info: NonNull<DllInfo>,
 }
 impl LoadedDll {
-    unsafe fn from_owned(info: *mut DllInfo) -> Rc<Self> {
+    fn from_owned(info: *mut DllInfo) -> Rc<Self> {
         Rc::new(Self {
             info: NonNull::new(info).expect("owned DLL allocation"),
         })
@@ -372,7 +372,7 @@ unsafe fn free(ptr: *mut c_void) {
     unsafe { crate::mainutils::raw_heap::free(ptr) }
 }
 #[cfg(target_arch = "wasm32")]
-unsafe fn dlsym(_handle: *mut c_void, _symbol: *const c_char) -> *mut c_void {
+fn dlsym(_handle: *mut c_void, _symbol: *const c_char) -> *mut c_void {
     std::ptr::null_mut()
 }
 #[cfg(target_arch = "wasm32")]
@@ -474,7 +474,7 @@ pub unsafe fn R_getDllInfo(path: *const c_char) -> *mut DllInfo {
 }
 
 /// Find the index of a DllInfo in the table.
-unsafe fn R_getDllIndex(info: *mut DllInfo) -> isize {
+fn R_getDllIndex(info: *mut DllInfo) -> isize {
     with_dynload_state(|state| {
         for (i, library) in state.loaded_dll.iter().enumerate() {
             let dll = library.pointer();
@@ -1656,7 +1656,7 @@ mod tests {
         });
     }
 
-    unsafe extern "C" fn test_registered_call() {}
+    extern "C" fn test_registered_call() {}
 
     #[test]
     fn test_find_symbol_registered_call() {
@@ -1716,7 +1716,7 @@ mod tests {
     fn test_dynload_tables_are_session_local_on_same_thread() {
         let left = RSession::new();
         let right = RSession::new();
-        unsafe extern "C" fn left_only() {}
+        extern "C" fn left_only() {}
         unsafe fn stats_registration() -> (SEXP, *mut c_void) {
             unsafe {
                 let root = with_dynload_state(|state| state.c_entry_table);

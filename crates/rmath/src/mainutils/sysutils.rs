@@ -135,7 +135,7 @@ unsafe fn checkArity(op: SEXP, args: SEXP) {
 
 /// isString check — STRSXP type.
 #[inline(always)]
-unsafe fn isString(x: SEXP) -> bool {
+fn isString(x: SEXP) -> bool {
     {
         if x.is_null() || x == R_NilValue() {
             return false;

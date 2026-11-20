@@ -90,7 +90,7 @@ pub unsafe fn format_set_R_print(p: RPrint) -> RPrint {
     })
 }
 
-pub unsafe fn format_get_R_print() -> RPrint {
+pub fn format_get_R_print() -> RPrint {
     current_R_print()
 }
 
@@ -113,7 +113,7 @@ use crate::mainutils::printutils::Rstrlen;
 
 /// Return the number of decimal digits in `x` (x >= 0).
 /// Equivalent to `(int) floor(log10((double) x)) + 1` but faster.
-pub unsafe fn IndexWidth(mut x: c_int) -> c_int {
+pub fn IndexWidth(mut x: c_int) -> c_int {
     if x < 0 {
         x = -x;
     }
@@ -170,7 +170,7 @@ const R_DEC_MIN_EXPONENT: c_int = -307;
 
 /// Compute 10^n for integer n using the lookup table when possible.
 /// Falls back to `pow` for out-of-range exponents.
-pub unsafe fn format_Rexp10(n: c_int) -> c_double {
+pub fn format_Rexp10(n: c_int) -> c_double {
     let n_abs = if n < 0 { -n } else { n };
     if n_abs <= KP_MAX {
         if n >= 0 {
@@ -561,13 +561,13 @@ pub(crate) fn integer_field_width(n: R_xlen_t, mut elt: impl FnMut(R_xlen_t) -> 
     };
 
     if xmin < 0 {
-        let l = unsafe { IndexWidth(-xmin) } + 1; // +1 for sign
+        let l = IndexWidth(-xmin)  + 1; // +1 for sign
         if l > fieldwidth {
             fieldwidth = l;
         }
     }
     if xmax > 0 {
-        let l = unsafe { IndexWidth(xmax) };
+        let l = IndexWidth(xmax);
         if l > fieldwidth {
             fieldwidth = l;
         }
@@ -648,13 +648,13 @@ impl IntExtrema {
         };
         // `xmin` excludes NA_INTEGER, so `-xmin` fits in `c_int`.
         if self.any && self.xmin < 0 {
-            let l = unsafe { IndexWidth(-self.xmin) } + 1;
+            let l = IndexWidth(-self.xmin)  + 1;
             if l > fieldwidth {
                 fieldwidth = l;
             }
         }
         if self.any && self.xmax > 0 {
-            let l = unsafe { IndexWidth(self.xmax) };
+            let l = IndexWidth(self.xmax);
             if l > fieldwidth {
                 fieldwidth = l;
             }
@@ -756,7 +756,7 @@ fn int_run_width(origin: i128, step: i128, n: R_xlen_t) -> c_int {
     if n <= 1_000_000 {
         return integer_field_width(n, |i| (origin + (i as i128) * step) as i32);
     }
-    let numeric = unsafe { IndexWidth(c_int::MAX) } + 1;
+    let numeric = IndexWidth(c_int::MAX)  + 1;
     current_R_print().na_width.max(numeric)
 }
 
@@ -1472,7 +1472,7 @@ mod tests {
 
     #[test]
     fn test_index_width() {
-        unsafe {
+        {
             assert_eq!(IndexWidth(0), 1);
             assert_eq!(IndexWidth(1), 1);
             assert_eq!(IndexWidth(9), 1);
@@ -1488,7 +1488,7 @@ mod tests {
 
     #[test]
     fn test_index_width_negative() {
-        unsafe {
+        {
             assert_eq!(IndexWidth(-5), 1);
             assert_eq!(IndexWidth(-42), 2);
             assert_eq!(IndexWidth(-100), 3);
@@ -1851,7 +1851,7 @@ mod tests {
 
     #[test]
     fn test_rexp10_table() {
-        unsafe {
+        {
             assert!((format_Rexp10(0) - 1.0).abs() < 1e-15);
             assert!((format_Rexp10(1) - 10.0).abs() < 1e-15);
             assert!((format_Rexp10(10) - 1e10).abs() < 1e-5);
@@ -1861,7 +1861,7 @@ mod tests {
 
     #[test]
     fn test_rexp10_out_of_range() {
-        unsafe {
+        {
             let v = format_Rexp10(50);
             assert!(v > 0.0);
             let v = format_Rexp10(-50);

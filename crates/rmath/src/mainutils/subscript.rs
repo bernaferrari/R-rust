@@ -34,7 +34,7 @@ use crate::sexp::globals::{R_MissingArg, R_NilValue};
 
 use crate::sexp::protect::protect;
 
-unsafe fn error(msg: &str) -> ! {
+fn error(msg: &str) -> ! {
     std::panic::panic_any(crate::sexp::context::RError {
         message: msg.to_string(),
     });
@@ -107,12 +107,12 @@ pub unsafe fn ECALL_OutOfBounds(x: SEXP, subscript: c_int, index: R_xlen_t, _cal
         subscript,
         index
     );
-    unsafe { error(&msg) };
+     error(&msg);
 }
 
 /// Report a missing subscript error.
 pub unsafe fn ECALL_MissingSubs(_call: SEXP) {
-    unsafe { error("subscript is missing") };
+     error("subscript is missing");
 }
 
 /// Report an out-of-bounds error for character subscripts.
@@ -123,7 +123,7 @@ pub unsafe fn ECALL_OutOfBoundsCHAR(x: SEXP, subscript: c_int, sindex: SEXP, _ca
         subscript,
         subscript_index_name(sindex)
     );
-    unsafe { error(&msg) };
+     error(&msg);
 }
 
 // ---------------------------------------------------------------------------
@@ -139,7 +139,7 @@ pub unsafe fn ECALL_OutOfBoundsCHAR(x: SEXP, subscript: c_int, sindex: SEXP, _ca
 /// Returns -1 on error (in full R this would be unreachable due to error calls).
 #[inline]
 unsafe fn integerOneIndex(i: c_int, len: R_xlen_t, _call: SEXP) -> R_xlen_t {
-    unsafe {
+    {
         let mut indx: R_xlen_t = -1;
         if i > 0 {
             indx = (i - 1) as R_xlen_t;

@@ -42,7 +42,7 @@ fn graph() -> (SEXP, ProtectGuard<'static>) {
     }
 }
 
-unsafe extern "C" fn collect_and_check_batch(_: *mut c_void) {
+extern "C" fn collect_and_check_batch(_: *mut c_void) {
     let run = RUNS.get();
     RUNS.set(run + 1);
     if run == 0 {
@@ -54,7 +54,7 @@ unsafe extern "C" fn collect_and_check_batch(_: *mut c_void) {
     LOST_GRAPH.set(LOST_GRAPH.get() || lost);
 }
 
-unsafe extern "C" fn count_only(_: *mut c_void) {
+extern "C" fn count_only(_: *mut c_void) {
     RUNS.set(RUNS.get() + 1);
 }
 
@@ -65,7 +65,7 @@ unsafe extern "C" fn nested_runner(_: *mut c_void) {
     LOST_RUNNING_GUARD.set(!with_memory_state(|state| state.running_finalizers));
 }
 
-unsafe extern "C" fn destroy_owner(_: *mut c_void) {
+extern "C" fn destroy_owner(_: *mut c_void) {
     RUNS.set(RUNS.get() + 1);
     let owner = OWNER_TO_DROP.with(|slot| slot.borrow_mut().take());
     drop(owner);

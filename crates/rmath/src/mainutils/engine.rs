@@ -719,7 +719,7 @@ fn parse_lty_hex_pattern(spec: &str) -> Option<c_uint> {
 // ---------------------------------------------------------------------------
 
 /// Return the current graphics engine version number.
-pub unsafe fn R_GE_getVersion() -> c_int {
+pub fn R_GE_getVersion() -> c_int {
     R_GE_version
 }
 
@@ -739,7 +739,7 @@ pub unsafe fn R_GE_checkVersionOrDie(version: c_int) {
 // ---------------------------------------------------------------------------
 
 /// Destroy a graphics device description, freeing all associated resources.
-pub unsafe fn GEdestroyDevDesc(dd: *mut c_void) {
+pub fn GEdestroyDevDesc(dd: *mut c_void) {
     let _ = dd;
 }
 
@@ -748,7 +748,7 @@ pub unsafe fn GEdestroyDevDesc(dd: *mut c_void) {
 // ---------------------------------------------------------------------------
 
 /// Return the system-specific state for a graphics system.
-pub unsafe fn GEsystemState(dd: *mut c_void, index: c_int) -> *mut c_void {
+pub fn GEsystemState(dd: *mut c_void, index: c_int) -> *mut c_void {
     ptr::null_mut()
 }
 
@@ -757,7 +757,7 @@ pub unsafe fn GEsystemState(dd: *mut c_void, index: c_int) -> *mut c_void {
 // ---------------------------------------------------------------------------
 
 /// Register all current graphics systems with a new device.
-pub unsafe fn GEregisterWithDevice(dd: *mut c_void) {
+pub fn GEregisterWithDevice(dd: *mut c_void) {
     let _ = dd;
     // No devices in headless mode
 }
@@ -789,7 +789,7 @@ pub unsafe fn GEregisterSystem(
         state.num_graphics_systems += 1;
         // Wire-up with any active devices. In headless mode there are no devices,
         // but call the hook to keep behavior consistent with the original C API.
-        unsafe {
+        {
             GEregisterWithDevice(ptr::null_mut());
         }
     });
@@ -800,7 +800,7 @@ pub unsafe fn GEregisterSystem(
 // ---------------------------------------------------------------------------
 
 /// Unregister a graphics system from the engine.
-pub unsafe fn GEunregisterSystem(registerIndex: c_int) {
+pub fn GEunregisterSystem(registerIndex: c_int) {
     with_graphics_engine_state(|state| {
         if !(0..MAX_GRAPHICS_SYSTEMS).contains(&registerIndex) {
             return;
@@ -899,7 +899,7 @@ pub unsafe fn GEhandleEvent(event: c_int, dev: *mut c_void, data: SEXP) -> SEXP 
 // ---------------------------------------------------------------------------
 
 /// Convert X coordinate from device units to the specified unit.
-pub unsafe fn fromDeviceX(value: c_double, to: c_int, dd: *mut c_void) -> c_double {
+pub fn fromDeviceX(value: c_double, to: c_int, dd: *mut c_void) -> c_double {
     if let Some(value) = device_registry::from_device_x(value, to, headless_device(dd)) {
         return value;
     }
@@ -907,7 +907,7 @@ pub unsafe fn fromDeviceX(value: c_double, to: c_int, dd: *mut c_void) -> c_doub
 }
 
 /// Convert X coordinate from the specified unit to device units.
-pub unsafe fn toDeviceX(value: c_double, from: c_int, dd: *mut c_void) -> c_double {
+pub fn toDeviceX(value: c_double, from: c_int, dd: *mut c_void) -> c_double {
     if let Some(value) = device_registry::to_device_x(value, from, headless_device(dd)) {
         return value;
     }
@@ -915,7 +915,7 @@ pub unsafe fn toDeviceX(value: c_double, from: c_int, dd: *mut c_void) -> c_doub
 }
 
 /// Convert Y coordinate from device units to the specified unit.
-pub unsafe fn fromDeviceY(value: c_double, to: c_int, dd: *mut c_void) -> c_double {
+pub fn fromDeviceY(value: c_double, to: c_int, dd: *mut c_void) -> c_double {
     if let Some(value) = device_registry::from_device_y(value, to, headless_device(dd)) {
         return value;
     }
@@ -923,7 +923,7 @@ pub unsafe fn fromDeviceY(value: c_double, to: c_int, dd: *mut c_void) -> c_doub
 }
 
 /// Convert Y coordinate from the specified unit to device units.
-pub unsafe fn toDeviceY(value: c_double, from: c_int, dd: *mut c_void) -> c_double {
+pub fn toDeviceY(value: c_double, from: c_int, dd: *mut c_void) -> c_double {
     if let Some(value) = device_registry::to_device_y(value, from, headless_device(dd)) {
         return value;
     }
@@ -931,7 +931,7 @@ pub unsafe fn toDeviceY(value: c_double, from: c_int, dd: *mut c_void) -> c_doub
 }
 
 /// Convert width from device units to the specified unit.
-pub unsafe fn fromDeviceWidth(value: c_double, to: c_int, dd: *mut c_void) -> c_double {
+pub fn fromDeviceWidth(value: c_double, to: c_int, dd: *mut c_void) -> c_double {
     if let Some(value) = device_registry::from_device_width(value, to, headless_device(dd)) {
         return value;
     }
@@ -939,7 +939,7 @@ pub unsafe fn fromDeviceWidth(value: c_double, to: c_int, dd: *mut c_void) -> c_
 }
 
 /// Convert width from the specified unit to device units.
-pub unsafe fn toDeviceWidth(value: c_double, from: c_int, dd: *mut c_void) -> c_double {
+pub fn toDeviceWidth(value: c_double, from: c_int, dd: *mut c_void) -> c_double {
     if let Some(value) = device_registry::to_device_width(value, from, headless_device(dd)) {
         return value;
     }
@@ -947,7 +947,7 @@ pub unsafe fn toDeviceWidth(value: c_double, from: c_int, dd: *mut c_void) -> c_
 }
 
 /// Convert height from device units to the specified unit.
-pub unsafe fn fromDeviceHeight(value: c_double, to: c_int, dd: *mut c_void) -> c_double {
+pub fn fromDeviceHeight(value: c_double, to: c_int, dd: *mut c_void) -> c_double {
     if let Some(value) = device_registry::from_device_height(value, to, headless_device(dd)) {
         return value;
     }
@@ -955,7 +955,7 @@ pub unsafe fn fromDeviceHeight(value: c_double, to: c_int, dd: *mut c_void) -> c
 }
 
 /// Convert height from the specified unit to device units.
-pub unsafe fn toDeviceHeight(value: c_double, from: c_int, dd: *mut c_void) -> c_double {
+pub fn toDeviceHeight(value: c_double, from: c_int, dd: *mut c_void) -> c_double {
     if let Some(value) = device_registry::to_device_height(value, from, headless_device(dd)) {
         return value;
     }
@@ -987,7 +987,7 @@ fn reject_real_line_code_past_int(value: SEXP, ind: c_int, what: &str) {
 }
 
 /// Parse a line end specification from an R SEXP value.
-pub unsafe fn GE_LENDpar(value: SEXP, ind: c_int) -> c_int {
+pub fn GE_LENDpar(value: SEXP, ind: c_int) -> c_int {
     reject_real_line_code_past_int(value, ind, "line end");
     if let Some(name) = sexp_string_at(value, ind) {
         if let Some(parsed) = parse_lend_name(&name) {
@@ -1003,7 +1003,7 @@ pub unsafe fn GE_LENDpar(value: SEXP, ind: c_int) -> c_int {
 }
 
 /// Convert a line end code to an R string.
-pub unsafe fn GE_LENDget(lend: c_int) -> SEXP {
+pub fn GE_LENDget(lend: c_int) -> SEXP {
     match lend {
         GE_BUTT_CAP => mk_string(c"butt".as_ptr()),
         GE_SQUARE_CAP => mk_string(c"square".as_ptr()),
@@ -1012,7 +1012,7 @@ pub unsafe fn GE_LENDget(lend: c_int) -> SEXP {
 }
 
 /// Parse a line join specification from an R SEXP value.
-pub unsafe fn GE_LJOINpar(value: SEXP, ind: c_int) -> c_int {
+pub fn GE_LJOINpar(value: SEXP, ind: c_int) -> c_int {
     reject_real_line_code_past_int(value, ind, "line join");
     if let Some(name) = sexp_string_at(value, ind) {
         if let Some(parsed) = parse_ljoin_name(&name) {
@@ -1028,7 +1028,7 @@ pub unsafe fn GE_LJOINpar(value: SEXP, ind: c_int) -> c_int {
 }
 
 /// Convert a line join code to an R string.
-pub unsafe fn GE_LJOINget(ljoin: c_int) -> SEXP {
+pub fn GE_LJOINget(ljoin: c_int) -> SEXP {
     match ljoin {
         GE_MITRE_JOIN => mk_string(c"mitre".as_ptr()),
         GE_BEVEL_JOIN => mk_string(c"bevel".as_ptr()),
@@ -1041,7 +1041,7 @@ pub unsafe fn GE_LJOINget(ljoin: c_int) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Set the clipping rectangle on the current device.
-pub unsafe fn GESetClip(x1: c_double, y1: c_double, x2: c_double, y2: c_double, dd: *mut c_void) {
+pub fn GESetClip(x1: c_double, y1: c_double, x2: c_double, y2: c_double, dd: *mut c_void) {
     if dd.is_null() {
         return;
     }
@@ -1056,7 +1056,7 @@ pub unsafe fn GESetClip(x1: c_double, y1: c_double, x2: c_double, y2: c_double, 
 // ---------------------------------------------------------------------------
 
 /// Draw a line segment on the device, with clipping.
-pub unsafe fn GELine(
+pub fn GELine(
     x1: c_double,
     y1: c_double,
     x2: c_double,
@@ -1142,7 +1142,7 @@ pub unsafe fn GEPolygon(
 // ---------------------------------------------------------------------------
 
 /// Draw a circle on the device, with clipping.
-pub unsafe fn GECircle(
+pub fn GECircle(
     x: c_double,
     y: c_double,
     radius: c_double,
@@ -1163,7 +1163,7 @@ pub unsafe fn GECircle(
 // ---------------------------------------------------------------------------
 
 /// Draw a rectangle on the device, with clipping.
-pub unsafe fn GERect(
+pub fn GERect(
     x0: c_double,
     y0: c_double,
     x1: c_double,
@@ -1229,7 +1229,7 @@ pub unsafe fn GEPath(
 // ---------------------------------------------------------------------------
 
 /// Draw a raster image on the device.
-pub unsafe fn GERaster(
+pub fn GERaster(
     raster: *mut c_uint,
     w: c_int,
     h: c_int,
@@ -1314,7 +1314,7 @@ pub unsafe fn GEText(
 // ---------------------------------------------------------------------------
 
 /// Draw an X-spline (smooth curve through control points) on the device.
-pub unsafe fn GEXspline(
+pub fn GEXspline(
     n: c_int,
     x: *mut c_double,
     y: *mut c_double,
@@ -1333,7 +1333,7 @@ pub unsafe fn GEXspline(
 // ---------------------------------------------------------------------------
 
 /// Set the graphics mode on a device.
-pub unsafe fn GEMode(mode: c_int, dd: *mut c_void) {
+pub fn GEMode(mode: c_int, dd: *mut c_void) {
     if dd.is_null() {
         return;
     }
@@ -1348,7 +1348,7 @@ pub unsafe fn GEMode(mode: c_int, dd: *mut c_void) {
 // ---------------------------------------------------------------------------
 
 /// Draw a plotting symbol on the device.
-pub unsafe fn GESymbol(
+pub fn GESymbol(
     x: c_double,
     y: c_double,
     pch: c_int,
@@ -1424,7 +1424,7 @@ pub unsafe fn GEPretty(lo: *mut c_double, up: *mut c_double, ndiv: *mut c_int) {
 // ---------------------------------------------------------------------------
 
 /// Get metric information (ascent, descent, width) for a character.
-pub unsafe fn GEMetricInfo(
+pub fn GEMetricInfo(
     c: c_int,
     gc: *const c_void,
     ascent: *mut c_double,
@@ -1440,7 +1440,7 @@ pub unsafe fn GEMetricInfo(
 // ---------------------------------------------------------------------------
 
 /// Get the width of a string in device coordinates.
-pub unsafe fn GEStrWidth(
+pub fn GEStrWidth(
     str: *const c_char,
     enc: c_int,
     gc: *const c_void,
@@ -1461,7 +1461,7 @@ pub unsafe fn GEStrWidth(
 // ---------------------------------------------------------------------------
 
 /// Get the height of a string in device coordinates.
-pub unsafe fn GEStrHeight(
+pub fn GEStrHeight(
     str: *const c_char,
     enc: c_int,
     gc: *const c_void,
@@ -1478,7 +1478,7 @@ pub unsafe fn GEStrHeight(
 // ---------------------------------------------------------------------------
 
 /// Get metric information for a string (ascent, descent, width).
-pub unsafe fn GEStrMetric(
+pub fn GEStrMetric(
     str: *const c_char,
     enc: c_int,
     gc: *const c_void,
@@ -1495,7 +1495,7 @@ pub unsafe fn GEStrMetric(
 // ---------------------------------------------------------------------------
 
 /// Start a new page on the device.
-pub unsafe fn GENewPage(gc: *const c_void, dd: *mut c_void) {
+pub fn GENewPage(gc: *const c_void, dd: *mut c_void) {
     if dd.is_null() {
         return;
     }
@@ -1510,7 +1510,7 @@ pub unsafe fn GENewPage(gc: *const c_void, dd: *mut c_void) {
 // ---------------------------------------------------------------------------
 
 /// Check whether a device has received output from any graphics system.
-pub unsafe fn GEdeviceDirty(dd: *mut c_void) -> c_int {
+pub fn GEdeviceDirty(dd: *mut c_void) -> c_int {
     if dd.is_null() {
         return 0;
     }
@@ -1518,7 +1518,7 @@ pub unsafe fn GEdeviceDirty(dd: *mut c_void) -> c_int {
 }
 
 /// Mark a device as having received output.
-pub unsafe fn GEdirtyDevice(dd: *mut c_void) {
+pub fn GEdirtyDevice(dd: *mut c_void) {
     if dd.is_null() {
         return;
     }
@@ -1526,7 +1526,7 @@ pub unsafe fn GEdirtyDevice(dd: *mut c_void) {
 }
 
 /// Mark a device as clean (no output recorded).
-pub(crate) unsafe fn GEcleanDevice(dd: *mut c_void) {
+pub(crate) fn GEcleanDevice(dd: *mut c_void) {
     if dd.is_null() {
         return;
     }
@@ -1538,7 +1538,7 @@ pub(crate) unsafe fn GEcleanDevice(dd: *mut c_void) {
 // ---------------------------------------------------------------------------
 
 /// Check whether all registered graphics systems are in a valid state.
-pub unsafe fn GEcheckState(dd: *mut c_void) -> c_int {
+pub fn GEcheckState(dd: *mut c_void) -> c_int {
     if dd.is_null() {
         0 // FALSE in R's convention means OK for headless checks
     } else {
@@ -1551,7 +1551,7 @@ pub unsafe fn GEcheckState(dd: *mut c_void) -> c_int {
 // ---------------------------------------------------------------------------
 
 /// Check whether graphics operations should be recorded for replay.
-pub unsafe fn GErecording(call: SEXP, dd: *mut c_void) -> c_int {
+pub fn GErecording(call: SEXP, dd: *mut c_void) -> c_int {
     if dd.is_null() {
         return 0;
     }
@@ -1563,7 +1563,7 @@ pub unsafe fn GErecording(call: SEXP, dd: *mut c_void) -> c_int {
 // ---------------------------------------------------------------------------
 
 /// Record a graphics operation for display list replay.
-pub unsafe fn GErecordGraphicOperation(op: SEXP, args: SEXP, dd: *mut c_void) {
+pub fn GErecordGraphicOperation(op: SEXP, args: SEXP, dd: *mut c_void) {
     let _ = (op, args, dd);
 }
 
@@ -1572,7 +1572,7 @@ pub unsafe fn GErecordGraphicOperation(op: SEXP, args: SEXP, dd: *mut c_void) {
 // ---------------------------------------------------------------------------
 
 /// Initialize the display list for a device.
-pub unsafe fn GEinitDisplayList(dd: *mut c_void) {
+pub fn GEinitDisplayList(dd: *mut c_void) {
     let _ = dd;
 }
 
@@ -1581,7 +1581,7 @@ pub unsafe fn GEinitDisplayList(dd: *mut c_void) {
 // ---------------------------------------------------------------------------
 
 /// Replay the display list on a device.
-pub unsafe fn GEplayDisplayList(dd: *mut c_void) {
+pub fn GEplayDisplayList(dd: *mut c_void) {
     let _ = dd;
 }
 
@@ -1590,7 +1590,7 @@ pub unsafe fn GEplayDisplayList(dd: *mut c_void) {
 // ---------------------------------------------------------------------------
 
 /// Copy the display list from one device to another.
-pub unsafe fn GEcopyDisplayList(fromDevice: c_int) {
+pub fn GEcopyDisplayList(fromDevice: c_int) {
     let _ = fromDevice;
 }
 
@@ -1599,7 +1599,7 @@ pub unsafe fn GEcopyDisplayList(fromDevice: c_int) {
 // ---------------------------------------------------------------------------
 
 /// Create a snapshot of the current display, including graphics system state.
-pub unsafe fn GEcreateSnapshot(dd: *mut c_void) -> SEXP {
+pub fn GEcreateSnapshot(dd: *mut c_void) -> SEXP {
     let _ = dd;
     nil_value()
 }
@@ -1609,7 +1609,7 @@ pub unsafe fn GEcreateSnapshot(dd: *mut c_void) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Recreate a saved display from a snapshot.
-pub unsafe fn GEplaySnapshot(snapshot: SEXP, dd: *mut c_void) {
+pub fn GEplaySnapshot(snapshot: SEXP, dd: *mut c_void) {
     let _ = (snapshot, dd);
 }
 
@@ -1618,13 +1618,13 @@ pub unsafe fn GEplaySnapshot(snapshot: SEXP, dd: *mut c_void) {
 // ---------------------------------------------------------------------------
 
 /// recordPlot() -- R internal entry point.
-pub unsafe fn do_getSnapshot(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub fn do_getSnapshot(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     let _ = (call, op, args, env);
     nil_value()
 }
 
 /// replayPlot() -- R internal entry point.
-pub unsafe fn do_playSnapshot(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub fn do_playSnapshot(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     let _ = (call, op, args, env);
     nil_value()
 }
@@ -1634,7 +1634,7 @@ pub unsafe fn do_playSnapshot(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SE
 // ---------------------------------------------------------------------------
 
 /// .Internal(recordGraphics(...)) -- R internal entry point.
-pub unsafe fn do_recordGraphics(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub fn do_recordGraphics(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     let _ = (call, op, args, env);
     nil_value()
 }
@@ -1644,7 +1644,7 @@ pub unsafe fn do_recordGraphics(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> 
 // ---------------------------------------------------------------------------
 
 /// Reset graphics state on error/interrupt.
-pub unsafe fn GEonExit() {
+pub fn GEonExit() {
     // Headless: no rendering
 }
 
@@ -1671,7 +1671,7 @@ pub unsafe fn GEstring_to_pch(pch: SEXP) -> c_int {
 // ---------------------------------------------------------------------------
 
 /// Parse a line type specification from an R SEXP value.
-pub unsafe fn GE_LTYpar(value: SEXP, ind: c_int) -> c_uint {
+pub fn GE_LTYpar(value: SEXP, ind: c_int) -> c_uint {
     reject_real_line_code_past_int(value, ind, "line type");
     if let Some(name) = sexp_string_at(value, ind) {
         if let Some(named) = parse_lty_name(&name) {
@@ -1695,7 +1695,7 @@ pub unsafe fn GE_LTYpar(value: SEXP, ind: c_int) -> c_uint {
 }
 
 /// Convert a line type code to an R string.
-pub unsafe fn GE_LTYget(lty: c_uint) -> SEXP {
+pub fn GE_LTYget(lty: c_uint) -> SEXP {
     let named = match lty as c_int {
         LTY_BLANK => Some("blank"),
         LTY_SOLID => Some("solid"),
@@ -1722,7 +1722,7 @@ pub unsafe fn GE_LTYget(lty: c_uint) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Scale a raster image using nearest-neighbour interpolation.
-pub unsafe fn R_GE_rasterScale(
+pub fn R_GE_rasterScale(
     sraster: *const c_uint,
     sw: c_int,
     sh: c_int,
@@ -1734,7 +1734,7 @@ pub unsafe fn R_GE_rasterScale(
 }
 
 /// Scale a raster image using bilinear interpolation.
-pub unsafe fn R_GE_rasterInterpolate(
+pub fn R_GE_rasterInterpolate(
     sraster: *const c_uint,
     sw: c_int,
     sh: c_int,
@@ -1746,7 +1746,7 @@ pub unsafe fn R_GE_rasterInterpolate(
 }
 
 /// Calculate the size needed for a rotated raster image.
-pub unsafe fn R_GE_rasterRotatedSize(
+pub fn R_GE_rasterRotatedSize(
     w: c_int,
     h: c_int,
     angle: c_double,
@@ -1757,7 +1757,7 @@ pub unsafe fn R_GE_rasterRotatedSize(
 }
 
 /// Calculate the offset for a rotated raster image.
-pub unsafe fn R_GE_rasterRotatedOffset(
+pub fn R_GE_rasterRotatedOffset(
     w: c_int,
     h: c_int,
     angle: c_double,
@@ -1769,7 +1769,7 @@ pub unsafe fn R_GE_rasterRotatedOffset(
 }
 
 /// Copy a raster image into the middle of a larger raster (for rotation).
-pub unsafe fn R_GE_rasterResizeForRotation(
+pub fn R_GE_rasterResizeForRotation(
     sraster: *const c_uint,
     w: c_int,
     h: c_int,
@@ -1782,7 +1782,7 @@ pub unsafe fn R_GE_rasterResizeForRotation(
 }
 
 /// Rotate a raster image.
-pub unsafe fn R_GE_rasterRotate(
+pub fn R_GE_rasterRotate(
     sraster: *const c_uint,
     w: c_int,
     h: c_int,
@@ -1799,7 +1799,7 @@ pub unsafe fn R_GE_rasterRotate(
 // ---------------------------------------------------------------------------
 
 /// Stroke (outline) a path on the device.
-pub unsafe fn GEStroke(path: SEXP, gc: *const c_void, dd: *mut c_void) {
+pub fn GEStroke(path: SEXP, gc: *const c_void, dd: *mut c_void) {
     if dd.is_null() {
         return;
     }
@@ -1807,7 +1807,7 @@ pub unsafe fn GEStroke(path: SEXP, gc: *const c_void, dd: *mut c_void) {
 }
 
 /// Fill a path on the device.
-pub unsafe fn GEFill(path: SEXP, rule: c_int, gc: *const c_void, dd: *mut c_void) {
+pub fn GEFill(path: SEXP, rule: c_int, gc: *const c_void, dd: *mut c_void) {
     if dd.is_null() {
         return;
     }
@@ -1815,7 +1815,7 @@ pub unsafe fn GEFill(path: SEXP, rule: c_int, gc: *const c_void, dd: *mut c_void
 }
 
 /// Fill and stroke a path on the device.
-pub unsafe fn GEFillStroke(path: SEXP, rule: c_int, gc: *const c_void, dd: *mut c_void) {
+pub fn GEFillStroke(path: SEXP, rule: c_int, gc: *const c_void, dd: *mut c_void) {
     if dd.is_null() {
         return;
     }
@@ -1967,7 +1967,7 @@ pub unsafe fn R_GE_glyphFontVarFormatted(glyphFont: SEXP, index: c_int) -> *cons
 // ---------------------------------------------------------------------------
 
 /// Draw glyph(s) on the device.
-pub unsafe fn GEGlyph(
+pub fn GEGlyph(
     n: c_int,
     glyphs: *const c_int,
     x: *const c_double,
@@ -1989,7 +1989,7 @@ pub unsafe fn GEGlyph(
 // ---------------------------------------------------------------------------
 
 /// Evaluate an expression within a graphics device context (with device locking).
-pub unsafe fn Rf_eval_with_gd(e: SEXP, rho: SEXP, dd: *mut c_void) -> SEXP {
+pub fn Rf_eval_with_gd(e: SEXP, rho: SEXP, dd: *mut c_void) -> SEXP {
     let _ = dd;
     ge_eval_with_rho(e, rho)
 }
@@ -1999,7 +1999,7 @@ pub unsafe fn Rf_eval_with_gd(e: SEXP, rho: SEXP, dd: *mut c_void) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Internal helper: compute open spline (from xspline.c).
-pub(crate) unsafe fn compute_open_spline(
+pub(crate) fn compute_open_spline(
     n: c_int,
     x: *mut c_double,
     y: *mut c_double,
@@ -2012,7 +2012,7 @@ pub(crate) unsafe fn compute_open_spline(
 }
 
 /// Internal helper: compute closed spline (from xspline.c).
-pub(crate) unsafe fn compute_closed_spline(
+pub(crate) fn compute_closed_spline(
     n: c_int,
     x: *mut c_double,
     y: *mut c_double,
@@ -2065,7 +2065,7 @@ mod tests {
     #[test]
     fn test_R_GE_getVersion() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
+        {
             assert_eq!(R_GE_getVersion(), R_GE_version);
         }
     }
@@ -2095,7 +2095,7 @@ mod tests {
     #[test]
     fn test_coordinate_transforms_passthrough() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
+        {
             let val = 1.0;
             assert_eq!(fromDeviceX(val, GE_DEVICE, ptr::null_mut()), 1.0);
             assert_eq!(toDeviceX(val, GE_DEVICE, ptr::null_mut()), 1.0);
@@ -2117,7 +2117,7 @@ mod tests {
         }
     }
 
-    unsafe extern "C" fn echo_graphics_event(event: c_int, _dev: *mut c_void, data: SEXP) -> SEXP {
+    extern "C" fn echo_graphics_event(event: c_int, _dev: *mut c_void, data: SEXP) -> SEXP {
         if event == GE_CheckPlot {
             data
         } else {
@@ -2146,7 +2146,7 @@ mod tests {
         std::ptr::null_mut()
     }
 
-    unsafe extern "C" fn count_graphics_callback(
+    extern "C" fn count_graphics_callback(
         _event: c_int,
         _dev: *mut c_void,
         _data: SEXP,
@@ -2187,7 +2187,7 @@ mod tests {
         });
     }
 
-    unsafe extern "C" fn drop_graphics_owner(
+    extern "C" fn drop_graphics_owner(
         _event: c_int,
         _dev: *mut c_void,
         _data: SEXP,
@@ -2379,7 +2379,7 @@ mod tests {
         value
     }
 
-    unsafe extern "C" fn collect_event_value(_event: c_int, _dev: *mut c_void, data: SEXP) -> SEXP {
+    extern "C" fn collect_event_value(_event: c_int, _dev: *mut c_void, data: SEXP) -> SEXP {
         crate::sexp::gengc::full_gc();
         let pointer = if data.is_null() {
             EVENT_VALUE.with(|slot| slot.get())
@@ -2391,7 +2391,7 @@ mod tests {
         std::ptr::null_mut()
     }
 
-    unsafe extern "C" fn return_event_value(_event: c_int, _dev: *mut c_void, _data: SEXP) -> SEXP {
+    extern "C" fn return_event_value(_event: c_int, _dev: *mut c_void, _data: SEXP) -> SEXP {
         EVENT_VALUE.with(|slot| slot.get())
     }
 
@@ -2598,7 +2598,7 @@ mod tests {
             });
         });
 
-        left.with_protected(|| unsafe {
+        left.with_protected(|| {
             GEunregisterSystem(0);
             with_graphics_engine_state(|state| {
                 assert_eq!(state.num_graphics_systems, 0);
@@ -2609,7 +2609,7 @@ mod tests {
     #[test]
     fn test_GEMetricInfo_returns_defaults() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
+        {
             let mut a = 1.0;
             let mut d = 1.0;
             let mut w = 1.0;
@@ -2623,7 +2623,7 @@ mod tests {
     #[test]
     fn test_GEStrWidth_returns_zero() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
+        {
             assert_eq!(
                 GEStrWidth(ptr::null(), 0, ptr::null(), ptr::null_mut()),
                 0.0
@@ -2634,7 +2634,7 @@ mod tests {
     #[test]
     fn test_GEStrHeight_returns_zero() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
+        {
             assert_eq!(
                 GEStrHeight(ptr::null(), 0, ptr::null(), ptr::null_mut()),
                 0.0
@@ -2645,7 +2645,7 @@ mod tests {
     #[test]
     fn test_GEStrMetric_returns_zeros() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
+        {
             let mut a = 1.0;
             let mut d = 1.0;
             let mut w = 1.0;
@@ -2667,7 +2667,7 @@ mod tests {
     #[test]
     fn test_GEdeviceDirty_returns_false() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
+        {
             assert_eq!(GEdeviceDirty(ptr::null_mut()), 0);
         }
     }
@@ -2675,7 +2675,7 @@ mod tests {
     #[test]
     fn test_GEcheckState_returns_false_for_null() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
+        {
             // null device = headless, returns FALSE (0) meaning no device state to check
             assert_eq!(GEcheckState(ptr::null_mut()), 0);
         }
@@ -2684,7 +2684,7 @@ mod tests {
     #[test]
     fn test_GErecording_returns_false() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
+        {
             assert_eq!(GErecording(ptr::null_mut(), ptr::null_mut()), 0);
         }
     }
@@ -2709,7 +2709,7 @@ mod tests {
     #[test]
     fn test_GE_LTYpar_parses_named_and_hex_styles() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
+        {
             let named = make_string_vector(&["dotted"]);
             let custom = make_string_vector(&["3313"]);
             assert_eq!(GE_LTYpar(named, 0), LTY_DOTTED as c_uint);
@@ -2820,7 +2820,7 @@ mod tests {
     #[test]
     fn test_GEXspline_returns_nil() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
+        {
             let result = GEXspline(
                 0,
                 ptr::null_mut(),
@@ -2839,7 +2839,7 @@ mod tests {
     #[test]
     fn test_GEdos_return_nil() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
+        {
             assert_eq!(
                 do_getSnapshot(
                     ptr::null_mut(),
@@ -2976,7 +2976,7 @@ mod tests {
     #[test]
     fn test_R_GE_rasterRotatedSize() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
+        {
             let mut wnew: c_int = 0;
             let mut hnew: c_int = 0;
             R_GE_rasterRotatedSize(100, 200, 0.5, &mut wnew, &mut hnew);
@@ -2988,7 +2988,7 @@ mod tests {
     #[test]
     fn test_R_GE_rasterRotatedOffset() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
+        {
             let mut xoff = 1.0;
             let mut yoff = 1.0;
             R_GE_rasterRotatedOffset(100, 200, 0.5, 1, &mut xoff, &mut yoff);
@@ -3001,7 +3001,7 @@ mod tests {
     fn test_Rf_eval_with_gd_returns_nil() {
         let _session = crate::sexp::session::RSession::new();
         let session = RSession::new();
-        session.with_protected(|| unsafe {
+        session.with_protected(|| {
             let result = Rf_eval_with_gd(ptr::null_mut(), ptr::null_mut(), ptr::null_mut());
             assert_eq!(result, R_NilValue());
         });
@@ -3032,7 +3032,7 @@ mod tests {
     #[test]
     fn test_R_GE_rasterScale_identity() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
+        {
             let src: [c_uint; 4] = [1, 2, 3, 4];
             let mut dst: [c_uint; 4] = [0; 4];
             R_GE_rasterScale(src.as_ptr(), 2, 2, dst.as_mut_ptr(), 2, 2);

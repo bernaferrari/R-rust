@@ -115,7 +115,7 @@ pub unsafe fn set_workspace_name(fn_ptr: *const c_char) -> bool {
 // ---------------------------------------------------------------------------
 
 // Restore the global environment if requested.
-pub unsafe fn R_RestoreGlobalEnv() {
+pub fn R_RestoreGlobalEnv() {
     // In this thin port we do not perform a full workspace restore. The
     // surrounding crate wires up the real restore path via higher level
     // abstractions. We keep the contract visible and do nothing here so
@@ -125,7 +125,7 @@ pub unsafe fn R_RestoreGlobalEnv() {
 
 // Save the global environment. This is a no-op in this port unless called
 // by higher-level code which performs the actual persistence.
-pub unsafe fn R_SaveGlobalEnv() {
+pub fn R_SaveGlobalEnv() {
     // Intentionally left as a no-op for this port.
 }
 
@@ -273,7 +273,7 @@ pub unsafe fn R_OpenSiteFile() -> *mut RFile {
 // ---------------------------------------------------------------------------
 
 // Initialize the R startup parameters (exposed for compatibility).
-pub unsafe fn R_DefParamsEx(_Rp: *mut c_void, _RstartVersion: c_int) -> c_int {
+pub fn R_DefParamsEx(_Rp: *mut c_void, _RstartVersion: c_int) -> c_int {
     // The full parameter population logic exists in the Rust ports of other
     // startup pieces. For this port we simply return 0 to indicate success.
     0
@@ -281,35 +281,35 @@ pub unsafe fn R_DefParamsEx(_Rp: *mut c_void, _RstartVersion: c_int) -> c_int {
 
 // Define default startup parameters.
 pub unsafe fn R_DefParams(_Rp: *mut c_void) {
-    unsafe {
+    {
         let _ = R_DefParamsEx(_Rp, 0);
     }
 }
 
 // Process environment-driven size hints for vectors and language/runtime heaps.
-pub unsafe fn R_SizeFromEnv(_Rp: *mut c_void) {
+pub fn R_SizeFromEnv(_Rp: *mut c_void) {
     // Not implemented here; the surrounding crates expose environment-driven
     // configuration through other, higher-level components.
 }
 
 // Apply requested sizes for vector and language heaps.
-pub unsafe fn SetSize(_vsize: usize, _nsize: usize) {
+pub fn SetSize(_vsize: usize, _nsize: usize) {
     // No-op in this port; see higher-level components for actual sizing logic.
 }
 
 // Apply maximum sizes for heaps.
-pub unsafe fn SetMaxSize(_vsize: usize, _nsize: usize) {
+pub fn SetMaxSize(_vsize: usize, _nsize: usize) {
     // No-op in this port.
 }
 
 // Helper to normalise a boolean value coming from the startup parameters.
-pub unsafe fn checkBool(inVal: c_int, _name: *const c_char) -> bool {
+pub fn checkBool(inVal: c_int, _name: *const c_char) -> bool {
     inVal != 0
 }
 
 // Apply runtime parameters to the system. This is a lightweight port and does
 // not mutate global state directly here.
-pub unsafe fn R_SetParams(_Rp: *mut c_void) {
+pub fn R_SetParams(_Rp: *mut c_void) {
     // Intentionally left as a no-op in this port.
 }
 

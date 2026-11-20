@@ -89,7 +89,7 @@ pub(crate) fn regex_workspace() -> RegexWorkspace {
 
 #[inline(always)]
 unsafe fn NA_STRING() -> SEXP {
-    unsafe { crate::mainutils::relop::NA_STRING() }
+     crate::mainutils::relop::NA_STRING() 
 }
 
 #[inline(always)]
@@ -103,13 +103,13 @@ unsafe fn isNA_STRING(s: SEXP) -> bool {
 
 /// isString check -- STRSXP type.
 #[inline(always)]
-unsafe fn isString(x: SEXP) -> bool {
+fn isString(x: SEXP) -> bool {
     !x.is_null() && TYPEOF(x) == SEXPTYPE::STRSXP
 }
 
 /// isNull check.
 #[inline(always)]
-unsafe fn isNull(x: SEXP) -> bool {
+fn isNull(x: SEXP) -> bool {
     x.is_null() || x == R_NilValue()
 }
 
@@ -213,14 +213,14 @@ unsafe fn install(name: *const c_char) -> SEXP {
 
 /// Rf_warning -- issue a warning (forward to errors module).
 #[inline(always)]
-unsafe fn Rf_warning_fmt(msg: &str) {
+fn Rf_warning_fmt(msg: &str) {
     // We just print to stderr as a simple warning
     eprintln!("Warning: {}", msg);
 }
 
 /// Rf_error_fmt -- panic with an RError.
 #[inline(always)]
-unsafe fn Rf_error_fmt(msg: &str) -> ! {
+fn Rf_error_fmt(msg: &str) -> ! {
     std::panic::panic_any(RError {
         message: msg.to_string(),
     });
@@ -2097,7 +2097,7 @@ pub unsafe fn R_agrep_fixed(
 ///
 /// In the full R implementation this executes a PCRE regex against a subject
 /// string. This stub returns -1 (no match).
-pub unsafe fn R_pcre_exec(
+pub fn R_pcre_exec(
     _re: *const std::ffi::c_void,
     _extra: *const std::ffi::c_void,
     _subject: *const c_char,
@@ -2113,7 +2113,7 @@ pub unsafe fn R_pcre_exec(
 /// Placeholder: `R_pcre_config` -- PCRE configuration query.
 ///
 /// Returns 0 as a safe stub.
-pub unsafe fn R_pcre_config_stub(_what: c_int, _where: *mut c_int) -> c_int {
+pub fn R_pcre_config_stub(_what: c_int, _where: *mut c_int) -> c_int {
     0
 }
 

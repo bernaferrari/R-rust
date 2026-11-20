@@ -113,7 +113,7 @@ fn IS_S4_OBJECT(x: SEXP) -> c_int {
 /// - `NE_BIT_NA_NUM_BIT` (3): Full bitwise comparison for all values.
 ///
 /// Returns 1 if x != y, 0 if x == y (under the chosen strictness).
-pub unsafe fn neWithNaN(x: f64, y: f64, str: c_int) -> c_int {
+pub fn neWithNaN(x: f64, y: f64, str: c_int) -> c_int {
     // Single-NA modes: treat R's NA specially
     match str {
         NE_SINGLE_NA_NUM_EQ | NE_SINGLE_NA_NUM_BIT => {
@@ -168,13 +168,13 @@ pub unsafe fn neWithNaN(x: f64, y: f64, str: c_int) -> c_int {
 /// This is the inverse of `neWithNaN`.
 #[inline]
 pub fn eqWithNaN(x: f64, y: f64, str: c_int) -> bool {
-    unsafe { neWithNaN(x, y, str) == 0 }
+     neWithNaN(x, y, str) == 0 
 }
 
 /// Safe Rust wrapper for `neWithNaN`.
 #[inline]
 pub fn ne_with_nan(x: f64, y: f64, str: c_int) -> bool {
-    unsafe { neWithNaN(x, y, str) != 0 }
+     neWithNaN(x, y, str) != 0 
 }
 
 unsafe fn charsxp_identical(x: SEXP, y: SEXP) -> bool {
@@ -219,7 +219,7 @@ fn is_srcref_attr_name(name: &str) -> bool {
     name == "srcref"
 }
 
-unsafe fn ignore_closure_srcref(x: SEXP, flags: c_int) -> bool {
+fn ignore_closure_srcref(x: SEXP, flags: c_int) -> bool {
     flags & IDENT_USE_SRCREF == 0 && TYPEOF(x) == SEXPTYPE::CLOSXP
 }
 

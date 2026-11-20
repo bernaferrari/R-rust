@@ -452,52 +452,52 @@ pub unsafe fn R_common_command_line(
 // ---------------------------------------------------------------------------
 
 /// Returns the current SaveAction setting.
-pub unsafe fn R_GetSaveAction() -> c_int {
+pub fn R_GetSaveAction() -> c_int {
     CommandLineOptionState::get(|state| state.save_action)
 }
 
 /// Returns the current RestoreAction setting.
-pub unsafe fn R_GetRestoreAction() -> c_int {
+pub fn R_GetRestoreAction() -> c_int {
     CommandLineOptionState::get(|state| state.restore_action)
 }
 
 /// Returns whether R_RestoreHistory is set.
-pub unsafe fn R_GetRestoreHistory() -> c_int {
+pub fn R_GetRestoreHistory() -> c_int {
     CommandLineOptionState::get(|state| state.restore_history)
 }
 
 /// Returns whether R_Quiet mode is active.
-pub unsafe fn R_GetQuiet() -> c_int {
+pub fn R_GetQuiet() -> c_int {
     CommandLineOptionState::get(|state| state.quiet)
 }
 
 /// Returns whether R_NoEcho mode is active.
-pub unsafe fn R_GetNoEcho() -> c_int {
+pub fn R_GetNoEcho() -> c_int {
     CommandLineOptionState::get(|state| state.no_echo)
 }
 
 /// Returns whether R is running interactively.
-pub unsafe fn R_GetInteractive() -> c_int {
+pub fn R_GetInteractive() -> c_int {
     CommandLineOptionState::get(|state| state.interactive)
 }
 
 /// Returns whether R_Verbose mode is active.
-pub unsafe fn R_GetVerbose() -> c_int {
+pub fn R_GetVerbose() -> c_int {
     CommandLineOptionState::get(|state| state.verbose)
 }
 
 /// Returns whether site file loading is enabled.
-pub unsafe fn R_GetLoadSiteFile() -> c_int {
+pub fn R_GetLoadSiteFile() -> c_int {
     CommandLineOptionState::get(|state| state.load_site_file)
 }
 
 /// Returns whether init file loading is enabled.
-pub unsafe fn R_GetLoadInitFile() -> c_int {
+pub fn R_GetLoadInitFile() -> c_int {
     CommandLineOptionState::get(|state| state.load_init_file)
 }
 
 /// Returns whether .Renviron processing is disabled.
-pub unsafe fn R_GetNoRenviron() -> c_int {
+pub fn R_GetNoRenviron() -> c_int {
     CommandLineOptionState::get(|state| state.no_renviron)
 }
 
@@ -522,7 +522,7 @@ mod tests {
     /// Helper: build a null-terminated argv array from Rust strings.
     /// Each string is a `CString` handed out as a raw pointer so it can be
     /// freed after R_common_command_line rearranges the pointer array.
-    unsafe fn make_argv(args: &[&str]) -> Vec<*mut c_char> {
+    fn make_argv(args: &[&str]) -> Vec<*mut c_char> {
         args.iter()
             .map(|s| CString::new(*s).unwrap_or_default().into_raw())
             .collect()
@@ -779,7 +779,7 @@ mod tests {
 
     #[test]
     fn test_getters() {
-        unsafe {
+        {
             let _session = RSession::new();
             reset_state();
 

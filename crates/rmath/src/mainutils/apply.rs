@@ -96,7 +96,7 @@ unsafe fn asBool2(x: SEXP, _call: SEXP) -> bool {
 }
 
 /// Check if type is VECSXP or EXPRSXP.
-unsafe fn isVectorList(x: SEXP) -> c_int {
+fn isVectorList(x: SEXP) -> c_int {
     {
         if x.is_null() || x == R_NilValue() {
             return 0;
@@ -107,7 +107,7 @@ unsafe fn isVectorList(x: SEXP) -> c_int {
 }
 
 /// Check if type is CLOSXP, BUILTINSXP, or SPECIALSXP.
-unsafe fn isFunction(x: SEXP) -> c_int {
+fn isFunction(x: SEXP) -> c_int {
     {
         if x.is_null() || x == R_NilValue() {
             return 0;
@@ -118,7 +118,7 @@ unsafe fn isFunction(x: SEXP) -> c_int {
 }
 
 /// Check if type is STRSXP.
-unsafe fn isString(x: SEXP) -> c_int {
+fn isString(x: SEXP) -> c_int {
     {
         if x.is_null() || x == R_NilValue() {
             return 0;
@@ -128,7 +128,7 @@ unsafe fn isString(x: SEXP) -> c_int {
 }
 
 /// Check if x is any atomic or generic vector type.
-unsafe fn isVector(x: SEXP) -> c_int {
+fn isVector(x: SEXP) -> c_int {
     {
         if x.is_null() || x == R_NilValue() {
             return 0;
@@ -238,7 +238,7 @@ pub unsafe fn isFactor(x: SEXP) -> c_int {
 }
 
 /// R_typeToChar: convert SEXPTYPE to its string name.
-unsafe fn R_typeToChar_local(x: SEXP) -> *const c_char {
+fn R_typeToChar_local(x: SEXP) -> *const c_char {
     {
         if x.is_null() {
             return c"NULL".as_ptr();
@@ -287,7 +287,7 @@ unsafe fn LCONS(car: SEXP, cdr: SEXP) -> SEXP {
 }
 
 /// Get the length of an SEXP as c_int (handles pairlists too).
-unsafe fn length(x: SEXP) -> c_int {
+fn length(x: SEXP) -> c_int {
     {
         if x.is_null() || x == R_NilValue() {
             return 0;
@@ -337,7 +337,7 @@ unsafe fn force_and_call(e: SEXP, n: c_int, rho: SEXP) -> SEXP {
 }
 
 /// error helper: print message and panic with RError.
-unsafe fn r_error(msg: &str) -> ! {
+fn r_error(msg: &str) -> ! {
     eprintln!("Error: {}", msg);
     std::panic::panic_any(crate::sexp::context::RError {
         message: msg.to_string(),
@@ -363,7 +363,7 @@ unsafe fn coerceVector(x: SEXP, type_: c_int) -> SEXP {
 // ---------------------------------------------------------------------------
 
 unsafe fn checkArgIsSymbol(x: SEXP) -> SEXP {
-    unsafe {
+    {
         if x.is_null() || TYPEOF(x) != SYMSXP_VAL {
             r_error("argument must be a symbol");
         }
@@ -1127,7 +1127,7 @@ mod tests {
     #[test]
     fn test_isVectorList_null() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
+        {
             assert_eq!(isVectorList(ptr::null_mut()), 0);
             assert_eq!(isVectorList(R_NilValue()), 0);
         }
@@ -1136,7 +1136,7 @@ mod tests {
     #[test]
     fn test_isFunction_null() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
+        {
             assert_eq!(isFunction(ptr::null_mut()), 0);
             assert_eq!(isFunction(R_NilValue()), 0);
         }
@@ -1145,7 +1145,7 @@ mod tests {
     #[test]
     fn test_isString_null() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
+        {
             assert_eq!(isString(ptr::null_mut()), 0);
             assert_eq!(isString(R_NilValue()), 0);
         }
@@ -1154,7 +1154,7 @@ mod tests {
     #[test]
     fn test_isVector_null() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
+        {
             assert_eq!(isVector(ptr::null_mut()), 0);
             assert_eq!(isVector(R_NilValue()), 0);
         }
@@ -1163,7 +1163,7 @@ mod tests {
     #[test]
     fn test_length_null() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
+        {
             assert_eq!(length(ptr::null_mut()), 0);
             assert_eq!(length(R_NilValue()), 0);
         }

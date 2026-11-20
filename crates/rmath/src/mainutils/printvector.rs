@@ -1144,7 +1144,7 @@ pub unsafe fn printNamedVector(x: SEXP, names: SEXP, quote: c_int, title: *const
 // PrintWarnings -- stub (depends on R_GetVar1 etc.)
 // ---------------------------------------------------------------------------
 
-pub unsafe fn PrintWarnings() {
+pub fn PrintWarnings() {
     // the full implementation iterates over R's last.warning list
     // and prints each warning message.
 }
@@ -1153,7 +1153,7 @@ pub unsafe fn PrintWarnings() {
 // type2str_nowarn
 // ---------------------------------------------------------------------------
 
-pub unsafe fn type2str_nowarn(stype: c_int) -> *const c_char {
+pub fn type2str_nowarn(stype: c_int) -> *const c_char {
     match stype {
         0 => b"NULL\0".as_ptr() as *const c_char,
         1 => b"symbol\0".as_ptr() as *const c_char,
@@ -1332,7 +1332,7 @@ mod tests {
 
     #[test]
     fn test_print_warnings() {
-        unsafe {
+        {
             PrintWarnings();
         }
     }

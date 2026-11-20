@@ -63,12 +63,12 @@ pub unsafe fn R_SeedsSymbol() -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Get R_Visible flag.
-pub unsafe fn R_GetVisible() -> c_int {
+pub fn R_GetVisible() -> c_int {
     if R_Visible() != 0 { TRUE } else { FALSE }
 }
 
 /// Set R_Visible flag.
-pub unsafe fn R_SetVisible(v: c_int) {
+pub fn R_SetVisible(v: c_int) {
     {
         set_R_Visible(v);
     }
@@ -141,11 +141,11 @@ pub unsafe fn R_SetCollectWarnings(v: c_int) {
 // Time limits (stubs)
 // ---------------------------------------------------------------------------
 
-pub unsafe fn resetTimeLimits() {
+pub fn resetTimeLimits() {
     // Unimplemented
 }
 
-pub unsafe fn checkTimeLimits() {
+pub fn checkTimeLimits() {
     // Unimplemented
 }
 
@@ -153,11 +153,11 @@ pub unsafe fn checkTimeLimits() {
 // SrcRef state (stubs)
 // ---------------------------------------------------------------------------
 
-pub unsafe fn R_InitSrcRefState(_cntxt: *mut std::ffi::c_void) {
+pub fn R_InitSrcRefState(_cntxt: *mut std::ffi::c_void) {
     // Unimplemented
 }
 
-pub unsafe fn R_FinalizeSrcRefState() {
+pub fn R_FinalizeSrcRefState() {
     // Unimplemented
 }
 
@@ -271,7 +271,7 @@ pub unsafe fn R_ReplFile(fp: *mut RFile, rho: SEXP) {
 /// Perform a single REPL iteration.
 ///
 /// This is the equivalent of R's `Rf_ReplIteration()` from main.c.
-pub unsafe fn Rf_ReplIteration(
+pub fn Rf_ReplIteration(
     _rho: SEXP,
     _savestack: c_int,
     _browselevel: c_int,
@@ -287,7 +287,7 @@ pub unsafe fn Rf_ReplIteration(
 /// Run the interactive REPL.
 ///
 /// This is the equivalent of R's `Rf_ReplConsole()` from main.c.
-pub unsafe fn Rf_ReplConsole(_rho: SEXP, _savestack: c_int, _browselevel: c_int) {
+pub fn Rf_ReplConsole(_rho: SEXP, _savestack: c_int, _browselevel: c_int) {
     main_error("interactive console REPL is not available in the headless Rust runtime")
 }
 
@@ -299,7 +299,7 @@ pub unsafe fn Rf_ReplConsole(_rho: SEXP, _savestack: c_int, _browselevel: c_int)
 ///
 /// This is the equivalent of R's `Rf_mainloop()` from main.c.
 /// Called from main() after Rf_initialize_R().
-pub unsafe fn Rf_mainloop() {
+pub fn Rf_mainloop() {
     // Headless: no REPL loop. For embedded use, call eval() directly.
 }
 
@@ -341,7 +341,7 @@ pub unsafe fn R_Parse1File(fp: *mut RFile, _prompt: c_int, status: *mut c_int) -
 // setup_Rmainloop — setup before mainloop (stub)
 // ---------------------------------------------------------------------------
 
-pub unsafe fn setup_Rmainloop() {
+pub fn setup_Rmainloop() {
     // Unimplemented
 }
 
@@ -630,7 +630,7 @@ pub unsafe fn Rf_callToplevelHandlers(expr: SEXP, value: SEXP, succeeded: c_int,
     });
 }
 
-pub unsafe fn Rf_addTaskCallback(fun: SEXP, data: SEXP) -> c_int {
+pub fn Rf_addTaskCallback(fun: SEXP, data: SEXP) -> c_int {
     let owner = task_callback_owner();
     crate::sexp::owner::with_runtime(&owner, |access| {
         let domain = access.domain();
@@ -816,7 +816,7 @@ mod tests {
 
     #[test]
     fn test_repl_stub() {
-        unsafe {
+        {
             Rf_mainloop();
         }
     }
@@ -862,7 +862,7 @@ mod tests {
     #[test]
     fn test_interactive_repl_iteration_errors_explicitly() {
         let _session = RSession::new();
-        let err = assert_r_error(|| unsafe {
+        let err = assert_r_error(|| {
             Rf_ReplIteration(R_NilValue(), 0, 0, std::ptr::null_mut());
         });
         assert!(err.message.contains("interactive REPL iteration"));
@@ -1061,7 +1061,7 @@ mod owned_task_callback_tests {
         let data = integer(&session, 37);
         let fun_node = fun.allocation().unwrap().clone();
         let data_node = data.allocation().unwrap().clone();
-        let id = unsafe { Rf_addTaskCallback(fun.as_raw(), data.as_raw()) };
+        let id = Rf_addTaskCallback(fun.as_raw(), data.as_raw());
         drop(fun);
         drop(data);
         session.owner_token().unwrap().full_gc().unwrap();
@@ -1084,7 +1084,7 @@ mod owned_task_callback_tests {
     fn owned_task_callback_selector_handles_cyclic_list_and_string_identity() {
         let session = RSession::new_for_gc_tests();
         let fun = source(&session, "function(...) TRUE");
-        let id = unsafe { Rf_addTaskCallback(fun.as_raw(), R_NilValue()) };
+        let id = Rf_addTaskCallback(fun.as_raw(), R_NilValue());
         let factory = session.owner_token().unwrap().node_factory();
         let cycle = factory
             .pairlist_cell(&factory.nil(), &factory.nil(), &factory.nil())
@@ -1106,7 +1106,7 @@ mod owned_task_callback_tests {
             "function(...) { on.exit(callback_return_exit <<- TRUE); callback_return_body <<- TRUE; return(TRUE) }",
         );
         assert!(crate::sexp::transfer::active_owner_pin().is_err());
-        let id = unsafe { Rf_addTaskCallback(fun.as_raw(), R_NilValue()) };
+        let id = Rf_addTaskCallback(fun.as_raw(), R_NilValue());
         unsafe {
             Rf_callToplevelHandlers(R_NilValue(), R_NilValue(), TRUE, TRUE);
         }
@@ -1137,7 +1137,7 @@ mod owned_task_callback_tests {
             ".Primitive('{')",
         ] {
             let fun = source(&session, script);
-            let id = unsafe { Rf_addTaskCallback(fun.as_raw(), R_NilValue()) };
+            let id = Rf_addTaskCallback(fun.as_raw(), R_NilValue());
             unsafe {
                 Rf_callToplevelHandlers(R_NilValue(), R_NilValue(), TRUE, TRUE);
             }
@@ -1154,7 +1154,7 @@ mod owned_task_callback_tests {
             "function(...) 'FALSE'",
         ] {
             let fun = source(&session, script);
-            let id = unsafe { Rf_addTaskCallback(fun.as_raw(), R_NilValue()) };
+            let id = Rf_addTaskCallback(fun.as_raw(), R_NilValue());
             unsafe {
                 Rf_callToplevelHandlers(R_NilValue(), R_NilValue(), TRUE, TRUE);
             }
@@ -1172,7 +1172,7 @@ mod owned_task_callback_tests {
         let session = RSession::new_for_gc_tests();
         let callback = source(&session, "function(...) NULL");
         source(&session, "options(warn=2)");
-        let id = unsafe { Rf_addTaskCallback(callback.as_raw(), R_NilValue()) };
+        let id = Rf_addTaskCallback(callback.as_raw(), R_NilValue());
 
         session.with_active_in(|instance| unsafe {
             (*instance).eval_state.visible = FALSE;
@@ -1211,14 +1211,14 @@ mod owned_task_callback_tests {
         let expr = source(&session, "quote(stop('expr must remain data'))");
         let value = source(&session, "quote(stop('value must remain data'))");
         let data = source(&session, "quote(stop('data must remain data'))");
-        unsafe {
+        {
             Rf_addTaskCallback(fun.as_raw(), data.as_raw());
             R_SetVisible(TRUE);
         }
         unsafe {
             Rf_callToplevelHandlers(expr.as_raw(), value.as_raw(), TRUE, FALSE);
         }
-        assert_eq!(unsafe { R_GetVisible() }, TRUE);
+        assert_eq!( R_GetVisible(), TRUE);
         let observed = source(&session, "callback_observed");
         assert_eq!(observed.vector_elt(0).unwrap().as_raw(), expr.as_raw());
         assert_eq!(observed.vector_elt(1).unwrap().as_raw(), value.as_raw());
@@ -1300,7 +1300,7 @@ mod owned_task_callback_tests {
         let data = integer(&session, 71);
         let fun_node = fun.allocation().unwrap().clone();
         let data_node = data.allocation().unwrap().clone();
-        let id = unsafe { Rf_addTaskCallback(fun.as_raw(), data.as_raw()) };
+        let id = Rf_addTaskCallback(fun.as_raw(), data.as_raw());
         let selector = integer(&session, id);
         drop(fun);
         drop(data);
@@ -1343,13 +1343,13 @@ mod owned_task_callback_tests {
             R_SetVisible(FALSE);
             Rf_callToplevelHandlers(R_NilValue(), R_NilValue(), TRUE, TRUE);
         }
-        assert_eq!(unsafe { R_GetVisible() }, FALSE);
+        assert_eq!( R_GetVisible(), FALSE);
         assert_eq!(
             source(&session, "callback_after_error").integer_elt(0),
             Some(1)
         );
         let callback = source(&session, "function(...) TRUE");
-        unsafe {
+        {
             Rf_addTaskCallback(callback.as_raw(), R_NilValue());
             R_SetVisible(FALSE);
         }
@@ -1385,11 +1385,11 @@ mod owned_task_callback_tests {
         let pin = original.pin().unwrap();
         let instance = pin.as_ptr();
         let fun = source(facade.borrow().as_ref().unwrap(), "function(...) TRUE");
-        unsafe {
+        {
             Rf_addTaskCallback(fun.as_raw(), R_NilValue());
         }
         let other = RSession::new_for_gc_tests();
-        other.with_active(|| unsafe {
+        other.with_active(|| {
             R_SetVisible(TRUE);
         });
         let callback_facade = Rc::downgrade(&facade);
@@ -1409,7 +1409,7 @@ mod owned_task_callback_tests {
         }
         assert!(facade.borrow().is_none());
         assert!(!original.is_live());
-        other.with_active(|| assert_eq!(unsafe { R_GetVisible() }, TRUE));
+        other.with_active(|| assert_eq!( R_GetVisible(), TRUE));
     }
     include!("main/task_callback_contract_tests.rs");
 }

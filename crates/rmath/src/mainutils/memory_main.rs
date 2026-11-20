@@ -34,7 +34,7 @@ use crate::sexp::globals::{R_GlobalEnv, R_NilValue};
 #[path = "memory_finalizer_batch_tests.rs"]
 mod finalizer_batch_tests;
 
-unsafe fn error(msg: &str) -> ! {
+fn error(msg: &str) -> ! {
     std::panic::panic_any(crate::sexp::context::RError {
         message: msg.to_string(),
     });
@@ -243,21 +243,21 @@ fn collect_user_gc(full: bool) -> crate::sexp::object::SexpResult<()> {
 /// This is the equivalent of R's `R_gc()`.
 pub unsafe fn R_gc() {
     if let Err(failure) = collect_user_gc(true) {
-        unsafe { error(&failure.to_string()) };
+         error(&failure.to_string());
     }
 }
 
 /// Trigger a lightweight garbage collection in the exact original runtime.
 pub unsafe fn R_gc_lite() {
     if let Err(failure) = collect_user_gc(false) {
-        unsafe { error(&failure.to_string()) };
+         error(&failure.to_string());
     }
 }
 /// GC torture settings.
 ///
 /// When `gap > 0`, every `gap` allocations will force a GC cycle.
 /// This is a debugging aid for finding GC-safety bugs.
-pub unsafe fn R_gc_torture(gap: c_int, wait: c_int, _inhibit: c_int) {
+pub fn R_gc_torture(gap: c_int, wait: c_int, _inhibit: c_int) {
     with_memory_state(|state| {
         if gap != NA_INTEGER && gap >= 0 {
             state.gc_force_gap = gap;
@@ -463,7 +463,7 @@ pub unsafe fn R_chk_memset(s: *mut c_void, c: c_int, n: usize) -> *mut c_void {
 /// Convert a SEXPTYPE to its string name.
 ///
 /// This is the equivalent of R's `sexptype2char()`.
-pub unsafe fn sexptype2char(type_: SEXPTYPE) -> *const c_char {
+pub fn sexptype2char(type_: SEXPTYPE) -> *const c_char {
     let val = type_.0;
     match val {
         0 => b"NILSXP\0".as_ptr() as *const c_char,      // NILSXP
@@ -835,7 +835,7 @@ fn register_r_finalizer(obj: SEXP, fun: SEXP, onexit: bool) {
 }
 
 unsafe fn validate_weak_reference_key(key: SEXP) {
-    unsafe {
+    {
         if key.is_null() {
             return;
         }
@@ -847,14 +847,14 @@ unsafe fn validate_weak_reference_key(key: SEXP) {
 }
 
 unsafe fn validate_weak_ref_object(w: SEXP) {
-    unsafe {
+    {
         if SEXPTYPE(TYPEOF(w)) != SEXPTYPE::WEAKREFSXP {
             error("not a weak reference");
         }
     }
 }
 
-unsafe fn is_valid_r_finalizer(fun: SEXP) -> bool {
+fn is_valid_r_finalizer(fun: SEXP) -> bool {
     {
         if fun.is_null() || fun == R_NilValue() {
             return true;
@@ -985,7 +985,7 @@ pub unsafe fn R_ExternalPtrAddr(s: SEXP) -> *mut c_void {
 /// Get the tag of an external pointer.
 ///
 /// This is the equivalent of R's `R_ExternalPtrTag()`.
-pub unsafe fn R_ExternalPtrTag(s: SEXP) -> SEXP {
+pub fn R_ExternalPtrTag(s: SEXP) -> SEXP {
     {
         if s.is_null() {
             return R_NilValue();
@@ -997,7 +997,7 @@ pub unsafe fn R_ExternalPtrTag(s: SEXP) -> SEXP {
 /// Get the protected value of an external pointer.
 ///
 /// This is the equivalent of R's `R_ExternalPtrProtected()`.
-pub unsafe fn R_ExternalPtrProtected(s: SEXP) -> SEXP {
+pub fn R_ExternalPtrProtected(s: SEXP) -> SEXP {
     {
         if s.is_null() {
             return R_NilValue();
@@ -1037,7 +1037,7 @@ pub unsafe fn R_SetExternalPtrAddr(s: SEXP, p: *mut c_void) {
 /// Set the tag of an external pointer.
 ///
 /// This is the equivalent of R's `R_SetExternalPtrTag()`.
-pub unsafe fn R_SetExternalPtrTag(s: SEXP, tag: SEXP) {
+pub fn R_SetExternalPtrTag(s: SEXP, tag: SEXP) {
     {
         if !s.is_null() {
             set_external_pointer_child(s, crate::sexp::ffi::EdgeField::ExternalTag, tag);
@@ -1048,7 +1048,7 @@ pub unsafe fn R_SetExternalPtrTag(s: SEXP, tag: SEXP) {
 /// Set the protected value of an external pointer.
 ///
 /// This is the equivalent of R's `R_SetExternalPtrProtected()`.
-pub unsafe fn R_SetExternalPtrProtected(s: SEXP, p: SEXP) {
+pub fn R_SetExternalPtrProtected(s: SEXP, p: SEXP) {
     {
         if !s.is_null() {
             set_external_pointer_child(s, crate::sexp::ffi::EdgeField::ExternalProtected, p);
@@ -1103,7 +1103,7 @@ pub unsafe fn R_SetMaxNSize(size: u64) -> c_int {
 }
 
 /// Set the protection stack size.
-pub unsafe fn R_SetPPSize(_size: u64) {
+pub fn R_SetPPSize(_size: u64) {
     // Arena-based allocation doesn't need PP stack sizing
 }
 
@@ -1411,7 +1411,7 @@ pub unsafe fn R_isResizable(x: SEXP) -> c_int {
 /// Get the maximum length of a resizable vector.
 ///
 /// This is the equivalent of R's `R_maxLength()`.
-pub unsafe fn R_maxLength(x: SEXP) -> R_xlen_t {
+pub fn R_maxLength(x: SEXP) -> R_xlen_t {
     {
         if x.is_null() {
             return 0;
@@ -1448,7 +1448,7 @@ pub unsafe fn R_duplicateAsResizable(x: SEXP) -> SEXP {
 /// Signal a protect stack overflow error.
 ///
 /// This is the equivalent of R's `R_signal_protect_error()`.
-pub unsafe fn R_signal_protect_error() {
+pub fn R_signal_protect_error() {
     {
         crate::mainutils::errors::errorcall(
             R_NilValue(),
@@ -1457,7 +1457,7 @@ pub unsafe fn R_signal_protect_error() {
     }
 }
 
-pub unsafe fn R_signal_unprotect_error() {
+pub fn R_signal_unprotect_error() {
     {
         crate::mainutils::errors::errorcall(
             R_NilValue(),
@@ -1473,14 +1473,14 @@ pub unsafe fn R_signal_unprotect_error() {
 /// Initialize R's memory subsystem.
 ///
 /// This is the equivalent of R's `InitMemory()`.
-pub unsafe fn InitMemory() {
+pub fn InitMemory() {
     // Arena and GC state are owned by the active RInstance.
 }
 
 /// Reset the protection stack.
 ///
 /// This is the equivalent of R's `initStack()`.
-pub unsafe fn initStack() {
+pub fn initStack() {
     // Arena-based allocation doesn't need PP stack sizing
 }
 
@@ -1709,7 +1709,7 @@ mod tests {
     #[test]
     fn test_init_memory_does_not_crash() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
+        {
             InitMemory();
             initStack();
         }
@@ -2187,7 +2187,7 @@ mod tests {
         });
     }
 
-    unsafe extern "C" fn dummy_c_finalizer(_ptr: *mut c_void) {
+    extern "C" fn dummy_c_finalizer(_ptr: *mut c_void) {
         // No action needed
     }
 
@@ -2200,7 +2200,7 @@ mod tests {
         }
     }
 
-    unsafe extern "C" fn count_c_finalizer(_ptr: *mut c_void) {
+    extern "C" fn count_c_finalizer(_ptr: *mut c_void) {
         FINALIZER_RUNS.set(FINALIZER_RUNS.get() + 1);
     }
 

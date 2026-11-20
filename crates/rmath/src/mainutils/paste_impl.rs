@@ -97,13 +97,13 @@ unsafe fn checkArity(op: SEXP, args: SEXP) {
 }
 
 // error/errorcall use panic_any(RError{..}) in the full port.
-unsafe fn error(fmt: *const c_char, _a1: usize, _a2: usize, _a3: usize) {
+fn error(fmt: *const c_char, _a1: usize, _a2: usize, _a3: usize) {
     {
         crate::mainutils::errors::errorcall(crate::sexp::globals::R_NilValue(), fmt);
     }
 }
 
-unsafe fn errorcall(_call: SEXP, fmt: *const c_char, _a1: usize, _a2: usize, _a3: usize) {
+fn errorcall(_call: SEXP, fmt: *const c_char, _a1: usize, _a2: usize, _a3: usize) {
     crate::mainutils::errors::errorcall(_call, fmt);
 }
 
@@ -312,7 +312,7 @@ unsafe fn R_strlen(s: SEXP, _type: c_int) -> c_int {
     }
 }
 
-unsafe fn isVectorList(x: SEXP) -> c_int {
+fn isVectorList(x: SEXP) -> c_int {
     {
         if x.is_null() {
             return 0;
@@ -343,15 +343,15 @@ unsafe fn R_AsCharacterSymbol() -> SEXP {
 }
 
 unsafe fn NA_STRING() -> SEXP {
-    unsafe { crate::mainutils::relop::NA_STRING() }
+     crate::mainutils::relop::NA_STRING() 
 }
 
-unsafe fn PRIMARITY(_op: SEXP) -> c_int {
+fn PRIMARITY(_op: SEXP) -> c_int {
     0
 }
 
 /// Local stub for isNumeric (avoids cross-module dependency).
-unsafe fn isNumeric(x: SEXP) -> c_int {
+fn isNumeric(x: SEXP) -> c_int {
     {
         if x.is_null() {
             return 0;
@@ -433,13 +433,13 @@ pub unsafe fn R_stpcpy(dest: *mut c_char, src: *const c_char) -> *mut c_char {
 
 /// Allocate or grow the string buffer to hold at least `buflen` characters.
 /// Returns a mutable pointer to the buffer.
-unsafe fn R_AllocStringBuffer(buflen: i64, buf: &mut RStringBuffer) -> *mut c_char {
+fn R_AllocStringBuffer(buflen: i64, buf: &mut RStringBuffer) -> *mut c_char {
     let len = if buflen < 0 { 0 } else { buflen as usize + 1 };
     buf.ensure_capacity(len)
 }
 
 /// Free the string buffer (no-op in our Rust implementation since Vec handles memory).
-unsafe fn R_FreeStringBufferL(_buf: &mut RStringBuffer) {
+fn R_FreeStringBufferL(_buf: &mut RStringBuffer) {
     // Rust's Vec handles memory automatically.
 }
 
@@ -1308,7 +1308,7 @@ mod tests {
 
     #[test]
     fn test_is_vector_list_null() {
-        unsafe {
+        {
             assert_eq!(isVectorList(ptr::null_mut()), 0);
         }
     }

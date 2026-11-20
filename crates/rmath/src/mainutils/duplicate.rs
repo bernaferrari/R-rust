@@ -56,7 +56,7 @@ const GROWABLE_BIT_MASK: u16 = 1 << 5;
 // Local helpers and entry points
 // ---------------------------------------------------------------------------
 
-unsafe fn DispatchGroup(
+fn DispatchGroup(
     _s: SEXP,
     _code: *const c_char,
     _call: SEXP,
@@ -237,7 +237,7 @@ unsafe fn SET_DDVAL(x: SEXP, v: c_int) {
 
 /// Check if a type is pairlist-like.
 #[inline]
-unsafe fn isPairList(x: SEXP) -> c_int {
+fn isPairList(x: SEXP) -> c_int {
     {
         if x.is_null() {
             return 0;
@@ -249,7 +249,7 @@ unsafe fn isPairList(x: SEXP) -> c_int {
 
 /// Check if a type is a vector list (VECSXP, EXPRSXP).
 #[inline]
-unsafe fn isVectorList(x: SEXP) -> c_int {
+fn isVectorList(x: SEXP) -> c_int {
     {
         if x.is_null() {
             return 0;
@@ -322,7 +322,7 @@ unsafe fn ncols(x: SEXP) -> c_int {
 /// - `cols`: number of columns
 /// - `nsrc`: source length (for recycling)
 /// - `f`: callback receiving (didx, sidx)
-unsafe fn fill_matrix_iterate<F>(
+fn fill_matrix_iterate<F>(
     dstart: R_xlen_t,
     drows: R_xlen_t,
     srows: R_xlen_t,
@@ -358,7 +358,7 @@ unsafe fn fill_matrix_iterate<F>(
 ///
 /// This is the Rust equivalent of R's `FILL_MATRIX_BYROW_ITERATE` macro.
 /// Calls `f(didx, sidx)` for each destination/source index pair.
-unsafe fn fill_matrix_byrow_iterate<F>(
+fn fill_matrix_byrow_iterate<F>(
     dstart: R_xlen_t,
     drows: R_xlen_t,
     dcols: R_xlen_t,

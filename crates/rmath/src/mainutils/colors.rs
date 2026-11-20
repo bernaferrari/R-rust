@@ -74,7 +74,7 @@ fn grdevices_not_loaded() -> ! {
 /// # Safety
 /// All four function pointers must be valid (non-null) and must remain valid
 /// for as long as they may be called through this module.
-pub unsafe fn Rg_set_col_ptrs(f1: Option<F1>, f2: Option<F2>, f3: Option<F3>, f4: Option<F4>) {
+pub fn Rg_set_col_ptrs(f1: Option<F1>, f2: Option<F2>, f3: Option<F3>, f4: Option<F4>) {
     with_color_dispatch_state(|state| {
         state.rgbpar3 = f1;
         state.col2name = f2;
@@ -171,7 +171,7 @@ mod tests {
 
     use super::*;
 
-    unsafe extern "C" fn first_rgbpar3(
+    extern "C" fn first_rgbpar3(
         _x: *mut c_void,
         _i: c_int,
         _bg: std::os::raw::c_uint,
@@ -179,7 +179,7 @@ mod tests {
         0x00AA_0001
     }
 
-    unsafe extern "C" fn second_rgbpar3(
+    extern "C" fn second_rgbpar3(
         _x: *mut c_void,
         _i: c_int,
         _bg: std::os::raw::c_uint,
@@ -187,23 +187,23 @@ mod tests {
         0x00BB_0002
     }
 
-    unsafe extern "C" fn first_col2name(_col: std::os::raw::c_uint) -> *const c_char {
+    extern "C" fn first_col2name(_col: std::os::raw::c_uint) -> *const c_char {
         c"first".as_ptr()
     }
 
-    unsafe extern "C" fn second_col2name(_col: std::os::raw::c_uint) -> *const c_char {
+    extern "C" fn second_col2name(_col: std::os::raw::c_uint) -> *const c_char {
         c"second".as_ptr()
     }
 
-    unsafe extern "C" fn first_str2col(_s: *const c_char) -> std::os::raw::c_uint {
+    extern "C" fn first_str2col(_s: *const c_char) -> std::os::raw::c_uint {
         11
     }
 
-    unsafe extern "C" fn second_str2col(_s: *const c_char) -> std::os::raw::c_uint {
+    extern "C" fn second_str2col(_s: *const c_char) -> std::os::raw::c_uint {
         22
     }
 
-    unsafe extern "C" fn ignore_palette(_save: c_int) {}
+    extern "C" fn ignore_palette(_save: c_int) {}
 
     unsafe fn col_name() -> String {
         unsafe { CStr::from_ptr(col2name(0)).to_string_lossy().into_owned() }

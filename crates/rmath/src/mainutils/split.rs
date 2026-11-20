@@ -26,14 +26,14 @@ use crate::sexp::protect::protect;
 // ---------------------------------------------------------------------------
 
 /// Panic with an R error message.
-unsafe fn error(msg: &str) {
+fn error(msg: &str) {
     std::panic::panic_any(RError {
         message: msg.to_string(),
     });
 }
 
 /// Emit an R warning (currently just eprintln).
-unsafe fn warning(msg: &str) {
+fn warning(msg: &str) {
     eprintln!("Warning: {}", msg);
 }
 
@@ -53,7 +53,7 @@ unsafe fn nlevels(f: SEXP) -> c_int {
 }
 
 /// Check if SEXP is a vector type (atomic or list).
-unsafe fn isVector(x: SEXP) -> c_int {
+fn isVector(x: SEXP) -> c_int {
     {
         if x.is_null() {
             return 0;

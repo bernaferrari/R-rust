@@ -126,7 +126,7 @@ unsafe fn tagbuf_strlen() -> usize {
     }
 }
 
-unsafe fn tagbuf_set(idx: usize, val: c_char) {
+fn tagbuf_set(idx: usize, val: c_char) {
     with_print_runtime(|state| {
         if idx < state.tagbuf.len() {
             state.tagbuf[idx] = val as u8;
@@ -134,13 +134,13 @@ unsafe fn tagbuf_set(idx: usize, val: c_char) {
     })
 }
 
-unsafe fn tagbuf_clear() {
+fn tagbuf_clear() {
     with_print_runtime(|state| {
         state.tagbuf[0] = 0;
     });
 }
 
-unsafe fn tagbuf_ptr_at(offset: usize) -> *mut c_char {
+fn tagbuf_ptr_at(offset: usize) -> *mut c_char {
     with_print_runtime(|state| state.tagbuf.as_mut_ptr().wrapping_add(offset) as *mut c_char)
 }
 
@@ -227,7 +227,7 @@ impl<T> std::ops::DerefMut for MutPtr<T> {
     }
 }
 
-pub unsafe fn get_R_print_data() -> MutPtr<R_PrintData> {
+pub fn get_R_print_data() -> MutPtr<R_PrintData> {
     with_current_print_data_mut(|data| MutPtr(data as *mut R_PrintData))
 }
 
@@ -235,7 +235,7 @@ pub unsafe fn get_R_print_data() -> MutPtr<R_PrintData> {
 // Module-private helpers
 // ---------------------------------------------------------------------------
 
-unsafe fn isSymbol(x: SEXP) -> c_int {
+fn isSymbol(x: SEXP) -> c_int {
     {
         if x.is_null() {
             return 0;
@@ -244,7 +244,7 @@ unsafe fn isSymbol(x: SEXP) -> c_int {
     }
 }
 
-unsafe fn isString(x: SEXP) -> c_int {
+fn isString(x: SEXP) -> c_int {
     {
         if x.is_null() {
             return 0;
@@ -253,7 +253,7 @@ unsafe fn isString(x: SEXP) -> c_int {
     }
 }
 
-unsafe fn Rf_isNull(x: SEXP) -> c_int {
+fn Rf_isNull(x: SEXP) -> c_int {
     {
         if x.is_null() || x == R_NilValue() {
             1
@@ -263,7 +263,7 @@ unsafe fn Rf_isNull(x: SEXP) -> c_int {
     }
 }
 
-unsafe fn isFunction(x: SEXP) -> c_int {
+fn isFunction(x: SEXP) -> c_int {
     {
         if x.is_null() {
             return 0;
@@ -306,7 +306,7 @@ unsafe fn isArray(x: SEXP) -> c_int {
     }
 }
 
-unsafe fn isDataFrame(_x: SEXP) -> c_int {
+fn isDataFrame(_x: SEXP) -> c_int {
     0
 }
 
@@ -318,7 +318,7 @@ unsafe fn isMethodsDispatchOn() -> c_int {
     unsafe { crate::mainutils::objects::isMethodsDispatchOn() }
 }
 
-unsafe fn isByteCode(_x: SEXP) -> c_int {
+fn isByteCode(_x: SEXP) -> c_int {
     0
 }
 
@@ -364,7 +364,7 @@ unsafe fn isValidName(s: *const c_char) -> bool {
 
 /// NA_STRING accessor.
 unsafe fn NA_STRING_local() -> SEXP {
-    unsafe { crate::mainutils::relop::NA_STRING() }
+     crate::mainutils::relop::NA_STRING() 
 }
 
 /// Get matrix dimnames (delegate to printvector).
@@ -1366,7 +1366,7 @@ unsafe fn PrintGenericVector(s: SEXP, data: &R_PrintData) {
 // ---------------------------------------------------------------------------
 
 // Detect malformed CDR cycles without allocating or truncating valid long lists.
-unsafe fn validate_print_chain(head: SEXP) {
+fn validate_print_chain(head: SEXP) {
     {
         let next = |cell: SEXP| {
             if cell.is_null() || cell == R_NilValue() || TYPEOF(cell) != SEXPTYPE::LISTSXP {
@@ -2273,7 +2273,7 @@ pub unsafe fn do_unclass(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
 // isEnvironment (public, #[unsafe(no_mangle)])
 // ---------------------------------------------------------------------------
 
-pub unsafe fn isEnvironment(x: SEXP) -> c_int {
+pub fn isEnvironment(x: SEXP) -> c_int {
     {
         if x.is_null() {
             return 0;
@@ -2311,15 +2311,15 @@ unsafe fn GetOption1(sym: SEXP) -> SEXP {
     unsafe { crate::mainutils::options::GetOption1(sym) }
 }
 
-unsafe fn do_names(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+fn do_names(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     R_NilValue()
 }
 
-unsafe fn do_dim(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+fn do_dim(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     R_NilValue()
 }
 
-unsafe fn do_str(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+fn do_str(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     R_NilValue()
 }
 
@@ -2395,28 +2395,28 @@ mod tests {
 
     #[test]
     fn test_is_symbol_null() {
-        unsafe {
+        {
             assert_eq!(isSymbol(ptr::null_mut()), 0);
         }
     }
 
     #[test]
     fn test_is_environment_null() {
-        unsafe {
+        {
             assert_eq!(isEnvironment(ptr::null_mut()), 0);
         }
     }
 
     #[test]
     fn test_is_string_null() {
-        unsafe {
+        {
             assert_eq!(isString(ptr::null_mut()), 0);
         }
     }
 
     #[test]
     fn test_is_null_helper() {
-        unsafe {
+        {
             assert_eq!(Rf_isNull(ptr::null_mut()), 1);
             assert_eq!(Rf_isNull(R_NilValue()), 1);
         }

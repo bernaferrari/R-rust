@@ -14,12 +14,12 @@ use crate::sexp::context::RError;
 use crate::sexp::ffi::SEXP;
 
 /// Initialize the edit subsystem.
-pub unsafe fn InitEd() {
+pub fn InitEd() {
     // no temp file management needed
 }
 
 /// Clean up the edit subsystem.
-pub unsafe fn CleanEd() {
+pub fn CleanEd() {
     // no temp file to clean
 }
 
@@ -96,7 +96,7 @@ pub unsafe fn do_edit(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 /// Private edit-files hook for the legacy utils boundary.
-pub(crate) unsafe fn R_EditFiles(
+pub(crate) fn R_EditFiles(
     _nfiles: c_int,
     _files: *mut *mut std::os::raw::c_char,
     _editor: *mut std::os::raw::c_char,
@@ -122,7 +122,7 @@ mod tests {
 
     #[test]
     fn test_init_ed() {
-        unsafe {
+        {
             InitEd();
         }
     }
