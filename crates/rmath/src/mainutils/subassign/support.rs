@@ -245,26 +245,14 @@ pub(crate) unsafe fn UNSET_S4_OBJECT(x: SEXP) {
 
 /// Check if an object may be shared.
 #[inline]
-pub(crate) unsafe fn MAYBE_SHARED(x: SEXP) -> bool {
-    unsafe {
-        if x.is_null() {
-            return true;
-        } // conservative for null
-        let info = (*x).sxpinfo;
-        info.named() >= 2
-    }
+pub(crate) fn MAYBE_SHARED(x: SEXP) -> bool {
+    x.is_null() || NAMED(x) >= 2
 }
 
 /// Check if an object may be referenced.
 #[inline]
-pub(crate) unsafe fn MAYBE_REFERENCED(x: SEXP) -> bool {
-    unsafe {
-        if x.is_null() {
-            return false;
-        }
-        let info = (*x).sxpinfo;
-        info.named() >= 1
-    }
+pub(crate) fn MAYBE_REFERENCED(x: SEXP) -> bool {
+    NAMED(x) >= 1
 }
 
 /// Mark an object as not mutable (NAMEDMAX).

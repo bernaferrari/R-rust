@@ -73,8 +73,8 @@ unsafe fn RTRACE(x: SEXP) -> c_int {
     unsafe { (((*x).sxpinfo.gp() & 0x10) != 0) as c_int }
 }
 
-unsafe fn PRIMVAL(op: SEXP) -> c_int {
-    unsafe { crate::mainutils::relop::PRIMVAL(op) }
+fn PRIMVAL(op: SEXP) -> c_int {
+    crate::mainutils::relop::PRIMVAL(op)
 }
 
 // ---------------------------------------------------------------------------

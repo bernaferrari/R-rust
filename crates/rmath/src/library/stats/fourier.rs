@@ -288,11 +288,8 @@ unsafe fn transform_line(base: *mut Rcomplex, len: usize, stride: usize, inverse
 }
 
 /// true if namedness > 0 (potentially shared).
-unsafe fn MAYBE_REFERENCED(x: SEXP) -> c_int {
-    if x.is_null() {
-        return 0;
-    }
-    crate::sexp::accessors::NAMED(x) as c_int
+fn MAYBE_REFERENCED(x: SEXP) -> c_int {
+    crate::sexp::accessors::NAMED(x)
 }
 
 unsafe fn as_integer(x: SEXP) -> c_int {

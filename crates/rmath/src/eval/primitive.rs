@@ -59,9 +59,24 @@ impl<'a> PrimitiveDescriptor<'a> {
     }
 }
 
+/// Copy raw primitive metadata from a live registered allocation. The
+/// caller receives an immutable table entry and never borrows the SEXP.
+pub(crate) fn raw_primitive_entry(op: SEXP) -> Option<&'static FunTabEntry> {
+    let (_, _, header) = crate::sexp::memory::checked_header(op)?;
+    if matches!(
+        header.sxpinfo.type_of(),
+        SEXPTYPE::BUILTINSXP | SEXPTYPE::SPECIALSXP
+    ) && let crate::sexp::ffi::NodeBody::Primitive(primitive) = header.data
+    {
+        fun_tab_descriptor(primitive.offset)
+    } else {
+        None
+    }
+}
+
 /// Get the primitive function pointer for a SPECIAL or BUILTIN.
-pub unsafe fn get_primfun(op: SEXP) -> Option<PrimFun> {
-    unsafe { PrimitiveDescriptor::from_raw(op) }.and_then(|primitive| primitive.fun)
+pub fn get_primfun(op: SEXP) -> Option<PrimFun> {
+    raw_primitive_entry(op).and_then(|entry| entry.cfun)
 }
 
 /// Get a function table entry by primitive table index.
@@ -159,17 +174,13 @@ fn primitive_print_flag(entry: &FunTabEntry) -> c_int {
 }
 
 /// Check the PRIMPRINT flag (visibility hint for primitives).
-pub unsafe fn PRIMPRINT(op: SEXP) -> c_int {
-    unsafe { PrimitiveDescriptor::from_raw(op) }
-        .map(|primitive| primitive.print_flag)
-        .unwrap_or(0)
+pub fn PRIMPRINT(op: SEXP) -> c_int {
+    raw_primitive_entry(op).map_or(0, primitive_print_flag)
 }
 
 /// Get the PRIMNAME for a primitive.
-pub unsafe fn PRIMNAME(op: SEXP) -> &'static str {
-    unsafe { PrimitiveDescriptor::from_raw(op) }
-        .map(|primitive| primitive.name)
-        .unwrap_or("unknown")
+pub fn PRIMNAME(op: SEXP) -> &'static str {
+    raw_primitive_entry(op).map_or("unknown", |entry| fun_tab_name(entry.name))
 }
 
 /// Primitives that leave R_Visible in the state their (last evaluated)
@@ -327,6 +338,29 @@ pub fn primitive_kind_for_eval(eval: c_int) -> SEXPTYPE {
 mod tests {
     use super::*;
     use crate::sexp::session::RSession;
+
+    #[test]
+    fn primitive_metadata_copies_only_registered_headers() {
+        let mut arena = crate::sexp::memory::RArena::new();
+        let pointer = arena.alloc_node(SEXPTYPE::BUILTINSXP);
+        let offset = fun_tab_index_by_name("length").unwrap();
+        // SAFETY: the arena keeps this exact initialized primitive live.
+        unsafe { SET_PRIMOFFSET(pointer, offset) };
+        let address_only = std::ptr::without_provenance_mut(pointer.addr());
+        assert_eq!(PRIMNAME(address_only), "length");
+        assert_eq!(
+            PRIMPRINT(address_only),
+            primitive_print_flag(fun_tab_descriptor(offset).unwrap())
+        );
+        assert_eq!(
+            get_primfun(address_only).is_some(),
+            fun_tab_descriptor(offset).unwrap().cfun.is_some()
+        );
+        drop(arena);
+        assert_eq!(PRIMNAME(address_only), "unknown");
+        assert_eq!(PRIMPRINT(address_only), 0);
+        assert!(get_primfun(address_only).is_none());
+    }
 
     #[test]
     fn descriptor_exposes_funtab_metadata() {

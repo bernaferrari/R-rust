@@ -165,8 +165,8 @@ unsafe fn asBool2(x: SEXP, _call: SEXP) -> bool {
 }
 
 #[inline(always)]
-unsafe fn PRIMVAL(op: SEXP) -> c_int {
-    unsafe { crate::mainutils::relop::PRIMVAL(op) }
+fn PRIMVAL(op: SEXP) -> c_int {
+    crate::mainutils::relop::PRIMVAL(op)
 }
 
 #[inline(always)]

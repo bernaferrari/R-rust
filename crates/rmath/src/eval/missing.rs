@@ -731,13 +731,8 @@ pub unsafe fn R_execMethod(op: SEXP, rho: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Check if an object might be shared (NAMED >= 2).
-unsafe fn MAYBE_SHARED(x: SEXP) -> bool {
-    unsafe {
-        if x.is_null() {
-            return false;
-        }
-        NAMED(x) >= 2
-    }
+fn MAYBE_SHARED(x: SEXP) -> bool {
+    NAMED(x) >= 2
 }
 
 /// Increment the NAMED field, capped at 2.

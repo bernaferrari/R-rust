@@ -66,7 +66,7 @@ const SYMSXP: c_int = 1;
 // conflicts with other modules that define the same extern "C" stubs.
 // ---------------------------------------------------------------------------
 
-unsafe fn getCharCE(s: SEXP) -> c_int {
+fn getCharCE(s: SEXP) -> c_int {
     crate::sexp::accessors::getCharCE(s)
 }
 

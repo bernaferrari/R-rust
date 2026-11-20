@@ -150,7 +150,7 @@ unsafe fn translateCharUTF8(s: SEXP) -> *const c_char {
 }
 
 #[inline(always)]
-unsafe fn getCharCE(s: SEXP) -> c_int {
+fn getCharCE(s: SEXP) -> c_int {
     crate::sexp::accessors::getCharCE(s)
 }
 

@@ -211,34 +211,22 @@ pub unsafe fn checkArity(op: SEXP, args: SEXP) {
 }
 
 /// PRIMVAL -- extracts the internal offset from a builtin/special.
-pub unsafe fn PRIMVAL(op: SEXP) -> c_int {
-    unsafe {
-        if op.is_null() {
-            return 0;
-        }
-        let t = TYPEOF(op);
-        if t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP {
-            let table_index = (*op).data.primitive().offset;
-            crate::eval::primitive::fun_tab_descriptor(table_index)
-                .map(|entry| entry.offset)
-                .unwrap_or(table_index)
-        } else {
-            0
-        }
+pub fn PRIMVAL(op: SEXP) -> c_int {
+    let kind = TYPEOF(op);
+    if kind == SEXPTYPE::BUILTINSXP || kind == SEXPTYPE::SPECIALSXP {
+        let table_index = crate::sexp::accessors::PRIMOFFSET(op);
+        crate::eval::primitive::fun_tab_descriptor(table_index)
+            .map_or(table_index, |entry| entry.offset)
+    } else {
+        0
     }
 }
 
 /// PRIMNAME -- returns the name of a builtin/special as a C string.
-pub unsafe fn PRIMNAME(op: SEXP) -> *const c_char {
-    unsafe {
-        if let Some(primitive) = crate::eval::primitive::PrimitiveDescriptor::from_raw(op) {
-            if let Some(entry) = crate::eval::primitive::fun_tab_descriptor(primitive.table_index) {
-                return entry.name.as_ptr() as *const c_char;
-            }
-        }
-        static EMPTY: [c_char; 1] = [0];
-        EMPTY.as_ptr()
-    }
+pub fn PRIMNAME(op: SEXP) -> *const c_char {
+    static EMPTY: [c_char; 1] = [0];
+    crate::eval::primitive::raw_primitive_entry(op)
+        .map_or(EMPTY.as_ptr(), |entry| entry.name.as_ptr().cast())
 }
 
 /// Helper for getAttrib -- delegates to eval::attrib_core.

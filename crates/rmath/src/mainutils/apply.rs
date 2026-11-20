@@ -167,23 +167,13 @@ unsafe fn INCREMENT_NAMED(x: SEXP) {
 }
 
 /// MAYBE_REFERENCED: true if namedness > 0 (potentially shared).
-unsafe fn MAYBE_REFERENCED(x: SEXP) -> bool {
-    unsafe {
-        if x.is_null() {
-            return false;
-        }
-        NAMED(x) > 0
-    }
+fn MAYBE_REFERENCED(x: SEXP) -> bool {
+    NAMED(x) > 0
 }
 
 /// MAYBE_SHARED: true if namedness >= 2 (definitely shared).
-unsafe fn MAYBE_SHARED(x: SEXP) -> bool {
-    unsafe {
-        if x.is_null() {
-            return false;
-        }
-        NAMED(x) >= 2
-    }
+fn MAYBE_SHARED(x: SEXP) -> bool {
+    NAMED(x) >= 2
 }
 
 /// Seql: check if two CHARSXP strings are equal (pointer equality for

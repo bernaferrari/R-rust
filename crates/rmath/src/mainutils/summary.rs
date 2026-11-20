@@ -469,8 +469,8 @@ unsafe fn asBool2(x: SEXP, _call: SEXP) -> bool {
 /// PRIMVAL -- get the primitive's internal integer value.
 /// In R, this is stored in the offset/gp field of the SEXPREC.
 #[inline]
-unsafe fn PRIMVAL(op: SEXP) -> c_int {
-    unsafe { crate::mainutils::relop::PRIMVAL(op) }
+fn PRIMVAL(op: SEXP) -> c_int {
+    crate::mainutils::relop::PRIMVAL(op)
 }
 
 /// Get or intern the "na.rm" symbol.
