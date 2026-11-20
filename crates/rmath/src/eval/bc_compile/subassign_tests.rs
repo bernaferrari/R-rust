@@ -30,7 +30,7 @@ fn compare_assignment(session: &mut RSession, setup_code: &str, assignment: &str
             environment.as_raw(),
         ))
     };
-    let expected_visible = unsafe { crate::sexp::globals::R_Visible() };
+    let expected_visible = crate::sexp::globals::R_Visible();
     let symbol = unsafe { crate::sexp::symbol::Rf_install(c"x".as_ptr()) };
     let expected_object =
         unsafe { own_operand(crate::sexp::envir::R_findVar(symbol, environment.as_raw())) };
@@ -99,7 +99,7 @@ fn compare_assignment(session: &mut RSession, setup_code: &str, assignment: &str
             environment.as_raw(),
         ))
     };
-    let actual_visible = unsafe { crate::sexp::globals::R_Visible() };
+    let actual_visible = crate::sexp::globals::R_Visible();
     let actual_object =
         unsafe { own_operand(crate::sexp::envir::R_findVar(symbol, environment.as_raw())) };
     let actual_events = unsafe {
@@ -424,7 +424,7 @@ fn gnu_subassignment_fixtures_execute_directly_without_source_fallback() {
             ))
         };
         assert_eq!(result, rhs, "GNU must return the original RHS");
-        assert_eq!(unsafe { crate::sexp::globals::R_Visible() }, 0);
+        assert_eq!(crate::sexp::globals::R_Visible(), 0);
         let (result, _, _) = session.eval_code_with_output_capture(assertion);
         assert_eq!(result.unwrap().logical_elt(0), Some(1), "{assertion}");
     }

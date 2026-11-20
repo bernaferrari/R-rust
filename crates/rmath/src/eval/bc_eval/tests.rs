@@ -143,7 +143,7 @@ fn gnu_source_marker_does_not_override_compiled_instructions() {
     let (value, _, _) =
         session.eval_code_with_output_capture(&format!("f<-unserialize(as.raw(c({raw})));f(TRUE)"));
     let value = value.unwrap();
-    unsafe {
+    {
         // SAFETY: the evaluation result is live and no R reentry occurs while reading.
         assert_eq!(value.integer_elt(0), Some(42));
     }

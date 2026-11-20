@@ -54,7 +54,7 @@ pub unsafe fn R_mkPrim(_name: *const std::os::raw::c_char, offset: c_int, kind: 
         memory::with_arena(|arena| {
             let prim = arena.alloc_node(sexptype);
             if !prim.is_null() {
-                unsafe { SET_PRIMOFFSET(prim, offset) };
+                SET_PRIMOFFSET(prim, offset);
             }
             prim
         })
@@ -880,7 +880,7 @@ mod tests {
     fn primname_uses_canonical_table() {
         let _session = RSession::new();
         let primitive = unsafe { crate::mainutils::names::R_Primitive(c"+".as_ptr()) };
-        assert_eq!(unsafe { PRIMNAME(primitive) }, "+");
+        assert_eq!(PRIMNAME(primitive), "+");
     }
 
     #[test]

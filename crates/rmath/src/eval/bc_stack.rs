@@ -217,7 +217,7 @@ mod tests {
             with_bc_stack(|stack| {
                 assert_eq!(stack.depth(), 1);
                 let value = stack.pop_owned();
-                assert_eq!(unsafe { *INTEGER(value.as_raw()) }, 17);
+                assert_eq!({ *INTEGER(value.as_raw()) }, 17);
             })
         });
     }

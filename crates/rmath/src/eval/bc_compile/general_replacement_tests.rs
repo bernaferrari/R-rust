@@ -48,7 +48,7 @@ fn compare(session: &mut RSession, source: &str, syntax: &str, assertion: &str) 
         ))
     };
     assert_eq!(expected, binding(&environment, c"rhsValue"));
-    assert_eq!(unsafe { crate::sexp::globals::R_Visible() }, 0);
+    assert_eq!(crate::sexp::globals::R_Visible(), 0);
     setup(session, assertion);
     let expected_object = binding(&environment, c"x");
     let expected_events = binding(&environment, c"events");
@@ -76,7 +76,7 @@ fn compare(session: &mut RSession, source: &str, syntax: &str, assertion: &str) 
         ))
     };
     assert_eq!(actual, rhs, "return original RHS identity");
-    assert_eq!(unsafe { crate::sexp::globals::R_Visible() }, 0);
+    assert_eq!(crate::sexp::globals::R_Visible(), 0);
     for (expected, actual) in [
         (expected_object, binding(&environment, c"x")),
         (expected_events, binding(&environment, c"events")),
@@ -268,7 +268,7 @@ fn owned_general_replacement_sole_targets_and_rhs_survive_detached_pool_gc() {
         }
     }));
     let value = execute(&body, &environment);
-    assert_eq!(unsafe { crate::sexp::globals::R_Visible() }, 0);
+    assert_eq!(crate::sexp::globals::R_Visible(), 0);
     assert_eq!(value.typeof_(), SEXPTYPE::STRSXP);
     assert_eq!(value.len(), 2);
     assert!(count.get() >= 2, "getter and outer setter both collect");
@@ -464,7 +464,7 @@ fn gnu_general_replacement_fixtures_execute_direct_vm_after_closure_release() {
             execute(&body, &environment),
             binding(&environment, c"rhsValue")
         );
-        assert_eq!(unsafe { crate::sexp::globals::R_Visible() }, 0);
+        assert_eq!(crate::sexp::globals::R_Visible(), 0);
         setup(&mut session, assertion);
     }
 }
@@ -508,7 +508,7 @@ fn compiled_general_replacement_deeper_and_enclosing_roots() {
     drop(expression);
     session.gc();
     assert_eq!(execute(&body, &environment), binding(&global, c"rhsValue"));
-    assert_eq!(unsafe { crate::sexp::globals::R_Visible() }, 0);
+    assert_eq!(crate::sexp::globals::R_Visible(), 0);
     setup(
         &mut session,
         "stopifnot(identical(x,list(c(left=30L,right=40L))),identical(frame$x,list(c(50L,60L))),identical(events,c('rhs','i','i')))",

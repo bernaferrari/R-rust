@@ -877,7 +877,7 @@ unsafe fn try_simple_vector_subassign(target: SEXP, subs: SEXP, value: SEXP) -> 
 }
 
 unsafe fn scalar_positive_index(index: SEXP) -> Option<crate::sexp::ffi::R_xlen_t> {
-    unsafe {
+    {
         if index.is_null()
             || !matches!(
                 SEXPTYPE(TYPEOF(index)),
@@ -1193,7 +1193,7 @@ mod owned_source_assignment_tests {
             "stamp(x,{trace<-trace*10L+2L;'mark'})<-{trace<-trace*10L+1L;quote(retained_rhs)}",
         );
         assert!(value.is_symbol());
-        assert_eq!(unsafe { crate::sexp::globals::R_Visible() }, FALSE);
+        assert_eq!(crate::sexp::globals::R_Visible(), FALSE);
         assert_eq!(source_value(&session, "trace").integer_elt(0), Some(12));
         assert_eq!(
             source_value(&session, "identical(attr(x,'mark'),quote(retained_rhs))").logical_elt(0),
@@ -1260,7 +1260,7 @@ mod owned_source_assignment_tests {
             "must detach the original source during a collecting callback"
         );
         assert!(value.is_symbol());
-        assert_eq!(unsafe { crate::sexp::globals::R_Visible() }, FALSE);
+        assert_eq!(crate::sexp::globals::R_Visible(), FALSE);
         let checked = source_value(
             &session,
             "identical(attr(x,'object'),quote(`*tmp*`))&&identical(attr(x,'label'),quote(unbound_label))&&identical(attr(x,'rhs'),quote({gc();quote(retained_rhs)}))",

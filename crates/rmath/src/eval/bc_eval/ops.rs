@@ -135,7 +135,7 @@ pub(crate) unsafe fn eval_nested_call(
     loop_stack: &[LoopContext],
 ) -> Result<SEXP, LoopJump> {
     unsafe {
-        with_stack_rooted(stack, call, || unsafe {
+        with_stack_rooted(stack, call, || {
             eval_call_with_loop_routing(call, rho, loop_stack)
         })
     }

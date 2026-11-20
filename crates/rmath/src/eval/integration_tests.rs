@@ -808,17 +808,17 @@ fn test_eval_abs_debug() {
     let expr = must(parse_source(&_session, "abs(-5)"));
     let raw_expr = expr.clone().as_raw();
     eprintln!("raw_expr ptr={:p}", raw_expr);
-    eprintln!("top type={}", unsafe { TYPEOF(raw_expr) });
-    eprintln!("car type={}", unsafe { TYPEOF(CAR(raw_expr)) });
-    let args = unsafe { CDR(raw_expr) };
-    eprintln!("args type={}", unsafe { TYPEOF(args) });
-    let arg1 = unsafe { CAR(args) };
-    eprintln!("arg1 type={}", unsafe { TYPEOF(arg1) });
-    if unsafe { TYPEOF(arg1) } == 6 {
-        let inner_args = unsafe { CDR(arg1) };
-        eprintln!("inner_args type={}", unsafe { TYPEOF(inner_args) });
-        let inner_arg1 = unsafe { CAR(inner_args) };
-        eprintln!("inner_arg1 type={}", unsafe { TYPEOF(inner_arg1) });
+    eprintln!("top type={}", TYPEOF(raw_expr));
+    eprintln!("car type={}", TYPEOF(CAR(raw_expr)));
+    let args = CDR(raw_expr);
+    eprintln!("args type={}", TYPEOF(args));
+    let arg1 = CAR(args);
+    eprintln!("arg1 type={}", TYPEOF(arg1));
+    if TYPEOF(arg1) == 6 {
+        let inner_args = CDR(arg1);
+        eprintln!("inner_args type={}", TYPEOF(inner_args));
+        let inner_arg1 = CAR(inner_args);
+        eprintln!("inner_arg1 type={}", TYPEOF(inner_arg1));
     }
 
     let e = expr.clone();
@@ -833,8 +833,8 @@ fn test_eval_abs_debug() {
             .map(|v| format!("{:?} len={}", v.clone().typeof_(), v.clone().len()))
     );
 
-    let inner_expr = unsafe { CAR(CDR(raw_expr)) };
-    eprintln!("inner_expr type={}", unsafe { TYPEOF(inner_expr) });
+    let inner_expr = CAR(CDR(raw_expr));
+    eprintln!("inner_expr type={}", TYPEOF(inner_expr));
     let inner_e = unsafe { crate::sexp::object::Sexp::from_raw_unchecked(inner_expr) };
     let inner_result = unsafe {
         /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
