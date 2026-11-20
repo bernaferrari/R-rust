@@ -25,11 +25,11 @@ use super::*;
 
 /// Port of `do_subassign3()` -- the `$<-` operator.
 pub(crate) fn do_subassign3(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe {
+    {
         let mut nlist: SEXP = R_NilValue();
         checkArity(op, args);
         let args = fixSubset3Args(call, args, env, &mut nlist);
-        let _args_guard = protect(args);
+        let _args_root = owned(args);
 
         let mut ans: SEXP = ptr::null_mut();
         if R_DispatchOrEvalSP(
@@ -43,7 +43,7 @@ pub(crate) fn do_subassign3(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP
         {
             return ans;
         }
-        let _ans_guard = protect(ans);
+        let _ans_root = owned(ans);
         let old_n = posixlt_obs_length(CAR(ans));
         let result = R_subassign3_dflt(call, CAR(ans), nlist, CADDR(ans));
         mark_posixlt_dollar_balanced(result, CADDR(ans), old_n);
@@ -52,28 +52,32 @@ pub(crate) fn do_subassign3(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP
 }
 
 pub(crate) fn posixlt_obs_length(x: SEXP) -> R_xlen_t {
-    unsafe {
-        if x.is_null() || x == R_NilValue() || TYPEOF(x) != SEXPTYPE::VECSXP {
-            return 0;
-        }
-        let mut n: R_xlen_t = 0;
-        for i in 0..XLENGTH(x) {
-            let len = XLENGTH(VECTOR_ELT(x, i));
-            if len > n {
-                n = len;
-            }
-        }
-        n
+    if x.is_null() || x == R_NilValue() || TYPEOF(x) != SEXPTYPE::VECSXP {
+        return 0;
     }
+    let fail = |error: crate::sexp::object::SexpError| -> ! {
+        crate::sexp::context::r_error(error.to_string())
+    };
+    let vector = owned(x);
+    let mut n: R_xlen_t = 0;
+    for i in 0..XLENGTH(x) {
+        let len = vector.try_vector_elt(i).unwrap_or_else(|e| fail(e)).len();
+        if len > n {
+            n = len;
+        }
+    }
+    n
 }
 
 /// GNU `$<-.POSIXlt`: compare `length(value)` to the *pre-assign* `length(x)`.
 pub(crate) fn mark_posixlt_dollar_balanced(x: SEXP, value: SEXP, old_n: R_xlen_t) {
-    unsafe {
+    {
         if x.is_null()
             || x == R_NilValue()
             || TYPEOF(x) != SEXPTYPE::VECSXP
-            || !crate::mainutils::essentials::sexp_has_class(x, "POSIXlt")
+            // SAFETY: class-walk helper still reads the attribute chain raw;
+            // `x` is a live VECSXP argument rooted by the caller.
+            || !unsafe { crate::mainutils::essentials::sexp_has_class(x, "POSIXlt") }
         {
             return;
         }
@@ -82,19 +86,30 @@ pub(crate) fn mark_posixlt_dollar_balanced(x: SEXP, value: SEXP, old_n: R_xlen_t
         } else {
             XLENGTH(value)
         };
-        let bal_sym = Rf_install(c"balanced".as_ptr());
-        let was = crate::sexp::attrib_core::getAttrib(x, bal_sym);
+        let bal_sym = install(c"balanced");
+        let was = super::getAttrib(x, bal_sym);
         let was_true = !was.is_null()
             && was != R_NilValue()
             && TYPEOF(was) == SEXPTYPE::LGLSXP
             && XLENGTH(was) > 0
-            && *INTEGER(was) == TRUE;
+            && owned(was)
+                .try_logical_elt(0)
+                .unwrap_or_else(|error| {
+                    crate::sexp::context::r_error(error.to_string())
+                })
+                == TRUE;
         if was_true && nv == old_n {
-            let na = crate::sexp::constructors::Rf_ScalarLogical(NA_INTEGER);
-            let _na = protect(na);
-            crate::sexp::attrib_core::setAttrib(x, bal_sym, na);
+            let na = factory()
+                .allocate(|arena| {
+                    crate::sexp::builder::scalar_logical_in(arena, NA_INTEGER)
+                        .map(|value| value.as_raw())
+                })
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+                .as_raw();
+            let _na_root = owned(na);
+            super::setAttrib(x, bal_sym, na);
         } else {
-            crate::sexp::attrib_core::setAttrib(x, bal_sym, R_NilValue());
+            super::setAttrib(x, bal_sym, R_NilValue());
         }
     }
 }

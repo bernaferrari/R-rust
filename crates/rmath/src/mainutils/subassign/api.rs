@@ -29,7 +29,7 @@ use super::*;
 
 /// Port of `SubassignTypeSym()` -- used by the byte code compiler.
 pub fn SubassignTypeSym() -> SEXP {
-    unsafe { Rf_install(c"SubassignTypeSym".as_ptr()) }
+    install(c"SubassignTypeSym")
 }
 
 /// Port of `SubassignDotsNames()` -- handles assignment to `...` names.
@@ -39,20 +39,21 @@ pub fn SubassignDotsNames(_call: SEXP, _rho: SEXP) -> SEXP {
 
 /// Port of `GetSubassignSxpVec()` -- used by the byte code interpreter.
 pub fn GetSubassignSxpVec(x: SEXP, indx: SEXP) -> SEXP {
-    unsafe {
-        if isNull(x) || isNull(indx) {
-            return R_NilValue();
-        }
-        let n = XLENGTH(indx);
-        if n == 0 {
-            return R_NilValue();
-        }
-        let idx = gi(indx, 0);
-        if idx == NA_INTEGER as R_xlen_t || idx < 1 || idx > XLENGTH(x) {
-            return R_NilValue();
-        }
-        VECTOR_ELT(x, idx - 1)
+    if isNull(x) || isNull(indx) {
+        return R_NilValue();
     }
+    let n = XLENGTH(indx);
+    if n == 0 {
+        return R_NilValue();
+    }
+    let idx = gi(indx, 0);
+    if idx == NA_INTEGER as R_xlen_t || idx < 1 || idx > XLENGTH(x) {
+        return R_NilValue();
+    }
+    owned(x)
+        .try_vector_elt(idx - 1)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+        .as_raw()
 }
 
 /// Port of `var_assign()` -- handles variable assignment in the interpreter.
