@@ -2,7 +2,7 @@
 use super::*;
 
 /// R's `drop(x)` — remove extent-one dimensions from arrays and matrices.
-pub unsafe fn do_drop(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_drop(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -126,7 +126,7 @@ pub unsafe fn do_drop(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 /// (dim of length 0 or 1) transpose as column vectors; dimnames are swapped
 /// (including their names), and all other attributes are copied via
 /// copyMostAttrib.
-pub unsafe fn do_transpose(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_transpose(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -297,7 +297,7 @@ pub fn not_matrix() -> ! {
 }
 
 /// R's `nrow(x)` — number of rows.
-pub unsafe fn do_nrow(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_nrow(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -316,7 +316,7 @@ pub unsafe fn do_nrow(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// R's `ncol(x)` — number of columns.
-pub unsafe fn do_ncol(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_ncol(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -335,7 +335,7 @@ pub unsafe fn do_ncol(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// R's `dim(x)` — dimensions as integer vector.
-pub unsafe fn do_dim(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_dim(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let mut ans = R_NilValue();
         if crate::eval::dispatch::DispatchOrEval(
@@ -375,7 +375,7 @@ pub unsafe fn do_dim(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 /// R's `tsp(x)` — time-series parameter attribute.
-pub unsafe fn do_tsp(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_tsp(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -386,7 +386,7 @@ pub unsafe fn do_tsp(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// R's `dim(x) <- value` — replace an object's dimension attribute.
-pub unsafe fn do_dim_set(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_dim_set(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let mut ans = R_NilValue();
         if crate::eval::dispatch::DispatchOrEval(
@@ -450,7 +450,7 @@ pub unsafe fn do_dim_set(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 /// R's `tsp(x) <- value` — replace or remove time-series parameters.
-pub unsafe fn do_tsp_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_tsp_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let value = CAR(CDR(args));
@@ -507,7 +507,7 @@ pub unsafe fn do_tsp_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
     }
 }
 
-pub unsafe fn dimension_attribute(value: SEXP, object_len: R_xlen_t) -> Result<SEXP, String> {
+pub fn dimension_attribute(value: SEXP, object_len: R_xlen_t) -> Result<SEXP, String> {
     unsafe {
         if !is_atomic_vector_type(TYPEOF(value)) {
             return Err("invalid second argument, must be vector or NULL".to_string());
@@ -535,7 +535,7 @@ pub unsafe fn dimension_attribute(value: SEXP, object_len: R_xlen_t) -> Result<S
     }
 }
 /// R's `dimnames(x)` — get dimension names of a matrix/array.
-pub unsafe fn do_dimnames(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_dimnames(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let mut ans = R_NilValue();
         if crate::eval::dispatch::DispatchOrEval(
