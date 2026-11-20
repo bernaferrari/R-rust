@@ -29,27 +29,10 @@ use crate::sexp::ffi::*;
 use crate::sexp::globals::*;
 use crate::sexp::protect::*;
 
-unsafe fn asInteger(x: SEXP) -> c_int {
-    unsafe { crate::main::coerce::asInteger(x) }
-}
+use crate::main::coerce::{asInteger, asLogical, asReal, coerceVector};
+use crate::main::sort::R_rsort;
 
-unsafe fn asReal(x: SEXP) -> c_double {
-    unsafe { crate::main::coerce::asReal(x) }
-}
-
-unsafe fn asLogical(x: SEXP) -> c_int {
-    unsafe { crate::main::coerce::asLogical(x) }
-}
-
-unsafe fn coerceVector(x: SEXP, type_: c_int) -> SEXP {
-    unsafe { crate::main::coerce::coerceVector(x, type_) }
-}
-
-unsafe fn R_rsort(x: *mut c_double, n: c_int) {
-    unsafe { crate::main::sort::R_rsort(x, n) }
-}
-
-unsafe fn Rprintf(msg: &str) -> c_int {
+fn Rprintf(msg: &str) -> c_int {
     crate::sexp::output::capture_stdout(msg);
     0
 }
@@ -64,22 +47,21 @@ fn imax2(x: c_int, y: c_int) -> c_int {
     if x < y { y } else { x }
 }
 
-unsafe fn stem_print(close: c_int, dist: c_int, ndigits: c_int) {
-    unsafe {
-        if close / 10 == 0 && (close < 0 || dist < 0) {
-            Rprintf(&format!("  {:1$} | ", "-0", ndigits as usize));
-        } else {
-            Rprintf(&format!("  {:1$} | ", close / 10, ndigits as usize));
-        }
+fn stem_print(close: c_int, dist: c_int, ndigits: c_int) {
+    if close / 10 == 0 && (close < 0 || dist < 0) {
+        Rprintf(&format!("  {:1$} | ", "-0", ndigits as usize));
+    } else {
+        Rprintf(&format!("  {:1$} | ", close / 10, ndigits as usize));
     }
 }
 
-unsafe fn rnd(u: c_double, c: c_double) -> c_double {
+fn rnd(u: c_double, c: c_double) -> c_double {
     if u < 0.0 { u * c - 0.5 } else { u * c + 0.5 }
 }
 
-unsafe fn stem_leaf(x: *mut c_double, n: c_int, scale: c_double, width: c_int, atom: c_double) {
-    unsafe {
+fn stem_leaf(x: &mut [c_double], scale: c_double, width: c_int, atom: c_double) {
+    {
+        let n = x.len() as c_int;
         let mut r: c_double;
         let mut c: c_double;
         let mut mu: c_double = 10.0_f64;
@@ -95,11 +77,13 @@ unsafe fn stem_leaf(x: *mut c_double, n: c_int, scale: c_double, width: c_int, a
         let ndigits: c_int;
         let pdigits: c_int;
 
-        R_rsort(x, n);
+        // SAFETY: the slice was projected from a live REALSXP payload held by
+        // the caller's protect guard; R_rsort writes only within its bounds.
+        unsafe { R_rsort(x.as_mut_ptr(), n) };
 
         Rprintf("\n");
-        if *x.add((n - 1) as usize) > *x.add(0) {
-            r = atom + (*x.add((n - 1) as usize) - *x.add(0)) / scale;
+        if x[(n - 1) as usize] > x[0] {
+            r = atom + (x[(n - 1) as usize] - x[0]) / scale;
             c = R_pow_di(10.0, (1.0 - (r.log10()).floor()) as c_int);
             mm = imin2(2, imax2(0, (r * c / 25.0) as c_int));
             k = 3 * mm + 2 - 150 / (n + 50);
@@ -107,8 +91,8 @@ unsafe fn stem_leaf(x: *mut c_double, n: c_int, scale: c_double, width: c_int, a
                 c *= 10.0;
             }
             /* need to ensure that x[i]*c does not integer overflow */
-            let mut x1 = (*x.add(0)).abs();
-            let mut x2 = (*x.add((n - 1) as usize)).abs();
+            let mut x1 = (x[0]).abs();
+            let mut x2 = (x[(n - 1) as usize]).abs();
             if x2 > x1 {
                 x1 = x2;
             }
@@ -122,13 +106,13 @@ unsafe fn stem_leaf(x: *mut c_double, n: c_int, scale: c_double, width: c_int, a
                 mu = 20.0;
             }
         } else {
-            r = atom + (*x.add(0)).abs() / scale;
+            r = atom + (x[0]).abs() / scale;
             c = R_pow_di(10.0, (1.0 - (r.log10()).floor()) as c_int);
         }
 
         /* Find the print width of the stem. */
-        let xlow = rnd(*x.add(0), c);
-        let xhigh = rnd(*x.add((n - 1) as usize), c);
+        let xlow = rnd(x[0], c);
+        let xhigh = rnd(x[(n - 1) as usize], c);
         let lo_nd = (xlow / mu).floor() * mu;
         let hi_nd = (xhigh / mu).floor() * mu;
 
@@ -145,14 +129,14 @@ unsafe fn stem_leaf(x: *mut c_double, n: c_int, scale: c_double, width: c_int, a
         ndigits = if ldigits < hdigits { hdigits } else { ldigits };
 
         /* Starting cell */
-        lo = (*x.add(0) * c / mu).floor() * mu;
-        hi = (*x.add((n - 1) as usize) * c / mu).floor() * mu;
+        lo = (x[0] * c / mu).floor() * mu;
+        hi = (x[(n - 1) as usize] * c / mu).floor() * mu;
 
-        if lo < 0.0 && (*x.add(0) * c).floor() == lo {
+        if lo < 0.0 && (x[0] * c).floor() == lo {
             lo = lo - mu;
         }
         hi = lo + mu;
-        if (*x.add(0) * c + 0.5).floor() > hi {
+        if (x[0] * c + 0.5).floor() > hi {
             lo = hi;
             hi = lo + mu;
         }
@@ -181,9 +165,9 @@ unsafe fn stem_leaf(x: *mut c_double, n: c_int, scale: c_double, width: c_int, a
             }
             j = 0;
             loop {
-                xi = rnd(*x.add(i as usize), c) as c_int;
+                xi = rnd(x[i as usize], c) as c_int;
 
-                if (hi == 0.0 && *x.add(i as usize) >= 0.0)
+                if (hi == 0.0 && x[i as usize] >= 0.0)
                     || (lo < 0.0 && xi > hi as c_int)
                     || (lo >= 0.0 && xi >= hi as c_int)
                 {
@@ -242,48 +226,53 @@ pub unsafe fn C_StemLeaf(x: SEXP, scale: SEXP, swidth: SEXP, atom: SEXP) -> SEXP
         let xcopy = Rf_allocVector(SEXPTYPE::REALSXP, n);
         let _xcopy_guard = protect(xcopy);
         std::ptr::copy_nonoverlapping(REAL(x), REAL(xcopy), n as usize);
-        stem_leaf(REAL(xcopy), n, sc, width, sa);
+        stem_leaf(
+            std::slice::from_raw_parts_mut(REAL(xcopy), n as usize),
+            sc,
+            width,
+            sa,
+        );
 
         R_NilValue()
     }
 }
 
-unsafe fn C_bincount(
-    x: *const c_double,
-    n: R_xlen_t,
-    breaks: *const c_double,
-    nb: R_xlen_t,
-    count: *mut c_int,
+fn C_bincount(
+    x: &[c_double],
+    breaks: &[c_double],
+    count: &mut [c_int],
     right: c_int,
     include_border: c_int,
 ) {
-    unsafe {
+    {
+        let n = x.len() as R_xlen_t;
+        let nb = breaks.len() as R_xlen_t;
         let nb1 = nb - 1;
 
         /* zero out count array */
         for i in 0..(nb1 as usize) {
-            *count.add(i) = 0;
+            count[i] = 0;
         }
 
         for i in 0..(n as usize) {
-            if R_FINITE(*x.add(i)) {
+            if R_FINITE(x[i]) {
                 let mut lo: R_xlen_t = 0;
                 let mut hi: R_xlen_t = nb1;
-                if *breaks.add(lo as usize) <= *x.add(i)
-                    && (*x.add(i) < *breaks.add(hi as usize)
-                        || (*x.add(i) == *breaks.add(hi as usize) && include_border != 0))
+                if breaks[lo as usize] <= x[i]
+                    && (x[i] < breaks[hi as usize]
+                        || (x[i] == breaks[hi as usize] && include_border != 0))
                 {
                     while hi - lo >= 2 {
                         let new = (hi + lo) / 2;
-                        if *x.add(i) > *breaks.add(new as usize)
-                            || (right == 0 && *x.add(i) == *breaks.add(new as usize))
+                        if x[i] > breaks[new as usize]
+                            || (right == 0 && x[i] == breaks[new as usize])
                         {
                             lo = new;
                         } else {
                             hi = new;
                         }
                     }
-                    *count.add(lo as usize) += 1;
+                    count[lo as usize] += 1;
                 }
             }
         }
@@ -313,7 +302,13 @@ pub unsafe fn C_BinCount(x: SEXP, breaks: SEXP, right: SEXP, lowest: SEXP) -> SE
 
         let counts = Rf_allocVector(SEXPTYPE::INTSXP, (nB - 1) as c_int);
         let _counts_guard = protect(counts);
-        C_bincount(REAL(x), n, REAL(breaks), nB, INTEGER(counts), sr, sl);
+        C_bincount(
+            std::slice::from_raw_parts(REAL(x), n as usize),
+            std::slice::from_raw_parts(REAL(breaks), nB as usize),
+            std::slice::from_raw_parts_mut(INTEGER(counts), (nB - 1) as usize),
+            sr,
+            sl,
+        );
 
         counts
     }
