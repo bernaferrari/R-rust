@@ -14,6 +14,8 @@ use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::ffi::*;
 use crate::sexp::globals::*;
+use crate::sexp::memory_ext::{R_alloc, TransientScope};
+use crate::sexp::owner::{OwnerToken, StoredOwner};
 use crate::sexp::protect::*;
 
 // ---------------------------------------------------------------------------
@@ -37,33 +39,31 @@ unsafe fn SETCADR(x: SEXP, y: SEXP) {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Helper: allocate a vector of doubles (replaces R_alloc)
-// ---------------------------------------------------------------------------
-
-unsafe fn vect(n: c_int) -> *mut c_double {
-    unsafe {
-        let layout = std::alloc::Layout::array::<c_double>(n as usize)
-            .unwrap_or_else(|_| std::alloc::Layout::new::<c_double>());
-        let ptr = std::alloc::alloc(layout) as *mut c_double;
-        if ptr.is_null() {
-            std::alloc::handle_alloc_error(layout);
-        }
-        ptr
-    }
+/// The caller retains this scope across every optimizer callback. The mark
+/// releases all scratch arrays on success and R error or interrupt unwind.
+unsafe fn optimization_scope<'session>() -> TransientScope<'session> {
+    let owner = unsafe { OwnerToken::current() }
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    TransientScope::enter(StoredOwner::from_token(owner))
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
 }
 
-/// Allocate a vector of ints (replaces R_alloc for int arrays).
-unsafe fn vect_int(n: c_int) -> *mut c_int {
-    unsafe {
-        let layout = std::alloc::Layout::array::<c_int>(n as usize)
-            .unwrap_or_else(|_| std::alloc::Layout::new::<c_int>());
-        let ptr = std::alloc::alloc(layout) as *mut c_int;
-        if ptr.is_null() {
-            std::alloc::handle_alloc_error(layout);
-        }
-        ptr
+unsafe fn vect(n: c_int) -> *mut c_double {
+    let len = usize::try_from(n)
+        .unwrap_or_else(|_| crate::sexp::context::r_error("invalid optimizer vector length"));
+    if len == 0 {
+        return ptr::NonNull::dangling().as_ptr();
     }
+    unsafe { R_alloc(size_of::<c_double>(), len).cast() }
+}
+
+unsafe fn vect_int(n: c_int) -> *mut c_int {
+    let len = usize::try_from(n)
+        .unwrap_or_else(|_| crate::sexp::context::r_error("invalid optimizer vector length"));
+    if len == 0 {
+        return ptr::NonNull::dangling().as_ptr();
+    }
+    unsafe { R_alloc(size_of::<c_int>(), len).cast() }
 }
 
 // ---------------------------------------------------------------------------
@@ -362,7 +362,7 @@ unsafe fn allocMatrix(sexptype: c_int, nrow: c_int, ncol: c_int) -> SEXP {
     }
 }
 
-use crate::appl::lbfgsb::lbfgsb;
+use crate::appl::lbfgsb::{LbfgsbState, lbfgsb, workspace_lengths};
 use crate::appl::optim::{cgmin, nmmin, vmmin};
 use crate::nmath::dist::normal::norm_rand;
 
@@ -524,6 +524,7 @@ unsafe fn samin(
 
 pub unsafe fn optim(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
+        let _scratch = optimization_scope();
         let mut args = CDR(args);
         let mut os = Box::new(OptStruct {
             R_fcall: ptr::null_mut(),
@@ -778,9 +779,17 @@ pub unsafe fn optim(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             }
         } else if tn == b"L-BFGS-B" {
             let nREPORT = as_integer(getListElement(options, c"REPORT".as_ptr()));
+            if nREPORT <= 0 {
+                Rf_error(c"REPORT must be > 0 (method = \"L-BFGS-B\")".as_ptr());
+            }
             let factr = as_real(getListElement(options, c"factr".as_ptr()));
             let pgtol = as_real(getListElement(options, c"pgtol".as_ptr()));
-            let lmm = as_integer(getListElement(options, c"lmm".as_ptr()));
+            // Zero invokes GNU's "ERROR: M .LE. 0" result without forming
+            // negative pointer offsets for rejected history sizes.
+            let lmm = as_integer(getListElement(options, c"lmm".as_ptr())).max(0);
+            let (wa_len, iwa_len) = workspace_lengths(npar, lmm).unwrap_or_else(|| {
+                crate::sexp::context::r_error("L-BFGS-B workspace exceeds supported dimensions")
+            });
             if Rf_isNull(gr) == 0 {
                 if !is_function(gr) {
                     Rf_error(b"'gr' is not a function\0".as_ptr() as *const _);
@@ -831,12 +840,8 @@ pub unsafe fn optim(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             (*os_ptr).lower = lower;
             (*os_ptr).upper = upper;
 
-            // Allocate work arrays for lbfgsb (Fortran-style stateful API)
-            // wa size from R source: (2*m*n + 5*n + 11*m*m + 8*m + 1)
-            let wa_len = (2 * lmm * npar + 5 * npar + 11 * lmm * lmm + 8 * lmm + 1) as usize;
-            let wa = vect(wa_len as c_int);
-            let iwa_len = (3 * npar) as usize;
-            let iwa = vect_int(iwa_len as c_int);
+            let wa = vect(wa_len);
+            let iwa = vect_int(iwa_len);
             let g = vect(npar);
             let mut task: [c_char; 60] = [0; 60];
             let mut pgtol_val = pgtol;
@@ -863,8 +868,10 @@ pub unsafe fn optim(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             // f/g only on FG* tasks, count iterations on NEW_X, and stop only
             // when iter exceeds maxit.
             let mut l_iter: c_int = 0;
+            let mut state = LbfgsbState::default();
             loop {
                 lbfgsb(
+                    &mut state,
                     npar,
                     lmm,
                     dpar,
@@ -988,6 +995,7 @@ pub unsafe fn optim(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 pub unsafe fn optimhess(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
+        let _scratch = optimization_scope();
         let mut args = CDR(args);
         let mut os = Box::new(OptStruct {
             R_fcall: ptr::null_mut(),

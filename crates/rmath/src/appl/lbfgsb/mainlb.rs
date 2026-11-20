@@ -378,7 +378,22 @@ impl Default for LbfgsbState {
 // Public API: lbfgsb (= setulb)
 // =====================================================================
 
-pub unsafe fn lbfgsb(
+/// L-BFGS-B represents every offset in its work arrays as a C int. Admit
+/// the whole layout before the translated routine constructs any pointer.
+pub(crate) fn workspace_lengths(n: c_int, m: c_int) -> Option<(c_int, c_int)> {
+    let integer_words = n.checked_mul(3)?;
+    let matrix_words = m.checked_mul(m)?.checked_mul(11)?;
+    let history_words = m.checked_mul(n)?.checked_mul(2)?;
+    let real_words = matrix_words
+        .checked_add(history_words)?
+        .checked_add(n.checked_mul(5)?)?
+        .checked_add(m.checked_mul(8)?)?
+        .checked_add(1)?;
+    Some((real_words, integer_words))
+}
+
+pub(crate) unsafe fn lbfgsb(
+    st: &mut LbfgsbState,
     n: c_int,
     m: c_int,
     x: *mut f64,
@@ -396,65 +411,59 @@ pub unsafe fn lbfgsb(
     isave: *mut c_int,
 ) {
     unsafe {
-        with_required_current_instance(|instance| {
-            // P1: the &mut LbfgsbState lend spans only Fortran-style numeric
-            // work on user buffers (mainlb); no R allocation/protect/eval
-            // happens under it.
-            let st = unsafe { &mut (*instance).lbfgsb_state };
-            let mut csave: [c_char; 60] = [0; 60];
+        let mut csave: [c_char; 60] = [0; 60];
 
-            if cstrncmp(task, b"START", 5) {
-                st.lws = 1;
-                st.lwy = st.lws + m * n;
-                st.lsy = st.lwy + m * n;
-                st.lss = st.lsy + m * m;
-                st.lwt = st.lss + m * m;
-                st.lwn = st.lwt + m * m;
-                st.lsnd = st.lwn + (m * m * 4);
-                st.lz = st.lsnd + (m * m * 4);
-                st.lr = st.lz + n;
-                st.ld = st.lr + n;
-                st.lt = st.ld + n;
-                st.lwa = st.lt + n;
-            }
+        if cstrncmp(task, b"START", 5) {
+            st.lws = 1;
+            st.lwy = st.lws + m * n;
+            st.lsy = st.lwy + m * n;
+            st.lss = st.lsy + m * m;
+            st.lwt = st.lss + m * m;
+            st.lwn = st.lwt + m * m;
+            st.lsnd = st.lwn + (m * m * 4);
+            st.lz = st.lsnd + (m * m * 4);
+            st.lr = st.lz + n;
+            st.ld = st.lr + n;
+            st.lt = st.ld + n;
+            st.lwa = st.lt + n;
+        }
 
-            mainlb(
-                n,
-                m,
-                x,
-                l,
-                u,
-                nbd,
-                f,
-                g,
-                factr,
-                pgtol,
-                wa.add((st.lws - 1) as usize),
-                wa.add((st.lwy - 1) as usize),
-                wa.add((st.lsy - 1) as usize),
-                wa.add((st.lss - 1) as usize),
-                wa.add((st.lwt - 1) as usize),
-                wa.add((st.lwn - 1) as usize),
-                wa.add((st.lsnd - 1) as usize),
-                wa.add((st.lz - 1) as usize),
-                wa.add((st.lr - 1) as usize),
-                wa.add((st.ld - 1) as usize),
-                wa.add((st.lt - 1) as usize),
-                wa.add((st.lwa - 1) as usize),
-                iwa,
-                iwa.add(n as usize),
-                iwa.add((2 * n) as usize),
-                task,
-                iprint,
-                csave.as_mut_ptr(),
-                isave,
-                st,
-            );
-            // GNU mainlb saves nfgv into isave at every exit (isave[12]
-            // of the rearranged size-21 layout); our caller reads the
-            // original-layout slot 33 (Fortran isave(34)).
-            *isave.add(33) = st.nfgv;
-        });
+        mainlb(
+            n,
+            m,
+            x,
+            l,
+            u,
+            nbd,
+            f,
+            g,
+            factr,
+            pgtol,
+            wa.add((st.lws - 1) as usize),
+            wa.add((st.lwy - 1) as usize),
+            wa.add((st.lsy - 1) as usize),
+            wa.add((st.lss - 1) as usize),
+            wa.add((st.lwt - 1) as usize),
+            wa.add((st.lwn - 1) as usize),
+            wa.add((st.lsnd - 1) as usize),
+            wa.add((st.lz - 1) as usize),
+            wa.add((st.lr - 1) as usize),
+            wa.add((st.ld - 1) as usize),
+            wa.add((st.lt - 1) as usize),
+            wa.add((st.lwa - 1) as usize),
+            iwa,
+            iwa.add(n as usize),
+            iwa.add((2 * n) as usize),
+            task,
+            iprint,
+            csave.as_mut_ptr(),
+            isave,
+            st,
+        );
+        // GNU mainlb saves nfgv into isave at every exit (isave[12]
+        // of the rearranged size-21 layout); our caller reads the
+        // original-layout slot 33 (Fortran isave(34)).
+        *isave.add(33) = st.nfgv;
     }
 }
 

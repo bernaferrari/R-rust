@@ -443,8 +443,6 @@ pub struct RInstance {
     pub(crate) graphapp_state: crate::graphapp::runtime::GraphAppRuntimeState,
     /// Per-instance timezone cache for the root tzone module.
     pub(crate) tzone_state: crate::tzone::TzRuntimeState,
-    /// Per-instance appl::lbfgsb solver continuation state.
-    pub(crate) lbfgsb_state: crate::appl::lbfgsb::LbfgsbState,
     /// Per-instance symbol table for session-local interning.
     pub(crate) symbols: HashMap<String, SEXP>,
     /// Owned SYMSXP nodes for the per-instance symbol table.
@@ -662,7 +660,6 @@ impl RInstance {
             #[cfg(not(any(target_os = "android", target_arch = "wasm32")))]
             graphapp_state: crate::graphapp::runtime::GraphAppRuntimeState::default(),
             tzone_state: crate::tzone::TzRuntimeState::default(),
-            lbfgsb_state: crate::appl::lbfgsb::LbfgsbState::default(),
             symbols: HashMap::new(),
             symbol_nodes: Vec::new(),
             rng_state: rmath_nmath::RngState::default(),

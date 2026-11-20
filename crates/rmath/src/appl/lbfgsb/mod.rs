@@ -20,16 +20,12 @@
 use libm::*;
 use std::os::raw::{c_char, c_int};
 
-use crate::sexp::instance::with_required_current_instance;
-
 // =====================================================================
 // Inline BLAS replacements
 // =====================================================================
 
 mod mainlb;
 mod subsolvers;
-#[cfg(all(test, not(target_arch = "wasm32")))]
-mod tests;
 
 pub(crate) use mainlb::*;
 pub(crate) use subsolvers::*;

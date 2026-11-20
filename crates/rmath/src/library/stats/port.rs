@@ -9,7 +9,7 @@
 
 use std::os::raw::{c_char, c_double, c_int};
 
-use crate::appl::lbfgsb::lbfgsb;
+use crate::appl::lbfgsb::{LbfgsbState, lbfgsb, workspace_lengths};
 use crate::sexp::accessors::{INTEGER, LENGTH, REAL, Rf_isNull, TYPEOF};
 use crate::sexp::constructors::Rf_allocVector3;
 use crate::sexp::envir::{R_findVar, defineVar};
@@ -183,10 +183,14 @@ pub unsafe fn port_nlminb(
         let lmm = 10 as c_int;
         let mut f = 0.0 as c_double;
         let mut g = vec![0.0 as c_double; n];
-        let wa_len =
-            (2 * lmm * n as c_int + 5 * n as c_int + 11 * lmm * lmm + 8 * lmm + 1) as usize;
-        let mut wa = vec![0.0 as c_double; wa_len];
-        let mut iwa = vec![0 as c_int; 3 * n];
+        let (wa_len, iwa_len) = c_int::try_from(n)
+            .ok()
+            .and_then(|n| workspace_lengths(n, lmm))
+            .unwrap_or_else(|| {
+                crate::sexp::context::r_error("nlminb workspace exceeds supported dimensions")
+            });
+        let mut wa = vec![0.0 as c_double; wa_len as usize];
+        let mut iwa = vec![0 as c_int; iwa_len as usize];
         let mut task: [c_char; 60] = [0; 60];
         for (slot, byte) in b"START\0".iter().enumerate() {
             task[slot] = *byte as c_char;
@@ -197,8 +201,10 @@ pub unsafe fn port_nlminb(
         let mut converged = false;
         // lbfgsb only prints when iprint >= 0; PORT/optim default to silent.
         let iprint = if trace != 0 { trace } else { -1 };
+        let mut state = LbfgsbState::default();
         loop {
             lbfgsb(
+                &mut state,
                 n as c_int,
                 lmm,
                 x.as_mut_ptr(),
