@@ -38,6 +38,23 @@ impl GraphicsTarget {
         matches!(self.0, Backend::Pdf(_))
     }
 
+    pub(crate) fn write_pdf_page(
+        &self,
+        output: &mut dyn std::io::Write,
+    ) -> Option<std::io::Result<()>> {
+        if let Backend::Pdf(capture) = &self.0 {
+            return Some((|| {
+                capture
+                    .try_borrow()
+                    .map_err(|_| std::io::Error::other("PDF device is busy"))?
+                    .as_ref()
+                    .ok_or_else(|| std::io::Error::other("PDF device is closed"))?
+                    .write_current_page(output)
+            })());
+        }
+        None
+    }
+
     pub(crate) fn same_device(&self, other: &Self) -> bool {
         match (&self.0, &other.0) {
             (

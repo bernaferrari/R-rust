@@ -287,14 +287,32 @@ pub(crate) unsafe fn do_replay(_: SEXP, _: SEXP, args: SEXP, rho: SEXP) -> SEXP 
 }
 pub(crate) unsafe fn record(_: SEXP, _: SEXP, _: SEXP, _: SEXP) -> SEXP {
     unsafe {
-        let bytes = with_required_current_instance(|inst| {
-            (*inst)
-                .graphics_recording
+        use crate::mainutils::browser_files;
+        use std::io;
+        let target = crate::library::grdevices::device_registry::active_target();
+        let screen = with_required_current_instance(|inst| (*inst).graphics_recording.clone());
+        let limit = if browser_files::enabled() {
+            browser_files::MAX_SESSION_BYTES
+        } else {
+            usize::MAX
+        };
+        let bytes = browser_files::generate_admitted_bytes(limit, |output| {
+            if let Some(result) = target
                 .as_ref()
-                .map(|s| s.borrow().encode())
+                .and_then(|target| target.write_pdf_page(output))
+            {
+                return result;
+            }
+            let screen = screen
+                .as_ref()
+                .ok_or_else(|| io::Error::other("no recorded graphics device"))?;
+            let scene = screen
+                .try_borrow()
+                .map_err(|_| io::Error::other("graphics recording is busy"))?;
+            Scene::write_operations(scene.dimensions(), scene.operations(), output)
+                .map_err(io::Error::other)
         })
-        .unwrap_or_else(|| base_error("no recorded graphics device"))
-        .unwrap_or_else(|e| base_error(format!("cannot record plot: {e}")));
+        .unwrap_or_else(|error| base_error(format!("cannot record plot: {error}")));
         let result = Rf_allocVector3(SEXPTYPE::RAWSXP, bytes.len() as i64);
         let _result = protect(result);
         std::ptr::copy_nonoverlapping(bytes.as_ptr(), RAW(result), bytes.len());

@@ -127,6 +127,27 @@ impl DisplayList {
         serde_json::to_vec(self)
     }
 
+    /// Encode a borrowed operation stream without cloning drawing data.
+    pub fn write_operations(
+        dimensions: (u32, u32),
+        operations: &[DrawOperation],
+        output: impl std::io::Write,
+    ) -> Result<(), serde_json::Error> {
+        Self::validate_operations(dimensions, operations).map_err(validation_error)?;
+        #[derive(Serialize)]
+        struct Recording<'a> {
+            dimensions: (u32, u32),
+            operations: &'a [DrawOperation],
+        }
+        serde_json::to_writer(
+            output,
+            &Recording {
+                dimensions,
+                operations,
+            },
+        )
+    }
+
     /// Decode a scene previously returned by [`DisplayList::encode`].
     pub fn decode(bytes: &[u8]) -> Result<Self, serde_json::Error> {
         let scene: Self = serde_json::from_slice(bytes)?;
@@ -147,14 +168,20 @@ impl DisplayList {
 
     /// Check dimensions and all numeric drawing parameters before rendering.
     pub fn validate(&self) -> Result<(), &'static str> {
-        let (width, height) = self.dimensions;
+        Self::validate_operations(self.dimensions, &self.operations)
+    }
+
+    fn validate_operations(
+        (width, height): (u32, u32),
+        operations: &[DrawOperation],
+    ) -> Result<(), &'static str> {
         if width == 0 || height == 0 {
             return Err("scene dimensions must be nonzero");
         }
         if width > MAX_SCENE_DIMENSION || height > MAX_SCENE_DIMENSION {
             return Err("scene dimensions are too large");
         }
-        for operation in &self.operations {
+        for operation in operations {
             match operation {
                 DrawOperation::Clear(_) => {}
                 DrawOperation::Clip(rect) => validate_clip(*rect)?,

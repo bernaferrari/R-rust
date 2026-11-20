@@ -66,6 +66,17 @@ impl PdfCapture {
         ));
     }
 
+    pub(super) fn write_current_page(
+        &self,
+        output: &mut dyn std::io::Write,
+    ) -> std::io::Result<()> {
+        if let Some(error) = self.error {
+            return Err(std::io::Error::other(error));
+        }
+        Scene::write_operations(self.dimensions, &self.operations, output)
+            .map_err(std::io::Error::other)
+    }
+
     pub(super) fn reject_raster(&mut self) {
         self.error
             .get_or_insert("PDF raster images are not supported");
