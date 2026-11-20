@@ -37,17 +37,17 @@ pub fn R_access_X11() -> c_int {
 }
 
 /// .Internal(X11(...)) -- dispatch to X11 module.
-pub unsafe fn do_X11(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_X11(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     unsupported("X11")
 }
 
 /// .Internal(saveplot(...)) -- dispatch to X11 module.
-pub unsafe fn do_saveplot(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_saveplot(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     unsupported("savePlot")
 }
 
 /// Get X11 image data.
-pub unsafe fn R_GetX11Image(
+pub fn R_GetX11Image(
     _d: c_int,
     _pximage: *mut c_void,
     _pwidth: *mut c_int,
@@ -57,12 +57,14 @@ pub unsafe fn R_GetX11Image(
 }
 
 /// Read from X11 clipboard.
-pub unsafe fn R_ReadClipboard(_clpcon: *mut c_void, _type: *mut c_char) -> c_int {
+pub fn R_ReadClipboard(_clpcon: *mut c_void, _type: *mut c_char) -> c_int {
     0 // FALSE
 }
 
 /// Get bitmap library version information.
-pub unsafe fn do_bmVersion() -> SEXP {
+pub fn do_bmVersion() -> SEXP {
+    // SAFETY: SEXP allocation, protection and attribute writes keep the
+    // raw constructors confined to this block.
     unsafe {
         let ans = Rf_allocVector(STRSXP_VAL, 3);
         let _ans = protect(ans);
@@ -84,7 +86,7 @@ pub unsafe fn do_bmVersion() -> SEXP {
 }
 
 /// Set X11 routine dispatch table (stub).
-pub unsafe fn R_setX11Routines(_routines: *mut c_void) -> *mut c_void {
+pub fn R_setX11Routines(_routines: *mut c_void) -> *mut c_void {
     ptr::null_mut()
 }
 
@@ -101,15 +103,13 @@ mod tests {
     #[test]
     fn test_x11_not_available() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            assert_eq!(R_access_X11(), 0);
-        }
+        assert_eq!(R_access_X11(), 0);
     }
 
     #[test]
     fn test_do_x11_reports_unsupported() {
         let _session = crate::sexp::session::RSession::new();
-        let err = std::panic::catch_unwind(|| unsafe {
+        let err = std::panic::catch_unwind(|| {
             do_X11(
                 ptr::null_mut(),
                 ptr::null_mut(),
@@ -131,7 +131,7 @@ mod tests {
     #[test]
     fn test_do_saveplot_reports_unsupported() {
         let _session = crate::sexp::session::RSession::new();
-        let err = std::panic::catch_unwind(|| unsafe {
+        let err = std::panic::catch_unwind(|| {
             do_saveplot(
                 ptr::null_mut(),
                 ptr::null_mut(),
@@ -153,12 +153,10 @@ mod tests {
     #[test]
     fn test_get_x11_image_returns_false() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            assert_eq!(
-                R_GetX11Image(0, ptr::null_mut(), ptr::null_mut(), ptr::null_mut()),
-                0
-            );
-        }
+        assert_eq!(
+            R_GetX11Image(0, ptr::null_mut(), ptr::null_mut(), ptr::null_mut()),
+            0
+        );
     }
 
     #[test]

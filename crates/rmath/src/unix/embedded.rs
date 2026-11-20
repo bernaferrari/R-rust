@@ -13,19 +13,19 @@ use crate::sexp::instance::with_required_current_instance;
 // Stub: Rf_initialize_R, setup_Rmainloop, fpu_setup
 // ---------------------------------------------------------------------------
 
-unsafe fn Rf_initialize_R(_argc: c_int, _argv: *mut *mut c_char) -> c_int {
+fn Rf_initialize_R(_argc: c_int, _argv: *mut *mut c_char) -> c_int {
     0
 }
 
-unsafe fn setup_Rmainloop() {}
+fn setup_Rmainloop() {}
 
-unsafe fn fpu_setup(_start: c_int) {}
+fn fpu_setup(_start: c_int) {}
 
 // ---------------------------------------------------------------------------
 // Stubs for cleanup functions
 // ---------------------------------------------------------------------------
 
-unsafe fn R_RunExitFinalizers() {
+fn R_RunExitFinalizers() {
     // Finalizers flagged `onexit` are marked ready and executed through the
     // same pending-finalizer machinery used during collection safe points
     // (upstream memory.c R_RunExitFinalizers).
@@ -33,10 +33,10 @@ unsafe fn R_RunExitFinalizers() {
         crate::mainutils::memory_main::R_RunExitFinalizers_memory();
     }
 }
-unsafe fn CleanEd() {}
-unsafe fn KillAllDevices() {}
-unsafe fn R_CleanTempDir() {}
-unsafe fn PrintWarnings() {}
+fn CleanEd() {}
+fn KillAllDevices() {}
+fn R_CleanTempDir() {}
+fn PrintWarnings() {}
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -49,16 +49,15 @@ unsafe fn PrintWarnings() {}
 /// be passed to the regular standalone R.
 ///
 /// Returns 1 on success.
-pub unsafe fn Rf_initEmbeddedR(argc: c_int, argv: *mut *mut c_char) -> c_int {
-    unsafe {
-        Rf_initialize_R(argc, argv);
-        with_required_current_instance(|instance| unsafe {
-            (*instance).startup_state.interactive = 1;
-            (*instance).eval_state.interactive = 1;
-        });
-        setup_Rmainloop();
-        1
-    }
+pub fn Rf_initEmbeddedR(argc: c_int, argv: *mut *mut c_char) -> c_int {
+    Rf_initialize_R(argc, argv);
+    with_required_current_instance(|instance| unsafe {
+        // SAFETY: embedded initialization runs on the owning session thread.
+        (*instance).startup_state.interactive = 1;
+        (*instance).eval_state.interactive = 1;
+    });
+    setup_Rmainloop();
+    1
 }
 
 /// End the embedded R session.
@@ -66,19 +65,17 @@ pub unsafe fn Rf_initEmbeddedR(argc: c_int, argv: *mut *mut c_char) -> c_int {
 /// Call with fatal != 0 for emergency bail out.
 /// Performs cleanup: run exit finalizers, clean editor state,
 /// kill graphics devices, clean temp directory, print warnings.
-pub unsafe fn Rf_endEmbeddedR(fatal: c_int) {
-    unsafe {
-        R_RunExitFinalizers();
-        CleanEd();
-        if fatal == 0 {
-            KillAllDevices();
-        }
-        R_CleanTempDir();
-        if fatal == 0 {
-            PrintWarnings();
-        }
-        fpu_setup(0);
+pub fn Rf_endEmbeddedR(fatal: c_int) {
+    R_RunExitFinalizers();
+    CleanEd();
+    if fatal == 0 {
+        KillAllDevices();
     }
+    R_CleanTempDir();
+    if fatal == 0 {
+        PrintWarnings();
+    }
+    fpu_setup(0);
 }
 
 // ---------------------------------------------------------------------------
@@ -92,30 +89,24 @@ mod tests {
     #[test]
     fn test_init_embedded_r_runs() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            let argv: &mut [*mut c_char] = &mut [];
-            let result = Rf_initEmbeddedR(0, argv.as_mut_ptr());
-            assert_eq!(result, 1);
-            with_required_current_instance(|instance| unsafe {
-                assert_eq!((*instance).startup_state.interactive, 1);
-                assert_eq!((*instance).eval_state.interactive, 1);
-            });
-        }
+        let argv: &mut [*mut c_char] = &mut [];
+        let result = Rf_initEmbeddedR(0, argv.as_mut_ptr());
+        assert_eq!(result, 1);
+        with_required_current_instance(|instance| unsafe {
+            assert_eq!((*instance).startup_state.interactive, 1);
+            assert_eq!((*instance).eval_state.interactive, 1);
+        });
     }
 
     #[test]
     fn test_end_embedded_r_runs() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            Rf_endEmbeddedR(0);
-        }
+        Rf_endEmbeddedR(0);
     }
 
     #[test]
     fn test_end_embedded_r_fatal_runs() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            Rf_endEmbeddedR(1);
-        }
+        Rf_endEmbeddedR(1);
     }
 }
