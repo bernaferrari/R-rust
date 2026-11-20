@@ -2142,35 +2142,38 @@ fn allocate_neg_classes(
     source: *const tre_ctype_t,
     storage: &mut Option<&mut super::owned_arena::OwnedArena>,
 ) -> *mut tre_ctype_t {
-    if source.is_null() {
-        return ptr::null_mut();
-    }
-    let mut count = 0usize;
-    while unsafe { *source.add(count) } != 0 {
-        let Some(next) = count.checked_add(1) else {
+    // SAFETY: `source` is a NUL-style 0-terminated tre_ctype_t list produced by
+    // the negated-class compiler; the scan reads at most that list and the copy
+    // writes only inside the freshly allocated `count`-element buffer.
+    unsafe {
+        if source.is_null() {
+            return ptr::null_mut();
+        }
+        let mut count = 0usize;
+        while *source.add(count) != 0 {
+            let Some(next) = count.checked_add(1) else {
+                return ptr::null_mut();
+            };
+            count = next;
+        }
+        let Some(count) = count.checked_add(1) else {
             return ptr::null_mut();
         };
-        count = next;
+        let Some(bytes) = count.checked_mul(std::mem::size_of::<tre_ctype_t>()) else {
+            return ptr::null_mut();
+        };
+        let result: *mut tre_ctype_t = if let Some(storage) = storage {
+            storage
+                .allocate_exact(bytes)
+                .map_or(ptr::null_mut(), |pointer| pointer.cast())
+        } else {
+            mem::xmalloc(bytes).cast()
+        };
+        if !result.is_null() {
+            ptr::copy_nonoverlapping(source, result, count);
+        }
+        result
     }
-    let Some(count) = count.checked_add(1) else {
-        return ptr::null_mut();
-    };
-    let Some(bytes) = count.checked_mul(std::mem::size_of::<tre_ctype_t>()) else {
-        return ptr::null_mut();
-    };
-    let result: *mut tre_ctype_t = if let Some(storage) = storage {
-        storage
-            .allocate_exact(bytes)
-            .map_or(ptr::null_mut(), |pointer| pointer.cast())
-    } else {
-        mem::xmalloc(bytes).cast()
-    };
-    if !result.is_null() {
-        // SAFETY: `result` has `count` writable elements and `source` has
-        // `count` readable ones.
-        unsafe { ptr::copy_nonoverlapping(source, result, count) };
-    }
-    result
 }
 
 fn allocate_submatch_table(

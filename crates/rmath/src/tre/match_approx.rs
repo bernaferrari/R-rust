@@ -62,104 +62,99 @@ fn CHECK_ASSERTIONS(
 
 #[inline]
 fn CHECK_CHAR_CLASSES(
-    trans_i: *const tre_tnfa_transition_t,
-    tnfa: *const tre_tnfa_t,
+    trans_i: &tre_tnfa_transition_t,
+    tnfa: &tre_tnfa_t,
     eflags: c_int,
     prev_c: tre_cint_t,
 ) -> bool {
-    unsafe {
-        let assertions = (*trans_i).assertions;
-        let icase = (*tnfa).cflags & REG_ICASE;
-        ((assertions & ASSERT_CHAR_CLASS) != 0
-            && icase == 0
-            && !super::parse::tre_isctype(prev_c, (*trans_i).u.get_class()))
-            || ((assertions & ASSERT_CHAR_CLASS) != 0
-                && icase != 0
-                && !super::parse::tre_isctype(
-                    super::parse::tre_tolower(prev_c),
-                    (*trans_i).u.get_class(),
-                )
-                && !super::parse::tre_isctype(
-                    super::parse::tre_toupper(prev_c),
-                    (*trans_i).u.get_class(),
-                ))
-            || ((assertions & ASSERT_CHAR_CLASS_NEG) != 0
-                && super::parse::tre_neg_char_classes_match((*trans_i).neg_classes, prev_c, icase)
-                    != 0)
-    }
+    let assertions = trans_i.assertions;
+    let icase = tnfa.cflags & REG_ICASE;
+    ((assertions & ASSERT_CHAR_CLASS) != 0
+        && icase == 0
+        && !super::parse::tre_isctype(prev_c, trans_i.u.get_class()))
+        || ((assertions & ASSERT_CHAR_CLASS) != 0
+            && icase != 0
+            && !super::parse::tre_isctype(
+                super::parse::tre_tolower(prev_c),
+                trans_i.u.get_class(),
+            )
+            && !super::parse::tre_isctype(
+                super::parse::tre_toupper(prev_c),
+                trans_i.u.get_class(),
+            ))
+        || ((assertions & ASSERT_CHAR_CLASS_NEG) != 0
+            && super::parse::tre_neg_char_classes_match(trans_i.neg_classes, prev_c, icase) != 0)
 }
 
 fn tre_set_params(
-    reach: *mut tre_tnfa_approx_reach_t,
-    pa: *const c_int,
+    reach: &mut tre_tnfa_approx_reach_t,
+    pa: &[c_int],
     default_params: regaparams_t,
 ) {
-    unsafe {
-        let value = *pa.add(TRE_PARAM_DEPTH);
-        if value > (*reach).depth {
-            for i in ((*reach).depth as usize + 1)..=value as usize {
-                for j in 0..TRE_M_LAST {
-                    (*reach).costs[i][j] = 0;
-                }
+    let value = pa[TRE_PARAM_DEPTH];
+    if value > reach.depth {
+        for i in (reach.depth as usize + 1)..=value as usize {
+            for j in 0..TRE_M_LAST {
+                reach.costs[i][j] = 0;
             }
         }
-        (*reach).depth = value;
+    }
+    reach.depth = value;
 
-        let mut v = *pa.add(TRE_PARAM_COST_INS);
-        if v == TRE_PARAM_DEFAULT {
-            (*reach).params.cost_ins = default_params.cost_ins;
-        } else if v != TRE_PARAM_UNSET {
-            (*reach).params.cost_ins = v;
-        }
+    let mut v = pa[TRE_PARAM_COST_INS];
+    if v == TRE_PARAM_DEFAULT {
+        reach.params.cost_ins = default_params.cost_ins;
+    } else if v != TRE_PARAM_UNSET {
+        reach.params.cost_ins = v;
+    }
 
-        v = *pa.add(TRE_PARAM_COST_DEL);
-        if v == TRE_PARAM_DEFAULT {
-            (*reach).params.cost_del = default_params.cost_del;
-        } else if v != TRE_PARAM_UNSET {
-            (*reach).params.cost_del = v;
-        }
+    v = pa[TRE_PARAM_COST_DEL];
+    if v == TRE_PARAM_DEFAULT {
+        reach.params.cost_del = default_params.cost_del;
+    } else if v != TRE_PARAM_UNSET {
+        reach.params.cost_del = v;
+    }
 
-        v = *pa.add(TRE_PARAM_COST_SUBST);
-        if v == TRE_PARAM_DEFAULT {
-            (*reach).params.cost_subst = default_params.cost_subst;
-        } else {
-            (*reach).params.cost_subst = v;
-        }
+    v = pa[TRE_PARAM_COST_SUBST];
+    if v == TRE_PARAM_DEFAULT {
+        reach.params.cost_subst = default_params.cost_subst;
+    } else {
+        reach.params.cost_subst = v;
+    }
 
-        v = *pa.add(TRE_PARAM_COST_MAX);
-        if v == TRE_PARAM_DEFAULT {
-            (*reach).params.max_cost = default_params.max_cost;
-        } else if v != TRE_PARAM_UNSET {
-            (*reach).params.max_cost = v;
-        }
+    v = pa[TRE_PARAM_COST_MAX];
+    if v == TRE_PARAM_DEFAULT {
+        reach.params.max_cost = default_params.max_cost;
+    } else if v != TRE_PARAM_UNSET {
+        reach.params.max_cost = v;
+    }
 
-        v = *pa.add(TRE_PARAM_MAX_INS);
-        if v == TRE_PARAM_DEFAULT {
-            (*reach).params.max_ins = default_params.max_ins;
-        } else if v != TRE_PARAM_UNSET {
-            (*reach).params.max_ins = v;
-        }
+    v = pa[TRE_PARAM_MAX_INS];
+    if v == TRE_PARAM_DEFAULT {
+        reach.params.max_ins = default_params.max_ins;
+    } else if v != TRE_PARAM_UNSET {
+        reach.params.max_ins = v;
+    }
 
-        v = *pa.add(TRE_PARAM_MAX_DEL);
-        if v == TRE_PARAM_DEFAULT {
-            (*reach).params.max_del = default_params.max_del;
-        } else if v != TRE_PARAM_UNSET {
-            (*reach).params.max_del = v;
-        }
+    v = pa[TRE_PARAM_MAX_DEL];
+    if v == TRE_PARAM_DEFAULT {
+        reach.params.max_del = default_params.max_del;
+    } else if v != TRE_PARAM_UNSET {
+        reach.params.max_del = v;
+    }
 
-        v = *pa.add(TRE_PARAM_MAX_SUBST);
-        if v == TRE_PARAM_DEFAULT {
-            (*reach).params.max_subst = default_params.max_subst;
-        } else if v != TRE_PARAM_UNSET {
-            (*reach).params.max_subst = v;
-        }
+    v = pa[TRE_PARAM_MAX_SUBST];
+    if v == TRE_PARAM_DEFAULT {
+        reach.params.max_subst = default_params.max_subst;
+    } else if v != TRE_PARAM_UNSET {
+        reach.params.max_subst = v;
+    }
 
-        v = *pa.add(TRE_PARAM_MAX_ERR);
-        if v == TRE_PARAM_DEFAULT {
-            (*reach).params.max_err = default_params.max_err;
-        } else if v != TRE_PARAM_UNSET {
-            (*reach).params.max_err = v;
-        }
+    v = pa[TRE_PARAM_MAX_ERR];
+    if v == TRE_PARAM_DEFAULT {
+        reach.params.max_err = default_params.max_err;
+    } else if v != TRE_PARAM_UNSET {
+        reach.params.max_err = v;
     }
 }
 
@@ -294,7 +289,7 @@ pub fn tre_tnfa_run_approx(
                         if !(*trans).params.is_null() {
                             tre_set_params(
                                 &mut *reach_next.offset(stateid as isize),
-                                (*trans).params,
+                                std::slice::from_raw_parts((*trans).params, TRE_PARAM_LAST),
                                 default_params,
                             );
                         }
@@ -487,10 +482,20 @@ pub fn tre_tnfa_run_approx(
                                     == (*reach_next.offset(dest_id as isize)).costs[0][TRE_M_COST]
                                     && (match_tags.is_null()
                                         || tre_tag_order(
-                                            num_tags,
-                                            (*tnfa).tag_directions,
-                                            tmp_tags,
-                                            (*reach_next.offset(dest_id as isize)).tags,
+                                            std::slice::from_raw_parts(
+                                                ptr_or_dangling((*tnfa).tag_directions),
+                                                num_tags as usize,
+                                            ),
+                                            std::slice::from_raw_parts(
+                                                ptr_or_dangling(tmp_tags),
+                                                num_tags as usize,
+                                            ),
+                                            std::slice::from_raw_parts(
+                                                ptr_or_dangling(
+                                                    (*reach_next.offset(dest_id as isize)).tags
+                                                ),
+                                                num_tags as usize,
+                                            ),
                                         ) == 0)))
                         {
                             trans = trans.add(1);
@@ -509,7 +514,7 @@ pub fn tre_tnfa_run_approx(
                         if !(*trans).params.is_null() {
                             tre_set_params(
                                 &mut *reach_next.offset(dest_id as isize),
-                                (*trans).params,
+                                std::slice::from_raw_parts((*trans).params, TRE_PARAM_LAST),
                                 default_params,
                             );
                         }
@@ -617,7 +622,7 @@ pub fn tre_tnfa_run_approx(
                             reg_notbol,
                             reg_noteol,
                             reg_newline,
-                        ) || CHECK_CHAR_CLASSES(trans, tnfa, eflags, prev_c))
+                        ) || CHECK_CHAR_CLASSES(&*trans, &*tnfa, eflags, prev_c))
                     {
                         trans = trans.add(1);
                         continue;
@@ -675,10 +680,20 @@ pub fn tre_tnfa_run_approx(
                             || (cost0
                                 == (*reach_next.offset(dest_id as isize)).costs[0][TRE_M_COST]
                                 && tre_tag_order(
-                                    num_tags,
-                                    (*tnfa).tag_directions,
-                                    tmp_tags,
-                                    (*reach_next.offset(dest_id as isize)).tags,
+                                    std::slice::from_raw_parts(
+                                        ptr_or_dangling((*tnfa).tag_directions),
+                                        num_tags as usize,
+                                    ),
+                                    std::slice::from_raw_parts(
+                                        ptr_or_dangling(tmp_tags),
+                                        num_tags as usize,
+                                    ),
+                                    std::slice::from_raw_parts(
+                                        ptr_or_dangling(
+                                            (*reach_next.offset(dest_id as isize)).tags
+                                        ),
+                                        num_tags as usize,
+                                    ),
                                 ) == 0))
                     {
                         trans = trans.add(1);
@@ -700,7 +715,7 @@ pub fn tre_tnfa_run_approx(
                     if !(*trans).params.is_null() {
                         tre_set_params(
                             &mut *reach_next.offset(dest_id as isize),
-                            (*trans).params,
+                            std::slice::from_raw_parts((*trans).params, TRE_PARAM_LAST),
                             default_params,
                         );
                     }
@@ -759,10 +774,7 @@ pub fn tre_tnfa_run_approx(
 }
 
 fn align_ptr_approx(p: *mut u8) -> *mut u8 {
-    unsafe {
-        let align = std::mem::size_of::<usize>();
-        let addr = p as usize;
-        let rem = addr % align;
-        if rem == 0 { p } else { p.add(align - rem) }
-    }
+    // Align with address arithmetic only: the resulting pointer is merely
+    // carried around, never dereferenced here, so no unsafe op is needed.
+    (p as usize).next_multiple_of(std::mem::size_of::<usize>()) as *mut u8
 }

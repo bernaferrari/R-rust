@@ -699,30 +699,45 @@ fn tre_parse_bracket(ctx: &mut tre_parse_ctx_t, result: &mut *mut tre_ast_node_t
     }
 }
 
-fn tre_parse_int(regex: &mut *const tre_char_t, regex_end: *const tre_char_t) -> c_int {
-    unsafe {
-        let mut num: c_int = -1;
-        let mut overflow = 0;
-        let mut r = *regex;
-        while r < regex_end && *r >= '0' as tre_char_t && *r <= '9' as tre_char_t {
-            if num < 0 {
-                num = 0;
-            }
-            if num <= (c_int::MAX - 9) / 10 {
-                num = num * 10 + (*r - '0' as tre_char_t) as c_int;
-            } else {
-                overflow = 1;
-            }
-            r = r.add(1);
+/// Parse a decimal run from a bounded digit span; returns the value and how
+/// many characters were consumed. Pure slice logic — callers slice `re..re_end`.
+fn tre_parse_int(digits: &[tre_char_t]) -> (c_int, usize) {
+    let mut num: c_int = -1;
+    let mut overflow = 0;
+    let mut used = 0;
+    for &c in digits {
+        if !(c >= '0' as tre_char_t && c <= '9' as tre_char_t) {
+            break;
         }
-        *regex = r;
-        if overflow != 0 { -1 } else { num }
+        if num < 0 {
+            num = 0;
+        }
+        if num <= (c_int::MAX - 9) / 10 {
+            num = num * 10 + (c - '0' as tre_char_t) as c_int;
+        } else {
+            overflow = 1;
+        }
+        used += 1;
     }
+    (if overflow != 0 { -1 } else { num }, used)
 }
 
 #[allow(clippy::if_same_then_else)]
 fn tre_parse_bound(ctx: &mut tre_parse_ctx_t, result: &mut *mut tre_ast_node_t) -> c_int {
     unsafe {
+        // Slice ctx.re..ctx.re_end, run the safe digit parser, then advance re.
+        macro_rules! parse_int {
+            () => {{
+                let rem = std::slice::from_raw_parts(
+                    ctx.re,
+                    ctx.re_end.offset_from(ctx.re) as usize,
+                );
+                let (v, used) = tre_parse_int(rem);
+                ctx.re = ctx.re.add(used);
+                v
+            }};
+        }
+
         let mut min: c_int;
         let mut max: c_int;
         let mut i: c_int;
@@ -742,13 +757,13 @@ fn tre_parse_bound(ctx: &mut tre_parse_ctx_t, result: &mut *mut tre_ast_node_t) 
 
         min = -1;
         if ctx.re < ctx.re_end && *ctx.re >= '0' as tre_char_t && *ctx.re <= '9' as tre_char_t {
-            min = tre_parse_int(&mut ctx.re, ctx.re_end);
+            min = parse_int!();
         }
 
         max = min;
         if ctx.re < ctx.re_end && *ctx.re == CHAR_COMMA {
             ctx.re = ctx.re.add(1);
-            max = tre_parse_int(&mut ctx.re, ctx.re_end);
+            max = parse_int!();
         }
 
         if (max >= 0 && min > max) || max > RE_DUP_MAX {
@@ -764,28 +779,28 @@ fn tre_parse_bound(ctx: &mut tre_parse_ctx_t, result: &mut *mut tre_ast_node_t) 
                     let c = *ctx.re;
                     if c == CHAR_PLUS {
                         ctx.re = ctx.re.add(1);
-                        limit_ins = tre_parse_int(&mut ctx.re, ctx.re_end);
+                        limit_ins = parse_int!();
                         if limit_ins < 0 {
                             limit_ins = c_int::MAX;
                         }
                         counts_set = 1;
                     } else if c == CHAR_MINUS {
                         ctx.re = ctx.re.add(1);
-                        limit_del = tre_parse_int(&mut ctx.re, ctx.re_end);
+                        limit_del = parse_int!();
                         if limit_del < 0 {
                             limit_del = c_int::MAX;
                         }
                         counts_set = 1;
                     } else if c == CHAR_HASH {
                         ctx.re = ctx.re.add(1);
-                        limit_subst = tre_parse_int(&mut ctx.re, ctx.re_end);
+                        limit_subst = parse_int!();
                         if limit_subst < 0 {
                             limit_subst = c_int::MAX;
                         }
                         counts_set = 1;
                     } else if c == CHAR_TILDE {
                         ctx.re = ctx.re.add(1);
-                        limit_err = tre_parse_int(&mut ctx.re, ctx.re_end);
+                        limit_err = parse_int!();
                         if limit_err < 0 {
                             limit_err = c_int::MAX;
                         }
@@ -812,7 +827,7 @@ fn tre_parse_bound(ctx: &mut tre_parse_ctx_t, result: &mut *mut tre_ast_node_t) 
                         while ctx.re < ctx.re_end && *ctx.re == CHAR_SPACE {
                             ctx.re = ctx.re.add(1);
                         }
-                        cost_max = tre_parse_int(&mut ctx.re, ctx.re_end);
+                        cost_max = parse_int!();
                         if cost_max < 0 {
                             cost_max = c_int::MAX;
                         } else {
@@ -823,7 +838,7 @@ fn tre_parse_bound(ctx: &mut tre_parse_ctx_t, result: &mut *mut tre_ast_node_t) 
                         ctx.re = ctx.re.add(1);
                         done = true;
                     } else if c >= '0' as tre_char_t && c <= '9' as tre_char_t {
-                        let cost = tre_parse_int(&mut ctx.re, ctx.re_end);
+                        let cost = parse_int!();
                         let next_c = *ctx.re;
                         if next_c == 'i' as tre_char_t {
                             ctx.re = ctx.re.add(1);
