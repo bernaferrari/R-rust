@@ -245,24 +245,5 @@ fn compression(access: &RuntimeAccess, value: &Sexp<'static>) -> SexpResult<i32>
     access.with_native(|_| unsafe { Ok(crate::mainutils::coerce::asInteger(value.as_raw())) })
 }
 
-fn decode(
-    access: &RuntimeAccess,
-    raw: &Sexp<'static>,
-    hook: &Sexp<'static>,
-) -> SexpResult<Sexp<'static>> {
-    let domain = access.domain();
-    domain.link(raw)?;
-    domain.link(hook)?;
-    // The input and hook retain exact independent leases through reader callbacks.
-    access.with_native(|owner| unsafe {
-        owner
-            .sexp(crate::mainutils::serialize::R_unserialize(
-                raw.as_raw(),
-                hook.as_raw(),
-            ))?
-            .into_owned()
-    })
-}
-
 #[cfg(test)]
 mod tests;

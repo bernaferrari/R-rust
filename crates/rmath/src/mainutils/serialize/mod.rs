@@ -241,6 +241,7 @@ pub use self::compress::*;
 pub use self::core::*;
 pub use self::lazyload::*;
 pub use self::membuf::*;
+pub(crate) use self::raw_codecs::DecodeError as LazyRecordDecodeError;
 pub use self::stream::*;
 #[cfg(test)]
 mod tests;

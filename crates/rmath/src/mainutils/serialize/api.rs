@@ -1495,7 +1495,7 @@ pub unsafe fn do_lazyLoadDBflush(call: SEXP, op: SEXP, args: SEXP, env: SEXP) ->
 /// The failed codec has dropped every temporary reservation and constructs no
 /// R graph. At actual resource denial only, the caller's owned operands and
 /// native snapshot permit one full collection and retry in the same runtime.
-fn decode_lazy_record(
+pub(crate) fn decode_lazy_record(
     owner: &crate::sexp::owner::OwnerToken<'_>,
     encoded: &[u8],
     mode: u8,

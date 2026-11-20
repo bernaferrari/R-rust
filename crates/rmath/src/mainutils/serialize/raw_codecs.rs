@@ -9,7 +9,7 @@ use crate::sexp::owner::OwnerToken;
 use std::io::{self, Read, Write};
 
 #[derive(Debug)]
-pub(super) enum DecodeError {
+pub(crate) enum DecodeError {
     Resource(String),
     Invalid,
 }

@@ -360,43 +360,55 @@ pub(super) fn load_topic(topic: &str, target: Sexp<'static>) -> Result<bool, Str
     })
 }
 
+fn record_bytes(
+    access: &RuntimeAccess,
+    file: &Sexp<'static>,
+    key: &Sexp<'static>,
+) -> Result<Option<&'static [u8]>, String> {
+    access.domain().link(key).map_err(|e| e.to_string())?;
+    if file.typeof_() != SEXPTYPE::STRSXP
+        || file.len() != 1
+        || !matches!(
+            file.try_string_value_elt(0)
+                .map_err(|e| e.to_string())?
+                .as_deref(),
+            Some(super::DATABASE) | Some(super::PACKAGE_DATABASE)
+        )
+    {
+        return Ok(None);
+    }
+    access.require_active().map_err(|e| e.to_string())?;
+    if key.typeof_() != SEXPTYPE::INTSXP || key.len() != 2 {
+        return Err("bad offset/length argument".into());
+    }
+    let offset = key.try_integer_elt(0).map_err(|e| e.to_string())?;
+    let length = key.try_integer_elt(1).map_err(|e| e.to_string())?;
+    access.require_active().map_err(|e| e.to_string())?;
+    if !super::inventory::OBJECTS
+        .iter()
+        .any(|(_, start, count)| *start == offset && *count == length)
+    {
+        return Err("bad offset/length argument".into());
+    }
+    let bytes = include_bytes!("assets/Rdata.rdb");
+    bytes
+        .get(offset as usize..(offset as usize + length as usize))
+        .map(Some)
+        .ok_or_else(|| "bad offset/length argument".into())
+}
+
 pub(super) fn read_database(
     file: Sexp<'static>,
     key: Sexp<'static>,
 ) -> Result<Option<Sexp<'static>>, String> {
     execute(&file, |access| {
-        access.domain().link(&key).map_err(|e| e.to_string())?;
-        if file.typeof_() != SEXPTYPE::STRSXP
-            || file.len() != 1
-            || !matches!(
-                file.try_string_value_elt(0)
-                    .map_err(|e| e.to_string())?
-                    .as_deref(),
-                Some(super::DATABASE) | Some(super::PACKAGE_DATABASE)
-            )
-        {
+        let Some(chunk) = record_bytes(access, &file, &key)? else {
             return Ok(None);
-        }
-        access.require_active().map_err(|e| e.to_string())?;
-        if key.typeof_() != SEXPTYPE::INTSXP || key.len() != 2 {
-            return Err("bad offset/length argument".into());
-        }
-        let offset = key.try_integer_elt(0).map_err(|e| e.to_string())?;
-        let length = key.try_integer_elt(1).map_err(|e| e.to_string())?;
-        if !super::inventory::OBJECTS
-            .iter()
-            .any(|(_, start, count)| *start == offset && *count == length)
-        {
-            return Err("bad offset/length argument".into());
-        }
-        let bytes = include_bytes!("assets/Rdata.rdb");
-        let chunk = bytes
-            .get(offset as usize..(offset as usize + length as usize))
-            .ok_or("bad offset/length argument")?;
+        };
         let domain = access.domain();
         let allocator = access.allocator(&domain).map_err(|e| e.to_string())?;
         let raw = allocator
-            .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::RAWSXP, length.into())))
+            .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::RAWSXP, chunk.len() as i64)))
             .map_err(|e| e.to_string())?;
         let mut raw = SexpMut::try_from_checked(raw).map_err(|e| e.to_string())?;
         for (index, byte) in chunk.iter().copied().enumerate() {
@@ -414,124 +426,40 @@ pub(super) fn fetch(
     compressed: Sexp<'static>,
     hook: Sexp<'static>,
 ) -> Result<Sexp<'static>, String> {
+    use crate::mainutils::serialize::{
+        LazyRecordDecodeError, decode_lazy_record, unserialize_native_snapshot,
+    };
+
     execute(&file, |access| {
         let domain = access.domain();
         domain.link(&key).map_err(|e| e.to_string())?;
         domain.link(&compressed).map_err(|e| e.to_string())?;
         domain.link(&hook).map_err(|e| e.to_string())?;
-        let compression = super::compression(access, &compressed).map_err(|e| e.to_string())?;
-        if compression != 3 {
-            return Err(format!(
-                "lazy-load database '{}' is corrupt",
-                super::DATABASE
-            ));
+        let corrupt = || format!("lazy-load database '{}' is corrupt", super::DATABASE);
+        if super::compression(access, &compressed).map_err(|e| e.to_string())? != 3 {
+            return Err(corrupt());
         }
-        let raw =
-            read_database(file.clone(), key.clone())?.ok_or("not a portable datasets database")?;
-        // The original, authenticated records bound both the input and expanded
-        // buffer size; reserve that native-provider workspace before decoding.
-        // Read the private selected bytes, never reread a caller's mutable key
-        // after the raw-vector allocation can run a collection callback.
-        let mut prefix = [0; 4];
-        for (index, byte) in prefix.iter_mut().enumerate() {
-            *byte = raw.try_raw_elt(index as _).map_err(|e| e.to_string())?;
+        let record =
+            record_bytes(access, &file, &key)?.ok_or("not a portable datasets database")?;
+        if record.get(4) != Some(&b'Z') {
+            return Err(corrupt());
         }
-        let expanded = u32::from_be_bytes(prefix) as usize;
-        let workspace = expanded
-            .checked_add(
-                raw.len()
-                    .try_into()
-                    .map_err(|_| "datasets record is too large")?,
-            )
-            .ok_or("datasets record is too large")?;
-        let _reservation = access
-            .with_arena(|arena| arena.try_reserve_transient(workspace))
-            .map_err(|e| e.to_string())?
-            .ok_or("allocation failed while decoding datasets")?;
-        let decoded = decompress(access, &raw, expanded)?;
-        let value = super::decode(access, &decoded, &hook).map_err(|e| e.to_string())?;
+        // The validated range borrows the immutable database itself. Preserve
+        // that exact selection across collection and restore-hook callbacks.
+        let value = access
+            .with_native(|owner| {
+                let decoded = decode_lazy_record(&owner, record, 3).map_err(|error| {
+                    let message = match error {
+                        LazyRecordDecodeError::Invalid => corrupt(),
+                        LazyRecordDecodeError::Resource(message) => message,
+                    };
+                    crate::sexp::object::SexpError::EvaluationFailed { message }
+                })?;
+                unserialize_native_snapshot(&owner, &decoded, &hook)
+            })
+            .map_err(|e| e.to_string())?;
         let value = super::force(access, &value).map_err(|e| e.to_string())?;
         access.require_active().map_err(|e| e.to_string())?;
         Ok(value)
     })
-}
-
-fn decompress(
-    access: &RuntimeAccess,
-    raw: &Sexp<'static>,
-    expanded: usize,
-) -> Result<Sexp<'static>, String> {
-    use std::io::Write;
-
-    // Every admitted key selects an authenticated, immutable compression-3/Z
-    // record. Copy it before decoding, without lending an R payload to a codec.
-    let length: usize = raw
-        .len()
-        .try_into()
-        .map_err(|_| "datasets record is too large")?;
-    let mut bytes = Vec::new();
-    bytes
-        .try_reserve_exact(length)
-        .map_err(|_| "allocation failed while decoding datasets")?;
-    for index in 0..length {
-        bytes.push(raw.try_raw_elt(index as _).map_err(|e| e.to_string())?);
-    }
-    if bytes.get(4) != Some(&b'Z') {
-        return Err(format!(
-            "lazy-load database '{}' is corrupt",
-            super::DATABASE
-        ));
-    }
-
-    struct BoundedOutput {
-        bytes: Vec<u8>,
-        limit: usize,
-    }
-    impl Write for BoundedOutput {
-        fn write(&mut self, input: &[u8]) -> std::io::Result<usize> {
-            if input.len() > self.limit.saturating_sub(self.bytes.len()) {
-                return Err(std::io::Error::other(
-                    "datasets decoded length exceeds its original record",
-                ));
-            }
-            self.bytes.extend_from_slice(input);
-            Ok(input.len())
-        }
-        fn flush(&mut self) -> std::io::Result<()> {
-            Ok(())
-        }
-    }
-    let mut output = BoundedOutput {
-        bytes: Vec::new(),
-        limit: expanded,
-    };
-    output
-        .bytes
-        .try_reserve_exact(expanded)
-        .map_err(|_| "allocation failed while decoding datasets")?;
-    lzma_rs::lzma2_decompress(&mut std::io::BufReader::new(&bytes[5..]), &mut output)
-        .map_err(|_| format!("lazy-load database '{}' is corrupt", super::DATABASE))?;
-    if output.bytes.len() != expanded {
-        return Err(format!(
-            "lazy-load database '{}' is corrupt",
-            super::DATABASE
-        ));
-    }
-    access.require_active().map_err(|e| e.to_string())?;
-    let domain = access.domain();
-    let allocator = access.allocator(&domain).map_err(|e| e.to_string())?;
-    let length = expanded
-        .try_into()
-        .map_err(|_| "datasets record is too large")?;
-    let decoded = allocator
-        .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::RAWSXP, length)))
-        .map_err(|e| e.to_string())?;
-    let mut decoded = SexpMut::try_from_checked(decoded).map_err(|e| e.to_string())?;
-    for (index, byte) in output.bytes.into_iter().enumerate() {
-        decoded
-            .try_set_raw_elt(index as _, byte)
-            .map_err(|e| e.to_string())?;
-    }
-    access.require_active().map_err(|e| e.to_string())?;
-    Ok(decoded.freeze())
 }
