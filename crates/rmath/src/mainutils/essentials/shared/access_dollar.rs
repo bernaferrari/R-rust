@@ -8,8 +8,8 @@ pub(crate) enum DatetimeVectorClass {
     Posixct,
 }
 
-pub(crate) unsafe fn leading_datetime_class(args: SEXP) -> Option<(DatetimeVectorClass, SEXP)> {
-    unsafe {
+pub(crate) fn leading_datetime_class(args: SEXP) -> Option<(DatetimeVectorClass, SEXP)> {
+    {
         if args.is_null() || args == R_NilValue() {
             return None;
         }
@@ -24,7 +24,7 @@ pub(crate) unsafe fn leading_datetime_class(args: SEXP) -> Option<(DatetimeVecto
     }
 }
 
-pub(crate) unsafe fn posixct_tzone_string(source: SEXP) -> String {
+pub(crate) fn posixct_tzone_string(source: SEXP) -> String {
     unsafe {
         let tzone = crate::sexp::attrib_core::getAttrib(source, Rf_install(c"tzone".as_ptr()));
         if tzone.is_null() || tzone == R_NilValue() || TYPEOF(tzone) != SEXPTYPE::STRSXP {
@@ -44,12 +44,12 @@ pub(crate) unsafe fn posixct_tzone_string(source: SEXP) -> String {
     }
 }
 
-pub(crate) unsafe fn set_datetime_class_from(
+pub(crate) fn set_datetime_class_from(
     result: SEXP,
     source: SEXP,
     class: DatetimeVectorClass,
 ) {
-    unsafe {
+    {
         match class {
             DatetimeVectorClass::Date => set_single_class(result, "Date"),
             DatetimeVectorClass::Posixct => {
@@ -59,7 +59,7 @@ pub(crate) unsafe fn set_datetime_class_from(
     }
 }
 
-pub(crate) unsafe fn integer_or_logical_elt(value: SEXP, index: c_int) -> c_int {
+pub(crate) fn integer_or_logical_elt(value: SEXP, index: c_int) -> c_int {
     unsafe {
         match TYPEOF(value) {
             t if t == SEXPTYPE::INTSXP => INTEGER_ELT(value, index),
@@ -69,7 +69,7 @@ pub(crate) unsafe fn integer_or_logical_elt(value: SEXP, index: c_int) -> c_int 
     }
 }
 
-pub unsafe fn do_cache_class(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_cache_class(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         crate::mainutils::seq::check1arg(args, call, c"class".as_ptr());
         if args.is_null() || args == R_NilValue() || CDR(args) == R_NilValue() {
@@ -100,7 +100,7 @@ pub unsafe fn do_cache_class(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
     }
 }
 
-pub unsafe fn do_xtfrm(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_xtfrm(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         if args.is_null() || args == R_NilValue() {
             return R_NilValue();
@@ -184,7 +184,7 @@ pub unsafe fn do_xtfrm(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// `@` method registered (the only case in this port) it falls through to
 /// the stock checks: only S4 objects (or `.Data`) may be slot-extracted,
 /// otherwise "no applicable method for `@` ..." with the object's class.
-pub unsafe fn do_at(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_at(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         if args.is_null() || args == R_NilValue() || CDR(args) == R_NilValue() {
             return R_NilValue();
@@ -249,7 +249,7 @@ pub unsafe fn do_at(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     }
 }
 
-pub unsafe fn do_at_set(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_at_set(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         if args.is_null() || args == R_NilValue() {
             return R_NilValue();
@@ -284,7 +284,7 @@ pub unsafe fn do_at_set(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     }
 }
 
-pub(crate) unsafe fn replacement_name(arg: SEXP) -> String {
+pub(crate) fn replacement_name(arg: SEXP) -> String {
     {
         if arg.is_null() || arg == R_NilValue() {
             String::new()
@@ -339,7 +339,7 @@ pub(super) fn frame_row_count(df: SEXP) -> i64 {
 }
 
 /// Copy element `from` of `src` to element `to` of `dst` for any vector type.
-pub(super) unsafe fn copy_vector_element(src: SEXP, from: i64, dst: SEXP, to: i64) {
+pub(super) fn copy_vector_element(src: SEXP, from: i64, dst: SEXP, to: i64) {
     unsafe {
         match TYPEOF(src) {
             t if t == crate::sexp::ffi::SEXPTYPE::INTSXP => {
@@ -373,7 +373,7 @@ pub(super) unsafe fn copy_vector_element(src: SEXP, from: i64, dst: SEXP, to: i6
     }
 }
 
-pub unsafe fn do_dollar_set(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_dollar_set(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         if args.is_null() || args == R_NilValue() || CDR(args) == R_NilValue() {
             return R_NilValue();

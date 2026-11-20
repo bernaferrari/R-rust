@@ -2,7 +2,7 @@
 
 use super::*;
 
-pub(crate) unsafe fn load_package_namespace(
+pub(crate) fn load_package_namespace(
     package: &str,
     package_dir: &Path,
     loading: &mut Vec<String>,
@@ -239,7 +239,7 @@ pub(crate) fn cached_namespace_by_name(package: &str) -> Option<SEXP> {
 }
 
 pub(crate) fn package_arg_values(package_arg: SEXP) -> Vec<String> {
-    unsafe {
+    {
         if package_arg.is_null() || package_arg == R_NilValue() || XLENGTH(package_arg) == 0 {
             return Vec::new();
         }
@@ -302,7 +302,7 @@ pub(crate) fn data_package_dirs(packages: &[String]) -> Vec<PathBuf> {
     })
 }
 
-pub(crate) unsafe fn load_package_data_set(
+pub(crate) fn load_package_data_set(
     topic: &str,
     packages: &[String],
     target_env: SEXP,
@@ -315,7 +315,7 @@ pub(crate) unsafe fn load_package_data_set(
                 source_r_file_into_env(&source_file, target_env)?;
                 return Ok(true);
             }
-            let serialized_allowed = crate::sexp::instance::with_current_instance(|inst| unsafe {
+            let serialized_allowed = crate::sexp::instance::with_current_instance(|inst| {
                 (*inst).path_policy.allows_serialized_data()
             })
             .unwrap_or(true);
@@ -373,7 +373,7 @@ pub(crate) unsafe fn load_package_data_set(
     }
 }
 
-pub(crate) unsafe fn source_r_file_into_env(file: &Path, env: SEXP) -> Result<(), String> {
+pub(crate) fn source_r_file_into_env(file: &Path, env: SEXP) -> Result<(), String> {
     unsafe {
         let code = read_package_text(file)
             .map_err(|err| format!("could not read {}: {err}", file.display()))?;
@@ -387,7 +387,7 @@ pub(crate) unsafe fn source_r_file_into_env(file: &Path, env: SEXP) -> Result<()
     }
 }
 
-pub(super) unsafe fn define_package_name(package: &str, package_env: SEXP) {
+pub(super) fn define_package_name(package: &str, package_env: SEXP) {
     unsafe {
         let package_string = Rf_mkString(CString::new(package).unwrap_or_default().as_ptr());
         if !package_string.is_null() {
@@ -396,7 +396,7 @@ pub(super) unsafe fn define_package_name(package: &str, package_env: SEXP) {
     }
 }
 
-pub(crate) unsafe fn define_package_metadata(package: &str, package_env: SEXP) {
+pub(crate) fn define_package_metadata(package: &str, package_env: SEXP) {
     unsafe {
         define_package_name(package, package_env);
         let search_name = format!("package:{package}");
@@ -420,7 +420,7 @@ pub(crate) unsafe fn define_package_metadata(package: &str, package_env: SEXP) {
 
 /// GNU utils' `.osVersion()`: a pretty OS description. Assigned into the
 /// utils namespace when its `.onLoad` could not (GNU's zzz.R).
-pub(super) unsafe fn ensure_utils_os_version(package_env: SEXP) {
+pub(super) fn ensure_utils_os_version(package_env: SEXP) {
     unsafe {
         let sym = Rf_install(c"osVersion".as_ptr());
         let existing = crate::sexp::envir::R_findVarInFrame(package_env, sym);
@@ -475,7 +475,7 @@ pub(super) fn gnu_os_version_string() -> Option<String> {
     })
 }
 
-pub(super) unsafe fn ensure_s3methods_slot(info: SEXP) {
+pub(super) fn ensure_s3methods_slot(info: SEXP) {
     unsafe {
         let sym = Rf_install(c"S3methods".as_ptr());
         let existing = crate::sexp::envir::R_findVarInFrame(info, sym);
@@ -491,7 +491,7 @@ pub(super) unsafe fn ensure_s3methods_slot(info: SEXP) {
     }
 }
 
-pub(super) unsafe fn record_namespace_s3_metadata(
+pub(super) fn record_namespace_s3_metadata(
     package_env: SEXP,
     directives: &NamespaceDirectives,
 ) {

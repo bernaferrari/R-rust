@@ -2,23 +2,23 @@
 
 use super::*;
 
-pub(crate) unsafe fn package_name_symbol() -> SEXP {
+pub(crate) fn package_name_symbol() -> SEXP {
     unsafe { Rf_install(c".packageName".as_ptr()) }
 }
 
-pub(crate) unsafe fn name_symbol() -> SEXP {
+pub(crate) fn name_symbol() -> SEXP {
     unsafe { Rf_install(c"name".as_ptr()) }
 }
 
-pub(crate) unsafe fn namespace_env_symbol() -> SEXP {
+pub(crate) fn namespace_env_symbol() -> SEXP {
     unsafe { Rf_install(c".namespaceEnv".as_ptr()) }
 }
 
-pub(crate) unsafe fn lazy_data_names_symbol() -> SEXP {
+pub(crate) fn lazy_data_names_symbol() -> SEXP {
     unsafe { Rf_install(c".lazyDataNames".as_ptr()) }
 }
 
-pub(crate) unsafe fn package_name_binding(env: SEXP) -> Option<String> {
+pub(crate) fn package_name_binding(env: SEXP) -> Option<String> {
     unsafe {
         let value = crate::sexp::envir::R_findVarInFrame(env, package_name_symbol());
         if value.is_null()
@@ -33,7 +33,7 @@ pub(crate) unsafe fn package_name_binding(env: SEXP) -> Option<String> {
     }
 }
 
-pub(crate) unsafe fn package_attached(package: &str) -> bool {
+pub(crate) fn package_attached(package: &str) -> bool {
     unsafe {
         let mut env = crate::sexp::accessors::ENCLOS(crate::sexp::globals::R_GlobalEnv());
         let base = crate::sexp::globals::R_BaseEnv();
@@ -47,7 +47,7 @@ pub(crate) unsafe fn package_attached(package: &str) -> bool {
     }
 }
 
-pub(super) unsafe fn attached_package_env(package: &str) -> Option<SEXP> {
+pub(super) fn attached_package_env(package: &str) -> Option<SEXP> {
     unsafe {
         let mut env = crate::sexp::accessors::ENCLOS(crate::sexp::globals::R_GlobalEnv());
         let base = crate::sexp::globals::R_BaseEnv();
@@ -61,12 +61,12 @@ pub(super) unsafe fn attached_package_env(package: &str) -> Option<SEXP> {
     }
 }
 
-pub(crate) unsafe fn load_pure_r_package(package: &str, package_dir: &Path) -> Result<(), String> {
+pub(crate) fn load_pure_r_package(package: &str, package_dir: &Path) -> Result<(), String> {
     let mut loading = Vec::<String>::new();
-    unsafe { load_pure_r_package_recursive(package, package_dir, &mut loading) }
+    { load_pure_r_package_recursive(package, package_dir, &mut loading) }
 }
 
-pub(crate) unsafe fn load_pure_r_package_recursive(
+pub(crate) fn load_pure_r_package_recursive(
     package: &str,
     package_dir: &Path,
     loading_packages: &mut Vec<String>,
@@ -122,12 +122,12 @@ pub(crate) unsafe fn load_pure_r_package_recursive(
     }
 }
 
-pub(crate) unsafe fn load_package_dependencies(
+pub(crate) fn load_package_dependencies(
     package: &str,
     package_dir: &Path,
     loading_packages: &mut Vec<String>,
 ) -> Result<(), String> {
-    unsafe {
+    {
         for dependency in package_depends_names(package_dir)? {
             if is_builtin_package_dependency(&dependency) || package_attached(&dependency) {
                 continue;
@@ -202,7 +202,7 @@ pub(super) fn check_dependency_versions(
             .ok_or_else(|| {
                 format!("package '{package}' has an invalid {field} version constraint for '{dependency}'")
             })?;
-        unsafe { super::package_paths::check_declared_dependency(dependency, &requirement) }
+        { super::package_paths::check_declared_dependency(dependency, &requirement) }
             .map_err(|error| {
                 format!("package '{package}' has an unsatisfied {field} requirement: {error}")
             })?;
@@ -363,7 +363,7 @@ pub(crate) fn is_builtin_package_dependency(package: &str) -> bool {
     )
 }
 
-pub(crate) unsafe fn bind_methods_base_primitives(ns: SEXP) {
+pub(crate) fn bind_methods_base_primitives(ns: SEXP) {
     unsafe {
         for name in [
             "standardGeneric",
@@ -397,7 +397,7 @@ pub(crate) unsafe fn bind_methods_base_primitives(ns: SEXP) {
 
 /// Finish the same original namespace lifecycle for installed and portable images.
 /// No runtime/field loan remains live while a step can evaluate R code.
-pub(crate) unsafe fn finalize_methods_namespace(namespace: SEXP) {
+pub(crate) fn finalize_methods_namespace(namespace: SEXP) {
     unsafe {
         let owner = crate::sexp::owner::OwnerToken::current()
             .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
@@ -431,7 +431,7 @@ pub(crate) unsafe fn finalize_methods_namespace(namespace: SEXP) {
 /// Restore the session-specific methods dispatch state after loading its image.
 /// The installed image contains its class and implicit-generic tables already;
 /// GNU's installed `.onLoad` initializes dispatch without recaching that namespace.
-pub(crate) unsafe fn run_methods_onload_cache_metadata(where_env: SEXP) {
+pub(crate) fn run_methods_onload_cache_metadata(where_env: SEXP) {
     unsafe {
         if where_env.is_null() || where_env == R_NilValue() {
             return;
@@ -503,7 +503,7 @@ NULL"
 
 /// Materialize the original methods generic only when S4 primitive dispatch
 /// first requests it. Ordinary console and plotting work need no S4 table.
-pub(crate) unsafe fn ensure_methods_primitive_generic(op: SEXP) {
+pub(crate) fn ensure_methods_primitive_generic(op: SEXP) {
     unsafe {
         if op.is_null() || crate::mainutils::objects::R_primitive_generic(op) != R_NilValue() {
             return;
@@ -516,7 +516,7 @@ pub(crate) unsafe fn ensure_methods_primitive_generic(op: SEXP) {
     }
 }
 
-pub(crate) unsafe fn ensure_methods_primitive_generic_for_object(op: SEXP, object: SEXP) -> bool {
+pub(crate) fn ensure_methods_primitive_generic_for_object(op: SEXP, object: SEXP) -> bool {
     unsafe {
         if op.is_null() {
             return false;
@@ -639,7 +639,7 @@ pub(crate) unsafe fn ensure_methods_primitive_generic_for_object(op: SEXP, objec
 
 /// Materialize a primitive generic from the pinned methods namespace's
 /// `.BasicFunsList` without recursively calling getGeneric during dispatch.
-pub(super) unsafe fn register_original_primitive_generic(
+pub(super) fn register_original_primitive_generic(
     ns: SEXP,
     primitive_name: &std::ffi::CStr,
 ) {
@@ -712,8 +712,8 @@ pub(super) unsafe fn register_original_primitive_generic(
 /// GNU `library()`/`attach()`: `methods:::cacheMetaData(env, TRUE)`.
 /// GNU bytecode for cacheMetaData GETFUN/CALL-loops on a package attach
 /// env; run the stored source for that one call and restore BODY after.
-pub(crate) unsafe fn cache_attached_package_metadata(attach_env: SEXP) {
-    unsafe {
+pub(crate) fn cache_attached_package_metadata(attach_env: SEXP) {
+    {
         if attach_env.is_null() {
             return;
         }
@@ -725,7 +725,7 @@ pub(crate) unsafe fn cache_attached_package_metadata(attach_env: SEXP) {
 /// `.onLoad` for namespaces that publish S4 metadata. This populates the
 /// session's generic table even when the package is only loaded by
 /// `requireNamespace()` and has not been attached.
-pub(crate) unsafe fn cache_loaded_namespace_metadata(namespace: SEXP) {
+pub(crate) fn cache_loaded_namespace_metadata(namespace: SEXP) {
     unsafe {
         if namespace.is_null()
             || namespace == R_NilValue()
@@ -743,7 +743,7 @@ pub(crate) unsafe fn cache_loaded_namespace_metadata(namespace: SEXP) {
     }
 }
 
-unsafe fn cache_namespace_metadata(where_env: SEXP, search_where: SEXP) {
+fn cache_namespace_metadata(where_env: SEXP, search_where: SEXP) {
     unsafe {
         if where_env.is_null() || search_where.is_null() {
             return;
@@ -810,7 +810,7 @@ unsafe fn cache_namespace_metadata(where_env: SEXP, search_where: SEXP) {
 /// GNU methods keeps the stats-labeled toeplitz prototype in this table even
 /// while the actual stats namespace is unloaded. Its closure is supplied later
 /// by the ordinary stats namespace loader, retaining that namespace's identity.
-pub(super) unsafe fn register_implicit_generics_table(ns: SEXP) {
+pub(super) fn register_implicit_generics_table(ns: SEXP) {
     unsafe {
         let owner = crate::sexp::owner::OwnerToken::current()
             .unwrap_or_else(|error| package_error(error.to_string()));
@@ -912,7 +912,7 @@ impl Drop for MethodsMetadataSourceBody<'_> {
     }
 }
 
-pub(super) unsafe fn methods_metadata_source_body<'s>(
+pub(super) fn methods_metadata_source_body<'s>(
     fun: SEXP,
 ) -> Option<MethodsMetadataSourceBody<'s>> {
     unsafe {
@@ -956,7 +956,7 @@ pub(super) unsafe fn methods_metadata_source_body<'s>(
     }
 }
 
-pub(super) unsafe fn eval_methods_ns_fun(
+pub(super) fn eval_methods_ns_fun(
     ns: SEXP,
     name: &std::ffi::CStr,
     where_env: SEXP,
@@ -990,7 +990,7 @@ pub(super) unsafe fn eval_methods_ns_fun(
     }
 }
 
-pub(super) unsafe fn purge_missing_arg_placeholders(env: SEXP) {
+pub(super) fn purge_missing_arg_placeholders(env: SEXP) {
     unsafe {
         let missing = crate::sexp::globals::R_MissingArg();
         let mut doomed = Vec::new();
@@ -1022,7 +1022,7 @@ pub(super) unsafe fn purge_missing_arg_placeholders(env: SEXP) {
     }
 }
 
-pub(super) unsafe fn retarget_methods_generics(ns: SEXP) {
+pub(super) fn retarget_methods_generics(ns: SEXP) {
     unsafe {
         let methods_ns_sym = Rf_install(c".methodsNamespace".as_ptr());
         let old_ns = crate::sexp::envir::R_findVarInFrame(ns, methods_ns_sym);
@@ -1061,8 +1061,8 @@ pub(super) unsafe fn retarget_methods_generics(ns: SEXP) {
     }
 }
 
-pub(super) unsafe fn env_chain_contains(mut env: SEXP, target: SEXP) -> bool {
-    unsafe {
+pub(super) fn env_chain_contains(mut env: SEXP, target: SEXP) -> bool {
+    {
         for _ in 0..64 {
             if env.is_null() || env == R_NilValue() {
                 return false;
@@ -1081,7 +1081,7 @@ pub(super) unsafe fn env_chain_contains(mut env: SEXP, target: SEXP) -> bool {
 
 /// After methods `.onLoad`, the captured `.objectParent` stub must enclose
 /// the methods namespace so ref methods see unexported helpers (`classLabel`).
-pub(super) unsafe fn retarget_envref_object_parent(ns: SEXP) {
+pub(super) fn retarget_envref_object_parent(ns: SEXP) {
     unsafe {
         let class_def =
             crate::sexp::envir::R_findVarInFrame(ns, Rf_install(c".__C__envRefClass".as_ptr()));
@@ -1098,7 +1098,7 @@ pub(super) unsafe fn retarget_envref_object_parent(ns: SEXP) {
 
 /// Repair the restored reference-class definition when its lazy record is
 /// actually requested, retaining GNU's deferred class-loading behavior.
-pub(crate) unsafe fn retarget_envref_definition_parent(class_def: SEXP, ns: SEXP) {
+pub(crate) fn retarget_envref_definition_parent(class_def: SEXP, ns: SEXP) {
     unsafe {
         let ref_methods =
             crate::eval::attrib_core::getAttrib(class_def, Rf_install(c"refMethods".as_ptr()));
@@ -1122,7 +1122,7 @@ pub(crate) unsafe fn retarget_envref_definition_parent(class_def: SEXP, ns: SEXP
 }
 
 /// GNU `utils:::.onLoad` sets `options(str = strOptions())`.
-pub(super) unsafe fn install_utils_str_option(env: SEXP) {
+pub(super) fn install_utils_str_option(env: SEXP) {
     unsafe {
         let src = crate::sexp::constructors::Rf_mkString(
             b"if (is.null(getOption(\"str\"))) options(str = strOptions())\0".as_ptr()

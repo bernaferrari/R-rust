@@ -56,7 +56,7 @@ pub(crate) fn cached_namespace_directives(package_dir: &Path) -> Option<Namespac
 
 /// Public `::` checks the live exports table. Legacy namespaces without that
 /// metadata use cached directives and test exportPattern against the live frame.
-pub(crate) unsafe fn namespace_exports_contains(
+pub(crate) fn namespace_exports_contains(
     package_dir: &Path,
     package_env: SEXP,
     name: &str,
@@ -223,7 +223,7 @@ pub(crate) enum S3MethodMetadata {
     PreserveOriginal,
 }
 
-pub(crate) unsafe fn register_namespace_s3_methods(
+pub(crate) fn register_namespace_s3_methods(
     package: &str,
     package_env: SEXP,
     directives: &NamespaceDirectives,
@@ -494,11 +494,11 @@ pub(crate) fn push_unique(values: &mut Vec<String>, value: String) {
     }
 }
 
-pub(crate) unsafe fn namespace_exports(
+pub(crate) fn namespace_exports(
     namespace: Option<&NamespaceDirectives>,
     package_env: SEXP,
 ) -> Vec<String> {
-    unsafe {
+    {
         let Some(directives) = namespace else {
             return frame_binding_names(package_env, false);
         };
@@ -518,15 +518,15 @@ pub(crate) unsafe fn namespace_exports(
     }
 }
 
-pub(super) unsafe fn namespace_info_export_names(package_env: SEXP) -> Vec<String> {
-    unsafe {
+pub(super) fn namespace_info_export_names(package_env: SEXP) -> Vec<String> {
+    {
         namespace_export_environment(package_env)
             .map(|exports| frame_binding_names(exports, true))
             .unwrap_or_default()
     }
 }
 
-pub(crate) unsafe fn namespace_export_environment(package_env: SEXP) -> Option<SEXP> {
+pub(crate) fn namespace_export_environment(package_env: SEXP) -> Option<SEXP> {
     unsafe {
         let mut info = crate::sexp::envir::R_findVarInFrame(
             package_env,
@@ -556,20 +556,20 @@ pub(crate) unsafe fn namespace_export_environment(package_env: SEXP) -> Option<S
     }
 }
 
-pub(crate) unsafe fn frame_binding_names(env: SEXP, include_hidden: bool) -> Vec<String> {
-    unsafe { collect_frame_binding_names(env, include_hidden, false) }
+pub(crate) fn frame_binding_names(env: SEXP, include_hidden: bool) -> Vec<String> {
+    { collect_frame_binding_names(env, include_hidden, false) }
 }
 
 /// Public environment-name enumeration must report every bound name when
 /// `all.names=TRUE`, including names that look like namespace metadata.
-pub(crate) unsafe fn frame_binding_names_for_listing(
+pub(crate) fn frame_binding_names_for_listing(
     env: SEXP,
     include_hidden: bool,
 ) -> Vec<String> {
-    unsafe { collect_frame_binding_names(env, include_hidden, true) }
+    { collect_frame_binding_names(env, include_hidden, true) }
 }
 
-unsafe fn collect_frame_binding_names(
+fn collect_frame_binding_names(
     env: SEXP,
     include_hidden: bool,
     include_namespace_metadata: bool,
@@ -599,13 +599,13 @@ unsafe fn collect_frame_binding_names(
     }
 }
 
-pub(super) unsafe fn collect_binding_names(
+pub(super) fn collect_binding_names(
     mut frame: SEXP,
     include_hidden: bool,
     include_namespace_metadata: bool,
     names: &mut Vec<String>,
 ) {
-    unsafe {
+    {
         while !frame.is_null() && frame != R_NilValue() {
             let value = CAR(frame);
             if value != crate::sexp::globals::R_UnboundValue()
@@ -706,7 +706,7 @@ pub(super) fn unescape_r_string(s: &str) -> String {
 /// inherits=FALSE)` see them. Without this, `setClass(..., contains="signature")`
 /// copies `.__C__signature` into `.GlobalEnv`, and a later `removeClass` of
 /// global classes uncaches `initialize,signature`.
-pub(super) unsafe fn export_s4_metadata_to_package_env(namespace: SEXP, attach_env: SEXP) {
+pub(super) fn export_s4_metadata_to_package_env(namespace: SEXP, attach_env: SEXP) {
     unsafe {
         if namespace.is_null()
             || attach_env.is_null()
@@ -738,7 +738,7 @@ pub(super) unsafe fn export_s4_metadata_to_package_env(namespace: SEXP, attach_e
     }
 }
 
-pub(crate) unsafe fn attach_package_env(package_env: SEXP) {
+pub(crate) fn attach_package_env(package_env: SEXP) {
     unsafe {
         // Every attached package participates in S3 search, including small
         // export frames below the ordinary automatic-promotion threshold.
@@ -777,7 +777,7 @@ pub(crate) unsafe fn attach_package_env(package_env: SEXP) {
     }
 }
 
-pub(super) unsafe fn attached_search_name(package_env: SEXP) -> Option<String> {
+pub(super) fn attached_search_name(package_env: SEXP) -> Option<String> {
     unsafe {
         let name = crate::sexp::attrib_core::getAttrib(package_env, name_symbol());
         if TYPEOF(name) != SEXPTYPE::STRSXP || LENGTH(name) < 1 {

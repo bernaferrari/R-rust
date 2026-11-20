@@ -82,7 +82,7 @@ pub(crate) fn installed_package_rows() -> Vec<InstalledPackageRow> {
     packages
 }
 
-pub(crate) unsafe fn installed_packages_matrix(packages: &[InstalledPackageRow]) -> SEXP {
+pub(crate) fn installed_packages_matrix(packages: &[InstalledPackageRow]) -> SEXP {
     unsafe {
         let nrow = packages.len();
         let ncol = INSTALLED_PACKAGE_COLUMNS.len();

@@ -4,7 +4,7 @@ use super::*;
 
 /// GNU `makeNamespace` + `namespaceExport`: `.__NAMESPACE__.` holds
 /// `exports` so `.isExported` / `.minimalName` / `show()` work.
-pub(crate) unsafe fn ensure_namespace_info(
+pub(crate) fn ensure_namespace_info(
     package: &str,
     package_dir: &Path,
     package_env: SEXP,
@@ -154,7 +154,7 @@ pub(crate) unsafe fn ensure_namespace_info(
     }
 }
 
-pub(super) unsafe fn ensure_imports_slot(info: SEXP, directives: Option<&NamespaceDirectives>) {
+pub(super) fn ensure_imports_slot(info: SEXP, directives: Option<&NamespaceDirectives>) {
     unsafe {
         let symbol = Rf_install(c"imports".as_ptr());
         if crate::sexp::envir::R_findVarInFrame(info, symbol)
@@ -300,7 +300,7 @@ pub(crate) fn reject_unsupported_lazyload_code(
     Ok(())
 }
 
-pub(crate) unsafe fn load_rds_file(path: &Path) -> Result<SEXP, String> {
+pub(crate) fn load_rds_file(path: &Path) -> Result<SEXP, String> {
     unsafe {
         let bytes = std::fs::read(path)
             .map_err(|err| format!("cannot read RDS file '{}': {err}", path.display()))?;
@@ -322,7 +322,7 @@ pub(crate) unsafe fn load_rds_file(path: &Path) -> Result<SEXP, String> {
     }
 }
 
-pub(crate) unsafe fn lazy_load_db_fetch_value(
+pub(crate) fn lazy_load_db_fetch_value(
     key: SEXP,
     datafile: SEXP,
     compressed: SEXP,
@@ -349,15 +349,15 @@ pub(crate) unsafe fn lazy_load_db_fetch_value(
     }
 }
 
-pub(crate) unsafe fn eager_lazy_load_package_db(
+pub(crate) fn eager_lazy_load_package_db(
     filebase: &Path,
     envir: SEXP,
     skip: &[&str],
 ) -> Result<(), String> {
-    unsafe { lazy_lazy_load_package_db(filebase, envir, skip) }
+    { lazy_lazy_load_package_db(filebase, envir, skip) }
 }
 
-pub(crate) unsafe fn lazy_lazy_load_package_db(
+pub(crate) fn lazy_lazy_load_package_db(
     filebase: &Path,
     envir: SEXP,
     skip: &[&str],
@@ -487,7 +487,7 @@ pub(crate) unsafe fn lazy_lazy_load_package_db(
     }
 }
 
-pub(crate) unsafe fn source_package_r_files(
+pub(crate) fn source_package_r_files(
     package: &str,
     package_dir: &Path,
     package_env: SEXP,
@@ -579,12 +579,12 @@ pub(crate) unsafe fn source_package_r_files(
     }
 }
 
-pub(crate) unsafe fn source_package_lazy_data(
+pub(crate) fn source_package_lazy_data(
     package: &str,
     package_dir: &Path,
     package_env: SEXP,
 ) -> Result<Vec<String>, String> {
-    unsafe {
+    {
         let data_dir = package_dir.join("data");
         let entries = package_directory_entries(&data_dir).map_err(|err| {
             format!("could not read data directory for package '{package}': {err}")
@@ -636,7 +636,7 @@ pub(crate) unsafe fn source_package_lazy_data(
     }
 }
 
-pub(crate) unsafe fn define_lazy_data_names(package_env: SEXP, names: &[String]) {
+pub(crate) fn define_lazy_data_names(package_env: SEXP, names: &[String]) {
     unsafe {
         let values = string_vector(names);
         if !values.is_null() {
@@ -645,7 +645,7 @@ pub(crate) unsafe fn define_lazy_data_names(package_env: SEXP, names: &[String])
     }
 }
 
-pub(crate) unsafe fn lazy_data_names_binding(package_env: SEXP) -> Vec<String> {
+pub(crate) fn lazy_data_names_binding(package_env: SEXP) -> Vec<String> {
     use crate::sexp::{
         object::{Sexp, SexpError, SexpResult},
         owner::{OwnerToken, RuntimeAccess, StoredOwner, with_runtime},
