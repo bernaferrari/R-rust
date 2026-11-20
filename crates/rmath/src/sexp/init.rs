@@ -45,7 +45,7 @@ pub(crate) fn is_initialized_in(inst: *mut RInstance) -> bool {
     unsafe { (*inst).initialized }
 }
 
-pub unsafe fn initialize_r() {
+pub fn initialize_r() {
     let instance = current_instance_ptr()
         .expect("mutable R runtime state requires an active RInstance for initialize_r");
     unsafe {
@@ -73,7 +73,7 @@ pub(crate) unsafe fn initialize_r_in(inst: *mut RInstance) {
 /// Bootstrap runs on the original managed session allocation. Scoped
 /// activation owns both the target and the previous interpreter through any
 /// callback, and restores only a previous owner that remains available.
-pub unsafe fn initialize_base_bindings(base_env: SEXP) {
+pub fn initialize_base_bindings(base_env: SEXP) {
     let instance = current_instance_ptr().expect(
         "mutable R runtime state requires an active RInstance for initialize_base_bindings",
     );
@@ -127,8 +127,8 @@ pub(crate) unsafe fn initialize_base_bindings_in(inst: *mut RInstance, base_env:
 /// small language-level definitions needed by base itself must be installed
 /// explicitly. Keep these as ordinary closures rather than evaluator
 /// shortcuts so argument promises retain GNU R's lazy semantics.
-unsafe fn initialize_base_functions(base_env: SEXP) {
-    unsafe {
+fn initialize_base_functions(base_env: SEXP) {
+    {
         bindings_core::install(base_env);
         bindings_containers::install(base_env);
         bindings_format::install(base_env);
@@ -148,7 +148,7 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
     }
 }
 
-unsafe fn alias_visible_primitive(base_env: SEXP, alias: &str, target: &str) {
+fn alias_visible_primitive(base_env: SEXP, alias: &str, target: &str) {
     unsafe {
         let value = R_findVarInFrame(base_env, Rf_install_in_current(target));
         if value.is_null() || value == R_UnboundValue() || value == R_NilValue() {
@@ -160,7 +160,7 @@ unsafe fn alias_visible_primitive(base_env: SEXP, alias: &str, target: &str) {
     }
 }
 
-unsafe fn retarget_base_closure_envs(base_env: SEXP) {
+fn retarget_base_closure_envs(base_env: SEXP) {
     unsafe {
         let global = super::globals::R_GlobalEnv();
         let namespace = crate::sexp::memory_ext::NewEnvironment(
@@ -194,7 +194,7 @@ unsafe fn retarget_base_closure_envs(base_env: SEXP) {
     }
 }
 
-unsafe fn eval_base_binding(base_env: SEXP, name: &str, source: &str) {
+fn eval_base_binding(base_env: SEXP, name: &str, source: &str) {
     unsafe {
         let parser_factory = crate::eval::parser::active_factory();
         let parsed = super::memory::with_arena(|arena| {
@@ -225,7 +225,7 @@ unsafe fn eval_base_binding(base_env: SEXP, name: &str, source: &str) {
 /// from a frame that holds an instance borrow would have that re-acquisition
 /// pop a live protected borrow (aliasing UB under Stacked Borrows). The
 /// current instance at this point is exactly the one being initialized.
-unsafe fn initialize_special_environment_bindings(base_env: SEXP) {
+fn initialize_special_environment_bindings(base_env: SEXP) {
     unsafe {
         defineVar(
             Rf_install_in_current(".GlobalEnv"),
@@ -646,7 +646,7 @@ pub(crate) const LANGUAGE_ELEMENTS: &[&str] = &[
     "||", "break", "for", "function", "if", "next", "repeat", "return", "while",
 ];
 
-unsafe fn initialize_primitive_metadata_in(base_env: SEXP) {
+fn initialize_primitive_metadata_in(base_env: SEXP) {
     unsafe {
         let args_env = super::memory_ext::NewEnvironment(R_NilValue(), R_EmptyEnv(), R_NilValue());
         let generic_args_env =
@@ -670,7 +670,7 @@ unsafe fn initialize_primitive_metadata_in(base_env: SEXP) {
     }
 }
 
-unsafe fn install_prototypes(target_env: SEXP, base_env: SEXP, prototypes: &[PrimitivePrototype]) {
+fn install_prototypes(target_env: SEXP, base_env: SEXP, prototypes: &[PrimitivePrototype]) {
     unsafe {
         for prototype in prototypes {
             if !base_binding_is_primitive(base_env, prototype.name) {
@@ -682,7 +682,7 @@ unsafe fn install_prototypes(target_env: SEXP, base_env: SEXP, prototypes: &[Pri
     }
 }
 
-unsafe fn base_binding_is_primitive(base_env: SEXP, name: &str) -> bool {
+fn base_binding_is_primitive(base_env: SEXP, name: &str) -> bool {
     unsafe {
         let value = R_findVarInFrame(base_env, Rf_install_in_current(name));
         value != R_UnboundValue()
@@ -690,7 +690,7 @@ unsafe fn base_binding_is_primitive(base_env: SEXP, name: &str) -> bool {
     }
 }
 
-unsafe fn prototype_closure(prototype: PrimitivePrototype, base_env: SEXP) -> SEXP {
+fn prototype_closure(prototype: PrimitivePrototype, base_env: SEXP) -> SEXP {
     unsafe {
         let formals = formals_from_specs(prototype.formals);
         let body = if prototype.generic {
@@ -717,8 +717,8 @@ pub fn is_internal_generic_name(name: &str) -> bool {
     GENERIC_PROTOTYPES.iter().any(|p| p.name == name)
 }
 
-unsafe fn formals_from_specs(specs: &[FormalSpec]) -> SEXP {
-    unsafe {
+fn formals_from_specs(specs: &[FormalSpec]) -> SEXP {
+    {
         let formals = Rf_allocList(specs.len() as i32);
         let mut cell = formals;
         for spec in specs {
@@ -730,8 +730,8 @@ unsafe fn formals_from_specs(specs: &[FormalSpec]) -> SEXP {
     }
 }
 
-unsafe fn formal_default_value(default: FormalDefault) -> SEXP {
-    unsafe {
+fn formal_default_value(default: FormalDefault) -> SEXP {
+    {
         match default {
             FormalDefault::Missing => R_MissingArg(),
             FormalDefault::Null => R_NilValue(),
@@ -744,21 +744,21 @@ unsafe fn formal_default_value(default: FormalDefault) -> SEXP {
     }
 }
 
-unsafe fn string_scalar(value: &str) -> SEXP {
+fn string_scalar(value: &str) -> SEXP {
     unsafe {
         let c_value = CString::new(value).expect("static R string has no interior NUL");
         Rf_mkString(c_value.as_ptr())
     }
 }
 
-unsafe fn Rf_install_in_current(name: &str) -> SEXP {
+fn Rf_install_in_current(name: &str) -> SEXP {
     unsafe {
         let c_name = CString::new(name).expect("static R symbol name has no interior NUL");
         super::symbol::Rf_install(c_name.as_ptr())
     }
 }
 
-unsafe fn pre_intern_symbols() {
+fn pre_intern_symbols() {
     with_required_current_instance(|inst| unsafe { pre_intern_symbols_in(inst) });
 }
 
@@ -888,7 +888,7 @@ unsafe fn pre_intern_symbols_in(inst: *mut RInstance) {
     }
 }
 
-pub unsafe fn shutdown_r() {
+pub fn shutdown_r() {
     with_required_current_instance(shutdown_r_in);
 }
 

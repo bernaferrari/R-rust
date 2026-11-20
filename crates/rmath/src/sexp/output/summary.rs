@@ -74,7 +74,7 @@ pub(crate) fn format_named_summary_reals(x: Sexp<'_>, names: &[String]) -> Optio
 }
 
 pub(crate) fn format_summary_default_unnamed_numeric(x: Sexp<'_>) -> String {
-    with_summary_default_digits(|| unsafe { format_vector_stock(x, false) })
+    with_summary_default_digits(|| format_vector_stock(x, false))
 }
 
 pub(crate) fn format_summary_via_format(x: Sexp<'_>) -> Option<Vec<String>> {

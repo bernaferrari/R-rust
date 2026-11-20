@@ -11,9 +11,7 @@ fn error_rendering_option_symbol_is_preinterned_per_session_owner() {
     let installed = |session: &RSession| {
         session.with_active_in(|instance| unsafe {
             assert!(
-                (*instance)
-                    .symbols
-                    .contains_key("show.error.locations"),
+                (*instance).symbols.contains_key("show.error.locations"),
                 "bootstrap must intern the option before user code runs"
             );
             crate::sexp::symbol::Rf_install(c"show.error.locations".as_ptr())

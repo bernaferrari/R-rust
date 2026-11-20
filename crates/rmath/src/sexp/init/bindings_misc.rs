@@ -2,7 +2,7 @@
 
 use super::*;
 
-pub(crate) unsafe fn install(base_env: SEXP) {
+pub(crate) fn install(base_env: SEXP) {
     unsafe {
         // GNU sample.R: closures over .Internal(sample)/sample2, not primitives.
         // setMethod("sample", ...) needs a function skeleton (rport-2gpp.2).
@@ -89,7 +89,7 @@ pub(crate) unsafe fn install(base_env: SEXP) {
              else stop(\"failed to load methods package for handling signature\")\n\
              }",
         );
-         {
+        {
             let sym = crate::sexp::symbol::Rf_install(c"identity".as_ptr());
             let fun = crate::sexp::envir::R_findVarInFrame(base_env, sym);
             let _ = crate::eval::bc_compile::compile_closure(fun);

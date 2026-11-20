@@ -2,7 +2,7 @@
 
 use super::*;
 
-pub(crate) unsafe fn install(base_env: SEXP) {
+pub(crate) fn install(base_env: SEXP) {
     unsafe {
         // GNU base/format.R formatC: argument checking, character padding
         // and prettyNum post-processing live at the R level; the builtin

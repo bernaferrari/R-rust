@@ -466,8 +466,7 @@ pub fn begin_context_guard(
         ContextGuard {
             instance: instance_ptr,
             context,
-            _context_owner: retain_context_in(instance, context)
-                .expect("just pushed context"),
+            _context_owner: retain_context_in(instance, context).expect("just pushed context"),
             _owner_pin: owner_pin,
         }
     })
@@ -636,7 +635,7 @@ unsafe fn transfer_target(target: *mut RCNTXT) -> Option<Rc<std::cell::UnsafeCel
 pub(crate) unsafe fn return_transfer(target: *mut RCNTXT, value: SEXP) -> TransferTicket {
     let data = super::transfer::OwnedTransfer::Return {
         target: unsafe { transfer_target(target) },
-        value: unsafe { own_control_value(value) },
+        value: own_control_value(value),
     };
     super::transfer::publish(data).unwrap_or_else(|e| r_error(e.to_string()))
 }
@@ -647,23 +646,23 @@ pub(crate) unsafe fn jump_transfer(target: *mut RCNTXT, mask: i32, value: SEXP) 
     let data = super::transfer::OwnedTransfer::Jump {
         target: unsafe { transfer_target(target) },
         mask,
-        value: unsafe { own_control_value(value) },
+        value: own_control_value(value),
     };
     super::transfer::publish(data).unwrap_or_else(|e| r_error(e.to_string()))
 }
 
 pub(crate) fn exiting_handler_transfer(target_env: SEXP, result: SEXP) -> TransferTicket {
     let data = super::transfer::OwnedTransfer::ExitingHandler {
-        target_env: unsafe { own_control_value(target_env) },
-        result: unsafe { own_control_value(result) },
+        target_env: own_control_value(target_env),
+        result: own_control_value(result),
     };
     super::transfer::publish(data).unwrap_or_else(|e| r_error(e.to_string()))
 }
 
 pub(crate) fn restart_transfer(target: SEXP, args: SEXP) -> TransferTicket {
     let data = super::transfer::OwnedTransfer::Restart {
-        target: unsafe { own_control_value(target) },
-        args: unsafe { own_control_value(args) },
+        target: own_control_value(target),
+        args: own_control_value(args),
     };
     super::transfer::publish(data).unwrap_or_else(|e| r_error(e.to_string()))
 }

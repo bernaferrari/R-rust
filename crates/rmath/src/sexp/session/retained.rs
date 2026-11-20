@@ -276,7 +276,7 @@ impl RSession {
                 .with_native(|owner| {
                     // All graph inputs own physical leases before allocation; the
                     // native allocator publishes this frame before callbacks run.
-                    let raw = unsafe {
+                    let raw = {
                         crate::sexp::memory_ext::NewEnvironment(
                             frame.as_raw(),
                             global.as_raw(),
@@ -312,7 +312,7 @@ fn mark_shared(access: &RuntimeAccess, value: &Sexp<'_>) -> RResult<()> {
     access
         .with_native(|_| {
             // Native metadata projection only; no payload borrow or callback.
-             {
+            {
                 let named = crate::sexp::accessors::NAMED(value.as_raw());
                 crate::sexp::accessors::SET_NAMED(value.as_raw(), named.max(2));
             }

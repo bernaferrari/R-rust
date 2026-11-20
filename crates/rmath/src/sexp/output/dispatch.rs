@@ -27,8 +27,8 @@ pub(crate) fn print_dispatch_extras() -> SEXP {
     PRINT_DISPATCH_EXTRAS.with(|slot| slot.get())
 }
 
-pub(crate) unsafe fn cons_print_args(x: SEXP) -> SEXP {
-    unsafe {
+pub(crate) fn cons_print_args(x: SEXP) -> SEXP {
+    {
         let extras = print_dispatch_extras();
         let extras = if extras.is_null() {
             R_NilValue()
@@ -39,8 +39,8 @@ pub(crate) unsafe fn cons_print_args(x: SEXP) -> SEXP {
     }
 }
 
-pub(crate) unsafe fn print_args_except_x(args: SEXP, x: SEXP) -> SEXP {
-    unsafe {
+pub(crate) fn print_args_except_x(args: SEXP, x: SEXP) -> SEXP {
+    {
         let mut head = R_NilValue();
         let mut tail = R_NilValue();
         let mut cur = args;
@@ -66,8 +66,8 @@ pub(crate) unsafe fn print_args_except_x(args: SEXP, x: SEXP) -> SEXP {
 }
 
 /// Copy every `print()` argument except `x` for recursive method dispatch.
-pub(crate) unsafe fn copy_print_dispatch_extras(args: SEXP, x: SEXP) -> SEXP {
-    unsafe { print_args_except_x(args, x) }
+pub(crate) fn copy_print_dispatch_extras(args: SEXP, x: SEXP) -> SEXP {
+    print_args_except_x(args, x)
 }
 
 pub(crate) fn format_dispatched_show(raw: crate::sexp::ffi::SEXP) -> Option<String> {
@@ -217,11 +217,15 @@ pub fn print_value(x: Sexp<'_>) {
     // message string as a character vector plus class/condition attrs.
     // Condition objects print via print.condition.
     if has_class(x.clone(), "try-error") {
-        unsafe { emit(&format!("{}\n", format_try_error(x))) };
+        {
+            emit(&format!("{}\n", format_try_error(x)))
+        };
         return;
     }
     if has_class(x.clone(), "condition") {
-        unsafe { emit(&format!("{}\n", format_condition(x))) };
+        {
+            emit(&format!("{}\n", format_condition(x)))
+        };
         return;
     }
     if has_class(x.clone(), "srcref") {
@@ -321,7 +325,7 @@ pub fn print_value(x: Sexp<'_>) {
                 emit(&format!("{output}\n"));
                 return;
             }
-            let base = unsafe { format_vector_stock(x.clone(), true) };
+            let base = format_vector_stock(x.clone(), true);
             print_with_printable_attributes(&base, x);
         }
         SEXPTYPE::REALSXP => {
@@ -358,7 +362,7 @@ pub fn print_value(x: Sexp<'_>) {
                 emit(&format!("{}\n", format_date_vector(x)));
                 return;
             }
-            let base = unsafe { format_vector_stock(x.clone(), true) };
+            let base = format_vector_stock(x.clone(), true);
             print_with_printable_attributes(&base, x);
         }
         SEXPTYPE::LGLSXP => {
@@ -370,7 +374,7 @@ pub fn print_value(x: Sexp<'_>) {
                 print_with_printable_attributes("logical(0)", x);
                 return;
             }
-            let base = unsafe { format_vector_stock(x.clone(), true) };
+            let base = format_vector_stock(x.clone(), true);
             print_with_printable_attributes(&base, x);
         }
 
@@ -383,7 +387,7 @@ pub fn print_value(x: Sexp<'_>) {
                 print_with_printable_attributes("complex(0)", x);
                 return;
             }
-            let base = unsafe { format_vector_stock(x.clone(), true) };
+            let base = format_vector_stock(x.clone(), true);
             print_with_printable_attributes(&base, x);
         }
 
@@ -399,7 +403,7 @@ pub fn print_value(x: Sexp<'_>) {
             let quote = print_quote_flag()
                 && !has_class(x.clone(), "noquote")
                 && !has_class(x.clone(), "table");
-            let base = unsafe { format_vector_stock(x.clone(), quote) };
+            let base = format_vector_stock(x.clone(), quote);
             print_with_printable_attributes(&base, x);
         }
         SEXPTYPE::RAWSXP => {
@@ -411,7 +415,7 @@ pub fn print_value(x: Sexp<'_>) {
                 print_with_printable_attributes("raw(0)", x);
                 return;
             }
-            let base = unsafe { format_vector_stock(x.clone(), true) };
+            let base = format_vector_stock(x.clone(), true);
             print_with_printable_attributes(&base, x);
         }
         SEXPTYPE::VECSXP => {
@@ -458,7 +462,7 @@ pub fn print_value(x: Sexp<'_>) {
                 & !crate::mainutils::deparse::SHOWATTRIBUTES;
             let text =
                 unsafe { crate::mainutils::deparse::deparse1w(x.clone().as_raw(), false, opts) };
-            let _text_guard = unsafe { crate::sexp::protect::protect(text) };
+            let _text_guard = crate::sexp::protect::protect(text);
             let mut joined = String::new();
             for i in 0..XLENGTH(text) {
                 let chars = unsafe { CHAR(STRING_ELT(text, i)) };
@@ -555,14 +559,14 @@ pub fn print_structure(x: Sexp<'_>, indent: usize) {
 }
 
 /// FFI function: Rf_PrintValue
-pub(crate) unsafe fn Rf_PrintValue(x: SEXP) {
+pub(crate) fn Rf_PrintValue(x: SEXP) {
     if let Some(s) = unsafe { Sexp::from_raw(x) } {
         print_value(s);
     }
 }
 
 /// FFI function: Rf_PrintValueEnv (print with environment context)
-pub(crate) unsafe fn Rf_PrintValueEnv(x: SEXP, _env: SEXP) {
+pub(crate) fn Rf_PrintValueEnv(x: SEXP, _env: SEXP) {
     if let Some(s) = unsafe { Sexp::from_raw(x) } {
         print_value(s);
     }

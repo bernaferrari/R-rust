@@ -710,7 +710,7 @@ impl RSession {
                 .map(|(expr, start, end)| (expr.clone().as_raw(), *start, *end))
                 .collect();
             let exprs: Vec<_> = spans.into_iter().map(|(expr, _, _)| expr).collect();
-            let vec_sexp = unsafe {
+            let vec_sexp = {
                 crate::sexp::constructors::Rf_allocVector3(
                     crate::sexp::ffi::SEXPTYPE::EXPRSXP,
                     exprs.len() as i64,
@@ -1186,7 +1186,7 @@ impl RSession {
         self.with_active(|| {
             let symbol = self.sexp(install_symbol(name)?)?;
             let env = Environment::new(self.global_env()?).ok()?;
-            let result = unsafe { /* SAFETY: session activates its checked owner; unsafe payload loans must exclude R reentry. */ env.find(symbol) }.ok().flatten()?;
+            let result =  { /* SAFETY: session activates its checked owner; unsafe payload loans must exclude R reentry. */ env.find(symbol) }.ok().flatten()?;
             if result.clone().as_raw() == R_UnboundValue()
                 || result.clone().as_raw() == R_NilValue()
             {
@@ -1232,7 +1232,7 @@ impl RSession {
                 return false;
             };
             Environment::new(env)
-                .and_then(|env| unsafe { /* SAFETY: session activates its checked owner; unsafe payload loans must exclude R reentry. */ env.define(symbol, value) })
+                .and_then(|env|  { /* SAFETY: session activates its checked owner; unsafe payload loans must exclude R reentry. */ env.define(symbol, value) })
                 .is_ok()
         })
     }

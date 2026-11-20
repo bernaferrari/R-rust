@@ -120,15 +120,15 @@ fn alloc_vector3_inner(sexptype: SEXPTYPE, length: R_xlen_t) -> SEXP {
 }
 
 fn alloc_vector_inner(sexptype: SEXPTYPE, length: c_int) -> SEXP {
-    unsafe { alloc_vector3_inner(sexptype, length as R_xlen_t) }
+    alloc_vector3_inner(sexptype, length as R_xlen_t)
 }
 
 pub fn Rf_allocVector3<T: Into<SEXPTYPE>>(sexptype: T, length: R_xlen_t) -> SEXP {
-    unsafe { alloc_vector3_inner(sexptype.into(), length) }
+    alloc_vector3_inner(sexptype.into(), length)
 }
 
 pub fn Rf_allocVector<T: Into<SEXPTYPE>>(sexptype: T, length: c_int) -> SEXP {
-    unsafe { alloc_vector_inner(sexptype.into(), length) }
+    alloc_vector_inner(sexptype.into(), length)
 }
 
 pub fn Rf_cons(car: SEXP, cdr: SEXP) -> SEXP {
@@ -155,22 +155,22 @@ fn language<const N: usize>(items: [SEXP; N]) -> SEXP {
 
 /// Create a two-element call.
 pub fn Rf_lang2(car: SEXP, cdr: SEXP) -> SEXP {
-    unsafe { language([car, cdr]) }
+    language([car, cdr])
 }
 
 /// Create a three-element call.
 pub fn Rf_lang3(car: SEXP, cdr: SEXP, tag: SEXP) -> SEXP {
-    unsafe { language([car, cdr, tag]) }
+    language([car, cdr, tag])
 }
 
 /// Create a four-element call.
 pub fn Rf_lang4(car: SEXP, a2: SEXP, a3: SEXP, a4: SEXP) -> SEXP {
-    unsafe { language([car, a2, a3, a4]) }
+    language([car, a2, a3, a4])
 }
 
 /// Create a five-element call.
 pub fn Rf_lang5(car: SEXP, a2: SEXP, a3: SEXP, a4: SEXP, a5: SEXP) -> SEXP {
-    unsafe { language([car, a2, a3, a4, a5]) }
+    language([car, a2, a3, a4, a5])
 }
 /// Allocate a pairlist chain of n NILSXP elements.
 pub fn Rf_allocList(n: c_int) -> SEXP {
@@ -178,7 +178,7 @@ pub fn Rf_allocList(n: c_int) -> SEXP {
     if n == 0 {
         value
     } else {
-        unsafe { require_allocation(value) }
+        require_allocation(value)
     }
 }
 
@@ -260,7 +260,7 @@ fn scalar(
 
 /// Create a scalar STRSXP containing NA_STRING (R's NA_character_).
 pub fn Rf_mkNAString() -> SEXP {
-    unsafe { Rf_ScalarString(super::globals::R_NaString()) }
+    Rf_ScalarString(super::globals::R_NaString())
 }
 
 /// Create a scalar logical value.
@@ -281,17 +281,17 @@ pub fn Rf_ScalarLogical(x: c_int) -> SEXP {
 
 /// Create a scalar integer value.
 pub fn Rf_ScalarInteger(x: c_int) -> SEXP {
-    unsafe { scalar(SEXPTYPE::INTSXP, |value| value.try_set_integer_elt(0, x)) }
+    scalar(SEXPTYPE::INTSXP, |value| value.try_set_integer_elt(0, x))
 }
 
 /// Create a scalar real value.
 pub fn Rf_ScalarReal(x: c_double) -> SEXP {
-    unsafe { scalar(SEXPTYPE::REALSXP, |value| value.try_set_real_elt(0, x)) }
+    scalar(SEXPTYPE::REALSXP, |value| value.try_set_real_elt(0, x))
 }
 
 /// Create a scalar complex value.
 pub fn Rf_ScalarComplex(x: super::ffi::Rcomplex) -> SEXP {
-    unsafe { scalar(SEXPTYPE::CPLXSXP, |value| value.try_set_complex_elt(0, x)) }
+    scalar(SEXPTYPE::CPLXSXP, |value| value.try_set_complex_elt(0, x))
 }
 
 /// Create a scalar string from a CHARSXP.
@@ -309,7 +309,7 @@ pub fn Rf_ScalarString(x: SEXP) -> SEXP {
 
 /// Create a scalar raw value.
 pub fn Rf_ScalarRaw(x: super::ffi::Rbyte) -> SEXP {
-    unsafe { scalar(SEXPTYPE::RAWSXP, |value| value.try_set_raw_elt(0, x)) }
+    scalar(SEXPTYPE::RAWSXP, |value| value.try_set_raw_elt(0, x))
 }
 
 // ---------------------------------------------------------------------------
@@ -321,7 +321,7 @@ pub(crate) use crate::sexp::accessors::Rf_isNull;
 
 /// Get the length of an SEXP.
 pub fn Rf_length(x: SEXP) -> c_int {
-     {
+    {
         if x.is_null() || x == R_NilValue() {
             return 0;
         }
@@ -702,7 +702,7 @@ mod tests {
 }
 
 pub unsafe fn persistent_cons(car: SEXP, cdr: SEXP) -> SEXP {
-    unsafe { super::memory_ext::cons_raw(car, cdr) }
+    super::memory_ext::cons_raw(car, cdr)
 }
 
 pub fn persistent_scalar_integer(val: c_int) -> SEXP {

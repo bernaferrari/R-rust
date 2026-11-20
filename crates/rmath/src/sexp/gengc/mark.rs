@@ -335,7 +335,7 @@ pub(crate) fn do_minor_gc_in(instance: *mut instance::RInstance) -> (usize, usiz
                 if obj.is_null() {
                     continue;
                 }
-                 {
+                {
                     let obj_gen = (*obj).sxpinfo.gcgen();
                     let marked = super::super::memory::arena_node_marked(obj);
 
@@ -431,7 +431,7 @@ pub(crate) fn do_torture_mark_sweep_in(instance: *mut instance::RInstance) -> (u
                 if obj.is_null() {
                     continue;
                 }
-                 {
+                {
                     if super::super::memory::arena_node_marked(obj) {
                         // Marked nodes stay in their generation: promotion to
                         // the old generation here would let the very next forced
@@ -504,7 +504,7 @@ pub(crate) fn do_full_mark_sweep_in(instance: *mut instance::RInstance) -> (usiz
                 if obj.is_null() {
                     continue;
                 }
-                 {
+                {
                     if super::super::memory::arena_node_marked(obj) {
                         if (*obj).sxpinfo.gcgen() == Generation::Young as u8 {
                             (*obj).sxpinfo.set_gcgen(Generation::Old as u8);

@@ -2,8 +2,8 @@
 
 use super::*;
 
-pub(crate) unsafe fn install(base_env: SEXP) {
-    unsafe {
+pub(crate) fn install(base_env: SEXP) {
+    {
         // GNU datetime.R Ops group methods. The arithmetic primitive is a
         // raw `.default` backend: unit coercion for mixed-unit difftime
         // arithmetic happens here (coerceTimeUnit + NextMethod), exactly
