@@ -13,7 +13,7 @@
  *   rpc/xdr.h   - XDR struct and function declarations
  */
 
-use std::ffi::{CStr, c_int, c_uint, c_void};
+use std::ffi::{CStr, c_int, c_uint};
 use std::fs::File;
 use std::io::{Read as IoRead, Seek as IoSeek, SeekFrom, Write as IoWrite};
 use std::ptr;
@@ -125,17 +125,17 @@ impl Xdr {
         }
     }
 
-    fn getbytes(&mut self, addr: *mut u8, len: c_uint) -> c_int {
+    fn getbytes(&mut self, addr: &mut [u8]) -> c_int {
         match self.backend {
-            XdrBackend::Mem => mem_getbytes(self, addr, len),
-            XdrBackend::Stdio => stdio_getbytes(self, addr, len),
+            XdrBackend::Mem => mem_getbytes(self, addr),
+            XdrBackend::Stdio => stdio_getbytes(self, addr),
         }
     }
 
-    fn putbytes(&mut self, addr: *const u8, len: c_uint) -> c_int {
+    fn putbytes(&mut self, addr: &[u8]) -> c_int {
         match self.backend {
-            XdrBackend::Mem => mem_putbytes(self, addr, len),
-            XdrBackend::Stdio => stdio_putbytes(self, addr, len),
+            XdrBackend::Mem => mem_putbytes(self, addr),
+            XdrBackend::Stdio => stdio_putbytes(self, addr),
         }
     }
 
@@ -202,8 +202,8 @@ fn mem_putlong(xdrs: &mut Xdr, lp: &i32) -> c_int {
 }
 
 /// Memory-based getbytes: copy bytes from buffer.
-fn mem_getbytes(xdrs: &mut Xdr, addr: *mut u8, len: c_uint) -> c_int {
-    let len = len as usize;
+fn mem_getbytes(xdrs: &mut Xdr, addr: &mut [u8]) -> c_int {
+    let len = addr.len();
     if len == 0 {
         return TRUE;
     }
@@ -212,15 +212,15 @@ fn mem_getbytes(xdrs: &mut Xdr, addr: *mut u8, len: c_uint) -> c_int {
     }
     xdrs.x_handy -= len as c_int;
     unsafe {
-        ptr::copy_nonoverlapping(xdrs.x_private, addr, len);
+        ptr::copy_nonoverlapping(xdrs.x_private, addr.as_mut_ptr(), len);
     }
     xdrs.x_private = xdrs.x_private.wrapping_add(len);
     TRUE
 }
 
 /// Memory-based putbytes: copy bytes into buffer.
-fn mem_putbytes(xdrs: &mut Xdr, addr: *const u8, len: c_uint) -> c_int {
-    let len = len as usize;
+fn mem_putbytes(xdrs: &mut Xdr, addr: &[u8]) -> c_int {
+    let len = addr.len();
     if len == 0 {
         return TRUE;
     }
@@ -229,7 +229,7 @@ fn mem_putbytes(xdrs: &mut Xdr, addr: *const u8, len: c_uint) -> c_int {
     }
     xdrs.x_handy -= len as c_int;
     unsafe {
-        ptr::copy_nonoverlapping(addr, xdrs.x_private as *mut u8, len);
+        ptr::copy_nonoverlapping(addr.as_ptr(), xdrs.x_private as *mut u8, len);
     }
     xdrs.x_private = xdrs.x_private.wrapping_add(len);
     TRUE
@@ -282,26 +282,24 @@ fn stdio_putlong(xdrs: &mut Xdr, lp: &i32) -> c_int {
 }
 
 /// Stdio-based getbytes: read raw bytes from file.
-fn stdio_getbytes(xdrs: &mut Xdr, addr: *mut u8, len: c_uint) -> c_int {
-    if len == 0 {
+fn stdio_getbytes(xdrs: &mut Xdr, addr: &mut [u8]) -> c_int {
+    if addr.is_empty() {
         return TRUE;
     }
     let file = unsafe { &mut *(xdrs.x_private as *mut File) };
-    let slice = unsafe { std::slice::from_raw_parts_mut(addr, len as usize) };
-    match file.read_exact(slice) {
+    match file.read_exact(addr) {
         Ok(()) => TRUE,
         Err(_) => FALSE,
     }
 }
 
 /// Stdio-based putbytes: write raw bytes to file.
-fn stdio_putbytes(xdrs: &mut Xdr, addr: *const u8, len: c_uint) -> c_int {
-    if len == 0 {
+fn stdio_putbytes(xdrs: &mut Xdr, addr: &[u8]) -> c_int {
+    if addr.is_empty() {
         return TRUE;
     }
     let file = unsafe { &mut *(xdrs.x_private as *mut File) };
-    let slice = unsafe { std::slice::from_raw_parts(addr, len as usize) };
-    match file.write_all(slice) {
+    match file.write_all(addr) {
         Ok(()) => TRUE,
         Err(_) => FALSE,
     }
@@ -336,15 +334,12 @@ fn stdio_setpos(xdrs: &mut Xdr, pos: c_uint) -> c_int {
 /// A C-compatible wrapper around a heap-allocated `Xdr`.
 ///
 /// This is what C code sees when it receives an `XDR*`. The Rust `Xdr`
-/// struct lives on the heap, and `XdrC` wraps a pointer to it.
-///
-/// # Safety
-/// This struct must only be created by the `*_create` functions and freed
-/// by calling `xdr_destroy` to avoid memory leaks.
+/// struct lives on the heap inside an owning box that `xdr_destroy`
+/// releases.
 #[repr(C)]
 pub struct XdrC {
-    /// Opaque pointer to the Rust-native Xdr.
-    handle: *mut Xdr,
+    /// Opaque heap-owned `Xdr`; `None` after `xdr_destroy`.
+    handle: Option<Box<Xdr>>,
 }
 
 // We implement Send + Sync since XdrC can be passed across FFI.
@@ -355,18 +350,20 @@ unsafe impl Sync for XdrC {}
 impl XdrC {
     /// Get a mutable reference to the inner `Xdr`.
     ///
-    /// # Safety
-    /// `self.handle` must be a valid, non-null pointer.
-    unsafe fn inner(&mut self) -> &mut Xdr {
-        unsafe { &mut *self.handle }
+    /// Panics if the stream was already destroyed.
+    fn inner(&mut self) -> &mut Xdr {
+        self.handle
+            .as_deref_mut()
+            .expect("XDR stream already destroyed")
     }
 
     /// Get a reference to the inner `Xdr`.
     ///
-    /// # Safety
-    /// `self.handle` must be a valid, non-null pointer.
-    unsafe fn inner_ref(&self) -> &Xdr {
-        unsafe { &*self.handle }
+    /// Panics if the stream was already destroyed.
+    fn inner_ref(&self) -> &Xdr {
+        self.handle
+            .as_deref()
+            .expect("XDR stream already destroyed")
     }
 }
 
@@ -378,37 +375,26 @@ impl XdrC {
 ///
 /// Ported from C's `xdrmem_create()`.
 ///
-/// # Safety
-/// - `addr` must point to a valid memory region of at least `size` bytes.
-/// - The memory pointed to by `addr` must remain valid for the lifetime of
-///   the returned `XdrC`.
-/// - The returned `XdrC` must eventually be freed by calling
-///   `xdr_destroy` to avoid memory leaks.
-pub unsafe fn xdrmem_create(xdrs: *mut XdrC, addr: *mut c_void, size: c_uint, op: c_int) {
-    unsafe {
-        let addr = addr as *mut u8;
-        let size = size as c_int;
-        let x_op = match op {
-            0 => XdrOp::Encode,
-            1 => XdrOp::Decode,
-            2 => XdrOp::Free,
-            _ => XdrOp::Free,
-        };
+/// The buffer must remain valid for the lifetime of the returned `XdrC`;
+/// the stream only retains a raw pointer into it. Pass the `XdrC` to
+/// `xdr_destroy` when done.
+pub fn xdrmem_create(addr: &mut [u8], op: c_int) -> XdrC {
+    let x_op = match op {
+        0 => XdrOp::Encode,
+        1 => XdrOp::Decode,
+        2 => XdrOp::Free,
+        _ => XdrOp::Free,
+    };
 
-        let xdr = Box::new(Xdr {
+    let addr_ptr = addr.as_mut_ptr();
+    XdrC {
+        handle: Some(Box::new(Xdr {
             x_op,
             backend: XdrBackend::Mem,
-            x_base: addr,
-            x_private: addr,
-            x_handy: size,
-        });
-
-        ptr::write(
-            xdrs,
-            XdrC {
-                handle: Box::into_raw(xdr),
-            },
-        );
+            x_base: addr_ptr,
+            x_private: addr_ptr,
+            x_handy: addr.len() as c_int,
+        })),
     }
 }
 
@@ -420,34 +406,24 @@ pub unsafe fn xdrmem_create(xdrs: *mut XdrC, addr: *mut c_void, size: c_uint, op
 ///
 /// Ported from C's `xdrstdio_create()`.
 ///
-/// # Safety
-/// - `file` must be a valid pointer to a heap-allocated `std::fs::File`.
-/// - The caller is responsible for ensuring the `File` outlives the XDR stream,
-///   or for closing the file separately after destroying the XDR stream.
-/// - The returned `XdrC` must eventually be freed by calling `xdr_destroy`.
-pub unsafe fn xdrstdio_create(xdrs: *mut XdrC, file: *mut File, op: c_int) {
-    unsafe {
-        let x_op = match op {
-            0 => XdrOp::Encode,
-            1 => XdrOp::Decode,
-            2 => XdrOp::Free,
-            _ => XdrOp::Free,
-        };
+/// The `File` must outlive the returned `XdrC`; the stream only retains a
+/// raw pointer to it. Pass the `XdrC` to `xdr_destroy` when done.
+pub fn xdrstdio_create(file: &mut File, op: c_int) -> XdrC {
+    let x_op = match op {
+        0 => XdrOp::Encode,
+        1 => XdrOp::Decode,
+        2 => XdrOp::Free,
+        _ => XdrOp::Free,
+    };
 
-        let xdr = Box::new(Xdr {
+    XdrC {
+        handle: Some(Box::new(Xdr {
             x_op,
             backend: XdrBackend::Stdio,
             x_base: ptr::null_mut(),
-            x_private: file as *mut u8,
+            x_private: file as *mut File as *mut u8,
             x_handy: 0,
-        });
-
-        ptr::write(
-            xdrs,
-            XdrC {
-                handle: Box::into_raw(xdr),
-            },
-        );
+        })),
     }
 }
 
@@ -457,22 +433,11 @@ pub unsafe fn xdrstdio_create(xdrs: *mut XdrC, file: *mut File, op: c_int) {
 
 /// Destroy an XDR stream and free its resources.
 ///
-/// # Safety
-/// - `xdrs` must be a valid pointer to an `XdrC` that was created by
-///   `xdrmem_create` or `xdrstdio_create`.
-/// - After this call, `xdrs` must not be used.
-pub unsafe fn xdr_destroy(xdrs: *mut XdrC) {
-    unsafe {
-        if xdrs.is_null() {
-            return;
-        }
-        let xdr_c = &mut *xdrs;
-        if !xdr_c.handle.is_null() {
-            let mut xdr = Box::from_raw(xdr_c.handle);
-            xdr.destroy();
-            // Box is dropped here, freeing the Xdr
-            xdr_c.handle = ptr::null_mut();
-        }
+/// After this call, `xdrs` must not be used.
+pub fn xdr_destroy(xdrs: &mut XdrC) {
+    if let Some(mut xdr) = xdrs.handle.take() {
+        xdr.destroy();
+        // Box is dropped here, freeing the Xdr
     }
 }
 
@@ -483,96 +448,76 @@ pub unsafe fn xdr_destroy(xdrs: *mut XdrC) {
 /// XDR a 32-bit integer.
 ///
 /// Ported from C's `xdr_int()`.
-///
-/// # Safety
-/// - `xdrs` must be a valid pointer to an `XdrC`.
-/// - `ip` must be a valid pointer to an `i32`.
-pub unsafe fn xdr_int(xdrs: *mut XdrC, ip: *mut i32) -> c_int {
-    unsafe {
-        if xdrs.is_null() || ip.is_null() {
-            return FALSE;
-        }
-        let xdr = (*xdrs).inner();
-        match xdr.x_op {
-            XdrOp::Decode => xdr.getlong(&mut *ip),
-            XdrOp::Encode => xdr.putlong(&*ip),
-            XdrOp::Free => TRUE,
-        }
+pub fn xdr_int(xdrs: &mut XdrC, ip: &mut i32) -> c_int {
+    let xdr = xdrs.inner();
+    match xdr.x_op {
+        XdrOp::Decode => xdr.getlong(ip),
+        XdrOp::Encode => xdr.putlong(ip),
+        XdrOp::Free => TRUE,
     }
 }
 
 /// XDR an unsigned 32-bit integer.
 ///
 /// Ported from C's `xdr_u_int()`.
-///
-/// # Safety
-/// - `xdrs` must be a valid pointer to an `XdrC`.
-/// - `up` must be a valid pointer to a `u32`.
-pub unsafe fn xdr_u_int(xdrs: *mut XdrC, up: *mut u32) -> c_int {
-    unsafe {
-        if xdrs.is_null() || up.is_null() {
-            return FALSE;
+pub fn xdr_u_int(xdrs: &mut XdrC, up: &mut u32) -> c_int {
+    let xdr = xdrs.inner();
+    match xdr.x_op {
+        XdrOp::Decode => {
+            let mut v = 0i32;
+            let result = xdr.getlong(&mut v);
+            if result == TRUE {
+                *up = v as u32;
+            }
+            result
         }
-        let xdr = (*xdrs).inner();
-        match xdr.x_op {
-            XdrOp::Decode => xdr.getlong(&mut *(up as *mut i32)),
-            XdrOp::Encode => xdr.putlong(&*(up as *const i32)),
-            XdrOp::Free => TRUE,
-        }
+        XdrOp::Encode => xdr.putlong(&(*up as i32)),
+        XdrOp::Free => TRUE,
     }
 }
 
 /// XDR opaque data of a fixed size.
 ///
 /// Ported from C's `xdr_opaque()`.
-/// `cp` points to the opaque object and `cnt` gives the byte length.
-/// The count is rounded up to a multiple of 4 (BYTES_PER_XDR_UNIT).
-///
-/// # Safety
-/// - `xdrs` must be a valid pointer to an `XdrC`.
-/// - If `cnt > 0`, `cp` must be a valid pointer to at least `cnt` bytes.
-pub unsafe fn xdr_opaque(xdrs: *mut XdrC, cp: *mut c_void, cnt: c_uint) -> c_int {
-    unsafe {
-        if xdrs.is_null() {
-            return FALSE;
-        }
-        let xdr = (*xdrs).inner();
+/// `cp` is the opaque byte buffer; its length is rounded up to a multiple
+/// of 4 (BYTES_PER_XDR_UNIT).
+pub fn xdr_opaque(xdrs: &mut XdrC, cp: &mut [u8]) -> c_int {
+    let cnt = cp.len() as c_uint;
+    if cnt == 0 {
+        return TRUE;
+    }
 
-        if cnt == 0 {
-            return TRUE;
-        }
+    // Round byte count up to full XDR units
+    #[allow(clippy::manual_is_multiple_of)]
+    let rndup = if cnt % BYTES_PER_XDR_UNIT as u32 != 0 {
+        BYTES_PER_XDR_UNIT as usize - (cnt as usize % BYTES_PER_XDR_UNIT)
+    } else {
+        0
+    };
 
-        // Round byte count up to full XDR units
-        #[allow(clippy::manual_is_multiple_of)]
-        let rndup = if cnt % BYTES_PER_XDR_UNIT as u32 != 0 {
-            BYTES_PER_XDR_UNIT as u32 - (cnt % BYTES_PER_XDR_UNIT as u32)
-        } else {
-            0
-        };
-
-        match xdr.x_op {
-            XdrOp::Decode => {
-                if xdr.getbytes(cp as *mut u8, cnt) == FALSE {
-                    return FALSE;
-                }
-                if rndup == 0 {
-                    return TRUE;
-                }
-                // Read and discard padding bytes
-                let mut crud = [0u8; BYTES_PER_XDR_UNIT];
-                xdr.getbytes(crud.as_mut_ptr(), rndup)
+    let xdr = xdrs.inner();
+    match xdr.x_op {
+        XdrOp::Decode => {
+            if xdr.getbytes(cp) == FALSE {
+                return FALSE;
             }
-            XdrOp::Encode => {
-                if xdr.putbytes(cp as *const u8, cnt) == FALSE {
-                    return FALSE;
-                }
-                if rndup == 0 {
-                    return TRUE;
-                }
-                xdr.putbytes(XDR_ZERO.as_ptr(), rndup)
+            if rndup == 0 {
+                return TRUE;
             }
-            XdrOp::Free => TRUE,
+            // Read and discard padding bytes
+            let mut crud = [0u8; BYTES_PER_XDR_UNIT];
+            xdr.getbytes(&mut crud[..rndup])
         }
+        XdrOp::Encode => {
+            if xdr.putbytes(cp) == FALSE {
+                return FALSE;
+            }
+            if rndup == 0 {
+                return TRUE;
+            }
+            xdr.putbytes(&XDR_ZERO[..rndup])
+        }
+        XdrOp::Free => TRUE,
     }
 }
 
@@ -584,7 +529,8 @@ pub unsafe fn xdr_opaque(xdrs: *mut XdrC, cp: *mut c_void, cnt: c_uint) -> c_int
 ///
 /// # Safety
 /// - `xdrs` must be a valid pointer to an `XdrC`.
-/// - `cpp` must be a valid pointer to a `*mut c_char`.
+/// - `cpp` must be a valid pointer to a `*mut u8`; when `*cpp` is non-null it
+///   must point to at least `*sizep` bytes.
 /// - `sizep` must be a valid pointer to a `u32`.
 pub unsafe fn xdr_bytes(
     xdrs: *mut XdrC,
@@ -599,7 +545,7 @@ pub unsafe fn xdr_bytes(
         let xdr = (*xdrs).inner();
 
         // First deal with the length
-        if xdr_u_int(xdrs, sizep) == FALSE {
+        if xdr_u_int(&mut *xdrs, &mut *sizep) == FALSE {
             return FALSE;
         }
         let nodesize = *sizep;
@@ -628,9 +574,16 @@ pub unsafe fn xdr_bytes(
                     return FALSE;
                 }
                 // Fall through to opaque handling
-                xdr_opaque(xdrs, sp as *mut c_void, nodesize)
+                let buf = std::slice::from_raw_parts_mut(sp, nodesize as usize);
+                xdr_opaque(&mut *xdrs, buf)
             }
-            XdrOp::Encode => xdr_opaque(xdrs, sp as *mut c_void, nodesize),
+            XdrOp::Encode => {
+                if nodesize == 0 {
+                    return TRUE;
+                }
+                let buf = std::slice::from_raw_parts_mut(sp, nodesize as usize);
+                xdr_opaque(&mut *xdrs, buf)
+            }
             XdrOp::Free => {
                 if !sp.is_null() {
                     // Free the allocated memory
@@ -653,7 +606,9 @@ pub unsafe fn xdr_bytes(
 ///
 /// # Safety
 /// - `xdrs` must be a valid pointer to an `XdrC`.
-/// - `cpp` must be a valid pointer to a `*mut c_char`.
+/// - `cpp` must be a valid pointer to a `*mut u8`; when `*cpp` is non-null it
+///   must point to a NUL-terminated string buffer of at least `size + 1`
+///   bytes.
 pub unsafe fn xdr_string(xdrs: *mut XdrC, cpp: *mut *mut u8, maxsize: c_uint) -> c_int {
     unsafe {
         if xdrs.is_null() || cpp.is_null() {
@@ -684,7 +639,7 @@ pub unsafe fn xdr_string(xdrs: *mut XdrC, cpp: *mut *mut u8, maxsize: c_uint) ->
         }
 
         // Read/write the length
-        if xdr_u_int(xdrs, &mut size) == FALSE {
+        if xdr_u_int(&mut *xdrs, &mut size) == FALSE {
             return FALSE;
         }
         if size > maxsize {
@@ -712,9 +667,16 @@ pub unsafe fn xdr_string(xdrs: *mut XdrC, cpp: *mut *mut u8, maxsize: c_uint) ->
                 // Null-terminate the buffer
                 *sp.add(size as usize) = 0;
                 // Fall through to opaque
-                xdr_opaque(xdrs, sp as *mut c_void, size)
+                let buf = std::slice::from_raw_parts_mut(sp, size as usize);
+                xdr_opaque(&mut *xdrs, buf)
             }
-            XdrOp::Encode => xdr_opaque(xdrs, sp as *mut c_void, size),
+            XdrOp::Encode => {
+                if size == 0 {
+                    return TRUE;
+                }
+                let buf = std::slice::from_raw_parts_mut(sp, size as usize);
+                xdr_opaque(&mut *xdrs, buf)
+            }
             XdrOp::Free => {
                 if !sp.is_null() {
                     let layout = std::alloc::Layout::from_size_align(nodesize as usize, 1)
@@ -732,78 +694,37 @@ pub unsafe fn xdr_string(xdrs: *mut XdrC, cpp: *mut *mut u8, maxsize: c_uint) ->
 ///
 /// Ported from C's `xdr_double()` (from xdr_float.c).
 ///
-/// On little-endian systems, the two 32-bit halves of the double are
-/// transmitted in reversed order (matching the original C behavior with
-/// WORDS_BIGENDIAN / ntohl).
-///
-/// # Safety
-/// - `xdrs` must be a valid pointer to an `XdrC`.
-/// - `dp` must be a valid pointer to a `f64`.
-pub unsafe fn xdr_double(xdrs: *mut XdrC, dp: *mut f64) -> c_int {
-    unsafe {
-        if xdrs.is_null() || dp.is_null() {
-            return FALSE;
-        }
-        let xdr = (*xdrs).inner();
+/// The two 32-bit halves of the double are transmitted high word first
+/// (matching the original C behavior on both endiannesses: little-endian
+/// wrote `lp+1` then `lp`, big-endian `lp` then `lp+1`).
+pub fn xdr_double(xdrs: &mut XdrC, dp: &mut f64) -> c_int {
+    let xdr = xdrs.inner();
 
-        // Treat the double as two consecutive i32 values
-        let lp = dp as *mut i32;
-
-        match xdr.x_op {
-            XdrOp::Encode => {
-                #[cfg(target_endian = "little")]
-                {
-                    // On little-endian: put lp+1 first, then lp (swap halves)
-                    // Mirrors: return (XDR_PUTLONG(xdrs, lp+1) && XDR_PUTLONG(xdrs, lp));
-                    let second = xdr.putlong(&*lp.add(1));
-                    let first = xdr.putlong(&*lp);
-                    if second == TRUE && first == TRUE {
-                        TRUE
-                    } else {
-                        FALSE
-                    }
-                }
-                #[cfg(target_endian = "big")]
-                {
-                    // On big-endian: put lp first, then lp+1 (natural order)
-                    // Mirrors: return (XDR_PUTLONG(xdrs, lp++) && XDR_PUTLONG(xdrs, lp));
-                    let first = xdr.putlong(&*lp);
-                    let second = xdr.putlong(&*lp.add(1));
-                    if first == TRUE && second == TRUE {
-                        TRUE
-                    } else {
-                        FALSE
-                    }
-                }
+    match xdr.x_op {
+        XdrOp::Encode => {
+            // High 32 bits first, then low 32 bits.
+            let bits = dp.to_bits();
+            let second = xdr.putlong(&((bits >> 32) as u32 as i32));
+            let first = xdr.putlong(&(bits as u32 as i32));
+            if second == TRUE && first == TRUE {
+                TRUE
+            } else {
+                FALSE
             }
-            XdrOp::Decode => {
-                #[cfg(target_endian = "little")]
-                {
-                    // On little-endian: get into lp+1 first, then lp (swap halves)
-                    // Mirrors: return (XDR_GETLONG(xdrs, lp+1) && XDR_GETLONG(xdrs, lp));
-                    let second = xdr.getlong(&mut *lp.add(1));
-                    let first = xdr.getlong(&mut *lp);
-                    if second == TRUE && first == TRUE {
-                        TRUE
-                    } else {
-                        FALSE
-                    }
-                }
-                #[cfg(target_endian = "big")]
-                {
-                    // On big-endian: get into lp first, then lp+1 (natural order)
-                    // Mirrors: return (XDR_GETLONG(xdrs, lp++) && XDR_GETLONG(xdrs, lp));
-                    let first = xdr.getlong(&mut *lp);
-                    let second = xdr.getlong(&mut *lp.add(1));
-                    if first == TRUE && second == TRUE {
-                        TRUE
-                    } else {
-                        FALSE
-                    }
-                }
-            }
-            XdrOp::Free => TRUE,
         }
+        XdrOp::Decode => {
+            let mut hi = 0i32;
+            let mut lo = 0i32;
+            let second = xdr.getlong(&mut hi);
+            let first = xdr.getlong(&mut lo);
+            if second == TRUE && first == TRUE {
+                *dp = f64::from_bits(((hi as u32 as u64) << 32) | (lo as u32 as u64));
+                TRUE
+            } else {
+                FALSE
+            }
+        }
+        XdrOp::Free => TRUE,
     }
 }
 
@@ -812,27 +733,11 @@ pub unsafe fn xdr_double(xdrs: *mut XdrC, dp: *mut f64) -> c_int {
 // ---------------------------------------------------------------------------
 
 /// Get the current position in the XDR stream.
-///
-/// # Safety
-/// - `xdrs` must be a valid pointer to an `XdrC`.
-pub unsafe fn xdr_getpos(xdrs: *mut XdrC) -> c_uint {
-    unsafe {
-        if xdrs.is_null() {
-            return 0;
-        }
-        (*xdrs).inner_ref().getpos()
-    }
+pub fn xdr_getpos(xdrs: &XdrC) -> c_uint {
+    xdrs.inner_ref().getpos()
 }
 
 /// Set the current position in the XDR stream.
-///
-/// # Safety
-/// - `xdrs` must be a valid pointer to an `XdrC`.
-pub unsafe fn xdr_setpos(xdrs: *mut XdrC, pos: c_uint) -> c_int {
-    unsafe {
-        if xdrs.is_null() {
-            return FALSE;
-        }
-        (*xdrs).inner().setpos(pos)
-    }
+pub fn xdr_setpos(xdrs: &mut XdrC, pos: c_uint) -> c_int {
+    xdrs.inner().setpos(pos)
 }
