@@ -59,38 +59,42 @@ fn non_negative_usize(value: c_int, name: &'static [u8]) -> usize {
 }
 
 pub unsafe fn pp_sum(u: SEXP, sl: SEXP) -> SEXP {
-    let u = unsafe { coerceVector(u, SEXPTYPE::REALSXP) };
-    let _u_guard = unsafe { protect(u) };
-    let n = LENGTH(u);
-    let l = unsafe { asInteger(sl) };
-    let values = unsafe { slice::from_raw_parts(REAL(u), n as usize) };
-    let trm = r_pp_sum(values, l);
-    unsafe { Rf_ScalarReal(trm) }
+    unsafe {
+        let u = coerceVector(u, SEXPTYPE::REALSXP);
+        let _u_guard = protect(u);
+        let n = LENGTH(u);
+        let l = asInteger(sl);
+        let values = slice::from_raw_parts(REAL(u), n as usize);
+        let trm = r_pp_sum(values, l);
+        Rf_ScalarReal(trm)
+    }
 }
 
 pub unsafe fn intgrt_vec(x: SEXP, xi: SEXP, slag: SEXP) -> SEXP {
-    let x = unsafe { coerceVector(x, SEXPTYPE::REALSXP) };
-    let _x_guard = unsafe { protect(x) };
-    let xi = unsafe { coerceVector(xi, SEXPTYPE::REALSXP) };
-    let _xi_guard = unsafe { protect(xi) };
+    unsafe {
+        let x = coerceVector(x, SEXPTYPE::REALSXP);
+        let _x_guard = protect(x);
+        let xi = coerceVector(xi, SEXPTYPE::REALSXP);
+        let _xi_guard = protect(xi);
 
-    let n = LENGTH(x);
-    let xi_len = LENGTH(xi);
-    let lag = unsafe { asInteger(slag) };
-    let lag_usize = non_negative_usize(lag, b"'lag' must be non-negative\0");
-    if xi_len < lag {
-        error(b"'xi' is shorter than 'lag'\0");
+        let n = LENGTH(x);
+        let xi_len = LENGTH(xi);
+        let lag = asInteger(slag);
+        let lag_usize = non_negative_usize(lag, b"'lag' must be non-negative\0");
+        if xi_len < lag {
+            error(b"'xi' is shorter than 'lag'\0");
+        }
+        let output_len = n
+            .checked_add(lag)
+            .unwrap_or_else(|| error(b"result length is too large\0"));
+        let ans = Rf_allocVector(SEXPTYPE::REALSXP, output_len);
+        let _ans_guard = protect(ans);
+
+        let x_values = slice::from_raw_parts(REAL(x), n as usize);
+        let xi_values = slice::from_raw_parts(REAL(xi), xi_len as usize);
+        let y = slice::from_raw_parts_mut(REAL(ans), n as usize + lag_usize);
+        integrate_values(x_values, xi_values, lag_usize, y);
+
+        ans
     }
-    let output_len = n
-        .checked_add(lag)
-        .unwrap_or_else(|| error(b"result length is too large\0"));
-    let ans = unsafe { Rf_allocVector(SEXPTYPE::REALSXP, output_len) };
-    let _ans_guard = unsafe { protect(ans) };
-
-    let x_values = unsafe { slice::from_raw_parts(REAL(x), n as usize) };
-    let xi_values = unsafe { slice::from_raw_parts(REAL(xi), xi_len as usize) };
-    let y = unsafe { slice::from_raw_parts_mut(REAL(ans), n as usize + lag_usize) };
-    integrate_values(x_values, xi_values, lag_usize, y);
-
-    ans
 }
