@@ -28,7 +28,7 @@ use super::types::*;
 // ---------------------------------------------------------------------------
 
 /// Duplicate a C string.
-unsafe fn c_strdup(s: *const c_char) -> *mut c_char {
+fn c_strdup(s: *const c_char) -> *mut c_char {
     unsafe {
         if s.is_null() {
             return ptr::null_mut();
@@ -44,7 +44,7 @@ unsafe fn c_strdup(s: *const c_char) -> *mut c_char {
 }
 
 /// Check if two C strings are equal.
-unsafe fn c_streq(a: *const c_char, b: *const c_char) -> bool {
+fn c_streq(a: *const c_char, b: *const c_char) -> bool {
     unsafe {
         if a.is_null() && b.is_null() {
             return true;
@@ -61,7 +61,7 @@ unsafe fn c_streq(a: *const c_char, b: *const c_char) -> bool {
 /// Get the current locale for a category from the environment.
 ///
 /// Follows the POSIX precedence: LC_ALL, LC_xxx, LANG.
-unsafe fn gl_locale_name_posix(category: c_int) -> *mut c_char {
+fn gl_locale_name_posix(category: c_int) -> *mut c_char {
     unsafe {
         // Try LC_ALL first.
         if let Ok(val) = std::env::var("LC_ALL")
@@ -130,7 +130,7 @@ unsafe fn gl_locale_name_posix(category: c_int) -> *mut c_char {
 }
 
 /// Get the locale name, trying various sources.
-unsafe fn gl_locale_name(category: c_int, _categoryname: *const c_char) -> *mut c_char {
+fn gl_locale_name(category: c_int, _categoryname: *const c_char) -> *mut c_char {
     unsafe {
         // Try the platform-specific method first.
         let platform_locale = super::localename::_nl_locale_name(category) as *mut c_char;
@@ -171,7 +171,7 @@ unsafe fn gl_locale_name(category: c_int, _categoryname: *const c_char) -> *mut 
 }
 
 /// Get the language preferences (for LANGUAGE env var).
-unsafe fn gl_locale_name_language_pref() -> *mut c_char {
+fn gl_locale_name_language_pref() -> *mut c_char {
     unsafe {
         let prefs = super::langprefs::_nl_language_preferences_default();
         if !prefs.is_null() {
@@ -203,7 +203,7 @@ unsafe fn gl_locale_name_language_pref() -> *mut c_char {
 ///
 /// This implements the LANGUAGE variable support where multiple locale
 /// names can be specified, separated by colons.
-unsafe fn lookup_in_language_list(
+fn lookup_in_language_list(
     msgid: *const c_char,
     msgid_plural: *const c_char,
     n: c_ulong,
@@ -259,7 +259,7 @@ unsafe fn lookup_in_language_list(
 }
 
 /// Internal lookup function for a single locale.
-unsafe fn dcigettext_internal(
+fn dcigettext_internal(
     msgid: *const c_char,
     msgid_plural: *const c_char,
     n: c_ulong,
@@ -325,7 +325,7 @@ unsafe fn dcigettext_internal(
 /// Look up a message in a loaded domain.
 ///
 /// Uses the hash table for fast lookup, falling back to linear search.
-unsafe fn lookup_message_in_domain(
+fn lookup_message_in_domain(
     domain: *const loaded_domain,
     msgid: *const c_char,
     msgid_plural: *const c_char,
@@ -493,7 +493,7 @@ unsafe fn lookup_message_in_domain(
 /// # Safety
 /// `msgid` must be a valid pointer to a NUL-terminated C string.
 /// Other string pointers may be NULL.
-pub unsafe fn libintl_dcigettext(
+pub fn libintl_dcigettext(
     domainname: *const c_char,
     msgid: *const c_char,
     msgid_plural: *const c_char,

@@ -21,7 +21,7 @@ struct MemHeader {
 
 const HEADER_SIZE: usize = std::mem::size_of::<MemHeader>();
 
-unsafe fn header_for_data(data: *mut u8) -> *mut MemHeader {
+fn header_for_data(data: *mut u8) -> *mut MemHeader {
     unsafe { data.sub(HEADER_SIZE) as *mut MemHeader }
 }
 
@@ -37,7 +37,7 @@ fn layout_for_data_size(size: c_long) -> Option<Layout> {
 }
 
 /// Allocate a platform-sized byte count without truncating it to C long.
-pub unsafe fn memalloc_bytes(size: usize) -> *mut u8 {
+pub fn memalloc_bytes(size: usize) -> *mut u8 {
     let Ok(size) = c_long::try_from(size) else {
         return ptr::null_mut();
     };
@@ -46,7 +46,7 @@ pub unsafe fn memalloc_bytes(size: usize) -> *mut u8 {
 
 /// Allocate zeroed memory of the given size.
 /// Returns a pointer to the usable memory area (after the header).
-pub unsafe fn memalloc(size: c_long) -> *mut u8 {
+pub fn memalloc(size: c_long) -> *mut u8 {
     unsafe {
         let Some(layout) = layout_for_data_size(size) else {
             return ptr::null_mut();
@@ -71,7 +71,7 @@ pub unsafe fn memalloc(size: c_long) -> *mut u8 {
 }
 
 /// Reallocate memory to a new size.
-pub unsafe fn memrealloc(a: *mut u8, new_size: c_long) -> *mut u8 {
+pub fn memrealloc(a: *mut u8, new_size: c_long) -> *mut u8 {
     unsafe {
         if new_size <= 0 {
             if !a.is_null() {
@@ -117,7 +117,7 @@ pub unsafe fn memrealloc(a: *mut u8, new_size: c_long) -> *mut u8 {
 }
 
 /// Get the length of an allocated block.
-pub unsafe fn memlength(a: *mut u8) -> c_long {
+pub fn memlength(a: *mut u8) -> c_long {
     unsafe {
         if a.is_null() {
             0
@@ -128,7 +128,7 @@ pub unsafe fn memlength(a: *mut u8) -> c_long {
 }
 
 /// Free a previously allocated block.
-pub unsafe fn memfree(a: *mut u8) {
+pub fn memfree(a: *mut u8) {
     unsafe {
         if a.is_null() {
             return;
@@ -142,7 +142,7 @@ pub unsafe fn memfree(a: *mut u8) {
 }
 
 /// Expand a block by appending extra bytes at the end.
-pub unsafe fn memexpand(a: *mut u8, extra: c_long) -> *mut u8 {
+pub fn memexpand(a: *mut u8, extra: c_long) -> *mut u8 {
     unsafe {
         if extra == 0 {
             return a;
@@ -164,7 +164,7 @@ pub unsafe fn memexpand(a: *mut u8, extra: c_long) -> *mut u8 {
 }
 
 /// Join two blocks: append b to a and return the result.
-pub unsafe fn memjoin(a: *mut u8, b: *mut u8) -> *mut u8 {
+pub fn memjoin(a: *mut u8, b: *mut u8) -> *mut u8 {
     unsafe {
         let size = memlength(a);
         let extra = memlength(b);

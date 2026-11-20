@@ -28,7 +28,7 @@ use std::ptr;
 ///
 /// Returns a pointer to the formatted string (may be `resultbuf` if it fit),
 /// and sets `*lengthp` to the string length (excluding NUL). Returns null on error.
-unsafe fn libintl_vasnprintf(
+fn libintl_vasnprintf(
     resultbuf: *mut c_char,
     lengthp: *mut usize,
     format: *const c_char,
@@ -76,7 +76,7 @@ unsafe fn libintl_vasnprintf(
 ///
 /// If the format string contains '$' (positional arguments), uses the internal
 /// vasnprintf implementation. Otherwise, delegates to the system vfprintf.
-pub unsafe fn libintl_vfprintf(
+pub fn libintl_vfprintf(
     _stream: *mut c_void,
     format: *const c_char,
     args: *mut c_void,
@@ -126,12 +126,12 @@ pub unsafe fn libintl_vfprintf(
 }
 
 /// Write formatted output to stdout.
-pub unsafe fn libintl_vprintf(format: *const c_char, args: *mut c_void) -> c_int {
+pub fn libintl_vprintf(format: *const c_char, args: *mut c_void) -> c_int {
     unsafe { libintl_vfprintf(ptr::null_mut(), format, args) }
 }
 
 /// Write formatted output to a string buffer.
-pub unsafe fn libintl_vsprintf(
+pub fn libintl_vsprintf(
     resultbuf: *mut c_char,
     format: *const c_char,
     args: *mut c_void,
@@ -158,7 +158,7 @@ pub unsafe fn libintl_vsprintf(
 }
 
 /// Write formatted output to a string buffer with maximum length.
-pub unsafe fn libintl_vsnprintf(
+pub fn libintl_vsnprintf(
     resultbuf: *mut c_char,
     _maxlength: usize,
     format: *const c_char,
@@ -193,7 +193,7 @@ pub unsafe fn libintl_vsnprintf(
 }
 
 /// Write formatted output to a dynamically allocated string.
-pub unsafe fn libintl_vasprintf(
+pub fn libintl_vasprintf(
     resultp: *mut *mut c_char,
     format: *const c_char,
     args: *mut c_void,
@@ -229,7 +229,7 @@ pub unsafe fn libintl_vasprintf(
 
 /// Alias for `libintl_printf`.
 /// Note: Variadic stub - signature simplified for Rust compatibility.
-pub unsafe fn libintl_printf(format: *const c_char, _args: *const c_void) -> c_int {
+pub fn libintl_printf(format: *const c_char, _args: *const c_void) -> c_int {
     // Variadic functions cannot be truly implemented in Rust FFI.
     // This is a stub that returns -1.
     let _ = format;
@@ -237,7 +237,7 @@ pub unsafe fn libintl_printf(format: *const c_char, _args: *const c_void) -> c_i
 }
 
 /// Alias for `libintl_fprintf`.
-pub unsafe fn libintl_fprintf(
+pub fn libintl_fprintf(
     _stream: *mut c_void,
     format: *const c_char,
     _args: *const c_void,
@@ -247,7 +247,7 @@ pub unsafe fn libintl_fprintf(
 }
 
 /// Alias for `libintl_sprintf`.
-pub unsafe fn libintl_sprintf(
+pub fn libintl_sprintf(
     resultbuf: *mut c_char,
     format: *const c_char,
     _args: *const c_void,
@@ -258,7 +258,7 @@ pub unsafe fn libintl_sprintf(
 }
 
 /// Alias for `libintl_snprintf`.
-pub unsafe fn libintl_snprintf(
+pub fn libintl_snprintf(
     resultbuf: *mut c_char,
     maxlength: usize,
     format: *const c_char,
@@ -271,7 +271,7 @@ pub unsafe fn libintl_snprintf(
 }
 
 /// Alias for `libintl_asprintf`.
-pub unsafe fn libintl_asprintf(
+pub fn libintl_asprintf(
     resultp: *mut *mut c_char,
     format: *const c_char,
     _args: *const c_void,

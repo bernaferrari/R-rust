@@ -8,7 +8,7 @@ use std::ptr;
 use super::objects;
 use super::types::*;
 
-pub unsafe fn newprinter(w: f64, h: f64, name: *const std::os::raw::c_char) -> printer {
+pub fn newprinter(w: f64, h: f64, name: *const std::os::raw::c_char) -> printer {
     let printer = unsafe { objects::new_object(PrinterObject, ptr::null_mut(), ptr::null_mut()) };
     if printer.is_null() {
         return ptr::null_mut();
@@ -21,7 +21,7 @@ pub unsafe fn newprinter(w: f64, h: f64, name: *const std::os::raw::c_char) -> p
     }
     printer
 }
-pub unsafe fn nextpage(p: printer) {
+pub fn nextpage(p: printer) {
     unsafe {
         if !p.is_null() {
             (*p).value += 1;

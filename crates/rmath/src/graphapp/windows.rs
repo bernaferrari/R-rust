@@ -32,7 +32,7 @@ pub fn decrement_active_windows() {
     with_graphapp_runtime(|runtime| runtime.windows.active_count -= 1);
 }
 
-unsafe fn alloc_drawstate(dest: drawing) -> drawstate {
+fn alloc_drawstate(dest: drawing) -> drawstate {
     unsafe {
         let state = memory::memalloc_bytes(std::mem::size_of::<drawstruct>()) as drawstate;
         if state.is_null() {
@@ -45,7 +45,7 @@ unsafe fn alloc_drawstate(dest: drawing) -> drawstate {
     }
 }
 
-pub unsafe fn newwindow(name: *const c_char, r: rect, flags: c_long) -> window {
+pub fn newwindow(name: *const c_char, r: rect, flags: c_long) -> window {
     unsafe {
         super::init::initapp(0, ptr::null_mut());
         objects::init_objects();
@@ -75,7 +75,7 @@ pub unsafe fn newwindow(name: *const c_char, r: rect, flags: c_long) -> window {
     }
 }
 
-pub unsafe fn show(w: window) {
+pub fn show(w: window) {
     unsafe {
         if !w.is_null() {
             (*w).state |= GA_Visible;
@@ -83,7 +83,7 @@ pub unsafe fn show(w: window) {
     }
 }
 
-pub unsafe fn hide(w: window) {
+pub fn hide(w: window) {
     unsafe {
         if !w.is_null() {
             (*w).state &= !GA_Visible;
@@ -95,7 +95,7 @@ pub fn ismdi() -> c_int {
     0
 }
 
-pub unsafe fn isUnicodeWindow(obj: object) -> c_int {
+pub fn isUnicodeWindow(obj: object) -> c_int {
     unsafe {
         if obj.is_null() {
             0
@@ -113,7 +113,7 @@ pub fn isiconic(_w: window) -> c_int {
     0
 }
 
-pub unsafe fn GetCurrentWinPos(obj: object) -> rect {
+pub fn GetCurrentWinPos(obj: object) -> rect {
     unsafe {
         if obj.is_null() {
             rect::default()
@@ -123,7 +123,7 @@ pub unsafe fn GetCurrentWinPos(obj: object) -> rect {
     }
 }
 
-pub unsafe fn show_window(obj: object) {
+pub fn show_window(obj: object) {
     unsafe {
         show(obj);
         if !obj.is_null() {
@@ -131,7 +131,7 @@ pub unsafe fn show_window(obj: object) {
         }
     }
 }
-pub unsafe fn hide_window(obj: object) {
+pub fn hide_window(obj: object) {
     unsafe {
         hide(obj);
         if get_current_window() == obj {
@@ -142,7 +142,7 @@ pub unsafe fn hide_window(obj: object) {
 pub fn simple_window() -> window {
     unsafe { newwindow(ptr::null(), rect::default(), SimpleWindow as c_long) }
 }
-pub unsafe fn screen_coords(obj: object) -> rect {
+pub fn screen_coords(obj: object) -> rect {
     unsafe {
         if obj.is_null() {
             rect::default()

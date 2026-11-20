@@ -26,7 +26,7 @@ use super::types::*;
 ///
 /// Returns a pointer to the buffer and sets `*sizep` to the file size.
 /// Returns null on failure.
-unsafe fn read_mo_file(filename: *const c_char, sizep: *mut usize) -> *mut c_char {
+fn read_mo_file(filename: *const c_char, sizep: *mut usize) -> *mut c_char {
     unsafe {
         if filename.is_null() || sizep.is_null() {
             return ptr::null_mut();
@@ -70,7 +70,7 @@ unsafe fn read_mo_file(filename: *const c_char, sizep: *mut usize) -> *mut c_cha
 ///
 /// In the C implementation, this looks for the "sysdep" field in the .mo
 /// file header. For the standalone port, we return NULL (no sysdep strings).
-unsafe fn get_sysdep_string_segments(
+fn get_sysdep_string_segments(
     _domain: *mut loaded_domain,
     _nullentry: *const c_char,
 ) -> *const c_ulong {
@@ -89,7 +89,7 @@ unsafe fn get_sysdep_string_segments(
 /// # Safety
 /// `domain_file` must be a valid pointer to a `loaded_l10nfile` struct.
 /// `domainbinding` may be null.
-pub unsafe fn _nl_load_domain(domain_file: *mut loaded_l10nfile, _domainbinding: *mut binding) {
+pub fn _nl_load_domain(domain_file: *mut loaded_l10nfile, _domainbinding: *mut binding) {
     unsafe {
         if domain_file.is_null() {
             return;

@@ -247,17 +247,17 @@ pub type metafile = objptr;
 // Callback function pointer types
 // ============================================================
 
-pub type voidfn = Option<unsafe extern "C" fn()>;
-pub type timerfn = Option<unsafe extern "C" fn(data: *mut c_void)>;
-pub type actionfn = Option<unsafe extern "C" fn(c: control)>;
-pub type drawfn = Option<unsafe extern "C" fn(c: control, r: rect)>;
-pub type mousefn = Option<unsafe extern "C" fn(c: control, buttons: c_int, xy: point)>;
-pub type intfn = Option<unsafe extern "C" fn(c: control, argument: c_int)>;
-pub type keyfn = Option<unsafe extern "C" fn(c: control, key: c_int)>;
-pub type menufn = Option<unsafe extern "C" fn(m: menuitem)>;
-pub type scrollfn = Option<unsafe extern "C" fn(s: scrollbar, position: c_int)>;
-pub type dropfn = Option<unsafe extern "C" fn(c: control, data: *mut c_char)>;
-pub type imfn = Option<unsafe extern "C" fn(c: control, f: *mut font, xy: *mut point)>;
+pub type voidfn = Option<extern "C" fn()>;
+pub type timerfn = Option<extern "C" fn(data: *mut c_void)>;
+pub type actionfn = Option<extern "C" fn(c: control)>;
+pub type drawfn = Option<extern "C" fn(c: control, r: rect)>;
+pub type mousefn = Option<extern "C" fn(c: control, buttons: c_int, xy: point)>;
+pub type intfn = Option<extern "C" fn(c: control, argument: c_int)>;
+pub type keyfn = Option<extern "C" fn(c: control, key: c_int)>;
+pub type menufn = Option<extern "C" fn(m: menuitem)>;
+pub type scrollfn = Option<extern "C" fn(s: scrollbar, position: c_int)>;
+pub type dropfn = Option<extern "C" fn(c: control, data: *mut c_char)>;
+pub type imfn = Option<extern "C" fn(c: control, f: *mut font, xy: *mut point)>;
 
 // ============================================================
 // Structures
@@ -690,11 +690,11 @@ pub fn rcanon(r: rect) -> rect {
 // Object property accessors
 // ============================================================
 
-pub unsafe fn objdepth(obj: objptr) -> c_int {
+pub fn objdepth(obj: objptr) -> c_int {
     unsafe { if obj.is_null() { 0 } else { (*obj).depth } }
 }
 
-pub unsafe fn objrect(obj: objptr) -> rect {
+pub fn objrect(obj: objptr) -> rect {
     unsafe {
         if obj.is_null() {
             rect::default()
@@ -704,11 +704,11 @@ pub unsafe fn objrect(obj: objptr) -> rect {
     }
 }
 
-pub unsafe fn objwidth(obj: objptr) -> c_int {
+pub fn objwidth(obj: objptr) -> c_int {
     unsafe { if obj.is_null() { 0 } else { (*obj).rect.width } }
 }
 
-pub unsafe fn objheight(obj: objptr) -> c_int {
+pub fn objheight(obj: objptr) -> c_int {
     unsafe { if obj.is_null() { 0 } else { (*obj).rect.height } }
 }
 

@@ -370,7 +370,7 @@ fn fill_polygon_impl(d: drawing, points: &[point], color: rgb, odd_even: bool) {
     }
 }
 
-unsafe fn c_string_len(s: *const c_char) -> usize {
+fn c_string_len(s: *const c_char) -> usize {
     if s.is_null() {
         0
     } else {
@@ -378,7 +378,7 @@ unsafe fn c_string_len(s: *const c_char) -> usize {
     }
 }
 
-unsafe fn wide_string(codepoints: *const c_int, count: Option<c_int>) -> Vec<char> {
+fn wide_string(codepoints: *const c_int, count: Option<c_int>) -> Vec<char> {
     if codepoints.is_null() {
         return Vec::new();
     }
@@ -631,7 +631,7 @@ pub fn gcopy(d: drawing, d2: drawing, r: rect) {
     gbitblt(d, d2, point { x: r.x, y: r.y }, r);
 }
 
-pub unsafe fn gcopyalpha(d: drawing, d2: drawing, r: rect, alpha: c_int) {
+pub fn gcopyalpha(d: drawing, d2: drawing, r: rect, alpha: c_int) {
     let Some((x0, y0, x1, y1)) = rect_bounds(r) else {
         return;
     };
@@ -675,7 +675,7 @@ pub fn gfillellipse(d: drawing, fill: rgb, r: rect) {
     draw_ellipse_impl(d, 1, fill, r, true);
 }
 
-pub unsafe fn gdrawpolyline(
+pub fn gdrawpolyline(
     d: drawing,
     width: c_int,
     _style: c_int,
@@ -706,7 +706,7 @@ pub unsafe fn gdrawpolyline(
     }
 }
 
-pub unsafe fn gdrawpolygon(
+pub fn gdrawpolygon(
     d: drawing,
     width: c_int,
     style: c_int,
@@ -728,13 +728,13 @@ pub fn gsetpolyfillmode(d: drawing, oddeven: c_int) {
     with_state_mut(d, |state| state.odd_even_fill = oddeven != 0);
 }
 
-pub unsafe fn gfillpolygon(d: drawing, fill: rgb, p: *mut point, n: c_int) {
+pub fn gfillpolygon(d: drawing, fill: rgb, p: *mut point, n: c_int) {
     let points = points_from_raw(p, n);
     let odd_even = with_state(d, |state| state.odd_even_fill);
     fill_polygon_impl(d, &points, fill, odd_even);
 }
 
-pub unsafe fn gfillpolypolygon(
+pub fn gfillpolypolygon(
     d: drawing,
     fill: rgb,
     p: *mut point,
@@ -766,7 +766,7 @@ pub fn gmaskimage(d: drawing, img: image, dr: rect, sr: rect, mask: image) {
     draw_image_into_rect(d, img, dr, sr, Some(mask));
 }
 
-pub unsafe fn gdrawstr(d: drawing, f: font, c: rgb, p: point, s: *const c_char) -> c_int {
+pub fn gdrawstr(d: drawing, f: font, c: rgb, p: point, s: *const c_char) -> c_int {
     let width = unsafe { gstrwidth(d, f, s) };
     let char_w = font_char_width(f).max(1);
     let len = unsafe { c_string_len(s) } as c_int;
@@ -776,7 +776,7 @@ pub unsafe fn gdrawstr(d: drawing, f: font, c: rgb, p: point, s: *const c_char) 
     width
 }
 
-pub unsafe fn gdrawstr1(d: drawing, f: font, c: rgb, p: point, s: *const c_char, hadj: f64) {
+pub fn gdrawstr1(d: drawing, f: font, c: rgb, p: point, s: *const c_char, hadj: f64) {
     let width = unsafe { gstrwidth(d, f, s) };
     let start = point {
         x: p.x - (hadj * width as f64).round() as c_int,
@@ -785,7 +785,7 @@ pub unsafe fn gdrawstr1(d: drawing, f: font, c: rgb, p: point, s: *const c_char,
     unsafe { gdrawstr(d, f, c, start, s) };
 }
 
-pub unsafe fn gstrrect(_d: drawing, f: font, s: *const c_char) -> rect {
+pub fn gstrrect(_d: drawing, f: font, s: *const c_char) -> rect {
     rect {
         x: 0,
         y: 0,
@@ -794,18 +794,18 @@ pub unsafe fn gstrrect(_d: drawing, f: font, s: *const c_char) -> rect {
     }
 }
 
-pub unsafe fn gstrsize(_d: drawing, f: font, s: *const c_char) -> point {
+pub fn gstrsize(_d: drawing, f: font, s: *const c_char) -> point {
     point {
         x: unsafe { gstrwidth(ptr::null_mut(), f, s) },
         y: text_height(f),
     }
 }
 
-pub unsafe fn gstrwidth(_d: drawing, f: font, s: *const c_char) -> c_int {
+pub fn gstrwidth(_d: drawing, f: font, s: *const c_char) -> c_int {
     text_width(f, unsafe { c_string_len(s) })
 }
 
-pub unsafe fn gcharmetric(
+pub fn gcharmetric(
     _d: drawing,
     f: font,
     _c: c_int,
@@ -820,7 +820,7 @@ pub unsafe fn gcharmetric(
     write_metric(width, font_char_width(f));
 }
 
-pub unsafe fn gnewfont(
+pub fn gnewfont(
     d: drawing,
     face: *const c_char,
     style: c_int,
@@ -831,7 +831,7 @@ pub unsafe fn gnewfont(
     unsafe { gnewfont2(d, face, style, size, rot, usePoints, 0) }
 }
 
-pub unsafe fn gnewfont2(
+pub fn gnewfont2(
     _d: drawing,
     face: *const c_char,
     style: c_int,
@@ -866,7 +866,7 @@ pub unsafe fn gnewfont2(
     font
 }
 
-pub unsafe fn ghasfixedwidth(f: font) -> c_int {
+pub fn ghasfixedwidth(f: font) -> c_int {
     if f.is_null() {
         return 0;
     }
@@ -888,7 +888,7 @@ pub unsafe fn ghasfixedwidth(f: font) -> c_int {
     }
 }
 
-pub unsafe fn newfield_no_border(text: *const c_char, r: rect) -> field {
+pub fn newfield_no_border(text: *const c_char, r: rect) -> field {
     unsafe { objects::init_objects() };
     let field = unsafe { objects::new_object(FieldObject, ptr::null_mut(), ptr::null_mut()) };
     if field.is_null() {
@@ -904,7 +904,7 @@ pub unsafe fn newfield_no_border(text: *const c_char, r: rect) -> field {
     field
 }
 
-pub unsafe fn gdrawwcs(d: drawing, f: font, c: rgb, p: point, s: *const c_int) -> c_int {
+pub fn gdrawwcs(d: drawing, f: font, c: rgb, p: point, s: *const c_int) -> c_int {
     let chars = unsafe { wide_string(s, None) };
     let width = text_width(f, chars.len());
     let char_w = font_char_width(f).max(1);
@@ -914,11 +914,11 @@ pub unsafe fn gdrawwcs(d: drawing, f: font, c: rgb, p: point, s: *const c_int) -
     width
 }
 
-pub unsafe fn gwcswidth(_d: drawing, f: font, s: *const c_int) -> c_int {
+pub fn gwcswidth(_d: drawing, f: font, s: *const c_int) -> c_int {
     text_width(f, unsafe { wide_string(s, None) }.len())
 }
 
-pub unsafe fn gwcharmetric(
+pub fn gwcharmetric(
     d: drawing,
     f: font,
     c: c_int,
@@ -929,7 +929,7 @@ pub unsafe fn gwcharmetric(
     unsafe { gcharmetric(d, f, c, ascent, descent, width) };
 }
 
-pub unsafe fn gwdrawstr1(
+pub fn gwdrawstr1(
     d: drawing,
     f: font,
     c: rgb,
@@ -947,7 +947,7 @@ pub unsafe fn gwdrawstr1(
     }
 }
 
-pub unsafe fn gstrwidth1(_d: drawing, f: font, s: *const c_char, _enc: c_int) -> c_int {
+pub fn gstrwidth1(_d: drawing, f: font, s: *const c_char, _enc: c_int) -> c_int {
     text_width(f, unsafe { c_string_len(s) })
 }
 

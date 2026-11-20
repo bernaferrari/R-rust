@@ -14,7 +14,7 @@ use super::runtime::{DelNode, with_graphapp_runtime};
 use super::types::*;
 
 /// Initialise the base object and set the list to be empty.
-pub unsafe fn init_objects() {
+pub fn init_objects() {
     unsafe {
         if !with_graphapp_runtime(|runtime| runtime.objects.base_object).is_null() {
             return;
@@ -33,7 +33,7 @@ pub unsafe fn init_objects() {
     }
 }
 
-unsafe fn add_object(obj: object, parent: object) {
+fn add_object(obj: object, parent: object) {
     unsafe {
         let parent = if parent.is_null() {
             with_graphapp_runtime(|runtime| runtime.objects.base_object)
@@ -55,7 +55,7 @@ unsafe fn add_object(obj: object, parent: object) {
     }
 }
 
-unsafe fn remove_object(obj: object) {
+fn remove_object(obj: object) {
     unsafe {
         if !(*obj).next.is_null() && (*obj).next != obj {
             (*(*obj).prev).next = (*obj).next;
@@ -71,7 +71,7 @@ unsafe fn remove_object(obj: object) {
 }
 
 /// Bring an object to the front of its sibling list.
-pub unsafe fn move_to_front(obj: object) {
+pub fn move_to_front(obj: object) {
     unsafe {
         if obj.is_null() {
             return;
@@ -84,7 +84,7 @@ pub unsafe fn move_to_front(obj: object) {
 }
 
 /// Call a function on all objects in a sibling list.
-pub unsafe fn apply_to_list(first: object, fn_: actionfn) {
+pub fn apply_to_list(first: object, fn_: actionfn) {
     unsafe {
         if first.is_null() || fn_.is_none() {
             return;
@@ -104,7 +104,7 @@ pub unsafe fn apply_to_list(first: object, fn_: actionfn) {
 }
 
 /// Decrease the reference count of an object.
-pub unsafe fn decrease_refcount(obj: object) {
+pub fn decrease_refcount(obj: object) {
     unsafe {
         if obj.is_null() {
             return;
@@ -139,7 +139,7 @@ pub unsafe fn decrease_refcount(obj: object) {
 }
 
 /// Increase the reference count of an object.
-pub unsafe fn increase_refcount(obj: object) {
+pub fn increase_refcount(obj: object) {
     unsafe {
         if !obj.is_null() && (*obj).refcount >= 0 {
             (*obj).refcount += 1;
@@ -148,7 +148,7 @@ pub unsafe fn increase_refcount(obj: object) {
 }
 
 /// Protect an object from deletion by setting refcount to -1.
-pub unsafe fn protect_object(obj: object) {
+pub fn protect_object(obj: object) {
     unsafe {
         if !obj.is_null() {
             (*obj).refcount = -1;
@@ -156,7 +156,7 @@ pub unsafe fn protect_object(obj: object) {
     }
 }
 
-unsafe fn remove_delnode(n: *mut DelNode) {
+fn remove_delnode(n: *mut DelNode) {
     unsafe {
         (*(*n).prev).next = (*n).next;
         (*(*n).next).prev = (*n).prev;
@@ -169,7 +169,7 @@ unsafe fn remove_delnode(n: *mut DelNode) {
     }
 }
 
-unsafe fn remove_deleted_object(obj: object) {
+fn remove_deleted_object(obj: object) {
     unsafe {
         if with_graphapp_runtime(|runtime| runtime.objects.deletion_base).is_null() {
             return;
@@ -189,7 +189,7 @@ unsafe fn remove_deleted_object(obj: object) {
     }
 }
 
-unsafe fn del_object(obj: object) {
+fn del_object(obj: object) {
     unsafe {
         while !(*obj).child.is_null() {
             del_object((*obj).child);
@@ -198,7 +198,7 @@ unsafe fn del_object(obj: object) {
     }
 }
 
-unsafe fn update_app_globals(obj: object) {
+fn update_app_globals(obj: object) {
     unsafe {
         // These need to be set when the corresponding modules are initialized
         // For now, stub out the global drawstate reference
@@ -208,7 +208,7 @@ unsafe fn update_app_globals(obj: object) {
     }
 }
 
-unsafe fn free_private(obj: object) {
+fn free_private(obj: object) {
     unsafe {
         remove_object(obj);
         if !(*obj).call.is_null()
@@ -228,7 +228,7 @@ unsafe fn free_private(obj: object) {
     }
 }
 
-unsafe fn free_object(obj: object) {
+fn free_object(obj: object) {
     unsafe {
         free_private(obj);
         if !(*obj).drawstate.is_null() {
@@ -245,7 +245,7 @@ unsafe fn free_object(obj: object) {
 }
 
 /// Traverse the deletion list and delete every object.
-pub unsafe fn deletion_traversal() {
+pub fn deletion_traversal() {
     unsafe {
         with_graphapp_runtime(|runtime| runtime.objects.deletion_level += 1);
         if with_graphapp_runtime(|runtime| runtime.objects.deletion_level) == 1 {
@@ -266,7 +266,7 @@ pub unsafe fn deletion_traversal() {
 }
 
 /// Create and return a new object with a refcount of 1.
-pub unsafe fn new_object(kind: c_int, handle: *mut c_void, parent: object) -> object {
+pub fn new_object(kind: c_int, handle: *mut c_void, parent: object) -> object {
     unsafe {
         let obj = memory::memalloc_bytes(std::mem::size_of::<ObjInfo>()) as object;
         if obj.is_null() {
@@ -294,7 +294,7 @@ pub unsafe fn new_object(kind: c_int, handle: *mut c_void, parent: object) -> ob
     }
 }
 
-unsafe fn match_object(obj: object, handle: *mut c_void, id: c_int, key: c_int) -> object {
+fn match_object(obj: object, handle: *mut c_void, id: c_int, key: c_int) -> object {
     unsafe {
         if !handle.is_null() && (*obj).handle == handle {
             return obj;
@@ -310,7 +310,7 @@ unsafe fn match_object(obj: object, handle: *mut c_void, id: c_int, key: c_int) 
 }
 
 /// Perform a multi-child tree traversal to find an object.
-pub unsafe fn tree_search(top: object, handle: *mut c_void, id: c_int, key: c_int) -> object {
+pub fn tree_search(top: object, handle: *mut c_void, id: c_int, key: c_int) -> object {
     unsafe {
         if top.is_null() || (*top).child.is_null() {
             return ptr::null_mut();
@@ -352,7 +352,7 @@ pub unsafe fn tree_search(top: object, handle: *mut c_void, id: c_int, key: c_in
 }
 
 /// Find an object in the tree.
-pub unsafe fn find_object(handle: *mut c_void, id: c_int, key: c_int) -> object {
+pub fn find_object(handle: *mut c_void, id: c_int, key: c_int) -> object {
     unsafe {
         tree_search(
             with_graphapp_runtime(|runtime| runtime.objects.base_object),
@@ -364,7 +364,7 @@ pub unsafe fn find_object(handle: *mut c_void, id: c_int, key: c_int) -> object 
 }
 
 /// Remove a menu item from the hierarchy.
-pub unsafe fn remove_menu_item(obj: object) {
+pub fn remove_menu_item(obj: object) {
     unsafe {
         if obj.is_null() {
             return;
@@ -380,7 +380,7 @@ pub unsafe fn remove_menu_item(obj: object) {
 }
 
 /// Finish objects (cleanup at application exit).
-pub unsafe fn finish_objects() {
+pub fn finish_objects() {
     unsafe {
         let base = with_graphapp_runtime(|runtime| runtime.objects.base_object);
         if !base.is_null() {
@@ -394,16 +394,16 @@ pub unsafe fn finish_objects() {
 }
 
 /// Find next valid sibling (visible, enabled, not a label).
-pub unsafe fn find_next_valid_sibling(obj: object) -> object {
+pub fn find_next_valid_sibling(obj: object) -> object {
     unsafe { find_valid_sibling(obj, true) }
 }
 
 /// Find previous valid sibling.
-pub unsafe fn find_prev_valid_sibling(obj: object) -> object {
+pub fn find_prev_valid_sibling(obj: object) -> object {
     unsafe { find_valid_sibling(obj, false) }
 }
 
-unsafe fn find_valid_sibling(obj: object, next_dir: bool) -> object {
+fn find_valid_sibling(obj: object, next_dir: bool) -> object {
     unsafe {
         if obj.is_null() {
             return ptr::null_mut();
@@ -428,7 +428,7 @@ unsafe fn find_valid_sibling(obj: object, next_dir: bool) -> object {
 }
 
 /// Delete an object (public API).
-pub unsafe fn delobj(obj: objptr) {
+pub fn delobj(obj: objptr) {
     unsafe {
         if !obj.is_null() {
             decrease_refcount(obj);

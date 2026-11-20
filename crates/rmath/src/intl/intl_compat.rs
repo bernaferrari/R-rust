@@ -12,12 +12,12 @@
 use std::os::raw::c_char;
 
 /// Alias for `bindtextdomain()` that calls the libintl_ version.
-pub unsafe fn bindtextdomain(domainname: *const c_char, dirname: *const c_char) -> *mut c_char {
+pub fn bindtextdomain(domainname: *const c_char, dirname: *const c_char) -> *mut c_char {
     unsafe { crate::intl::bindtextdom::libintl_bindtextdomain(domainname, dirname) }
 }
 
 /// Alias for `bind_textdomain_codeset()` that calls the libintl_ version.
-pub unsafe fn bind_textdomain_codeset(
+pub fn bind_textdomain_codeset(
     domainname: *const c_char,
     codeset: *const c_char,
 ) -> *mut c_char {

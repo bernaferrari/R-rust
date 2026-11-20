@@ -14,12 +14,12 @@ use crate::intl::types;
 ///
 /// # Safety
 /// All string pointers must be valid NUL-terminated C strings (or NULL for domainname).
-pub unsafe fn libintl_dgettext(domainname: *const c_char, msgid: *const c_char) -> *mut c_char {
+pub fn libintl_dgettext(domainname: *const c_char, msgid: *const c_char) -> *mut c_char {
     unsafe { crate::intl::dcgettext::libintl_dcgettext(domainname, msgid, types::LC_MESSAGES) }
 }
 
 /// Alias for `libintl_dgettext` (unprefixed, for compatibility).
-pub unsafe fn dgettext(domainname: *const c_char, msgid: *const c_char) -> *mut c_char {
+pub fn dgettext(domainname: *const c_char, msgid: *const c_char) -> *mut c_char {
     unsafe { libintl_dgettext(domainname, msgid) }
 }
 

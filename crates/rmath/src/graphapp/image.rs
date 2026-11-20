@@ -81,7 +81,7 @@ fn sample_coordinate(
 }
 
 /// Create a new image.
-pub unsafe fn newimage(width: c_int, height: c_int, depth: c_int) -> image {
+pub fn newimage(width: c_int, height: c_int, depth: c_int) -> image {
     unsafe {
         if depth != 8 && depth != 32 {
             return ptr::null_mut();
@@ -121,7 +121,7 @@ pub unsafe fn newimage(width: c_int, height: c_int, depth: c_int) -> image {
 }
 
 /// Copy an image.
-pub unsafe fn copyimage(img: image) -> image {
+pub fn copyimage(img: image) -> image {
     unsafe {
         if img.is_null() {
             return ptr::null_mut();
@@ -136,7 +136,7 @@ pub unsafe fn copyimage(img: image) -> image {
 }
 
 /// Delete an image.
-pub unsafe fn delimage(img: image) {
+pub fn delimage(img: image) {
     unsafe {
         if img.is_null() {
             return;
@@ -152,22 +152,22 @@ pub unsafe fn delimage(img: image) {
 }
 
 /// Get the depth of an image.
-pub unsafe fn imagedepth(img: image) -> c_int {
+pub fn imagedepth(img: image) -> c_int {
     unsafe { if img.is_null() { 0 } else { (*img).depth } }
 }
 
 /// Get the width of an image.
-pub unsafe fn imagewidth(img: image) -> c_int {
+pub fn imagewidth(img: image) -> c_int {
     unsafe { if img.is_null() { 0 } else { (*img).width } }
 }
 
 /// Get the height of an image.
-pub unsafe fn imageheight(img: image) -> c_int {
+pub fn imageheight(img: image) -> c_int {
     unsafe { if img.is_null() { 0 } else { (*img).height } }
 }
 
 /// Set the pixels of an image.
-pub unsafe fn setpixels(img: image, pixels: *mut super::types::GAbyte) {
+pub fn setpixels(img: image, pixels: *mut super::types::GAbyte) {
     unsafe {
         if img.is_null() {
             return;
@@ -185,7 +185,7 @@ pub unsafe fn setpixels(img: image, pixels: *mut super::types::GAbyte) {
 }
 
 /// Get the pixel array of an image.
-pub unsafe fn getpixels(img: image) -> *mut super::types::GAbyte {
+pub fn getpixels(img: image) -> *mut super::types::GAbyte {
     unsafe {
         if img.is_null() {
             ptr::null_mut()
@@ -196,7 +196,7 @@ pub unsafe fn getpixels(img: image) -> *mut super::types::GAbyte {
 }
 
 /// Set the colour palette of an image.
-pub unsafe fn setpalette(img: image, cmapsize: c_int, cmap: *mut rgb) {
+pub fn setpalette(img: image, cmapsize: c_int, cmap: *mut rgb) {
     unsafe {
         if img.is_null() {
             return;
@@ -222,7 +222,7 @@ pub unsafe fn setpalette(img: image, cmapsize: c_int, cmap: *mut rgb) {
 }
 
 /// Get the colour palette of an image.
-pub unsafe fn getpalette(img: image) -> *mut rgb {
+pub fn getpalette(img: image) -> *mut rgb {
     unsafe {
         if img.is_null() {
             ptr::null_mut()
@@ -233,12 +233,12 @@ pub unsafe fn getpalette(img: image) -> *mut rgb {
 }
 
 /// Get the palette size.
-pub unsafe fn getpalettesize(img: image) -> c_int {
+pub fn getpalettesize(img: image) -> c_int {
     unsafe { if img.is_null() { 0 } else { (*img).cmapsize } }
 }
 
 /// Convert a 32-bit image to 8-bit.
-pub unsafe fn convert32to8(img: image) -> image {
+pub fn convert32to8(img: image) -> image {
     unsafe {
         if img.is_null() {
             return ptr::null_mut();
@@ -284,7 +284,7 @@ pub unsafe fn convert32to8(img: image) -> image {
 }
 
 /// Convert an 8-bit image to 32-bit.
-pub unsafe fn convert8to32(img: image) -> image {
+pub fn convert8to32(img: image) -> image {
     unsafe {
         if img.is_null() {
             return ptr::null_mut();
@@ -312,7 +312,7 @@ pub unsafe fn convert8to32(img: image) -> image {
 }
 
 /// Sort an image's colour map and remap indexed pixels to keep colours stable.
-pub unsafe fn sortpalette(img: image) {
+pub fn sortpalette(img: image) {
     unsafe {
         if img.is_null() || (*img).depth > 8 || (*img).cmapsize <= 1 || (*img).cmap.is_null() {
             return;
@@ -342,7 +342,7 @@ pub unsafe fn sortpalette(img: image) {
 }
 
 /// Scale an image.
-pub unsafe fn scaleimage(src: image, dr: rect, sr: rect) -> image {
+pub fn scaleimage(src: image, dr: rect, sr: rect) -> image {
     unsafe {
         if src.is_null() || dr.width <= 0 || dr.height <= 0 {
             return ptr::null_mut();
@@ -394,7 +394,7 @@ pub unsafe fn scaleimage(src: image, dr: rect, sr: rect) -> image {
 }
 
 /// Get pixel value from an image.
-pub unsafe fn get_image_pixel(img: image, x: c_int, y: c_int) -> rgb {
+pub fn get_image_pixel(img: image, x: c_int, y: c_int) -> rgb {
     unsafe {
         if img.is_null() {
             return Transparent;
@@ -422,7 +422,7 @@ pub unsafe fn get_image_pixel(img: image, x: c_int, y: c_int) -> rgb {
 
 /// Get monochrome pixel value.
 #[allow(clippy::if_same_then_else)]
-pub unsafe fn get_monochrome_pixel(img: image, x: c_int, y: c_int) -> rgb {
+pub fn get_monochrome_pixel(img: image, x: c_int, y: c_int) -> rgb {
     unsafe {
         let pixel = get_image_pixel(img, x, y);
         if pixel == Transparent {
@@ -446,7 +446,7 @@ pub unsafe fn get_monochrome_pixel(img: image, x: c_int, y: c_int) -> rgb {
 }
 
 /// Get grey pixel value.
-pub unsafe fn get_grey_pixel(img: image, x: c_int, y: c_int) -> rgb {
+pub fn get_grey_pixel(img: image, x: c_int, y: c_int) -> rgb {
     unsafe {
         let pixel = get_image_pixel(img, x, y);
         if pixel == Transparent {
@@ -473,7 +473,7 @@ pub unsafe fn get_grey_pixel(img: image, x: c_int, y: c_int) -> rgb {
 }
 
 /// Check if image has transparent pixels.
-pub unsafe fn has_transparent_pixels(img: image) -> c_int {
+pub fn has_transparent_pixels(img: image) -> c_int {
     unsafe {
         if img.is_null() {
             return 0;

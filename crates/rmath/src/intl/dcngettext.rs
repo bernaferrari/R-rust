@@ -10,7 +10,7 @@ use std::os::raw::{c_char, c_ulong};
 
 use crate::intl::types;
 
-pub unsafe fn libintl_dcngettext(
+pub fn libintl_dcngettext(
     domainname: *const c_char,
     msgid1: *const c_char,
     msgid2: *const c_char,
@@ -21,7 +21,7 @@ pub unsafe fn libintl_dcngettext(
 }
 
 /// Alias for `libintl_dcngettext` (unprefixed, for compatibility).
-pub unsafe fn dcngettext(
+pub fn dcngettext(
     domainname: *const c_char,
     msgid1: *const c_char,
     msgid2: *const c_char,

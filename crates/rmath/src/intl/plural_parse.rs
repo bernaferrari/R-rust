@@ -49,12 +49,12 @@ pub(crate) struct PluralParser {
 
 impl PluralParser {
     /// Create a new parser starting at the given string position.
-    pub unsafe fn new(cp: *const c_char) -> Self {
+    pub fn new(cp: *const c_char) -> Self {
         PluralParser { cp }
     }
 
     /// Peek at the current character without consuming it.
-    unsafe fn peek(&self) -> c_char {
+    fn peek(&self) -> c_char {
         unsafe {
             if self.cp.is_null() || *self.cp == 0 {
                 0
@@ -65,7 +65,7 @@ impl PluralParser {
     }
 
     /// Consume and return the current character.
-    unsafe fn next(&mut self) -> c_char {
+    fn next(&mut self) -> c_char {
         unsafe {
             let c = self.peek();
             if c != 0 {
@@ -76,7 +76,7 @@ impl PluralParser {
     }
 
     /// Skip whitespace.
-    unsafe fn skip_whitespace(&mut self) {
+    fn skip_whitespace(&mut self) {
         unsafe {
             while !self.cp.is_null() && *self.cp != 0 {
                 let c = *self.cp as u8;
@@ -90,7 +90,7 @@ impl PluralParser {
     }
 
     /// Parse a number (unsigned integer).
-    unsafe fn parse_number(&mut self) -> Option<c_ulong> {
+    fn parse_number(&mut self) -> Option<c_ulong> {
         unsafe {
             let mut n: c_ulong = 0;
             let mut found = false;
@@ -109,7 +109,7 @@ impl PluralParser {
     }
 
     /// Allocate a new expression node.
-    unsafe fn alloc_expr(nargs: c_int, op: expression_operator) -> *mut expression {
+    fn alloc_expr(nargs: c_int, op: expression_operator) -> *mut expression {
         unsafe {
             let layout = Layout::new::<expression>();
             let p = std::alloc::alloc(layout) as *mut expression;
@@ -126,7 +126,7 @@ impl PluralParser {
     // ---- Recursive descent parser ----
 
     /// Parse a full plural expression.
-    pub unsafe fn parse(&mut self) -> *mut expression {
+    pub fn parse(&mut self) -> *mut expression {
         unsafe {
             self.skip_whitespace();
             let result = self.parse_ternary();
@@ -140,7 +140,7 @@ impl PluralParser {
     }
 
     /// Parse ternary: expr ? expr : expr (right-associative).
-    unsafe fn parse_ternary(&mut self) -> *mut expression {
+    fn parse_ternary(&mut self) -> *mut expression {
         unsafe {
             let cond = self.parse_or();
             self.skip_whitespace();
@@ -166,7 +166,7 @@ impl PluralParser {
     }
 
     /// Parse logical OR.
-    unsafe fn parse_or(&mut self) -> *mut expression {
+    fn parse_or(&mut self) -> *mut expression {
         unsafe {
             let mut left = self.parse_and();
             loop {
@@ -195,7 +195,7 @@ impl PluralParser {
     }
 
     /// Parse logical AND.
-    unsafe fn parse_and(&mut self) -> *mut expression {
+    fn parse_and(&mut self) -> *mut expression {
         unsafe {
             let mut left = self.parse_equality();
             loop {
@@ -224,7 +224,7 @@ impl PluralParser {
     }
 
     /// Parse equality operators (== and !=).
-    unsafe fn parse_equality(&mut self) -> *mut expression {
+    fn parse_equality(&mut self) -> *mut expression {
         unsafe {
             let mut left = self.parse_comparison();
             loop {
@@ -269,7 +269,7 @@ impl PluralParser {
     }
 
     /// Parse comparison operators (>=, <=, >, <).
-    unsafe fn parse_comparison(&mut self) -> *mut expression {
+    fn parse_comparison(&mut self) -> *mut expression {
         unsafe {
             let left = self.parse_additive();
             self.skip_whitespace();
@@ -325,7 +325,7 @@ impl PluralParser {
     }
 
     /// Parse additive operators (+ and -).
-    unsafe fn parse_additive(&mut self) -> *mut expression {
+    fn parse_additive(&mut self) -> *mut expression {
         unsafe {
             let mut left = self.parse_multiplicative();
             loop {
@@ -360,7 +360,7 @@ impl PluralParser {
     }
 
     /// Parse multiplicative operators (*, /, %).
-    unsafe fn parse_multiplicative(&mut self) -> *mut expression {
+    fn parse_multiplicative(&mut self) -> *mut expression {
         unsafe {
             let mut left = self.parse_unary();
             loop {
@@ -405,7 +405,7 @@ impl PluralParser {
     }
 
     /// Parse unary operators (!).
-    unsafe fn parse_unary(&mut self) -> *mut expression {
+    fn parse_unary(&mut self) -> *mut expression {
         unsafe {
             self.skip_whitespace();
             if self.peek() == b'!' as c_char {
@@ -425,7 +425,7 @@ impl PluralParser {
     }
 
     /// Parse primary: 'n', number, or '(' expr ')'.
-    unsafe fn parse_primary(&mut self) -> *mut expression {
+    fn parse_primary(&mut self) -> *mut expression {
         unsafe {
             self.skip_whitespace();
             let c = self.peek();
@@ -472,7 +472,7 @@ impl PluralParser {
 ///
 /// # Safety
 /// `arg` must be a valid pointer to a `parse_args` struct.
-pub unsafe fn libintl_gettextparse(arg: *mut parse_args) -> c_int {
+pub fn libintl_gettextparse(arg: *mut parse_args) -> c_int {
     unsafe {
         if arg.is_null() {
             return -1;
@@ -504,14 +504,14 @@ mod tests {
     use super::super::plural_exp::plural_eval;
     use super::*;
 
-    unsafe fn parse_plural(expr: &str) -> *mut expression {
+    fn parse_plural(expr: &str) -> *mut expression {
         let mut bytes = expr.as_bytes().to_vec();
         bytes.push(0);
         let mut parser = unsafe { PluralParser::new(bytes.as_ptr() as *const c_char) };
         unsafe { parser.parse() }
     }
 
-    unsafe fn free_expr(p: *mut expression) {
+    fn free_expr(p: *mut expression) {
         if p.is_null() {
             return;
         }

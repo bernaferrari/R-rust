@@ -31,22 +31,22 @@ pub(crate) struct gl_lock_t {
 }
 
 /// Initialize a gl_lock_t.
-pub unsafe fn glthread_lock_init(_lock: *mut gl_lock_t) {
+pub fn glthread_lock_init(_lock: *mut gl_lock_t) {
     // No-op in standalone mode.
 }
 
 /// Acquire a gl_lock_t.
-pub unsafe fn glthread_lock_lock(_lock: *mut gl_lock_t) {
+pub fn glthread_lock_lock(_lock: *mut gl_lock_t) {
     // No-op in standalone mode.
 }
 
 /// Release a gl_lock_t.
-pub unsafe fn glthread_lock_unlock(_lock: *mut gl_lock_t) {
+pub fn glthread_lock_unlock(_lock: *mut gl_lock_t) {
     // No-op in standalone mode.
 }
 
 /// Destroy a gl_lock_t.
-pub unsafe fn glthread_lock_destroy(_lock: *mut gl_lock_t) {
+pub fn glthread_lock_destroy(_lock: *mut gl_lock_t) {
     // No-op in standalone mode.
 }
 
@@ -64,27 +64,27 @@ pub(crate) struct gl_rwlock_t {
 }
 
 /// Initialize a read-write lock.
-pub unsafe fn glthread_rwlock_init(_lock: *mut gl_rwlock_t) {
+pub fn glthread_rwlock_init(_lock: *mut gl_rwlock_t) {
     // No-op in standalone mode.
 }
 
 /// Acquire a read (shared) lock.
-pub unsafe fn glthread_rwlock_rdlock(_lock: *mut gl_rwlock_t) {
+pub fn glthread_rwlock_rdlock(_lock: *mut gl_rwlock_t) {
     // No-op in standalone mode.
 }
 
 /// Acquire a write (exclusive) lock.
-pub unsafe fn glthread_rwlock_wrlock(_lock: *mut gl_rwlock_t) {
+pub fn glthread_rwlock_wrlock(_lock: *mut gl_rwlock_t) {
     // No-op in standalone mode.
 }
 
 /// Release a read-write lock.
-pub unsafe fn glthread_rwlock_unlock(_lock: *mut gl_rwlock_t) {
+pub fn glthread_rwlock_unlock(_lock: *mut gl_rwlock_t) {
     // No-op in standalone mode.
 }
 
 /// Destroy a read-write lock.
-pub unsafe fn glthread_rwlock_destroy(_lock: *mut gl_rwlock_t) {
+pub fn glthread_rwlock_destroy(_lock: *mut gl_rwlock_t) {
     // No-op in standalone mode.
 }
 
@@ -103,22 +103,22 @@ pub(crate) struct gl_recursive_lock_t {
 }
 
 /// Initialize a recursive lock.
-pub unsafe fn glthread_recursive_lock_init(_lock: *mut gl_recursive_lock_t) {
+pub fn glthread_recursive_lock_init(_lock: *mut gl_recursive_lock_t) {
     // No-op in standalone mode.
 }
 
 /// Acquire a recursive lock.
-pub unsafe fn glthread_recursive_lock_lock(_lock: *mut gl_recursive_lock_t) {
+pub fn glthread_recursive_lock_lock(_lock: *mut gl_recursive_lock_t) {
     // No-op in standalone mode.
 }
 
 /// Release a recursive lock.
-pub unsafe fn glthread_recursive_lock_unlock(_lock: *mut gl_recursive_lock_t) {
+pub fn glthread_recursive_lock_unlock(_lock: *mut gl_recursive_lock_t) {
     // No-op in standalone mode.
 }
 
 /// Destroy a recursive lock.
-pub unsafe fn glthread_recursive_lock_destroy(_lock: *mut gl_recursive_lock_t) {
+pub fn glthread_recursive_lock_destroy(_lock: *mut gl_recursive_lock_t) {
     // No-op in standalone mode.
 }
 
@@ -150,9 +150,9 @@ impl gl_once_t {
 /// # Safety
 /// `once_control` must be a valid pointer to a `gl_once_t`.
 /// `initfunction` must be a valid function pointer.
-pub unsafe fn glthread_once(
+pub fn glthread_once(
     once_control: *mut gl_once_t,
-    initfunction: Option<unsafe extern "C" fn()>,
+    initfunction: Option<extern "C" fn()>,
 ) {
     unsafe {
         if once_control.is_null() {
@@ -172,7 +172,7 @@ pub unsafe fn glthread_once(
 ///
 /// Returns 1 if this is the first call (the caller should perform the
 /// initialization), 0 otherwise.
-pub unsafe fn glthread_once_singlethreaded(once_control: *mut gl_once_t) -> c_int {
+pub fn glthread_once_singlethreaded(once_control: *mut gl_once_t) -> c_int {
     unsafe {
         if once_control.is_null() {
             return 1;
@@ -207,7 +207,7 @@ mod tests {
         use std::cell::Cell;
         unsafe {
             thread_local! { static INIT_CALLED: Cell<bool> = const { Cell::new(false) }; }
-            unsafe extern "C" fn init_fn() {
+            extern "C" fn init_fn() {
                 INIT_CALLED.with(|v| v.set(true));
             }
 

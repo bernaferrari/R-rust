@@ -16,14 +16,14 @@ use crate::intl::types;
 ///
 /// # Safety
 /// `msgid` must be a valid pointer to a NUL-terminated C string.
-pub unsafe fn libintl_gettext(msgid: *const c_char) -> *mut c_char {
+pub fn libintl_gettext(msgid: *const c_char) -> *mut c_char {
     unsafe {
         crate::intl::dcgettext::libintl_dcgettext(std::ptr::null(), msgid, types::LC_MESSAGES)
     }
 }
 
 /// Alias for `libintl_gettext` (unprefixed, for compatibility).
-pub unsafe fn gettext(msgid: *const c_char) -> *mut c_char {
+pub fn gettext(msgid: *const c_char) -> *mut c_char {
     unsafe { libintl_gettext(msgid) }
 }
 

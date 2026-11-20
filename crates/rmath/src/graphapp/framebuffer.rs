@@ -608,7 +608,7 @@ impl<T> std::ops::DerefMut for MutPtr<T> {
 
 /// Extract a Framebuffer pointer from an ObjInfo's handle field.
 #[inline]
-pub unsafe fn get_framebuffer(obj: objptr) -> Option<MutPtr<Framebuffer>> {
+pub fn get_framebuffer(obj: objptr) -> Option<MutPtr<Framebuffer>> {
     unsafe {
         if obj.is_null() {
             return None;
@@ -621,7 +621,7 @@ pub unsafe fn get_framebuffer(obj: objptr) -> Option<MutPtr<Framebuffer>> {
     }
 }
 
-pub unsafe fn attach_framebuffer(
+pub fn attach_framebuffer(
     obj: objptr,
     width: c_int,
     height: c_int,
@@ -639,7 +639,7 @@ pub unsafe fn attach_framebuffer(
     }
 }
 
-pub unsafe fn detach_framebuffer(obj: objptr) {
+pub fn detach_framebuffer(obj: objptr) {
     unsafe {
         if obj.is_null() {
             return;
@@ -652,7 +652,7 @@ pub unsafe fn detach_framebuffer(obj: objptr) {
     }
 }
 
-pub unsafe fn framebuffer_from_drawstate() -> Option<MutPtr<Framebuffer>> {
+pub fn framebuffer_from_drawstate() -> Option<MutPtr<Framebuffer>> {
     unsafe {
         let ds = super::drawing::get_current_drawstate();
         if ds.dest.is_null() {
@@ -667,7 +667,7 @@ pub unsafe fn framebuffer_from_drawstate() -> Option<MutPtr<Framebuffer>> {
 }
 
 #[inline]
-pub unsafe fn framebuffer_from_drawing(d: drawing) -> Option<MutPtr<Framebuffer>> {
+pub fn framebuffer_from_drawing(d: drawing) -> Option<MutPtr<Framebuffer>> {
     unsafe {
         if d.is_null() {
             return None;

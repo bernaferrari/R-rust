@@ -20,7 +20,7 @@ use super::types::*;
 // Internal helper: get locale from environment
 // ---------------------------------------------------------------------------
 
-unsafe fn alloc_env_var(name: &str) -> Option<*mut c_char> {
+fn alloc_env_var(name: &str) -> Option<*mut c_char> {
     unsafe {
         let val = env::var(name).ok()?;
         let cstr = CString::new(val.as_str()).ok()?;
@@ -54,7 +54,7 @@ fn category_env_name(category: c_int) -> &'static str {
 /// Get the locale name from the environment for the given category.
 ///
 /// Follows the POSIX precedence: LC_ALL, LC_xxx, LANG.
-unsafe fn get_locale_from_env(category: c_int) -> *const c_char {
+fn get_locale_from_env(category: c_int) -> *const c_char {
     unsafe {
         if let Some(locale) = alloc_env_var("LC_ALL") {
             return locale;
@@ -75,7 +75,7 @@ unsafe fn get_locale_from_env(category: c_int) -> *const c_char {
 // ---------------------------------------------------------------------------
 
 #[cfg(target_os = "macos")]
-unsafe fn get_locale_from_cf(category: c_int) -> *const c_char {
+fn get_locale_from_cf(category: c_int) -> *const c_char {
     unsafe {
         // On macOS, we could query CFLocaleCopyCurrent() for the locale.
         // For the standalone port, we fall through to the environment.
@@ -84,7 +84,7 @@ unsafe fn get_locale_from_cf(category: c_int) -> *const c_char {
 }
 
 #[cfg(not(target_os = "macos"))]
-unsafe fn get_locale_from_cf(category: c_int) -> *const c_char {
+fn get_locale_from_cf(category: c_int) -> *const c_char {
     unsafe { get_locale_from_env(category) }
 }
 
@@ -98,7 +98,7 @@ unsafe fn get_locale_from_cf(category: c_int) -> *const c_char {
 ///
 /// # Safety
 /// The caller owns the returned pointer and must release it with `c_free`.
-pub unsafe fn _nl_locale_name(category: c_int) -> *const c_char {
+pub fn _nl_locale_name(category: c_int) -> *const c_char {
     unsafe { get_locale_from_cf(category) }
 }
 
@@ -109,7 +109,7 @@ pub unsafe fn _nl_locale_name(category: c_int) -> *const c_char {
 ///
 /// # Safety
 /// `name` must be a valid pointer to a mutable NUL-terminated C string buffer.
-pub unsafe fn _nl_locale_name_canonicalize(name: *mut c_char) {
+pub fn _nl_locale_name_canonicalize(name: *mut c_char) {
     unsafe {
         if name.is_null() {
             return;

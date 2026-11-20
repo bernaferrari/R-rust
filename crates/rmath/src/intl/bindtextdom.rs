@@ -23,7 +23,7 @@ use super::types::*;
 /// binding is set to that value.  The same logic applies to `codesetp`.
 ///
 /// This faithfully reproduces the C `set_binding_values` logic.
-unsafe fn set_binding_values(
+fn set_binding_values(
     domainname: *const c_char,
     dirnamep: *mut *const c_char,
     codesetp: *mut *const c_char,
@@ -261,7 +261,7 @@ pub unsafe fn libintl_bindtextdomain(
 /// message catalog will be returned.
 ///
 /// Returns the current codeset for the domain (may be the newly set value).
-pub unsafe fn libintl_bind_textdomain_codeset(
+pub fn libintl_bind_textdomain_codeset(
     domainname: *const c_char,
     codeset: *const c_char,
 ) -> *mut c_char {
@@ -279,7 +279,7 @@ pub unsafe fn libintl_bind_textdomain_codeset(
 use std::alloc::Layout;
 
 /// Equivalent of `strlen` for a NUL-terminated C string.
-unsafe fn libc_strlen(s: *const c_char) -> usize {
+fn libc_strlen(s: *const c_char) -> usize {
     unsafe {
         if s.is_null() {
             return 0;
@@ -289,7 +289,7 @@ unsafe fn libc_strlen(s: *const c_char) -> usize {
 }
 
 /// Equivalent of `strcmp`.
-unsafe fn libc_strcmp(a: *const c_char, b: *const c_char) -> c_int {
+fn libc_strcmp(a: *const c_char, b: *const c_char) -> c_int {
     unsafe {
         if a.is_null() && b.is_null() {
             return 0;
