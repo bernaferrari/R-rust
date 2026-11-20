@@ -477,7 +477,7 @@ pub fn fpu_setup(start: c_int) {
 pub fn R_OpenInitFile() -> *mut RFile {
     // SAFETY: instance-field reads and C-string paths stay in this block.
     unsafe {
-        let load_init_file = with_required_current_instance(|instance| unsafe {
+        let load_init_file = with_required_current_instance(|instance| {
             (*instance).startup_state.load_init_file != 0
         });
         if !load_init_file {
