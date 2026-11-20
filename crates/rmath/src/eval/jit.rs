@@ -16,7 +16,7 @@
 use std::os::raw::{c_char, c_int};
 
 use crate::eval::attrib_core::{R_SrcRefSymbol, getAttrib};
-use crate::sexp::accessors::{BODY, CAR, CDR, CHAR, LENGTH, PRINTNAME, STRING_ELT, TYPEOF};
+use crate::sexp::accessors::{BODY, CAR, CDR, LENGTH, TYPEOF};
 use crate::sexp::constructors::Rf_cons;
 use crate::sexp::ffi::{FALSE, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::{R_MissingArg, R_NilValue};
@@ -131,8 +131,15 @@ fn hash(data: &[u8], mut h: R_exprhash_t) -> R_exprhash_t {
     h
 }
 
-unsafe fn hashexpr1(e: SEXP, h: R_exprhash_t) -> R_exprhash_t {
-    unsafe {
+/// Wrap a hashed node's payload for checked scalar element reads.
+fn hash_payload_sexp(e: SEXP) -> Option<Sexp<'static>> {
+    // SAFETY: the translated caller retains the active runtime.
+    let owner = unsafe { crate::sexp::owner::OwnerToken::current() }.ok()?;
+    owner.sexp(e).ok()?.into_owned().ok()
+}
+
+fn hashexpr1(e: SEXP, h: R_exprhash_t) -> R_exprhash_t {
+    {
         if e.is_null() || e == R_NilValue() {
             return h;
         }
@@ -151,34 +158,29 @@ unsafe fn hashexpr1(e: SEXP, h: R_exprhash_t) -> R_exprhash_t {
                 h
             }
             t if t == SEXPTYPE::LGLSXP && len == 1 => {
-                let data = crate::sexp::accessors::LOGICAL(e);
-                if !data.is_null() {
-                    h = hash(&(*data as i32).to_ne_bytes(), h);
+                if let Some(v) = hash_payload_sexp(e).and_then(|s| s.logical_elt(0)) {
+                    h = hash(&v.to_ne_bytes(), h);
                 }
                 h
             }
             t if t == SEXPTYPE::INTSXP && len == 1 => {
-                let data = crate::sexp::accessors::INTEGER(e);
-                if !data.is_null() {
-                    h = hash(&(*data).to_ne_bytes(), h);
+                if let Some(v) = hash_payload_sexp(e).and_then(|s| s.integer_elt(0)) {
+                    h = hash(&v.to_ne_bytes(), h);
                 }
                 h
             }
             t if t == SEXPTYPE::REALSXP && len == 1 => {
-                let data = crate::sexp::accessors::REAL(e);
-                if !data.is_null() {
-                    h = hash(&(*data).to_ne_bytes(), h);
+                if let Some(v) = hash_payload_sexp(e).and_then(|s| s.real_elt(0)) {
+                    h = hash(&v.to_ne_bytes(), h);
                 }
                 h
             }
             t if t == SEXPTYPE::STRSXP && len == 1 => {
-                let elt = STRING_ELT(e, 0);
-                if !elt.is_null() {
-                    let cs = CHAR(elt);
-                    if !cs.is_null() {
-                        let s = std::ffi::CStr::from_ptr(cs);
-                        h = hash(s.to_bytes(), h);
-                    }
+                if let Some(s) = hash_payload_sexp(e)
+                    .and_then(|s| s.string_elt(0))
+                    .and_then(|elt| elt.as_string())
+                {
+                    h = hash(s.as_bytes(), h);
                 }
                 h
             }
@@ -192,8 +194,8 @@ unsafe fn hashexpr1(e: SEXP, h: R_exprhash_t) -> R_exprhash_t {
     }
 }
 
-unsafe fn hashexpr(e: SEXP) -> R_exprhash_t {
-    unsafe {
+fn hashexpr(e: SEXP) -> R_exprhash_t {
+    {
         hashexpr1(e, 5381) // djb2 initial value
     }
 }
@@ -210,15 +212,16 @@ unsafe fn hashfun(f: SEXP) -> R_exprhash_t {
     }
 }
 
-unsafe fn hashsrcref(e: SEXP, mut h: R_exprhash_t) -> R_exprhash_t {
-    unsafe {
+fn hashsrcref(e: SEXP, mut h: R_exprhash_t) -> R_exprhash_t {
+    {
         if e.is_null() || TYPEOF(e) != SEXPTYPE::INTSXP || LENGTH(e) < 6 {
             return h;
         }
-        let data = crate::sexp::accessors::INTEGER(e);
-        if !data.is_null() {
+        if let Some(data) = hash_payload_sexp(e) {
             for i in 0..6 {
-                h = hash(&(*data.add(i)).to_ne_bytes(), h);
+                if let Some(v) = data.integer_elt(i) {
+                    h = hash(&v.to_ne_bytes(), h);
+                }
             }
         }
         h
@@ -296,7 +299,7 @@ fn count_loops(e: SEXP, depth: c_int) -> c_int {
     if depth > 20 {
         return 0;
     }
-    unsafe {
+    {
         if e.is_null() || e == R_NilValue() {
             return 0;
         }
@@ -305,17 +308,11 @@ fn count_loops(e: SEXP, depth: c_int) -> c_int {
             t if t == SEXPTYPE::LANGSXP || t == SEXPTYPE::LISTSXP => {
                 // Check if this is a loop call (while, for, repeat)
                 let fun = CAR(e);
-                if TYPEOF(fun) == SEXPTYPE::SYMSXP {
-                    let pname = PRINTNAME(fun);
-                    if !pname.is_null() {
-                        let s = CHAR(pname);
-                        if !s.is_null() {
-                            let name = std::ffi::CStr::from_ptr(s).to_str().unwrap_or("");
-                            if name == "while" || name == "for" || name == "repeat" {
-                                count += 10; // Loops are heavily weighted
-                            }
-                        }
-                    }
+                if TYPEOF(fun) == SEXPTYPE::SYMSXP
+                    && let Some(name) = crate::sexp::symbol::symbol_name_from_ptr(fun)
+                    && matches!(name.as_str(), "while" | "for" | "repeat")
+                {
+                    count += 10; // Loops are heavily weighted
                 }
                 // Recurse
                 let mut cur = e;
@@ -810,14 +807,17 @@ unsafe fn tailcall_promise_args<'s>(
                         .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
                         .as_raw()
                         == missing.as_raw());
-            if missing_binding {
-                unsafe {
-                    crate::sexp::accessors::SETCAR(dst.as_raw(), missing.as_raw());
-                }
+            let replacement = if missing_binding {
+                Some(missing.clone())
             } else if found.typeof_() == SEXPTYPE::PROMSXP {
-                unsafe {
-                    crate::sexp::accessors::SETCAR(dst.as_raw(), found.as_raw());
-                }
+                Some(found.clone())
+            } else {
+                None
+            };
+            if let Some(value) = replacement {
+                crate::sexp::object::SexpMut::try_from_checked(dst.clone())
+                    .and_then(|mut cell| cell.try_set_pairlist_car(&value))
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
             }
         }
         src = src
