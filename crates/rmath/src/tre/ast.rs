@@ -309,19 +309,21 @@ pub union tre_transition_u {
 }
 
 impl tre_transition_u {
-    pub unsafe fn get_class(&self) -> tre_ctype_t {
+    pub fn get_class(&self) -> tre_ctype_t {
+        // SAFETY: the union stores a class id for this transition.
         unsafe { self.class }
     }
 
-    pub unsafe fn get_backref(&self) -> c_int {
+    pub fn get_backref(&self) -> c_int {
+        // SAFETY: the union stores a backref index for this transition.
         unsafe { self.backref }
     }
 
-    pub unsafe fn set_class(&mut self, class: tre_ctype_t) {
+    pub fn set_class(&mut self, class: tre_ctype_t) {
         self.class = class;
     }
 
-    pub unsafe fn set_backref(&mut self, backref: c_int) {
+    pub fn set_backref(&mut self, backref: c_int) {
         self.backref = backref;
     }
 }
@@ -406,10 +408,10 @@ pub struct regamatch_t {
 // ===== tre_str_source =====
 
 pub type tre_get_next_char_fn =
-    unsafe extern "C" fn(c: *mut tre_char_t, pos_add: *mut u32, context: *mut c_void) -> c_int;
-pub type tre_rewind_fn = unsafe extern "C" fn(pos: usize, context: *mut c_void);
+    extern "C" fn(c: *mut tre_char_t, pos_add: *mut u32, context: *mut c_void) -> c_int;
+pub type tre_rewind_fn = extern "C" fn(pos: usize, context: *mut c_void);
 pub type tre_compare_fn =
-    unsafe extern "C" fn(pos1: usize, pos2: usize, len: usize, context: *mut c_void) -> c_int;
+    extern "C" fn(pos1: usize, pos2: usize, len: usize, context: *mut c_void) -> c_int;
 
 #[repr(C)]
 pub struct tre_str_source {
@@ -441,12 +443,13 @@ pub fn MIN(a: isize, b: isize) -> isize {
 
 // ===== Tag ordering =====
 
-pub unsafe fn tre_tag_order(
+pub fn tre_tag_order(
     num_tags: c_int,
     tag_directions: *const c_int,
     t1: *const c_int,
     t2: *const c_int,
 ) -> c_int {
+    // SAFETY: the three arrays each carry `num_tags` readable elements.
     unsafe {
         for i in 0..num_tags as isize {
             if *tag_directions.offset(i) == tre_tag_direction_t::TRE_TAG_MINIMIZE as c_int {
@@ -473,11 +476,12 @@ pub unsafe fn tre_tag_order(
 
 use super::mem;
 
-pub unsafe fn tre_ast_new_node(
+pub fn tre_ast_new_node(
     mem: mem::tre_mem_t,
     type_: tre_ast_type_t,
     size: usize,
 ) -> *mut tre_ast_node_t {
+    // SAFETY: `mem` is a live arena; `node` is initialized before it escapes.
     unsafe {
         let node =
             mem::tre_mem_calloc(mem, std::mem::size_of::<tre_ast_node_t>()) as *mut tre_ast_node_t;
@@ -496,12 +500,13 @@ pub unsafe fn tre_ast_new_node(
     }
 }
 
-pub unsafe fn tre_ast_new_literal(
+pub fn tre_ast_new_literal(
     mem: mem::tre_mem_t,
     code_min: c_int,
     code_max: c_int,
     position: c_int,
 ) -> *mut tre_ast_node_t {
+    // SAFETY: `mem` is a live arena; `node`/`lit` are arena allocations.
     unsafe {
         let node = tre_ast_new_node(
             mem,
@@ -522,13 +527,14 @@ pub unsafe fn tre_ast_new_literal(
     }
 }
 
-pub unsafe fn tre_ast_new_iter(
+pub fn tre_ast_new_iter(
     mem: mem::tre_mem_t,
     arg: *mut tre_ast_node_t,
     min: c_int,
     max: c_int,
     minimal: c_int,
 ) -> *mut tre_ast_node_t {
+    // SAFETY: `mem` is a live arena; `node`/`iter`/`arg` are arena cells.
     unsafe {
         let node = tre_ast_new_node(
             mem,
@@ -550,11 +556,12 @@ pub unsafe fn tre_ast_new_iter(
     }
 }
 
-pub unsafe fn tre_ast_new_union(
+pub fn tre_ast_new_union(
     mem: mem::tre_mem_t,
     left: *mut tre_ast_node_t,
     right: *mut tre_ast_node_t,
 ) -> *mut tre_ast_node_t {
+    // SAFETY: `mem` is a live arena; `node`/`left`/`right` are arena cells.
     unsafe {
         let node = tre_ast_new_node(
             mem,
@@ -581,11 +588,12 @@ pub unsafe fn tre_ast_new_union(
     }
 }
 
-pub unsafe fn tre_ast_new_catenation(
+pub fn tre_ast_new_catenation(
     mem: mem::tre_mem_t,
     left: *mut tre_ast_node_t,
     right: *mut tre_ast_node_t,
 ) -> *mut tre_ast_node_t {
+    // SAFETY: `mem` is a live arena; `node`/`left`/`right` are arena cells.
     unsafe {
         let node = tre_ast_new_node(
             mem,
