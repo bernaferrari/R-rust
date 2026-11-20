@@ -45,7 +45,7 @@ pub unsafe fn do_file(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
         with_runtime(&weak, |access| {
             let arguments = owner.sexp(args)?.into_owned()?;
             let options = constructor::prepare(access, arguments)?;
-            unsafe { construct_file(access, options) }
+            construct_file(access, options)
         })
     }));
     // Check even on unwind, while the original allocation is still pinned.
@@ -76,7 +76,7 @@ fn file_logical(
     })
 }
 
-unsafe fn connection_value(
+fn connection_value(
     access: &crate::sexp::owner::RuntimeAccess,
     class: &str,
 ) -> crate::sexp::object::SexpResult<crate::sexp::SexpMut<'static>> {
@@ -98,7 +98,7 @@ unsafe fn connection_value(
     Ok(ans)
 }
 
-unsafe fn construct_file(
+fn construct_file(
     access: &crate::sexp::owner::RuntimeAccess,
     options: constructor::FileOptions,
 ) -> crate::sexp::object::SexpResult<crate::sexp::Sexp<'static>> {
@@ -672,7 +672,7 @@ fn construct_browser_gzfile(description: &str, mode: &str, open_now: bool) -> SE
         .unwrap_or_else(|| r_error("browser gzfile requires a managed runtime"));
     with_runtime(&weak, |access| {
         // Finish R allocations and find a table slot before admitting decoded bytes.
-        let mut ans = unsafe { connection_value(access, "gzfile") }?;
+        let mut ans = connection_value(access, "gzfile")?;
         let ncon = next_connection();
         ans.try_set_integer_elt(0, ncon as c_int)?;
         let mut conn = RConn::new("gzfile", description, mode, ConnKind::BrowserFile);

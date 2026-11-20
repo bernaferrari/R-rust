@@ -179,8 +179,8 @@ pub fn mktime_utc(year: i64, mon0: i64, mday: i64, tod: c_double) -> c_double {
 
 /// seq.int(from, to, by) over exact integers: returns the number of values
 /// (from, from+by, ... <= to for by > 0), applying stock's error checks.
-pub unsafe fn calendar_count(call: SEXP, from: i64, to: i64, by: i64) -> i64 {
-    unsafe {
+pub fn calendar_count(call: SEXP, from: i64, to: i64, by: i64) -> i64 {
+    {
         if by == 0 {
             if from == to {
                 return 1;
@@ -218,7 +218,7 @@ pub unsafe fn attach_datetime_class(ans: SEXP, kind: DatetimeKind, tz_source: SE
 
 /// Calendar stepping for by = "months"/"quarters"/"years"/"DSTdays"
 /// (seq.POSIXt's POSIXlt arithmetic, which seq.Date delegates to).
-pub unsafe fn calendar_seq(
+pub fn calendar_seq(
     call: SEXP,
     field: CalendarField,
     mult: i64,
@@ -228,7 +228,7 @@ pub unsafe fn calendar_seq(
     miss_from: bool,
     lout: R_xlen_t,
 ) -> Vec<c_double> {
-    unsafe {
+    {
         // Anchor fields (lres <- as.POSIXlt(if from given from else to)).
         let Some((year, mon0, mday, tod)) = posixlt_fields(vanchor) else {
             // NA anchor: the from+to modes filter everything out; the

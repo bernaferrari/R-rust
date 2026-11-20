@@ -220,7 +220,7 @@ fn random3_call(
 // Helper functions for SEXP argument handling
 // ---------------------------------------------------------------------------
 
-unsafe fn isVector(x: SEXP) -> bool {
+fn isVector(x: SEXP) -> bool {
     {
         let t = TYPEOF(x);
         t == SEXPTYPE::INTSXP
@@ -233,7 +233,7 @@ unsafe fn isVector(x: SEXP) -> bool {
     }
 }
 
-unsafe fn isNumeric(x: SEXP) -> bool {
+fn isNumeric(x: SEXP) -> bool {
     {
         let t = TYPEOF(x);
         t == SEXPTYPE::INTSXP || t == SEXPTYPE::REALSXP
@@ -295,15 +295,15 @@ unsafe fn asLogical_local(x: SEXP) -> c_int {
     }
 }
 
-unsafe fn isNull(x: SEXP) -> bool {
+fn isNull(x: SEXP) -> bool {
     x.is_null() || x == R_NilValue()
 }
 
-unsafe fn checkArity(op: SEXP, args: SEXP) {
+fn checkArity(op: SEXP, args: SEXP) {
     // stub
 }
 
-unsafe fn PRIMVAL_local(op: SEXP) -> c_int {
+fn PRIMVAL_local(op: SEXP) -> c_int {
     crate::mainutils::relop::PRIMVAL(op)
 }
 

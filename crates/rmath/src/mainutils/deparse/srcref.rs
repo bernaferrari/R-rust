@@ -10,7 +10,7 @@ use super::*;
 /// Deparse one source reference to the buffer.
 ///
 /// Unimplemented: requires R_AsCharacterSymbol and eval infrastructure.
-pub unsafe fn src2buff1(_srcref: SEXP, _d: *mut LocalParseData) {
+pub fn src2buff1(_srcref: SEXP, _d: *mut LocalParseData) {
     // requires eval/R_AsCharacterSymbol
 }
 

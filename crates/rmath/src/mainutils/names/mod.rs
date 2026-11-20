@@ -389,7 +389,7 @@ pub unsafe fn StrToInternal(s: *const c_char) -> c_int {
 // ---------------------------------------------------------------------------
 
 /// Install function i from the FunTab into the symbol table.
-unsafe fn installFunTab(i: usize) {
+fn installFunTab(i: usize) {
     unsafe {
         let entry = &R_FunTab[i];
         let entry_name = {
@@ -421,7 +421,7 @@ unsafe fn installFunTab(i: usize) {
 
 /// Install all the symbol shortcuts used by the interpreter.
 /// These are global pointers to frequently accessed symbols.
-pub unsafe fn SymbolShortcuts() {
+pub fn SymbolShortcuts() {
     unsafe {
         // These use Rf_install which is our HashMap-based implementation.
         // The results are cached in the symbol table.
@@ -490,7 +490,7 @@ pub unsafe fn SymbolShortcuts() {
 const N_DDVAL_SYMBOLS: usize = 65;
 
 /// Get or create a DDVAL symbol for index n.
-pub unsafe fn installDDVAL(n: c_int) -> SEXP {
+pub fn installDDVAL(n: c_int) -> SEXP {
     unsafe {
         if n >= 0 {
             let n = n as usize;
@@ -546,7 +546,7 @@ unsafe fn mkSymMarker(pname: SEXP) -> SEXP {
 
 /// Initialize the R symbol table.
 /// This must be called once before any symbol lookup operations.
-pub unsafe fn InitNames() {
+pub fn InitNames() {
     unsafe {
         if instance::with_required_current_instance(|inst| (*inst).names_state.init_names_done) {
             return;
@@ -1012,7 +1012,7 @@ fn builtin_names_from_funtab(internal: bool) -> Vec<Vec<u8>> {
         .collect()
 }
 
-unsafe fn string_vector_from_bytes(values: &[Vec<u8>]) -> SEXP {
+fn string_vector_from_bytes(values: &[Vec<u8>]) -> SEXP {
     unsafe {
         let result = Rf_allocVector3(SEXPTYPE::STRSXP, values.len() as R_xlen_t);
         if result.is_null() {
@@ -1061,7 +1061,7 @@ pub unsafe fn do_tilde(call: SEXP, _op: SEXP, _args: SEXP, rho: SEXP) -> SEXP {
 
 /// Get the name of a primitive function.
 /// For use in packages.
-pub unsafe fn getPRIMNAME(object: SEXP) -> *const c_char {
+pub fn getPRIMNAME(object: SEXP) -> *const c_char {
     {
         if object.is_null() {
             return ptr::null();

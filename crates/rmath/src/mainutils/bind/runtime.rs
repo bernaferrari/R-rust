@@ -68,7 +68,7 @@ pub fn imax2(x: c_int, y: c_int) -> c_int {
 /// Get the value of a promise (PRVALUE), falling back to the argument itself
 /// if it's not a promise or if PRVALUE returns null/nil.
 #[inline(always)]
-pub unsafe fn resolve_promise(x: SEXP) -> SEXP {
+pub fn resolve_promise(x: SEXP) -> SEXP {
     {
         if x.is_null() || x == R_NilValue() {
             return x;
@@ -126,7 +126,7 @@ pub unsafe fn R_listCompact(mut s: SEXP, keep_initial: bool) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Convert a SEXPTYPE value to its string name. This is used in error messages.
-pub unsafe fn type2char(sexptype: c_int) -> *const c_char {
+pub fn type2char(sexptype: c_int) -> *const c_char {
     match sexptype {
         0 => b"NULL\0".as_ptr() as *const c_char,
         1 => b"symbol\0".as_ptr() as *const c_char,
@@ -227,7 +227,7 @@ pub fn isVector(x: SEXP) -> c_int {
 
 /// Check if x is a pairlist (LISTSXP).
 #[inline(always)]
-pub unsafe fn isList(x: SEXP) -> c_int {
+pub fn isList(x: SEXP) -> c_int {
     {
         if x.is_null() {
             return 0;
@@ -238,7 +238,7 @@ pub unsafe fn isList(x: SEXP) -> c_int {
 
 /// Check if x is a generic list (VECSXP).
 #[inline(always)]
-pub unsafe fn isNewList(x: SEXP) -> bool {
+pub fn isNewList(x: SEXP) -> bool {
     {
         if x.is_null() || x == R_NilValue() {
             return false;
@@ -249,7 +249,7 @@ pub unsafe fn isNewList(x: SEXP) -> bool {
 
 /// Check if x is a symbol (SYMSXP).
 #[inline(always)]
-pub unsafe fn isSymbol(x: SEXP) -> bool {
+pub fn isSymbol(x: SEXP) -> bool {
     {
         if x.is_null() {
             return false;
@@ -489,7 +489,7 @@ pub unsafe fn coerceVector(x: SEXP, _type: SEXPTYPE) -> SEXP {
 }
 
 /// Allocate a matrix (2D array) of the given type and dimensions.
-pub unsafe fn allocMatrix(mode: SEXPTYPE, nrow: c_int, ncol: c_int) -> SEXP {
+pub fn allocMatrix(mode: SEXPTYPE, nrow: c_int, ncol: c_int) -> SEXP {
     unsafe {
         let ans = checked_allocVector(mode, (nrow as R_xlen_t) * (ncol as R_xlen_t));
         let _ans_guard = protect(ans);
@@ -507,7 +507,7 @@ pub unsafe fn allocMatrix(mode: SEXPTYPE, nrow: c_int, ncol: c_int) -> SEXP {
 /// Allocate a vector of the given type/length, erroring loudly on allocation
 /// failure instead of returning a null SEXP that callers would dereference.
 #[inline]
-pub unsafe fn checked_allocVector(mode: SEXPTYPE, n: R_xlen_t) -> SEXP {
+pub fn checked_allocVector(mode: SEXPTYPE, n: R_xlen_t) -> SEXP {
     let ans = unsafe { Rf_allocVector3(mode.0, n) };
     if ans.is_null() {
         std::panic::panic_any(crate::sexp::context::RError {
@@ -541,7 +541,7 @@ pub unsafe fn EnsureString(x: SEXP) -> SEXP {
 }
 
 /// R_BlankString: return a blank CHARSXP.
-pub unsafe fn R_BlankString() -> SEXP {
+pub fn R_BlankString() -> SEXP {
     unsafe {
         let existing =
             instance::with_required_current_instance(|inst| (*inst).bind_state.blank_string);

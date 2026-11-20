@@ -808,14 +808,14 @@ pub(crate) fn write_bytes_to_conn(conn: &mut RConn, bytes: &[u8]) {
 // ---------------------------------------------------------------------------
 
 /// Initialize the connection system.
-pub unsafe fn R_InitConnections() {
+pub fn R_InitConnections() {
     init_connections_table();
 }
 // ---------------------------------------------------------------------------
 // R_GetConnection — get connection by index (C API)
 // ---------------------------------------------------------------------------
 
-pub unsafe fn R_GetConnection(_n: c_int) -> SEXP {
+pub fn R_GetConnection(_n: c_int) -> SEXP {
     unsafe {
         // This returns the SEXP representation of the connection (the integer index)
         // In R's C code, this returns the Rconnection struct pointer,

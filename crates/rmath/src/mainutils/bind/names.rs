@@ -442,7 +442,7 @@ pub unsafe fn c_Extract_opt(
 
 /// Given ans_flags bitmask, determine the result SEXPTYPE.
 /// Returns NILSXP if no type flags are set.
-pub unsafe fn ans_flags_to_mode(flags: c_int) -> SEXPTYPE {
+pub fn ans_flags_to_mode(flags: c_int) -> SEXPTYPE {
     if flags & 512 != 0 {
         SEXPTYPE::EXPRSXP
     } else if flags & 256 != 0 {

@@ -747,7 +747,7 @@ pub unsafe fn do_ISOdatetime(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> 
                 ctm.tm_sec = sc as c_int;
                 ctm.tm_isdst = -1;
 
-                let t = unsafe { R_mktime(&mut ctm) };
+                let t = R_mktime(&mut ctm);
                 if t == -1 {
                     *REAL(ans).add(iu) = NA_REAL;
                 } else {
@@ -766,7 +766,7 @@ pub unsafe fn do_ISOdatetime(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> 
 
 /// Check whether a year (absolute, e.g. 2000) is a leap year.
 /// This is the FFI-compatible version using absolute years.
-pub unsafe fn R_isLeapYear(year: c_int) -> c_int {
+pub fn R_isLeapYear(year: c_int) -> c_int {
     if isleap(year) { 1 } else { 0 }
 }
 
@@ -775,19 +775,19 @@ pub unsafe fn R_isLeapYear(year: c_int) -> c_int {
 // ---------------------------------------------------------------------------
 
 /// FFI-compatible leap year test.
-pub unsafe fn R_isleap(year: c_int) -> c_int {
+pub fn R_isleap(year: c_int) -> c_int {
     if isleap(year) { 1 } else { 0 }
 }
 
 /// FFI-compatible days-in-year function.
-pub unsafe fn R_days_in_year(year: c_int) -> c_int {
+pub fn R_days_in_year(year: c_int) -> c_int {
     days_in_year(year)
 }
 
 /// FFI-compatible days-in-month function.
 ///
 /// `mon` is 0-based (0=Jan), `yr` is years since 1900.
-pub unsafe fn R_days_in_month(mon: c_int, yr: c_int) -> c_int {
+pub fn R_days_in_month(mon: c_int, yr: c_int) -> c_int {
     days_in_month(mon, yr)
 }
 
@@ -844,7 +844,7 @@ pub unsafe fn R_julian2dtime(x_i: c_double, tm: *mut stm) -> c_int {
 }
 
 /// FFI-compatible dtime2julian.
-pub unsafe fn R_dtime2julian(
+pub fn R_dtime2julian(
     secs: c_double,
     tm_min: c_int,
     tm_hour: c_int,
@@ -856,7 +856,7 @@ pub unsafe fn R_dtime2julian(
 }
 
 /// FFI-compatible R_ISLeapYear.
-pub unsafe fn R_R_ISLeapYear(year: c_int) -> c_int {
+pub fn R_R_ISLeapYear(year: c_int) -> c_int {
     if R_ISLeapYear(year) { 1 } else { 0 }
 }
 

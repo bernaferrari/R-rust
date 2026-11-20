@@ -456,7 +456,7 @@ pub(crate) unsafe fn string(x: SEXP, default: &str) -> String {
         }
     }
 }
-pub(crate) unsafe fn result(v: &[f64]) -> SEXP {
+pub(crate) fn result(v: &[f64]) -> SEXP {
     unsafe {
         let x = Rf_allocVector3(SEXPTYPE::REALSXP, v.len() as i64);
         for (i, value) in v.iter().enumerate() {

@@ -113,7 +113,7 @@ fn filename_decode(
     parameters: &FilenameReadParameters,
     bytes: &[u8],
 ) -> crate::sexp::object::SexpResult<crate::sexp::Sexp<'static>> {
-    access.with_native(|owner| unsafe {
+    access.with_native(|owner| {
         owner
             .sexp(decode_binary_result(
                 parameters.kind,
@@ -453,10 +453,10 @@ fn raw_sink_result(
     access: &crate::sexp::owner::RuntimeAccess,
     bytes: &[u8],
 ) -> crate::sexp::object::SexpResult<crate::sexp::Sexp<'static>> {
-    access.with_native(|owner| unsafe { owner.sexp(alloc_raw_result(bytes))?.into_owned() })
+    access.with_native(|owner| owner.sexp(alloc_raw_result(bytes))?.into_owned())
 }
 
-pub unsafe fn read_binary_source(con: SEXP, limit: Option<usize>) -> AdmittedBinarySource {
+pub fn read_binary_source(con: SEXP, limit: Option<usize>) -> AdmittedBinarySource {
     unsafe {
         let owner = crate::sexp::owner::OwnerToken::current()
             .unwrap_or_else(|error| r_error(&error.to_string()));
@@ -512,7 +512,7 @@ pub fn write_integer_chunk(out: &mut Vec<u8>, value: i32, size: usize, order: By
     }
 }
 
-pub unsafe fn alloc_raw_result(bytes: &[u8]) -> SEXP {
+pub fn alloc_raw_result(bytes: &[u8]) -> SEXP {
     unsafe {
         let ans = Rf_allocVector(SEXPTYPE::RAWSXP, bytes.len() as c_int);
         if !ans.is_null() && !bytes.is_empty() {
@@ -522,7 +522,7 @@ pub unsafe fn alloc_raw_result(bytes: &[u8]) -> SEXP {
     }
 }
 
-pub unsafe fn alloc_integer_result(values: &[i32], sexptype: SEXPTYPE) -> SEXP {
+pub fn alloc_integer_result(values: &[i32], sexptype: SEXPTYPE) -> SEXP {
     unsafe {
         let ans = Rf_allocVector(sexptype.0, values.len() as c_int);
         if !ans.is_null() {
@@ -539,7 +539,7 @@ pub unsafe fn alloc_integer_result(values: &[i32], sexptype: SEXPTYPE) -> SEXP {
     }
 }
 
-pub unsafe fn alloc_real_result(values: &[f64]) -> SEXP {
+pub fn alloc_real_result(values: &[f64]) -> SEXP {
     unsafe {
         let ans = Rf_allocVector(SEXPTYPE::REALSXP, values.len() as c_int);
         if !ans.is_null() {
@@ -551,7 +551,7 @@ pub unsafe fn alloc_real_result(values: &[f64]) -> SEXP {
     }
 }
 
-pub unsafe fn alloc_character_result(values: &[String]) -> SEXP {
+pub fn alloc_character_result(values: &[String]) -> SEXP {
     unsafe {
         let ans = Rf_allocVector(SEXPTYPE::STRSXP, values.len() as c_int);
         if !ans.is_null() {
@@ -564,7 +564,7 @@ pub unsafe fn alloc_character_result(values: &[String]) -> SEXP {
     }
 }
 
-pub unsafe fn decode_binary_result(
+pub fn decode_binary_result(
     kind: BinaryKind,
     bytes: &[u8],
     n: usize,

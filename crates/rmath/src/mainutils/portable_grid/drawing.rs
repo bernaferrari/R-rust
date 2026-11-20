@@ -624,7 +624,7 @@ pub(crate) const EXPORTS: &[&str] = &[
     "grid.points",
 ];
 
-pub(crate) unsafe fn new_grid_environment() -> SEXP {
+pub(crate) fn new_grid_environment() -> SEXP {
     unsafe {
         use crate::sexp::{
             envir::defineVar, globals::R_BaseEnv, protect::protect, symbol::Rf_install,
@@ -668,7 +668,7 @@ pub(crate) fn grid_closure_source(name: &str) -> Option<&'static str> {
         _ => None,
     }
 }
-pub(crate) unsafe fn namespace() -> SEXP {
+pub(crate) fn namespace() -> SEXP {
     unsafe {
         let cached = with_required_current_instance(|p| {
             (*p).package_namespace_cache
@@ -688,7 +688,7 @@ pub(crate) unsafe fn namespace() -> SEXP {
         env
     }
 }
-pub(crate) unsafe fn attach() {
+pub(crate) fn attach() {
     unsafe {
         if !crate::mainutils::essentials::package_attached("grid") {
             namespace();

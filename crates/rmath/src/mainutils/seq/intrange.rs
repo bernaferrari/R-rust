@@ -17,7 +17,7 @@ use crate::sexp::constructors::{
 use crate::sexp::ffi::{ISNAN, NA_INTEGER, NA_LOGICAL, NA_REAL, R_FINITE, R_xlen_t, SEXP};
 use crate::sexp::globals::{R_MissingArg, R_NilValue};
 
-pub unsafe fn R_compact_intrange(from: R_xlen_t, to: R_xlen_t) -> SEXP {
+pub fn R_compact_intrange(from: R_xlen_t, to: R_xlen_t) -> SEXP {
     unsafe {
         // `0:2147483647` has length 2^31. That length does not fit in `c_int`,
         // and both endpoints do. Truncating the length would allocate a
