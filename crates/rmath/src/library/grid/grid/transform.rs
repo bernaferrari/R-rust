@@ -49,8 +49,7 @@ pub unsafe fn L_convert(x: SEXP, whatfrom: SEXP, whatto: SEXP, unitto: SEXP) -> 
         let _currentgp_guard = protect(currentgp);
         set_gp_fill_string(currentgp, c"black".as_ptr());
 
-        let (vpWidthCM, vpHeightCM, _, _) =
-            getViewportTransform(currentvp, dd);
+        let (vpWidthCM, vpHeightCM, _, _) = getViewportTransform(currentvp, dd);
         let mut vpc = LViewportContext::default();
         getViewportContext(currentvp, &mut vpc);
 
@@ -230,8 +229,7 @@ pub unsafe fn L_devLoc(x: SEXP, y: SEXP, device: SEXP) -> SEXP {
         let _currentgp_guard = protect(currentgp);
         set_gp_fill_string(currentgp, c"black".as_ptr());
 
-        let (vpWidthCM, vpHeightCM, mut transform, _) =
-            getViewportTransform(currentvp, dd);
+        let (vpWidthCM, vpHeightCM, mut transform, _) = getViewportTransform(currentvp, dd);
         let mut vpc = LViewportContext::default();
         getViewportContext(currentvp, &mut vpc);
 
@@ -291,8 +289,7 @@ pub unsafe fn L_devDim(x: SEXP, y: SEXP, device: SEXP) -> SEXP {
         let _currentgp_guard = protect(currentgp);
         set_gp_fill_string(currentgp, c"black".as_ptr());
 
-        let (vpWidthCM, vpHeightCM, _, rotationAngle) =
-            getViewportTransform(currentvp, dd);
+        let (vpWidthCM, vpHeightCM, _, rotationAngle) = getViewportTransform(currentvp, dd);
         let mut vpc = LViewportContext::default();
         getViewportContext(currentvp, &mut vpc);
 
