@@ -8,7 +8,7 @@
 /// Swap positions `l` and `r` in `window[]` and `nrlist[]`.
 /// `l` and `r` are 1-based indices.
 #[inline]
-unsafe fn swap(l: i64, r: i64, window: &mut [f64], outlist: &mut [i64], nrlist: &mut [i64]) {
+fn swap(l: i64, r: i64, window: &mut [f64], outlist: &mut [i64], nrlist: &mut [i64]) {
     {
         let tmp = window[l as usize];
         window[l as usize] = window[r as usize];
@@ -25,7 +25,7 @@ unsafe fn swap(l: i64, r: i64, window: &mut [f64], outlist: &mut [i64], nrlist: 
 
 /// Heap sift-up (max heap). Used only in `R_heapsort`.
 /// `l` and `r` are 1-based indices.
-unsafe fn siftup(mut l: i64, r: i64, window: &mut [f64], outlist: &mut [i64], nrlist: &mut [i64]) {
+fn siftup(mut l: i64, r: i64, window: &mut [f64], outlist: &mut [i64], nrlist: &mut [i64]) {
     {
         let mut i = l;
         let nrold = nrlist[i as usize];
@@ -54,14 +54,14 @@ unsafe fn siftup(mut l: i64, r: i64, window: &mut [f64], outlist: &mut [i64], nr
 }
 
 /// Heap sort window[low..up] (1-based indices).
-unsafe fn R_heapsort(
+fn R_heapsort(
     low: i64,
     up: i64,
     window: &mut [f64],
     outlist: &mut [i64],
     nrlist: &mut [i64],
 ) {
-    unsafe {
+    {
         let mut l = (up / 2) + 1;
         let mut u = up;
         while l > low {
@@ -80,7 +80,7 @@ unsafe fn R_heapsort(
 ///
 /// `n` = data length, `k` = window size (odd), `k2 = (k-1)/2`.
 /// `data` is 0-based, `window` and `nrlist` are 1-based, `outlist` is 0-based.
-unsafe fn inittree(
+fn inittree(
     n: i64,
     k: i64,
     k2: i64,
@@ -89,7 +89,7 @@ unsafe fn inittree(
     outlist: &mut [i64],
     nrlist: &mut [i64],
 ) {
-    unsafe {
+    {
         // Use 1-indexing for window, nrlist, outlist
         let k_usize = k as usize;
         for i in 1..=k_usize {
@@ -142,7 +142,7 @@ unsafe fn inittree(
 ///
 /// `outvirt` is a 0-based virtual position in the upper or lower heap.
 /// The root of the double heap is at window[k] (1-based).
-unsafe fn toroot(
+fn toroot(
     mut outvirt: i64,
     k: i64,
     nrnew: i64,
@@ -172,14 +172,14 @@ unsafe fn toroot(
 /// Sift down in the lower heap (max heap).
 ///
 /// `outvirt` is a 0-based virtual position. Elements are at window[outvirt+k].
-unsafe fn downtoleave(
+fn downtoleave(
     mut outvirt: i64,
     k: i64,
     window: &mut [f64],
     outlist: &mut [i64],
     nrlist: &mut [i64],
 ) {
-    unsafe {
+    {
         loop {
             let childl = outvirt * 2;
             let childr = childl - 1;
@@ -199,14 +199,14 @@ unsafe fn downtoleave(
 /// Sift up in the upper heap (min heap).
 ///
 /// `outvirt` is a 0-based virtual position. Elements are at window[outvirt+k].
-unsafe fn uptoleave(
+fn uptoleave(
     mut outvirt: i64,
     k: i64,
     window: &mut [f64],
     outlist: &mut [i64],
     nrlist: &mut [i64],
 ) {
-    unsafe {
+    {
         loop {
             let childl = outvirt * 2;
             let childr = childl + 1;
@@ -225,14 +225,14 @@ unsafe fn uptoleave(
 
 /// Upper-out, upper-in: element left upper heap, new element enters upper heap.
 /// Sift up to restore min-heap property, then bubble up toward root.
-unsafe fn upperoutupperin(
+fn upperoutupperin(
     mut outvirt: i64,
     k: i64,
     window: &mut [f64],
     outlist: &mut [i64],
     nrlist: &mut [i64],
 ) {
-    unsafe {
+    {
         uptoleave(outvirt, k, window, outlist, nrlist);
         let mut father = outvirt / 2;
         while window[(outvirt + k) as usize] < window[(father + k) as usize] {
@@ -245,7 +245,7 @@ unsafe fn upperoutupperin(
 
 /// Upper-out, down-in: element left upper heap, new element enters lower heap.
 /// Move to root, then swap root with lower heap max if needed.
-unsafe fn upperoutdownin(
+fn upperoutdownin(
     outvirt: i64,
     k: i64,
     nrnew: i64,
@@ -255,7 +255,7 @@ unsafe fn upperoutdownin(
     outlist: &mut [i64],
     nrlist: &mut [i64],
 ) {
-    unsafe {
+    {
         toroot(outvirt, k, nrnew, outnext, data, window, outlist, nrlist);
         if window[k as usize] < window[(k - 1) as usize] {
             swap(k, k - 1, window, outlist, nrlist);
@@ -266,14 +266,14 @@ unsafe fn upperoutdownin(
 
 /// Down-out, down-in: element left lower heap, new element enters lower heap.
 /// Sift down to restore max-heap property, then bubble down away from root.
-unsafe fn downoutdownin(
+fn downoutdownin(
     mut outvirt: i64,
     k: i64,
     window: &mut [f64],
     outlist: &mut [i64],
     nrlist: &mut [i64],
 ) {
-    unsafe {
+    {
         downtoleave(outvirt, k, window, outlist, nrlist);
         let mut father = outvirt / 2;
         while window[(outvirt + k) as usize] > window[(father + k) as usize] {
@@ -286,7 +286,7 @@ unsafe fn downoutdownin(
 
 /// Down-out, upper-in: element left lower heap, new element enters upper heap.
 /// Move to root, then swap root with upper heap min if needed.
-unsafe fn downoutupperin(
+fn downoutupperin(
     outvirt: i64,
     k: i64,
     nrnew: i64,
@@ -296,7 +296,7 @@ unsafe fn downoutupperin(
     outlist: &mut [i64],
     nrlist: &mut [i64],
 ) {
-    unsafe {
+    {
         toroot(outvirt, k, nrnew, outnext, data, window, outlist, nrlist);
         if window[k as usize] > window[(k + 1) as usize] {
             swap(k, k + 1, window, outlist, nrlist);
@@ -307,8 +307,8 @@ unsafe fn downoutupperin(
 
 /// The element that left the window was the root of the upper heap.
 /// Swap root with upper min, then sift up.
-unsafe fn wentoutone(k: i64, window: &mut [f64], outlist: &mut [i64], nrlist: &mut [i64]) {
-    unsafe {
+fn wentoutone(k: i64, window: &mut [f64], outlist: &mut [i64], nrlist: &mut [i64]) {
+    {
         swap(k, k + 1, window, outlist, nrlist);
         uptoleave(1, k, window, outlist, nrlist);
     }
@@ -316,8 +316,8 @@ unsafe fn wentoutone(k: i64, window: &mut [f64], outlist: &mut [i64], nrlist: &m
 
 /// The element that left the window was the root of the lower heap.
 /// Swap root with lower max, then sift down.
-unsafe fn wentouttwo(k: i64, window: &mut [f64], outlist: &mut [i64], nrlist: &mut [i64]) {
-    unsafe {
+fn wentouttwo(k: i64, window: &mut [f64], outlist: &mut [i64], nrlist: &mut [i64]) {
+    {
         swap(k, k - 1, window, outlist, nrlist);
         downtoleave(-1, k, window, outlist, nrlist);
     }
@@ -330,7 +330,7 @@ unsafe fn wentouttwo(k: i64, window: &mut [f64], outlist: &mut [i64], nrlist: &m
 /// `end_rule`: 0 = leave end values as original data, 1 = constant end values.
 ///
 /// `window`, `outlist`, `nrlist` are pre-allocated work arrays.
-unsafe fn runmedint(
+fn runmedint(
     n: i64,
     k: i64,
     k2: i64,
@@ -341,7 +341,7 @@ unsafe fn runmedint(
     nrlist: &mut [i64],
     end_rule: i32,
 ) {
-    unsafe {
+    {
         let mut outnext: i64 = 0;
 
         if end_rule != 0 {
@@ -420,8 +420,8 @@ unsafe fn runmedint(
 /// # Safety
 /// - `x` and `median` must be valid slices of length `n`.
 /// - `k` must be odd and `<= n`.
-pub unsafe fn Trunmed(x: &[f64], median: &mut [f64], n: i64, k: i64, end_rule: i32) {
-    unsafe {
+pub fn Trunmed(x: &[f64], median: &mut [f64], n: i64, k: i64, end_rule: i32) {
+    {
         let k2 = (k - 1) / 2; // k is always odd: k == 2*k2 + 1
 
         // Allocate work arrays (replaces R_alloc).
