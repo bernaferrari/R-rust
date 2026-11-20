@@ -13,7 +13,7 @@ pub(crate) fn load_bytes(bytes: &[u8], environment: Sexp<'static>) -> Result<Vec
     owned::load_bytes(bytes, environment)
 }
 
-pub(super) unsafe fn load_file(
+pub(super) fn load_file(
     path: &Path,
     environment: crate::sexp::SEXP,
 ) -> Result<Vec<String>, String> {
