@@ -27,22 +27,20 @@ thread_local! {
 
 /// Install `rng` as the current thread's RNG state.
 ///
-/// # Safety
-///
 /// The caller must keep `rng` valid until [`detach_rng`] removes it or
-/// another `install_rng` call replaces it.
-pub unsafe fn install_rng(rng: *mut RngState) {
+/// another `install_rng` call replaces it. Matches
+/// [`replace_rng`](crate::state::replace_rng), which is the checked way to
+/// swap installations.
+pub fn install_rng(rng: *mut RngState) {
     CURRENT_RNG.with(|slot| *slot.borrow_mut() = Some(rng));
 }
 
 /// Install `rng` as this thread's current RNG, returning the previous
 /// installation (if any) so callers can restore it when their scope ends.
 ///
-/// # Safety
-///
 /// Same contract as [`install_rng`]; the returned pointer must only be
 /// re-installed while still valid.
-pub unsafe fn swap_rng(rng: Option<*mut RngState>) -> Option<*mut RngState> {
+pub fn swap_rng(rng: Option<*mut RngState>) -> Option<*mut RngState> {
     CURRENT_RNG.with(|slot| std::mem::replace(&mut *slot.borrow_mut(), rng))
 }
 
@@ -74,20 +72,15 @@ pub fn set_seed(i1: std::os::raw::c_uint, i2: std::os::raw::c_uint) {
 }
 
 /// Get the current RNG seed.
-pub fn get_seed(i1: *mut std::os::raw::c_uint, i2: *mut std::os::raw::c_uint) {
-    if i1.is_null() || i2.is_null() {
-        return;
-    }
+pub fn get_seed(i1: &mut std::os::raw::c_uint, i2: &mut std::os::raw::c_uint) {
     let installed = CURRENT_RNG.with(|slot| *slot.borrow());
     let seed = if let Some(ptr) = installed {
         unsafe { *ptr }
     } else {
         DEFAULT_RNG.with(|cell| cell.get())
     };
-    unsafe {
-        *i1 = seed.0;
-        *i2 = seed.1;
-    }
+    *i1 = seed.0;
+    *i2 = seed.1;
 }
 
 /// Host-supplied uniform generator hook.

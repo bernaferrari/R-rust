@@ -57,16 +57,10 @@ pub(crate) fn chebyshev_eval(x: f64, a: &[f64], n: i32) -> f64 {
     (b0 - b2) * 0.5
 }
 
-pub fn Rf_chebyshev_init(
-    dos: *const f64,
-    nos: std::os::raw::c_int,
-    eta: f64,
-) -> std::os::raw::c_int {
-    let dos_slice = unsafe { std::slice::from_raw_parts(dos, nos as usize) };
-    chebyshev_init(dos_slice, nos as usize, eta) as std::os::raw::c_int
+pub fn Rf_chebyshev_init(dos: &[f64], nos: std::os::raw::c_int, eta: f64) -> std::os::raw::c_int {
+    chebyshev_init(dos, nos as usize, eta) as std::os::raw::c_int
 }
 
-pub fn Rf_chebyshev_eval(x: f64, a: *const f64, n: std::os::raw::c_int) -> f64 {
-    let a_slice = unsafe { std::slice::from_raw_parts(a, n as usize) };
-    chebyshev_eval(x, a_slice, n)
+pub fn Rf_chebyshev_eval(x: f64, a: &[f64], n: std::os::raw::c_int) -> f64 {
+    chebyshev_eval(x, a, n)
 }

@@ -38,8 +38,6 @@ thread_local! {
 
 /// Install `state` as the current thread's math state.
 ///
-/// # Safety
-///
 /// The caller must keep `state` valid (and not mutably aliased elsewhere)
 /// until [`detach_state`] removes it, or until another `install_state` call
 /// replaces it.
@@ -77,7 +75,13 @@ pub fn restore_rng(previous: Option<*mut crate::rng::RngState>) {
     CURRENT_RNG.with(|slot| *slot.borrow_mut() = previous);
 }
 
-pub unsafe fn install_state(state: *mut MathState) {
+/// Install `state` as the current thread's math state.
+///
+/// The caller must keep `state` valid (and not mutably aliased elsewhere)
+/// until [`detach_state`] removes it, or until another `install_state` call
+/// replaces it. Matches [`replace_state`]/[`restore_state`], which are the
+/// checked way to swap installations.
+pub fn install_state(state: *mut MathState) {
     CURRENT_STATE.with(|slot| *slot.borrow_mut() = Some(state));
 }
 

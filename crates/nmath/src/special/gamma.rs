@@ -485,11 +485,6 @@ pub fn Rf_lgammafn1p(a: f64) -> f64 {
 }
 
 /// C FFI for lgammafn_sign: returns log|gamma(x)|, stores sign in *sgn if sgn is non-null.
-pub fn Rf_lgammafn_sign(x: f64, sgn: *mut i32) -> f64 {
-    let sgn_opt = if sgn.is_null() {
-        None
-    } else {
-        Some(unsafe { &mut *sgn })
-    };
-    lgammafn_sign(x, sgn_opt)
+pub fn Rf_lgammafn_sign(x: f64, sgn: Option<&mut i32>) -> f64 {
+    lgammafn_sign(x, sgn)
 }
