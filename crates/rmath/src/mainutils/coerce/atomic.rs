@@ -7,7 +7,7 @@ use super::*;
 /// Convert integer to logical.
 ///
 /// Returns `NA_LOGICAL` if `x` is `NA_INTEGER`, otherwise 1 if non-zero, 0 if zero.
-pub unsafe fn LogicalFromInteger(x: c_int, _warn: *mut c_int) -> c_int {
+pub fn LogicalFromInteger(x: c_int, _warn: *mut c_int) -> c_int {
     if x == NA_INTEGER {
         NA_LOGICAL
     } else if x != 0 {
@@ -20,7 +20,7 @@ pub unsafe fn LogicalFromInteger(x: c_int, _warn: *mut c_int) -> c_int {
 /// Convert real to logical.
 ///
 /// Returns `NA_LOGICAL` if `x` is NaN, otherwise 1 if non-zero, 0 if zero.
-pub unsafe fn LogicalFromReal(x: c_double, _warn: *mut c_int) -> c_int {
+pub fn LogicalFromReal(x: c_double, _warn: *mut c_int) -> c_int {
     if ISNAN(x) {
         NA_LOGICAL
     } else if x != 0.0 {
@@ -33,7 +33,7 @@ pub unsafe fn LogicalFromReal(x: c_double, _warn: *mut c_int) -> c_int {
 /// Convert complex to logical.
 ///
 /// Returns `NA_LOGICAL` if either part is NaN, otherwise 1 if non-zero, 0 if zero.
-pub unsafe fn LogicalFromComplex(x: Rcomplex, _warn: *mut c_int) -> c_int {
+pub fn LogicalFromComplex(x: Rcomplex, _warn: *mut c_int) -> c_int {
     if ISNAN(x.r) || ISNAN(x.i) {
         NA_LOGICAL
     } else if x.r != 0.0 || x.i != 0.0 {
@@ -47,7 +47,7 @@ pub unsafe fn LogicalFromComplex(x: Rcomplex, _warn: *mut c_int) -> c_int {
 ///
 /// Match GNU's exact logical spellings without allocating or interpreting
 /// arbitrary CHARSXP bytes as UTF-8.
-pub unsafe fn LogicalFromString(x: SEXP, _warn: *mut c_int) -> c_int {
+pub fn LogicalFromString(x: SEXP, _warn: *mut c_int) -> c_int {
     if x.is_null() || x == R_NaString() {
         return NA_LOGICAL;
     }
@@ -84,7 +84,7 @@ pub unsafe fn LogicalFromString(x: SEXP, _warn: *mut c_int) -> c_int {
 /// Convert logical to integer.
 ///
 /// Returns `NA_INTEGER` if `x` is `NA_LOGICAL`, otherwise passes through.
-pub unsafe fn IntegerFromLogical(x: c_int, _warn: *mut c_int) -> c_int {
+pub fn IntegerFromLogical(x: c_int, _warn: *mut c_int) -> c_int {
     if x == NA_LOGICAL { NA_INTEGER } else { x }
 }
 
@@ -92,7 +92,7 @@ pub unsafe fn IntegerFromLogical(x: c_int, _warn: *mut c_int) -> c_int {
 ///
 /// Returns `NA_INTEGER` if `x` is NaN or outside `INT_MIN..INT_MAX` range.
 /// Sets `WARN_INT_NA` flag in `warn` on overflow.
-pub unsafe fn IntegerFromReal(x: c_double, warn: *mut c_int) -> c_int {
+pub fn IntegerFromReal(x: c_double, warn: *mut c_int) -> c_int {
     unsafe {
         if ISNAN(x) {
             NA_INTEGER
@@ -112,7 +112,7 @@ pub unsafe fn IntegerFromReal(x: c_double, warn: *mut c_int) -> c_int {
 /// Returns `NA_INTEGER` if real part is NaN or out of range.
 /// Sets `WARN_IMAG` if imaginary part is non-zero.
 /// Sets `WARN_INT_NA` on overflow.
-pub unsafe fn IntegerFromComplex(x: Rcomplex, warn: *mut c_int) -> c_int {
+pub fn IntegerFromComplex(x: Rcomplex, warn: *mut c_int) -> c_int {
     unsafe {
         if ISNAN(x.r) || ISNAN(x.i) {
             NA_INTEGER
@@ -134,7 +134,7 @@ pub unsafe fn IntegerFromComplex(x: Rcomplex, warn: *mut c_int) -> c_int {
 ///
 /// Parses the string as a double, then converts to integer with overflow checking.
 /// Returns NA_INTEGER for NA_STRING, blank strings, or unparseable strings.
-pub unsafe fn IntegerFromString(x: SEXP, warn: *mut c_int) -> c_int {
+pub fn IntegerFromString(x: SEXP, warn: *mut c_int) -> c_int {
     unsafe {
         if x.is_null() || x == R_NaString() {
             return NA_INTEGER;
@@ -158,7 +158,7 @@ pub unsafe fn IntegerFromString(x: SEXP, warn: *mut c_int) -> c_int {
 /// Convert logical to real.
 ///
 /// Returns `NA_REAL` if `x` is `NA_LOGICAL`, otherwise passes through.
-pub unsafe fn RealFromLogical(x: c_int, _warn: *mut c_int) -> c_double {
+pub fn RealFromLogical(x: c_int, _warn: *mut c_int) -> c_double {
     if x == NA_LOGICAL {
         NA_REAL
     } else {
@@ -169,7 +169,7 @@ pub unsafe fn RealFromLogical(x: c_int, _warn: *mut c_int) -> c_double {
 /// Convert integer to real.
 ///
 /// Returns `NA_REAL` if `x` is `NA_INTEGER`, otherwise passes through.
-pub unsafe fn RealFromInteger(x: c_int, _warn: *mut c_int) -> c_double {
+pub fn RealFromInteger(x: c_int, _warn: *mut c_int) -> c_double {
     if x == NA_INTEGER {
         NA_REAL
     } else {
@@ -181,7 +181,7 @@ pub unsafe fn RealFromInteger(x: c_int, _warn: *mut c_int) -> c_double {
 ///
 /// Returns `NA_REAL` if either part is NaN.
 /// Sets `WARN_IMAG` if imaginary part is non-zero.
-pub unsafe fn RealFromComplex(x: Rcomplex, warn: *mut c_int) -> c_double {
+pub fn RealFromComplex(x: Rcomplex, warn: *mut c_int) -> c_double {
     unsafe {
         if ISNAN(x.r) || ISNAN(x.i) {
             NA_REAL
@@ -198,7 +198,7 @@ pub unsafe fn RealFromComplex(x: Rcomplex, warn: *mut c_int) -> c_double {
 ///
 /// Parses the string as a double. Returns NA_REAL for NA_STRING,
 /// blank strings, or unparseable strings.
-pub unsafe fn RealFromString(x: SEXP, warn: *mut c_int) -> c_double {
+pub fn RealFromString(x: SEXP, warn: *mut c_int) -> c_double {
     unsafe {
         if x.is_null() || x == R_NaString() {
             return NA_REAL;
@@ -222,7 +222,7 @@ pub unsafe fn RealFromString(x: SEXP, warn: *mut c_int) -> c_double {
 /// Convert logical to complex.
 ///
 /// Returns `Rcomplex { r: NA_REAL, i: 0.0 }` if `x` is `NA_LOGICAL`.
-pub unsafe fn ComplexFromLogical(x: c_int, _warn: *mut c_int) -> Rcomplex {
+pub fn ComplexFromLogical(x: c_int, _warn: *mut c_int) -> Rcomplex {
     if x == NA_LOGICAL {
         Rcomplex { r: NA_REAL, i: 0.0 }
     } else {
@@ -236,7 +236,7 @@ pub unsafe fn ComplexFromLogical(x: c_int, _warn: *mut c_int) -> Rcomplex {
 /// Convert integer to complex.
 ///
 /// Returns `Rcomplex { r: NA_REAL, i: 0.0 }` if `x` is `NA_INTEGER`.
-pub unsafe fn ComplexFromInteger(x: c_int, _warn: *mut c_int) -> Rcomplex {
+pub fn ComplexFromInteger(x: c_int, _warn: *mut c_int) -> Rcomplex {
     if x == NA_INTEGER {
         Rcomplex { r: NA_REAL, i: 0.0 }
     } else {
@@ -249,7 +249,7 @@ pub unsafe fn ComplexFromInteger(x: c_int, _warn: *mut c_int) -> Rcomplex {
 
 /// Convert real to complex.
 /// GNU `as.complex` keeps the imaginary part 0, including for `NA_real_`.
-pub unsafe fn ComplexFromReal(x: c_double, _warn: *mut c_int) -> Rcomplex {
+pub fn ComplexFromReal(x: c_double, _warn: *mut c_int) -> Rcomplex {
     if R_IsNA(x) {
         Rcomplex { r: NA_REAL, i: 0.0 }
     } else {
@@ -261,7 +261,7 @@ pub unsafe fn ComplexFromReal(x: c_double, _warn: *mut c_int) -> Rcomplex {
 ///
 /// Parses strings like "3", "2i", "3+2i", "3-2i".
 /// Returns `Rcomplex { r: NA_REAL, i: NA_REAL }` for invalid input.
-pub unsafe fn ComplexFromStringC(s: *const c_char, warn: *mut c_int) -> Rcomplex {
+pub fn ComplexFromStringC(s: *const c_char, warn: *mut c_int) -> Rcomplex {
     unsafe {
         if s.is_null() {
             return Rcomplex {
@@ -280,7 +280,7 @@ pub unsafe fn ComplexFromStringC(s: *const c_char, warn: *mut c_int) -> Rcomplex
 /// Convert string (CHARSXP/STRSXP element) to complex.
 ///
 /// Faithfully ports R's ComplexFromString from coerce.c which uses R_strtod.
-pub unsafe fn ComplexFromString(x: SEXP, warn: *mut c_int) -> Rcomplex {
+pub fn ComplexFromString(x: SEXP, warn: *mut c_int) -> Rcomplex {
     unsafe {
         let missing = Rcomplex {
             r: NA_REAL,
@@ -308,7 +308,7 @@ pub unsafe fn ComplexFromString(x: SEXP, warn: *mut c_int) -> Rcomplex {
 /// Convert logical to string (CHARSXP).
 ///
 /// Returns "FALSE" for 0, "TRUE" for 1, NA_STRING for NA_LOGICAL.
-pub unsafe fn StringFromLogical(x: c_int) -> SEXP {
+pub fn StringFromLogical(x: c_int) -> SEXP {
     unsafe {
         if x == NA_LOGICAL {
             return R_NaString();
@@ -324,7 +324,7 @@ pub unsafe fn StringFromLogical(x: c_int) -> SEXP {
 /// Convert integer to string (CHARSXP).
 ///
 /// Returns NA_STRING for NA_INTEGER, otherwise the decimal representation.
-pub unsafe fn StringFromInteger(x: c_int, _warn: *mut c_int) -> SEXP {
+pub fn StringFromInteger(x: c_int, _warn: *mut c_int) -> SEXP {
     unsafe {
         if x == NA_INTEGER {
             return R_NaString();
@@ -387,7 +387,7 @@ pub fn string_from_real_for_complex(x: c_double) -> String {
 /// Convert complex to string (CHARSXP).
 ///
 /// Returns NA_STRING if either part is R's NA. Otherwise formats as "r+i" or "r-i".
-pub unsafe fn StringFromComplex(x: Rcomplex, _warn: *mut c_int) -> SEXP {
+pub fn StringFromComplex(x: Rcomplex, _warn: *mut c_int) -> SEXP {
     unsafe {
         if R_IsNA(x.r) || R_IsNA(x.i) {
             return R_NaString();
@@ -407,7 +407,7 @@ pub unsafe fn StringFromComplex(x: Rcomplex, _warn: *mut c_int) -> SEXP {
 /// Convert raw byte to string (CHARSXP).
 ///
 /// Formats as two-digit hexadecimal, e.g. 255 -> "ff".
-pub unsafe fn StringFromRaw(x: Rbyte, _warn: *mut c_int) -> SEXP {
+pub fn StringFromRaw(x: Rbyte, _warn: *mut c_int) -> SEXP {
     unsafe {
         let s = format!("{:02x}", x);
         let cstr = std::ffi::CString::new(s).unwrap_or_default();

@@ -28,17 +28,17 @@ use super::*;
 // ---------------------------------------------------------------------------
 
 /// Port of `SubassignTypeSym()` -- used by the byte code compiler.
-pub unsafe fn SubassignTypeSym() -> SEXP {
+pub fn SubassignTypeSym() -> SEXP {
     unsafe { Rf_install(c"SubassignTypeSym".as_ptr()) }
 }
 
 /// Port of `SubassignDotsNames()` -- handles assignment to `...` names.
-pub unsafe fn SubassignDotsNames(_call: SEXP, _rho: SEXP) -> SEXP {
+pub fn SubassignDotsNames(_call: SEXP, _rho: SEXP) -> SEXP {
     R_NilValue()
 }
 
 /// Port of `GetSubassignSxpVec()` -- used by the byte code interpreter.
-pub unsafe fn GetSubassignSxpVec(x: SEXP, indx: SEXP) -> SEXP {
+pub fn GetSubassignSxpVec(x: SEXP, indx: SEXP) -> SEXP {
     unsafe {
         if isNull(x) || isNull(indx) {
             return R_NilValue();
@@ -56,6 +56,6 @@ pub unsafe fn GetSubassignSxpVec(x: SEXP, indx: SEXP) -> SEXP {
 }
 
 /// Port of `var_assign()` -- handles variable assignment in the interpreter.
-pub unsafe fn var_assign(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe { do_subassign(call, op, args, rho) }
+pub fn var_assign(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    do_subassign(call, op, args, rho)
 }

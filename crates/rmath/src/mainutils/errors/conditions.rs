@@ -48,37 +48,37 @@ pub fn mkHandlerEntry(
 
 /// IS_CALLING_ENTRY macro.
 #[inline]
-pub unsafe fn IS_CALLING_ENTRY(e: SEXP) -> c_int {
+pub fn IS_CALLING_ENTRY(e: SEXP) -> c_int {
     LEVELS(e)
 }
 
 /// ENTRY_CLASS macro.
 #[inline]
-pub unsafe fn ENTRY_CLASS(e: SEXP) -> SEXP {
+pub fn ENTRY_CLASS(e: SEXP) -> SEXP {
     unsafe { VECTOR_ELT(e, 0) }
 }
 
 /// ENTRY_HANDLER macro.
 #[inline]
-pub unsafe fn ENTRY_HANDLER(e: SEXP) -> SEXP {
+pub fn ENTRY_HANDLER(e: SEXP) -> SEXP {
     unsafe { VECTOR_ELT(e, 2) }
 }
 
 /// ENTRY_TARGET_ENVIR macro.
 #[inline]
-pub unsafe fn ENTRY_TARGET_ENVIR(e: SEXP) -> SEXP {
+pub fn ENTRY_TARGET_ENVIR(e: SEXP) -> SEXP {
     unsafe { VECTOR_ELT(e, 3) }
 }
 
 /// ENTRY_RETURN_RESULT macro.
 #[inline]
-pub unsafe fn ENTRY_RETURN_RESULT(e: SEXP) -> SEXP {
+pub fn ENTRY_RETURN_RESULT(e: SEXP) -> SEXP {
     unsafe { VECTOR_ELT(e, 4) }
 }
 
 /// CLEAR_ENTRY_CALLING_ENVIR macro.
 #[inline]
-pub unsafe fn CLEAR_ENTRY_CALLING_ENVIR(e: SEXP) {
+pub fn CLEAR_ENTRY_CALLING_ENVIR(e: SEXP) {
     unsafe {
         SET_VECTOR_ELT(e, 1, globals::R_NilValue());
     }
@@ -86,7 +86,7 @@ pub unsafe fn CLEAR_ENTRY_CALLING_ENVIR(e: SEXP) {
 
 /// CLEAR_ENTRY_TARGET_ENVIR macro.
 #[inline]
-pub unsafe fn CLEAR_ENTRY_TARGET_ENVIR(e: SEXP) {
+pub fn CLEAR_ENTRY_TARGET_ENVIR(e: SEXP) {
     unsafe {
         SET_VECTOR_ELT(e, 3, globals::R_NilValue());
     }
@@ -96,7 +96,7 @@ pub unsafe fn CLEAR_ENTRY_TARGET_ENVIR(e: SEXP) {
 pub const RESULT_SIZE: usize = 4;
 
 /// do_addCondHands — add condition handlers to the stack.
-pub unsafe fn do_addCondHands(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_addCondHands(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
         let owner = crate::sexp::owner::OwnerToken::current()
@@ -170,8 +170,8 @@ pub unsafe fn do_addCondHands(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SE
 }
 
 /// do_resetCondHands — reset condition handlers to a previous state.
-pub unsafe fn do_resetCondHands(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_resetCondHands(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+     {
         checkArity(op, args);
         let old = CAR(args);
         set_handler_stack(old);
@@ -184,7 +184,7 @@ pub unsafe fn do_resetCondHands(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> 
 // Condition signaling
 // ---------------------------------------------------------------------------
 
-unsafe fn findConditionHandler(cond: SEXP) -> SEXP {
+fn findConditionHandler(cond: SEXP) -> SEXP {
     unsafe {
         let classes = getAttrib(cond, R_ClassSymbol());
         if TYPEOF(classes) != SEXPTYPE::STRSXP {
@@ -220,8 +220,8 @@ unsafe fn findConditionHandler(cond: SEXP) -> SEXP {
 }
 
 /// do_signalCondition — signal a condition through the handler stack.
-pub unsafe fn do_signalCondition(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_signalCondition(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+     {
         checkArity(op, args);
         signal_condition_object(CAR(args), CADR(args), CADDR(args));
         globals::R_NilValue()
@@ -231,8 +231,8 @@ pub unsafe fn do_signalCondition(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) ->
 /// Shared public/native dispatch: stack order chooses the first matching entry,
 /// and that entry plus newer handlers are removed before invoking its callback.
 /// Restore the original owner's stack on normal return and every unwind path.
-pub(crate) unsafe fn signal_condition_object(cond: SEXP, msg: SEXP, ecall: SEXP) -> bool {
-    unsafe { signal_condition_handlers(cond, msg, ecall, SignalMode::Condition) }
+pub(crate) fn signal_condition_object(cond: SEXP, msg: SEXP, ecall: SEXP) -> bool {
+     { signal_condition_handlers(cond, msg, ecall, SignalMode::Condition) }
 }
 
 #[derive(Clone, Copy)]
@@ -247,7 +247,7 @@ enum SignalMode<'a> {
     },
 }
 
-unsafe fn signal_condition_handlers(
+fn signal_condition_handlers(
     cond: SEXP,
     msg: SEXP,
     ecall: SEXP,
@@ -318,7 +318,7 @@ unsafe fn signal_condition_handlers(
 }
 
 /// do_dfltWarn — default warning handler.
-pub unsafe fn do_dfltWarn(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_dfltWarn(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
         if TYPEOF(CAR(args)) != SEXPTYPE::STRSXP || LENGTH(CAR(args)) != 1 {
@@ -332,7 +332,7 @@ pub unsafe fn do_dfltWarn(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 /// do_dfltStop — default error handler.
-pub unsafe fn do_dfltStop(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_dfltStop(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
         if TYPEOF(CAR(args)) != SEXPTYPE::STRSXP || LENGTH(CAR(args)) != 1 {
@@ -349,7 +349,7 @@ pub unsafe fn do_dfltStop(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// R_makeErrorCondition — create an error condition object.
-pub unsafe fn R_makeErrorCondition(
+pub fn R_makeErrorCondition(
     call: SEXP,
     classname: *const c_char,
     subclassname: *const c_char,
@@ -379,7 +379,7 @@ pub unsafe fn R_makeErrorCondition(
 
 /// The raw attribute bridge remains here until graph edges use checked links.
 /// Text and vector construction use bounded Rust inputs and owning roots.
-pub(super) unsafe fn make_condition(
+pub(super) fn make_condition(
     call: SEXP,
     class: &str,
     subclass: &str,
@@ -431,15 +431,15 @@ pub(super) unsafe fn make_condition(
 }
 
 /// R_signalErrorCondition — signal an error condition.
-pub unsafe fn R_signalErrorCondition(cond: SEXP, call: SEXP) {
-    unsafe { R_signalErrorConditionEx(cond, call, 0) }
+pub fn R_signalErrorCondition(cond: SEXP, call: SEXP) {
+     { R_signalErrorConditionEx(cond, call, 0) }
 }
 
 /// Signal the original typed condition before default rendering. Native errors
 /// skip calling handlers only when requested (for example, stack overflow).
 /// Default rendering must not signal a new simpleError over this condition.
-pub unsafe fn R_signalErrorConditionEx(cond: SEXP, call: SEXP, exitOnly: c_int) {
-    unsafe {
+pub fn R_signalErrorConditionEx(cond: SEXP, call: SEXP, exitOnly: c_int) {
+     {
         signal_error_with_mode(
             cond,
             call,
@@ -451,13 +451,13 @@ pub unsafe fn R_signalErrorConditionEx(cond: SEXP, call: SEXP, exitOnly: c_int) 
     }
 }
 
-pub(super) unsafe fn signal_simple_error(
+pub(super) fn signal_simple_error(
     access: &crate::sexp::owner::RuntimeAccess,
     diagnostic: &crate::sexp::diagnostic::Diagnostic,
     cond: SEXP,
     call: SEXP,
 ) {
-    unsafe {
+     {
         signal_error_with_mode(
             cond,
             call,
@@ -469,8 +469,8 @@ pub(super) unsafe fn signal_simple_error(
 
 /// `stop(condition)` resolves the named message before handlers can mutate
 /// the condition. Native R_signalErrorCondition instead uses its first field.
-pub(crate) unsafe fn signal_stop_condition(cond: SEXP, call: SEXP, message: SEXP) {
-    unsafe {
+pub(crate) fn signal_stop_condition(cond: SEXP, call: SEXP, message: SEXP) {
+     {
         signal_error_with_mode(
             cond,
             call,
@@ -480,7 +480,7 @@ pub(crate) unsafe fn signal_stop_condition(cond: SEXP, call: SEXP, message: SEXP
     }
 }
 
-unsafe fn signal_error_with_mode(
+fn signal_error_with_mode(
     cond: SEXP,
     call: SEXP,
     mode: SignalMode<'_>,
@@ -545,7 +545,7 @@ unsafe fn signal_error_with_mode(
         }
         // Keep the same condition available to the outer public error adapter
         // when no installed exiting entry handled it before default rendering.
-        crate::sexp::instance::with_required_current_instance(|inst| unsafe {
+        crate::sexp::instance::with_required_current_instance(|inst|  {
             (*inst).error_state.signalled_condition =
                 crate::sexp::instance::RuntimeValue::from_raw_in(inst, cond);
         });
@@ -568,7 +568,7 @@ unsafe fn signal_error_with_mode(
 }
 
 /// GNU `R_ObjectNotFoundError(sym, call, mode)`.
-pub unsafe fn R_ObjectNotFoundError(sym: SEXP, call: SEXP, mode: Option<&str>) -> ! {
+pub fn R_ObjectNotFoundError(sym: SEXP, call: SEXP, mode: Option<&str>) -> ! {
     unsafe {
         let pname = PRINTNAME(sym);
         let name = if pname.is_null() {
@@ -615,7 +615,7 @@ pub unsafe fn R_ObjectNotFoundError(sym: SEXP, call: SEXP, mode: Option<&str>) -
 }
 
 /// GNU `R_FunctionNotFoundError(sym, call)`.
-pub unsafe fn R_FunctionNotFoundError(sym: SEXP, call: SEXP) -> ! {
+pub fn R_FunctionNotFoundError(sym: SEXP, call: SEXP) -> ! {
     unsafe {
         let pname = PRINTNAME(sym);
         let name = if pname.is_null() {
@@ -657,7 +657,7 @@ pub unsafe fn R_FunctionNotFoundError(sym: SEXP, call: SEXP) -> ! {
 }
 
 /// R_setConditionField — set a field in a condition object.
-pub unsafe fn R_setConditionField(cond: SEXP, idx: R_xlen_t, name: *const c_char, val: SEXP) {
+pub fn R_setConditionField(cond: SEXP, idx: R_xlen_t, name: *const c_char, val: SEXP) {
     unsafe {
         if TYPEOF(cond) != SEXPTYPE::VECSXP {
             return;
@@ -737,7 +737,7 @@ fn exiting_handler_result(lease: &crate::sexp::transfer::TransferLease) -> SEXP 
 
 /// Native error catcher. Callback data must remain live for this dynamic scope.
 /// Rust callbacks declare C-unwind so evaluation can use nonlocal transfers.
-pub unsafe fn R_tryCatchError(
+pub fn R_tryCatchError(
     body: Option<super::NativeBody>,
     bdata: *mut c_void,
     handler: Option<super::NativeHandler>,
@@ -749,7 +749,7 @@ pub unsafe fn R_tryCatchError(
     let classes = factory
         .strings(&["error"])
         .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
-    unsafe {
+     {
         super::native::catch_native(
             body,
             bdata,
@@ -767,7 +767,7 @@ pub unsafe fn R_tryCatchError(
 // ---------------------------------------------------------------------------
 
 /// R_InitConditions — initialize error/warning condition objects.
-pub unsafe fn R_InitConditions() {
+pub fn R_InitConditions() {
     unsafe {
         // Create and preserve condition objects for stack overflow errors
         let protect_so = R_makeErrorCondition(
@@ -802,7 +802,7 @@ pub unsafe fn R_InitConditions() {
 
 /// R_MissingArgError_c — report a missing argument error.
 /// Matches C's `void R_MissingArgError_c(const char* arg, SEXP call, const char* subclass)`
-pub unsafe fn R_MissingArgError_c(arg: *const c_char, call: SEXP, subclass: *const c_char) {
+pub fn R_MissingArgError_c(arg: *const c_char, call: SEXP, subclass: *const c_char) {
     unsafe {
         let arg_str = if arg.is_null() {
             ""
@@ -830,8 +830,8 @@ pub unsafe fn R_MissingArgError_c(arg: *const c_char, call: SEXP, subclass: *con
 
 /// R_MissingArgError — report a missing argument error from a symbol.
 /// Matches C's `void R_MissingArgError(SEXP symbol, SEXP call, const char* subclass)`
-pub unsafe fn R_MissingArgError(symbol: SEXP, call: SEXP, subclass: *const c_char) {
-    unsafe {
+pub fn R_MissingArgError(symbol: SEXP, call: SEXP, subclass: *const c_char) {
+     {
         let arg = if symbol.is_null() || TYPEOF(symbol) != SEXPTYPE::SYMSXP {
             b"\0".as_ptr() as *const c_char
         } else {
@@ -848,7 +848,7 @@ pub unsafe fn R_MissingArgError(symbol: SEXP, call: SEXP, subclass: *const c_cha
 
 /// R_signalWarningCondition — signal a warning condition object.
 /// Matches C's `void R_signalWarningCondition(SEXP cond)`.
-pub unsafe fn R_signalWarningCondition(cond: SEXP) {
+pub fn R_signalWarningCondition(cond: SEXP) {
     unsafe {
         if cond.is_null() || TYPEOF(cond) != SEXPTYPE::VECSXP || LENGTH(cond) < 1 {
             return;
@@ -872,7 +872,7 @@ pub unsafe fn R_signalWarningCondition(cond: SEXP) {
 /// This is the post-handler half of `R_signalWarningCondition`: callers that
 /// preserve a concrete warning subclass signal it first, then collect/print it
 /// here only when no handler muffled the warning.
-pub(crate) unsafe fn warning_condition_default(cond: SEXP) {
+pub(crate) fn warning_condition_default(cond: SEXP) {
     unsafe {
         if cond.is_null() || TYPEOF(cond) != SEXPTYPE::VECSXP || LENGTH(cond) < 1 {
             return;
@@ -894,7 +894,7 @@ pub(crate) unsafe fn warning_condition_default(cond: SEXP) {
 /// R_makeWarningCondition — create a warning condition object.
 /// Matches C's `SEXP R_makeWarningCondition(SEXP call, const char *classname,
 /// const char *subclassname, int nextra, const char *format, ...)`
-pub unsafe fn R_makeWarningCondition(
+pub fn R_makeWarningCondition(
     call: SEXP,
     classname: *const c_char,
     subclassname: *const c_char,
@@ -927,7 +927,7 @@ pub unsafe fn R_makeWarningCondition(
 /// Message text for a partial-match warning operand: PRINTNAME for a
 /// symbol, translateChar for a CHARSXP string (upstream errors.c passes
 /// these straight into the format string).
-unsafe fn partial_match_text(x: SEXP) -> String {
+fn partial_match_text(x: SEXP) -> String {
     unsafe {
         if !x.is_null() && TYPEOF(x) == SEXPTYPE::SYMSXP {
             CStr::from_ptr(CHAR_local(PRINTNAME(x)))
@@ -946,7 +946,7 @@ unsafe fn partial_match_text(x: SEXP) -> String {
 /// R_makePartialMatchWarningCondition — create a partial match warning condition.
 /// Matches C's `SEXP R_makePartialMatchWarningCondition(SEXP call, SEXP input, SEXP target)`
 /// where input/target are symbols or CHARSXP strings.
-pub unsafe fn R_makePartialMatchWarningCondition(call: SEXP, input: SEXP, target: SEXP) -> SEXP {
+pub fn R_makePartialMatchWarningCondition(call: SEXP, input: SEXP, target: SEXP) -> SEXP {
     unsafe {
         let msg = format!(
             "partial match of '{}' to '{}'",
@@ -992,7 +992,7 @@ pub unsafe fn R_makePartialMatchWarningCondition(call: SEXP, input: SEXP, target
 /// match warning condition (supplied argument tag vs function formal).
 /// Matches C's `SEXP R_makePartialArgumentMatchWarningCondition(SEXP call,
 /// SEXP argument, SEXP formal)`
-pub unsafe fn R_makePartialArgumentMatchWarningCondition(
+pub fn R_makePartialArgumentMatchWarningCondition(
     call: SEXP,
     argument: SEXP,
     formal: SEXP,
@@ -1022,7 +1022,7 @@ pub unsafe fn R_makePartialArgumentMatchWarningCondition(
 
 /// R_makeNotSubsettableError — create a "not subsettable" error condition.
 /// Matches C's `SEXP R_makeNotSubsettableError(SEXP x, SEXP call)`
-pub unsafe fn R_makeNotSubsettableError(x: SEXP, call: SEXP) -> SEXP {
+pub fn R_makeNotSubsettableError(x: SEXP, call: SEXP) -> SEXP {
     unsafe {
         let class_str = if !x.is_null() {
             let klass = getAttrib_wrap(x, R_ClassSymbol());
@@ -1050,7 +1050,7 @@ pub unsafe fn R_makeNotSubsettableError(x: SEXP, call: SEXP) -> SEXP {
 
 /// R_makeMissingSubscriptError — create a missing subscript error condition.
 /// Matches C's `SEXP R_makeMissingSubscriptError(SEXP x, SEXP call)`
-pub unsafe fn R_makeMissingSubscriptError(x: SEXP, call: SEXP) -> SEXP {
+pub fn R_makeMissingSubscriptError(x: SEXP, call: SEXP) -> SEXP {
     unsafe {
         let class_str = if !x.is_null() {
             let klass = getAttrib_wrap(x, R_ClassSymbol());
@@ -1078,8 +1078,8 @@ pub unsafe fn R_makeMissingSubscriptError(x: SEXP, call: SEXP) -> SEXP {
 
 /// R_makeMissingSubscriptError1 — create a missing subscript error condition (no x).
 /// Matches C's `SEXP R_makeMissingSubscriptError1(SEXP call)`
-pub unsafe fn R_makeMissingSubscriptError1(call: SEXP) -> SEXP {
-    unsafe {
+pub fn R_makeMissingSubscriptError1(call: SEXP) -> SEXP {
+     {
         let msg = "subscript out of bounds";
         let c_msg = std::ffi::CString::new(msg).unwrap_or_default();
 
@@ -1093,11 +1093,11 @@ pub unsafe fn R_makeMissingSubscriptError1(call: SEXP) -> SEXP {
     }
 }
 /// Signal a missing subscript with the object when the caller has it.
-pub unsafe fn R_MissingSubscriptError(x: SEXP, call: SEXP) -> ! {
-    unsafe { signal_missing_subscript(call, Some(x)) }
+pub fn R_MissingSubscriptError(x: SEXP, call: SEXP) -> ! {
+     { signal_missing_subscript(call, Some(x)) }
 }
 
-pub(crate) unsafe fn signal_missing_subscript(call: SEXP, object: Option<SEXP>) -> ! {
+pub(crate) fn signal_missing_subscript(call: SEXP, object: Option<SEXP>) -> ! {
     unsafe {
         let cond = R_makeErrorCondition(
             call,
@@ -1117,7 +1117,7 @@ pub(crate) unsafe fn signal_missing_subscript(call: SEXP, object: Option<SEXP>) 
 
 /// R_makeOutOfBoundsError — create an out-of-bounds error condition.
 /// Matches C's `SEXP R_makeOutOfBoundsError(SEXP x, int subscript, SEXP sindex, SEXP call)`
-pub unsafe fn R_makeOutOfBoundsError(x: SEXP, subscript: c_int, sindex: SEXP, call: SEXP) -> SEXP {
+pub fn R_makeOutOfBoundsError(x: SEXP, subscript: c_int, sindex: SEXP, call: SEXP) -> SEXP {
     unsafe {
         let idx_str = if !sindex.is_null() && TYPEOF(sindex) == SEXPTYPE::REALSXP {
             format!("{}", *REAL(sindex))
@@ -1141,8 +1141,8 @@ pub unsafe fn R_makeOutOfBoundsError(x: SEXP, subscript: c_int, sindex: SEXP, ca
 
 /// R_makeCStackOverflowError — create a C stack overflow error condition.
 /// Matches C's `SEXP R_makeCStackOverflowError(SEXP call, intptr_t usage)`
-pub unsafe fn R_makeCStackOverflowError(call: SEXP, usage: isize) -> SEXP {
-    unsafe {
+pub fn R_makeCStackOverflowError(call: SEXP, usage: isize) -> SEXP {
+     {
         let msg = format!("C stack usage {} is too close to the limit", usage);
         let c_msg = std::ffi::CString::new(msg).unwrap_or_default();
 
@@ -1157,7 +1157,7 @@ pub unsafe fn R_makeCStackOverflowError(call: SEXP, usage: isize) -> SEXP {
 }
 
 /// R_getProtectStackOverflowError — get the preserved protect stack overflow condition.
-pub unsafe fn R_getProtectStackOverflowError() -> SEXP {
+pub fn R_getProtectStackOverflowError() -> SEXP {
     {
         // Would return a preserved condition; for now return nil
         globals::R_NilValue()
@@ -1165,7 +1165,7 @@ pub unsafe fn R_getProtectStackOverflowError() -> SEXP {
 }
 
 /// R_getExpressionStackOverflowError — get the preserved expression stack overflow condition.
-pub unsafe fn R_getExpressionStackOverflowError() -> SEXP {
+pub fn R_getExpressionStackOverflowError() -> SEXP {
     {
         // Would return a preserved condition; for now return nil
         globals::R_NilValue()
@@ -1173,7 +1173,7 @@ pub unsafe fn R_getExpressionStackOverflowError() -> SEXP {
 }
 
 /// R_getNodeStackOverflowError — get the preserved node stack overflow condition.
-pub unsafe fn R_getNodeStackOverflowError() -> SEXP {
+pub fn R_getNodeStackOverflowError() -> SEXP {
     {
         // Would return a preserved condition; for now return nil
         globals::R_NilValue()
@@ -1184,7 +1184,7 @@ pub unsafe fn R_getNodeStackOverflowError() -> SEXP {
 /// # Safety
 /// Callback data remains valid until the scope ends; callback result projections
 /// belong to the live active runtime. Callbacks that evaluate R permit unwinding.
-pub unsafe fn R_tryCatch(
+pub fn R_tryCatch(
     body: Option<super::NativeBody>,
     bdata: *mut c_void,
     classes: SEXP,
@@ -1193,17 +1193,17 @@ pub unsafe fn R_tryCatch(
     finally: Option<super::NativeFinally>,
     fdata: *mut c_void,
 ) -> SEXP {
-    unsafe { super::native::catch_native(body, bdata, classes, handler, hdata, finally, fdata) }
+     { super::native::catch_native(body, bdata, classes, handler, hdata, finally, fdata) }
 }
 
 /// Native calling error handler. Callback data follows the same scoped contract.
-pub unsafe fn R_withCallingErrorHandler(
+pub fn R_withCallingErrorHandler(
     body: Option<super::NativeBody>,
     bdata: *mut c_void,
     handler: Option<super::NativeHandler>,
     hdata: *mut c_void,
 ) -> SEXP {
-    unsafe { super::native::calling_native(body, bdata, handler, hdata) }
+     { super::native::calling_native(body, bdata, handler, hdata) }
 }
 
 #[cfg(test)]

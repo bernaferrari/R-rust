@@ -12,12 +12,12 @@ use super::*;
 // ---------------------------------------------------------------------------
 
 /// Delegates to the real GetOption1 implementation in options.rs.
-pub(super) unsafe fn GetOption1(sym: SEXP) -> SEXP {
+pub(super) fn GetOption1(sym: SEXP) -> SEXP {
     unsafe { crate::mainutils::options::GetOption1(sym) }
 }
 
 /// Check if an SEXP is a function (CLOSXP or BUILTINSXP).
-pub(super) unsafe fn isFunction(s: SEXP) -> c_int {
+pub(super) fn isFunction(s: SEXP) -> c_int {
     {
         let t = TYPEOF(s);
         (t == SEXPTYPE::CLOSXP || t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP) as c_int
@@ -25,37 +25,37 @@ pub(super) unsafe fn isFunction(s: SEXP) -> c_int {
 }
 
 /// Check if an SEXP is a language object.
-pub(super) unsafe fn isLanguage(s: SEXP) -> c_int {
+pub(super) fn isLanguage(s: SEXP) -> c_int {
     (TYPEOF(s) == SEXPTYPE::LANGSXP) as c_int
 }
 
 /// Check if an SEXP is an expression.
-pub(super) unsafe fn isExpression(s: SEXP) -> c_int {
+pub(super) fn isExpression(s: SEXP) -> c_int {
     (TYPEOF(s) == SEXPTYPE::EXPRSXP) as c_int
 }
 
 /// Check if an SEXP is a string vector.
-pub(super) unsafe fn isString(s: SEXP) -> c_int {
+pub(super) fn isString(s: SEXP) -> c_int {
     (TYPEOF(s) == SEXPTYPE::STRSXP) as c_int
 }
 
 /// Check if an SEXP is a logical vector.
-pub(super) unsafe fn isLogical(s: SEXP) -> c_int {
+pub(super) fn isLogical(s: SEXP) -> c_int {
     (TYPEOF(s) == SEXPTYPE::LGLSXP) as c_int
 }
 
 /// Check if an SEXP is an integer vector.
-pub(super) unsafe fn isInteger(s: SEXP) -> c_int {
+pub(super) fn isInteger(s: SEXP) -> c_int {
     (TYPEOF(s) == SEXPTYPE::INTSXP) as c_int
 }
 
 /// Check if an SEXP is a real vector.
-pub(super) unsafe fn isReal(s: SEXP) -> c_int {
+pub(super) fn isReal(s: SEXP) -> c_int {
     (TYPEOF(s) == SEXPTYPE::REALSXP) as c_int
 }
 
 /// Convert SEXP to logical (simplified).
-pub(super) unsafe fn asLogical(s: SEXP) -> c_int {
+pub(super) fn asLogical(s: SEXP) -> c_int {
     unsafe {
         if isLogical(s) != 0 && LENGTH(s) >= 1 {
             *LOGICAL(s)
@@ -70,12 +70,12 @@ pub(super) unsafe fn asLogical(s: SEXP) -> c_int {
 }
 
 /// Check if an SEXP is NULL.
-pub(super) unsafe fn isNull(s: SEXP) -> c_int {
+pub(super) fn isNull(s: SEXP) -> c_int {
     (s.is_null() || TYPEOF(s) == SEXPTYPE::NILSXP) as c_int
 }
 
 /// Check if a string SEXP is valid (non-NA).
-pub(super) unsafe fn isValidString(s: SEXP) -> c_int {
+pub(super) fn isValidString(s: SEXP) -> c_int {
     unsafe {
         if isString(s) == 0 || LENGTH(s) < 1 {
             return 0;
@@ -89,7 +89,7 @@ pub(super) unsafe fn isValidString(s: SEXP) -> c_int {
 }
 
 /// Get C string from CHARSXP (simplified).
-pub(super) unsafe fn CHAR_local(s: SEXP) -> *const c_char {
+pub(super) fn CHAR_local(s: SEXP) -> *const c_char {
     unsafe {
         if s.is_null() || TYPEOF(s) != SEXPTYPE::CHARSXP {
             return b"\0" as *const u8 as *const c_char;
@@ -98,7 +98,7 @@ pub(super) unsafe fn CHAR_local(s: SEXP) -> *const c_char {
     }
 }
 
-pub(super) unsafe fn translateChar(s: SEXP) -> *const c_char {
+pub(super) fn translateChar(s: SEXP) -> *const c_char {
     unsafe {
         let r = crate::sexp::accessors::translateChar(s);
         if r.is_null() {
@@ -110,20 +110,20 @@ pub(super) unsafe fn translateChar(s: SEXP) -> *const c_char {
 }
 
 /// Check argument arity (simplified).
-pub(super) unsafe fn checkArity(op: SEXP, args: SEXP) {
+pub(super) fn checkArity(op: SEXP, args: SEXP) {
     unsafe { crate::mainutils::relop::checkArity(op, args) }
 }
 
-pub(super) unsafe fn ScalarInteger(x: c_int) -> SEXP {
+pub(super) fn ScalarInteger(x: c_int) -> SEXP {
     unsafe { crate::sexp::constructors::Rf_ScalarInteger(x) }
 }
 
-pub(super) unsafe fn ScalarLogical(x: c_int) -> SEXP {
+pub(super) fn ScalarLogical(x: c_int) -> SEXP {
     unsafe { crate::sexp::constructors::Rf_ScalarLogical(x) }
 }
 
 /// Get/set class attribute (simplified).
-pub(super) unsafe fn classgets(x: SEXP, klass: SEXP) -> SEXP {
+pub(super) fn classgets(x: SEXP, klass: SEXP) -> SEXP {
     unsafe {
         crate::eval::attrib_core::setAttrib(x, R_ClassSymbol(), klass); // Uses imported R_ClassSymbol
         x
@@ -132,20 +132,20 @@ pub(super) unsafe fn classgets(x: SEXP, klass: SEXP) -> SEXP {
 
 /// Wrapper for getAttrib using the real implementation.
 #[inline]
-pub(super) unsafe fn getAttrib_wrap(x: SEXP, which: SEXP) -> SEXP {
+pub(super) fn getAttrib_wrap(x: SEXP, which: SEXP) -> SEXP {
     unsafe { crate::eval::attrib_core::getAttrib(x, which) }
 }
 
 /// Wrapper for setAttrib using the real implementation.
 #[inline]
-pub(super) unsafe fn setAttrib_wrap(x: SEXP, which: SEXP, value: SEXP) {
+pub(super) fn setAttrib_wrap(x: SEXP, which: SEXP, value: SEXP) {
     unsafe {
         crate::eval::attrib_core::setAttrib(x, which, value);
     }
 }
 
 /// Get the number of arguments (length of pairlist).
-pub(super) unsafe fn length(x: SEXP) -> c_int {
+pub(super) fn length(x: SEXP) -> c_int {
     {
         let mut count: c_int = 0;
         let mut p = x;

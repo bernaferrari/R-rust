@@ -47,7 +47,7 @@ struct WarningEntry {
 /// collapse to a summary line. `dcall` is `deparse1s()` of the stored call,
 /// and a first line that would exceed LONGWARN (6/10 + dcall + msgline1)
 /// wraps with `\n ` before the one-space-indented message.
-pub(crate) unsafe fn take_warnings_block() -> Option<String> {
+pub(crate) fn take_warnings_block() -> Option<String> {
     let pin = super::state::error_scope_pin();
     let owner = unsafe { crate::sexp::owner::OwnerToken::from_raw(pin.as_ptr()) };
     let affiliation = owner.weak_owner().expect("managed warning owner");
@@ -229,7 +229,7 @@ fn warning_dcall_in_scope(
     warning_checked(access.require_active());
     text
 }
-pub(crate) unsafe fn warning_dcall(call: SEXP) -> String {
+pub(crate) fn warning_dcall(call: SEXP) -> String {
     if call.is_null() {
         return "<call>".into();
     }
@@ -247,8 +247,8 @@ pub(crate) unsafe fn warning_dcall(call: SEXP) -> String {
 }
 
 /// Print collected warnings to stderr — upstream's channel (REprintf).
-pub unsafe fn PrintWarnings() {
-    unsafe {
+pub fn PrintWarnings() {
+     {
         if let Some(block) = take_warnings_block() {
             eprint!("{}", block);
         }
@@ -257,8 +257,8 @@ pub unsafe fn PrintWarnings() {
 
 /// Flush collected warnings at a top-level statement boundary.
 /// GNU writes this block with REprintf (process stderr).
-pub unsafe fn print_warnings_at_statement_boundary() {
-    unsafe {
+pub fn print_warnings_at_statement_boundary() {
+     {
         let Some(block) = take_warnings_block() else {
             return;
         };
@@ -267,8 +267,8 @@ pub unsafe fn print_warnings_at_statement_boundary() {
 }
 
 /// do_printDeferredWarnings — print deferred warnings.
-pub unsafe fn do_printDeferredWarnings(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe {
+pub fn do_printDeferredWarnings(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+     {
         checkArity(op, args);
         if r_show_error_messages() && collect_warnings() > 0 {
             PrintWarnings();
@@ -279,8 +279,8 @@ pub unsafe fn do_printDeferredWarnings(call: SEXP, op: SEXP, args: SEXP, env: SE
 
 /// R_PrintDeferredWarnings — print deferred warnings.
 /// Matches C's `static void R_PrintDeferredWarnings(void)`
-pub unsafe fn R_PrintDeferredWarnings() {
-    unsafe {
+pub fn R_PrintDeferredWarnings() {
+     {
         if r_show_error_messages() && collect_warnings() > 0 {
             eprint!("In addition: ");
             PrintWarnings();

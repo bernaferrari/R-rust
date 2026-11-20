@@ -19,7 +19,7 @@ use super::*;
 // ---------------------------------------------------------------------------
 
 /// Check if x is a character vector (STRSXP).
-pub(crate) unsafe fn isString(x: SEXP) -> c_int {
+pub(crate) fn isString(x: SEXP) -> c_int {
     {
         if x.is_null() {
             return FALSE;
@@ -33,7 +33,7 @@ pub(crate) unsafe fn isString(x: SEXP) -> c_int {
 }
 
 /// Check if x is an environment.
-unsafe fn isEnvironment(x: SEXP) -> c_int {
+fn isEnvironment(x: SEXP) -> c_int {
     {
         if x.is_null() {
             return FALSE;
@@ -47,7 +47,7 @@ unsafe fn isEnvironment(x: SEXP) -> c_int {
 }
 
 /// Check if x is a logical vector.
-pub(crate) unsafe fn isLogical(x: SEXP) -> c_int {
+pub(crate) fn isLogical(x: SEXP) -> c_int {
     {
         if x.is_null() {
             return FALSE;
@@ -61,7 +61,7 @@ pub(crate) unsafe fn isLogical(x: SEXP) -> c_int {
 }
 
 /// Check if x is a function (closure, builtin, or special).
-pub(crate) unsafe fn isFunction(x: SEXP) -> c_int {
+pub(crate) fn isFunction(x: SEXP) -> c_int {
     {
         if x.is_null() {
             return FALSE;
@@ -76,7 +76,7 @@ pub(crate) unsafe fn isFunction(x: SEXP) -> c_int {
 }
 
 /// Check if x is a primitive (builtin or special).
-pub(crate) unsafe fn isPrimitive(x: SEXP) -> c_int {
+pub(crate) fn isPrimitive(x: SEXP) -> c_int {
     {
         if x.is_null() {
             return FALSE;
@@ -91,7 +91,7 @@ pub(crate) unsafe fn isPrimitive(x: SEXP) -> c_int {
 }
 
 /// Check if x is a closure.
-pub(crate) unsafe fn isClosure(x: SEXP) -> c_int {
+pub(crate) fn isClosure(x: SEXP) -> c_int {
     {
         if x.is_null() {
             return FALSE;
@@ -105,7 +105,7 @@ pub(crate) unsafe fn isClosure(x: SEXP) -> c_int {
 }
 
 /// Check if a string is valid and non-empty.
-pub(crate) unsafe fn isValidString(x: SEXP) -> c_int {
+pub(crate) fn isValidString(x: SEXP) -> c_int {
     unsafe {
         if x.is_null() || TYPEOF(x) != SEXPTYPE::STRSXP || LENGTH(x) != 1 {
             return FALSE;
@@ -125,16 +125,16 @@ pub(crate) unsafe fn isValidString(x: SEXP) -> c_int {
     }
 }
 
-pub(crate) unsafe fn asRbool(x: SEXP, call: SEXP) -> c_int {
-    unsafe { crate::mainutils::coerce::asRbool(x, call) }
+pub(crate) fn asRbool(x: SEXP, call: SEXP) -> c_int {
+     { crate::mainutils::coerce::asRbool(x, call) }
 }
 
-pub(crate) unsafe fn asLogical(x: SEXP) -> c_int {
-    unsafe { crate::mainutils::coerce::asLogical(x) }
+pub(crate) fn asLogical(x: SEXP) -> c_int {
+     { crate::mainutils::coerce::asLogical(x) }
 }
 
-pub(crate) unsafe fn asInteger(x: SEXP) -> c_int {
-    unsafe { crate::mainutils::coerce::asInteger(x) }
+pub(crate) fn asInteger(x: SEXP) -> c_int {
+     { crate::mainutils::coerce::asInteger(x) }
 }
 
 /// isNull check.
@@ -143,7 +143,7 @@ pub(crate) fn isNull(x: SEXP) -> c_int {
 }
 
 /// asChar: coerce to a single character string.
-pub(crate) unsafe fn asChar(x: SEXP) -> SEXP {
+pub(crate) fn asChar(x: SEXP) -> SEXP {
     unsafe {
         if isString(x) != FALSE {
             return STRING_ELT(x, 0);
@@ -196,7 +196,7 @@ fn PRVALUE(x: SEXP) -> SEXP {
 }
 
 /// Check if two CHARSXP values are equal (Seql).
-pub(crate) unsafe fn Seql(a: SEXP, b: SEXP) -> c_int {
+pub(crate) fn Seql(a: SEXP, b: SEXP) -> c_int {
     unsafe {
         if a == b {
             return TRUE;
@@ -224,7 +224,7 @@ pub(crate) unsafe fn Seql(a: SEXP, b: SEXP) -> c_int {
 /// Find the position of string `what` in character vector `klass`.
 /// Returns the 0-based index, or -1 if not found.
 /// This is the Rust equivalent of R's `stringPositionTr()`.
-pub(crate) unsafe fn stringPositionTr(klass: SEXP, what: *const c_char) -> c_int {
+pub(crate) fn stringPositionTr(klass: SEXP, what: *const c_char) -> c_int {
     unsafe {
         if klass.is_null() || what.is_null() {
             return -1;
@@ -251,7 +251,7 @@ pub(crate) unsafe fn stringPositionTr(klass: SEXP, what: *const c_char) -> c_int
 // ---------------------------------------------------------------------------
 
 /// Return a new character vector consisting of elements klass[pos..].
-pub(crate) unsafe fn stringSuffix(klass: SEXP, pos: c_int) -> SEXP {
+pub(crate) fn stringSuffix(klass: SEXP, pos: c_int) -> SEXP {
     unsafe {
         if klass.is_null() || pos < 0 {
             return R_NilValue();
@@ -275,7 +275,7 @@ pub(crate) unsafe fn stringSuffix(klass: SEXP, pos: c_int) -> SEXP {
 // Helper: translateChar -- get the translated character string from a CHARSXP
 // ---------------------------------------------------------------------------
 
-unsafe fn translateChar(x: SEXP) -> *const c_char {
+fn translateChar(x: SEXP) -> *const c_char {
     unsafe { crate::sexp::accessors::translateChar(x) }
 }
 
@@ -286,7 +286,7 @@ unsafe fn translateChar(x: SEXP) -> *const c_char {
 /// Get the class of an object, with S4 awareness.
 /// For S4 objects, uses extends() to compute the full class vector.
 /// For S3 objects, falls back to R_data_class.
-pub(crate) unsafe fn R_data_class2(x: SEXP) -> SEXP {
+pub(crate) fn R_data_class2(x: SEXP) -> SEXP {
     unsafe {
         if x.is_null() || x == R_NilValue() {
             return Rf_mkString(c"NULL".as_ptr());
@@ -310,7 +310,7 @@ fn ensure_s4_extends_table_in(
     access: &crate::sexp::owner::RuntimeAccess,
 ) -> crate::sexp::object::SexpResult<crate::sexp::object::Sexp<'static>> {
     if let Some(existing) =
-        unsafe { objects_state_in(access, |state| state.s4_extends_table.owned()) }?
+         { objects_state_in(access, |state| state.s4_extends_table.owned()) }?
     {
         return Ok(existing);
     }
@@ -318,7 +318,7 @@ fn ensure_s4_extends_table_in(
         let raw = unsafe { crate::sexp::envir::R_NewHashedEnv(R_NilValue(), 0) };
         owner.sexp(raw)?.into_owned()
     })?;
-    unsafe {
+     {
         objects_state_in(access, |state| {
             if state.s4_extends_table.is_null() {
                 state.s4_extends_table = crate::sexp::instance::RuntimeValue::from_owned(table);
@@ -332,7 +332,7 @@ fn ensure_s4_extends_table_in(
 }
 
 /// GNU `cache_class`: store or drop the `.extendsForS3` vector for a class.
-pub(crate) unsafe fn cache_class(class: &str, klass: SEXP) -> SEXP {
+pub(crate) fn cache_class(class: &str, klass: SEXP) -> SEXP {
     with_objects_runtime(|access| {
         let domain = access.domain();
         let klass = if klass.is_null() {
@@ -364,7 +364,7 @@ pub(crate) unsafe fn cache_class(class: &str, klass: SEXP) -> SEXP {
 }
 
 /// GNU `S4_extends`: class plus superclasses via `.extendsForS3`, cached.
-unsafe fn S4_extends(klass: SEXP, use_tab: bool) -> SEXP {
+fn S4_extends(klass: SEXP, use_tab: bool) -> SEXP {
     with_objects_runtime(|access| {
         let domain = access.domain();
         let klass = if klass.is_null() {
@@ -372,13 +372,13 @@ unsafe fn S4_extends(klass: SEXP, use_tab: bool) -> SEXP {
         } else {
             domain.wrap(klass)?
         };
-        let result = unsafe { S4_extends_in(access, klass, use_tab) };
+        let result =  { S4_extends_in(access, klass, use_tab) };
         access.require_active()?;
         Ok(result)
     })
 }
 
-unsafe fn S4_extends_in(
+fn S4_extends_in(
     access: &crate::sexp::owner::RuntimeAccess,
     klass_owner: crate::sexp::object::Sexp<'static>,
     use_tab: bool,
@@ -455,7 +455,7 @@ unsafe fn S4_extends_in(
     }
 }
 
-unsafe fn S4_extends_from_contains(klass: SEXP, class: &str) -> SEXP {
+fn S4_extends_from_contains(klass: SEXP, class: &str) -> SEXP {
     unsafe {
         sync_s4_class_graph_from_gnu(class);
         let Some(def) = s4_class(class) else {
@@ -483,7 +483,7 @@ unsafe fn S4_extends_from_contains(klass: SEXP, class: &str) -> SEXP {
 }
 
 /// GNU `Type2DefaultClass` implicit S3 classes for unclassed objects.
-unsafe fn implicit_s3_class(x: SEXP) -> SEXP {
+fn implicit_s3_class(x: SEXP) -> SEXP {
     unsafe {
         let dim = getAttrib(x, crate::eval::attrib_core::R_DimSymbol());
         let nd = if dim.is_null() || dim == R_NilValue() {
@@ -545,7 +545,7 @@ unsafe fn implicit_s3_class(x: SEXP) -> SEXP {
 
 /// Find the top-level environment by walking ENCLOS.
 /// GNU: GlobalEnv, BaseEnv, BaseNamespace, package/namespace, or `.packageName`.
-pub(crate) unsafe fn topenv(what: SEXP, env: SEXP) -> SEXP {
+pub(crate) fn topenv(what: SEXP, env: SEXP) -> SEXP {
     unsafe {
         if env.is_null() {
             return R_NilValue();
@@ -579,8 +579,8 @@ pub(crate) unsafe fn topenv(what: SEXP, env: SEXP) -> SEXP {
 }
 
 /// R's `topenv(envir, matchThisEnv)` — `.Internal(topenv(...))` / primitive.
-pub unsafe fn do_topenv(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_topenv(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+     {
         let mut envir = if args.is_null() || args == R_NilValue() || CAR(args) == R_MissingArg() {
             rho
         } else {
@@ -611,7 +611,7 @@ pub unsafe fn do_topenv(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Append list `s` to the end of list `t`. Returns t (modified in place).
-pub(crate) unsafe fn listAppend(t: SEXP, s: SEXP) -> SEXP {
+pub(crate) fn listAppend(t: SEXP, s: SEXP) -> SEXP {
     unsafe {
         if t.is_null() || t == R_NilValue() {
             return s;
@@ -636,7 +636,7 @@ pub(crate) unsafe fn listAppend(t: SEXP, s: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Get R_BlankScalarString (a blank character scalar).
-pub(crate) unsafe fn R_BlankScalarString_placeholder() -> SEXP {
+pub(crate) fn R_BlankScalarString_placeholder() -> SEXP {
     unsafe { Rf_mkString(b"\x00".as_ptr() as *const c_char) }
 }
 
@@ -645,7 +645,7 @@ pub(crate) unsafe fn R_BlankScalarString_placeholder() -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Mutable access to INTEGER_ELT. Used for setting values in integer vectors.
-pub(crate) unsafe fn INTEGER_ELT_mut(x: SEXP, i: c_int) -> *mut c_int {
+pub(crate) fn INTEGER_ELT_mut(x: SEXP, i: c_int) -> *mut c_int {
     unsafe {
         if x.is_null() {
             return ptr::null_mut();

@@ -68,31 +68,31 @@ pub(crate) const FUNSXP: c_int = 99;
 
 /// Get the "dim" symbol.
 #[inline]
-pub(crate) unsafe fn sym_Dim() -> SEXP {
+pub(crate) fn sym_Dim() -> SEXP {
     unsafe { Rf_install(c"dim".as_ptr()) }
 }
 
 /// Get the "names" symbol.
 #[inline]
-pub(crate) unsafe fn sym_Names() -> SEXP {
+pub(crate) fn sym_Names() -> SEXP {
     unsafe { Rf_install(c"names".as_ptr()) }
 }
 
 /// Get the "dimnames" symbol.
 #[inline]
-pub(crate) unsafe fn sym_DimNames() -> SEXP {
+pub(crate) fn sym_DimNames() -> SEXP {
     unsafe { Rf_install(c"dimnames".as_ptr()) }
 }
 
 /// Get the "class" symbol.
 #[inline]
-pub(crate) unsafe fn sym_Class() -> SEXP {
+pub(crate) fn sym_Class() -> SEXP {
     unsafe { Rf_install(c"class".as_ptr()) }
 }
 
 /// Get the "use.names" symbol (for subscript name passing).
 #[inline]
-pub(crate) unsafe fn sym_UseNames() -> SEXP {
+pub(crate) fn sym_UseNames() -> SEXP {
     unsafe { Rf_install(c"use.names".as_ptr()) }
 }
 
@@ -101,12 +101,12 @@ pub(crate) unsafe fn sym_UseNames() -> SEXP {
 // ---------------------------------------------------------------------------
 
 #[inline]
-pub(crate) unsafe fn isNull(x: SEXP) -> bool {
+pub(crate) fn isNull(x: SEXP) -> bool {
     x.is_null() || x == R_NilValue()
 }
 
 #[inline]
-pub(crate) unsafe fn isVector(x: SEXP) -> bool {
+pub(crate) fn isVector(x: SEXP) -> bool {
     {
         let t = TYPEOF(x);
         t == LGLSXP
@@ -121,7 +121,7 @@ pub(crate) unsafe fn isVector(x: SEXP) -> bool {
 }
 
 #[inline]
-pub(crate) unsafe fn isVectorList(x: SEXP) -> bool {
+pub(crate) fn isVectorList(x: SEXP) -> bool {
     {
         let t = TYPEOF(x);
         t == VECSXP || t == EXPRSXP
@@ -129,7 +129,7 @@ pub(crate) unsafe fn isVectorList(x: SEXP) -> bool {
 }
 
 #[inline]
-pub(crate) unsafe fn isPairList(x: SEXP) -> bool {
+pub(crate) fn isPairList(x: SEXP) -> bool {
     {
         let t = TYPEOF(x);
         // GNU Rf_isPairList: NILSXP / LISTSXP / LANGSXP / DOTSXP.
@@ -138,44 +138,40 @@ pub(crate) unsafe fn isPairList(x: SEXP) -> bool {
 }
 
 #[inline]
-pub(crate) unsafe fn isList(x: SEXP) -> bool {
+pub(crate) fn isList(x: SEXP) -> bool {
     TYPEOF(x) == LISTSXP
 }
 
 #[inline]
-pub(crate) unsafe fn isLanguage(x: SEXP) -> bool {
+pub(crate) fn isLanguage(x: SEXP) -> bool {
     TYPEOF(x) == LANGSXP
 }
 
 #[inline]
-pub(crate) unsafe fn isExpression(x: SEXP) -> bool {
+pub(crate) fn isExpression(x: SEXP) -> bool {
     TYPEOF(x) == EXPRSXP
 }
 
 #[inline]
-pub(crate) unsafe fn isNewList(x: SEXP) -> bool {
+pub(crate) fn isNewList(x: SEXP) -> bool {
     TYPEOF(x) == VECSXP
 }
 
 #[inline]
-pub(crate) unsafe fn isObject(x: SEXP) -> bool {
+pub(crate) fn isObject(x: SEXP) -> bool {
     OBJECT(x) != 0
 }
 
 #[inline]
-pub(crate) unsafe fn isMatrix(x: SEXP) -> bool {
-    unsafe {
-        let dim = getAttrib(x, sym_Dim());
-        !isNull(dim) && LENGTH(dim) == 2
-    }
+pub(crate) fn isMatrix(x: SEXP) -> bool {
+    let dim = getAttrib(x, sym_Dim());
+    !isNull(dim) && LENGTH(dim) == 2
 }
 
 #[inline]
-pub(crate) unsafe fn isArray(x: SEXP) -> bool {
-    unsafe {
-        let dim = getAttrib(x, sym_Dim());
-        !isNull(dim) && LENGTH(dim) >= 2
-    }
+pub(crate) fn isArray(x: SEXP) -> bool {
+    let dim = getAttrib(x, sym_Dim());
+    !isNull(dim) && LENGTH(dim) >= 2
 }
 
 #[inline]
@@ -215,7 +211,7 @@ pub(crate) fn IS_S4_OBJECT(x: SEXP) -> c_int {
 
 /// Set the S4 bit on an object.
 #[inline]
-pub(crate) unsafe fn SET_S4_OBJECT(x: SEXP) {
+pub(crate) fn SET_S4_OBJECT(x: SEXP) {
     if crate::sexp::globals::immutable_singleton_projection(x).is_some() {
         return;
     }
@@ -230,7 +226,7 @@ pub(crate) unsafe fn SET_S4_OBJECT(x: SEXP) {
 
 /// Unset the S4 bit on an object.
 #[inline]
-pub(crate) unsafe fn UNSET_S4_OBJECT(x: SEXP) {
+pub(crate) fn UNSET_S4_OBJECT(x: SEXP) {
     if crate::sexp::globals::immutable_singleton_projection(x).is_some() {
         return;
     }
@@ -257,7 +253,7 @@ pub(crate) fn MAYBE_REFERENCED(x: SEXP) -> bool {
 
 /// Mark an object as not mutable (NAMEDMAX).
 #[inline]
-pub(crate) unsafe fn MARK_NOT_MUTABLE(x: SEXP) {
+pub(crate) fn MARK_NOT_MUTABLE(x: SEXP) {
     unsafe {
         if !x.is_null() {
             crate::sexp::accessors::SET_NAMED(x, 2);
@@ -267,7 +263,7 @@ pub(crate) unsafe fn MARK_NOT_MUTABLE(x: SEXP) {
 
 /// Set NAMED to 0 (setter-clear).
 #[inline]
-pub(crate) unsafe fn SETTER_CLEAR_NAMED(x: SEXP) {
+pub(crate) fn SETTER_CLEAR_NAMED(x: SEXP) {
     if crate::sexp::globals::immutable_singleton_projection(x).is_some() {
         return;
     }
@@ -280,7 +276,7 @@ pub(crate) unsafe fn SETTER_CLEAR_NAMED(x: SEXP) {
 
 /// Raise NAMED level.
 #[inline]
-pub(crate) unsafe fn RAISE_NAMED(x: SEXP, v: c_int) {
+pub(crate) fn RAISE_NAMED(x: SEXP, v: c_int) {
     unsafe {
         if !x.is_null() && (v as u8) > (*x).sxpinfo.named() {
             crate::sexp::accessors::SET_NAMED(x, v);
@@ -290,7 +286,7 @@ pub(crate) unsafe fn RAISE_NAMED(x: SEXP, v: c_int) {
 
 /// Increment NAMED.
 #[inline]
-pub(crate) unsafe fn INCREMENT_NAMED(x: SEXP) {
+pub(crate) fn INCREMENT_NAMED(x: SEXP) {
     unsafe {
         if !x.is_null() {
             let n = (*x).sxpinfo.named();
@@ -303,13 +299,13 @@ pub(crate) unsafe fn INCREMENT_NAMED(x: SEXP) {
 
 /// Check if an object is growable (has truelength > length).
 #[inline]
-pub(crate) unsafe fn IS_GROWABLE(x: SEXP) -> bool {
+pub(crate) fn IS_GROWABLE(x: SEXP) -> bool {
     unsafe { !x.is_null() && ((*x).sxpinfo.gp() & (1u16 << 5)) != 0 && XTRUELENGTH(x) > XLENGTH(x) }
 }
 
 /// Set the growable bit on an object.
 #[inline]
-pub(crate) unsafe fn SET_GROWABLE_BIT(x: SEXP) {
+pub(crate) fn SET_GROWABLE_BIT(x: SEXP) {
     if crate::sexp::globals::immutable_singleton_projection(x).is_some() {
         return;
     }
@@ -323,7 +319,7 @@ pub(crate) unsafe fn SET_GROWABLE_BIT(x: SEXP) {
 
 /// Set true length of a vector.
 #[inline]
-pub(crate) unsafe fn SET_TRUELENGTH(x: SEXP, v: c_int) {
+pub(crate) fn SET_TRUELENGTH(x: SEXP, v: c_int) {
     if crate::sexp::globals::immutable_singleton_projection(x).is_some() {
         return;
     }
@@ -336,7 +332,7 @@ pub(crate) unsafe fn SET_TRUELENGTH(x: SEXP, v: c_int) {
 
 /// Get true length of a vector.
 #[inline]
-pub(crate) unsafe fn XTRUELENGTH(x: SEXP) -> R_xlen_t {
+pub(crate) fn XTRUELENGTH(x: SEXP) -> R_xlen_t {
     unsafe {
         if x.is_null() {
             0
@@ -348,7 +344,7 @@ pub(crate) unsafe fn XTRUELENGTH(x: SEXP) -> R_xlen_t {
 
 /// SETCADR: set the CAR of the CDR.
 #[inline]
-pub(crate) unsafe fn SETCADR(x: SEXP, v: SEXP) {
+pub(crate) fn SETCADR(x: SEXP, v: SEXP) {
     if crate::sexp::globals::immutable_singleton_projection(x).is_some() {
         return;
     }
@@ -359,7 +355,7 @@ pub(crate) unsafe fn SETCADR(x: SEXP, v: SEXP) {
 
 /// SET_TYPEOF: set the type of an SEXP.
 #[inline]
-pub(crate) unsafe fn SET_TYPEOF(x: SEXP, v: c_int) {
+pub(crate) fn SET_TYPEOF(x: SEXP, v: c_int) {
     if crate::sexp::globals::immutable_singleton_projection(x).is_some() {
         return;
     }
@@ -370,7 +366,7 @@ pub(crate) unsafe fn SET_TYPEOF(x: SEXP, v: c_int) {
 
 /// Set the standard vector length (not marking as immutable).
 #[inline]
-pub(crate) unsafe fn SET_STDVEC_LENGTH(x: SEXP, v: R_xlen_t) {
+pub(crate) fn SET_STDVEC_LENGTH(x: SEXP, v: R_xlen_t) {
     if crate::sexp::globals::immutable_singleton_projection(x).is_some() {
         return;
     }
@@ -383,7 +379,7 @@ pub(crate) unsafe fn SET_STDVEC_LENGTH(x: SEXP, v: R_xlen_t) {
 
 /// ENSURE_NAMEDMAX: set NAMED to NAMEDMAX.
 #[inline]
-pub(crate) unsafe fn ENSURE_NAMEDMAX(x: SEXP) {
+pub(crate) fn ENSURE_NAMEDMAX(x: SEXP) {
     unsafe {
         if !x.is_null() {
             crate::sexp::accessors::SET_NAMED(x, 2);
@@ -430,31 +426,27 @@ mod singleton_tests {
 
 /// Check if the call is an assignment call.
 #[inline]
-pub(crate) unsafe fn IS_ASSIGNMENT_CALL(call: SEXP) -> bool {
-    unsafe {
-        if isNull(call) {
-            return true;
-        }
-        let t = TYPEOF(call);
-        t == LANGSXP || t == SYMSXP
+pub(crate) fn IS_ASSIGNMENT_CALL(call: SEXP) -> bool {
+    if isNull(call) {
+        return true;
     }
+    let t = TYPEOF(call);
+    t == LANGSXP || t == SYMSXP
 }
 
 /// R_FixupRHS: fix up RHS for assignment (duplicate if needed).
-pub(crate) unsafe fn R_FixupRHS(x: SEXP, y: SEXP) -> SEXP {
-    unsafe {
-        if MAYBE_SHARED(y) {
-            shallow_duplicate(y)
-        } else {
-            y
-        }
+pub(crate) fn R_FixupRHS(x: SEXP, y: SEXP) -> SEXP {
+    if MAYBE_SHARED(y) {
+        shallow_duplicate(y)
+    } else {
+        y
     }
 }
 
 /// PairToVectorList: convert a pairlist to a vector list.
 /// GNU copies cell tags onto the `names` attribute so `formals(f)[i] <- …`
 /// keeps formal names.
-pub(crate) unsafe fn PairToVectorList(x: SEXP) -> SEXP {
+pub(crate) fn PairToVectorList(x: SEXP) -> SEXP {
     unsafe {
         let len = Rf_length(x);
         let ans = Rf_allocVector3(VECSXP, len as R_xlen_t);
@@ -489,7 +481,7 @@ pub(crate) unsafe fn PairToVectorList(x: SEXP) -> SEXP {
 }
 
 /// VectorToPairList: convert a vector list to a pairlist.
-pub unsafe fn VectorToPairList(x: SEXP) -> SEXP {
+pub fn VectorToPairList(x: SEXP) -> SEXP {
     unsafe {
         let len = Rf_length(x);
         let names = getAttrib(x, sym_Names());
@@ -518,24 +510,24 @@ pub unsafe fn VectorToPairList(x: SEXP) -> SEXP {
 }
 
 /// coerceVector: coerce a vector to a different type.
-pub(crate) unsafe fn coerceVector(x: SEXP, type_: c_int) -> SEXP {
-    unsafe { crate::mainutils::coerce::coerceVector(x, type_) }
+pub(crate) fn coerceVector(x: SEXP, type_: c_int) -> SEXP {
+     { crate::mainutils::coerce::coerceVector(x, type_) }
 }
 
 /// getAttrib: get an attribute from an object.
-pub(crate) unsafe fn getAttrib(x: SEXP, what: SEXP) -> SEXP {
+pub(crate) fn getAttrib(x: SEXP, what: SEXP) -> SEXP {
     unsafe { crate::eval::attrib_core::getAttrib(x, what) }
 }
 
 /// setAttrib: set an attribute on an object.
-pub(crate) unsafe fn setAttrib(x: SEXP, what: SEXP, value: SEXP) {
+pub(crate) fn setAttrib(x: SEXP, what: SEXP, value: SEXP) {
     unsafe {
         crate::eval::attrib_core::setAttrib(x, what, value);
     }
 }
 
 /// shallow_duplicate: create a shallow copy.
-pub(crate) unsafe fn shallow_duplicate(x: SEXP) -> SEXP {
+pub(crate) fn shallow_duplicate(x: SEXP) -> SEXP {
     unsafe {
         if isNull(x) {
             return R_NilValue();
@@ -549,7 +541,7 @@ pub(crate) unsafe fn shallow_duplicate(x: SEXP) -> SEXP {
 /// Copies all attributes except dim, dimnames, and names (which are
 /// handled separately by EnlargeVector). Also copies the OBJECT flag
 /// and S4 object bit.
-pub(crate) unsafe fn copyMostAttrib(src: SEXP, dest: SEXP) {
+pub(crate) fn copyMostAttrib(src: SEXP, dest: SEXP) {
     unsafe {
         use crate::eval::attrib_core::{R_DimNamesSymbol, R_DimSymbol, R_NamesSymbol};
         if isNull(src) || isNull(dest) {
@@ -586,7 +578,7 @@ pub(crate) unsafe fn copyMostAttrib(src: SEXP, dest: SEXP) {
 }
 
 /// listAppend: append pairlist s to pairlist t.
-pub(crate) unsafe fn listAppend(t: SEXP, s: SEXP) -> SEXP {
+pub(crate) fn listAppend(t: SEXP, s: SEXP) -> SEXP {
     unsafe {
         if isNull(t) {
             return s;
@@ -604,12 +596,12 @@ pub(crate) unsafe fn listAppend(t: SEXP, s: SEXP) -> SEXP {
 }
 
 /// asInteger: coerce to integer.
-pub(crate) unsafe fn asInteger(x: SEXP) -> c_int {
-    unsafe { crate::mainutils::coerce::asInteger(x) }
+pub(crate) fn asInteger(x: SEXP) -> c_int {
+     { crate::mainutils::coerce::asInteger(x) }
 }
 
 /// nrows: get number of rows of a matrix.
-pub(crate) unsafe fn nrows(x: SEXP) -> c_int {
+pub(crate) fn nrows(x: SEXP) -> c_int {
     unsafe {
         let dim = getAttrib(x, sym_Dim());
         if isNull(dim) {
@@ -620,7 +612,7 @@ pub(crate) unsafe fn nrows(x: SEXP) -> c_int {
 }
 
 /// ncols: get number of columns of a matrix.
-pub(crate) unsafe fn ncols(x: SEXP) -> c_int {
+pub(crate) fn ncols(x: SEXP) -> c_int {
     unsafe {
         let dim = getAttrib(x, sym_Dim());
         if isNull(dim) {
@@ -634,7 +626,7 @@ pub(crate) unsafe fn ncols(x: SEXP) -> c_int {
 }
 
 /// installTrChar: install a symbol from a CHARSXP.
-pub(crate) unsafe fn installTrChar(input: SEXP) -> SEXP {
+pub(crate) fn installTrChar(input: SEXP) -> SEXP {
     unsafe {
         if isNull(input) {
             return R_NilValue();
@@ -647,16 +639,16 @@ pub(crate) unsafe fn installTrChar(input: SEXP) -> SEXP {
     }
 }
 
-pub(crate) unsafe fn ScalarInteger(x: c_int) -> SEXP {
+pub(crate) fn ScalarInteger(x: c_int) -> SEXP {
     unsafe { crate::sexp::constructors::Rf_ScalarInteger(x) }
 }
 
-pub(crate) unsafe fn ScalarReal(x: c_double) -> SEXP {
+pub(crate) fn ScalarReal(x: c_double) -> SEXP {
     unsafe { crate::sexp::constructors::Rf_ScalarReal(x) }
 }
 
 /// ScalarString: create a length-1 character vector from a CHARSXP.
-pub(crate) unsafe fn ScalarString(x: SEXP) -> SEXP {
+pub(crate) fn ScalarString(x: SEXP) -> SEXP {
     unsafe {
         let s = Rf_allocVector3(STRSXP, 1);
         let _s_guard = protect(s);
@@ -666,7 +658,7 @@ pub(crate) unsafe fn ScalarString(x: SEXP) -> SEXP {
 }
 
 /// list2: create a 2-element list.
-pub(crate) unsafe fn list2(a: SEXP, b: SEXP) -> SEXP {
+pub(crate) fn list2(a: SEXP, b: SEXP) -> SEXP {
     unsafe {
         let cdr = Rf_cons(b, R_NilValue());
         Rf_cons(a, cdr)
@@ -674,55 +666,53 @@ pub(crate) unsafe fn list2(a: SEXP, b: SEXP) -> SEXP {
 }
 
 /// nthcdr: walk n steps down a pairlist.
-pub(crate) unsafe fn nthcdr(x: SEXP, mut n: c_int) -> SEXP {
-    unsafe {
-        let mut result = x;
-        while n > 0 && !isNull(result) {
-            result = CDR(result);
-            n -= 1;
-        }
-        result
+pub(crate) fn nthcdr(x: SEXP, mut n: c_int) -> SEXP {
+    let mut result = x;
+    while n > 0 && !isNull(result) {
+        result = CDR(result);
+        n -= 1;
     }
+    result
 }
 
 /// checkArity: check function arity.
 #[inline]
-pub(crate) unsafe fn checkArity(op: SEXP, args: SEXP) {
+pub(crate) fn checkArity(op: SEXP, args: SEXP) {
     unsafe { crate::mainutils::relop::checkArity(op, args) }
 }
 
 /// GetArrayDimnames: get dimnames attribute.
-pub(crate) unsafe fn GetArrayDimnames(x: SEXP) -> SEXP {
-    unsafe { getAttrib(x, sym_DimNames()) }
+pub(crate) fn GetArrayDimnames(x: SEXP) -> SEXP {
+    getAttrib(x, sym_DimNames())
 }
 
 /// fixSubset3Args: prepare args for $ assignment.
-pub(crate) unsafe fn fixSubset3Args(call: SEXP, args: SEXP, env: SEXP, nlist: *mut SEXP) -> SEXP {
+pub(crate) fn fixSubset3Args(call: SEXP, args: SEXP, env: SEXP, nlist: *mut SEXP) -> SEXP {
     unsafe { crate::mainutils::subset::fixSubset3Args(call, args, env, nlist) }
 }
 
 /// NonNullStringMatch: match non-null strings.
-pub(crate) unsafe fn NonNullStringMatch(s: SEXP, t: SEXP) -> c_int {
+pub(crate) fn NonNullStringMatch(s: SEXP, t: SEXP) -> c_int {
     unsafe { crate::mainutils::match_mod::NonNullStringMatch(s, t) }
 }
 
 /// R_CurrentExpression: stub returning nil.
-pub(crate) unsafe fn R_CurrentExpression() -> SEXP {
+pub(crate) fn R_CurrentExpression() -> SEXP {
     R_NilValue()
 }
 
 /// NA_STRING: get the NA string.
-pub(crate) unsafe fn NA_STRING() -> SEXP {
+pub(crate) fn NA_STRING() -> SEXP {
     crate::sexp::globals::R_NaString()
 }
 
 /// R_BlankString: get the blank string.
-pub(crate) unsafe fn R_BlankString() -> SEXP {
+pub(crate) fn R_BlankString() -> SEXP {
     unsafe { Rf_mkChar(c"".as_ptr()) }
 }
 
 /// DispatchOrEval: dispatch or evaluate a call.
-pub(crate) unsafe fn DispatchOrEval(
+pub(crate) fn DispatchOrEval(
     _call: SEXP,
     _op: SEXP,
     _generic: *const c_char,
@@ -737,7 +727,7 @@ pub(crate) unsafe fn DispatchOrEval(
 
 /// GNU `R_getS4DataSlot`: restore the basic S3 data part, or extract an
 /// object wrapper's `.Data`/`.xData` attribute.
-pub unsafe fn R_getS4DataSlot(x: SEXP, type_: c_int) -> SEXP {
+pub fn R_getS4DataSlot(x: SEXP, type_: c_int) -> SEXP {
     unsafe {
         if x.is_null() {
             return x;

@@ -14,8 +14,8 @@ use super::*;
 /// Signal a C stack overflow.
 /// Matches C's `R_SignalCStackOverflow(intptr_t usage)`.
 /// Uses R_makeCStackOverflowError condition object when available.
-pub unsafe fn R_SignalCStackOverflow(usage: isize) {
-    unsafe {
+pub fn R_SignalCStackOverflow(usage: isize) {
+     {
         // Try to use the expression stack overflow error condition
         let cond = R_makeCStackOverflowError(globals::R_NilValue(), usage);
         if !cond.is_null() {
@@ -32,8 +32,8 @@ pub unsafe fn R_SignalCStackOverflow(usage: isize) {
 
 /// Check for stack overflow.
 /// In C this checks against R_CStackLimit; in Rust we check eval depth.
-pub unsafe fn R_CheckStack() {
-    unsafe {
+pub fn R_CheckStack() {
+     {
         let depth = globals::R_EvalDepth();
         let limit = globals::R_EvalDepthLimit();
         if depth >= limit {
@@ -43,15 +43,15 @@ pub unsafe fn R_CheckStack() {
 }
 
 /// Check for stack overflow with extra space.
-pub unsafe fn R_CheckStack2(_extra: usize) {
-    unsafe {
+pub fn R_CheckStack2(_extra: usize) {
+     {
         R_CheckStack();
     }
 }
 
 /// Check for user interrupts.
-pub unsafe fn R_CheckUserInterrupt() {
-    unsafe {
+pub fn R_CheckUserInterrupt() {
+     {
         R_CheckStack();
         if interrupts_suspended() {
             return;
@@ -68,7 +68,7 @@ pub unsafe fn R_CheckUserInterrupt() {
 
 /// Jump to the top-level context.
 /// In C, this uses longjmp. In Rust, we panic with RError.
-pub unsafe fn jump_to_top_ex(
+pub fn jump_to_top_ex(
     traceback: c_int,
     try_user_handler: c_int,
     process_warnings: c_int,
@@ -132,7 +132,7 @@ pub unsafe fn jump_to_top_ex(
     }
 }
 
-unsafe fn try_jump_to_restart() {
+fn try_jump_to_restart() {
     unsafe {
         let mut list = restart_stack();
         while !list.is_null() && list != globals::R_NilValue() {
@@ -154,22 +154,22 @@ unsafe fn try_jump_to_restart() {
     }
 }
 
-unsafe fn invokeRestart(restart: SEXP, _args: SEXP) {
+fn invokeRestart(restart: SEXP, _args: SEXP) {
     std::panic::panic_any(RSignal::Error {
         message: "restart invoked".to_string(),
     });
 }
 
 /// Handle interrupt signal.
-pub unsafe fn onintr() {
-    unsafe {
+pub fn onintr() {
+     {
         jump_to_top_ex(1, 1, 0, 0, 0);
     }
 }
 
 /// Handle interrupt signal without resume option.
-pub unsafe fn onintrNoResume() {
-    unsafe {
+pub fn onintrNoResume() {
+     {
         jump_to_top_ex(0, 1, 0, 0, 0);
     }
 }
@@ -178,7 +178,7 @@ pub unsafe fn onintrNoResume() {
 // ---------------------------------------------------------------------------
 
 /// do_getRestart — get a restart from the restart stack.
-pub unsafe fn do_getRestart(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_getRestart(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
         let mut i = if isInteger(CAR(args)) != 0 && LENGTH(CAR(args)) >= 1 {
@@ -213,7 +213,7 @@ pub unsafe fn do_getRestart(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP
 }
 
 /// do_addRestart — add a restart to the restart stack.
-pub unsafe fn do_addRestart(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_addRestart(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
         let r = CAR(args);
@@ -226,7 +226,7 @@ pub unsafe fn do_addRestart(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP
 }
 
 /// do_invokeRestart — invoke a restart.
-pub unsafe fn do_invokeRestart(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_invokeRestart(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
         let r = CAR(args);
@@ -244,7 +244,7 @@ pub unsafe fn do_invokeRestart(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> S
 }
 
 /// do_addTryHandlers — add tryCatch handlers.
-pub unsafe fn do_addTryHandlers(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_addTryHandlers(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
         let global_ctx = crate::sexp::context::R_GlobalContext();
@@ -259,7 +259,7 @@ pub unsafe fn do_addTryHandlers(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> 
     }
 }
 
-unsafe fn R_InsertRestartHandlers(cptr: *mut crate::sexp::context::RCNTXT, cname: *const c_char) {
+fn R_InsertRestartHandlers(cptr: *mut crate::sexp::context::RCNTXT, cname: *const c_char) {
     unsafe {
         let h = GetOption1(Rf_install(
             b"browser.error.handler\0".as_ptr() as *const c_char
@@ -281,7 +281,7 @@ unsafe fn R_InsertRestartHandlers(cptr: *mut crate::sexp::context::RCNTXT, cname
     }
 }
 
-unsafe fn addInternalRestart(cptr: *mut crate::sexp::context::RCNTXT, cname: *const c_char) {
+fn addInternalRestart(cptr: *mut crate::sexp::context::RCNTXT, cname: *const c_char) {
     unsafe {
         let cname_str = CStr::from_ptr(cname).to_bytes();
         let name = Rf_mkString(
@@ -316,8 +316,8 @@ unsafe fn addInternalRestart(cptr: *mut crate::sexp::context::RCNTXT, cname: *co
 /// or try/browser frames.
 ///
 /// Matches C's `void jump_to_toplevel(void)`.
-pub unsafe fn jump_to_toplevel() {
-    unsafe {
+pub fn jump_to_toplevel() {
+     {
         jump_to_top_ex(0, 0, 1, 1, 1);
     }
 }

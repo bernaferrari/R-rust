@@ -14,7 +14,7 @@ use super::*;
 
 /// Dispatch an S3 method by creating the dispatch environment and calling
 /// the method function.
-unsafe fn dispatchMethod(
+fn dispatchMethod(
     op: SEXP,
     sxp: SEXP,
     dotClass: SEXP,
@@ -79,7 +79,7 @@ unsafe fn dispatchMethod(
     }
 }
 
-unsafe fn frame_args_for_method(formals: SEXP, env: SEXP) -> SEXP {
+fn frame_args_for_method(formals: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let mut tags = Vec::new();
         let mut formal = formals;
@@ -109,7 +109,7 @@ unsafe fn frame_args_for_method(formals: SEXP, env: SEXP) -> SEXP {
     }
 }
 
-pub(crate) unsafe fn simple_next_method_dispatch(
+pub(crate) fn simple_next_method_dispatch(
     current_call: SEXP,
     generic: SEXP,
     klass: SEXP,
@@ -208,7 +208,7 @@ pub(crate) unsafe fn simple_next_method_dispatch(
 
 /// Compare "signature" with "left.right" for S3 method name matching.
 /// Returns TRUE if signature == "left.right", FALSE otherwise.
-pub(crate) unsafe fn equalS3Signature(
+pub(crate) fn equalS3Signature(
     signature: *const c_char,
     left: *const c_char,
     right: *const c_char,
@@ -256,7 +256,7 @@ pub(crate) unsafe fn equalS3Signature(
 // ---------------------------------------------------------------------------
 
 /// Get the primitive (BUILTINSXP or SPECIALSXP) bound to a symbol.
-pub(crate) unsafe fn getPrimitive(symbol: SEXP) -> SEXP {
+pub(crate) fn getPrimitive(symbol: SEXP) -> SEXP {
     {
         if symbol.is_null() {
             return R_NilValue();
@@ -277,7 +277,7 @@ pub(crate) unsafe fn getPrimitive(symbol: SEXP) -> SEXP {
 // R_LookupMethod -- look up an S3 method in the appropriate environments
 // ---------------------------------------------------------------------------
 
-unsafe fn lookup_s3_method_in_env_table(method: SEXP, env: SEXP) -> Option<SEXP> {
+fn lookup_s3_method_in_env_table(method: SEXP, env: SEXP) -> Option<SEXP> {
     unsafe {
         if env.is_null() || env == R_NilValue() || TYPEOF(env) != SEXPTYPE::ENVSXP {
             return None;
@@ -304,7 +304,7 @@ unsafe fn lookup_s3_method_in_env_table(method: SEXP, env: SEXP) -> Option<SEXP>
 
 /// Look up a method in the S3 dispatch chain: call environment, definition
 /// environment's .__S3MethodsTable__., and the base environment.
-pub unsafe fn R_LookupMethod(method: SEXP, rho: SEXP, callrho: SEXP, defrho: SEXP) -> SEXP {
+pub fn R_LookupMethod(method: SEXP, rho: SEXP, callrho: SEXP, defrho: SEXP) -> SEXP {
     unsafe {
         if method.is_null() {
             return R_NilValue();
@@ -399,7 +399,7 @@ pub(crate) fn s3_method_symbol(generic: &str, class: &str) -> Option<SEXP> {
     Some(unsafe { crate::mainutils::names::installS3Signature(generic.as_ptr(), class.as_ptr()) })
 }
 
-unsafe fn force_s3_method_value(method: SEXP) -> SEXP {
+fn force_s3_method_value(method: SEXP) -> SEXP {
     unsafe {
         if method.is_null() || method == R_NilValue() || method == R_UnboundValue() {
             return method;
@@ -413,7 +413,7 @@ unsafe fn force_s3_method_value(method: SEXP) -> SEXP {
     }
 }
 
-pub(crate) unsafe fn lookup_s3_method_symbol(
+pub(crate) fn lookup_s3_method_symbol(
     method_symbol: SEXP,
     rho: SEXP,
     callrho: SEXP,
@@ -455,14 +455,14 @@ pub(crate) unsafe fn lookup_s3_method_symbol(
     }
 }
 
-pub(crate) unsafe fn lookup_s3_method_for_class(
+pub(crate) fn lookup_s3_method_for_class(
     generic: &str,
     class: &str,
     rho: SEXP,
     callrho: SEXP,
     defrho: SEXP,
 ) -> Option<S3MethodMatch> {
-    unsafe {
+     {
         let method_symbol = s3_method_symbol(generic, class)?;
         let method = lookup_s3_method_symbol(method_symbol, rho, callrho, defrho);
         if isFunction(method) != FALSE {
@@ -479,7 +479,7 @@ pub(crate) unsafe fn lookup_s3_method_for_class(
 
 /// GNU `usemethod` skips `sort.list` from the base namespace: it is a
 /// permutation helper, not an S3 method of `sort`.
-unsafe fn is_base_sort_list_kludge(method_symbol: SEXP, sxp: SEXP) -> bool {
+fn is_base_sort_list_kludge(method_symbol: SEXP, sxp: SEXP) -> bool {
     unsafe {
         if method_symbol.is_null() || sxp.is_null() {
             return false;
@@ -500,7 +500,7 @@ unsafe fn is_base_sort_list_kludge(method_symbol: SEXP, sxp: SEXP) -> bool {
     }
 }
 
-pub(crate) unsafe fn lookup_s3_method_for_classes(
+pub(crate) fn lookup_s3_method_for_classes(
     generic: &str,
     classes: SEXP,
     rho: SEXP,
@@ -551,7 +551,7 @@ pub(crate) unsafe fn lookup_s3_method_for_classes(
     }
 }
 
-unsafe fn lookup_s3_method_in_attached_tables(method_sym: SEXP, rho: SEXP) -> SEXP {
+fn lookup_s3_method_in_attached_tables(method_sym: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let mut current = if rho.is_null() || rho == R_NilValue() || TYPEOF(rho) != SEXPTYPE::ENVSXP
         {
@@ -583,7 +583,7 @@ unsafe fn lookup_s3_method_in_attached_tables(method_sym: SEXP, rho: SEXP) -> SE
 /// Core S3 method dispatch: iterate through class vector to find a matching
 /// method, dispatching to it if found. Returns 1 if a method was dispatched,
 /// 0 if no method was found.
-pub unsafe fn usemethod(
+pub fn usemethod(
     generic: *const c_char,
     obj: SEXP,
     call: SEXP,
@@ -671,7 +671,7 @@ pub unsafe fn usemethod(
 
 /// Find a method for a generic function given an object's class.
 /// Returns the method SEXP and the class index via out parameters.
-pub unsafe fn findmethod(
+pub fn findmethod(
     call: SEXP,
     op: SEXP,
     obj: SEXP,
@@ -724,7 +724,7 @@ pub unsafe fn findmethod(
 
 /// Group dispatch for Ops, Math, Summary, and Complex groups.
 /// Returns 1 if dispatch occurred, 0 otherwise.
-pub unsafe fn DispatchGroup(
+pub fn DispatchGroup(
     s: SEXP,
     code: *const c_char,
     call: SEXP,
@@ -803,7 +803,7 @@ pub unsafe fn DispatchGroup(
 /// Try S3 dispatch, and if no method is found, evaluate the default.
 /// Returns 1 if dispatch occurred, 0 otherwise.
 /// Note: canonical version lives in eval/dispatch.rs
-pub(crate) unsafe fn DispatchOrEval_objects(
+pub(crate) fn DispatchOrEval_objects(
     call: SEXP,
     op: SEXP,
     generic: *const c_char,

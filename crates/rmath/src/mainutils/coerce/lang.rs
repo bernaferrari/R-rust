@@ -6,7 +6,7 @@ use super::*;
 
 /// do_asfunction — convert a list to a function (closure).
 /// Matches C's `do_asfunction()` in coerce.c line 1605.
-pub unsafe fn do_asfunction(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_asfunction(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let arglist = CAR(args);
         if crate::mainutils::coerce::isFunction(arglist) {
@@ -96,7 +96,7 @@ pub unsafe fn do_asfunction(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SE
 
 /// do_str2lang — convert a string to a language/call object.
 /// Matches C's `do_str2lang()` in coerce.c line 1668.
-pub unsafe fn do_str2lang(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_str2lang(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let s = CAR(args);
         if TYPEOF(s) != SEXPTYPE::STRSXP {
@@ -123,7 +123,7 @@ pub unsafe fn do_str2lang(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 
 /// do_ascall — convert an object to a call object.
 /// Matches C's `do_ascall()` in coerce.c line 1732.
-pub unsafe fn do_ascall(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_ascall(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let mut ans = R_NilValue();
         if crate::eval::dispatch::DispatchOrEval(
@@ -184,7 +184,7 @@ pub unsafe fn do_ascall(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         }
     }
 }
-pub unsafe fn do_isfinite(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_isfinite(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let n = xlength(x);
@@ -245,7 +245,7 @@ pub unsafe fn do_isfinite(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEX
 /// R-level `is.infinite()` entry point.
 ///
 /// This is the `do_isinfinite()` function from coerce.c.
-pub unsafe fn do_isinfinite(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_isinfinite(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let n = xlength(x);
@@ -317,7 +317,7 @@ pub unsafe fn do_isinfinite(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> S
 ///
 /// GNU R has no separate `do_coerce` primitive; this wrapper follows the
 /// checked `as.vector` coercion path without claiming to dispatch R methods.
-pub unsafe fn do_coerce(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub fn do_coerce(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let args_s =
             Sexp::try_from_raw(args).unwrap_or_else(|err| errorcall(call, &err.to_string()));
@@ -360,7 +360,7 @@ pub use super::any_na::any_na_impl;
 /// R-level entry point for `anyNA()`.
 ///
 /// Ported from R's `do_anyNA()` in coerce.c.
-pub unsafe fn do_anyNA(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_anyNA(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     use crate::sexp::constructors::Rf_ScalarLogical;
     use crate::sexp::ffi::FALSE;
 

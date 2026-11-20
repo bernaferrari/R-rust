@@ -7,7 +7,7 @@ use super::*;
 /// Construct an unevaluated call from a function name and evaluated arguments.
 ///
 /// Ported from R's `do_call()` in coerce.c.
-pub unsafe fn do_call(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_call(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     use crate::eval::eval::Rf_eval;
     use crate::mainutils::errors::Rf_error;
     use crate::sexp::accessors::{CAR, CDR, CHAR, STRING_ELT};
@@ -86,7 +86,7 @@ pub unsafe fn do_call(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// Construct and evaluate a call from a function and argument list.
 ///
 /// Ported from R's `do_docall()` in coerce.c.
-pub unsafe fn do_docall(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_docall(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     use crate::eval::attrib_core::{R_NamesSymbol, getAttrib};
     use crate::mainutils::errors::Rf_error;
     use crate::mainutils::subset::installTrChar;
@@ -186,7 +186,7 @@ pub unsafe fn do_docall(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// Substitute symbols in an expression using bindings from an environment.
 ///
 /// Ported from R's `substitute()` in coerce.c.
-pub unsafe fn substitute(lang: SEXP, rho: SEXP) -> SEXP {
+pub fn substitute(lang: SEXP, rho: SEXP) -> SEXP {
     use crate::mainutils::errors::Rf_error;
     use crate::sexp::accessors::{PRCODE, TYPEOF};
     use crate::sexp::envir::R_findVarInFrame;
@@ -277,7 +277,7 @@ pub unsafe fn substitute(lang: SEXP, rho: SEXP) -> SEXP {
 /// Walk a pairlist performing substitution, expanding `...` bindings.
 ///
 /// Ported from R's `substituteList()` in coerce.c.
-pub unsafe fn substitute_list(el: SEXP, rho: SEXP) -> SEXP {
+pub fn substitute_list(el: SEXP, rho: SEXP) -> SEXP {
     use crate::sexp::accessors::{CAR, CDR, SETCDR, SETTAG, TAG, TYPEOF};
     use crate::sexp::envir::R_findVarInFrame;
     use crate::sexp::ffi::SEXPTYPE;
@@ -364,7 +364,7 @@ pub unsafe fn substitute_list(el: SEXP, rho: SEXP) -> SEXP {
 /// R's `substitute()` primitive.
 ///
 /// Ported from R's `do_substitute()` in coerce.c.
-pub unsafe fn do_substitute(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_substitute(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     use crate::eval::eval::Rf_eval;
     use crate::sexp::accessors::TYPEOF;
     use crate::sexp::constructors::Rf_cons;
@@ -415,8 +415,8 @@ pub unsafe fn do_substitute(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEX
     }
 }
 
-pub unsafe fn match_substitute_args(args: SEXP) -> (SEXP, SEXP) {
-    unsafe {
+pub fn match_substitute_args(args: SEXP) -> (SEXP, SEXP) {
+     {
         let mut formals = [SubstituteFormal::new("expr"), SubstituteFormal::new("env")];
         let mut actuals = Vec::new();
         let mut current = args;
@@ -548,7 +548,7 @@ pub fn duplicate_substitute_arg(name: &str) -> ! {
     ));
 }
 
-pub unsafe fn symbol_name(symbol: SEXP) -> Option<String> {
+pub fn symbol_name(symbol: SEXP) -> Option<String> {
     unsafe {
         if symbol.is_null() || symbol == R_NilValue() || TYPEOF(symbol) != SEXPTYPE::SYMSXP {
             return None;
@@ -566,7 +566,7 @@ pub unsafe fn symbol_name(symbol: SEXP) -> Option<String> {
     }
 }
 
-pub unsafe fn deparse_substitute_arg(value: SEXP) -> String {
+pub fn deparse_substitute_arg(value: SEXP) -> String {
     unsafe {
         if value == R_MissingArg() {
             return String::new();
@@ -588,8 +588,8 @@ pub unsafe fn deparse_substitute_arg(value: SEXP) -> String {
     }
 }
 
-pub unsafe fn unused_substitute_arg(tag: SEXP, value: SEXP) -> ! {
-    unsafe {
+pub fn unused_substitute_arg(tag: SEXP, value: SEXP) -> ! {
+     {
         let deparsed = deparse_substitute_arg(value);
         let arg = match symbol_name(tag) {
             Some(name) if !name.is_empty() => format!("{name} = {deparsed}"),
@@ -612,7 +612,7 @@ pub fn substitute_error(message: impl Into<String>) -> ! {
 /// `storage.mode(x) <- value` — change the storage mode of an object.
 ///
 /// Ported from R's `do_storage_mode()` in coerce.c.
-pub unsafe fn do_storage_mode(call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_storage_mode(call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     use crate::mainutils::errors::Rf_error;
     use crate::sexp::accessors::{CADR, CAR, CHAR, SET_ATTRIB, STRING_ELT, TYPEOF};
     use crate::sexp::protect::protect;

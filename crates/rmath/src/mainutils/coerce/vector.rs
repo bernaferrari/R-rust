@@ -5,7 +5,7 @@ use super::*;
 // ---------------------------------------------------------------------------
 
 /// Coerce a vector to logical type.
-pub unsafe fn coerceToLogical(v: SEXP) -> SEXP {
+pub fn coerceToLogical(v: SEXP) -> SEXP {
     unsafe {
         let owner = crate::sexp::owner::OwnerToken::current()
             .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
@@ -90,7 +90,7 @@ pub unsafe fn coerceToLogical(v: SEXP) -> SEXP {
 }
 
 /// Coerce a vector to integer type.
-pub unsafe fn coerceToInteger(v: SEXP) -> SEXP {
+pub fn coerceToInteger(v: SEXP) -> SEXP {
     unsafe {
         let owner = crate::sexp::owner::OwnerToken::current()
             .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
@@ -172,7 +172,7 @@ pub unsafe fn coerceToInteger(v: SEXP) -> SEXP {
 }
 
 /// Coerce a vector to real (double) type.
-pub unsafe fn coerceToReal(v: SEXP) -> SEXP {
+pub fn coerceToReal(v: SEXP) -> SEXP {
     unsafe {
         let owner = crate::sexp::owner::OwnerToken::current()
             .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
@@ -257,7 +257,7 @@ pub unsafe fn coerceToReal(v: SEXP) -> SEXP {
 }
 
 /// Coerce a vector to complex type.
-pub unsafe fn coerceToComplex(v: SEXP) -> SEXP {
+pub fn coerceToComplex(v: SEXP) -> SEXP {
     unsafe {
         let owner = crate::sexp::owner::OwnerToken::current()
             .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
@@ -345,7 +345,7 @@ pub unsafe fn coerceToComplex(v: SEXP) -> SEXP {
 }
 
 /// Coerce a vector to raw type.
-pub unsafe fn coerceToRaw(v: SEXP) -> SEXP {
+pub fn coerceToRaw(v: SEXP) -> SEXP {
     unsafe {
         let owner = crate::sexp::owner::OwnerToken::current()
             .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
@@ -462,7 +462,7 @@ pub unsafe fn coerceToRaw(v: SEXP) -> SEXP {
 }
 
 /// Coerce a vector to string (character) type.
-pub unsafe fn coerceToString(v: SEXP) -> SEXP {
+pub fn coerceToString(v: SEXP) -> SEXP {
     unsafe {
         let owner = crate::sexp::owner::OwnerToken::current()
             .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
@@ -602,7 +602,7 @@ pub unsafe fn coerceToString(v: SEXP) -> SEXP {
 }
 
 /// Coerce a vector to expression type.
-pub unsafe fn coerceToExpression(v: SEXP) -> SEXP {
+pub fn coerceToExpression(v: SEXP) -> SEXP {
     unsafe {
         if !isVectorAtomic(v) {
             let ans = Rf_allocVector3(SEXPTYPE::EXPRSXP, 1);
@@ -635,7 +635,7 @@ pub unsafe fn coerceToExpression(v: SEXP) -> SEXP {
 }
 
 /// Coerce a vector to generic vector (list) type.
-pub unsafe fn coerceToVectorList(v: SEXP) -> SEXP {
+pub fn coerceToVectorList(v: SEXP) -> SEXP {
     unsafe {
         let n = xlength(v);
         let ans = Rf_allocVector3(SEXPTYPE::VECSXP, n);
@@ -668,7 +668,7 @@ pub unsafe fn coerceToVectorList(v: SEXP) -> SEXP {
 }
 
 /// Coerce a vector to pairlist type.
-pub unsafe fn coerceToPairList(v: SEXP) -> SEXP {
+pub fn coerceToPairList(v: SEXP) -> SEXP {
     unsafe {
         let n = LENGTH(v);
         let ans = Rf_allocList(n);
@@ -734,7 +734,7 @@ impl super::pairlist::Native for PairlistNative {
         target: SEXPTYPE,
     ) -> crate::sexp::SexpResult<super::pairlist::Scalar> {
         use super::pairlist::Scalar;
-        access.with_native(|_| unsafe {
+        access.with_native(|_|  {
             Ok(match target {
                 SEXPTYPE::LGLSXP => Scalar::Logical(asLogical(value.as_raw())),
                 SEXPTYPE::INTSXP => Scalar::Integer(asInteger(value.as_raw())),
@@ -778,7 +778,7 @@ impl super::pairlist::Native for PairlistNative {
     }
 }
 
-unsafe fn checked_pairlist(value: SEXP, target: SEXPTYPE) -> SEXP {
+fn checked_pairlist(value: SEXP, target: SEXPTYPE) -> SEXP {
     let result = (|| {
         let owner = unsafe { crate::sexp::owner::OwnerToken::current() }?
             .weak_owner()
@@ -794,7 +794,7 @@ unsafe fn checked_pairlist(value: SEXP, target: SEXPTYPE) -> SEXP {
 }
 
 /// Coerce a pairlist (LISTSXP/LANGSXP) to the given type.
-pub unsafe fn coercePairList(v: SEXP, type_: SEXPTYPE) -> SEXP {
+pub fn coercePairList(v: SEXP, type_: SEXPTYPE) -> SEXP {
     unsafe {
         if type_ == SEXPTYPE::EXPRSXP {
             let rval = Rf_allocVector3(SEXPTYPE::EXPRSXP, 1);
@@ -808,7 +808,7 @@ pub unsafe fn coercePairList(v: SEXP, type_: SEXPTYPE) -> SEXP {
 }
 
 /// Coerce a vector list (VECSXP/EXPRSXP) to the given type.
-pub unsafe fn coerceVectorList(v: SEXP, type_: SEXPTYPE) -> SEXP {
+pub fn coerceVectorList(v: SEXP, type_: SEXPTYPE) -> SEXP {
     unsafe {
         let mut warn: c_int = 0;
 
@@ -965,7 +965,7 @@ pub unsafe fn coerceVectorList(v: SEXP, type_: SEXPTYPE) -> SEXP {
 }
 
 /// Coerce to a symbol.
-pub unsafe fn coerceToSymbol(v: SEXP) -> SEXP {
+pub fn coerceToSymbol(v: SEXP) -> SEXP {
     unsafe {
         let mut warn: c_int = 0;
         if LENGTH(v) <= 0 {
@@ -996,7 +996,7 @@ pub unsafe fn coerceToSymbol(v: SEXP) -> SEXP {
 
 /// Coerce a symbol (SYMSXP) to the given type.
 /// This matches R's coerceSymbol() from coerce.c.
-pub unsafe fn coerceSymbol(v: SEXP, type_: SEXPTYPE) -> SEXP {
+pub fn coerceSymbol(v: SEXP, type_: SEXPTYPE) -> SEXP {
     unsafe {
         if type_ == SEXPTYPE::EXPRSXP {
             let rval = Rf_allocVector3(type_.0, 1);
@@ -1020,7 +1020,7 @@ pub unsafe fn coerceSymbol(v: SEXP, type_: SEXPTYPE) -> SEXP {
 /// Create a tag (symbol) from an SEXP.
 /// If x is already a symbol or NULL, return it. If x is a string of length >= 1,
 /// install it as a symbol.
-pub unsafe fn CreateTag(x: SEXP) -> SEXP {
+pub fn CreateTag(x: SEXP) -> SEXP {
     unsafe {
         if isNull(x) || isSymbol(x) {
             return x;
@@ -1041,7 +1041,7 @@ pub unsafe fn CreateTag(x: SEXP) -> SEXP {
 
 /// Convert an SEXP to a function (closure).
 /// This matches R's asFunction() from coerce.c.
-pub unsafe fn asFunction(x: SEXP) -> SEXP {
+pub fn asFunction(x: SEXP) -> SEXP {
     unsafe {
         if isFunction(x) {
             return x;
@@ -1058,7 +1058,7 @@ pub unsafe fn asFunction(x: SEXP) -> SEXP {
 
 /// Common coercion helper for as.vector / typed coercion dispatch.
 /// This matches R's ascommon() from coerce.c.
-pub unsafe fn ascommon(call: SEXP, u: SEXP, type_: c_int) -> SEXP {
+pub fn ascommon(call: SEXP, u: SEXP, type_: c_int) -> SEXP {
     unsafe {
         let target_type = SEXPTYPE(type_);
 
@@ -1123,7 +1123,7 @@ pub unsafe fn ascommon(call: SEXP, u: SEXP, type_: c_int) -> SEXP {
 /// This is the main entry point for type coercion in R, equivalent to
 /// R's `coerceVector()` from coerce.c. It dispatches to the appropriate
 /// type-specific coercion function based on the source and target types.
-pub unsafe fn coerceVector(v: SEXP, type_: c_int) -> SEXP {
+pub fn coerceVector(v: SEXP, type_: c_int) -> SEXP {
     unsafe {
         if v.is_null() {
             return ptr::null_mut();

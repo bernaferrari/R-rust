@@ -3,15 +3,15 @@ use super::*;
 /// GNU serialization packs the complete gp word, not just the two ARGUSED/JIT
 /// bits exposed by this port's LEVELS helper. PackFlags still strips GNU's
 /// transient CHARSXP cache and growable-vector bits for their respective kinds.
-unsafe fn serialized_gp_bits(s: SEXP) -> c_int {
+fn serialized_gp_bits(s: SEXP) -> c_int {
     // The caller roots s; take an owned header snapshot without retaining a
     // header or interpreter borrow across recursive writes or callbacks.
     let object = unsafe { crate::sexp::object::Sexp::try_from_raw(s) }
-        .unwrap_or_else(|e| unsafe { error(&e.to_string()) });
+        .unwrap_or_else(|e|  { error(&e.to_string()) });
     i32::from(object.header().sxpinfo.gp())
 }
 
-pub unsafe fn WriteItemInternal(
+pub fn WriteItemInternal(
     s: SEXP,
     ref_table: &mut WriteHashTable,
     writer: &mut BinaryWriter,
@@ -335,17 +335,17 @@ pub unsafe fn WriteItemInternal(
     }
 }
 
-unsafe fn vector_length_for_write(s: SEXP, writer: &BinaryWriter) -> R_xlen_t {
+fn vector_length_for_write(s: SEXP, writer: &BinaryWriter) -> R_xlen_t {
     let len = XLENGTH(s);
     if writer.strict_workspace && c_int::try_from(len).is_err() {
-        unsafe { error("cannot save unsupported long workspace vector") };
+         { error("cannot save unsupported long workspace vector") };
     }
     len
 }
 
 /// Emit one GNU ALTREP_SXP compact-sequence record: class info list, state
 /// triple, and the object's attributes.
-unsafe fn write_compact_sequence(
+fn write_compact_sequence(
     s: SEXP,
     ref_table: &mut WriteHashTable,
     writer: &mut BinaryWriter,

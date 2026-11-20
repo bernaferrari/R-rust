@@ -6,7 +6,7 @@ mod workspace_tests;
 
 // Raw entry points retain only an original operation pin and checked native
 // snapshots. All codec allocation and framing lives in the safe Rust module.
-pub(super) unsafe fn raw_snapshot(
+pub(super) fn raw_snapshot(
     owner: &crate::sexp::owner::OwnerToken<'_>,
     input: SEXP,
     mode: u8,
@@ -62,7 +62,7 @@ pub(super) unsafe fn raw_snapshot(
     }
 }
 
-unsafe fn raw_codec_operation(input: SEXP, mode: u8, decode_error: Option<*mut Rboolean>) -> SEXP {
+fn raw_codec_operation(input: SEXP, mode: u8, decode_error: Option<*mut Rboolean>) -> SEXP {
     unsafe {
         let owner =
             crate::sexp::owner::OwnerToken::current().unwrap_or_else(|e| error(&e.to_string()));
@@ -94,30 +94,30 @@ unsafe fn raw_codec_operation(input: SEXP, mode: u8, decode_error: Option<*mut R
     }
 }
 
-pub unsafe fn R_compress1(input: SEXP) -> SEXP {
-    unsafe { raw_codec_operation(input, 1, None) }
+pub fn R_compress1(input: SEXP) -> SEXP {
+     { raw_codec_operation(input, 1, None) }
 }
-pub unsafe fn R_compress2(input: SEXP) -> SEXP {
-    unsafe { raw_codec_operation(input, 2, None) }
+pub fn R_compress2(input: SEXP) -> SEXP {
+     { raw_codec_operation(input, 2, None) }
 }
-pub unsafe fn R_compress3(input: SEXP) -> SEXP {
-    unsafe { raw_codec_operation(input, 3, None) }
+pub fn R_compress3(input: SEXP) -> SEXP {
+     { raw_codec_operation(input, 3, None) }
 }
-pub unsafe fn R_decompress1(input: SEXP, error: *mut Rboolean) -> SEXP {
-    unsafe { raw_codec_operation(input, 1, Some(error)) }
+pub fn R_decompress1(input: SEXP, error: *mut Rboolean) -> SEXP {
+     { raw_codec_operation(input, 1, Some(error)) }
 }
-pub unsafe fn R_decompress2(input: SEXP, error: *mut Rboolean) -> SEXP {
-    unsafe { raw_codec_operation(input, 2, Some(error)) }
+pub fn R_decompress2(input: SEXP, error: *mut Rboolean) -> SEXP {
+     { raw_codec_operation(input, 2, Some(error)) }
 }
-pub unsafe fn R_decompress3(input: SEXP, error: *mut Rboolean) -> SEXP {
-    unsafe { raw_codec_operation(input, 3, Some(error)) }
+pub fn R_decompress3(input: SEXP, error: *mut Rboolean) -> SEXP {
+     { raw_codec_operation(input, 3, Some(error)) }
 }
 
 // ---------------------------------------------------------------------------
 // R_snprintf utility
 // ---------------------------------------------------------------------------
 
-pub unsafe fn Rsnprintf(buf: *mut c_char, size: usize, _format: *const c_char) -> c_int {
+pub fn Rsnprintf(buf: *mut c_char, size: usize, _format: *const c_char) -> c_int {
     unsafe {
         if !buf.is_null() && size > 0 {
             *buf = 0;
@@ -138,7 +138,7 @@ pub struct R_instring_stream_st {
 
 pub type R_instring_stream_t = *mut R_instring_stream_st;
 
-pub unsafe fn InitInStringStream(s: R_instring_stream_t, stream: R_inpstream_t) {
+pub fn InitInStringStream(s: R_instring_stream_t, stream: R_inpstream_t) {
     unsafe {
         if !s.is_null() {
             (*s).last = 0;
@@ -147,11 +147,11 @@ pub unsafe fn InitInStringStream(s: R_instring_stream_t, stream: R_inpstream_t) 
     }
 }
 
-pub unsafe fn GetChar(s: R_instring_stream_t) -> c_int {
+pub fn GetChar(s: R_instring_stream_t) -> c_int {
     -1
 }
 
-pub unsafe fn UngetChar(s: R_instring_stream_t, c: c_int) {
+pub fn UngetChar(s: R_instring_stream_t, c: c_int) {
     unsafe {
         if !s.is_null() {
             (*s).last = c;

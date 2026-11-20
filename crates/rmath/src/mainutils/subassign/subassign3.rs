@@ -24,7 +24,7 @@ use super::support::{SET_S4_OBJECT, SET_TRUELENGTH, UNSET_S4_OBJECT};
 use super::*;
 
 /// Port of `do_subassign3()` -- the `$<-` operator.
-pub(crate) unsafe fn do_subassign3(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub(crate) fn do_subassign3(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let mut nlist: SEXP = R_NilValue();
         checkArity(op, args);
@@ -51,7 +51,7 @@ pub(crate) unsafe fn do_subassign3(call: SEXP, op: SEXP, args: SEXP, env: SEXP) 
     }
 }
 
-pub(crate) unsafe fn posixlt_obs_length(x: SEXP) -> R_xlen_t {
+pub(crate) fn posixlt_obs_length(x: SEXP) -> R_xlen_t {
     unsafe {
         if x.is_null() || x == R_NilValue() || TYPEOF(x) != SEXPTYPE::VECSXP {
             return 0;
@@ -68,7 +68,7 @@ pub(crate) unsafe fn posixlt_obs_length(x: SEXP) -> R_xlen_t {
 }
 
 /// GNU `$<-.POSIXlt`: compare `length(value)` to the *pre-assign* `length(x)`.
-pub(crate) unsafe fn mark_posixlt_dollar_balanced(x: SEXP, value: SEXP, old_n: R_xlen_t) {
+pub(crate) fn mark_posixlt_dollar_balanced(x: SEXP, value: SEXP, old_n: R_xlen_t) {
     unsafe {
         if x.is_null()
             || x == R_NilValue()
@@ -100,7 +100,7 @@ pub(crate) unsafe fn mark_posixlt_dollar_balanced(x: SEXP, value: SEXP, old_n: R
 }
 
 /// Port of `R_subassign3_dflt()` -- default `$<-` implementation.
-pub unsafe fn R_subassign3_dflt(call: SEXP, x: SEXP, nlist: SEXP, val: SEXP) -> SEXP {
+pub fn R_subassign3_dflt(call: SEXP, x: SEXP, nlist: SEXP, val: SEXP) -> SEXP {
     unsafe {
         let mut x = x;
         let mut val = val;

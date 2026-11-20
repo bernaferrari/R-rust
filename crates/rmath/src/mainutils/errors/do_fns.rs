@@ -14,7 +14,7 @@ use super::*;
 
 /// do_stop — R's stop() function.
 /// Ported from errors.c do_stop().
-pub unsafe fn do_stop(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_stop(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
 
@@ -47,7 +47,7 @@ pub unsafe fn do_stop(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 /// Direct .Internal(stop(...)) handler for structured embedding boundaries.
-pub unsafe fn do_stop_internal(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_stop_internal(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
 
@@ -72,7 +72,7 @@ pub unsafe fn do_stop_internal(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> S
 
 /// do_warning — R's warning() function.
 /// Ported from errors.c do_warning().
-pub unsafe fn do_warning(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_warning(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
 
@@ -122,18 +122,18 @@ pub unsafe fn do_warning(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 /// do_geterrmessage — geterrmessage().
-pub unsafe fn do_geterrmessage(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe { super::native::error_buffer_entry(op, args, false) }
+pub fn do_geterrmessage(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+     { super::native::error_buffer_entry(op, args, false) }
 }
 
 /// do_seterrmessage — seterrmessage().
-pub unsafe fn do_seterrmessage(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe { super::native::error_buffer_entry(op, args, true) }
+pub fn do_seterrmessage(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+     { super::native::error_buffer_entry(op, args, true) }
 }
 
 /// do_interruptsSuspended — get/set interrupts suspended flag.
-pub unsafe fn do_interruptsSuspended(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe {
+pub fn do_interruptsSuspended(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+     {
         let orig = interrupts_suspended();
         ScalarLogical(orig as c_int)
     }

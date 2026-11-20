@@ -27,7 +27,7 @@ use super::*;
 // ---------------------------------------------------------------------------
 
 /// Port of `ArrayAssign()` -- handles `x[i,j,k,...] <- y` for arrays.
-pub(crate) unsafe fn ArrayAssign(call: SEXP, rho: SEXP, x: SEXP, s: SEXP, y: SEXP) -> SEXP {
+pub(crate) fn ArrayAssign(call: SEXP, rho: SEXP, x: SEXP, s: SEXP, y: SEXP) -> SEXP {
     unsafe {
         use crate::eval::attrib_core::R_DimSymbol;
 

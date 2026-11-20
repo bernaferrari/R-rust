@@ -105,7 +105,7 @@ pub fn nmath_warning_hook(message: &str) {
     let ledger = unsafe { (*pointer).heap_identity.byte_ledger() };
     // Ordinary warningcall chooses attribution before its first allocation/GC.
     // Snapshot and root that same choice before admission can collect/retry.
-    let call = unsafe {
+    let call =  {
         let call = mathlib_warning_call();
         let call = if !call.is_null() && call != globals::R_NilValue() {
             call
@@ -135,7 +135,7 @@ pub fn nmath_warning_hook(message: &str) {
     }
     let buffer = nmath_bridge_checked(result.map_err(nmath_bridge_buffer::BufferError::into_sexp));
     nmath_bridge_checked(owner.require_active());
-    unsafe {
+     {
         // Skip both redundant CString recopy and a second mutable attribution
         // lookup: handlers and default emission use the rooted original call.
         render::vsignalWarning(call.as_raw(), buffer.as_c_str().as_ptr());

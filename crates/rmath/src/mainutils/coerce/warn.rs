@@ -130,7 +130,7 @@ pub fn isLanguage(x: SEXP) -> bool {
 
 /// Check GNU list admission using original-owner leases and typed graph edges.
 #[inline]
-pub unsafe fn isVectorizable(x: SEXP) -> bool {
+pub fn isVectorizable(x: SEXP) -> bool {
     if x.is_null()
         || crate::sexp::globals::immutable_singleton_lease(x)
             .is_some_and(|lease| lease.snapshot().sxpinfo.type_of() == SEXPTYPE::NILSXP)
@@ -193,7 +193,7 @@ pub fn isExpression(x: SEXP) -> bool {
 
 /// Check if a SEXP is a matrix (has non-null dim attribute of length 2).
 #[inline]
-pub unsafe fn isMatrix(x: SEXP) -> bool {
+pub fn isMatrix(x: SEXP) -> bool {
     unsafe {
         let dim = getAttrib(x, R_DimSymbol());
         !isNull(dim) && LENGTH(dim) == 2
@@ -202,11 +202,11 @@ pub unsafe fn isMatrix(x: SEXP) -> bool {
 
 /// Check if a SEXP is an array (has non-null dim attribute).
 #[inline]
-pub unsafe fn isArray(x: SEXP) -> bool {
+pub fn isArray(x: SEXP) -> bool {
     unsafe { !isNull(getAttrib(x, R_DimSymbol())) }
 }
 
-pub unsafe fn SET_TYPEOF(x: SEXP, v: c_int) {
+pub fn SET_TYPEOF(x: SEXP, v: c_int) {
     unsafe {
         if !x.is_null() {
             crate::sexp::accessors::SET_TYPEOF(x, SEXPTYPE(v).as_c_int());
@@ -215,15 +215,15 @@ pub unsafe fn SET_TYPEOF(x: SEXP, v: c_int) {
 }
 
 /// Panic with an R error message.
-pub unsafe fn error(msg: &str) -> ! {
+pub fn error(msg: &str) -> ! {
     std::panic::panic_any(RError {
         message: msg.to_string(),
     });
 }
 
 /// Panic with an R error message (call-specific).
-pub unsafe fn errorcall(_call: SEXP, msg: &str) -> ! {
-    unsafe {
+pub fn errorcall(_call: SEXP, msg: &str) -> ! {
+     {
         error(msg);
     }
 }
@@ -244,7 +244,7 @@ pub fn R_BlankString() -> SEXP {
 
 /// Copy attributes from `from` to `to` (shallow duplicate).
 /// This matches R's SHALLOW_DUPLICATE_ATTRIB macro from coerce.c.
-pub unsafe fn SHALLOW_DUPLICATE_ATTRIB(to: SEXP, from: SEXP) {
+pub fn SHALLOW_DUPLICATE_ATTRIB(to: SEXP, from: SEXP) {
     unsafe {
         let attr_from = ATTRIB(from);
         if !isNull(attr_from) {
@@ -280,7 +280,7 @@ pub unsafe fn SHALLOW_DUPLICATE_ATTRIB(to: SEXP, from: SEXP) {
 }
 
 /// A factor or ordered class is only legal on an integer vector.
-unsafe fn class_fits(to: SEXP, class: SEXP) -> bool {
+fn class_fits(to: SEXP, class: SEXP) -> bool {
     unsafe {
         use crate::sexp::ffi::SEXPTYPE;
         if crate::sexp::accessors::TYPEOF(to) == SEXPTYPE::INTSXP.as_c_int() {
@@ -303,7 +303,7 @@ unsafe fn class_fits(to: SEXP, class: SEXP) -> bool {
 
 /// Clear all attributes from an SEXP, and reset object/S4 bits.
 /// This matches R's CLEAR_ATTRIB macro from coerce.c.
-pub unsafe fn CLEAR_ATTRIB(x: SEXP) {
+pub fn CLEAR_ATTRIB(x: SEXP) {
     unsafe {
         let attr = ATTRIB(x);
         if !isNull(attr) {
@@ -325,7 +325,7 @@ pub unsafe fn CLEAR_ATTRIB(x: SEXP) {
 /// Issue coercion warnings based on the warning flags.
 ///
 /// This is the equivalent of R's `CoercionWarning()` from coerce.c.
-pub unsafe fn CoercionWarning(warn: c_int) {
+pub fn CoercionWarning(warn: c_int) {
     if warn & (WARN_NA | WARN_INT_NA | WARN_IMAG | WARN_RAW) == 0 {
         return;
     }
@@ -356,7 +356,7 @@ pub unsafe fn CoercionWarning(warn: c_int) {
             ] {
                 if warn & flag != 0 {
                     access.with_native(|_| {
-                        unsafe {
+                         {
                             if let Some(call) = &attributed {
                                 crate::mainutils::errors::warningcall(
                                     call.as_raw(),

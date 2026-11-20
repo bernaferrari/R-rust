@@ -14,7 +14,7 @@ use super::*;
 
 /// Get the object argument for method dispatch from the calling context.
 /// This examines the generic function's formals and matched arguments.
-pub(crate) unsafe fn GetObject(cptr: *mut RCNTXT) -> SEXP {
+pub(crate) fn GetObject(cptr: *mut RCNTXT) -> SEXP {
     unsafe {
         if cptr.is_null() {
             return R_NilValue();
@@ -134,7 +134,7 @@ pub(crate) unsafe fn GetObject(cptr: *mut RCNTXT) -> SEXP {
 
 /// Apply a method (SPECIALSXP, BUILTINSXP, or CLOSXP) with given arguments.
 /// Note: This is a simplified version. Full implementation requires eval infrastructure.
-pub(crate) unsafe fn applyMethod(
+pub(crate) fn applyMethod(
     call: SEXP,
     op: SEXP,
     args: SEXP,
@@ -204,7 +204,7 @@ enum fstype_t {
 /// Patch a single supplied argument into a promise referencing the formal name.
 /// If the supplied value is R_MissingArg, looks up a local variable in cloenv.
 /// Ported from match.c:424-438.
-unsafe fn patch_argument(supplied_slot: SEXP, name: SEXP, farg: *mut fstype_t, cloenv: SEXP) {
+fn patch_argument(supplied_slot: SEXP, name: SEXP, farg: *mut fstype_t, cloenv: SEXP) {
     unsafe {
         let value = CAR(supplied_slot);
         if value == R_MissingArg() {
@@ -232,7 +232,7 @@ unsafe fn patch_argument(supplied_slot: SEXP, name: SEXP, farg: *mut fstype_t, c
 /// Creates a shallow copy of supplied args and patches them into promises
 /// referencing the closure environment's formals.
 /// Ported from match.c:440-559.
-pub(crate) unsafe fn patchArgsByActuals(formals: SEXP, supplied: SEXP, cloenv: SEXP) -> SEXP {
+pub(crate) fn patchArgsByActuals(formals: SEXP, supplied: SEXP, cloenv: SEXP) -> SEXP {
     unsafe {
         let nfarg = length(formals).max(1) as usize;
         let mut farg = vec![fstype_t::Unmatched; nfarg];
@@ -355,7 +355,7 @@ pub(crate) unsafe fn patchArgsByActuals(formals: SEXP, supplied: SEXP, cloenv: S
 
 /// Destructive matching of arguments: named elements of newargs replace
 /// matching elements in oldargs; the two resulting lists are appended.
-pub(crate) unsafe fn newintoold(new: SEXP, old: SEXP) -> SEXP {
+pub(crate) fn newintoold(new: SEXP, old: SEXP) -> SEXP {
     unsafe {
         if new.is_null() || new == R_NilValue() {
             return R_NilValue();
@@ -378,8 +378,8 @@ pub(crate) unsafe fn newintoold(new: SEXP, old: SEXP) -> SEXP {
 }
 
 /// Match method arguments: merge old and new argument lists.
-pub(crate) unsafe fn matchmethargs(oldargs: SEXP, newargs: SEXP) -> SEXP {
-    unsafe {
+pub(crate) fn matchmethargs(oldargs: SEXP, newargs: SEXP) -> SEXP {
+     {
         let merged = newintoold(newargs, oldargs);
         listAppend(oldargs, merged)
     }
@@ -392,7 +392,7 @@ pub(crate) unsafe fn matchmethargs(oldargs: SEXP, newargs: SEXP) -> SEXP {
 /// Fix up the call when arguments to the function may have changed.
 /// For now we only worry about tagged args, appending them if they
 /// are not already there.
-pub(crate) unsafe fn fixcall(call: SEXP, args: SEXP) -> SEXP {
+pub(crate) fn fixcall(call: SEXP, args: SEXP) -> SEXP {
     unsafe {
         if call.is_null() || args.is_null() {
             return call;
@@ -432,7 +432,7 @@ pub(crate) unsafe fn fixcall(call: SEXP, args: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Find a function in the environment chain from rho to target.
-pub(crate) unsafe fn findFunInEnvRange(symbol: SEXP, rho: SEXP, target: SEXP) -> SEXP {
+pub(crate) fn findFunInEnvRange(symbol: SEXP, rho: SEXP, target: SEXP) -> SEXP {
     unsafe {
         let mut current_rho = rho;
         while !current_rho.is_null() && current_rho != R_EmptyEnv() {
@@ -456,7 +456,7 @@ pub(crate) unsafe fn findFunInEnvRange(symbol: SEXP, rho: SEXP, target: SEXP) ->
 }
 
 /// Find a function, searching the global env, then base env.
-pub(crate) unsafe fn findFunWithBaseEnvAfterGlobalEnv(symbol: SEXP, rho: SEXP) -> SEXP {
+pub(crate) fn findFunWithBaseEnvAfterGlobalEnv(symbol: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let mut current_rho = rho;
         while !current_rho.is_null() && current_rho != R_EmptyEnv() {
@@ -483,7 +483,7 @@ pub(crate) unsafe fn findFunWithBaseEnvAfterGlobalEnv(symbol: SEXP, rho: SEXP) -
 
 /// Look up the class name in the methods package table of S3 classes.
 /// Returns FALSE when methods package is not loaded.
-pub unsafe fn isBasicClass(_ss: *const c_char) -> c_int {
+pub fn isBasicClass(_ss: *const c_char) -> c_int {
     // Unimplemented: requires R methods package infrastructure
     // Full implementation would consult the methods namespace and S3 classes.
     FALSE
@@ -493,9 +493,9 @@ pub unsafe fn isBasicClass(_ss: *const c_char) -> c_int {
 // R_has_methods_attached -- check if the methods package is fully attached
 // ---------------------------------------------------------------------------
 
-pub unsafe fn R_has_methods_attached() -> c_int {
+pub fn R_has_methods_attached() -> c_int {
     // Unimplemented: requires R methods package infrastructure
-    unsafe {
+     {
         if isMethodsDispatchOn() == FALSE {
             return FALSE;
         }
@@ -509,7 +509,7 @@ pub unsafe fn R_has_methods_attached() -> c_int {
 // ---------------------------------------------------------------------------
 
 /// Prepend a named variable to the S3 dispatch variable list.
-pub(crate) unsafe fn addS3Var(vars: SEXP, name: SEXP, value: SEXP) -> SEXP {
+pub(crate) fn addS3Var(vars: SEXP, name: SEXP, value: SEXP) -> SEXP {
     unsafe {
         let res = Rf_cons(value, vars);
         SETTAG(res, name);
@@ -519,7 +519,7 @@ pub(crate) unsafe fn addS3Var(vars: SEXP, name: SEXP, value: SEXP) -> SEXP {
 
 /// Create the full list of S3 dispatch variables:
 /// .Generic, .Class, .Method, .GenericCallEnv, .GenericDefEnv, .Group
-pub unsafe fn createS3Vars(
+pub fn createS3Vars(
     dotGeneric: SEXP,
     dotGroup: SEXP,
     dotClass: SEXP,
@@ -527,7 +527,7 @@ pub unsafe fn createS3Vars(
     dotGenericCallEnv: SEXP,
     dotGenericDefEnv: SEXP,
 ) -> SEXP {
-    unsafe {
+     {
         let mut v = R_NilValue();
         v = addS3Var(v, sym(".GenericDefEnv"), dotGenericDefEnv);
         v = addS3Var(v, sym(".GenericCallEnv"), dotGenericCallEnv);

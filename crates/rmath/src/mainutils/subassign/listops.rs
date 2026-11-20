@@ -29,7 +29,7 @@ use super::*;
 // ---------------------------------------------------------------------------
 
 /// Port of `GetOneIndex()` -- extracts a single subscript index for pairlist assignment.
-pub(crate) unsafe fn GetOneIndex(sub: SEXP, ind: c_int) -> SEXP {
+pub(crate) fn GetOneIndex(sub: SEXP, ind: c_int) -> SEXP {
     unsafe {
         if ind < 0 || ind + 1 > Rf_length(sub) {
             // Error: internal error
@@ -61,7 +61,7 @@ pub(crate) unsafe fn GetOneIndex(sub: SEXP, ind: c_int) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Port of `SimpleListAssign()` -- handles `x[[s]] <- y` for pairlists.
-pub(crate) unsafe fn SimpleListAssign(
+pub(crate) fn SimpleListAssign(
     _call: SEXP,
     x: SEXP,
     s: SEXP,
@@ -124,7 +124,7 @@ pub(crate) unsafe fn SimpleListAssign(
 // ---------------------------------------------------------------------------
 
 /// Port of `listRemove()` -- removes an element from a pairlist (for `x[[s]] <- NULL`).
-pub(crate) unsafe fn listRemove(x: SEXP, s: SEXP, ind: c_int) -> SEXP {
+pub(crate) fn listRemove(x: SEXP, s: SEXP, ind: c_int) -> SEXP {
     unsafe {
         let nx = Rf_length(x);
         let s = GetOneIndex(s, ind);
@@ -188,7 +188,7 @@ pub(crate) unsafe fn listRemove(x: SEXP, s: SEXP, ind: c_int) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Port of `DeleteOneVectorListItem()` -- removes a single element from a vector list.
-pub(crate) unsafe fn DeleteOneVectorListItem(x: SEXP, which: R_xlen_t) -> SEXP {
+pub(crate) fn DeleteOneVectorListItem(x: SEXP, which: R_xlen_t) -> SEXP {
     unsafe {
         let n = XLENGTH(x);
         if which >= 0 && which < n {
@@ -229,7 +229,7 @@ pub(crate) unsafe fn DeleteOneVectorListItem(x: SEXP, which: R_xlen_t) -> SEXP {
 
 /// Port of `SubAssignArgs()` -- extracts (x, s, y) from the argument list
 /// and returns the number of subscripts.
-pub(crate) unsafe fn SubAssignArgs(args: SEXP, x: *mut SEXP, s: *mut SEXP, y: *mut SEXP) -> c_int {
+pub(crate) fn SubAssignArgs(args: SEXP, x: *mut SEXP, s: *mut SEXP, y: *mut SEXP) -> c_int {
     unsafe {
         if isNull(CDR(args)) {
             // Error: invalid number of arguments

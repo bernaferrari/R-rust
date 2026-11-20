@@ -27,7 +27,7 @@ use super::*;
 // ---------------------------------------------------------------------------
 
 /// Port of `MatrixAssign()` -- handles `x[i,j] <- y` for matrices.
-pub(crate) unsafe fn MatrixAssign(call: SEXP, rho: SEXP, x: SEXP, s: SEXP, y: SEXP) -> SEXP {
+pub(crate) fn MatrixAssign(call: SEXP, rho: SEXP, x: SEXP, s: SEXP, y: SEXP) -> SEXP {
     unsafe {
         use crate::eval::attrib_core::R_DimSymbol;
 

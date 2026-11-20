@@ -36,29 +36,29 @@ use crate::sexp::memory_ext::allocSExp;
 use crate::sexp::protect::*;
 use crate::sexp::symbol::Rf_install;
 
-unsafe fn error(msg: &str) -> ! {
+fn error(msg: &str) -> ! {
     std::panic::panic_any(crate::sexp::context::RError {
         message: msg.to_string(),
     });
 }
 
 #[inline]
-unsafe fn require_arg(args: SEXP, index: usize) -> SEXP {
+fn require_arg(args: SEXP, index: usize) -> SEXP {
     let mut cur = args;
     for _ in 0..index {
         if cur.is_null() || TYPEOF(cur) == SEXPTYPE::NILSXP {
-            unsafe { error("wrong number of arguments") };
+             { error("wrong number of arguments") };
         }
         cur = CDR(cur);
     }
     if cur.is_null() || TYPEOF(cur) == SEXPTYPE::NILSXP {
-        unsafe { error("wrong number of arguments") };
+         { error("wrong number of arguments") };
     }
     CAR(cur)
 }
 
 #[inline]
-unsafe fn optional_arg(args: SEXP, index: usize) -> SEXP {
+fn optional_arg(args: SEXP, index: usize) -> SEXP {
     let mut cur = args;
     for _ in 0..index {
         if cur.is_null() || TYPEOF(cur) == SEXPTYPE::NILSXP {
@@ -72,8 +72,8 @@ unsafe fn optional_arg(args: SEXP, index: usize) -> SEXP {
     CAR(cur)
 }
 
-unsafe fn arg_by_name_or_position(args: SEXP, name: &str, position: usize) -> SEXP {
-    unsafe {
+fn arg_by_name_or_position(args: SEXP, name: &str, position: usize) -> SEXP {
+     {
         let mut cur = args;
         while !cur.is_null() && TYPEOF(cur) != SEXPTYPE::NILSXP {
             if call_arg_tag_name(cur).as_deref() == Some(name) {
@@ -97,8 +97,8 @@ unsafe fn arg_by_name_or_position(args: SEXP, name: &str, position: usize) -> SE
     }
 }
 
-unsafe fn arg_present_by_name_or_position(args: SEXP, name: &str, position: usize) -> bool {
-    unsafe {
+fn arg_present_by_name_or_position(args: SEXP, name: &str, position: usize) -> bool {
+     {
         let mut cur = args;
         while !cur.is_null() && TYPEOF(cur) != SEXPTYPE::NILSXP {
             if call_arg_tag_name(cur).as_deref() == Some(name) {
@@ -122,7 +122,7 @@ unsafe fn arg_present_by_name_or_position(args: SEXP, name: &str, position: usiz
     }
 }
 
-unsafe fn call_arg_tag_name(node: SEXP) -> Option<String> {
+fn call_arg_tag_name(node: SEXP) -> Option<String> {
     unsafe {
         let tag = TAG(node);
         if tag.is_null() || tag == R_NilValue() {
@@ -140,7 +140,7 @@ unsafe fn call_arg_tag_name(node: SEXP) -> Option<String> {
     }
 }
 
-unsafe fn scalar_integer_value(value: SEXP) -> Option<c_int> {
+fn scalar_integer_value(value: SEXP) -> Option<c_int> {
     unsafe {
         if value.is_null() || value == R_NilValue() || LENGTH(value) < 1 {
             return None;
@@ -157,14 +157,14 @@ unsafe fn scalar_integer_value(value: SEXP) -> Option<c_int> {
 }
 
 #[inline]
-unsafe fn sexp_to_path(file: SEXP) -> PathBuf {
+fn sexp_to_path(file: SEXP) -> PathBuf {
     if TYPEOF(file) != SEXPTYPE::STRSXP || LENGTH(file) <= 0 {
-        unsafe { error("not a proper file name") };
+         { error("not a proper file name") };
     }
     let elt = unsafe { STRING_ELT(file, 0) };
     let cpath = unsafe { CHAR(elt) };
     if cpath.is_null() {
-        unsafe { error("not a proper file name") };
+         { error("not a proper file name") };
     }
     let cstr = unsafe { CStr::from_ptr(cpath) };
     #[cfg(unix)]
@@ -178,7 +178,7 @@ unsafe fn sexp_to_path(file: SEXP) -> PathBuf {
 }
 
 #[inline]
-unsafe fn raw_from_bytes(bytes: &[u8]) -> SEXP {
+fn raw_from_bytes(bytes: &[u8]) -> SEXP {
     let ans = unsafe { Rf_allocVector3(SEXPTYPE::RAWSXP, bytes.len() as R_xlen_t) };
     if !ans.is_null() && !bytes.is_empty() {
         unsafe {
@@ -213,7 +213,7 @@ fn mark_decompress_error(err: *mut Rboolean) {
 }
 
 #[inline]
-unsafe fn clear_lazy_load_cache() {
+fn clear_lazy_load_cache() {
     with_required_current_instance(|instance| unsafe {
         (*instance).serialize_state.used = 0;
         (*instance).serialize_state.cache_names = [ptr::null_mut(); NC];

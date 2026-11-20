@@ -4,7 +4,7 @@ use super::*;
 // Reference index packing/unpacking
 // ---------------------------------------------------------------------------
 
-pub unsafe fn OutRefIndex(writer: &mut BinaryWriter, i: c_int) {
+pub fn OutRefIndex(writer: &mut BinaryWriter, i: c_int) {
     if i > MAX_PACKED_INDEX {
         writer.write_i32(REFSXP);
         writer.write_i32(i);
@@ -22,7 +22,7 @@ pub fn InRefIndex(flags: c_int, reader: &mut BinaryReader) -> Result<c_int, Stri
 // Version decoding
 // ---------------------------------------------------------------------------
 
-pub unsafe fn DecodeVersion(packed: c_int, v: *mut c_int, p: *mut c_int, s: *mut c_int) {
+pub fn DecodeVersion(packed: c_int, v: *mut c_int, p: *mut c_int, s: *mut c_int) {
     unsafe {
         if !v.is_null() {
             *v = packed / 65536;
@@ -43,16 +43,16 @@ pub unsafe fn DecodeVersion(packed: c_int, v: *mut c_int, p: *mut c_int, s: *mut
 // ---------------------------------------------------------------------------
 
 #[inline]
-pub(crate) unsafe fn sexp_has_attributes(s: SEXP) -> bool {
-    unsafe {
+pub(crate) fn sexp_has_attributes(s: SEXP) -> bool {
+     {
         let attrib = ATTRIB(s);
         !attrib.is_null() && attrib != R_NilValue()
     }
 }
 
 #[inline]
-pub(crate) unsafe fn sexp_has_tag(s: SEXP) -> bool {
-    unsafe {
+pub(crate) fn sexp_has_tag(s: SEXP) -> bool {
+     {
         let tag = TAG(s);
         !tag.is_null() && tag != R_NilValue()
     }
@@ -60,7 +60,7 @@ pub(crate) unsafe fn sexp_has_tag(s: SEXP) -> bool {
 
 // Match GNU's structural package/namespace predicates, plus namespaces
 // represented by this runtime's package cache.
-pub(crate) unsafe fn persistent_package_or_namespace(s: SEXP) -> bool {
+pub(crate) fn persistent_package_or_namespace(s: SEXP) -> bool {
     unsafe {
         let name = crate::eval::attrib_core::getAttrib(s, Rf_install(c"name".as_ptr()));
         if TYPEOF(name) == SEXPTYPE::STRSXP
@@ -88,7 +88,7 @@ pub(crate) unsafe fn persistent_package_or_namespace(s: SEXP) -> bool {
     }
 }
 
-pub(crate) unsafe fn persistent_hook_eligible(s: SEXP) -> bool {
+pub(crate) fn persistent_hook_eligible(s: SEXP) -> bool {
     unsafe {
         match TYPEOF(s) {
             t if t == SEXPTYPE::EXTPTRSXP || t == SEXPTYPE::WEAKREFSXP => true,
@@ -103,11 +103,11 @@ pub(crate) unsafe fn persistent_hook_eligible(s: SEXP) -> bool {
     }
 }
 
-pub(crate) unsafe fn persistent_name(s: SEXP, hook: SEXP) -> SEXP {
-    unsafe { invoke_persist_hook(s, None, hook) }
+pub(crate) fn persistent_name(s: SEXP, hook: SEXP) -> SEXP {
+     { invoke_persist_hook(s, None, hook) }
 }
 
-pub(crate) unsafe fn invoke_persist_hook(
+pub(crate) fn invoke_persist_hook(
     s: SEXP,
     hook_func: Option<unsafe extern "C" fn(SEXP, SEXP) -> SEXP>,
     hook_data: SEXP,
@@ -133,8 +133,8 @@ pub(crate) unsafe fn invoke_persist_hook(
     }
 }
 
-pub(crate) unsafe fn writer_persistent_name(s: SEXP, writer: &BinaryWriter) -> SEXP {
-    unsafe {
+pub(crate) fn writer_persistent_name(s: SEXP, writer: &BinaryWriter) -> SEXP {
+     {
         if writer.persist_hook_func.is_some() {
             invoke_persist_hook(s, writer.persist_hook_func, writer.persist_hook_data)
         } else {
@@ -147,7 +147,7 @@ pub(crate) unsafe fn writer_persistent_name(s: SEXP, writer: &BinaryWriter) -> S
 // SaveSpecialHook -- detect special singleton values
 // ---------------------------------------------------------------------------
 
-pub unsafe fn SaveSpecialHook(item: SEXP) -> c_int {
+pub fn SaveSpecialHook(item: SEXP) -> c_int {
     unsafe {
         if item.is_null() {
             return NILVALUE_SXP;
@@ -180,7 +180,7 @@ pub unsafe fn SaveSpecialHook(item: SEXP) -> c_int {
 
 // Nested GNU bytecode constants use WriteBC1, without an extra object tag or
 // repetition-table header. A single outer WriteBC owns the repetition table.
-pub(crate) unsafe fn write_gnu_bc_payload(
+pub(crate) fn write_gnu_bc_payload(
     s: SEXP,
     ref_table: &mut WriteHashTable,
     writer: &mut BinaryWriter,
@@ -226,13 +226,13 @@ pub(crate) unsafe fn write_gnu_bc_payload(
     }
 }
 
-pub(crate) unsafe fn write_bc_language(
+pub(crate) fn write_bc_language(
     value: SEXP,
     ref_table: &mut WriteHashTable,
     writer: &mut BinaryWriter,
     depth: usize,
 ) {
-    unsafe {
+     {
         if depth >= 128 {
             error("GNU bytecode language nesting exceeds 128 levels");
         }

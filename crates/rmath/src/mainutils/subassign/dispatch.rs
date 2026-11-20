@@ -30,7 +30,7 @@ use super::*;
 /// Port of `R_DispatchOrEvalSP()` -- fast-path dispatch/eval for `[<-` and friends.
 /// Mirrors subset.c: evaluate first arg, skip dispatch when not an object,
 /// otherwise EVPROMISE + `DispatchOrEval`.
-pub(crate) unsafe fn R_DispatchOrEvalSP(
+pub(crate) fn R_DispatchOrEvalSP(
     call: SEXP,
     op: SEXP,
     generic: *const c_char,
@@ -115,7 +115,7 @@ pub(crate) unsafe fn R_DispatchOrEvalSP(
 // ---------------------------------------------------------------------------
 
 /// Port of `errorNotSubsettable()` -- signals an error for non-subsettable types.
-pub(crate) unsafe fn errorNotSubsettable(x: SEXP) {
+pub(crate) fn errorNotSubsettable(x: SEXP) {
     unsafe {
         let t = TYPEOF(x);
         let type_name = crate::mainutils::util_main::type2char(t);
@@ -134,7 +134,7 @@ pub(crate) unsafe fn errorNotSubsettable(x: SEXP) {
 ///
 /// GNU uses `R_CurrentExpression`. During `xx[[]] <- pi` that is the source
 /// assignment, which `applydefine` stores on `eval_state.current_expr`.
-pub(crate) unsafe fn errorMissingSubscript(x: SEXP, call: SEXP) {
+pub(crate) fn errorMissingSubscript(x: SEXP, call: SEXP) {
     unsafe {
         let instance = crate::sexp::instance::with_required_current_instance(|instance| instance);
         let source = (*instance).eval_state.current_expr.owned();
@@ -144,7 +144,7 @@ pub(crate) unsafe fn errorMissingSubscript(x: SEXP, call: SEXP) {
 }
 
 /// Port of `errorOutOfBoundsSEXP()` -- signals an out-of-bounds error for [[<-.
-pub(crate) unsafe fn errorOutOfBoundsSEXP(x: SEXP, subscript: c_int, _sindex: SEXP) {
+pub(crate) fn errorOutOfBoundsSEXP(x: SEXP, subscript: c_int, _sindex: SEXP) {
     unsafe {
         let t = TYPEOF(x);
         let type_name = crate::mainutils::util_main::type2char(t);

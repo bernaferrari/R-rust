@@ -102,8 +102,8 @@ fn same_type_atomic(kind: SEXPTYPE, entry: &CoercionEntry<'_>) -> Result<SEXP, S
 // ---------------------------------------------------------------------------
 
 /// R-level `as.character()` for factors (internal).
-pub unsafe fn do_asCharacterFactor(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
+pub fn do_asCharacterFactor(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+     {
         let x = CAR(args);
         asCharacterFactor(x)
     }
@@ -139,7 +139,7 @@ pub fn as_atomic_safe(x: Sexp<'_>, op: i32) -> Result<SEXP, String> {
     };
 
     let x_raw = entry.source.as_raw();
-    unsafe {
+     {
         if TYPEOF(x_raw) == type_ {
             return same_type_atomic(SEXPTYPE(type_), &entry);
         }
@@ -235,7 +235,7 @@ pub fn as_vector_safe<'a>(x: Sexp<'a>, mode_str: Sexp<'a>) -> Result<SEXP, Strin
         if kind.is_atomic_type() {
             return same_type_atomic(kind, &entry);
         }
-        let result = unsafe {
+        let result =  {
             ascommon(
                 ptr::null_mut(),
                 entry.source.as_raw(),
@@ -247,7 +247,7 @@ pub fn as_vector_safe<'a>(x: Sexp<'a>, mode_str: Sexp<'a>) -> Result<SEXP, Strin
     };
 
     let x_raw = entry.source.as_raw();
-    unsafe {
+     {
         if TYPEOF(x_raw) == type_ {
             match SEXPTYPE(type_) {
                 SEXPTYPE::LGLSXP
@@ -290,7 +290,7 @@ pub fn is_type_safe(x: Sexp<'_>, op: i32) -> Result<c_int, String> {
             let t = x.clone().typeof_();
             if t == SEXPTYPE::INTSXP {
                 let x_raw = x.as_raw();
-                unsafe {
+                 {
                     let is_factor = crate::mainutils::objects::inherits2(
                         x_raw,
                         b"factor\0".as_ptr() as *const c_char,
@@ -310,7 +310,7 @@ pub fn is_type_safe(x: Sexp<'_>, op: i32) -> Result<c_int, String> {
         16 => (x.typeof_() == SEXPTYPE::STRSXP) as c_int,
         1 => {
             let x_raw = x.as_raw();
-            unsafe {
+             {
                 if IS_S4_OBJECT(x_raw) != 0 && TYPEOF(x_raw) == SEXPTYPE::OBJSXP {
                     let dot_x_data = crate::mainutils::subassign::R_getS4DataSlot(
                         x_raw,
@@ -324,7 +324,7 @@ pub fn is_type_safe(x: Sexp<'_>, op: i32) -> Result<c_int, String> {
         }
         4 => {
             let x_raw = x.as_raw();
-            unsafe {
+             {
                 if IS_S4_OBJECT(x_raw) != 0 && TYPEOF(x_raw) == SEXPTYPE::OBJSXP {
                     let dot_x_data = crate::mainutils::subassign::R_getS4DataSlot(
                         x_raw,
@@ -446,7 +446,7 @@ pub fn is_numeric_safe(x: Sexp) -> c_int {
     let t = x.clone().typeof_();
     if (t == SEXPTYPE::INTSXP || t == SEXPTYPE::REALSXP)
         && x.is_vector()
-        && unsafe { crate::mainutils::objects::inherits2(x.as_raw(), c"factor".as_ptr()) == 0 }
+        &&  { crate::mainutils::objects::inherits2(x.as_raw(), c"factor".as_ptr()) == 0 }
     {
         1
     } else {
@@ -492,7 +492,7 @@ pub fn is_atomic_safe(x: Sexp) -> c_int {
 ///
 /// This is the `do_asatomic()` function from coerce.c, handling
 /// `as.character`, `as.integer`, `as.double`, `as.complex`, `as.logical`, `as.raw`.
-pub unsafe fn do_asatomic(call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_asatomic(call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let args_s =
             Sexp::try_from_raw(args).unwrap_or_else(|err| errorcall(call, &err.to_string()));
@@ -507,7 +507,7 @@ pub unsafe fn do_asatomic(call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
 /// R-level `as.vector()` entry point.
 ///
 /// This is the `do_asvector()` function from coerce.c.
-pub unsafe fn do_asvector(call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_asvector(call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let args_s =
             Sexp::try_from_raw(args).unwrap_or_else(|err| errorcall(call, &err.to_string()));
@@ -529,7 +529,7 @@ pub unsafe fn do_asvector(call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
 /// This is the `do_typeof()` function from coerce.c.
 /// Note: canonical version lives in inspect.rs; this is kept as
 /// coerce_typeof for internal use.
-pub unsafe fn coerce_typeof(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub fn coerce_typeof(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if TYPEOF(x) == SEXPTYPE::OBJSXP && IS_S4_OBJECT(x) == 0 {
@@ -569,7 +569,7 @@ pub unsafe fn coerce_typeof(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> S
 
 /// Check if a single element is NA — matches C's LIST_VEC_NA macro.
 /// Returns 1 if the element is a length-1 vector containing NA, 0 otherwise.
-pub unsafe fn elem_is_na(s: SEXP) -> c_int {
+pub fn elem_is_na(s: SEXP) -> c_int {
     unsafe {
         if !isVector(s) || xlength(s) != 1 {
             return 0;
@@ -592,7 +592,7 @@ pub unsafe fn elem_is_na(s: SEXP) -> c_int {
 ///
 /// This is the `do_is()` function from coerce.c, implementing is.null,
 /// is.logical, is.integer, is.double, is.complex, is.character, etc.
-pub unsafe fn do_is(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_is(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
         let args_s = match Sexp::try_from_raw(args) {
             Ok(s) => s,
@@ -614,7 +614,7 @@ pub unsafe fn do_is(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 /// R-level `is.vector()` entry point.
 ///
 /// This is the `do_isvector()` function from coerce.c.
-pub unsafe fn do_isvector(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_isvector(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
         let args_s = match Sexp::try_from_raw(args) {
             Ok(s) => s,
@@ -639,7 +639,7 @@ pub unsafe fn do_isvector(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEX
 /// R-level `is.na()` entry point.
 ///
 /// This is the `do_isna()` function from coerce.c.
-pub unsafe fn do_isna(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_isna(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let n = xlength(x);
@@ -728,7 +728,7 @@ pub unsafe fn do_isna(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 /// R-level `is.nan()` entry point.
 ///
 /// This is the `do_isnan()` function from coerce.c.
-pub unsafe fn do_isnan(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_isnan(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let n = xlength(x);

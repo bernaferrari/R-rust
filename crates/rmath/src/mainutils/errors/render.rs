@@ -14,22 +14,22 @@ use super::*;
 
 /// Get the current call from the context stack.
 /// In C this walks R_GlobalContext; here we use the thread-local context.
-pub(super) unsafe fn getCurrentCall() -> SEXP {
-    unsafe { current_call(false) }
+pub(super) fn getCurrentCall() -> SEXP {
+     { current_call(false) }
 }
 
 /// Public stop/warning stand in for GNU closures. Their caller excludes the
 /// bytecode expression marker, but includes native tryCatch's synthetic call.
 /// Implicit errors retain that marker through getCurrentCall().
-pub(crate) unsafe fn condition_caller_call() -> SEXP {
-    unsafe { current_call(true) }
+pub(crate) fn condition_caller_call() -> SEXP {
+     { current_call(true) }
 }
 
-unsafe fn current_call(skip_expression_contexts: bool) -> SEXP {
+fn current_call(skip_expression_contexts: bool) -> SEXP {
     unsafe {
         // A context counts as carrying a call only when it holds a real
         fn usable_call(call: SEXP) -> SEXP {
-            unsafe {
+             {
                 if call.is_null()
                     || call == globals::R_NilValue()
                     || TYPEOF(call) == SEXPTYPE::NILSXP
@@ -77,12 +77,12 @@ unsafe fn current_call(skip_expression_contexts: bool) -> SEXP {
 /// of the innermost context on the context stack (skipping a CTXT_BUILTIN
 /// top frame). Used by interpreter raise sites to attribute errors to the
 /// enclosing R call, like upstream `R_MissingArgError`/`error()`.
-pub unsafe fn R_getCurrentCall() -> SEXP {
-    unsafe { getCurrentCall() }
+pub fn R_getCurrentCall() -> SEXP {
+     { getCurrentCall() }
 }
 
 /// findCall: find the function context's call for error reporting.
-pub(crate) unsafe fn findCall() -> SEXP {
+pub(crate) fn findCall() -> SEXP {
     unsafe {
         let ctx = crate::sexp::context::R_GlobalContext();
         if ctx.is_null() {
@@ -174,7 +174,7 @@ pub(super) fn strip_call_prefix(message: &str) -> String {
 /// the `(from ...)` location marker. Other strings ("bottom" included —
 /// upstream dropped bottom-position support) and NA leave it off; numeric
 /// values convert to logical.
-pub(super) unsafe fn show_error_locations_enabled() -> bool {
+pub(super) fn show_error_locations_enabled() -> bool {
     unsafe {
         let opt_owner = crate::sexp::context::own_control_value(
             crate::mainutils::options::existing_option("show.error.locations"),
@@ -195,7 +195,7 @@ pub(super) unsafe fn show_error_locations_enabled() -> bool {
     }
 }
 
-pub(super) unsafe fn verrorcall_dflt(call: SEXP, format: *const c_char, ap: *mut c_void) {
+pub(super) fn verrorcall_dflt(call: SEXP, format: *const c_char, ap: *mut c_void) {
     unsafe {
         use super::byte_buffer::Snapshot;
         // Copy literal native bytes before touching error state: format can
@@ -216,7 +216,7 @@ pub(super) unsafe fn verrorcall_dflt(call: SEXP, format: *const c_char, ap: *mut
     }
 }
 
-pub(super) unsafe fn verrorcall_bytes(call: SEXP, raw_input: super::byte_buffer::Snapshot) {
+pub(super) fn verrorcall_bytes(call: SEXP, raw_input: super::byte_buffer::Snapshot) {
     unsafe {
         use super::byte_buffer::Snapshot;
         let owner = super::state::error_scope_pin();
@@ -404,7 +404,7 @@ pub(super) fn truncate_bytes(s: &mut String, limit: usize) {
 // Handler dispatch for tryCatch/withCallingHandlers support
 // ---------------------------------------------------------------------------
 
-pub(super) unsafe fn findSimpleErrorHandler() -> SEXP {
+pub(super) fn findSimpleErrorHandler() -> SEXP {
     unsafe {
         let mut list = handler_stack();
         while !list.is_null() && list != globals::R_NilValue() {
@@ -423,7 +423,7 @@ pub(super) unsafe fn findSimpleErrorHandler() -> SEXP {
     }
 }
 
-pub(super) unsafe fn gotoExitingHandler(cond: SEXP, call: SEXP, entry: SEXP) {
+pub(super) fn gotoExitingHandler(cond: SEXP, call: SEXP, entry: SEXP) {
     unsafe {
         let rho = ENTRY_TARGET_ENVIR(entry);
         let result = ENTRY_RETURN_RESULT(entry);
@@ -435,7 +435,7 @@ pub(super) unsafe fn gotoExitingHandler(cond: SEXP, call: SEXP, entry: SEXP) {
     }
 }
 
-pub(super) unsafe fn vsignalError(call: SEXP, format: *const c_char) {
+pub(super) fn vsignalError(call: SEXP, format: *const c_char) {
     unsafe {
         let localbuf = if format.is_null() {
             String::new()
@@ -558,7 +558,7 @@ pub fn errorcall_str(call: SEXP, message: &str) -> ! {
 /// condition first (`.signalCondition`); the handler search already
 /// happened at signal time, so the default error must not repeat it.
 pub fn dflt_stop_str(call: SEXP, message: &str) -> ! {
-    unsafe {
+     {
         let c_msg = std::ffi::CString::new(message).unwrap_or_default();
         verrorcall_dflt(call, c_msg.as_ptr(), ptr::null_mut());
         unreachable!("verrorcall_dflt panics with RError");
@@ -660,7 +660,7 @@ pub fn Rf_errorcall_fmt(call: SEXP, format: *const c_char, args: &[&CStr]) {
 
 /// Report an error with a call and pre-formatted message buffer.
 /// Matches C's `errorcall_cpy()` — copies all data before doing anything else.
-pub unsafe fn errorcall_cpy(call: SEXP, format: *const c_char) {
+pub fn errorcall_cpy(call: SEXP, format: *const c_char) {
     unsafe {
         let mut buf = vec![0u8; BUFSIZE + 1];
         if !format.is_null() {
@@ -679,8 +679,8 @@ pub unsafe fn errorcall_cpy(call: SEXP, format: *const c_char) {
 /// This is the equivalent of R's `Rf_error()`.
 /// The format string should be a pre-formatted message.
 /// It does not return — it panics with an RError payload.
-pub unsafe fn Rf_error(format: *const c_char) {
-    unsafe {
+pub fn Rf_error(format: *const c_char) {
+     {
         let call = getCurrentCall();
         // Rf_error in C is variadic: void error(const char *format, ...)
         // In Rust, callers should pass pre-formatted strings.
@@ -690,7 +690,7 @@ pub unsafe fn Rf_error(format: *const c_char) {
 
 /// Report a formatted error (without call), with one string argument.
 /// Equivalent to C's `error("%s", msg)`.
-pub unsafe fn Rf_error1(format: *const c_char, arg: *const c_char) {
+pub fn Rf_error1(format: *const c_char, arg: *const c_char) {
     unsafe {
         let call = getCurrentCall();
         let fmt = if format.is_null() {
@@ -716,7 +716,7 @@ pub fn Rf_error_unimplemented(name: &str) {
 
 /// UNIMPLEMENTED — called from C when a feature is not yet ported.
 /// Matches C: `void UNIMPLEMENTED(const char *s) { error("unimplemented feature in %s", s); }`
-pub unsafe fn UNIMPLEMENTED(s: *const c_char) {
+pub fn UNIMPLEMENTED(s: *const c_char) {
     unsafe {
         let name = if s.is_null() {
             "unknown"
@@ -732,7 +732,7 @@ pub unsafe fn UNIMPLEMENTED(s: *const c_char) {
 
 /// WrongArgCount — incorrect number of arguments error.
 /// Matches C: `void WrongArgCount(const char *s) { error("incorrect number of arguments to \"%s\"", s); }`
-pub unsafe fn WrongArgCount(s: *const c_char) {
+pub fn WrongArgCount(s: *const c_char) {
     unsafe {
         let name = if s.is_null() {
             "unknown"
@@ -758,7 +758,7 @@ pub unsafe fn WrongArgCount(s: *const c_char) {
 /// - w == 0: collect warnings for later display
 /// - w == 1: print immediately
 /// - w >= 2: convert to error
-pub(super) unsafe fn vwarningcall_dflt(call: SEXP, format: *const c_char, ap: *mut c_void) {
+pub(super) fn vwarningcall_dflt(call: SEXP, format: *const c_char, ap: *mut c_void) {
     let pin = super::state::error_scope_pin();
     let pointer = pin.as_ptr();
     let owner = unsafe { crate::sexp::owner::OwnerToken::from_raw(pointer) };
@@ -940,7 +940,7 @@ fn collection_checked<T>(result: crate::sexp::object::SexpResult<T>) -> T {
     result.unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
 }
 
-unsafe fn collect_warning_owned(call: SEXP, message: &str) {
+fn collect_warning_owned(call: SEXP, message: &str) {
     let pin = super::state::error_scope_pin();
     let pointer = pin.as_ptr();
     let owner = unsafe { crate::sexp::owner::OwnerToken::from_raw(pointer) };
@@ -954,7 +954,7 @@ unsafe fn collect_warning_owned(call: SEXP, message: &str) {
             collection_checked(domain.wrap(call))
         };
         if unsafe { (*pointer).error_state.collect_warnings } == 0 {
-            unsafe {
+             {
                 setup_warnings();
             }
         }
@@ -988,7 +988,7 @@ unsafe fn collect_warning_owned(call: SEXP, message: &str) {
         let mut text = message.to_owned();
         if r_show_warn_calls() && !call.is_nil() {
             let trace = collection_checked(
-                access.with_native(|_| Ok(unsafe { R_ConciseTraceback(call.as_raw(), 0) })),
+                access.with_native(|_| Ok( { R_ConciseTraceback(call.as_raw(), 0) })),
             );
             if !trace.is_empty() && text.len() + trace.len() + 8 < BUFSIZE {
                 text.push_str("\nCalls: ");
@@ -1019,7 +1019,7 @@ unsafe fn collect_warning_owned(call: SEXP, message: &str) {
 
 /// Setup the warnings collection vector with both actual allocations owned
 /// before name-symbol installation can allocate or trigger notification.
-pub(super) unsafe fn setup_warnings() {
+pub(super) fn setup_warnings() {
     let pin = super::state::error_scope_pin();
     let pointer = pin.as_ptr();
     let owner = unsafe { crate::sexp::owner::OwnerToken::from_raw(pointer) };
@@ -1055,7 +1055,7 @@ pub(super) unsafe fn setup_warnings() {
 }
 
 /// Select override precedence before a boundary can allocate or collect.
-pub(super) unsafe fn effective_warning_call(call: SEXP) -> SEXP {
+pub(super) fn effective_warning_call(call: SEXP) -> SEXP {
     // A base-constructor override owns attribution for the whole handler body.
     let override_call = super::warning_call_override();
     if !override_call.is_null() {
@@ -1069,19 +1069,19 @@ pub(super) unsafe fn effective_warning_call(call: SEXP) -> SEXP {
 ///
 /// This is the equivalent of R's `warningcall()`.
 /// Unlike errors, warnings do not terminate execution.
-pub unsafe fn warningcall(call: SEXP, format: *const c_char) {
-    unsafe {
+pub fn warningcall(call: SEXP, format: *const c_char) {
+     {
         vsignalWarning(effective_warning_call(call), format);
     }
 }
 
-pub(crate) unsafe fn mark_calling_handlers_signaled() {
+pub(crate) fn mark_calling_handlers_signaled() {
     crate::sexp::instance::with_required_current_instance(|inst| unsafe {
         (*inst).error_state.calling_handlers_signaled = true;
     });
 }
 
-unsafe fn calling_handlers_already_signaled() -> bool {
+fn calling_handlers_already_signaled() -> bool {
     crate::sexp::instance::with_required_current_instance(|inst| unsafe {
         (*inst).error_state.calling_handlers_signaled
     })
@@ -1093,7 +1093,7 @@ fn clear_calling_handlers_signaled() {
     });
 }
 
-pub(super) unsafe fn vsignalWarning(call: SEXP, format: *const c_char) {
+pub(super) fn vsignalWarning(call: SEXP, format: *const c_char) {
     unsafe {
         // Calling handlers first (upstream signals the simpleWarning
         // through R_HandlerStack before any default emission): a handler
@@ -1154,8 +1154,8 @@ pub(super) unsafe fn vsignalWarning(call: SEXP, format: *const c_char) {
 }
 
 /// Issue an immediate warning (bypass collection).
-pub unsafe fn warningcall_immediate(call: SEXP, format: *const c_char) {
-    unsafe {
+pub fn warningcall_immediate(call: SEXP, format: *const c_char) {
+     {
         let prev = immediate_warning();
         set_immediate_warning(true);
         vwarningcall_dflt(call, format, ptr::null_mut());
@@ -1164,16 +1164,16 @@ pub unsafe fn warningcall_immediate(call: SEXP, format: *const c_char) {
 }
 
 /// Issue a warning (without call).
-pub unsafe fn Rf_warning(format: *const c_char) {
-    unsafe {
+pub fn Rf_warning(format: *const c_char) {
+     {
         let call = getCurrentCall();
         warningcall(call, format);
     }
 }
 
 /// Issue an immediate warning (without call).
-pub unsafe fn Rf_warning_immediate(format: *const c_char) {
-    unsafe {
+pub fn Rf_warning_immediate(format: *const c_char) {
+     {
         let call = getCurrentCall();
         warningcall_immediate(call, format);
     }
@@ -1181,7 +1181,7 @@ pub unsafe fn Rf_warning_immediate(format: *const c_char) {
 
 /// Issue a formatted warning with call (Rust helper).
 /// Equivalent to C's `warningcall(call, "%s", msg)`.
-pub unsafe fn Rf_warningcall1(call: SEXP, msg: *const c_char) {
+pub fn Rf_warningcall1(call: SEXP, msg: *const c_char) {
     unsafe {
         let msg_str = if msg.is_null() {
             ""
@@ -1195,8 +1195,8 @@ pub unsafe fn Rf_warningcall1(call: SEXP, msg: *const c_char) {
 
 /// Issue a formatted warning without call (Rust helper).
 /// Equivalent to C's `warning("%s", msg)`.
-pub unsafe fn Rf_warning1(msg: *const c_char) {
-    unsafe {
+pub fn Rf_warning1(msg: *const c_char) {
+     {
         let call = getCurrentCall();
         Rf_warningcall1(call, msg);
     }
@@ -1249,7 +1249,7 @@ pub fn mathlib_warning_call() -> SEXP {
 /// Unlike errors/warnings, messages do not terminate or indicate problems.
 ///
 /// Ported from R's `Rf_message()` concept.
-pub unsafe fn Rf_message(format: *const c_char) {
+pub fn Rf_message(format: *const c_char) {
     unsafe {
         if format.is_null() {
             println!();
@@ -1264,8 +1264,8 @@ pub unsafe fn Rf_message(format: *const c_char) {
 
 /// Issue a message with call.
 /// Ported from R's message handling in errors.c.
-pub unsafe fn messagecall(call: SEXP, format: *const c_char) {
-    unsafe {
+pub fn messagecall(call: SEXP, format: *const c_char) {
+     {
         // In C, message() doesn't use the call for display,
         // but it's passed for consistency
         let _ = call; // suppress unused warning
@@ -1278,7 +1278,7 @@ pub unsafe fn messagecall(call: SEXP, format: *const c_char) {
 /// When append=FALSE (default), the message starts on a new line.
 ///
 /// This matches R's `message(..., appendLF = TRUE)` behavior.
-pub unsafe fn Rf_message_append(format: *const c_char, append: c_int) {
+pub fn Rf_message_append(format: *const c_char, append: c_int) {
     unsafe {
         if format.is_null() {
             if append == 0 {
@@ -1298,7 +1298,7 @@ pub unsafe fn Rf_message_append(format: *const c_char, append: c_int) {
 
 /// do_message — R's message() builtin.
 /// Ported from errors.c.
-pub unsafe fn do_message(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_message(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
 

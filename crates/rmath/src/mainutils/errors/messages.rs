@@ -31,7 +31,7 @@ pub mod warning_codes {
 
 /// ErrorMessage — look up an error message from the database and call errorcall.
 /// Matches C: `void ErrorMessage(SEXP call, int which_error, ...)`
-pub unsafe fn ErrorMessage(call: SEXP, which_error: c_int, format: *const c_char) {
+pub fn ErrorMessage(call: SEXP, which_error: c_int, format: *const c_char) {
     unsafe {
         let messages = [
             "invalid number of arguments",
@@ -63,8 +63,8 @@ pub unsafe fn ErrorMessage(call: SEXP, which_error: c_int, format: *const c_char
 
 /// WarningMessage — look up a warning message from the database and call warningcall.
 /// Matches C: `void WarningMessage(SEXP call, R_WARNING which_warn, ...)`
-pub unsafe fn WarningMessage(call: SEXP, which_warn: c_int, format: *const c_char) {
-    unsafe {
+pub fn WarningMessage(call: SEXP, which_warn: c_int, format: *const c_char) {
+     {
         let messages = [
             "NAs introduced by coercion",
             "inaccurate integer conversion in coercion",
@@ -88,8 +88,8 @@ pub unsafe fn WarningMessage(call: SEXP, which_warn: c_int, format: *const c_cha
 // ---------------------------------------------------------------------------
 
 /// do_gettext — R's gettext() function (simplified, no i18n).
-pub unsafe fn do_gettext(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_gettext(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+     {
         // Simplified: just return the string as-is (no translation)
         let string = CADR(args);
         if isNull(string) != 0 || LENGTH(string) == 0 {
@@ -100,7 +100,7 @@ pub unsafe fn do_gettext(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 /// do_ngettext — R's ngettext() function (simplified, no i18n).
-pub unsafe fn do_ngettext(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_ngettext(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
         let n = {
@@ -145,7 +145,7 @@ pub unsafe fn do_ngettext(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 /// do_bindtextdomain — R's bindtextdomain() function (simplified, no i18n).
-pub unsafe fn do_bindtextdomain(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_bindtextdomain(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
 
@@ -174,7 +174,7 @@ pub unsafe fn do_bindtextdomain(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> 
 }
 
 #[cfg(not(any(target_os = "android", target_arch = "wasm32")))]
-unsafe fn bindtextdomain_impl(
+fn bindtextdomain_impl(
     domain_ptr: *const std::os::raw::c_char,
     dirname_ptr: *const std::os::raw::c_char,
 ) -> *mut std::os::raw::c_char {
@@ -182,7 +182,7 @@ unsafe fn bindtextdomain_impl(
 }
 
 #[cfg(any(target_os = "android", target_arch = "wasm32"))]
-unsafe fn bindtextdomain_impl(
+fn bindtextdomain_impl(
     domain_ptr: *const std::os::raw::c_char,
     dirname_ptr: *const std::os::raw::c_char,
 ) -> *mut std::os::raw::c_char {
@@ -193,7 +193,7 @@ unsafe fn bindtextdomain_impl(
     }
 }
 
-unsafe fn sexp_string_cstr(value: SEXP) -> Option<std::ffi::CString> {
+fn sexp_string_cstr(value: SEXP) -> Option<std::ffi::CString> {
     unsafe {
         if isNull(value) != 0 {
             return None;

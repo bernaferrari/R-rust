@@ -14,7 +14,7 @@ use super::*;
 
 /// R's UseMethod() primitive. This is a SPECIALSXP that implements the
 /// full UseMethod dispatch protocol.
-pub unsafe fn do_usemethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub fn do_usemethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         crate::mainutils::seq::check1arg(args, call, c"generic".as_ptr());
         // UseMethod takes two arguments: generic and (optionally) object
@@ -144,7 +144,7 @@ pub unsafe fn do_usemethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP
 
 /// Read the S3 dispatch variables (.Generic, .Group, .Class, .Method,
 /// .GenericCallEnv, .GenericDefEnv) from the method's evaluation frame.
-pub unsafe fn readS3VarsFromFrame(
+pub fn readS3VarsFromFrame(
     frame: SEXP,
     generic: *mut SEXP,
     group: *mut SEXP,
@@ -194,7 +194,7 @@ pub unsafe fn readS3VarsFromFrame(
 ///
 /// Implements the NextMethod protocol for S3 dispatch.
 #[allow(clippy::if_same_then_else)]
-pub unsafe fn do_nextmethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub fn do_nextmethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let cptr = R_GlobalContext();
         if cptr.is_null() {
