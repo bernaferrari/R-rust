@@ -134,25 +134,23 @@ pub unsafe fn warningcall(call: SEXP, format: *const c_char) {
 /// treats non-vector nodes as length 1, matching R's `Rinlinedfuns.h`
 /// `xlength()` used by `do_seq()` for `along.with`.
 #[inline(always)]
-pub unsafe fn xlength(s: SEXP) -> R_xlen_t {
-    unsafe {
-        if s.is_null() || s == R_NilValue() {
-            return 0;
+pub fn xlength(s: SEXP) -> R_xlen_t {
+    if s.is_null() || s == R_NilValue() {
+        return 0;
+    }
+    let t = TYPEOF(s);
+    if t == LISTSXP_VAL || t == LANGSXP_VAL || t == DOTSXP_VAL {
+        let mut n: R_xlen_t = 0;
+        let mut cur = s;
+        while !cur.is_null() && cur != R_NilValue() {
+            n += 1;
+            cur = CDR(cur);
         }
-        let t = TYPEOF(s);
-        if t == LISTSXP_VAL || t == LANGSXP_VAL || t == DOTSXP_VAL {
-            let mut n: R_xlen_t = 0;
-            let mut cur = s;
-            while !cur.is_null() && cur != R_NilValue() {
-                n += 1;
-                cur = CDR(cur);
-            }
-            n
-        } else if isVector(s) != 0 {
-            XLENGTH(s)
-        } else {
-            1 // symbols, environments, ... (C xlength default)
-        }
+        n
+    } else if isVector(s) != 0 {
+        XLENGTH(s)
+    } else {
+        1 // symbols, environments, ... (C xlength default)
     }
 }
 
@@ -341,16 +339,16 @@ pub unsafe fn asBool2(x: SEXP, call: SEXP) -> c_int {
     unsafe { crate::mainutils::coerce::asRbool(x, call) }
 }
 
-pub unsafe fn isVector(x: SEXP) -> c_int {
-    unsafe { Rf_isVector(x) }
+pub fn isVector(x: SEXP) -> c_int {
+    Rf_isVector(x)
 }
 
-pub unsafe fn isInteger(x: SEXP) -> c_int {
-    unsafe { Rf_isInteger(x) }
+pub fn isInteger(x: SEXP) -> c_int {
+    Rf_isInteger(x)
 }
 
-pub unsafe fn isReal(x: SEXP) -> c_int {
-    unsafe { Rf_isReal(x) }
+pub fn isReal(x: SEXP) -> c_int {
+    Rf_isReal(x)
 }
 
 pub unsafe fn ScalarReal(x: c_double) -> SEXP {

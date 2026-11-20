@@ -67,7 +67,7 @@ const SYMSXP: c_int = 1;
 // ---------------------------------------------------------------------------
 
 unsafe fn getCharCE(s: SEXP) -> c_int {
-    unsafe { crate::sexp::accessors::getCharCE(s) }
+    crate::sexp::accessors::getCharCE(s)
 }
 
 unsafe fn coerceVector(s: SEXP, t: c_int) -> SEXP {

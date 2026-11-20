@@ -69,19 +69,14 @@ unsafe fn DispatchGroup(
 
 /// Check if an object has no references (NAMED == 0).
 #[inline]
-unsafe fn NO_REFERENCES(x: SEXP) -> c_int {
-    unsafe { crate::mainutils::relop::NO_REFERENCES(x) }
+fn NO_REFERENCES(x: SEXP) -> c_int {
+    crate::mainutils::relop::NO_REFERENCES(x)
 }
 
 /// Check if an object is an S4 object.
 #[inline]
-unsafe fn IS_S4_OBJECT(x: SEXP) -> c_int {
-    unsafe {
-        if x.is_null() {
-            return 0;
-        }
-        (((*x).sxpinfo.gp() & S4_OBJECT_MASK) != 0) as c_int
-    }
+fn IS_S4_OBJECT(x: SEXP) -> c_int {
+    crate::sexp::accessors::checked_s4_object_flag(x)
 }
 
 /// Set the S4 object flag.

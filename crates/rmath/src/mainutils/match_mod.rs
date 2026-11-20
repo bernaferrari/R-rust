@@ -151,7 +151,7 @@ unsafe fn translateCharUTF8(s: SEXP) -> *const c_char {
 
 #[inline(always)]
 unsafe fn getCharCE(s: SEXP) -> c_int {
-    unsafe { crate::sexp::accessors::getCharCE(s) }
+    crate::sexp::accessors::getCharCE(s)
 }
 
 /// checkArity — shared primitive arity validation.

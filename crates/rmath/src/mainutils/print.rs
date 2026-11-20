@@ -310,8 +310,8 @@ unsafe fn isDataFrame(_x: SEXP) -> c_int {
     0
 }
 
-unsafe fn IS_S4_OBJECT(x: SEXP) -> c_int {
-    unsafe { crate::mainutils::objects::IS_S4_OBJECT(x) }
+fn IS_S4_OBJECT(x: SEXP) -> c_int {
+    crate::mainutils::objects::IS_S4_OBJECT(x)
 }
 
 unsafe fn isMethodsDispatchOn() -> c_int {

@@ -303,6 +303,13 @@ pub unsafe fn SET_OBJECT(x: SEXP, v: c_int) {
 /// S4 object bit (gp bit 4), matching Rinternals.h `SET_S4_OBJECT`/`IS_S4_OBJECT`.
 pub const S4_OBJECT_MASK: u16 = 1 << 4;
 
+/// Read the S4 object bit from a checked header.
+pub(crate) fn checked_s4_object_flag(x: SEXP) -> c_int {
+    header_snapshot(x).map_or(0, |header| {
+        c_int::from(header.sxpinfo.gp() & S4_OBJECT_MASK != 0)
+    })
+}
+
 /// Set the S4 object bit (gp bit 4).
 pub unsafe fn SET_S4_OBJECT(x: SEXP) {
     mutate_header(x, |header| {
@@ -1856,7 +1863,7 @@ pub unsafe fn translateCharUTF8(x: SEXP) -> *const c_char {
 
 /// getCharCE: return the character encoding of a CHARSXP.
 /// Uses GNU's native0/UTF8=1/Latin1=2/bytes=3 compatibility numbers.
-pub unsafe fn getCharCE(x: SEXP) -> c_int {
+pub fn getCharCE(x: SEXP) -> c_int {
     let gp = header_snapshot(x).map_or(0, |header| header.sxpinfo.gp());
     TextEncoding::from_gp(gp).as_gnu()
 }

@@ -122,7 +122,7 @@ pub unsafe fn compcases(args: SEXP) -> SEXP {
             s = CDR(s);
             continue;
         }
-        if unsafe { Rf_isList(car) } != 0 {
+        if Rf_isList(car) != 0 {
             let mut t = car;
             while !t.is_null() && t != nil {
                 let u = CAR(t);
@@ -256,7 +256,7 @@ pub unsafe fn compcases(args: SEXP) -> SEXP {
             s = CDR(s);
             continue;
         }
-        if unsafe { Rf_isList(car) } != 0 {
+        if Rf_isList(car) != 0 {
             let mut t = car;
             while !t.is_null() && t != nil {
                 let u = CAR(t);

@@ -179,17 +179,17 @@ pub(crate) unsafe fn isArray(x: SEXP) -> bool {
 }
 
 #[inline]
-pub(crate) unsafe fn isString(x: SEXP) -> bool {
+pub(crate) fn isString(x: SEXP) -> bool {
     TYPEOF(x) == STRSXP
 }
 
 #[inline]
-pub(crate) unsafe fn isInteger(x: SEXP) -> bool {
+pub(crate) fn isInteger(x: SEXP) -> bool {
     TYPEOF(x) == INTSXP
 }
 
 #[inline]
-pub(crate) unsafe fn isReal(x: SEXP) -> bool {
+pub(crate) fn isReal(x: SEXP) -> bool {
     TYPEOF(x) == REALSXP
 }
 
@@ -209,14 +209,8 @@ pub(crate) fn ISNA(x: c_double) -> bool {
 
 /// Check if an object has the S4 bit set.
 #[inline]
-pub(crate) unsafe fn IS_S4_OBJECT(x: SEXP) -> c_int {
-    unsafe {
-        if x.is_null() {
-            return 0;
-        }
-        let s4_mask: u16 = 1 << 4;
-        (((*x).sxpinfo.gp() & s4_mask) != 0) as c_int
-    }
+pub(crate) fn IS_S4_OBJECT(x: SEXP) -> c_int {
+    crate::sexp::accessors::checked_s4_object_flag(x)
 }
 
 /// Set the S4 bit on an object.

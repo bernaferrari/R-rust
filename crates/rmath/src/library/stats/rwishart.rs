@@ -46,7 +46,7 @@ unsafe fn isMatrix(x: SEXP) -> bool {
 }
 
 unsafe fn isReal(x: SEXP) -> bool {
-    unsafe { crate::main::coerce::isReal(x) != 0 }
+    crate::main::coerce::isReal(x) != 0
 }
 
 unsafe fn alloc3DArray(sexptype: c_int, nrow: c_int, ncol: c_int, ndepth: c_int) -> SEXP {

@@ -406,7 +406,7 @@ pub(crate) fn format_list_child(elem: Sexp<'_>, path: &str) -> String {
 // next method. A caught error must not discard earlier output or move a
 // method's stderr/message traffic out of its original capture/sink order.
 pub(crate) fn print_list_child(elem: Sexp<'_>, path: &str) {
-    if unsafe { crate::mainutils::coerce::IS_S4_OBJECT(elem.as_raw()) } != 0 {
+    if crate::mainutils::coerce::IS_S4_OBJECT(elem.as_raw()) != 0 {
         print_value(elem);
     } else if dispatch_print_method(elem.clone()).is_some() {
         // The method wrote directly into the caller's capture.

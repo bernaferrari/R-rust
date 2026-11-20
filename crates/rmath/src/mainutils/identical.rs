@@ -85,24 +85,14 @@ const IDENT_EXTPTR_AS_REF: c_int = 64;
 
 /// Check if an SEXP has the OBJECT flag set (local helper).
 #[inline]
-unsafe fn OBJECT(x: SEXP) -> c_int {
-    unsafe {
-        if x.is_null() {
-            return 0;
-        }
-        (*x).sxpinfo.obj() as c_int
-    }
+fn OBJECT(x: SEXP) -> c_int {
+    crate::sexp::accessors::OBJECT(x)
 }
 
 /// Check if an SEXP has the S4 bit set in gp (GNU `S4_OBJECT_MASK` = 1<<4).
 #[inline]
-unsafe fn IS_S4_OBJECT(x: SEXP) -> c_int {
-    unsafe {
-        if x.is_null() {
-            return 0;
-        }
-        ((*x).sxpinfo.gp() >> 4) as c_int & 1
-    }
+fn IS_S4_OBJECT(x: SEXP) -> c_int {
+    crate::sexp::accessors::checked_s4_object_flag(x)
 }
 
 // ---------------------------------------------------------------------------

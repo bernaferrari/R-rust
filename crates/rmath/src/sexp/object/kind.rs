@@ -4,29 +4,26 @@ use super::header::NodeBody;
 use super::{SexpResult, SexpView};
 use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
 
+/// Copy the kind of a checked singleton or live registered generation.
+pub(crate) fn checked_raw_type(ptr: SEXP) -> Option<SEXPTYPE> {
+    if let Some(singleton) = crate::sexp::globals::immutable_singleton_lease(ptr) {
+        Some(singleton.snapshot().sxpinfo.type_of())
+    } else {
+        let (_, _, header) = super::admit_registered_raw(ptr).ok()?;
+        Some(header.sxpinfo.type_of())
+    }
+}
+
 /// Return whether a raw pointer is an atomic vector.
-///
-/// This keeps legacy C-shaped entry points from open-coding numeric type tags
-/// while preserving their null-tolerant predicate semantics.
 #[inline]
 pub(crate) fn raw_is_atomic_vector(ptr: SEXP) -> bool {
-    unsafe {
-        /* SAFETY: caller established graph liveness and excludes payload mutation. */
-        Sexp::from_raw(ptr)
-    }
-    .is_some_and(|sexp| sexp.is_atomic())
+    checked_raw_type(ptr).is_some_and(SEXPTYPE::is_atomic_type)
 }
 
 /// Return whether a raw pointer is any R vector type.
-///
-/// This is the raw-boundary companion to [`Sexp::is_vector`].
 #[inline]
 pub(crate) fn raw_is_vector(ptr: SEXP) -> bool {
-    unsafe {
-        /* SAFETY: caller established graph liveness and excludes payload mutation. */
-        Sexp::from_raw(ptr)
-    }
-    .is_some_and(|sexp| sexp.is_vector())
+    checked_raw_type(ptr).is_some_and(SEXPTYPE::is_vector_type)
 }
 
 impl<'a> Sexp<'a> {

@@ -159,7 +159,7 @@ struct NestedDispatch<'a, 's> {
 
 impl NestedDispatch<'_, '_> {
     fn test(&self, value: &Sexp<'_>, check: &impl Fn()) -> bool {
-        if !value.is_object() && unsafe { super::IS_S4_OBJECT(value.as_raw()) } == 0 {
+        if !value.is_object() && super::IS_S4_OBJECT(value.as_raw()) == 0 {
             return false;
         }
         let factory = self

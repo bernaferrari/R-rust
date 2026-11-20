@@ -165,69 +165,63 @@ pub unsafe fn SETCADR(x: SEXP, v: SEXP) {
 
 /// Get the extended length of an SEXP (same as XLENGTH for non-pairlist).
 #[inline(always)]
-pub unsafe fn xlength(x: SEXP) -> R_xlen_t {
-    unsafe {
-        if x.is_null() || x == R_NilValue() {
-            return 0;
+pub fn xlength(x: SEXP) -> R_xlen_t {
+    if x.is_null() || x == R_NilValue() {
+        return 0;
+    }
+    let t = TYPEOF(x);
+    if t == LISTSXP_I || t == LANGSXP_I || t == DOTSXP_I {
+        let mut count: R_xlen_t = 0;
+        let mut current = x;
+        while !current.is_null() && current != R_NilValue() {
+            count += 1;
+            current = CDR(current);
         }
-        let t = TYPEOF(x);
-        if t == LISTSXP_I || t == LANGSXP_I || t == DOTSXP_I {
-            let mut count: R_xlen_t = 0;
-            let mut current = x;
-            while !current.is_null() && current != R_NilValue() {
-                count += 1;
-                current = CDR(current);
-            }
-            count
-        } else {
-            XLENGTH(x)
-        }
+        count
+    } else {
+        XLENGTH(x)
     }
 }
 
 /// Get the length of an SEXP (c_int version).
 #[inline(always)]
-pub unsafe fn length(x: SEXP) -> c_int {
-    unsafe {
-        if x.is_null() || x == R_NilValue() {
-            return 0;
+pub fn length(x: SEXP) -> c_int {
+    if x.is_null() || x == R_NilValue() {
+        return 0;
+    }
+    let t = TYPEOF(x);
+    if t == LISTSXP_I || t == LANGSXP_I || t == DOTSXP_I {
+        let mut count: c_int = 0;
+        let mut current = x;
+        while !current.is_null() && current != R_NilValue() {
+            count += 1;
+            current = CDR(current);
         }
-        let t = TYPEOF(x);
-        if t == LISTSXP_I || t == LANGSXP_I || t == DOTSXP_I {
-            let mut count: c_int = 0;
-            let mut current = x;
-            while !current.is_null() && current != R_NilValue() {
-                count += 1;
-                current = CDR(current);
-            }
-            count
-        } else {
-            LENGTH(x)
-        }
+        count
+    } else {
+        LENGTH(x)
     }
 }
 
 /// Check if x is a vector type (atomic or generic).
 #[inline(always)]
-pub unsafe fn isVector(x: SEXP) -> c_int {
-    unsafe {
-        if x.is_null() {
-            return 0;
-        }
-        let t = TYPEOF(x);
-        if t == LGLSXP_I
-            || t == INTSXP_I
-            || t == REALSXP_I
-            || t == CPLXSXP_I
-            || t == STRSXP_I
-            || t == RAWSXP_I
-            || t == VECSXP_I
-            || t == EXPRSXP_I
-        {
-            1
-        } else {
-            0
-        }
+pub fn isVector(x: SEXP) -> c_int {
+    if x.is_null() {
+        return 0;
+    }
+    let t = TYPEOF(x);
+    if t == LGLSXP_I
+        || t == INTSXP_I
+        || t == REALSXP_I
+        || t == CPLXSXP_I
+        || t == STRSXP_I
+        || t == RAWSXP_I
+        || t == VECSXP_I
+        || t == EXPRSXP_I
+    {
+        1
+    } else {
+        0
     }
 }
 

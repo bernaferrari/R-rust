@@ -8,6 +8,7 @@
 use std::os::raw::{c_char, c_double, c_int};
 use std::ptr;
 
+use super::accessors::TYPEOF;
 use super::ffi::{R_xlen_t, SEXP, SEXPTYPE};
 use super::globals::R_NilValue;
 use super::memory::{self};
@@ -325,7 +326,7 @@ pub unsafe fn Rf_length(x: SEXP) -> c_int {
             return 0;
         }
         // For pairlist, count the length
-        let t = (*x).sxpinfo.type_of();
+        let t = SEXPTYPE(TYPEOF(x));
         if t == SEXPTYPE::LISTSXP || t == SEXPTYPE::LANGSXP || t == SEXPTYPE::DOTSXP {
             let mut count = 0i32;
             let mut current = x;
@@ -347,9 +348,7 @@ pub unsafe fn Rf_length(x: SEXP) -> c_int {
             };
             walk(crate::sexp::accessors::FRAME(x));
             let hashtab = crate::sexp::accessors::HASHTAB(x);
-            if !hashtab.is_null()
-                && hashtab != R_NilValue()
-                && (*hashtab).sxpinfo.type_of() == SEXPTYPE::VECSXP
+            if !hashtab.is_null() && hashtab != R_NilValue() && TYPEOF(hashtab) == SEXPTYPE::VECSXP
             {
                 let n = crate::sexp::accessors::XLENGTH(hashtab);
                 for i in 0..n {
@@ -377,113 +376,69 @@ pub unsafe fn Rf_length(x: SEXP) -> c_int {
 }
 
 /// Check if an SEXP is a symbol.
-pub unsafe fn Rf_isSymbol(x: SEXP) -> c_int {
-    unsafe {
-        if x.is_null() {
-            return 0;
-        }
-        ((*x).sxpinfo.type_of() == SEXPTYPE::SYMSXP) as c_int
-    }
+pub fn Rf_isSymbol(x: SEXP) -> c_int {
+    c_int::from(TYPEOF(x) == SEXPTYPE::SYMSXP)
 }
 
 /// GNU's list predicate includes NULL and pairlists, but excludes calls.
-pub unsafe fn Rf_isList(x: SEXP) -> c_int {
-    // SAFETY: the compatibility caller retains a live allocation. The checked
-    // projection avoids dereferencing an arbitrary object header here.
-    unsafe { super::object::Sexp::from_raw(x) }
-        .is_some_and(|value| matches!(value.typeof_(), SEXPTYPE::NILSXP | SEXPTYPE::LISTSXP))
-        as c_int
+pub fn Rf_isList(x: SEXP) -> c_int {
+    c_int::from(matches!(
+        super::object::checked_raw_type(x),
+        Some(SEXPTYPE::NILSXP | SEXPTYPE::LISTSXP)
+    ))
 }
 
 /// Check if an SEXP is an integer vector.
-pub unsafe fn Rf_isInteger(x: SEXP) -> c_int {
-    unsafe {
-        if x.is_null() {
-            return 0;
-        }
-        ((*x).sxpinfo.type_of() == SEXPTYPE::INTSXP) as c_int
-    }
+pub fn Rf_isInteger(x: SEXP) -> c_int {
+    c_int::from(TYPEOF(x) == SEXPTYPE::INTSXP)
 }
 
 /// Check if an SEXP is a real (double) vector.
-pub unsafe fn Rf_isReal(x: SEXP) -> c_int {
-    unsafe {
-        if x.is_null() {
-            return 0;
-        }
-        ((*x).sxpinfo.type_of() == SEXPTYPE::REALSXP) as c_int
-    }
+pub fn Rf_isReal(x: SEXP) -> c_int {
+    c_int::from(TYPEOF(x) == SEXPTYPE::REALSXP)
 }
 
 /// Check if an SEXP is a complex vector.
-pub unsafe fn Rf_isComplex(x: SEXP) -> c_int {
-    unsafe {
-        if x.is_null() {
-            return 0;
-        }
-        ((*x).sxpinfo.type_of() == SEXPTYPE::CPLXSXP) as c_int
-    }
+pub fn Rf_isComplex(x: SEXP) -> c_int {
+    c_int::from(TYPEOF(x) == SEXPTYPE::CPLXSXP)
 }
 
 /// Check if an SEXP is a logical vector.
-pub unsafe fn Rf_isLogical(x: SEXP) -> c_int {
-    unsafe {
-        if x.is_null() {
-            return 0;
-        }
-        ((*x).sxpinfo.type_of() == SEXPTYPE::LGLSXP) as c_int
-    }
+pub fn Rf_isLogical(x: SEXP) -> c_int {
+    c_int::from(TYPEOF(x) == SEXPTYPE::LGLSXP)
 }
 
 /// Check if an SEXP is a character (string) vector.
-pub unsafe fn Rf_isString(x: SEXP) -> c_int {
-    unsafe {
-        if x.is_null() {
-            return 0;
-        }
-        ((*x).sxpinfo.type_of() == SEXPTYPE::STRSXP) as c_int
-    }
+pub fn Rf_isString(x: SEXP) -> c_int {
+    c_int::from(TYPEOF(x) == SEXPTYPE::STRSXP)
 }
 
 /// Check if an SEXP is a raw vector.
-pub unsafe fn Rf_isRaw(x: SEXP) -> c_int {
-    unsafe {
-        if x.is_null() {
-            return 0;
-        }
-        ((*x).sxpinfo.type_of() == SEXPTYPE::RAWSXP) as c_int
-    }
+pub fn Rf_isRaw(x: SEXP) -> c_int {
+    c_int::from(TYPEOF(x) == SEXPTYPE::RAWSXP)
 }
 
 /// Check if an SEXP is a vector (any atomic or generic vector type).
-pub unsafe fn Rf_isVector(x: SEXP) -> c_int {
+pub fn Rf_isVector(x: SEXP) -> c_int {
     crate::sexp::object::raw_is_vector(x) as c_int
 }
 
 /// Check if an SEXP is an atomic vector.
-pub unsafe fn Rf_isVectorAtomic(x: SEXP) -> c_int {
+pub fn Rf_isVectorAtomic(x: SEXP) -> c_int {
     crate::sexp::object::raw_is_atomic_vector(x) as c_int
 }
 
 /// Check if an SEXP is a function.
-pub unsafe fn Rf_isFunction(x: SEXP) -> c_int {
-    unsafe {
-        if x.is_null() {
-            return 0;
-        }
-        let t = (*x).sxpinfo.type_of().0;
-        (t == SEXPTYPE::CLOSXP || t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP) as c_int
-    }
+pub fn Rf_isFunction(x: SEXP) -> c_int {
+    let kind = TYPEOF(x);
+    c_int::from(
+        kind == SEXPTYPE::CLOSXP || kind == SEXPTYPE::BUILTINSXP || kind == SEXPTYPE::SPECIALSXP,
+    )
 }
 
 /// Check if an SEXP is an environment.
-pub unsafe fn Rf_isEnvironment(x: SEXP) -> c_int {
-    unsafe {
-        if x.is_null() {
-            return 0;
-        }
-        ((*x).sxpinfo.type_of() == SEXPTYPE::ENVSXP) as c_int
-    }
+pub fn Rf_isEnvironment(x: SEXP) -> c_int {
+    c_int::from(TYPEOF(x) == SEXPTYPE::ENVSXP)
 }
 
 #[cfg(test)]
@@ -523,6 +478,23 @@ mod tests {
                 );
             }
         });
+    }
+
+    #[test]
+    fn type_predicates_use_registered_address_without_dereferencing_it() {
+        let mut arena = super::super::memory::RArena::new();
+        let vector = arena.alloc_vector(SEXPTYPE::REALSXP, 1);
+        let address_only = ptr::without_provenance_mut(vector.addr());
+        assert_eq!(Rf_isReal(address_only), 1);
+        assert_eq!(Rf_isInteger(address_only), 0);
+        assert_eq!(Rf_isVector(address_only), 1);
+        assert_eq!(Rf_isVectorAtomic(address_only), 1);
+
+        let unregistered = SexprecCore::new(SEXPTYPE::REALSXP);
+        let pointer = ptr::from_ref(&unregistered).cast_mut();
+        assert_eq!(Rf_isVector(pointer), 0);
+        assert_eq!(Rf_isList(pointer), 0);
+        assert!(std::panic::catch_unwind(|| Rf_isReal(pointer)).is_err());
     }
 
     #[test]

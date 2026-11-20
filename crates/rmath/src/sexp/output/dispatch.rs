@@ -236,7 +236,7 @@ pub fn print_value(x: Sexp<'_>) {
     }
 
     // GNU auto-print of S4 objects goes through PrintValueEnv -> show().
-    if unsafe { crate::mainutils::objects::IS_S4_OBJECT(x.clone().as_raw()) } != 0 {
+    if crate::mainutils::objects::IS_S4_OBJECT(x.clone().as_raw()) != 0 {
         unsafe {
             crate::mainutils::print::PrintValueEnv(
                 x.clone().as_raw(),

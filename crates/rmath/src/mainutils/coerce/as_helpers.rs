@@ -121,8 +121,8 @@ pub unsafe fn asReal(x: SEXP) -> c_double {
 }
 
 /// Predicate helper kept for compatibility with translated library code.
-pub unsafe fn isReal(x: SEXP) -> c_int {
-    unsafe { crate::mainutils::relop::isReal(x) }
+pub fn isReal(x: SEXP) -> c_int {
+    crate::mainutils::relop::isReal(x)
 }
 
 // ---------------------------------------------------------------------------

@@ -180,7 +180,7 @@ impl Mode {
         if kind == SEXPTYPE::OBJSXP {
             return access.with_native(|_| {
                 Ok(
-                    (unsafe { crate::mainutils::coerce::IS_S4_OBJECT(value.as_raw()) } != 0)
+                    (crate::mainutils::coerce::IS_S4_OBJECT(value.as_raw()) != 0)
                         == self.s4,
                 )
             });

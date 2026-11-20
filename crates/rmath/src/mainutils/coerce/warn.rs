@@ -63,7 +63,7 @@ pub const WARN_RAW: c_int = 8;
 
 /// Get the extended length of an SEXP (handles NULL).
 #[inline]
-pub unsafe fn xlength(x: SEXP) -> R_xlen_t {
+pub fn xlength(x: SEXP) -> R_xlen_t {
     XLENGTH(x)
 }
 
@@ -81,52 +81,50 @@ pub fn isVector(x: SEXP) -> bool {
 
 /// Check if an SEXP is a vector list type.
 #[inline]
-pub unsafe fn isVectorList(x: SEXP) -> bool {
-    unsafe {
-        let t = TYPEOF(x);
-        t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP
-    }
+pub fn isVectorList(x: SEXP) -> bool {
+    let t = TYPEOF(x);
+    t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP
 }
 
 /// Check if an SEXP is a function.
 #[inline]
-pub unsafe fn isFunction(x: SEXP) -> bool {
-    unsafe { Rf_isFunction(x) != 0 }
+pub fn isFunction(x: SEXP) -> bool {
+    Rf_isFunction(x) != 0
 }
 
 /// Check if an SEXP is an environment.
 #[inline]
-pub unsafe fn isEnvironment(x: SEXP) -> bool {
-    unsafe { Rf_isEnvironment(x) != 0 }
+pub fn isEnvironment(x: SEXP) -> bool {
+    Rf_isEnvironment(x) != 0
 }
 
 /// Check if an SEXP is a symbol.
 #[inline]
-pub unsafe fn isSymbol(x: SEXP) -> bool {
-    unsafe { Rf_isSymbol(x) != 0 }
+pub fn isSymbol(x: SEXP) -> bool {
+    Rf_isSymbol(x) != 0
 }
 
 /// Check if an SEXP is a string vector.
 #[inline]
-pub unsafe fn isString(x: SEXP) -> bool {
-    unsafe { Rf_isString(x) != 0 }
+pub fn isString(x: SEXP) -> bool {
+    Rf_isString(x) != 0
 }
 
 /// Check if an SEXP is NULL.
 #[inline]
-pub unsafe fn isNull(x: SEXP) -> bool {
+pub fn isNull(x: SEXP) -> bool {
     Rf_isNull(x) != 0
 }
 
 /// Check if an SEXP is a list (pairlist).
 #[inline]
-pub unsafe fn isList(x: SEXP) -> bool {
-    unsafe { Rf_isList(x) != 0 }
+pub fn isList(x: SEXP) -> bool {
+    Rf_isList(x) != 0
 }
 
 /// Check if an SEXP is a language object.
 #[inline]
-pub unsafe fn isLanguage(x: SEXP) -> bool {
+pub fn isLanguage(x: SEXP) -> bool {
     TYPEOF(x) == SEXPTYPE::LANGSXP
 }
 
@@ -158,46 +156,38 @@ pub unsafe fn isVectorizable(x: SEXP) -> bool {
 
 /// Check if a SEXP is numeric (integer or real, but not logical).
 #[inline]
-pub unsafe fn isNumeric(x: SEXP) -> bool {
-    unsafe {
-        let t = TYPEOF(x);
-        (t == SEXPTYPE::INTSXP || t == SEXPTYPE::REALSXP) && isVector(x)
-    }
+pub fn isNumeric(x: SEXP) -> bool {
+    let t = TYPEOF(x);
+    (t == SEXPTYPE::INTSXP || t == SEXPTYPE::REALSXP) && isVector(x)
 }
 
 /// Check if a SEXP is logical.
 #[inline]
-pub unsafe fn isLogical(x: SEXP) -> bool {
-    unsafe { TYPEOF(x) == SEXPTYPE::LGLSXP && isVector(x) }
+pub fn isLogical(x: SEXP) -> bool {
+    TYPEOF(x) == SEXPTYPE::LGLSXP && isVector(x)
 }
 
 /// Check if an SEXP has the S4 object bit set.
 #[inline]
-pub unsafe fn IS_S4_OBJECT(x: SEXP) -> c_int {
-    unsafe {
-        if x.is_null() {
-            return 0;
-        }
-        // S4 is stored in bit 4 of gp (level field, upper bits)
-        ((*x).sxpinfo.gp() >> 4) as c_int & 1
-    }
+pub fn IS_S4_OBJECT(x: SEXP) -> c_int {
+    crate::sexp::accessors::checked_s4_object_flag(x)
 }
 
 /// Check if an SEXP has the OBJECT bit set.
 #[inline]
-pub unsafe fn isObject(x: SEXP) -> bool {
+pub fn isObject(x: SEXP) -> bool {
     OBJECT(x) != 0
 }
 
 /// Check if an SEXP is a new list (generic vector).
 #[inline]
-pub unsafe fn isNewList(x: SEXP) -> bool {
+pub fn isNewList(x: SEXP) -> bool {
     TYPEOF(x) == SEXPTYPE::VECSXP
 }
 
 /// Check if a SEXP is an expression.
 #[inline]
-pub unsafe fn isExpression(x: SEXP) -> bool {
+pub fn isExpression(x: SEXP) -> bool {
     TYPEOF(x) == SEXPTYPE::EXPRSXP
 }
 

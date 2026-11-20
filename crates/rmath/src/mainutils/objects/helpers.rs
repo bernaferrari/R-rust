@@ -138,7 +138,7 @@ pub(crate) unsafe fn asInteger(x: SEXP) -> c_int {
 }
 
 /// isNull check.
-pub(crate) unsafe fn isNull(x: SEXP) -> c_int {
+pub(crate) fn isNull(x: SEXP) -> c_int {
     Rf_isNull(x)
 }
 
@@ -156,49 +156,43 @@ pub(crate) unsafe fn asChar(x: SEXP) -> SEXP {
 }
 
 /// Get the length of an object.
-pub(crate) unsafe fn length(x: SEXP) -> c_int {
-    unsafe {
-        if x.is_null() {
-            return 0;
-        }
-        match TYPEOF(x) {
-            t if t == SEXPTYPE::LISTSXP || t == SEXPTYPE::LANGSXP || t == SEXPTYPE::DOTSXP => {
-                let mut n = 0;
-                let mut current = x;
-                while !current.is_null() && current != R_NilValue() {
-                    n += 1;
-                    current = CDR(current);
-                }
-                n
+pub(crate) fn length(x: SEXP) -> c_int {
+    if x.is_null() {
+        return 0;
+    }
+    match TYPEOF(x) {
+        t if t == SEXPTYPE::LISTSXP || t == SEXPTYPE::LANGSXP || t == SEXPTYPE::DOTSXP => {
+            let mut n = 0;
+            let mut current = x;
+            while !current.is_null() && current != R_NilValue() {
+                n += 1;
+                current = CDR(current);
             }
-            _ => LENGTH(x),
+            n
         }
+        _ => LENGTH(x),
     }
 }
 
 /// Check whether x is a promise that has been evaluated.
-unsafe fn PROMISE_IS_EVALUATED(x: SEXP) -> c_int {
-    unsafe {
-        if x.is_null() || TYPEOF(x) != SEXPTYPE::PROMSXP {
-            return FALSE;
-        }
-        let val = crate::sexp::accessors::PRVALUE(x);
-        if val.is_null() || val == R_NilValue() {
-            FALSE
-        } else {
-            TRUE
-        }
+fn PROMISE_IS_EVALUATED(x: SEXP) -> c_int {
+    if x.is_null() || TYPEOF(x) != SEXPTYPE::PROMSXP {
+        return FALSE;
+    }
+    let val = crate::sexp::accessors::PRVALUE(x);
+    if val.is_null() || val == R_NilValue() {
+        FALSE
+    } else {
+        TRUE
     }
 }
 
 /// Get the promise value (PRVALUE).
-unsafe fn PRVALUE(x: SEXP) -> SEXP {
-    unsafe {
-        if x.is_null() || TYPEOF(x) != SEXPTYPE::PROMSXP {
-            return R_NilValue();
-        }
-        crate::sexp::accessors::PRVALUE(x)
+fn PRVALUE(x: SEXP) -> SEXP {
+    if x.is_null() || TYPEOF(x) != SEXPTYPE::PROMSXP {
+        return R_NilValue();
     }
+    crate::sexp::accessors::PRVALUE(x)
 }
 
 /// Check if two CHARSXP values are equal (Seql).

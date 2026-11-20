@@ -503,110 +503,48 @@ pub unsafe fn sexptype2char(type_: SEXPTYPE) -> *const c_char {
 
 /// Check if SEXP is NULL (NILSXP). Returns c_int (0/1).
 /// Duplicate of sexp::accessors::Rf_isNull — kept for callers in this module.
-pub(crate) unsafe fn Rf_isNull_memory(s: SEXP) -> c_int {
-    unsafe {
-        if s.is_null() || s == R_NilValue() {
-            1
-        } else {
-            0
-        }
-    }
+pub(crate) fn Rf_isNull_memory(s: SEXP) -> c_int {
+    c_int::from(s.is_null() || s == R_NilValue())
 }
 
 /// Check if SEXP is a symbol.
-pub(crate) unsafe fn Rf_isSymbol_memory(s: SEXP) -> c_int {
-    unsafe {
-        if s.is_null() {
-            0
-        } else {
-            let t = TYPEOF(s);
-            if t == SEXPTYPE::SYMSXP { 1 } else { 0 }
-        }
-    }
+pub(crate) fn Rf_isSymbol_memory(s: SEXP) -> c_int {
+    Rf_isSymbol(s)
 }
 
 /// Check if SEXP is a logical vector.
-pub(crate) unsafe fn Rf_isLogical_memory(s: SEXP) -> c_int {
-    unsafe {
-        if s.is_null() {
-            0
-        } else {
-            let t = TYPEOF(s);
-            if t == SEXPTYPE::LGLSXP { 1 } else { 0 }
-        }
-    }
+pub(crate) fn Rf_isLogical_memory(s: SEXP) -> c_int {
+    Rf_isLogical(s)
 }
 
 /// Check if SEXP is a real (numeric) vector.
-pub(crate) unsafe fn Rf_isReal_memory(s: SEXP) -> c_int {
-    unsafe {
-        if s.is_null() {
-            0
-        } else {
-            let t = TYPEOF(s);
-            if t == SEXPTYPE::REALSXP { 1 } else { 0 }
-        }
-    }
+pub(crate) fn Rf_isReal_memory(s: SEXP) -> c_int {
+    Rf_isReal(s)
 }
 
 /// Check if SEXP is a complex vector.
-pub(crate) unsafe fn Rf_isComplex_memory(s: SEXP) -> c_int {
-    unsafe {
-        if s.is_null() {
-            0
-        } else {
-            let t = TYPEOF(s);
-            if t == SEXPTYPE::CPLXSXP { 1 } else { 0 }
-        }
-    }
+pub(crate) fn Rf_isComplex_memory(s: SEXP) -> c_int {
+    Rf_isComplex(s)
 }
 
 /// Check if SEXP is an expression.
-pub(crate) unsafe fn Rf_isExpression_memory(s: SEXP) -> c_int {
-    unsafe {
-        if s.is_null() {
-            0
-        } else {
-            let t = TYPEOF(s);
-            if t == SEXPTYPE::EXPRSXP { 1 } else { 0 }
-        }
-    }
+pub(crate) fn Rf_isExpression_memory(s: SEXP) -> c_int {
+    c_int::from(TYPEOF(s) == SEXPTYPE::EXPRSXP)
 }
 
 /// Check if SEXP is an environment.
-pub(crate) unsafe fn Rf_isEnvironment_memory(s: SEXP) -> c_int {
-    unsafe {
-        if s.is_null() {
-            0
-        } else {
-            let t = TYPEOF(s);
-            if t == SEXPTYPE::ENVSXP { 1 } else { 0 }
-        }
-    }
+pub(crate) fn Rf_isEnvironment_memory(s: SEXP) -> c_int {
+    Rf_isEnvironment(s)
 }
 
 /// Check if SEXP is a string (character vector).
-pub(crate) unsafe fn Rf_isString_memory(s: SEXP) -> c_int {
-    unsafe {
-        if s.is_null() {
-            0
-        } else {
-            let t = TYPEOF(s);
-            if t == SEXPTYPE::STRSXP { 1 } else { 0 }
-        }
-    }
+pub(crate) fn Rf_isString_memory(s: SEXP) -> c_int {
+    Rf_isString(s)
 }
 
 /// Check if SEXP is an S4 object.
-pub(crate) unsafe fn Rf_isObject_memory(s: SEXP) -> c_int {
-    unsafe {
-        if s.is_null() {
-            0
-        } else {
-            let t = TYPEOF(s);
-            if t == SEXPTYPE::OBJSXP { 1 } else { 0 }
-        }
-    }
+pub(crate) fn Rf_isObject_memory(s: SEXP) -> c_int {
+    c_int::from(TYPEOF(s) == SEXPTYPE::OBJSXP)
 }
 
 // ---------------------------------------------------------------------------

@@ -50,7 +50,7 @@ mod view;
 
 pub use error::{SexpError, SexpResult};
 pub(crate) use factory::{NodeAllocator, NodeDomain, SessionNodeFactory};
-pub(crate) use kind::{raw_is_atomic_vector, raw_is_vector};
+pub(crate) use kind::{checked_raw_type, raw_is_atomic_vector, raw_is_vector};
 pub use mut_ref::SexpMut;
 pub(crate) use pairlist::PairlistBuilder;
 pub use pairlist::PairlistIter;
@@ -217,6 +217,37 @@ const _: () = {
     }
 };
 
+/// Validate a raw lookup against a registered canonical generation without
+/// creating a Rust handle or exposing a payload loan.
+fn admit_registered_raw(ptr: SEXP) -> SexpResult<(SEXP, super::heap::CheckedNode, SexprecCore)> {
+    let (ptr, node) =
+        crate::sexp::memory::checked_projection(ptr).ok_or(SexpError::UnownedPointer {
+            address: ptr.addr(),
+        })?;
+    let heap = node.heap_identity();
+    let core = heap
+        .node_snapshot(&node)
+        .ok_or(SexpError::StaleAllocation)?;
+    if !core.has_valid_shape() {
+        return Err(SexpError::UnownedPointer {
+            address: ptr.addr(),
+        });
+    }
+    if let NodeBody::Vector(vector) = core.data {
+        let length = usize::try_from(vector.length).map_err(|_| SexpError::MissingData {
+            sexptype: core.sxpinfo.type_of(),
+        })?;
+        if !core.payload.is_empty() && heap.payload_lease(&node).is_none()
+            || core.payload.is_empty() && length > 0 && !core.sxpinfo.alt()
+        {
+            return Err(SexpError::MissingData {
+                sexptype: core.sxpinfo.type_of(),
+            });
+        }
+    }
+    Ok((ptr, node, core))
+}
+
 impl<'a> Sexp<'a> {
     /// Return R's immutable `NULL` singleton as an owner-independent handle.
     #[inline]
@@ -265,32 +296,7 @@ impl<'a> Sexp<'a> {
         } else if let Some(singleton) = crate::sexp::globals::immutable_singleton_lease(ptr) {
             Ok(Self::from_singleton_lease(singleton, None))
         } else {
-            let (ptr, node) =
-                crate::sexp::memory::checked_projection(ptr).ok_or(SexpError::UnownedPointer {
-                    address: ptr.addr(),
-                })?;
-            let heap = node.heap_identity();
-            let core = heap
-                .node_snapshot(&node)
-                .ok_or(SexpError::StaleAllocation)?;
-            if !core.has_valid_shape() {
-                return Err(SexpError::UnownedPointer {
-                    address: ptr.addr(),
-                });
-            }
-            if let NodeBody::Vector(vector) = core.data {
-                let length =
-                    usize::try_from(vector.length).map_err(|_| SexpError::MissingData {
-                        sexptype: core.sxpinfo.type_of(),
-                    })?;
-                if !core.payload.is_empty() && heap.payload_lease(&node).is_none()
-                    || core.payload.is_empty() && length > 0 && !core.sxpinfo.alt()
-                {
-                    return Err(SexpError::MissingData {
-                        sexptype: core.sxpinfo.type_of(),
-                    });
-                }
-            }
+            let (ptr, node, _) = admit_registered_raw(ptr)?;
             Ok(Sexp {
                 ptr,
                 owner: SexpOwner::Unknown,

@@ -148,46 +148,40 @@ pub(crate) unsafe fn is_data_frame(x: SEXP) -> bool {
 
 /// Check if x is NILSXP.
 #[inline]
-unsafe fn isNull(x: SEXP) -> bool {
-    unsafe { x.is_null() || x == R_NilValue() }
+fn isNull(x: SEXP) -> bool {
+    x.is_null() || x == R_NilValue()
 }
 
 /// Check if x is a pairlist (LISTSXP or LANGSXP but not DOTSXP).
 #[inline]
-unsafe fn isPairList(x: SEXP) -> bool {
-    unsafe {
-        let t = TYPEOF(x);
-        t == SEXPTYPE::LISTSXP || t == SEXPTYPE::LANGSXP
-    }
+fn isPairList(x: SEXP) -> bool {
+    let t = TYPEOF(x);
+    t == SEXPTYPE::LISTSXP || t == SEXPTYPE::LANGSXP
 }
 
 /// Check if x is NILSXP, LISTSXP, or LANGSXP (for $ operator).
 #[inline]
-unsafe fn isPairListOrNil(x: SEXP) -> bool {
-    unsafe {
-        let t = TYPEOF(x);
-        t == SEXPTYPE::NILSXP || t == SEXPTYPE::LISTSXP || t == SEXPTYPE::LANGSXP
-    }
+fn isPairListOrNil(x: SEXP) -> bool {
+    let t = TYPEOF(x);
+    t == SEXPTYPE::NILSXP || t == SEXPTYPE::LISTSXP || t == SEXPTYPE::LANGSXP
 }
 
 /// Check if x is a vector list (VECSXP or EXPRSXP).
 #[inline]
-unsafe fn isVectorList(x: SEXP) -> bool {
-    unsafe {
-        let t = TYPEOF(x);
-        t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP
-    }
+fn isVectorList(x: SEXP) -> bool {
+    let t = TYPEOF(x);
+    t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP
 }
 
 /// Check if x is an expression (EXPRSXP).
 #[inline]
-unsafe fn isExpression(x: SEXP) -> bool {
+fn isExpression(x: SEXP) -> bool {
     TYPEOF(x) == SEXPTYPE::EXPRSXP
 }
 
 /// Check if x is a language object (LANGSXP).
 #[inline]
-unsafe fn isLanguage(x: SEXP) -> bool {
+fn isLanguage(x: SEXP) -> bool {
     TYPEOF(x) == SEXPTYPE::LANGSXP
 }
 
@@ -228,7 +222,7 @@ unsafe fn pairlist_tag_names(x: SEXP) -> SEXP {
 
 /// Check if x is an environment.
 #[inline]
-unsafe fn isEnvironment(x: SEXP) -> bool {
+fn isEnvironment(x: SEXP) -> bool {
     TYPEOF(x) == SEXPTYPE::ENVSXP
 }
 
@@ -246,25 +240,25 @@ fn isVectorAtomic(x: SEXP) -> bool {
 
 /// Check if x is a symbol.
 #[inline]
-unsafe fn isSymbol(x: SEXP) -> bool {
+fn isSymbol(x: SEXP) -> bool {
     TYPEOF(x) == SEXPTYPE::SYMSXP
 }
 
 /// Check if x is a string vector.
 #[inline]
-unsafe fn isString(x: SEXP) -> bool {
+fn isString(x: SEXP) -> bool {
     TYPEOF(x) == SEXPTYPE::STRSXP
 }
 
 /// Check if x is a promise.
 #[inline]
-unsafe fn isPromise(x: SEXP) -> bool {
+fn isPromise(x: SEXP) -> bool {
     TYPEOF(x) == SEXPTYPE::PROMSXP
 }
 
 /// Check if x has the OBJECT bit set.
 #[inline]
-unsafe fn isObject(x: SEXP) -> bool {
+fn isObject(x: SEXP) -> bool {
     OBJECT(x) != 0
 }
 

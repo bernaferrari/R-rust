@@ -104,13 +104,11 @@ pub unsafe fn Seql(x: SEXP, y: SEXP) -> c_int {
 }
 
 /// Check if SEXP has no references (NAMED == 0).
-pub unsafe fn NO_REFERENCES(x: SEXP) -> c_int {
-    unsafe {
-        if x.is_null() {
-            return 0;
-        }
-        (NAMED(x) == 0) as c_int
+pub fn NO_REFERENCES(x: SEXP) -> c_int {
+    if x.is_null() {
+        return 0;
     }
+    (NAMED(x) == 0) as c_int
 }
 
 /// isTs -- returns 1 if x has a tsp attribute (time series).
@@ -345,99 +343,54 @@ pub unsafe fn RAW_RO(x: SEXP) -> *const Rbyte {
 }
 
 /// Helper for isNull -- matches R_NilValue.
-pub unsafe fn isNull(x: SEXP) -> c_int {
-    unsafe { (x == R_NilValue()) as c_int }
+pub fn isNull(x: SEXP) -> c_int {
+    c_int::from(x == R_NilValue())
 }
 
 /// Check if SEXP is a vector type.
-pub unsafe fn isVector(x: SEXP) -> c_int {
-    unsafe {
-        if x.is_null() {
-            return 0;
-        }
-        (*x).sxpinfo.type_of().is_vector_type() as c_int
-    }
+pub fn isVector(x: SEXP) -> c_int {
+    c_int::from(SEXPTYPE(TYPEOF(x)).is_vector_type())
 }
 
 /// Check if SEXP is SYMSXP.
-pub unsafe fn isSymbol(x: SEXP) -> c_int {
-    unsafe {
-        if x.is_null() {
-            return 0;
-        }
-        ((*x).sxpinfo.type_of() == SEXPTYPE::SYMSXP) as c_int
-    }
+pub fn isSymbol(x: SEXP) -> c_int {
+    crate::sexp::constructors::Rf_isSymbol(x)
 }
 
 /// Check if SEXP is LISTSXP.
-pub unsafe fn isPairList(x: SEXP) -> c_int {
-    unsafe {
-        if x.is_null() {
-            return 0;
-        }
-        ((*x).sxpinfo.type_of() == SEXPTYPE::LISTSXP) as c_int
-    }
+pub fn isPairList(x: SEXP) -> c_int {
+    c_int::from(TYPEOF(x) == SEXPTYPE::LISTSXP)
 }
 
 /// Check if SEXP is VECSXP or EXPRSXP.
-pub unsafe fn isVectorList(x: SEXP) -> c_int {
-    unsafe {
-        if x.is_null() {
-            return 0;
-        }
-        let t = (*x).sxpinfo.type_of();
-        (t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP) as c_int
-    }
+pub fn isVectorList(x: SEXP) -> c_int {
+    let kind = TYPEOF(x);
+    c_int::from(kind == SEXPTYPE::VECSXP || kind == SEXPTYPE::EXPRSXP)
 }
 
 /// Check if SEXP is STRSXP.
-pub unsafe fn isString(x: SEXP) -> c_int {
-    unsafe {
-        if x.is_null() {
-            return 0;
-        }
-        ((*x).sxpinfo.type_of() == SEXPTYPE::STRSXP) as c_int
-    }
+pub fn isString(x: SEXP) -> c_int {
+    crate::sexp::constructors::Rf_isString(x)
 }
 
 /// Check if SEXP is CPLXSXP.
-pub unsafe fn isComplex(x: SEXP) -> c_int {
-    unsafe {
-        if x.is_null() {
-            return 0;
-        }
-        ((*x).sxpinfo.type_of() == SEXPTYPE::CPLXSXP) as c_int
-    }
+pub fn isComplex(x: SEXP) -> c_int {
+    crate::sexp::constructors::Rf_isComplex(x)
 }
 
 /// Check if SEXP is REALSXP.
-pub unsafe fn isReal(x: SEXP) -> c_int {
-    unsafe {
-        if x.is_null() {
-            return 0;
-        }
-        ((*x).sxpinfo.type_of() == SEXPTYPE::REALSXP) as c_int
-    }
+pub fn isReal(x: SEXP) -> c_int {
+    crate::sexp::constructors::Rf_isReal(x)
 }
 
 /// Check if SEXP is INTSXP.
-pub unsafe fn isInteger(x: SEXP) -> c_int {
-    unsafe {
-        if x.is_null() {
-            return 0;
-        }
-        ((*x).sxpinfo.type_of() == SEXPTYPE::INTSXP) as c_int
-    }
+pub fn isInteger(x: SEXP) -> c_int {
+    crate::sexp::constructors::Rf_isInteger(x)
 }
 
 /// Check if SEXP is LGLSXP.
-pub unsafe fn isLogical(x: SEXP) -> c_int {
-    unsafe {
-        if x.is_null() {
-            return 0;
-        }
-        ((*x).sxpinfo.type_of() == SEXPTYPE::LGLSXP) as c_int
-    }
+pub fn isLogical(x: SEXP) -> c_int {
+    crate::sexp::constructors::Rf_isLogical(x)
 }
 
 /// Check if SEXP is a simple (no attribs) scalar.

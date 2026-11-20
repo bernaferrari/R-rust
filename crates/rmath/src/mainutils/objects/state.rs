@@ -63,14 +63,8 @@ pub(crate) fn evaluate_s4_value(
 
 /// Check whether the S4 object bit is set on an SEXP.
 /// The S4 bit is gp bit 4 (value 16) in R's SxpInfo.
-pub(crate) unsafe fn IS_S4_OBJECT(x: SEXP) -> c_int {
-    unsafe {
-        if x.is_null() {
-            return FALSE;
-        }
-        let gp = (*x).sxpinfo.gp();
-        if (gp & 16) != 0 { TRUE } else { FALSE }
-    }
+pub(crate) fn IS_S4_OBJECT(x: SEXP) -> c_int {
+    crate::sexp::accessors::checked_s4_object_flag(x)
 }
 
 /// Set the S4 object bit.
