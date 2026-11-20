@@ -125,7 +125,21 @@ pub(crate) static INTERNAL_NULL_STRING: &[u8] = b"(nil)\0";
 // Parameter structure
 // ============================================================================
 
-pub(crate) const TRIO_PARAMETER_ZERO: TrioParameter = unsafe { std::mem::zeroed() };
+pub(crate) const TRIO_PARAMETER_ZERO: TrioParameter = TrioParameter {
+    param_type: 0,
+    flags: 0,
+    width: 0,
+    precision: 0,
+    base: 0,
+    base_specifier: 0,
+    varsize: 0,
+    begin_offset: 0,
+    end_offset: 0,
+    position: 0,
+    data: TrioParameterData {
+        pointer: ptr::null_mut(),
+    },
+};
 
 #[derive(Clone, Copy)]
 #[repr(C)]
@@ -165,7 +179,47 @@ pub(crate) union TrioParameterNumber {
 
 impl Default for TrioParameter {
     fn default() -> Self {
-        unsafe { std::mem::zeroed() }
+        TRIO_PARAMETER_ZERO
+    }
+}
+
+impl TrioParameter {
+    /// Read the `number.as_signed` union arm. Union reads are inherently
+    /// unsafe; the caller selects the arm matching `param_type` (same contract
+    /// as the C code).
+    pub(crate) fn signed_value(&self) -> trio_intmax_t {
+        unsafe { self.data.number.as_signed }
+    }
+
+    /// Read the `number.as_unsigned` union arm (same contract as C).
+    pub(crate) fn unsigned_value(&self) -> trio_uintmax_t {
+        unsafe { self.data.number.as_unsigned }
+    }
+
+    /// Read the `longdouble_number` union arm (same contract as C).
+    pub(crate) fn float_value(&self) -> trio_long_double_t {
+        unsafe { self.data.longdouble_number }
+    }
+
+    /// Read the `string` union arm as a raw pointer (same contract as C).
+    pub(crate) fn string_ptr(&self) -> *mut c_char {
+        unsafe { self.data.string }
+    }
+
+    /// Read the `string` union arm and view it as bytes. The caller's contract
+    /// is that FORMAT_STRING parameters hold a NUL-terminated C string.
+    pub(crate) fn string_bytes(&self) -> Option<&[u8]> {
+        let p = self.string_ptr();
+        if p.is_null() {
+            None
+        } else {
+            Some(unsafe { std::ffi::CStr::from_ptr(p) }.to_bytes())
+        }
+    }
+
+    /// Read the `pointer` union arm (same contract as C).
+    pub(crate) fn raw_pointer(&self) -> trio_pointer_t {
+        unsafe { self.data.pointer }
     }
 }
 
@@ -804,26 +858,27 @@ pub(crate) fn trio_write_number<W: Write>(
 
 pub(crate) fn trio_write_string<W: Write>(
     out: &mut W,
-    string: *const c_char,
+    string: Option<&[u8]>,
     flags: trio_flags_t,
     width: c_int,
     precision: c_int,
 ) {
     let null_str: &[u8] = b"(nil)";
-    let (s, len): (*const c_char, usize) = if string.is_null() {
-        (null_str.as_ptr() as *const c_char, null_str.len())
-    } else {
-        let l = cstr_len(string);
-        let effective = if NO_PRECISION != precision && (precision as usize) < l {
-            precision as usize
-        } else {
-            l
-        };
-        (string, effective)
+    let s: &[u8] = match string {
+        None => null_str,
+        Some(bytes) => {
+            let l = bytes.len();
+            let effective = if NO_PRECISION != precision && (precision as usize) < l {
+                precision as usize
+            } else {
+                l
+            };
+            &bytes[..effective]
+        }
     };
 
     let mut width = width as isize;
-    width -= len as isize;
+    width -= s.len() as isize;
 
     if !(flags & FLAGS_LEFTADJUST != 0) {
         while width > 0 {
@@ -832,11 +887,8 @@ pub(crate) fn trio_write_string<W: Write>(
         }
     }
 
-    for i in 0..len {
-        unsafe {
-            let ch = *s.add(i);
-            trio_write_string_character(out, ch as u8, flags);
-        }
+    for &ch in s {
+        trio_write_string_character(out, ch, flags);
     }
 
     if flags & FLAGS_LEFTADJUST != 0 {
@@ -925,7 +977,7 @@ pub(crate) fn trio_write_double<W: Write>(
                 } else {
                     NAN_LOWER
                 };
-                trio_write_string(out, s.as_ptr() as *const c_char, flags, width, precision);
+                trio_write_string(out, Some(&s[..s.len() - 1]), flags, width, precision);
                 return;
             }
             TRIO_FP_INFINITE => {
@@ -939,7 +991,7 @@ pub(crate) fn trio_write_double<W: Write>(
                 }
                 trio_write_string(
                     out,
-                    s.as_ptr() as *const c_char,
+                    Some(&s[..s.len() - 1]),
                     flags,
                     width - (if is_negative { 1 } else { 0 }),
                     precision,
@@ -1258,18 +1310,8 @@ pub(crate) fn trio_write_double<W: Write>(
 }
 
 // ============================================================================
-// Helper: strlen for C strings
+// (cstr_len removed — strings now arrive as &[u8]/Option<&[u8]>)
 // ============================================================================
-
-fn cstr_len(s: *const c_char) -> usize {
-    unsafe {
-        let mut len = 0usize;
-        while *s.add(len) != 0 as c_char {
-            len += 1;
-        }
-        len
-    }
-}
 
 // ============================================================================
 // TrioFormatProcess - main formatting engine

@@ -39,7 +39,7 @@ fn trio_format_process<W: Write>(
         let flags = parameters[i].flags;
         let mut width = parameters[i].width;
         if flags & FLAGS_WIDTH_PARAMETER != 0 {
-            width = unsafe { parameters[width as usize].data.number.as_signed } as c_int;
+            width = parameters[width as usize].signed_value() as c_int;
             if width < 0 {
                 // Can't mutate flags here, so handle inline
                 let mut adj_flags = flags;
@@ -55,7 +55,7 @@ fn trio_format_process<W: Write>(
             precision = parameters[i].precision;
             if flags & FLAGS_PRECISION_PARAMETER != 0 {
                 precision =
-                    unsafe { parameters[precision as usize].data.number.as_signed } as c_int;
+                    parameters[precision as usize].signed_value() as c_int;
                 if precision < 0 {
                     precision = NO_PRECISION;
                 }
@@ -66,7 +66,7 @@ fn trio_format_process<W: Write>(
         if NO_BASE != parameters[i].base_specifier {
             base = parameters[i].base_specifier;
         } else if flags & FLAGS_BASE_PARAMETER != 0 {
-            base = unsafe { parameters[base as usize].data.number.as_signed } as c_int;
+            base = parameters[base as usize].signed_value() as c_int;
         }
 
         match parameters[i].param_type {
@@ -78,10 +78,11 @@ fn trio_format_process<W: Write>(
                         w -= 1;
                     }
                 }
-                unsafe {
-                    let ch = parameters[i].data.number.as_unsigned as u8;
-                    trio_write_string_character(out, ch, flags);
-                }
+                trio_write_string_character(
+                    out,
+                    parameters[i].unsigned_value() as u8,
+                    flags,
+                );
                 if flags & FLAGS_LEFTADJUST != 0 {
                     let mut w = width;
                     while w > 1 {
@@ -93,7 +94,7 @@ fn trio_format_process<W: Write>(
             FORMAT_INT => {
                 trio_write_number(
                     out,
-                    unsafe { parameters[i].data.number.as_unsigned },
+                    parameters[i].unsigned_value(),
                     flags,
                     width,
                     precision,
@@ -103,7 +104,7 @@ fn trio_format_process<W: Write>(
             FORMAT_DOUBLE => {
                 trio_write_double(
                     out,
-                    unsafe { parameters[i].data.longdouble_number },
+                    parameters[i].float_value(),
                     flags,
                     width,
                     precision,
@@ -113,14 +114,14 @@ fn trio_format_process<W: Write>(
             FORMAT_STRING => {
                 trio_write_string(
                     out,
-                    unsafe { parameters[i].data.string },
+                    parameters[i].string_bytes(),
                     flags,
                     width,
                     precision,
                 );
             }
             FORMAT_POINTER => {
-                let ptr = unsafe { parameters[i].data.pointer };
+                let ptr = parameters[i].raw_pointer();
                 if ptr.is_null() {
                     let _ = out.write(INTERNAL_NULL_STRING);
                 } else {
@@ -409,9 +410,11 @@ pub(crate) fn trio_format<W: Write>(out: &mut W, format: &[u8], args: &mut Forma
     let mut parameters: [TrioParameter; MAX_PARAMETERS] = [TRIO_PARAMETER_ZERO; MAX_PARAMETERS];
     parameters[MAX_PARAMETERS - 1].param_type = FORMAT_SENTINEL;
 
-    let fmt_str = unsafe { std::ffi::CStr::from_ptr(format.as_ptr() as *const c_char) }
-        .to_str()
-        .unwrap_or("");
+    // Read up to the first NUL (C-format semantics) without a raw-pointer read.
+    let fmt_str = {
+        let end = format.iter().position(|&b| b == 0).unwrap_or(format.len());
+        std::str::from_utf8(&format[..end]).unwrap_or("")
+    };
 
     let status = trio_parse(TYPE_PRINT, fmt_str, &mut parameters, args);
     if status < 0 {
@@ -648,7 +651,7 @@ fn trio_scan_process(
 
                 if flags & FLAGS_IGNORE == 0 {
                     assignment += 1;
-                    let pointer = unsafe { parameters[i].data.pointer };
+                    let pointer = parameters[i].raw_pointer();
                     if !pointer.is_null() {
                         unsafe {
                             if flags & FLAGS_SIZE_T != 0 {
@@ -689,7 +692,7 @@ fn trio_scan_process(
                 let mut count = 0usize;
                 while count < width_limit && ch != -1 && !(ch as u8).is_ascii_whitespace() {
                     if flags & FLAGS_IGNORE == 0 {
-                        let ptr = unsafe { parameters[i].data.string };
+                        let ptr = parameters[i].string_ptr();
                         if !ptr.is_null() {
                             unsafe {
                                 *ptr.add(count) = ch as c_char;
@@ -705,7 +708,7 @@ fn trio_scan_process(
                     };
                 }
                 if flags & FLAGS_IGNORE == 0 {
-                    let ptr = unsafe { parameters[i].data.string };
+                    let ptr = parameters[i].string_ptr();
                     if !ptr.is_null() {
                         unsafe {
                             *ptr.add(count) = 0;
@@ -767,7 +770,7 @@ fn trio_scan_process(
                             f64::INFINITY
                         };
                         let pointer = if flags & FLAGS_IGNORE == 0 {
-                            unsafe { parameters[i].data.pointer }
+                            parameters[i].raw_pointer()
                         } else {
                             ptr::null_mut()
                         };
@@ -787,7 +790,7 @@ fn trio_scan_process(
                         continue;
                     } else if db_upper.starts_with("NAN") {
                         let pointer = if flags & FLAGS_IGNORE == 0 {
-                            unsafe { parameters[i].data.pointer }
+                            parameters[i].raw_pointer()
                         } else {
                             ptr::null_mut()
                         };
@@ -924,7 +927,7 @@ fn trio_scan_process(
 
                 if flags & FLAGS_IGNORE == 0 {
                     assignment += 1;
-                    let pointer = unsafe { parameters[i].data.pointer };
+                    let pointer = parameters[i].raw_pointer();
                     if !pointer.is_null() {
                         unsafe {
                             *(pointer as *mut f64) = value;
@@ -941,7 +944,7 @@ fn trio_scan_process(
                 let mut cnt: usize = 0;
                 while cnt < w && ch != -1 {
                     if flags & FLAGS_IGNORE == 0 {
-                        let ptr = unsafe { parameters[i].data.string };
+                        let ptr = parameters[i].string_ptr();
                         if !ptr.is_null() {
                             unsafe {
                                 *ptr.add(cnt as usize) = ch as c_char;
@@ -961,7 +964,7 @@ fn trio_scan_process(
                 }
             }
             FORMAT_COUNT => {
-                let pointer = unsafe { parameters[i].data.pointer };
+                let pointer = parameters[i].raw_pointer();
                 if !pointer.is_null() {
                     let count_val = *input_pos as c_int;
                     unsafe {
@@ -1013,7 +1016,7 @@ fn trio_scan_process(
                 if got {
                     if flags & FLAGS_IGNORE == 0 {
                         assignment += 1;
-                        let ptr = unsafe { parameters[i].data.pointer };
+                        let ptr = parameters[i].raw_pointer();
                         if !ptr.is_null() {
                             unsafe {
                                 *(ptr as *mut trio_pointer_t) = num as trio_pointer_t;
@@ -1039,7 +1042,7 @@ fn trio_scan_process(
                     }
                     if matched && flags & FLAGS_IGNORE == 0 {
                         assignment += 1;
-                        let ptr = unsafe { parameters[i].data.pointer };
+                        let ptr = parameters[i].raw_pointer();
                         if !ptr.is_null() {
                             unsafe {
                                 *(ptr as *mut trio_pointer_t) = ptr::null_mut();
@@ -1089,60 +1092,34 @@ pub fn trio_printf_fmt(format: &str, args: &mut FormatArgs) -> c_int {
     result
 }
 
-/// Print to a string buffer using FormatArgs.
-pub fn trio_sprintf_fmt(buffer: *mut c_char, format: &str, args: &mut FormatArgs) -> c_int {
+/// Print into a byte buffer (NUL-terminated on completion) using FormatArgs.
+pub fn trio_sprintf_fmt(buffer: &mut Vec<u8>, format: &str, args: &mut FormatArgs) -> c_int {
     let format_bytes = format.as_bytes();
-
-    struct StringWriter {
-        buffer: *mut c_char,
-    }
-
-    impl Write for StringWriter {
-        fn write(&mut self, data: &[u8]) -> std::io::Result<usize> {
-            for &byte in data {
-                unsafe {
-                    *self.buffer = byte as c_char;
-                    self.buffer = self.buffer.add(1);
-                }
-            }
-            Ok(data.len())
-        }
-
-        fn flush(&mut self) -> std::io::Result<()> {
-            Ok(())
-        }
-    }
-
-    let mut writer = StringWriter { buffer };
-    let result = trio_format(&mut writer, format_bytes, args);
-    unsafe { *buffer = 0 };
+    let result = trio_format(buffer, format_bytes, args);
+    buffer.push(0);
     result
 }
 
-/// Print at most `max` characters to a string buffer using FormatArgs.
+/// Print at most `max` characters (incl. NUL) into a byte buffer using FormatArgs.
 pub fn trio_snprintf_fmt(
-    buffer: *mut c_char,
+    buffer: &mut Vec<u8>,
     max: usize,
     format: &str,
     args: &mut FormatArgs,
 ) -> c_int {
     let format_bytes = format.as_bytes();
 
-    struct MaxStringWriter {
-        buffer: *mut c_char,
+    struct MaxVecWriter<'a> {
+        buf: &'a mut Vec<u8>,
         remaining: usize,
     }
 
-    impl Write for MaxStringWriter {
+    impl Write for MaxVecWriter<'_> {
         fn write(&mut self, data: &[u8]) -> std::io::Result<usize> {
-            for &byte in data {
-                if self.remaining > 1 {
-                    unsafe {
-                        *self.buffer = byte as c_char;
-                        self.buffer = self.buffer.add(1);
-                        self.remaining -= 1;
-                    }
-                }
+            if self.remaining > 1 {
+                let n = data.len().min(self.remaining - 1);
+                self.buf.extend_from_slice(&data[..n]);
+                self.remaining -= n;
             }
             Ok(data.len())
         }
@@ -1152,28 +1129,24 @@ pub fn trio_snprintf_fmt(
         }
     }
 
-    if max == 0 || buffer.is_null() {
+    if max == 0 {
         let mut buf = Vec::new();
         return trio_format(&mut buf, format_bytes, args);
     }
 
-    let mut writer = MaxStringWriter {
-        buffer,
+    let mut writer = MaxVecWriter {
+        buf: buffer,
         remaining: max,
     };
     let result = trio_format(&mut writer, format_bytes, args);
-    unsafe { *buffer = 0 };
+    writer.buf.push(0);
     result
 }
 
-/// Scan from a string buffer using FormatArgs.
-pub fn trio_sscanf_fmt(buffer: *const c_char, format: &str, args: &mut FormatArgs) -> c_int {
+/// Scan from a C string using FormatArgs.
+pub fn trio_sscanf_fmt(buffer: &std::ffi::CStr, format: &str, args: &mut FormatArgs) -> c_int {
     let format_bytes = format.as_bytes();
-    let input = if buffer.is_null() {
-        &[] as &[u8]
-    } else {
-        unsafe { std::ffi::CStr::from_ptr(buffer).to_bytes() }
-    };
+    let input = buffer.to_bytes();
     let mut input_pos = 0usize;
 
     let mut parameters: [TrioParameter; MAX_PARAMETERS] = [TRIO_PARAMETER_ZERO; MAX_PARAMETERS];
@@ -1192,21 +1165,17 @@ pub fn trio_sscanf_fmt(buffer: *const c_char, format: &str, args: &mut FormatArg
 // ============================================================================
 
 /// String match (case-insensitive wildcard matching).
-pub fn trio_string_match(string: *const c_char, pattern: *const c_char) -> c_int {
-    unsafe {
-        let s = std::ffi::CStr::from_ptr(string).to_str().unwrap_or("");
-        let p = std::ffi::CStr::from_ptr(pattern).to_str().unwrap_or("");
-        if trio_match_impl(s, p) { 1 } else { 0 }
-    }
+pub fn trio_string_match(string: &std::ffi::CStr, pattern: &std::ffi::CStr) -> c_int {
+    let s = string.to_str().unwrap_or("");
+    let p = pattern.to_str().unwrap_or("");
+    if trio_match_impl(s, p) { 1 } else { 0 }
 }
 
 /// String contains (substring search).
-pub fn trio_string_contains(string: *const c_char, substring: *const c_char) -> c_int {
-    unsafe {
-        let s = std::ffi::CStr::from_ptr(string).to_str().unwrap_or("");
-        let sub = std::ffi::CStr::from_ptr(substring).to_str().unwrap_or("");
-        if s.contains(sub) { 1 } else { 0 }
-    }
+pub fn trio_string_contains(string: &std::ffi::CStr, substring: &std::ffi::CStr) -> c_int {
+    let s = string.to_str().unwrap_or("");
+    let sub = substring.to_str().unwrap_or("");
+    if s.contains(sub) { 1 } else { 0 }
 }
 
 /// Case-insensitive wildcard match implementation.
@@ -1256,21 +1225,17 @@ pub(crate) fn trio_match_impl(string: &str, pattern: &str) -> bool {
 // ============================================================================
 
 /// Wildcard string match (case-insensitive).
-pub fn trio_match(string: *const c_char, pattern: *const c_char) -> c_int {
-    unsafe {
-        let s = std::ffi::CStr::from_ptr(string).to_str().unwrap_or("");
-        let p = std::ffi::CStr::from_ptr(pattern).to_str().unwrap_or("");
-        if trio_match_impl(s, p) { 1 } else { 0 }
-    }
+pub fn trio_match(string: &std::ffi::CStr, pattern: &std::ffi::CStr) -> c_int {
+    let s = string.to_str().unwrap_or("");
+    let p = pattern.to_str().unwrap_or("");
+    if trio_match_impl(s, p) { 1 } else { 0 }
 }
 
 /// Check if string contains substring.
-pub fn trio_contains(string: *const c_char, substring: *const c_char) -> c_int {
-    unsafe {
-        let s = std::ffi::CStr::from_ptr(string).to_str().unwrap_or("");
-        let sub = std::ffi::CStr::from_ptr(substring).to_str().unwrap_or("");
-        if s.contains(sub) { 1 } else { 0 }
-    }
+pub fn trio_contains(string: &std::ffi::CStr, substring: &std::ffi::CStr) -> c_int {
+    let s = string.to_str().unwrap_or("");
+    let sub = substring.to_str().unwrap_or("");
+    if s.contains(sub) { 1 } else { 0 }
 }
 
 // ===========================================================================
