@@ -178,6 +178,72 @@ pub(crate) unsafe fn namespace_version(namespace: SEXP) -> Option<String> {
     }
 }
 
+fn is_portable_namespace(package: &str) -> bool {
+    package == "methods" || crate::library::portable_package::image(package).is_some()
+}
+
+fn is_builtin_namespace(package: &str) -> bool {
+    package == "datasets" || (cfg!(feature = "renderplot-device") && package == "grid")
+}
+
+unsafe fn check_loaded_requirement(
+    package: &str,
+    namespace: SEXP,
+    requirement: &NamespaceRequirement,
+) -> Result<(), String> {
+    unsafe {
+        let version = namespace_version(namespace)
+            .ok_or_else(|| format!("namespace ‘{package}’ has no version metadata"))?;
+        requirement.check(package, &version, true)
+    }
+}
+
+fn check_source_requirement(
+    package: &str,
+    directory: Option<&Path>,
+    requirement: &NamespaceRequirement,
+) -> Result<(), String> {
+    let version = if is_builtin_namespace(package)
+        || (directory.is_none() && is_portable_namespace(package))
+    {
+        crate::mainutils::compatibility_target::NUMERIC_VERSION.to_owned()
+    } else {
+        let directory =
+            directory.ok_or_else(|| format!("there is no package called '{package}'"))?;
+        read_package_text(&directory.join("DESCRIPTION"))
+            .map_err(|e| format!("could not read DESCRIPTION for '{package}': {e}"))
+            .and_then(|text| {
+                description_fields(&text)
+                    .remove("Version")
+                    .ok_or_else(|| format!("namespace ‘{package}’ has no version metadata"))
+            })?
+    };
+    requirement.check(package, &version, false)
+}
+
+/// Check a dependency before attaching packages or running namespace code.
+pub(super) unsafe fn check_declared_dependency(
+    package: &str,
+    requirement: &NamespaceRequirement,
+) -> Result<(), String> {
+    if package == "R" {
+        return requirement.check(
+            package,
+            crate::mainutils::compatibility_target::NUMERIC_VERSION,
+            true,
+        );
+    }
+    if let Some(namespace) = cached_namespace_by_name(package) {
+        return unsafe { check_loaded_requirement(package, namespace, requirement) };
+    }
+    let path = find_package_path(package);
+    check_source_requirement(
+        package,
+        (!path.is_empty()).then(|| Path::new(&path)),
+        requirement,
+    )
+}
+
 pub(crate) unsafe fn load_package_namespace_by_name(package: &str) -> Result<SEXP, String> {
     unsafe { load_package_namespace_checked(package, None, None) }
 }
@@ -189,7 +255,8 @@ pub(crate) unsafe fn load_package_namespace_checked(
 ) -> Result<SEXP, String> {
     unsafe {
         let package = package.strip_prefix("package:").unwrap_or(package);
-        if !package.starts_with(|c: char| c.is_ascii_alphabetic())
+        if package == "NA"
+            || !package.starts_with(|c: char| c.is_ascii_alphabetic())
             || !package.ends_with(|c: char| c.is_ascii_alphanumeric())
             || !package
                 .bytes()
@@ -199,9 +266,7 @@ pub(crate) unsafe fn load_package_namespace_checked(
         }
         if let Some(namespace) = cached_namespace_by_name(package) {
             if let Some(requirement) = requirement {
-                let version = namespace_version(namespace)
-                    .ok_or_else(|| format!("namespace ‘{package}’ has no version metadata"))?;
-                requirement.check(package, &version, true)?;
+                check_loaded_requirement(package, namespace, requirement)?;
             }
             return Ok(namespace);
         }
@@ -212,31 +277,12 @@ pub(crate) unsafe fn load_package_namespace_checked(
             let path = find_package_path(package);
             (!path.is_empty()).then(|| PathBuf::from(path))
         };
-        let builtin_grid = cfg!(feature = "renderplot-device") && package == "grid";
         if let Some(requirement) = requirement {
-            let version = if builtin_grid
-                || package == "datasets"
-                || (package_path.is_none()
-                    && crate::library::portable_package::image(package).is_some())
-            {
-                crate::mainutils::compatibility_target::NUMERIC_VERSION.to_owned()
-            } else {
-                let directory = package_path
-                    .as_deref()
-                    .ok_or_else(|| format!("there is no package called '{package}'"))?;
-                read_package_text(&directory.join("DESCRIPTION"))
-                    .map_err(|e| format!("could not read DESCRIPTION for '{package}': {e}"))
-                    .and_then(|text| {
-                        description_fields(&text)
-                            .remove("Version")
-                            .ok_or_else(|| format!("namespace ‘{package}’ has no version metadata"))
-                    })?
-            };
-            requirement.check(package, &version, false)?;
+            check_source_requirement(package, package_path.as_deref(), requirement)?;
         }
 
         #[cfg(feature = "renderplot-device")]
-        if builtin_grid {
+        if package == "grid" {
             return Ok(crate::mainutils::portable_grid::namespace());
         }
 
@@ -255,9 +301,6 @@ pub(crate) unsafe fn load_package_namespace_checked(
             }
             return Err(format!("there is no package called '{package}'"));
         };
-        let description = package_dir.join("DESCRIPTION");
-        check_package_compilation(package, &description)?;
-
         let mut loading = vec![package.to_string()];
         let (env, _) = load_package_namespace(package, &package_dir, &mut loading)?;
 

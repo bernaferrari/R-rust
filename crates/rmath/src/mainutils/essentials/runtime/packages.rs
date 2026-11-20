@@ -414,6 +414,19 @@ fn parse_version(text: &str) -> Option<Vec<i32>> {
 }
 
 impl NamespaceRequirement {
+    pub(crate) fn dependency(text: &str) -> Option<Self> {
+        let text = text.trim();
+        let op_end = text.find(|c: char| !matches!(c, '<' | '>' | '=' | '!'))?;
+        let (op, version) = text.split_at(op_end);
+        if !matches!(op, "==" | "!=" | "<" | "<=" | ">" | ">=") {
+            return None;
+        }
+        Some(Self {
+            op: op.to_owned(),
+            version: parse_version(version.trim())?,
+        })
+    }
+
     pub(crate) fn check(&self, package: &str, found: &str, loaded: bool) -> Result<(), String> {
         let have = parse_version(found)
             .ok_or_else(|| format!("namespace ‘{package}’ has invalid version metadata"))?;

@@ -70,11 +70,11 @@ pub(crate) unsafe fn load_package_namespace(
             return Ok((env, directives));
         }
 
-        if crate::mainutils::browser_files::enabled() {
-            check_package_compilation(package, &package_dir.join("DESCRIPTION"))?;
-            if !package_file_exists(&package_dir.join("NAMESPACE")) {
-                return Err(format!("browser package '{package}' has no NAMESPACE"));
-            }
+        check_package_loadability(package, &package_dir.join("DESCRIPTION"), false)?;
+        if crate::mainutils::browser_files::enabled()
+            && !package_file_exists(&package_dir.join("NAMESPACE"))
+        {
+            return Err(format!("browser package '{package}' has no NAMESPACE"));
         }
 
         // GNU `makeNamespace`: the namespace's enclosure chain ends at
