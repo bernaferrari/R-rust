@@ -14,7 +14,13 @@ pushViewport(viewport(layout = grid.layout(nrow = 1L, ncol = 2L),
 draw_panel(1L, "navy", "Control panel")
 draw_panel(2L, "firebrick", "Treatment panel")
 popViewport()
-recorded <- serialize(recordPlot(), NULL)
+figure <- recordPlot()
+recorded <- serialize(figure, NULL)
+saveRDS(figure, "panels.rds")
+invisible(dev.off())
+
+pdf("panels-live.pdf", width = 8, height = 5)
+replayPlot(figure)
 invisible(dev.off())
 
 pdf("panels-replay.pdf", width = 8, height = 5)

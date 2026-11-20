@@ -1,5 +1,9 @@
 use super::pdf_capture::PdfCapture;
-use crate::sexp::instance::with_current_instance;
+use crate::mainutils::portable_grid::{
+    GridState, device_dpi,
+    replay::{Command, ReplayCommands},
+};
+use crate::sexp::{ffi::SEXP, instance::with_current_instance, object::Sexp};
 use r_graphics_engine::{Color, DrawTarget, Path, PlotParameters, Point, RasterImage, TextMetrics};
 use std::{cell::RefCell, rc::Rc};
 
@@ -65,6 +69,78 @@ impl GraphicsTarget {
                 .begin_replay_page();
         }
         Ok(())
+    }
+
+    pub(crate) fn start_grid_command(&self, command: Command, at_root: bool) -> Option<usize> {
+        let Backend::Pdf(capture) = &self.0 else {
+            return None;
+        };
+        capture
+            .try_borrow_mut()
+            .ok()?
+            .as_mut()?
+            .start_grid_command(command, at_root)
+    }
+
+    pub(crate) unsafe fn record_grid_command(&self, command: Command, data: SEXP, start: usize) {
+        let Backend::Pdf(capture) = &self.0 else {
+            return;
+        };
+        let Some((revision, mut log)) = capture
+            .try_borrow()
+            .ok()
+            .and_then(|capture| capture.as_ref()?.grid_prefix(start))
+        else {
+            return;
+        };
+        // Construct the R pairlist outside the device borrow. Collection can
+        // run finalizers, and the revision guards the device on return.
+        let retained = unsafe { log.append(command, data) }.unwrap_or(false);
+        if let Ok(mut capture) = capture.try_borrow_mut()
+            && let Some(capture) = capture.as_mut()
+        {
+            capture.finish_grid_command(revision, retained.then_some(log));
+        }
+    }
+
+    pub(crate) fn recorded_grid(&self) -> Option<Sexp<'static>> {
+        let Backend::Pdf(capture) = &self.0 else {
+            return None;
+        };
+        capture
+            .try_borrow()
+            .ok()?
+            .as_ref()?
+            .recorded_grid()
+            .cloned()
+    }
+
+    pub(crate) unsafe fn replay_grid(
+        &self,
+        commands: ReplayCommands,
+        retry: Option<usize>,
+    ) -> Result<GridState, &'static str> {
+        let Backend::Pdf(capture) = &self.0 else {
+            return Err("grid command replay requires a PDF device");
+        };
+        let mut staged = PdfCapture::new(self.dimensions())?;
+        let dpi = device_dpi(self);
+        if let Some(prefix) = retry {
+            unsafe { commands.draw_prefix(prefix, &mut staged, dpi) };
+            staged.finish_grid_retry_prefix();
+        }
+        let (state, log) = unsafe { commands.draw(&mut staged, dpi) };
+        if !super::device_registry::active_target().is_some_and(|target| self.same_device(&target))
+        {
+            return Err("graphics device changed during grid replay");
+        }
+        capture
+            .try_borrow_mut()
+            .map_err(|_| "PDF device is busy")?
+            .as_mut()
+            .ok_or("PDF device is closed")?
+            .install_grid_replay(staged, log)?;
+        Ok(state)
     }
 
     pub(crate) fn same_device(&self, other: &Self) -> bool {

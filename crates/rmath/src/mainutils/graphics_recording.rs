@@ -2,6 +2,7 @@
 use crate::eval::attrib_core::{R_ClassSymbol, getAttrib, setAttrib};
 use crate::library::graphics::par::{ParValue, set_plot_parameter};
 use crate::mainutils::essentials::{base_error, elt_to_string};
+use crate::mainutils::portable_grid::replay::ReplayCommands;
 use crate::mainutils::portable_plot::{Coordinates, ManualClip};
 use crate::sexp::{
     accessors::*,
@@ -9,6 +10,8 @@ use crate::sexp::{
     ffi::{SEXP, SEXPTYPE},
     globals::R_NilValue,
     instance::with_required_current_instance,
+    object::Sexp,
+    owner::OwnerToken,
     protect::protect,
     symbol::Rf_install,
 };
@@ -18,6 +21,56 @@ use r_graphics_engine::Scene;
 // xpd region code (-1 records "no manual clip").
 const RECORDING_STATE_LEN: usize = 23;
 const GRID_STATE_ATTR: &[u8] = b"rport.grid.state\0";
+
+unsafe fn grid_origin() -> Sexp<'static> {
+    unsafe {
+        if let Some(origin) =
+            with_required_current_instance(|inst| (*inst).grid_recording_origin.clone())
+        {
+            return origin;
+        }
+        // Environment identity distinguishes the live recording from a
+        // serialized copy. Its token identifies this session in either form.
+        let mut token = [0u8; 16];
+        getrandom::fill(&mut token)
+            .unwrap_or_else(|_| base_error("cannot identify grid recording session"));
+        let origin = crate::sexp::memory_ext::NewEnvironment(
+            R_NilValue(),
+            crate::sexp::globals::R_EmptyEnv(),
+            R_NilValue(),
+        );
+        let _origin = protect(origin);
+        let id = Rf_allocVector3(SEXPTYPE::RAWSXP, token.len() as i64);
+        let _id = protect(id);
+        std::ptr::copy_nonoverlapping(token.as_ptr(), RAW(id), token.len());
+        setAttrib(origin, Rf_install(c"rport.grid.token".as_ptr()), id);
+        let origin = OwnerToken::current()
+            .and_then(|owner| owner.sexp(origin)?.into_owned())
+            .unwrap_or_else(|error| base_error(error.to_string()));
+        with_required_current_instance(|inst| (*inst).grid_recording_origin = Some(origin.clone()));
+        origin
+    }
+}
+
+unsafe fn round_tripped_in_session(recording: SEXP) -> bool {
+    unsafe {
+        let saved = getAttrib(recording, Rf_install(c"rport.grid.origin".as_ptr()));
+        let live = with_required_current_instance(|inst| (*inst).grid_recording_origin.clone());
+        let Some(live) = live else { return false };
+        if saved == live.as_raw() || TYPEOF(saved) != SEXPTYPE::ENVSXP {
+            return false;
+        }
+        let symbol = Rf_install(c"rport.grid.token".as_ptr());
+        let saved = getAttrib(saved, symbol);
+        let live = getAttrib(live.as_raw(), symbol);
+        TYPEOF(saved) == SEXPTYPE::RAWSXP
+            && TYPEOF(live) == SEXPTYPE::RAWSXP
+            && XLENGTH(saved) == 16
+            && XLENGTH(live) == 16
+            && std::slice::from_raw_parts(RAW(saved), 16)
+                == std::slice::from_raw_parts(RAW(live), 16)
+    }
+}
 
 /// Keep GNU replay for its display-list format while admitting the owned scene
 /// codec before GNU's restoration wrapper indexes it as a list. Install only
@@ -326,6 +379,19 @@ pub(crate) unsafe fn record(_: SEXP, _: SEXP, _: SEXP, _: SEXP) -> SEXP {
         );
         if has_recorded_operations {
             snapshot_portable_state(result);
+            if let Some(commands) = target.as_ref().and_then(|target| target.recorded_grid()) {
+                let origin = grid_origin();
+                setAttrib(
+                    result,
+                    Rf_install(c"rport.grid.commands".as_ptr()),
+                    commands.as_raw(),
+                );
+                setAttrib(
+                    result,
+                    Rf_install(c"rport.grid.origin".as_ptr()),
+                    origin.as_raw(),
+                );
+            }
         }
         result
     }
@@ -357,6 +423,25 @@ pub(crate) unsafe fn replay(_: SEXP, _: SEXP, args: SEXP, _: SEXP) -> SEXP {
         let state = decode_portable_state(recording).unwrap_or_else(|e| base_error(e));
         let source_dimensions = scene.dimensions();
         let target_dimensions = r_graphics_engine::DrawTarget::dimensions(&target);
+        let commands = getAttrib(recording, Rf_install(c"rport.grid.commands".as_ptr()));
+        if commands != R_NilValue() && target.is_pdf() {
+            let commands = OwnerToken::current()
+                .and_then(|owner| owner.sexp(commands)?.into_owned())
+                .unwrap_or_else(|error| base_error(error.to_string()));
+            let commands =
+                ReplayCommands::read(&commands).unwrap_or_else(|error| base_error(error));
+            let retry = if round_tripped_in_session(recording) {
+                commands.first_grid_device_command()
+            } else {
+                None
+            };
+            let grid = target
+                .replay_grid(commands, retry)
+                .unwrap_or_else(|error| base_error(error));
+            with_required_current_instance(|inst| (*inst).portable_grid = grid);
+            crate::eval::runtime::set_visible(0);
+            return R_NilValue();
+        }
         let grid_state = decode_grid_state(
             recording,
             source_dimensions,
@@ -364,6 +449,12 @@ pub(crate) unsafe fn replay(_: SEXP, _: SEXP, args: SEXP, _: SEXP) -> SEXP {
             crate::mainutils::portable_grid::device_dpi(&target),
         )
         .unwrap_or_else(|e| base_error(e));
+        if target.is_pdf()
+            && source_dimensions != target_dimensions
+            && grid_state.as_ref().is_some_and(|state| !state.is_empty())
+        {
+            base_error("cannot resize a PDF grid recording without complete grid commands");
+        }
         if !scene.operations().is_empty() {
             target
                 .begin_pdf_replay_page()

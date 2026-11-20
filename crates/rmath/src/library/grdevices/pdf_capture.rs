@@ -1,4 +1,5 @@
 //! Device-owned page capture with an arena charge for its retained geometry.
+use crate::mainutils::portable_grid::replay::{Command, CommandLog};
 use crate::sexp::{
     instance::with_current_instance,
     memory::{WorkspaceReservation, is_arena_lent},
@@ -15,6 +16,8 @@ pub(super) struct PdfCapture {
     pages: Vec<Scene>,
     operations: Vec<DrawOperation>,
     display_list_start: Option<usize>,
+    grid_commands: Option<(usize, CommandLog)>,
+    revision: u64,
     admission: WorkspaceReservation,
     bytes: usize,
     error: Option<&'static str>,
@@ -48,6 +51,8 @@ impl PdfCapture {
             pages,
             operations: Vec::new(),
             display_list_start: None,
+            grid_commands: None,
+            revision: 0,
             admission,
             bytes,
             error: None,
@@ -86,6 +91,87 @@ impl PdfCapture {
 
     pub(super) fn reset_display_list(&mut self, enabled: bool) {
         self.display_list_start = enabled.then_some(self.operations.len());
+        self.grid_commands = self
+            .display_list_start
+            .map(|start| (start, CommandLog::default()));
+        self.revision = self.revision.wrapping_add(1);
+    }
+
+    pub(super) fn start_grid_command(&mut self, command: Command, at_root: bool) -> Option<usize> {
+        self.display_list_start?;
+        if !command.starts_page() {
+            let (covered, log) = self.grid_commands.as_ref()?;
+            if *covered != self.operations.len() || (log.head().is_none() && !at_root) {
+                self.grid_commands = None;
+                return None;
+            }
+        }
+        Some(if command.starts_page() {
+            0
+        } else {
+            self.operations.len()
+        })
+    }
+
+    pub(super) fn grid_prefix(&self, start: usize) -> Option<(u64, CommandLog)> {
+        let (covered, log) = self.grid_commands.as_ref()?;
+        (*covered == start).then(|| (self.revision, log.clone()))
+    }
+
+    pub(super) fn finish_grid_command(&mut self, revision: u64, log: Option<CommandLog>) {
+        if self.revision == revision {
+            self.grid_commands = log.map(|log| (self.operations.len(), log));
+            self.revision = self.revision.wrapping_add(1);
+        }
+    }
+
+    pub(super) fn recorded_grid(&self) -> Option<&crate::sexp::object::Sexp<'static>> {
+        let (covered, log) = self.grid_commands.as_ref()?;
+        if *covered == self.operations.len() {
+            log.head()
+        } else {
+            None
+        }
+    }
+
+    pub(super) fn install_grid_replay(
+        &mut self,
+        mut staged: Self,
+        log: CommandLog,
+    ) -> Result<(), &'static str> {
+        if let Some(error) = self.error.or(staged.error) {
+            return Err(error);
+        }
+        if self.pages.len()
+            + usize::from(!self.operations.is_empty())
+            + staged.pages.len()
+            + usize::from(!staged.operations.is_empty())
+            > MAX_PAGES
+        {
+            return Err("too many pages for the PDF device");
+        }
+        let bytes = self
+            .bytes
+            .checked_add(staged.bytes - staged.pages.capacity() * size_of::<Scene>())
+            .ok_or(CAPTURE_LIMIT)?;
+        self.admission.try_resize(bytes).ok_or(CAPTURE_LIMIT)?;
+        self.begin_replay_page();
+        self.pages.append(&mut staged.pages);
+        self.operations = staged.operations;
+        self.bytes = bytes;
+        self.grid_commands = self
+            .display_list_start
+            .map(|_| (self.operations.len(), log));
+        Ok(())
+    }
+
+    pub(super) fn finish_grid_retry_prefix(&mut self) {
+        if self.operations.is_empty() {
+            self.pages
+                .push(Scene::new(self.dimensions.0, self.dimensions.1));
+        } else {
+            self.finish_page();
+        }
     }
 
     pub(super) fn begin_replay_page(&mut self) {
@@ -122,6 +208,7 @@ impl PdfCapture {
             // close, which can report it without publishing a partial file.
             self.error = Some(error);
         }
+        self.revision = self.revision.wrapping_add(1);
     }
 
     fn record_on_page(
@@ -173,9 +260,7 @@ impl DrawTarget for PdfCapture {
         } else {
             self.operations.clear();
         }
-        if let Some(start) = self.display_list_start.as_mut() {
-            *start = 0;
-        }
+        self.reset_display_list(self.display_list_start.is_some());
         self.record(0, || Ok(DrawOperation::Clear(color)));
     }
 

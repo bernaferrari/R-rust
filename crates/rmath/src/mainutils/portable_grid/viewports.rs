@@ -1,3 +1,4 @@
+use super::replay::Command;
 use super::*;
 
 pub(crate) fn alpha(mut c: Color, a: f64) -> Color {
@@ -691,9 +692,37 @@ pub unsafe fn dispatch(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let dpi = device_dpi(&target);
         let mut state = with_required_current_instance(|p| (*p).portable_grid.clone());
         state.ensure(dims, dpi);
+        let step = Command::named(&operation);
+        let start = step.and_then(|step| {
+            target.start_grid_command(step, state.frames.len() == 1 && state.nodes.len() == 1)
+        });
+        let returned = apply_grid_operation(&operation, data, &mut state, &mut target, dims, dpi);
+        let _returned = if returned == R_NilValue() {
+            None
+        } else {
+            Some(crate::sexp::protect::protect(returned))
+        };
+        if let Some((step, start)) = step.zip(start) {
+            target.record_grid_command(step, data, start);
+        }
+        with_required_current_instance(|p| (*p).portable_grid = state);
+        crate::eval::runtime::set_visible(0);
+        returned
+    }
+}
+
+pub(super) unsafe fn apply_grid_operation(
+    operation: &str,
+    data: SEXP,
+    state: &mut GridState,
+    target: &mut dyn DrawTarget,
+    dims: (u32, u32),
+    dpi: f64,
+) -> SEXP {
+    unsafe {
         let parent = state.frames.last().unwrap().clone();
         let mut returned = R_NilValue();
-        match operation.as_str() {
+        match operation.strip_prefix("grob.").unwrap_or(operation) {
             "newpage" => {
                 // recording=FALSE still clears the page; only the display list is kept.
                 let kept = if logical_flag(data, true) {
@@ -701,10 +730,10 @@ pub unsafe fn dispatch(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 } else {
                     std::mem::take(&mut state.display_list)
                 };
-                state = GridState::default();
+                *state = GridState::default();
                 state.ensure(dims, dpi);
                 state.display_list = kept;
-                (&mut target).clear(Color::WHITE);
+                target.clear(Color::WHITE);
             }
             "push" => {
                 let frame = push(data, &parent);
@@ -853,7 +882,7 @@ pub unsafe fn dispatch(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 let (id, depth) = found.unwrap_or_else(|| {
                     base_error(format!("Viewport '{final_name}' was not found"));
                 });
-                activate(&mut state, id);
+                activate(state, id);
                 returned = Rf_ScalarInteger(depth);
             }
             "current.name" => returned = mk_string(&current_name(&state)),
@@ -924,8 +953,7 @@ pub unsafe fn dispatch(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 frame.gp = gp(field(data, "gp"), &frame);
                 let primitive = string(field(data, "primitive"), "");
                 let drawing = field(data, "data");
-                let commands = draw_commands(&primitive, drawing, &frame, &target);
-                let target = &mut target;
+                let commands = draw_commands(&primitive, drawing, &frame, target);
                 target.set_clip(frame.clip);
                 for c in commands {
                     match c {
@@ -936,8 +964,6 @@ pub unsafe fn dispatch(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             }
             _ => base_error("unknown grid operation"),
         }
-        with_required_current_instance(|p| (*p).portable_grid = state);
-        crate::eval::runtime::set_visible(0);
         returned
     }
 }

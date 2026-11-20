@@ -10,22 +10,25 @@ function(x,recording=TRUE) {
     vp.depth <- 0L
     if(!is.null(x$vp)) {
       if (inherits(x$vp, 'viewport')) {
-        pushViewport(x$vp, recording=FALSE)
+        .rport_grid('grob.push', x$vp)
         vp.depth <- 1L
       } else {
-        downViewport(x$vp, strict=TRUE, recording=FALSE)
-        vp.depth <- length(strsplit(as.character(x$vp), '::', fixed=TRUE)[[1L]])
+        path <- unlist(strsplit(as.character(x$vp), '::', fixed=TRUE), use.names=FALSE)
+        if (!length(path) || anyNA(path) || any(!nzchar(path)))
+            stop('a viewport path must contain at least one viewport name')
+        .rport_grid('grob.down', list(name=paste(path, collapse='::'), strict=TRUE))
+        vp.depth <- length(path)
       }
     }
     if(inherits(x,'gTree')) {
         if(!is.null(x$gp)) {
-            pushViewport(viewport(gp=x$gp), recording=FALSE)
-            on.exit(popViewport(1, recording=FALSE), add=TRUE)
+            .rport_grid('grob.push', viewport(gp=x$gp))
+            on.exit(.rport_grid('grob.pop', 1L), add=TRUE)
         }
         # Children are drawn, not recorded; the gTree is one display-list entry.
         for(child in x$children) grid.draw(child, recording=FALSE)
     } else .rport_grid('draw',x)
-    if(vp.depth > 0L) on.exit(upViewport(vp.depth, recording=FALSE), add=TRUE)
+    if(vp.depth > 0L) on.exit(.rport_grid('grob.up', vp.depth), add=TRUE)
     if(isTRUE(recording)) .rport_grid('record', x)
     invisible(NULL)
 }

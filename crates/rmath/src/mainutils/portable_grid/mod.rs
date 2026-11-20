@@ -1,6 +1,7 @@
 //! Portable grid frontend. Runtime values are decoded before borrowing a device;
 //! viewport transforms and graphical parameters are owned session state.
 mod layout;
+pub(crate) mod replay;
 use crate::eval::attrib_core::{R_ClassSymbol, R_NamesSymbol, getAttrib, setAttrib};
 use crate::mainutils::errors::Rf_warning1;
 use crate::mainutils::essentials::{arg_by_name_or_position, base_error, elt_to_string};
