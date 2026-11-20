@@ -510,7 +510,7 @@ pub unsafe fn compiler_enable_jit(level: SEXP) -> c_int {
 /// - _R_COMPILE_PKGS_: compile package code
 /// - R_DISABLE_BYTECODE: disable bytecode
 /// - _R_COMPILE_PKGS_: compile packages
-pub unsafe fn R_init_jit_enabled() {
+pub fn R_init_jit_enabled() {
     {
         let settings = current_env_settings();
         checkCompilerOptions(settings.jit_enabled);
