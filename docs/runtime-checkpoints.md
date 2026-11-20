@@ -225,6 +225,35 @@ user workflows have passed on native Rport and production Wasm.
 
 ## Wasm footprint
 
+At `fa0c3340`, Workbench packages 24,034,743 raw bytes and leaves 2,179,657
+bytes below 25 MiB. The Wasm module contains 14,031,170 bytes of executable
+code and 9,942,374 bytes of initialized data. Compressing that exact module
+locally produced 11,487,609 bytes with Brotli quality 11 and 13,666,206 bytes
+with gzip level 9. Chromium streamed, instantiated and evaluated R on the
+same module served locally with Brotli and `application/wasm`. HTTP
+compression reduces transfer size. The Workbench gate counts raw assets.
+[Production receipt](ci-checkpoints/wasm-bundle-fa0c3340.json)
+
+An offline sweep repacked the same 4,304 GNU records across the seven
+bundled package databases. The decoded byte streams and R indexes matched
+the existing 64 KiB configuration exactly. These figures count the packed
+data, block directories and indexes. The last column measures how many
+bytes the decoder would discard to reach a record, across all records.
+
+| Target block size | Raw asset bytes | Change from 64 KiB | 95th percentile prefix bytes |
+| --- | ---: | ---: | ---: |
+| 32 KiB | 6,528,635 | +229,474 | 28,938 |
+| 64 KiB | 6,299,161 | 0 | 58,677 |
+| 128 KiB | 6,170,327 | −128,834 | 119,056 |
+| 256 KiB | 6,083,776 | −215,385 | 245,072 |
+| 512 KiB | 6,049,591 | −249,570 | 487,037 |
+
+Production still uses 64 KiB blocks. The sweep measures bytes and decoder
+work. Startup and first-package call timings would need a production build.
+The `tools` database, directory and index together occupy 2,071,297 bytes.
+A separately cached copy would reduce the initial module, with the same
+bytes still counting toward the cap if shipped in the same bundle.
+
 The PDF build uses 23,972,608 bytes in the Workbench production bundle,
 leaving 2,241,792 bytes (2.14 MiB) below 25 MiB. A named profile with identical
 execution sections attributes 9,236,671 function-body bytes to `rmath`
