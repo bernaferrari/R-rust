@@ -284,7 +284,7 @@ pub struct rect {
 
 /// The drawing state: current destination, colour, mode, position, etc.
 #[repr(C)]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct drawstruct {
     pub dest: drawing,
     pub hue: rgb,
@@ -688,29 +688,57 @@ pub fn rcanon(r: rect) -> rect {
 }
 
 // ============================================================
+// Checked object borrows
+// ============================================================
+
+/// Null-checked shared borrow of an object handle.
+///
+/// GraphApp objects live in the runtime-owned arena for the lifetime of
+/// the process, so the returned reference borrows the handle's pointee.
+#[inline]
+pub fn obj_ref<'a>(obj: objptr) -> Option<&'a ObjInfo> {
+    unsafe { obj.as_ref() }
+}
+
+/// Null-checked mutable borrow of an object handle.
+///
+/// Callers must ensure no conflicting borrow of the same object exists,
+/// matching the C API's single-threaded object model.
+#[inline]
+pub fn obj_mut<'a>(obj: objptr) -> Option<&'a mut ObjInfo> {
+    unsafe { obj.as_mut() }
+}
+
+/// Null-checked mutable borrow of an interior object pointer.
+#[inline]
+pub fn ptr_mut<'a, T>(ptr: *mut T) -> Option<&'a mut T> {
+    unsafe { ptr.as_mut() }
+}
+
+/// Null-checked shared borrow of an interior object pointer.
+#[inline]
+pub fn ptr_ref<'a, T>(ptr: *const T) -> Option<&'a T> {
+    unsafe { ptr.as_ref() }
+}
+
+// ============================================================
 // Object property accessors
 // ============================================================
 
 pub fn objdepth(obj: objptr) -> c_int {
-    unsafe { if obj.is_null() { 0 } else { (*obj).depth } }
+    obj_ref(obj).map_or(0, |obj| obj.depth)
 }
 
 pub fn objrect(obj: objptr) -> rect {
-    unsafe {
-        if obj.is_null() {
-            rect::default()
-        } else {
-            (*obj).rect
-        }
-    }
+    obj_ref(obj).map_or(rect::default(), |obj| obj.rect)
 }
 
 pub fn objwidth(obj: objptr) -> c_int {
-    unsafe { if obj.is_null() { 0 } else { (*obj).rect.width } }
+    obj_ref(obj).map_or(0, |obj| obj.rect.width)
 }
 
 pub fn objheight(obj: objptr) -> c_int {
-    unsafe { if obj.is_null() { 0 } else { (*obj).rect.height } }
+    obj_ref(obj).map_or(0, |obj| obj.rect.height)
 }
 
 /// Null pointer constant for convenience.

@@ -17,11 +17,7 @@ use super::types::*;
 use super::{image as image_api, memory, objects, strings, windows};
 
 fn first_list_item(list: *const *const c_char) -> *const c_char {
-    if list.is_null() {
-        ptr::null()
-    } else {
-        unsafe { *list }
-    }
+    ptr_ref(list).copied().unwrap_or(ptr::null())
 }
 
 fn list_length(list: *const *const c_char) -> c_int {
@@ -41,179 +37,143 @@ fn list_length(list: *const *const c_char) -> c_int {
 
 fn alloc_drawstate(dest: drawing) -> drawstate {
     let state = memory::memalloc_bytes(std::mem::size_of::<drawstruct>()) as drawstate;
-    if state.is_null() {
-        return ptr::null_mut();
-    }
-    unsafe {
-        ptr::write_bytes(state as *mut u8, 0, std::mem::size_of::<drawstruct>());
-        (*state).dest = dest;
-        (*state).hue = Black;
+    if let Some(state) = ptr_mut(state) {
+        *state = drawstruct {
+            dest,
+            hue: Black,
+            ..Default::default()
+        };
     }
     state
 }
 
 fn new_control_object(kind: c_int, text: *const c_char, r: rect, with_drawstate: bool) -> control {
-    unsafe {
-        objects::init_objects();
-        let parent = windows::get_current_window();
-        let obj = objects::new_object(kind, ptr::null_mut(), parent);
-        if obj.is_null() {
-            return ptr::null_mut();
-        }
-        (*obj).rect = r;
-        (*obj).state = GA_Visible | GA_Enabled;
-        (*obj).fg = Black;
-        (*obj).bg = White;
-        (*obj).text = strings::new_string(text);
-        if with_drawstate {
-            (*obj).drawstate = alloc_drawstate(obj);
-        }
-        obj
+    objects::init_objects();
+    let parent = windows::get_current_window();
+    let obj = objects::new_object(kind, ptr::null_mut(), parent);
+    let Some(obj) = obj_mut(obj) else {
+        return ptr::null_mut();
+    };
+    obj.rect = r;
+    obj.state = GA_Visible | GA_Enabled;
+    obj.fg = Black;
+    obj.bg = White;
+    obj.text = strings::new_string(text);
+    if with_drawstate {
+        obj.drawstate = alloc_drawstate(obj);
     }
+    obj
 }
 
 fn new_bitmap_object(width: c_int, height: c_int, depth: c_int) -> bitmap {
-    unsafe {
-        let bitmap = new_control_object(
-            BitmapObject,
-            ptr::null(),
-            rect {
-                x: 0,
-                y: 0,
-                width,
-                height,
-            },
-            false,
-        );
-        if bitmap.is_null() {
-            return ptr::null_mut();
-        }
-        let normalized_depth = if depth <= 8 { 8 } else { 32 };
-        (*bitmap).depth = normalized_depth;
-        (*bitmap).img = image_api::newimage(width.max(0), height.max(0), normalized_depth);
-        bitmap
-    }
+    let bitmap = new_control_object(
+        BitmapObject,
+        ptr::null(),
+        rect {
+            x: 0,
+            y: 0,
+            width,
+            height,
+        },
+        false,
+    );
+    let Some(bitmap) = obj_mut(bitmap) else {
+        return ptr::null_mut();
+    };
+    let normalized_depth = if depth <= 8 { 8 } else { 32 };
+    bitmap.depth = normalized_depth;
+    bitmap.img = image_api::newimage(width.max(0), height.max(0), normalized_depth);
+    bitmap
 }
 
 fn set_bitmap_pixels(bitmap: bitmap, data: *mut GAbyte) {
-    unsafe {
-        if bitmap.is_null() || (*bitmap).img.is_null() || data.is_null() {
-            return;
-        }
-        image_api::setpixels((*bitmap).img, data);
+    let Some(img) = obj_ref(bitmap).map(|b| b.img) else {
+        return;
+    };
+    if img.is_null() || data.is_null() {
+        return;
     }
+    image_api::setpixels(img, data);
 }
 
 pub fn setaction(c: control, fn_: actionfn) {
-    unsafe {
-        if !c.is_null() {
-            (*c).action = fn_;
-        }
+    if let Some(c) = obj_mut(c) {
+        c.action = fn_;
     }
 }
 pub fn sethit(c: control, fn_: intfn) {
-    unsafe {
-        if !c.is_null() {
-            (*c).hit = fn_;
-        }
+    if let Some(c) = obj_mut(c) {
+        c.hit = fn_;
     }
 }
 pub fn setdel(c: control, fn_: actionfn) {
-    unsafe {
-        if !c.is_null() && !(*c).call.is_null() {
-            (*(*c).call).die = fn_;
-        }
+    if let Some(call) = obj_ref(c).and_then(|c| ptr_mut(c.call)) {
+        call.die = fn_;
     }
 }
 pub fn setclose(c: control, fn_: actionfn) {
-    unsafe {
-        if !c.is_null() && !(*c).call.is_null() {
-            (*(*c).call).close = fn_;
-        }
+    if let Some(call) = obj_ref(c).and_then(|c| ptr_mut(c.call)) {
+        call.close = fn_;
     }
 }
 pub fn setredraw(c: control, fn_: drawfn) {
-    unsafe {
-        if !c.is_null() && !(*c).call.is_null() {
-            (*(*c).call).redraw = fn_;
-        }
+    if let Some(call) = obj_ref(c).and_then(|c| ptr_mut(c.call)) {
+        call.redraw = fn_;
     }
 }
 pub fn setresize(c: control, fn_: drawfn) {
-    unsafe {
-        if !c.is_null() && !(*c).call.is_null() {
-            (*(*c).call).resize = fn_;
-        }
+    if let Some(call) = obj_ref(c).and_then(|c| ptr_mut(c.call)) {
+        call.resize = fn_;
     }
 }
 pub fn setkeydown(c: control, fn_: keyfn) {
-    unsafe {
-        if !c.is_null() && !(*c).call.is_null() {
-            (*(*c).call).keydown = fn_;
-        }
+    if let Some(call) = obj_ref(c).and_then(|c| ptr_mut(c.call)) {
+        call.keydown = fn_;
     }
 }
 pub fn setkeyaction(c: control, fn_: keyfn) {
-    unsafe {
-        if !c.is_null() && !(*c).call.is_null() {
-            (*(*c).call).keyaction = fn_;
-        }
+    if let Some(call) = obj_ref(c).and_then(|c| ptr_mut(c.call)) {
+        call.keyaction = fn_;
     }
 }
 pub fn setmousedown(c: control, fn_: mousefn) {
-    unsafe {
-        if !c.is_null() && !(*c).call.is_null() {
-            (*(*c).call).mousedown = fn_;
-        }
+    if let Some(call) = obj_ref(c).and_then(|c| ptr_mut(c.call)) {
+        call.mousedown = fn_;
     }
 }
 pub fn setmousedrag(c: control, fn_: mousefn) {
-    unsafe {
-        if !c.is_null() && !(*c).call.is_null() {
-            (*(*c).call).mousedrag = fn_;
-        }
+    if let Some(call) = obj_ref(c).and_then(|c| ptr_mut(c.call)) {
+        call.mousedrag = fn_;
     }
 }
 pub fn setmouseup(c: control, fn_: mousefn) {
-    unsafe {
-        if !c.is_null() && !(*c).call.is_null() {
-            (*(*c).call).mouseup = fn_;
-        }
+    if let Some(call) = obj_ref(c).and_then(|c| ptr_mut(c.call)) {
+        call.mouseup = fn_;
     }
 }
 pub fn setmousemove(c: control, fn_: mousefn) {
-    unsafe {
-        if !c.is_null() && !(*c).call.is_null() {
-            (*(*c).call).mousemove = fn_;
-        }
+    if let Some(call) = obj_ref(c).and_then(|c| ptr_mut(c.call)) {
+        call.mousemove = fn_;
     }
 }
 pub fn setmouserepeat(c: control, fn_: mousefn) {
-    unsafe {
-        if !c.is_null() && !(*c).call.is_null() {
-            (*(*c).call).mouserepeat = fn_;
-        }
+    if let Some(call) = obj_ref(c).and_then(|c| ptr_mut(c.call)) {
+        call.mouserepeat = fn_;
     }
 }
 pub fn setdrop(c: control, fn_: dropfn) {
-    unsafe {
-        if !c.is_null() && !(*c).call.is_null() {
-            (*(*c).call).drop = fn_;
-        }
+    if let Some(call) = obj_ref(c).and_then(|c| ptr_mut(c.call)) {
+        call.drop = fn_;
     }
 }
 pub fn setonfocus(c: control, fn_: actionfn) {
-    unsafe {
-        if !c.is_null() && !(*c).call.is_null() {
-            (*(*c).call).focus = fn_;
-        }
+    if let Some(call) = obj_ref(c).and_then(|c| ptr_mut(c.call)) {
+        call.focus = fn_;
     }
 }
 pub fn setim(c: control, fn_: imfn) {
-    unsafe {
-        if !c.is_null() && !(*c).call.is_null() {
-            (*(*c).call).im = fn_;
-        }
+    if let Some(call) = obj_ref(c).and_then(|c| ptr_mut(c.call)) {
+        call.im = fn_;
     }
 }
 
@@ -221,320 +181,228 @@ pub fn clear(c: control) {
     draw(c);
 }
 pub fn draw(c: control) {
-    unsafe {
-        if c.is_null() || ((*c).state & GA_Visible) == 0 || (*c).call.is_null() {
-            return;
-        }
-        if let Some(redraw) = (*(*c).call).redraw {
-            redraw(c, (*c).rect);
-        }
+    let Some(obj) = obj_ref(c) else { return };
+    if (obj.state & GA_Visible) == 0 {
+        return;
+    }
+    if let Some(redraw) = ptr_ref(obj.call).and_then(|call| call.redraw) {
+        redraw(c, obj.rect);
     }
 }
 pub fn redraw(c: control) {
     draw(c);
 }
 pub fn resize(c: control, r: rect) {
-    unsafe {
-        if !c.is_null() {
-            (*c).rect = r;
-        }
+    if let Some(c) = obj_mut(c) {
+        c.rect = r;
     }
 }
 pub fn show_control(c: control) {
-    unsafe {
-        if !c.is_null() {
-            (*c).state |= GA_Visible;
-        }
+    if let Some(c) = obj_mut(c) {
+        c.state |= GA_Visible;
     }
 }
 pub fn hide_control(c: control) {
-    unsafe {
-        if !c.is_null() {
-            (*c).state &= !GA_Visible;
-        }
+    if let Some(c) = obj_mut(c) {
+        c.state &= !GA_Visible;
     }
 }
 pub fn isvisible(c: control) -> c_int {
-    unsafe {
-        if c.is_null() {
-            0
-        } else {
-            if ((*c).state & GA_Visible) != 0 { 1 } else { 0 }
-        }
-    }
+    obj_ref(c).map_or(0, |c| if (c.state & GA_Visible) != 0 { 1 } else { 0 })
 }
 pub fn enable(c: control) {
-    unsafe {
-        if !c.is_null() {
-            (*c).state |= GA_Enabled;
-        }
+    if let Some(c) = obj_mut(c) {
+        c.state |= GA_Enabled;
     }
 }
 pub fn disable(c: control) {
-    unsafe {
-        if !c.is_null() {
-            (*c).state &= !GA_Enabled;
-        }
+    if let Some(c) = obj_mut(c) {
+        c.state &= !GA_Enabled;
     }
 }
 pub fn isenabled(c: control) -> c_int {
-    unsafe {
-        if c.is_null() {
-            0
-        } else {
-            if ((*c).state & GA_Enabled) != 0 { 1 } else { 0 }
-        }
-    }
+    obj_ref(c).map_or(0, |c| if (c.state & GA_Enabled) != 0 { 1 } else { 0 })
 }
 pub fn check(c: control) {
-    unsafe {
-        if !c.is_null() {
-            (*c).state |= GA_Checked;
-        }
+    if let Some(c) = obj_mut(c) {
+        c.state |= GA_Checked;
     }
 }
 pub fn uncheck(c: control) {
-    unsafe {
-        if !c.is_null() {
-            (*c).state &= !GA_Checked;
-        }
+    if let Some(c) = obj_mut(c) {
+        c.state &= !GA_Checked;
     }
 }
 pub fn ischecked(c: control) -> c_int {
-    unsafe {
-        if c.is_null() {
-            0
-        } else {
-            if ((*c).state & GA_Checked) != 0 { 1 } else { 0 }
-        }
-    }
+    obj_ref(c).map_or(0, |c| if (c.state & GA_Checked) != 0 { 1 } else { 0 })
 }
 pub fn highlight(c: control) {
-    unsafe {
-        if !c.is_null() {
-            (*c).state |= GA_Highlighted;
-        }
+    if let Some(c) = obj_mut(c) {
+        c.state |= GA_Highlighted;
     }
 }
 pub fn unhighlight(c: control) {
-    unsafe {
-        if !c.is_null() {
-            (*c).state &= !GA_Highlighted;
-        }
+    if let Some(c) = obj_mut(c) {
+        c.state &= !GA_Highlighted;
     }
 }
 pub fn ishighlighted(c: control) -> c_int {
-    unsafe {
-        if c.is_null() {
-            0
-        } else {
-            if ((*c).state & GA_Highlighted) != 0 {
-                1
-            } else {
-                0
-            }
-        }
-    }
+    obj_ref(c).map_or(0, |c| if (c.state & GA_Highlighted) != 0 { 1 } else { 0 })
 }
 pub fn flashcontrol(c: control) {
-    unsafe {
-        if c.is_null() || ((*c).state & GA_Enabled) == 0 {
-            return;
-        }
-
-        let was_armed = ((*c).state & GA_Armed) != 0;
-        (*c).state |= GA_Armed;
-        redraw(c);
-        if !was_armed {
-            (*c).state &= !GA_Armed;
-        }
-        redraw(c);
+    let Some(state) = obj_ref(c).map(|obj| obj.state) else {
+        return;
+    };
+    if (state & GA_Enabled) == 0 {
+        return;
     }
+
+    let was_armed = (state & GA_Armed) != 0;
+    if let Some(obj) = obj_mut(c) {
+        obj.state |= GA_Armed;
+    }
+    redraw(c);
+    if !was_armed {
+        if let Some(obj) = obj_mut(c) {
+            obj.state &= !GA_Armed;
+        }
+    }
+    redraw(c);
 }
 pub fn activatecontrol(c: control) {
-    unsafe {
-        if c.is_null() || ((*c).state & GA_Enabled) == 0 {
-            return;
-        }
+    let Some(state) = obj_ref(c).map(|obj| obj.state) else {
+        return;
+    };
+    if (state & GA_Enabled) == 0 {
+        return;
+    }
 
-        flashcontrol(c);
+    flashcontrol(c);
 
-        if !(*c).call.is_null()
-            && let Some(focus) = (*(*c).call).focus
-        {
-            focus(c);
-        }
-        if let Some(action) = (*c).action {
-            action(c);
-        }
+    let focus = obj_ref(c)
+        .and_then(|obj| ptr_ref(obj.call))
+        .and_then(|call| call.focus);
+    if let Some(focus) = focus {
+        focus(c);
+    }
+    if let Some(action) = obj_ref(c).and_then(|obj| obj.action) {
+        action(c);
     }
 }
 
 pub fn settext(c: control, text: *const c_char) {
-    unsafe {
-        if c.is_null() {
-            return;
-        }
-        if !(*c).text.is_null() {
-            super::memory::memfree((*c).text as *mut u8);
-        }
-        (*c).text = super::strings::new_string(text);
+    let Some(c) = obj_mut(c) else { return };
+    if !c.text.is_null() {
+        super::memory::memfree(c.text as *mut u8);
     }
+    c.text = super::strings::new_string(text);
 }
 pub fn GA_gettext(c: control) -> *mut c_char {
-    unsafe {
-        if c.is_null() {
-            ptr::null_mut()
-        } else {
-            (*c).text
-        }
-    }
+    obj_ref(c).map_or(ptr::null_mut(), |c| c.text)
 }
 #[allow(clippy::if_same_then_else)]
 pub fn gettextfont(c: control) -> font {
-    unsafe {
-        if c.is_null() || (*c).drawstate.is_null() {
-            ptr::null_mut()
-        } else {
-            (*(*c).drawstate).fnt
-        }
-    }
+    obj_ref(c)
+        .and_then(|c| ptr_ref(c.drawstate))
+        .map_or(ptr::null_mut(), |ds| ds.fnt)
 }
 pub fn settextfont(c: control, f: font) {
-    unsafe {
-        if !c.is_null() && !(*c).drawstate.is_null() {
-            (*(*c).drawstate).fnt = f;
-        }
+    if let Some(ds) = obj_ref(c).and_then(|c| ptr_mut(c.drawstate)) {
+        ds.fnt = f;
     }
 }
 pub fn setforeground(c: control, fg: rgb) {
-    unsafe {
-        if !c.is_null() {
-            (*c).fg = fg;
-        }
+    if let Some(c) = obj_mut(c) {
+        c.fg = fg;
     }
 }
 pub fn getforeground(c: control) -> rgb {
-    unsafe { if c.is_null() { Black } else { (*c).fg } }
+    obj_ref(c).map_or(Black, |c| c.fg)
 }
 pub fn setbackground(c: control, bg: rgb) {
-    unsafe {
-        if !c.is_null() {
-            (*c).bg = bg;
-        }
+    if let Some(c) = obj_mut(c) {
+        c.bg = bg;
     }
 }
 pub fn getbackground(c: control) -> rgb {
-    unsafe { if c.is_null() { Transparent } else { (*c).bg } }
+    obj_ref(c).map_or(Transparent, |c| c.bg)
 }
 pub fn setvalue(c: control, value: c_int) {
-    unsafe {
-        if !c.is_null() {
-            (*c).value = value;
-        }
+    if let Some(c) = obj_mut(c) {
+        c.value = value;
     }
 }
 pub fn getvalue(c: control) -> c_int {
-    unsafe { if c.is_null() { 0 } else { (*c).value } }
+    obj_ref(c).map_or(0, |c| c.value)
 }
 pub fn setdata(c: control, data: *mut c_void) {
-    unsafe {
-        if !c.is_null() {
-            (*c).data = data;
-        }
+    if let Some(c) = obj_mut(c) {
+        c.data = data;
     }
 }
 pub fn getdata(c: control) -> *mut c_void {
-    unsafe {
-        if c.is_null() {
-            ptr::null_mut()
-        } else {
-            (*c).data
-        }
-    }
+    obj_ref(c).map_or(ptr::null_mut(), |c| c.data)
 }
 pub fn parentwindow(c: control) -> window {
-    unsafe {
-        if c.is_null() {
-            ptr::null_mut()
-        } else {
-            (*c).parent
-        }
-    }
+    obj_ref(c).map_or(ptr::null_mut(), |c| c.parent)
 }
 
 pub fn newcontrol(text: *const c_char, r: rect) -> control {
     new_control_object(ControlObject, text, r, false)
 }
 pub fn newdrawing(r: rect, fn_: drawfn) -> drawing {
-    unsafe {
-        let drawing = new_control_object(UserObject, ptr::null(), r, true);
-        if !drawing.is_null() && !(*drawing).call.is_null() {
-            (*(*drawing).call).redraw = fn_;
-        }
-        drawing
+    let drawing = new_control_object(UserObject, ptr::null(), r, true);
+    if let Some(call) = obj_ref(drawing).and_then(|d| ptr_mut(d.call)) {
+        call.redraw = fn_;
     }
+    drawing
 }
 pub fn newpicture(img: image, r: rect) -> drawing {
-    unsafe {
-        let picture = newdrawing(r, None);
-        if !picture.is_null() {
-            (*picture).img = img;
-        }
-        picture
+    let picture = newdrawing(r, None);
+    if let Some(picture) = obj_mut(picture) {
+        picture.img = img;
     }
+    picture
 }
 pub fn newbutton(text: *const c_char, r: rect, fn_: actionfn) -> button {
-    unsafe {
-        let button = new_control_object(ButtonObject, text, r, false);
-        if !button.is_null() {
-            (*button).action = fn_;
-        }
-        button
+    let button = new_control_object(ButtonObject, text, r, false);
+    if let Some(button) = obj_mut(button) {
+        button.action = fn_;
     }
+    button
 }
 pub fn newimagebutton(img: image, r: rect, fn_: actionfn) -> button {
-    unsafe {
-        let button = newbutton(ptr::null(), r, fn_);
-        if !button.is_null() {
-            (*button).img = img;
-        }
-        button
+    let button = newbutton(ptr::null(), r, fn_);
+    if let Some(button) = obj_mut(button) {
+        button.img = img;
     }
+    button
 }
 pub fn setimage(c: control, img: image) {
-    unsafe {
-        if !c.is_null() {
-            (*c).img = img;
-        }
+    if let Some(c) = obj_mut(c) {
+        c.img = img;
     }
 }
 pub fn newcheckbox(text: *const c_char, r: rect, fn_: actionfn) -> checkbox {
-    unsafe {
-        let checkbox = new_control_object(CheckboxObject, text, r, false);
-        if !checkbox.is_null() {
-            (*checkbox).action = fn_;
-        }
-        checkbox
+    let checkbox = new_control_object(CheckboxObject, text, r, false);
+    if let Some(checkbox) = obj_mut(checkbox) {
+        checkbox.action = fn_;
     }
+    checkbox
 }
 pub fn newimagecheckbox(img: image, r: rect, fn_: actionfn) -> checkbox {
-    unsafe {
-        let checkbox = newcheckbox(ptr::null(), r, fn_);
-        if !checkbox.is_null() {
-            (*checkbox).img = img;
-        }
-        checkbox
+    let checkbox = newcheckbox(ptr::null(), r, fn_);
+    if let Some(checkbox) = obj_mut(checkbox) {
+        checkbox.img = img;
     }
+    checkbox
 }
 pub fn newradiobutton(text: *const c_char, r: rect, fn_: actionfn) -> radiobutton {
-    unsafe {
-        let button = new_control_object(RadioObject, text, r, false);
-        if !button.is_null() {
-            (*button).action = fn_;
-        }
-        button
+    let button = new_control_object(RadioObject, text, r, false);
+    if let Some(button) = obj_mut(button) {
+        button.action = fn_;
     }
+    button
 }
 pub fn newradiogroup() -> radiogroup {
     new_control_object(RadiogroupObject, ptr::null(), rect::default(), false)
@@ -547,40 +415,32 @@ pub fn newscrollbar(r: rect, max: c_int, pagesize: c_int, _fn_: scrollfn) -> scr
     scrollbar
 }
 pub fn changescrollbar(s: scrollbar, where_: c_int, max: c_int, size: c_int) {
-    unsafe {
-        if s.is_null() {
-            return;
-        }
+    let Some(s) = obj_mut(s) else { return };
 
-        let max = max.max(0);
-        let size = size.clamp(0, max);
-        let limit = max.saturating_sub(size);
+    let max = max.max(0);
+    let size = size.clamp(0, max);
+    let limit = max.saturating_sub(size);
 
-        (*s).max = max;
-        (*s).size = size;
-        (*s).value = where_.clamp(0, limit);
-    }
+    s.max = max;
+    s.size = size;
+    s.value = where_.clamp(0, limit);
 }
 pub fn newlabel(text: *const c_char, r: rect, alignment: c_int) -> label {
-    unsafe {
-        let label = new_control_object(LabelObject, text, r, false);
-        if !label.is_null() {
-            (*label).value = alignment;
-        }
-        label
+    let label = new_control_object(LabelObject, text, r, false);
+    if let Some(label) = obj_mut(label) {
+        label.value = alignment;
     }
+    label
 }
 pub fn newfield(text: *const c_char, r: rect) -> field {
     new_control_object(FieldObject, text, r, true)
 }
 pub fn newpassword(text: *const c_char, r: rect) -> field {
-    unsafe {
-        let field = newfield(text, r);
-        if !field.is_null() {
-            (*field).flags |= 1;
-        }
-        field
+    let field = newfield(text, r);
+    if let Some(field) = obj_mut(field) {
+        field.flags |= 1;
     }
+    field
 }
 pub fn newtextbox(text: *const c_char, r: rect) -> textbox {
     new_control_object(TextboxObject, text, r, true)
@@ -592,70 +452,54 @@ pub fn newrichtextarea(text: *const c_char, r: rect) -> textbox {
     newtextbox(text, r)
 }
 pub fn newlistbox(list: *const *const c_char, r: rect, _fn_: scrollfn, dble: actionfn) -> listbox {
-    unsafe {
-        let listbox = new_control_object(ListboxObject, first_list_item(list), r, false);
-        if !listbox.is_null() {
-            (*listbox).max = list_length(list);
-            (*listbox).value = -1;
-            (*listbox).dble = dble;
-        }
-        listbox
+    let listbox = new_control_object(ListboxObject, first_list_item(list), r, false);
+    if let Some(listbox) = obj_mut(listbox) {
+        listbox.max = list_length(list);
+        listbox.value = -1;
+        listbox.dble = dble;
     }
+    listbox
 }
 pub fn newdroplist(list: *const *const c_char, r: rect, fn_: scrollfn) -> listbox {
-    unsafe {
-        let listbox = newlistbox(list, r, fn_, None);
-        if !listbox.is_null() {
-            (*listbox).kind = DroplistObject;
-        }
-        listbox
+    let listbox = newlistbox(list, r, fn_, None);
+    if let Some(listbox) = obj_mut(listbox) {
+        listbox.kind = DroplistObject;
     }
+    listbox
 }
 pub fn newdropfield(list: *const *const c_char, r: rect, fn_: scrollfn) -> listbox {
-    unsafe {
-        let listbox = newlistbox(list, r, fn_, None);
-        if !listbox.is_null() {
-            (*listbox).kind = DropfieldObject;
-        }
-        listbox
+    let listbox = newlistbox(list, r, fn_, None);
+    if let Some(listbox) = obj_mut(listbox) {
+        listbox.kind = DropfieldObject;
     }
+    listbox
 }
 pub fn newmultilist(list: *const *const c_char, r: rect, fn_: scrollfn, dble: actionfn) -> listbox {
-    unsafe {
-        let listbox = newlistbox(list, r, fn_, dble);
-        if !listbox.is_null() {
-            (*listbox).kind = MultilistObject;
-        }
-        listbox
+    let listbox = newlistbox(list, r, fn_, dble);
+    if let Some(listbox) = obj_mut(listbox) {
+        listbox.kind = MultilistObject;
     }
+    listbox
 }
 pub fn isselected(b: listbox, index: c_int) -> c_int {
-    unsafe {
-        if !b.is_null() && (*b).value == index {
-            1
-        } else {
-            0
-        }
-    }
+    obj_ref(b).map_or(0, |b| if b.value == index { 1 } else { 0 })
 }
 pub fn setlistitem(b: listbox, index: c_int) {
-    unsafe {
-        if !b.is_null() {
-            (*b).value = index.max(-1);
-        }
+    if let Some(b) = obj_mut(b) {
+        b.value = index.max(-1);
     }
 }
 pub fn getlistitem(b: listbox) -> c_int {
-    unsafe { if b.is_null() { -1 } else { (*b).value } }
+    obj_ref(b).map_or(-1, |b| b.value)
 }
 pub fn changelistbox(b: listbox, list: *const *const c_char) {
-    unsafe {
-        if b.is_null() {
-            return;
-        }
-        settext(b, first_list_item(list));
-        (*b).max = list_length(list);
-        (*b).value = -1;
+    if b.is_null() {
+        return;
+    }
+    settext(b, first_list_item(list));
+    if let Some(b) = obj_mut(b) {
+        b.max = list_length(list);
+        b.value = -1;
     }
 }
 pub fn newprogressbar(
@@ -665,50 +509,40 @@ pub fn newprogressbar(
     incr: c_int,
     smooth: c_int,
 ) -> progressbar {
-    unsafe {
-        let progress = new_control_object(ProgressbarObject, ptr::null(), r, false);
-        if !progress.is_null() {
-            setprogressbarrange(progress, pmin, pmax);
-            (*progress).data = incr as usize as *mut c_void;
-            (*progress).flags = smooth as c_long;
+    let progress = new_control_object(ProgressbarObject, ptr::null(), r, false);
+    if !progress.is_null() {
+        setprogressbarrange(progress, pmin, pmax);
+        if let Some(progress) = obj_mut(progress) {
+            progress.data = incr as usize as *mut c_void;
+            progress.flags = smooth as c_long;
         }
-        progress
     }
+    progress
 }
 pub fn setprogressbar(obj: progressbar, n: c_int) {
-    unsafe {
-        if obj.is_null() {
-            return;
-        }
+    let Some(obj) = obj_mut(obj) else { return };
 
-        let min = (*obj).size.min((*obj).max);
-        let max = (*obj).max.max((*obj).size);
-        (*obj).value = n.clamp(min, max);
-    }
+    let min = obj.size.min(obj.max);
+    let max = obj.max.max(obj.size);
+    obj.value = n.clamp(min, max);
 }
 pub fn stepprogressbar(obj: progressbar, n: c_int) {
-    unsafe {
-        if !obj.is_null() {
-            setprogressbar(obj, (*obj).value.saturating_add(n));
-        }
+    if let Some(value) = obj_ref(obj).map(|obj| obj.value) {
+        setprogressbar(obj, value.saturating_add(n));
     }
 }
 pub fn setprogressbarrange(obj: progressbar, pbmin: c_int, pbmax: c_int) {
-    unsafe {
-        if obj.is_null() {
-            return;
-        }
+    let Some(obj) = obj_mut(obj) else { return };
 
-        let (min, max) = if pbmin <= pbmax {
-            (pbmin, pbmax)
-        } else {
-            (pbmax, pbmin)
-        };
+    let (min, max) = if pbmin <= pbmax {
+        (pbmin, pbmax)
+    } else {
+        (pbmax, pbmin)
+    };
 
-        (*obj).size = min;
-        (*obj).max = max;
-        (*obj).value = (*obj).value.clamp(min, max);
-    }
+    obj.size = min;
+    obj.max = max;
+    obj.value = obj.value.clamp(min, max);
 }
 pub fn newmenubar(_fn_: actionfn) -> menubar {
     ptr::null_mut()
@@ -735,91 +569,76 @@ pub fn cleartext(t: textbox) {
 }
 pub fn pastetext(_t: textbox) {}
 pub fn inserttext(t: textbox, text: *const c_char) {
-    unsafe {
-        if t.is_null() || text.is_null() {
-            return;
-        }
-
-        let old_text = (*t).text;
-        let combined = if old_text.is_null() {
-            super::strings::new_string(text)
-        } else {
-            super::strings::add_strings(old_text, text)
-        };
-        if combined.is_null() {
-            return;
-        }
-        if !old_text.is_null() {
-            super::strings::del_string(old_text);
-        }
-        (*t).text = combined;
-
-        let end = super::strings::string_length((*t).text);
-        selecttext(t, end, end);
+    let Some(obj) = obj_mut(t) else { return };
+    if text.is_null() {
+        return;
     }
+
+    let old_text = obj.text;
+    let combined = if old_text.is_null() {
+        super::strings::new_string(text)
+    } else {
+        super::strings::add_strings(old_text, text)
+    };
+    if combined.is_null() {
+        return;
+    }
+    if !old_text.is_null() {
+        super::strings::del_string(old_text);
+    }
+    obj.text = combined;
+
+    let end = super::strings::string_length(obj.text);
+    selecttext(t, end, end);
 }
 pub fn selecttext(t: textbox, start: c_long, end: c_long) {
-    unsafe {
-        if t.is_null() {
-            return;
-        }
+    let Some(t) = obj_mut(t) else { return };
 
-        let start = start.max(0);
-        let end = end.max(0);
-        let (start, end) = if start <= end {
-            (start, end)
-        } else {
-            (end, start)
-        };
+    let start = start.max(0);
+    let end = end.max(0);
+    let (start, end) = if start <= end {
+        (start, end)
+    } else {
+        (end, start)
+    };
 
-        (*t).caretx = start as c_int;
-        (*t).carety = end as c_int;
-    }
+    t.caretx = start as c_int;
+    t.carety = end as c_int;
 }
 pub fn textselection(t: textbox, start: *mut c_long, end: *mut c_long) {
-    unsafe {
-        let selection = if t.is_null() {
-            (0, 0)
-        } else {
-            ((*t).caretx as c_long, (*t).carety as c_long)
-        };
+    let selection = obj_ref(t).map_or((0, 0), |t| (t.caretx as c_long, t.carety as c_long));
 
-        if !start.is_null() {
-            *start = selection.0;
-        }
-        if !end.is_null() {
-            *end = selection.1;
-        }
+    if let Some(start) = ptr_mut(start) {
+        *start = selection.0;
+    }
+    if let Some(end) = ptr_mut(end) {
+        *end = selection.1;
     }
 }
 
 // Font functions
 pub fn newfont(name: *const c_char, style: c_int, size: c_int) -> font {
-    unsafe {
-        objects::init_objects();
-        let font = objects::new_object(FontObject, ptr::null_mut(), ptr::null_mut());
-        if font.is_null() {
-            return ptr::null_mut();
-        }
-        (*font).text = strings::new_string(name);
-        (*font).value = size.max(1);
-        (*font).flags = style as c_long;
-        font
-    }
+    objects::init_objects();
+    let font = objects::new_object(FontObject, ptr::null_mut(), ptr::null_mut());
+    let Some(font) = obj_mut(font) else {
+        return ptr::null_mut();
+    };
+    font.text = strings::new_string(name);
+    font.value = size.max(1);
+    font.flags = style as c_long;
+    font
 }
 pub fn fontwidth(f: font) -> c_int {
-    unsafe {
-        if f.is_null() {
-            0
-        } else if ((*f).flags & FixedWidth as c_long) != 0 {
-            ((*f).value / 2).max(1)
+    obj_ref(f).map_or(0, |f| {
+        if (f.flags & FixedWidth as c_long) != 0 {
+            (f.value / 2).max(1)
         } else {
-            ((*f).value * 3 / 5).max(1)
+            (f.value * 3 / 5).max(1)
         }
-    }
+    })
 }
 pub fn fontheight(f: font) -> c_int {
-    unsafe { if f.is_null() { 0 } else { (*f).value.max(1) } }
+    obj_ref(f).map_or(0, |f| f.value.max(1))
 }
 pub fn fontascent(f: font) -> c_int {
     let height = fontheight(f);
@@ -846,17 +665,16 @@ pub fn loadbitmap(name: *const c_char) -> bitmap {
     imagetobitmap(img)
 }
 pub fn imagetobitmap(img: image) -> bitmap {
-    unsafe {
-        if img.is_null() {
-            return ptr::null_mut();
-        }
-        let bitmap = new_bitmap_object((*img).width, (*img).height, (*img).depth);
-        if !bitmap.is_null() {
-            image_api::delimage((*bitmap).img);
-            (*bitmap).img = image_api::copyimage(img);
-        }
-        bitmap
+    let Some((width, height, depth)) = ptr_ref(img).map(|img| (img.width, img.height, img.depth))
+    else {
+        return ptr::null_mut();
+    };
+    let bitmap = new_bitmap_object(width, height, depth);
+    if let Some(bitmap) = obj_mut(bitmap) {
+        image_api::delimage(bitmap.img);
+        bitmap.img = image_api::copyimage(img);
     }
+    bitmap
 }
 pub fn createbitmap(width: c_int, height: c_int, depth: c_int, data: *mut GAbyte) -> bitmap {
     let bitmap = new_bitmap_object(width, height, depth);
@@ -867,43 +685,46 @@ pub fn setbitmapdata(b: bitmap, data: *mut GAbyte) {
     set_bitmap_pixels(b, data)
 }
 pub fn getbitmapdata(b: bitmap, data: *mut GAbyte) {
-    unsafe {
-        if b.is_null() || (*b).img.is_null() || data.is_null() {
-            return;
-        }
-        let pixels = image_api::getpixels((*b).img);
-        if pixels.is_null() {
-            return;
-        }
-        let pixel_count = ((*(*b).img).width.max(0) * (*(*b).img).height.max(0)) as usize;
-        let byte_len = if (*(*b).img).depth <= 8 {
-            pixel_count
-        } else {
-            pixel_count * std::mem::size_of::<rgb>()
-        };
-        ptr::copy_nonoverlapping(pixels, data, byte_len);
+    let Some(img) = obj_ref(b).map(|b| b.img) else { return };
+    if img.is_null() || data.is_null() {
+        return;
     }
+    let pixels = image_api::getpixels(img);
+    if pixels.is_null() {
+        return;
+    }
+    let Some((width, height, depth)) = ptr_ref(img).map(|img| (img.width, img.height, img.depth))
+    else {
+        return;
+    };
+    let pixel_count = (width.max(0) * height.max(0)) as usize;
+    let byte_len = if depth <= 8 {
+        pixel_count
+    } else {
+        pixel_count * std::mem::size_of::<rgb>()
+    };
+    // Raw pixel copy into the caller-provided buffer; byte_len is derived
+    // from the image dimensions recorded above.
+    unsafe { ptr::copy_nonoverlapping(pixels, data, byte_len) };
 }
 pub fn getbitmapdata2(b: bitmap, data: *mut *mut GAbyte) {
-    unsafe {
-        if b.is_null() || (*b).img.is_null() || data.is_null() {
-            return;
-        }
-        *data = image_api::getpixels((*b).img);
+    let Some(img) = obj_ref(b).map(|b| b.img) else { return };
+    let Some(data) = ptr_mut(data) else { return };
+    if img.is_null() {
+        return;
     }
+    *data = image_api::getpixels(img);
 }
 
 // Cursor functions
 pub fn newcursor(hotspot: point, img: image) -> cursor {
-    unsafe {
-        let cursor = new_control_object(CursorObject, ptr::null(), rect::default(), false);
-        if !cursor.is_null() {
-            (*cursor).rect.x = hotspot.x;
-            (*cursor).rect.y = hotspot.y;
-            (*cursor).img = img;
-        }
-        cursor
+    let cursor = new_control_object(CursorObject, ptr::null(), rect::default(), false);
+    if let Some(cursor) = obj_mut(cursor) {
+        cursor.rect.x = hotspot.x;
+        cursor.rect.y = hotspot.y;
+        cursor.img = img;
     }
+    cursor
 }
 pub fn createcursor(offset: point, _white_mask: *mut GAbyte, _black_shape: *mut GAbyte) -> cursor {
     newcursor(offset, ptr::null_mut())
