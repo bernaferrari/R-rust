@@ -126,7 +126,7 @@ pub unsafe fn do_subassign2_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) ->
 ///
 /// Ported from R's `seq_int()` in eval.c. Used by the bytecode interpreter
 /// for the STEPFOR instruction.
-pub unsafe fn seq_int(n1: c_int, n2: c_int) -> SEXP {
+pub fn seq_int(n1: c_int, n2: c_int) -> SEXP {
     int_sequence_current(n1, n2).unwrap_or_else(R_NilValue)
 }
 
@@ -295,7 +295,7 @@ pub unsafe fn cmp_arith2(
 ///
 /// In our Rust port, the stack always holds SEXP values, so this is
 /// essentially a no-op, but we provide it for API compatibility.
-pub unsafe fn STACKVAL_TO_SEXP(val: SEXP) -> SEXP {
+pub fn STACKVAL_TO_SEXP(val: SEXP) -> SEXP {
     val
 }
 
@@ -306,7 +306,7 @@ pub unsafe fn STACKVAL_TO_SEXP(val: SEXP) -> SEXP {
 /// Check if x is numeric but not logical.
 ///
 /// Used in the bytecode interpreter for type checks.
-pub unsafe fn isNumericOnly(x: SEXP) -> c_int {
+pub fn isNumericOnly(x: SEXP) -> c_int {
     {
         let t = TYPEOF(x);
         if t == SEXPTYPE::REALSXP || t == SEXPTYPE::CPLXSXP || t == SEXPTYPE::INTSXP {

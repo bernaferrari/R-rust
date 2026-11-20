@@ -461,7 +461,7 @@ impl Drop for SamplingGuard {
 /// Caller roots the active execution graph and ends every arena/payload loan
 /// before servicing a sample, which may invoke line/source providers.
 #[inline]
-pub(crate) unsafe fn sample_at_safe_point(
+pub(crate) fn sample_at_safe_point(
     owner: crate::sexp::owner::OwnerToken<'_>,
 ) -> crate::sexp::object::SexpResult<()> {
     // Each audited caller has just checked its original execution owner. The
@@ -1140,7 +1140,7 @@ unsafe fn pf_str(s: *const c_char) -> isize {
 /// 'not available on this platform' sentinel (-1) used when no
 /// profile output file is open.
 #[cfg(target_arch = "wasm32")]
-unsafe fn pf_str(_s: *const c_char) -> isize {
+fn pf_str(_s: *const c_char) -> isize {
     -1
 }
 
@@ -1469,7 +1469,7 @@ unsafe fn doprof(_sig: c_int) {
 /// Null signal handler for SIGPROF, used when profiling is being stopped.
 ///
 /// Ported from R's `doprof_null()` in eval.c.
-unsafe fn doprof_null(_sig: c_int) {
+fn doprof_null(_sig: c_int) {
     // Just reinstall the handler
     // In C: signal(SIGPROF, doprof_null);
     // In Rust port, signal handling is managed differently
@@ -1703,7 +1703,7 @@ unsafe fn R_InitProfiling(
 /// behavior of returning `R_NilValue()` without starting profiling.
 #[cfg(target_arch = "wasm32")]
 #[allow(dead_code)]
-unsafe fn R_InitProfiling(
+fn R_InitProfiling(
     _filename: SEXP,
     _append: c_int,
     _dinterval: c_double,
@@ -1988,7 +1988,7 @@ pub unsafe fn do_Rprofmem(_call: SEXP, _op: SEXP, mut args: SEXP, _rho: SEXP) ->
 /// upstream's `error(_("memory profiling is not available on this system"))`
 /// fallback) instead of silently returning success.
 #[cfg(target_arch = "wasm32")]
-pub unsafe fn do_Rprofmem_wasm(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_Rprofmem_wasm(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     crate::sexp::context::r_error("memory profiling is not available on this platform")
 }
 
@@ -1998,26 +1998,26 @@ pub unsafe fn do_Rprofmem_wasm(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) 
 
 /// Implement the `Rprofaddr()` function for address profiling.
 #[cfg(not(target_arch = "wasm32"))]
-pub unsafe fn do_Rprofaddr(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_Rprofaddr(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     R_NilValue()
 }
 /// WASM M1 stub for `Rprofaddr()`: no address profiler on wasm.
 /// Raises the catchable R platform-unavailable error instead of silently
 /// returning success.
 #[cfg(target_arch = "wasm32")]
-pub unsafe fn do_Rprofaddr(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_Rprofaddr(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     crate::sexp::context::r_error("address profiling is not available on this platform")
 }
 /// Implement the `gcprof()` function for GC profiling.
 #[cfg(not(target_arch = "wasm32"))]
-pub unsafe fn do_gcprof(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_gcprof(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     R_NilValue()
 }
 /// WASM M1 stub for `gcprof()`: no GC profiler on wasm.
 /// Raises the catchable R platform-unavailable error instead of silently
 /// returning success.
 #[cfg(target_arch = "wasm32")]
-pub unsafe fn do_gcprof(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_gcprof(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     crate::sexp::context::r_error("GC profiling is not available on this platform")
 }
 
@@ -2030,7 +2030,7 @@ pub unsafe fn do_gcprof(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP
 /// Records the current bytecode opcode when the profiling timer fires.
 ///
 /// Ported from R's `dobcprof()` in eval.c.
-unsafe fn dobcprof(_sig: c_int) {
+fn dobcprof(_sig: c_int) {
     let op = with_profiling_state(|state| state.current_opcode);
     if op >= 0 && (op as usize) < OPCOUNT {
         with_profiling_state(|state| state.opcode_counts[op as usize] += 1);
@@ -2045,7 +2045,7 @@ unsafe fn dobcprof(_sig: c_int) {
 /// Null signal handler for BC profiling, used when BC profiling stops.
 ///
 /// Ported from R's `dobcprof_null()` in eval.c.
-unsafe fn dobcprof_null(_sig: c_int) {
+fn dobcprof_null(_sig: c_int) {
     // Just reinstall: signal(SIGPROF, dobcprof_null);
 }
 
@@ -2104,7 +2104,7 @@ pub unsafe fn do_bcprofstart(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
 /// `error(_("byte code profiling is not supported in this build"))`
 /// fallback) instead of silently returning success.
 #[cfg(target_arch = "wasm32")]
-pub unsafe fn do_bcprofstart(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_bcprofstart(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     crate::sexp::context::r_error("byte code profiling is not supported on this platform")
 }
 
@@ -2149,7 +2149,7 @@ pub unsafe fn do_bcprofstop(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP
 /// `error(_("byte code profiling is not supported in this build"))`
 /// fallback) instead of silently returning success.
 #[cfg(target_arch = "wasm32")]
-pub unsafe fn do_bcprofstop(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_bcprofstop(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     crate::sexp::context::r_error("byte code profiling is not supported on this platform")
 }
 
@@ -2185,7 +2185,7 @@ pub unsafe fn do_bcprofcounts(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SE
 /// `error(_("byte code profiling is not supported in this build"))`
 /// fallback) instead of returning a silent zero vector.
 #[cfg(target_arch = "wasm32")]
-pub unsafe fn do_bcprofcounts(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_bcprofcounts(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     crate::sexp::context::r_error("byte code profiling is not supported on this platform")
 }
 
@@ -2460,9 +2460,7 @@ mod tests {
                 state.current_opcode = 3;
                 state.opcode_counts.fill(0);
             });
-            unsafe {
-                dobcprof(0);
-            }
+            dobcprof(0);
             with_profiling_state(|state| assert_eq!(state.opcode_counts[3], 1));
         });
 
@@ -2471,9 +2469,7 @@ mod tests {
                 assert_eq!(state.opcode_counts[3], 0);
                 state.current_opcode = 3;
             });
-            unsafe {
-                dobcprof(0);
-            }
+            dobcprof(0);
             with_profiling_state(|state| assert_eq!(state.opcode_counts[3], 1));
         });
 

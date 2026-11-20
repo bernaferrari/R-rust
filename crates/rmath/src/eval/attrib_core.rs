@@ -307,7 +307,7 @@ unsafe fn update_class_object_flag(x: SEXP, which: SEXP, value: SEXP) {
 /// Check if an object is an S4 object (has a "class" attribute).
 ///
 /// This is the equivalent of R's `isObject()` macro.
-pub unsafe fn isObject(x: SEXP) -> c_int {
+pub fn isObject(x: SEXP) -> c_int {
     {
         if x.is_null() {
             return 0;
@@ -514,7 +514,7 @@ mod tests {
     #[test]
     fn test_is_object_null() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
+        {
             assert_eq!(isObject(ptr::null_mut()), 0);
         }
     }

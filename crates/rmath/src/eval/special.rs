@@ -221,7 +221,7 @@ fn unimplemented_special_form(name: &str) -> ! {
     });
 }
 
-unsafe fn is_null(x: SEXP) -> bool {
+fn is_null(x: SEXP) -> bool {
     x.is_null() || crate::sexp::accessors::Rf_isNull(x) != 0
 }
 

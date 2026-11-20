@@ -731,7 +731,7 @@ pub(crate) unsafe fn logical_arg_is_true(x: SEXP) -> bool {
         let Some(arg) = NumericVector::from_raw(x) else {
             return false;
         };
-        unsafe fn logical_arg_is_true(x: SEXP) -> bool {
+        fn logical_arg_is_true(x: SEXP) -> bool {
             return false;
         }
         match arg.clone().typeof_() {

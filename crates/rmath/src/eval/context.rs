@@ -21,13 +21,13 @@ use crate::sexp::instance::{RInstance, with_required_current_instance};
 // Local error helper
 // ---------------------------------------------------------------------------
 
-unsafe fn error(msg: &str) -> ! {
+fn error(msg: &str) -> ! {
     std::panic::panic_any(crate::sexp::context::RError {
         message: msg.to_string(),
     });
 }
 
-unsafe fn isNull(x: SEXP) -> bool {
+fn isNull(x: SEXP) -> bool {
     crate::sexp::accessors::Rf_isNull(x) != 0
 }
 
@@ -489,7 +489,7 @@ pub unsafe fn do_sysbrowser(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP
     })
 }
 
-pub unsafe fn do_browser(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_browser(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     R_NilValue()
 }
 
@@ -763,7 +763,7 @@ pub fn R_jump_to_top() {
 
 /// Known gap: no-op stub. Full interactive `abort`/`browser`/`tryRestart`
 /// defaults remain incomplete versus GNU `R_InsertRestartHandlers`.
-pub unsafe fn R_InsertRestartHandlers(_call: SEXP, _rho: SEXP) {}
+pub fn R_InsertRestartHandlers(_call: SEXP, _rho: SEXP) {}
 
 // ---------------------------------------------------------------------------
 // R_GetCurrentEnv — get cloenv of current function context

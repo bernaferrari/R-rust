@@ -31,7 +31,7 @@ pub fn R_FunTabSize() -> usize {
 ///
 /// This is the equivalent of R's `PRIMFUN()` macro.
 #[inline]
-pub unsafe fn PRIMFUN(op: SEXP) -> Option<PrimFun> {
+pub fn PRIMFUN(op: SEXP) -> Option<PrimFun> {
     primitive::get_primfun(op)
 }
 
@@ -871,9 +871,7 @@ mod tests {
 
     #[test]
     fn primfun_null() {
-        unsafe {
-            assert!(PRIMFUN(ptr::null_mut()).is_none());
-        }
+        assert!(PRIMFUN(ptr::null_mut()).is_none());
     }
 
     #[test]

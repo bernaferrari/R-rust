@@ -876,7 +876,7 @@ unsafe fn try_simple_vector_subassign(target: SEXP, subs: SEXP, value: SEXP) -> 
     }
 }
 
-unsafe fn scalar_positive_index(index: SEXP) -> Option<crate::sexp::ffi::R_xlen_t> {
+fn scalar_positive_index(index: SEXP) -> Option<crate::sexp::ffi::R_xlen_t> {
     {
         if index.is_null()
             || !matches!(

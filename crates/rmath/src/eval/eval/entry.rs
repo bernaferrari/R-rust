@@ -66,7 +66,7 @@ pub unsafe fn eval_safe<'a>(expr: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, S
         evaluated = Some((|| {
             // Inputs are rooted and execution-limit setup is complete. Source
             // provider errors share this typed evaluation's unwind boundary.
-            unsafe { crate::eval::profiling::sample_at_safe_point(owner) }
+            crate::eval::profiling::sample_at_safe_point(owner)
                 .map_err(|err| sexp_err("profiling sample", err))?;
             unsafe {
                 /* SAFETY: internal caller retains the live owner and its roots across this scoped operation. */

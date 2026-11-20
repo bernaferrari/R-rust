@@ -336,7 +336,7 @@ unsafe fn env_on_enclos_chain(mut start: SEXP, needle: SEXP) -> bool {
     }
 }
 
-unsafe fn disconnected_methods_snapshot(cloenv: SEXP, empty: SEXP, base: SEXP) -> bool {
+fn disconnected_methods_snapshot(cloenv: SEXP, empty: SEXP, base: SEXP) -> bool {
     {
         let parent = crate::sexp::accessors::ENCLOS(cloenv);
         parent.is_null() || parent == empty || parent == base
