@@ -82,7 +82,7 @@ unsafe extern "C" {
 }
 
 #[inline]
-unsafe fn get_errno() -> c_int {
+fn get_errno() -> c_int {
     unsafe {
         #[cfg(target_os = "macos")]
         {
@@ -225,14 +225,14 @@ fn with_httpd_state<R>(f: impl FnOnce(&mut HttpdRuntimeState) -> R) -> R {
 // Local Rust adapters for R runtime services not yet represented as modules
 // ============================================================
 
-unsafe fn R_FindNamespace(_name: SEXP) -> SEXP {
+fn R_FindNamespace(_name: SEXP) -> SEXP {
     unsafe {
         Rf_error(b"HTTPD namespace lookup is not implemented\0".as_ptr() as *const c_char);
         R_NilValue()
     }
 }
 
-unsafe fn R_ToplevelExec(fun: Option<unsafe fn(*mut c_void)>, data: *mut c_void) -> c_int {
+fn R_ToplevelExec(fun: Option<unsafe fn(*mut c_void)>, data: *mut c_void) -> c_int {
     unsafe {
         if let Some(fun) = fun {
             fun(data);
@@ -243,7 +243,7 @@ unsafe fn R_ToplevelExec(fun: Option<unsafe fn(*mut c_void)>, data: *mut c_void)
     }
 }
 
-unsafe fn LCONS(car: SEXP, cdr: SEXP) -> SEXP {
+fn LCONS(car: SEXP, cdr: SEXP) -> SEXP {
     unsafe {
         let cell = Rf_cons(car, cdr);
         if !cell.is_null() {
@@ -253,17 +253,17 @@ unsafe fn LCONS(car: SEXP, cdr: SEXP) -> SEXP {
     }
 }
 
-unsafe fn SET_TAG(x: SEXP, y: SEXP) {
+fn SET_TAG(x: SEXP, y: SEXP) {
     unsafe {
         SETTAG(x, y);
     }
 }
 
-unsafe fn list4(a: SEXP, b: SEXP, c: SEXP, d: SEXP) -> SEXP {
+fn list4(a: SEXP, b: SEXP, c: SEXP, d: SEXP) -> SEXP {
     unsafe { Rf_cons(a, Rf_cons(b, Rf_cons(c, Rf_cons(d, R_NilValue())))) }
 }
 
-unsafe fn addInputHandler(
+fn addInputHandler(
     _handlers: *mut c_void,
     _fd: c_int,
     _handler: Option<unsafe fn(*mut c_void)>,
@@ -275,9 +275,9 @@ unsafe fn addInputHandler(
     }
 }
 
-unsafe fn removeInputHandler(_handlers: *mut c_void, _ih: *mut c_void) {}
+fn removeInputHandler(_handlers: *mut c_void, _ih: *mut c_void) {}
 
-unsafe fn R_InputHandlers() -> *mut c_void {
+fn R_InputHandlers() -> *mut c_void {
     std::ptr::null_mut()
 }
 
@@ -295,7 +295,7 @@ fn first_init() {
 // ============================================================
 
 /// Free a C string allocated by alloc_c_string. Null-safe.
-unsafe fn free_c_string(s: *mut c_char) {
+fn free_c_string(s: *mut c_char) {
     unsafe {
         if s.is_null() {
             return;
@@ -307,7 +307,7 @@ unsafe fn free_c_string(s: *mut c_char) {
 }
 
 /// Duplicate a C string using std::alloc instead of libc::strdup.
-unsafe fn alloc_c_string(s: *const c_char) -> *mut c_char {
+fn alloc_c_string(s: *const c_char) -> *mut c_char {
     unsafe {
         if s.is_null() {
             return std::ptr::null_mut();
@@ -327,7 +327,7 @@ unsafe fn alloc_c_string(s: *const c_char) -> *mut c_char {
 // ---------------------------------------------------------------------------
 
 /// C `strlen` over a NUL-terminated byte string.
-unsafe fn c_strlen(s: *const c_char) -> usize {
+fn c_strlen(s: *const c_char) -> usize {
     unsafe {
         if s.is_null() {
             return 0;
@@ -343,7 +343,7 @@ unsafe fn c_strlen(s: *const c_char) -> usize {
 }
 
 /// C `strcmp` comparing bytes as unsigned chars.
-unsafe fn c_strcmp(a: *const c_char, b: *const c_char) -> c_int {
+fn c_strcmp(a: *const c_char, b: *const c_char) -> c_int {
     unsafe {
         let empty = b"\0";
         let mut pa = if a.is_null() {
@@ -372,7 +372,7 @@ unsafe fn c_strcmp(a: *const c_char, b: *const c_char) -> c_int {
 }
 
 /// C `strncmp` comparing at most `n` bytes, stopping at a NUL.
-unsafe fn c_strncmp(a: *const c_char, b: *const c_char, n: usize) -> c_int {
+fn c_strncmp(a: *const c_char, b: *const c_char, n: usize) -> c_int {
     unsafe {
         if n == 0 {
             return 0;
@@ -406,7 +406,7 @@ unsafe fn c_strncmp(a: *const c_char, b: *const c_char, n: usize) -> c_int {
 
 /// C `strchr`: pointer to the first occurrence of `c` (NUL matches the
 /// terminator), or NULL.
-unsafe fn c_strchr(s: *const c_char, c: c_int) -> *mut c_char {
+fn c_strchr(s: *const c_char, c: c_int) -> *mut c_char {
     unsafe {
         if s.is_null() {
             return std::ptr::null_mut();
@@ -427,7 +427,7 @@ unsafe fn c_strchr(s: *const c_char, c: c_int) -> *mut c_char {
 }
 
 /// C `strcpy`: copy `src` including the NUL terminator.
-unsafe fn c_strcpy(dest: *mut c_char, src: *const c_char) {
+fn c_strcpy(dest: *mut c_char, src: *const c_char) {
     unsafe {
         if dest.is_null() || src.is_null() {
             return;
@@ -447,7 +447,7 @@ unsafe fn c_strcpy(dest: *mut c_char, src: *const c_char) {
 }
 
 /// C `atol`: skip leading whitespace, optional sign, parse decimal digits.
-unsafe fn c_atol(s: *const c_char) -> c_long {
+fn c_atol(s: *const c_char) -> c_long {
     unsafe {
         if s.is_null() {
             return 0;
@@ -475,22 +475,22 @@ unsafe fn c_atol(s: *const c_char) -> c_long {
 }
 
 /// C `memcpy`: copy `n` bytes between non-overlapping regions.
-unsafe fn c_memcpy(dest: *mut c_void, src: *const c_void, n: usize) {
+fn c_memcpy(dest: *mut c_void, src: *const c_void, n: usize) {
     unsafe { std::ptr::copy_nonoverlapping(src as *const u8, dest as *mut u8, n) }
 }
 
 /// C `memmove`: copy `n` bytes between possibly-overlapping regions.
-unsafe fn c_memmove(dest: *mut c_void, src: *const c_void, n: usize) {
+fn c_memmove(dest: *mut c_void, src: *const c_void, n: usize) {
     unsafe { std::ptr::copy(src as *const u8, dest as *mut u8, n) }
 }
 
 /// C `memset`: fill `n` bytes with `c`.
-unsafe fn c_memset(s: *mut c_void, c: c_int, n: usize) {
+fn c_memset(s: *mut c_void, c: c_int, n: usize) {
     unsafe { std::ptr::write_bytes(s as *mut u8, c as u8, n) }
 }
 
 /// Allocate `size` bytes of raw memory using Rust std::alloc.
-unsafe fn alloc_raw(size: size_t) -> *mut c_void {
+fn alloc_raw(size: size_t) -> *mut c_void {
     unsafe {
         if size == 0 {
             return std::ptr::null_mut();
@@ -501,7 +501,7 @@ unsafe fn alloc_raw(size: size_t) -> *mut c_void {
 }
 
 /// Free memory allocated by alloc_raw.
-unsafe fn free_raw(p: *mut c_void, size: size_t) {
+fn free_raw(p: *mut c_void, size: size_t) {
     unsafe {
         if p.is_null() || size == 0 {
             return;
@@ -513,7 +513,7 @@ unsafe fn free_raw(p: *mut c_void, size: size_t) {
 
 /// Free buffers starting from the tail.
 /// Safety: buf must have been allocated by alloc_buffer (via std::alloc).
-unsafe fn free_buffer(buf: *mut Buffer) {
+fn free_buffer(buf: *mut Buffer) {
     unsafe {
         if buf.is_null() {
             return;
@@ -533,7 +533,7 @@ unsafe fn free_buffer(buf: *mut Buffer) {
 
 /// Allocate a new buffer with `size` bytes of data space after the Buffer header.
 /// Uses Rust std::alloc to avoid any C allocator dependency.
-unsafe fn alloc_buffer(size: c_int, parent: *mut Buffer) -> *mut Buffer {
+fn alloc_buffer(size: c_int, parent: *mut Buffer) -> *mut Buffer {
     unsafe {
         let total_size = core::mem::size_of::<Buffer>() + size as usize;
         let layout = Layout::from_size_align_unchecked(total_size, core::mem::align_of::<Buffer>());
@@ -553,7 +553,7 @@ unsafe fn alloc_buffer(size: c_int, parent: *mut Buffer) -> *mut Buffer {
 }
 
 /// Convert doubly-linked buffers into one big raw vector
-unsafe fn collect_buffers(buf: *mut Buffer) -> SEXP {
+fn collect_buffers(buf: *mut Buffer) -> SEXP {
     unsafe {
         if buf.is_null() {
             return Rf_allocVector(SEXPTYPE::RAWSXP, 0);
@@ -589,7 +589,7 @@ unsafe fn collect_buffers(buf: *mut Buffer) -> SEXP {
 // ============================================================
 
 /// Finalize a worker (close socket, free resources)
-unsafe fn finalize_worker(c: *mut HttpdConn) {
+fn finalize_worker(c: *mut HttpdConn) {
     unsafe {
         // On Unix, remove input handler
         if !(*c).ih.is_null() {
@@ -614,7 +614,7 @@ unsafe fn finalize_worker(c: *mut HttpdConn) {
 }
 
 /// Add a worker to the worker list. Returns 0 on success, -1 if full.
-unsafe fn add_worker(c: *mut HttpdConn) -> c_int {
+fn add_worker(c: *mut HttpdConn) -> c_int {
     unsafe {
         let mut i: c_uint = 0;
         while i < MAX_WORKERS as c_uint {
@@ -633,7 +633,7 @@ unsafe fn add_worker(c: *mut HttpdConn) -> c_int {
 }
 
 /// Remove a worker from the list. If thread-owned, set THREAD_DISPOSE flag.
-unsafe fn remove_worker(c: *mut HttpdConn) {
+fn remove_worker(c: *mut HttpdConn) {
     unsafe {
         if c.is_null() {
             return;
@@ -660,7 +660,7 @@ unsafe fn remove_worker(c: *mut HttpdConn) {
 // ============================================================
 
 /// Build a sockaddr_in structure
-unsafe fn build_sin(sa: *mut sockaddr_in, ip: *const c_char, port: c_int) -> *mut sockaddr {
+fn build_sin(sa: *mut sockaddr_in, ip: *const c_char, port: c_int) -> *mut sockaddr {
     unsafe {
         c_memset(sa as *mut c_void, 0, core::mem::size_of::<sockaddr_in>());
         (*sa).sin_family = AF_INET as libc::sa_family_t;
@@ -675,7 +675,7 @@ unsafe fn build_sin(sa: *mut sockaddr_in, ip: *const c_char, port: c_int) -> *mu
 }
 
 /// Send data on a socket, handling SIGPIPE
-unsafe fn send_response(s: c_int, buf: *const c_char, len: size_t) -> c_int {
+fn send_response(s: c_int, buf: *const c_char, len: size_t) -> c_int {
     unsafe {
         let mut i: c_uint = 0;
         with_httpd_state(|state| state.ignore_sigpipe = 1);
@@ -699,7 +699,7 @@ unsafe fn send_response(s: c_int, buf: *const c_char, len: size_t) -> c_int {
 }
 
 /// Send `HTTP/x.x` plus the text (which should be of the form `"status message"`).
-unsafe fn send_http_response(c: *mut HttpdConn, text: *const c_char) {
+fn send_http_response(c: *mut HttpdConn, text: *const c_char) {
     unsafe {
         let sig = http_sig(&*c);
         let l = c_strlen(text);
@@ -730,7 +730,7 @@ unsafe fn send_http_response(c: *mut HttpdConn, text: *const c_char) {
 // ============================================================
 
 /// Decode URI in place (decoding never expands)
-unsafe fn uri_decode(s: *mut c_char) {
+fn uri_decode(s: *mut c_char) {
     unsafe {
         let mut src = s;
         let mut dst = s;
@@ -777,7 +777,7 @@ unsafe fn uri_decode(s: *mut c_char) {
 }
 
 /// Decode a single hex character from URI encoding (advances the pointer)
-unsafe fn hex_decode(s: *mut *mut c_char) -> u8 {
+fn hex_decode(s: *mut *mut c_char) -> u8 {
     unsafe {
         let mut ec: u8 = 0;
         let ch = **s;
@@ -811,7 +811,7 @@ unsafe fn hex_decode(s: *mut *mut c_char) -> u8 {
 // ============================================================
 
 /// Parse a query string into a named character vector - must NOT be URI decoded
-unsafe fn parse_query(query: *mut c_char) -> SEXP {
+fn parse_query(query: *mut c_char) -> SEXP {
     unsafe {
         let mut parts: c_int = 0;
         let mut s = query;
@@ -886,7 +886,7 @@ unsafe fn parse_query(query: *mut c_char) -> SEXP {
 // ============================================================
 
 /// Create an object representing the request body.
-unsafe fn parse_request_body(c: *mut HttpdConn) -> SEXP {
+fn parse_request_body(c: *mut HttpdConn) -> SEXP {
     unsafe {
         if c.is_null() || (*c).body.is_null() {
             return R_NilValue();
@@ -928,7 +928,7 @@ unsafe fn parse_request_body(c: *mut HttpdConn) -> SEXP {
 // ============================================================
 
 /// Finalize a request - for HTTP/1.0, close the connection
-unsafe fn fin_request(c: *mut HttpdConn) {
+fn fin_request(c: *mut HttpdConn) {
     unsafe {
         if !is_http_1_1(&*c) {
             (*c).attr |= CONNECTION_CLOSE;
@@ -941,7 +941,7 @@ unsafe fn fin_request(c: *mut HttpdConn) {
 // ============================================================
 
 /// Returns an httpd handler (closure) for a given path.
-unsafe fn handler_for_path(path: *const c_char) -> SEXP {
+fn handler_for_path(path: *const c_char) -> SEXP {
     unsafe {
         if !path.is_null() && c_strncmp(path, b"/custom/\0".as_ptr() as *const c_char, 8) == 0 {
             let mut c = path.offset(8);
@@ -1001,7 +1001,7 @@ unsafe fn handler_for_path(path: *const c_char) -> SEXP {
 // ============================================================
 
 /// Process a request by calling the httpd() function in R
-unsafe fn process_request_(ptr: *mut c_void) {
+fn process_request_(ptr: *mut c_void) {
     unsafe {
         let c = ptr as *mut HttpdConn;
         let mut ct: *const c_char = b"text/html\0".as_ptr() as *const c_char;
@@ -1260,12 +1260,10 @@ unsafe fn process_request_(ptr: *mut c_void) {
 }
 
 /// Process request - wraps the actual call with ToplevelExec
-unsafe fn process_request(c: *mut HttpdConn) {
-    unsafe {
-        with_httpd_state(|state| state.in_process = 1);
-        R_ToplevelExec(Some(process_request_), c as *mut c_void);
-        with_httpd_state(|state| state.in_process = 0);
-    }
+fn process_request(c: *mut HttpdConn) {
+    with_httpd_state(|state| state.in_process = 1);
+    R_ToplevelExec(Some(process_request_), c as *mut c_void);
+    with_httpd_state(|state| state.in_process = 0);
 }
 
 // ============================================================
@@ -1273,7 +1271,7 @@ unsafe fn process_request(c: *mut HttpdConn) {
 // ============================================================
 
 /// Remove . and (most) .. from "p" following RFC 3986, 5.2.4.
-unsafe fn remove_dot_segments(p: *mut c_char) -> *mut c_char {
+fn remove_dot_segments(p: *mut c_char) -> *mut c_char {
     unsafe {
         let in_len = c_strlen(p);
         let mut inp_buf = Vec::with_capacity(in_len + 1);
@@ -1382,7 +1380,7 @@ unsafe fn remove_dot_segments(p: *mut c_char) -> *mut c_char {
 // ============================================================
 
 /// Reset a worker so it can process a new request (keep-alive)
-unsafe fn reset_worker(c: *mut HttpdConn) {
+fn reset_worker(c: *mut HttpdConn) {
     unsafe {
         free_c_string((*c).url);
         (*c).url = std::ptr::null_mut();
@@ -1408,7 +1406,7 @@ unsafe fn reset_worker(c: *mut HttpdConn) {
 // ============================================================
 
 /// This function is called to fetch new data from the client connection socket and process it.
-unsafe fn worker_input_handler(data: *mut c_void) {
+fn worker_input_handler(data: *mut c_void) {
     unsafe {
         let c = data as *mut HttpdConn;
         if c.is_null() {
@@ -1893,7 +1891,7 @@ unsafe fn worker_input_handler(data: *mut c_void) {
 // ============================================================
 
 /// Server input handler - accepts new connections
-unsafe fn srv_input_handler(_data: *mut c_void) {
+fn srv_input_handler(_data: *mut c_void) {
     unsafe {
         let mut peer_sa: sockaddr_in = std::mem::zeroed();
         let mut peer_sal: socklen_t = core::mem::size_of::<sockaddr_in>() as socklen_t;
@@ -1905,7 +1903,7 @@ unsafe fn srv_input_handler(_data: *mut c_void) {
         if cl_sock == INVALID_SOCKET {
             return;
         }
-        let c = Box::into_raw(Box::new(unsafe { std::mem::zeroed::<HttpdConn>() }));
+        let c = Box::into_raw(Box::new(std::mem::zeroed::<HttpdConn>()));
         (*c).sock = cl_sock;
         (*c).peer = peer_sa.sin_addr;
 
@@ -1935,7 +1933,7 @@ unsafe fn srv_input_handler(_data: *mut c_void) {
 
 /// Create an HTTP daemon on the given IP and port.
 /// Returns 0 on success, -1 on general error, -2 if address already in use.
-pub(crate) unsafe fn in_R_HTTPDCreate(ip: *const c_char, port: c_int) -> c_int {
+pub(crate) fn in_R_HTTPDCreate(ip: *const c_char, port: c_int) -> c_int {
     unsafe {
         let reuse: c_int = 1;
         let mut srv_sa: sockaddr_in = std::mem::zeroed();
@@ -2014,7 +2012,7 @@ pub(crate) unsafe fn in_R_HTTPDCreate(ip: *const c_char, port: c_int) -> c_int {
 }
 
 /// Stop the HTTP daemon.
-pub(crate) unsafe fn in_R_HTTPDStop() {
+pub(crate) fn in_R_HTTPDStop() {
     unsafe {
         if with_httpd_state(|state| state.srv_sock) != INVALID_SOCKET {
             close(with_httpd_state(|state| state.srv_sock));
@@ -2034,7 +2032,7 @@ pub(crate) unsafe fn in_R_HTTPDStop() {
 /// @param sIP is the IP to bind to (or R_NilValue for any)
 /// @param sPort is the TCP port number to bind to
 /// @return integer: 0 on success, -2 means address already in use
-pub(crate) unsafe fn R_init_httpd(sIP: SEXP, sPort: SEXP) -> SEXP {
+pub(crate) fn R_init_httpd(sIP: SEXP, sPort: SEXP) -> SEXP {
     unsafe {
         let mut ip: *const c_char = std::ptr::null_mut();
         let vmax = vmaxget();

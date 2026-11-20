@@ -65,25 +65,23 @@ use super::sock::{
 
 /// enter_sock - validate socket fd
 /// Returns 0 if fd == -1 (invalid), otherwise returns fd.
-unsafe fn enter_sock(fd: c_int) -> c_int {
+fn enter_sock(fd: c_int) -> c_int {
     if fd == -1 { 0 } else { fd }
 }
 
 /// close_sock - close a socket via Sock_close with error reporting
-unsafe fn close_sock(fd: c_int) -> c_int {
-    unsafe {
-        let mut perr = super::sock::Sock_error_t::default();
-        let res = Sock_close(fd, &mut perr);
-        if res == -1 {
-            REprintf(b"socket error: %s\n\0".as_ptr() as *const core::ffi::c_char);
-            // Note: the C code uses REprintf with format string for the error message.
-            // Since our REprintf only takes a plain string (no varargs), we print a generic message.
-            // The error number is available via perr.error.
-            let _ = perr;
-            return -1;
-        }
-        0
+fn close_sock(fd: c_int) -> c_int {
+    let mut perr = super::sock::Sock_error_t::default();
+    let res = Sock_close(fd, &mut perr);
+    if res == -1 {
+        REprintf(b"socket error: %s\n\0".as_ptr() as *const core::ffi::c_char);
+        // Note: the C code uses REprintf with format string for the error message.
+        // Since our REprintf only takes a plain string (no varargs), we print a generic message.
+        // The error number is available via perr.error.
+        let _ = perr;
+        return -1;
     }
+    0
 }
 
 /// check_init - ensure socket subsystem is initialized (once)
@@ -99,9 +97,9 @@ fn check_init() {
 /// set_timeval - populate a timeval struct for select(), respecting R_wait_usec
 /// When R_wait_usec > 0, each select() polls for that interval; otherwise
 /// the full timeout is used.
-unsafe fn set_timeval(tv: *mut timeval, timeout: c_int) {
+fn set_timeval(tv: *mut timeval, timeout: c_int) {
     unsafe {
-        let wait_usec = with_required_current_instance(|instance| unsafe {
+        let wait_usec = with_required_current_instance(|instance| {
             (*instance).internet_state.wait_usec
         });
         if wait_usec > 0 {
@@ -117,7 +115,7 @@ unsafe fn set_timeval(tv: *mut timeval, timeout: c_int) {
 /// R_SocketWait - wait for a single socket to become readable or writable
 /// Uses select() with timeout. Returns 0 on success, 1 on timeout, negative on error.
 /// This is the Unix path without InputHandler support (which requires the full R event loop).
-unsafe fn R_SocketWait(sockfd: c_int, write: c_int, timeout: c_int) -> c_int {
+fn R_SocketWait(sockfd: c_int, write: c_int, timeout: c_int) -> c_int {
     unsafe {
         let mut rfd: fd_set = core::mem::zeroed();
         let mut wfd: fd_set = core::mem::zeroed();
@@ -172,7 +170,7 @@ unsafe fn R_SocketWait(sockfd: c_int, write: c_int, timeout: c_int) -> c_int {
 
 /// in_Rsockopen - open a socket for listening (R .C interface)
 /// Signature: void in_Rsockopen(int *port)
-pub(crate) unsafe fn in_Rsockopen(port: *mut c_int) {
+pub(crate) fn in_Rsockopen(port: *mut c_int) {
     unsafe {
         if port.is_null() {
             return;
@@ -196,7 +194,7 @@ pub(crate) unsafe fn in_Rsockopen(port: *mut c_int) {
 
 /// in_Rsocklisten - listen on a socket (R .C interface)
 /// Signature: void in_Rsocklisten(int *sockp, char **buf, int *len)
-pub(crate) unsafe fn in_Rsocklisten(sockp: *mut c_int, buf: *mut *mut c_char, len: *mut c_int) {
+pub(crate) fn in_Rsocklisten(sockp: *mut c_int, buf: *mut *mut c_char, len: *mut c_int) {
     unsafe {
         if sockp.is_null() || buf.is_null() || len.is_null() {
             return;
@@ -219,7 +217,7 @@ pub(crate) unsafe fn in_Rsocklisten(sockp: *mut c_int, buf: *mut *mut c_char, le
 
 /// in_Rsockconnect - connect to a socket (R .C interface)
 /// Signature: void in_Rsockconnect(int *port, char **host)
-pub(crate) unsafe fn in_Rsockconnect(port: *mut c_int, host: *mut *mut c_char) {
+pub(crate) fn in_Rsockconnect(port: *mut c_int, host: *mut *mut c_char) {
     unsafe {
         if port.is_null() || host.is_null() {
             return;
@@ -242,7 +240,7 @@ pub(crate) unsafe fn in_Rsockconnect(port: *mut c_int, host: *mut *mut c_char) {
 
 /// in_Rsockclose - close a socket (R .C interface)
 /// Signature: void in_Rsockclose(int *sockp)
-pub(crate) unsafe fn in_Rsockclose(sockp: *mut c_int) {
+pub(crate) fn in_Rsockclose(sockp: *mut c_int) {
     unsafe {
         if sockp.is_null() {
             return;
@@ -254,7 +252,7 @@ pub(crate) unsafe fn in_Rsockclose(sockp: *mut c_int) {
 /// in_Rsockread - read from a socket (R .C interface)
 /// Allocates a buffer via R_alloc, copies read data into it, writes pointer to *buf.
 /// Signature: void in_Rsockread(int *sockp, char **buf, int *maxlen)
-pub(crate) unsafe fn in_Rsockread(sockp: *mut c_int, buf: *mut *mut c_char, maxlen: *mut c_int) {
+pub(crate) fn in_Rsockread(sockp: *mut c_int, buf: *mut *mut c_char, maxlen: *mut c_int) {
     unsafe {
         if sockp.is_null() || buf.is_null() || maxlen.is_null() {
             return;
@@ -288,7 +286,7 @@ pub(crate) unsafe fn in_Rsockread(sockp: *mut c_int, buf: *mut *mut c_char, maxl
 
 /// in_Rsockwrite - write to a socket (R .C interface)
 /// Signature: void in_Rsockwrite(int *sockp, char **buf, int *start, int *end, int *len)
-pub(crate) unsafe fn in_Rsockwrite(
+pub(crate) fn in_Rsockwrite(
     sockp: *mut c_int,
     buf: *mut *mut c_char,
     start: *mut c_int,
@@ -334,21 +332,21 @@ pub(crate) unsafe fn in_Rsockwrite(
 
 /// in_Rsockselect - select on multiple sockets (R .C interface)
 /// Signature: int in_Rsockselect(int nsock, int *insockfd, int *ready, int *write, double timeout)
-pub(crate) unsafe fn in_Rsockselect(
+pub(crate) fn in_Rsockselect(
     nsock: c_int,
     insockfd: *mut c_int,
     ready: *mut c_int,
     write: *mut c_int,
     timeout: c_double,
 ) -> c_int {
-    unsafe { R_SocketWaitMultiple(nsock, insockfd, ready, write, timeout) }
+    R_SocketWaitMultiple(nsock, insockfd, ready, write, timeout)
 }
 
 // --- Exported connection-level functions (from sock.h, used by sockconn.c) ---
 
 /// R_SocketWaitMultiple - wait for multiple sockets
 /// Signature: int R_SocketWaitMultiple(int nsock, int *insockfd, int *ready, int *write, double mytimeout)
-pub(crate) unsafe fn R_SocketWaitMultiple(
+pub(crate) fn R_SocketWaitMultiple(
     nsock: c_int,
     insockfd: *mut c_int,
     ready: *mut c_int,
@@ -366,7 +364,7 @@ pub(crate) unsafe fn R_SocketWaitMultiple(
             let mut maxfd: c_int = 0;
 
             // Compute timeout for this iteration
-            let wait_usec = with_required_current_instance(|instance| unsafe {
+            let wait_usec = with_required_current_instance(|instance| {
                 (*instance).internet_state.wait_usec
             });
             tv = core::mem::zeroed();
@@ -463,7 +461,7 @@ pub(crate) unsafe fn R_SocketWaitMultiple(
 
 /// R_SockConnect - connect to a host:port with timeout (non-blocking connect + select)
 /// Signature: int R_SockConnect(int port, char *host, int timeout)
-pub(crate) unsafe fn R_SockConnect(port: c_int, host: *mut c_char, timeout: c_int) -> c_int {
+pub(crate) fn R_SockConnect(port: c_int, host: *mut c_char, timeout: c_int) -> c_int {
     unsafe {
         check_init();
 
@@ -608,14 +606,14 @@ pub(crate) unsafe fn R_SockConnect(port: c_int, host: *mut c_char, timeout: c_in
 
 /// R_SockClose - close a socket
 /// Signature: int R_SockClose(int sockp)
-pub(crate) unsafe fn R_SockClose(sockp: c_int) -> c_int {
-    unsafe { R_close_socket(sockp) }
+pub(crate) fn R_SockClose(sockp: c_int) -> c_int {
+    R_close_socket(sockp)
 }
 
 /// R_SockRead - read from a socket with optional blocking and timeout
 /// Uses recv() directly (not Sock_read) for non-blocking socket + select loop.
 /// Signature: ssize_t R_SockRead(int sockp, void *buf, size_t len, int blocking, int timeout)
-pub(crate) unsafe fn R_SockRead(
+pub(crate) fn R_SockRead(
     sockp: c_int,
     buf: *mut c_void,
     len: size_t,
@@ -659,20 +657,18 @@ pub(crate) unsafe fn R_SockRead(
 
 /// R_SockOpen - open a server socket (socket + bind + listen, non-blocking)
 /// Signature: int R_SockOpen(int port)
-pub(crate) unsafe fn R_SockOpen(port: c_int) -> c_int {
-    unsafe {
-        check_init();
-        Sock_open(
-            port as Sock_port_t,
-            0, /* non-blocking */
-            core::ptr::null_mut(),
-        )
-    }
+pub(crate) fn R_SockOpen(port: c_int) -> c_int {
+    check_init();
+    Sock_open(
+        port as Sock_port_t,
+        0, /* non-blocking */
+        core::ptr::null_mut(),
+    )
 }
 
 /// R_SockListen - listen on a server socket with timeout (accept via select)
 /// Signature: int R_SockListen(int sockp, char *buf, int len, int timeout)
-pub(crate) unsafe fn R_SockListen(
+pub(crate) fn R_SockListen(
     sockp: c_int,
     buf: *mut c_char,
     len: c_int,
@@ -759,7 +755,7 @@ pub(crate) unsafe fn R_SockListen(
 /// R_SockWrite - write to a socket with timeout (blocking)
 /// Loops until all data is written or an error/timeout occurs.
 /// Signature: ssize_t R_SockWrite(int sockp, const void *buf, size_t len, int timeout)
-pub(crate) unsafe fn R_SockWrite(
+pub(crate) fn R_SockWrite(
     sockp: c_int,
     mut buf: *const c_void,
     mut len: size_t,
