@@ -290,7 +290,7 @@ type HashFn = unsafe fn(SEXP, R_xlen_t, &HashData) -> usize;
 type EqualFn = unsafe fn(SEXP, R_xlen_t, SEXP, R_xlen_t) -> bool;
 
 /// Set up hash table parameters: choose M (smallest power of 2 >= 2*n) and K = log2(M).
-unsafe fn mk_setup(n: R_xlen_t, nmax_arg: R_xlen_t) -> (usize, u32, R_xlen_t) {
+fn mk_setup(n: R_xlen_t, nmax_arg: R_xlen_t) -> (usize, u32, R_xlen_t) {
     let n = if nmax_arg > 0
         && nmax_arg as R_xlen_t != NA_INTEGER as R_xlen_t
         && nmax_arg as R_xlen_t != 1
@@ -970,7 +970,7 @@ mod tests {
     fn test_mk_setup_basic() {
         let _session = crate::sexp::session::RSession::new();
         // n=10 should give M >= 20 (power of 2), so M=32, K=5
-        let (m, k, nmax) = unsafe { mk_setup(10, i64::MIN) };
+        let (m, k, nmax) = mk_setup(10, i64::MIN);
         assert_eq!(m, 32);
         assert_eq!(k, 5);
         assert_eq!(nmax, 10);
@@ -980,7 +980,7 @@ mod tests {
     fn test_mk_setup_nmax_override() {
         let _session = crate::sexp::session::RSession::new();
         // nmax=5 should override n=10
-        let (m, k, nmax) = unsafe { mk_setup(10, 5) };
+        let (m, k, nmax) = mk_setup(10, 5);
         assert_eq!(m, 16); // 2*5 = 10, next power of 2 is 16
         assert_eq!(k, 4);
         assert_eq!(nmax, 5);
@@ -989,7 +989,7 @@ mod tests {
     #[test]
     fn test_mk_setup_large() {
         let _session = crate::sexp::session::RSession::new();
-        let (m, k, _) = unsafe { mk_setup(1000, i64::MIN) };
+        let (m, k, _) = mk_setup(1000, i64::MIN);
         assert_eq!(m, 2048); // 2*1000=2000, next power of 2 is 2048
         assert_eq!(k, 11);
     }
@@ -998,7 +998,7 @@ mod tests {
     fn test_mk_setup_nmax_one() {
         let _session = crate::sexp::session::RSession::new();
         // nmax=1 is special: not used
-        let (m, k, nmax) = unsafe { mk_setup(10, 1) };
+        let (m, k, nmax) = mk_setup(10, 1);
         assert_eq!(nmax, 10); // original n used
         assert_eq!(m, 32);
     }

@@ -34,7 +34,7 @@ mod workspace_file;
 #[cfg(test)]
 mod workspace_tests;
 
-unsafe fn error(msg: &str) -> ! {
+fn error(msg: &str) -> ! {
     std::panic::panic_any(crate::sexp::context::RError {
         message: msg.to_string(),
     });

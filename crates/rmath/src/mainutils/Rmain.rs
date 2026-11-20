@@ -24,17 +24,17 @@ pub unsafe fn R_RunningAsMainProgram() -> c_int {
 }
 
 /// FORTRAN compatibility stub.
-pub unsafe fn MAIN_(_ac: c_int, _av: *mut *mut std::os::raw::c_char) -> c_int {
+pub fn MAIN_(_ac: c_int, _av: *mut *mut std::os::raw::c_char) -> c_int {
     0
 }
 
 /// FORTRAN compatibility stub.
-pub unsafe fn MAIN__(_ac: c_int, _av: *mut *mut std::os::raw::c_char) -> c_int {
+pub fn MAIN__(_ac: c_int, _av: *mut *mut std::os::raw::c_char) -> c_int {
     0
 }
 
 /// FORTRAN compatibility stub.
-pub unsafe fn __main(_ac: c_int, _av: *mut *mut std::os::raw::c_char) -> c_int {
+pub fn __main(_ac: c_int, _av: *mut *mut std::os::raw::c_char) -> c_int {
     0
 }
 

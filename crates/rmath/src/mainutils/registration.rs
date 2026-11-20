@@ -50,7 +50,7 @@ pub(crate) fn retain_native_registration_exports() {
 // ---------------------------------------------------------------------------
 
 /// Initialize the base package's registered routines.
-pub unsafe fn R_init_base(_dll: *mut DllInfo) {
+pub fn R_init_base(_dll: *mut DllInfo) {
     // In the full R implementation, this registers:
     // - callMethods: R_addTaskCallback, R_getTaskCallbackNames, R_removeTaskCallback
     // - fortranMethods: dqrcf, dqrdc2, dqrqty, dqrqy, dqrrsd, dqrxb, dtrco

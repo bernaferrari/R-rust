@@ -124,7 +124,7 @@ fn options_symbol() -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Raise an R error (via panic).
-unsafe fn r_error(msg: &str) {
+fn r_error(msg: &str) {
     std::panic::panic_any(RError {
         message: msg.to_string(),
     });
@@ -224,7 +224,7 @@ unsafe fn asLogical(x: SEXP) -> c_int {
 }
 
 /// Check if x is numeric (integer or real).
-unsafe fn isNumeric(x: SEXP) -> c_int {
+fn isNumeric(x: SEXP) -> c_int {
     {
         if x.is_null() {
             return 0;
@@ -235,7 +235,7 @@ unsafe fn isNumeric(x: SEXP) -> c_int {
 }
 
 /// Check if x is a pairlist.
-unsafe fn isPairList(x: SEXP) -> c_int {
+fn isPairList(x: SEXP) -> c_int {
     {
         if x.is_null() {
             return 0;
@@ -245,7 +245,7 @@ unsafe fn isPairList(x: SEXP) -> c_int {
 }
 
 /// Check if x is a vector list (VECSXP or EXPRSXP).
-unsafe fn isVectorList(x: SEXP) -> c_int {
+fn isVectorList(x: SEXP) -> c_int {
     {
         if x.is_null() {
             return 0;
@@ -256,7 +256,7 @@ unsafe fn isVectorList(x: SEXP) -> c_int {
 }
 
 /// Check if x is a language object.
-unsafe fn isLanguage(x: SEXP) -> c_int {
+fn isLanguage(x: SEXP) -> c_int {
     {
         if x.is_null() {
             return 0;
@@ -266,7 +266,7 @@ unsafe fn isLanguage(x: SEXP) -> c_int {
 }
 
 /// Check if x is an expression.
-unsafe fn isExpression(x: SEXP) -> c_int {
+fn isExpression(x: SEXP) -> c_int {
     {
         if x.is_null() {
             return 0;
@@ -276,7 +276,7 @@ unsafe fn isExpression(x: SEXP) -> c_int {
 }
 
 /// Check if x is a function (CLOSXP, BUILTINSXP, SPECIALSXP).
-unsafe fn isFunction(x: SEXP) -> c_int {
+fn isFunction(x: SEXP) -> c_int {
     {
         if x.is_null() {
             return 0;
@@ -287,7 +287,7 @@ unsafe fn isFunction(x: SEXP) -> c_int {
 }
 
 /// Get length of a SEXP (pairlist or vector).
-unsafe fn length(x: SEXP) -> c_int {
+fn length(x: SEXP) -> c_int {
     {
         if x.is_null() || x == R_NilValue() {
             return 0;
@@ -329,7 +329,7 @@ unsafe fn installTrChar(x: SEXP) -> SEXP {
 }
 
 /// EnsureString -- coerce to CHARSXP (print name).
-unsafe fn EnsureString(x: SEXP) -> SEXP {
+fn EnsureString(x: SEXP) -> SEXP {
     {
         if x.is_null() {
             return ptr::null_mut();
@@ -387,7 +387,7 @@ unsafe fn char_is_empty(s: *const c_char) -> bool {
 // ---------------------------------------------------------------------------
 
 /// Clamp a printing width value to the valid range [R_MIN_WIDTH_OPT, R_MAX_WIDTH_OPT].
-pub unsafe fn fixup_width(w: c_int) -> c_int {
+pub fn fixup_width(w: c_int) -> c_int {
     if w == c_int::MIN || w < R_MIN_WIDTH_OPT || w > R_MAX_WIDTH_OPT {
         80
     } else {
@@ -396,7 +396,7 @@ pub unsafe fn fixup_width(w: c_int) -> c_int {
 }
 
 /// Clamp a printing digits value to the valid range [R_MIN_DIGITS_OPT, R_MAX_DIGITS_OPT].
-pub unsafe fn fixup_digits(d: c_int) -> c_int {
+pub fn fixup_digits(d: c_int) -> c_int {
     if d == c_int::MIN || d < R_MIN_DIGITS_OPT || d > R_MAX_DIGITS_OPT {
         7
     } else {
@@ -405,7 +405,7 @@ pub unsafe fn fixup_digits(d: c_int) -> c_int {
 }
 
 /// Clamp a scipen value to the valid range [R_MIN_SCIPEN_OPT, R_MAX_SCIPEN_OPT].
-pub unsafe fn fixup_scipen(d: c_int) -> c_int {
+pub fn fixup_scipen(d: c_int) -> c_int {
     if d == c_int::MIN || d < R_MIN_SCIPEN_OPT || d > R_MAX_SCIPEN_OPT {
         if d == c_int::MIN {
             0
@@ -420,7 +420,7 @@ pub unsafe fn fixup_scipen(d: c_int) -> c_int {
 }
 
 /// Clamp a deparse.cutoff value: must be positive.
-pub unsafe fn fixup_deparse_cutoff(w: c_int) -> c_int {
+pub fn fixup_deparse_cutoff(w: c_int) -> c_int {
     if w == c_int::MIN || w <= 0 { 60 } else { w }
 }
 
@@ -1976,7 +1976,7 @@ mod tests {
     #[test]
     fn test_fixup_width() {
         let _guard = ProtectStackGuard::new();
-        unsafe {
+        {
             assert_eq!(fixup_width(80), 80);
             assert_eq!(fixup_width(10), 10);
             assert_eq!(fixup_width(10000), 10000);
@@ -1989,7 +1989,7 @@ mod tests {
     #[test]
     fn test_fixup_digits() {
         let _guard = ProtectStackGuard::new();
-        unsafe {
+        {
             assert_eq!(fixup_digits(7), 7);
             assert_eq!(fixup_digits(1), 1);
             assert_eq!(fixup_digits(22), 22);
@@ -2002,7 +2002,7 @@ mod tests {
     #[test]
     fn test_fixup_scipen() {
         let _guard = ProtectStackGuard::new();
-        unsafe {
+        {
             // GNU R FixupScipen preserves values in -9..9999 and maps NA to 0:
             // https://svn.r-project.org/R/trunk/src/main/options.c
             assert_eq!(fixup_scipen(-10), -9);
@@ -2020,7 +2020,7 @@ mod tests {
     #[test]
     fn test_fixup_deparse_cutoff() {
         let _guard = ProtectStackGuard::new();
-        unsafe {
+        {
             assert_eq!(fixup_deparse_cutoff(60), 60);
             assert_eq!(fixup_deparse_cutoff(100), 100);
             assert_eq!(fixup_deparse_cutoff(0), 60);

@@ -28,7 +28,7 @@ use crate::sexp::symbol::Rf_install;
 
 /// ARGUSED(x) == LEVELS(x) — uses gp[0..1] bits.
 #[inline(always)]
-unsafe fn ARGUSED(x: SEXP) -> c_int {
+fn ARGUSED(x: SEXP) -> c_int {
     LEVELS(x)
 }
 
@@ -91,7 +91,7 @@ unsafe fn streql(s1: *const c_char, s2: *const c_char) -> c_int {
 
 #[inline(always)]
 unsafe fn NA_STRING() -> SEXP {
-    unsafe { crate::mainutils::relop::NA_STRING() }
+     crate::mainutils::relop::NA_STRING() 
 }
 
 #[inline(always)]
@@ -105,7 +105,7 @@ unsafe fn isNA_STRING(s: SEXP) -> bool {
 
 /// isString check — STRSXP type.
 #[inline(always)]
-unsafe fn isString(x: SEXP) -> bool {
+fn isString(x: SEXP) -> bool {
     TYPEOF(x) == SEXPTYPE::STRSXP
 }
 
@@ -117,25 +117,25 @@ fn isVector(x: SEXP) -> bool {
 
 /// isNull check.
 #[inline(always)]
-unsafe fn isNull(x: SEXP) -> bool {
+fn isNull(x: SEXP) -> bool {
     x.is_null() || TYPEOF(x) == SEXPTYPE::NILSXP
 }
 
 /// IS_BYTES check — delegates to sexp::accessors.
 #[inline(always)]
-unsafe fn IS_BYTES(s: SEXP) -> c_int {
+fn IS_BYTES(s: SEXP) -> c_int {
     crate::sexp::accessors::IS_BYTES(s)
 }
 
 /// ENC_KNOWN check — delegates to sexp::accessors.
 #[inline(always)]
-unsafe fn ENC_KNOWN(s: SEXP) -> c_int {
+fn ENC_KNOWN(s: SEXP) -> c_int {
     crate::sexp::accessors::ENC_KNOWN(s)
 }
 
 /// IS_CACHED check — stub, always returns true.
 #[inline(always)]
-unsafe fn IS_CACHED(_s: SEXP) -> c_int {
+fn IS_CACHED(_s: SEXP) -> c_int {
     1
 }
 
@@ -224,7 +224,7 @@ unsafe fn asLogical(x: SEXP) -> c_int {
 
 /// isObject check.
 #[inline(always)]
-unsafe fn isObject(x: SEXP) -> bool {
+fn isObject(x: SEXP) -> bool {
     OBJECT(x) != 0
 }
 
@@ -236,7 +236,7 @@ unsafe fn ScalarInteger(x: c_int) -> SEXP {
 
 /// length of a pairlist or vector.
 #[inline(always)]
-unsafe fn length(x: SEXP) -> c_int {
+fn length(x: SEXP) -> c_int {
     {
         if x.is_null() {
             return 0;

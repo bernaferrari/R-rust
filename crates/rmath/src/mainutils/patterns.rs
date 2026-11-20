@@ -10,7 +10,7 @@ use crate::sexp::constructors::Rf_isNull;
 use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
 
-unsafe fn error(msg: &str) -> ! {
+fn error(msg: &str) -> ! {
     std::panic::panic_any(crate::sexp::context::RError {
         message: msg.to_string(),
     })

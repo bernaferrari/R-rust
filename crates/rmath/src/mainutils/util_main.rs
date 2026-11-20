@@ -72,7 +72,7 @@ unsafe fn libc_strlen(s: *const c_char) -> usize {
 }
 
 #[inline]
-unsafe fn libc_isspace(c: c_char) -> bool {
+fn libc_isspace(c: c_char) -> bool {
     let byte = c as u8;
     byte == b' '
         || byte == b'\t'
@@ -177,7 +177,7 @@ static UTF8_TABLE4: [u8; 64] = [
 ///
 /// Port of R's `utf8clen` from util.c.
 /// This allows through 8-bit chars 10xxxxxx, which are invalid.
-pub unsafe fn utf8clen(c: c_char) -> c_int {
+pub fn utf8clen(c: c_char) -> c_int {
     let byte = c as u8;
     if (byte & 0xC0) != 0xC0 {
         return 1;
@@ -193,7 +193,7 @@ pub unsafe fn utf8clen(c: c_char) -> c_int {
 ///
 /// Port of R's static `utf16toucs` from util.c.
 #[inline]
-unsafe fn utf16toucs(high: u32, low: u32) -> R_wchar_t {
+fn utf16toucs(high: u32, low: u32) -> R_wchar_t {
     0x10000 + ((high & 0x3FF) << 10) + (low & 0x3FF)
 }
 
@@ -758,7 +758,7 @@ pub unsafe fn Rf_AdobeSymbol2utf8(
 /// Convert an Adobe Symbol byte to UCS-2 codepoint.
 ///
 /// Port of R's `Rf_AdobeSymbol2ucs2` from util.c.
-pub unsafe fn Rf_AdobeSymbol2ucs2(n: c_int) -> c_int {
+pub fn Rf_AdobeSymbol2ucs2(n: c_int) -> c_int {
     if n >= 32 && n < 256 {
         S2U[(n - 32) as usize] as c_int
     } else {
@@ -1157,7 +1157,7 @@ pub unsafe fn str2type(s: *const c_char) -> c_int {
 /// Convert a SEXPTYPE integer to its character name.
 ///
 /// Equivalent of R's `type2char()` from util.c.
-pub unsafe fn type2char(t: c_int) -> *const c_char {
+pub fn type2char(t: c_int) -> *const c_char {
     match t {
         0 => b"NULL\0".as_ptr() as *const c_char,
         1 => b"symbol\0".as_ptr() as *const c_char,
@@ -1382,7 +1382,7 @@ mod tests {
 
     #[test]
     fn test_utf8clen() {
-        unsafe {
+        {
             assert_eq!(utf8clen('A' as c_char), 1);
             assert_eq!(utf8clen(0xC2u8 as c_char), 2); // 2-byte leading byte
             assert_eq!(utf8clen(0xE0u8 as c_char), 3); // 3-byte leading byte
@@ -1735,7 +1735,7 @@ mod tests {
 
     #[test]
     fn test_AdobeSymbol2ucs2() {
-        unsafe {
+        {
             assert_eq!(Rf_AdobeSymbol2ucs2(32), 0x0020); // space
             assert_eq!(Rf_AdobeSymbol2ucs2(33), 0x0021); // !
             assert_eq!(Rf_AdobeSymbol2ucs2(34), 0x2200); // forall

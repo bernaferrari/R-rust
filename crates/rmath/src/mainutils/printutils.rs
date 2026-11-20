@@ -185,7 +185,7 @@ unsafe fn na_string_owned_from_print(rp: RPrint, noquote: bool) -> String {
 }
 
 /// Return a copy of the current R_print configuration.
-pub unsafe fn get_R_print() -> RPrint {
+pub fn get_R_print() -> RPrint {
     current_R_print()
 }
 
@@ -449,7 +449,7 @@ fn format_real_printf_style(
 
 /// Write a formatted real into one of the per-instance encode buffers,
 /// replacing "." with the requested decimal mark when needed.
-unsafe fn store_real_formatted(buf: &mut [u8], formatted: &str, dec: &str) -> *const c_char {
+fn store_real_formatted(buf: &mut [u8], formatted: &str, dec: &str) -> *const c_char {
     if dec != "." {
         let mut idx = 0usize;
         for ch in formatted.chars() {
@@ -836,7 +836,7 @@ pub unsafe fn Rstrwid(str: *const c_char, slen: c_int, ienc: c_int, quote: c_int
 /// GNU's log10(n + 0.5) convention gives zero columns for zero.
 /// Note: `IndexWidth` is also defined in format.rs (c_int variant).
 /// This version uses R_xlen_t for wider range.
-pub unsafe fn IndexWidth_xlen(n: R_xlen_t) -> c_int {
+pub fn IndexWidth_xlen(n: R_xlen_t) -> c_int {
     if n == 0 {
         return 0;
     }
@@ -1318,7 +1318,7 @@ pub unsafe fn Rcons_vprintf(format: *const c_char, _arg: *mut c_void) -> c_int {
 ///
 /// Prints `[i]` with left-padding to width `w`.
 pub unsafe fn VectorIndex(i: R_xlen_t, w: c_int) {
-    unsafe {
+    {
         let iw = IndexWidth_xlen(i);
         let total_label_width = iw + 2; // "[i]" = 2 brackets + digits
         let pad = w - total_label_width;

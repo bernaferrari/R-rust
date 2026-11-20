@@ -63,7 +63,7 @@ pub fn char_hash_str(s: &[u8]) -> u32 {
 // Local helper functions
 // ---------------------------------------------------------------------------
 
-unsafe fn error(msg: &str) -> ! {
+fn error(msg: &str) -> ! {
     std::panic::panic_any(crate::sexp::context::RError {
         message: msg.to_string(),
     })
@@ -97,17 +97,17 @@ unsafe fn isValidStringF(x: SEXP) -> bool {
 }
 
 /// Check if x is a string (STRSXP).
-unsafe fn isString(x: SEXP) -> bool {
+fn isString(x: SEXP) -> bool {
     !x.is_null() && TYPEOF(x) == SEXPTYPE::STRSXP
 }
 
 /// Check if x is an environment (ENVSXP).
-unsafe fn isEnvironment(x: SEXP) -> bool {
+fn isEnvironment(x: SEXP) -> bool {
     !x.is_null() && TYPEOF(x) == SEXPTYPE::ENVSXP
 }
 
 /// Check if x is a list/vector (VECSXP).
-unsafe fn isNewList(x: SEXP) -> bool {
+fn isNewList(x: SEXP) -> bool {
     !x.is_null() && TYPEOF(x) == SEXPTYPE::VECSXP
 }
 

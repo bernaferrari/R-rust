@@ -151,7 +151,7 @@ pub unsafe fn R_ParseContext(buf: *const c_char, len: c_int) -> c_int {
 }
 
 /// End the current parse context.
-pub unsafe fn R_ParseContextEnd() {}
+pub fn R_ParseContextEnd() {}
 
 // ---------------------------------------------------------------------------
 // R_ParseVectorBuffer — parse from buffer

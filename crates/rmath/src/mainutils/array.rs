@@ -122,7 +122,7 @@ unsafe fn matrix_value(x: SEXP, row: usize, col: usize, nrow: usize) -> f64 {
     unsafe { numeric_at(x, row + col * nrow) }
 }
 
-unsafe fn first_arg(args: SEXP, name: &str) -> SEXP {
+fn first_arg(args: SEXP, name: &str) -> SEXP {
     {
         if args.is_null() || args == R_NilValue() {
             array_error(format!("{name} requires an argument"));
@@ -131,7 +131,7 @@ unsafe fn first_arg(args: SEXP, name: &str) -> SEXP {
     }
 }
 
-unsafe fn second_arg_or_first(args: SEXP, first: SEXP) -> SEXP {
+fn second_arg_or_first(args: SEXP, first: SEXP) -> SEXP {
     {
         let rest = CDR(args);
         if rest.is_null() || rest == R_NilValue() {
@@ -1100,14 +1100,14 @@ pub(crate) unsafe fn do_length(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -
 /// Dispatch to the `length` method for objects, returning R_len_t.
 ///
 /// Ported from R's `dispatch_length` in array.c (line 483).
-pub(crate) unsafe fn dispatch_length(x: SEXP, _call: SEXP, _rho: SEXP) -> c_int {
+pub(crate) fn dispatch_length(x: SEXP, _call: SEXP, _rho: SEXP) -> c_int {
     LENGTH(x)
 }
 
 /// Dispatch to the `length` method for objects, returning R_xlen_t.
 ///
 /// Ported from R's `dispatch_xlength` in array.c (line 491).
-pub(crate) unsafe fn dispatch_xlength(x: SEXP, _call: SEXP, _rho: SEXP) -> usize {
+pub(crate) fn dispatch_xlength(x: SEXP, _call: SEXP, _rho: SEXP) -> usize {
     XLENGTH(x) as usize
 }
 

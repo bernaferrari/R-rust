@@ -303,7 +303,7 @@ unsafe fn compare_formula(target: SEXP, current: SEXP) -> Result<(), String> {
     }
 }
 
-unsafe fn formula_length(x: SEXP) -> i32 {
+fn formula_length(x: SEXP) -> i32 {
     {
         let mut n = 0;
         let mut p = x;

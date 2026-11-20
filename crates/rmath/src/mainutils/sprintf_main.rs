@@ -84,7 +84,7 @@ unsafe fn isNA_STRING(s: SEXP) -> bool {
     if s.is_null() {
         return false;
     }
-    unsafe { s == crate::mainutils::relop::NA_STRING() }
+     s == crate::mainutils::relop::NA_STRING() 
 }
 
 // ---------------------------------------------------------------------------
@@ -108,12 +108,12 @@ impl RStringBuffer {
     }
 }
 
-unsafe fn R_AllocStringBuffer(buflen: i64, buf: &mut RStringBuffer) -> *mut c_char {
+fn R_AllocStringBuffer(buflen: i64, buf: &mut RStringBuffer) -> *mut c_char {
     let len = if buflen < 0 { 0 } else { buflen as usize + 1 };
     buf.ensure_capacity(len)
 }
 
-unsafe fn R_FreeStringBufferL(_buf: &mut RStringBuffer) {}
+fn R_FreeStringBufferL(_buf: &mut RStringBuffer) {}
 
 // ---------------------------------------------------------------------------
 // Helper: C strlen

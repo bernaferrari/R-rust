@@ -217,17 +217,17 @@ mod tests {
         static INVOCATIONS: Cell<usize> = const { Cell::new(0) };
     }
 
-    unsafe extern "C-unwind" fn call_two(_a: SEXP, _b: SEXP) -> SEXP {
+    extern "C-unwind" fn call_two(_a: SEXP, _b: SEXP) -> SEXP {
         INVOCATIONS.with(|count| count.set(count.get() + 1));
         std::ptr::null_mut()
     }
 
-    unsafe extern "C-unwind" fn external_one(_arguments: SEXP) -> SEXP {
+    extern "C-unwind" fn external_one(_arguments: SEXP) -> SEXP {
         INVOCATIONS.with(|count| count.set(count.get() + 1));
         std::ptr::null_mut()
     }
 
-    unsafe extern "C-unwind" fn external_two(
+    extern "C-unwind" fn external_two(
         _call: SEXP,
         _operator: SEXP,
         _arguments: SEXP,

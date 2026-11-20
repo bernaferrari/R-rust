@@ -22,7 +22,7 @@ use crate::sexp::globals::{R_NaString, R_NilValue};
 use crate::sexp::protect::{ProtectGuard, protect};
 use crate::sexp::symbol::Rf_install;
 
-unsafe fn error(msg: &str) -> ! {
+fn error(msg: &str) -> ! {
     std::panic::panic_any(crate::sexp::context::RError {
         message: msg.to_string(),
     });
@@ -105,7 +105,7 @@ impl Default for RadixSortState {
 
 impl Drop for RadixSortState {
     fn drop(&mut self) {
-        unsafe {
+        {
             libc_free(self.gs[0] as *mut c_void);
             libc_free(self.gs[1] as *mut c_void);
             libc_free(self.radix_xsub);
@@ -215,7 +215,7 @@ unsafe fn flipflop() {
 
 /// Free all group-stack memory.
 pub unsafe fn gsfree() {
-    unsafe {
+    {
         let gs = with_radix_state(|s| s.gs);
         libc_free(gs[0] as *mut c_void);
         libc_free(gs[1] as *mut c_void);
@@ -331,7 +331,7 @@ pub unsafe fn setRange(x: *const c_int, n: c_int) {
 /// x*order results in integer overflow when -1*NA,
 /// so careful to avoid that here.
 #[inline]
-unsafe fn icheck(x: c_int) -> c_int {
+fn icheck(x: c_int) -> c_int {
     let nalast = with_radix_state(|s| s.nalast);
     let order = with_radix_state(|s| s.order);
     // if nalast == 1, NAs must go last.
@@ -954,59 +954,59 @@ pub unsafe fn isort(x: *mut c_int, o: *mut c_int, n: c_int) {
 /// - `1` = TRUE (NAs last)
 /// - `0` = NA (remove NAs)
 /// - `-1` = FALSE (NAs first, the default)
-pub unsafe fn set_nalast(val: c_int) {
+pub fn set_nalast(val: c_int) {
     with_radix_state(|s| s.nalast = val);
 }
 
 /// Get the current `nalast` value.
-pub unsafe fn get_nalast() -> c_int {
+pub fn get_nalast() -> c_int {
     with_radix_state(|s| s.nalast)
 }
 
 /// Configure the `order` parameter.
 /// - `1` = ascending
 /// - `-1` = descending
-pub unsafe fn set_order(val: c_int) {
+pub fn set_order(val: c_int) {
     with_radix_state(|s| s.order = val);
 }
 
 /// Get the current `order` value.
-pub unsafe fn get_order() -> c_int {
+pub fn get_order() -> c_int {
     with_radix_state(|s| s.order)
 }
 
 /// Configure whether groups should be pushed onto the stack.
-pub unsafe fn set_stackgrps(val: bool) {
+pub fn set_stackgrps(val: bool) {
     with_radix_state(|s| s.stackgrps = val);
 }
 
 /// Get the current `stackgrps` value.
-pub unsafe fn get_stackgrps() -> bool {
+pub fn get_stackgrps() -> bool {
     with_radix_state(|s| s.stackgrps)
 }
 
 /// Set the maximum stack allocation.
-pub unsafe fn set_gsmaxalloc(val: c_int) {
+pub fn set_gsmaxalloc(val: c_int) {
     with_radix_state(|s| s.gsmaxalloc = val);
 }
 
 /// Get the current `gsmaxalloc` value.
-pub unsafe fn get_gsmaxalloc() -> c_int {
+pub fn get_gsmaxalloc() -> c_int {
     with_radix_state(|s| s.gsmaxalloc)
 }
 
 /// Get the current flip index.
-pub unsafe fn get_flip() -> c_int {
+pub fn get_flip() -> c_int {
     with_radix_state(|s| s.flip)
 }
 
 /// Set the `newo` pointer (used for reordering order in multi-arg sort).
-pub unsafe fn set_newo(ptr: *mut c_int) {
+pub fn set_newo(ptr: *mut c_int) {
     with_radix_state(|s| s.newo = ptr);
 }
 
 /// Get the current `newo` pointer.
-pub unsafe fn get_newo() -> *mut c_int {
+pub fn get_newo() -> *mut c_int {
     with_radix_state(|s| s.newo)
 }
 
@@ -1018,7 +1018,7 @@ pub unsafe fn get_newo() -> *mut c_int {
 /// attaches ALTREP "known sorted" metadata to a numeric vector. The port
 /// has no sorted-metadata ALTREP class; the wrapper is observationally
 /// transparent, so the vector is returned unchanged.
-pub unsafe fn do_wrap_meta(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_wrap_meta(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     CAR(args)
 }
 
@@ -1810,7 +1810,7 @@ pub unsafe fn dsorted(x: *mut c_void, n: c_int) -> c_int {
 }
 
 /// Recursive radix sort for character strings (STRSXP vectors).
-pub unsafe fn cradix_r(_xsub: *mut c_void, _n: c_int, _radix: c_int) -> *mut c_void {
+pub fn cradix_r(_xsub: *mut c_void, _n: c_int, _radix: c_int) -> *mut c_void {
     _xsub
 }
 
@@ -1902,7 +1902,7 @@ pub unsafe fn csort(x: *mut c_void, o: *mut c_int, n: c_int) -> *mut c_void {
 
 /// Pre-processing for character sort. The Rust implementation sorts directly
 /// from STRSXP values, so no byte-offset side table is required.
-pub unsafe fn csort_pre(x: *mut c_void, _n: c_int) -> *mut c_void {
+pub fn csort_pre(x: *mut c_void, _n: c_int) -> *mut c_void {
     x
 }
 
@@ -1951,7 +1951,7 @@ pub unsafe fn cgroup(x: *mut c_void, o: *mut c_int, n: c_int) -> *mut c_void {
 }
 
 /// Sortedness test for character data (STRSXP vectors).
-pub unsafe fn csorted(x: *mut c_void, n: c_int) -> c_int {
+pub fn csorted(x: *mut c_void, n: c_int) -> c_int {
     if n <= 1 { 1 } else { 0 }
 }
 
@@ -2077,7 +2077,7 @@ unsafe fn libc_alloc(size: usize) -> *mut c_void {
     }
 }
 
-unsafe fn libc_free(ptr: *mut c_void) {
+fn libc_free(ptr: *mut c_void) {
     if ptr.is_null() {
         return;
     }

@@ -89,11 +89,11 @@ mod tests {
 
     use super::*;
 
-    unsafe extern "C" fn return_op(_call: SEXP, op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+    extern "C" fn return_op(_call: SEXP, op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
         op
     }
 
-    unsafe extern "C" fn return_args(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    extern "C" fn return_args(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         args
     }
 
