@@ -61,7 +61,7 @@ fn CHECK_ASSERTIONS(
 }
 
 #[inline]
-unsafe fn CHECK_CHAR_CLASSES(
+fn CHECK_CHAR_CLASSES(
     trans_i: *const tre_tnfa_transition_t,
     tnfa: *const tre_tnfa_t,
     eflags: c_int,
@@ -89,7 +89,7 @@ unsafe fn CHECK_CHAR_CLASSES(
     }
 }
 
-unsafe fn tre_set_params(
+fn tre_set_params(
     reach: *mut tre_tnfa_approx_reach_t,
     pa: *const c_int,
     default_params: regaparams_t,
@@ -164,7 +164,7 @@ unsafe fn tre_set_params(
 }
 
 #[allow(clippy::manual_memcpy)]
-pub unsafe fn tre_tnfa_run_approx(
+pub fn tre_tnfa_run_approx(
     tnfa: *const tre_tnfa_t,
     string: *const c_void,
     len: c_int,
@@ -758,7 +758,7 @@ pub unsafe fn tre_tnfa_run_approx(
     }
 }
 
-unsafe fn align_ptr_approx(p: *mut u8) -> *mut u8 {
+fn align_ptr_approx(p: *mut u8) -> *mut u8 {
     unsafe {
         let align = std::mem::size_of::<usize>();
         let addr = p as usize;

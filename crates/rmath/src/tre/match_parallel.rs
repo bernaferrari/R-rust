@@ -24,13 +24,13 @@ struct tre_reach_pos_t {
     tags: *mut *mut c_int,
 }
 
-pub(crate) unsafe fn tre_isalnum(c: tre_cint_t) -> bool {
+pub(crate) fn tre_isalnum(c: tre_cint_t) -> bool {
     super::parse::tre_isalnum(c)
 }
 
 #[inline]
 fn IS_WORD_CHAR(c: tre_cint_t) -> bool {
-    c == '_' as tre_cint_t || unsafe { tre_isalnum(c) }
+    c == '_' as tre_cint_t || tre_isalnum(c)
 }
 
 #[inline]
@@ -87,7 +87,7 @@ fn CHECK_CHAR_CLASSES(
 }
 
 #[allow(clippy::if_same_then_else)]
-pub unsafe fn tre_tnfa_run_parallel(
+pub fn tre_tnfa_run_parallel(
     tnfa: *const tre_tnfa_t,
     string: *const c_void,
     len: c_int,
