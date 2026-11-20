@@ -82,8 +82,7 @@ fn eval_dispatch_arg(fname: SEXP, ev: SEXP, arg_sym: SEXP) -> SEXP {
                 std::panic::resume_unwind(payload);
             };
             let arg_name = unsafe { CStr::from_ptr(CHAR(PRINTNAME(arg_sym))).to_string_lossy() };
-            let fun_name =
-                unsafe { sexp_to_string(fname) }.unwrap_or_else(|| "<unknown>".to_string());
+            let fun_name = sexp_to_string(fname).unwrap_or_else(|| "<unknown>".to_string());
             r_error(format!(
                 "error in evaluating the argument '{}' in selecting a method for function '{}': {}",
                 arg_name, fun_name, inner
@@ -111,11 +110,11 @@ fn dispatch_arg_error_message(payload: &(dyn std::any::Any + Send)) -> Option<Co
                 return None;
             };
             let condition = result.try_vector_elt(0).ok()?.as_raw();
-            if !unsafe { condition_inherits_error(condition) } {
+            if !condition_inherits_error(condition) {
                 return None;
             }
-            let message = unsafe { named_element(condition, "message") };
-            unsafe { sexp_to_string(message) }.map(Cow::Owned)
+            let message = named_element(condition, "message");
+            sexp_to_string(message).map(Cow::Owned)
         }
         _ => None,
     }
@@ -189,7 +188,7 @@ fn named_element(object: SEXP, name: &str) -> SEXP {
 }
 
 fn all_methods_slot(mlist: SEXP) -> SEXP {
-    unsafe { named_slot(mlist, "allMethods") }
+    named_slot(mlist, "allMethods")
 }
 
 fn named_slot(object: SEXP, name: &str) -> SEXP {
@@ -460,7 +459,7 @@ fn wildcard_table_method(table: SEXP, classes: &[String]) -> SEXP {
             .into_iter()
             .next()
             .map(|(_, method)| method)
-            .unwrap_or_else(|| unsafe { R_NilValue() })
+            .unwrap_or_else(R_NilValue)
     }
 }
 
@@ -874,30 +873,27 @@ fn try_s3_method_for_generic(
 
 /// R_quick_method_check - quick check if a method exists in the methods list.
 pub unsafe fn R_quick_method_check(args: SEXP, mlist: SEXP, _fdef: SEXP) -> SEXP {
-    unsafe {
-        if mlist.is_null() || mlist == R_NilValue() {
-            return R_NilValue();
-        }
-        let mut methods = all_methods_slot(mlist);
-        if methods.is_null() || methods == R_NilValue() {
-            return R_NilValue();
-        }
-        let mut arg = args;
-        while !arg.is_null() && arg != R_NilValue() && !methods.is_null() && methods != R_NilValue()
-        {
-            let object = CAR(arg);
-            let Some(class) = first_data_class_name(object) else {
-                return R_NilValue();
-            };
-            let value = named_element(methods, &class);
-            if value.is_null() || value == R_NilValue() || Rf_isFunction(value) != 0 {
-                return value;
-            }
-            methods = all_methods_slot(value);
-            arg = CDR(arg);
-        }
-        R_NilValue()
+    if mlist.is_null() || mlist == R_NilValue() {
+        return R_NilValue();
     }
+    let mut methods = all_methods_slot(mlist);
+    if methods.is_null() || methods == R_NilValue() {
+        return R_NilValue();
+    }
+    let mut arg = args;
+    while !arg.is_null() && arg != R_NilValue() && !methods.is_null() && methods != R_NilValue() {
+        let object = CAR(arg);
+        let Some(class) = first_data_class_name(object) else {
+            return R_NilValue();
+        };
+        let value = named_element(methods, &class);
+        if value.is_null() || value == R_NilValue() || Rf_isFunction(value) != 0 {
+            return value;
+        }
+        methods = all_methods_slot(value);
+        arg = CDR(arg);
+    }
+    R_NilValue()
 }
 
 pub unsafe fn R_quick_dispatch(args: SEXP, generic_env: SEXP, _fdef: SEXP) -> SEXP {
@@ -1117,22 +1113,20 @@ pub(crate) fn select_method_by_signature(
     targets: &[String],
     inherit: &[bool],
 ) -> Option<(SEXP, Vec<String>)> {
-    unsafe {
-        nearest_method(
-            table_methods(table, targets)
-                .into_iter()
-                .filter(|candidate| {
-                    candidate
-                        .signature
-                        .iter()
-                        .zip(targets)
-                        .zip(inherit)
-                        .all(|((defined, target), allow)| *allow || defined == target)
-                })
-                .collect(),
-        )
-        .map(|candidate| (candidate.method, candidate.signature))
-    }
+    nearest_method(
+        table_methods(table, targets)
+            .into_iter()
+            .filter(|candidate| {
+                candidate
+                    .signature
+                    .iter()
+                    .zip(targets)
+                    .zip(inherit)
+                    .all(|((defined, target), allow)| *allow || defined == target)
+            })
+            .collect(),
+    )
+    .map(|candidate| (candidate.method, candidate.signature))
 }
 
 fn select_method_from_list(
@@ -1329,7 +1323,7 @@ pub fn R_nextMethodCall(matched_call: SEXP, ev: SEXP) -> SEXP {
 
 /// Evaluator entry point for the R-level `callNextMethod` special form.
 pub unsafe fn do_callNextMethod(call: SEXP, _op: SEXP, _args: SEXP, rho: SEXP) -> SEXP {
-    unsafe { R_nextMethodCall(call, rho) }
+    R_nextMethodCall(call, rho)
 }
 
 fn methods_call_next_method_closure() -> Option<SEXP> {

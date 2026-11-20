@@ -126,10 +126,8 @@ fn class_name_chars(value: SEXP, owner: crate::sexp::owner::OwnerToken<'_>) -> S
 
 /// R_methods_test_MAKE_CLASS - create a class definition for testing.
 pub fn R_methods_test_MAKE_CLASS(className: SEXP) -> SEXP {
-    unsafe {
-        let class_name = class_name_owned(className);
-        crate::mainutils::objects::make_class_by_name(class_name.as_str()).as_raw()
-    }
+    let class_name = class_name_owned(className);
+    crate::mainutils::objects::make_class_by_name(class_name.as_str()).as_raw()
 }
 
 /// R_methods_test_NEW - create a new object of a given class for testing.

@@ -321,7 +321,7 @@ pub unsafe fn install_utils_call_symbols(env: crate::sexp::ffi::SEXP) {
         crate::eval::parser::flush_literal_warnings();
         if let Ok(exprs) = parsed {
             for expr in &exprs {
-                let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+                let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     crate::eval::eval::Rf_eval(expr.clone().as_raw(), env)
                 }));
             }
