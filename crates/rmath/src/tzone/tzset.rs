@@ -77,80 +77,74 @@ fn set_local_timezone(g: &mut TzGlobals, load: impl FnOnce(Option<&str>, &mut st
 // ===========================================================================
 
 /// `R_gmtime` -- convert time_t to UTC broken-down time (non-reentrant).
-pub unsafe fn R_gmtime(timep: *const i64) -> *mut stm {
-    unsafe {
-        with_tz_globals(|g| {
-            r_tzset_impl(g);
-            let t = if timep.is_null() { 0 } else { *timep };
-            let mut tmp = stm::default();
-            match gmtsub(g, &t, 0, &mut tmp) {
-                Some(_) => {
-                    g.tm = tmp;
-                    &mut g.tm as *mut stm
-                }
-                None => std::ptr::null_mut(),
+///
+/// Returns a pointer into the session's timezone globals, or null on failure.
+pub fn R_gmtime(timep: Option<&i64>) -> *mut stm {
+    with_tz_globals(|g| {
+        r_tzset_impl(g);
+        let t = timep.copied().unwrap_or(0);
+        let mut tmp = stm::default();
+        match gmtsub(g, &t, 0, &mut tmp) {
+            Some(_) => {
+                g.tm = tmp;
+                &mut g.tm as *mut stm
             }
-        })
-    }
+            None => std::ptr::null_mut(),
+        }
+    })
 }
 
 /// `R_gmtime_r` -- convert time_t to UTC broken-down time (reentrant).
-pub unsafe fn R_gmtime_r(timep: *const i64, tmp: *mut stm) -> *mut stm {
-    unsafe {
-        if timep.is_null() || tmp.is_null() {
-            return std::ptr::null_mut();
-        }
-        with_tz_globals(|g| {
-            let t = *timep;
-            let mut result = stm::default();
-            match gmtsub(g, &t, 0, &mut result) {
-                Some(_) => {
-                    std::ptr::copy_nonoverlapping(&result as *const stm, tmp, 1);
-                    tmp
-                }
-                None => std::ptr::null_mut(),
+///
+/// Writes into `tmp` and returns it as a pointer, or null on failure.
+pub fn R_gmtime_r(timep: &i64, tmp: &mut stm) -> *mut stm {
+    with_tz_globals(|g| {
+        let t = *timep;
+        let mut result = stm::default();
+        match gmtsub(g, &t, 0, &mut result) {
+            Some(_) => {
+                *tmp = result;
+                tmp as *mut stm
             }
-        })
-    }
+            None => std::ptr::null_mut(),
+        }
+    })
 }
 
 /// `R_localtime` -- convert time_t to local broken-down time (non-reentrant).
-pub unsafe fn R_localtime(timep: *const i64) -> *mut stm {
-    unsafe {
-        with_tz_globals(|g| {
-            r_tzset_impl(g);
-            let t = if timep.is_null() { 0 } else { *timep };
-            let mut tmp = stm::default();
-            match localsub(g, &t, 0, &mut tmp) {
-                Some(_) => {
-                    g.tm = tmp;
-                    &mut g.tm as *mut stm
-                }
-                None => std::ptr::null_mut(),
+///
+/// Returns a pointer into the session's timezone globals, or null on failure.
+pub fn R_localtime(timep: Option<&i64>) -> *mut stm {
+    with_tz_globals(|g| {
+        r_tzset_impl(g);
+        let t = timep.copied().unwrap_or(0);
+        let mut tmp = stm::default();
+        match localsub(g, &t, 0, &mut tmp) {
+            Some(_) => {
+                g.tm = tmp;
+                &mut g.tm as *mut stm
             }
-        })
-    }
+            None => std::ptr::null_mut(),
+        }
+    })
 }
 
 /// `R_localtime_r` -- convert time_t to local broken-down time (reentrant).
-pub unsafe fn R_localtime_r(timep: *const i64, tmp: *mut stm) -> *mut stm {
-    unsafe {
-        if timep.is_null() || tmp.is_null() {
-            return std::ptr::null_mut();
-        }
-        with_tz_globals(|g| {
-            r_tzset_impl(g);
-            let t = *timep;
-            let mut result = stm::default();
-            match localsub(g, &t, 0, &mut result) {
-                Some(_) => {
-                    std::ptr::copy_nonoverlapping(&result as *const stm, tmp, 1);
-                    tmp
-                }
-                None => std::ptr::null_mut(),
+///
+/// Writes into `tmp` and returns it as a pointer, or null on failure.
+pub fn R_localtime_r(timep: &i64, tmp: &mut stm) -> *mut stm {
+    with_tz_globals(|g| {
+        r_tzset_impl(g);
+        let t = *timep;
+        let mut result = stm::default();
+        match localsub(g, &t, 0, &mut result) {
+            Some(_) => {
+                *tmp = result;
+                tmp as *mut stm
             }
-        })
-    }
+            None => std::ptr::null_mut(),
+        }
+    })
 }
 
 /// `R_mktime` -- convert local broken-down time to time_t.
@@ -170,19 +164,14 @@ pub unsafe fn R_mktime(tmp: *mut stm) -> i64 {
 }
 
 /// `R_timegm` -- convert UTC broken-down time to time_t.
-pub unsafe fn R_timegm(tmp: *mut stm) -> i64 {
-    unsafe {
-        if tmp.is_null() {
-            return WRONG;
-        }
-        with_tz_globals(|g| {
-            let mut t = std::ptr::read(tmp);
-            t.tm_isdst = 0;
-            let result = time1(g, &mut t, gmtsub, 0);
-            std::ptr::write(tmp, t);
-            result
-        })
-    }
+pub fn R_timegm(tmp: &mut stm) -> i64 {
+    with_tz_globals(|g| {
+        let mut t = *tmp;
+        t.tm_isdst = 0;
+        let result = time1(g, &mut t, gmtsub, 0);
+        *tmp = t;
+        result
+    })
 }
 
 /// `R_tzset` -- set timezone from TZ environment variable.
@@ -197,7 +186,7 @@ pub fn R_tzsetwall() {
 
 /// `R_tzname` -- returns a pointer to the [2]-element array of timezone name
 /// pointers (standard, daylight).
-pub unsafe fn R_tzname() -> *mut *mut core::ffi::c_char {
+pub fn R_tzname() -> *mut *mut core::ffi::c_char {
     with_tz_globals(|g| {
         r_tzset_impl(g);
         g.sync_tzname_ptrs();
@@ -255,7 +244,7 @@ mod tests {
         assert_eq!(with_tz_globals(|g| g.lcl_is_set), 1);
         let timestamp = 1_168_862_400; // 2007-01-15 12:00:00 UTC, within the TZif transitions
         let mut local = stm::default();
-        assert!(!unsafe { R_localtime_r(&timestamp, &mut local) }.is_null());
+        assert!(!R_localtime_r(&timestamp, &mut local).is_null());
         assert_eq!((local.tm_hour, local.tm_gmtoff), (7, -18_000));
         assert_eq!(
             owner.with_arena(|arena| arena.workspace_bytes()).unwrap(),
