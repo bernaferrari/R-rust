@@ -54,6 +54,16 @@ user workflows have passed on native Rport and production Wasm.
 
 ## Main verification
 
+- At `720ddfb7`, `optim(method = "BFGS")` and the package numerical
+  routines can use the same slice-based optimizer. It charges the
+  temporary matrix and vectors to the active session before invoking
+  the objective. Pinned GNU R, native Rport and production Wasm matched
+  the four fit results and two error messages. Wasm also refused a
+  5,000-parameter fit before evaluating the objective and completed a
+  smaller fit in the same session. All 332 Wasm contracts and the
+  dependency and S4 gate passed. The Workbench bundle leaves 2,146,155
+  bytes below 25 MiB. [BFGS and production receipt](ci-checkpoints/bfgs-720ddfb7.json)
+
 - At `d55ab963`, 17 of 20 everyday workflows passed on both targets.
   Native and Wasm grid replay matched 14 rendered PDFs from pinned GNU R.
   All 18 selected strict native cases, 332 Wasm contract runs, the

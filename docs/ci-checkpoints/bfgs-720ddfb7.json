@@ -1,0 +1,42 @@
+{
+  "source_commit": "720ddfb7d779df7a9c8c5fa74a249b14de29b568",
+  "gnu_oracle_commit": "bac583951b728e97b9786804d3b4081f0fe18df5",
+  "wasm_sha256": "abe1d1687b906da4fe9d96fe69d6c44df0b8edab5b1a13d19b9b84e080defb61",
+  "wasm_module_bytes": 24033212,
+  "workbench_bundle_bytes": 24068245,
+  "workbench_byte_limit": 26214400,
+  "workbench_headroom_bytes": 2146155,
+  "production_wasm_contracts_per_generation": [
+    166,
+    166
+  ],
+  "dependency_scanner_and_s4": {
+    "wasm_sha256": "abe1d1687b906da4fe9d96fe69d6c44df0b8edab5b1a13d19b9b84e080defb61",
+    "dependency_scans_passed": 4,
+    "s4_after_dependency_scans": "pass"
+  },
+  "native_and_wasm_match_gnu": {
+    "rosenbrock": [
+      "maxit=100",
+      "maxit=0",
+      "maxit=1"
+    ],
+    "quadratic": "numerical gradient",
+    "conditions": [
+      "nonfinite initial objective",
+      "zero report interval"
+    ],
+    "output": [
+      "100|1.00000000|1.00000000|0.00000000|99|44|0",
+      "0|-1.20000000|1.00000000|24.20000000|0|0|0",
+      "1|-0.85504000|1.14080000|20.22712308|6|2|1",
+      "1.0000000|2.0000000|0.0000000|8|3|0",
+      "initial value in 'vmmin' is not finite",
+      "REPORT must be > 0 (method = \"BFGS\")"
+    ]
+  },
+  "memory": {
+    "native": "Rejected a dense mask before evaluation and completed a sparse fit under the same arena cap. The reservation returned to zero.",
+    "wasm": "Rejected a 5000-parameter fit before invoking the objective and completed a smaller fit in the same session."
+  }
+}
