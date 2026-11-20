@@ -21,6 +21,16 @@ use std::ptr;
 use crate::sexp::instance::with_required_current_instance;
 
 // ---------------------------------------------------------------------------
+// Session state accessor
+// ---------------------------------------------------------------------------
+
+fn with_sys_std_state<R>(f: impl FnOnce(&mut SysStdRuntimeState) -> R) -> R {
+    // SAFETY: the &mut lend spans only `f`; the instance field is owned by the
+    // session which is locked for the duration.
+    with_required_current_instance(|instance| unsafe { f(&mut (*instance).sys_std_state) })
+}
+
+// ---------------------------------------------------------------------------
 // Stub: R_CleanUp dispatch
 // ---------------------------------------------------------------------------
 
@@ -240,8 +250,8 @@ pub fn Rstd_loadhistory(file: *const c_char) {
     let Ok(contents) = std::fs::read_to_string(path) else {
         return;
     };
-    with_required_current_instance(|instance| unsafe {
-        (*instance).sys_std_state.history = contents.lines().map(str::to_owned).collect();
+    with_sys_std_state(|state| {
+        state.history = contents.lines().map(str::to_owned).collect();
     });
 }
 
@@ -250,11 +260,11 @@ pub fn Rstd_savehistory(file: *const c_char) {
     let Some(path) = cstr_to_string(file) else {
         return;
     };
-    let contents = with_required_current_instance(|instance| unsafe {
-        if (*instance).sys_std_state.history.is_empty() {
+    let contents = with_sys_std_state(|state| {
+        if state.history.is_empty() {
             String::new()
         } else {
-            format!("{}\n", (*instance).sys_std_state.history.join("\n"))
+            format!("{}\n", state.history.join("\n"))
         }
     });
     let _ = std::fs::write(path, contents);
@@ -265,9 +275,7 @@ pub fn Rstd_addhistory(line: *const c_char) {
     let Some(line) = cstr_to_string(line) else {
         return;
     };
-    with_required_current_instance(|instance| unsafe {
-        (*instance).sys_std_state.history.push(line);
-    });
+    with_sys_std_state(|state| state.history.push(line));
 }
 
 /// Read history from file (readline interface).
@@ -280,23 +288,19 @@ pub fn Rstd_read_history(file: *const c_char) {
 // ---------------------------------------------------------------------------
 
 pub(crate) fn set_r_polled_events(callback: Option<extern "C" fn()>) {
-    with_required_current_instance(|instance| unsafe {
-        (*instance).sys_std_state.r_polled_events = callback;
-    });
+    with_sys_std_state(|state| state.r_polled_events = callback);
 }
 
 pub(crate) fn set_rg_polled_events(callback: Option<extern "C" fn()>) {
-    with_required_current_instance(|instance| unsafe {
-        (*instance).sys_std_state.rg_polled_events = callback;
-    });
+    with_sys_std_state(|state| state.rg_polled_events = callback);
 }
 
 pub(crate) fn r_polled_events() -> Option<extern "C" fn()> {
-    with_required_current_instance(|instance| unsafe { (*instance).sys_std_state.r_polled_events })
+    with_sys_std_state(|state| state.r_polled_events)
 }
 
 pub(crate) fn rg_polled_events() -> Option<extern "C" fn()> {
-    with_required_current_instance(|instance| unsafe { (*instance).sys_std_state.rg_polled_events })
+    with_sys_std_state(|state| state.rg_polled_events)
 }
 
 /// Wait for the specified number of microseconds.
@@ -313,9 +317,7 @@ pub fn Rg_wait_usec(_usec: c_int) {
 /// Set readline word break characters.
 pub fn set_rl_word_breaks(value: *const c_char) {
     let word_breaks = cstr_to_string(value);
-    with_required_current_instance(|instance| unsafe {
-        (*instance).sys_std_state.readline_word_breaks = word_breaks;
-    });
+    with_sys_std_state(|state| state.readline_word_breaks = word_breaks);
 }
 
 /// Expand filename using the frontend-compatible readline hook.
