@@ -83,193 +83,180 @@ fn sample_coordinate(
 
 /// Create a new image.
 pub fn newimage(width: c_int, height: c_int, depth: c_int) -> image {
-    unsafe {
-        if depth != 8 && depth != 32 {
-            return ptr::null_mut();
-        }
-
-        let Ok(width_size) = usize::try_from(width) else {
-            return ptr::null_mut();
-        };
-        let Ok(height_size) = usize::try_from(height) else {
-            return ptr::null_mut();
-        };
-        let Some(bytes) = width_size.checked_mul(height_size).and_then(|pixels| {
-            pixels.checked_mul(if depth == 8 {
-                1
-            } else {
-                std::mem::size_of::<rgb>()
-            })
-        }) else {
-            return ptr::null_mut();
-        };
-        let pixels = memory::memalloc_bytes(bytes);
-        if pixels.is_null() {
-            return ptr::null_mut();
-        }
-        let img = memory::memalloc_bytes(std::mem::size_of::<imagedata>()) as image;
-        if img.is_null() {
-            memory::memfree(pixels);
-            return ptr::null_mut();
-        }
-        (*img).width = width;
-        (*img).height = height;
-        (*img).depth = depth;
-        (*img).pixels = pixels;
-
-        img
+    if depth != 8 && depth != 32 {
+        return ptr::null_mut();
     }
+
+    let Ok(width_size) = usize::try_from(width) else {
+        return ptr::null_mut();
+    };
+    let Ok(height_size) = usize::try_from(height) else {
+        return ptr::null_mut();
+    };
+    let Some(bytes) = width_size.checked_mul(height_size).and_then(|pixels| {
+        pixels.checked_mul(if depth == 8 {
+            1
+        } else {
+            std::mem::size_of::<rgb>()
+        })
+    }) else {
+        return ptr::null_mut();
+    };
+    let pixels = memory::memalloc_bytes(bytes);
+    if pixels.is_null() {
+        return ptr::null_mut();
+    }
+    let img = memory::memalloc_bytes(std::mem::size_of::<imagedata>()) as image;
+    let Some(data) = ptr_mut(img) else {
+        memory::memfree(pixels);
+        return ptr::null_mut();
+    };
+    data.width = width;
+    data.height = height;
+    data.depth = depth;
+    data.pixels = pixels;
+
+    img
 }
 
 /// Copy an image.
 pub fn copyimage(img: image) -> image {
-    unsafe {
-        if img.is_null() {
-            return ptr::null_mut();
-        }
-        let new_img = newimage((*img).width, (*img).height, (*img).depth);
-        if !new_img.is_null() {
-            setpixels(new_img, (*img).pixels);
-            setpalette(new_img, (*img).cmapsize, (*img).cmap);
-        }
-        new_img
+    let Some(src) = ptr_ref(img) else {
+        return ptr::null_mut();
+    };
+    let new_img = newimage(src.width, src.height, src.depth);
+    if !new_img.is_null() {
+        setpixels(new_img, src.pixels);
+        setpalette(new_img, src.cmapsize, src.cmap);
     }
+    new_img
 }
 
 /// Delete an image.
 pub fn delimage(img: image) {
-    unsafe {
-        if img.is_null() {
-            return;
-        }
-        if !(*img).cmap.is_null() {
-            memory::memfree((*img).cmap as *mut u8);
-        }
-        if !(*img).pixels.is_null() {
-            memory::memfree((*img).pixels);
-        }
-        memory::memfree(img as *mut u8);
+    let Some(data) = ptr_ref(img) else {
+        return;
+    };
+    if !data.cmap.is_null() {
+        memory::memfree(data.cmap as *mut u8);
     }
+    if !data.pixels.is_null() {
+        memory::memfree(data.pixels);
+    }
+    memory::memfree(img as *mut u8);
 }
 
 /// Get the depth of an image.
 pub fn imagedepth(img: image) -> c_int {
-    unsafe { if img.is_null() { 0 } else { (*img).depth } }
+    ptr_ref(img).map_or(0, |data| data.depth)
 }
 
 /// Get the width of an image.
 pub fn imagewidth(img: image) -> c_int {
-    unsafe { if img.is_null() { 0 } else { (*img).width } }
+    ptr_ref(img).map_or(0, |data| data.width)
 }
 
 /// Get the height of an image.
 pub fn imageheight(img: image) -> c_int {
-    unsafe { if img.is_null() { 0 } else { (*img).height } }
+    ptr_ref(img).map_or(0, |data| data.height)
 }
 
 /// Set the pixels of an image.
 pub fn setpixels(img: image, pixels: *mut super::types::GAbyte) {
-    unsafe {
-        if img.is_null() {
-            return;
-        }
-        let length = (*img).width * (*img).height;
-        let byte_len = if (*img).depth > 8 {
-            length as usize * std::mem::size_of::<rgb>()
-        } else {
-            length as usize
-        };
-        if !(*img).pixels.is_null() && !pixels.is_null() {
-            ptr::copy_nonoverlapping(pixels, (*img).pixels, byte_len);
-        }
+    let Some(data) = ptr_mut(img) else {
+        return;
+    };
+    let length = data.width * data.height;
+    let byte_len = if data.depth > 8 {
+        length as usize * std::mem::size_of::<rgb>()
+    } else {
+        length as usize
+    };
+    if !data.pixels.is_null() && !pixels.is_null() {
+        // Copy `byte_len` bytes from the caller's buffer into the owned
+        // pixel allocation; both are at least that long by construction.
+        unsafe { ptr::copy_nonoverlapping(pixels, data.pixels, byte_len) };
     }
 }
 
 /// Get the pixel array of an image.
 pub fn getpixels(img: image) -> *mut super::types::GAbyte {
-    unsafe {
-        if img.is_null() {
-            ptr::null_mut()
-        } else {
-            (*img).pixels
-        }
-    }
+    ptr_ref(img).map_or(ptr::null_mut(), |data| data.pixels)
 }
 
 /// Set the colour palette of an image.
 pub fn setpalette(img: image, cmapsize: c_int, cmap: *mut rgb) {
-    unsafe {
-        if img.is_null() {
+    let Some(data) = ptr_mut(img) else {
+        return;
+    };
+    let new_cmap = if cmapsize > 0 && !cmap.is_null() {
+        let Some(bytes) = (cmapsize as usize).checked_mul(std::mem::size_of::<rgb>()) else {
+            return;
+        };
+        let replacement = memory::memalloc_bytes(bytes) as *mut rgb;
+        if replacement.is_null() {
             return;
         }
-        let new_cmap = if cmapsize > 0 && !cmap.is_null() {
-            let Some(bytes) = (cmapsize as usize).checked_mul(std::mem::size_of::<rgb>()) else {
-                return;
-            };
-            let replacement = memory::memalloc_bytes(bytes) as *mut rgb;
-            if replacement.is_null() {
-                return;
-            }
-            ptr::copy_nonoverlapping(cmap, replacement, cmapsize as usize);
-            replacement
-        } else {
-            ptr::null_mut()
-        };
-        // Publish only after copying: callers may pass the current palette.
-        memory::memfree((*img).cmap as *mut u8);
-        (*img).cmap = new_cmap;
-        (*img).cmapsize = if new_cmap.is_null() { 0 } else { cmapsize };
-    }
+        // Copy `cmapsize` entries from the caller's palette into the new
+        // allocation sized exactly for them.
+        unsafe { ptr::copy_nonoverlapping(cmap, replacement, cmapsize as usize) };
+        replacement
+    } else {
+        ptr::null_mut()
+    };
+    // Publish only after copying: callers may pass the current palette.
+    memory::memfree(data.cmap as *mut u8);
+    data.cmap = new_cmap;
+    data.cmapsize = if new_cmap.is_null() { 0 } else { cmapsize };
 }
 
 /// Get the colour palette of an image.
 pub fn getpalette(img: image) -> *mut rgb {
-    unsafe {
-        if img.is_null() {
-            ptr::null_mut()
-        } else {
-            (*img).cmap
-        }
-    }
+    ptr_ref(img).map_or(ptr::null_mut(), |data| data.cmap)
 }
 
 /// Get the palette size.
 pub fn getpalettesize(img: image) -> c_int {
-    unsafe { if img.is_null() { 0 } else { (*img).cmapsize } }
+    ptr_ref(img).map_or(0, |data| data.cmapsize)
 }
 
 /// Convert a 32-bit image to 8-bit.
 pub fn convert32to8(img: image) -> image {
+    let Some(src) = ptr_ref(img) else {
+        return ptr::null_mut();
+    };
+    if src.depth <= 8 {
+        return copyimage(img);
+    }
+
+    let dest = newimage(src.width, src.height, 8);
+    let Some(dest_data) = ptr_mut(dest) else {
+        return ptr::null_mut();
+    };
+
+    let len = (src.width * src.height).max(0) as usize;
+    let src_pixels = src.pixels as *const rgb;
+    let mut palette: Vec<rgb> = Vec::with_capacity(256);
+
+    // Read `len` rgb entries from the owned source pixel buffer.
     unsafe {
-        if img.is_null() {
-            return ptr::null_mut();
-        }
-        if (*img).depth <= 8 {
-            return copyimage(img);
-        }
-
-        let dest = newimage((*img).width, (*img).height, 8);
-        if dest.is_null() {
-            return ptr::null_mut();
-        }
-
-        let len = ((*img).width * (*img).height).max(0) as usize;
-        let src_pixels = (*img).pixels as *const rgb;
-        let mut palette: Vec<rgb> = Vec::with_capacity(256);
-
         for i in 0..len {
             let color = normalized_rgb(*src_pixels.add(i));
             if !palette.contains(&color) && palette.len() < 256 {
                 palette.push(color);
             }
         }
-        if palette.is_empty() {
-            palette.push(Black);
-        }
+    }
+    if palette.is_empty() {
+        palette.push(Black);
+    }
 
-        setpalette(dest, palette.len() as c_int, palette.as_mut_ptr());
+    setpalette(dest, palette.len() as c_int, palette.as_mut_ptr());
 
-        let dest_pixels = (*dest).pixels;
+    let dest_pixels = dest_data.pixels;
+    // Read the owned source buffer and write palette indices into the
+    // owned destination buffer; both hold `len` entries.
+    unsafe {
         for i in 0..len {
             let color = normalized_rgb(*src_pixels.add(i));
             let index = palette
@@ -279,144 +266,168 @@ pub fn convert32to8(img: image) -> image {
                 .unwrap_or_else(|| nearest_palette_index(&palette, color));
             *dest_pixels.add(i) = index;
         }
-
-        dest
     }
+
+    dest
 }
 
 /// Convert an 8-bit image to 32-bit.
 pub fn convert8to32(img: image) -> image {
-    unsafe {
-        if img.is_null() {
-            return ptr::null_mut();
-        }
-        let new_img = newimage((*img).width, (*img).height, 32);
-        if new_img.is_null() {
-            return ptr::null_mut();
-        }
-        let length = (*img).width * (*img).height;
-        let pixel8 = (*img).pixels;
-        let pixel32 = (*new_img).pixels as *mut rgb;
+    let Some(src) = ptr_ref(img) else {
+        return ptr::null_mut();
+    };
+    let new_img = newimage(src.width, src.height, 32);
+    let Some(new_data) = ptr_mut(new_img) else {
+        return ptr::null_mut();
+    };
+    let length = src.width * src.height;
+    let pixel8 = src.pixels;
+    let pixel32 = new_data.pixels as *mut rgb;
+    let cmap = src.cmap;
+    let cmapsize = src.cmapsize;
 
-        for i in 0..length as usize {
+    // Expand each indexed source pixel into an rgb entry in the owned
+    // destination buffer; both buffers hold `length` entries.
+    unsafe {
+        for i in 0..length.max(0) as usize {
             let value = *pixel8.add(i);
-            let col = if !(*img).cmap.is_null() && (*img).cmapsize > 0 {
-                let idx = (value as c_int).min((*img).cmapsize - 1) as usize;
-                *(*img).cmap.add(idx)
+            let col = if !cmap.is_null() && cmapsize > 0 {
+                let idx = (value as c_int).min(cmapsize - 1) as usize;
+                *cmap.add(idx)
             } else {
                 Black
             };
             *pixel32.add(i) = col;
         }
-        new_img
     }
+    new_img
 }
 
 /// Sort an image's colour map and remap indexed pixels to keep colours stable.
 pub fn sortpalette(img: image) {
-    unsafe {
-        if img.is_null() || (*img).depth > 8 || (*img).cmapsize <= 1 || (*img).cmap.is_null() {
-            return;
-        }
+    let Some(data) = ptr_mut(img) else {
+        return;
+    };
+    if data.depth > 8 || data.cmapsize <= 1 || data.cmap.is_null() {
+        return;
+    }
 
-        let cmapsize = (*img).cmapsize as usize;
+    let cmapsize = data.cmapsize as usize;
+    let cmap = data.cmap;
+    let pixels = data.pixels;
+    let len = (data.width * data.height).max(0) as usize;
+
+    // Rewrite the owned palette and index buffers in place; the palette
+    // has `cmapsize` entries and the index buffer has `len` bytes.
+    unsafe {
         let mut entries: Vec<(usize, rgb)> =
-            (0..cmapsize).map(|i| (i, *(*img).cmap.add(i))).collect();
+            (0..cmapsize).map(|i| (i, *cmap.add(i))).collect();
         entries.sort_by_key(|(_, color)| palette_sort_key(*color));
 
         let mut remap = vec![0u8; cmapsize];
         for (new_index, (old_index, color)) in entries.iter().enumerate() {
             remap[*old_index] = new_index as u8;
-            *(*img).cmap.add(new_index) = *color;
+            *cmap.add(new_index) = *color;
         }
 
-        let len = ((*img).width * (*img).height).max(0) as usize;
         for i in 0..len {
-            let pixel = *(*img).pixels.add(i) as usize;
+            let pixel = *pixels.add(i) as usize;
             let remapped = remap
                 .get(pixel)
                 .copied()
                 .unwrap_or_else(|| remap[cmapsize - 1]);
-            *(*img).pixels.add(i) = remapped;
+            *pixels.add(i) = remapped;
         }
     }
 }
 
 /// Scale an image.
 pub fn scaleimage(src: image, dr: rect, sr: rect) -> image {
+    if dr.width <= 0 || dr.height <= 0 {
+        return ptr::null_mut();
+    }
+    let Some(src_data) = ptr_ref(src) else {
+        return ptr::null_mut();
+    };
+    let dest = newimage(dr.width, dr.height, src_data.depth);
+    if dest.is_null() {
+        return ptr::null_mut();
+    }
+
+    if src_data.depth <= 8 {
+        setpalette(dest, src_data.cmapsize, src_data.cmap);
+    }
+
+    let source_rect = if sr.width > 0 && sr.height > 0 {
+        sr
+    } else {
+        rect {
+            x: 0,
+            y: 0,
+            width: src_data.width,
+            height: src_data.height,
+        }
+    };
+
+    let src_width = src_data.width;
+    let src_height = src_data.height;
+    let src_depth = src_data.depth;
+    let src_pixels = src_data.pixels;
+    let dest_pixels = ptr_ref(dest).map_or(ptr::null_mut(), |d| d.pixels);
+
+    // Copy sampled entries between the owned source and destination
+    // pixel buffers; indices are clamped by `sample_coordinate`.
     unsafe {
-        if src.is_null() || dr.width <= 0 || dr.height <= 0 {
-            return ptr::null_mut();
-        }
-        let dest = newimage(dr.width, dr.height, (*src).depth);
-        if dest.is_null() {
-            return ptr::null_mut();
-        }
-
-        if (*src).depth <= 8 {
-            setpalette(dest, (*src).cmapsize, (*src).cmap);
-        }
-
-        let source_rect = if sr.width > 0 && sr.height > 0 {
-            sr
-        } else {
-            rect {
-                x: 0,
-                y: 0,
-                width: (*src).width,
-                height: (*src).height,
-            }
-        };
-
         for y in 0..dr.height {
             let sy = sample_coordinate(
                 y,
                 dr.height,
                 source_rect.y,
                 source_rect.height,
-                (*src).height,
+                src_height,
             );
             for x in 0..dr.width {
-                let sx =
-                    sample_coordinate(x, dr.width, source_rect.x, source_rect.width, (*src).width);
-                let src_index = (sy * (*src).width + sx) as usize;
+                let sx = sample_coordinate(x, dr.width, source_rect.x, source_rect.width, src_width);
+                let src_index = (sy * src_width + sx) as usize;
                 let dest_index = (y * dr.width + x) as usize;
-                if (*src).depth <= 8 {
-                    *(*dest).pixels.add(dest_index) = *(*src).pixels.add(src_index);
+                if src_depth <= 8 {
+                    *dest_pixels.add(dest_index) = *src_pixels.add(src_index);
                 } else {
-                    *((*dest).pixels as *mut rgb).add(dest_index) =
-                        *((*src).pixels as *const rgb).add(src_index);
+                    *(dest_pixels as *mut rgb).add(dest_index) =
+                        *(src_pixels as *const rgb).add(src_index);
                 }
             }
         }
-
-        dest
     }
+
+    dest
 }
 
 /// Get pixel value from an image.
 pub fn get_image_pixel(img: image, x: c_int, y: c_int) -> rgb {
-    unsafe {
-        if img.is_null() {
-            return Transparent;
-        }
-        if x < 0 || x >= (*img).width || y < 0 || y >= (*img).height {
-            return Transparent;
-        }
-        if (*img).depth <= 8 {
-            let value = *(*img).pixels.add((y * (*img).width + x) as usize);
-            if !(*img).cmap.is_null() && (value as c_int) < (*img).cmapsize {
-                *(*img).cmap.add(value as usize)
-            } else {
-                Black
-            }
+    let Some(data) = ptr_ref(img) else {
+        return Transparent;
+    };
+    if x < 0 || x >= data.width || y < 0 || y >= data.height {
+        return Transparent;
+    }
+    let index = (y * data.width + x) as usize;
+    if data.depth <= 8 {
+        // Read one byte from the owned index buffer.
+        let value = unsafe { *data.pixels.add(index) };
+        if !data.cmap.is_null() && (value as c_int) < data.cmapsize {
+            // Read one entry from the owned palette.
+            unsafe { *data.cmap.add(value as usize) }
         } else {
-            let pixel = *((*img).pixels as *const rgb).add((y * (*img).width + x) as usize);
-            if getalpha(pixel) > 0x7F {
-                Transparent
-            } else {
-                pixel & White
-            }
+            Black
+        }
+    } else {
+        // Read one rgb entry from the owned pixel buffer.
+        let pixel = unsafe { *(data.pixels as *const rgb).add(index) };
+        if getalpha(pixel) > 0x7F {
+            Transparent
+        } else {
+            pixel & White
         }
     }
 }
@@ -471,32 +482,38 @@ pub fn get_grey_pixel(img: image, x: c_int, y: c_int) -> rgb {
 
 /// Check if image has transparent pixels.
 pub fn has_transparent_pixels(img: image) -> c_int {
-    unsafe {
-        if img.is_null() {
+    let Some(data) = ptr_ref(img) else {
+        return 0;
+    };
+    let len = (data.width * data.height).max(0) as usize;
+    if data.depth <= 8 {
+        if data.cmap.is_null() || data.cmapsize <= 0 {
             return 0;
         }
-
-        let len = ((*img).width * (*img).height).max(0) as usize;
-        if (*img).depth <= 8 {
-            if (*img).cmap.is_null() || (*img).cmapsize <= 0 {
-                return 0;
-            }
+        let cmap = data.cmap;
+        let cmapsize = data.cmapsize;
+        let pixels = data.pixels;
+        // Scan the owned index buffer and its `cmapsize`-entry palette.
+        unsafe {
             for i in 0..len {
-                let index = (*(*img).pixels.add(i) as c_int).min((*img).cmapsize - 1) as usize;
-                if normalized_rgb(*(*img).cmap.add(index)) == Transparent {
+                let index = (*pixels.add(i) as c_int).min(cmapsize - 1) as usize;
+                if normalized_rgb(*cmap.add(index)) == Transparent {
                     return 1;
                 }
             }
-            0
-        } else {
-            let pixels = (*img).pixels as *const rgb;
+        }
+        0
+    } else {
+        let pixels = data.pixels as *const rgb;
+        // Scan the owned 32-bit pixel buffer of `len` entries.
+        unsafe {
             for i in 0..len {
                 if normalized_rgb(*pixels.add(i)) == Transparent {
                     return 1;
                 }
             }
-            0
         }
+        0
     }
 }
 
