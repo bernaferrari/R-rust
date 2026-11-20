@@ -84,7 +84,8 @@ pub(crate) unsafe fn load_pure_r_package_recursive(
                 package
             ));
         }
-        check_package_loadability(package, &description, true)?;
+        let fields = validate_package_source(package, &description)?;
+        check_dependency_versions(package, &fields, "Depends", |_| true)?;
 
         loading_packages.push(package.to_string());
         let result = (|| {
@@ -152,11 +153,10 @@ pub(crate) fn package_needs_compilation(description: &Path) -> Result<bool, Stri
     Ok(needs_compilation(&read_package_description(description)?))
 }
 
-pub(super) fn check_package_loadability(
+pub(super) fn validate_package_source(
     package: &str,
     description: &Path,
-    attaching: bool,
-) -> Result<(), String> {
+) -> Result<BTreeMap<String, String>, String> {
     let browser = crate::mainutils::browser_files::enabled();
     let fields = read_package_description(description)?;
     if browser && fields.get("Package").map(String::as_str) != Some(package) {
@@ -165,49 +165,47 @@ pub(super) fn check_package_loadability(
         ));
     }
     if needs_compilation(&fields) && !is_builtin_package_dependency(package) {
-        let runtime = if browser { "browser" } else { "pure-R Android" };
+        let runtime = if browser { "browser" } else { "source package" };
         return Err(format!(
             "package '{package}' declares NeedsCompilation: yes; this {runtime} runtime does not load compiled package code"
         ));
     }
-    // GNU checks Depends before attachment and versioned imports when
-    // loading the namespace. A namespace-only load does not attach Depends.
-    let required_fields: &[&str] = if attaching {
-        &["Depends", "Imports"]
-    } else {
-        &["Imports"]
+    Ok(fields)
+}
+
+pub(super) fn check_dependency_versions(
+    package: &str,
+    fields: &BTreeMap<String, String>,
+    field: &str,
+    applies: impl Fn(&str) -> bool,
+) -> Result<(), String> {
+    let Some(value) = fields.get(field) else {
+        return Ok(());
     };
-    for &field in required_fields {
-        let Some(value) = fields.get(field) else {
+    for entry in value.split(',') {
+        let Some((dependency, constraint)) = entry.split_once('(') else {
             continue;
         };
-        for entry in value.split(',') {
-            let Some((dependency, constraint)) = entry.split_once('(') else {
-                continue;
-            };
-            let dependency = dependency.trim();
-            if dependency.is_empty()
-                || !dependency
-                    .bytes()
-                    .all(|c| c.is_ascii_alphanumeric() || c == b'.')
-                || !dependency.starts_with(|c: char| c.is_ascii_alphabetic())
-                || !dependency.ends_with(|c: char| c.is_ascii_alphanumeric())
-            {
-                return Err(format!(
-                    "package '{package}' has an invalid {field} package name"
-                ));
-            }
-            let requirement = constraint.trim_end().strip_suffix(')')
-                .and_then(NamespaceRequirement::dependency)
-                .ok_or_else(|| format!("package '{package}' has an invalid {field} version constraint for '{dependency}'"))?;
-            // No required package has been attached and no own namespace has
-            // been registered by this check. An installed incompatible version
-            // can be replaced and the same runtime can retry.
-            unsafe { super::package_paths::check_declared_dependency(dependency, &requirement) }
-                .map_err(|error| {
-                    format!("package '{package}' has an unsatisfied {field} requirement: {error}")
-                })?;
+        let dependency = dependency.trim();
+        if !applies(dependency) {
+            continue;
         }
+        if !valid_package_name(dependency) {
+            return Err(format!(
+                "package '{package}' has an invalid {field} package name"
+            ));
+        }
+        let requirement = constraint
+            .trim_end()
+            .strip_suffix(')')
+            .and_then(NamespaceRequirement::dependency)
+            .ok_or_else(|| {
+                format!("package '{package}' has an invalid {field} version constraint for '{dependency}'")
+            })?;
+        unsafe { super::package_paths::check_declared_dependency(dependency, &requirement) }
+            .map_err(|error| {
+                format!("package '{package}' has an unsatisfied {field} requirement: {error}")
+            })?;
     }
     Ok(())
 }

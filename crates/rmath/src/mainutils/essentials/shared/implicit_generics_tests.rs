@@ -42,8 +42,15 @@ fn populated_methods_namespace(session: &RSession) -> crate::sexp::Sexp<'static>
         define_package_metadata("methods", ns.as_raw());
         cache_package_namespace("methods", path, ns.as_raw());
         crate::library::methods::native_calls::install_methods_call_symbols(ns.as_raw());
-        populate_package_namespace("methods", path, ns.as_raw(), &mut vec!["methods".into()])
-            .expect("original methods lazy population");
+        let fields = validate_package_source("methods", &path.join("DESCRIPTION")).unwrap();
+        populate_package_namespace(
+            "methods",
+            path,
+            ns.as_raw(),
+            &mut vec!["methods".into()],
+            &fields,
+        )
+        .expect("original methods lazy population");
         bind_methods_base_primitives(ns.as_raw());
         purge_missing_arg_placeholders(ns.as_raw());
         retarget_methods_generics(ns.as_raw());

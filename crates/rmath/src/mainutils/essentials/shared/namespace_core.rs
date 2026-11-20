@@ -70,7 +70,7 @@ pub(crate) unsafe fn load_package_namespace(
             return Ok((env, directives));
         }
 
-        check_package_loadability(package, &package_dir.join("DESCRIPTION"), false)?;
+        let fields = validate_package_source(package, &package_dir.join("DESCRIPTION"))?;
         if crate::mainutils::browser_files::enabled()
             && !package_file_exists(&package_dir.join("NAMESPACE"))
         {
@@ -124,7 +124,7 @@ pub(crate) unsafe fn load_package_namespace(
         }
 
         let populated = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            populate_package_namespace(package, package_dir, package_env, loading)
+            populate_package_namespace(package, package_dir, package_env, loading, &fields)
         }));
         let namespace = match populated {
             Ok(result) => match result {

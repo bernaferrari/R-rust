@@ -64,14 +64,16 @@ pub(super) fn package_directory_entries(path: &Path) -> io::Result<Vec<PathBuf>>
     }
 }
 
-fn find_browser_package(package: &str, roots: &[PathBuf]) -> Option<PathBuf> {
-    if !package.starts_with(|c: char| c.is_ascii_alphabetic())
-        || !package.ends_with(|c: char| c.is_ascii_alphanumeric())
-        || !package
+pub(super) fn valid_package_name(package: &str) -> bool {
+    package.starts_with(|c: char| c.is_ascii_alphabetic())
+        && package.ends_with(|c: char| c.is_ascii_alphanumeric())
+        && package
             .bytes()
             .all(|c| c.is_ascii_alphanumeric() || c == b'.')
-        || is_builtin_package_dependency(package)
-    {
+}
+
+fn find_browser_package(package: &str, roots: &[PathBuf]) -> Option<PathBuf> {
+    if !valid_package_name(package) || is_builtin_package_dependency(package) {
         return None;
     }
     let anchor = browser_files::getcwd_current() != "/";
@@ -255,13 +257,7 @@ pub(crate) unsafe fn load_package_namespace_checked(
 ) -> Result<SEXP, String> {
     unsafe {
         let package = package.strip_prefix("package:").unwrap_or(package);
-        if package == "NA"
-            || !package.starts_with(|c: char| c.is_ascii_alphabetic())
-            || !package.ends_with(|c: char| c.is_ascii_alphanumeric())
-            || !package
-                .bytes()
-                .all(|c| c.is_ascii_alphanumeric() || c == b'.')
-        {
+        if package == "NA" || !valid_package_name(package) {
             return Err("invalid package name".to_string());
         }
         if let Some(namespace) = cached_namespace_by_name(package) {

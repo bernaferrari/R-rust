@@ -91,8 +91,10 @@ def session_workflow_results(path, native_policy, wasm_digest):
     elif workflow == 'pure-r-package':
         archive = ROOT / 'tests/real-packages/vendor/R6_2.6.1.tar.gz'
         if (report['archive_sha256'] != file_digest(archive)
-                or not isinstance(expected['output'], str) or not expected['output'].strip()):
-            raise ValueError('package report must contain the pinned archive digest and GNU output')
+                or not isinstance(expected.get('output'), str) or not expected['output'].strip()
+                or not isinstance(expected.get('dependency_output'), str)
+                or not expected['dependency_output'].strip()):
+            raise ValueError('package report must contain the pinned archive digest and both GNU outputs')
     elif workflow == 'base-plot-export':
         evidence = report['pdf_evidence']
         if (set(evidence) != {'gnu', 'native', 'wasm'}

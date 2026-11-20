@@ -17,6 +17,14 @@ pub(crate) enum NamespaceImport {
     From { package: String, names: Vec<String> },
 }
 
+impl NamespaceImport {
+    pub(super) fn package(&self) -> &str {
+        match self {
+            Self::All { package } | Self::From { package, .. } => package,
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub(crate) struct S3MethodDirective {
     pub(super) generic: String,
@@ -29,9 +37,21 @@ pub(crate) unsafe fn populate_package_namespace(
     package_dir: &Path,
     package_env: SEXP,
     loading: &mut Vec<String>,
+    fields: &BTreeMap<String, String>,
 ) -> Result<Option<NamespaceDirectives>, String> {
     unsafe {
         let namespace = read_namespace_directives(package_dir)?;
+        if let Some(directives) = namespace.as_ref() {
+            // Installed GNU metadata applies Imports constraints only to
+            // packages referenced by NAMESPACE import directives. Check
+            // before imports or package source can observe this namespace.
+            check_dependency_versions(package, fields, "Imports", |dependency| {
+                directives
+                    .imports
+                    .iter()
+                    .any(|import| import.package() == dependency)
+            })?;
+        }
         apply_description_depends(package, package_dir, package_env, loading)?;
         if let Some(directives) = namespace.as_ref() {
             if !is_builtin_package_dependency(package) {
@@ -126,11 +146,7 @@ pub(super) unsafe fn bind_cached_builtin_imports(
     import: &NamespaceImport,
 ) -> Result<(), String> {
     unsafe {
-        let import_package = match import {
-            NamespaceImport::All { package } | NamespaceImport::From { package, .. } => {
-                package.as_str()
-            }
-        };
+        let import_package = import.package();
         let Some(import_env) = cached_namespace_by_name(import_package) else {
             return Ok(());
         };
@@ -171,11 +187,7 @@ pub(crate) unsafe fn apply_namespace_imports(
 ) -> Result<(), String> {
     unsafe {
         for import in &directives.imports {
-            let import_package = match import {
-                NamespaceImport::All { package } | NamespaceImport::From { package, .. } => {
-                    package.as_str()
-                }
-            };
+            let import_package = import.package();
 
             // Base-distribution packages have no extra library tree, but
             // `importFrom(methods, show)` still has to copy the live
@@ -191,6 +203,10 @@ pub(crate) unsafe fn apply_namespace_imports(
                     "package '{}' has cyclic namespace import involving '{}'",
                     package, import_package
                 ));
+            }
+            if let Some(import_env) = cached_namespace_by_name(import_package) {
+                bind_namespace_imports(package, package_env, import, import_env, None)?;
+                continue;
             }
             let import_dir = find_package_path(import_package);
             if import_dir.is_empty() {
@@ -223,17 +239,27 @@ pub(crate) unsafe fn import_namespace_bindings(
     loading: &mut Vec<String>,
 ) -> Result<(), String> {
     unsafe {
-        let import_package = match import {
-            NamespaceImport::All { package } | NamespaceImport::From { package, .. } => {
-                package.as_str()
-            }
-        };
+        let (import_env, namespace) =
+            load_package_namespace(import.package(), import_dir, loading)?;
+        bind_namespace_imports(package, package_env, import, import_env, namespace.as_ref())
+    }
+}
 
-        let (import_env, namespace) = load_package_namespace(import_package, import_dir, loading)?;
+unsafe fn bind_namespace_imports(
+    package: &str,
+    package_env: SEXP,
+    import: &NamespaceImport,
+    import_env: SEXP,
+    namespace: Option<&NamespaceDirectives>,
+) -> Result<(), String> {
+    unsafe {
         let _import_guard = crate::sexp::protect::protect(import_env);
 
         let imported_names = match import {
-            NamespaceImport::All { .. } => namespace_exports(namespace.as_ref(), import_env),
+            NamespaceImport::All { .. } => match namespace_export_environment(import_env) {
+                Some(exports) => frame_binding_names(exports, true),
+                None => namespace_exports(namespace, import_env),
+            },
             NamespaceImport::From { names, .. } => names.clone(),
         };
 
@@ -261,7 +287,7 @@ pub(crate) unsafe fn import_namespace_bindings(
             Err(format!(
                 "package '{}' imports undefined objects from '{}': {}",
                 package,
-                import_package,
+                import.package(),
                 missing.join(", ")
             ))
         }

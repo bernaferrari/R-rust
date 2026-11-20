@@ -105,6 +105,77 @@ def run_workspace(commands, directory, env, fixture, wasm_module):
     return wasm_digest, expected, outcomes, artifacts
 
 
+def run_declared_package_dependencies(gnu, native, directory, env, fixture, wasm_module, archive):
+    source = directory / 'dependency-source'
+    installed = directory / 'dependency-installed'
+    libraries = ('pinned', 'synthetic', 'wrappers')
+    for tree in (source, installed):
+        for library in libraries:
+            (tree / library).mkdir(parents=True)
+    with tarfile.open(archive) as package_archive:
+        package_archive.extractall(source / 'pinned', filter='data')
+    pinned = source / 'pinned/R6'
+    synthetic = source / 'synthetic/R6'
+    shutil.copytree(pinned, synthetic)
+    description = synthetic / 'DESCRIPTION'
+    version = description.read_text()
+    if 'Version: 2.6.1\n' not in version:
+        raise ValueError('unexpected version in pinned R6 source')
+    description.write_text(version.replace('Version: 2.6.1\n', 'Version: 3.1.0\n', 1))
+
+    r = Path(gnu[0]).resolve().with_name('R')
+    install_env = dict(env, R_LIBS=str(installed / 'synthetic'), R_LIBS_USER='', R_LIBS_SITE='')
+
+    def install(package, library):
+        subprocess.run([r, 'CMD', 'INSTALL', '--no-html', '-l', installed / library, package],
+                       cwd=directory, env=install_env, stdout=sys.stderr, check=True, timeout=300)
+
+    install(pinned, 'pinned')
+    # The version-labeled copy allows GNU to install the negative fixtures.
+    # At runtime the negative tests resolve the authentic pinned release.
+    install(synthetic, 'synthetic')
+    for name, dependency, imports in (
+        ('NeedsR6', 'Imports: R6 (>= 2.6.1)', True),
+        ('TooNewImports', 'Imports: R6 (>= 3.0.0)', True),
+        ('UnusedImports', 'Imports: R6 (>= 3.0.0)', False),
+        ('TooNewDepends', 'Depends: R6 (>= 3.0.0)', False),
+        ('NeedsNewR', 'Depends: R (>= 4.0.0)', False),
+    ):
+        package = source / 'wrappers' / name
+        (package / 'R').mkdir(parents=True)
+        (package / 'DESCRIPTION').write_text(
+            f'Package: {name}\nVersion: 1.0.0\nTitle: Dependency Version Check\n'
+            'Description: A fixture for checking package version requirements.\n'
+            'Maintainer: Test Fixture <test@example.invalid>\n'
+            f'Author: Test Fixture\nLicense: GPL-2\n{dependency}\n')
+        import_line = 'importFrom(R6, R6Class)\n' if imports else ''
+        (package / 'NAMESPACE').write_text(f'export(result)\n{import_line}')
+        body = 'R6Class("Result", public = list(value = 7L))$new()$value' if imports else '7L'
+        (package / 'R/result.R').write_text(f'result <- function() {body}\n')
+        install(package, 'wrappers')
+
+    # Stage the newer R requirement after installation, as a package built
+    # for a future R release cannot be installed by the pinned oracle.
+    description = source / 'wrappers/NeedsNewR/DESCRIPTION'
+    description.write_text(description.read_text().replace('R (>= 4.0.0)', 'R (>= 9999.0.0)'))
+    subprocess.run([*gnu, '-e',
+                    'path <- commandArgs(TRUE)[1L]; info <- readRDS(path); '
+                    'info$Rdepends2[[1L]]$version <- numeric_version("9999.0.0"); saveRDS(info, path)',
+                    installed / 'wrappers/NeedsNewR/Meta/package.rds'],
+                   env=install_env, check=True, timeout=300)
+
+    run_env = dict(env, R_LIBS='', R_LIBS_USER='', R_LIBS_SITE='')
+    outputs = {
+        engine: subprocess.check_output([*runner, fixture / 'dependencies.R'], cwd=working,
+                                        env=run_env, timeout=300, text=True)
+        for engine, runner, working in (('gnu', gnu, installed), ('native', native, source))
+    }
+    wasm = json.loads(subprocess.check_output(
+        ['node', ROOT / 'tests/browser/everyday-package-dependencies.mjs', wasm_module, source],
+        env=run_env, timeout=300, text=True))
+    return outputs, wasm
+
+
 def run_pure_r_package(gnu, native, directory, env, fixture, wasm_module):
     package_root = ROOT / 'tests/real-packages'
     with (package_root / 'manifest.toml').open('rb') as source:
@@ -135,7 +206,13 @@ def run_pure_r_package(gnu, native, directory, env, fixture, wasm_module):
     wasm_sha256 = wasm.pop('wasm_sha256')
     if wasm.pop('archive_sha256') != digest:
         raise ValueError('Wasm used a different package archive')
-    return wasm_sha256, run(gnu, gnu_library), dict(native=run(native, native_library), wasm=wasm), digest
+    outputs, dependency_wasm = run_declared_package_dependencies(
+        gnu, native, directory, env, fixture, wasm_module, archive)
+    if dependency_wasm.pop('wasm_sha256') != wasm_sha256:
+        raise ValueError('package dependency checks used a different Wasm module')
+    expected = dict(run(gnu, gnu_library), dependency_output=outputs['gnu'])
+    native_result = dict(run(native, native_library), dependency_output=outputs['native'])
+    return wasm_sha256, expected, dict(native=native_result, wasm=wasm | dependency_wasm), digest
 
 
 def run_plot_export(gnu, native, directory, env, fixture, wasm_module):

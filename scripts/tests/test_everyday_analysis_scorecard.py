@@ -94,10 +94,11 @@ class EverydayScorecardTests(unittest.TestCase):
                       'oracle_manifest_sha256': 'oracle'}
         fixture = scorecard.ROOT / 'tests/everyday-analysis/sessions/pure-r-package'
         archive = scorecard.ROOT / 'tests/real-packages/vendor/R6_2.6.1.tar.gz'
-        expected = {'output': 'Loaded R6 and computed a mean\n'}
+        expected = {'output': 'Loaded R6 and computed a mean\n',
+                    'dependency_output': 'Checked package requirements\n'}
         report = dict(schema_version=1, **provenance, workflow='pure-r-package',
                       wasm_sha256='module', archive_sha256=scorecard.file_digest(archive),
-                      fixture_sha256={'analysis.R': scorecard.file_digest(fixture / 'analysis.R')},
+                      fixture_sha256={p.name: scorecard.file_digest(p) for p in sorted(fixture.iterdir())},
                       expected=expected, native=expected, wasm=expected)
         path = self.directory / 'package.json'
         path.write_text(json.dumps(report))
