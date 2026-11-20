@@ -115,7 +115,7 @@ unsafe fn R_HashtabSEXP(h: SEXP) -> SEXP {
 }
 
 unsafe fn is_hash_payload(x: SEXP) -> bool {
-    { !x.is_null() && TYPEOF(x) == SEXPTYPE::VECSXP && XLENGTH(x) == HASH_SLOT_COUNT as R_xlen_t }
+    !x.is_null() && TYPEOF(x) == SEXPTYPE::VECSXP && XLENGTH(x) == HASH_SLOT_COUNT as R_xlen_t
 }
 
 unsafe fn R_asHashtable(x: SEXP) -> R_hashtab_type {
