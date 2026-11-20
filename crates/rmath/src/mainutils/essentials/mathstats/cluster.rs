@@ -25,7 +25,7 @@ fn complete_link(d: &[f64], a: &[usize], b: &[usize], n: usize) -> f64 {
 }
 
 /// GNU `hclust(d, method="complete")`.
-pub unsafe fn do_hclust(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_hclust(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let _ = _rho;
         // GNU stats/R/hclust.R: method order is the Fortran iOpt code.
@@ -239,7 +239,7 @@ pub(super) fn dist_compact_set(d: &mut [f64], i: usize, j: usize, n: usize, val:
 }
 
 /// GNU `mauchly.test(SSD)` — default T=I, Sigma=I sphericity.
-pub unsafe fn do_mauchly_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_mauchly_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let obj = CAR(args);
         let ssd = list_named_elt(obj, "SSD");
@@ -333,7 +333,7 @@ pub unsafe fn do_mauchly_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
 }
 
 /// GNU `as.hclust(x)` — identity for `hclust` objects.
-pub unsafe fn do_as_hclust(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_as_hclust(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     CAR(args)
 }
 
@@ -355,7 +355,7 @@ pub(super) fn class_contains(x: SEXP, name: &str) -> bool {
 }
 
 /// GNU `as.dendrogram(hclust)` — leaf order with class `dendrogram`.
-pub unsafe fn do_as_dendrogram(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_as_dendrogram(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let obj = CAR(args);
         if class_contains(obj, "dendrogram") {
@@ -528,7 +528,7 @@ pub unsafe fn do_as_dendrogram(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
     }
 }
 
-unsafe fn dendrogram_flag(node: SEXP, name: &std::ffi::CStr) -> bool {
+fn dendrogram_flag(node: SEXP, name: &std::ffi::CStr) -> bool {
     unsafe {
         let attr = crate::sexp::attrib_core::getAttrib(
             node,
@@ -542,7 +542,7 @@ unsafe fn dendrogram_flag(node: SEXP, name: &std::ffi::CStr) -> bool {
     }
 }
 
-unsafe fn dendrogram_attr_real(node: SEXP, name: &std::ffi::CStr, default: f64) -> f64 {
+fn dendrogram_attr_real(node: SEXP, name: &std::ffi::CStr, default: f64) -> f64 {
     unsafe {
         let attr = crate::sexp::attrib_core::getAttrib(
             node,
@@ -555,7 +555,7 @@ unsafe fn dendrogram_attr_real(node: SEXP, name: &std::ffi::CStr, default: f64) 
         }
     }
 }
-unsafe fn set_dendrogram_real(node: SEXP, name: &std::ffi::CStr, value: f64) {
+fn set_dendrogram_real(node: SEXP, name: &std::ffi::CStr, value: f64) {
     unsafe {
         let scalar = Rf_ScalarReal(value);
         let _scalar = protect(scalar);
@@ -567,7 +567,7 @@ unsafe fn set_dendrogram_real(node: SEXP, name: &std::ffi::CStr, value: f64) {
     }
 }
 
-unsafe fn set_dendrogram_int(node: SEXP, name: &std::ffi::CStr, value: i32) {
+fn set_dendrogram_int(node: SEXP, name: &std::ffi::CStr, value: i32) {
     unsafe {
         let scalar = Rf_ScalarInteger(value);
         let _scalar = protect(scalar);
@@ -579,8 +579,8 @@ unsafe fn set_dendrogram_int(node: SEXP, name: &std::ffi::CStr, value: i32) {
     }
 }
 
-unsafe fn set_dendrogram_value(node: SEXP, value: f64, integer_wts: bool) {
-    unsafe {
+fn set_dendrogram_value(node: SEXP, value: f64, integer_wts: bool) {
+    {
         if integer_wts
             && value.is_finite()
             && value.fract() == 0.0
@@ -596,7 +596,7 @@ unsafe fn set_dendrogram_value(node: SEXP, value: f64, integer_wts: bool) {
     }
 }
 
-unsafe fn copy_dendrogram_attr(dst: SEXP, src: SEXP, name: &std::ffi::CStr) {
+fn copy_dendrogram_attr(dst: SEXP, src: SEXP, name: &std::ffi::CStr) {
     unsafe {
         let value = crate::sexp::attrib_core::getAttrib(
             src,
@@ -616,7 +616,7 @@ unsafe fn copy_dendrogram_attr(dst: SEXP, src: SEXP, name: &std::ffi::CStr) {
 ///
 /// The R walk duplicates list nodes on every `[[<-`. Rebuilding the binary
 /// tree here keeps the same child order and midpoint formula.
-unsafe fn reorder_dendrogram_sum(
+fn reorder_dendrogram_sum(
     node: SEXP,
     wts: &[f64],
     integer_wts: bool,
@@ -674,7 +674,7 @@ unsafe fn reorder_dendrogram_sum(
     }
 }
 
-unsafe fn midcache_dendrogram(node: SEXP) {
+fn midcache_dendrogram(node: SEXP) {
     unsafe {
         if dendrogram_flag(node, c"leaf") || TYPEOF(node) != SEXPTYPE::VECSXP {
             return;
@@ -695,8 +695,8 @@ unsafe fn midcache_dendrogram(node: SEXP) {
     }
 }
 
-pub unsafe fn do_reorder_dendrogram(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_reorder_dendrogram(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let node = CAR(args);
         let wts_arg = CADR(args);
         if node.is_null() || node == R_NilValue() {
@@ -723,7 +723,7 @@ pub unsafe fn do_reorder_dendrogram(call: SEXP, _op: SEXP, args: SEXP, _rho: SEX
 }
 
 /// GNU `order.dendrogram(x)` — leaf order as a vector.
-pub unsafe fn do_order_dendrogram(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_order_dendrogram(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if !class_contains(x, "dendrogram") {
@@ -774,7 +774,7 @@ pub unsafe fn do_order_dendrogram(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP)
 }
 
 /// GNU `heatmap(x)` — row/column leaf order from `hclust(dist())`.
-pub unsafe fn do_heatmap(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_heatmap(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
@@ -841,7 +841,7 @@ pub unsafe fn do_heatmap(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
 }
 
 /// GNU `rect.hclust(tree, k=, h=)` — cluster boxes; validates `k`/`h`.
-pub unsafe fn do_rect_hclust(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_rect_hclust(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let tree = CAR(args);
         let mut k_arg = R_NilValue();
@@ -911,7 +911,7 @@ pub unsafe fn do_rect_hclust(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> S
 }
 
 /// GNU `dendrapply(X, FUN)` — apply `FUN` to a dendrogram (leaf vector).
-pub unsafe fn do_dendrapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_dendrapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let fun = CAR(CDR(args));
@@ -931,7 +931,7 @@ pub unsafe fn do_dendrapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SE
 }
 
 /// GNU `summary.stepfun` — print helper; return `NULL` invisibly.
-pub unsafe fn do_summary_stepfun(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_summary_stepfun(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     {
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
         R_NilValue()

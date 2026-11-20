@@ -7,7 +7,7 @@ use super::*;
 // ---------------------------------------------------------------------------
 
 /// R's `log2(x)` — log base 2 with optional explicit base override.
-pub unsafe fn do_log2(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_log2(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let mut dispatched = R_NilValue();
         if crate::eval::dispatch::DispatchGroup(
@@ -84,7 +84,7 @@ pub unsafe fn do_log2(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// part-wise with the digits scalar `b.r`. The all-NA rule yields
 /// NA_complex_ only when every input part is NA; a NaN result part with no
 /// NaN/NA input part raises stock's "NaNs produced in function \"%s\"".
-unsafe fn math2_complex(
+fn math2_complex(
     call: SEXP,
     x_arg: SEXP,
     digits_arg: SEXP,
@@ -208,7 +208,7 @@ fn z_prec_r(re: f64, im: f64, digits: f64) -> (f64, f64) {
 }
 
 /// `setAttrib` rechecks `tsp` before `dim` is installed and rejects a valid mts.
-pub(super) unsafe fn copy_all_attribs(dst: SEXP, src: SEXP) {
+pub(super) fn copy_all_attribs(dst: SEXP, src: SEXP) {
     unsafe {
         if dst.is_null() || dst == R_NilValue() || src.is_null() || src == R_NilValue() {
             return;
@@ -232,7 +232,7 @@ pub(super) unsafe fn copy_all_attribs(dst: SEXP, src: SEXP) {
 
 /// Exact names, then a unique partial name, then leftover positionals.
 /// `round(d = 2, x = pi)` binds `x` exactly and `d` to `digits`.
-unsafe fn match_x_digits(args: SEXP) -> (SEXP, SEXP) {
+fn match_x_digits(args: SEXP) -> (SEXP, SEXP) {
     unsafe {
         let formals = ["x", "digits"];
         let mut bound = [R_NilValue(), R_NilValue()];
@@ -295,7 +295,7 @@ unsafe fn match_x_digits(args: SEXP) -> (SEXP, SEXP) {
 }
 
 /// R's `round(x, digits=0)` — round to specified decimal digits.
-pub unsafe fn do_round(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_round(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let mut dispatched = R_NilValue();
         if crate::eval::dispatch::DispatchGroup(
@@ -393,7 +393,7 @@ pub unsafe fn do_round(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 /// GNU `zapsmall(x, digits = getOption("digits"))`.
-pub unsafe fn do_zapsmall(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_zapsmall(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -619,7 +619,7 @@ fn logb(x: f64) -> f64 {
 ///
 /// Wires through the faithful `fprec` port (r-source/src/nmath/fprec.c),
 /// mirroring how `do_round` routes through `fround`.
-pub unsafe fn do_signif(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_signif(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let mut dispatched = R_NilValue();
         if crate::eval::dispatch::DispatchGroup(
@@ -727,7 +727,7 @@ pub unsafe fn do_signif(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 /// R's `trunc(x, ...)` — truncate toward zero with digits support.
-pub unsafe fn do_trunc(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_trunc(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let mut dispatched = R_NilValue();
         if crate::eval::dispatch::DispatchGroup(

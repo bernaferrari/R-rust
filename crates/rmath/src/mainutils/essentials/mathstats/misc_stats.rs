@@ -3,7 +3,7 @@
 use super::*;
 
 /// GNU `ppoints(n, a=)` — probability points.
-pub unsafe fn do_ppoints(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_ppoints(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let n_s = CAR(args);
         let n = if XLENGTH(n_s) > 1 {
@@ -27,7 +27,7 @@ pub unsafe fn do_ppoints(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 }
 
 /// GNU `qqnorm(y, plot.it=FALSE)` — normal theoretical quantiles vs sorted y.
-pub unsafe fn do_qqnorm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_qqnorm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let y = CAR(args);
         let n = XLENGTH(y) as usize;
@@ -57,7 +57,7 @@ pub unsafe fn do_qqnorm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 }
 
 /// GNU `qqline(y)` — type-7 quartile line then `abline`.
-pub unsafe fn do_qqline(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_qqline(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let y = CAR(args);
         let n = if y.is_null() || y == R_NilValue() {
@@ -91,7 +91,7 @@ pub unsafe fn do_qqline(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 /// GNU `mahalanobis(x, center, cov)` — squared Mahalanobis, 2 columns.
-pub unsafe fn do_mahalanobis(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_mahalanobis(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let center = CAR(CDR(args));
@@ -144,7 +144,7 @@ pub unsafe fn do_mahalanobis(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
 }
 
 /// GNU `cov.wt(x)` — unbiased 2-column covariance and center.
-pub unsafe fn do_cov_wt(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_cov_wt(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
@@ -215,7 +215,7 @@ pub unsafe fn do_cov_wt(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 }
 
 /// GNU `cov2cor(V)` — scale a 2×2 covariance to a correlation.
-pub unsafe fn do_cov2cor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_cov2cor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let v = CAR(args);
         if XLENGTH(v) < 4 {
@@ -248,7 +248,7 @@ pub unsafe fn do_cov2cor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 }
 
 /// GNU `pbirthday(n, classes=365, coincident=2)` — collision probability.
-pub unsafe fn do_pbirthday(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_pbirthday(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let n_arg = CAR(args);
         let n = if TYPEOF(n_arg) == SEXPTYPE::INTSXP {
@@ -294,7 +294,7 @@ fn pbirthday_k2(n: i64, classes: f64) -> f64 {
 }
 
 /// GNU `qbirthday(prob=0.5, classes=365, coincident=2)` — smallest n.
-pub unsafe fn do_qbirthday(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_qbirthday(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let p_arg = CAR(args);
         let p = if p_arg.is_null() || p_arg == R_NilValue() || p_arg == R_MissingArg() {
@@ -327,7 +327,7 @@ pub unsafe fn do_qbirthday(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
 }
 
 /// GNU `lsfit(x, y)` — intercept + slope for a single predictor.
-pub unsafe fn do_lsfit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_lsfit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let y = CAR(CDR(args));
@@ -395,7 +395,7 @@ pub unsafe fn do_lsfit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// GNU `ppr(x, y, nterms=1)` — one-term linear projection.
-pub unsafe fn do_ppr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_ppr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let y = CAR(CDR(args));
@@ -444,7 +444,7 @@ pub unsafe fn do_ppr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// GNU `ls.diag(ls.out)` — leverages from `$hat` or intercept + `X`.
-pub unsafe fn do_ls_diag(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_ls_diag(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let obj = CAR(args);
         let h = list_named_elt(obj, "hat");
@@ -460,7 +460,7 @@ pub unsafe fn do_ls_diag(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 }
 
 /// GNU `ls.print(ls.out, print.it=FALSE)` — coefficient estimates.
-pub unsafe fn do_ls_print(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_ls_print(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let obj = CAR(args);
         let coef = list_named_elt(obj, "coefficients");
@@ -495,7 +495,7 @@ pub unsafe fn do_ls_print(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 }
 
 /// GNU `weighted.mean(x, w)` — `sum(x*w)/sum(w)`.
-pub unsafe fn do_weighted_mean(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_weighted_mean(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let w = CAR(CDR(args));
@@ -516,7 +516,7 @@ pub unsafe fn do_weighted_mean(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
 }
 
 /// GNU `poly(x, 1, simple=TRUE)` — centered unit-norm linear term.
-pub unsafe fn do_poly(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_poly(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let n = XLENGTH(x) as usize;
@@ -549,7 +549,7 @@ pub unsafe fn do_poly(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 /// GNU `loglin(table, margin, start, fit, eps, iter, param, print)` — port of
 /// r-source/src/library/stats/R/loglin.R, calling the AS 51 kernel
 /// (crates/rmath/src/library/stats/loglin.rs, from loglin.c).
-pub unsafe fn do_loglin(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_loglin(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let missing = |v: SEXP| v.is_null() || v == R_NilValue() || v == R_MissingArg();
         let sexp_real = |v: SEXP| -> f64 {
@@ -870,7 +870,7 @@ fn pkolmogorov_two_limit(x: f64) -> f64 {
 }
 
 /// GNU `psmirnov(q, sizes, exact=FALSE)` — two-sided Kolmogorov limit.
-pub unsafe fn do_psmirnov(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_psmirnov(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let q = elt_real_safe(CAR(args), 0);
         let sizes = CAR(CDR(args));
@@ -1004,7 +1004,7 @@ pub unsafe extern "C-unwind" fn c_psmirnov_exact(
 }
 
 /// GNU `qsmirnov(p, sizes, exact=FALSE)` — smallest D with psmirnov >= p.
-pub unsafe fn do_qsmirnov(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_qsmirnov(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let p = elt_real_safe(CAR(args), 0);
         let sizes = CAR(CDR(args));
@@ -1032,7 +1032,7 @@ pub unsafe fn do_qsmirnov(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 }
 
 /// GNU `rsmirnov(n, sizes, z=NULL, alternative=...)` via `C_Smirnov_sim`.
-pub unsafe fn do_rsmirnov(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_rsmirnov(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let n_arg = CAR(args);
         if n_arg.is_null() || n_arg == R_NilValue() || XLENGTH(n_arg) == 0 {
@@ -1162,7 +1162,7 @@ pub unsafe fn do_rsmirnov(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
     }
 }
 
-unsafe fn smirnov_alternative(arg: SEXP) -> &'static str {
+fn smirnov_alternative(arg: SEXP) -> &'static str {
     unsafe {
         if arg.is_null()
             || arg == R_NilValue()
@@ -1184,7 +1184,7 @@ unsafe fn smirnov_alternative(arg: SEXP) -> &'static str {
     }
 }
 
-unsafe fn smirnov_row_totals(z: SEXP) -> Vec<i32> {
+fn smirnov_row_totals(z: SEXP) -> Vec<i32> {
     {
         let n = XLENGTH(z) as usize;
         let mut vals = Vec::with_capacity(n);
@@ -1209,7 +1209,7 @@ unsafe fn smirnov_row_totals(z: SEXP) -> Vec<i32> {
 }
 
 /// GNU `polym(x, y, degree=1, raw=TRUE)` — two-column raw design.
-pub unsafe fn do_polym(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_polym(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let y = CAR(CDR(args));
@@ -1238,7 +1238,7 @@ fn med3(a: f64, b: f64, c: f64) -> f64 {
 }
 
 /// GNU `smoothEnds(y, k=3)` — Tukey's end-point smoother.
-pub unsafe fn do_smooth_ends(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_smooth_ends(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let y = CAR(args);
         let n = XLENGTH(y) as usize;
@@ -1263,7 +1263,7 @@ pub unsafe fn do_smooth_ends(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
 }
 
 /// GNU `symnum` default cuts for a 2×2 correlation.
-pub unsafe fn do_symnum(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_symnum(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if XLENGTH(x) < 4 {
@@ -1301,7 +1301,7 @@ pub unsafe fn do_symnum(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 }
 
 /// GNU `sortedXyData(x, y)` — unique x sorted, paired y.
-pub unsafe fn do_sorted_xy_data(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_sorted_xy_data(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let xv = CAR(args);
         let yv = CAR(CDR(args));

@@ -3,13 +3,13 @@
 use super::*;
 
 /// GNU `density.default` Gaussian / nrd0 / n grid.
-pub unsafe fn do_density(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_density(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let xt = TYPEOF(x);
         if xt != SEXPTYPE::INTSXP && xt != SEXPTYPE::REALSXP && xt != SEXPTYPE::LGLSXP {
             crate::mainutils::errors::errorcall_str(
-                unsafe { crate::mainutils::errors::R_getCurrentCall() },
+                { crate::mainutils::errors::R_getCurrentCall() },
                 "argument 'x' must be numeric",
             );
         }
@@ -31,7 +31,7 @@ pub unsafe fn do_density(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         }
         if xs.len() < 2 {
             crate::mainutils::errors::errorcall_str(
-                unsafe { crate::mainutils::errors::R_getCurrentCall() },
+                { crate::mainutils::errors::R_getCurrentCall() },
                 "need at least 2 points to select a bandwidth automatically",
             );
         }
@@ -152,7 +152,7 @@ fn bw_nrd0(x: &[f64]) -> f64 {
 }
 
 /// GNU `cancor` first correlation after column centering.
-pub unsafe fn do_cancor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_cancor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let y = CAR(CDR(args));
@@ -178,13 +178,13 @@ pub unsafe fn do_cancor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         };
         if nrx != nry {
             crate::mainutils::errors::errorcall_str(
-                unsafe { crate::mainutils::errors::R_getCurrentCall() },
+                { crate::mainutils::errors::R_getCurrentCall() },
                 "unequal number of rows in 'cancor'",
             );
         }
         if nrx == 0 || ncx == 0 || ncy == 0 {
             crate::mainutils::errors::errorcall_str(
-                unsafe { crate::mainutils::errors::R_getCurrentCall() },
+                { crate::mainutils::errors::R_getCurrentCall() },
                 "dimension 0 in 'x' or 'y'",
             );
         }
@@ -260,7 +260,7 @@ pub unsafe fn do_cancor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     }
 }
 
-unsafe fn matrix_real(x: SEXP, i: i64) -> f64 {
+fn matrix_real(x: SEXP, i: i64) -> f64 {
     unsafe {
         if TYPEOF(x) == SEXPTYPE::REALSXP {
             *REAL(x).add(i as usize)
@@ -271,7 +271,7 @@ unsafe fn matrix_real(x: SEXP, i: i64) -> f64 {
 }
 
 /// GNU `dist(x)` — Euclidean; matrices are row observations.
-pub unsafe fn do_dist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_dist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
@@ -331,7 +331,7 @@ pub unsafe fn do_dist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// GNU `as.dist(m)` — lower triangle of a square matrix, or pass through `dist`.
-pub unsafe fn do_as_dist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_as_dist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let class =
@@ -408,7 +408,7 @@ pub unsafe fn do_as_dist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 }
 
 /// GNU `prcomp` via eigen of the sample covariance.
-pub unsafe fn do_prcomp(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_prcomp(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
@@ -423,7 +423,7 @@ pub unsafe fn do_prcomp(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         };
         if nr < 2 || nc < 1 {
             crate::mainutils::errors::errorcall_str(
-                unsafe { crate::mainutils::errors::R_getCurrentCall() },
+                { crate::mainutils::errors::R_getCurrentCall() },
                 "cannot rescale a constant/zero column to unit variance",
             );
         }
@@ -493,7 +493,7 @@ pub unsafe fn do_prcomp(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 }
 
 /// GNU `princomp` via eigen of the /n covariance.
-pub unsafe fn do_princomp(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_princomp(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
@@ -508,7 +508,7 @@ pub unsafe fn do_princomp(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         };
         if nr <= nc {
             crate::mainutils::errors::errorcall_str(
-                unsafe { crate::mainutils::errors::R_getCurrentCall() },
+                { crate::mainutils::errors::R_getCurrentCall() },
                 "'princomp' can only be used with more units than variables",
             );
         }
@@ -605,7 +605,7 @@ fn largest_eigenpair(a: &[f64], p: usize) -> (f64, Vec<f64>) {
 }
 
 /// GNU `factanal(x, factors=1)` — one-factor principal-axis solution.
-pub unsafe fn do_factanal(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_factanal(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
@@ -709,7 +709,7 @@ pub unsafe fn do_factanal(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 }
 
 /// GNU `medpolish(x)` — additive median polish.
-pub unsafe fn do_medpolish(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_medpolish(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
@@ -826,7 +826,7 @@ pub unsafe fn do_medpolish(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
 }
 
 /// GNU `wilcox.test(x, y)` two-sample rank-sum.
-pub unsafe fn do_wilcox_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_wilcox_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let y = CAR(CDR(args));
@@ -899,7 +899,7 @@ pub unsafe fn do_wilcox_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
 }
 
 /// GNU `ks.test(x, "punif", min, max)` one-sample.
-pub unsafe fn do_ks_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_ks_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let mut min = 0.0;
@@ -966,7 +966,7 @@ pub unsafe fn do_ks_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 }
 
 /// GNU `Box.test` Box-Pierce lag 1.
-pub unsafe fn do_box_test(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_box_test(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let n = XLENGTH(x);

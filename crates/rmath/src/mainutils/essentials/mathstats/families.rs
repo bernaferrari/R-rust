@@ -2,8 +2,8 @@
 
 use super::*;
 
-unsafe fn nls_xy_y(xy: SEXP) -> (Vec<f64>, bool) {
-    unsafe {
+fn nls_xy_y(xy: SEXP) -> (Vec<f64>, bool) {
+    {
         let y = list_named_elt(xy, "y");
         if y != R_NilValue() && XLENGTH(y) > 0 {
             let n = XLENGTH(y) as usize;
@@ -14,7 +14,7 @@ unsafe fn nls_xy_y(xy: SEXP) -> (Vec<f64>, bool) {
 }
 
 /// GNU `NLSstLfAsymptote(xy)`.
-pub unsafe fn do_nls_lf_asymp(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_nls_lf_asymp(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let (ys, ok) = nls_xy_y(CAR(args));
         if !ok || ys.is_empty() {
@@ -34,7 +34,7 @@ pub unsafe fn do_nls_lf_asymp(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
 }
 
 /// GNU `NLSstRtAsymptote(xy)`.
-pub unsafe fn do_nls_rt_asymp(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_nls_rt_asymp(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let (ys, ok) = nls_xy_y(CAR(args));
         if !ok || ys.is_empty() {
@@ -54,7 +54,7 @@ pub unsafe fn do_nls_rt_asymp(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
 }
 
 fn nls_xy_x(xy: SEXP) -> Vec<f64> {
-    unsafe {
+    {
         let x = list_named_elt(xy, "x");
         if x == R_NilValue() {
             return Vec::new();
@@ -97,7 +97,7 @@ fn nls_asymp_ols(xs: &[f64], ys: &[f64], lrc: f64) -> (f64, f64, f64) {
 }
 
 /// GNU `NLSstAsymptotic(xy)` — `b0 + b1*(1-exp(-exp(lrc)*x))`.
-pub unsafe fn do_nls_asymptotic(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_nls_asymptotic(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let xy = CAR(args);
         let xs = nls_xy_x(xy);
@@ -173,7 +173,7 @@ pub unsafe fn do_nls_asymptotic(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) 
 }
 
 /// GNU `NLSstClosestX(xy, yval)` — interpolate x at a target y.
-pub unsafe fn do_nls_closest_x(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_nls_closest_x(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let xy = CAR(args);
         let yval = elt_real_safe(CAR(CDR(args)), 0);
@@ -228,7 +228,7 @@ pub unsafe fn do_nls_closest_x(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
     }
 }
 
-unsafe fn family_object(family: &str, link: &str) -> SEXP {
+fn family_object(family: &str, link: &str) -> SEXP {
     unsafe {
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
         let _r = protect(result);
@@ -268,8 +268,8 @@ unsafe fn family_object(family: &str, link: &str) -> SEXP {
 }
 
 /// GNU `binomial()` family object.
-pub unsafe fn do_binomial(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_binomial(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let mut link = "logit".to_string();
         let mut cell = args;
         while !cell.is_null() && cell != R_NilValue() {
@@ -284,8 +284,8 @@ pub unsafe fn do_binomial(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 }
 
 /// GNU `gaussian()` family object.
-pub unsafe fn do_gaussian(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_gaussian(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let mut link = "identity".to_string();
         let mut cell = args;
         while !cell.is_null() && cell != R_NilValue() {
@@ -300,8 +300,8 @@ pub unsafe fn do_gaussian(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 }
 
 /// GNU `poisson()` family object.
-pub unsafe fn do_poisson(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_poisson(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let mut link = "log".to_string();
         let mut cell = args;
         while !cell.is_null() && cell != R_NilValue() {
@@ -316,8 +316,8 @@ pub unsafe fn do_poisson(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 }
 
 /// GNU `Gamma()` family object.
-pub unsafe fn do_gamma_family(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_gamma_family(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let mut link = "inverse".to_string();
         let mut cell = args;
         while !cell.is_null() && cell != R_NilValue() {
@@ -332,8 +332,8 @@ pub unsafe fn do_gamma_family(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
 }
 
 /// GNU `inverse.gaussian()` family object.
-pub unsafe fn do_inverse_gaussian(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_inverse_gaussian(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let mut link = "1/mu^2".to_string();
         let mut cell = args;
         while !cell.is_null() && cell != R_NilValue() {
@@ -348,7 +348,7 @@ pub unsafe fn do_inverse_gaussian(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP
 }
 
 /// GNU `quasi()` family object.
-pub unsafe fn do_quasi(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_quasi(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let mut link = "identity".to_string();
         let mut cell = args;
@@ -375,8 +375,8 @@ pub unsafe fn do_quasi(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// GNU `quasibinomial()` family object.
-pub unsafe fn do_quasibinomial(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_quasibinomial(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let mut link = "logit".to_string();
         let mut cell = args;
         while !cell.is_null() && cell != R_NilValue() {
@@ -391,8 +391,8 @@ pub unsafe fn do_quasibinomial(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
 }
 
 /// GNU `quasipoisson()` family object.
-pub unsafe fn do_quasipoisson(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_quasipoisson(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let mut link = "log".to_string();
         let mut cell = args;
         while !cell.is_null() && cell != R_NilValue() {
@@ -407,7 +407,7 @@ pub unsafe fn do_quasipoisson(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
 }
 
 /// GNU `make.link(link)` — name + class `link-glm`.
-pub unsafe fn do_make_link(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_make_link(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let mut link = "identity".to_string();
         let v = CAR(args);
@@ -441,7 +441,7 @@ pub unsafe fn do_make_link(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
 }
 
 /// GNU `power(lambda)` — Box-Cox GLM link name.
-pub unsafe fn do_power(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_power(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let lambda = if args.is_null() || args == R_NilValue() || CAR(args) == R_MissingArg() {
             1.0
@@ -476,7 +476,7 @@ pub unsafe fn do_power(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// GNU `Pair(x, y)` — two-column matrix with class `Pair`.
-pub unsafe fn do_pair(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_pair(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let y = CAR(CDR(args));
@@ -498,7 +498,7 @@ pub unsafe fn do_pair(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// GNU `naprint(x)` — omit/exclude count, else empty string.
-pub unsafe fn do_naprint(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_naprint(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let class =
@@ -527,7 +527,7 @@ pub unsafe fn do_naprint(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 }
 
 /// GNU `aov(y ~ x)` — `lm` with class `c("aov","lm")`.
-pub unsafe fn do_aov(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_aov(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let result = do_lm(call, op, args, rho);
         if result.is_null() || result == R_NilValue() {
@@ -547,7 +547,7 @@ pub unsafe fn do_aov(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 /// GNU `manova(cbind(y1,y2) ~ g)` — two-group coefficients and residuals.
-pub unsafe fn do_manova(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_manova(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let form = CAR(args);
         if form.is_null() || form == R_NilValue() || TYPEOF(form) != SEXPTYPE::LANGSXP {
@@ -654,7 +654,7 @@ pub unsafe fn do_manova(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 /// GNU `summary.manova` — two-response Pillai trace for two groups.
-pub unsafe fn do_summary_manova(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_summary_manova(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let obj = CAR(args);
         if obj.is_null() || obj == R_NilValue() || TYPEOF(obj) != SEXPTYPE::VECSXP {
@@ -778,7 +778,7 @@ pub unsafe fn do_summary_manova(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) 
 }
 
 /// GNU `TukeyHSD(aov)` — pairwise studentized-range intervals for one grouping factor.
-pub unsafe fn do_tukey_hsd(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_tukey_hsd(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let obj = CAR(args);
         let form =
@@ -922,7 +922,7 @@ pub unsafe fn do_tukey_hsd(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEX
 }
 
 /// GNU `glm(y ~ x)` gaussian — `lm` with class `c("glm","lm")`.
-pub unsafe fn do_glm(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_glm(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let lm = do_lm(call, op, args, rho);
         if lm.is_null() || lm == R_NilValue() {
@@ -964,7 +964,7 @@ pub unsafe fn do_glm(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 /// GNU `proj(lm)` — intercept mean, centered slope, residuals.
-pub unsafe fn do_proj(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_proj(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let obj = CAR(args);
         let fitted = list_named_elt(obj, "fitted.values");
@@ -1016,7 +1016,7 @@ pub unsafe fn do_proj(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// GNU `qqplot(x, y, plot.it=FALSE)` — sorted pairs.
-pub unsafe fn do_qqplot(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_qqplot(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let y = CAR(CDR(args));
@@ -1051,7 +1051,7 @@ pub unsafe fn do_qqplot(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 }
 
 /// GNU `pairwise.table(compare.levels, level.names, p.adjust.method)`.
-pub unsafe fn do_pairwise_table(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_pairwise_table(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let compare = CAR(args);
         let names = CAR(CDR(args));
@@ -1117,8 +1117,8 @@ pub unsafe fn do_pairwise_table(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -
 }
 
 /// GNU `predict.glm(object)` — `$linear.predictors` or `$fitted.values`.
-pub unsafe fn do_predict_glm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_predict_glm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let obj = CAR(args);
         let lp = list_named_elt(obj, "linear.predictors");
         if lp != R_NilValue() {
@@ -1129,20 +1129,20 @@ pub unsafe fn do_predict_glm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
 }
 
 /// GNU `family(object)` — extract `$family`.
-pub unsafe fn do_family(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_family(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let v = list_named_elt(CAR(args), "family");
         if v == R_NilValue() { R_NilValue() } else { v }
     }
 }
 
 /// GNU `model.offset(x)` — `$offset` or NULL.
-pub unsafe fn do_model_offset(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { list_named_elt(CAR(args), "offset") }
+pub fn do_model_offset(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    { list_named_elt(CAR(args), "offset") }
 }
 
 /// GNU `update(object)` — re-evaluate `$call`.
-pub unsafe fn do_update(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_update(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let obj = CAR(args);
         let call = list_named_elt(obj, "call");

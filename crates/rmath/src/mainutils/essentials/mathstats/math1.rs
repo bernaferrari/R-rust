@@ -3,7 +3,7 @@
 use super::*;
 
 /// Checked original-owner native boundary for GNU `charToRaw(x)`.
-pub unsafe fn do_charToRaw(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_charToRaw(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     use crate::sexp::owner::OwnerToken;
     let owner = unsafe { OwnerToken::current() }
         .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
@@ -42,7 +42,7 @@ pub unsafe fn do_charToRaw(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 mod char_to_raw;
 
 /// GNU `rawToChar(x)` copies raw bytes, stripping trailing nuls.
-pub unsafe fn do_rawToChar(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_rawToChar(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     use crate::sexp::{
         object::Sexp,
         owner::{OwnerToken, with_runtime},
@@ -95,7 +95,7 @@ mod raw_to_char;
 /// Preserves integer/logical inputs as integer vectors and real inputs as
 /// real vectors. Non-numeric arguments (and factors, via Math.factor)
 /// error like stock Math1.
-unsafe fn math_factor_error(call: SEXP, name: &str) -> ! {
+fn math_factor_error(call: SEXP, name: &str) -> ! {
     unsafe {
         let method_call = crate::sexp::constructors::Rf_lang2(
             Rf_install(c"Math.factor".as_ptr()),
@@ -116,7 +116,7 @@ fn math_nonnum_error() -> ! {
 }
 
 /// GNU math1: SHALLOW_DUPLICATE_ATTRIB copies dim/dimnames/names.
-unsafe fn math1_copy_dim_and_names(src: SEXP, dst: SEXP) {
+fn math1_copy_dim_and_names(src: SEXP, dst: SEXP) {
     unsafe {
         let dim = crate::sexp::attrib_core::getAttrib(src, crate::sexp::attrib_core::R_DimSymbol());
         if !dim.is_null() && dim != R_NilValue() {
@@ -146,7 +146,7 @@ unsafe fn math1_copy_dim_and_names(src: SEXP, dst: SEXP) {
     }
 }
 
-pub unsafe fn do_abs(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_abs(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let mut dispatched = R_NilValue();
         if crate::eval::dispatch::DispatchGroup(
@@ -231,7 +231,7 @@ pub unsafe fn do_abs(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// R's `sign(x)` — sign of numeric vector (-1, 0, or 1).
 ///
 /// Returns REALSXP. Preserves NA and NaN.
-pub unsafe fn do_sign(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_sign(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let mut dispatched = R_NilValue();
         if crate::eval::dispatch::DispatchGroup(
@@ -299,7 +299,7 @@ pub unsafe fn do_sign(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// Helper to apply a scalar function to a numeric vector, preserving NA/NaN.
 /// Returns REALSXP.
-unsafe fn apply_unary_scalar_fn(
+fn apply_unary_scalar_fn(
     call: SEXP,
     op: SEXP,
     args: SEXP,
@@ -361,7 +361,7 @@ unsafe fn apply_unary_scalar_fn(
 
 /// Helper to apply a binary scalar function to two numeric vectors with recycling.
 /// Returns REALSXP.
-unsafe fn apply_binary_scalar_fn(
+fn apply_binary_scalar_fn(
     call: SEXP,
     x: SEXP,
     y: SEXP,
@@ -438,28 +438,28 @@ unsafe fn apply_binary_scalar_fn(
     }
 }
 
-pub unsafe fn do_lgamma(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe { apply_unary_scalar_fn(call, op, args, rho, crate::special::gamma::lgammafn) }
+pub fn do_lgamma(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    { apply_unary_scalar_fn(call, op, args, rho, crate::special::gamma::lgammafn) }
 }
 
 /// R's `gamma(x)` — gamma function.
-pub unsafe fn do_gamma(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe { apply_unary_scalar_fn(call, op, args, rho, crate::special::gamma::gammafn) }
+pub fn do_gamma(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    { apply_unary_scalar_fn(call, op, args, rho, crate::special::gamma::gammafn) }
 }
 
 /// R's `digamma(x)` — digamma (psi) function.
-pub unsafe fn do_digamma(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe { apply_unary_scalar_fn(call, op, args, rho, crate::special::polygamma::digamma) }
+pub fn do_digamma(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    { apply_unary_scalar_fn(call, op, args, rho, crate::special::polygamma::digamma) }
 }
 
 /// R's `trigamma(x)` — trigamma function.
-pub unsafe fn do_trigamma(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe { apply_unary_scalar_fn(call, op, args, rho, crate::special::polygamma::trigamma) }
+pub fn do_trigamma(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    { apply_unary_scalar_fn(call, op, args, rho, crate::special::polygamma::trigamma) }
 }
 
 /// R's `psigamma(x, deriv)` — polygamma function (deriv-th derivative of psi).
-pub unsafe fn do_psigamma(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_psigamma(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let x = CAR(args);
         let deriv_arg = CAR(CDR(args));
         if let Err(message) = validate_math2_inputs(x, deriv_arg) {
@@ -470,8 +470,8 @@ pub unsafe fn do_psigamma(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 }
 
 /// R's `beta(a, b)` — beta function.
-pub unsafe fn do_beta(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_beta(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let a = CAR(args);
         let b = CAR(CDR(args));
         if a.is_null() || a == R_NilValue() || b.is_null() || b == R_NilValue() {
@@ -487,8 +487,8 @@ pub unsafe fn do_beta(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// R's `lbeta(a, b)` — log beta function.
-pub unsafe fn do_lbeta(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_lbeta(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let a = CAR(args);
         let b = CAR(CDR(args));
         if a.is_null() || a == R_NilValue() || b.is_null() || b == R_NilValue() {
@@ -506,7 +506,7 @@ pub unsafe fn do_lbeta(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 // GNU do_math2 dispatches complex first arguments before Math2 validation.
 // A complex second argument instead fails the ordinary numeric-type check.
 // Both checks precede the empty-vector shortcut.
-unsafe fn validate_math2_inputs(a: SEXP, b: SEXP) -> Result<(), &'static str> {
+fn validate_math2_inputs(a: SEXP, b: SEXP) -> Result<(), &'static str> {
     {
         if !a.is_null() && TYPEOF(a) == SEXPTYPE::CPLXSXP {
             return Err("unimplemented complex function");
@@ -545,15 +545,15 @@ mod choose_checked;
 #[path = "choose_factor.rs"]
 mod choose_factor;
 
-unsafe fn checked_math2(
+fn checked_math2(
     call: SEXP,
     a: SEXP,
     b: SEXP,
     operation: choose_checked::Operation,
 ) -> SEXP {
-    unsafe { checked_math(call, a, b, None, operation, None, None, None) }
+    { checked_math(call, a, b, None, operation, None, None, None) }
 }
-unsafe fn checked_math(
+fn checked_math(
     call: SEXP,
     a: SEXP,
     b: SEXP,
@@ -601,7 +601,7 @@ unsafe fn checked_math(
         })
     });
     if let Some(environment) = environment {
-        let conversion = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+        let conversion = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             bessel_scaling::prepare(owner, c.take(), environment)
         }));
         active();
@@ -709,8 +709,8 @@ unsafe fn checked_math(
 }
 
 /// R's `choose(n, k)` — binomial coefficient.
-pub unsafe fn do_choose(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_choose(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let n_arg = CAR(args);
         let k_arg = CAR(CDR(args));
         if let Err(message) = validate_math2_inputs(n_arg, k_arg) {
@@ -721,8 +721,8 @@ pub unsafe fn do_choose(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// R's `lchoose(n, k)` — log of absolute value of binomial coefficient.
-pub unsafe fn do_lchoose(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_lchoose(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let n_arg = CAR(args);
         let k_arg = CAR(CDR(args));
         if let Err(message) = validate_math2_inputs(n_arg, k_arg) {
@@ -733,8 +733,8 @@ pub unsafe fn do_lchoose(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 }
 
 /// R's `factorial(n)` — factorial n!
-pub unsafe fn do_factorial(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_factorial(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    {
         apply_unary_scalar_fn(call, op, args, rho, |v| {
             crate::special::gamma::gammafn(v + 1.0)
         })
@@ -742,8 +742,8 @@ pub unsafe fn do_factorial(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
 }
 
 /// R's `lfactorial(n)` — log factorial.
-pub unsafe fn do_lfactorial(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_lfactorial(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    {
         apply_unary_scalar_fn(call, op, args, rho, |v| {
             crate::special::gamma::lgammafn(v + 1.0)
         })
@@ -751,8 +751,8 @@ pub unsafe fn do_lfactorial(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP
 }
 
 /// R's `besselI(x, nu)` — modified Bessel function of the first kind.
-pub unsafe fn do_besselI(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_besselI(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    {
         bessel_scaled_entry(
             call,
             op,
@@ -763,8 +763,8 @@ pub unsafe fn do_besselI(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         )
     }
 }
-pub unsafe fn do_besselI_internal(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_besselI_internal(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    {
         bessel_scaled_entry(
             call,
             op,
@@ -779,7 +779,7 @@ pub unsafe fn do_besselI_internal(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -
 // Internal dispatch may construct its primitive on demand, so it need not
 // equal the symbol's INTERNAL slot. The public fallback is the distinct base
 // binding; internal warnings use the enclosing call instead.
-unsafe fn bessel_internal_warning_call(op: SEXP, symbol: SEXP) -> Option<SEXP> {
+fn bessel_internal_warning_call(op: SEXP, symbol: SEXP) -> Option<SEXP> {
     unsafe {
         if op.is_null()
             || op == crate::sexp::globals::R_NilValue()
@@ -792,8 +792,8 @@ unsafe fn bessel_internal_warning_call(op: SEXP, symbol: SEXP) -> Option<SEXP> {
 }
 
 /// R's `besselJ(x, nu)` — Bessel function of the first kind.
-pub unsafe fn do_besselJ(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_besselJ(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let a = CAR(args);
         let b = CAR(CDR(args));
         if let Err(message) = validate_math2_inputs(a, b) {
@@ -813,8 +813,8 @@ pub unsafe fn do_besselJ(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// R's `besselK(x, nu)` — modified Bessel function of the second kind.
-pub unsafe fn do_besselK(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_besselK(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    {
         bessel_scaled_entry(
             call,
             op,
@@ -825,8 +825,8 @@ pub unsafe fn do_besselK(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         )
     }
 }
-pub unsafe fn do_besselK_internal(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_besselK_internal(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    {
         bessel_scaled_entry(
             call,
             op,
@@ -837,7 +837,7 @@ pub unsafe fn do_besselK_internal(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -
         )
     }
 }
-unsafe fn bessel_scaled_entry(
+fn bessel_scaled_entry(
     call: SEXP,
     _op: SEXP,
     args: SEXP,
@@ -913,8 +913,8 @@ unsafe fn bessel_scaled_entry(
 }
 
 /// R's `besselY(x, nu)` — Bessel function of the second kind.
-pub unsafe fn do_besselY(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_besselY(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let a = CAR(args);
         let b = CAR(CDR(args));
         if let Err(message) = validate_math2_inputs(a, b) {

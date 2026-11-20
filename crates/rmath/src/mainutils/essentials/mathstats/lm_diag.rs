@@ -3,7 +3,7 @@
 use super::*;
 
 /// GNU `lm.influence(model, do.coef=FALSE)` — hat, deletion sigma, wt.res.
-pub unsafe fn do_lm_influence(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_lm_influence(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let obj = CAR(args);
         let resid = list_named_elt(obj, "residuals");
@@ -56,12 +56,12 @@ pub unsafe fn do_lm_influence(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
 }
 
 /// GNU `influence(model)` — same as `lm.influence` for lm.
-pub unsafe fn do_influence(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe { do_lm_influence(call, op, args, rho) }
+pub fn do_influence(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    { do_lm_influence(call, op, args, rho) }
 }
 
 /// GNU `qr.influence(qr, res)` — hat and deletion sigma for intercept + `1:n`.
-pub unsafe fn do_qr_influence(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_qr_influence(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let res = CAR(CDR(args));
         if res.is_null() || res == R_NilValue() {
@@ -119,7 +119,7 @@ pub unsafe fn do_qr_influence(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
 }
 
 /// GNU `se.contrast(aov, list(g1, g2))` — two-group `sqrt(MSE*(1/n1+1/n2))`.
-pub unsafe fn do_se_contrast(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_se_contrast(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let obj = CAR(args);
         let contr = CAR(CDR(args));
@@ -178,7 +178,7 @@ pub unsafe fn do_se_contrast(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
 }
 
 /// Checked native boundary for GNU `covratio(model, infl, res)`.
-pub unsafe fn do_covratio(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_covratio(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::owner::OwnerToken;
         let owner =
@@ -226,7 +226,7 @@ pub unsafe fn do_covratio(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 }
 
 /// GNU `predict(lm)` and `predict(lm, newdata, se.fit)`.
-pub unsafe fn do_predict_lm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_predict_lm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let obj = CAR(args);
         let coef = list_named_elt(obj, "coefficients");
@@ -389,7 +389,7 @@ pub unsafe fn do_predict_lm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 }
 
 /// GNU `termplot(lm, plot=FALSE)` — one-term centered effects.
-pub unsafe fn do_termplot(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_termplot(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let obj = CAR(args);
         let coef = list_named_elt(obj, "coefficients");
@@ -462,7 +462,7 @@ pub unsafe fn do_termplot(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
 }
 
 /// GNU `cpgram(ts)` — univariate only; plots the cumulative periodogram.
-pub unsafe fn do_cpgram(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_cpgram(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
@@ -483,7 +483,7 @@ pub unsafe fn do_cpgram(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 }
 
 /// GNU `summary(lm)` coefficient table and fit stats.
-pub unsafe fn do_summary_lm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_summary_lm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let obj = CAR(args);
         let coef = list_named_elt(obj, "coefficients");
@@ -624,12 +624,12 @@ pub unsafe fn do_summary_lm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 }
 
 /// GNU `summary.glm` — gaussian coefficient table from `summary.lm`.
-pub unsafe fn do_summary_glm(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe { do_summary_lm(call, op, args, rho) }
+pub fn do_summary_glm(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    { do_summary_lm(call, op, args, rho) }
 }
 
 /// GNU `anova(lm)` one-term table.
-pub unsafe fn do_anova_lm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_anova_lm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let obj = CAR(args);
         let resid = list_named_elt(obj, "residuals");
@@ -715,7 +715,7 @@ pub unsafe fn do_anova_lm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 }
 
 /// GNU `model.tables(aov, type="means")` — fitted cell means.
-pub unsafe fn do_model_tables(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_model_tables(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let obj = CAR(args);
         let fitted = list_named_elt(obj, "fitted.values");
@@ -749,12 +749,12 @@ pub unsafe fn do_model_tables(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
 }
 
 /// GNU `printCoefmat(x)` — return `x` (printing is optional).
-pub unsafe fn do_print_coefmat(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_print_coefmat(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     CAR(args)
 }
 
 /// GNU `summary.aov` — list of one anova table.
-pub unsafe fn do_summary_aov(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_summary_aov(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let tab = do_anova_lm(call, op, args, rho);
         if tab.is_null() || tab == R_NilValue() {
@@ -778,7 +778,7 @@ pub unsafe fn do_summary_aov(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
 }
 
 fn lm_n_p_rss(obj: SEXP) -> Option<(f64, f64, f64)> {
-    unsafe {
+    {
         let resid = list_named_elt(obj, "residuals");
         if resid == R_NilValue() {
             return None;
@@ -806,7 +806,7 @@ fn lm_aic(n: f64, p: f64, rss: f64) -> f64 {
     n * (rss / n).ln() + 2.0 * p
 }
 
-unsafe fn add1_drop1_table(
+fn add1_drop1_table(
     none_rss: f64,
     none_aic: f64,
     term: &str,
@@ -865,7 +865,7 @@ unsafe fn add1_drop1_table(
 }
 
 /// GNU `drop1(lm)` — intercept-only vs fitted model.
-pub unsafe fn do_drop1(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_drop1(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let obj = CAR(args);
         let Some((n, p, rss)) = lm_n_p_rss(obj) else {
@@ -909,7 +909,7 @@ pub unsafe fn do_drop1(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// GNU `add1(lm, scope)` — add one extra numeric term.
-pub unsafe fn do_add1(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_add1(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let obj = CAR(args);
         let Some((n, p, rss)) = lm_n_p_rss(obj) else {
@@ -980,7 +980,7 @@ pub unsafe fn do_add1(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 /// GNU `step(lm, trace=0)` — keep the fit when dropping raises AIC.
-pub unsafe fn do_step(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_step(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let obj = CAR(args);
         let dropped = do_drop1(call, op, Rf_cons(obj, R_NilValue()), rho);
@@ -998,7 +998,7 @@ pub unsafe fn do_step(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 /// GNU two-sample `power.t.test(n, delta)`.
-pub unsafe fn do_power_t_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_power_t_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let mut n = NA_REAL;
         let mut delta = NA_REAL;
@@ -1086,7 +1086,7 @@ pub unsafe fn do_power_t_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
 }
 
 /// GNU two-sample `power.prop.test(n, p1, p2)`.
-pub unsafe fn do_power_prop_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_power_prop_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let mut n = NA_REAL;
         let mut p1 = NA_REAL;
@@ -1168,7 +1168,7 @@ pub unsafe fn do_power_prop_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP)
 }
 
 /// GNU balanced one-way `power.anova.test`.
-pub unsafe fn do_power_anova_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_power_anova_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let mut groups = NA_REAL;
         let mut n = NA_REAL;

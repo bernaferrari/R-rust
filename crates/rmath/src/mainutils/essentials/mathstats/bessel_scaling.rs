@@ -3,7 +3,7 @@ use crate::sexp::{
     object::{Sexp, SexpResult},
     owner::OwnerToken,
 };
-pub(super) unsafe fn prepare(
+pub(super) fn prepare(
     owner: OwnerToken<'_>,
     input: Option<Sexp<'static>>,
     environment: Sexp<'static>,
