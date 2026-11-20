@@ -15,17 +15,12 @@
 //!   cplx_eq (complex equality with NA/NaN handling)
 
 use crate::sexp::ffi::SEXP;
-use crate::sexp::object::Sexp;
+use crate::sexp::object::{Sexp, SexpMut, SexpResult, SessionNodeFactory};
+use crate::sexp::owner::{OwnerToken, StoredOwner};
 use std::os::raw::c_int;
 
-use crate::sexp::accessors::{
-    COMPLEX, COMPLEX_ELT, INTEGER, INTEGER_ELT, LOGICAL, LOGICAL_ELT, RAW, RAW_ELT, REAL, REAL_ELT,
-    SET_STRING_ELT, SET_VECTOR_ELT, STRING_ELT, TYPEOF, VECTOR_ELT, XLENGTH,
-};
-use crate::sexp::constructors::{Rf_ScalarLogical, Rf_allocVector3};
 use crate::sexp::context::RError;
 use crate::sexp::ffi::{NA_INTEGER, NA_LOGICAL, R_NA_BIT_PATTERN, R_xlen_t, Rcomplex, SEXPTYPE};
-use crate::sexp::protect::protect;
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -47,6 +42,67 @@ fn unique_error(message: impl Into<String>) -> ! {
     std::panic::panic_any(RError {
         message: message.into(),
     });
+}
+
+// ---------------------------------------------------------------------------
+// Session-scoped checked helpers
+// ---------------------------------------------------------------------------
+
+/// Acquire the current session's node factory for one builtin scope.
+///
+/// # Safety boundary
+/// [`OwnerToken::current`] names whichever instance is current on this
+/// thread. These entry points only run on the interpreter thread during
+/// builtin evaluation, where the current instance is the rightful
+/// allocation owner.
+fn session_factory() -> SexpResult<SessionNodeFactory<'static>> {
+    // SAFETY: builtin evaluation runs on the interpreter thread with a live
+    // current instance; the token only scopes this factory's allocations.
+    let owner = unsafe { OwnerToken::current() }?;
+    Ok(owner.node_factory())
+}
+
+/// Wrap a raw SEXP owned by the current session's heap.
+///
+/// Unlike `Sexp::try_from_raw`, `SessionNodeFactory::wrap` validates heap
+/// membership and returns a session-owned handle, so handles derived from it
+/// keep enough authority for checked allocation and mutation.
+fn wrap_current(ptr: SEXP) -> SexpResult<Sexp<'static>> {
+    session_factory()?.wrap(ptr)
+}
+
+/// Allocation authority carried by an already checked handle.
+fn vector_factory<'a>(x: &Sexp<'a>) -> SexpResult<SessionNodeFactory<'a>> {
+    StoredOwner::from_value(x)?.node_factory()
+}
+
+/// Allocate a fresh mutable vector in `x`'s session.
+fn alloc_like<'a>(x: &Sexp<'a>, kind: SEXPTYPE, len: R_xlen_t) -> SexpResult<SexpMut<'a>> {
+    let value = vector_factory(x)?.allocate(|arena| Some(arena.alloc_vector(kind, len)))?;
+    SexpMut::try_from_checked(value)
+}
+
+/// Allocate a fresh vector in `x`'s session, falling back to the current
+/// session for handles that carry no owner authority (e.g. `R_NilValue`).
+fn alloc_in_session<'a>(
+    x: &Sexp<'a>,
+    kind: SEXPTYPE,
+    len: R_xlen_t,
+) -> SexpResult<SexpMut<'a>> {
+    match alloc_like(x, kind, len) {
+        ok @ Ok(_) => ok,
+        Err(_) => {
+            let value = session_factory()?.allocate(|arena| Some(arena.alloc_vector(kind, len)))?;
+            SexpMut::try_from_checked(value)
+        }
+    }
+}
+
+/// Allocate a one-element logical vector holding `v` (may be `NA_LOGICAL`).
+fn scalar_logical<'a>(x: &Sexp<'a>, v: c_int) -> SexpResult<Sexp<'a>> {
+    let mut scalar = alloc_in_session(x, SEXPTYPE::LGLSXP, 1)?;
+    scalar.try_set_logical_elt(0, v)?;
+    Ok(scalar.freeze())
 }
 
 // ---------------------------------------------------------------------------
@@ -131,163 +187,145 @@ pub fn cplx_eq(x: Rcomplex, y: Rcomplex) -> bool {
 const NIL: i32 = -1;
 
 /// Hash table data for the duplicated/unique algorithm.
+///
+/// The table is pure Rust scratch storage: it only holds vector indices for
+/// one call, is never exposed to R, and drops deterministically. Upstream R
+/// uses an INTSXP only because it lacks a native heap.
 struct HashData {
-    k: u32,           // log2(M)
-    m: usize,         // table size (power of 2)
-    nmax: R_xlen_t,   // remaining capacity
-    hash_table: SEXP, // integer vector used as hash table
+    k: u32,          // log2(M)
+    m: usize,        // table size (power of 2)
+    nmax: R_xlen_t,  // remaining capacity
+    table: Vec<i32>, // open-addressing slots; NIL marks an empty slot
 }
 
 /// Hash function for logical vectors: NA -> 2, FALSE -> 0, TRUE -> 1.
 #[inline]
-unsafe fn lhash(x: SEXP, indx: R_xlen_t, _d: &HashData) -> usize {
-    unsafe {
-        let xi = LOGICAL_ELT(x, indx as c_int);
-        if xi == NA_LOGICAL { 2 } else { xi as usize }
-    }
+fn lhash(x: &Sexp<'_>, indx: R_xlen_t, _d: &HashData) -> SexpResult<usize> {
+    let xi = x.try_logical_elt(indx)?;
+    Ok(if xi == NA_LOGICAL { 2 } else { xi as usize })
 }
 
 /// Equality test for logical elements.
 #[inline]
-unsafe fn lequal(x: SEXP, i: R_xlen_t, y: SEXP, j: R_xlen_t) -> bool {
-    unsafe {
-        if i < 0 || j < 0 {
-            return false;
-        }
-        LOGICAL_ELT(x, i as c_int) == LOGICAL_ELT(y, j as c_int)
+fn lequal(x: &Sexp<'_>, i: R_xlen_t, y: &Sexp<'_>, j: R_xlen_t) -> SexpResult<bool> {
+    if i < 0 || j < 0 {
+        return Ok(false);
     }
+    Ok(x.try_logical_elt(i)? == y.try_logical_elt(j)?)
 }
 
 /// Hash function for integer vectors using scatter.
 #[inline]
-unsafe fn ihash(x: SEXP, indx: R_xlen_t, d: &HashData) -> usize {
-    unsafe {
-        let xi = INTEGER_ELT(x, indx as c_int);
-        if xi == NA_INTEGER {
-            0
-        } else {
-            scatter(xi as u32, d.k) as usize
-        }
-    }
+fn ihash(x: &Sexp<'_>, indx: R_xlen_t, d: &HashData) -> SexpResult<usize> {
+    let xi = x.try_integer_elt(indx)?;
+    Ok(if xi == NA_INTEGER {
+        0
+    } else {
+        scatter(xi as u32, d.k) as usize
+    })
 }
 
 /// Equality test for integer elements.
 #[inline]
-unsafe fn iequal(x: SEXP, i: R_xlen_t, y: SEXP, j: R_xlen_t) -> bool {
-    unsafe {
-        if i < 0 || j < 0 {
-            return false;
-        }
-        INTEGER_ELT(x, i as c_int) == INTEGER_ELT(y, j as c_int)
+fn iequal(x: &Sexp<'_>, i: R_xlen_t, y: &Sexp<'_>, j: R_xlen_t) -> SexpResult<bool> {
+    if i < 0 || j < 0 {
+        return Ok(false);
     }
+    Ok(x.try_integer_elt(i)? == y.try_integer_elt(j)?)
 }
 
 /// Hash function for real (double) vectors.
 /// Normalizes signed zero, NA, and NaN for consistent hashing.
 #[inline]
-unsafe fn rhash(x: SEXP, indx: R_xlen_t, d: &HashData) -> usize {
-    unsafe {
-        let xi = REAL_ELT(x, indx as c_int);
-        let tmp = if xi == 0.0 { 0.0 } else { xi };
-        let tmp = if R_IsNA(tmp) {
-            f64::from_bits(R_NA_BIT_PATTERN)
-        } else if ISNAN(tmp) {
-            f64::NAN
-        } else {
-            tmp
-        };
-        let bits = tmp.to_bits();
-        let lo = bits as u32;
-        let hi = (bits >> 32) as u32;
-        scatter(lo.wrapping_add(hi), d.k) as usize
-    }
+fn rhash(x: &Sexp<'_>, indx: R_xlen_t, d: &HashData) -> SexpResult<usize> {
+    let xi = x.try_real_elt(indx)?;
+    let tmp = if xi == 0.0 { 0.0 } else { xi };
+    let tmp = if R_IsNA(tmp) {
+        f64::from_bits(R_NA_BIT_PATTERN)
+    } else if ISNAN(tmp) {
+        f64::NAN
+    } else {
+        tmp
+    };
+    let bits = tmp.to_bits();
+    let lo = bits as u32;
+    let hi = (bits >> 32) as u32;
+    Ok(scatter(lo.wrapping_add(hi), d.k) as usize)
 }
 
 /// Equality test for real elements.
 /// NA == NA, NaN == NaN, otherwise exact comparison.
 #[inline]
-unsafe fn requal(x: SEXP, i: R_xlen_t, y: SEXP, j: R_xlen_t) -> bool {
-    unsafe {
-        if i < 0 || j < 0 {
-            return false;
-        }
-        let xi = REAL_ELT(x, i as c_int);
-        let yj = REAL_ELT(y, j as c_int);
-        if !ISNAN(xi) && !ISNAN(yj) {
-            xi == yj
-        } else if R_IsNA(xi) && R_IsNA(yj) {
-            true
-        } else {
-            ISNAN(xi) && ISNAN(yj)
-        }
+fn requal(x: &Sexp<'_>, i: R_xlen_t, y: &Sexp<'_>, j: R_xlen_t) -> SexpResult<bool> {
+    if i < 0 || j < 0 {
+        return Ok(false);
     }
+    let xi = x.try_real_elt(i)?;
+    let yj = y.try_real_elt(j)?;
+    Ok(if !ISNAN(xi) && !ISNAN(yj) {
+        xi == yj
+    } else if R_IsNA(xi) && R_IsNA(yj) {
+        true
+    } else {
+        ISNAN(xi) && ISNAN(yj)
+    })
 }
 
 /// Hash function for complex vectors.
 #[inline]
-unsafe fn chash(x: SEXP, indx: R_xlen_t, d: &HashData) -> usize {
-    unsafe {
-        let tmp = unify_complex_na(COMPLEX_ELT(x, indx as c_int));
-        let rbits = tmp.r.to_bits();
-        let ibits = tmp.i.to_bits();
-        let u =
-            ((rbits as u32) ^ ((rbits >> 32) as u32)) ^ ((ibits as u32) ^ ((ibits >> 32) as u32));
-        scatter(u, d.k) as usize
-    }
+fn chash(x: &Sexp<'_>, indx: R_xlen_t, d: &HashData) -> SexpResult<usize> {
+    let tmp = unify_complex_na(x.try_complex_elt(indx)?);
+    let rbits = tmp.r.to_bits();
+    let ibits = tmp.i.to_bits();
+    let u = ((rbits as u32) ^ ((rbits >> 32) as u32)) ^ ((ibits as u32) ^ ((ibits >> 32) as u32));
+    Ok(scatter(u, d.k) as usize)
 }
 
 /// Equality test for complex elements using cplx_eq.
 #[inline]
-unsafe fn cequal(x: SEXP, i: R_xlen_t, y: SEXP, j: R_xlen_t) -> bool {
-    unsafe {
-        if i < 0 || j < 0 {
-            return false;
-        }
-        cplx_eq(COMPLEX_ELT(x, i as c_int), COMPLEX_ELT(y, j as c_int))
+fn cequal(x: &Sexp<'_>, i: R_xlen_t, y: &Sexp<'_>, j: R_xlen_t) -> SexpResult<bool> {
+    if i < 0 || j < 0 {
+        return Ok(false);
     }
+    Ok(cplx_eq(x.try_complex_elt(i)?, y.try_complex_elt(j)?))
 }
 
 /// Hash for strings by pointer address.
 #[inline]
-unsafe fn cshash(x: SEXP, indx: R_xlen_t, d: &HashData) -> usize {
-    unsafe { scatter(PTRHASH(STRING_ELT(x, indx) as usize), d.k) as usize }
+fn cshash(x: &Sexp<'_>, indx: R_xlen_t, d: &HashData) -> SexpResult<usize> {
+    let elt = x.try_string_elt(indx)?;
+    Ok(scatter(PTRHASH(elt.as_raw() as usize), d.k) as usize)
 }
 
 /// Equality test for string elements (by pointer identity for cached strings).
 #[inline]
-unsafe fn sequal(x: SEXP, i: R_xlen_t, y: SEXP, j: R_xlen_t) -> bool {
-    unsafe {
-        if i < 0 || j < 0 {
-            return false;
-        }
-        let xi = STRING_ELT(x, i);
-        let yj = STRING_ELT(y, j);
-        xi == yj
+fn sequal(x: &Sexp<'_>, i: R_xlen_t, y: &Sexp<'_>, j: R_xlen_t) -> SexpResult<bool> {
+    if i < 0 || j < 0 {
+        return Ok(false);
     }
+    Ok(x.try_string_elt(i)?.as_raw() == y.try_string_elt(j)?.as_raw())
 }
 
 /// Hash for raw (byte) vectors: identity hash.
 #[inline]
-unsafe fn rawhash_fn(x: SEXP, indx: R_xlen_t, _d: &HashData) -> usize {
-    unsafe { RAW_ELT(x, indx as c_int) as usize }
+fn rawhash_fn(x: &Sexp<'_>, indx: R_xlen_t, _d: &HashData) -> SexpResult<usize> {
+    Ok(x.try_raw_elt(indx)? as usize)
 }
 
 /// Equality test for raw elements.
 #[inline]
-unsafe fn rawequal(x: SEXP, i: R_xlen_t, y: SEXP, j: R_xlen_t) -> bool {
-    unsafe {
-        if i < 0 || j < 0 {
-            return false;
-        }
-        RAW_ELT(x, i as c_int) == RAW_ELT(y, j as c_int)
+fn rawequal(x: &Sexp<'_>, i: R_xlen_t, y: &Sexp<'_>, j: R_xlen_t) -> SexpResult<bool> {
+    if i < 0 || j < 0 {
+        return Ok(false);
     }
+    Ok(x.try_raw_elt(i)? == y.try_raw_elt(j)?)
 }
 
 /// Hash function pointer type.
-type HashFn = unsafe fn(SEXP, R_xlen_t, &HashData) -> usize;
+type HashFn = fn(&Sexp<'_>, R_xlen_t, &HashData) -> SexpResult<usize>;
 
 /// Equality function pointer type.
-type EqualFn = unsafe fn(SEXP, R_xlen_t, SEXP, R_xlen_t) -> bool;
+type EqualFn = fn(&Sexp<'_>, R_xlen_t, &Sexp<'_>, R_xlen_t) -> SexpResult<bool>;
 
 /// Set up hash table parameters: choose M (smallest power of 2 >= 2*n) and K = log2(M).
 fn mk_setup(n: R_xlen_t, nmax_arg: R_xlen_t) -> (usize, u32, R_xlen_t) {
@@ -310,41 +348,28 @@ fn mk_setup(n: R_xlen_t, nmax_arg: R_xlen_t) -> (usize, u32, R_xlen_t) {
 }
 
 /// Initialize a HashData for the given vector type.
-unsafe fn hash_table_setup(x: SEXP, nmax_arg: i32) -> HashData {
-    unsafe {
-        let xtype = TYPEOF(x);
-        let (m, k, nmax) = match xtype {
-            t if t == SEXPTYPE::LGLSXP => (4usize, 2u32, XLENGTH(x)),
-            t if t == SEXPTYPE::INTSXP => {
-                let n = XLENGTH(x);
-                mk_setup(n, nmax_arg as R_xlen_t)
-            }
-            t if t == SEXPTYPE::REALSXP => mk_setup(XLENGTH(x), nmax_arg as R_xlen_t),
-            t if t == SEXPTYPE::CPLXSXP => mk_setup(XLENGTH(x), nmax_arg as R_xlen_t),
-            t if t == SEXPTYPE::STRSXP => mk_setup(XLENGTH(x), nmax_arg as R_xlen_t),
-            t if t == SEXPTYPE::RAWSXP => (256usize, 8u32, XLENGTH(x)),
-            t if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP => {
-                mk_setup(XLENGTH(x), nmax_arg as R_xlen_t)
-            }
-            _ => {
-                // fallback
-                mk_setup(XLENGTH(x), nmax_arg as R_xlen_t)
-            }
-        };
-
-        // Allocate integer hash table filled with NIL
-        let hash_table = Rf_allocVector3(SEXPTYPE::INTSXP, m as R_xlen_t);
-        let htable = INTEGER(hash_table);
-        for i in 0..m {
-            *htable.add(i) = NIL;
+fn hash_table_setup(x: &Sexp<'_>, nmax_arg: i32) -> HashData {
+    let xtype = x.typeof_();
+    let (m, k, nmax) = match xtype {
+        SEXPTYPE::LGLSXP => (4usize, 2u32, x.len()),
+        SEXPTYPE::INTSXP
+        | SEXPTYPE::REALSXP
+        | SEXPTYPE::CPLXSXP
+        | SEXPTYPE::STRSXP
+        | SEXPTYPE::VECSXP
+        | SEXPTYPE::EXPRSXP => mk_setup(x.len(), nmax_arg as R_xlen_t),
+        SEXPTYPE::RAWSXP => (256usize, 8u32, x.len()),
+        _ => {
+            // fallback
+            mk_setup(x.len(), nmax_arg as R_xlen_t)
         }
+    };
 
-        HashData {
-            k,
-            m,
-            nmax,
-            hash_table,
-        }
+    HashData {
+        k,
+        m,
+        nmax,
+        table: vec![NIL; m],
     }
 }
 
@@ -352,85 +377,82 @@ unsafe fn hash_table_setup(x: SEXP, nmax_arg: i32) -> HashData {
 ///
 /// Returns 1 if duplicated (seen before), 0 if first occurrence.
 /// First occurrences are inserted into the hash table.
-unsafe fn is_duplicated(x: SEXP, indx: R_xlen_t, d: &mut HashData) -> i32 {
-    unsafe {
-        let xtype = TYPEOF(x);
+fn is_duplicated(x: &Sexp<'_>, indx: R_xlen_t, d: &mut HashData) -> SexpResult<i32> {
+    let xtype = x.typeof_();
 
-        let hash_fn: HashFn = match xtype {
-            t if t == SEXPTYPE::LGLSXP => lhash,
-            t if t == SEXPTYPE::INTSXP => ihash,
-            t if t == SEXPTYPE::REALSXP => rhash,
-            t if t == SEXPTYPE::CPLXSXP => chash,
-            t if t == SEXPTYPE::STRSXP => cshash,
-            t if t == SEXPTYPE::RAWSXP => rawhash_fn,
-            _ => ihash, // fallback
-        };
+    let hash_fn: HashFn = match xtype {
+        SEXPTYPE::LGLSXP => lhash,
+        SEXPTYPE::INTSXP => ihash,
+        SEXPTYPE::REALSXP => rhash,
+        SEXPTYPE::CPLXSXP => chash,
+        SEXPTYPE::STRSXP => cshash,
+        SEXPTYPE::RAWSXP => rawhash_fn,
+        _ => ihash, // fallback
+    };
 
-        let equal_fn: EqualFn = match xtype {
-            t if t == SEXPTYPE::LGLSXP => lequal,
-            t if t == SEXPTYPE::INTSXP => iequal,
-            t if t == SEXPTYPE::REALSXP => requal,
-            t if t == SEXPTYPE::CPLXSXP => cequal,
-            t if t == SEXPTYPE::STRSXP => sequal,
-            t if t == SEXPTYPE::RAWSXP => rawequal,
-            _ => iequal, // fallback
-        };
+    let equal_fn: EqualFn = match xtype {
+        SEXPTYPE::LGLSXP => lequal,
+        SEXPTYPE::INTSXP => iequal,
+        SEXPTYPE::REALSXP => requal,
+        SEXPTYPE::CPLXSXP => cequal,
+        SEXPTYPE::STRSXP => sequal,
+        SEXPTYPE::RAWSXP => rawequal,
+        _ => iequal, // fallback
+    };
 
-        let h = INTEGER(d.hash_table);
-        let mut i = hash_fn(x, indx, d);
-        while *h.add(i) != NIL {
-            if equal_fn(x, *h.add(i) as R_xlen_t, x, indx) {
-                return if *h.add(i) >= 0 { 1 } else { 0 };
-            }
-            i = (i + 1) % d.m;
+    let mut i = hash_fn(x, indx, d)?;
+    while d.table[i] != NIL {
+        let entry = d.table[i];
+        if equal_fn(x, entry as R_xlen_t, x, indx)? {
+            return Ok(if entry >= 0 { 1 } else { 0 });
         }
-        if d.nmax <= 0 {
-            // hash table full - should not happen with proper sizing
-        }
-        d.nmax -= 1;
-        *h.add(i) = indx as i32;
-        0
+        i = (i + 1) % d.m;
     }
+    if d.nmax <= 0 {
+        // hash table full - should not happen with proper sizing
+    }
+    d.nmax -= 1;
+    d.table[i] = indx as i32;
+    Ok(0)
 }
 
 /// Core Duplicated implementation: returns a logical vector where TRUE means duplicated.
 ///
 /// `from_last`: if true, scan from right to left (so last occurrence is kept).
-unsafe fn duplicated_impl(x: SEXP, from_last: bool, nmax_arg: i32) -> SEXP {
-    unsafe {
-        let n = XLENGTH(x);
-        if n == 0 {
-            return Rf_allocVector3(SEXPTYPE::LGLSXP, 0);
-        }
-        if n == 1 {
-            return Rf_ScalarLogical(0); // FALSE
-        }
-
-        let mut data = hash_table_setup(x, nmax_arg);
-        let _hash_table_guard = protect(data.hash_table);
-
-        let ans = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
-        let _ans_guard = protect(ans);
-
-        let v = LOGICAL(ans);
-
-        if from_last {
-            let mut i = n as i64 - 1;
-            loop {
-                *v.add(i as usize) = is_duplicated(x, i as R_xlen_t, &mut data);
-                if i == 0 {
-                    break;
-                }
-                i -= 1;
-            }
-        } else {
-            for i in 0..n {
-                *v.add(i as usize) = is_duplicated(x, i, &mut data);
-            }
-        }
-
-        ans
+fn duplicated_impl<'a>(x: &Sexp<'a>, from_last: bool, nmax_arg: i32) -> SexpResult<Sexp<'a>> {
+    let n = x.len();
+    let factory = vector_factory(x)?;
+    if n == 0 {
+        return factory.allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::LGLSXP, 0)));
     }
+    if n == 1 {
+        return Ok(factory.domain().logical(false)); // FALSE
+    }
+
+    let mut data = hash_table_setup(x, nmax_arg);
+
+    let mut ans = SexpMut::try_from_checked(
+        factory.allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::LGLSXP, n)))?,
+    )?;
+
+    if from_last {
+        let mut i = n - 1;
+        loop {
+            let flag = is_duplicated(x, i, &mut data)?;
+            ans.try_set_logical_elt(i, flag)?;
+            if i == 0 {
+                break;
+            }
+            i -= 1;
+        }
+    } else {
+        for i in 0..n {
+            let flag = is_duplicated(x, i, &mut data)?;
+            ans.try_set_logical_elt(i, flag)?;
+        }
+    }
+
+    Ok(ans.freeze())
 }
 
 // ---------------------------------------------------------------------------
@@ -440,109 +462,102 @@ unsafe fn duplicated_impl(x: SEXP, from_last: bool, nmax_arg: i32) -> SEXP {
 /// Safe wrapper for `duplicated_impl` using `Sexp<'a>`.
 ///
 /// Returns `Ok(SEXP)` on success, `Err` on invalid input.
-fn duplicated_safe(x: Sexp<'_>, from_last: bool, nmax_arg: i32) -> Result<SEXP, &'static str> {
-    if !x.clone().is_vector() {
-        return Err("duplicated requires a vector");
+fn duplicated_safe<'a>(x: Sexp<'a>, from_last: bool, nmax_arg: i32) -> Result<SEXP, String> {
+    if !x.is_vector() {
+        return Err("duplicated requires a vector".into());
     }
-    let n = x.clone().len();
-    if n == 0 {
-        return Ok(unsafe { Rf_allocVector3(SEXPTYPE::LGLSXP, 0) });
-    }
-    if n == 1 {
-        return Ok(unsafe { Rf_ScalarLogical(0) });
-    }
-    let raw = x.as_raw();
-    Ok(unsafe { duplicated_impl(raw, from_last, nmax_arg) })
+    duplicated_impl(&x, from_last, nmax_arg)
+        .map(|dup| dup.as_raw())
+        .map_err(|err| err.to_string())
 }
 
-/// Safe wrapper for `unique` using `Sexp<'a>`.
+/// Core `unique` implementation over checked handles.
 ///
-/// Returns `Ok(SEXP)` with unique elements on success.
-unsafe fn unique_safe(x: Sexp<'_>, from_last: bool, nmax_arg: i32) -> Result<SEXP, &'static str> {
-    if !x.clone().is_vector() {
-        return Err("unique requires a vector");
-    }
-    let n = x.clone().len();
+/// Keeps the first (`from_last = false`) or last (`true`) occurrence of each
+/// element, preserving order.
+fn unique_impl<'a>(x: &Sexp<'a>, from_last: bool, nmax_arg: i32) -> SexpResult<Sexp<'a>> {
+    let n = x.len();
+    let xtype = x.typeof_();
+    let factory = vector_factory(x)?;
+
     if n == 0 {
-        return Ok(unsafe { Rf_allocVector3(TYPEOF(x.as_raw()), 0) });
+        return factory.allocate(|arena| Some(arena.alloc_vector(xtype, 0)));
     }
 
-    let raw = x.as_raw();
-    let xtype = TYPEOF(raw);
-
-    let dup = unsafe { duplicated_impl(raw, from_last, nmax_arg) };
-    let _dup_guard = unsafe { protect(dup) };
+    let dup = duplicated_impl(x, from_last, nmax_arg)?;
 
     let mut k: R_xlen_t = 0;
     for i in 0..n {
-        if unsafe { *LOGICAL(dup).add(i as usize) } == 0 {
+        if dup.try_logical_elt(i)? == 0 {
             k += 1;
         }
     }
 
-    let ans = unsafe { Rf_allocVector3(xtype, k) };
-    let _ans_guard = unsafe { protect(ans) };
+    let mut ans =
+        SexpMut::try_from_checked(factory.allocate(|arena| Some(arena.alloc_vector(xtype, k)))?)?;
 
     let mut ki: R_xlen_t = 0;
 
     match xtype {
-        t if t == SEXPTYPE::LGLSXP => {
-            let a = unsafe { LOGICAL(ans) };
+        SEXPTYPE::LGLSXP => {
             for i in 0..n {
-                if unsafe { *LOGICAL(dup).add(i as usize) } == 0 {
-                    unsafe { *a.add(ki as usize) = LOGICAL_ELT(raw, i as c_int) };
+                if dup.try_logical_elt(i)? == 0 {
+                    let value = x.try_logical_elt(i)?;
+                    ans.try_set_logical_elt(ki, value)?;
                     ki += 1;
                 }
             }
         }
-        t if t == SEXPTYPE::INTSXP => {
-            let a = unsafe { INTEGER(ans) };
+        SEXPTYPE::INTSXP => {
             for i in 0..n {
-                if unsafe { *LOGICAL(dup).add(i as usize) } == 0 {
-                    unsafe { *a.add(ki as usize) = INTEGER_ELT(raw, i as c_int) };
+                if dup.try_logical_elt(i)? == 0 {
+                    let value = x.try_integer_elt(i)?;
+                    ans.try_set_integer_elt(ki, value)?;
                     ki += 1;
                 }
             }
         }
-        t if t == SEXPTYPE::REALSXP => {
-            let a = unsafe { REAL(ans) };
+        SEXPTYPE::REALSXP => {
             for i in 0..n {
-                if unsafe { *LOGICAL(dup).add(i as usize) } == 0 {
-                    unsafe { *a.add(ki as usize) = REAL_ELT(raw, i as c_int) };
+                if dup.try_logical_elt(i)? == 0 {
+                    let value = x.try_real_elt(i)?;
+                    ans.try_set_real_elt(ki, value)?;
                     ki += 1;
                 }
             }
         }
-        t if t == SEXPTYPE::CPLXSXP => {
-            let a = unsafe { COMPLEX(ans) };
+        SEXPTYPE::CPLXSXP => {
             for i in 0..n {
-                if unsafe { *LOGICAL(dup).add(i as usize) } == 0 {
-                    unsafe { *a.add(ki as usize) = COMPLEX_ELT(raw, i as c_int) };
+                if dup.try_logical_elt(i)? == 0 {
+                    let value = x.try_complex_elt(i)?;
+                    ans.try_set_complex_elt(ki, value)?;
                     ki += 1;
                 }
             }
         }
-        t if t == SEXPTYPE::STRSXP => {
+        SEXPTYPE::STRSXP => {
             for i in 0..n {
-                if unsafe { *LOGICAL(dup).add(i as usize) } == 0 {
-                    unsafe { SET_STRING_ELT(ans, ki, STRING_ELT(raw, i)) };
+                if dup.try_logical_elt(i)? == 0 {
+                    let value = x.try_string_elt(i)?;
+                    ans.try_set_string_elt(ki, value)?;
                     ki += 1;
                 }
             }
         }
-        t if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP => {
+        SEXPTYPE::VECSXP | SEXPTYPE::EXPRSXP => {
             for i in 0..n {
-                if unsafe { *LOGICAL(dup).add(i as usize) } == 0 {
-                    unsafe { SET_VECTOR_ELT(ans, ki, VECTOR_ELT(raw, i)) };
+                if dup.try_logical_elt(i)? == 0 {
+                    let value = x.try_vector_elt(i)?;
+                    ans.try_set_vector_elt(ki, value)?;
                     ki += 1;
                 }
             }
         }
-        t if t == SEXPTYPE::RAWSXP => {
-            let a = unsafe { RAW(ans) };
+        SEXPTYPE::RAWSXP => {
             for i in 0..n {
-                if unsafe { *LOGICAL(dup).add(i as usize) } == 0 {
-                    unsafe { *a.add(ki as usize) = RAW_ELT(raw, i as c_int) };
+                if dup.try_logical_elt(i)? == 0 {
+                    let value = x.try_raw_elt(i)?;
+                    ans.try_set_raw_elt(ki, value)?;
                     ki += 1;
                 }
             }
@@ -550,7 +565,19 @@ unsafe fn unique_safe(x: Sexp<'_>, from_last: bool, nmax_arg: i32) -> Result<SEX
         _ => {} // intentionally unhandled: unsupported SEXPTYPE for unique
     }
 
-    Ok(ans)
+    Ok(ans.freeze())
+}
+
+/// Safe wrapper for `unique` using `Sexp<'a>`.
+///
+/// Returns `Ok(SEXP)` with unique elements on success.
+fn unique_safe<'a>(x: Sexp<'a>, from_last: bool, nmax_arg: i32) -> Result<SEXP, String> {
+    if !x.is_vector() {
+        return Err("unique requires a vector".into());
+    }
+    unique_impl(&x, from_last, nmax_arg)
+        .map(|ans| ans.as_raw())
+        .map_err(|err| err.to_string())
 }
 
 /// Check values in a logical vector for any/all semantics (safe version).
@@ -662,11 +689,10 @@ fn any_safe(args: Sexp<'_>) -> Result<SEXP, String> {
             .map_err(|err| err.to_string())?;
     }
 
-    if has_na {
-        Ok(unsafe { Rf_ScalarLogical(NA_LOGICAL) })
-    } else {
-        Ok(unsafe { Rf_ScalarLogical(val) })
-    }
+    let answer = if has_na { NA_LOGICAL } else { val };
+    scalar_logical(&args, answer)
+        .map(|value| value.as_raw())
+        .map_err(|err| err.to_string())
 }
 
 /// Safe wrapper for `all` using `Sexp<'a>`.
@@ -741,11 +767,10 @@ fn all_safe(args: Sexp<'_>) -> Result<SEXP, String> {
             .map_err(|err| err.to_string())?;
     }
 
-    if has_na {
-        Ok(unsafe { Rf_ScalarLogical(NA_LOGICAL) })
-    } else {
-        Ok(unsafe { Rf_ScalarLogical(val) })
-    }
+    let answer = if has_na { NA_LOGICAL } else { val };
+    scalar_logical(&args, answer)
+        .map(|value| value.as_raw())
+        .map_err(|err| err.to_string())
 }
 
 // ---------------------------------------------------------------------------
@@ -761,13 +786,12 @@ fn all_safe(args: Sexp<'_>) -> Result<SEXP, String> {
 /// `crate::mainutils::essentials::do_unique`; this raw pairlist wrapper is
 /// exercised by the unit tests below.
 pub unsafe fn do_unique(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    let args_s = unsafe { Sexp::try_from_raw(args) }
-        .unwrap_or_else(|err| -> Sexp<'_> { unique_error(err.to_string()) });
+    let args_s =
+        wrap_current(args).unwrap_or_else(|err| -> Sexp<'_> { unique_error(err.to_string()) });
     let x = args_s
         .try_pairlist_arg(0)
         .unwrap_or_else(|err| -> Sexp<'_> { unique_error(err.to_string()) });
-    unsafe { unique_safe(x, false, NA_INTEGER) }
-        .unwrap_or_else(|message| -> SEXP { unique_error(message) })
+    unique_safe(x, false, NA_INTEGER).unwrap_or_else(|message| -> SEXP { unique_error(message) })
 }
 
 /// Implementation of R's `duplicated()` builtin.
@@ -778,8 +802,8 @@ pub unsafe fn do_unique(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
 /// `crate::mainutils::essentials::do_duplicated`; this raw pairlist wrapper
 /// is exercised by the unit tests below.
 pub unsafe fn do_duplicated(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    let args_s = unsafe { Sexp::try_from_raw(args) }
-        .unwrap_or_else(|err| -> Sexp<'_> { unique_error(err.to_string()) });
+    let args_s =
+        wrap_current(args).unwrap_or_else(|err| -> Sexp<'_> { unique_error(err.to_string()) });
     let x = args_s
         .try_pairlist_arg(0)
         .unwrap_or_else(|err| -> Sexp<'_> { unique_error(err.to_string()) });
@@ -792,8 +816,8 @@ pub unsafe fn do_duplicated(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> S
 /// `.Internal(any(..., na.rm = FALSE))`
 /// PRIMVAL(op) == 2 in the C source.
 pub unsafe fn do_any(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    let args_s = unsafe { Sexp::try_from_raw(args) }
-        .unwrap_or_else(|err| -> Sexp<'_> { unique_error(err.to_string()) });
+    let args_s =
+        wrap_current(args).unwrap_or_else(|err| -> Sexp<'_> { unique_error(err.to_string()) });
     any_safe(args_s).unwrap_or_else(|message| -> SEXP { unique_error(message) })
 }
 
@@ -802,8 +826,8 @@ pub unsafe fn do_any(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 /// `.Internal(all(..., na.rm = FALSE))`
 /// PRIMVAL(op) == 1 in the C source.
 pub unsafe fn do_all(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    let args_s = unsafe { Sexp::try_from_raw(args) }
-        .unwrap_or_else(|err| -> Sexp<'_> { unique_error(err.to_string()) });
+    let args_s =
+        wrap_current(args).unwrap_or_else(|err| -> Sexp<'_> { unique_error(err.to_string()) });
     all_safe(args_s).unwrap_or_else(|message| -> SEXP { unique_error(message) })
 }
 
@@ -813,9 +837,6 @@ pub unsafe fn do_all(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 
 #[cfg(test)]
 mod tests {
-    use crate::sexp::accessors::*;
-    use crate::sexp::constructors::*;
-
     use super::*;
 
     #[test]
@@ -1043,193 +1064,305 @@ mod tests {
     // Tests for duplicated_impl and do_unique with integer vectors
     // -----------------------------------------------------------------------
 
+    /// Session-bound factory for the checked helpers below.
+    fn test_factory<'a>(
+        session: &'a crate::sexp::session::RSession,
+    ) -> SessionNodeFactory<'a> {
+        session
+            .owner_token()
+            .expect("active session")
+            .node_factory()
+    }
+
     /// Helper to create an integer vector with values.
-    fn make_int_vector(values: &[c_int]) -> SEXP {
-        unsafe {
-            let v = Rf_allocVector3(SEXPTYPE::INTSXP, values.len() as R_xlen_t);
-            let ints = INTEGER(v);
-            for (i, &val) in values.iter().enumerate() {
-                *ints.add(i) = val;
-            }
-            v
+    fn make_int_vector<'a>(factory: &SessionNodeFactory<'a>, values: &[c_int]) -> Sexp<'a> {
+        let value = factory
+            .allocate(|arena| {
+                Some(arena.alloc_vector(SEXPTYPE::INTSXP, values.len() as R_xlen_t))
+            })
+            .expect("integer vector allocation");
+        let mut vector = SexpMut::try_from_checked(value).expect("fresh vector is mutable");
+        for (i, &val) in values.iter().enumerate() {
+            vector
+                .try_set_integer_elt(i as R_xlen_t, val)
+                .expect("in-bounds integer write");
         }
+        vector.freeze()
     }
 
     /// Helper to create a logical vector with values.
-    fn make_logical_vector(values: &[c_int]) -> SEXP {
-        unsafe {
-            let v = Rf_allocVector3(SEXPTYPE::LGLSXP, values.len() as R_xlen_t);
-            let logicals = LOGICAL(v);
-            for (i, &val) in values.iter().enumerate() {
-                *logicals.add(i) = val;
-            }
-            v
+    fn make_logical_vector<'a>(factory: &SessionNodeFactory<'a>, values: &[c_int]) -> Sexp<'a> {
+        let value = factory
+            .allocate(|arena| {
+                Some(arena.alloc_vector(SEXPTYPE::LGLSXP, values.len() as R_xlen_t))
+            })
+            .expect("logical vector allocation");
+        let mut vector = SexpMut::try_from_checked(value).expect("fresh vector is mutable");
+        for (i, &val) in values.iter().enumerate() {
+            vector
+                .try_set_logical_elt(i as R_xlen_t, val)
+                .expect("in-bounds logical write");
         }
+        vector.freeze()
     }
 
     /// Helper to create a real vector with values.
-    fn make_real_vector(values: &[f64]) -> SEXP {
+    fn make_real_vector<'a>(factory: &SessionNodeFactory<'a>, values: &[f64]) -> Sexp<'a> {
+        let value = factory
+            .allocate(|arena| {
+                Some(arena.alloc_vector(SEXPTYPE::REALSXP, values.len() as R_xlen_t))
+            })
+            .expect("real vector allocation");
+        let mut vector = SexpMut::try_from_checked(value).expect("fresh vector is mutable");
+        for (i, &val) in values.iter().enumerate() {
+            vector
+                .try_set_real_elt(i as R_xlen_t, val)
+                .expect("in-bounds real write");
+        }
+        vector.freeze()
+    }
+
+    /// Helper to create a complex vector with values.
+    fn make_complex_vector<'a>(
+        factory: &SessionNodeFactory<'a>,
+        values: &[Rcomplex],
+    ) -> Sexp<'a> {
+        let value = factory
+            .allocate(|arena| {
+                Some(arena.alloc_vector(SEXPTYPE::CPLXSXP, values.len() as R_xlen_t))
+            })
+            .expect("complex vector allocation");
+        let mut vector = SexpMut::try_from_checked(value).expect("fresh vector is mutable");
+        for (i, &val) in values.iter().enumerate() {
+            vector
+                .try_set_complex_elt(i as R_xlen_t, val)
+                .expect("in-bounds complex write");
+        }
+        vector.freeze()
+    }
+
+    /// Helper to create a raw vector with values.
+    fn make_raw_vector<'a>(factory: &SessionNodeFactory<'a>, values: &[u8]) -> Sexp<'a> {
+        let value = factory
+            .allocate(|arena| {
+                Some(arena.alloc_vector(SEXPTYPE::RAWSXP, values.len() as R_xlen_t))
+            })
+            .expect("raw vector allocation");
+        let mut vector = SexpMut::try_from_checked(value).expect("fresh vector is mutable");
+        for (i, &val) in values.iter().enumerate() {
+            vector
+                .try_set_raw_elt(i as R_xlen_t, val)
+                .expect("in-bounds raw write");
+        }
+        vector.freeze()
+    }
+
+    /// Helper to build an untagged positional argument pairlist.
+    fn make_args<'a>(factory: &SessionNodeFactory<'a>, values: &[&Sexp<'a>]) -> Sexp<'a> {
+        let mut list = factory.nil();
+        for value in values.iter().rev() {
+            list = factory
+                .pairlist_cell(value, &list, &factory.nil())
+                .expect("pairlist cell allocation");
+        }
+        list
+    }
+
+    /// Standard unique/duplicated argument list:
+    /// `(x, incomparables = FALSE, fromLast = FALSE, nmax = NA)`.
+    fn make_duplicated_args<'a>(factory: &SessionNodeFactory<'a>, x: &Sexp<'a>) -> Sexp<'a> {
+        let no_incomparables = make_logical_vector(factory, &[0]);
+        let from_last = make_logical_vector(factory, &[0]);
+        let nmax = make_int_vector(factory, &[NA_INTEGER]);
+        make_args(factory, &[x, &no_incomparables, &from_last, &nmax])
+    }
+
+    /// Raw ABI shim: the `do_*` entry points take `SEXP`, so every test
+    /// funnels through these call sites.
+    fn call_do_unique(args: Sexp<'_>) -> SEXP {
         unsafe {
-            let v = Rf_allocVector3(SEXPTYPE::REALSXP, values.len() as R_xlen_t);
-            let reals = REAL(v);
-            for (i, &val) in values.iter().enumerate() {
-                *reals.add(i) = val;
-            }
-            v
+            do_unique(
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                args.as_raw(),
+                std::ptr::null_mut(),
+            )
+        }
+    }
+
+    fn call_do_duplicated(args: Sexp<'_>) -> SEXP {
+        unsafe {
+            do_duplicated(
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                args.as_raw(),
+                std::ptr::null_mut(),
+            )
+        }
+    }
+
+    fn call_do_any(args: Sexp<'_>) -> SEXP {
+        unsafe {
+            do_any(
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                args.as_raw(),
+                std::ptr::null_mut(),
+            )
+        }
+    }
+
+    fn call_do_all(args: Sexp<'_>) -> SEXP {
+        unsafe {
+            do_all(
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                args.as_raw(),
+                std::ptr::null_mut(),
+            )
         }
     }
 
     #[test]
     fn test_duplicated_int_basic() {
-        let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            let x = make_int_vector(&[1, 2, 3, 2, 1]);
-            let dup = duplicated_impl(x, false, NA_INTEGER);
-            assert_eq!(XLENGTH(dup), 5);
-            // 1: FALSE, 2: FALSE, 3: FALSE, 2: TRUE, 1: TRUE
-            assert_eq!(*LOGICAL(dup).add(0), 0); // FALSE
-            assert_eq!(*LOGICAL(dup).add(1), 0); // FALSE
-            assert_eq!(*LOGICAL(dup).add(2), 0); // FALSE
-            assert_eq!(*LOGICAL(dup).add(3), 1); // TRUE
-            assert_eq!(*LOGICAL(dup).add(4), 1); // TRUE
-        }
+        let session = crate::sexp::session::RSession::new();
+        let factory = test_factory(&session);
+        let x = make_int_vector(&factory, &[1, 2, 3, 2, 1]);
+        let dup = duplicated_impl(&x, false, NA_INTEGER).expect("duplicated succeeds");
+        assert_eq!(dup.len(), 5);
+        // 1: FALSE, 2: FALSE, 3: FALSE, 2: TRUE, 1: TRUE
+        assert_eq!(dup.logical_elt(0), Some(0)); // FALSE
+        assert_eq!(dup.logical_elt(1), Some(0)); // FALSE
+        assert_eq!(dup.logical_elt(2), Some(0)); // FALSE
+        assert_eq!(dup.logical_elt(3), Some(1)); // TRUE
+        assert_eq!(dup.logical_elt(4), Some(1)); // TRUE
     }
 
     #[test]
     fn test_duplicated_int_all_unique() {
-        let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            let x = make_int_vector(&[1, 2, 3, 4, 5]);
-            let dup = duplicated_impl(x, false, NA_INTEGER);
-            assert_eq!(XLENGTH(dup), 5);
-            for i in 0..5 {
-                assert_eq!(*LOGICAL(dup).add(i), 0); // all FALSE
-            }
+        let session = crate::sexp::session::RSession::new();
+        let factory = test_factory(&session);
+        let x = make_int_vector(&factory, &[1, 2, 3, 4, 5]);
+        let dup = duplicated_impl(&x, false, NA_INTEGER).expect("duplicated succeeds");
+        assert_eq!(dup.len(), 5);
+        for i in 0..5 {
+            assert_eq!(dup.logical_elt(i), Some(0)); // all FALSE
         }
     }
 
     #[test]
     fn test_duplicated_int_all_same() {
-        let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            let x = make_int_vector(&[7, 7, 7, 7]);
-            let dup = duplicated_impl(x, false, NA_INTEGER);
-            assert_eq!(XLENGTH(dup), 4);
-            assert_eq!(*LOGICAL(dup).add(0), 0); // FALSE (first)
-            assert_eq!(*LOGICAL(dup).add(1), 1); // TRUE
-            assert_eq!(*LOGICAL(dup).add(2), 1); // TRUE
-            assert_eq!(*LOGICAL(dup).add(3), 1); // TRUE
-        }
+        let session = crate::sexp::session::RSession::new();
+        let factory = test_factory(&session);
+        let x = make_int_vector(&factory, &[7, 7, 7, 7]);
+        let dup = duplicated_impl(&x, false, NA_INTEGER).expect("duplicated succeeds");
+        assert_eq!(dup.len(), 4);
+        assert_eq!(dup.logical_elt(0), Some(0)); // FALSE (first)
+        assert_eq!(dup.logical_elt(1), Some(1)); // TRUE
+        assert_eq!(dup.logical_elt(2), Some(1)); // TRUE
+        assert_eq!(dup.logical_elt(3), Some(1)); // TRUE
     }
 
     #[test]
     fn test_duplicated_int_empty() {
-        let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            let x = Rf_allocVector3(SEXPTYPE::INTSXP, 0);
-            let dup = duplicated_impl(x, false, NA_INTEGER);
-            assert_eq!(XLENGTH(dup), 0);
-        }
+        let session = crate::sexp::session::RSession::new();
+        let factory = test_factory(&session);
+        let x = make_int_vector(&factory, &[]);
+        let dup = duplicated_impl(&x, false, NA_INTEGER).expect("duplicated succeeds");
+        assert_eq!(dup.len(), 0);
     }
 
     #[test]
     fn test_duplicated_int_single() {
-        let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            let x = make_int_vector(&[42]);
-            let dup = duplicated_impl(x, false, NA_INTEGER);
-            assert_eq!(XLENGTH(dup), 1);
-            // ScalarLogical(FALSE) returns length-1 vector
-            assert_eq!(XLENGTH(dup), 1);
-        }
+        let session = crate::sexp::session::RSession::new();
+        let factory = test_factory(&session);
+        let x = make_int_vector(&factory, &[42]);
+        let dup = duplicated_impl(&x, false, NA_INTEGER).expect("duplicated succeeds");
+        // ScalarLogical(FALSE) returns length-1 vector
+        assert_eq!(dup.len(), 1);
+        assert_eq!(dup.logical_elt(0), Some(0));
     }
 
     #[test]
     fn test_duplicated_int_with_na() {
-        let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            let x = make_int_vector(&[1, NA_INTEGER, 3, NA_INTEGER, 1]);
-            let dup = duplicated_impl(x, false, NA_INTEGER);
-            assert_eq!(XLENGTH(dup), 5);
-            // 1: FALSE, NA: FALSE, 3: FALSE, NA: TRUE, 1: TRUE
-            assert_eq!(*LOGICAL(dup).add(0), 0);
-            assert_eq!(*LOGICAL(dup).add(1), 0);
-            assert_eq!(*LOGICAL(dup).add(2), 0);
-            assert_eq!(*LOGICAL(dup).add(3), 1);
-            assert_eq!(*LOGICAL(dup).add(4), 1);
-        }
+        let session = crate::sexp::session::RSession::new();
+        let factory = test_factory(&session);
+        let x = make_int_vector(&factory, &[1, NA_INTEGER, 3, NA_INTEGER, 1]);
+        let dup = duplicated_impl(&x, false, NA_INTEGER).expect("duplicated succeeds");
+        assert_eq!(dup.len(), 5);
+        // 1: FALSE, NA: FALSE, 3: FALSE, NA: TRUE, 1: TRUE
+        assert_eq!(dup.logical_elt(0), Some(0));
+        assert_eq!(dup.logical_elt(1), Some(0));
+        assert_eq!(dup.logical_elt(2), Some(0));
+        assert_eq!(dup.logical_elt(3), Some(1));
+        assert_eq!(dup.logical_elt(4), Some(1));
     }
 
     #[test]
     fn test_duplicated_logical_basic() {
-        let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            let x = make_logical_vector(&[1, 0, 1, 0, NA_LOGICAL]);
-            let dup = duplicated_impl(x, false, NA_INTEGER);
-            assert_eq!(XLENGTH(dup), 5);
-            // TRUE, FALSE, TRUE(dup), FALSE(dup), NA
-            assert_eq!(*LOGICAL(dup).add(0), 0);
-            assert_eq!(*LOGICAL(dup).add(1), 0);
-            assert_eq!(*LOGICAL(dup).add(2), 1); // TRUE is duplicate
-            assert_eq!(*LOGICAL(dup).add(3), 1); // FALSE is duplicate
-            assert_eq!(*LOGICAL(dup).add(4), 0); // NA first occurrence
-        }
+        let session = crate::sexp::session::RSession::new();
+        let factory = test_factory(&session);
+        let x = make_logical_vector(&factory, &[1, 0, 1, 0, NA_LOGICAL]);
+        let dup = duplicated_impl(&x, false, NA_INTEGER).expect("duplicated succeeds");
+        assert_eq!(dup.len(), 5);
+        // TRUE, FALSE, TRUE(dup), FALSE(dup), NA
+        assert_eq!(dup.logical_elt(0), Some(0));
+        assert_eq!(dup.logical_elt(1), Some(0));
+        assert_eq!(dup.logical_elt(2), Some(1)); // TRUE is duplicate
+        assert_eq!(dup.logical_elt(3), Some(1)); // FALSE is duplicate
+        assert_eq!(dup.logical_elt(4), Some(0)); // NA first occurrence
     }
 
     #[test]
     fn test_duplicated_real_basic() {
-        let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            let x = make_real_vector(&[1.0, 2.5, 1.0, 3.0]);
-            let dup = duplicated_impl(x, false, NA_INTEGER);
-            assert_eq!(XLENGTH(dup), 4);
-            assert_eq!(*LOGICAL(dup).add(0), 0);
-            assert_eq!(*LOGICAL(dup).add(1), 0);
-            assert_eq!(*LOGICAL(dup).add(2), 1); // 1.0 duplicate
-            assert_eq!(*LOGICAL(dup).add(3), 0);
-        }
+        let session = crate::sexp::session::RSession::new();
+        let factory = test_factory(&session);
+        let x = make_real_vector(&factory, &[1.0, 2.5, 1.0, 3.0]);
+        let dup = duplicated_impl(&x, false, NA_INTEGER).expect("duplicated succeeds");
+        assert_eq!(dup.len(), 4);
+        assert_eq!(dup.logical_elt(0), Some(0));
+        assert_eq!(dup.logical_elt(1), Some(0));
+        assert_eq!(dup.logical_elt(2), Some(1)); // 1.0 duplicate
+        assert_eq!(dup.logical_elt(3), Some(0));
     }
 
     #[test]
     fn test_duplicated_real_with_na() {
-        let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            let na = f64::from_bits(R_NA_BIT_PATTERN);
-            let x = make_real_vector(&[1.0, na, 3.0, na]);
-            let dup = duplicated_impl(x, false, NA_INTEGER);
-            assert_eq!(XLENGTH(dup), 4);
-            assert_eq!(*LOGICAL(dup).add(0), 0);
-            assert_eq!(*LOGICAL(dup).add(1), 0); // NA first
-            assert_eq!(*LOGICAL(dup).add(2), 0);
-            assert_eq!(*LOGICAL(dup).add(3), 1); // NA duplicate
-        }
+        let session = crate::sexp::session::RSession::new();
+        let factory = test_factory(&session);
+        let na = f64::from_bits(R_NA_BIT_PATTERN);
+        let x = make_real_vector(&factory, &[1.0, na, 3.0, na]);
+        let dup = duplicated_impl(&x, false, NA_INTEGER).expect("duplicated succeeds");
+        assert_eq!(dup.len(), 4);
+        assert_eq!(dup.logical_elt(0), Some(0));
+        assert_eq!(dup.logical_elt(1), Some(0)); // NA first
+        assert_eq!(dup.logical_elt(2), Some(0));
+        assert_eq!(dup.logical_elt(3), Some(1)); // NA duplicate
     }
 
     #[test]
     fn test_duplicated_real_with_nan() {
-        let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            let x = make_real_vector(&[1.0, f64::NAN, 3.0, f64::NAN]);
-            let dup = duplicated_impl(x, false, NA_INTEGER);
-            assert_eq!(XLENGTH(dup), 4);
-            assert_eq!(*LOGICAL(dup).add(0), 0);
-            assert_eq!(*LOGICAL(dup).add(1), 0); // NaN first
-            assert_eq!(*LOGICAL(dup).add(2), 0);
-            assert_eq!(*LOGICAL(dup).add(3), 1); // NaN duplicate
-        }
+        let session = crate::sexp::session::RSession::new();
+        let factory = test_factory(&session);
+        let x = make_real_vector(&factory, &[1.0, f64::NAN, 3.0, f64::NAN]);
+        let dup = duplicated_impl(&x, false, NA_INTEGER).expect("duplicated succeeds");
+        assert_eq!(dup.len(), 4);
+        assert_eq!(dup.logical_elt(0), Some(0));
+        assert_eq!(dup.logical_elt(1), Some(0)); // NaN first
+        assert_eq!(dup.logical_elt(2), Some(0));
+        assert_eq!(dup.logical_elt(3), Some(1)); // NaN duplicate
     }
 
     #[test]
     fn test_duplicated_real_signed_zero() {
-        let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            let x = make_real_vector(&[0.0, -0.0]);
-            let dup = duplicated_impl(x, false, NA_INTEGER);
-            // Signed zeros should be treated as equal (normalized in hash)
-            assert_eq!(XLENGTH(dup), 2);
-            assert_eq!(*LOGICAL(dup).add(0), 0);
-            assert_eq!(*LOGICAL(dup).add(1), 1); // -0.0 == 0.0
-        }
+        let session = crate::sexp::session::RSession::new();
+        let factory = test_factory(&session);
+        let x = make_real_vector(&factory, &[0.0, -0.0]);
+        let dup = duplicated_impl(&x, false, NA_INTEGER).expect("duplicated succeeds");
+        // Signed zeros should be treated as equal (normalized in hash)
+        assert_eq!(dup.len(), 2);
+        assert_eq!(dup.logical_elt(0), Some(0));
+        assert_eq!(dup.logical_elt(1), Some(1)); // -0.0 == 0.0
     }
 
     // -----------------------------------------------------------------------
@@ -1238,70 +1371,42 @@ mod tests {
 
     #[test]
     fn test_do_unique_int_basic() {
-        let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            let x = make_int_vector(&[1, 2, 3, 2, 1]);
-            let args = crate::sexp::memory_ext::allocList(4);
-            // Set up the arg list: (x, incomp=FALSE, fromLast=FALSE, nmax=NA)
-            crate::sexp::accessors::SETCAR(args, x);
-            crate::sexp::accessors::SETCAR(CDR(args), Rf_ScalarLogical(0));
-            crate::sexp::accessors::SETCAR(CDDR(args), Rf_ScalarLogical(0));
-            crate::sexp::accessors::SETCAR(CDDDR(args), Rf_ScalarInteger(NA_INTEGER));
-
-            let ans = do_unique(
-                std::ptr::null_mut(),
-                std::ptr::null_mut(),
-                args,
-                std::ptr::null_mut(),
-            );
-            assert_eq!(XLENGTH(ans), 3);
-            // unique should preserve first-occurrence order
-            assert_eq!(*INTEGER(ans).add(0), 1);
-            assert_eq!(*INTEGER(ans).add(1), 2);
-            assert_eq!(*INTEGER(ans).add(2), 3);
-        }
+        let session = crate::sexp::session::RSession::new();
+        let factory = test_factory(&session);
+        let x = make_int_vector(&factory, &[1, 2, 3, 2, 1]);
+        let args = make_duplicated_args(&factory, &x);
+        let ans = session
+            .sexp(call_do_unique(args))
+            .expect("unique result belongs to session");
+        assert_eq!(ans.len(), 3);
+        // unique should preserve first-occurrence order
+        assert_eq!(ans.integer_elt(0), Some(1));
+        assert_eq!(ans.integer_elt(1), Some(2));
+        assert_eq!(ans.integer_elt(2), Some(3));
     }
 
     #[test]
     fn test_do_unique_int_empty() {
-        let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            let x = Rf_allocVector3(SEXPTYPE::INTSXP, 0);
-            let args = crate::sexp::memory_ext::allocList(4);
-            crate::sexp::accessors::SETCAR(args, x);
-            crate::sexp::accessors::SETCAR(CDR(args), Rf_ScalarLogical(0));
-            crate::sexp::accessors::SETCAR(CDDR(args), Rf_ScalarLogical(0));
-            crate::sexp::accessors::SETCAR(CDDDR(args), Rf_ScalarInteger(NA_INTEGER));
-
-            let ans = do_unique(
-                std::ptr::null_mut(),
-                std::ptr::null_mut(),
-                args,
-                std::ptr::null_mut(),
-            );
-            assert_eq!(XLENGTH(ans), 0);
-        }
+        let session = crate::sexp::session::RSession::new();
+        let factory = test_factory(&session);
+        let x = make_int_vector(&factory, &[]);
+        let args = make_duplicated_args(&factory, &x);
+        let ans = session
+            .sexp(call_do_unique(args))
+            .expect("unique result belongs to session");
+        assert_eq!(ans.len(), 0);
     }
 
     #[test]
     fn test_do_unique_int_all_unique() {
-        let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            let x = make_int_vector(&[5, 4, 3, 2, 1]);
-            let args = crate::sexp::memory_ext::allocList(4);
-            crate::sexp::accessors::SETCAR(args, x);
-            crate::sexp::accessors::SETCAR(CDR(args), Rf_ScalarLogical(0));
-            crate::sexp::accessors::SETCAR(CDDR(args), Rf_ScalarLogical(0));
-            crate::sexp::accessors::SETCAR(CDDDR(args), Rf_ScalarInteger(NA_INTEGER));
-
-            let ans = do_unique(
-                std::ptr::null_mut(),
-                std::ptr::null_mut(),
-                args,
-                std::ptr::null_mut(),
-            );
-            assert_eq!(XLENGTH(ans), 5);
-        }
+        let session = crate::sexp::session::RSession::new();
+        let factory = test_factory(&session);
+        let x = make_int_vector(&factory, &[5, 4, 3, 2, 1]);
+        let args = make_duplicated_args(&factory, &x);
+        let ans = session
+            .sexp(call_do_unique(args))
+            .expect("unique result belongs to session");
+        assert_eq!(ans.len(), 5);
     }
 
     // -----------------------------------------------------------------------
@@ -1310,76 +1415,31 @@ mod tests {
 
     #[test]
     fn test_do_duplicated_int() {
-        let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            let x = make_int_vector(&[1, 2, 3, 2, 1]);
-            let args = crate::sexp::memory_ext::allocList(4);
-            crate::sexp::accessors::SETCAR(args, x);
-            crate::sexp::accessors::SETCAR(CDR(args), Rf_ScalarLogical(0));
-            crate::sexp::accessors::SETCAR(CDDR(args), Rf_ScalarLogical(0));
-            crate::sexp::accessors::SETCAR(CDDDR(args), Rf_ScalarInteger(NA_INTEGER));
-
-            let dup = do_duplicated(
-                std::ptr::null_mut(),
-                std::ptr::null_mut(),
-                args,
-                std::ptr::null_mut(),
-            );
-            assert_eq!(XLENGTH(dup), 5);
-            assert_eq!(*LOGICAL(dup).add(0), 0);
-            assert_eq!(*LOGICAL(dup).add(1), 0);
-            assert_eq!(*LOGICAL(dup).add(2), 0);
-            assert_eq!(*LOGICAL(dup).add(3), 1);
-            assert_eq!(*LOGICAL(dup).add(4), 1);
-        }
+        let session = crate::sexp::session::RSession::new();
+        let factory = test_factory(&session);
+        let x = make_int_vector(&factory, &[1, 2, 3, 2, 1]);
+        let args = make_duplicated_args(&factory, &x);
+        let dup = session
+            .sexp(call_do_duplicated(args))
+            .expect("duplicated result belongs to session");
+        assert_eq!(dup.len(), 5);
+        assert_eq!(dup.logical_elt(0), Some(0));
+        assert_eq!(dup.logical_elt(1), Some(0));
+        assert_eq!(dup.logical_elt(2), Some(0));
+        assert_eq!(dup.logical_elt(3), Some(1));
+        assert_eq!(dup.logical_elt(4), Some(1));
     }
 
     #[test]
     fn test_do_duplicated_empty() {
-        let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            let x = Rf_allocVector3(SEXPTYPE::INTSXP, 0);
-            let args = crate::sexp::memory_ext::allocList(4);
-            crate::sexp::accessors::SETCAR(args, x);
-            crate::sexp::accessors::SETCAR(CDR(args), Rf_ScalarLogical(0));
-            crate::sexp::accessors::SETCAR(CDDR(args), Rf_ScalarLogical(0));
-            crate::sexp::accessors::SETCAR(CDDDR(args), Rf_ScalarInteger(NA_INTEGER));
-
-            let dup = do_duplicated(
-                std::ptr::null_mut(),
-                std::ptr::null_mut(),
-                args,
-                std::ptr::null_mut(),
-            );
-            assert_eq!(XLENGTH(dup), 0);
-        }
-    }
-
-    fn check_values(op: i32, na_rm: bool, x: SEXP, n: R_xlen_t) -> i32 {
-        unsafe {
-            let px = LOGICAL(x);
-            let mut has_na = false;
-
-            for i in 0..n {
-                let xi = *px.add(i as usize);
-                if !na_rm && xi == NA_LOGICAL {
-                    has_na = true;
-                } else {
-                    if xi == 1 && op == 2 {
-                        return 1;
-                    }
-                    if xi == 0 && op == 1 {
-                        return 0;
-                    }
-                }
-            }
-
-            if op == 2 {
-                if has_na { NA_LOGICAL } else { 0 }
-            } else {
-                if has_na { NA_LOGICAL } else { 1 }
-            }
-        }
+        let session = crate::sexp::session::RSession::new();
+        let factory = test_factory(&session);
+        let x = make_int_vector(&factory, &[]);
+        let args = make_duplicated_args(&factory, &x);
+        let dup = session
+            .sexp(call_do_duplicated(args))
+            .expect("duplicated result belongs to session");
+        assert_eq!(dup.len(), 0);
     }
 
     // -----------------------------------------------------------------------
@@ -1388,98 +1448,110 @@ mod tests {
 
     #[test]
     fn test_check_values_any_all_true() {
-        let _session = crate::sexp::session::RSession::new();
-        let x = make_logical_vector(&[0, 0, 1, 0]);
+        let session = crate::sexp::session::RSession::new();
+        let factory = test_factory(&session);
+        let x = make_logical_vector(&factory, &[0, 0, 1, 0]);
         // any: finds TRUE -> returns 1
-        assert_eq!(check_values(2, false, x, 4), 1);
+        assert_eq!(check_values_safe(x, 2, false), Ok(1));
     }
 
     #[test]
     fn test_check_values_any_all_false() {
-        let _session = crate::sexp::session::RSession::new();
-        let x = make_logical_vector(&[0, 0, 0, 0]);
+        let session = crate::sexp::session::RSession::new();
+        let factory = test_factory(&session);
+        let x = make_logical_vector(&factory, &[0, 0, 0, 0]);
         // any: no TRUE -> returns 0
-        assert_eq!(check_values(2, false, x, 4), 0);
+        assert_eq!(check_values_safe(x, 2, false), Ok(0));
     }
 
     #[test]
     fn test_check_values_any_with_na() {
-        let _session = crate::sexp::session::RSession::new();
-        let x = make_logical_vector(&[NA_LOGICAL, 0, 0]);
+        let session = crate::sexp::session::RSession::new();
+        let factory = test_factory(&session);
+        let x = make_logical_vector(&factory, &[NA_LOGICAL, 0, 0]);
         // any with NA: returns NA
-        assert_eq!(check_values(2, false, x, 3), NA_LOGICAL);
+        assert_eq!(check_values_safe(x, 2, false), Ok(NA_LOGICAL));
     }
 
     #[test]
     fn test_check_values_any_with_na_narm() {
-        let _session = crate::sexp::session::RSession::new();
-        let x = make_logical_vector(&[NA_LOGICAL, 0, 0]);
+        let session = crate::sexp::session::RSession::new();
+        let factory = test_factory(&session);
+        let x = make_logical_vector(&factory, &[NA_LOGICAL, 0, 0]);
         // any with NA and na.rm=TRUE: returns 0 (FALSE)
-        assert_eq!(check_values(2, true, x, 3), 0);
+        assert_eq!(check_values_safe(x, 2, true), Ok(0));
     }
 
     #[test]
     fn test_check_values_any_true_over_na() {
-        let _session = crate::sexp::session::RSession::new();
-        let x = make_logical_vector(&[NA_LOGICAL, 1, 0]);
+        let session = crate::sexp::session::RSession::new();
+        let factory = test_factory(&session);
+        let x = make_logical_vector(&factory, &[NA_LOGICAL, 1, 0]);
         // any: finds TRUE -> returns 1 immediately
-        assert_eq!(check_values(2, false, x, 3), 1);
+        assert_eq!(check_values_safe(x, 2, false), Ok(1));
     }
 
     #[test]
     fn test_check_values_all_all_true() {
-        let _session = crate::sexp::session::RSession::new();
-        let x = make_logical_vector(&[1, 1, 1]);
+        let session = crate::sexp::session::RSession::new();
+        let factory = test_factory(&session);
+        let x = make_logical_vector(&factory, &[1, 1, 1]);
         // all: no FALSE -> returns 1 (TRUE)
-        assert_eq!(check_values(1, false, x, 3), 1);
+        assert_eq!(check_values_safe(x, 1, false), Ok(1));
     }
 
     #[test]
     fn test_check_values_all_has_false() {
-        let _session = crate::sexp::session::RSession::new();
-        let x = make_logical_vector(&[1, 0, 1]);
-        // all: finds FALSE -> returns 0
-        assert_eq!(check_values(1, false, x, 3), 0);
+        let session = crate::sexp::session::RSession::new();
+        let factory = test_factory(&session);
+        let x = make_logical_vector(&factory, &[1, 0, 1]);
+        // all: finds FALSE -> returns 0 (FALSE)
+        assert_eq!(check_values_safe(x, 1, false), Ok(0));
     }
 
     #[test]
     fn test_check_values_all_with_na() {
-        let _session = crate::sexp::session::RSession::new();
-        let x = make_logical_vector(&[1, NA_LOGICAL, 1]);
+        let session = crate::sexp::session::RSession::new();
+        let factory = test_factory(&session);
+        let x = make_logical_vector(&factory, &[1, NA_LOGICAL, 1]);
         // all with NA: returns NA
-        assert_eq!(check_values(1, false, x, 3), NA_LOGICAL);
+        assert_eq!(check_values_safe(x, 1, false), Ok(NA_LOGICAL));
     }
 
     #[test]
     fn test_check_values_all_with_na_narm() {
-        let _session = crate::sexp::session::RSession::new();
-        let x = make_logical_vector(&[1, NA_LOGICAL, 1]);
+        let session = crate::sexp::session::RSession::new();
+        let factory = test_factory(&session);
+        let x = make_logical_vector(&factory, &[1, NA_LOGICAL, 1]);
         // all with NA and na.rm=TRUE: returns 1 (TRUE)
-        assert_eq!(check_values(1, true, x, 3), 1);
+        assert_eq!(check_values_safe(x, 1, true), Ok(1));
     }
 
     #[test]
     fn test_check_values_all_false_over_na() {
-        let _session = crate::sexp::session::RSession::new();
-        let x = make_logical_vector(&[1, 0, NA_LOGICAL]);
+        let session = crate::sexp::session::RSession::new();
+        let factory = test_factory(&session);
+        let x = make_logical_vector(&factory, &[1, 0, NA_LOGICAL]);
         // all: finds FALSE -> returns 0 immediately
-        assert_eq!(check_values(1, false, x, 3), 0);
+        assert_eq!(check_values_safe(x, 1, false), Ok(0));
     }
 
     #[test]
     fn test_check_values_empty_any() {
-        let _session = crate::sexp::session::RSession::new();
-        let x = make_logical_vector(&[]);
+        let session = crate::sexp::session::RSession::new();
+        let factory = test_factory(&session);
+        let x = make_logical_vector(&factory, &[]);
         // any of empty: returns 0 (FALSE)
-        assert_eq!(check_values(2, false, x, 0), 0);
+        assert_eq!(check_values_safe(x, 2, false), Ok(0));
     }
 
     #[test]
     fn test_check_values_empty_all() {
-        let _session = crate::sexp::session::RSession::new();
-        let x = make_logical_vector(&[]);
+        let session = crate::sexp::session::RSession::new();
+        let factory = test_factory(&session);
+        let x = make_logical_vector(&factory, &[]);
         // all of empty: returns 1 (TRUE)
-        assert_eq!(check_values(1, false, x, 0), 1);
+        assert_eq!(check_values_safe(x, 1, false), Ok(1));
     }
 
     // -----------------------------------------------------------------------
@@ -1488,77 +1560,53 @@ mod tests {
 
     #[test]
     fn test_do_any_simple() {
-        let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            // Create args list: (logical_vector)  -- no na.rm named arg
-            let x = make_logical_vector(&[0, 0, 1, 0]);
-            let args = crate::sexp::memory_ext::allocList(1);
-            crate::sexp::accessors::SETCAR(args, x);
-
-            let ans = do_any(
-                std::ptr::null_mut(),
-                std::ptr::null_mut(),
-                args,
-                std::ptr::null_mut(),
-            );
-            assert_eq!(XLENGTH(ans), 1);
-            assert_eq!(*LOGICAL(ans).add(0), 1); // TRUE
-        }
+        let session = crate::sexp::session::RSession::new();
+        let factory = test_factory(&session);
+        // Create args list: (logical_vector)  -- no na.rm named arg
+        let x = make_logical_vector(&factory, &[0, 0, 1, 0]);
+        let args = make_args(&factory, &[&x]);
+        let ans = session
+            .sexp(call_do_any(args))
+            .expect("any result belongs to session");
+        assert_eq!(ans.len(), 1);
+        assert_eq!(ans.logical_elt(0), Some(1)); // TRUE
     }
 
     #[test]
     fn test_do_any_all_false() {
-        let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            let x = make_logical_vector(&[0, 0, 0]);
-            let args = crate::sexp::memory_ext::allocList(1);
-            crate::sexp::accessors::SETCAR(args, x);
-
-            let ans = do_any(
-                std::ptr::null_mut(),
-                std::ptr::null_mut(),
-                args,
-                std::ptr::null_mut(),
-            );
-            assert_eq!(*LOGICAL(ans).add(0), 0); // FALSE
-        }
+        let session = crate::sexp::session::RSession::new();
+        let factory = test_factory(&session);
+        let x = make_logical_vector(&factory, &[0, 0, 0]);
+        let args = make_args(&factory, &[&x]);
+        let ans = session
+            .sexp(call_do_any(args))
+            .expect("any result belongs to session");
+        assert_eq!(ans.logical_elt(0), Some(0)); // FALSE
     }
 
     #[test]
     fn test_do_all_simple() {
-        let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            let x = make_logical_vector(&[1, 1, 1]);
-            let args = crate::sexp::memory_ext::allocList(1);
-            crate::sexp::accessors::SETCAR(args, x);
-
-            let ans = do_all(
-                std::ptr::null_mut(),
-                std::ptr::null_mut(),
-                args,
-                std::ptr::null_mut(),
-            );
-            assert_eq!(XLENGTH(ans), 1);
-            assert_eq!(*LOGICAL(ans).add(0), 1); // TRUE
-        }
+        let session = crate::sexp::session::RSession::new();
+        let factory = test_factory(&session);
+        let x = make_logical_vector(&factory, &[1, 1, 1]);
+        let args = make_args(&factory, &[&x]);
+        let ans = session
+            .sexp(call_do_all(args))
+            .expect("all result belongs to session");
+        assert_eq!(ans.len(), 1);
+        assert_eq!(ans.logical_elt(0), Some(1)); // TRUE
     }
 
     #[test]
     fn test_do_all_has_false() {
-        let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            let x = make_logical_vector(&[1, 0, 1]);
-            let args = crate::sexp::memory_ext::allocList(1);
-            crate::sexp::accessors::SETCAR(args, x);
-
-            let ans = do_all(
-                std::ptr::null_mut(),
-                std::ptr::null_mut(),
-                args,
-                std::ptr::null_mut(),
-            );
-            assert_eq!(*LOGICAL(ans).add(0), 0); // FALSE
-        }
+        let session = crate::sexp::session::RSession::new();
+        let factory = test_factory(&session);
+        let x = make_logical_vector(&factory, &[1, 0, 1]);
+        let args = make_args(&factory, &[&x]);
+        let ans = session
+            .sexp(call_do_all(args))
+            .expect("all result belongs to session");
+        assert_eq!(ans.logical_elt(0), Some(0)); // FALSE
     }
 
     // -----------------------------------------------------------------------
@@ -1567,40 +1615,42 @@ mod tests {
 
     #[test]
     fn test_duplicated_complex_basic() {
-        let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            let v = Rf_allocVector3(SEXPTYPE::CPLXSXP, 3);
-            let cx = COMPLEX(v);
-            // {1+2i, 3+4i, 1+2i}
-            *cx.add(0) = Rcomplex { r: 1.0, i: 2.0 };
-            *cx.add(1) = Rcomplex { r: 3.0, i: 4.0 };
-            *cx.add(2) = Rcomplex { r: 1.0, i: 2.0 };
-
-            let dup = duplicated_impl(v, false, NA_INTEGER);
-            assert_eq!(XLENGTH(dup), 3);
-            assert_eq!(*LOGICAL(dup).add(0), 0); // first occurrence
-            assert_eq!(*LOGICAL(dup).add(1), 0); // unique
-            assert_eq!(*LOGICAL(dup).add(2), 1); // duplicate
-        }
+        let session = crate::sexp::session::RSession::new();
+        let factory = test_factory(&session);
+        // {1+2i, 3+4i, 1+2i}
+        let x = make_complex_vector(
+            &factory,
+            &[
+                Rcomplex { r: 1.0, i: 2.0 },
+                Rcomplex { r: 3.0, i: 4.0 },
+                Rcomplex { r: 1.0, i: 2.0 },
+            ],
+        );
+        let dup = duplicated_impl(&x, false, NA_INTEGER).expect("duplicated succeeds");
+        assert_eq!(dup.len(), 3);
+        assert_eq!(dup.logical_elt(0), Some(0)); // first occurrence
+        assert_eq!(dup.logical_elt(1), Some(0)); // unique
+        assert_eq!(dup.logical_elt(2), Some(1)); // duplicate
     }
 
     #[test]
     fn test_duplicated_complex_na() {
-        let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            let v = Rf_allocVector3(SEXPTYPE::CPLXSXP, 3);
-            let cx = COMPLEX(v);
-            let na = f64::from_bits(R_NA_BIT_PATTERN);
-            // {1+NA, 3+4i, 5+NA}  -- all NA-containing are equal
-            *cx.add(0) = Rcomplex { r: 1.0, i: na };
-            *cx.add(1) = Rcomplex { r: 3.0, i: 4.0 };
-            *cx.add(2) = Rcomplex { r: 5.0, i: na };
-
-            let dup = duplicated_impl(v, false, NA_INTEGER);
-            assert_eq!(*LOGICAL(dup).add(0), 0); // first NA
-            assert_eq!(*LOGICAL(dup).add(1), 0); // unique
-            assert_eq!(*LOGICAL(dup).add(2), 1); // NA duplicate
-        }
+        let session = crate::sexp::session::RSession::new();
+        let factory = test_factory(&session);
+        let na = f64::from_bits(R_NA_BIT_PATTERN);
+        // {1+NA, 3+4i, 5+NA}  -- all NA-containing are equal
+        let x = make_complex_vector(
+            &factory,
+            &[
+                Rcomplex { r: 1.0, i: na },
+                Rcomplex { r: 3.0, i: 4.0 },
+                Rcomplex { r: 5.0, i: na },
+            ],
+        );
+        let dup = duplicated_impl(&x, false, NA_INTEGER).expect("duplicated succeeds");
+        assert_eq!(dup.logical_elt(0), Some(0)); // first NA
+        assert_eq!(dup.logical_elt(1), Some(0)); // unique
+        assert_eq!(dup.logical_elt(2), Some(1)); // NA duplicate
     }
 
     // -----------------------------------------------------------------------
@@ -1609,42 +1659,34 @@ mod tests {
 
     #[test]
     fn test_hash_table_setup_int() {
-        let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            let x = make_int_vector(&[1, 2, 3]);
-            let data = hash_table_setup(x, NA_INTEGER);
-            // 3 elements -> M = 8 (next power of 2 >= 6)
-            assert_eq!(data.m, 8);
-            assert_eq!(data.k, 3);
-        }
+        let session = crate::sexp::session::RSession::new();
+        let factory = test_factory(&session);
+        let x = make_int_vector(&factory, &[1, 2, 3]);
+        let data = hash_table_setup(&x, NA_INTEGER);
+        // 3 elements -> M = 8 (next power of 2 >= 6)
+        assert_eq!(data.m, 8);
+        assert_eq!(data.k, 3);
     }
 
     #[test]
     fn test_hash_table_setup_logical() {
-        let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            let x = make_logical_vector(&[1, 0, 1]);
-            let data = hash_table_setup(x, NA_INTEGER);
-            // Logical always uses M=4, K=2
-            assert_eq!(data.m, 4);
-            assert_eq!(data.k, 2);
-        }
+        let session = crate::sexp::session::RSession::new();
+        let factory = test_factory(&session);
+        let x = make_logical_vector(&factory, &[1, 0, 1]);
+        let data = hash_table_setup(&x, NA_INTEGER);
+        // Logical always uses M=4, K=2
+        assert_eq!(data.m, 4);
+        assert_eq!(data.k, 2);
     }
 
     #[test]
     fn test_hash_table_setup_raw() {
-        let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            let v = Rf_allocVector3(SEXPTYPE::RAWSXP, 5);
-            let raw_ptr = RAW(v);
-            for i in 0..5 {
-                *raw_ptr.add(i) = i as u8;
-            }
-
-            let data = hash_table_setup(v, NA_INTEGER);
-            // Raw always uses M=256, K=8
-            assert_eq!(data.m, 256);
-            assert_eq!(data.k, 8);
-        }
+        let session = crate::sexp::session::RSession::new();
+        let factory = test_factory(&session);
+        let x = make_raw_vector(&factory, &[0, 1, 2, 3, 4]);
+        let data = hash_table_setup(&x, NA_INTEGER);
+        // Raw always uses M=256, K=8
+        assert_eq!(data.m, 256);
+        assert_eq!(data.k, 8);
     }
 }
