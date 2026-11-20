@@ -119,8 +119,7 @@ fn passive_parser_domain_rejects_revocation_even_for_empty_program() {
 fn failed_parse_releases_completed_automatic_roots() {
     let session = RSession::new_for_gc_tests();
     let existing = parse_list(&session, "99", false).unwrap();
-    let preserve_count =
-        || unsafe { crate::sexp::protect::with_preserved_objects(|roots| roots.len()) };
+    let preserve_count = || crate::sexp::protect::with_preserved_objects(|roots| roots.len());
     let baseline = preserve_count();
     for input in ["1; )", "1; _", "1; 2; function("] {
         for with_spans in [false, true] {
@@ -159,7 +158,7 @@ fn successful_parse_returns_automatic_roots_and_drop_releases_them() {
         });
         assert_eq!(expressions[0].real_elt(0), Some(1.0));
         assert_eq!(expressions[1].real_elt(0), Some(2.0));
-        unsafe {
+        {
             crate::sexp::protect::with_preserved_objects(|roots| assert!(roots.is_empty()));
         }
         drop(expressions);
@@ -239,7 +238,7 @@ fn adversarial_parser_inputs_do_not_panic() {
 #[test]
 fn test_integer_literal() {
     let session = RSession::new_for_gc_tests();
-    unsafe {
+    {
         let result_handle = must(parse_str(&session, "42"));
         let result = result_handle.clone().as_raw();
         assert_eq!(TYPEOF(result), SEXPTYPE::REALSXP);
@@ -249,7 +248,7 @@ fn test_integer_literal() {
 #[test]
 fn test_real_literal() {
     let session = RSession::new_for_gc_tests();
-    unsafe {
+    {
         let result_handle = must(parse_str(&session, "3.14"));
         let result = result_handle.clone().as_raw();
         assert_eq!(TYPEOF(result), SEXPTYPE::REALSXP);
@@ -287,7 +286,7 @@ fn test_na_complex_literal() {
 #[test]
 fn test_int_suffix() {
     let session = RSession::new_for_gc_tests();
-    unsafe {
+    {
         let result_handle = must(parse_str(&session, "42L"));
         let result = result_handle.clone().as_raw();
         assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP);
@@ -297,7 +296,7 @@ fn test_int_suffix() {
 #[test]
 fn test_string_literal() {
     let session = RSession::new_for_gc_tests();
-    unsafe {
+    {
         let result_handle = must(parse_str(&session, "\"hello\""));
         let result = result_handle.clone().as_raw();
         assert_eq!(TYPEOF(result), SEXPTYPE::STRSXP);
@@ -382,7 +381,7 @@ fn test_numeric_overflow_and_malformed_literals_match_supported_r_behavior() {
 #[test]
 fn test_true_false_null() {
     let session = RSession::new_for_gc_tests();
-    unsafe {
+    {
         let t_handle = must(parse_str(&session, "TRUE"));
         let t = t_handle.clone().as_raw();
         assert_eq!(TYPEOF(t), SEXPTYPE::LGLSXP);
@@ -400,7 +399,7 @@ fn test_true_false_null() {
 #[test]
 fn t_and_f_parse_as_symbols_not_logicals() {
     let session = RSession::new_for_gc_tests();
-    unsafe {
+    {
         let t_handle = must(parse_str(&session, "T"));
         let t = t_handle.clone().as_raw();
         assert_eq!(TYPEOF(t), SEXPTYPE::SYMSXP);
@@ -417,7 +416,7 @@ fn t_and_f_parse_as_symbols_not_logicals() {
 #[test]
 fn test_identifier() {
     let session = RSession::new_for_gc_tests();
-    unsafe {
+    {
         let result_handle = must(parse_str(&session, "x"));
         let result = result_handle.clone().as_raw();
         assert_eq!(TYPEOF(result), SEXPTYPE::SYMSXP);
@@ -427,7 +426,7 @@ fn test_identifier() {
 #[test]
 fn test_na_inf_nan() {
     let session = RSession::new_for_gc_tests();
-    unsafe {
+    {
         let na_handle = must(parse_str(&session, "NA"));
         let na = na_handle.clone().as_raw();
         assert_eq!(TYPEOF(na), SEXPTYPE::LGLSXP);
@@ -465,7 +464,7 @@ fn test_na_character() {
 #[test]
 fn test_addition() {
     let session = RSession::new_for_gc_tests();
-    unsafe {
+    {
         let result_handle = must(parse_str(&session, "1 + 2"));
         let result = result_handle.clone().as_raw();
         assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
@@ -477,7 +476,7 @@ fn test_addition() {
 #[test]
 fn test_chained_addition() {
     let session = RSession::new_for_gc_tests();
-    unsafe {
+    {
         let result_handle = must(parse_str(&session, "1 + 2 + 3"));
         let result = result_handle.clone().as_raw();
         assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
@@ -487,7 +486,7 @@ fn test_chained_addition() {
 #[test]
 fn test_operator_precedence() {
     let session = RSession::new_for_gc_tests();
-    unsafe {
+    {
         let result_handle = must(parse_str(&session, "2 + 3 * 4"));
         let result = result_handle.clone().as_raw();
         assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
@@ -497,7 +496,7 @@ fn test_operator_precedence() {
 #[test]
 fn test_power() {
     let session = RSession::new_for_gc_tests();
-    unsafe {
+    {
         let result_handle = must(parse_str(&session, "2^3"));
         let result = result_handle.clone().as_raw();
         assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
@@ -507,7 +506,7 @@ fn test_power() {
 #[test]
 fn test_integer_div() {
     let session = RSession::new_for_gc_tests();
-    unsafe {
+    {
         let result_handle = must(parse_str(&session, "5 %/% 2"));
         let result = result_handle.clone().as_raw();
         assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
@@ -517,7 +516,7 @@ fn test_integer_div() {
 #[test]
 fn test_modulus() {
     let session = RSession::new_for_gc_tests();
-    unsafe {
+    {
         let result_handle = must(parse_str(&session, "5 %% 2"));
         let result = result_handle.clone().as_raw();
         assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
@@ -529,7 +528,7 @@ fn test_modulus() {
 #[test]
 fn test_unary_minus() {
     let session = RSession::new_for_gc_tests();
-    unsafe {
+    {
         let result_handle = must(parse_str(&session, "-5"));
         let result = result_handle.clone().as_raw();
         assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
@@ -569,7 +568,7 @@ fn unary_exponent_is_allowed_and_power_remains_right_associative() {
 #[test]
 fn test_assignment() {
     let session = RSession::new_for_gc_tests();
-    unsafe {
+    {
         let result_handle = must(parse_str(&session, "x <- 42"));
         let result = result_handle.clone().as_raw();
         assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
@@ -590,7 +589,7 @@ fn test_equals_assign() {
 #[test]
 fn test_right_assign() {
     let session = RSession::new_for_gc_tests();
-    unsafe {
+    {
         let result_handle = must(parse_str(&session, "42 -> x"));
         let result = result_handle.clone().as_raw();
         assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
@@ -613,7 +612,7 @@ fn test_super_assignment_preserves_operator() {
 #[test]
 fn test_function_call() {
     let session = RSession::new_for_gc_tests();
-    unsafe {
+    {
         let result_handle = must(parse_str(&session, "f(x, y)"));
         let result = result_handle.clone().as_raw();
         assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
@@ -625,7 +624,7 @@ fn test_function_call() {
 #[test]
 fn test_subscript_argument_order() {
     let session = RSession::new_for_gc_tests();
-    unsafe {
+    {
         let result_handle = must(parse_str(&session, "x[2]"));
         let result = result_handle.clone().as_raw();
         assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
@@ -638,7 +637,7 @@ fn test_subscript_argument_order() {
 #[test]
 fn test_named_arg() {
     let session = RSession::new_for_gc_tests();
-    unsafe {
+    {
         let result_handle = must(parse_str(&session, "f(x = 1)"));
         let result = result_handle.clone().as_raw();
         assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
@@ -648,7 +647,7 @@ fn test_named_arg() {
 #[test]
 fn test_quoted_named_arg() {
     let session = RSession::new_for_gc_tests();
-    unsafe {
+    {
         let result_handle = must(parse_str(&session, r#"c(1:2, "2" = 4)"#));
         let result = result_handle.clone().as_raw();
         assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
@@ -679,7 +678,7 @@ fn test_parenthesized() {
 #[test]
 fn test_comparison() {
     let session = RSession::new_for_gc_tests();
-    unsafe {
+    {
         let result_handle = must(parse_str(&session, "x < 10"));
         let result = result_handle.clone().as_raw();
         assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
@@ -689,7 +688,7 @@ fn test_comparison() {
 #[test]
 fn test_logical_ops() {
     let session = RSession::new_for_gc_tests();
-    unsafe {
+    {
         let and_handle = must(parse_str(&session, "x && y"));
         let and = and_handle.clone().as_raw();
         assert_eq!(TYPEOF(and), SEXPTYPE::LANGSXP);
@@ -709,7 +708,7 @@ fn test_logical_ops() {
 #[test]
 fn test_multi_expr() {
     let session = RSession::new_for_gc_tests();
-    unsafe {
+    {
         let result_handle = must(parse_str(&session, "x <- 1; y <- 2"));
         let result = result_handle.clone().as_raw();
         assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
@@ -719,7 +718,7 @@ fn test_multi_expr() {
 #[test]
 fn test_comment_preserves_newline_terminator() {
     let session = RSession::new_for_gc_tests();
-    unsafe {
+    {
         let result_handle = must(parse_str(&session, "x <- 1 # comment\ny <- 2\nx + y"));
         let result = result_handle.clone().as_raw();
         assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
@@ -741,7 +740,7 @@ fn test_comment_stops_at_carriage_return_and_hash_in_string_stays_literal() {
 #[test]
 fn test_newline_after_infix_continues_expression() {
     let session = RSession::new_for_gc_tests();
-    unsafe {
+    {
         let result_handle = must(parse_str(&session, "x <- 1 +\n 2 *\n 3"));
         let result = result_handle.clone().as_raw();
         assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
@@ -751,7 +750,7 @@ fn test_newline_after_infix_continues_expression() {
 #[test]
 fn test_empty_input() {
     let session = RSession::new_for_gc_tests();
-    unsafe {
+    {
         let result_handle = must(parse_str(&session, ""));
         let result = result_handle.clone().as_raw();
         assert_eq!(result, R_NilValue());
@@ -761,7 +760,7 @@ fn test_empty_input() {
 #[test]
 fn test_complex_expr() {
     let session = RSession::new_for_gc_tests();
-    unsafe {
+    {
         let result_handle = must(parse_str(&session, "sqrt(x^2 + y^2)"));
         let result = result_handle.clone().as_raw();
         assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
@@ -832,7 +831,7 @@ fn zz_paren_newline_plus() {
 #[test]
 fn test_if() {
     let session = RSession::new_for_gc_tests();
-    unsafe {
+    {
         let result_handle = must(parse_str(&session, "if (x > 0) x"));
         let result = result_handle.clone().as_raw();
         assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
@@ -842,7 +841,7 @@ fn test_if() {
 #[test]
 fn test_if_else() {
     let session = RSession::new_for_gc_tests();
-    unsafe {
+    {
         let result_handle = must(parse_str(&session, "if (x > 0) x else -x"));
         let result = result_handle.clone().as_raw();
         assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
@@ -869,7 +868,7 @@ fn if_body_newline_paren_is_next_expression() {
 #[test]
 fn test_for_loop() {
     let session = RSession::new_for_gc_tests();
-    unsafe {
+    {
         let result_handle = must(parse_str(&session, "for (i in 1:10) print(i)"));
         let result = result_handle.clone().as_raw();
         assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
@@ -879,7 +878,7 @@ fn test_for_loop() {
 #[test]
 fn test_while_loop() {
     let session = RSession::new_for_gc_tests();
-    unsafe {
+    {
         let result_handle = must(parse_str(&session, "while (x > 0) x <- x - 1"));
         let result = result_handle.clone().as_raw();
         assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
@@ -889,7 +888,7 @@ fn test_while_loop() {
 #[test]
 fn test_repeat_loop() {
     let session = RSession::new_for_gc_tests();
-    unsafe {
+    {
         let result_handle = must(parse_str(&session, "repeat { x <- x + 1 }"));
         let result = result_handle.clone().as_raw();
         assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
@@ -899,7 +898,7 @@ fn test_repeat_loop() {
 #[test]
 fn test_break_next() {
     let session = RSession::new_for_gc_tests();
-    unsafe {
+    {
         let brk_handle = must(parse_str(&session, "break"));
         let brk = brk_handle.clone().as_raw();
         assert_eq!(TYPEOF(brk), SEXPTYPE::LANGSXP);
@@ -915,7 +914,7 @@ fn test_break_next() {
 #[test]
 fn test_block() {
     let session = RSession::new_for_gc_tests();
-    unsafe {
+    {
         let result_handle = must(parse_str(&session, "{ a <- 1; b <- 2; a + b }"));
         let result = result_handle.clone().as_raw();
         assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
@@ -925,7 +924,7 @@ fn test_block() {
 #[test]
 fn test_empty_block() {
     let session = RSession::new_for_gc_tests();
-    unsafe {
+    {
         let result_handle = must(parse_str(&session, "{}"));
         let result = result_handle.clone().as_raw();
         assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
@@ -937,7 +936,7 @@ fn test_empty_block() {
 #[test]
 fn test_function_def() {
     let session = RSession::new_for_gc_tests();
-    unsafe {
+    {
         let result_handle = must(parse_str(&session, "function(x) x^2"));
         let result = result_handle.clone().as_raw();
         assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
@@ -947,7 +946,7 @@ fn test_function_def() {
 #[test]
 fn test_function_multi_args() {
     let session = RSession::new_for_gc_tests();
-    unsafe {
+    {
         let result_handle = must(parse_str(&session, "function(x, y = 1) x + y"));
         let result = result_handle.clone().as_raw();
         assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
@@ -957,7 +956,7 @@ fn test_function_multi_args() {
 #[test]
 fn test_function_no_args() {
     let session = RSession::new_for_gc_tests();
-    unsafe {
+    {
         let result_handle = must(parse_str(&session, "function() 42"));
         let result = result_handle.clone().as_raw();
         assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
@@ -969,7 +968,7 @@ fn test_function_no_args() {
 #[test]
 fn test_subscript() {
     let session = RSession::new_for_gc_tests();
-    unsafe {
+    {
         let result_handle = must(parse_str(&session, "x[1]"));
         let result = result_handle.clone().as_raw();
         assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
@@ -979,7 +978,7 @@ fn test_subscript() {
 #[test]
 fn test_subscript_multi() {
     let session = RSession::new_for_gc_tests();
-    unsafe {
+    {
         let result_handle = must(parse_str(&session, "x[i, j]"));
         let result = result_handle.clone().as_raw();
         assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
@@ -989,7 +988,7 @@ fn test_subscript_multi() {
 #[test]
 fn test_double_subscript() {
     let session = RSession::new_for_gc_tests();
-    unsafe {
+    {
         let result_handle = must(parse_str(&session, "x[[1]]"));
         let result = result_handle.clone().as_raw();
         assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
@@ -1001,7 +1000,7 @@ fn test_double_subscript() {
 #[test]
 fn test_dollar_access() {
     let session = RSession::new_for_gc_tests();
-    unsafe {
+    {
         let result_handle = must(parse_str(&session, "df$col"));
         let result = result_handle.clone().as_raw();
         assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
@@ -1011,7 +1010,7 @@ fn test_dollar_access() {
 #[test]
 fn test_at_access() {
     let session = RSession::new_for_gc_tests();
-    unsafe {
+    {
         let result_handle = must(parse_str(&session, "obj@slot"));
         let result = result_handle.clone().as_raw();
         assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
@@ -1023,7 +1022,7 @@ fn test_at_access() {
 #[test]
 fn test_custom_infix() {
     let session = RSession::new_for_gc_tests();
-    unsafe {
+    {
         let result_handle = must(parse_str(&session, "x %in% y"));
         let result = result_handle.clone().as_raw();
         assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
@@ -1033,7 +1032,7 @@ fn test_custom_infix() {
 #[test]
 fn test_matrix_multiply() {
     let session = RSession::new_for_gc_tests();
-    unsafe {
+    {
         let result_handle = must(parse_str(&session, "A %*% B"));
         let result = result_handle.clone().as_raw();
         assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
@@ -1045,7 +1044,7 @@ fn test_matrix_multiply() {
 #[test]
 fn test_backtick_name() {
     let session = RSession::new_for_gc_tests();
-    unsafe {
+    {
         let result_handle = must(parse_str(&session, "`weird name`"));
         let result = result_handle.clone().as_raw();
         assert_eq!(TYPEOF(result), SEXPTYPE::SYMSXP);
@@ -1057,7 +1056,7 @@ fn test_backtick_name() {
 #[test]
 fn test_formula() {
     let session = RSession::new_for_gc_tests();
-    unsafe {
+    {
         let result_handle = must(parse_str(&session, "y ~ x + z"));
         let result = result_handle.clone().as_raw();
         assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
@@ -1069,7 +1068,7 @@ fn test_formula() {
 #[test]
 fn test_varargs() {
     let session = RSession::new_for_gc_tests();
-    unsafe {
+    {
         let result_handle = must(parse_str(&session, "f(...)"));
         let result = result_handle.clone().as_raw();
         assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
@@ -1081,7 +1080,7 @@ fn test_varargs() {
 #[test]
 fn test_chained_dollar_subscript() {
     let session = RSession::new_for_gc_tests();
-    unsafe {
+    {
         let result_handle = must(parse_str(&session, "df$col[1]"));
         let result = result_handle.clone().as_raw();
         assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
@@ -1091,7 +1090,7 @@ fn test_chained_dollar_subscript() {
 #[test]
 fn test_function_in_block() {
     let session = RSession::new_for_gc_tests();
-    unsafe {
+    {
         let result_handle = must(parse_str(&session, "{ f <- function(x) x^2; f(3) }"));
         let result = result_handle.clone().as_raw();
         assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
@@ -1101,7 +1100,7 @@ fn test_function_in_block() {
 #[test]
 fn test_form_feed_is_whitespace() {
     let session = RSession::new_for_gc_tests();
-    unsafe {
+    {
         let result_handle = must(parse_str(&session, "1\u{0C}+\n2"));
         let result = result_handle.clone().as_raw();
         assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);

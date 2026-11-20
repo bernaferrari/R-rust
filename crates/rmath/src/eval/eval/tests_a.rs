@@ -106,8 +106,8 @@ mod tests_a {
         assert_eq!(descriptor.name, "+");
         assert_eq!(descriptor.kind, BUILTINSXP);
         assert!(descriptor.table_index >= 0);
-        assert_eq!(unsafe { PRIMNAME(primitive) }, "+");
-        assert_eq!(unsafe { PRIMPRINT(primitive) }, descriptor.print_flag);
+        assert_eq!(PRIMNAME(primitive), "+");
+        assert_eq!(PRIMPRINT(primitive), descriptor.print_flag);
     }
 
     #[test]

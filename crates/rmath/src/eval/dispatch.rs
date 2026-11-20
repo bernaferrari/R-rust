@@ -1834,7 +1834,7 @@ mod owned_argument_tests {
         let args = call.try_cdr().unwrap();
         let first_expression = args.try_car().unwrap();
         let first_code = first_expression.as_raw();
-        let original_named = unsafe { crate::sexp::accessors::NAMED(first_code) };
+        let original_named = crate::sexp::accessors::NAMED(first_code);
         let inner_code = inner_promise.as_ref().unwrap().as_raw();
         let before = crate::sexp::protect::R_ProtectCount();
         let notifications = force_allocations_with_reentrant_gc(&session);
@@ -1844,7 +1844,7 @@ mod owned_argument_tests {
         });
         assert!(notifications.get() >= 8);
         assert_eq!(
-            unsafe { crate::sexp::accessors::NAMED(first_code) },
+            crate::sexp::accessors::NAMED(first_code),
             original_named
         );
         drop(first_expression);
@@ -2045,8 +2045,8 @@ mod owned_argument_tests {
         let values: Vec<_> = cells.iter().map(|cell| cell.try_car().unwrap()).collect();
         assert_eq!(values.len(), 5);
         assert_eq!(values[0].integer_elt(0).unwrap(), 12);
-        assert_eq!(values[1].as_raw(), unsafe { R_MissingArg() });
-        assert_eq!(values[2].as_raw(), unsafe { R_MissingArg() });
+        assert_eq!(values[1].as_raw(), R_MissingArg());
+        assert_eq!(values[2].as_raw(), R_MissingArg());
         assert_eq!(values[3].integer_elt(0).unwrap(), 24);
         assert_eq!(values[4].integer_elt(0).unwrap(), 36);
         let tags: Vec<_> = cells
@@ -2085,14 +2085,14 @@ mod owned_argument_tests {
             .unwrap();
         let args = call.try_cdr().unwrap();
         let first = args.try_car().unwrap();
-        let before_named = unsafe { crate::sexp::accessors::NAMED(first.as_raw()) };
+        let before_named = crate::sexp::accessors::NAMED(first.as_raw());
         let before_roots = crate::sexp::protect::R_ProtectCount();
         let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             evalListKeepMissing(args, session.global_env().unwrap())
         }));
         assert!(error.is_err());
         assert_eq!(
-            unsafe { crate::sexp::accessors::NAMED(first.as_raw()) },
+            crate::sexp::accessors::NAMED(first.as_raw()),
             before_named
         );
         assert_eq!(crate::sexp::protect::R_ProtectCount(), before_roots);
@@ -2173,14 +2173,14 @@ mod owned_argument_tests {
             .unwrap();
         let args = call.try_cdr().unwrap();
         let first = args.try_car().unwrap();
-        let before_named = unsafe { crate::sexp::accessors::NAMED(first.as_raw()) };
+        let before_named = crate::sexp::accessors::NAMED(first.as_raw());
         let before_roots = crate::sexp::protect::R_ProtectCount();
         let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             evalList(args, session.global_env().unwrap(), Some(call), -1)
         }));
         assert!(error.is_err());
         assert_eq!(
-            unsafe { crate::sexp::accessors::NAMED(first.as_raw()) },
+            crate::sexp::accessors::NAMED(first.as_raw()),
             before_named
         );
         assert_eq!(crate::sexp::protect::R_ProtectCount(), before_roots);

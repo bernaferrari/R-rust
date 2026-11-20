@@ -42,7 +42,7 @@ fn run_assignment(session: &mut RSession, source: &str, assignment: &str, supera
         value(&global, c"rhsValue"),
         "source returns original RHS"
     );
-    assert_eq!(unsafe { crate::sexp::globals::R_Visible() }, 0);
+    assert_eq!(crate::sexp::globals::R_Visible(), 0);
     let expected_object = value(&global, c"x");
     let expected_events = value(&global, c"events");
     let expected_local = superassign.then(|| value(&environment, c"x"));
@@ -76,7 +76,7 @@ fn run_assignment(session: &mut RSession, source: &str, assignment: &str, supera
     let rhs = value(&global, c"rhsValue");
     let actual = execute(&body, &environment);
     assert_eq!(actual, rhs, "assignment returns the exact original RHS");
-    assert_eq!(unsafe { crate::sexp::globals::R_Visible() }, 0);
+    assert_eq!(crate::sexp::globals::R_Visible(), 0);
     for (expected, actual) in [
         (expected_object, value(&global, c"x")),
         (expected_events, value(&global, c"events")),
@@ -219,7 +219,7 @@ fn owned_nested_subassignment_detached_pool_survives_getter_collection() {
     }));
     let result = execute(&body, &environment);
     assert_eq!(result.integer_elt(0), Some(7));
-    assert_eq!(unsafe { crate::sexp::globals::R_Visible() }, 0);
+    assert_eq!(crate::sexp::globals::R_Visible(), 0);
     assert!(called.get());
     let (actual, _, _) = session.eval_code_with_output_capture(
         "identical(x,list(a=structure(1L,index=quote(unbound_index)),b=2L))",
@@ -414,7 +414,7 @@ fn gnu_nested_subassignment_fixtures_execute_without_source_fallback() {
             ))
         };
         assert_eq!(execute(&body, &environment), rhs);
-        assert_eq!(unsafe { crate::sexp::globals::R_Visible() }, 0);
+        assert_eq!(crate::sexp::globals::R_Visible(), 0);
         setup(&mut session, assertion);
     }
 }

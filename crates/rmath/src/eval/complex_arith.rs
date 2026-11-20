@@ -410,8 +410,7 @@ mod tests {
                 _: R_xlen_t,
             ) -> SexpResult<AltrepElement<'a>> {
                 self.0.set(self.0.get() + 1);
-                // SAFETY: the provider runs in its pinned original runtime.
-                unsafe { crate::sexp::gengc::full_gc() };
+                crate::sexp::gengc::full_gc();
                 Ok(AltrepElement::Real(5.0))
             }
         }

@@ -301,7 +301,7 @@ mod tests {
     fn compiler_namespace_exposes_supported_compiler_controls() {
         let _session = RSession::new();
         let namespace = unsafe { namespace() };
-        assert_ne!(namespace, unsafe { R_NilValue() });
+        assert_ne!(namespace, R_NilValue());
         assert_eq!(EXPORTS, &["cmpfun", "compile", "enableJIT", "disassemble"]);
     }
 

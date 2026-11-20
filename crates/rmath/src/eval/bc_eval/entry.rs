@@ -149,8 +149,7 @@ pub(crate) unsafe fn bc_eval_private(
                         if code == R_MissingArg() || code.is_null() {
                             bc_missing_arg_error(sym);
                         }
-                        let forced =
-                            with_stack_rooted(&stack, val, || unsafe { forcePromise(val) });
+                        let forced = with_stack_rooted(&stack, val, || forcePromise(val));
                         stack.push(forced);
                     } else {
                         stack.push(val);
@@ -939,7 +938,7 @@ pub(crate) unsafe fn bc_eval_private(
                                     SEXPTYPE::LANGSXP.as_c_int(),
                                 );
                             }
-                            let result = with_stack_rooted(&stack, call, || unsafe {
+                            let result = with_stack_rooted(&stack, call, || {
                                 crate::eval::eval::Rf_eval(call, rho)
                             });
                             stack.push(result);
@@ -977,7 +976,7 @@ pub(crate) unsafe fn bc_eval_private(
                                     SEXPTYPE::LANGSXP.as_c_int(),
                                 );
                             }
-                            let result = with_stack_rooted(&stack, call, || unsafe {
+                            let result = with_stack_rooted(&stack, call, || {
                                 crate::eval::eval::Rf_eval(call, rho)
                             });
                             stack.push(result);

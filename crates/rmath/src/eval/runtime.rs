@@ -136,7 +136,7 @@ mod tests {
             panic!("visibility unwind probe");
         }));
         assert!(result.is_err());
-        assert_eq!(unsafe { R_Visible_in(inspection_pin.as_ptr()) }, saved);
+        assert_eq!(R_Visible_in(inspection_pin.as_ptr()), saved);
         assert!(!crate::sexp::instance::has_current_instance());
     }
 }

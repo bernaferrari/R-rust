@@ -1103,7 +1103,7 @@ mod owned_matcher_tests {
                 "revoked owners refuse results; live owners resume after nested session construction"
             );
             assert_eq!(
-                unsafe { R_Visible_in(instance) },
+                R_Visible_in(instance),
                 visible,
                 "cleanup restores the original body visibility, close={close}, replace={replace}"
             );
@@ -1115,7 +1115,7 @@ mod owned_matcher_tests {
                     .unwrap()
                     .with_active_in(|other| {
                         assert_eq!(
-                            unsafe { R_Visible_in(other) },
+                            R_Visible_in(other),
                             1 - visible,
                             "original cleanup must not change a replacement runtime"
                         );
