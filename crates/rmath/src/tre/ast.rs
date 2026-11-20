@@ -443,33 +443,38 @@ pub fn MIN(a: isize, b: isize) -> isize {
 
 // ===== Tag ordering =====
 
-pub fn tre_tag_order(
-    num_tags: c_int,
-    tag_directions: *const c_int,
-    t1: *const c_int,
-    t2: *const c_int,
-) -> c_int {
-    // SAFETY: the three arrays each carry `num_tags` readable elements.
-    unsafe {
-        for i in 0..num_tags as isize {
-            if *tag_directions.offset(i) == tre_tag_direction_t::TRE_TAG_MINIMIZE as c_int {
-                if *t1.offset(i) < *t2.offset(i) {
-                    return 1;
-                }
-                if *t1.offset(i) > *t2.offset(i) {
-                    return 0;
-                }
-            } else {
-                if *t1.offset(i) > *t2.offset(i) {
-                    return 1;
-                }
-                if *t1.offset(i) < *t2.offset(i) {
-                    return 0;
-                }
+/// Return a pointer suitable for building a zero-length slice: maps null to a
+/// properly aligned dangling pointer, so `from_raw_parts(_, 0)` stays valid.
+#[inline]
+pub(crate) fn ptr_or_dangling<T>(p: *const T) -> *const T {
+    if p.is_null() {
+        std::ptr::NonNull::<T>::dangling().as_ptr()
+    } else {
+        p
+    }
+}
+
+/// Compare two tag vectors element-wise. All three slices describe the same
+/// `num_tags` elements; callers build them from the raw tag arrays.
+pub fn tre_tag_order(tag_directions: &[c_int], t1: &[c_int], t2: &[c_int]) -> c_int {
+    for ((&dir, &a), &b) in tag_directions.iter().zip(t1.iter()).zip(t2.iter()) {
+        if dir == tre_tag_direction_t::TRE_TAG_MINIMIZE as c_int {
+            if a < b {
+                return 1;
+            }
+            if a > b {
+                return 0;
+            }
+        } else {
+            if a > b {
+                return 1;
+            }
+            if a < b {
+                return 0;
             }
         }
-        0
     }
+    0
 }
 
 // ===== AST functions =====

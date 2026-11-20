@@ -63,31 +63,28 @@ fn CHECK_ASSERTIONS(
 
 #[inline]
 fn CHECK_CHAR_CLASSES(
-    trans_i: *const tre_tnfa_transition_t,
-    tnfa: *const tre_tnfa_t,
+    trans_i: &tre_tnfa_transition_t,
+    tnfa: &tre_tnfa_t,
     eflags: c_int,
     prev_c: tre_cint_t,
 ) -> bool {
-    unsafe {
-        let assertions = (*trans_i).assertions;
-        let icase = (*tnfa).cflags & REG_ICASE;
-        ((assertions & ASSERT_CHAR_CLASS) != 0
-            && icase == 0
-            && !super::parse::tre_isctype(prev_c, (*trans_i).u.get_class()))
-            || ((assertions & ASSERT_CHAR_CLASS) != 0
-                && icase != 0
-                && !super::parse::tre_isctype(
-                    super::parse::tre_tolower(prev_c),
-                    (*trans_i).u.get_class(),
-                )
-                && !super::parse::tre_isctype(
-                    super::parse::tre_toupper(prev_c),
-                    (*trans_i).u.get_class(),
-                ))
-            || ((assertions & ASSERT_CHAR_CLASS_NEG) != 0
-                && super::parse::tre_neg_char_classes_match((*trans_i).neg_classes, prev_c, icase)
-                    != 0)
-    }
+    let assertions = trans_i.assertions;
+    let icase = tnfa.cflags & REG_ICASE;
+    ((assertions & ASSERT_CHAR_CLASS) != 0
+        && icase == 0
+        && !super::parse::tre_isctype(prev_c, trans_i.u.get_class()))
+        || ((assertions & ASSERT_CHAR_CLASS) != 0
+            && icase != 0
+            && !super::parse::tre_isctype(
+                super::parse::tre_tolower(prev_c),
+                trans_i.u.get_class(),
+            )
+            && !super::parse::tre_isctype(
+                super::parse::tre_toupper(prev_c),
+                trans_i.u.get_class(),
+            ))
+        || ((assertions & ASSERT_CHAR_CLASS_NEG) != 0
+            && super::parse::tre_neg_char_classes_match(trans_i.neg_classes, prev_c, icase) != 0)
 }
 
 #[allow(clippy::if_same_then_else)]
@@ -364,10 +361,18 @@ pub fn tre_tnfa_run_backtrack(
                         || (match_eo == pos
                             && !match_tags.is_null()
                             && tre_tag_order(
-                                (*tnfa).num_tags,
-                                (*tnfa).tag_directions,
-                                tags,
-                                match_tags,
+                                std::slice::from_raw_parts(
+                                    ptr_or_dangling((*tnfa).tag_directions),
+                                    (*tnfa).num_tags as usize,
+                                ),
+                                std::slice::from_raw_parts(
+                                    ptr_or_dangling(tags),
+                                    (*tnfa).num_tags as usize,
+                                ),
+                                std::slice::from_raw_parts(
+                                    ptr_or_dangling(match_tags),
+                                    (*tnfa).num_tags as usize,
+                                ),
                             ) != 0)
                     {
                         match_eo = pos;
@@ -619,7 +624,7 @@ pub fn tre_tnfa_run_backtrack(
                                 reg_notbol,
                                 reg_noteol,
                                 reg_newline,
-                            ) || CHECK_CHAR_CLASSES(trans_i, tnfa, eflags, prev_c))
+                            ) || CHECK_CHAR_CLASSES(&*trans_i, &*tnfa, eflags, prev_c))
                         {
                             trans_i = trans_i.add(1);
                             continue;
