@@ -54,6 +54,15 @@ user workflows have passed on native Rport and production Wasm.
 
 ## Main verification
 
+- At `1ab76d6f`, the distribution registrations call safe numerical
+  kernels directly. The core runtime and CLI have 150 fewer written
+  unsafe sites than `2b3002e0`. The same checkpoint fixes bounded
+  `nlminb()` reporting. It returns the objective at the named parameters
+  it publishes and honors the function and iteration limits. Three
+  native optimizer tests passed. Production Wasm matched pinned GNU R
+  on the bounded fit and 14 distribution cases. The dependency and S4
+  gate passed. [Safety and optimizer receipt](ci-checkpoints/unsafe-scalar-nlminb-1ab76d6f.json)
+
 - At `b64ff134`, optimizer scratch uses the session’s transient
   allocator and nested bounded fits each own their continuation state.
   Native and production Wasm completed nested fits and recovered after

@@ -1,0 +1,45 @@
+{
+  "source_commit": "1ab76d6f88d31615df1689126eaf13fa71b65aeb",
+  "baseline_commit": "2b3002e003925c899bbf67ba693ac4dbef1931af",
+  "count_scope": [
+    "crates/rmath/src",
+    "crates/nmath/src",
+    "crates/r-host-cli/src"
+  ],
+  "count_method": "Written Rust unsafe syntax with ast-grep 0.51.3. Inline tests included. Comments, strings and macro expansions excluded.",
+  "baseline_syntax_sites": {
+    "unsafe_blocks": 15448,
+    "unsafe_foreign_modules": 28,
+    "unsafe_function_declarations": 8637,
+    "unsafe_function_types": 219,
+    "unsafe_implementations": 5,
+    "total": 24337
+  },
+  "checkpoint_syntax_sites": {
+    "unsafe_blocks": 15376,
+    "unsafe_foreign_modules": 28,
+    "unsafe_function_declarations": 8565,
+    "unsafe_function_types": 213,
+    "unsafe_implementations": 5,
+    "total": 24187
+  },
+  "net_syntax_sites_removed": 150,
+  "net_explicit_blocks_removed": 72,
+  "distribution_change": {
+    "unsafe_blocks_removed": 74,
+    "unsafe_function_declarations_removed": 74,
+    "unsafe_function_types_removed": 6
+  },
+  "native_optimizer_tests_passed": 3,
+  "wasm": {
+    "wasm_sha256": "e67a676b21f1390f6b03859b739294114f52867d09f2f734dca5c9b9b6892433",
+    "nlminb": "pass",
+    "distributions": "pass"
+  },
+  "dependency_scanner_and_s4": {
+    "wasm_sha256": "e67a676b21f1390f6b03859b739294114f52867d09f2f734dca5c9b9b6892433",
+    "dependency_scans_passed": 4,
+    "s4_after_dependency_scans": "pass"
+  },
+  "port_scope": "Bounded optimizer objective, names, control limits and counters, using the existing L-BFGS-B backend."
+}
