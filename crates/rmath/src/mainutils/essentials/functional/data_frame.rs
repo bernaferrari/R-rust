@@ -2,7 +2,7 @@
 
 use super::*;
 
-pub(crate) unsafe fn recycle_column_if_needed(x: SEXP, target_len: R_xlen_t) -> SEXP {
+pub(crate) fn recycle_column_if_needed(x: SEXP, target_len: R_xlen_t) -> SEXP {
     unsafe {
         // GNU recycles data.frame columns by *rows*. A 2-D AsIs / model.matrix
         // column has length nrow*ncol, so XLENGTH is the wrong unit.
@@ -43,7 +43,7 @@ pub(crate) unsafe fn recycle_column_if_needed(x: SEXP, target_len: R_xlen_t) -> 
     }
 }
 
-pub(crate) unsafe fn melt_table(value: SEXP) -> SEXP {
+pub(crate) fn melt_table(value: SEXP) -> SEXP {
     unsafe {
         let dim =
             crate::sexp::attrib_core::getAttrib(value, crate::sexp::attrib_core::R_DimSymbol());
@@ -130,7 +130,7 @@ pub(crate) unsafe fn melt_table(value: SEXP) -> SEXP {
 }
 
 /// R's `data.frame(...)`: build a data-frame list while expanding data-frame arguments.
-pub unsafe fn do_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         // `...` are the columns; the remaining formals (row.names,
         // check.rows, check.names, fix.empty.names, stringsAsFactors) are
@@ -313,18 +313,18 @@ pub unsafe fn do_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 
 /// R's `lengths(x)` alias — lengths of list elements.
 /// Wrapper that delegates to do_lengths (already registered separately).
-pub unsafe fn do_length_list(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { do_lengths(_call, _op, args, _rho) }
+pub fn do_length_list(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    { do_lengths(_call, _op, args, _rho) }
 }
 
 /// R's `names(x)` for lists — names of list elements.
 /// Wrapper that delegates to do_names.
-pub unsafe fn do_names_list(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_names_list(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe { do_names(_call, _op, args, _rho) }
 }
 
 /// R's `[[i]]` — get element i from a list (1-indexed).
-pub unsafe fn do_list_get(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_list_get(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let i = CAR(CDR(args));
@@ -344,7 +344,7 @@ pub unsafe fn do_list_get(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 }
 
 /// R's `[[i]] <- value` — set element i in a list (1-indexed).
-pub unsafe fn do_list_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_list_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let i = CAR(CDR(args));
@@ -368,7 +368,7 @@ pub unsafe fn do_list_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 
 /// R's `c(...)` for lists — concatenate lists together.
 /// If all args are VECSXP, result is a flattened VECSXP.
-pub unsafe fn do_c_list(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_c_list(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let mut total_len: R_xlen_t = 0;
         let mut current = args;

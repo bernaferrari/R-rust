@@ -5,7 +5,7 @@ use super::*;
 /// R's `sweep(x, MARGIN, STATS, FUN="-")` — sweep out statistics from array.
 ///
 /// For each row/column, applies FUN(x, STATS) element-wise.
-pub unsafe fn do_sweep(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_sweep(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let margin_arg = CAR(CDR(args));

@@ -3,7 +3,7 @@
 use super::*;
 
 /// R's `unlist(x)` — flatten nested list to a vector.
-pub unsafe fn do_unlist(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_unlist(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let mut ans = R_NilValue();
         if crate::eval::dispatch::DispatchOrEval(
@@ -128,7 +128,7 @@ pub unsafe fn do_unlist(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     }
 }
 
-pub(super) unsafe fn logical_from_raw_arg(args: SEXP, position: usize) -> Option<bool> {
+pub(super) fn logical_from_raw_arg(args: SEXP, position: usize) -> Option<bool> {
     unsafe {
         let mut current = args;
         for _ in 0..position {
@@ -291,13 +291,13 @@ impl UnlistValue {
     fn as_sexp(&self) -> SEXP {
         match self {
             Self::Object(value) => *value,
-            Self::Element { parent, index } => unsafe { unlist_scalar_element(*parent, *index) },
+            Self::Element { parent, index } => { unlist_scalar_element(*parent, *index) },
             _ => R_NilValue(),
         }
     }
 }
 
-pub(super) unsafe fn unlist_empty_result(
+pub(super) fn unlist_empty_result(
     x: SEXP,
     recursive: bool,
     use_names: bool,
@@ -372,7 +372,7 @@ pub(super) fn unlist_result_type(entries: &[UnlistEntry]) -> SEXPTYPE {
     }
 }
 
-pub(super) unsafe fn unlist_scalar_element(x: SEXP, index: R_xlen_t) -> SEXP {
+pub(super) fn unlist_scalar_element(x: SEXP, index: R_xlen_t) -> SEXP {
     unsafe {
         match TYPEOF(x) {
             t if t == SEXPTYPE::LGLSXP => Rf_ScalarLogical(*LOGICAL(x).add(index as usize)),
@@ -393,7 +393,7 @@ pub(super) unsafe fn unlist_scalar_element(x: SEXP, index: R_xlen_t) -> SEXP {
     }
 }
 
-pub(super) unsafe fn collect_unlist_entries(
+pub(super) fn collect_unlist_entries(
     x: SEXP,
     prefix: UnlistName,
 
@@ -516,7 +516,7 @@ pub(super) unsafe fn collect_unlist_entries(
     }
 }
 
-pub(super) unsafe fn unlist_element_name(
+pub(super) fn unlist_element_name(
     prefix: &UnlistName,
     names: SEXP,
     index: R_xlen_t,

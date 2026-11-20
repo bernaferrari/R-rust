@@ -4,7 +4,7 @@ use super::*;
 
 /// R's `do.call(what, args)` — call function with list of args.
 pub(super) fn do_call_arguments(args: SEXP) -> [Option<SEXP>; 4] {
-    unsafe {
+    {
         let formals = ["what", "args", "quote", "envir"];
         let mut matched = [None; 4];
         let mut positional = Vec::new();
@@ -51,7 +51,7 @@ pub(super) fn do_call_arguments(args: SEXP) -> [Option<SEXP>; 4] {
     }
 }
 
-pub unsafe fn do_do_call(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_do_call(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let matched = do_call_arguments(args);
         let what = crate::eval::eval::Rf_eval(matched[0].unwrap(), rho);
@@ -141,7 +141,7 @@ pub unsafe fn do_do_call(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
 /// the R-level builtin with the four-argument `(what, args, quote, envir)`
 /// shape, so `.Internal` calls arriving from upstream base source closures
 /// are reshaped here before delegation.
-pub unsafe fn do_do_call_internal(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_do_call_internal(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let mut matched: [Option<SEXP>; 3] = [None; 3];
         let mut positional = Vec::new();
@@ -195,10 +195,10 @@ pub(super) fn callable_arg_by_name_or_position(
     position: usize,
     rho: SEXP,
 ) -> SEXP {
-    unsafe { match_fun_arg(arg_by_name_or_position(args, names, position), rho) }
+    { match_fun_arg(arg_by_name_or_position(args, names, position), rho) }
 }
 
-pub(super) unsafe fn match_fun_arg(expr: SEXP, rho: SEXP) -> SEXP {
+pub(super) fn match_fun_arg(expr: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         if expr.is_null() || expr == R_NilValue() {
             return expr;

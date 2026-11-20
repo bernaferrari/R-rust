@@ -3,7 +3,7 @@
 use super::*;
 
 /// R's `split(x, f)` — split vector `x` into groups defined by `f`.
-pub unsafe fn do_split(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_split(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let f = CAR(CDR(args));
@@ -130,7 +130,7 @@ pub unsafe fn do_split(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 /// GNU `unsplit(value, f)` inverse of `split`.
-pub unsafe fn do_unsplit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_unsplit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let value = CAR(args);
         let f = CAR(CDR(args));
@@ -169,7 +169,7 @@ pub unsafe fn do_unsplit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
     }
 }
 
-pub(super) unsafe fn split_factor_levels(f: SEXP) -> Option<Vec<String>> {
+pub(super) fn split_factor_levels(f: SEXP) -> Option<Vec<String>> {
     unsafe {
         let levels =
             crate::sexp::attrib_core::getAttrib(f, crate::sexp::attrib_core::R_LevelsSymbol());
@@ -184,7 +184,7 @@ pub(super) unsafe fn split_factor_levels(f: SEXP) -> Option<Vec<String>> {
     }
 }
 
-pub(super) unsafe fn split_group_label(f: SEXP, index: R_xlen_t) -> Option<String> {
+pub(super) fn split_group_label(f: SEXP, index: R_xlen_t) -> Option<String> {
     unsafe {
         if let Some(levels) = split_factor_levels(f) {
             if TYPEOF(f) != SEXPTYPE::INTSXP {
@@ -256,7 +256,7 @@ pub(super) fn split_logical_rank(value: &str) -> u8 {
 }
 
 /// R's `melt(x)` — melt a data.frame to long format (simplified).
-pub unsafe fn do_melt(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_melt(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     {
         // Simplified: return the input as-is
         // A full implementation would reshape the data.frame
@@ -269,7 +269,7 @@ pub unsafe fn do_melt(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// R's `cast(x, formula)` — cast melted data (simplified).
-pub unsafe fn do_cast(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_cast(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     {
         // Simplified: return the input as-is
         // A full implementation would reshape using the formula

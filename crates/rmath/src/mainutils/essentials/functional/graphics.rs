@@ -3,7 +3,7 @@
 use super::*;
 
 /// R's plot generic delegates through the ordinary S3 machinery.
-pub unsafe fn do_plot(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_plot(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         crate::mainutils::base_wrappers::apply(
             "plot",
@@ -16,7 +16,7 @@ pub unsafe fn do_plot(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 /// GNU `preplot(object, ...)` — `UseMethod("preplot")`.
-pub unsafe fn do_preplot(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_preplot(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         crate::mainutils::base_wrappers::apply(
             "preplot",
@@ -29,7 +29,7 @@ pub unsafe fn do_preplot(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
 }
 
 /// GNU `profile(fitted, ...)` — `UseMethod("profile")`.
-pub unsafe fn do_profile(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_profile(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         crate::mainutils::base_wrappers::apply(
             "profile",
@@ -42,7 +42,7 @@ pub unsafe fn do_profile(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
 }
 
 /// GNU `tsdiag(object, gof.lag, ...)` — `UseMethod("tsdiag")`.
-pub unsafe fn do_tsdiag(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_tsdiag(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         crate::mainutils::base_wrappers::apply(
             "tsdiag",
@@ -55,7 +55,7 @@ pub unsafe fn do_tsdiag(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 /// GNU `free1way(y, ...)` — `UseMethod("free1way")`.
-pub unsafe fn do_free1way(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_free1way(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         crate::mainutils::base_wrappers::apply(
             "free1way",
@@ -68,7 +68,7 @@ pub unsafe fn do_free1way(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
 }
 
 /// GNU `power.free1way.test` — exactly one of n/delta/power/sig.level is NULL.
-pub unsafe fn do_power_free1way_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_power_free1way_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let mut n_null = true;
         let mut delta_null = true;
@@ -116,7 +116,7 @@ pub unsafe fn do_power_free1way_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: S
 }
 
 /// GNU `monthplot(x, ...)` — `UseMethod("monthplot")`.
-pub unsafe fn do_monthplot(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_monthplot(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         crate::mainutils::base_wrappers::apply(
             "monthplot",
@@ -129,7 +129,7 @@ pub unsafe fn do_monthplot(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEX
 }
 
 /// GNU `monthplot.default(x)` — `range(x)` becomes `ylim`.
-pub unsafe fn do_monthplot_default(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_monthplot_default(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let n = if x.is_null() || x == R_NilValue() {
@@ -164,7 +164,7 @@ pub unsafe fn do_monthplot_default(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEX
 }
 
 /// GNU `scatter.smooth(x, y)` — `seq(min(x), max(x), length.out=)`.
-pub unsafe fn do_scatter_smooth(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_scatter_smooth(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let n = if x.is_null() || x == R_NilValue() {
@@ -199,7 +199,7 @@ pub unsafe fn do_scatter_smooth(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) 
 }
 
 /// GNU `interaction.plot(x.factor, trace.factor, response)` — invisible.
-pub unsafe fn do_interaction_plot(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_interaction_plot(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let rest = CDR(args);
@@ -237,7 +237,7 @@ pub unsafe fn do_interaction_plot(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP
 }
 
 /// GNU `lag.plot(x)` — `as.ts(as.matrix(x))` then plot.
-pub unsafe fn do_lag_plot(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_lag_plot(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() || XLENGTH(x) == 0 {
@@ -252,7 +252,7 @@ pub unsafe fn do_lag_plot(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 }
 
 /// GNU `eff.aovlist(aovlist)` — `$qr` on each stratum.
-pub unsafe fn do_eff_aovlist(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_eff_aovlist(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let aovlist = CAR(args);
         if aovlist.is_null() || aovlist == R_NilValue() || TYPEOF(aovlist) != SEXPTYPE::VECSXP {
@@ -277,7 +277,7 @@ pub unsafe fn do_eff_aovlist(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> S
 }
 
 /// GNU `biplot(x, ...)` — `UseMethod("biplot")`.
-pub unsafe fn do_biplot(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_biplot(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         crate::mainutils::base_wrappers::apply(
             "biplot",
@@ -290,7 +290,7 @@ pub unsafe fn do_biplot(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 /// GNU `screeplot(x, ...)` — `UseMethod("screeplot")`.
-pub unsafe fn do_screeplot(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_screeplot(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         crate::mainutils::base_wrappers::apply(
             "screeplot",
@@ -303,7 +303,7 @@ pub unsafe fn do_screeplot(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEX
 }
 
 /// GNU `biplot.default(x, y, ...)` — requires `y`.
-pub unsafe fn do_biplot_default(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_biplot_default(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let y = CAR(CDR(args));
         if y.is_null() || y == R_NilValue() || y == crate::sexp::globals::R_MissingArg() {
@@ -317,7 +317,7 @@ pub unsafe fn do_biplot_default(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) 
 }
 
 /// GNU `screeplot.default(x)` — reads `x$sdev`.
-pub unsafe fn do_screeplot_default(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_screeplot_default(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let dollar = crate::sexp::constructors::Rf_lang3(
@@ -332,16 +332,16 @@ pub unsafe fn do_screeplot_default(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP
 }
 
 /// GNU `plot.spec.coherency(x)` — reads `x$spec`.
-pub unsafe fn do_plot_spec_coherency(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe { spec_plot_read_spec(args, rho) }
+pub fn do_plot_spec_coherency(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    { spec_plot_read_spec(args, rho) }
 }
 
 /// GNU `plot.spec.phase(x)` — reads `x$spec`.
-pub unsafe fn do_plot_spec_phase(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe { spec_plot_read_spec(args, rho) }
+pub fn do_plot_spec_phase(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    { spec_plot_read_spec(args, rho) }
 }
 
-pub(super) unsafe fn spec_plot_read_spec(args: SEXP, rho: SEXP) -> SEXP {
+pub(super) fn spec_plot_read_spec(args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let dollar = Rf_lang3(Rf_install(c"$".as_ptr()), x, Rf_install(c"spec".as_ptr()));
@@ -351,7 +351,7 @@ pub(super) unsafe fn spec_plot_read_spec(args: SEXP, rho: SEXP) -> SEXP {
     }
 }
 
-pub unsafe fn do_plot_default(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_plot_default(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     #[cfg(feature = "renderplot-device")]
     unsafe {
         crate::mainutils::portable_plot::plot_default(call, op, args, rho)
@@ -361,13 +361,13 @@ pub unsafe fn do_plot_default(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SE
         let _ = (call, op, rho);
         // GNU plot.default establishes the plot frame via plot.new() first.
         crate::library::graphics::graphics::set_plot_new_state();
-        unsafe { record_plot_window(args) };
+        { record_plot_window(args) };
         crate::sexp::globals::R_NilValue()
     }
 }
 
 #[cfg(not(feature = "renderplot-device"))]
-pub(super) unsafe fn record_plot_window(args: SEXP) {
+pub(super) fn record_plot_window(args: SEXP) {
     unsafe {
         let x = crate::mainutils::essentials::arg_by_name_or_position(args, &["x"], 0);
         if x.is_null() || x == crate::sexp::globals::R_NilValue() {
@@ -623,20 +623,20 @@ pub(super) fn pretty_axp(lo0: f64, hi0: f64) -> (f64, f64, f64) {
     (lo * unit, hi * unit, n)
 }
 
-pub unsafe fn do_plot_window(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_plot_window(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     #[cfg(feature = "renderplot-device")]
     unsafe {
         crate::mainutils::portable_plot::draw_builtin("plot.window", args)
     }
     #[cfg(not(feature = "renderplot-device"))]
-    unsafe {
+    {
         record_window_limits(args);
         crate::sexp::globals::R_NilValue()
     }
 }
 
 #[cfg(not(feature = "renderplot-device"))]
-pub(super) unsafe fn record_window_limits(args: SEXP) {
+pub(super) fn record_window_limits(args: SEXP) {
     unsafe {
         let xlim = crate::mainutils::essentials::arg_by_name_or_position(args, &["xlim"], 0);
         let ylim = crate::mainutils::essentials::arg_by_name_or_position(args, &["ylim"], 1);
@@ -790,11 +790,11 @@ pub(super) unsafe fn record_window_limits(args: SEXP) {
 
 macro_rules! portable_graphics_handlers {
     ($($handler:ident => $name:literal),* $(,)?) => {$(
-        pub unsafe fn $handler(_call:SEXP,_op:SEXP,args:SEXP,_rho:SEXP)->SEXP {
+        pub fn $handler(_call:SEXP,_op:SEXP,args:SEXP,_rho:SEXP)->SEXP {
             #[cfg(feature="renderplot-device")]
             unsafe {crate::mainutils::portable_plot::draw_builtin($name,args)}
             #[cfg(not(feature="renderplot-device"))]
-            {let _=args; unsafe { crate::sexp::globals::R_NilValue() }}
+            {let _=args; { crate::sexp::globals::R_NilValue() }}
         }
     )*};
 }
@@ -804,7 +804,7 @@ portable_graphics_handlers! {
     do_text_default=>"text.default",do_title=>"title",do_box=>"box",
 }
 
-pub unsafe fn do_axis(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_axis(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     #[cfg(feature = "renderplot-device")]
     unsafe {
         return crate::mainutils::portable_plot::draw_builtin("axis", args);
@@ -887,7 +887,7 @@ pub unsafe fn do_axis(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
-pub unsafe fn do_plot_new(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_plot_new(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     // No active device: GEcurrentDevice evaluates options("device").
     // A closure that opens nothing is an error (PR#15883).
     #[cfg(feature = "renderplot-device")]
@@ -908,7 +908,7 @@ pub unsafe fn do_plot_new(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 }
 
 /// GNU `rect(...)` — no device: `plot.new has not been called yet`.
-pub unsafe fn do_rect(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_rect(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     #[cfg(feature = "renderplot-device")]
     unsafe {
         crate::mainutils::portable_plot::draw_builtin("rect", args)
@@ -922,7 +922,7 @@ pub unsafe fn do_rect(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// GNU `abline(...)` — no device: `plot.new has not been called yet`.
-pub unsafe fn do_abline(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_abline(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     #[cfg(feature = "renderplot-device")]
     unsafe {
         crate::mainutils::portable_plot::draw_builtin("abline", args)
@@ -949,7 +949,7 @@ pub(super) fn no_device_require_plot_frame() {
 
 macro_rules! graphics_generics {
     ($($handler:ident => $name:literal),* $(,)?) => {$(
-        pub unsafe fn $handler(_call:SEXP,_op:SEXP,args:SEXP,rho:SEXP)->SEXP {
+        pub fn $handler(_call:SEXP,_op:SEXP,args:SEXP,rho:SEXP)->SEXP {
             unsafe {
                 crate::mainutils::base_wrappers::apply($name,concat!("function(x,...) UseMethod('",$name,"')"),args,rho,false)
             }

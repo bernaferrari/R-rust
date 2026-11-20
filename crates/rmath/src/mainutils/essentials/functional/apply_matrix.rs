@@ -76,7 +76,7 @@ pub(super) fn list_apply_names(x: SEXP, n: R_xlen_t) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Extract a row from a matrix (column-major storage) as a length-ncol vector.
-pub(super) unsafe fn extract_matrix_row(
+pub(super) fn extract_matrix_row(
     x: SEXP,
     nrow: R_xlen_t,
     ncol: R_xlen_t,
@@ -103,7 +103,7 @@ pub(super) unsafe fn extract_matrix_row(
 }
 
 /// Extract a column from a matrix (column-major storage) as a length-nrow vector.
-pub(super) unsafe fn extract_matrix_col(
+pub(super) fn extract_matrix_col(
     x: SEXP,
     nrow: R_xlen_t,
     _ncol: R_xlen_t,
@@ -138,7 +138,7 @@ pub(super) unsafe fn extract_matrix_col(
 /// For a 2D matrix:
 /// - MARGIN=1: apply FUN to each row, return vector of length nrow
 /// - MARGIN=2: apply FUN to each column, return vector of length ncol
-pub unsafe fn do_apply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_apply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let x = eval_arg_by_name_or_position(args, &["X"], 0, rho);
         let margin_arg = eval_arg_by_name_or_position(args, &["MARGIN"], 1, rho);
@@ -234,7 +234,7 @@ pub(super) fn is_function(value: SEXP) -> bool {
 /// R's `tapply(X, INDEX, FUN)` — apply FUN to each group defined by INDEX.
 ///
 /// Iterates unique values of INDEX, collects matching elements from X, calls FUN on each group.
-pub unsafe fn do_tapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_tapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let index = CAR(CDR(args));
@@ -316,7 +316,7 @@ pub(super) struct TapplyIndex {
     dim_name: Option<String>,
 }
 
-pub(crate) unsafe fn tapply_numeric_array(
+pub(crate) fn tapply_numeric_array(
     x: SEXP,
     index: SEXP,
     fun: SEXP,
@@ -375,7 +375,7 @@ pub(crate) unsafe fn tapply_numeric_array(
     }
 }
 
-pub(super) unsafe fn tapply_indexes(index: SEXP, n: R_xlen_t) -> Option<Vec<TapplyIndex>> {
+pub(super) fn tapply_indexes(index: SEXP, n: R_xlen_t) -> Option<Vec<TapplyIndex>> {
     unsafe {
         if TYPEOF(index) == SEXPTYPE::VECSXP {
             let mut indexes = Vec::with_capacity(XLENGTH(index) as usize);
@@ -403,7 +403,7 @@ pub(super) unsafe fn tapply_indexes(index: SEXP, n: R_xlen_t) -> Option<Vec<Tapp
     }
 }
 
-pub(super) unsafe fn tapply_one_index(
+pub(super) fn tapply_one_index(
     index: SEXP,
     n: R_xlen_t,
     dim_name: Option<String>,
@@ -493,7 +493,7 @@ pub(super) unsafe fn tapply_one_index(
     }
 }
 
-pub(super) unsafe fn tapply_value_at(x: SEXP, x_type: c_int, i: R_xlen_t) -> f64 {
+pub(super) fn tapply_value_at(x: SEXP, x_type: c_int, i: R_xlen_t) -> f64 {
     unsafe {
         if x_type == SEXPTYPE::REALSXP {
             *REAL(x).add(i as usize)
@@ -508,7 +508,7 @@ pub(super) unsafe fn tapply_value_at(x: SEXP, x_type: c_int, i: R_xlen_t) -> f64
     }
 }
 
-pub(super) unsafe fn set_tapply_dim_attrs(result: SEXP, indexes: &[TapplyIndex]) {
+pub(super) fn set_tapply_dim_attrs(result: SEXP, indexes: &[TapplyIndex]) {
     unsafe {
         let dim = Rf_allocVector3(SEXPTYPE::INTSXP, indexes.len() as R_xlen_t);
         if dim.is_null() {
@@ -562,7 +562,7 @@ pub(super) unsafe fn set_tapply_dim_attrs(result: SEXP, indexes: &[TapplyIndex])
 /// R's `outer(X, Y, FUN="*")` — outer product. Returns a matrix of length(X) x length(Y).
 ///
 /// For each pair (x_i, y_j), computes FUN(x_i, y_j).
-pub unsafe fn do_outer(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_outer(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let y = CAR(CDR(args));
@@ -619,7 +619,7 @@ pub unsafe fn do_outer(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 /// GNU `.kronecker(X, Y, FUN="*")` — `aperm(outer(X,Y,FUN))` then `dim <- dX*dY`.
-pub unsafe fn do_kronecker(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_kronecker(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let x = as_array_for_kronecker(CAR(args));
         let _x = protect(x);
@@ -666,7 +666,7 @@ pub unsafe fn do_kronecker(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
     }
 }
 
-pub(super) unsafe fn as_array_for_kronecker(x: SEXP) -> SEXP {
+pub(super) fn as_array_for_kronecker(x: SEXP) -> SEXP {
     unsafe {
         let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
         if !dim.is_null() && dim != R_NilValue() && TYPEOF(dim) == SEXPTYPE::INTSXP {
@@ -679,7 +679,7 @@ pub(super) unsafe fn as_array_for_kronecker(x: SEXP) -> SEXP {
     }
 }
 
-pub(super) unsafe fn array_dims(x: SEXP) -> Vec<c_int> {
+pub(super) fn array_dims(x: SEXP) -> Vec<c_int> {
     unsafe {
         let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
         if dim.is_null() || dim == R_NilValue() || TYPEOF(dim) != SEXPTYPE::INTSXP {
@@ -690,7 +690,7 @@ pub(super) unsafe fn array_dims(x: SEXP) -> Vec<c_int> {
     }
 }
 
-pub(super) unsafe fn set_int_dim(x: SEXP, dims: &[c_int]) {
+pub(super) fn set_int_dim(x: SEXP, dims: &[c_int]) {
     unsafe {
         let dim = Rf_allocVector3(SEXPTYPE::INTSXP, dims.len() as i64);
         for (i, d) in dims.iter().enumerate() {
@@ -700,7 +700,7 @@ pub(super) unsafe fn set_int_dim(x: SEXP, dims: &[c_int]) {
     }
 }
 
-pub(super) unsafe fn attach_outer_dimnames(robj: SEXP, x: SEXP, y: SEXP) {
+pub(super) fn attach_outer_dimnames(robj: SEXP, x: SEXP, y: SEXP) {
     unsafe {
         let nxn = crate::attrib_core::getAttrib(x, crate::attrib_core::R_NamesSymbol());
         let nyn = crate::attrib_core::getAttrib(y, crate::attrib_core::R_NamesSymbol());
@@ -717,7 +717,7 @@ pub(super) unsafe fn attach_outer_dimnames(robj: SEXP, x: SEXP, y: SEXP) {
     }
 }
 
-pub(super) unsafe fn resolve_outer_fun(fun_arg: SEXP, rho: SEXP) -> SEXP {
+pub(super) fn resolve_outer_fun(fun_arg: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         if fun_arg.is_null() || fun_arg == R_NilValue() {
             return crate::sexp::envir::findFun(Rf_install(c"*".as_ptr()), rho);
@@ -761,7 +761,7 @@ pub(super) unsafe fn resolve_outer_fun(fun_arg: SEXP, rho: SEXP) -> SEXP {
     }
 }
 
-pub(super) unsafe fn rep_times(x: SEXP, times: i64) -> SEXP {
+pub(super) fn rep_times(x: SEXP, times: i64) -> SEXP {
     unsafe {
         let n = XLENGTH(x);
         let out_n = n.saturating_mul(times);
@@ -776,7 +776,7 @@ pub(super) unsafe fn rep_times(x: SEXP, times: i64) -> SEXP {
     }
 }
 
-pub(super) unsafe fn rep_each(x: SEXP, each: i64) -> SEXP {
+pub(super) fn rep_each(x: SEXP, each: i64) -> SEXP {
     unsafe {
         let n = XLENGTH(x);
         let out_n = n.saturating_mul(each);
@@ -791,7 +791,7 @@ pub(super) unsafe fn rep_each(x: SEXP, each: i64) -> SEXP {
     }
 }
 
-pub(super) unsafe fn copy_elt(src: SEXP, si: i64, dst: SEXP, di: i64) {
+pub(super) fn copy_elt(src: SEXP, si: i64, dst: SEXP, di: i64) {
     unsafe {
         match TYPEOF(src) {
             t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => {

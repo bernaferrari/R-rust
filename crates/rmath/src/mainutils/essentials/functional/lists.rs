@@ -7,7 +7,7 @@ use super::*;
 // ---------------------------------------------------------------------------
 
 /// R's `list(...)` — create a VECSXP (list) from arguments.
-pub unsafe fn do_list(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_list(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let mut n: R_xlen_t = 0;
         let mut current = args;
@@ -64,7 +64,7 @@ pub unsafe fn do_list(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
-pub(crate) unsafe fn string_at_or_empty(x: SEXP, index: R_xlen_t) -> String {
+pub(crate) fn string_at_or_empty(x: SEXP, index: R_xlen_t) -> String {
     unsafe {
         if x.is_null() || x == R_NilValue() || TYPEOF(x) != SEXPTYPE::STRSXP || index >= XLENGTH(x)
         {
@@ -78,7 +78,7 @@ pub(crate) unsafe fn string_at_or_empty(x: SEXP, index: R_xlen_t) -> String {
     }
 }
 
-pub(crate) unsafe fn set_string_names(x: SEXP, names: &[String]) {
+pub(crate) fn set_string_names(x: SEXP, names: &[String]) {
     unsafe {
         let names_vec = Rf_allocVector3(SEXPTYPE::STRSXP, names.len() as R_xlen_t);
         if names_vec.is_null() {
@@ -98,7 +98,7 @@ pub(crate) unsafe fn set_string_names(x: SEXP, names: &[String]) {
 }
 
 /// GNU `expand.grid(...)` — Cartesian product as a data.frame.
-pub unsafe fn do_expand_grid(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_expand_grid(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let mut cols: Vec<SEXP> = Vec::new();
         let mut names: Vec<String> = Vec::new();
@@ -244,7 +244,7 @@ pub unsafe fn do_expand_grid(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
     }
 }
 
-pub(super) unsafe fn expand_grid_column(
+pub(super) fn expand_grid_column(
     x: SEXP,
     nx: i64,
     rep_fac: i64,
@@ -270,7 +270,7 @@ pub(super) unsafe fn expand_grid_column(
     }
 }
 
-pub(super) unsafe fn format_grid_elt(x: SEXP, i: i64) -> String {
+pub(super) fn format_grid_elt(x: SEXP, i: i64) -> String {
     unsafe {
         match TYPEOF(x) {
             t if t == SEXPTYPE::INTSXP => format!("{}", *INTEGER(x).add(i as usize)),
@@ -297,7 +297,7 @@ pub(super) unsafe fn format_grid_elt(x: SEXP, i: i64) -> String {
 }
 
 /// GNU `stack.default` — list/data.frame columns to values+ind.
-pub unsafe fn do_stack(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_stack(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let mut cols: Vec<SEXP> = Vec::new();
