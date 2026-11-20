@@ -71,7 +71,7 @@ fn no_inherited_method_error(generic: &str, sigargs: SEXP, classes: &[String]) -
 /// `RSignal::ExitingHandler` transfer carrying the signaled condition.
 /// Only error-class conditions are wrapped; every other payload (warnings,
 /// messages, returns, restarts, interrupts) keeps unwinding untouched.
-unsafe fn eval_dispatch_arg(fname: SEXP, ev: SEXP, arg_sym: SEXP) -> SEXP {
+fn eval_dispatch_arg(fname: SEXP, ev: SEXP, arg_sym: SEXP) -> SEXP {
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
         crate::eval::eval::Rf_eval(arg_sym, ev)
     }));
@@ -123,7 +123,7 @@ fn dispatch_arg_error_message(payload: &(dyn std::any::Any + Send)) -> Option<Co
 
 /// GNU's dispatch handler only matches conditions inheriting from "error".
 /// Condition objects carry every inherited class in their class attribute.
-unsafe fn condition_inherits_error(condition: SEXP) -> bool {
+fn condition_inherits_error(condition: SEXP) -> bool {
     unsafe {
         if condition.is_null() || condition == R_NilValue() {
             return false;
@@ -142,7 +142,7 @@ unsafe fn condition_inherits_error(condition: SEXP) -> bool {
     }
 }
 
-unsafe fn named_element(object: SEXP, name: &str) -> SEXP {
+fn named_element(object: SEXP, name: &str) -> SEXP {
     unsafe {
         if object.is_null() || object == R_NilValue() {
             return R_NilValue();
@@ -188,11 +188,11 @@ unsafe fn named_element(object: SEXP, name: &str) -> SEXP {
     }
 }
 
-unsafe fn all_methods_slot(mlist: SEXP) -> SEXP {
+fn all_methods_slot(mlist: SEXP) -> SEXP {
     unsafe { named_slot(mlist, "allMethods") }
 }
 
-unsafe fn named_slot(object: SEXP, name: &str) -> SEXP {
+fn named_slot(object: SEXP, name: &str) -> SEXP {
     unsafe {
         let Ok(name) = CString::new(name) else {
             return R_NilValue();
@@ -202,7 +202,7 @@ unsafe fn named_slot(object: SEXP, name: &str) -> SEXP {
     }
 }
 
-unsafe fn first_data_class_name(object: SEXP) -> Option<String> {
+fn first_data_class_name(object: SEXP) -> Option<String> {
     unsafe {
         let class = crate::eval::attrib_core::R_data_class(object);
         if class.is_null()
@@ -221,7 +221,7 @@ unsafe fn first_data_class_name(object: SEXP) -> Option<String> {
     }
 }
 
-unsafe fn scalar_signature_length(value: SEXP) -> Option<c_int> {
+fn scalar_signature_length(value: SEXP) -> Option<c_int> {
     unsafe {
         if value.is_null() || value == R_NilValue() || LENGTH(value) == 0 {
             return None;
@@ -234,7 +234,7 @@ unsafe fn scalar_signature_length(value: SEXP) -> Option<c_int> {
     }
 }
 
-unsafe fn sexp_to_string(value: SEXP) -> Option<String> {
+fn sexp_to_string(value: SEXP) -> Option<String> {
     unsafe {
         if value.is_null() || value == R_NilValue() {
             return None;
@@ -259,20 +259,20 @@ unsafe fn sexp_to_string(value: SEXP) -> Option<String> {
     }
 }
 
-unsafe fn is_primitive_function(value: SEXP) -> bool {
+fn is_primitive_function(value: SEXP) -> bool {
     {
         !value.is_null()
             && (TYPEOF(value) == SEXPTYPE::BUILTINSXP || TYPEOF(value) == SEXPTYPE::SPECIALSXP)
     }
 }
 
-unsafe fn inherits_internal_dispatch_method(value: SEXP) -> bool {
+fn inherits_internal_dispatch_method(value: SEXP) -> bool {
     unsafe {
         crate::mainutils::objects::inherits2(value, c"internalDispatchMethod".as_ptr()) != FALSE
     }
 }
 
-unsafe fn primitive_from_generic_frame(ev: SEXP) -> Option<SEXP> {
+fn primitive_from_generic_frame(ev: SEXP) -> Option<SEXP> {
     unsafe {
         let generic_sym = crate::sexp::symbol::Rf_install(c".Generic".as_ptr());
         let generic = crate::sexp::envir::R_findVarInFrame(ev, generic_sym);
@@ -294,7 +294,7 @@ unsafe fn primitive_from_generic_frame(ev: SEXP) -> Option<SEXP> {
 
 /// R_initMethodDispatch - initialize method dispatch.
 /// Called from the methods package on load.
-pub unsafe fn R_initMethodDispatch(envir: SEXP) -> SEXP {
+pub fn R_initMethodDispatch(envir: SEXP) -> SEXP {
     let table_dispatch_on = with_methods_dispatch_state(|state| state.table_dispatch_on);
     unsafe {
         let standard_generic = if table_dispatch_on != 0 {
@@ -412,7 +412,7 @@ pub unsafe fn R_standardGeneric(fname: SEXP, ev: SEXP, fdef: SEXP) -> SEXP {
 
 // Match exact/ANY table signatures without generating 2^arity combinations.
 // Class inheritance remains the responsibility of the full methods selector.
-unsafe fn for_each_env_binding(env: SEXP, mut visit: impl FnMut(SEXP, SEXP)) {
+fn for_each_env_binding(env: SEXP, mut visit: impl FnMut(SEXP, SEXP)) {
     unsafe {
         let mut walk = |mut frame: SEXP| {
             while !frame.is_null() && frame != R_NilValue() {
@@ -437,7 +437,7 @@ unsafe fn for_each_env_binding(env: SEXP, mut visit: impl FnMut(SEXP, SEXP)) {
     }
 }
 
-unsafe fn wildcard_table_method(table: SEXP, classes: &[String]) -> SEXP {
+fn wildcard_table_method(table: SEXP, classes: &[String]) -> SEXP {
     unsafe {
         let mut candidates: Vec<(Vec<bool>, SEXP)> = Vec::new();
         for_each_env_binding(table, |symbol, method| {
@@ -480,7 +480,7 @@ impl Clone for TableMethod {
     }
 }
 
-unsafe fn table_methods(table: SEXP, targets: &[String]) -> Vec<TableMethod> {
+fn table_methods(table: SEXP, targets: &[String]) -> Vec<TableMethod> {
     unsafe {
         let mut out = Vec::new();
         for_each_env_binding(table, |symbol, method| {
@@ -554,7 +554,7 @@ fn nearest_method(methods: Vec<TableMethod>) -> Option<TableMethod> {
     frontier.into_iter().next()
 }
 
-unsafe fn string_vector(values: &[String]) -> SEXP {
+fn string_vector(values: &[String]) -> SEXP {
     unsafe {
         let result = Rf_allocVector3(SEXPTYPE::STRSXP, values.len() as R_xlen_t);
         let _guard = protect(result);
@@ -567,7 +567,7 @@ unsafe fn string_vector(values: &[String]) -> SEXP {
 }
 
 /// GNU `do_inherited_table`: eval `.InheritForDispatch(classes, fdef, mtable)`.
-unsafe fn do_inherited_table(classes: SEXP, fdef: SEXP, mtable: SEXP, ev: SEXP) -> SEXP {
+fn do_inherited_table(classes: SEXP, fdef: SEXP, mtable: SEXP, ev: SEXP) -> SEXP {
     unsafe {
         let Some(ns) = crate::mainutils::essentials::cached_namespace_by_name("methods") else {
             r_error("methods namespace is not loaded");
@@ -586,7 +586,7 @@ unsafe fn do_inherited_table(classes: SEXP, fdef: SEXP, mtable: SEXP, ev: SEXP) 
     }
 }
 
-unsafe fn recover_s4_generic(fdef: SEXP, fname: SEXP) -> SEXP {
+fn recover_s4_generic(fdef: SEXP, fname: SEXP) -> SEXP {
     unsafe {
         if crate::mainutils::coerce::IS_S4_OBJECT(fdef) != FALSE {
             return fdef;
@@ -633,7 +633,7 @@ unsafe fn recover_s4_generic(fdef: SEXP, fname: SEXP) -> SEXP {
     }
 }
 
-unsafe fn apply_table_method(method: SEXP, ev: SEXP) -> SEXP {
+fn apply_table_method(method: SEXP, ev: SEXP) -> SEXP {
     unsafe {
         if inherits_internal_dispatch_method(method) || is_primitive_function(method) {
             return crate::mainutils::objects::R_deferred_default_method();
@@ -647,7 +647,7 @@ unsafe fn apply_table_method(method: SEXP, ev: SEXP) -> SEXP {
     }
 }
 
-unsafe fn install_method_context(
+fn install_method_context(
     ev: SEXP,
     generic_name: &str,
     table: SEXP,
@@ -833,7 +833,7 @@ pub unsafe fn R_dispatchGeneric(fname: SEXP, ev: SEXP, fdef: SEXP) -> SEXP {
     }
 }
 
-unsafe fn try_s3_method_for_generic(
+fn try_s3_method_for_generic(
     name: &str,
     fname: SEXP,
     ev: SEXP,
@@ -976,7 +976,7 @@ fn is_generic_function(value: SEXP) -> bool {
 /// R_getGeneric - get the generic function definition for a given name.
 /// GNU `get_generic` walks `R_ParentEnv` from `env` and accepts only
 /// genericFunction objects, then falls back to `SYMVALUE`.
-pub unsafe fn R_getGeneric(name: SEXP, mustFind: SEXP, env: SEXP, _package: SEXP) -> SEXP {
+pub fn R_getGeneric(name: SEXP, mustFind: SEXP, env: SEXP, _package: SEXP) -> SEXP {
     unsafe {
         let Some(name_string) = sexp_to_string(name) else {
             r_error("The argument \"f\" to getGeneric must be a single string or symbol");
@@ -1028,7 +1028,7 @@ pub unsafe fn R_getGeneric(name: SEXP, mustFind: SEXP, env: SEXP, _package: SEXP
 
 /// Like R_getGeneric but walks the whole enclosing-environment chain, so a
 /// generic defined in the global environment is found from any caller.
-pub unsafe fn R_getGenericByName(name: SEXP, mustFind: SEXP, env: SEXP, _package: SEXP) -> SEXP {
+pub fn R_getGenericByName(name: SEXP, mustFind: SEXP, env: SEXP, _package: SEXP) -> SEXP {
     unsafe {
         let Some(name_string) = sexp_to_string(name) else {
             r_error("The argument \"f\" to getGeneric must be a single string or symbol");
@@ -1060,7 +1060,7 @@ pub unsafe fn R_getGenericByName(name: SEXP, mustFind: SEXP, env: SEXP, _package
 
 /// GNU `is_missing_arg`: MISSING bit on the frame cell, not the bound value.
 /// Default promises (`function(drop=TRUE)`) keep MISSING=1 until forced.
-unsafe fn is_missing_arg(symbol: SEXP, ev: SEXP) -> bool {
+fn is_missing_arg(symbol: SEXP, ev: SEXP) -> bool {
     unsafe {
         if crate::sexp::envir::R_isMissing(symbol, ev) != 0 {
             return true;
@@ -1076,7 +1076,7 @@ unsafe fn is_missing_arg(symbol: SEXP, ev: SEXP) -> bool {
 
 /// R_missingArg - check if an argument is missing in a method call.
 /// Ported from R's R_missingArg() in methods_list_dispatch.c.
-pub unsafe fn R_missingArg(symbol: SEXP, ev: SEXP) -> SEXP {
+pub fn R_missingArg(symbol: SEXP, ev: SEXP) -> SEXP {
     unsafe {
         if TYPEOF(symbol) != SEXPTYPE::SYMSXP {
             r_error("invalid symbol in checking for missing argument in method dispatch");
@@ -1099,7 +1099,7 @@ pub unsafe fn R_missingArg(symbol: SEXP, ev: SEXP) -> SEXP {
 }
 
 /// R_selectMethod - select a method for the given call.
-pub unsafe fn R_selectMethod(fname: SEXP, _ev: SEXP, mlist: SEXP, _evalArgs: SEXP) -> SEXP {
+pub fn R_selectMethod(fname: SEXP, _ev: SEXP, mlist: SEXP, _evalArgs: SEXP) -> SEXP {
     {
         if !mlist.is_null() && mlist != R_NilValue() && Rf_isFunction(mlist) != 0 {
             return mlist;
@@ -1112,7 +1112,7 @@ pub unsafe fn R_selectMethod(fname: SEXP, _ev: SEXP, mlist: SEXP, _evalArgs: SEX
 }
 
 /// Look up explicit target classes without evaluating or manufacturing arguments.
-pub(crate) unsafe fn select_method_by_signature(
+pub(crate) fn select_method_by_signature(
     table: SEXP,
     targets: &[String],
     inherit: &[bool],
@@ -1135,7 +1135,7 @@ pub(crate) unsafe fn select_method_by_signature(
     }
 }
 
-unsafe fn select_method_from_list(
+fn select_method_from_list(
     fname: SEXP,
     ev: SEXP,
     mlist: SEXP,
@@ -1207,7 +1207,7 @@ unsafe fn select_method_from_list(
 }
 
 /// R_M_setPrimitiveMethods - set methods for a primitive function.
-pub unsafe fn R_M_setPrimitiveMethods(
+pub fn R_M_setPrimitiveMethods(
     fname: SEXP,
     op: SEXP,
     code_vec: SEXP,
@@ -1218,7 +1218,7 @@ pub unsafe fn R_M_setPrimitiveMethods(
 }
 
 /// R_nextMethodCall - implement .nextMethod() (callNextMethod).
-pub unsafe fn R_nextMethodCall(matched_call: SEXP, ev: SEXP) -> SEXP {
+pub fn R_nextMethodCall(matched_call: SEXP, ev: SEXP) -> SEXP {
     unsafe {
         let dot_next_method = crate::sexp::symbol::Rf_install(c".nextMethod".as_ptr());
         let mut method_ev = ev;
@@ -1332,7 +1332,7 @@ pub unsafe fn do_callNextMethod(call: SEXP, _op: SEXP, _args: SEXP, rho: SEXP) -
     unsafe { R_nextMethodCall(call, rho) }
 }
 
-unsafe fn methods_call_next_method_closure() -> Option<SEXP> {
+fn methods_call_next_method_closure() -> Option<SEXP> {
     unsafe {
         let namespace = crate::mainutils::essentials::cached_namespace_by_name("methods")?;
         let symbol = crate::sexp::symbol::Rf_install(c"callNextMethod".as_ptr());
@@ -1395,7 +1395,7 @@ pub extern "C" fn R_set_method_dispatch(onOff: SEXP) -> SEXP {
 /// R_methodsPackageMetaName - construct a meta-data object name.
 /// Format: .__prefix__name or .__prefix__name:pkg
 /// Ported from R's R_methodsPackageMetaName() in methods_list_dispatch.c.
-pub unsafe fn R_methodsPackageMetaName(prefix: SEXP, name: SEXP, pkg: SEXP) -> SEXP {
+pub fn R_methodsPackageMetaName(prefix: SEXP, name: SEXP, pkg: SEXP) -> SEXP {
     unsafe {
         // Extract strings
         let prefix_str =
@@ -1913,7 +1913,7 @@ mod tests {
 
 /// R_identC - test if two single-string objects are identical at the C level.
 /// Ported from R's R_identC() in methods_list_dispatch.c.
-pub unsafe fn R_identC(e1: SEXP, e2: SEXP) -> SEXP {
+pub fn R_identC(e1: SEXP, e2: SEXP) -> SEXP {
     unsafe {
         if TYPEOF(e1) == SEXPTYPE::STRSXP
             && TYPEOF(e2) == SEXPTYPE::STRSXP
@@ -1928,7 +1928,7 @@ pub unsafe fn R_identC(e1: SEXP, e2: SEXP) -> SEXP {
 }
 
 /// R_getClassFromCache — look up a class definition in `.classTable`.
-pub unsafe fn R_getClassFromCache(class: SEXP, table: SEXP) -> SEXP {
+pub fn R_getClassFromCache(class: SEXP, table: SEXP) -> SEXP {
     unsafe {
         if TYPEOF(class) == SEXPTYPE::STRSXP {
             if LENGTH(class) == 0 {
@@ -1969,7 +1969,7 @@ pub unsafe fn R_getClassFromCache(class: SEXP, table: SEXP) -> SEXP {
     }
 }
 
-unsafe fn charsxp_same(a: SEXP, b: SEXP) -> bool {
+fn charsxp_same(a: SEXP, b: SEXP) -> bool {
     if a == b {
         return true;
     }
@@ -1987,7 +1987,7 @@ unsafe fn charsxp_same(a: SEXP, b: SEXP) -> bool {
 }
 
 /// asChar - local helper to coerce to a single CHARSXP.
-unsafe fn asChar(x: SEXP) -> SEXP {
+fn asChar(x: SEXP) -> SEXP {
     unsafe {
         if TYPEOF(x) == SEXPTYPE::STRSXP && LENGTH(x) >= 1 {
             STRING_ELT(x, 0)
@@ -2003,7 +2003,7 @@ unsafe fn asChar(x: SEXP) -> SEXP {
 
 /// R_el_named - get a named element from a list (no partial matching).
 /// Ported from R's R_el_named() in methods_list_dispatch.c.
-pub unsafe fn R_el_named(object: SEXP, what: SEXP) -> SEXP {
+pub fn R_el_named(object: SEXP, what: SEXP) -> SEXP {
     unsafe {
         let w = asChar(what);
         if w.is_null() {
@@ -2038,7 +2038,7 @@ pub unsafe fn R_el_named(object: SEXP, what: SEXP) -> SEXP {
 
 /// R_set_el_named - set a named element in a list.
 /// Ported from R's R_set_el_named() in methods_list_dispatch.c.
-pub unsafe fn R_set_el_named(object: SEXP, what: SEXP, value: SEXP) -> SEXP {
+pub fn R_set_el_named(object: SEXP, what: SEXP, value: SEXP) -> SEXP {
     unsafe {
         let w = asChar(what);
         if w.is_null() {
