@@ -51,6 +51,15 @@ fn safe_provider_element_rejects_actual_arena_lend_before_callback() {
             let result = value.try_integer_elt(1);
             assert_eq!(callbacks.get(), 0, "provider ran during an arena lend");
             assert!(result.is_err());
+            let copied = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                crate::sexp::accessors::INTEGER_ELT(value.as_raw(), 1)
+            }));
+            assert!(copied.is_err());
+            assert_eq!(
+                callbacks.get(),
+                0,
+                "copied read ran a provider during a lend"
+            );
             assert_eq!(arena.node_count(), count);
         });
     });
@@ -161,6 +170,30 @@ impl AltrepClass for CallbackProvider {
         (self.0)();
         Ok(AltrepElement::Integer(71))
     }
+}
+
+#[test]
+fn copied_scalar_read_keeps_original_altrep_alive_during_collection() {
+    let session = RSession::new_for_gc_tests();
+    let callbacks = Rc::new(Cell::new(0));
+    let observed = callbacks.clone();
+    let class = session
+        .register_altrep_class(
+            "copied.scalar.collection",
+            CallbackProvider(Rc::new(move || {
+                observed.set(observed.get() + 1);
+                // SAFETY: the provider runs in the pinned original runtime.
+                unsafe { crate::sexp::gengc::full_gc() };
+            })),
+        )
+        .unwrap();
+    let value = AltrepBuilder::new(class).build().unwrap();
+    let pointer = std::ptr::without_provenance_mut(value.as_raw().addr());
+    assert_eq!(
+        session.with_active(|| crate::sexp::accessors::INTEGER_ELT(pointer, 0)),
+        71
+    );
+    assert_eq!(callbacks.get(), 1);
 }
 
 #[test]

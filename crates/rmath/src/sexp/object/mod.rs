@@ -311,6 +311,32 @@ impl<'a> Sexp<'a> {
         }
     }
 
+    /// Retain a canonical value for an operation that has no active matching
+    /// runtime. All storage is selected by directory identity, then rooted
+    /// before the operation can observe it. No runtime authority is granted.
+    pub(crate) fn with_registered_raw<T>(
+        ptr: SEXP,
+        operation: impl FnOnce(&Sexp<'_>) -> T,
+    ) -> SexpResult<T> {
+        if let Some(singleton) = crate::sexp::globals::immutable_singleton_lease(ptr) {
+            return Ok(operation(&Self::from_singleton_lease(singleton, None)));
+        }
+        let (ptr, node, _) = admit_registered_raw(ptr)?;
+        let root = node.root_lease().ok_or(SexpError::RootUnavailable)?;
+        let value = Sexp {
+            ptr,
+            owner: SexpOwner::Unknown,
+            node: Some(node),
+            runtime_owner: None,
+            session_owner_ptr: None,
+            root: Some(root),
+            singleton: None,
+            singletons: None,
+            _marker: std::marker::PhantomData,
+        };
+        Ok(operation(&value))
+    }
+
     /// Wrap a pointer that has already been validated against `arena`.
     #[inline]
     pub(crate) fn from_arena_raw<'arena>(
