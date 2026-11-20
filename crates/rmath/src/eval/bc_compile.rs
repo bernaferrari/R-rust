@@ -19,7 +19,7 @@ use std::os::raw::c_int;
 
 use super::bc_eval::opcodes;
 use super::bc_stack::own_operand;
-use crate::sexp::accessors::{BODY, CAR, CDR, PRINTNAME, SET_BODY, TAG, TYPEOF};
+use crate::sexp::accessors::{BODY, CAR, CDR, SET_BODY, TAG, TYPEOF};
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
 use crate::sexp::globals::{R_BaseEnv, R_NilValue};
 use crate::sexp::instance::with_required_current_instance;
@@ -1166,8 +1166,8 @@ fn is_eager_builtin_call(name: &str) -> bool {
     )
 }
 
-unsafe fn is_function_syntax(expr: SEXP) -> bool {
-    unsafe {
+fn is_function_syntax(expr: SEXP) -> bool {
+    {
         !expr.is_null()
             && expr != R_NilValue()
             && TYPEOF(expr) == SEXPTYPE::LANGSXP
@@ -1175,24 +1175,12 @@ unsafe fn is_function_syntax(expr: SEXP) -> bool {
     }
 }
 
-pub(crate) unsafe fn symbol_name_from_sexp(sym: SEXP) -> Option<String> {
-    unsafe {
+pub(crate) fn symbol_name_from_sexp(sym: SEXP) -> Option<String> {
+    {
         if sym.is_null() || TYPEOF(sym) != SEXPTYPE::SYMSXP {
             return None;
         }
-        let pname = PRINTNAME(sym);
-        if pname.is_null() {
-            return None;
-        }
-        let bytes = crate::sexp::accessors::CHAR(pname);
-        if bytes.is_null() {
-            return None;
-        }
-        Some(
-            std::ffi::CStr::from_ptr(bytes)
-                .to_string_lossy()
-                .into_owned(),
-        )
+        crate::sexp::symbol::symbol_name_from_ptr(sym)
     }
 }
 
