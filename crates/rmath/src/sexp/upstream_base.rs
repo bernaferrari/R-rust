@@ -1171,7 +1171,7 @@ const MAX_PASSES: usize = 8;
 /// (file-local helpers) and then the shared base frame, matching GNU base
 /// namespace semantics without attaching unexported helper names to
 /// `package:base`.
-pub(crate) unsafe fn load_upstream_base_sources(base_env: SEXP) {
+pub(crate) fn load_upstream_base_sources(base_env: SEXP) {
     // Default ON since the loader-on corpus reached 1181/1181 strict
     // (visibility fix for stock-invisible internals, all.names internal
     // contract; the earlier arima/permdist panics were mid-edit artifacts
@@ -1205,7 +1205,7 @@ const BASE_FORTRAN_SYMBOLS: &[&str] = &[
     "dqrdc2", "dqrcf", "dqrqy", "dqrqty", "dqrrsd", "dqrxb", "dtrco",
 ];
 
-unsafe fn load_fortran_symbol_bindings(base_env: SEXP) {
+fn load_fortran_symbol_bindings(base_env: SEXP) {
     unsafe {
         for routine in BASE_FORTRAN_SYMBOLS {
             let binding = format!(".F_{routine}");
@@ -1223,11 +1223,11 @@ unsafe fn load_fortran_symbol_bindings(base_env: SEXP) {
 /// Evaluate every upstream file into `staging`, then copy whitelisted exports
 /// that are still unbound into `base_env`. Repeats until a pass binds nothing
 /// new; only expressions that failed in the previous pass are re-evaluated.
-unsafe fn load_files(base_env: SEXP, staging: SEXP) {
-    unsafe { load_file_sources(base_env, staging, UPSTREAM_FILES) }
+fn load_files(base_env: SEXP, staging: SEXP) {
+    load_file_sources(base_env, staging, UPSTREAM_FILES)
 }
 
-unsafe fn load_file_sources(base_env: SEXP, staging: SEXP, files: &[UpstreamFile]) {
+fn load_file_sources(base_env: SEXP, staging: SEXP, files: &[UpstreamFile]) {
     unsafe {
         let parser_factory = crate::eval::parser::active_factory();
         let Some((swallow, failed_marker)) = error_swallowing_handler(staging) else {
@@ -1335,7 +1335,7 @@ unsafe fn load_file_sources(base_env: SEXP, staging: SEXP, files: &[UpstreamFile
 
 /// Build the error handler and a private environment sentinel used to track
 /// failed load-time expressions across fixpoint passes.
-unsafe fn error_swallowing_handler(staging: SEXP) -> Option<(SEXP, SEXP)> {
+fn error_swallowing_handler(staging: SEXP) -> Option<(SEXP, SEXP)> {
     unsafe {
         let marker = crate::sexp::memory_ext::NewEnvironment(
             R_NilValue(),
@@ -1388,7 +1388,7 @@ unsafe fn error_swallowing_handler(staging: SEXP) -> Option<(SEXP, SEXP)> {
 /// with "no applicable method" — worse than leaving the port's native
 /// builtin in place. When the default is blocked or failed to load, the
 /// generic joins the skip set; the load fixpoint retries it on later
-unsafe fn copy_exports(base_env: SEXP, staging: SEXP, names: &[&str]) -> bool {
+fn copy_exports(base_env: SEXP, staging: SEXP, names: &[&str]) -> bool {
     let mut copied = false;
     for name in names {
         unsafe {
@@ -1429,7 +1429,7 @@ unsafe fn copy_exports(base_env: SEXP, staging: SEXP, names: &[&str]) -> bool {
 /// export still staged, dropping generics whose default is neither bound
 /// in `base_env` nor staged; repeat until stable so chained generics
 /// (a default that is itself an orphaned generic) converge.
-unsafe fn purge_stale_generics(base_env: SEXP, staging: SEXP) {
+fn purge_stale_generics(base_env: SEXP, staging: SEXP) {
     unsafe {
         loop {
             let mut removed = false;
@@ -1456,8 +1456,8 @@ unsafe fn purge_stale_generics(base_env: SEXP, staging: SEXP) {
 
 /// Whether `value` is a closure whose body dispatches via `UseMethod`,
 /// i.e. the staged definition is an S3 generic.
-unsafe fn calls_use_method(value: SEXP) -> bool {
-    unsafe {
+fn calls_use_method(value: SEXP) -> bool {
+    {
         if super::accessors::TYPEOF(value) != crate::sexp::ffi::SEXPTYPE::CLOSXP {
             return false;
         }
@@ -1466,8 +1466,8 @@ unsafe fn calls_use_method(value: SEXP) -> bool {
 }
 
 /// Recursive scan of a closure body for a call to the `UseMethod` symbol.
-unsafe fn body_calls(expr: SEXP) -> bool {
-    unsafe {
+fn body_calls(expr: SEXP) -> bool {
+    {
         if expr.is_null() || expr == R_NilValue() {
             return false;
         }
@@ -1503,9 +1503,9 @@ unsafe fn body_calls(expr: SEXP) -> bool {
 
 /// Whether the generic's primary default method `name.default` is bound in
 /// `base_env` (native builtin or previously copied) or staged for copy.
-unsafe fn default_method_reachable(base_env: SEXP, staging: SEXP, name: &str) -> bool {
+fn default_method_reachable(base_env: SEXP, staging: SEXP, name: &str) -> bool {
     let default = format!("{name}.default");
-    (unsafe { defined_in(base_env, &default) }) || (unsafe { defined_in(staging, &default) })
+    (defined_in(base_env, &default)) || (defined_in(staging, &default))
 }
 
 /// Closures present in the oracle base image whose upstream sources are not
@@ -1558,7 +1558,7 @@ f(...)",
 ];
 
 /// Evaluate the oracle-recovered closures into `staging` and publish them.
-unsafe fn load_oracle_recovered_closures(base_env: SEXP, staging: SEXP) {
+fn load_oracle_recovered_closures(base_env: SEXP, staging: SEXP) {
     unsafe {
         let parser_factory = crate::eval::parser::active_factory();
         let names: Vec<&str> = ORACLE_RECOVERED_SOURCES.iter().map(|(n, _)| *n).collect();
@@ -1589,7 +1589,7 @@ unsafe fn load_oracle_recovered_closures(base_env: SEXP, staging: SEXP) {
 /// `.OptRequireMethods` closures verbatim, and the `.Library.site` active
 /// binding (GNU removes the lazy-load placeholder with `.Internal(mkUnbound)`
 /// first; the port never binds one, so only the active binding is needed).
-unsafe fn load_profile_common_bindings(base_env: SEXP) {
+fn load_profile_common_bindings(base_env: SEXP) {
     unsafe {
         let parser_factory = crate::eval::parser::active_factory();
         const PROFILE_SOURCES: &[(&str, &str)] = &[
@@ -1661,7 +1661,7 @@ unsafe fn load_profile_common_bindings(base_env: SEXP) {
 
 // GNU exports these as closures. The portable bootstrap initially installs
 // primitive fallbacks; replace only those fallbacks with the upstream wrappers.
-unsafe fn bootstrap_builtin_needs_closure(env: SEXP, name: &str) -> bool {
+fn bootstrap_builtin_needs_closure(env: SEXP, name: &str) -> bool {
     if !matches!(
         name,
         "as.Date"
@@ -1688,14 +1688,14 @@ unsafe fn bootstrap_builtin_needs_closure(env: SEXP, name: &str) -> bool {
 }
 
 /// Whether `name` has a binding in `env`'s own frame.
-unsafe fn defined_in(env: SEXP, name: &str) -> bool {
+fn defined_in(env: SEXP, name: &str) -> bool {
     unsafe {
         let value = R_findVarInFrame(env, Rf_install_in_current(name));
         !value.is_null() && value != R_UnboundValue()
     }
 }
 
-unsafe fn Rf_install_in_current(name: &str) -> SEXP {
+fn Rf_install_in_current(name: &str) -> SEXP {
     unsafe {
         let cstring = std::ffi::CString::new(name).unwrap_or_default();
         crate::sexp::symbol::Rf_install(cstring.as_ptr())
@@ -1704,12 +1704,12 @@ unsafe fn Rf_install_in_current(name: &str) -> SEXP {
 
 /// Whether evaluating `expr` assigns to a blocked export name (including
 /// chained assignments); such definitions must stay out of staging.
-unsafe fn assigns_blocked_name(expr: SEXP) -> bool {
-    unsafe { assignment_target_blocked(expr) }
+fn assigns_blocked_name(expr: SEXP) -> bool {
+    assignment_target_blocked(expr)
 }
 
-unsafe fn assignment_target_blocked(expr: SEXP) -> bool {
-    unsafe {
+fn assignment_target_blocked(expr: SEXP) -> bool {
+    {
         if expr.is_null() || expr == R_NilValue() {
             return false;
         }
@@ -1746,7 +1746,7 @@ unsafe fn assignment_target_blocked(expr: SEXP) -> bool {
 }
 
 /// UTF-8 name of a symbol, when printable.
-unsafe fn symbol_name(symbol: SEXP) -> Option<String> {
+fn symbol_name(symbol: SEXP) -> Option<String> {
     unsafe {
         if super::accessors::TYPEOF(symbol) != crate::sexp::ffi::SEXPTYPE::SYMSXP {
             return None;
@@ -1767,7 +1767,7 @@ unsafe fn symbol_name(symbol: SEXP) -> Option<String> {
 }
 
 /// Ordinary R promise: materialize the original closure only on first lookup.
-unsafe fn load_lazy_native_symbol_info(base_env: SEXP, namespace: SEXP) {
+fn load_lazy_native_symbol_info(base_env: SEXP, namespace: SEXP) {
     unsafe {
         let result = (|| {
             let owner = crate::sexp::owner::OwnerToken::current()?;

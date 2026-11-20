@@ -2,8 +2,8 @@
 
 use super::*;
 
-pub(crate) unsafe fn install(base_env: SEXP) {
-    unsafe {
+pub(crate) fn install(base_env: SEXP) {
+    {
         // GNU dataframe.R: closures, not primitives.
         eval_base_binding(
             base_env,

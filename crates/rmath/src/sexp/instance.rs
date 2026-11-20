@@ -746,7 +746,7 @@ impl RInstance {
                 // now so every STRSXP allocated during bootstrap starts with
                 // valid, session-local character references.
                 let blank = super::super::mainutils::bind::R_BlankString();
-                let installed =  {
+                let installed = {
                     super::memory::with_arena_in(instance, |arena| {
                         arena.install_blank_string(blank)
                     })
@@ -825,7 +825,7 @@ impl RInstance {
     }
 
     #[cfg(feature = "renderplot-device")]
-    pub unsafe fn clear_current_renderplot_backend(&mut self) {
+    pub fn clear_current_renderplot_backend(&mut self) {
         self.current_renderplot_backend = None;
     }
 }
@@ -844,7 +844,7 @@ pub unsafe fn set_current_renderplot_backend(backend: *mut dyn r_graphics_engine
 }
 
 #[cfg(feature = "renderplot-device")]
-pub unsafe fn clear_current_renderplot_backend() {
+pub fn clear_current_renderplot_backend() {
     with_required_current_instance(|inst| unsafe {
         // P2: single-field write; no other raw path touches the instance
         // inside this closure.

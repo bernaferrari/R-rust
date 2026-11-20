@@ -148,7 +148,7 @@ pub(crate) fn print_with_printable_attributes(base: &str, x: Sexp<'_>) {
 }
 
 pub(crate) fn list_names(x: Sexp<'_>) -> Vec<String> {
-    unsafe {
+    {
         let names = crate::sexp::attrib_core::getAttrib(
             x.as_raw(),
             crate::sexp::attrib_core::R_NamesSymbol(),
@@ -158,7 +158,7 @@ pub(crate) fn list_names(x: Sexp<'_>) -> Vec<String> {
 }
 
 pub(crate) fn has_class(x: Sexp<'_>, class_name: &str) -> bool {
-    unsafe {
+    {
         let class = crate::sexp::attrib_core::getAttrib(
             x.as_raw(),
             crate::sexp::attrib_core::R_ClassSymbol(),

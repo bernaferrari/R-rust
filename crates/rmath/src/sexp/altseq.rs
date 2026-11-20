@@ -50,13 +50,13 @@ impl Formula {
 ///
 /// `n == 0` is a plain empty integer vector. Callers that want a length-1
 /// scalar keep using an ordinary allocation.
-pub(crate) unsafe fn compact_int_seq(from: c_int, step: c_int, n: usize) -> SEXP {
-    unsafe { compact_seq(SEXPTYPE::INTSXP, n, Formula::Int { from, step }) }
+pub(crate) fn compact_int_seq(from: c_int, step: c_int, n: usize) -> SEXP {
+    compact_seq(SEXPTYPE::INTSXP, n, Formula::Int { from, step })
 }
 
 /// Lazy real sequence `from, from+step, ...` of length `n`.
-pub(crate) unsafe fn compact_real_seq(from: c_double, step: c_double, n: usize) -> SEXP {
-    unsafe { compact_seq(SEXPTYPE::REALSXP, n, Formula::Real { from, step }) }
+pub(crate) fn compact_real_seq(from: c_double, step: c_double, n: usize) -> SEXP {
+    compact_seq(SEXPTYPE::REALSXP, n, Formula::Real { from, step })
 }
 
 /// Checked callers retain this compatibility root until they install their
@@ -92,7 +92,7 @@ pub(crate) unsafe fn compact_real_seq_protected(
     }
 }
 
-unsafe fn compact_seq(kind: SEXPTYPE, n: usize, formula: Formula) -> SEXP {
+fn compact_seq(kind: SEXPTYPE, n: usize, formula: Formula) -> SEXP {
     unsafe { compact_seq_with_result(kind, n, formula, |raw| raw) }
 }
 

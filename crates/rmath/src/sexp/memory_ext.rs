@@ -26,7 +26,7 @@ use super::memory;
 /// Create a new environment with the given frame, enclosing env, and size.
 ///
 /// This is the equivalent of R's `NewEnvironment()` in memory.c.
-pub unsafe fn NewEnvironment(frame: SEXP, enclos: SEXP, hashtab: SEXP) -> SEXP {
+pub fn NewEnvironment(frame: SEXP, enclos: SEXP, hashtab: SEXP) -> SEXP {
     unsafe {
         let env = memory::with_arena(|arena| {
             let env = arena.alloc_node(SEXPTYPE::ENVSXP);
@@ -44,7 +44,7 @@ pub unsafe fn NewEnvironment(frame: SEXP, enclos: SEXP, hashtab: SEXP) -> SEXP {
     }
 }
 
-pub unsafe fn NewPersistentEnvironment(frame: SEXP, enclos: SEXP, hashtab: SEXP) -> SEXP {
+pub fn NewPersistentEnvironment(frame: SEXP, enclos: SEXP, hashtab: SEXP) -> SEXP {
     super::instance::with_required_current_instance(|owner| unsafe {
         let mut header = SexprecCore::new(SEXPTYPE::ENVSXP);
         header.data = super::ffi::NodeBody::Environment(super::ffi::Envsxp {
@@ -77,7 +77,7 @@ pub unsafe fn NewPersistentEnvironment(frame: SEXP, enclos: SEXP, hashtab: SEXP)
 /// Create a promise (PROMSXP) from an expression and environment.
 ///
 /// This is the equivalent of R's `mkPROMISE()` in memory.c.
-pub unsafe fn mkPROMISE(expr: SEXP, env: SEXP) -> SEXP {
+pub fn mkPROMISE(expr: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let prom = memory::with_arena(|arena| {
             let prom = arena.alloc_node(SEXPTYPE::PROMSXP);
@@ -95,7 +95,7 @@ pub unsafe fn mkPROMISE(expr: SEXP, env: SEXP) -> SEXP {
 /// Create an already-evaluated promise (EVPROMISE).
 ///
 /// This is the equivalent of R's `R_mkEVPROMISE()`.
-pub unsafe fn R_mkEVPROMISE(expr: SEXP, value: SEXP) -> SEXP {
+pub fn R_mkEVPROMISE(expr: SEXP, value: SEXP) -> SEXP {
     unsafe {
         memory::with_arena(|arena| {
             let prom = arena.alloc_node(SEXPTYPE::PROMSXP);
@@ -118,12 +118,12 @@ pub unsafe fn R_mkEVPROMISE(expr: SEXP, value: SEXP) -> SEXP {
 /// Allocate a scalar (non-vector) SEXP of the given type.
 ///
 /// This is the equivalent of R's `allocSExp()`.
-pub unsafe fn allocSExp(sexptype: SEXPTYPE) -> SEXP {
+pub fn allocSExp(sexptype: SEXPTYPE) -> SEXP {
     unsafe { super::constructors::allocate_with_gc_retry([], |arena| arena.alloc_node(sexptype)) }
 }
 
 /// Create a PROMSXP binding an expression to an environment.
-pub unsafe fn mkPROMSXP(expr: SEXP, env: SEXP) -> SEXP {
+pub fn mkPROMSXP(expr: SEXP, env: SEXP) -> SEXP {
     unsafe {
         super::constructors::allocate_with_gc_retry([expr, env], |arena| {
             let p = arena.alloc_node(SEXPTYPE::PROMSXP);
@@ -158,7 +158,7 @@ where
 }
 
 /// Create a cons cell tracked for cleanup.
-pub unsafe fn cons_raw(car: SEXP, cdr: SEXP) -> SEXP {
+pub fn cons_raw(car: SEXP, cdr: SEXP) -> SEXP {
     super::instance::with_required_current_instance(|instance| unsafe {
         cons_raw_in(instance, car, cdr)
     })
@@ -180,7 +180,7 @@ pub(crate) unsafe fn cons_raw_in(instance: *mut RInstance, car: SEXP, cdr: SEXP)
 }
 
 /// Free a raw cons cell allocated by cons_raw.
-pub unsafe fn free_raw_cons(ptr: SEXP) {
+pub fn free_raw_cons(ptr: SEXP) {
     super::instance::with_required_current_instance(|instance| unsafe {
         free_raw_cons_in(instance, ptr);
     });
@@ -205,7 +205,7 @@ pub(crate) unsafe fn free_raw_cons_in(instance: *mut RInstance, ptr: SEXP) {
 /// Create a cons cell that is not reference counted (CONS_NR).
 ///
 /// This is the equivalent of R's `CONS_NR()` macro.
-pub unsafe fn CONS_NR(car: SEXP, cdr: SEXP) -> SEXP {
+pub fn CONS_NR(car: SEXP, cdr: SEXP) -> SEXP {
     unsafe {
         memory::with_arena(|arena| {
             let cell = arena.cons(car, cdr, ptr::null_mut());
@@ -223,7 +223,7 @@ pub unsafe fn CONS_NR(car: SEXP, cdr: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Create a formals list from 2 symbols.
-pub unsafe fn allocFormalsList2(sym1: SEXP, sym2: SEXP) -> SEXP {
+pub fn allocFormalsList2(sym1: SEXP, sym2: SEXP) -> SEXP {
     unsafe {
         memory::with_arena(|arena| {
             let cdr = if sym2.is_null() {
@@ -231,7 +231,7 @@ pub unsafe fn allocFormalsList2(sym1: SEXP, sym2: SEXP) -> SEXP {
             } else {
                 let cell = arena.cons(sym2, R_NilValue(), ptr::null_mut());
                 if !cell.is_null() {
-                     {
+                    {
                         crate::sexp::accessors::SET_TYPEOF(cell, SEXPTYPE::LANGSXP.as_c_int());
                     }
                 }
@@ -239,7 +239,7 @@ pub unsafe fn allocFormalsList2(sym1: SEXP, sym2: SEXP) -> SEXP {
             };
             let car = arena.cons(sym1, cdr, ptr::null_mut());
             if !car.is_null() {
-                 {
+                {
                     crate::sexp::accessors::SET_TYPEOF(car, SEXPTYPE::LANGSXP.as_c_int());
                 }
             }
@@ -249,7 +249,7 @@ pub unsafe fn allocFormalsList2(sym1: SEXP, sym2: SEXP) -> SEXP {
 }
 
 /// Create a formals list from 3 symbols.
-pub unsafe fn allocFormalsList3(sym1: SEXP, sym2: SEXP, sym3: SEXP) -> SEXP {
+pub fn allocFormalsList3(sym1: SEXP, sym2: SEXP, sym3: SEXP) -> SEXP {
     unsafe {
         memory::with_arena(|arena| {
             let c3 = if sym3.is_null() {
@@ -257,7 +257,7 @@ pub unsafe fn allocFormalsList3(sym1: SEXP, sym2: SEXP, sym3: SEXP) -> SEXP {
             } else {
                 let cell = arena.cons(sym3, R_NilValue(), ptr::null_mut());
                 if !cell.is_null() {
-                     {
+                    {
                         crate::sexp::accessors::SET_TYPEOF(cell, SEXPTYPE::LANGSXP.as_c_int());
                     }
                 }
@@ -268,7 +268,7 @@ pub unsafe fn allocFormalsList3(sym1: SEXP, sym2: SEXP, sym3: SEXP) -> SEXP {
             } else {
                 let cell = arena.cons(sym2, c3, ptr::null_mut());
                 if !cell.is_null() {
-                     {
+                    {
                         crate::sexp::accessors::SET_TYPEOF(cell, SEXPTYPE::LANGSXP.as_c_int());
                     }
                 }
@@ -279,7 +279,7 @@ pub unsafe fn allocFormalsList3(sym1: SEXP, sym2: SEXP, sym3: SEXP) -> SEXP {
             } else {
                 let cell = arena.cons(sym1, c2, ptr::null_mut());
                 if !cell.is_null() {
-                     {
+                    {
                         crate::sexp::accessors::SET_TYPEOF(cell, SEXPTYPE::LANGSXP.as_c_int());
                     }
                 }
@@ -297,15 +297,15 @@ pub unsafe fn allocFormalsList3(sym1: SEXP, sym2: SEXP, sym3: SEXP) -> SEXP {
 /// Allocate a pairlist (LISTSXP chain) of n elements.
 ///
 /// This is the equivalent of R's `allocList()`.
-pub unsafe fn allocList(n: c_int) -> SEXP {
+pub fn allocList(n: c_int) -> SEXP {
     unsafe { memory::with_arena(|arena| arena.alloc_list_chain(n)) }
 }
 
 /// Allocate a lang (LANGSXP) pairlist of n elements.
 ///
 /// This is the equivalent of R's `allocLang()` in memory.c.
-pub unsafe fn allocLang(n: c_int) -> SEXP {
-    unsafe {
+pub fn allocLang(n: c_int) -> SEXP {
+    {
         let list = allocList(n);
         if !list.is_null() {
             // Walk the list and set each element to LANGSXP type
@@ -449,7 +449,7 @@ impl Drop for TransientScope<'_> {
 /// Get the current transient allocation watermark.
 ///
 /// Returns an opaque value to pass to vmaxset().
-pub unsafe fn vmaxget() -> *mut c_void {
+pub fn vmaxget() -> *mut c_void {
     super::instance::with_required_current_instance(vmaxget_in)
 }
 
@@ -461,7 +461,7 @@ pub(crate) fn vmaxget_in(instance: *mut RInstance) -> *mut c_void {
 /// Reset transient allocations to the given watermark.
 ///
 /// Frees all transient allocations made since the corresponding vmaxget().
-pub unsafe fn vmaxset(value: *mut c_void) {
+pub fn vmaxset(value: *mut c_void) {
     super::instance::with_required_current_instance(|instance| unsafe {
         vmaxset_in(instance, value);
     });

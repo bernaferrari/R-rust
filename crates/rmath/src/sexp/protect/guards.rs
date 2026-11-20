@@ -62,7 +62,7 @@ fn try_claim_value(
 /// Legacy compatibility helper for translated code. Prefer
 /// [`protect_sexp`] when the caller has an owner-scoped value. The guard
 /// holds a generational root-table slot and may be dropped in any order.
-pub(crate) unsafe fn protect(s: SEXP) -> ProtectGuard<'static> {
+pub(crate) fn protect(s: SEXP) -> ProtectGuard<'static> {
     protect_raw(s)
 }
 
@@ -131,7 +131,7 @@ fn push_protect(s: SEXP) {
 /// Push a raw SEXP onto the LEGACY protection stack and return it.
 ///
 /// The equivalent of R's `Rf_protect()`.
-pub(crate) unsafe fn protect_raw_pointer(s: SEXP) -> SEXP {
+pub(crate) fn protect_raw_pointer(s: SEXP) -> SEXP {
     push_protect(s);
     s
 }
@@ -374,7 +374,7 @@ impl<'a> IndexedProtectGuard<'a> {
         }
     }
 
-    pub(crate) unsafe fn reprotect_raw(&mut self, value: SEXP) {
+    pub(crate) fn reprotect_raw(&mut self, value: SEXP) {
         if let Some(owner) = self.owner.as_ref().filter(|owner| owner.is_live()) {
             // SAFETY: See ProtectGuard::drop.
             with_guard_owner(owner, |inst| reprotect_slot_in(inst, self.slot, value));
@@ -395,7 +395,7 @@ impl<'a> IndexedProtectGuard<'a> {
             return Err(ProtectError::StaleSlot);
         }
         // SAFETY: checked value has the same live owner as this managed slot.
-        unsafe { self.reprotect_raw(value.as_raw()) };
+        self.reprotect_raw(value.as_raw());
         Ok(())
     }
 }
@@ -551,7 +551,7 @@ pub(crate) fn try_protect_sexp_with_index<'a>(
 ///
 /// Legacy compatibility helper for translated Rust modules. Prefer
 /// [`protect_sexp_with_index`] when the caller has an owner-scoped value.
-pub(crate) unsafe fn protect_with_index_raw(s: SEXP, api: &str) -> IndexedProtectGuard<'static> {
+pub(crate) fn protect_with_index_raw(s: SEXP, api: &str) -> IndexedProtectGuard<'static> {
     if s.is_null() {
         return IndexedProtectGuard {
             owner: None,
@@ -587,19 +587,19 @@ pub(crate) struct ProtectIndex {
 /// translated code that PROTECTs-with-index and later UNPROTECTs by count
 /// would leak the slot until scope exit. No translated module in this port
 /// calls this shim; it exists for C-shape compatibility only.
-pub(crate) unsafe fn R_ProtectWithIndex(s: SEXP) -> *mut ProtectIndex {
+pub(crate) fn R_ProtectWithIndex(s: SEXP) -> *mut ProtectIndex {
     protect_raw_with_slot(s, "R_ProtectWithIndex").into_legacy_ptr()
 }
 
 /// Free a ProtectIndex returned by R_ProtectWithIndex.
 ///
 /// This is a no-op - the index was just a number, not an allocation.
-pub(crate) unsafe fn R_FreeProtectIndex(_pi: *mut ProtectIndex) {}
+pub(crate) fn R_FreeProtectIndex(_pi: *mut ProtectIndex) {}
 
 /// Unprotect the entry at the given index and replace it with a new value.
 ///
 /// This is the equivalent of R's `R_Reprotect()`.
-pub(crate) unsafe fn R_Reprotect(s: SEXP, index: *mut ProtectIndex) {
+pub(crate) fn R_Reprotect(s: SEXP, index: *mut ProtectIndex) {
     with_required_current_instance(|inst| {
         let mut slot = ProtectionSlot::from_legacy_ptr(index);
         if let Some(generation) = protect_slot_generation_in(inst, slot) {
@@ -699,14 +699,14 @@ pub(crate) fn try_preserve_sexp<'a>(value: Sexp<'a>) -> Result<PreserveGuard<'a>
 ///
 /// Unlike a protection guard, this protection persists until explicitly released.
 /// This is the equivalent of R's `R_PreserveObject()`.
-pub(crate) unsafe fn R_PreserveObject(s: SEXP) {
+pub(crate) fn R_PreserveObject(s: SEXP) {
     push_preserve(s);
 }
 
 /// Release a previously preserved object.
 ///
 /// This is the equivalent of R's `R_ReleaseObject()`.
-pub(crate) unsafe fn R_ReleaseObject(s: SEXP) {
+pub(crate) fn R_ReleaseObject(s: SEXP) {
     release_preserved(s);
 }
 

@@ -12,7 +12,7 @@ use super::*;
 // ---------------------------------------------------------------------------
 
 pub(crate) fn factor_levels(x: Sexp<'_>) -> Option<Vec<String>> {
-    unsafe {
+    {
         let class = crate::sexp::attrib_core::getAttrib(
             x.clone().as_raw(),
             crate::sexp::attrib_core::R_ClassSymbol(),
@@ -29,13 +29,13 @@ pub(crate) fn factor_levels(x: Sexp<'_>) -> Option<Vec<String>> {
     }
 }
 
-pub(crate) unsafe fn string_vector_contains(x: SEXP, needle: &str) -> bool {
-    unsafe { string_vector_values(x) }
+pub(crate) fn string_vector_contains(x: SEXP, needle: &str) -> bool {
+    string_vector_values(x)
         .map(|values| values.iter().any(|value| value == needle))
         .unwrap_or(false)
 }
 
-pub(crate) unsafe fn string_vector_values(x: SEXP) -> Option<Vec<String>> {
+pub(crate) fn string_vector_values(x: SEXP) -> Option<Vec<String>> {
     let sexp = unsafe { Sexp::from_raw(x) }?;
     if sexp.clone().typeof_() != SEXPTYPE::STRSXP {
         return None;
@@ -47,7 +47,7 @@ pub(crate) unsafe fn string_vector_values(x: SEXP) -> Option<Vec<String>> {
     Some(values)
 }
 
-pub(crate) unsafe fn string_vector_labels(x: SEXP) -> Option<Vec<String>> {
+pub(crate) fn string_vector_labels(x: SEXP) -> Option<Vec<String>> {
     let sexp = unsafe { Sexp::from_raw(x) }?;
     if sexp.clone().typeof_() != SEXPTYPE::STRSXP {
         return None;
@@ -63,7 +63,7 @@ pub(crate) unsafe fn string_vector_labels(x: SEXP) -> Option<Vec<String>> {
 }
 
 pub(crate) fn vector_print_names(x: Sexp<'_>) -> Option<Vec<String>> {
-    unsafe {
+    {
         let names = crate::sexp::attrib_core::getAttrib(
             x.clone().as_raw(),
             crate::sexp::attrib_core::R_NamesSymbol(),
@@ -216,7 +216,7 @@ pub(crate) fn format_factor(x: Sexp<'_>) -> Option<String> {
 }
 
 pub(crate) fn table_names(x: Sexp<'_>) -> Option<Vec<String>> {
-    unsafe {
+    {
         let class = crate::sexp::attrib_core::getAttrib(
             x.clone().as_raw(),
             crate::sexp::attrib_core::R_ClassSymbol(),
@@ -566,7 +566,7 @@ pub(crate) unsafe fn encode_element_adj(
 
 /// Stock printVector: unnamed vector with "[i]" index labels, wrapping at
 /// options("width"). Every element occupies the common field width.
-pub(crate) unsafe fn print_vector_stock(x: Sexp, quote: bool, n_pr: R_xlen_t) -> String {
+pub(crate) fn print_vector_stock(x: Sexp, quote: bool, n_pr: R_xlen_t) -> String {
     // SAFETY: `x` is a rooted live SEXP and `n_pr` is bounded by its length;
     // all raw access remains read-only for the duration of this call.
     unsafe {
@@ -637,7 +637,7 @@ pub(crate) unsafe fn print_vector_stock(x: Sexp, quote: bool, n_pr: R_xlen_t) ->
 
 /// Stock printNamedVector: names line(s) right-justified over the value
 /// column(s), every column at the common width `w`, gap-separated.
-pub(crate) unsafe fn print_named_vector_stock(
+pub(crate) fn print_named_vector_stock(
     x: Sexp,
     names: Sexp,
     quote: bool,
@@ -763,19 +763,15 @@ pub(crate) unsafe fn print_named_vector_stock(
 /// Render an atomic vector exactly like stock print.default: named vectors go
 /// through printNamedVector, others through printVector with index labels;
 /// both honour options("max.print") truncation.
-pub(crate) unsafe fn format_vector_stock(x: Sexp, quote: bool) -> String {
-    unsafe { format_vector_stock_n(x, quote, None) }
+pub(crate) fn format_vector_stock(x: Sexp, quote: bool) -> String {
+    format_vector_stock_n(x, quote, None)
 }
 
-pub(crate) unsafe fn format_vector_stock_n(
-    x: Sexp,
-    quote: bool,
-    max_override: Option<i64>,
-) -> String {
+pub(crate) fn format_vector_stock_n(x: Sexp, quote: bool, max_override: Option<i64>) -> String {
     if let Some(message) = result_admission_error(x.clone()) {
         return message;
     }
-    unsafe {
+    {
         let n = x.clone().len();
         if n == 0 {
             return match x.typeof_() {

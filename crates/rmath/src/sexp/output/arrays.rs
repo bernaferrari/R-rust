@@ -58,7 +58,7 @@ pub(crate) fn sexp_string_at(x: SEXP, i: R_xlen_t) -> Option<String> {
 
 /// GNU `printArray` banner: `, , <dimname>` or `, , <axis> = <dimname>`.
 pub(crate) fn array_slice_banner(x: Sexp<'_>, dims: &[usize], slice: usize) -> String {
-    unsafe {
+    {
         let dimnames = crate::sexp::attrib_core::getAttrib(
             x.as_raw(),
             crate::sexp::attrib_core::R_DimNamesSymbol(),

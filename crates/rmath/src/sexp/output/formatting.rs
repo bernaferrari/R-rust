@@ -2,7 +2,7 @@
 
 use super::*;
 
-pub(crate) unsafe fn format_sexp(x: SEXP) -> String {
+pub(crate) fn format_sexp(x: SEXP) -> String {
     if x.is_null() {
         return "NULL".to_string();
     }

@@ -2,7 +2,7 @@
 
 use super::*;
 
-pub(crate) unsafe fn install(base_env: SEXP) {
+pub(crate) fn install(base_env: SEXP) {
     unsafe {
         // Placeholder until `retarget_base_closure_envs` publishes the real
         // base namespace (parent `.GlobalEnv`, distinct from this search-path

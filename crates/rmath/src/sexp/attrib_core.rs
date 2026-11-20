@@ -109,7 +109,7 @@ pub fn R_EnvironmentSymbol() -> SEXP {
 ///
 /// This is the equivalent of R's `getAttrib()` from attrib.c.
 /// Searches the attribute pairlist for a matching symbol.
-pub unsafe fn getAttrib(x: SEXP, which: SEXP) -> SEXP {
+pub fn getAttrib(x: SEXP, which: SEXP) -> SEXP {
     unsafe {
         if x.is_null() || which.is_null() {
             return R_NilValue();
@@ -183,7 +183,7 @@ pub unsafe fn getAttrib(x: SEXP, which: SEXP) -> SEXP {
 }
 
 /// GNU attrib.c getAttrib0: compact `c(NA, ±n)` expands to `1:n`.
-unsafe fn expand_compact_row_names(value: SEXP) -> SEXP {
+fn expand_compact_row_names(value: SEXP) -> SEXP {
     unsafe {
         if value.is_null() || value == R_NilValue() {
             return R_NilValue();
@@ -206,8 +206,8 @@ unsafe fn expand_compact_row_names(value: SEXP) -> SEXP {
     }
 }
 /// GNU `getAttrib`: a length-1 `dim` exposes `dimnames[[1]]` as `names`.
-unsafe fn names_from_one_dim(x: SEXP) -> SEXP {
-    unsafe {
+fn names_from_one_dim(x: SEXP) -> SEXP {
+    {
         let dim = getAttrib(x, R_DimSymbol());
         if TYPEOF(dim) != SEXPTYPE::INTSXP || XLENGTH(dim) != 1 {
             return R_NilValue();
@@ -231,8 +231,8 @@ unsafe fn names_from_one_dim(x: SEXP) -> SEXP {
 /// GNU `installAttrib` — store a named attribute without dim/names/class
 /// special cases. `R_do_slot_assign` uses this so a slot named `"dim"` can
 /// hold a character vector (reg-S4.R reserved slot names).
-pub unsafe fn installAttrib(vec: SEXP, name: SEXP, val: SEXP) {
-    unsafe {
+pub fn installAttrib(vec: SEXP, name: SEXP, val: SEXP) {
+    {
         if vec.is_null() || name.is_null() {
             return;
         }
@@ -264,7 +264,7 @@ pub unsafe fn installAttrib(vec: SEXP, name: SEXP, val: SEXP) {
 }
 
 /// Audited raw entry: snapshots checked owners before any provider or GC.
-unsafe fn run_tsp<T>(
+fn run_tsp<T>(
     x: SEXP,
     value: SEXP,
     preflight: impl FnOnce(&super::object::Sexp<'static>, &super::object::Sexp<'static>) -> Option<T>,
@@ -371,7 +371,7 @@ fn pairlist_name_scalar(
 /// GNU's direct `names` attribute path treats a vectorizable pairlist
 /// differently from `names<-`: it builds a target-sized character vector,
 /// truncating excess elements and leaving empty strings in unused slots.
-pub(crate) unsafe fn try_set_pairlist_names(x: SEXP, which: SEXP, value: SEXP) -> bool {
+pub(crate) fn try_set_pairlist_names(x: SEXP, which: SEXP, value: SEXP) -> bool {
     unsafe {
         if which != R_NamesSymbol()
             || value.is_null()
@@ -763,7 +763,7 @@ fn names_allocation_error(error: super::object::SexpError) -> String {
 
 /// Normalize ordinary, attribute-free atomic names in the original runtime.
 /// Classed values and arrays retain their distinct names assignment paths.
-pub(crate) unsafe fn try_set_atomic_names(x: SEXP, which: SEXP, value: SEXP) -> bool {
+pub(crate) fn try_set_atomic_names(x: SEXP, which: SEXP, value: SEXP) -> bool {
     unsafe {
         if which != R_NamesSymbol() || value.is_null() || value == R_NilValue() {
             return false;
@@ -1202,7 +1202,7 @@ fn preserve_padded_names_metadata(
     }
     let result = result.freeze();
     let tag = access
-        .with_native(|owner| unsafe { owner.sexp(R_NamesSymbol())?.into_owned() })
+        .with_native(|owner| owner.sexp(R_NamesSymbol())?.into_owned())
         .map_err(|error| error.to_string())?;
     super::tsp::install_checked(access, padded, &tag, &result, || {
         snapshot.validate(access, original)?;
@@ -1300,8 +1300,8 @@ fn snapshot_names_metadata(
 
 /// `names(x) <- NULL` removes dimnames for a one-dimensional array, while
 /// `attr(x, "names") <- NULL` leaves that attribute alone.
-pub(crate) unsafe fn try_clear_one_dimensional_names(x: SEXP) -> bool {
-    unsafe {
+pub(crate) fn try_clear_one_dimensional_names(x: SEXP) -> bool {
+    {
         run_tsp(
             x,
             R_NilValue(),
@@ -1360,7 +1360,7 @@ pub(crate) unsafe fn try_clear_one_dimensional_names(x: SEXP) -> bool {
 /// The names replacement primitive drops attributes on its character value;
 /// attr replacement deliberately retains them. Return an owned plain copy
 /// only when the replacement value actually has attributes.
-pub(crate) unsafe fn plain_names_replacement(
+pub(crate) fn plain_names_replacement(
     x: SEXP,
     value: SEXP,
 ) -> Option<super::object::Sexp<'static>> {
@@ -1450,7 +1450,7 @@ unsafe fn normalize_tsp(x: SEXP, value: SEXP) -> super::object::Sexp<'static> {
 /// Set an attribute on an object.
 ///
 /// This is the equivalent of R's `setAttrib()` from attrib.c.
-pub unsafe fn setAttrib(x: SEXP, which: SEXP, value: SEXP) {
+pub fn setAttrib(x: SEXP, which: SEXP, value: SEXP) {
     unsafe {
         if x.is_null() || which.is_null() {
             return;
@@ -1567,7 +1567,7 @@ pub unsafe fn setAttrib(x: SEXP, which: SEXP, value: SEXP) {
 }
 
 /// GNU `classgets`: NULL or length-0 STRSXP unclasses; other non-strings error.
-pub(crate) unsafe fn classgets_normalize(vec: SEXP, klass: SEXP) -> SEXP {
+pub(crate) fn classgets_normalize(vec: SEXP, klass: SEXP) -> SEXP {
     unsafe {
         if klass.is_null() || klass == R_NilValue() {
             return R_NilValue();
@@ -1612,7 +1612,7 @@ pub(crate) unsafe fn classgets_normalize(vec: SEXP, klass: SEXP) -> SEXP {
 /// Check if an object is an S4 object (has a "class" attribute).
 ///
 /// This is the equivalent of R's `isObject()` macro.
-pub unsafe fn isObject(x: SEXP) -> c_int {
+pub fn isObject(x: SEXP) -> c_int {
     {
         if x.is_null() {
             return 0;
@@ -1628,8 +1628,8 @@ pub unsafe fn isObject(x: SEXP) -> c_int {
 /// Set the class attribute of an object.
 ///
 /// This is the equivalent of R's `R_classgets()`.
-pub unsafe fn R_classgets(x: SEXP, klass: SEXP) -> SEXP {
-    unsafe {
+pub fn R_classgets(x: SEXP, klass: SEXP) -> SEXP {
+    {
         if klass.is_null() || klass == R_NilValue() {
             return x;
         }
@@ -1648,7 +1648,7 @@ pub unsafe fn R_classgets(x: SEXP, klass: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Get the length of an object via the "length" attribute.
-pub unsafe fn R_length_gets(x: SEXP) -> c_int {
+pub fn R_length_gets(x: SEXP) -> c_int {
     unsafe {
         let len_sym = Rf_install(c"length".as_ptr());
         let val = getAttrib(x, len_sym);
@@ -1668,13 +1668,13 @@ pub unsafe fn R_length_gets(x: SEXP) -> c_int {
 // ---------------------------------------------------------------------------
 
 /// FFI-compatible version of getAttrib.
-pub unsafe fn Rf_getAttrib(x: SEXP, which: SEXP) -> SEXP {
-    unsafe { getAttrib(x, which) }
+pub fn Rf_getAttrib(x: SEXP, which: SEXP) -> SEXP {
+    getAttrib(x, which)
 }
 
 /// FFI-compatible version of setAttrib.
-pub unsafe fn Rf_setAttrib(x: SEXP, which: SEXP, value: SEXP) {
-    unsafe {
+pub fn Rf_setAttrib(x: SEXP, which: SEXP, value: SEXP) {
+    {
         setAttrib(x, which, value);
     }
 }

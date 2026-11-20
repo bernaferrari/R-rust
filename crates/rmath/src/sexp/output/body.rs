@@ -129,7 +129,7 @@ pub(crate) fn deparse_expression_one(expr: SEXP) -> String {
 }
 
 pub(crate) fn format_expression_vector(x: Sexp<'_>) -> String {
-     {
+    {
         let raw = x.as_raw();
         let n = XLENGTH(raw);
         if n == 0 {
@@ -148,10 +148,10 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
     }
 
     if has_class(x.clone(), "try-error") {
-        return unsafe { format_try_error(x) };
+        return format_try_error(x);
     }
     if has_class(x.clone(), "condition") {
-        return unsafe { format_condition(x) };
+        return format_condition(x);
     }
     if let Some(text) = auto_print_method(x.clone()) {
         return text;
@@ -191,7 +191,7 @@ pub(crate) fn format_sexp_body(x: Sexp<'_>) -> String {
             if let Some(output) = format_factor(x.clone()) {
                 return output;
             }
-            let base = unsafe { format_vector_stock(x.clone(), true) };
+            let base = format_vector_stock(x.clone(), true);
             format_with_printable_attributes(base, x)
         }
         SEXPTYPE::REALSXP => {
@@ -216,7 +216,7 @@ pub(crate) fn format_sexp_body(x: Sexp<'_>) -> String {
             if let Some(output) = format_table(x.clone()) {
                 return output;
             }
-            let base = unsafe { format_vector_stock(x.clone(), true) };
+            let base = format_vector_stock(x.clone(), true);
             format_with_printable_attributes(base, x)
         }
         SEXPTYPE::LGLSXP => {
@@ -226,7 +226,7 @@ pub(crate) fn format_sexp_body(x: Sexp<'_>) -> String {
             if x.clone().len() == 0 {
                 return format_with_printable_attributes("logical(0)".to_string(), x);
             }
-            let base = unsafe { format_vector_stock(x.clone(), true) };
+            let base = format_vector_stock(x.clone(), true);
             format_with_printable_attributes(base, x)
         }
 
@@ -237,7 +237,7 @@ pub(crate) fn format_sexp_body(x: Sexp<'_>) -> String {
             if x.clone().len() == 0 {
                 return format_with_printable_attributes("complex(0)".to_string(), x);
             }
-            let base = unsafe { format_vector_stock(x.clone(), true) };
+            let base = format_vector_stock(x.clone(), true);
             format_with_printable_attributes(base, x)
         }
 
@@ -251,7 +251,7 @@ pub(crate) fn format_sexp_body(x: Sexp<'_>) -> String {
             let quote = print_quote_flag()
                 && !has_class(x.clone(), "noquote")
                 && !has_class(x.clone(), "table");
-            let base = unsafe { format_vector_stock(x.clone(), quote) };
+            let base = format_vector_stock(x.clone(), quote);
             format_with_printable_attributes(base, x)
         }
 
@@ -262,7 +262,7 @@ pub(crate) fn format_sexp_body(x: Sexp<'_>) -> String {
             if x.clone().len() == 0 {
                 return format_with_printable_attributes("raw(0)".to_string(), x);
             }
-            let base = unsafe { format_vector_stock(x.clone(), true) };
+            let base = format_vector_stock(x.clone(), true);
             format_with_printable_attributes(base, x)
         }
         SEXPTYPE::VECSXP => {
@@ -307,7 +307,7 @@ pub(crate) fn format_sexp_body(x: Sexp<'_>) -> String {
 }
 
 /// First class string of an object, for print.condition-style rendering.
-pub(crate) unsafe fn first_class_string(x: Sexp<'_>) -> Option<String> {
+pub(crate) fn first_class_string(x: Sexp<'_>) -> Option<String> {
     unsafe {
         let klass = crate::sexp::attrib_core::getAttrib(
             x.as_raw(),
@@ -334,7 +334,7 @@ pub(crate) unsafe fn first_class_string(x: Sexp<'_>) -> Option<String> {
 
 /// Stock print.condition: `<class: msg>` or `<class in <deparsed call>: msg>`.
 /// Conditions are `list(message, call, ...)` per R_makeErrorCondition.
-pub(crate) unsafe fn format_condition(x: Sexp<'_>) -> String {
+pub(crate) fn format_condition(x: Sexp<'_>) -> String {
     // SAFETY: callers provide a rooted live condition object. Each optional
     // list/string field is tag-checked before raw element access.
     unsafe {
@@ -383,7 +383,7 @@ pub(crate) unsafe fn format_condition(x: Sexp<'_>) -> String {
 
 /// Stock print.default on a try-error object: the message string rendered as
 /// a character vector, then the class and condition attributes.
-pub(crate) unsafe fn format_try_error(x: Sexp<'_>) -> String {
+pub(crate) fn format_try_error(x: Sexp<'_>) -> String {
     // SAFETY: callers provide a rooted live try-error object; attribute and
     // vector reads remain within the lifetime carried by `x`.
     unsafe {
@@ -393,7 +393,7 @@ pub(crate) unsafe fn format_try_error(x: Sexp<'_>) -> String {
             format!("{}\n", format_sexp_direct(x.clone()))
         };
         out.push('\n');
-         {
+        {
             let klass = crate::sexp::attrib_core::getAttrib(
                 x.clone().as_raw(),
                 crate::sexp::attrib_core::R_ClassSymbol(),
@@ -437,7 +437,7 @@ pub(crate) fn format_environment_public(x: Sexp<'_>) -> String {
 
 pub(crate) fn format_environment(x: Sexp<'_>) -> String {
     let raw = x.as_raw();
-    let name =  {
+    let name = {
         if raw == crate::sexp::globals::R_GlobalEnv() {
             "R_GlobalEnv".to_string()
         } else if raw == crate::sexp::globals::R_BaseEnv() {

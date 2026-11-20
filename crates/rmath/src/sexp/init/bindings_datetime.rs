@@ -2,7 +2,7 @@
 
 use super::*;
 
-pub(crate) unsafe fn install(base_env: SEXP) {
+pub(crate) fn install(base_env: SEXP) {
     unsafe {
         // GNU stats::setNames is a closure so `setNames(, nm)` uses the
         // `object = nm` default instead of evalList's empty-arg error.
