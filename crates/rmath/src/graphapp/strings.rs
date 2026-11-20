@@ -7,29 +7,27 @@
 //! Ported from strings.c - provides safe string manipulation
 //! with null-safety guarantees.
 
+use std::cmp::Ordering;
 use std::os::raw::{c_char, c_int, c_long};
 use std::ptr;
 
 use super::memory;
+use super::types::cstr;
 
 /// Create and return a newly allocated copy of a string.
 /// Null strings are converted into empty strings.
 pub fn new_string(src: *const c_char) -> *mut c_char {
-    unsafe {
-        if src.is_null() {
+    match cstr(src) {
+        Some(s) => new_string_from_bytes(s.to_bytes()),
+        None => {
             // Allocate empty string
             let p = memory::memalloc(1);
             if !p.is_null() {
-                *p = 0;
+                // Terminate the fresh 1-byte allocation.
+                unsafe { *p = 0 };
             }
-            return p as *mut c_char;
+            p as *mut c_char
         }
-        let len = string_length(src);
-        let str = memory::memalloc(len + 1) as *mut c_char;
-        if !str.is_null() {
-            copy_string(str, src);
-        }
-        str
     }
 }
 
@@ -42,24 +40,17 @@ pub fn del_string(str: *const c_char) {
 
 /// String length. Returns 0 for null strings.
 pub fn string_length(s: *const c_char) -> c_long {
-    unsafe {
-        if s.is_null() {
-            return 0;
-        }
-        let mut len: c_long = 0;
-        while *s.add(len as usize) != 0 {
-            len += 1;
-        }
-        len
-    }
+    cstr(s).map_or(0, |s| s.to_bytes().len() as c_long)
 }
 
 /// Copy a string. Avoids doing anything to null strings.
 pub fn copy_string(dest: *mut c_char, src: *const c_char) {
+    if dest.is_null() || src.is_null() {
+        return;
+    }
+    // Copy `src` byte by byte up to and including its NUL; callers
+    // guarantee `dest` has room for the whole string.
     unsafe {
-        if dest.is_null() || src.is_null() {
-            return;
-        }
         let mut i: c_long = 0;
         while *src.add(i as usize) != 0 {
             *dest.add(i as usize) = *src.add(i as usize);
@@ -71,78 +62,94 @@ pub fn copy_string(dest: *mut c_char, src: *const c_char) {
 
 /// String comparison. Null == null, null == "", "" == null.
 pub fn compare_strings(s1: *const c_char, s2: *const c_char) -> c_int {
-    unsafe {
-        if s1 == s2 {
-            return 0;
-        } else if s1.is_null() {
-            if *s2 == 0 { 0 } else { -1 }
-        } else if s2.is_null() {
-            if *s1 == 0 { 0 } else { 1 }
-        } else {
-            let mut i: c_long = 0;
-            loop {
-                let c1 = *s1.add(i as usize);
-                let c2 = *s2.add(i as usize);
-                let diff = c1 as c_int - c2 as c_int;
+    if s1 == s2 {
+        return 0;
+    }
+    match (cstr(s1), cstr(s2)) {
+        (None, None) => 0,
+        (None, Some(b)) => {
+            if b.to_bytes().is_empty() {
+                0
+            } else {
+                -1
+            }
+        }
+        (Some(a), None) => {
+            if a.to_bytes().is_empty() {
+                0
+            } else {
+                1
+            }
+        }
+        (Some(a), Some(b)) => {
+            let a = a.to_bytes();
+            let b = b.to_bytes();
+            for (&x, &y) in a.iter().zip(b) {
+                // Reinterpret as c_char to preserve the original signed
+                // comparison semantics.
+                let diff = (x as c_char) as c_int - (y as c_char) as c_int;
                 if diff != 0 {
                     return diff;
                 }
-                if c1 == 0 {
-                    break;
-                }
-                i += 1;
             }
-            0
+            // Equal up to the shorter length; compare the longer
+            // string's next byte against the shorter one's NUL.
+            match a.len().cmp(&b.len()) {
+                Ordering::Greater => (a[b.len()] as c_char) as c_int,
+                Ordering::Less => -((b[a.len()] as c_char) as c_int),
+                Ordering::Equal => 0,
+            }
         }
     }
 }
 
 fn new_string_from_bytes(bytes: &[u8]) -> *mut c_char {
+    let len = bytes.len().min(c_long::MAX as usize);
+    let out = memory::memalloc(len as c_long + 1) as *mut c_char;
+    if out.is_null() {
+        return ptr::null_mut();
+    }
+    // Fill the fresh `len + 1`-byte allocation, NUL included.
     unsafe {
-        let len = bytes.len().min(c_long::MAX as usize);
-        let out = memory::memalloc(len as c_long + 1) as *mut c_char;
-        if out.is_null() {
-            return ptr::null_mut();
-        }
         for (idx, byte) in bytes.iter().take(len).enumerate() {
             *out.add(idx) = *byte as c_char;
         }
         *out.add(len) = 0;
-        out
     }
+    out
 }
 
 /// Append two strings. The returned string is newly allocated and caller-owned.
 pub fn add_strings(s1: *const c_char, s2: *const c_char) -> *mut c_char {
-    unsafe {
-        if s1.is_null() {
-            return new_string(s2);
-        }
-        if s2.is_null() {
-            return new_string(s1);
-        }
-
-        let len1 = string_length(s1);
-        let len2 = string_length(s2);
-        let buf = memory::memalloc(len1 + len2 + 1) as *mut c_char;
-        if !buf.is_null() {
-            copy_string(buf, s1);
-            copy_string(buf.add(len1 as usize), s2);
-        }
-        buf
+    if s1.is_null() {
+        return new_string(s2);
     }
+    if s2.is_null() {
+        return new_string(s1);
+    }
+
+    let len1 = string_length(s1);
+    let len2 = string_length(s2);
+    let buf = memory::memalloc(len1 + len2 + 1) as *mut c_char;
+    if !buf.is_null() {
+        copy_string(buf, s1);
+        // Move `len1` bytes into the fresh `len1 + len2 + 1`-byte buffer.
+        copy_string(unsafe { buf.add(len1 as usize) }, s2);
+    }
+    buf
 }
 
 /// Convert a char to a newly allocated string.
 pub fn char_to_string(ch: c_char) -> *mut c_char {
-    unsafe {
-        let out = memory::memalloc(2) as *mut c_char;
-        if !out.is_null() {
+    let out = memory::memalloc(2) as *mut c_char;
+    if !out.is_null() {
+        // Fill the fresh 2-byte allocation.
+        unsafe {
             *out = ch;
             *out.add(1) = 0;
         }
-        out
     }
+    out
 }
 
 /// Convert an integer to a newly allocated string.
@@ -159,108 +166,104 @@ pub fn float_to_string(f: f32) -> *mut c_char {
 
 /// Case-insensitive string comparison.
 pub fn string_diff(s: *const c_char, t: *const c_char) -> c_int {
-    unsafe {
-        let mut diff: c_int = 0;
-        let mut si: isize = 0;
-        let mut ti: isize = 0;
+    let a = cstr(s).map_or(&[][..], |s| s.to_bytes());
+    let b = cstr(t).map_or(&[][..], |s| s.to_bytes());
+    let mut diff: c_int = 0;
+    let mut i = 0usize;
 
-        while diff == 0 && (*s.add(si as usize) != 0 || *t.add(ti as usize) != 0) {
-            let mut ch1 = *s.add(si as usize) as c_int;
-            let mut ch2 = *t.add(ti as usize) as c_int;
+    while diff == 0 && (i < a.len() || i < b.len()) {
+        // Reinterpret as c_char to preserve the original signed
+        // comparison semantics; positions past the NUL read as 0.
+        let mut ch1 = a.get(i).copied().unwrap_or(0) as c_char as c_int;
+        let mut ch2 = b.get(i).copied().unwrap_or(0) as c_char as c_int;
 
-            if ch1 >= ('A' as c_int) && ch1 <= ('Z' as c_int) {
-                ch1 = ch1 - 'A' as c_int + 'a' as c_int;
-            }
-            if ch2 >= ('A' as c_int) && ch2 <= ('Z' as c_int) {
-                ch2 = ch2 - 'A' as c_int + 'a' as c_int;
-            }
-            diff = ch1 - ch2;
-            si += 1;
-            ti += 1;
+        if ch1 >= ('A' as c_int) && ch1 <= ('Z' as c_int) {
+            ch1 = ch1 - 'A' as c_int + 'a' as c_int;
         }
-        diff
+        if ch2 >= ('A' as c_int) && ch2 <= ('Z' as c_int) {
+            ch2 = ch2 - 'A' as c_int + 'a' as c_int;
+        }
+        diff = ch1 - ch2;
+        i += 1;
     }
+    diff
 }
 
 /// Convert \n to \r\n. The returned string must be freed.
 pub fn to_dos_string(text: *const c_char) -> *mut c_char {
-    unsafe {
-        if text.is_null() {
-            return ptr::null_mut();
-        }
+    let Some(text) = cstr(text) else {
+        return ptr::null_mut();
+    };
+    let bytes = text.to_bytes();
 
-        // First pass: count length
-        let mut length: c_long = 0;
-        let mut prev: c_char = 0;
-        let mut s = text;
-        while *s != 0 {
+    // First pass: count length
+    let mut length = bytes.len();
+    let mut prev = 0u8;
+    for &b in bytes {
+        if b == b'\n' && prev != b'\r' {
             length += 1;
-            if *s == ('\n' as c_char) && prev != ('\r' as c_char) {
-                length += 1;
-            }
-            prev = *s;
-            s = s.add(1);
         }
+        prev = b;
+    }
 
-        let newstr = memory::memalloc(length + 1) as *mut c_char;
-        if newstr.is_null() {
-            return ptr::null_mut();
-        }
+    let newstr = memory::memalloc(length as c_long + 1) as *mut c_char;
+    if newstr.is_null() {
+        return ptr::null_mut();
+    }
 
+    // Write the converted bytes into the fresh `length + 1`-byte buffer.
+    unsafe {
         prev = 0;
         let mut ss = newstr;
-        let mut t = text;
-        while *t != 0 {
-            if *t == ('\n' as c_char) && prev != ('\r' as c_char) {
-                *ss = '\r' as c_char;
+        for &b in bytes {
+            if b == b'\n' && prev != b'\r' {
+                *ss = b'\r' as c_char;
                 ss = ss.add(1);
             }
-            *ss = *t;
-            prev = *ss;
+            *ss = b as c_char;
+            prev = b;
             ss = ss.add(1);
-            t = t.add(1);
         }
         *ss = 0;
-
-        newstr
     }
+
+    newstr
 }
 
 /// Strip carriage returns. The returned string must be freed.
 pub fn to_c_string(text: *const c_char) -> *mut c_char {
+    let Some(text) = cstr(text) else {
+        return ptr::null_mut();
+    };
+    let bytes = text.to_bytes();
+
+    // First pass: count length
+    let mut length = bytes.len();
+    for pair in bytes.windows(2) {
+        if pair == b"\r\n" {
+            length -= 1;
+        }
+    }
+
+    let newstr = memory::memalloc(length as c_long + 1) as *mut c_char;
+    if newstr.is_null() {
+        return ptr::null_mut();
+    }
+
+    // Write the converted bytes into the fresh `length + 1`-byte buffer.
     unsafe {
-        if text.is_null() {
-            return ptr::null_mut();
-        }
-
-        // First pass: count length
-        let mut length: c_long = 0;
-        let mut s = text;
-        while *s != 0 {
-            length += 1;
-            if *s == ('\r' as c_char) && *s.add(1) == ('\n' as c_char) {
-                length -= 1;
-            }
-            s = s.add(1);
-        }
-
-        let newstr = memory::memalloc(length + 1) as *mut c_char;
-        if newstr.is_null() {
-            return ptr::null_mut();
-        }
-
         let mut ss = newstr;
-        let mut t = text;
-        while *t != 0 {
-            if *t == ('\r' as c_char) && *t.add(1) == ('\n' as c_char) {
-                t = t.add(1); // skip CR
+        let mut i = 0usize;
+        while i < bytes.len() {
+            if bytes[i] == b'\r' && bytes.get(i + 1) == Some(&b'\n') {
+                i += 1; // skip CR
             }
-            *ss = *t;
+            *ss = bytes[i] as c_char;
             ss = ss.add(1);
-            t = t.add(1);
+            i += 1;
         }
         *ss = 0;
-
-        newstr
     }
+
+    newstr
 }

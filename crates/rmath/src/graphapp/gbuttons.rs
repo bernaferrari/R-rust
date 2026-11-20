@@ -15,21 +15,16 @@ use super::events;
 use super::types::*;
 
 fn text_len(text: *const c_char) -> usize {
-    let mut len = 0usize;
-    unsafe {
-        while !text.is_null() && *text.add(len) != 0 {
-            len += 1;
-        }
-    }
-    len
+    cstr(text).map_or(0, |s| s.to_bytes().len())
 }
 
 fn selection_bounds(obj: control, len: usize) -> (usize, usize) {
-    unsafe {
-        let start = (*obj).size.max(0) as usize;
-        let end = (*obj).xsize.max(0) as usize;
-        (min(start, len), min(max(start, end), len))
-    }
+    let Some(data) = obj_ref(obj) else {
+        return (0, 0);
+    };
+    let start = data.size.max(0) as usize;
+    let end = data.xsize.max(0) as usize;
+    (min(start, len), min(max(start, end), len))
 }
 
 pub fn gchangescrollbar(
@@ -40,12 +35,10 @@ pub fn gchangescrollbar(
     pagesize: c_int,
     _disablenoscroll: c_int,
 ) {
-    unsafe {
-        if !sb.is_null() {
-            (*sb).value = where_;
-            (*sb).max = max_value;
-            (*sb).size = pagesize;
-        }
+    if let Some(data) = obj_mut(sb) {
+        data.value = where_;
+        data.max = max_value;
+        data.size = pagesize;
     }
 }
 
@@ -65,10 +58,8 @@ pub fn newtoolbutton(_img: image, _r: rect, _fn_: actionfn) -> button {
 }
 
 pub fn scrolltext(c: textbox, lines: c_int) {
-    unsafe {
-        if !c.is_null() {
-            (*c).carety = ((*c).carety + lines).max(0);
-        }
+    if let Some(data) = obj_mut(c) {
+        data.carety = (data.carety + lines).max(0);
     }
 }
 
@@ -77,74 +68,68 @@ pub fn ggetkeystate() -> c_int {
 }
 
 pub fn scrollcaret(c: textbox, lines: c_int) {
-    unsafe {
-        if !c.is_null() {
-            (*c).carety = ((*c).carety + lines).max(0);
-        }
+    if let Some(data) = obj_mut(c) {
+        data.carety = (data.carety + lines).max(0);
     }
 }
 
 pub fn gsetmodified(c: textbox, modified: c_int) {
-    unsafe {
-        if !c.is_null() {
-            (*c).value = i32::from(modified != 0);
-        }
+    if let Some(data) = obj_mut(c) {
+        data.value = i32::from(modified != 0);
     }
 }
 
 pub fn ggetmodified(c: textbox) -> c_int {
-    unsafe {
-        if c.is_null() {
-            0
-        } else {
-            i32::from((*c).value != 0)
-        }
-    }
+    obj_ref(c).map_or(0, |data| i32::from(data.value != 0))
 }
 
 pub fn getlinelength(c: textbox) -> c_int {
-    unsafe {
-        if c.is_null() || (*c).text.is_null() {
-            return 0;
-        }
-
-        let mut len = 0usize;
-        while *(*c).text.add(len) != 0 && *(*c).text.add(len) != b'\n' as core::ffi::c_char {
-            len += 1;
-        }
-        len as c_int
-    }
+    let Some(text) = obj_ref(c)
+        .map(|data| data.text as *const c_char)
+        .and_then(cstr)
+    else {
+        return 0;
+    };
+    let bytes = text.to_bytes();
+    bytes
+        .iter()
+        .position(|&b| b == b'\n')
+        .unwrap_or(bytes.len()) as c_int
 }
 
 pub fn getcurrentline(c: textbox, line: *mut c_char, length: c_int) {
+    if c.is_null() || line.is_null() || length <= 0 {
+        return;
+    }
+    let source = obj_ref(c).map_or(ptr::null(), |data| data.text as *const c_char);
+    let count = getlinelength(c).min(length - 1).max(0) as usize;
+    // Copy `count` bytes into the caller's `length`-byte buffer and
+    // NUL-terminate it.
     unsafe {
-        if c.is_null() || line.is_null() || length <= 0 {
-            return;
-        }
-
-        let count = getlinelength(c).min(length - 1).max(0) as usize;
-        if !(*c).text.is_null() && count > 0 {
-            ptr::copy_nonoverlapping((*c).text, line, count);
+        if !source.is_null() && count > 0 {
+            ptr::copy_nonoverlapping(source, line, count);
         }
         *line.add(count) = 0;
     }
 }
 
 pub fn getseltext(c: textbox, text: *mut c_char) {
+    if c.is_null() || text.is_null() {
+        return;
+    }
+    let source = obj_ref(c).map_or(ptr::null_mut(), |data| data.text);
+    if source.is_null() {
+        // NUL-terminate the caller's buffer.
+        unsafe { *text = 0 };
+        return;
+    }
+
+    let len = text_len(source);
+    let (start, end) = selection_bounds(c, len);
+    let count = end.saturating_sub(start);
+    // Copy the selected range into the caller's buffer, sized for the
+    // full text plus NUL, and terminate it.
     unsafe {
-        if c.is_null() || text.is_null() {
-            return;
-        }
-
-        let source = (*c).text;
-        if source.is_null() {
-            *text = 0;
-            return;
-        }
-
-        let len = text_len(source);
-        let (start, end) = selection_bounds(c, len);
-        let count = end.saturating_sub(start);
         if count > 0 {
             ptr::copy_nonoverlapping(source.add(start), text, count);
         }
@@ -153,36 +138,38 @@ pub fn getseltext(c: textbox, text: *mut c_char) {
 }
 
 pub fn setlimittext(t: textbox, limit: c_long) {
-    unsafe {
-        if !t.is_null() {
-            (*t).max = limit.max(0) as c_int;
-            checklimittext(t, limit);
-        }
-    }
+    let Some(data) = obj_mut(t) else {
+        return;
+    };
+    data.max = limit.max(0) as c_int;
+    checklimittext(t, limit);
 }
 
 pub fn getlimittext(t: textbox) -> c_long {
-    unsafe { if t.is_null() { 0 } else { (*t).max as c_long } }
+    obj_ref(t).map_or(0, |data| data.max as c_long)
 }
 
 pub fn checklimittext(t: textbox, n: c_long) {
-    unsafe {
-        if t.is_null() || (*t).text.is_null() {
-            return;
-        }
+    let Some(data) = obj_mut(t) else {
+        return;
+    };
+    if data.text.is_null() {
+        return;
+    }
 
-        let limit = if n > 0 {
-            n as usize
-        } else {
-            (*t).max.max(0) as usize
-        };
-        if limit == 0 {
-            return;
-        }
+    let limit = if n > 0 {
+        n as usize
+    } else {
+        data.max.max(0) as usize
+    };
+    if limit == 0 {
+        return;
+    }
 
-        if text_len((*t).text) > limit {
-            *(*t).text.add(limit) = 0;
-        }
+    let text = data.text;
+    if text_len(text) > limit {
+        // Truncate the NUL-terminated text buffer at `limit` bytes.
+        unsafe { *text.add(limit) = 0 };
     }
 }
 
@@ -191,25 +178,24 @@ pub fn getpastelength() -> c_long {
 }
 
 pub fn textselectionex(obj: control, start: *mut c_long, end: *mut c_long) {
+    let Some(data) = obj_ref(obj) else {
+        return;
+    };
+    // Write through the caller's out-pointers after null checks.
     unsafe {
-        if obj.is_null() {
-            return;
-        }
         if !start.is_null() {
-            *start = (*obj).size as c_long;
+            *start = data.size as c_long;
         }
         if !end.is_null() {
-            *end = (*obj).xsize as c_long;
+            *end = data.xsize as c_long;
         }
     }
 }
 
 pub fn selecttextex(obj: control, start: c_long, end: c_long) {
-    unsafe {
-        if !obj.is_null() {
-            (*obj).size = start.max(0) as c_int;
-            (*obj).xsize = end.max(start).max(0) as c_int;
-        }
+    if let Some(data) = obj_mut(obj) {
+        data.size = start.max(0) as c_int;
+        data.xsize = end.max(start).max(0) as c_int;
     }
 }
 
