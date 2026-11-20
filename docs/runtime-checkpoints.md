@@ -54,6 +54,13 @@ user workflows have passed on native Rport and production Wasm.
 
 ## Main verification
 
+- At `3e5bbcbb`, native and production Wasm verified 15 of 20 everyday
+  workflows. The ordinary PDF script produced valid vector output, and
+  refusing unsupported raster content preserved the previous output.
+  All 17 selected native GNU cases, 332 Wasm contract executions, and
+  seven Chromium deadline checks passed.
+  [Production receipt](ci-checkpoints/wasm-bundle-3e5bbcbb.json)
+
 - At `87328a0c`, 17 selected cases passed pinned native GNU conformance.
   The exact optimized Wasm module passed 332 contracts across two fresh
   generations and seven Chromium deadline checks. The project workflow
@@ -199,6 +206,17 @@ user workflows have passed on native Rport and production Wasm.
   [Complete case receipt](ci-checkpoints/gnu-conformance-main-eddd0913.json)
 
 ## Wasm footprint
+
+The PDF build uses 23,972,608 bytes in the Workbench production bundle,
+leaving 2,241,792 bytes (2.14 MiB) below 25 MiB. A named profile with identical
+execution sections attributes 9,236,671 function-body bytes to `rmath`
+symbols, including 2,384,498 under `mainutils::essentials`. Those symbols
+include inlined dependencies. The profile identifies 37,438 body bytes
+under `lzma_rs` symbols and 108,281 under `lzma_rust2` symbols. The optimized
+module compressed locally to 12,156,448 bytes with Brotli and 13,656,301
+with gzip. The Workbench cap counts all raw runtime assets. A standalone
+similar-function merging pass increased the module by 137,463 bytes.
+[Code and data breakdown](ci-checkpoints/wasm-code-3e5bbcbb.json)
 
 At `6b6dfaab`, Workbench packages **23,990,595 bytes**, leaving
 **2,223,805 bytes (2.12 MiB)** below the 25 MiB ceiling. The bundle is

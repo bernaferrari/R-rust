@@ -1,0 +1,56 @@
+{
+  "runtime_commit": "3e5bbcbbcc1d18e77e3584997f4e30526da4c1bf",
+  "evidence_commit": "c3b9b2480865d95abe9ca54ce42db1e459e01eb1",
+  "wasm_sha256": "8c893d3bc6889037bcd812bba928442a455ebde008fde96da28d755c79c6553a",
+  "files": {
+    "package.json": 365,
+    "r_wasm.d.ts": 6452,
+    "r_wasm.js": 25125,
+    "r_wasm_bg.wasm": 23937575,
+    "r_wasm_bg.wasm.d.ts": 2615,
+    "rust-runtime-optimization.json": 476
+  },
+  "bundle_bytes": 23972608,
+  "byte_limit": 26214400,
+  "headroom_bytes": 2241792,
+  "portable_contracts_per_generation": [
+    166,
+    166
+  ],
+  "browser_deadlines": {
+    "expected": 7,
+    "unexpected": 0,
+    "flaky": 0,
+    "skipped": 0,
+    "s4_evaluation_ms": [
+      11921.8,
+      9217.2,
+      10347.7,
+      10297.7,
+      7913.9,
+      7753.8
+    ]
+  },
+  "strict_pinned_native_cases": 17,
+  "everyday_analysis": {
+    "native": {
+      "pass": 15,
+      "fail": 0,
+      "unmeasured": 5,
+      "percent_verified": 75.0
+    },
+    "wasm": {
+      "pass": 15,
+      "fail": 0,
+      "unmeasured": 5,
+      "percent_verified": 75.0
+    }
+  },
+  "scope": "Pinned GNU, native portable graphics, and exact Workbench production Wasm",
+  "wasm_pdf_resource_denial_and_recovery": {
+    "wasm_sha256": "8c893d3bc6889037bcd812bba928442a455ebde008fde96da28d755c79c6553a",
+    "failure": "cannot finish PDF: file data exceeds session memory limit",
+    "preserved_sha256": "8fcb6a960843b6c1ec87eb18edfb79a104e8b633faf6a4c014f6444eefa303b3",
+    "recovered_sha256": "7bf4202f6e9551484e02b37079fb5a44872047b51572a52584355c71d53b33f4"
+  }
+}

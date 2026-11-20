@@ -11,6 +11,15 @@ workflow stays in the denominator. A pass requires a measured result, and an
 unmeasured workflow earns no credit. Silent wrong results, crashes and data
 loss in supported workflows block release even when the score is high.
 
+At `3e5bbcbb`, **15 of 20 workflows (75%)** passed on both targets.
+An ordinary `pdf()` script exported a labeled scatterplot with visible
+data points, axes, a fitted line and a dashed reference line. Independent
+Poppler checks compared the figure to pinned GNU R. A second export with
+unsupported raster content reported an error and preserved the existing
+file byte for byte on both targets.
+[Scorecard](ci-checkpoints/everyday-analysis-v1-3e5bbcbb.json)
+[Plot receipt](ci-checkpoints/everyday-base-plot-3e5bbcbb.json)
+
 At `6b6dfaab`, **14 of 20 workflows (70%)** passed on native Rport and the
 smaller production Wasm build. Fresh sessions repeated the CSV round
 trip, nine workspace interchange combinations, and the pinned R6 analysis.
@@ -102,6 +111,10 @@ Set `--workflow pure-r-package` to install the pinned R6 source on GNU R and
 verify the same analysis through native Rport and the production Wasm package.
 Pass its JSON as a third `--session-report`.
 
+Set `--workflow base-plot-export` to check a real PDF against pinned GNU R
+using `pdfinfo`, `pdftotext`, and `pdftoppm` from Poppler. Pass the JSON
+output as another `--session-report`.
+
 ## Project files in Wasm
 
 R code resolves absolute paths inside its own virtual filesystem. Relative
@@ -113,3 +126,19 @@ create links, and file modes are stored as virtual metadata. New native
 files copied by `file.copy()` require a filesystem supporting hard links
 for exclusive publication. Native directory copies reject destination
 symlinks.
+
+## PDF plots
+
+The shipped native CLI and Wasm support file-backed base graphics through
+`pdf()` and `dev.off()`. The device writes searchable vector PDF 1.4 in
+RGB with bundled DejaVu Sans faces. It accepts literal filenames and
+`onefile = TRUE`. Device width and height define the page, and `compress`
+controls compression of the page drawing streams. The file is published
+after a successful close. A failed export preserves an existing destination.
+
+The device rejects raster images, unsupported glyphs, additional font
+families, and alternate paper and color models. It accepts up to 256 pages,
+subject to the session memory budget. Wasm PDF files also use the virtual
+filesystem limits of 1 MiB per file and 8 MiB per session. PDF options for
+title metadata and printer-specific layout settings are outside the verified
+support boundary.

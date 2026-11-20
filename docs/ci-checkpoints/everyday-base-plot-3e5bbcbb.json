@@ -1,0 +1,106 @@
+{
+  "schema_version": 1,
+  "source_commit": "c3b9b2480865d95abe9ca54ce42db1e459e01eb1",
+  "source_sha256": "bccf97745e978806c4e0d6386d1ac8aba38d5ceac70a305bf4738ddb5cf7f358",
+  "wasm_sha256": "8c893d3bc6889037bcd812bba928442a455ebde008fde96da28d755c79c6553a",
+  "oracle_manifest_sha256": "b2400cc9d83720c794199ebe51856bb88a0aa2e38ee8db276c7c27f04473c679",
+  "workflow": "base-plot-export",
+  "fixture_sha256": {
+    "plot.R": "535bcfd6067563e0ad4065a2bac872be5a55df23dff9ae361060796dc65c34b1",
+    "safety.R": "73a60a7e7762d8d6ac7d305c11262492be85883ca3efceb911b26d03d1243a87"
+  },
+  "expected": {
+    "output": "Exported a layered scatterplot with the same plot limits\n",
+    "pages": 1,
+    "page_size_points": [
+      432,
+      288
+    ],
+    "labels": [
+      "Weekly observations",
+      "Observations",
+      "Week",
+      "Observed",
+      "Linear fit"
+    ],
+    "data_points_visible": true,
+    "fit_visible": true,
+    "reference_visible": true,
+    "axes_visible": true
+  },
+  "native": {
+    "output": "Exported a layered scatterplot with the same plot limits\n",
+    "pages": 1,
+    "page_size_points": [
+      432,
+      288
+    ],
+    "labels": [
+      "Weekly observations",
+      "Observations",
+      "Week",
+      "Observed",
+      "Linear fit"
+    ],
+    "data_points_visible": true,
+    "fit_visible": true,
+    "reference_visible": true,
+    "axes_visible": true
+  },
+  "wasm": {
+    "output": "Exported a layered scatterplot with the same plot limits\n",
+    "pages": 1,
+    "page_size_points": [
+      432,
+      288
+    ],
+    "labels": [
+      "Weekly observations",
+      "Observations",
+      "Week",
+      "Observed",
+      "Linear fit"
+    ],
+    "data_points_visible": true,
+    "fit_visible": true,
+    "reference_visible": true,
+    "axes_visible": true
+  },
+  "pdf_evidence": {
+    "gnu": {
+      "pdf_sha256": "4c41518e27cc0713fb40f5f5220ff6971ecdc965cbbc9b73e519f4aebf68abec",
+      "pdf_bytes": 14377,
+      "pixel_counts": {
+        "data_points": 5,
+        "fit_pixels": 302,
+        "reference_pixels": 112,
+        "horizontal_axis_pixels": 350,
+        "vertical_axis_pixels": 161
+      }
+    },
+    "native": {
+      "pdf_sha256": "8fcb6a960843b6c1ec87eb18edfb79a104e8b633faf6a4c014f6444eefa303b3",
+      "pdf_bytes": 390223,
+      "pixel_counts": {
+        "data_points": 5,
+        "fit_pixels": 469,
+        "reference_pixels": 170,
+        "horizontal_axis_pixels": 350,
+        "vertical_axis_pixels": 161
+      },
+      "preserved_sha256": "8fcb6a960843b6c1ec87eb18edfb79a104e8b633faf6a4c014f6444eefa303b3"
+    },
+    "wasm": {
+      "pdf_sha256": "8fcb6a960843b6c1ec87eb18edfb79a104e8b633faf6a4c014f6444eefa303b3",
+      "pdf_bytes": 390223,
+      "pixel_counts": {
+        "data_points": 5,
+        "fit_pixels": 469,
+        "reference_pixels": 170,
+        "horizontal_axis_pixels": 350,
+        "vertical_axis_pixels": 161
+      },
+      "preserved_sha256": "8fcb6a960843b6c1ec87eb18edfb79a104e8b633faf6a4c014f6444eefa303b3"
+    }
+  }
+}
