@@ -6,7 +6,6 @@
 
 #![allow(non_snake_case)]
 
-use std::ffi::CStr;
 use std::os::raw::{c_char, c_int};
 use std::ptr;
 
@@ -68,10 +67,8 @@ fn _nl_make_l10nflist(
 /// This corresponds to `_nl_load_domain` in `loadmsg.c`.
 /// For the standalone port we provide a stub that marks the domain as decided.
 fn _nl_load_domain(domain: *mut loaded_l10nfile, _domainbinding: *mut binding) {
-    unsafe {
-        if !domain.is_null() {
-            (*domain).decided = 1;
-        }
+    if let Some(d) = ptr_mut(domain) {
+        d.decided = 1;
     }
 }
 
@@ -87,25 +84,23 @@ fn _nl_explode_name(
     codeset: *mut *const c_char,
     normalized_codeset: *mut *const c_char,
 ) -> c_int {
-    unsafe {
-        // Simplified stub: just set language to the whole name, others to null.
-        if !language.is_null() {
-            *language = _name;
-        }
-        if !modifier.is_null() {
-            *modifier = ptr::null();
-        }
-        if !territory.is_null() {
-            *territory = ptr::null();
-        }
-        if !codeset.is_null() {
-            *codeset = ptr::null();
-        }
-        if !normalized_codeset.is_null() {
-            *normalized_codeset = ptr::null();
-        }
-        0
+    // Simplified stub: just set language to the whole name, others to null.
+    if let Some(p) = ptr_mut(language) {
+        *p = _name;
     }
+    if let Some(p) = ptr_mut(modifier) {
+        *p = ptr::null();
+    }
+    if let Some(p) = ptr_mut(territory) {
+        *p = ptr::null();
+    }
+    if let Some(p) = ptr_mut(codeset) {
+        *p = ptr::null();
+    }
+    if let Some(p) = ptr_mut(normalized_codeset) {
+        *p = ptr::null();
+    }
+    0
 }
 
 // ---------------------------------------------------------------------------
@@ -131,11 +126,7 @@ pub fn _nl_find_domain(
         let mut normalized_codeset: *const c_char = ptr::null();
         let mask: c_int;
 
-        let dirname_len = if dirname.is_null() {
-            0
-        } else {
-            CStr::from_ptr(dirname).to_bytes().len() + 1
-        };
+        let dirname_len = cstr(dirname).map_or(0, |s| s.to_bytes().len() + 1);
 
         retval = _nl_make_l10nflist(
             with_intl_runtime(|intl| &mut intl.loaded_domains as *mut *mut loaded_l10nfile),
@@ -227,10 +218,7 @@ pub fn _nl_find_domain(
 
         // Free the normalized_codeset if it was dynamically allocated.
         if (mask & XPG_NORM_CODESET) != 0 && !normalized_codeset.is_null() {
-            let len = CStr::from_ptr(normalized_codeset).to_bytes().len() + 1;
-            let layout = std::alloc::Layout::from_size_align(len, 1)
-                .unwrap_or_else(|_| std::alloc::Layout::new::<u8>());
-            std::alloc::dealloc(normalized_codeset as *mut u8, layout);
+            c_free(normalized_codeset as *mut c_char);
         }
 
         retval

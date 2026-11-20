@@ -6,7 +6,6 @@
 
 #![allow(non_snake_case)]
 
-use std::ffi::CStr;
 use std::os::raw::{c_char, c_int};
 use std::ptr;
 
@@ -247,7 +246,7 @@ fn set_binding_values(
 /// rather than in the system locale data base.
 ///
 /// Returns the current dirname for the domain (may be the newly set value).
-pub unsafe fn libintl_bindtextdomain(
+pub fn libintl_bindtextdomain(
     domainname: *const c_char,
     dirname: *const c_char,
 ) -> *mut c_char {
@@ -277,36 +276,29 @@ use std::alloc::Layout;
 
 /// Equivalent of `strlen` for a NUL-terminated C string.
 fn libc_strlen(s: *const c_char) -> usize {
-    unsafe {
-        if s.is_null() {
-            return 0;
-        }
-        CStr::from_ptr(s).to_bytes().len()
-    }
+    cstr(s).map_or(0, |s| s.to_bytes().len())
 }
 
 /// Equivalent of `strcmp`.
 fn libc_strcmp(a: *const c_char, b: *const c_char) -> c_int {
-    unsafe {
-        if a.is_null() && b.is_null() {
-            return 0;
+    let (Some(x), Some(y)) = (cstr(a), cstr(b)) else {
+        // Match strcmp on null pointers: null < non-null.
+        return match (a.is_null(), b.is_null()) {
+            (true, true) => 0,
+            (true, false) => -1,
+            (false, true) => 1,
+            (false, false) => unreachable!(),
+        };
+    };
+    let ca = x.to_bytes();
+    let cb = y.to_bytes();
+    // Lexicographic comparison.
+    for (ba, bb) in ca.iter().zip(cb.iter()) {
+        if *ba != *bb {
+            return (*ba as c_int) - (*bb as c_int);
         }
-        if a.is_null() {
-            return -1;
-        }
-        if b.is_null() {
-            return 1;
-        }
-        let ca = CStr::from_ptr(a).to_bytes();
-        let cb = CStr::from_ptr(b).to_bytes();
-        // Lexicographic comparison.
-        for (ba, bb) in ca.iter().zip(cb.iter()) {
-            if *ba != *bb {
-                return (*ba as c_int) - (*bb as c_int);
-            }
-        }
-        (ca.len() as c_int) - (cb.len() as c_int)
     }
+    (ca.len() as c_int) - (cb.len() as c_int)
 }
 
 // ---------------------------------------------------------------------------
