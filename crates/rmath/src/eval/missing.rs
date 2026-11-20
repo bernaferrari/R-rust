@@ -30,7 +30,7 @@ use std::ptr;
 use crate::eval::attrib_core::{R_NamesSymbol, R_SrcFileSymbol, getAttrib};
 use crate::sexp::accessors::{
     CADDR, CADR, CAR, CDDR, CDR, CHAR, FORMALS, FRAME, HASHTAB, LENGTH, NAMED, PRINTNAME,
-    SET_NAMED, SET_STRING_ELT, SETCAR, SETTAG, STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
+    SET_NAMED, SET_STRING_ELT, SETCAR, SETTAG, STRING_ELT, TAG, TYPEOF,
 };
 
 use crate::sexp::constructors::*;
@@ -58,8 +58,8 @@ pub struct R_varloc_t {
     pub cell: SEXP,
 }
 
-pub(crate) unsafe fn R_findVarLocInFrame(rho: SEXP, symbol: SEXP) -> R_varloc_t {
-    unsafe {
+pub(crate) fn R_findVarLocInFrame(rho: SEXP, symbol: SEXP) -> R_varloc_t {
+    {
         if rho.is_null() || symbol.is_null() {
             return R_varloc_t {
                 cell: ptr::null_mut(),
@@ -71,10 +71,17 @@ pub(crate) unsafe fn R_findVarLocInFrame(rho: SEXP, symbol: SEXP) -> R_varloc_t 
         }
         let hashtab = HASHTAB(rho);
         if !hashtab.is_null() && hashtab != R_NilValue() && TYPEOF(hashtab) == SEXPTYPE::VECSXP {
-            for i in 0..XLENGTH(hashtab) {
-                let found = find_binding_cell(VECTOR_ELT(hashtab, i), symbol);
-                if !found.is_null() {
-                    return R_varloc_t { cell: found };
+            // SAFETY: the translated caller retains the active runtime.
+            if let Ok(owner) = unsafe { crate::sexp::owner::OwnerToken::current() }
+                && let Ok(hashtab) = owner.sexp(hashtab)
+            {
+                for i in 0..hashtab.len() {
+                    if let Ok(bucket) = hashtab.try_vector_elt(i) {
+                        let found = find_binding_cell(bucket.as_raw(), symbol);
+                        if !found.is_null() {
+                            return R_varloc_t { cell: found };
+                        }
+                    }
                 }
             }
         }
