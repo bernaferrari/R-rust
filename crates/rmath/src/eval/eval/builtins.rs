@@ -21,22 +21,6 @@ pub unsafe fn eval<'a>(e: Sexp<'a>, rho: Sexp<'a>) -> Result<Sexp<'a>, String> {
     }
 }
 
-/// Extract the name of a symbol for error messages.
-pub(crate) unsafe fn get_symbol_name(sym: SEXP) -> String {
-    let pname = crate::sexp::accessors::PRINTNAME(sym);
-    if pname.is_null() {
-        return "???".to_string();
-    }
-    let s = unsafe { crate::sexp::accessors::CHAR(pname) };
-    if s.is_null() {
-        return "???".to_string();
-    }
-    unsafe { std::ffi::CStr::from_ptr(s) }
-        .to_str()
-        .unwrap_or("???")
-        .to_string()
-}
-
 // ---------------------------------------------------------------------------
 // Raw eval function — thin shim delegating to eval_safe
 // ---------------------------------------------------------------------------
