@@ -3,7 +3,7 @@
 use super::*;
 
 /// GNU `lm(y ~ x)` intercept + slope, and owning intercept-only fitting.
-pub unsafe fn do_lm(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_lm(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let owner = crate::sexp::owner::OwnerToken::current()
             .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
@@ -442,7 +442,7 @@ pub unsafe fn do_lm(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// Uses the same LINPACK QR as GNU `C_Cdqrls`, then unpivots coefficients
 /// the way `stats::lm.fit` does (`coef[pivot] <- coef` after NA-filling the
 /// rank-deficient tail).
-unsafe fn lm_fit_via_qr(x: SEXP, y: SEXP, n: usize) -> SEXP {
+fn lm_fit_via_qr(x: SEXP, y: SEXP, n: usize) -> SEXP {
     unsafe {
         if XLENGTH(y) != n as i64 {
             return R_NilValue();
@@ -538,7 +538,7 @@ unsafe fn lm_fit_via_qr(x: SEXP, y: SEXP, n: usize) -> SEXP {
 }
 
 /// GNU `lm.fit(x, y)` — two-column normal equations, or LINPACK QR otherwise.
-pub unsafe fn do_lm_fit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_lm_fit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let y = CAR(CDR(args));
@@ -639,7 +639,7 @@ pub unsafe fn do_lm_fit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 }
 
 /// GNU `lm.wfit(x, y, w)` — weighted OLS on a two-column design.
-pub unsafe fn do_lm_wfit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_lm_wfit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let y = CAR(CDR(args));
@@ -751,7 +751,7 @@ pub unsafe fn do_lm_wfit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 }
 
 /// GNU `glm.fit(x, y, family=poisson())` — IRLS log-link Poisson.
-pub unsafe fn do_glm_fit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_glm_fit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let y = CAR(CDR(args));
@@ -852,7 +852,7 @@ pub unsafe fn do_glm_fit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 }
 
 /// GNU `glm.control(epsilon=1e-8, maxit=25, trace=FALSE)`.
-pub unsafe fn do_glm_control(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_glm_control(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let mut epsilon = 1e-8;
         let mut maxit = 25.0;
@@ -936,7 +936,7 @@ pub unsafe fn do_glm_control(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
 }
 
 /// GNU `nls.control(maxiter=50, tol=1e-5, minFactor=1/1024)`.
-pub unsafe fn do_nls_control(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_nls_control(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let mut maxiter = 50.0;
         let mut tol = 1e-5;
@@ -987,7 +987,7 @@ pub unsafe fn do_nls_control(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
 }
 
 /// GNU `nls(y ~ expr, start=)` — one-parameter Gauss–Newton.
-pub unsafe fn do_nls(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_nls(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let form = CAR(args);
         if form.is_null() || form == R_NilValue() || TYPEOF(form) != SEXPTYPE::LANGSXP {
@@ -1082,7 +1082,7 @@ pub unsafe fn do_nls(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 /// GNU `SSlogis(input, Asym, xmid, scal)` — logistic curve.
-pub unsafe fn do_sslogis(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_sslogis(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let input = CAR(args);
         let asym = elt_real_safe(CAR(CDR(args)), 0);
@@ -1103,7 +1103,7 @@ pub unsafe fn do_sslogis(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 }
 
 /// GNU `SSasymp(input, Asym, R0, lrc)` — asymptotic exponential.
-pub unsafe fn do_ssasymp(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_ssasymp(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let input = CAR(args);
         let asym = elt_real_safe(CAR(CDR(args)), 0);
@@ -1122,7 +1122,7 @@ pub unsafe fn do_ssasymp(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 }
 
 /// GNU `SSmicmen(input, Vm, K)` — Michaelis–Menten.
-pub unsafe fn do_ssmicmen(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_ssmicmen(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let input = CAR(args);
         let vm = elt_real_safe(CAR(CDR(args)), 0);
@@ -1139,7 +1139,7 @@ pub unsafe fn do_ssmicmen(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 }
 
 /// GNU `SSgompertz(input, Asym, b2, b3)` — Gompertz growth.
-pub unsafe fn do_ssgompertz(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_ssgompertz(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let input = CAR(args);
         let asym = elt_real_safe(CAR(CDR(args)), 0);
@@ -1157,7 +1157,7 @@ pub unsafe fn do_ssgompertz(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 }
 
 /// GNU `SSbiexp(input, A1, lrc1, A2, lrc2)` — biexponential decay.
-pub unsafe fn do_ssbiexp(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_ssbiexp(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let input = CAR(args);
         let a1 = elt_real_safe(CAR(CDR(args)), 0);
@@ -1177,7 +1177,7 @@ pub unsafe fn do_ssbiexp(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 }
 
 /// GNU `SSasympOff(input, Asym, lrc, c0)` — asymptotic with offset.
-pub unsafe fn do_ssasymp_off(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_ssasymp_off(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let input = CAR(args);
         let asym = elt_real_safe(CAR(CDR(args)), 0);
@@ -1196,7 +1196,7 @@ pub unsafe fn do_ssasymp_off(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
 }
 
 /// GNU `SSasympOrig(input, Asym, lrc)` — asymptotic through the origin.
-pub unsafe fn do_ssasymp_orig(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_ssasymp_orig(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let input = CAR(args);
         let asym = elt_real_safe(CAR(CDR(args)), 0);
@@ -1214,7 +1214,7 @@ pub unsafe fn do_ssasymp_orig(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
 }
 
 /// GNU `SSfol(Dose, input, lKe, lKa, lCl)` — first-order compartment.
-pub unsafe fn do_ssfol(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_ssfol(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let dose = elt_real_safe(CAR(args), 0);
         let input = CAR(CDR(args));
@@ -1236,7 +1236,7 @@ pub unsafe fn do_ssfol(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// GNU `SSweibull(x, Asym, Drop, lrc, pwr)` — Weibull growth.
-pub unsafe fn do_ssweibull(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_ssweibull(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let input = CAR(args);
         let asym = elt_real_safe(CAR(CDR(args)), 0);
@@ -1256,7 +1256,7 @@ pub unsafe fn do_ssweibull(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
 }
 
 /// GNU `SSfpl(input, A, B, xmid, scal)` — four-parameter logistic.
-pub unsafe fn do_ssfpl(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_ssfpl(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let input = CAR(args);
         let a = elt_real_safe(CAR(CDR(args)), 0);

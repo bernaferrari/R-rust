@@ -3,7 +3,7 @@
 use super::*;
 
 /// GNU `reorder(x, X)` by group means.
-pub unsafe fn do_reorder(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_reorder(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x0 = CAR(args);
         if class_contains(x0, "dendrogram") {
@@ -109,7 +109,7 @@ pub unsafe fn do_reorder(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 }
 
 /// GNU `oneway.test(x ~ g)` / `oneway.test(x, g)`.
-pub unsafe fn do_oneway_test(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_oneway_test(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let first = CAR(args);
         let mut x = first;
@@ -297,7 +297,7 @@ fn loglik_nobs(x: SEXP) -> f64 {
 }
 
 /// GNU `AIC(object, k=2)` for a `logLik`.
-pub unsafe fn do_aic(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_aic(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let mut k = 2.0;
@@ -327,7 +327,7 @@ pub unsafe fn do_aic(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// GNU `BIC(object)` for a `logLik`.
-pub unsafe fn do_bic(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_bic(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let n = loglik_nobs(x);
@@ -336,11 +336,11 @@ pub unsafe fn do_bic(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// GNU `logLik` identity for an already-tagged logLik.
-pub unsafe fn do_loglik(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_loglik(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     CAR(args)
 }
 
-pub(super) unsafe fn list_named_elt(list: SEXP, name: &str) -> SEXP {
+pub(super) fn list_named_elt(list: SEXP, name: &str) -> SEXP {
     unsafe {
         if list.is_null() || list == R_NilValue() || TYPEOF(list) != SEXPTYPE::VECSXP {
             return R_NilValue();
@@ -368,7 +368,7 @@ pub(super) unsafe fn list_named_elt(list: SEXP, name: &str) -> SEXP {
 }
 
 /// GNU `sigma(object)` for a list with deviance, nobs, coefficients.
-pub unsafe fn do_sigma(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_sigma(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let dev = list_named_elt(x, "deviance");
@@ -393,7 +393,7 @@ pub unsafe fn do_sigma(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// GNU `extractAIC(fit, k)` glm-style: `c(edf, aic + (k-2)*edf)`.
-pub unsafe fn do_extract_aic(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_extract_aic(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let fit = CAR(args);
         let mut k = 2.0;
@@ -433,7 +433,7 @@ pub unsafe fn do_extract_aic(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
 }
 
 /// GNU `case.names(object)` — `names(residuals)` or `1:n`.
-pub unsafe fn do_case_names(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_case_names(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let obj = CAR(args);
         let r = list_named_elt(obj, "residuals");
@@ -461,7 +461,7 @@ pub unsafe fn do_case_names(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP
 }
 
 /// GNU `variable.names(object)` — `names(coefficients)`.
-pub unsafe fn do_variable_names(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_variable_names(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let obj = CAR(args);
         let c = list_named_elt(obj, "coefficients");
@@ -477,7 +477,7 @@ pub unsafe fn do_variable_names(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> 
 }
 
 /// GNU `confint(object)` from `$coefficients` and `$vcov`.
-pub unsafe fn do_confint(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_confint(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let obj = CAR(args);
         let mut level = 0.95;
@@ -544,7 +544,7 @@ pub unsafe fn do_confint(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 }
 
 /// GNU `confint.default(object)` — Wald z from `$vcov` or `vcov.lm`.
-pub unsafe fn do_confint_default(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_confint_default(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let obj = CAR(args);
         let mut vcov = list_named_elt(obj, "vcov");
@@ -593,7 +593,7 @@ pub unsafe fn do_confint_default(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) ->
 }
 
 /// GNU `confint.lm(object)` — t intervals for intercept + slope.
-pub unsafe fn do_confint_lm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_confint_lm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let obj = CAR(args);
         let cf = list_named_elt(obj, "coefficients");
@@ -639,7 +639,7 @@ pub unsafe fn do_confint_lm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 }
 
 /// GNU `vcov.lm(object)` — σ² (X'X)⁻¹ for intercept + `1:n`.
-pub unsafe fn do_vcov_lm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_vcov_lm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let obj = CAR(args);
         let sigma = list_named_elt(obj, "sigma");
@@ -673,8 +673,8 @@ pub unsafe fn do_vcov_lm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 }
 
 /// GNU `vcov(object)` — `$vcov` or `vcov.lm`.
-pub unsafe fn do_vcov(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_vcov(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    {
         let v = list_named_elt(CAR(args), "vcov");
         if v != R_NilValue() {
             v
@@ -685,7 +685,7 @@ pub unsafe fn do_vcov(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 /// GNU `dummy.coef(object)` — original coding; treatment 2-level factor.
-pub unsafe fn do_dummy_coef(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_dummy_coef(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let obj = CAR(args);
         let cf = list_named_elt(obj, "coefficients");
@@ -761,7 +761,7 @@ pub unsafe fn do_dummy_coef(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 }
 
 /// GNU `hat(x)` leverages for intercept + x.
-pub unsafe fn do_hat(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_hat(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -793,7 +793,7 @@ pub unsafe fn do_hat(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// GNU `hatvalues(model)` — extract `$hat` or compute `hat(residuals)`.
-pub unsafe fn do_hatvalues(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_hatvalues(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let obj = CAR(args);
         let h = list_named_elt(obj, "hat");
@@ -809,7 +809,7 @@ pub unsafe fn do_hatvalues(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEX
 }
 
 /// GNU `influence.measures(model)` — cbind(dfbetas, dffit, cov.r, cook.d, hat).
-pub unsafe fn do_influence_measures(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_influence_measures(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let obj = CAR(args);
         let one = Rf_cons(obj, R_NilValue());
@@ -905,7 +905,7 @@ pub unsafe fn do_influence_measures(call: SEXP, op: SEXP, args: SEXP, rho: SEXP)
 }
 
 /// GNU `effects(lm)` — first two QR effects for intercept + `1:n`.
-pub unsafe fn do_effects(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_effects(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let obj = CAR(args);
         let fitted = list_named_elt(obj, "fitted.values");
@@ -952,7 +952,7 @@ pub unsafe fn do_effects(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 }
 
 /// GNU `numericDeriv(expr, theta)` — one-parameter forward difference.
-pub unsafe fn do_numeric_deriv(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_numeric_deriv(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let expr = CAR(args);
         let theta = CAR(CDR(args));
@@ -996,7 +996,7 @@ pub unsafe fn do_numeric_deriv(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) ->
 }
 
 /// GNU `rstandard(model)` as `resid / (sigma * sqrt(1-hat))`.
-pub unsafe fn do_rstandard(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_rstandard(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let obj = CAR(args);
         let resid = list_named_elt(obj, "residuals");
@@ -1024,7 +1024,7 @@ pub unsafe fn do_rstandard(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
 }
 
 /// GNU `cooks.distance` as `((e/((1-h)*sd))^2 * h) / p`.
-pub unsafe fn do_cooks_distance(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_cooks_distance(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let obj = CAR(args);
         let resid = list_named_elt(obj, "residuals");
@@ -1060,7 +1060,7 @@ pub unsafe fn do_cooks_distance(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) 
 }
 
 /// GNU `dffits` as `e * sqrt(h) / (sigma * (1-h))`.
-pub unsafe fn do_dffits(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_dffits(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let obj = CAR(args);
         let resid = list_named_elt(obj, "residuals");
@@ -1092,7 +1092,7 @@ pub unsafe fn do_dffits(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 }
 
 /// GNU `rstudent` as `e / (sigma_i * sqrt(1-hat))`.
-pub unsafe fn do_rstudent(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_rstudent(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let obj = CAR(args);
         let resid = list_named_elt(obj, "residuals");
@@ -1123,7 +1123,7 @@ pub unsafe fn do_rstudent(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
     }
 }
 
-unsafe fn invert_square(a: &[f64], p: usize) -> Option<Vec<f64>> {
+fn invert_square(a: &[f64], p: usize) -> Option<Vec<f64>> {
     if p == 0 || a.len() != p * p {
         return None;
     }
@@ -1178,7 +1178,7 @@ unsafe fn invert_square(a: &[f64], p: usize) -> Option<Vec<f64>> {
     Some(inv)
 }
 
-unsafe fn dfbetas_from_design(
+fn dfbetas_from_design(
     xmat: SEXP,
     n: usize,
     p: usize,
@@ -1240,7 +1240,7 @@ unsafe fn dfbetas_from_design(
 }
 
 /// GNU `dfbetas(lm)` — leave-one-out coefficient changes, scaled.
-pub unsafe fn do_dfbetas(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_dfbetas(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let obj = CAR(args);
         let coef = list_named_elt(obj, "coefficients");
@@ -1354,7 +1354,7 @@ pub unsafe fn do_dfbetas(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
 }
 
 /// GNU `dfbeta(lm)` — unscaled leave-one-out coefficient changes.
-pub unsafe fn do_dfbeta(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_dfbeta(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let obj = CAR(args);
         let coef = list_named_elt(obj, "coefficients");
@@ -1419,7 +1419,7 @@ pub unsafe fn do_dfbeta(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     }
 }
 
-pub(super) unsafe fn lm_named_call(call: SEXP) -> SEXP {
+pub(super) fn lm_named_call(call: SEXP) -> SEXP {
     unsafe {
         if call.is_null() || call == R_NilValue() || TYPEOF(call) != SEXPTYPE::LANGSXP {
             return R_NilValue();
@@ -1442,7 +1442,7 @@ mod lm_intercept;
 
 /// The translated boundary owns evaluation and symbol interning. Numerical
 /// fitting, data frames and output publication use the checked Rust helper.
-pub(super) unsafe fn try_lm_intercept(
+pub(super) fn try_lm_intercept(
     owner: crate::sexp::owner::OwnerToken<'_>,
     call: SEXP,
     args: SEXP,

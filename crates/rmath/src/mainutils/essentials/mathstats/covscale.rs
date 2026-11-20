@@ -3,7 +3,7 @@
 use super::*;
 
 /// R's `cov(x, y)` — covariance between two numeric vectors.
-pub unsafe fn do_cov(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_cov(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let y_cdr = CDR(args);
@@ -56,7 +56,7 @@ pub unsafe fn do_cov(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// R's `cor(x, y)` — Pearson correlation between two numeric vectors.
-pub unsafe fn do_cor(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_cor(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let y_cdr = CDR(args);
@@ -407,7 +407,7 @@ pub unsafe fn do_cor(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// R's `scale(x, center=TRUE, scale=TRUE)` — standardize a numeric vector.
-pub unsafe fn do_scale(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_scale(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = scale_argument(args, "x", 0);
         let center_arg = scale_argument(args, "center", 1);
@@ -589,7 +589,7 @@ pub unsafe fn do_scale(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 fn scale_argument(args: SEXP, formal: &str, position: usize) -> SEXP {
-    unsafe {
+    {
         let mut partial = None;
         let mut current = args;
         while !current.is_null() && current != R_NilValue() {
@@ -612,7 +612,7 @@ fn scale_argument(args: SEXP, formal: &str, position: usize) -> SEXP {
 }
 
 /// R's `rle(x)` — run-length encoding.
-pub unsafe fn do_rle(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_rle(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = arg_by_name_or_position(args, &["x"], 0);
         if x.is_null() || x == R_NilValue() {
@@ -631,7 +631,7 @@ pub unsafe fn do_rle(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         );
         if has_dim || !(atomic || TYPEOF(x) == SEXPTYPE::VECSXP) {
             crate::mainutils::errors::errorcall_str(
-                unsafe { crate::mainutils::errors::R_getCurrentCall() },
+                { crate::mainutils::errors::R_getCurrentCall() },
                 "'x' must be a vector of an atomic type",
             );
         }
@@ -693,7 +693,7 @@ pub unsafe fn do_rle(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
-unsafe fn set_rle_attrs(x: SEXP) {
+fn set_rle_attrs(x: SEXP) {
     unsafe {
         set_string_names(x, &["lengths".to_string(), "values".to_string()]);
         let class = Rf_mkString(c"rle".as_ptr());
@@ -708,7 +708,7 @@ unsafe fn set_rle_attrs(x: SEXP) {
     }
 }
 
-unsafe fn rle_values_equal(x: SEXP, lhs: R_xlen_t, rhs: R_xlen_t) -> bool {
+fn rle_values_equal(x: SEXP, lhs: R_xlen_t, rhs: R_xlen_t) -> bool {
     unsafe {
         match TYPEOF(x) {
             t if t == SEXPTYPE::LGLSXP || t == SEXPTYPE::INTSXP => {
@@ -735,7 +735,7 @@ unsafe fn rle_values_equal(x: SEXP, lhs: R_xlen_t, rhs: R_xlen_t) -> bool {
 }
 
 /// R's `inverse.rle(x)` — inverse of run-length encoding.
-pub unsafe fn do_inverse_rle(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_inverse_rle(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = arg_by_name_or_position(args, &["x"], 0);
         if x.is_null() || x == R_NilValue() || TYPEOF(x) != SEXPTYPE::VECSXP {
@@ -778,7 +778,7 @@ pub unsafe fn do_inverse_rle(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
 }
 
 /// GNU `rowsum(x, group)` — sum rows by group.
-pub unsafe fn do_rowsum(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_rowsum(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let group = CAR(CDR(args));
@@ -855,7 +855,7 @@ pub unsafe fn do_rowsum(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         }
         if xt != SEXPTYPE::INTSXP && xt != SEXPTYPE::REALSXP && xt != SEXPTYPE::LGLSXP {
             crate::mainutils::errors::errorcall_str(
-                unsafe { crate::mainutils::errors::R_getCurrentCall() },
+                { crate::mainutils::errors::R_getCurrentCall() },
                 "'x' must be numeric",
             );
         }
@@ -871,7 +871,7 @@ pub unsafe fn do_rowsum(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         };
         if XLENGTH(group) != nr {
             crate::mainutils::errors::errorcall_str(
-                unsafe { crate::mainutils::errors::R_getCurrentCall() },
+                { crate::mainutils::errors::R_getCurrentCall() },
                 "incorrect length for 'group'",
             );
         }
@@ -964,7 +964,7 @@ pub unsafe fn do_rowsum(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     }
 }
 
-unsafe fn format_rowsum_group(group: SEXP, i: i64) -> String {
+fn format_rowsum_group(group: SEXP, i: i64) -> String {
     unsafe {
         // GNU rowsum.default converts a factor `group` to character
         // first (`group <- as.character(group)`); the integer codes
@@ -1011,7 +1011,7 @@ unsafe fn format_rowsum_group(group: SEXP, i: i64) -> String {
 }
 
 /// GNU `jitter(x, factor=1, amount=NULL)`.
-pub unsafe fn do_jitter(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_jitter(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() || XLENGTH(x) == 0 {
@@ -1020,7 +1020,7 @@ pub unsafe fn do_jitter(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         let xt = TYPEOF(x);
         if xt != SEXPTYPE::INTSXP && xt != SEXPTYPE::REALSXP && xt != SEXPTYPE::LGLSXP {
             crate::mainutils::errors::errorcall_str(
-                unsafe { crate::mainutils::errors::R_getCurrentCall() },
+                { crate::mainutils::errors::R_getCurrentCall() },
                 "'x' must be numeric",
             );
         }
@@ -1139,14 +1139,14 @@ pub unsafe fn do_jitter(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 }
 
 /// GNU `margin.table(x, margin)`.
-pub unsafe fn do_margin_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_margin_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let margin_arg = CAR(CDR(args));
         let xt = TYPEOF(x);
         if xt != SEXPTYPE::INTSXP && xt != SEXPTYPE::REALSXP && xt != SEXPTYPE::LGLSXP {
             crate::mainutils::errors::errorcall_str(
-                unsafe { crate::mainutils::errors::R_getCurrentCall() },
+                { crate::mainutils::errors::R_getCurrentCall() },
                 "'x' is not an array",
             );
         }
@@ -1232,7 +1232,7 @@ pub unsafe fn do_margin_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
 }
 
 /// GNU `mad(x)` — median absolute deviation times 1.4826.
-pub unsafe fn do_mad(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_mad(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -1241,7 +1241,7 @@ pub unsafe fn do_mad(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let xt = TYPEOF(x);
         if xt != SEXPTYPE::INTSXP && xt != SEXPTYPE::REALSXP && xt != SEXPTYPE::LGLSXP {
             crate::mainutils::errors::errorcall_str(
-                unsafe { crate::mainutils::errors::R_getCurrentCall() },
+                { crate::mainutils::errors::R_getCurrentCall() },
                 "'x' must be numeric",
             );
         }
@@ -1305,7 +1305,7 @@ pub unsafe fn do_mad(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 /// GNU `fivenum(x)` — Tukey five-number summary.
-pub unsafe fn do_fivenum(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_fivenum(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -1360,7 +1360,7 @@ pub unsafe fn do_fivenum(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 }
 
 /// GNU `boxplot.stats(x, coef=1.5)`.
-pub unsafe fn do_boxplot_stats(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_boxplot_stats(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let mut coef = 1.5;
@@ -1489,7 +1489,7 @@ pub(super) fn p_adjust_values(p: &[f64], method: &str) -> Vec<f64> {
 }
 
 /// GNU `p.adjust(p, method)`.
-pub unsafe fn do_p_adjust(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_p_adjust(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {

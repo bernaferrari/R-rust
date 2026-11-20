@@ -5,7 +5,7 @@ use crate::mainutils::grep::{EmptyPatternMode, GroupNames, empty_pattern_positio
 use crate::sexp::constructors::Rf_mkCharLen;
 
 /// R sample.int(n, size = n, replace = FALSE) — uniform sampling from 1:n.
-pub unsafe fn do_sample_int(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_sample_int(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let n = real_or_default(CAR(args), 1.0) as i64;
         let size = CAR(CDR(args));
@@ -19,7 +19,7 @@ pub unsafe fn do_sample_int(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 /// then, when `width` is a positive number and the string is wider, trim to
 /// `strtrim(string, width - 4)` and append `"...."` (`max(6, width)` leaves
 /// something visible); `width < 0` errors, `0`/NULL keeps the full string.
-pub unsafe fn do_toString(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_toString(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -67,7 +67,7 @@ pub unsafe fn do_toString(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
 }
 
 /// R normalizePath(path)
-pub unsafe fn do_normalizePath(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_normalizePath(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let mut path_arg = R_NilValue();
         let mut must_work_arg = R_NilValue();
@@ -165,7 +165,7 @@ pub unsafe fn do_normalizePath(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
 }
 
 /// R tempfile(pattern = "file", tmpdir = tempdir(), fileext = "")
-pub unsafe fn do_tempfile(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_tempfile(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let mut pattern: Option<SEXP> = None;
         let mut tmpdir: Option<SEXP> = None;
@@ -235,7 +235,7 @@ pub unsafe fn do_tempfile(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 }
 
 /// R tempdir()
-pub unsafe fn do_tempdir(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_tempdir(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let temp_dir = session_temp_dir();
         if !crate::mainutils::browser_files::enabled() {
@@ -265,7 +265,7 @@ fn session_temp_dir() -> PathBuf {
 }
 
 /// R proc.time()
-pub unsafe fn do_proc_time(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_proc_time(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let result = Rf_allocVector3(SEXPTYPE::REALSXP, 5);
         if result.is_null() {
@@ -318,7 +318,7 @@ pub unsafe fn do_proc_time(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> S
 /// GNU `system.time(expr, gcFirst = TRUE)` — evaluate `expr` and return a
 /// `proc_time` delta (`structure(new.time - time, class="proc_time")`,
 /// base/time.R). The child-time columns stay at zero (no subprocesses).
-pub unsafe fn do_system_time(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_system_time(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let expr = CAR(args);
         let before = do_proc_time(_call, _op, R_NilValue(), rho);
@@ -337,7 +337,7 @@ pub unsafe fn do_system_time(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> S
 
 /// The ASCII fast path retains GNU's byte-attribution attributes. Unicode
 /// character mode publishes character counts and no byte attributes.
-unsafe fn regex_coordinates(args: SEXP, pattern: &str, text: SEXP) -> (bool, bool) {
+fn regex_coordinates(args: SEXP, pattern: &str, text: SEXP) -> (bool, bool) {
     {
         let requested = logical_arg_by_name_or_position(args, "useBytes", 5).unwrap_or(false);
         let ascii =
@@ -357,7 +357,7 @@ fn regex_span(text: &str, start: usize, end: usize, bytes: bool) -> (c_int, c_in
     }
 }
 
-unsafe fn regex_index_attrs(result: SEXP, requested: bool, byte_mode: bool) {
+fn regex_index_attrs(result: SEXP, requested: bool, byte_mode: bool) {
     if byte_mode {
         unsafe {
             crate::sexp::attrib_core::setAttrib(
@@ -387,7 +387,7 @@ unsafe fn regex_index_attrs(result: SEXP, requested: bool, byte_mode: bool) {
 /// extract_match_and_groups: non-participating groups yield start 0 /
 /// length 0 (PCRE2_UNSET arithmetic), non-matching elements -1 / -1, and
 /// NA text elements leave the NA initialization (PR#16484).
-pub unsafe fn do_regexpr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_regexpr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let pattern = CAR(args);
         if pattern.is_null()
@@ -621,7 +621,7 @@ pub unsafe fn do_regexpr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 
 /// Column-major integer matrix with dim c(nrow, ncol) — the shape grep.c's
 /// do_regexpr uses for capture.start / capture.length.
-unsafe fn alloc_int_matrix(nrow: R_xlen_t, ncol: usize) -> SEXP {
+fn alloc_int_matrix(nrow: R_xlen_t, ncol: usize) -> SEXP {
     unsafe {
         let ans = Rf_allocVector3(SEXPTYPE::INTSXP, nrow * ncol as R_xlen_t);
         if ans.is_null() {
@@ -642,7 +642,7 @@ unsafe fn alloc_int_matrix(nrow: R_xlen_t, ncol: usize) -> SEXP {
 
 /// Mark every capture entry of a non-matching text element as -1
 /// (grep.c's no-match branch in do_regexpr).
-unsafe fn fill_capture_no_match(
+fn fill_capture_no_match(
     capture_start: SEXP,
     capture_len: SEXP,
     i: usize,
@@ -666,7 +666,7 @@ unsafe fn fill_capture_no_match(
 /// capture.start / capture.length matrices (one row per match, one column
 /// per group) and capture.names, mirroring grep.c's perl branch of
 /// do_gregexpr; non-matching elements get one row of -1s.
-pub unsafe fn do_gregexpr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_gregexpr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let position_workspace = crate::mainutils::grep::regex_workspace();
         let pattern = CAR(args);
@@ -876,7 +876,7 @@ fn substring_chars(text: &str, start: i32, end: i32) -> String {
 }
 
 /// GNU `regmatches(x, m)` for invert = FALSE.
-pub unsafe fn do_regmatches(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_regmatches(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let m = CAR(CDR(args));
@@ -967,7 +967,7 @@ pub unsafe fn do_regmatches(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 /// gregexpr element: n_match x capture_count column-major matrices with
 /// dimnames list(NULL, names) — the shape grep.c's do_gregexpr builds per
 /// element. `span` maps (match_idx, group_idx) to (start, length).
-unsafe fn set_gregexpr_capture_attrs(
+fn set_gregexpr_capture_attrs(
     elt: SEXP,
     n_match: usize,
     capture_count: usize,
@@ -1038,7 +1038,7 @@ unsafe fn set_gregexpr_capture_attrs(
 }
 
 /// R regexec(pattern, text) for the overall fixed match.
-pub unsafe fn do_regexec(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_regexec(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let pattern = CAR(args);
         if pattern.is_null()
@@ -1179,7 +1179,7 @@ pub unsafe fn do_regexec(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 /// with the six-argument shape, so `.Internal` calls arriving from upstream
 /// base source closures get a `perl = FALSE` cell inserted before
 /// delegation.
-pub unsafe fn do_regexec_internal(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_regexec_internal(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let mut argc = 0;
         let mut p = args;
@@ -1218,7 +1218,7 @@ pub unsafe fn do_regexec_internal(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -
     }
 }
 
-unsafe fn set_regexpr_attrs(x: SEXP, match_lengths: SEXP) {
+fn set_regexpr_attrs(x: SEXP, match_lengths: SEXP) {
     unsafe {
         crate::sexp::attrib_core::setAttrib(x, Rf_install(c"match.length".as_ptr()), match_lengths);
         crate::sexp::attrib_core::setAttrib(
@@ -1234,7 +1234,7 @@ unsafe fn set_regexpr_attrs(x: SEXP, match_lengths: SEXP) {
     }
 }
 
-unsafe fn set_regexec_perl_attrs(x: SEXP, match_lengths: SEXP) {
+fn set_regexec_perl_attrs(x: SEXP, match_lengths: SEXP) {
     unsafe {
         crate::sexp::attrib_core::setAttrib(x, Rf_install(c"match.length".as_ptr()), match_lengths);
         crate::sexp::attrib_core::setAttrib(

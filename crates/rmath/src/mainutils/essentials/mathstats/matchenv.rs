@@ -3,7 +3,7 @@
 use super::*;
 
 /// R's `simplify2array(x)` — simplify list to array.
-pub unsafe fn do_simplify2array(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_simplify2array(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         crate::mainutils::base_wrappers::apply(
             "simplify2array",
@@ -19,7 +19,7 @@ pub unsafe fn do_simplify2array(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -
 ///
 /// One-arg form (`match.arg(mm)`) is unevaluated so `substitute(arg)` can
 /// name the caller's formal; choices come from `formals(sys.function(0))`.
-pub unsafe fn do_match_arg(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_match_arg(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let factory = crate::sexp::object::SessionNodeFactory::new(
             crate::sexp::owner::OwnerToken::current()
@@ -186,7 +186,7 @@ pub unsafe fn do_match_arg(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
 
 /// `pmatch(x, table, nomatch = 0, duplicates.ok = TRUE)` for a single
 /// element: an exact match wins, otherwise a unique prefix; -1 = nomatch.
-unsafe fn match_arg_pmatch_index(needle: &str, choices: SEXP) -> i64 {
+fn match_arg_pmatch_index(needle: &str, choices: SEXP) -> i64 {
     {
         for i in 0..XLENGTH(choices) {
             if elt_to_string(choices, i) == needle {
@@ -205,7 +205,7 @@ unsafe fn match_arg_pmatch_index(needle: &str, choices: SEXP) -> i64 {
     }
 }
 
-unsafe fn match_arg_choices_from_formals(arg_expr: SEXP, rho: SEXP) -> SEXP {
+fn match_arg_choices_from_formals(arg_expr: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let mut arg_expr = arg_expr;
         if TYPEOF(arg_expr) == SEXPTYPE::PROMSXP {
@@ -253,11 +253,11 @@ unsafe fn match_arg_choices_from_formals(arg_expr: SEXP, rho: SEXP) -> SEXP {
     }
 }
 
-unsafe fn match_arg_first(choices: SEXP) -> SEXP {
-    unsafe { match_arg_elt(choices, 0) }
+fn match_arg_first(choices: SEXP) -> SEXP {
+    { match_arg_elt(choices, 0) }
 }
 
-unsafe fn match_arg_elt(choices: SEXP, idx: i64) -> SEXP {
+fn match_arg_elt(choices: SEXP, idx: i64) -> SEXP {
     unsafe {
         if choices.is_null()
             || choices == R_NilValue()
@@ -275,7 +275,7 @@ unsafe fn match_arg_elt(choices: SEXP, idx: i64) -> SEXP {
 }
 
 /// R's `char.expand(input, target)` — expand abbreviations.
-pub unsafe fn do_char_expand(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_char_expand(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let input = CAR(args);
         let target = CAR(CDR(args));
@@ -323,7 +323,7 @@ pub unsafe fn do_char_expand(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
 }
 
 /// R's `type.convert(x, ...)` — convert to appropriate type.
-pub unsafe fn do_type_convert(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_type_convert(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || TYPEOF(x) != SEXPTYPE::STRSXP {
@@ -502,7 +502,7 @@ pub unsafe fn do_type_convert(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
 }
 
 /// R's `as.environment(x)` — convert to environment.
-pub unsafe fn do_as_environment(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_as_environment(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() {
@@ -609,14 +609,14 @@ pub unsafe fn do_as_environment(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> 
 }
 
 /// R's `pos.to.env(pos)` — map a search path position to an environment.
-pub unsafe fn do_pos_to_env(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_pos_to_env(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let pos = integer_arg_by_name_or_position(args, "pos", 0).unwrap_or(NA_INTEGER);
         search_env_from_position(pos)
     }
 }
 
-pub(crate) unsafe fn search_env_from_position(pos: c_int) -> SEXP {
+pub(crate) fn search_env_from_position(pos: c_int) -> SEXP {
     unsafe {
         if pos == -1 {
             let mut ctx = crate::sexp::context::R_GlobalContext();
@@ -643,8 +643,8 @@ pub(crate) unsafe fn search_env_from_position(pos: c_int) -> SEXP {
     }
 }
 
-pub(crate) unsafe fn search_env_from_name(name: &str) -> SEXP {
-    for (label, env) in unsafe { search_path_entries() } {
+pub(crate) fn search_env_from_name(name: &str) -> SEXP {
+    for (label, env) in { search_path_entries() } {
         if label == name || (name == "base" && label == "package:base") {
             return env;
         }
@@ -654,11 +654,11 @@ pub(crate) unsafe fn search_env_from_name(name: &str) -> SEXP {
     });
 }
 
-unsafe fn search_path_len() -> c_int {
-    unsafe { search_path_entries().len() as c_int }
+fn search_path_len() -> c_int {
+    { search_path_entries().len() as c_int }
 }
 
-pub(crate) unsafe fn search_path_entries() -> Vec<(String, SEXP)> {
+pub(crate) fn search_path_entries() -> Vec<(String, SEXP)> {
     unsafe {
         let global = crate::sexp::globals::R_GlobalEnv();
         let base = crate::sexp::globals::R_BaseEnv();
@@ -677,7 +677,7 @@ pub(crate) unsafe fn search_path_entries() -> Vec<(String, SEXP)> {
     }
 }
 
-unsafe fn search_env_label(env: SEXP) -> String {
+fn search_env_label(env: SEXP) -> String {
     unsafe {
         let name = crate::sexp::attrib_core::getAttrib(env, Rf_install(c"name".as_ptr()));
         if TYPEOF(name) == SEXPTYPE::STRSXP && XLENGTH(name) > 0 {
@@ -691,7 +691,7 @@ unsafe fn search_env_label(env: SEXP) -> String {
 }
 
 /// R's `searchpaths()` — filesystem/search labels for entries on the search path.
-pub unsafe fn do_searchpaths(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_searchpaths(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let entries = search_path_entries();
         let result = Rf_allocVector3(SEXPTYPE::STRSXP, entries.len() as R_xlen_t);
@@ -707,7 +707,7 @@ pub unsafe fn do_searchpaths(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) ->
 }
 
 /// R's `sort.list(x, partial, na.last, decreasing, method)` — indices for sorting.
-pub unsafe fn do_sort_list(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_sort_list(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = arg_by_name_or_position(args, &["x"], 0);
         if x.is_null() || x == R_NilValue() {
@@ -759,7 +759,7 @@ fn nonmissing_compressed_positions(x: SEXP) -> Vec<R_xlen_t> {
 }
 
 /// R's `outer(X, Y, FUN)` — outer product (enhanced).
-pub unsafe fn do_outer_enhanced(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_outer_enhanced(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let y = CAR(CDR(args));
@@ -800,7 +800,7 @@ pub unsafe fn do_outer_enhanced(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -
 
 /// GNU `match.fun(FUN)`: functions pass through; character/symbol names
 /// are looked up as functions (sweep's `FUN = "-"`).
-pub unsafe fn do_match_fun(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_match_fun(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let mut x = CAR(args);
         if TYPEOF(x) == SEXPTYPE::PROMSXP {

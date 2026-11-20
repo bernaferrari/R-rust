@@ -3,7 +3,7 @@
 use super::*;
 
 /// GNU `estVar(SSD)` — `$SSD / $df`.
-pub unsafe fn do_est_var(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_est_var(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let obj = CAR(args);
         let ssd = list_named_elt(obj, "SSD");
@@ -34,7 +34,7 @@ pub unsafe fn do_est_var(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 }
 
 /// GNU `SSD(mlm)` — `crossprod(residuals)` and `$df.residual`.
-pub unsafe fn do_ssd(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_ssd(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let obj = CAR(args);
         let resid = list_named_elt(obj, "residuals");
@@ -77,7 +77,7 @@ pub unsafe fn do_ssd(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// GNU `simulate(lm, nsim=1)` — `fitted + rnorm(n, sd=sigma)`.
-pub unsafe fn do_simulate(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_simulate(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let obj = CAR(args);
         let fitted = list_named_elt(obj, "fitted.values");
@@ -155,7 +155,7 @@ pub unsafe fn do_simulate(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 /// GNU `selfStart(model, initial, parameters)` — `pnames` + `initial` + class.
-pub unsafe fn do_self_start(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_self_start(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let model = CAR(args);
         let initial = CAR(CDR(args));
@@ -188,7 +188,7 @@ pub unsafe fn do_self_start(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 }
 
 /// GNU `getInitial(object, data)` — call `attr(object,"initial")`.
-pub unsafe fn do_get_initial(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_get_initial(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let obj = CAR(args);
         let ini = crate::sexp::attrib_core::getAttrib(
@@ -237,7 +237,7 @@ fn col_names_of(x: SEXP) -> Vec<String> {
 }
 
 /// GNU `stat.anova(table, test="Chisq", scale)` — add `Pr(>Chi)`.
-pub unsafe fn do_stat_anova(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_stat_anova(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let table = CAR(args);
         let mut scale = 1.0;
@@ -342,7 +342,7 @@ pub unsafe fn do_stat_anova(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 }
 
 /// GNU `cophenetic(hclust)` — height of the first common ancestor.
-pub unsafe fn do_cophenetic(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_cophenetic(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let obj = CAR(args);
         let merge = list_named_elt(obj, "merge");
@@ -400,13 +400,13 @@ pub unsafe fn do_cophenetic(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 }
 
 /// GNU `ecdf(x)` — empirical CDF as a step function.
-pub unsafe fn do_ecdf(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_ecdf(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let xt = TYPEOF(x);
         if xt != SEXPTYPE::INTSXP && xt != SEXPTYPE::REALSXP && xt != SEXPTYPE::LGLSXP {
             crate::mainutils::errors::errorcall_str(
-                unsafe { crate::mainutils::errors::R_getCurrentCall() },
+                { crate::mainutils::errors::R_getCurrentCall() },
                 "'x' must be numeric",
             );
         }
@@ -428,7 +428,7 @@ pub unsafe fn do_ecdf(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         }
         if vals.is_empty() {
             crate::mainutils::errors::errorcall_str(
-                unsafe { crate::mainutils::errors::R_getCurrentCall() },
+                { crate::mainutils::errors::R_getCurrentCall() },
                 "'x' must have 1 or more non-missing values",
             );
         }
@@ -480,7 +480,7 @@ pub unsafe fn do_ecdf(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 /// GNU `knots(Fn)` — unique x of an ecdf/stepfun.
-pub unsafe fn do_knots(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_knots(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let fun = CAR(args);
         if TYPEOF(fun) != SEXPTYPE::CLOSXP {
@@ -498,7 +498,7 @@ pub unsafe fn do_knots(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// GNU `plot.stepfun(x)` — knot/height coordinates (no device).
-pub unsafe fn do_plot_stepfun(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_plot_stepfun(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let mut fun = CAR(args);
         if TYPEOF(fun) == SEXPTYPE::PROMSXP {
@@ -569,7 +569,7 @@ pub unsafe fn do_plot_stepfun(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SE
         result
     }
 }
-unsafe fn stepfun_heights(fun: SEXP, mids: SEXP) -> SEXP {
+fn stepfun_heights(fun: SEXP, mids: SEXP) -> SEXP {
     unsafe {
         let env = crate::sexp::accessors::CLOENV(fun);
         let x = crate::sexp::envir::R_findVarInFrame(env, Rf_install(c"x".as_ptr()));
@@ -593,15 +593,15 @@ unsafe fn stepfun_heights(fun: SEXP, mids: SEXP) -> SEXP {
 }
 
 /// GNU `plot.ecdf(x)` — `plot.stepfun` then `abline`; returns invisible NULL.
-pub unsafe fn do_plot_ecdf(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_plot_ecdf(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    {
         let _ = do_plot_stepfun(call, op, args, rho);
         R_NilValue()
     }
 }
 
 /// GNU `ppplot(x, y, plot.it=FALSE)` — P-P stepfun from two ecdfs.
-pub unsafe fn do_ppplot(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_ppplot(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let y = CAR(CDR(args));
@@ -651,7 +651,7 @@ pub unsafe fn do_ppplot(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 /// GNU `rfree1way(n, delta=0)` — two-group Control/B; logit shift on treated.
-pub unsafe fn do_rfree1way(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_rfree1way(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let n = elt_real_safe(CAR(args), 0).floor() as i32;
         if n < 1 {
@@ -746,7 +746,7 @@ pub unsafe fn do_rfree1way(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
 }
 
 /// GNU `stepfun(x, y)` — cadlag step function, `length(y)=length(x)+1`.
-pub unsafe fn do_stepfun(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_stepfun(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let y = CAR(CDR(args));
@@ -774,7 +774,7 @@ pub unsafe fn do_stepfun(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
 }
 
 /// Evaluate `stepfun` at `v`.
-pub unsafe fn do_stepfun_apply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_stepfun_apply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let v = CAR(args);
         let env = crate::sexp::accessors::ENCLOS(rho);
@@ -800,7 +800,7 @@ pub unsafe fn do_stepfun_apply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) ->
 }
 
 /// GNU `splinefunH(x, y, m)` — cubic Hermite interpolant.
-pub unsafe fn do_splinefun_h(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_splinefun_h(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let y = CAR(CDR(args));
@@ -820,7 +820,7 @@ pub unsafe fn do_splinefun_h(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> S
 }
 
 /// Evaluate cubic Hermite at `v`.
-pub unsafe fn do_splinefun_h_apply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_splinefun_h_apply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let v = CAR(args);
         let env = crate::sexp::accessors::ENCLOS(rho);
@@ -864,7 +864,7 @@ pub unsafe fn do_splinefun_h_apply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP
 }
 
 /// Evaluate an ecdf closure: last y with vals <= v, else 0 / 1 at ends.
-pub unsafe fn do_ecdf_apply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_ecdf_apply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let v = CAR(args);
         let parent = crate::sexp::accessors::ENCLOS(rho);

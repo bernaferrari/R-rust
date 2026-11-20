@@ -3,7 +3,7 @@
 use super::*;
 
 /// GNU one-sample `t.test(x)`.
-pub unsafe fn do_t_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_t_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -117,7 +117,7 @@ fn binom_two_sided_p(x: f64, n: f64, p: f64) -> f64 {
 }
 
 /// GNU `binom.test(x, n, p=0.5)`.
-pub unsafe fn do_binom_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_binom_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = elt_real_safe(CAR(args), 0).round();
         let n_arg = CAR(CDR(args));
@@ -204,7 +204,7 @@ pub unsafe fn do_binom_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 }
 
 /// GNU `poisson.test(x, T=1, r=1)` — one-sample exact Poisson rate.
-pub unsafe fn do_poisson_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_poisson_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = elt_real_safe(CAR(args), 0).round();
         let mut t = 1.0;
@@ -274,7 +274,7 @@ pub unsafe fn do_poisson_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
 }
 
 /// GNU `prop.trend.test(x, n)` — weighted chi-squared trend in proportions.
-pub unsafe fn do_prop_trend_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_prop_trend_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let n = CAR(CDR(args));
@@ -364,7 +364,7 @@ pub unsafe fn do_prop_trend_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP)
 }
 
 /// GNU `chisq.test(x)` goodness-of-fit with equal p.
-pub unsafe fn do_chisq_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_chisq_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -434,7 +434,7 @@ pub unsafe fn do_chisq_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 }
 
 /// GNU one-sample `prop.test(x, n)`.
-pub unsafe fn do_prop_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_prop_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = elt_real_safe(CAR(args), 0);
         let n = elt_real_safe(CAR(CDR(args)), 0);
@@ -546,7 +546,7 @@ fn pearson_r(x: &[f64], y: &[f64]) -> f64 {
 }
 
 /// GNU Pearson `cor.test(x, y)`.
-pub unsafe fn do_cor_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_cor_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let xs = CAR(args);
         let ys = CAR(CDR(args));
@@ -641,7 +641,7 @@ fn sample_var(x: &[f64]) -> f64 {
 }
 
 /// GNU `var.test(x, y)`.
-pub unsafe fn do_var_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_var_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let xs = CAR(args);
         let ys = CAR(CDR(args));
@@ -733,7 +733,7 @@ pub unsafe fn do_var_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 }
 
 /// GNU `bartlett.test(x, g)`.
-pub unsafe fn do_bartlett_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_bartlett_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let g = CAR(CDR(args));
@@ -836,7 +836,7 @@ pub(super) fn rank_average(x: &[f64]) -> Vec<f64> {
 }
 
 /// GNU `kruskal.test(x, g)`.
-pub unsafe fn do_kruskal_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_kruskal_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let g = CAR(CDR(args));
@@ -936,7 +936,7 @@ pub(super) fn median_of(x: &[f64]) -> f64 {
 }
 
 /// GNU `fligner.test(x, g)`.
-pub unsafe fn do_fligner_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_fligner_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let g = CAR(CDR(args));
@@ -1046,7 +1046,7 @@ pub unsafe fn do_fligner_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
 }
 
 /// GNU `mood.test(x, y)`.
-pub unsafe fn do_mood_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_mood_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let xs = CAR(args);
         let ys = CAR(CDR(args));
@@ -1172,7 +1172,7 @@ pub unsafe fn do_mood_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
 }
 
 /// GNU `ansari.test(x, y)` asymptotic.
-pub unsafe fn do_ansari_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_ansari_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let xs = CAR(args);
         let ys = CAR(CDR(args));
