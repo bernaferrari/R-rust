@@ -6,6 +6,7 @@ license.workspace = true
 description = "R interpreter embedding library"
 
 [features]
+browser-analysis-tools = ["rmath/browser-analysis-tools"]
 vello-gpu = ["dep:r-device-vello-gpu"]
 default = ["rust-backend"]
 # Portable pure-Rust dense linear algebra through rmath/faer.

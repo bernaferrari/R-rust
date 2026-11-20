@@ -11,6 +11,7 @@ crate-type = ["rlib", "staticlib", "cdylib"]
 name = "rmath"
 
 [features]
+browser-analysis-tools = []
 default = ["rust-backend"]
 # Use Fortran LAPACK/BLAS via FFI (requires Fortran toolchain, not suitable for Android)
 fortran-backend = []

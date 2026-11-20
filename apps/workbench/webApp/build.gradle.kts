@@ -106,6 +106,7 @@ val buildRustRuntime by tasks.registering(Exec::class) {
         repository.resolve("scripts/build_wasm_runtime.sh"),
         repository.resolve("scripts/optimize_wasm_runtime.py"),
     )
+    inputs.property("rustWasmFeatures", providers.environmentVariable("RPORT_WASM_FEATURES").orElse(""))
     outputs.dir(rustRuntimeResources)
     commandLine("bash", "scripts/build_wasm_runtime.sh", "--target", "web", "--release",
         "--out-dir", rustRuntimeResources.get().dir("rust-runtime").asFile.absolutePath)

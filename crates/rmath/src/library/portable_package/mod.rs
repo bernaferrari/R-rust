@@ -22,6 +22,17 @@ pub(crate) struct PackageImage {
 
 macro_rules! package_image {
     ($static_name:ident, $name:literal, $assets:literal, $sysdata:expr, $imports:expr) => {
+        package_image!(
+            $static_name,
+            $name,
+            $assets,
+            $sysdata,
+            $imports,
+            $assets,
+            include_bytes!(concat!($assets, "/wasm.data"))
+        );
+    };
+    ($static_name:ident, $name:literal, $assets:literal, $sysdata:expr, $imports:expr, $wasm_assets:literal, $wasm_data:expr) => {
         static $static_name: PackageImage = PackageImage {
             name: $name,
             version: "4.7.0",
@@ -34,15 +45,15 @@ macro_rules! package_image {
                 ))),
                 #[cfg(target_arch = "wasm32")]
                 contents: DatabaseContents::Packed {
-                    bytes: include_bytes!(concat!($assets, "/wasm.data")),
-                    ends: include_bytes!(concat!($assets, "/wasm.blocks"))
+                    bytes: $wasm_data,
+                    ends: include_bytes!(concat!($wasm_assets, "/wasm.blocks"))
                         .as_chunks::<8>()
                         .0,
                 },
                 #[cfg(not(target_arch = "wasm32"))]
                 index: include_bytes!(concat!($assets, "/index.rds")),
                 #[cfg(target_arch = "wasm32")]
-                index: include_bytes!(concat!($assets, "/wasm.index.rds")),
+                index: include_bytes!(concat!($wasm_assets, "/wasm.index.rds")),
             },
             sysdata: $sysdata,
             namespace_source: include_str!(concat!($assets, "/NAMESPACE")),
@@ -90,6 +101,7 @@ package_image!(
     }),
     None
 );
+#[cfg(not(all(target_arch = "wasm32", feature = "browser-analysis-tools")))]
 package_image!(
     TOOLS,
     "tools",
@@ -100,6 +112,20 @@ package_image!(
         index: include_bytes!("assets/tools/sysdata-index.rds"),
     }),
     None
+);
+#[cfg(all(target_arch = "wasm32", feature = "browser-analysis-tools"))]
+package_image!(
+    TOOLS,
+    "tools",
+    "assets/tools",
+    Some(LazyDatabase {
+        path: "<builtin:tools>/R/sysdata.rdb",
+        contents: DatabaseContents::Original(include_bytes!("assets/tools/sysdata.rdb")),
+        index: include_bytes!("assets/tools/sysdata-index.rds"),
+    }),
+    None,
+    "assets/tools/browser-analysis",
+    include_bytes!(concat!(env!("OUT_DIR"), "/tools-analysis.data"))
 );
 
 pub(crate) fn image(name: &str) -> Option<&'static PackageImage> {
