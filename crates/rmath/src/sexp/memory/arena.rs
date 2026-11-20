@@ -992,9 +992,9 @@ impl RArena {
     /// null and Nil as distinct without this terminator.
     pub(crate) fn alloc_list_chain(&mut self, n: i32) -> SEXP {
         if n <= 0 {
-            return unsafe { crate::sexp::globals::R_NilValue() };
+            return crate::sexp::globals::R_NilValue();
         }
-        let mut result: SEXP = unsafe { crate::sexp::globals::R_NilValue() };
+        let mut result: SEXP = crate::sexp::globals::R_NilValue();
         for _ in 0..n {
             // SAFETY: each predecessor was allocated in this arena; no GC runs during this lend.
             result = unsafe { self.cons(ptr::null_mut(), result, ptr::null_mut()) };

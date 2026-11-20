@@ -1105,7 +1105,7 @@ pub(crate) fn unserialize_native_snapshot(
     let lazy_restore =
         (hook.typeof_() == SEXPTYPE::ENVSXP).then(|| LazyLoadRestore { data: hook.clone() });
     let hook_data = if lazy_restore.is_some() {
-        unsafe { R_NilValue() }
+        R_NilValue()
     } else {
         hook.as_raw()
     };

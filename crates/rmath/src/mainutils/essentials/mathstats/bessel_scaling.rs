@@ -11,7 +11,7 @@ pub(super) unsafe fn prepare(
     let root = |raw| owner.sexp(raw).and_then(Sexp::into_owned);
     let input = match input {
         Some(x) => x,
-        None => root(unsafe { crate::sexp::globals::R_False() })?,
+        None => root(crate::sexp::globals::R_False())?,
     };
     let base = root(unsafe { crate::sexp::globals::R_BaseEnv() })?;
     let function = |name: &std::ffi::CStr| -> SexpResult<Sexp<'static>> {

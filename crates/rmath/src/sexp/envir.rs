@@ -741,13 +741,13 @@ unsafe fn base_builtin_fallback<'a>(symbol: Sexp<'a>) -> Option<Sexp<'a>> {
     }
     if let Ok(cname) = std::ffi::CString::new(name.as_str()) {
         let prim = unsafe { crate::mainutils::names::R_Primitive(cname.as_ptr()) };
-        if !prim.is_null() && prim != unsafe { R_NilValue() } {
+        if !prim.is_null() && prim != R_NilValue() {
             return unsafe { Sexp::from_raw(prim) };
         }
     }
     if let Some(kind) = crate::eval::builtin::builtin_primitive_kind(&name) {
         let primitive = unsafe { crate::eval::primitive::make_primitive_binding(&name, kind) };
-        if !primitive.is_null() && primitive != unsafe { R_NilValue() } {
+        if !primitive.is_null() && primitive != R_NilValue() {
             return unsafe { Sexp::from_raw(primitive) };
         }
     }
@@ -1314,7 +1314,7 @@ pub unsafe fn find_fun_result<'a>(symbol: Sexp<'a>, rho: Sexp<'a>) -> EnvResult<
     // (`SYMVALUE`) when no environment frame holds a function binding.
     let raw = symbol.as_raw();
     let mut value = unsafe { crate::sexp::accessors::SYMVALUE(raw) };
-    if !value.is_null() && value != unsafe { R_UnboundValue() } {
+    if !value.is_null() && value != R_UnboundValue() {
         if unsafe { TYPEOF(value) } == SEXPTYPE::PROMSXP {
             value = unsafe { forcePromise(value) };
         }
@@ -1341,7 +1341,7 @@ pub unsafe fn find_fun_result<'a>(symbol: Sexp<'a>, rho: Sexp<'a>) -> EnvResult<
     if !name.is_empty() && !crate::eval::builtin::is_hidden_builtin_name(&name) {
         if let Ok(cname) = std::ffi::CString::new(name.as_str()) {
             let prim = unsafe { crate::mainutils::names::R_Primitive(cname.as_ptr()) };
-            if !prim.is_null() && prim != unsafe { R_NilValue() } {
+            if !prim.is_null() && prim != R_NilValue() {
                 let t = unsafe { TYPEOF(prim) };
                 if t == SEXPTYPE::CLOSXP || t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP {
                     return Ok(unsafe { Sexp::from_raw(prim) });
@@ -1352,7 +1352,7 @@ pub unsafe fn find_fun_result<'a>(symbol: Sexp<'a>, rho: Sexp<'a>) -> EnvResult<
             let primitive = unsafe {
                 crate::eval::primitive::make_primitive_binding(&name, SEXPTYPE::BUILTINSXP)
             };
-            if !primitive.is_null() && primitive != unsafe { R_NilValue() } {
+            if !primitive.is_null() && primitive != R_NilValue() {
                 return Ok(unsafe { Sexp::from_raw(primitive) });
             }
         }

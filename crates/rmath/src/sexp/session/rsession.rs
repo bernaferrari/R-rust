@@ -1183,8 +1183,8 @@ impl RSession {
             let symbol = self.sexp(install_symbol(name)?)?;
             let env = Environment::new(self.global_env()?).ok()?;
             let result = unsafe { /* SAFETY: session activates its checked owner; unsafe payload loans must exclude R reentry. */ env.find(symbol) }.ok().flatten()?;
-            if result.clone().as_raw() == unsafe { R_UnboundValue() }
-                || result.clone().as_raw() == unsafe { R_NilValue() }
+            if result.clone().as_raw() == R_UnboundValue()
+                || result.clone().as_raw() == R_NilValue()
             {
                 None
             } else {

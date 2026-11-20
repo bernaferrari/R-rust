@@ -312,7 +312,7 @@ pub(crate) unsafe fn gridXspline(
     _draw: bool,
     _trace: bool,
 ) -> SEXP {
-    unsafe { R_NilValue() }
+    R_NilValue()
 }
 
 /* ==============================

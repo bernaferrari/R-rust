@@ -329,11 +329,11 @@ unsafe fn iconv_entry(args: SEXP, inventory: bool) -> SEXP {
             .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
     };
     let args = if inventory {
-        own(unsafe { R_NilValue() })
+        own(R_NilValue())
     } else {
         own(args)
     };
-    let na = own(unsafe { crate::sexp::globals::R_NaString() });
+    let na = own(crate::sexp::globals::R_NaString());
     let weak = owner
         .weak_owner()
         .unwrap_or_else(|| crate::sexp::context::r_error("iconv requires a managed runtime"));

@@ -368,10 +368,10 @@ pub fn evalList<'a>(el: Sexp<'a>, rho: Sexp<'a>, call: Option<Sexp<'a>>, nargs: 
                         .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
                     count += 1;
                 }
-            } else if h.as_raw() != unsafe { R_MissingArg() } {
+            } else if h.as_raw() != R_MissingArg() {
                 crate::sexp::context::r_error("'...' used in an incorrect context");
             }
-        } else if expr.as_raw() == unsafe { R_MissingArg() } {
+        } else if expr.as_raw() == R_MissingArg() {
             let head = call.as_ref().and_then(Sexp::car);
             let name = head
                 .filter(|head| head.typeof_() == SEXPTYPE::SYMSXP)
@@ -1414,7 +1414,7 @@ pub fn evalListKeepMissing<'a>(el: Sexp<'a>, rho: Sexp<'a>) -> Sexp<'a> {
                     let expr = dots
                         .try_car()
                         .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-                    let value = if expr.as_raw() == unsafe { R_MissingArg() } {
+                    let value = if expr.as_raw() == R_MissingArg() {
                         expr
                     } else {
                         let value = factory
@@ -1432,11 +1432,11 @@ pub fn evalListKeepMissing<'a>(el: Sexp<'a>, rho: Sexp<'a>) -> Sexp<'a> {
                         .try_cdr()
                         .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
                 }
-            } else if dots.as_raw() != unsafe { R_MissingArg() } {
+            } else if dots.as_raw() != R_MissingArg() {
                 crate::sexp::context::r_error("'...' used in an incorrect context");
             }
         } else {
-            let value = if expr.as_raw() == unsafe { R_MissingArg() } {
+            let value = if expr.as_raw() == R_MissingArg() {
                 expr
             } else {
                 let value = factory

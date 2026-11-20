@@ -65,7 +65,7 @@ fn fmin2(x: f64, y: f64) -> f64 {
 /// Get the list element named str, or return R_NilValue.
 /// Copied from the Writing R Extensions manual (which copied it from nls).
 pub unsafe fn getListElement(list: SEXP, str: *mut c_char) -> SEXP {
-    let mut elmt: SEXP = unsafe { R_NilValue() };
+    let mut elmt: SEXP = R_NilValue();
     if str.is_null() {
         return elmt;
     }

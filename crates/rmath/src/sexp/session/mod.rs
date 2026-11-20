@@ -202,7 +202,7 @@ fn remember_last_value(value: SEXP) {
 
 fn expr_or_nil(expr: SEXP) -> SEXP {
     if expr.is_null() {
-        unsafe { R_NilValue() }
+        R_NilValue()
     } else {
         expr
     }

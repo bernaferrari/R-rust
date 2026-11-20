@@ -291,7 +291,7 @@ pub unsafe fn do_textConnection(_call: SEXP, _op: SEXP, mut args: SEXP, env: SEX
 }
 
 unsafe fn is_missing_conn_arg(arg: SEXP) -> bool {
-    arg.is_null() || arg == unsafe { R_NilValue() } || arg == unsafe { R_MissingArg() }
+    arg.is_null() || arg == R_NilValue() || arg == R_MissingArg()
 }
 
 unsafe fn text_connection_env(local_arg: SEXP, caller: SEXP) -> SEXP {

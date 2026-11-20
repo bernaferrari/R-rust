@@ -41,21 +41,21 @@ pub(crate) fn primitive_for_symbol<'a>(symbol: Sexp<'a>) -> Option<Sexp<'a>> {
     if crate::eval::builtin::evaluated_builtin_handler(&name).is_some() {
         let primitive =
             unsafe { crate::eval::primitive::make_primitive_binding(&name, SEXPTYPE::BUILTINSXP) };
-        if !primitive.is_null() && primitive != unsafe { R_NilValue() } {
+        if !primitive.is_null() && primitive != R_NilValue() {
             return Some(unsafe { Sexp::from_raw_unchecked(primitive) });
         }
     }
     if let Some(primitive) = CString::new(name.as_str())
         .ok()
         .map(|n| unsafe { crate::mainutils::names::R_Primitive(n.as_ptr()) })
-        .filter(|primitive| !primitive.is_null() && *primitive != unsafe { R_NilValue() })
+        .filter(|primitive| !primitive.is_null() && *primitive != R_NilValue())
         .map(|primitive| unsafe { Sexp::from_raw_unchecked(primitive) })
     {
         return Some(primitive);
     }
     if let Some(kind) = crate::eval::builtin::builtin_primitive_kind(&name) {
         let primitive = unsafe { crate::eval::primitive::make_primitive_binding(&name, kind) };
-        if !primitive.is_null() && primitive != unsafe { R_NilValue() } {
+        if !primitive.is_null() && primitive != R_NilValue() {
             return Some(unsafe { Sexp::from_raw_unchecked(primitive) });
         }
     }
@@ -126,7 +126,7 @@ pub(crate) unsafe fn find_var_result<'a>(
         }) else {
             return Ok(None);
         };
-        if value.clone().as_raw() == unsafe { R_MissingArg() } {
+        if value.clone().as_raw() == R_MissingArg() {
             let name = unsafe { get_symbol_name(symbol.as_raw()) };
             missing_arg_error(&name);
         }
@@ -143,7 +143,7 @@ pub(crate) unsafe fn find_var_result<'a>(
     let Some(binding) = binding else {
         return Ok(None);
     };
-    if binding.clone().as_raw() == unsafe { R_MissingArg() } {
+    if binding.clone().as_raw() == R_MissingArg() {
         let name = unsafe { get_symbol_name(symbol.as_raw()) };
         missing_arg_error(&name);
     }
@@ -172,7 +172,7 @@ pub(crate) unsafe fn eval_promise_safe<'a>(
         .try_prvalue()
         .clone()
         .map_err(|err| sexp_err("promise value lookup", err))?;
-    if val.clone().as_raw() != unsafe { R_UnboundValue() } {
+    if val.clone().as_raw() != R_UnboundValue() {
         return Ok(val);
     }
 

@@ -1999,7 +1999,7 @@ pub unsafe fn do_Rprofmem_wasm(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) 
 /// Implement the `Rprofaddr()` function for address profiling.
 #[cfg(not(target_arch = "wasm32"))]
 pub unsafe fn do_Rprofaddr(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
+    R_NilValue()
 }
 /// WASM M1 stub for `Rprofaddr()`: no address profiler on wasm.
 /// Raises the catchable R platform-unavailable error instead of silently
@@ -2011,7 +2011,7 @@ pub unsafe fn do_Rprofaddr(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> S
 /// Implement the `gcprof()` function for GC profiling.
 #[cfg(not(target_arch = "wasm32"))]
 pub unsafe fn do_gcprof(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
+    R_NilValue()
 }
 /// WASM M1 stub for `gcprof()`: no GC profiler on wasm.
 /// Raises the catchable R platform-unavailable error instead of silently

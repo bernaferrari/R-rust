@@ -1309,7 +1309,7 @@ pub unsafe fn bc_check_sigint() {
 ///
 /// Ported from R's `findLocTable()` in eval.c.
 pub unsafe fn findLocTable(constants: SEXP, tclass: *const c_char) -> SEXP {
-    unsafe { R_NilValue() }
+    R_NilValue()
 }
 
 // ---------------------------------------------------------------------------
@@ -1320,7 +1320,7 @@ pub unsafe fn findLocTable(constants: SEXP, tclass: *const c_char) -> SEXP {
 ///
 /// Ported from R's `R_findBCInterpreterLocation()` in eval.c.
 pub unsafe fn R_findBCInterpreterLocation(_cptr: SEXP, _iname: *const c_char) -> SEXP {
-    unsafe { R_NilValue() }
+    R_NilValue()
 }
 
 // ---------------------------------------------------------------------------
@@ -1331,7 +1331,7 @@ pub unsafe fn R_findBCInterpreterLocation(_cptr: SEXP, _iname: *const c_char) ->
 ///
 /// Ported from R's `R_findBCInterpreterExpression()` in eval.c.
 pub unsafe fn R_findBCInterpreterExpression() -> SEXP {
-    unsafe { R_NilValue() }
+    R_NilValue()
 }
 
 // ---------------------------------------------------------------------------

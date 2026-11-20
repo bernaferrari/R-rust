@@ -95,7 +95,7 @@ pub(super) fn warning(kind: SEXPTYPE) -> &'static CStr {
     }
 }
 fn string(value: &Sexp<'_>) -> i32 {
-    if value.as_raw() == unsafe { crate::sexp::globals::R_NaString() } {
+    if value.as_raw() == crate::sexp::globals::R_NaString() {
         return NA_INTEGER;
     }
     let text = unsafe { CStr::from_ptr(crate::sexp::accessors::CHAR(value.as_raw())) }.to_bytes();

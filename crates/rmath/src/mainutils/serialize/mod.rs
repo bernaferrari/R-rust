@@ -62,12 +62,12 @@ unsafe fn optional_arg(args: SEXP, index: usize) -> SEXP {
     let mut cur = args;
     for _ in 0..index {
         if cur.is_null() || unsafe { TYPEOF(cur) } == SEXPTYPE::NILSXP {
-            return unsafe { R_NilValue() };
+            return R_NilValue();
         }
         cur = unsafe { CDR(cur) };
     }
     if cur.is_null() || unsafe { TYPEOF(cur) } == SEXPTYPE::NILSXP {
-        return unsafe { R_NilValue() };
+        return R_NilValue();
     }
     unsafe { CAR(cur) }
 }

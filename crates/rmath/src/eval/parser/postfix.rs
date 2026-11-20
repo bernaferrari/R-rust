@@ -177,19 +177,19 @@ impl<'arena, 'session> Parser<'arena, 'session> {
             // GNU's call AST. Keep that node: replacement dispatch observes
             // its presence via nargs(), and read-side `[[` must report a
             // missing subscript instead of treating the call as `x`.
-            slots.push((None, unsafe { crate::sexp::globals::R_MissingArg() }));
+            slots.push((None, crate::sexp::globals::R_MissingArg()));
             return Ok(slots);
         }
         loop {
             self.skip_newlines();
             if self.peek() == &Token::Comma {
                 // Empty slot before a comma
-                slots.push((None, unsafe { crate::sexp::globals::R_MissingArg() }));
+                slots.push((None, crate::sexp::globals::R_MissingArg()));
                 self.advance();
                 self.skip_newlines();
                 if self.peek() == close {
                     // Trailing comma: empty final slot
-                    slots.push((None, unsafe { crate::sexp::globals::R_MissingArg() }));
+                    slots.push((None, crate::sexp::globals::R_MissingArg()));
                     break;
                 }
                 continue;
@@ -204,7 +204,7 @@ impl<'arena, 'session> Parser<'arena, 'session> {
                 self.advance();
                 self.skip_newlines();
                 if self.peek() == close {
-                    slots.push((None, unsafe { crate::sexp::globals::R_MissingArg() }));
+                    slots.push((None, crate::sexp::globals::R_MissingArg()));
                     break;
                 }
             } else {

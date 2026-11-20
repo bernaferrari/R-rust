@@ -36,7 +36,7 @@ impl<'arena, 'session> Parser<'arena, 'session> {
                 if self.peek() == &Token::RParen {
                     // Empty parens → NULL
                     self.advance();
-                    return unsafe { Ok(R_NilValue()) };
+                    return Ok(R_NilValue());
                 }
                 let expr = self.parse_expr()?;
                 self.skip_newlines();

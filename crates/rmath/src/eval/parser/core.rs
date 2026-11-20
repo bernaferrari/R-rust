@@ -148,7 +148,7 @@ impl<'arena, 'session> Parser<'arena, 'session> {
     }
 
     pub(crate) fn lang2(&mut self, car: SEXP, arg: SEXP) -> Result<SEXP, ParseError> {
-        let nil = unsafe { R_NilValue() };
+        let nil = R_NilValue();
         let arg_cell = self.cons(arg, nil)?;
         let call = self.cons(car, arg_cell)?;
         unsafe {
@@ -158,7 +158,7 @@ impl<'arena, 'session> Parser<'arena, 'session> {
     }
 
     pub(crate) fn lang3(&mut self, car: SEXP, arg1: SEXP, arg2: SEXP) -> Result<SEXP, ParseError> {
-        let nil = unsafe { R_NilValue() };
+        let nil = R_NilValue();
         let arg2_cell = self.cons(arg2, nil)?;
         let arg1_cell = self.cons(arg1, arg2_cell)?;
         let call = self.cons(car, arg1_cell)?;
@@ -221,7 +221,7 @@ impl<'arena, 'session> Parser<'arena, 'session> {
         }
         if self
             .arena
-            .set_reference_element(strings, 0, unsafe { R_NaString() })
+            .set_reference_element(strings, 0, R_NaString())
             .is_none()
         {
             return Err(self.allocation_error());
@@ -492,7 +492,7 @@ impl<'arena, 'session> Parser<'arena, 'session> {
         // Retain every completed expression until the new brace call owns
         // their graph and its own automatic allocation lease is installed.
         let brace_sym = self.install_symbol("{")?;
-        let nil = unsafe { R_NilValue() };
+        let nil = R_NilValue();
         let mut list = nil;
         for expression in exprs.iter().rev() {
             list = self.cons(expression.clone().as_raw(), list)?;

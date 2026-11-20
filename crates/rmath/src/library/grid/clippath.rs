@@ -65,7 +65,7 @@ unsafe fn Rf_inherits(x: SEXP, what: *const std::os::raw::c_char) -> c_int {
         return 0;
     }
     let klass = unsafe { crate::attrib_core::getAttrib(x, crate::attrib_core::R_ClassSymbol()) };
-    if klass.is_null() || klass == unsafe { R_NilValue() } {
+    if klass.is_null() || klass == R_NilValue() {
         return 0;
     }
     use crate::sexp::accessors::{CHAR, LENGTH, STRING_ELT, TYPEOF};

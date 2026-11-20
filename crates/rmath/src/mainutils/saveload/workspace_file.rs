@@ -25,7 +25,7 @@ pub(super) unsafe fn save(
         let symbol = unsafe { Rf_install(native.as_ptr()) };
         let tag = bindings.wrap(symbol).unwrap_or_else(fail);
         let mut value = unsafe { R_findVar(symbol, envir.as_raw()) };
-        if value == unsafe { R_UnboundValue() } {
+        if value == R_UnboundValue() {
             crate::sexp::context::r_error(format!("object ‘{name}’ not found"));
         }
         if options.eval_promises && unsafe { TYPEOF(value) } == SEXPTYPE::PROMSXP {
@@ -68,7 +68,7 @@ pub(super) struct SaveOptions {
 
 pub(super) unsafe fn load(owner: OwnerToken<'_>, file: SEXP, envir: SEXP) -> SEXP {
     let path = unsafe { workspace_path(file, "bad 'file' argument") };
-    if envir == unsafe { R_NilValue() } {
+    if envir == R_NilValue() {
         crate::sexp::context::r_error("use of NULL environment is defunct");
     }
     let target = owner.node_factory().wrap(envir).unwrap_or_else(fail);
@@ -138,7 +138,7 @@ pub(super) unsafe fn load(owner: OwnerToken<'_>, file: SEXP, envir: SEXP) -> SEX
         let tag = cell.try_tag().unwrap_or_else(fail);
         let name = unsafe { PRINTNAME(tag.as_raw()) };
         if name.is_null()
-            || name == unsafe { R_NaString() }
+            || name == R_NaString()
             || unsafe { TYPEOF(name) } != SEXPTYPE::CHARSXP
             || unsafe { *CHAR(name) } == 0
         {

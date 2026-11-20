@@ -38,7 +38,7 @@ pub(super) fn callable_expr(fun: SEXP) -> SEXP {
 }
 
 pub(super) fn apply_unary_value(fun: SEXP, value: SEXP, rho: SEXP) -> SEXP {
-    unsafe { apply_fun_to_element(fun, value, R_NilValue(), rho) }
+    apply_fun_to_element(fun, value, R_NilValue(), rho)
 }
 
 /// Call FUN on one extracted element, forwarding the caller's collected

@@ -1451,11 +1451,11 @@ pub unsafe fn do_flush(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 pub unsafe fn do_readTable(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
+    R_NilValue()
 }
 
 pub unsafe fn do_writeTable(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
+    R_NilValue()
 }
 
 fn bytes_of(from: SEXP) -> Vec<u8> {

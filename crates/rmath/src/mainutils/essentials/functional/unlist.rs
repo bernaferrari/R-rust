@@ -292,7 +292,7 @@ impl UnlistValue {
         match self {
             Self::Object(value) => *value,
             Self::Element { parent, index } => unsafe { unlist_scalar_element(*parent, *index) },
-            _ => unsafe { R_NilValue() },
+            _ => R_NilValue(),
         }
     }
 }

@@ -58,7 +58,7 @@ impl Default for LocalParseData {
             inlist: 0,
             startline: true,
             indent: 0,
-            strvec: unsafe { R_NilValue() },
+            strvec: R_NilValue(),
             left: 0,
             buffer: super::owned_line_buffer::OwnedLineBuffer::default(),
             cutoff: DEFAULT_CUTOFF,

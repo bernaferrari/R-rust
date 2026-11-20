@@ -22,7 +22,7 @@ use crate::sexp::memory_ext::NewEnvironment;
 use crate::sexp::protect::*;
 
 fn nil_value() -> SEXP {
-    unsafe { R_NilValue() }
+    R_NilValue()
 }
 
 fn scalar_logical(value: c_int) -> SEXP {

@@ -68,7 +68,7 @@ pub unsafe fn errorcall_stub(call: SEXP, format: *const c_char) {
 }
 
 pub unsafe fn error_stub(format: *const c_char) {
-    unsafe { crate::mainutils::errors::errorcall(R_NilValue(), format) }
+    crate::mainutils::errors::errorcall(R_NilValue(), format)
 }
 
 pub unsafe fn warningcall_stub(call: SEXP, format: *const c_char) {
@@ -459,7 +459,7 @@ pub unsafe fn ScalarLogical(x: c_int) -> SEXP {
 
 /// NA_STRING -- returns the NA string CHARSXP sentinel.
 pub unsafe fn NA_STRING() -> SEXP {
-    unsafe { crate::sexp::globals::R_NaString() }
+    crate::sexp::globals::R_NaString()
 }
 
 // ---------------------------------------------------------------------------

@@ -362,7 +362,7 @@ pub unsafe fn do_plot_default(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SE
         // GNU plot.default establishes the plot frame via plot.new() first.
         crate::library::graphics::graphics::set_plot_new_state();
         unsafe { record_plot_window(args) };
-        unsafe { crate::sexp::globals::R_NilValue() }
+        crate::sexp::globals::R_NilValue()
     }
 }
 
@@ -903,7 +903,7 @@ pub unsafe fn do_plot_new(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
             let _dev = crate::library::grdevices::device_registry::GEcurrentDevice();
         }
         crate::library::graphics::graphics::set_plot_new_state();
-        unsafe { crate::sexp::globals::R_NilValue() }
+        crate::sexp::globals::R_NilValue()
     }
 }
 
@@ -917,7 +917,7 @@ pub unsafe fn do_rect(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     {
         let _ = args;
         no_device_require_plot_frame();
-        unsafe { crate::sexp::globals::R_NilValue() }
+        crate::sexp::globals::R_NilValue()
     }
 }
 
@@ -931,7 +931,7 @@ pub unsafe fn do_abline(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     {
         let _ = args;
         no_device_require_plot_frame();
-        unsafe { R_NilValue() }
+        R_NilValue()
     }
 }
 

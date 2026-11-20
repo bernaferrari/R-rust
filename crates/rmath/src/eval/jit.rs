@@ -1061,7 +1061,7 @@ pub unsafe fn do_tailcall(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// Ported from R's `do_declare()` in eval.c.
 // no_mangle removed (duplicate)
 pub unsafe fn do_declare(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
+    R_NilValue()
 }
 
 #[cfg(test)]

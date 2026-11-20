@@ -331,7 +331,7 @@ pub fn xtable_key_comp(key: char, entry: &XtableT) -> std::cmp::Ordering {
 ///
 /// In R, NA_STRING is a specific CHARSXP with the NA bit set in its gp field.
 unsafe fn get_na_string() -> SEXP {
-    unsafe { crate::sexp::globals::R_NaString() }
+    crate::sexp::globals::R_NaString()
 }
 
 /// Get R_BlankString -- the empty string CHARSXP.
@@ -622,7 +622,7 @@ pub unsafe fn do_chartr(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
             Err(_) => crate::sexp::globals::R_NilValue(),
         }
     }))
-    .unwrap_or_else(|_| unsafe { crate::sexp::globals::R_NilValue() })
+    .unwrap_or_else(|_| crate::sexp::globals::R_NilValue())
 }
 
 // ---------------------------------------------------------------------------
@@ -672,7 +672,7 @@ unsafe fn case_transform_safe(
     let _pin = owner.pin()?;
     let x = x.into_owned()?;
     let na = owner
-        .sexp(unsafe { crate::sexp::globals::R_NaString() })?
+        .sexp(crate::sexp::globals::R_NaString())?
         .into_owned()?;
     let weak = owner.weak_owner().ok_or(SexpError::OwnerNotActive)?;
     let result = with_runtime(&weak, |access| {
@@ -863,7 +863,7 @@ pub unsafe fn do_nchar(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
             }
         }
     }))
-    .unwrap_or_else(|_| unsafe { crate::sexp::globals::R_NilValue() })
+    .unwrap_or_else(|_| crate::sexp::globals::R_NilValue())
 }
 
 // ---------------------------------------------------------------------------
@@ -999,7 +999,7 @@ pub unsafe fn do_substr(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
             Err(_) => crate::sexp::globals::R_NilValue(),
         }
     }))
-    .unwrap_or_else(|_| unsafe { crate::sexp::globals::R_NilValue() })
+    .unwrap_or_else(|_| crate::sexp::globals::R_NilValue())
 }
 
 // ---------------------------------------------------------------------------

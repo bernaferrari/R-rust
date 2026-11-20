@@ -118,7 +118,7 @@ unsafe fn substring_entry(
     };
     let args = own(args);
     let environment = own(rho);
-    let na = own(unsafe { crate::sexp::globals::R_NaString() });
+    let na = own(crate::sexp::globals::R_NaString());
     let weak = owner
         .weak_owner()
         .unwrap_or_else(|| crate::sexp::context::r_error("substring requires a managed runtime"));

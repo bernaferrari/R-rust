@@ -1929,7 +1929,7 @@ pub unsafe fn ProcessInlinePars(_s: SEXP, _dd: pGEDevDesc) {
 /// baseCallback -- event handler for the base graphics system, registered
 /// with the Graphics Engine via GEregisterSystem.
 pub unsafe extern "C" fn baseCallback(_task: c_int, _dd: pGEDevDesc, _data: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
+    R_NilValue()
 }
 
 /* ---- registerBase / unregisterBase / RunregisterBase ---- */
@@ -1964,7 +1964,7 @@ pub fn unregisterBase() {
 /// Returns R_NilValue.
 pub unsafe fn RunregisterBase() -> SEXP {
     unregisterBase();
-    unsafe { R_NilValue() }
+    R_NilValue()
 }
 
 /* ---- gpptr / dpptr / dpSavedptr / Rf_setBaseDevice ---- */

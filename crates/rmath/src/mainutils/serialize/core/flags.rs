@@ -272,7 +272,7 @@ pub(crate) unsafe fn expand_deferred_string(state: SEXP) -> Result<SEXP, String>
                 .character(&text)
                 .map_err(|error| error.to_string())?,
             None => factory
-                .wrap(unsafe { crate::sexp::globals::R_NaString() })
+                .wrap(crate::sexp::globals::R_NaString())
                 .map_err(|error| error.to_string())?,
         };
         SexpMut::try_from_checked(result.clone())

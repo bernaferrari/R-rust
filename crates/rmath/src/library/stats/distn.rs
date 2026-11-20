@@ -774,11 +774,11 @@ pub unsafe fn do_qtukey(sa: SEXP, sb: SEXP, sc: SEXP, sd: SEXP, sI: SEXP, sJ: SE
 // ===========================================================================
 
 pub unsafe fn stats_signrank_free(_args: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
+    R_NilValue()
 }
 
 pub unsafe fn stats_wilcox_free(_args: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
+    R_NilValue()
 }
 
 pub(crate) unsafe extern "C-unwind" fn c_signrank_free(_args: SEXP) -> SEXP {

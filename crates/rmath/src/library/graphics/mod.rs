@@ -312,7 +312,7 @@ unsafe extern "C-unwind" fn c_clip(args: SEXP) -> SEXP {
 /// established plot frame, so the device-less form only discards the box.
 #[cfg(not(feature = "renderplot-device"))]
 unsafe extern "C-unwind" fn c_clip(_args: SEXP) -> SEXP {
-    unsafe { crate::sexp::globals::R_NilValue() }
+    crate::sexp::globals::R_NilValue()
 }
 
 /// GNU `grconvertX` passes the values plus one-based unit indices.

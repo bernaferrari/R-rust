@@ -50,7 +50,7 @@ fn list_to_character<'a>(
             owner.require_active().map_err(|error| error.to_string())?;
             if raw.is_null() {
                 factory
-                    .wrap(unsafe { R_NaString() })
+                    .wrap(R_NaString())
                     .map_err(|error| error.to_string())?
             } else {
                 let text = factory.wrap(raw).map_err(|error| error.to_string())?;
@@ -58,7 +58,7 @@ fn list_to_character<'a>(
                     text.try_string_elt(0).map_err(|error| error.to_string())?
                 } else {
                     factory
-                        .wrap(unsafe { R_NaString() })
+                        .wrap(R_NaString())
                         .map_err(|error| error.to_string())?
                 }
             }
@@ -226,7 +226,7 @@ pub(super) unsafe fn compare(op: &str, left: SEXP, right: SEXP) -> Result<SEXP, 
         return Ok(out.as_raw());
     };
     let na = factory
-        .wrap(unsafe { R_NaString() })
+        .wrap(R_NaString())
         .map_err(|error| error.to_string())?;
     for i in 0..n {
         owner.require_active().map_err(|error| error.to_string())?;

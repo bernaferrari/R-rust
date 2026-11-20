@@ -514,7 +514,7 @@ unsafe fn GetOptionByName(name: &str) -> SEXP {
 
 /// Read the option map without initializing defaults or interning a name.
 pub(crate) unsafe fn existing_option(name: &str) -> SEXP {
-    let nil = unsafe { R_NilValue() };
+    let nil = R_NilValue();
     crate::sexp::instance::with_required_current_instance(|inst| unsafe {
         (*inst).options.get(name).map_or(nil, Sexp::as_raw)
     })

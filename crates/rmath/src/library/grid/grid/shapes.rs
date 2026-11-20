@@ -360,7 +360,7 @@ pub(crate) unsafe fn gridCircle(
     _theta: c_double,
     _draw: bool,
 ) -> SEXP {
-    unsafe { R_NilValue() }
+    R_NilValue()
 }
 
 /* ==============================
@@ -396,7 +396,7 @@ pub(crate) unsafe fn gridRect(
     _theta: c_double,
     _draw: bool,
 ) -> SEXP {
-    unsafe { R_NilValue() }
+    R_NilValue()
 }
 
 /* ==============================

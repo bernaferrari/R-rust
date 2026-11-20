@@ -602,7 +602,7 @@ impl RInstance {
     pub(crate) fn allocate_with_path_policy(
         path_policy: crate::mainutils::paths::RuntimePathPolicy,
     ) -> Self {
-        let nil = unsafe { super::globals::R_NilValue() };
+        let nil = super::globals::R_NilValue();
 
         let arena = RArena::new();
         let heap_identity = arena.heap_identity();

@@ -172,7 +172,7 @@ pub unsafe fn do_nameOfClass(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> S
 
 /// GNU `nameOfClass.default <- function(x) NULL`
 pub unsafe fn do_nameOfClass_default(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
+    R_NilValue()
 }
 
 // ---------------------------------------------------------------------------

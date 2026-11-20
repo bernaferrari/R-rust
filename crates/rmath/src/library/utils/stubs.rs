@@ -36,7 +36,7 @@ use crate::sexp::globals::*;
 use crate::sexp::protect::protect;
 
 fn nil_value() -> SEXP {
-    unsafe { R_NilValue() }
+    R_NilValue()
 }
 
 fn warn_message(message: impl AsRef<str>) {

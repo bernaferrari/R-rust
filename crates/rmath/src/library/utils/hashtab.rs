@@ -81,7 +81,7 @@ unsafe fn HT_TypeFromString(x: SEXP) -> c_int {
 }
 
 fn nil_value() -> SEXP {
-    unsafe { R_NilValue() }
+    R_NilValue()
 }
 
 unsafe fn hash_error(message: &'static [u8]) -> ! {

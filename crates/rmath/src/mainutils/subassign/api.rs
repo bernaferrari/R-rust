@@ -34,7 +34,7 @@ pub unsafe fn SubassignTypeSym() -> SEXP {
 
 /// Port of `SubassignDotsNames()` -- handles assignment to `...` names.
 pub unsafe fn SubassignDotsNames(_call: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
+    R_NilValue()
 }
 
 /// Port of `GetSubassignSxpVec()` -- used by the byte code interpreter.

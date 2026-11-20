@@ -421,9 +421,9 @@ impl<'arena, 'session> Parser<'arena, 'session> {
             if var.is_null() || unsafe { TYPEOF(var) } != SEXPTYPE::SYMSXP {
                 return Err(self.token_position_error(rhs_start, "RHS variable must be a symbol"));
             }
-            let nil = unsafe { R_NilValue() };
+            let nil = R_NilValue();
             // alist = list1(R_MissingArg); SET_TAG(alist, var)
-            let formal_cell = self.cons(unsafe { crate::sexp::globals::R_MissingArg() }, nil)?;
+            let formal_cell = self.cons(crate::sexp::globals::R_MissingArg(), nil)?;
             unsafe {
                 crate::sexp::accessors::SETTAG(formal_cell, var);
             }

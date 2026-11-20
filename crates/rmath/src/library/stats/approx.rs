@@ -192,7 +192,7 @@ pub unsafe fn ApproxTest(x: SEXP, y: SEXP, method: SEXP, f: SEXP, na_rm: SEXP) -
         unsafe { crate::main::errors::Rf_error(message.as_ptr()) };
     }
     active(owner);
-    unsafe { R_NilValue() }
+    R_NilValue()
 }
 pub unsafe fn Approx(
     x: SEXP,

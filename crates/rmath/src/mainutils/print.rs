@@ -2312,15 +2312,15 @@ unsafe fn GetOption1(sym: SEXP) -> SEXP {
 }
 
 unsafe fn do_names(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
+    R_NilValue()
 }
 
 unsafe fn do_dim(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
+    R_NilValue()
 }
 
 unsafe fn do_str(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
+    R_NilValue()
 }
 
 // ---------------------------------------------------------------------------

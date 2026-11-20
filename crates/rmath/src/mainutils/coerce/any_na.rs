@@ -109,7 +109,7 @@ fn leaf(x: &Sexp<'_>, recursive: bool, env: SEXP, check: &impl Fn()) -> bool {
             }
             SEXPTYPE::STRSXP => {
                 x.try_string_elt(i).expect("anyNA string element").as_raw()
-                    == unsafe { crate::sexp::globals::R_NaString() }
+                    == crate::sexp::globals::R_NaString()
             }
             _ => false,
         };
@@ -185,7 +185,7 @@ impl NestedDispatch<'_, '_> {
                 .expect("anyNA nested call value");
         }
 
-        let mut answer = unsafe { crate::sexp::globals::R_NilValue() };
+        let mut answer = crate::sexp::globals::R_NilValue();
         let dispatched = unsafe {
             crate::eval::dispatch::DispatchOrEval(
                 call.as_raw(),

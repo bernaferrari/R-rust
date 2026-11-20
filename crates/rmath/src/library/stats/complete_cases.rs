@@ -109,7 +109,7 @@ fn check_vector_na(u: SEXP, rval: &mut [c_int], len: c_int) {
 
 pub unsafe fn compcases(args: SEXP) -> SEXP {
     let mut len: c_int = -1;
-    let nil = unsafe { R_NilValue() };
+    let nil = R_NilValue();
 
     let mut args_iter = unsafe { CDR(args) };
 

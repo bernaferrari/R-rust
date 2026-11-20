@@ -52,7 +52,7 @@ pub(crate) unsafe fn get_symbol_name(sym: SEXP) -> String {
 #[must_use]
 pub(crate) unsafe fn Rf_eval(e: SEXP, rho: SEXP) -> SEXP {
     if e.is_null() || rho.is_null() {
-        return unsafe { R_NilValue() };
+        return R_NilValue();
     }
     let owner = unsafe { crate::sexp::owner::OwnerToken::current() }
         .unwrap_or_else(|err| crate::sexp::context::r_error(err.to_string()));

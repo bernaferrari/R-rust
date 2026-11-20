@@ -236,5 +236,5 @@ pub unsafe fn L_stringMetric(label: SEXP) -> SEXP {
  * ============================== */
 
 pub unsafe fn L_convertToNative(_x: SEXP, _what: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
+    R_NilValue()
 }

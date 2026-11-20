@@ -145,7 +145,7 @@ impl<'arena, 'session> Parser<'arena, 'session> {
                     "TRUE" => self.scalar_logical(TRUE),
                     "FALSE" => self.scalar_logical(FALSE),
 
-                    "NULL" => unsafe { Ok(R_NilValue()) },
+                    "NULL" => Ok(R_NilValue()),
                     "NA" => self.scalar_logical(NA_LOGICAL),
                     "Inf" => self.scalar_real(f64::INFINITY),
                     "NaN" => self.scalar_real(f64::NAN),
@@ -172,11 +172,11 @@ impl<'arena, 'session> Parser<'arena, 'session> {
         loop {
             self.skip_newlines();
             if self.peek() == &Token::Comma {
-                args.push((None, unsafe { crate::sexp::globals::R_MissingArg() }));
+                args.push((None, crate::sexp::globals::R_MissingArg()));
                 self.advance();
                 self.skip_newlines();
                 if self.peek() == &Token::RParen {
-                    args.push((None, unsafe { crate::sexp::globals::R_MissingArg() }));
+                    args.push((None, crate::sexp::globals::R_MissingArg()));
                     break;
                 }
                 continue;
@@ -189,7 +189,7 @@ impl<'arena, 'session> Parser<'arena, 'session> {
                 self.advance();
                 self.skip_newlines();
                 if self.peek() == &Token::RParen {
-                    args.push((None, unsafe { crate::sexp::globals::R_MissingArg() }));
+                    args.push((None, crate::sexp::globals::R_MissingArg()));
                     break;
                 }
             } else {
@@ -211,7 +211,7 @@ impl<'arena, 'session> Parser<'arena, 'session> {
                         self.advance();
                         self.skip_newlines();
                         let val = if self.peek() == &Token::Comma || self.peek() == &Token::RParen {
-                            unsafe { crate::sexp::globals::R_MissingArg() }
+                            crate::sexp::globals::R_MissingArg()
                         } else {
                             self.parse_expr()?
                         };

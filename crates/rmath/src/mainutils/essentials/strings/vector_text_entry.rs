@@ -19,7 +19,7 @@ pub(super) unsafe fn evaluate(args: SEXP, rho: SEXP, operation: Operation) -> SE
     };
     let args = own(args);
     let environment = own(rho);
-    let na = own(unsafe { crate::sexp::globals::R_NaString() });
+    let na = own(crate::sexp::globals::R_NaString());
     let weak = owner.weak_owner().unwrap_or_else(|| {
         crate::sexp::context::r_error("string operation requires a managed runtime")
     });

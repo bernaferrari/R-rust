@@ -1606,7 +1606,7 @@ unsafe fn getFontDB(fontdbname: *const c_char) -> SEXP {
 }
 
 unsafe fn getFont(_family: *const c_char, _fontdbname: *const c_char) -> SEXP {
-    unsafe { R_NilValue() }
+    R_NilValue()
 }
 
 unsafe fn fontMetricsFileName(

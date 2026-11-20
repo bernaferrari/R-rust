@@ -11,7 +11,7 @@ pub(crate) unsafe fn gridText(
     _theta: c_double,
     _draw: bool,
 ) -> SEXP {
-    unsafe { R_NilValue() }
+    R_NilValue()
 }
 
 /* ==============================
@@ -149,7 +149,7 @@ pub unsafe fn gridSymbol(
     _gc: pGEcontext,
     _dd: pGEDevDesc,
 ) -> SEXP {
-    unsafe { R_NilValue() }
+    R_NilValue()
 }
 
 /* ==============================
@@ -164,7 +164,7 @@ pub(crate) unsafe fn gridPoints(
     _draw: bool,
     _closed: bool,
 ) -> SEXP {
-    unsafe { R_NilValue() }
+    R_NilValue()
 }
 
 /* ==============================

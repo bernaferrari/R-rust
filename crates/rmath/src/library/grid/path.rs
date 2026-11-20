@@ -72,7 +72,7 @@ unsafe fn Rf_inherits(x: SEXP, what: *const std::os::raw::c_char) -> c_int {
         return 0;
     }
     let klass = unsafe { crate::attrib_core::getAttrib(x, crate::attrib_core::R_ClassSymbol()) };
-    if klass.is_null() || klass == unsafe { R_NilValue() } {
+    if klass.is_null() || klass == R_NilValue() {
         return 0;
     }
     use crate::sexp::accessors::{CHAR, LENGTH, STRING_ELT, TYPEOF};
@@ -109,7 +109,7 @@ pub unsafe fn L_stroke(path: SEXP) -> SEXP {
     let mut _gc: [u8; 256] = [0; 256];
     let dd = unsafe { getDevice() };
     if dd.is_null() {
-        return unsafe { R_NilValue() };
+        return R_NilValue();
     }
     let currentgp = unsafe { gridStateElement(dd, GSS_GPAR) };
     unsafe { gcontextFromgpar(currentgp, 0, _gc.as_mut_ptr() as *const c_void, dd) };
@@ -117,7 +117,7 @@ pub unsafe fn L_stroke(path: SEXP) -> SEXP {
     let _scope = unsafe { GridPathGuard::enter(dd) };
     unsafe { ge::GEStroke(path, _gc.as_ptr() as *const c_void, dd) };
 
-    unsafe { R_NilValue() }
+    R_NilValue()
 }
 
 // ---------------------------------------------------------------------------
@@ -128,7 +128,7 @@ pub unsafe fn L_fill(path: SEXP, rule: SEXP) -> SEXP {
     let mut _gc: [u8; 256] = [0; 256];
     let dd = unsafe { getDevice() };
     if dd.is_null() {
-        return unsafe { R_NilValue() };
+        return R_NilValue();
     }
     let currentgp = unsafe { crate::main::duplicate::Rf_duplicate(gridStateElement(dd, GSS_GPAR)) };
     let _currentgp_guard = unsafe { protect(currentgp) };
@@ -161,7 +161,7 @@ pub unsafe fn L_fill(path: SEXP, rule: SEXP) -> SEXP {
         }
     }
 
-    unsafe { R_NilValue() }
+    R_NilValue()
 }
 
 // ---------------------------------------------------------------------------
@@ -172,7 +172,7 @@ pub unsafe fn L_fillStroke(path: SEXP, rule: SEXP) -> SEXP {
     let mut _gc: [u8; 256] = [0; 256];
     let dd = unsafe { getDevice() };
     if dd.is_null() {
-        return unsafe { R_NilValue() };
+        return R_NilValue();
     }
     let currentgp = unsafe { crate::main::duplicate::Rf_duplicate(gridStateElement(dd, GSS_GPAR)) };
     let _currentgp_guard = unsafe { protect(currentgp) };
@@ -205,5 +205,5 @@ pub unsafe fn L_fillStroke(path: SEXP, rule: SEXP) -> SEXP {
         }
     }
 
-    unsafe { R_NilValue() }
+    R_NilValue()
 }

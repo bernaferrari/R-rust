@@ -226,7 +226,7 @@ impl<'arena, 'session> Parser<'arena, 'session> {
     /// Parse formal arguments: name [= default], name [= default], ...
     /// Returns a pairlist of (name default) pairs.
     pub(crate) fn parse_formals(&mut self) -> Result<SEXP, ParseError> {
-        let nil = unsafe { R_NilValue() };
+        let nil = R_NilValue();
         let mut pairs: Vec<(String, SEXP)> = Vec::new();
 
         self.skip_newlines();
@@ -239,7 +239,7 @@ impl<'arena, 'session> Parser<'arena, 'session> {
             match self.peek().clone() {
                 Token::DotDotDot => {
                     self.advance();
-                    pairs.push(("...".to_string(), unsafe { R_NilValue() }));
+                    pairs.push(("...".to_string(), R_NilValue()));
                 }
                 Token::Ident(name) => {
                     let name = name.clone();
@@ -257,7 +257,7 @@ impl<'arena, 'session> Parser<'arena, 'session> {
                         self.advance();
                         self.parse_expr()?
                     } else {
-                        unsafe { crate::sexp::globals::R_MissingArg() }
+                        crate::sexp::globals::R_MissingArg()
                     };
                     pairs.push((name, default));
                 }

@@ -466,7 +466,7 @@ impl<'a> PairlistBuilder<'a> {
         }) {
             return None;
         }
-        let mut result = unsafe { R_NilValue() };
+        let mut result = R_NilValue();
         for (car, tag) in self.elements.iter().rev() {
             // SAFETY: every child was checked above; no GC runs during this arena lend.
             result = unsafe {
@@ -640,7 +640,7 @@ pub fn lang2_in<'arena>(
     let heap = arena.heap_identity();
     let car = car.link_in(&heap).ok()?;
     let arg = arg.link_in(&heap).ok()?;
-    let nil = arena.link_from_projection(unsafe { R_NilValue() })?;
+    let nil = arena.link_from_projection(R_NilValue())?;
     let cdr = arena.alloc_node(SEXPTYPE::LANGSXP);
     if cdr.is_null() {
         return None;
@@ -677,7 +677,7 @@ pub fn lang3_in<'arena>(
     let car = car.link_in(&heap).ok()?;
     let arg1 = arg1.link_in(&heap).ok()?;
     let arg2 = arg2.link_in(&heap).ok()?;
-    let nil = arena.link_from_projection(unsafe { R_NilValue() })?;
+    let nil = arena.link_from_projection(R_NilValue())?;
     let c2 = arena.alloc_node(SEXPTYPE::LANGSXP);
     if c2.is_null() {
         return None;

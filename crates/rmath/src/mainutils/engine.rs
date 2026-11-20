@@ -424,7 +424,7 @@ fn ge_eval_with_rho(e: SEXP, rho: SEXP) -> SEXP {
 
 #[inline]
 fn nil_value() -> SEXP {
-    unsafe { R_NilValue() }
+    R_NilValue()
 }
 
 #[inline]

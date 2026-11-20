@@ -76,9 +76,9 @@ unsafe fn renderGlyphs(runs: SEXP, glyphInfo: SEXP, x: SEXP, y: SEXP, draw: bool
     let currentvp = unsafe { gridStateElement(dd, GSS_VP) };
     let currentgp = unsafe { gridStateElement(dd, GSS_GPAR) };
     if currentvp.is_null()
-        || currentvp == unsafe { R_NilValue() }
+        || currentvp == R_NilValue()
         || currentgp.is_null()
-        || currentgp == unsafe { R_NilValue() }
+        || currentgp == R_NilValue()
     {
         return;
     }
@@ -211,5 +211,5 @@ unsafe fn renderGlyphs(runs: SEXP, glyphInfo: SEXP, x: SEXP, y: SEXP, draw: bool
 
 pub unsafe fn L_glyph(runs: SEXP, glyphInfo: SEXP, x: SEXP, y: SEXP) -> SEXP {
     unsafe { renderGlyphs(runs, glyphInfo, x, y, true) };
-    unsafe { R_NilValue() }
+    R_NilValue()
 }

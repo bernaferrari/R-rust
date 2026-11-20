@@ -534,7 +534,7 @@ pub unsafe fn make_applyClosure_env(call: SEXP, op: SEXP, arglist: SEXP, rho: SE
         {
             std::panic::resume_unwind(payload);
         }
-        unsafe { R_NilValue() }
+        R_NilValue()
     })
 }
 

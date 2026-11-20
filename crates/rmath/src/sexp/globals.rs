@@ -4,6 +4,8 @@
 //!
 //! These are immutable thread-confined sentinel values used throughout R. Mutable runtime environments are session-owned and reached
 //! through the active `RInstance`, not through process-global fallback slots.
+//! Singleton getters return opaque projections for checked lookups. Their return
+//! values carry no authority to dereference or mutate the underlying cells.
 
 use super::ffi::SEXP;
 #[path = "singletons.rs"]
@@ -42,19 +44,19 @@ pub(crate) fn close_immutable_singletons_for_test() {
 }
 
 /// Get a pointer to R_NilValue.
-pub unsafe fn R_NilValue() -> SEXP {
+pub fn R_NilValue() -> SEXP {
     singletons::nil()
 }
 /// Get a pointer to R_UnboundValue.
-pub unsafe fn R_UnboundValue() -> SEXP {
+pub fn R_UnboundValue() -> SEXP {
     singletons::unbound()
 }
 /// Get a pointer to R_MissingArg.
-pub unsafe fn R_MissingArg() -> SEXP {
+pub fn R_MissingArg() -> SEXP {
     singletons::missing()
 }
 /// Get a pointer to R_RestartToken.
-pub unsafe fn R_RestartToken() -> SEXP {
+pub fn R_RestartToken() -> SEXP {
     singletons::restart()
 }
 
@@ -238,19 +240,19 @@ pub unsafe fn R_BraceSymbol_fn() -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Get a pointer to the immutable logical TRUE scalar.
-pub unsafe fn R_True() -> SEXP {
+pub fn R_True() -> SEXP {
     singletons::logical(true)
 }
 /// Get a pointer to the immutable logical FALSE scalar.
-pub unsafe fn R_False() -> SEXP {
+pub fn R_False() -> SEXP {
     singletons::logical(false)
 }
 /// Get a pointer to the immutable logical NA scalar.
-pub unsafe fn R_LogicalNA() -> SEXP {
+pub fn R_LogicalNA() -> SEXP {
     singletons::logical_na()
 }
 /// Get a pointer to the immutable NA_STRING character sentinel.
-pub unsafe fn R_NaString() -> SEXP {
+pub fn R_NaString() -> SEXP {
     singletons::na_string()
 }
 

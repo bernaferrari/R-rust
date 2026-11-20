@@ -726,12 +726,12 @@ pub(crate) unsafe fn NonNullStringMatch(s: SEXP, t: SEXP) -> c_int {
 
 /// R_CurrentExpression: stub returning nil.
 pub(crate) unsafe fn R_CurrentExpression() -> SEXP {
-    unsafe { R_NilValue() }
+    R_NilValue()
 }
 
 /// NA_STRING: get the NA string.
 pub(crate) unsafe fn NA_STRING() -> SEXP {
-    unsafe { crate::sexp::globals::R_NaString() }
+    crate::sexp::globals::R_NaString()
 }
 
 /// R_BlankString: get the blank string.
