@@ -108,6 +108,31 @@ class EverydayScorecardTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'pinned archive digest'):
             scorecard.session_workflow_results(path, provenance, 'module')
 
+    def test_rebuilt_report_requires_updated_visible_figure(self):
+        provenance = {'source_commit': 'commit', 'source_sha256': 'runtime',
+                      'oracle_manifest_sha256': 'oracle'}
+        fixture = scorecard.ROOT / 'tests/everyday-analysis/sessions/repeatable-report'
+        fixture_hashes = {p.name: scorecard.file_digest(p) for p in sorted(fixture.iterdir())}
+        expected = {}
+        figures = {}
+        for phase, digest in (('initial', 'a' * 64), ('rebuild', 'b' * 64)):
+            expected[phase] = dict(forecasts=scorecard.FORECASTS[phase], figure=scorecard.EXPECTED_FIGURE,
+                                   html_sha256=digest, table_sha256=digest, output='')
+            figures[phase] = dict(pdf_sha256=digest, raster_sha256=digest, pdf_bytes=1234)
+        evidence = {side: {phase: dict(row) for phase, row in figures.items()}
+                    for side in ('gnu', 'native', 'wasm')}
+        report = dict(schema_version=1, **provenance, workflow='repeatable-report',
+                      wasm_sha256='module', fixture_sha256=fixture_hashes, report_evidence=evidence,
+                      expected=expected, native=expected, wasm=expected)
+        path = self.directory / 'report.json'
+        path.write_text(json.dumps(report))
+        self.assertEqual(scorecard.session_workflow_results(path, provenance, 'module'),
+                         ('repeatable-report', {'native': 'pass', 'wasm': 'pass'}))
+        evidence['wasm']['rebuild']['raster_sha256'] = evidence['wasm']['initial']['raster_sha256']
+        path.write_text(json.dumps(report))
+        with self.assertRaisesRegex(ValueError, 'requires both forecasts and a changed rendered figure'):
+            scorecard.session_workflow_results(path, provenance, 'module')
+
 
 if __name__ == '__main__':
     unittest.main()

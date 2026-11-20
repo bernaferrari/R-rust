@@ -2,6 +2,7 @@
 """Run fresh-session workflows against pinned GNU R and production Wasm."""
 
 import argparse
+import csv
 import gzip
 import json
 import os
@@ -15,6 +16,7 @@ import tomllib
 
 from conformance_shards import file_digest, source_identity
 from everyday_pdf import EXPECTED_SCATTERPLOT, inspect_scatterplot
+from everyday_report import EXPECTED_FIGURE, FORECASTS, OUTPUTS, PHASES, inspect_figure
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = ROOT / 'tests/everyday-analysis/sessions'
@@ -174,10 +176,57 @@ def run_plot_export(gnu, native, directory, env, fixture, wasm_module):
     return wasm['wasm_sha256'], outputs.pop('gnu'), outputs, evidence
 
 
+def run_repeatable_report(gnu, native, directory, env, fixture, wasm_module):
+    wasm_dir = directory / 'wasm'
+    wasm_dir.mkdir()
+    wasm = json.loads(subprocess.check_output(
+        ['node', ROOT / 'tests/browser/everyday-report.mjs', wasm_module, fixture, wasm_dir],
+        cwd=ROOT, env=env, timeout=300, text=True))
+    outcomes, evidence = {}, {}
+    for side, command in {'gnu': gnu, 'native': native, 'wasm': None}.items():
+        outcomes[side], evidence[side] = {}, {}
+        for phase in PHASES:
+            work = directory / side / phase
+            if command is None:
+                output = wasm['stdout'][phase]
+            else:
+                work.mkdir(parents=True)
+                shutil.copyfile(fixture / 'report.R', work / 'report.R')
+                shutil.copyfile(fixture / (phase + '.csv'), work / 'observations.csv')
+                if phase == 'rebuild':
+                    for name in OUTPUTS:
+                        shutil.copyfile(work.parent / 'initial' / name, work / name)
+                output = subprocess.check_output(
+                    [*command, fixture / 'run.R'], cwd=work, env=env, timeout=300, text=True)
+            with (work / 'forecast.csv').open(newline='') as stream:
+                rows = list(csv.reader(stream))
+            if (any(len(row) != 2 for row in rows) or not rows
+                    or rows[0] != ['Scenario', 'Estimate']
+                    or [row[0] for row in rows[1:]] != ['Standard', 'Irrigated']):
+                raise ValueError(f'{side} {phase} did not produce the forecast table')
+            figure, raster_sha256 = inspect_figure(work / 'field-trial.pdf', phase)
+            html, table, pdf = (file_digest(work / name) for name in OUTPUTS)
+            outcomes[side][phase] = dict(output=output, forecasts=[row[1] for row in rows[1:]],
+                                         html_sha256=html, table_sha256=table, figure=figure)
+            evidence[side][phase] = dict(pdf_sha256=pdf, raster_sha256=raster_sha256,
+                                         pdf_bytes=(work / 'field-trial.pdf').stat().st_size)
+        if any(outcomes[side]['initial'][field] == outcomes[side]['rebuild'][field]
+               for field in ('html_sha256', 'table_sha256')) or (
+            evidence[side]['initial']['raster_sha256'] == evidence[side]['rebuild']['raster_sha256']
+        ):
+            raise ValueError(f'{side} retained stale report output after the input changed')
+    expected = outcomes.pop('gnu')
+    if any(expected[phase]['forecasts'] != FORECASTS[phase]
+           or expected[phase]['figure'] != EXPECTED_FIGURE for phase in PHASES):
+        raise ValueError('pinned GNU report did not satisfy the independent forecast and figure checks')
+    return wasm['wasm_sha256'], expected, outcomes, evidence
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('wasm_package', type=Path)
-    parser.add_argument('--workflow', choices=('file-round-trip', 'fresh-session-restore', 'pure-r-package', 'base-plot-export'),
+    parser.add_argument('--workflow', choices=('file-round-trip', 'fresh-session-restore', 'pure-r-package',
+                                               'base-plot-export', 'repeatable-report'),
                         default='file-round-trip')
     args = parser.parse_args()
     rscript = shutil.which('Rscript')
@@ -193,13 +242,18 @@ def main():
     wasm_module = args.wasm_package.resolve()
     with tempfile.TemporaryDirectory(prefix='rport-analysis-sessions.') as scratch:
         directory = Path(scratch)
-        native_runner = build_native_runner(directory, env, renderplot=args.workflow == 'base-plot-export')
+        native_runner = build_native_runner(
+            directory, env, renderplot=args.workflow in ('base-plot-export', 'repeatable-report'))
         gnu = [rscript, '--vanilla']
         artifacts = {}
         archive_digest = None
         pdf_evidence = None
+        report_evidence = None
         if args.workflow == 'base-plot-export':
             wasm_sha256, expected, outcomes, pdf_evidence = run_plot_export(
+                gnu, native_runner, directory, env, fixture, wasm_module)
+        elif args.workflow == 'repeatable-report':
+            wasm_sha256, expected, outcomes, report_evidence = run_repeatable_report(
                 gnu, native_runner, directory, env, fixture, wasm_module)
         elif args.workflow == 'pure-r-package':
             wasm_sha256, expected, outcomes, archive_digest = run_pure_r_package(
@@ -228,6 +282,8 @@ def main():
             report['archive_sha256'] = archive_digest
         if pdf_evidence:
             report['pdf_evidence'] = pdf_evidence
+        if report_evidence:
+            report['report_evidence'] = report_evidence
         print(json.dumps(report, indent=2))
         return int(any(outcome != expected for outcome in outcomes.values()))
 

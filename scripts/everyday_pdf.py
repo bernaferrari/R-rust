@@ -1,4 +1,4 @@
-"""Independent PDF validation for the layered scatterplot workflow."""
+"""Independent rendered PDF checks for everyday analysis."""
 
 import re
 import shutil
@@ -9,7 +9,7 @@ POINTS = ((59, 183), (145, 152), (230, 167), (316, 105), (401, 90))
 AXES = ((60, 214, 400, 214), (59, 59, 59, 214))
 
 
-def inspect_scatterplot(path):
+def inspect_page(path, expected_labels):
     for tool in ("pdfinfo", "pdftotext", "pdftoppm"):
         if not shutil.which(tool):
             raise ValueError(f"{tool} from Poppler is required for the PDF workflow")
@@ -19,7 +19,7 @@ def inspect_scatterplot(path):
         r"^Page size:\s+(\d+) x (\d+) pts", metadata, re.MULTILINE).groups()))
     labels = subprocess.check_output(["pdftotext", "-layout", path, "-"], text=True, timeout=30)
     words = " ".join(labels.split())
-    labels_found = [label for label in LABELS if re.search(rf"\b{re.escape(label)}\b", words)]
+    labels_found = [label for label in expected_labels if re.search(rf"\b{re.escape(label)}\b", words)]
     header, size, depth, image = subprocess.check_output(
         ["pdftoppm", "-f", "1", "-l", "1", "-r", "72", "-singlefile", path], timeout=30
     ).split(b"\n", 3)
@@ -27,22 +27,30 @@ def inspect_scatterplot(path):
     if header != b"P6" or depth != b"255" or len(image) != width * height * 3:
         raise ValueError("unexpected Poppler raster format")
 
-    def color_positions(color):
-        return [(index % width, index // width)
-                for index, pixel in enumerate(zip(image[::3], image[1::3], image[2::3]))
-                if pixel == color]
+    return {"pages": page_count, "page_size_points": dimensions, "labels": labels_found}, width, image
 
-    def near(position, point, tolerance=4):
-        return all(abs(a - b) <= tolerance for a, b in zip(position, point))
+
+def color_positions(image, width, color):
+    return [(index % width, index // width)
+            for index, pixel in enumerate(zip(image[::3], image[1::3], image[2::3]))
+            if pixel == color]
+
+
+def near(position, point, tolerance=4):
+    return all(abs(a - b) <= tolerance for a, b in zip(position, point))
+
+
+def inspect_scatterplot(path):
+    page, width, image = inspect_page(path, LABELS)
 
     def segment_support(pixels, endpoints):
         x0, y0, x1, y1 = endpoints
         return sum(x0 - 1 <= x <= x1 + 1 and y0 - 1 <= y <= y1 + 1 for x, y in pixels)
 
-    navy = color_positions((0, 0, 128))
-    fit = color_positions((178, 34, 34))
-    reference = color_positions((102, 102, 102))
-    ink = color_positions((0, 0, 0))
+    navy = color_positions(image, width, (0, 0, 128))
+    fit = color_positions(image, width, (178, 34, 34))
+    reference = color_positions(image, width, (102, 102, 102))
+    ink = color_positions(image, width, (0, 0, 0))
     counts = {
         "data_points": sum(any(near(position, point) for position in navy) for point in POINTS),
         "fit_pixels": sum(65 <= x <= 395 and abs(y - (188 - (x - 60) * 0.29)) <= 5 for x, y in fit),
@@ -51,9 +59,7 @@ def inspect_scatterplot(path):
         "vertical_axis_pixels": segment_support(ink, AXES[1]),
     }
     manifest = {
-        "pages": page_count,
-        "page_size_points": dimensions,
-        "labels": labels_found,
+        **page,
         "data_points_visible": counts["data_points"] == 5,
         "fit_visible": counts["fit_pixels"] >= 200,
         "reference_visible": counts["reference_pixels"] >= 80,

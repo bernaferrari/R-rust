@@ -1,0 +1,9 @@
+week,manure,irrigated,yield
+1,4,FALSE,8
+2,5,FALSE,11
+3,6,FALSE,12
+4,7,FALSE,15
+1,4,TRUE,12
+2,5,TRUE,15
+3,6,TRUE,14
+4,7,TRUE,19

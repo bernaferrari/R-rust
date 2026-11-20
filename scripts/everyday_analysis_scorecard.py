@@ -10,9 +10,11 @@ from pathlib import Path
 if __package__:
     from .conformance_shards import file_digest, rows_from_report
     from .everyday_pdf import EXPECTED_SCATTERPLOT
+    from .everyday_report import EXPECTED_FIGURE, FORECASTS, PHASES
 else:
     from conformance_shards import file_digest, rows_from_report
     from everyday_pdf import EXPECTED_SCATTERPLOT
+    from everyday_report import EXPECTED_FIGURE, FORECASTS, PHASES
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -73,7 +75,8 @@ def session_workflow_results(path, native_policy, wasm_digest):
     workflow = report['workflow']
     provenance = ('source_commit', 'source_sha256', 'oracle_manifest_sha256')
     if (report['schema_version'] != 1
-            or workflow not in ('file-round-trip', 'fresh-session-restore', 'pure-r-package', 'base-plot-export')
+            or workflow not in ('file-round-trip', 'fresh-session-restore', 'pure-r-package',
+                                'base-plot-export', 'repeatable-report')
             or any(report[name] != native_policy[name] for name in provenance)
             or report['wasm_sha256'] != wasm_digest):
         raise ValueError('session report differs in workflow, source, oracle or Wasm artifact')
@@ -100,6 +103,22 @@ def session_workflow_results(path, native_policy, wasm_digest):
                 or any(expected.get(key) != value for key, value in EXPECTED_SCATTERPLOT.items())
                 or not expected.get('output')):
             raise ValueError('PDF report requires valid artifacts and the verified GNU plot')
+    elif workflow == 'repeatable-report':
+        evidence = report['report_evidence']
+        if (set(evidence) != {'gnu', 'native', 'wasm'} or set(expected) != set(PHASES)
+                or any(expected[phase]['forecasts'] != FORECASTS[phase]
+                       or expected[phase]['figure'] != EXPECTED_FIGURE
+                       or not all(is_sha256(expected[phase][field]) for field in ('html_sha256', 'table_sha256'))
+                       for phase in PHASES)
+                or any(expected['initial'][field] == expected['rebuild'][field]
+                       for field in ('html_sha256', 'table_sha256'))
+                or any(set(rows) != set(PHASES)
+                       or any(not is_sha256(row['pdf_sha256']) or not is_sha256(row['raster_sha256'])
+                              or row['pdf_bytes'] <= 1000 for row in rows.values())
+                       or any(rows['initial'][field] == rows['rebuild'][field]
+                              for field in ('pdf_sha256', 'raster_sha256'))
+                       for rows in evidence.values())):
+            raise ValueError('report evidence requires both forecasts and a changed rendered figure on each target')
     else:
         engines = {'gnu', 'native', 'wasm'}
         artifacts = report['workspace_sha256']
