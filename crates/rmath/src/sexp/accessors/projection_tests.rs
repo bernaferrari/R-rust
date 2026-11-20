@@ -125,22 +125,19 @@ fn owned_checked_header_reads_retain_the_original_singleton_bank() {
 fn owned_checked_header_reads_never_admit_unregistered_or_retired_storage() {
     let unregistered = Box::new(SexprecCore::new(SEXPTYPE::INTSXP));
     let pointer = ptr::from_ref(unregistered.as_ref()).cast_mut();
-    let denied = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
-        TYPEOF(pointer);
-    }));
+    let denied = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| TYPEOF(pointer)));
     assert!(denied.is_err(), "alignment grants no read authority");
+    let denied = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| CAR(pointer)));
+    assert!(denied.is_err(), "unowned list edges must be rejected");
     let pointer = {
         let mut arena = RArena::new();
         arena.alloc_node(SEXPTYPE::LISTSXP)
     };
-    // This address is only a lookup key after facade retirement; translated
-    // access must reject it before any canonical Cell can be read.
-    let denied = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
-        TYPEOF(pointer);
-    }));
+    // Retired storage is only a lookup key and has no live Cell to read.
+    let denied = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| TYPEOF(pointer)));
     assert!(denied.is_err());
-    assert_eq!(unsafe { TYPEOF(ptr::null_mut()) }, 0);
-    assert!(unsafe { CAR(ptr::null_mut()) }.is_null());
+    assert_eq!(TYPEOF(ptr::null_mut()), 0);
+    assert!(CAR(ptr::null_mut()).is_null());
 }
 
 #[test]

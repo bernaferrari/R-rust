@@ -12,7 +12,7 @@ pub(super) unsafe fn save(
     options: SaveOptions,
 ) {
     let path = unsafe { workspace_path(file, "'file' must be a non-empty character string") };
-    if unsafe { TYPEOF(envir) } != SEXPTYPE::ENVSXP {
+    if TYPEOF(envir) != SEXPTYPE::ENVSXP {
         crate::sexp::context::r_error("invalid 'envir' argument");
     }
     let envir = owner.node_factory().wrap(envir).unwrap_or_else(fail);
@@ -28,7 +28,7 @@ pub(super) unsafe fn save(
         if value == R_UnboundValue() {
             crate::sexp::context::r_error(format!("object ‘{name}’ not found"));
         }
-        if options.eval_promises && unsafe { TYPEOF(value) } == SEXPTYPE::PROMSXP {
+        if options.eval_promises && TYPEOF(value) == SEXPTYPE::PROMSXP {
             let promise = bindings.wrap(value).unwrap_or_else(fail);
             value = unsafe { crate::eval::eval::Rf_eval(promise.as_raw(), envir.as_raw()) };
             owner.require_active().unwrap_or_else(fail);
@@ -136,10 +136,10 @@ pub(super) unsafe fn load(owner: OwnerToken<'_>, file: SEXP, envir: SEXP) -> SEX
     let mut cell = bindings.clone();
     for index in 0..len {
         let tag = cell.try_tag().unwrap_or_else(fail);
-        let name = unsafe { PRINTNAME(tag.as_raw()) };
+        let name = PRINTNAME(tag.as_raw());
         if name.is_null()
             || name == R_NaString()
-            || unsafe { TYPEOF(name) } != SEXPTYPE::CHARSXP
+            || TYPEOF(name) != SEXPTYPE::CHARSXP
             || unsafe { *CHAR(name) } == 0
         {
             crate::sexp::context::r_error("invalid workspace binding name");

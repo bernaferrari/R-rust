@@ -461,7 +461,7 @@ pub fn print_value(x: Sexp<'_>) {
                 unsafe { crate::mainutils::deparse::deparse1w(x.clone().as_raw(), false, opts) };
             let _text_guard = unsafe { crate::sexp::protect::protect(text) };
             let mut joined = String::new();
-            for i in 0..unsafe { XLENGTH(text) } {
+            for i in 0..XLENGTH(text) {
                 let chars = unsafe { CHAR(STRING_ELT(text, i)) };
                 if i > 0 {
                     joined.push('\n');

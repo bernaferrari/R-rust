@@ -77,14 +77,14 @@ unsafe fn Rf_inherits(x: SEXP, what: *const std::os::raw::c_char) -> c_int {
     }
     use crate::sexp::accessors::{CHAR, LENGTH, STRING_ELT, TYPEOF};
     use std::ffi::CStr;
-    if unsafe { TYPEOF(klass) } != crate::sexp::ffi::SEXPTYPE::STRSXP {
+    if TYPEOF(klass) != crate::sexp::ffi::SEXPTYPE::STRSXP {
         return 0;
     }
     let cn = match unsafe { CStr::from_ptr(what) }.to_str() {
         Ok(s) => s,
         Err(_) => return 0,
     };
-    let n = unsafe { LENGTH(klass) };
+    let n = LENGTH(klass);
     for i in 0..n {
         let elt = unsafe { STRING_ELT(klass, i as crate::sexp::ffi::R_xlen_t) };
         if !elt.is_null() {
@@ -139,7 +139,7 @@ pub unsafe fn L_fill(path: SEXP, rule: SEXP) -> SEXP {
     let _scope = unsafe { GridPathGuard::enter(dd) };
     unsafe { ge::GEFill(path, *INTEGER(rule), _gc.as_ptr() as *const c_void, dd) };
 
-    if unsafe { Rf_isNull(resolved_fill) } == 0
+    if Rf_isNull(resolved_fill) == 0
         && unsafe {
             Rf_inherits(
                 resolved_fill,
@@ -183,7 +183,7 @@ pub unsafe fn L_fillStroke(path: SEXP, rule: SEXP) -> SEXP {
     let _scope = unsafe { GridPathGuard::enter(dd) };
     unsafe { ge::GEFillStroke(path, *INTEGER(rule), _gc.as_ptr() as *const c_void, dd) };
 
-    if unsafe { Rf_isNull(resolved_fill) } == 0
+    if Rf_isNull(resolved_fill) == 0
         && unsafe {
             Rf_inherits(
                 resolved_fill,

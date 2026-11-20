@@ -138,7 +138,7 @@ pub unsafe fn bw_ucv(sn: SEXP, sd: SEXP, cnt: SEXP, sh: SEXP) -> SEXP {
     let h = as_real(sh);
     let d = as_real(sd);
     let n = as_integer(sn);
-    let nbin = unsafe { LENGTH(cnt) };
+    let nbin = LENGTH(cnt);
     let cnt = unsafe { slice::from_raw_parts(REAL(cnt), nbin as usize) };
     unsafe { Rf_ScalarReal(bw_ucv_impl(cnt, n, d, h)) }
 }
@@ -147,7 +147,7 @@ pub unsafe fn bw_bcv(sn: SEXP, sd: SEXP, cnt: SEXP, sh: SEXP) -> SEXP {
     let h = as_real(sh);
     let d = as_real(sd);
     let n = as_integer(sn);
-    let nbin = unsafe { LENGTH(cnt) };
+    let nbin = LENGTH(cnt);
     let cnt = unsafe { slice::from_raw_parts(REAL(cnt), nbin as usize) };
     unsafe { Rf_ScalarReal(bw_bcv_impl(cnt, n, d, h)) }
 }
@@ -156,7 +156,7 @@ pub unsafe fn bw_phi4(sn: SEXP, sd: SEXP, cnt: SEXP, sh: SEXP) -> SEXP {
     let h = as_real(sh);
     let d = as_real(sd);
     let n = as_integer(sn);
-    let nbin = unsafe { LENGTH(cnt) };
+    let nbin = LENGTH(cnt);
     let cnt = unsafe { slice::from_raw_parts(REAL(cnt), nbin as usize) };
     unsafe { Rf_ScalarReal(bw_phi4_impl(cnt, n, d, h)) }
 }
@@ -165,7 +165,7 @@ pub unsafe fn bw_phi6(sn: SEXP, sd: SEXP, cnt: SEXP, sh: SEXP) -> SEXP {
     let h = as_real(sh);
     let d = as_real(sd);
     let n = as_integer(sn);
-    let nbin = unsafe { LENGTH(cnt) };
+    let nbin = LENGTH(cnt);
     let cnt = unsafe { slice::from_raw_parts(REAL(cnt), nbin as usize) };
     unsafe { Rf_ScalarReal(bw_phi6_impl(cnt, n, d, h)) }
 }
@@ -174,7 +174,7 @@ pub unsafe fn bw_den(nbin: SEXP, sx: SEXP) -> SEXP {
     use crate::main::errors::Rf_error;
 
     let nb = as_integer(nbin);
-    let n = unsafe { LENGTH(sx) };
+    let n = LENGTH(sx);
     let x = unsafe { slice::from_raw_parts(REAL(sx), n as usize) };
 
     let mut xmin = f64::INFINITY;
@@ -241,7 +241,7 @@ pub unsafe fn bw_den(nbin: SEXP, sx: SEXP) -> SEXP {
 }
 
 pub unsafe fn bw_den_binned(sx: SEXP) -> SEXP {
-    let nb = unsafe { LENGTH(sx) };
+    let nb = LENGTH(sx);
     let x = unsafe { slice::from_raw_parts(INTEGER(sx), nb as usize) };
 
     let ans = unsafe { Rf_allocVector(SEXPTYPE::REALSXP, nb as c_int) };

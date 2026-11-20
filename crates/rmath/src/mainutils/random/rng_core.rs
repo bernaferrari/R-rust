@@ -774,7 +774,7 @@ pub(crate) fn warn(msg: &str) {
 }
 
 fn type_to_char(x: SEXP) -> &'static str {
-    let t = unsafe { TYPEOF(x) };
+    let t = TYPEOF(x);
     if t == SEXPTYPE::REALSXP.as_c_int() {
         "double"
     } else if t == SEXPTYPE::STRSXP.as_c_int() {

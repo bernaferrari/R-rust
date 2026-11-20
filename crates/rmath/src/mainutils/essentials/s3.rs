@@ -575,12 +575,12 @@ mod host_state_tests {
 
 /// R's `basename(path)` — final path component, vectorized over character input.
 pub unsafe fn do_basename(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { map_path_strings(CAR(args), r_basename) }
+    map_path_strings(CAR(args), r_basename)
 }
 
 /// R's `dirname(path)` — parent path component, vectorized over character input.
 pub unsafe fn do_dirname(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { map_path_strings(CAR(args), r_dirname) }
+    map_path_strings(CAR(args), r_dirname)
 }
 
 /// R's `file.path(...)` — join path components element-wise with recycling.

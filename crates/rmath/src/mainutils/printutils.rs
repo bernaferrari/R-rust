@@ -1053,7 +1053,7 @@ pub unsafe fn EncodeElement(x: SEXP, indx: c_int, quote: c_int, cdec: c_char) ->
 }
 
 fn element_in_range(x: SEXP, indx: R_xlen_t) -> bool {
-    let n = unsafe { XLENGTH(x) };
+    let n = XLENGTH(x);
     indx >= 0 && indx < n
 }
 

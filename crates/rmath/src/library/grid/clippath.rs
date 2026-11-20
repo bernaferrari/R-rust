@@ -70,14 +70,14 @@ unsafe fn Rf_inherits(x: SEXP, what: *const std::os::raw::c_char) -> c_int {
     }
     use crate::sexp::accessors::{CHAR, LENGTH, STRING_ELT, TYPEOF};
     use std::ffi::CStr;
-    if unsafe { TYPEOF(klass) } != crate::sexp::ffi::SEXPTYPE::STRSXP {
+    if TYPEOF(klass) != crate::sexp::ffi::SEXPTYPE::STRSXP {
         return 0;
     }
     let cn = match unsafe { CStr::from_ptr(what) }.to_str() {
         Ok(s) => s,
         Err(_) => return 0,
     };
-    let n = unsafe { LENGTH(klass) };
+    let n = LENGTH(klass);
     for i in 0..n {
         let elt = unsafe { STRING_ELT(klass, i as crate::sexp::ffi::R_xlen_t) };
         if !elt.is_null() {

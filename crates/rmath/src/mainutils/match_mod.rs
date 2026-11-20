@@ -29,7 +29,7 @@ use crate::sexp::symbol::Rf_install;
 /// ARGUSED(x) == LEVELS(x) — uses gp[0..1] bits.
 #[inline(always)]
 unsafe fn ARGUSED(x: SEXP) -> c_int {
-    unsafe { LEVELS(x) }
+    LEVELS(x)
 }
 
 /// SET_ARGUSED(x, v) == SETLEVELS(x, v).
@@ -106,7 +106,7 @@ unsafe fn isNA_STRING(s: SEXP) -> bool {
 /// isString check — STRSXP type.
 #[inline(always)]
 unsafe fn isString(x: SEXP) -> bool {
-    unsafe { TYPEOF(x) == SEXPTYPE::STRSXP }
+    TYPEOF(x) == SEXPTYPE::STRSXP
 }
 
 /// isVector check.
@@ -124,13 +124,13 @@ unsafe fn isNull(x: SEXP) -> bool {
 /// IS_BYTES check — delegates to sexp::accessors.
 #[inline(always)]
 unsafe fn IS_BYTES(s: SEXP) -> c_int {
-    unsafe { crate::sexp::accessors::IS_BYTES(s) }
+    crate::sexp::accessors::IS_BYTES(s)
 }
 
 /// ENC_KNOWN check — delegates to sexp::accessors.
 #[inline(always)]
 unsafe fn ENC_KNOWN(s: SEXP) -> c_int {
-    unsafe { crate::sexp::accessors::ENC_KNOWN(s) }
+    crate::sexp::accessors::ENC_KNOWN(s)
 }
 
 /// IS_CACHED check — stub, always returns true.
@@ -225,7 +225,7 @@ unsafe fn asLogical(x: SEXP) -> c_int {
 /// isObject check.
 #[inline(always)]
 unsafe fn isObject(x: SEXP) -> bool {
-    unsafe { OBJECT(x) != 0 }
+    OBJECT(x) != 0
 }
 
 /// ScalarInteger — allocate a scalar integer.

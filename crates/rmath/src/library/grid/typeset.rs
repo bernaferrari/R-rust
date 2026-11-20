@@ -68,7 +68,7 @@ impl Drop for GridModeGuard {
 // ---------------------------------------------------------------------------
 
 unsafe fn renderGlyphs(runs: SEXP, glyphInfo: SEXP, x: SEXP, y: SEXP, draw: bool) {
-    let nruns = unsafe { LENGTH(runs) };
+    let nruns = LENGTH(runs);
     let dd = unsafe { getDevice() };
     if dd.is_null() {
         return;

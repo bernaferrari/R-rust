@@ -49,7 +49,7 @@ pub fn mkHandlerEntry(
 /// IS_CALLING_ENTRY macro.
 #[inline]
 pub unsafe fn IS_CALLING_ENTRY(e: SEXP) -> c_int {
-    unsafe { LEVELS(e) }
+    LEVELS(e)
 }
 
 /// ENTRY_CLASS macro.

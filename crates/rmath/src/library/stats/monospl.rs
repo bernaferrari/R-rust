@@ -35,7 +35,7 @@ use crate::sexp::protect::protect;
 // ---------------------------------------------------------------------------
 
 unsafe fn isInteger(x: SEXP) -> bool {
-    unsafe { TYPEOF(x) == SEXPTYPE::INTSXP }
+    TYPEOF(x) == SEXPTYPE::INTSXP
 }
 
 unsafe fn isReal(x: SEXP) -> bool {

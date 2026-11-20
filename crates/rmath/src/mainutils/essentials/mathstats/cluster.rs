@@ -334,7 +334,7 @@ pub unsafe fn do_mauchly_test(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
 
 /// GNU `as.hclust(x)` — identity for `hclust` objects.
 pub unsafe fn do_as_hclust(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { CAR(args) }
+    CAR(args)
 }
 
 pub(super) fn class_contains(x: SEXP, name: &str) -> bool {

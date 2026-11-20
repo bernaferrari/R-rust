@@ -4,6 +4,8 @@
 //!
 //! Header reads copy checked cells; mutations replace a validated generation.
 //! Graph projections resolve each original link in its parent's heap domain.
+//! Safe readers use the input address only as a lookup key. Edge getters
+//! return opaque projections and confer no authority to dereference them.
 
 use std::os::raw::{c_char, c_double, c_int, c_void};
 use std::ptr;
@@ -25,13 +27,8 @@ fn is_valid_sexp_ptr(x: SEXP) -> bool {
 /// immutable lease. No alignment check grants dereference authority.
 #[inline]
 fn immutable_lease(pointer: SEXP) -> Option<super::globals::SingletonLease> {
-    super::globals::immutable_singleton_lease(pointer).or_else(|| {
-        let owner = super::instance::current_instance_ptr()?;
-        // SAFETY: the installed owner is live at this raw runtime boundary.
-        // Copy only its immutable heap identity; no field loan or callback escapes.
-        let heap = unsafe { (&*ptr::addr_of!((*owner).heap_identity)).clone() };
-        heap.retained_singleton(pointer)
-    })
+    super::globals::immutable_singleton_lease(pointer)
+        .or_else(|| super::instance::current_retained_singleton(pointer))
 }
 
 enum HeaderOrigin {
@@ -151,7 +148,7 @@ fn debug_assert_vector_type(x: SEXP, expected: SEXPTYPE) {
 
 /// Get the SEXPTYPE tag of an SEXP.
 #[inline]
-pub unsafe fn TYPEOF(x: SEXP) -> c_int {
+pub fn TYPEOF(x: SEXP) -> c_int {
     header_snapshot(x).map_or(0, |header| header.sxpinfo.type_of().0)
 }
 
@@ -173,53 +170,49 @@ pub unsafe fn SET_TYPEOF(x: SEXP, kind: c_int) {
 }
 
 /// Get the length of a vector SEXP.
-pub unsafe fn LENGTH(x: SEXP) -> c_int {
-    unsafe {
-        if !is_valid_sexp_ptr(x) {
-            return 0;
-        }
-        let length = XLENGTH(x);
-        c_int::try_from(length).unwrap_or_else(|_| {
-            std::panic::panic_any(super::context::RError {
-                message: "long vectors not supported by LENGTH".into(),
-            })
-        })
+pub fn LENGTH(x: SEXP) -> c_int {
+    if !is_valid_sexp_ptr(x) {
+        return 0;
     }
+    let length = XLENGTH(x);
+    c_int::try_from(length).unwrap_or_else(|_| {
+        std::panic::panic_any(super::context::RError {
+            message: "long vectors not supported by LENGTH".into(),
+        })
+    })
 }
 
 /// Get the extended length of a vector SEXP (64-bit).
-pub unsafe fn XLENGTH(x: SEXP) -> R_xlen_t {
-    unsafe {
-        let Some(header) = header_snapshot(x) else {
-            return 0;
-        };
-        match header.sxpinfo.type_of() {
-            SEXPTYPE::NILSXP => 0,
-            SEXPTYPE::CHARSXP
-            | SEXPTYPE::LGLSXP
-            | SEXPTYPE::INTSXP
-            | SEXPTYPE::REALSXP
-            | SEXPTYPE::CPLXSXP
-            | SEXPTYPE::STRSXP
-            | SEXPTYPE::VECSXP
-            | SEXPTYPE::EXPRSXP
-            | SEXPTYPE::RAWSXP => header.vecsxp_length(),
-            SEXPTYPE::LISTSXP | SEXPTYPE::LANGSXP | SEXPTYPE::DOTSXP => {
-                let mut n: R_xlen_t = 0;
-                let mut p = x;
-                while !p.is_null() && TYPEOF(p) != SEXPTYPE::NILSXP {
-                    n += 1;
-                    p = CDR(p);
-                }
-                n
+pub fn XLENGTH(x: SEXP) -> R_xlen_t {
+    let Some(header) = header_snapshot(x) else {
+        return 0;
+    };
+    match header.sxpinfo.type_of() {
+        SEXPTYPE::NILSXP => 0,
+        SEXPTYPE::CHARSXP
+        | SEXPTYPE::LGLSXP
+        | SEXPTYPE::INTSXP
+        | SEXPTYPE::REALSXP
+        | SEXPTYPE::CPLXSXP
+        | SEXPTYPE::STRSXP
+        | SEXPTYPE::VECSXP
+        | SEXPTYPE::EXPRSXP
+        | SEXPTYPE::RAWSXP => header.vecsxp_length(),
+        SEXPTYPE::LISTSXP | SEXPTYPE::LANGSXP | SEXPTYPE::DOTSXP => {
+            let mut n: R_xlen_t = 0;
+            let mut p = x;
+            while !p.is_null() && TYPEOF(p) != SEXPTYPE::NILSXP {
+                n += 1;
+                p = CDR(p);
             }
-            _ => 1,
+            n
         }
+        _ => 1,
     }
 }
 
 /// Get the true length (allocated capacity) of a vector SEXP.
-pub unsafe fn TRUELENGTH(x: SEXP) -> c_int {
+pub fn TRUELENGTH(x: SEXP) -> c_int {
     header_snapshot(x).map_or(0, |header| header.vecsxp_truelength() as c_int)
 }
 
@@ -274,7 +267,7 @@ fn graph_set_edge(pointer: SEXP, field: EdgeField, child: SEXP) {
 }
 
 /// Get the attributes of an SEXP.
-pub unsafe fn ATTRIB(x: SEXP) -> SEXP {
+pub fn ATTRIB(x: SEXP) -> SEXP {
     graph_edge(x, EdgeField::Attribute)
 }
 
@@ -298,7 +291,7 @@ pub unsafe fn SET_ATTRIB(x: SEXP, v: SEXP) {
 }
 
 /// Check if an SEXP has the OBJECT flag set.
-pub unsafe fn OBJECT(x: SEXP) -> c_int {
+pub fn OBJECT(x: SEXP) -> c_int {
     header_snapshot(x).map_or(0, |header| header.sxpinfo.obj() as c_int)
 }
 
@@ -325,7 +318,7 @@ pub unsafe fn UNSET_S4_OBJECT(x: SEXP) {
 }
 
 /// Get the namedness level (0, 1, or 2).
-pub unsafe fn NAMED(x: SEXP) -> c_int {
+pub fn NAMED(x: SEXP) -> c_int {
     header_snapshot(x).map_or(0, |header| header.sxpinfo.named() as c_int)
 }
 
@@ -335,7 +328,7 @@ pub unsafe fn SET_NAMED(x: SEXP, v: c_int) {
 }
 
 /// Get the LEVELS (gp[0..1]) field.
-pub unsafe fn LEVELS(x: SEXP) -> c_int {
+pub fn LEVELS(x: SEXP) -> c_int {
     header_snapshot(x).map_or(0, |header| (header.sxpinfo.gp() & 0x03) as c_int)
 }
 
@@ -349,7 +342,7 @@ pub unsafe fn SETLEVELS(x: SEXP, v: c_int) {
 }
 
 /// GNU `MISSING(x)` — gp bit 2 on a pairlist binding cell.
-pub unsafe fn MISSING(x: SEXP) -> c_int {
+pub fn MISSING(x: SEXP) -> c_int {
     header_snapshot(x).map_or(0, |header| ((header.sxpinfo.gp() & 0x04) != 0) as c_int)
 }
 
@@ -379,7 +372,7 @@ pub unsafe fn SET_SCALAR(x: SEXP, v: c_int) {
 }
 
 /// Check the ALT flag.
-pub unsafe fn ALTREP(x: SEXP) -> c_int {
+pub fn ALTREP(x: SEXP) -> c_int {
     header_snapshot(x).map_or(0, |header| header.sxpinfo.alt() as c_int)
 }
 
@@ -389,7 +382,7 @@ pub unsafe fn SET_ALTREP(x: SEXP, v: c_int) {
 }
 
 /// Get the mark bit (for GC).
-pub unsafe fn MARK(x: SEXP) -> c_int {
+pub fn MARK(x: SEXP) -> c_int {
     header_snapshot(x).map_or(0, |header| header.sxpinfo.mark() as c_int)
 }
 
@@ -399,13 +392,13 @@ pub unsafe fn SET_MARK(x: SEXP, v: c_int) {
 }
 
 /// Get the type (same as TYPEOF but as a macro name).
-pub unsafe fn Rf_isNull(x: SEXP) -> c_int {
-    unsafe { (TYPEOF(x) == SEXPTYPE::NILSXP) as c_int }
+pub fn Rf_isNull(x: SEXP) -> c_int {
+    (TYPEOF(x) == SEXPTYPE::NILSXP) as c_int
 }
 
 /// Check the type of a SEXP. Alias for TYPEOF.
-pub unsafe fn TYPEOF_CHECK(x: SEXP) -> c_int {
-    unsafe { TYPEOF(x) }
+pub fn TYPEOF_CHECK(x: SEXP) -> c_int {
+    TYPEOF(x)
 }
 
 // ---------------------------------------------------------------------------
@@ -413,17 +406,17 @@ pub unsafe fn TYPEOF_CHECK(x: SEXP) -> c_int {
 // ---------------------------------------------------------------------------
 
 /// Get the CAR of a cons cell.
-pub unsafe fn CAR(x: SEXP) -> SEXP {
+pub fn CAR(x: SEXP) -> SEXP {
     list_edge(x, EdgeField::ListCar)
 }
 
 /// Get the CDR of a cons cell.
-pub unsafe fn CDR(x: SEXP) -> SEXP {
+pub fn CDR(x: SEXP) -> SEXP {
     list_edge(x, EdgeField::ListCdr)
 }
 
 /// Get the TAG of a cons cell.
-pub unsafe fn TAG(x: SEXP) -> SEXP {
+pub fn TAG(x: SEXP) -> SEXP {
     list_edge(x, EdgeField::ListTag)
 }
 
@@ -443,43 +436,43 @@ pub unsafe fn SETTAG(x: SEXP, y: SEXP) {
 }
 
 /// Get the CAR of the CDR (CADR) — second element of a list.
-pub unsafe fn CADR(x: SEXP) -> SEXP {
-    unsafe { CAR(CDR(x)) }
+pub fn CADR(x: SEXP) -> SEXP {
+    CAR(CDR(x))
 }
 
 /// Get the CAR of the CDAR (CAAR).
-pub unsafe fn CAAR(x: SEXP) -> SEXP {
-    unsafe { CAR(CAR(x)) }
+pub fn CAAR(x: SEXP) -> SEXP {
+    CAR(CAR(x))
 }
 
 /// Get the CDR of the CDR (CDDR).
-pub unsafe fn CDDR(x: SEXP) -> SEXP {
-    unsafe { CDR(CDR(x)) }
+pub fn CDDR(x: SEXP) -> SEXP {
+    CDR(CDR(x))
 }
 
 /// Get the CDR of the CADR (CDAR).
-pub unsafe fn CDAR(x: SEXP) -> SEXP {
-    unsafe { CDR(CAR(x)) }
+pub fn CDAR(x: SEXP) -> SEXP {
+    CDR(CAR(x))
 }
 
 /// Get the CAR of the CDDR (CADDR).
-pub unsafe fn CADDR(x: SEXP) -> SEXP {
-    unsafe { CAR(CDR(CDR(x))) }
+pub fn CADDR(x: SEXP) -> SEXP {
+    CAR(CDR(CDR(x)))
 }
 
 /// Get the CDR of the CDDR (CDDDR).
-pub unsafe fn CDDDR(x: SEXP) -> SEXP {
-    unsafe { CDR(CDR(CDR(x))) }
+pub fn CDDDR(x: SEXP) -> SEXP {
+    CDR(CDR(CDR(x)))
 }
 
 /// Get the CAR of the CDDDR (CADDDR).
-pub unsafe fn CADDDR(x: SEXP) -> SEXP {
-    unsafe { CAR(CDR(CDR(CDR(x)))) }
+pub fn CADDDR(x: SEXP) -> SEXP {
+    CAR(CDR(CDR(CDR(x))))
 }
 
 /// Get the CAR of the CADDDR (CAD5R).
-pub unsafe fn CAD5R(x: SEXP) -> SEXP {
-    unsafe { CAR(CDR(CDR(CDR(CDR(x))))) }
+pub fn CAD5R(x: SEXP) -> SEXP {
+    CAR(CDR(CDR(CDR(CDR(x)))))
 }
 
 // ---------------------------------------------------------------------------
@@ -528,17 +521,17 @@ pub(crate) fn symbol_name_bytes_equal(left: SEXP, right: SEXP) -> bool {
 }
 
 /// Get the print name (CHARSXP) of a symbol.
-pub unsafe fn PRINTNAME(x: SEXP) -> SEXP {
+pub fn PRINTNAME(x: SEXP) -> SEXP {
     graph_edge(x, EdgeField::SymbolName)
 }
 
 /// Get the value of a symbol.
-pub unsafe fn SYMVALUE(x: SEXP) -> SEXP {
+pub fn SYMVALUE(x: SEXP) -> SEXP {
     graph_edge(x, EdgeField::SymbolValue)
 }
 
 /// Get the internal value of a symbol.
-pub unsafe fn INTERNAL(x: SEXP) -> SEXP {
+pub fn INTERNAL(x: SEXP) -> SEXP {
     graph_edge(x, EdgeField::SymbolInternal)
 }
 
@@ -562,17 +555,17 @@ pub unsafe fn SET_INTERNAL(x: SEXP, v: SEXP) {
 // ---------------------------------------------------------------------------
 
 /// Get the formals of a closure.
-pub unsafe fn FORMALS(x: SEXP) -> SEXP {
+pub fn FORMALS(x: SEXP) -> SEXP {
     graph_edge(x, EdgeField::ClosureFormals)
 }
 
 /// Get the body of a closure.
-pub unsafe fn BODY(x: SEXP) -> SEXP {
+pub fn BODY(x: SEXP) -> SEXP {
     graph_edge(x, EdgeField::ClosureBody)
 }
 
 /// Get the environment of a closure.
-pub unsafe fn CLOENV(x: SEXP) -> SEXP {
+pub fn CLOENV(x: SEXP) -> SEXP {
     graph_edge(x, EdgeField::ClosureEnvironment)
 }
 
@@ -596,17 +589,17 @@ pub unsafe fn SET_CLOENV(x: SEXP, v: SEXP) {
 // ---------------------------------------------------------------------------
 
 /// Get the frame of an environment.
-pub unsafe fn FRAME(x: SEXP) -> SEXP {
+pub fn FRAME(x: SEXP) -> SEXP {
     graph_edge(x, EdgeField::EnvironmentFrame)
 }
 
 /// Get the enclosing environment.
-pub unsafe fn ENCLOS(x: SEXP) -> SEXP {
+pub fn ENCLOS(x: SEXP) -> SEXP {
     graph_edge(x, EdgeField::EnvironmentEnclosure)
 }
 
 /// Get the hash table of an environment.
-pub unsafe fn HASHTAB(x: SEXP) -> SEXP {
+pub fn HASHTAB(x: SEXP) -> SEXP {
     graph_edge(x, EdgeField::EnvironmentHashTable)
 }
 
@@ -630,17 +623,17 @@ pub unsafe fn SET_HASHTAB(x: SEXP, v: SEXP) {
 // ---------------------------------------------------------------------------
 
 /// Get the value of a promise.
-pub unsafe fn PRVALUE(x: SEXP) -> SEXP {
+pub fn PRVALUE(x: SEXP) -> SEXP {
     graph_edge(x, EdgeField::PromiseValue)
 }
 
 /// Get the expression of a promise.
-pub unsafe fn PRCODE(x: SEXP) -> SEXP {
+pub fn PRCODE(x: SEXP) -> SEXP {
     graph_edge(x, EdgeField::PromiseExpression)
 }
 
 /// Get the environment of a promise.
-pub unsafe fn PRENV(x: SEXP) -> SEXP {
+pub fn PRENV(x: SEXP) -> SEXP {
     graph_edge(x, EdgeField::PromiseEnvironment)
 }
 
@@ -664,7 +657,7 @@ pub unsafe fn SET_PRENV(x: SEXP, v: SEXP) {
 // ---------------------------------------------------------------------------
 
 /// Get the offset of a primitive function.
-pub unsafe fn PRIMOFFSET(x: SEXP) -> c_int {
+pub fn PRIMOFFSET(x: SEXP) -> c_int {
     header_snapshot(x).map_or(0, |header| header.data.primitive().offset)
 }
 
@@ -1502,6 +1495,8 @@ mod tests {
     fn element_access_checks_indices_and_tags_before_reading_or_writing() {
         let mut arena = super::super::memory::RArena::new();
         let node = arena.alloc_vector(SEXPTYPE::STRSXP, 1);
+        let original = unsafe { STRING_ELT(node, 0) };
+        assert_eq!(TYPEOF(original), SEXPTYPE::CHARSXP);
         for index in [-1, 1, i64::MAX] {
             for operation in 0..4 {
                 let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
@@ -1537,7 +1532,7 @@ mod tests {
                 assert!(result.is_err());
             }
         }
-        assert!(unsafe { STRING_ELT(node, 0) }.is_null());
+        assert_eq!(unsafe { STRING_ELT(node, 0) }, original);
     }
 
     fn make_test_vector() -> (super::super::memory::RArena, SEXP) {
@@ -1760,28 +1755,28 @@ use super::encoding::{
 mod encoding_tag_tests;
 
 /// IS_ASCII: check if CHARSXP has ASCII encoding marker.
-pub unsafe fn IS_ASCII(x: SEXP) -> c_int {
+pub fn IS_ASCII(x: SEXP) -> c_int {
     header_snapshot(x).map_or(0, |header| {
         ((header.sxpinfo.gp() & IS_ASCII_MASK) != 0) as c_int
     })
 }
 
 /// IS_UTF8: check if CHARSXP has UTF-8 encoding marker.
-pub unsafe fn IS_UTF8(x: SEXP) -> c_int {
+pub fn IS_UTF8(x: SEXP) -> c_int {
     header_snapshot(x).map_or(0, |header| {
         ((header.sxpinfo.gp() & UTF8_MASK) != 0) as c_int
     })
 }
 
 /// IS_BYTES: check if CHARSXP has bytes encoding marker.
-pub unsafe fn IS_BYTES(x: SEXP) -> c_int {
+pub fn IS_BYTES(x: SEXP) -> c_int {
     header_snapshot(x).map_or(0, |header| {
         ((header.sxpinfo.gp() & BYTES_MASK) != 0) as c_int
     })
 }
 
 /// IS_LATIN1: check if CHARSXP has Latin-1 encoding marker.
-pub unsafe fn IS_LATIN1(x: SEXP) -> c_int {
+pub fn IS_LATIN1(x: SEXP) -> c_int {
     header_snapshot(x).map_or(0, |header| {
         ((header.sxpinfo.gp() & LATIN1_MASK) != 0) as c_int
     })
@@ -1800,7 +1795,7 @@ pub unsafe fn mark_charsxp_encoding(x: SEXP, kind: &str) {
 
 /// ENC_KNOWN: check if CHARSXP has a known encoding.
 /// Returns the OR of LATIN1_MASK, UTF8_MASK, and BYTES_MASK bits.
-pub unsafe fn ENC_KNOWN(x: SEXP) -> c_int {
+pub fn ENC_KNOWN(x: SEXP) -> c_int {
     header_snapshot(x).map_or(0, |header| {
         (header.sxpinfo.gp() & (LATIN1_MASK | UTF8_MASK | BYTES_MASK)) as c_int
     })

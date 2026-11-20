@@ -347,7 +347,7 @@ pub fn is_type_safe(x: Sexp<'_>, op: i32) -> Result<c_int, String> {
         20 => (x.typeof_() == SEXPTYPE::EXPRSXP) as c_int,
         24 => (x.typeof_() == SEXPTYPE::RAWSXP) as c_int,
         6 => (x.typeof_() == SEXPTYPE::LANGSXP) as c_int,
-        50 => unsafe { crate::sexp::accessors::OBJECT(x.as_raw()) },
+        50 => crate::sexp::accessors::OBJECT(x.as_raw()),
         51 => unsafe { IS_S4_OBJECT(x.as_raw()) },
         100 => is_numeric_safe(x),
         101 => is_matrix_safe(x),

@@ -61,7 +61,7 @@ fn non_negative_usize(value: c_int, name: &'static [u8]) -> usize {
 pub unsafe fn pp_sum(u: SEXP, sl: SEXP) -> SEXP {
     let u = unsafe { coerceVector(u, SEXPTYPE::REALSXP) };
     let _u_guard = unsafe { protect(u) };
-    let n = unsafe { LENGTH(u) };
+    let n = LENGTH(u);
     let l = unsafe { asInteger(sl) };
     let values = unsafe { slice::from_raw_parts(REAL(u), n as usize) };
     let trm = r_pp_sum(values, l);
@@ -74,8 +74,8 @@ pub unsafe fn intgrt_vec(x: SEXP, xi: SEXP, slag: SEXP) -> SEXP {
     let xi = unsafe { coerceVector(xi, SEXPTYPE::REALSXP) };
     let _xi_guard = unsafe { protect(xi) };
 
-    let n = unsafe { LENGTH(x) };
-    let xi_len = unsafe { LENGTH(xi) };
+    let n = LENGTH(x);
+    let xi_len = LENGTH(xi);
     let lag = unsafe { asInteger(slag) };
     let lag_usize = non_negative_usize(lag, b"'lag' must be non-negative\0");
     if xi_len < lag {

@@ -91,7 +91,7 @@ unsafe fn isVector(x: SEXP) -> bool {
 
 #[inline]
 unsafe fn isString(x: SEXP) -> bool {
-    unsafe { TYPEOF(x) == SEXPTYPE::STRSXP }
+    TYPEOF(x) == SEXPTYPE::STRSXP
 }
 
 /* ==================== Helper: findVar ==================== */

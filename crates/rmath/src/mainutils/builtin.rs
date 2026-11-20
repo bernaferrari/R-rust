@@ -43,7 +43,7 @@ unsafe fn warningcall(call: SEXP, msg: &str) {
 }
 
 unsafe fn isNull(x: SEXP) -> bool {
-    unsafe { crate::sexp::accessors::Rf_isNull(x) != 0 }
+    crate::sexp::accessors::Rf_isNull(x) != 0
 }
 
 unsafe fn installTrChar(x: SEXP) -> SEXP {

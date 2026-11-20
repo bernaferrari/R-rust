@@ -163,7 +163,7 @@ enum DpqOperand {
 fn dpq_operand_len(op: &DpqOperand) -> crate::sexp::ffi::R_xlen_t {
     match op {
         DpqOperand::Default(_) => 1,
-        DpqOperand::Numeric(s) | DpqOperand::Inverse(s) => unsafe { XLENGTH(*s) },
+        DpqOperand::Numeric(s) | DpqOperand::Inverse(s) => XLENGTH(*s),
     }
 }
 

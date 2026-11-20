@@ -25,7 +25,7 @@ pub(crate) unsafe fn is_numeric(x: SEXP) -> bool {
 /// Helper: check if SEXP is complex.
 #[inline]
 pub(crate) unsafe fn is_complex(x: SEXP) -> bool {
-    unsafe { TYPEOF(x) == SEXPTYPE::CPLXSXP }
+    TYPEOF(x) == SEXPTYPE::CPLXSXP
 }
 
 /// Helper: check if SEXP is integer or logical.
@@ -40,7 +40,7 @@ pub(crate) unsafe fn is_integer_or_logical(x: SEXP) -> bool {
 /// Helper: NO_REFERENCES check (NAMED == 0).
 #[inline]
 pub(crate) unsafe fn no_references(x: SEXP) -> bool {
-    unsafe { NAMED(x) == 0 }
+    NAMED(x) == 0
 }
 
 /// Integer-to-double conversion respecting NA_INTEGER.

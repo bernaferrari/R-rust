@@ -578,7 +578,7 @@ pub unsafe fn do_is_tskernel(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
 
 /// GNU `as.stepfun(x)` — identity when `is.stepfun(x)`.
 pub unsafe fn do_as_stepfun(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { CAR(args) }
+    CAR(args)
 }
 
 /// GNU `is.leaf(object)` — TRUE when `attr(*, "leaf")` is TRUE.
@@ -692,12 +692,12 @@ pub unsafe fn do_na_contiguous(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
 
 /// GNU `na.pass(x)`.
 pub unsafe fn do_na_pass(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { CAR(args) }
+    CAR(args)
 }
 
 /// GNU `napredict(omit, x)` with NULL omit returns x.
 pub unsafe fn do_napredict(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { CAR(CDR(args)) }
+    CAR(CDR(args))
 }
 
 /// GNU `na.fail(x)`.

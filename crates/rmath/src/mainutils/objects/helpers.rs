@@ -139,7 +139,7 @@ pub(crate) unsafe fn asInteger(x: SEXP) -> c_int {
 
 /// isNull check.
 pub(crate) unsafe fn isNull(x: SEXP) -> c_int {
-    unsafe { Rf_isNull(x) }
+    Rf_isNull(x)
 }
 
 /// asChar: coerce to a single character string.

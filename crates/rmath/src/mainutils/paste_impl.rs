@@ -66,23 +66,23 @@ const RAWSXP: c_int = 24;
 const EXTPTRSXP: c_int = 22;
 
 fn IS_ASCII(s: SEXP) -> bool {
-    unsafe { crate::sexp::accessors::IS_ASCII(s) != 0 }
+    crate::sexp::accessors::IS_ASCII(s) != 0
 }
 
 fn IS_UTF8(s: SEXP) -> bool {
-    unsafe { crate::sexp::accessors::IS_UTF8(s) != 0 }
+    crate::sexp::accessors::IS_UTF8(s) != 0
 }
 
 fn IS_BYTES(s: SEXP) -> bool {
-    unsafe { crate::sexp::accessors::IS_BYTES(s) != 0 }
+    crate::sexp::accessors::IS_BYTES(s) != 0
 }
 
 fn IS_LATIN1(s: SEXP) -> bool {
-    unsafe { crate::sexp::accessors::IS_LATIN1(s) != 0 }
+    crate::sexp::accessors::IS_LATIN1(s) != 0
 }
 
 fn ENC_KNOWN(s: SEXP) -> c_int {
-    unsafe { crate::sexp::accessors::ENC_KNOWN(s) }
+    crate::sexp::accessors::ENC_KNOWN(s)
 }
 
 // ---------------------------------------------------------------------------

@@ -145,8 +145,8 @@ pub(super) unsafe fn evaluate(sa: SEXP, sb: SEXP, sI: SEXP, sJ: SEXP, kind: Kind
     if !unsafe { isNumeric(owner, sa) } || !unsafe { isNumeric(owner, sb) } {
         crate::mainutils::essentials::base_error("Non-numeric argument to mathematical function");
     }
-    let na = unsafe { XLENGTH(sa) };
-    let nb = unsafe { XLENGTH(sb) };
+    let na = XLENGTH(sa);
+    let nb = XLENGTH(sb);
     let n = if na == 0 || nb == 0 { 0 } else { na.max(nb) };
     let result = unsafe { Rf_allocVector3(SEXPTYPE::REALSXP, n) };
     active(owner);

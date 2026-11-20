@@ -358,7 +358,7 @@ fn order_key_cmp(key: SEXP, i: usize, j: usize) -> std::cmp::Ordering {
 }
 
 pub(crate) fn reject_unorderable(x: SEXP) {
-    let t = unsafe { TYPEOF(x) };
+    let t = TYPEOF(x);
     if t == SEXPTYPE::VECSXP || t == SEXPTYPE::LISTSXP {
         std::panic::panic_any(crate::sexp::context::RError {
             message: "unimplemented type in 'order'".to_string(),

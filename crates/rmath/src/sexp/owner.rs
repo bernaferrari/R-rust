@@ -70,6 +70,12 @@ impl WeakOwner {
         self.availability.is_live() && self.allocation.strong_count() != 0
     }
 
+    /// A managed owner already holds its heap identity independently of the
+    /// mutable instance allocation. Revoked owners cannot supply ambient reads.
+    pub(crate) fn live_heap_identity(&self) -> Option<super::heap::HeapIdentity> {
+        self.is_live().then(|| self.heap.clone())
+    }
+
     /// Identity comparison only; dereferencing requires an operation pin.
     pub(crate) fn identity_ptr(&self) -> *mut RInstance {
         self.identity

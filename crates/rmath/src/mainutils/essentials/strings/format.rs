@@ -196,22 +196,22 @@ pub(crate) fn mode_keep_str(args: SEXP) -> bool {
 
 /// GNU `as.character.hexmode`: unpadded `%x`; copy dim only if `keepStr`.
 pub unsafe fn do_as_character_hexmode(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { as_character_mode(CAR(args), true, mode_keep_str(args)) }
+    as_character_mode(CAR(args), true, mode_keep_str(args))
 }
 
 /// GNU `format.hexmode`: zero-pad to the widest value.
 pub unsafe fn do_format_hexmode(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { format_mode_ints(CAR(args), true) }
+    format_mode_ints(CAR(args), true)
 }
 
 /// GNU `as.character.octmode`: unpadded `%o`; copy dim only if `keepStr`.
 pub unsafe fn do_as_character_octmode(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { as_character_mode(CAR(args), false, mode_keep_str(args)) }
+    as_character_mode(CAR(args), false, mode_keep_str(args))
 }
 
 /// GNU `format.octmode`: zero-pad to the widest value.
 pub unsafe fn do_format_octmode(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { format_mode_ints(CAR(args), false) }
+    format_mode_ints(CAR(args), false)
 }
 
 fn formatc_exp(v: f64, digits: usize, upper: bool) -> String {

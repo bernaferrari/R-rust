@@ -46,30 +46,30 @@ unsafe fn error(msg: &str) -> ! {
 unsafe fn require_arg(args: SEXP, index: usize) -> SEXP {
     let mut cur = args;
     for _ in 0..index {
-        if cur.is_null() || unsafe { TYPEOF(cur) } == SEXPTYPE::NILSXP {
+        if cur.is_null() || TYPEOF(cur) == SEXPTYPE::NILSXP {
             unsafe { error("wrong number of arguments") };
         }
-        cur = unsafe { CDR(cur) };
+        cur = CDR(cur);
     }
-    if cur.is_null() || unsafe { TYPEOF(cur) } == SEXPTYPE::NILSXP {
+    if cur.is_null() || TYPEOF(cur) == SEXPTYPE::NILSXP {
         unsafe { error("wrong number of arguments") };
     }
-    unsafe { CAR(cur) }
+    CAR(cur)
 }
 
 #[inline]
 unsafe fn optional_arg(args: SEXP, index: usize) -> SEXP {
     let mut cur = args;
     for _ in 0..index {
-        if cur.is_null() || unsafe { TYPEOF(cur) } == SEXPTYPE::NILSXP {
+        if cur.is_null() || TYPEOF(cur) == SEXPTYPE::NILSXP {
             return R_NilValue();
         }
-        cur = unsafe { CDR(cur) };
+        cur = CDR(cur);
     }
-    if cur.is_null() || unsafe { TYPEOF(cur) } == SEXPTYPE::NILSXP {
+    if cur.is_null() || TYPEOF(cur) == SEXPTYPE::NILSXP {
         return R_NilValue();
     }
-    unsafe { CAR(cur) }
+    CAR(cur)
 }
 
 unsafe fn arg_by_name_or_position(args: SEXP, name: &str, position: usize) -> SEXP {
@@ -158,7 +158,7 @@ unsafe fn scalar_integer_value(value: SEXP) -> Option<c_int> {
 
 #[inline]
 unsafe fn sexp_to_path(file: SEXP) -> PathBuf {
-    if unsafe { TYPEOF(file) } != SEXPTYPE::STRSXP || unsafe { LENGTH(file) } <= 0 {
+    if TYPEOF(file) != SEXPTYPE::STRSXP || LENGTH(file) <= 0 {
         unsafe { error("not a proper file name") };
     }
     let elt = unsafe { STRING_ELT(file, 0) };

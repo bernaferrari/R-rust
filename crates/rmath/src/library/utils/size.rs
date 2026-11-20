@@ -35,39 +35,39 @@ impl SizeSexp {
     }
 
     fn type_of(self) -> std::os::raw::c_int {
-        unsafe { TYPEOF(self.0) }
+        TYPEOF(self.0)
     }
 
     fn length(self) -> usize {
-        unsafe { LENGTH(self.0) as usize }
+        LENGTH(self.0) as usize
     }
 
     fn xlength(self) -> usize {
-        unsafe { XLENGTH(self.0) as usize }
+        XLENGTH(self.0) as usize
     }
 
     fn tag(self) -> SEXP {
-        unsafe { TAG(self.0) }
+        TAG(self.0)
     }
 
     fn car(self) -> SEXP {
-        unsafe { CAR(self.0) }
+        CAR(self.0)
     }
 
     fn cdr(self) -> SEXP {
-        unsafe { CDR(self.0) }
+        CDR(self.0)
     }
 
     fn attrib(self) -> SEXP {
-        unsafe { ATTRIB(self.0) }
+        ATTRIB(self.0)
     }
 
     fn formals(self) -> SEXP {
-        unsafe { FORMALS(self.0) }
+        FORMALS(self.0)
     }
 
     fn body(self) -> SEXP {
-        unsafe { BODY(self.0) }
+        BODY(self.0)
     }
 
     fn string_elt(self, index: R_xlen_t) -> SEXP {

@@ -1101,14 +1101,14 @@ pub(crate) unsafe fn do_length(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -
 ///
 /// Ported from R's `dispatch_length` in array.c (line 483).
 pub(crate) unsafe fn dispatch_length(x: SEXP, _call: SEXP, _rho: SEXP) -> c_int {
-    unsafe { LENGTH(x) }
+    LENGTH(x)
 }
 
 /// Dispatch to the `length` method for objects, returning R_xlen_t.
 ///
 /// Ported from R's `dispatch_xlength` in array.c (line 491).
 pub(crate) unsafe fn dispatch_xlength(x: SEXP, _call: SEXP, _rho: SEXP) -> usize {
-    unsafe { XLENGTH(x) as usize }
+    XLENGTH(x) as usize
 }
 
 // ---------------------------------------------------------------------------

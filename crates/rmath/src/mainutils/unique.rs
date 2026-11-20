@@ -468,7 +468,7 @@ unsafe fn unique_safe(x: Sexp<'_>, from_last: bool, nmax_arg: i32) -> Result<SEX
     }
 
     let raw = x.as_raw();
-    let xtype = unsafe { TYPEOF(raw) };
+    let xtype = TYPEOF(raw);
 
     let dup = unsafe { duplicated_impl(raw, from_last, nmax_arg) };
     let _dup_guard = unsafe { protect(dup) };

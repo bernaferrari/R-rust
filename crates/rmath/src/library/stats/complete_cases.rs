@@ -41,7 +41,7 @@ fn isVector(x: SEXP) -> bool {
 }
 
 fn isNewList(x: SEXP) -> bool {
-    unsafe { TYPEOF(x) == SEXPTYPE::VECSXP }
+    TYPEOF(x) == SEXPTYPE::VECSXP
 }
 
 fn length_sexp(x: SEXP) -> c_int {
@@ -111,21 +111,21 @@ pub unsafe fn compcases(args: SEXP) -> SEXP {
     let mut len: c_int = -1;
     let nil = R_NilValue();
 
-    let mut args_iter = unsafe { CDR(args) };
+    let mut args_iter = CDR(args);
 
     // First pass: determine length
     let mut s = args_iter;
     while !s.is_null() && s != nil {
-        let car = unsafe { CAR(s) };
+        let car = CAR(s);
         // GNU isList(NULL) is true and the inner walk is empty, so NULL is a no-op.
-        if car.is_null() || car == nil || unsafe { TYPEOF(car) } == SEXPTYPE::NILSXP {
-            s = unsafe { CDR(s) };
+        if car.is_null() || car == nil || TYPEOF(car) == SEXPTYPE::NILSXP {
+            s = CDR(s);
             continue;
         }
         if unsafe { Rf_isList(car) } != 0 {
             let mut t = car;
             while !t.is_null() && t != nil {
-                let u = unsafe { CAR(t) };
+                let u = CAR(t);
                 if isMatrix(u) {
                     let dim = unsafe { getAttrib(u, R_DimSymbol()) };
                     if len < 0 {
@@ -140,8 +140,8 @@ pub unsafe fn compcases(args: SEXP) -> SEXP {
                     }
                 } else if isVector(u) {
                     if len < 0 {
-                        len = unsafe { LENGTH(u) };
-                    } else if len != unsafe { LENGTH(u) } {
+                        len = LENGTH(u);
+                    } else if len != LENGTH(u) {
                         unsafe {
                             Rf_error(
                                 b"not all arguments have the same length\0".as_ptr() as *const _
@@ -155,7 +155,7 @@ pub unsafe fn compcases(args: SEXP) -> SEXP {
                     }
                     return nil;
                 }
-                t = unsafe { CDR(t) };
+                t = CDR(t);
             }
         } else if isNewList(car) {
             let mut t = car;
@@ -177,8 +177,8 @@ pub unsafe fn compcases(args: SEXP) -> SEXP {
                         }
                     } else if isVector(u) {
                         if len < 0 {
-                            len = unsafe { LENGTH(u) };
-                        } else if len != unsafe { LENGTH(u) } {
+                            len = LENGTH(u);
+                        } else if len != LENGTH(u) {
                             unsafe {
                                 Rf_error(b"not all arguments have the same length\0".as_ptr()
                                     as *const _);
@@ -197,7 +197,7 @@ pub unsafe fn compcases(args: SEXP) -> SEXP {
                 let u = unsafe { getAttrib(t, R_RowNamesSymbol()) };
                 if !u.is_null() && u != nil {
                     if len < 0 {
-                        len = unsafe { LENGTH(u) };
+                        len = LENGTH(u);
                     } else if len != unsafe { *INTEGER(u) } {
                         unsafe {
                             Rf_error(
@@ -220,8 +220,8 @@ pub unsafe fn compcases(args: SEXP) -> SEXP {
             }
         } else if isVector(car) {
             if len < 0 {
-                len = unsafe { LENGTH(car) };
-            } else if len != unsafe { LENGTH(car) } {
+                len = LENGTH(car);
+            } else if len != LENGTH(car) {
                 unsafe {
                     Rf_error(b"not all arguments have the same length\0".as_ptr() as *const _);
                 }
@@ -233,7 +233,7 @@ pub unsafe fn compcases(args: SEXP) -> SEXP {
             }
             return nil;
         }
-        s = unsafe { CDR(s) };
+        s = CDR(s);
     }
 
     if len < 0 {
@@ -251,17 +251,17 @@ pub unsafe fn compcases(args: SEXP) -> SEXP {
     // Second pass: check for NAs
     s = args_iter;
     while !s.is_null() && s != nil {
-        let car = unsafe { CAR(s) };
-        if car.is_null() || car == nil || unsafe { TYPEOF(car) } == SEXPTYPE::NILSXP {
-            s = unsafe { CDR(s) };
+        let car = CAR(s);
+        if car.is_null() || car == nil || TYPEOF(car) == SEXPTYPE::NILSXP {
+            s = CDR(s);
             continue;
         }
         if unsafe { Rf_isList(car) } != 0 {
             let mut t = car;
             while !t.is_null() && t != nil {
-                let u = unsafe { CAR(t) };
+                let u = CAR(t);
                 check_vector_na(u, rval_int, len);
-                t = unsafe { CDR(t) };
+                t = CDR(t);
             }
         } else if isNewList(car) {
             let t = car;
@@ -275,7 +275,7 @@ pub unsafe fn compcases(args: SEXP) -> SEXP {
         } else {
             check_vector_na(car, rval_int, len);
         }
-        s = unsafe { CDR(s) };
+        s = CDR(s);
     }
 
     rval

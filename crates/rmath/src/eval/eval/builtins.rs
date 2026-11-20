@@ -23,7 +23,7 @@ pub unsafe fn eval<'a>(e: Sexp<'a>, rho: Sexp<'a>) -> Result<Sexp<'a>, String> {
 
 /// Extract the name of a symbol for error messages.
 pub(crate) unsafe fn get_symbol_name(sym: SEXP) -> String {
-    let pname = unsafe { crate::sexp::accessors::PRINTNAME(sym) };
+    let pname = crate::sexp::accessors::PRINTNAME(sym);
     if pname.is_null() {
         return "???".to_string();
     }

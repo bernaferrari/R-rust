@@ -705,7 +705,7 @@ unsafe fn set_xtabs_two_dim_metadata(
 }
 
 fn xtabs_supported_atomic(x: SEXP) -> bool {
-    let value_type = unsafe { TYPEOF(x) };
+    let value_type = TYPEOF(x);
     value_type == SEXPTYPE::STRSXP
         || value_type == SEXPTYPE::INTSXP
         || value_type == SEXPTYPE::REALSXP
@@ -1121,10 +1121,10 @@ unsafe fn aggregate_input_columns(x: SEXP) -> Option<Vec<AggregateInputColumn>> 
 
 fn aggregate_input_row_count(columns: &[AggregateInputColumn]) -> Option<R_xlen_t> {
     let first = columns.first()?;
-    let row_count = unsafe { XLENGTH(first.data) };
+    let row_count = XLENGTH(first.data);
     if columns
         .iter()
-        .all(|column| unsafe { XLENGTH(column.data) } == row_count)
+        .all(|column| XLENGTH(column.data) == row_count)
     {
         Some(row_count)
     } else {

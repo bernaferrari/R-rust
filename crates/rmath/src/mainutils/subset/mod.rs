@@ -182,13 +182,13 @@ unsafe fn isVectorList(x: SEXP) -> bool {
 /// Check if x is an expression (EXPRSXP).
 #[inline]
 unsafe fn isExpression(x: SEXP) -> bool {
-    unsafe { TYPEOF(x) == SEXPTYPE::EXPRSXP }
+    TYPEOF(x) == SEXPTYPE::EXPRSXP
 }
 
 /// Check if x is a language object (LANGSXP).
 #[inline]
 unsafe fn isLanguage(x: SEXP) -> bool {
-    unsafe { TYPEOF(x) == SEXPTYPE::LANGSXP }
+    TYPEOF(x) == SEXPTYPE::LANGSXP
 }
 
 /// Names of a pairlist/language object from cell tags, like names().
@@ -229,7 +229,7 @@ unsafe fn pairlist_tag_names(x: SEXP) -> SEXP {
 /// Check if x is an environment.
 #[inline]
 unsafe fn isEnvironment(x: SEXP) -> bool {
-    unsafe { TYPEOF(x) == SEXPTYPE::ENVSXP }
+    TYPEOF(x) == SEXPTYPE::ENVSXP
 }
 
 /// Check if x is a vector type (any atomic or generic vector).
@@ -247,25 +247,25 @@ fn isVectorAtomic(x: SEXP) -> bool {
 /// Check if x is a symbol.
 #[inline]
 unsafe fn isSymbol(x: SEXP) -> bool {
-    unsafe { TYPEOF(x) == SEXPTYPE::SYMSXP }
+    TYPEOF(x) == SEXPTYPE::SYMSXP
 }
 
 /// Check if x is a string vector.
 #[inline]
 unsafe fn isString(x: SEXP) -> bool {
-    unsafe { TYPEOF(x) == SEXPTYPE::STRSXP }
+    TYPEOF(x) == SEXPTYPE::STRSXP
 }
 
 /// Check if x is a promise.
 #[inline]
 unsafe fn isPromise(x: SEXP) -> bool {
-    unsafe { TYPEOF(x) == SEXPTYPE::PROMSXP }
+    TYPEOF(x) == SEXPTYPE::PROMSXP
 }
 
 /// Check if x has the OBJECT bit set.
 #[inline]
 unsafe fn isObject(x: SEXP) -> bool {
-    unsafe { OBJECT(x) != 0 }
+    OBJECT(x) != 0
 }
 
 /// Check if x is a matrix (has "dim" attribute of length 2).

@@ -935,6 +935,7 @@ enum CurrentRuntime {
     Borrowed {
         pointer: *mut RInstance,
         liveness: InstanceLiveness,
+        heap: super::heap::HeapIdentity,
     },
 }
 
@@ -945,6 +946,9 @@ impl CurrentRuntime {
             None => Self::Borrowed {
                 pointer,
                 liveness: unsafe { instance_liveness(pointer) },
+                // SAFETY: installation requires a live standalone instance.
+                // Snapshot the immutable heap capability before publishing it.
+                heap: unsafe { (*pointer).heap_identity.clone() },
             },
         }
     }
@@ -955,7 +959,9 @@ impl CurrentRuntime {
             // access occurs here. Dereferencing operations acquire a pin in
             // with_current_instance before releasing the TLS borrow.
             Self::Managed(owner) => owner.is_live().then(|| owner.identity_ptr()),
-            Self::Borrowed { pointer, liveness } => liveness.is_live().then_some(*pointer),
+            Self::Borrowed {
+                pointer, liveness, ..
+            } => liveness.is_live().then_some(*pointer),
         }
     }
 }
@@ -1077,6 +1083,15 @@ pub(crate) fn current_instance_ptr() -> Option<*mut RInstance> {
     CURRENT_INSTANCE.with(|ci| ci.borrow().as_ref().and_then(CurrentRuntime::projection))
 }
 
+/// Find an older singleton bank retained by this thread's live runtime.
+pub(crate) fn current_retained_singleton(pointer: SEXP) -> Option<super::globals::SingletonLease> {
+    let heap = CURRENT_INSTANCE.with(|ci| match ci.borrow().as_ref()? {
+        CurrentRuntime::Managed(owner) => owner.live_heap_identity(),
+        CurrentRuntime::Borrowed { liveness, heap, .. } => liveness.is_live().then(|| heap.clone()),
+    })?;
+    heap.retained_singleton(pointer)
+}
+
 /// Whether a runtime capability is installed, even if its owner has been revoked.
 /// Callers that support unscoped fixtures can distinguish a truly absent
 /// runtime from a configured capability that failed its liveness check.
@@ -1113,9 +1128,9 @@ where
                 let pin = owner.pin().ok()?;
                 Some((pin.as_ptr(), Some(pin)))
             }
-            CurrentRuntime::Borrowed { pointer, liveness } => {
-                liveness.is_live().then_some((*pointer, None))
-            }
+            CurrentRuntime::Borrowed {
+                pointer, liveness, ..
+            } => liveness.is_live().then_some((*pointer, None)),
         }
     })?;
     Some(acquire_instance_mut(pointer, f))

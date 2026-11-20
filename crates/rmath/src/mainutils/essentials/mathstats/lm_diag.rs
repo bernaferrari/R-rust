@@ -750,7 +750,7 @@ pub unsafe fn do_model_tables(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
 
 /// GNU `printCoefmat(x)` — return `x` (printing is optional).
 pub unsafe fn do_print_coefmat(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { CAR(args) }
+    CAR(args)
 }
 
 /// GNU `summary.aov` — list of one anova table.

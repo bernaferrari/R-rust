@@ -14,12 +14,12 @@ use crate::sexp::protect::protect as protect_sexp;
 pub unsafe fn cutree(merge: SEXP, which: SEXP) -> SEXP {
     let merge = unsafe { coerceVector(merge, SEXPTYPE::INTSXP.as_c_int()) };
     let _merge_guard = unsafe { protect_sexp(merge) };
-    let i_merge_len = unsafe { LENGTH(merge) };
+    let i_merge_len = LENGTH(merge);
     let i_merge = unsafe { slice::from_raw_parts(INTEGER(merge), i_merge_len as usize) };
 
     let which = unsafe { coerceVector(which, SEXPTYPE::INTSXP.as_c_int()) };
     let _which_guard = unsafe { protect_sexp(which) };
-    let which_len = unsafe { LENGTH(which) };
+    let which_len = LENGTH(which);
     let i_which = unsafe { slice::from_raw_parts(INTEGER(which), which_len as usize) };
 
     let n = unsafe { nrows(merge as *const std::ffi::c_void) + 1 };

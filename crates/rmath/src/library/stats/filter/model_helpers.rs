@@ -374,7 +374,7 @@ pub unsafe fn do_model_extract(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) ->
 
 /// GNU `offset(object)` is identity.
 pub unsafe fn do_offset(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { CAR(args) }
+    CAR(args)
 }
 
 /// GNU default `getCall(x)` via $call.

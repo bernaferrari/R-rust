@@ -548,8 +548,8 @@ fn wrap_index(len: c_int, ind: c_int) -> usize {
 }
 
 fn sexp_string_at(value: SEXP, ind: c_int) -> Option<String> {
-    let len = unsafe { LENGTH(value) };
-    let ty = unsafe { TYPEOF(value) };
+    let len = LENGTH(value);
+    let ty = TYPEOF(value);
     if value.is_null() || ty != SEXPTYPE::STRSXP.as_c_int() || len == 0 {
         return None;
     }
@@ -559,12 +559,12 @@ fn sexp_string_at(value: SEXP, ind: c_int) -> Option<String> {
 }
 
 fn sexp_int_at(value: SEXP, ind: c_int) -> Option<c_int> {
-    let len = unsafe { LENGTH(value) };
+    let len = LENGTH(value);
     if value.is_null() || len == 0 {
         return None;
     }
     let idx = wrap_index(len, ind);
-    match unsafe { TYPEOF(value) } {
+    match TYPEOF(value) {
         t if t == SEXPTYPE::INTSXP.as_c_int() => {
             let x = unsafe { *INTEGER(value).add(idx) };
             if x == NA_INTEGER { None } else { Some(x) }

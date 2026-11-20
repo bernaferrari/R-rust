@@ -337,7 +337,7 @@ pub unsafe fn do_bic(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// GNU `logLik` identity for an already-tagged logLik.
 pub unsafe fn do_loglik(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { CAR(args) }
+    CAR(args)
 }
 
 pub(super) unsafe fn list_named_elt(list: SEXP, name: &str) -> SEXP {

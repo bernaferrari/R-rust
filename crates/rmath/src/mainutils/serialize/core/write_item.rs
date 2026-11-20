@@ -336,7 +336,7 @@ pub unsafe fn WriteItemInternal(
 }
 
 unsafe fn vector_length_for_write(s: SEXP, writer: &BinaryWriter) -> R_xlen_t {
-    let len = unsafe { XLENGTH(s) };
+    let len = XLENGTH(s);
     if writer.strict_workspace && c_int::try_from(len).is_err() {
         unsafe { error("cannot save unsupported long workspace vector") };
     }

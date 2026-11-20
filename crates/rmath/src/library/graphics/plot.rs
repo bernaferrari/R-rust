@@ -140,27 +140,27 @@ unsafe fn isNumeric(x: SEXP) -> c_int {
 
 #[inline]
 unsafe fn isReal(x: SEXP) -> c_int {
-    unsafe { bool_to_rflag(TYPEOF(x) == SEXPTYPE::REALSXP) }
+    bool_to_rflag(TYPEOF(x) == SEXPTYPE::REALSXP)
 }
 
 #[inline]
 unsafe fn isInteger(x: SEXP) -> c_int {
-    unsafe { bool_to_rflag(TYPEOF(x) == SEXPTYPE::INTSXP) }
+    bool_to_rflag(TYPEOF(x) == SEXPTYPE::INTSXP)
 }
 
 #[inline]
 unsafe fn isLogical(x: SEXP) -> c_int {
-    unsafe { bool_to_rflag(TYPEOF(x) == SEXPTYPE::LGLSXP) }
+    bool_to_rflag(TYPEOF(x) == SEXPTYPE::LGLSXP)
 }
 
 #[inline]
 unsafe fn isString(x: SEXP) -> c_int {
-    unsafe { bool_to_rflag(TYPEOF(x) == SEXPTYPE::STRSXP) }
+    bool_to_rflag(TYPEOF(x) == SEXPTYPE::STRSXP)
 }
 
 #[inline]
 unsafe fn isExpression(x: SEXP) -> c_int {
-    unsafe { bool_to_rflag(TYPEOF(x) == SEXPTYPE::EXPRSXP) }
+    bool_to_rflag(TYPEOF(x) == SEXPTYPE::EXPRSXP)
 }
 
 #[inline]

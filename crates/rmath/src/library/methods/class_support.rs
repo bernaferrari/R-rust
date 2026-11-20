@@ -14,7 +14,7 @@ use crate::sexp::memory_ext::allocSExp;
 /// R_get_primname - get the name of a primitive function.
 /// Delegates to getPRIMNAME in main/names.rs.
 pub unsafe fn R_get_primname(object: SEXP) -> SEXP {
-    let t = unsafe { TYPEOF(object) };
+    let t = TYPEOF(object);
     if t != SEXPTYPE::BUILTINSXP && t != SEXPTYPE::SPECIALSXP {
         let msg = c"'R_get_primname' called on a non-primitive";
         unsafe {

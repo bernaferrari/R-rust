@@ -441,7 +441,7 @@ unsafe fn remap_methods_snapshot_cloenv(op: SEXP, cloenv: SEXP) -> SEXP {
 }
 
 fn is_function_sexp(value: SEXP) -> bool {
-    let kind = unsafe { TYPEOF(value) };
+    let kind = TYPEOF(value);
     kind == SEXPTYPE::CLOSXP || kind == SEXPTYPE::BUILTINSXP || kind == SEXPTYPE::SPECIALSXP
 }
 

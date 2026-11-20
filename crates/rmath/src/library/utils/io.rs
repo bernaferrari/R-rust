@@ -1088,13 +1088,13 @@ unsafe fn NA_STRING() -> SEXP {
 /// CAD4R — fourth element of args list (CAR of CDR of CDR of CDR of CDR)
 #[inline]
 unsafe fn CAD4R(x: SEXP) -> SEXP {
-    unsafe { CDR(CDR(CDR(CDR(x)))) }
+    CDR(CDR(CDR(CDR(x))))
 }
 
 /// isString — check if SEXP is a character vector
 #[inline]
 unsafe fn isString(x: SEXP) -> bool {
-    unsafe { TYPEOF(x) == SEXPTYPE::STRSXP }
+    TYPEOF(x) == SEXPTYPE::STRSXP
 }
 
 /// isNull — check if SEXP is R_NilValue

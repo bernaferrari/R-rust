@@ -64,7 +64,7 @@ pub const WARN_RAW: c_int = 8;
 /// Get the extended length of an SEXP (handles NULL).
 #[inline]
 pub unsafe fn xlength(x: SEXP) -> R_xlen_t {
-    unsafe { XLENGTH(x) }
+    XLENGTH(x)
 }
 
 /// Check if an SEXP is a vector atomic type.
@@ -115,7 +115,7 @@ pub unsafe fn isString(x: SEXP) -> bool {
 /// Check if an SEXP is NULL.
 #[inline]
 pub unsafe fn isNull(x: SEXP) -> bool {
-    unsafe { Rf_isNull(x) != 0 }
+    Rf_isNull(x) != 0
 }
 
 /// Check if an SEXP is a list (pairlist).
@@ -127,7 +127,7 @@ pub unsafe fn isList(x: SEXP) -> bool {
 /// Check if an SEXP is a language object.
 #[inline]
 pub unsafe fn isLanguage(x: SEXP) -> bool {
-    unsafe { TYPEOF(x) == SEXPTYPE::LANGSXP }
+    TYPEOF(x) == SEXPTYPE::LANGSXP
 }
 
 /// Check GNU list admission using original-owner leases and typed graph edges.
@@ -186,19 +186,19 @@ pub unsafe fn IS_S4_OBJECT(x: SEXP) -> c_int {
 /// Check if an SEXP has the OBJECT bit set.
 #[inline]
 pub unsafe fn isObject(x: SEXP) -> bool {
-    unsafe { OBJECT(x) != 0 }
+    OBJECT(x) != 0
 }
 
 /// Check if an SEXP is a new list (generic vector).
 #[inline]
 pub unsafe fn isNewList(x: SEXP) -> bool {
-    unsafe { TYPEOF(x) == SEXPTYPE::VECSXP }
+    TYPEOF(x) == SEXPTYPE::VECSXP
 }
 
 /// Check if a SEXP is an expression.
 #[inline]
 pub unsafe fn isExpression(x: SEXP) -> bool {
-    unsafe { TYPEOF(x) == SEXPTYPE::EXPRSXP }
+    TYPEOF(x) == SEXPTYPE::EXPRSXP
 }
 
 /// Check if a SEXP is a matrix (has non-null dim attribute of length 2).

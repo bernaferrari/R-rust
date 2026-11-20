@@ -528,7 +528,7 @@ pub unsafe fn do_storage_mode_get(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP
 
 /// R's `identity(x)` — return the object unchanged.
 pub unsafe fn do_identity(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { CAR(args) }
+    CAR(args)
 }
 
 fn mode_name(x: SEXP) -> &'static str {

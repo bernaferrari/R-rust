@@ -405,7 +405,7 @@ impl<'arena, 'session> Parser<'arena, 'session> {
         rhs: SEXP,
         rhs_start: usize,
     ) -> Result<SEXP, ParseError> {
-        if unsafe { TYPEOF(rhs) } != SEXPTYPE::LANGSXP {
+        if TYPEOF(rhs) != SEXPTYPE::LANGSXP {
             return Err(self.token_position_error(
                 rhs_start,
                 "The pipe operator requires a function call as RHS",
@@ -415,10 +415,10 @@ impl<'arena, 'session> Parser<'arena, 'session> {
         // xxpipe's pipe-bind branch, checked before everything else: rewrite
         // `lhs |> var => expr` into `(function(var) expr)(lhs)`.
         let pipebind_sym = self.install_symbol("=>")?;
-        if unsafe { CAR(rhs) } == pipebind_sym {
-            let var = unsafe { CADR(rhs) };
-            let body = unsafe { crate::sexp::accessors::CADDR(rhs) };
-            if var.is_null() || unsafe { TYPEOF(var) } != SEXPTYPE::SYMSXP {
+        if CAR(rhs) == pipebind_sym {
+            let var = CADR(rhs);
+            let body = crate::sexp::accessors::CADDR(rhs);
+            if var.is_null() || TYPEOF(var) != SEXPTYPE::SYMSXP {
                 return Err(self.token_position_error(rhs_start, "RHS variable must be a symbol"));
             }
             let nil = R_NilValue();

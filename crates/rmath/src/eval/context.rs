@@ -28,7 +28,7 @@ unsafe fn error(msg: &str) -> ! {
 }
 
 unsafe fn isNull(x: SEXP) -> bool {
-    unsafe { crate::sexp::accessors::Rf_isNull(x) != 0 }
+    crate::sexp::accessors::Rf_isNull(x) != 0
 }
 
 // ---------------------------------------------------------------------------

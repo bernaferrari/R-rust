@@ -332,7 +332,7 @@ pub unsafe fn Cdist(x: SEXP, smethod: SEXP, attrs: SEXP, p: SEXP) -> SEXP {
     if method == MINKOWSKI && (!rp.is_finite() || rp <= 0.0) {
         unsafe { crate::main::errors::Rf_error(c"distance(): invalid p".as_ptr()) };
     }
-    let x_len = unsafe { LENGTH(x) };
+    let x_len = LENGTH(x);
     let x_slice: &[c_double] = if x_len == 0 {
         &[]
     } else {
@@ -348,7 +348,7 @@ pub unsafe fn Cdist(x: SEXP, smethod: SEXP, attrs: SEXP, p: SEXP) -> SEXP {
 
     /* tack on attributes */
     let names = unsafe { getAttrib(attrs, R_NamesSymbol()) };
-    for i in 0..(unsafe { LENGTH(attrs) } as usize) {
+    for i in 0..(LENGTH(attrs) as usize) {
         let name_sexp = unsafe { STRING_ELT(names, i as R_xlen_t) };
         let name_cstr = unsafe { CHAR(name_sexp) };
         let sym = unsafe { crate::sexp::symbol::Rf_install(name_cstr) };

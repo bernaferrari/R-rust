@@ -1019,7 +1019,7 @@ pub unsafe fn get_newo() -> *mut c_int {
 /// has no sorted-metadata ALTREP class; the wrapper is observationally
 /// transparent, so the vector is returned unchanged.
 pub unsafe fn do_wrap_meta(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { CAR(args) }
+    CAR(args)
 }
 
 /// GNU `.Internal(sorted_fpass(x, decr, nalast))` (sort.c `do_sorted_fpass`).

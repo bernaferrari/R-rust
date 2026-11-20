@@ -1557,7 +1557,7 @@ unsafe fn Rf_warning1(msg: *const c_char) {
 
 /// CAD4R - CDR(CDR(CDR(CDR(args))))
 unsafe fn CAD4R(args: SEXP) -> SEXP {
-    unsafe { CDR(CDR(CDR(CDR(args)))) }
+    CDR(CDR(CDR(CDR(args))))
 }
 
 /// Validate the fifth curlGetHeaders argument before curl handle creation.

@@ -17,7 +17,7 @@ fn unsupported(name: &str) -> ! {
 }
 
 fn tail(args: SEXP) -> SEXP {
-    unsafe { CDR(args) }
+    CDR(args)
 }
 
 fn do_contourLines(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {

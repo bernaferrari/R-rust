@@ -139,27 +139,27 @@ pub(crate) unsafe fn isPairList(x: SEXP) -> bool {
 
 #[inline]
 pub(crate) unsafe fn isList(x: SEXP) -> bool {
-    unsafe { TYPEOF(x) == LISTSXP }
+    TYPEOF(x) == LISTSXP
 }
 
 #[inline]
 pub(crate) unsafe fn isLanguage(x: SEXP) -> bool {
-    unsafe { TYPEOF(x) == LANGSXP }
+    TYPEOF(x) == LANGSXP
 }
 
 #[inline]
 pub(crate) unsafe fn isExpression(x: SEXP) -> bool {
-    unsafe { TYPEOF(x) == EXPRSXP }
+    TYPEOF(x) == EXPRSXP
 }
 
 #[inline]
 pub(crate) unsafe fn isNewList(x: SEXP) -> bool {
-    unsafe { TYPEOF(x) == VECSXP }
+    TYPEOF(x) == VECSXP
 }
 
 #[inline]
 pub(crate) unsafe fn isObject(x: SEXP) -> bool {
-    unsafe { OBJECT(x) != 0 }
+    OBJECT(x) != 0
 }
 
 #[inline]
@@ -180,17 +180,17 @@ pub(crate) unsafe fn isArray(x: SEXP) -> bool {
 
 #[inline]
 pub(crate) unsafe fn isString(x: SEXP) -> bool {
-    unsafe { TYPEOF(x) == STRSXP }
+    TYPEOF(x) == STRSXP
 }
 
 #[inline]
 pub(crate) unsafe fn isInteger(x: SEXP) -> bool {
-    unsafe { TYPEOF(x) == INTSXP }
+    TYPEOF(x) == INTSXP
 }
 
 #[inline]
 pub(crate) unsafe fn isReal(x: SEXP) -> bool {
-    unsafe { TYPEOF(x) == REALSXP }
+    TYPEOF(x) == REALSXP
 }
 
 #[inline]

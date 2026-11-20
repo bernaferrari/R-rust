@@ -67,15 +67,15 @@ fn Runzip(_args: SEXP) -> SEXP {
 fn R_ProcessEvents() {}
 
 pub unsafe fn Rprof(args: SEXP) -> SEXP {
-    unsafe { do_Rprof(CDR(args)) }
+    do_Rprof(CDR(args))
 }
 
 pub unsafe fn Rprofmem(args: SEXP) -> SEXP {
-    unsafe { do_Rprofmem(CDR(args)) }
+    do_Rprofmem(CDR(args))
 }
 
 pub unsafe fn unzip(args: SEXP) -> SEXP {
-    unsafe { Runzip(CDR(args)) }
+    Runzip(CDR(args))
 }
 
 pub unsafe fn edit(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {

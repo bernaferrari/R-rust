@@ -292,7 +292,7 @@ unsafe fn MAYBE_REFERENCED(x: SEXP) -> c_int {
     if x.is_null() {
         return 0;
     }
-    unsafe { crate::sexp::accessors::NAMED(x) as c_int }
+    crate::sexp::accessors::NAMED(x) as c_int
 }
 
 unsafe fn as_integer(x: SEXP) -> c_int {

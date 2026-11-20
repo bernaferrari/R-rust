@@ -73,7 +73,7 @@ pub unsafe fn getListElement(list: SEXP, str: *mut c_char) -> SEXP {
     if names.is_null() {
         return elmt;
     }
-    let len = unsafe { LENGTH(list) } as i32;
+    let len = LENGTH(list) as i32;
     let target_str = unsafe { CStr::from_ptr(str) }.to_str().unwrap_or("");
     for i in 0..len {
         let name_cstr = unsafe { CHAR(STRING_ELT(names, i as R_xlen_t)) };
@@ -95,7 +95,7 @@ pub unsafe fn setListElement(list: SEXP, str: *mut c_char, value: SEXP) {
     if names.is_null() {
         return;
     }
-    let len = unsafe { LENGTH(list) } as i32;
+    let len = LENGTH(list) as i32;
     let target_str = unsafe { CStr::from_ptr(str) }.to_str().unwrap_or("");
     for i in 0..len {
         let name_cstr = unsafe { CHAR(STRING_ELT(names, i as R_xlen_t)) };
@@ -120,9 +120,9 @@ pub unsafe fn numeric(x: SEXP, index: c_int) -> c_double {
         return NA_REAL;
     }
     let idx = index as R_xlen_t;
-    if unsafe { TYPEOF(x) } == SEXPTYPE::REALSXP && unsafe { XLENGTH(x) } > idx {
+    if TYPEOF(x) == SEXPTYPE::REALSXP && XLENGTH(x) > idx {
         return unsafe { *REAL(x).add(index as usize) };
-    } else if unsafe { TYPEOF(x) } == SEXPTYPE::INTSXP && unsafe { XLENGTH(x) } > idx {
+    } else if TYPEOF(x) == SEXPTYPE::INTSXP && XLENGTH(x) > idx {
         return unsafe { *INTEGER(x).add(index as usize) as c_double };
     }
     NA_REAL

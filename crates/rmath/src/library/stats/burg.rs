@@ -83,7 +83,7 @@ fn non_negative_usize(value: c_int, name: &'static [u8]) -> usize {
 pub unsafe fn Burg(x: SEXP, order: SEXP) -> SEXP {
     let x = unsafe { coerceVector(x, SEXPTYPE::REALSXP.as_c_int()) };
     let _x_guard = unsafe { protect(x) };
-    let n = unsafe { LENGTH(x) };
+    let n = LENGTH(x);
     let pmax = unsafe { asInteger(order) };
     let pmax_usize = non_negative_usize(pmax, b"'order.max' must be non-negative\0");
     if n <= pmax {

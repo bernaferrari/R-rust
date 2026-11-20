@@ -1313,12 +1313,12 @@ pub unsafe fn find_fun_result<'a>(symbol: Sexp<'a>, rho: Sexp<'a>) -> EnvResult<
     // GNU findFun also sees primitives installed on the symbol itself
     // (`SYMVALUE`) when no environment frame holds a function binding.
     let raw = symbol.as_raw();
-    let mut value = unsafe { crate::sexp::accessors::SYMVALUE(raw) };
+    let mut value = crate::sexp::accessors::SYMVALUE(raw);
     if !value.is_null() && value != R_UnboundValue() {
-        if unsafe { TYPEOF(value) } == SEXPTYPE::PROMSXP {
+        if TYPEOF(value) == SEXPTYPE::PROMSXP {
             value = unsafe { forcePromise(value) };
         }
-        let t = unsafe { TYPEOF(value) };
+        let t = TYPEOF(value);
         if t == SEXPTYPE::CLOSXP || t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP {
             return Ok(unsafe { Sexp::from_raw(value) });
         }
@@ -1342,7 +1342,7 @@ pub unsafe fn find_fun_result<'a>(symbol: Sexp<'a>, rho: Sexp<'a>) -> EnvResult<
         if let Ok(cname) = std::ffi::CString::new(name.as_str()) {
             let prim = unsafe { crate::mainutils::names::R_Primitive(cname.as_ptr()) };
             if !prim.is_null() && prim != R_NilValue() {
-                let t = unsafe { TYPEOF(prim) };
+                let t = TYPEOF(prim);
                 if t == SEXPTYPE::CLOSXP || t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP {
                     return Ok(unsafe { Sexp::from_raw(prim) });
                 }
@@ -1412,7 +1412,7 @@ unsafe fn dots_formal_is_missing(rho: Sexp<'_>, error_if_absent: bool) -> bool {
         return true;
     }
     if let Some(cell) = frame_binding_cell(rho, dots_symbol()) {
-        return unsafe { super::accessors::MISSING(cell) } != 0;
+        return super::accessors::MISSING(cell) != 0;
     }
     false
 }
@@ -1430,7 +1430,7 @@ unsafe fn ordinary_frame_is_missing(symbol: Sexp<'_>, rho: Sexp<'_>, depth: u32)
     // even after install_default_promises replaces CAR with a default
     // promise. `setClass(..., slots=)` relies on `missing(representation)`.
     if let Some(cell) = frame_binding_cell(rho.clone(), symbol.clone()) {
-        if unsafe { super::accessors::MISSING(cell) } != 0 {
+        if super::accessors::MISSING(cell) != 0 {
             return true;
         }
         return match unsafe { Sexp::from_raw(super::accessors::CAR(cell)) } {
@@ -1455,7 +1455,7 @@ unsafe fn propagated_missing(symbol: Sexp<'_>, rho: Sexp<'_>, depth: u32) -> boo
     }
     let depth = depth + 1;
     if let Some(cell) = frame_binding_cell(rho.clone(), symbol.clone()) {
-        if unsafe { super::accessors::MISSING(cell) } != 0 {
+        if super::accessors::MISSING(cell) != 0 {
             match unsafe { Sexp::from_raw(super::accessors::CAR(cell)) } {
                 Some(val) => val == missing_arg_value() || unsafe { value_is_missing(val, depth) },
                 None => true,
