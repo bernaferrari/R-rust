@@ -930,26 +930,45 @@ pub(crate) unsafe fn instance_liveness(instance: *mut RInstance) -> InstanceLive
 /// Managed ambient dispatch carries only a weak capability. Standalone
 /// translated fixtures remain an explicitly unsafe lifetime-bound boundary.
 #[derive(Clone)]
+pub(crate) struct BorrowedRuntime {
+    pointer: *mut RInstance,
+    liveness: InstanceLiveness,
+    heap: super::heap::HeapIdentity,
+}
+
+impl BorrowedRuntime {
+    pub(crate) fn snapshots(
+        &self,
+    ) -> (
+        std::ptr::NonNull<RInstance>,
+        InstanceLiveness,
+        super::heap::HeapIdentity,
+    ) {
+        (
+            std::ptr::NonNull::new(self.pointer).expect("installed borrowed runtime"),
+            self.liveness.clone(),
+            self.heap.clone(),
+        )
+    }
+}
+
+#[derive(Clone)]
 enum CurrentRuntime {
     Managed(super::owner::WeakOwner),
-    Borrowed {
-        pointer: *mut RInstance,
-        liveness: InstanceLiveness,
-        heap: super::heap::HeapIdentity,
-    },
+    Borrowed(BorrowedRuntime),
 }
 
 impl CurrentRuntime {
     unsafe fn from_raw(pointer: *mut RInstance) -> Self {
         match unsafe { (*pointer).runtime_owner.clone() } {
             Some(owner) => Self::Managed(owner),
-            None => Self::Borrowed {
+            None => Self::Borrowed(BorrowedRuntime {
                 pointer,
                 liveness: unsafe { instance_liveness(pointer) },
                 // SAFETY: installation requires a live standalone instance.
                 // Snapshot the immutable heap capability before publishing it.
                 heap: unsafe { (*pointer).heap_identity.clone() },
-            },
+            }),
         }
     }
 
@@ -959,9 +978,7 @@ impl CurrentRuntime {
             // access occurs here. Dereferencing operations acquire a pin in
             // with_current_instance before releasing the TLS borrow.
             Self::Managed(owner) => owner.is_live().then(|| owner.identity_ptr()),
-            Self::Borrowed {
-                pointer, liveness, ..
-            } => liveness.is_live().then_some(*pointer),
+            Self::Borrowed(owner) => owner.liveness.is_live().then_some(owner.pointer),
         }
     }
 }
@@ -1064,7 +1081,7 @@ pub fn clear_current_instance_if(instance: *const RInstance) -> bool {
             .as_ref()
             .map(|runtime| match runtime {
                 CurrentRuntime::Managed(owner) => owner.identity_ptr(),
-                CurrentRuntime::Borrowed { pointer, .. } => *pointer,
+                CurrentRuntime::Borrowed(owner) => owner.pointer,
             })
             .map(|ptr| std::ptr::eq(ptr as *const RInstance, instance))
             .unwrap_or(false)
@@ -1087,9 +1104,31 @@ pub(crate) fn current_instance_ptr() -> Option<*mut RInstance> {
 pub(crate) fn current_retained_singleton(pointer: SEXP) -> Option<super::globals::SingletonLease> {
     let heap = CURRENT_INSTANCE.with(|ci| match ci.borrow().as_ref()? {
         CurrentRuntime::Managed(owner) => owner.live_heap_identity(),
-        CurrentRuntime::Borrowed { liveness, heap, .. } => liveness.is_live().then(|| heap.clone()),
+        CurrentRuntime::Borrowed(owner) => owner.liveness.is_live().then(|| owner.heap.clone()),
     })?;
     heap.retained_singleton(pointer)
+}
+
+/// Retain a checked value in the installed domain while copying its contents.
+/// The operation receives a handle scoped to the captured runtime snapshot.
+/// No raw runtime field is read and no TLS or arena loan spans the operation.
+pub(crate) fn with_current_value<T>(
+    pointer: SEXP,
+    operation: impl for<'value> FnOnce(&super::object::Sexp<'value>) -> T,
+) -> Option<T> {
+    let current = CURRENT_INSTANCE.with(|ci| ci.borrow().clone())?;
+    match current {
+        CurrentRuntime::Managed(owner) => {
+            let _pin = owner.pin().ok()?;
+            let value = owner.node_factory().ok()?.wrap(pointer).ok()?;
+            Some(operation(&value))
+        }
+        CurrentRuntime::Borrowed(owner) => {
+            let domain = super::object::NodeDomain::from_borrowed_runtime(&owner);
+            let value = domain.wrap(pointer).ok()?;
+            Some(operation(&value))
+        }
+    }
 }
 
 /// Whether a runtime capability is installed, even if its owner has been revoked.
@@ -1128,9 +1167,9 @@ where
                 let pin = owner.pin().ok()?;
                 Some((pin.as_ptr(), Some(pin)))
             }
-            CurrentRuntime::Borrowed {
-                pointer, liveness, ..
-            } => liveness.is_live().then_some((*pointer, None)),
+            CurrentRuntime::Borrowed(owner) => {
+                owner.liveness.is_live().then_some((owner.pointer, None))
+            }
         }
     })?;
     Some(acquire_instance_mut(pointer, f))

@@ -698,6 +698,23 @@ unsafe fn raw_value<'s>(
     (value, root)
 }
 
+/// Perform a copied element read within the original runtime scope. Fixtures
+/// and separately owned arenas use their checked directory root directly.
+fn read_raw_value<T>(
+    pointer: SEXP,
+    read: impl FnOnce(&super::object::Sexp<'_>) -> super::object::SexpResult<T>,
+) -> T {
+    let mut read = Some(read);
+    let scoped = super::instance::with_current_value(pointer, |value| {
+        read.take().expect("element read used once")(value)
+    });
+    let result = scoped.unwrap_or_else(|| {
+        super::object::Sexp::with_registered_raw(pointer, read.expect("unscoped element read"))
+            .and_then(|result| result)
+    });
+    result.unwrap_or_else(|error| super::context::r_error(error.to_string()))
+}
+
 /// Project the actual retained payload for translated native operations.
 /// # Safety
 /// Retain the original parent and exclude conflicting payload loans, mutation
@@ -1158,13 +1175,11 @@ pub unsafe fn SET_VECTOR_ELT(x: SEXP, i: R_xlen_t, val: SEXP) {
 // ---------------------------------------------------------------------------
 
 /// Copy the bounded logical element from its original retained allocation.
-pub unsafe fn LOGICAL_ELT(x: SEXP, i: c_int) -> c_int {
+pub fn LOGICAL_ELT(x: SEXP, i: c_int) -> c_int {
     if !is_valid_sexp_ptr(x) {
         return NA_INTEGER;
     }
-    let (value, _root) = unsafe { raw_value(x) };
-    let result = value.try_logical_elt(i as R_xlen_t);
-    result.unwrap_or_else(|error| super::context::r_error(error.to_string()))
+    read_raw_value(x, |value| value.try_logical_elt(i as R_xlen_t))
 }
 
 /// Update a bounded canonical logical cell; immutable sentinels stay unchanged.
@@ -1180,17 +1195,17 @@ pub unsafe fn SET_LOGICAL_ELT(x: SEXP, i: c_int, v: c_int) {
 }
 
 /// Copy the bounded integer element from its original retained allocation.
-pub unsafe fn INTEGER_ELT(x: SEXP, i: c_int) -> c_int {
+pub fn INTEGER_ELT(x: SEXP, i: c_int) -> c_int {
     if !is_valid_sexp_ptr(x) {
         return NA_INTEGER;
     }
-    let (value, _root) = unsafe { raw_value(x) };
-    let result = if value.typeof_() == SEXPTYPE::LGLSXP {
-        value.try_logical_elt(i as R_xlen_t)
-    } else {
-        value.try_integer_elt(i as R_xlen_t)
-    };
-    result.unwrap_or_else(|error| super::context::r_error(error.to_string()))
+    read_raw_value(x, |value| {
+        if value.typeof_() == SEXPTYPE::LGLSXP {
+            value.try_logical_elt(i as R_xlen_t)
+        } else {
+            value.try_integer_elt(i as R_xlen_t)
+        }
+    })
 }
 
 /// Update a bounded canonical integer cell; immutable sentinels stay unchanged.
@@ -1209,13 +1224,11 @@ pub unsafe fn SET_INTEGER_ELT(x: SEXP, i: c_int, v: c_int) {
 }
 
 /// Copy the bounded real element from its original retained allocation.
-pub unsafe fn REAL_ELT(x: SEXP, i: c_int) -> c_double {
+pub fn REAL_ELT(x: SEXP, i: c_int) -> c_double {
     if !is_valid_sexp_ptr(x) {
         return NA_REAL;
     }
-    let (value, _root) = unsafe { raw_value(x) };
-    let result = value.try_real_elt(i as R_xlen_t);
-    result.unwrap_or_else(|error| super::context::r_error(error.to_string()))
+    read_raw_value(x, |value| value.try_real_elt(i as R_xlen_t))
 }
 
 /// Update a bounded canonical real cell; immutable sentinels stay unchanged.
@@ -1231,16 +1244,14 @@ pub unsafe fn SET_REAL_ELT(x: SEXP, i: c_int, v: c_double) {
 }
 
 /// Copy the bounded complex element from its original retained allocation.
-pub unsafe fn COMPLEX_ELT(x: SEXP, i: c_int) -> Rcomplex {
+pub fn COMPLEX_ELT(x: SEXP, i: c_int) -> Rcomplex {
     if !is_valid_sexp_ptr(x) {
         return Rcomplex {
             r: NA_REAL,
             i: NA_REAL,
         };
     }
-    let (value, _root) = unsafe { raw_value(x) };
-    let result = value.try_complex_elt(i as R_xlen_t);
-    result.unwrap_or_else(|error| super::context::r_error(error.to_string()))
+    read_raw_value(x, |value| value.try_complex_elt(i as R_xlen_t))
 }
 
 /// Update a bounded canonical complex cell; immutable sentinels stay unchanged.
@@ -1256,13 +1267,11 @@ pub unsafe fn SET_COMPLEX_ELT(x: SEXP, i: c_int, v: Rcomplex) {
 }
 
 /// Copy the bounded raw element from its original retained allocation.
-pub unsafe fn RAW_ELT(x: SEXP, i: c_int) -> super::ffi::Rbyte {
+pub fn RAW_ELT(x: SEXP, i: c_int) -> super::ffi::Rbyte {
     if !is_valid_sexp_ptr(x) {
         return 0;
     }
-    let (value, _root) = unsafe { raw_value(x) };
-    let result = value.try_raw_elt(i as R_xlen_t);
-    result.unwrap_or_else(|error| super::context::r_error(error.to_string()))
+    read_raw_value(x, |value| value.try_raw_elt(i as R_xlen_t))
 }
 
 /// Update a bounded canonical raw cell; immutable sentinels stay unchanged.
@@ -1282,18 +1291,18 @@ pub unsafe fn SET_RAW_ELT(x: SEXP, i: c_int, v: super::ffi::Rbyte) {
 // ---------------------------------------------------------------------------
 
 /// Get the scalar logical value.
-pub unsafe fn SCALAR_LVAL(x: SEXP) -> c_int {
-    unsafe { LOGICAL_ELT(x, 0) }
+pub fn SCALAR_LVAL(x: SEXP) -> c_int {
+    LOGICAL_ELT(x, 0)
 }
 
 /// Get the scalar integer value.
-pub unsafe fn SCALAR_IVAL(x: SEXP) -> c_int {
-    unsafe { INTEGER_ELT(x, 0) }
+pub fn SCALAR_IVAL(x: SEXP) -> c_int {
+    INTEGER_ELT(x, 0)
 }
 
 /// Get the scalar real value.
-pub unsafe fn SCALAR_DVAL(x: SEXP) -> c_double {
-    unsafe { REAL_ELT(x, 0) }
+pub fn SCALAR_DVAL(x: SEXP) -> c_double {
+    REAL_ELT(x, 0)
 }
 
 // ---------------------------------------------------------------------------

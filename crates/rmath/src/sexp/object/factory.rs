@@ -72,6 +72,21 @@ impl<'session> NodeDomain<'session> {
         }
     }
 
+    pub(crate) fn from_borrowed_runtime(
+        runtime: &'session crate::sexp::instance::BorrowedRuntime,
+    ) -> Self {
+        let (pointer, availability, heap) = runtime.snapshots();
+        Self {
+            heap,
+            availability,
+            singletons: crate::sexp::globals::immutable_singleton_pool(),
+            owner_identity: pointer.as_ptr().addr(),
+            runtime_owner: None,
+            borrowed_pointer: Some(pointer),
+            _session: std::marker::PhantomData,
+        }
+    }
+
     pub(crate) fn same_domain(&self, other: &NodeDomain<'_>) -> bool {
         self.heap.same_domain(&other.heap)
     }
