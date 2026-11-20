@@ -11,6 +11,15 @@ workflow stays in the denominator. A pass requires a measured result, and an
 unmeasured workflow earns no credit. Silent wrong results, crashes and data
 loss in supported workflows block release even when the score is high.
 
+At `1790c295`, **16 of 20 workflows (80%)** passed on both targets. The
+pinned R6 workflow also verified that loading refuses incompatible versions
+for namespace imports and package attachment. A failed load left the
+target namespace unregistered. A retry succeeded after making R6
+available, and a loaded R6 kept its identity when the library path changed.
+The test includes an unused Imports entry and a newer R requirement.
+[Scorecard](ci-checkpoints/everyday-analysis-v1-1790c295.json)
+[R6 receipt](ci-checkpoints/everyday-r6-1790c295.json)
+
 At `0ea69c8a`, **16 of 20 workflows (80%)** passed on native Rport
 and production Wasm. A source script rebuilt an HTML report, a CSV table and
 a PDF with two fitted lines after one source measurement changed. Both

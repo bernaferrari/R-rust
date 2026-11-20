@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "source_commit": "1790c2951f256a92b8cfab0ec56e039c3df374d8",
+  "source_sha256": "d7e20574f9b4a163eb47ac7887c3442db88f3e2e35ab355ed9e884a4d3360b11",
+  "wasm_sha256": "aba5982e5afff9e2df8db50ba6449b90b8b5a9f3f508170498c5ca262235c856",
+  "oracle_manifest_sha256": "b2400cc9d83720c794199ebe51856bb88a0aa2e38ee8db276c7c27f04473c679",
+  "workflow": "pure-r-package",
+  "fixture_sha256": {
+    "analysis.R": "317f4ea7e0b631fd12b5030062fca3c29ce755d24db103192bb9b038103e10c9",
+    "dependencies.R": "c3fd096c8e25ef568f80dce67161a15d6bab1d13dd425c3530d69e87431eaddc"
+  },
+  "expected": {
+    "output": "Loaded R6 2.6.1; analyzed observations with mean 7\n",
+    "dependency_output": "Checked dependency refusals, unused imports, retry and loaded namespace identity\n"
+  },
+  "native": {
+    "output": "Loaded R6 2.6.1; analyzed observations with mean 7\n",
+    "dependency_output": "Checked dependency refusals, unused imports, retry and loaded namespace identity\n"
+  },
+  "wasm": {
+    "output": "Loaded R6 2.6.1; analyzed observations with mean 7\n",
+    "dependency_output": "Checked dependency refusals, unused imports, retry and loaded namespace identity\n"
+  },
+  "archive_sha256": "59c6eba8b1b912eb7e104f65053235604be853425ee67c152ac4e86a1f2073b4"
+}

@@ -1,0 +1,55 @@
+{
+  "runtime_commit": "1790c2951f256a92b8cfab0ec56e039c3df374d8",
+  "wasm_sha256": "aba5982e5afff9e2df8db50ba6449b90b8b5a9f3f508170498c5ca262235c856",
+  "files": {
+    "package.json": 365,
+    "r_wasm.d.ts": 6452,
+    "r_wasm.js": 25125,
+    "r_wasm_bg.wasm": 24082813,
+    "r_wasm_bg.wasm.d.ts": 2615,
+    "rust-runtime-optimization.json": 476
+  },
+  "bundle_bytes": 24117846,
+  "byte_limit": 26214400,
+  "headroom_bytes": 2096554,
+  "bundle_growth_bytes": 83103,
+  "portable_contracts_per_generation": [
+    166,
+    166
+  ],
+  "package_scanner_and_s4": {
+    "wasm_sha256": "aba5982e5afff9e2df8db50ba6449b90b8b5a9f3f508170498c5ca262235c856",
+    "dependency_scans_passed": 4,
+    "s4_after_dependency_scans": "pass"
+  },
+  "package_dependency_rules": "Checked dependency refusals, unused imports, retry and loaded namespace identity",
+  "browser_deadlines": {
+    "expected": 7,
+    "unexpected": 0,
+    "flaky": 0,
+    "skipped": 0,
+    "s4_evaluation_ms": [
+      11492.2,
+      9040.9,
+      10180.7,
+      10455,
+      8044.7,
+      7985.4
+    ]
+  },
+  "strict_pinned_native_cases": 18,
+  "everyday_analysis": {
+    "native": {
+      "pass": 16,
+      "fail": 0,
+      "unmeasured": 4,
+      "percent_verified": 80.0
+    },
+    "wasm": {
+      "pass": 16,
+      "fail": 0,
+      "unmeasured": 4,
+      "percent_verified": 80.0
+    }
+  }
+}

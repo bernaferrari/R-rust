@@ -54,6 +54,16 @@ user workflows have passed on native Rport and production Wasm.
 
 ## Main verification
 
+- At `1790c295`, the source package loader checks versioned `Imports`
+  that are used by `NAMESPACE` and versioned `Depends` at attachment.
+  The pinned R6 workflow verified refusal, retry, and loaded identity on
+  native Rport and exact production Wasm. Recursive package lookup through
+  a one-off `lib.loc` remains a compatibility gap. The release passed 18
+  selected strict native cases, 332 production Wasm contracts, the separate
+  dependency and S4 gate, and seven Chromium deadline checks. The Workbench
+  bundle uses 24,117,846 bytes and leaves 2,096,554 bytes below 25 MiB.
+  [Production receipt](ci-checkpoints/wasm-bundle-1790c295.json)
+
 - At `fa0c3340`, `loadNamespace()` checked an explicit library and rejected
   incompatible R6 version requests before registration. A loaded R6 namespace
   retained its version and identity after the library search path changed.
