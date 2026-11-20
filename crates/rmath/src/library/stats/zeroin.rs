@@ -416,7 +416,7 @@ struct NlmState {
 }
 
 /// FT_init: initialize the table of computed function values.
-unsafe fn nlm_ft_init(n: usize, ft_size: usize, state: &mut NlmState) {
+fn nlm_ft_init(n: usize, ft_size: usize, state: &mut NlmState) {
     let mut ftable = Vec::with_capacity(ft_size);
     for _ in 0..ft_size {
         // initialize to unlikely parameter values
@@ -441,7 +441,7 @@ unsafe fn nlm_ft_init(n: usize, ft_size: usize, state: &mut NlmState) {
 }
 
 /// FT_store: store an entry in the table of computed function values.
-unsafe fn nlm_ft_store(
+fn nlm_ft_store(
     n: usize,
     f: f64,
     x: &[f64],
@@ -467,7 +467,7 @@ unsafe fn nlm_ft_store(
 }
 
 /// FT_lookup: check for stored values; returns the table index or None.
-unsafe fn nlm_ft_lookup(n: usize, x: &[f64], state: &NlmState) -> Option<usize> {
+fn nlm_ft_lookup(n: usize, x: &[f64], state: &NlmState) -> Option<usize> {
     for i in 0..state.ft_size as isize {
         let mut ind = (state.ft_last - i) % state.ft_size as isize;
         /* why can't they define modulus correctly */
@@ -747,7 +747,7 @@ unsafe fn nlm_opterror(nerr: i32) -> ! {
 }
 
 /// Warnings — we return a value, but print a warning (optcode in optimize.c).
-unsafe fn nlm_optcode(code: i32) {
+fn nlm_optcode(code: i32) {
     let text = match code {
         1 => "Relative gradient close to zero.\nCurrent iterate is probably solution.\n",
         2 => "Successive iterates within tolerance.\nCurrent iterate is probably solution.\n",
