@@ -611,7 +611,7 @@ impl RSession {
                 crate::mainutils::errors::print_warnings_at_statement_boundary();
             }
         }
-        *result = Ok(unsafe { Sexp::from_raw_unchecked(R_NilValue()) });
+        *result = Ok(Sexp::nil());
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
         unsafe {
             crate::mainutils::main::Rf_callToplevelHandlers(
@@ -738,8 +738,7 @@ impl RSession {
             crate::mainutils::errors::clear_last_rendered_message();
             // Every statement owns its automatic allocation lease for the
             // entire loop, including collection and notification callbacks.
-            let mut result: RResult<Sexp<'session>> =
-                Ok(unsafe { Sexp::from_raw_unchecked(R_NilValue()) });
+            let mut result: RResult<Sexp<'session>> = Ok(Sexp::nil());
             let last_index = expressions.len().saturating_sub(1);
             // Upstream's REPL updates the current srcref per top-level
             // expression; the 1-based loop index is the port's location for
@@ -946,8 +945,7 @@ impl RSession {
             let _backend_guard = RenderPlotBackendGuard::install(instance, &mut forwarding);
             let capture = crate::sexp::output::OutputCaptureGuard::start();
             // Remaining parsed statements retain their automatic leases.
-            let mut result: RResult<Sexp<'session>> =
-                Ok(unsafe { Sexp::from_raw_unchecked(R_NilValue()) });
+            let mut result: RResult<Sexp<'session>> = Ok(Sexp::nil());
             let last_index = expressions.len().saturating_sub(1);
             // Same per-expression location as the plain script loop above.
             let _toplevel_no_guard = ToplevelExprNoGuard::new(self);

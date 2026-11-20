@@ -463,6 +463,16 @@ fn test_closure_trailing_empty_actual_uses_formal_default() {
 }
 
 #[test]
+fn empty_script_returns_an_owned_null() {
+    let mut session = RSession::new();
+    let (result, output, _) = session.eval_script_with_output_capture("# no expressions");
+    let result = result.unwrap().into_owned().unwrap();
+    drop(session);
+    assert!(result.is_nil());
+    assert!(output.stdout.is_empty());
+}
+
+#[test]
 fn test_parenthesized_assignment_is_visible() {
     let mut session = RSession::new();
 
