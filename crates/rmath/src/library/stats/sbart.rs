@@ -457,15 +457,25 @@ unsafe fn sslvrg(
         }
 
         // Factorize banded matrix abd
-        let mut info_val: c_int = 0;
-        crate::appl::linpack_band::dpbfa(abd, ld4 as c_int, nk as c_int, 3, &mut info_val);
+        let info_val: c_int = crate::appl::linpack_band::dpbfa(
+            std::slice::from_raw_parts_mut(abd, ld4 * nk),
+            ld4 as c_int,
+            nk as c_int,
+            3,
+        );
         if info_val != 0 {
             *info = info_val;
             return;
         }
 
         // Solve linear system
-        crate::appl::linpack_band::dpbsl(abd, ld4 as c_int, nk as c_int, 3, coef);
+        crate::appl::linpack_band::dpbsl(
+            std::slice::from_raw_parts(abd, ld4 * nk),
+            ld4 as c_int,
+            nk as c_int,
+            3,
+            std::slice::from_raw_parts_mut(coef, nk),
+        );
 
         // Value of smooth at data points
         for i in 0..n {
