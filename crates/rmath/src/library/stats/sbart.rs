@@ -129,13 +129,12 @@ unsafe fn sgram(
             // Left end second derivatives: bsplvd(knot, lentb, 4, tb(i), ileft, work, vnikx, 3)
             // vnikx(4,3) column-major: vnikx[(row-1) + (col-1)*4]
             super::bspline::bsplvd(
-                knot,
-                lentb as c_int,
+                std::slice::from_raw_parts(knot, lentb),
                 4,
                 *knot.add(i - 1),
                 left,
-                work.as_mut_ptr(),
-                vnikx.as_mut_ptr(),
+                &mut work,
+                &mut vnikx,
                 3,
             );
             for ii in 0..4 {
@@ -144,13 +143,12 @@ unsafe fn sgram(
 
             // Right end second derivatives
             super::bspline::bsplvd(
-                knot,
-                lentb as c_int,
+                std::slice::from_raw_parts(knot, lentb),
                 4,
                 *knot.add(i),
                 left,
-                work.as_mut_ptr(),
-                vnikx.as_mut_ptr(),
+                &mut work,
+                &mut vnikx,
                 3,
             );
             for ii in 0..4 {
@@ -334,13 +332,12 @@ unsafe fn stxwx(
 
             // Evaluate B-splines at x(i)
             super::bspline::bsplvd(
-                knot,
-                lenxk as c_int,
+                std::slice::from_raw_parts(knot, lenxk),
                 4,
                 *xs.add(i),
                 ileft,
-                work.as_mut_ptr(),
-                vnikx.as_mut_ptr(),
+                &mut work,
+                &mut vnikx,
                 1,
             );
 
@@ -474,13 +471,27 @@ unsafe fn sslvrg(
         // Value of smooth at data points
         for i in 0..n {
             let xv = *xs.add(i);
-            *sz.add(i) = super::bspline::bvalue(knot, coef, nk as c_int, 4, xv, 0);
+            *sz.add(i) = super::bspline::bvalue(
+                std::slice::from_raw_parts(knot, nk + 4),
+                std::slice::from_raw_parts(coef, nk),
+                4,
+                xv,
+                0,
+            );
         }
 
         // Compute criterion if requested
         if *icrit >= 1 {
             // Get leverages
-            super::bspline::sinerp(abd, ld4 as c_int, nk as c_int, p1ip, p2ip, ldnk as c_int, 0);
+            super::bspline::sinerp(
+                std::slice::from_raw_parts(abd, ld4 * nk),
+                ld4 as c_int,
+                nk as c_int,
+                std::slice::from_raw_parts_mut(p1ip, ld4 * nk),
+                std::slice::from_raw_parts_mut(p2ip, ldnk * nk),
+                ldnk as c_int,
+                0,
+            );
 
             for i in 0..n {
                 let mut xv = *xs.add(i);
@@ -505,13 +516,12 @@ unsafe fn sslvrg(
                 let j = ileft as usize - 4;
 
                 super::bspline::bsplvd(
-                    knot,
-                    lenkno as c_int,
+                    std::slice::from_raw_parts(knot, lenkno),
                     4,
                     xv,
                     ileft,
-                    work.as_mut_ptr(),
-                    vnikx.as_mut_ptr(),
+                    &mut work,
+                    &mut vnikx,
                     1,
                 );
                 let b0 = vnikx[0];
@@ -1107,7 +1117,13 @@ pub unsafe extern "C-unwind" fn c_bvalus(
         let x = x as *const f64;
         let s = s as *mut f64;
         for i in 0..n as usize {
-            *s.add(i) = super::bspline::bvalue(knot, coef, nk, 4, *x.add(i), deriv);
+            *s.add(i) = super::bspline::bvalue(
+                std::slice::from_raw_parts(knot, (nk + 4) as usize),
+                std::slice::from_raw_parts(coef, nk as usize),
+                4,
+                *x.add(i),
+                deriv,
+            );
         }
     }
 }
