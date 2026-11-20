@@ -321,32 +321,60 @@ pub(crate) fn SWAP(i: nls_uint32) -> nls_uint32 {
     (i << 24) | ((i & 0xff00) << 8) | ((i >> 8) & 0xff00) | (i >> 24)
 }
 
+/// Null-checked shared borrow of an interior pointer.
+#[inline]
+pub(crate) fn ptr_ref<'a, T>(ptr: *const T) -> Option<&'a T> {
+    unsafe { ptr.as_ref() }
+}
+
+/// Null-checked mutable borrow of an interior pointer.
+///
+/// Callers must ensure no conflicting borrow of the same object exists,
+/// matching the C code's single-threaded access model.
+#[inline]
+pub(crate) fn ptr_mut<'a, T>(ptr: *mut T) -> Option<&'a mut T> {
+    unsafe { ptr.as_mut() }
+}
+
+/// Null-checked borrow of a NUL-terminated C string.
+///
+/// Callers guarantee the pointer is valid and NUL-terminated, matching
+/// the C API's `char *` contract.
+#[inline]
+pub(crate) fn cstr<'a>(s: *const c_char) -> Option<&'a std::ffi::CStr> {
+    if s.is_null() {
+        None
+    } else {
+        unsafe { Some(std::ffi::CStr::from_ptr(s)) }
+    }
+}
+
 /// Duplicate a C string using `std::alloc`.
 pub(crate) fn c_strdup(s: *const c_char) -> *mut c_char {
+    let Some(s) = cstr(s) else {
+        return ptr::null_mut();
+    };
+    let len = s.to_bytes().len() + 1;
+    let layout = std::alloc::Layout::from_size_align(len, 1)
+        .unwrap_or_else(|_| std::alloc::Layout::new::<u8>());
+    // Allocate `len` bytes and copy the source string, NUL included.
     unsafe {
-        if s.is_null() {
-            return ptr::null_mut();
+        let out = std::alloc::alloc(layout) as *mut c_char;
+        if !out.is_null() {
+            ptr::copy_nonoverlapping(s.as_ptr(), out, len);
         }
-        let len = std::ffi::CStr::from_ptr(s).to_bytes().len() + 1;
-        let layout = std::alloc::Layout::from_size_align(len, 1)
-            .unwrap_or_else(|_| std::alloc::Layout::new::<u8>());
-        let ptr = std::alloc::alloc(layout) as *mut c_char;
-        if !ptr.is_null() {
-            ptr::copy_nonoverlapping(s, ptr, len);
-        }
-        ptr
+        out
     }
 }
 
 /// Free memory previously allocated via c_strdup or std::alloc.
 pub(crate) fn c_free(p: *mut c_char) {
-    unsafe {
-        if p.is_null() {
-            return;
-        }
-        let len = std::ffi::CStr::from_ptr(p).to_bytes().len() + 1;
-        let layout = std::alloc::Layout::from_size_align(len, 1)
-            .unwrap_or_else(|_| std::alloc::Layout::new::<u8>());
-        std::alloc::dealloc(p as *mut u8, layout);
-    }
+    let Some(s) = cstr(p) else {
+        return;
+    };
+    let len = s.to_bytes().len() + 1;
+    let layout = std::alloc::Layout::from_size_align(len, 1)
+        .unwrap_or_else(|_| std::alloc::Layout::new::<u8>());
+    // Free the `len`-byte block allocated by `c_strdup`.
+    unsafe { std::alloc::dealloc(p as *mut u8, layout) };
 }
