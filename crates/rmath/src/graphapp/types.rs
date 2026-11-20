@@ -773,6 +773,19 @@ pub fn ptr_ref<'a, T>(ptr: *const T) -> Option<&'a T> {
     unsafe { ptr.as_ref() }
 }
 
+/// Null-checked borrow of a NUL-terminated C string.
+///
+/// Callers guarantee the pointer is valid and NUL-terminated, matching
+/// the C API's `char *` contract.
+#[inline]
+pub fn cstr<'a>(s: *const c_char) -> Option<&'a std::ffi::CStr> {
+    if s.is_null() {
+        None
+    } else {
+        unsafe { Some(std::ffi::CStr::from_ptr(s)) }
+    }
+}
+
 // ============================================================
 // Object property accessors
 // ============================================================

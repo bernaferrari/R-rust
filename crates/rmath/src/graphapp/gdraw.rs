@@ -6,7 +6,6 @@
 //!
 //! Ported from gdraw.c - thread-safe and extended drawing functions.
 
-use std::ffi::CStr;
 use std::os::raw::{c_char, c_int};
 use std::ptr;
 
@@ -66,7 +65,7 @@ fn object_rect(d: drawing) -> Option<rect> {
     if d.is_null() || addr < 4096 || addr % std::mem::align_of::<ObjInfo>() != 0 {
         None
     } else {
-        let r = unsafe { (*d).rect };
+        let r = obj_ref(d).map(|o| o.rect)?;
         rect_bounds(r).map(|_| r)
     }
 }
@@ -371,11 +370,7 @@ fn fill_polygon_impl(d: drawing, points: &[point], color: rgb, odd_even: bool) {
 }
 
 fn c_string_len(s: *const c_char) -> usize {
-    if s.is_null() {
-        0
-    } else {
-        unsafe { CStr::from_ptr(s).to_bytes().len() }
-    }
+    cstr(s).map_or(0, |s| s.to_bytes().len())
 }
 
 fn wide_string(codepoints: *const c_int, count: Option<c_int>) -> Vec<char> {
@@ -416,11 +411,13 @@ fn font_info(f: font) -> FontInfo {
             .fonts
             .get(&font_key(f))
             .copied()
-            .unwrap_or(FontInfo {
-                height: unsafe { (*f).value.max(1) },
-                style: unsafe { (*f).flags as c_int },
-                quality: unsafe { (*f).max },
-                use_points: unsafe { (*f).size },
+            .unwrap_or_else(|| {
+                obj_ref(f).map_or(FontInfo::default(), |f| FontInfo {
+                    height: f.value.max(1),
+                    style: f.flags as c_int,
+                    quality: f.max,
+                    use_points: f.size,
+                })
             })
     })
 }
@@ -444,37 +441,38 @@ fn text_height(f: font) -> c_int {
 }
 
 fn write_metric(out: *mut c_int, value: c_int) {
-    if !out.is_null() {
-        unsafe {
-            *out = value;
-        }
+    if let Some(out) = ptr_mut(out) {
+        *out = value;
     }
 }
 
 fn read_image_pixel(img: image, x: c_int, y: c_int) -> Option<rgb> {
-    if img.is_null() || unsafe { (*img).pixels.is_null() } {
+    let img = ptr_ref(img)?;
+    if img.pixels.is_null() {
         return None;
     }
-    let width = unsafe { (*img).width };
-    let height = unsafe { (*img).height };
+    let width = img.width;
+    let height = img.height;
+    let depth = img.depth;
     if x < 0 || y < 0 || x >= width || y >= height {
         return None;
     }
     let index = usize::try_from(y.checked_mul(width)? + x).ok()?;
-    let depth = unsafe { (*img).depth };
+    // Raw pixel buffer: bounds were checked against the recorded
+    // width/height/depth above; one element is read per depth case.
     unsafe {
         if depth >= 32 {
             let offset = index.checked_mul(4)?;
-            let pixels = (*img).pixels.add(offset);
+            let pixels = img.pixels.add(offset);
             Some(rgb_make(
                 *pixels as rgb,
                 *pixels.add(1) as rgb,
                 *pixels.add(2) as rgb,
             ))
         } else if depth >= 8 {
-            let value = *(*img).pixels.add(index) as usize;
-            if !(*img).cmap.is_null() && value < (*img).cmapsize.max(0) as usize {
-                Some(*(*img).cmap.add(value))
+            let value = *img.pixels.add(index) as usize;
+            if !img.cmap.is_null() && value < img.cmapsize.max(0) as usize {
+                Some(*img.cmap.add(value))
             } else {
                 Some(rgb_make(value as rgb, value as rgb, value as rgb))
             }
@@ -738,17 +736,21 @@ pub fn gfillpolypolygon(d: drawing, fill: rgb, p: *mut point, npoly: c_int, nper
     if p.is_null() || nper.is_null() || npoly <= 0 {
         return;
     }
-    let counts = unsafe { std::slice::from_raw_parts(nper, npoly as usize) };
-    let mut offset = 0usize;
     let odd_even = with_state(d, |state| state.odd_even_fill);
-    for count in counts {
-        let count = (*count).max(0) as usize;
-        if count == 0 {
-            continue;
+    let mut offset = 0usize;
+    // Raw point/count arrays supplied by the caller; the per-polygon
+    // element counts bound each slice before it is read.
+    unsafe {
+        let counts = std::slice::from_raw_parts(nper, npoly as usize);
+        for count in counts {
+            let count = (*count).max(0) as usize;
+            if count == 0 {
+                continue;
+            }
+            let slice = std::slice::from_raw_parts(p.add(offset), count);
+            fill_polygon_impl(d, slice, fill, odd_even);
+            offset += count;
         }
-        let slice = unsafe { std::slice::from_raw_parts(p.add(offset), count) };
-        fill_polygon_impl(d, slice, fill, odd_even);
-        offset += count;
     }
 }
 
@@ -839,12 +841,12 @@ pub fn gnewfont2(
     if font.is_null() {
         return ptr::null_mut();
     }
-    unsafe {
-        (*font).text = strings::new_string(face);
-        (*font).flags = style as _;
-        (*font).value = size.max(1);
-        (*font).size = usePoints;
-        (*font).max = quality;
+    if let Some(f) = obj_mut(font) {
+        f.text = strings::new_string(face);
+        f.flags = style as _;
+        f.value = size.max(1);
+        f.size = usePoints;
+        f.max = quality;
     }
     with_graphapp_runtime(|runtime| {
         runtime.gdraw.fonts.insert(
@@ -865,16 +867,11 @@ pub fn ghasfixedwidth(f: font) -> c_int {
         return 0;
     }
     let style = font_info(f).style;
-    let face_is_mono = unsafe {
-        if (*f).text.is_null() {
-            false
-        } else {
-            CStr::from_ptr((*f).text)
-                .to_string_lossy()
-                .to_ascii_lowercase()
-                .contains("mono")
-        }
-    };
+    let face_is_mono = obj_ref(f)
+        .map(|f| f.text as *const c_char)
+        .and_then(cstr)
+        .map(|s| s.to_string_lossy().to_ascii_lowercase().contains("mono"))
+        .unwrap_or(false);
     if (style & FixedWidth) != 0 || face_is_mono {
         1
     } else {
@@ -888,12 +885,12 @@ pub fn newfield_no_border(text: *const c_char, r: rect) -> field {
     if field.is_null() {
         return ptr::null_mut();
     }
-    unsafe {
-        (*field).rect = normalized_rect(r);
-        (*field).text = strings::new_string(text);
-        (*field).state |= GA_Visible | GA_Enabled;
-        (*field).bg = White;
-        (*field).fg = Black;
+    if let Some(f) = obj_mut(field) {
+        f.rect = normalized_rect(r);
+        f.text = strings::new_string(text);
+        f.state |= GA_Visible | GA_Enabled;
+        f.bg = White;
+        f.fg = Black;
     }
     field
 }
