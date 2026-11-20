@@ -7,7 +7,7 @@ use std::os::raw::{c_char, c_int};
 
 use super::windows;
 
-unsafe fn write_status_bytes(text: *const c_char) {
+fn write_status_bytes(text: *const c_char) {
     let window = windows::get_current_window();
     if window.is_null() {
         return;
@@ -34,11 +34,11 @@ pub fn addstatusbar() -> c_int {
 pub fn delstatusbar() -> c_int {
     0
 }
-pub unsafe fn setstatus(text: *const c_char) {
+pub fn setstatus(text: *const c_char) {
     unsafe { write_status_bytes(text) };
 }
 
-pub unsafe fn updatestatus(text: *const c_char) {
+pub fn updatestatus(text: *const c_char) {
     unsafe { write_status_bytes(text) };
 }
 

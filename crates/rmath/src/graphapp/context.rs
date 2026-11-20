@@ -20,7 +20,7 @@ pub fn finish_contexts() {
     del_all_contexts();
 }
 
-pub unsafe fn add_context(obj: object, dc: *mut c_void, old: *mut c_void) {
+pub fn add_context(obj: object, dc: *mut c_void, old: *mut c_void) {
     if obj.is_null() {
         return;
     }
@@ -34,7 +34,7 @@ pub unsafe fn add_context(obj: object, dc: *mut c_void, old: *mut c_void) {
     });
 }
 
-pub unsafe fn get_context(obj: object) -> *mut c_void {
+pub fn get_context(obj: object) -> *mut c_void {
     if obj.is_null() {
         return ptr::null_mut();
     }
@@ -47,7 +47,7 @@ pub unsafe fn get_context(obj: object) -> *mut c_void {
     })
 }
 
-pub unsafe fn remove_context(obj: object) {
+pub fn remove_context(obj: object) {
     if obj.is_null() {
         return;
     }
@@ -59,7 +59,7 @@ pub unsafe fn remove_context(obj: object) {
     });
 }
 
-pub unsafe fn del_context(obj: object) {
+pub fn del_context(obj: object) {
     if obj.is_null() {
         return;
     }
@@ -70,7 +70,7 @@ pub fn del_all_contexts() {
     with_graphapp_runtime(|runtime| runtime.contexts.clear());
 }
 
-pub unsafe fn fix_brush(dc: *mut c_void, obj: drawing, brush: *mut c_void) {
+pub fn fix_brush(dc: *mut c_void, obj: drawing, brush: *mut c_void) {
     if obj.is_null() || dc.is_null() {
         return;
     }

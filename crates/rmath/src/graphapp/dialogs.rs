@@ -39,7 +39,7 @@ fn env_dialog_input() -> Option<String> {
         .or_else(|| env::var("GRAPHAPP_DIALOG_INPUT").ok())
 }
 
-unsafe fn cstr_to_string(ptr: *const c_char) -> String {
+fn cstr_to_string(ptr: *const c_char) -> String {
     if ptr.is_null() {
         String::new()
     } else {
@@ -121,7 +121,7 @@ fn write_status(obj: object, text: &str) {
     }
 }
 
-pub unsafe fn apperror(errstr: *const c_char) {
+pub fn apperror(errstr: *const c_char) {
     let text = unsafe { cstr_to_string(errstr) };
     let message = if text.is_empty() {
         "Unspecified error".to_owned()
@@ -132,39 +132,39 @@ pub unsafe fn apperror(errstr: *const c_char) {
     eprintln!("graphapp error: {message}");
 }
 
-pub unsafe fn askok(info: *const c_char) {
+pub fn askok(info: *const c_char) {
     let text = unsafe { cstr_to_string(info) };
     remember_message(1, &text);
 }
 
-pub unsafe fn askokcancel(_question: *const c_char) -> c_int {
+pub fn askokcancel(_question: *const c_char) -> c_int {
     dialog_choice(CANCEL).max(CANCEL)
 }
 
-pub unsafe fn askyesno(_question: *const c_char) -> c_int {
+pub fn askyesno(_question: *const c_char) -> c_int {
     match dialog_choice(NO) {
         YES => YES,
         _ => NO,
     }
 }
 
-pub unsafe fn askyesnocancel(_question: *const c_char) -> c_int {
+pub fn askyesnocancel(_question: *const c_char) -> c_int {
     dialog_choice(CANCEL)
 }
 
-pub unsafe fn askstring(_question: *const c_char, default_string: *const c_char) -> *mut c_char {
+pub fn askstring(_question: *const c_char, default_string: *const c_char) -> *mut c_char {
     make_graphapp_string(&selected_text(unsafe { cstr_to_string(default_string) }))
 }
 
-pub unsafe fn askpassword(_question: *const c_char, default_string: *const c_char) -> *mut c_char {
+pub fn askpassword(_question: *const c_char, default_string: *const c_char) -> *mut c_char {
     make_graphapp_string(&selected_text(unsafe { cstr_to_string(default_string) }))
 }
 
-pub unsafe fn askfilename(title: *const c_char, default_name: *const c_char) -> *mut c_char {
+pub fn askfilename(title: *const c_char, default_name: *const c_char) -> *mut c_char {
     unsafe { askfilenamewithdir(title, default_name, ptr::null()) }
 }
 
-pub unsafe fn askfilenamewithdir(
+pub fn askfilenamewithdir(
     _title: *const c_char,
     default_name: *const c_char,
     dir: *const c_char,
@@ -179,15 +179,15 @@ pub unsafe fn askfilenamewithdir(
     }
 }
 
-pub unsafe fn askfilesave(title: *const c_char, default_name: *const c_char) -> *mut c_char {
+pub fn askfilesave(title: *const c_char, default_name: *const c_char) -> *mut c_char {
     unsafe { askfilesavewithdir(title, default_name, ptr::null()) }
 }
 
-pub unsafe fn askUserPass(_title: *const c_char) -> *mut c_char {
+pub fn askUserPass(_title: *const c_char) -> *mut c_char {
     make_graphapp_string(&selected_text(String::new()))
 }
 
-pub unsafe fn setuserfilter(filter: *const c_char) {
+pub fn setuserfilter(filter: *const c_char) {
     with_graphapp_runtime(|runtime| {
         runtime.dialogs.user_filter = CString::new(unsafe { cstr_to_string(filter) }).ok();
     });
@@ -199,11 +199,11 @@ pub fn askchangedir() {
     }
 }
 
-pub unsafe fn askcdstring(_question: *const c_char, default_string: *const c_char) -> *mut c_char {
+pub fn askcdstring(_question: *const c_char, default_string: *const c_char) -> *mut c_char {
     make_graphapp_string(&selected_text(unsafe { cstr_to_string(default_string) }))
 }
 
-pub unsafe fn askfilesavewithdir(
+pub fn askfilesavewithdir(
     _title: *const c_char,
     default_name: *const c_char,
     dir: *const c_char,
@@ -218,7 +218,7 @@ pub unsafe fn askfilesavewithdir(
     }
 }
 
-pub unsafe fn askfilenames(
+pub fn askfilenames(
     _title: *const c_char,
     default_name: *const c_char,
     _multi: c_int,
@@ -234,7 +234,7 @@ pub unsafe fn askfilenames(
     copy_into_buffer(&value, strbuf, bufsize)
 }
 
-pub unsafe fn countFilenames(strbuf: *const c_char) -> c_int {
+pub fn countFilenames(strbuf: *const c_char) -> c_int {
     if strbuf.is_null() {
         return 0;
     }
@@ -252,7 +252,7 @@ pub unsafe fn countFilenames(strbuf: *const c_char) -> c_int {
     count
 }
 
-pub unsafe fn myMessageBox(obj: object, text: *const c_char, typ: c_int) {
+pub fn myMessageBox(obj: object, text: *const c_char, typ: c_int) {
     let message = unsafe { cstr_to_string(text) };
     remember_message(typ, &message);
     write_status(obj, &message);

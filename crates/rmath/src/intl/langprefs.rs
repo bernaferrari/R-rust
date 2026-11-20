@@ -23,7 +23,7 @@ mod macos {
     ///
     /// In the full C implementation this calls `_nl_locale_name_canonicalize`.
     /// Here we do minimal normalization: ensure lowercase language, etc.
-    unsafe fn _nl_locale_name_canonicalize(name: *mut c_char) {
+    fn _nl_locale_name_canonicalize(name: *mut c_char) {
         unsafe {
             if name.is_null() {
                 return;
@@ -41,7 +41,7 @@ mod macos {
     ///
     /// Returns a colon-separated list of locale names, or NULL if not available.
     /// The result must not be freed.
-    pub unsafe fn _nl_language_preferences_default() -> *const c_char {
+    pub fn _nl_language_preferences_default() -> *const c_char {
         unsafe {
             // Use CoreFoundation to get AppleLanguages preference.
             let preferences = crate::intl::langprefs::macos::cf_preferences_copy_app_value();
@@ -57,12 +57,12 @@ mod macos {
     ///
     /// In a real implementation this would call the CoreFoundation API.
     /// For the standalone port, we return NULL to indicate no preferences available.
-    pub unsafe fn cf_preferences_copy_app_value() -> *mut std::ffi::c_void {
+    pub fn cf_preferences_copy_app_value() -> *mut std::ffi::c_void {
         ptr::null_mut()
     }
 
     /// Extract languages from a CFArray of CFString preferences.
-    pub unsafe fn extract_languages(_pref_array: *mut std::ffi::c_void) -> *mut c_char {
+    pub fn extract_languages(_pref_array: *mut std::ffi::c_void) -> *mut c_char {
         // Stub: return NULL.
         ptr::null_mut()
     }
@@ -82,7 +82,7 @@ mod fallback {
     /// Determine the user's language preferences.
     ///
     /// On non-macOS platforms, always returns NULL.
-    pub unsafe fn _nl_language_preferences_default() -> *const c_char {
+    pub fn _nl_language_preferences_default() -> *const c_char {
         ptr::null()
     }
 }

@@ -17,7 +17,7 @@ fn set_clipboard_bytes(bytes: &[u8]) {
 
 pub fn copytoclipboard(_src: drawing) {}
 
-pub unsafe fn copystringtoclipboard(str_: *const std::os::raw::c_char) -> c_int {
+pub fn copystringtoclipboard(str_: *const std::os::raw::c_char) -> c_int {
     unsafe {
         if str_.is_null() {
             set_clipboard_bytes(&[]);
@@ -34,7 +34,7 @@ pub unsafe fn copystringtoclipboard(str_: *const std::os::raw::c_char) -> c_int 
     }
 }
 
-pub unsafe fn getstringfromclipboard(str_: *mut std::os::raw::c_char, n: c_int) -> c_int {
+pub fn getstringfromclipboard(str_: *mut std::os::raw::c_char, n: c_int) -> c_int {
     if str_.is_null() || n <= 0 {
         return 0;
     }

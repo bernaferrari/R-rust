@@ -10,11 +10,11 @@ use std::ptr;
 
 use super::types::*;
 
-pub unsafe fn textheight(_width: c_int, _text: *const std::os::raw::c_char) -> c_int {
+pub fn textheight(_width: c_int, _text: *const std::os::raw::c_char) -> c_int {
     0
 }
 
-pub unsafe fn drawtext(
+pub fn drawtext(
     _r: rect,
     _alignment: c_int,
     text: *const std::os::raw::c_char,
@@ -25,7 +25,7 @@ pub unsafe fn drawtext(
     text
 }
 
-pub unsafe fn gprintf(
+pub fn gprintf(
     _fmt: *const std::os::raw::c_char,
     _args: *const std::os::raw::c_void,
 ) -> c_int {

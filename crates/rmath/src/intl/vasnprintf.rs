@@ -35,7 +35,7 @@ const INT_DIGITS: usize = 32;
 /// Write an unsigned long integer into a buffer in the given base.
 ///
 /// Returns a pointer to the start of the string (which is at the end of the buffer).
-unsafe fn ulong_to_str(mut n: c_ulong, buf: *mut u8, base: c_int, uppercase: bool) -> *mut u8 {
+fn ulong_to_str(mut n: c_ulong, buf: *mut u8, base: c_int, uppercase: bool) -> *mut u8 {
     unsafe {
         let digits = if uppercase {
             b"0123456789ABCDEF"
@@ -76,7 +76,7 @@ unsafe fn ulong_to_str(mut n: c_ulong, buf: *mut u8, base: c_int, uppercase: boo
 }
 
 /// Write a signed long integer into a buffer.
-unsafe fn long_to_str(mut n: c_long, buf: *mut u8, base: c_int, uppercase: bool) -> *mut c_char {
+fn long_to_str(mut n: c_long, buf: *mut u8, base: c_int, uppercase: bool) -> *mut c_char {
     unsafe {
         let mut p = buf as *mut u8;
         if n < 0 {
@@ -103,7 +103,7 @@ struct FormatState {
 }
 
 impl FormatState {
-    unsafe fn new(resultbuf: *mut c_char) -> Self {
+    fn new(resultbuf: *mut c_char) -> Self {
         unsafe {
             if !resultbuf.is_null() {
                 // Use the provided buffer. We don't know its size, so allocate.
@@ -132,7 +132,7 @@ impl FormatState {
         }
     }
 
-    unsafe fn ensure_space(&mut self, additional: usize) -> bool {
+    fn ensure_space(&mut self, additional: usize) -> bool {
         unsafe {
             while self.buf_pos + additional >= self.buf_len {
                 let new_len = self.allocated_len * 2;
@@ -149,7 +149,7 @@ impl FormatState {
         }
     }
 
-    unsafe fn put_char(&mut self, c: c_char) -> bool {
+    fn put_char(&mut self, c: c_char) -> bool {
         unsafe {
             if !self.ensure_space(1) {
                 return false;
@@ -160,7 +160,7 @@ impl FormatState {
         }
     }
 
-    unsafe fn put_str(&mut self, s: *const c_char, len: usize) -> bool {
+    fn put_str(&mut self, s: *const c_char, len: usize) -> bool {
         unsafe {
             if !self.ensure_space(len) {
                 return false;
@@ -171,7 +171,7 @@ impl FormatState {
         }
     }
 
-    unsafe fn finish(mut self, lengthp: *mut usize) -> *mut c_char {
+    fn finish(mut self, lengthp: *mut usize) -> *mut c_char {
         unsafe {
             // NUL-terminate.
             if !self.ensure_space(1) {
@@ -202,7 +202,7 @@ impl FormatState {
 ///
 /// This is a simplified implementation that handles common format specifiers.
 /// For the full implementation, see the C vasnprintf.c.
-unsafe fn format_string(
+fn format_string(
     resultbuf: *mut c_char,
     lengthp: *mut usize,
     format: *const c_char,
@@ -376,7 +376,7 @@ unsafe fn format_string(
 ///
 /// # Safety
 /// `format` must be a valid pointer to a NUL-terminated C string.
-pub unsafe fn libintl_vasnprintf(
+pub fn libintl_vasnprintf(
     resultbuf: *mut c_char,
     lengthp: *mut usize,
     format: *const c_char,

@@ -13,7 +13,7 @@ use super::memory;
 
 /// Create and return a newly allocated copy of a string.
 /// Null strings are converted into empty strings.
-pub unsafe fn new_string(src: *const c_char) -> *mut c_char {
+pub fn new_string(src: *const c_char) -> *mut c_char {
     unsafe {
         if src.is_null() {
             // Allocate empty string
@@ -33,7 +33,7 @@ pub unsafe fn new_string(src: *const c_char) -> *mut c_char {
 }
 
 /// Delete a previously allocated string.
-pub unsafe fn del_string(str: *const c_char) {
+pub fn del_string(str: *const c_char) {
     unsafe {
         if !str.is_null() {
             memory::memfree(str as *mut u8);
@@ -42,7 +42,7 @@ pub unsafe fn del_string(str: *const c_char) {
 }
 
 /// String length. Returns 0 for null strings.
-pub unsafe fn string_length(s: *const c_char) -> c_long {
+pub fn string_length(s: *const c_char) -> c_long {
     unsafe {
         if s.is_null() {
             return 0;
@@ -56,7 +56,7 @@ pub unsafe fn string_length(s: *const c_char) -> c_long {
 }
 
 /// Copy a string. Avoids doing anything to null strings.
-pub unsafe fn copy_string(dest: *mut c_char, src: *const c_char) {
+pub fn copy_string(dest: *mut c_char, src: *const c_char) {
     unsafe {
         if dest.is_null() || src.is_null() {
             return;
@@ -71,7 +71,7 @@ pub unsafe fn copy_string(dest: *mut c_char, src: *const c_char) {
 }
 
 /// String comparison. Null == null, null == "", "" == null.
-pub unsafe fn compare_strings(s1: *const c_char, s2: *const c_char) -> c_int {
+pub fn compare_strings(s1: *const c_char, s2: *const c_char) -> c_int {
     unsafe {
         if s1 == s2 {
             return 0;
@@ -98,7 +98,7 @@ pub unsafe fn compare_strings(s1: *const c_char, s2: *const c_char) -> c_int {
     }
 }
 
-unsafe fn new_string_from_bytes(bytes: &[u8]) -> *mut c_char {
+fn new_string_from_bytes(bytes: &[u8]) -> *mut c_char {
     unsafe {
         let len = bytes.len().min(c_long::MAX as usize);
         let out = memory::memalloc(len as c_long + 1) as *mut c_char;
@@ -114,7 +114,7 @@ unsafe fn new_string_from_bytes(bytes: &[u8]) -> *mut c_char {
 }
 
 /// Append two strings. The returned string is newly allocated and caller-owned.
-pub unsafe fn add_strings(s1: *const c_char, s2: *const c_char) -> *mut c_char {
+pub fn add_strings(s1: *const c_char, s2: *const c_char) -> *mut c_char {
     unsafe {
         if s1.is_null() {
             return new_string(s2);
@@ -135,7 +135,7 @@ pub unsafe fn add_strings(s1: *const c_char, s2: *const c_char) -> *mut c_char {
 }
 
 /// Convert a char to a newly allocated string.
-pub unsafe fn char_to_string(ch: c_char) -> *mut c_char {
+pub fn char_to_string(ch: c_char) -> *mut c_char {
     unsafe {
         let out = memory::memalloc(2) as *mut c_char;
         if !out.is_null() {
@@ -147,7 +147,7 @@ pub unsafe fn char_to_string(ch: c_char) -> *mut c_char {
 }
 
 /// Convert an integer to a newly allocated string.
-pub unsafe fn int_to_string(i: c_long) -> *mut c_char {
+pub fn int_to_string(i: c_long) -> *mut c_char {
     unsafe {
         let str_val = format!("{}", i);
         new_string_from_bytes(str_val.as_bytes())
@@ -155,7 +155,7 @@ pub unsafe fn int_to_string(i: c_long) -> *mut c_char {
 }
 
 /// Convert a float to a newly allocated string.
-pub unsafe fn float_to_string(f: f32) -> *mut c_char {
+pub fn float_to_string(f: f32) -> *mut c_char {
     unsafe {
         let str_val = format!("{}", f);
         new_string_from_bytes(str_val.as_bytes())
@@ -163,7 +163,7 @@ pub unsafe fn float_to_string(f: f32) -> *mut c_char {
 }
 
 /// Case-insensitive string comparison.
-pub unsafe fn string_diff(s: *const c_char, t: *const c_char) -> c_int {
+pub fn string_diff(s: *const c_char, t: *const c_char) -> c_int {
     unsafe {
         let mut diff: c_int = 0;
         let mut si: isize = 0;
@@ -188,7 +188,7 @@ pub unsafe fn string_diff(s: *const c_char, t: *const c_char) -> c_int {
 }
 
 /// Convert \n to \r\n. The returned string must be freed.
-pub unsafe fn to_dos_string(text: *const c_char) -> *mut c_char {
+pub fn to_dos_string(text: *const c_char) -> *mut c_char {
     unsafe {
         if text.is_null() {
             return ptr::null_mut();
@@ -232,7 +232,7 @@ pub unsafe fn to_dos_string(text: *const c_char) -> *mut c_char {
 }
 
 /// Strip carriage returns. The returned string must be freed.
-pub unsafe fn to_c_string(text: *const c_char) -> *mut c_char {
+pub fn to_c_string(text: *const c_char) -> *mut c_char {
     unsafe {
         if text.is_null() {
             return ptr::null_mut();

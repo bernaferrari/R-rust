@@ -5,7 +5,7 @@
 
 use super::types::*;
 
-pub unsafe fn newmetafile(
+pub fn newmetafile(
     _name: *const std::os::raw::c_char,
     _width: f64,
     _height: f64,

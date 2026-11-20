@@ -6,7 +6,7 @@
 use super::types::*;
 
 #[allow(clippy::if_same_then_else)]
-pub unsafe fn bitmaptoimage(bm: bitmap) -> image {
+pub fn bitmaptoimage(bm: bitmap) -> image {
     if bm.is_null() {
         std::ptr::null_mut()
     } else {

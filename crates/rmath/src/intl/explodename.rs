@@ -15,7 +15,7 @@ use crate::intl::types;
 ///
 /// # Safety
 /// `name` must be a valid pointer to a NUL-terminated C string.
-unsafe fn _nl_find_language(name: *mut c_char) -> *mut c_char {
+fn _nl_find_language(name: *mut c_char) -> *mut c_char {
     unsafe {
         let mut p = name;
         while *p != 0 && *p != b'_' as c_char && *p != b'@' as c_char && *p != b'.' as c_char {
@@ -34,7 +34,7 @@ unsafe fn _nl_find_language(name: *mut c_char) -> *mut c_char {
 /// # Safety
 /// `codeset` must be a valid pointer and `name_len` must be the length
 /// of the string at `codeset`.
-unsafe fn _nl_normalize_codeset(codeset: *const c_char, name_len: usize) -> *mut c_char {
+fn _nl_normalize_codeset(codeset: *const c_char, name_len: usize) -> *mut c_char {
     unsafe {
         let layout = std::alloc::Layout::from_size_align(name_len + 1, 1)
             .unwrap_or_else(|_| std::alloc::Layout::new::<u8>());
@@ -76,7 +76,7 @@ unsafe fn _nl_normalize_codeset(codeset: *const c_char, name_len: usize) -> *mut
 /// # Safety
 /// `name` must be a valid mutable pointer to a NUL-terminated C string.
 /// All output pointers must be valid.
-pub unsafe fn _nl_explode_name(
+pub fn _nl_explode_name(
     name: *mut c_char,
     language: *mut *const c_char,
     modifier: *mut *const c_char,

@@ -13,7 +13,7 @@ use super::drawing as drawing_state;
 use super::events;
 use super::types::*;
 
-unsafe fn text_len(text: *const c_char) -> usize {
+fn text_len(text: *const c_char) -> usize {
     let mut len = 0usize;
     unsafe {
         while !text.is_null() && *text.add(len) != 0 {
@@ -23,7 +23,7 @@ unsafe fn text_len(text: *const c_char) -> usize {
     len
 }
 
-unsafe fn selection_bounds(obj: control, len: usize) -> (usize, usize) {
+fn selection_bounds(obj: control, len: usize) -> (usize, usize) {
     unsafe {
         let start = (*obj).size.max(0) as usize;
         let end = (*obj).xsize.max(0) as usize;
@@ -31,7 +31,7 @@ unsafe fn selection_bounds(obj: control, len: usize) -> (usize, usize) {
     }
 }
 
-pub unsafe fn gchangescrollbar(
+pub fn gchangescrollbar(
     sb: scrollbar,
     _which: c_int,
     where_: c_int,
@@ -48,7 +48,7 @@ pub unsafe fn gchangescrollbar(
     }
 }
 
-pub unsafe fn gsetcursor(d: drawing, c: cursor) {
+pub fn gsetcursor(d: drawing, c: cursor) {
     if d.is_null() {
         return;
     }
@@ -63,7 +63,7 @@ pub fn newtoolbutton(_img: image, _r: rect, _fn_: actionfn) -> button {
     ptr::null_mut()
 }
 
-pub unsafe fn scrolltext(c: textbox, lines: c_int) {
+pub fn scrolltext(c: textbox, lines: c_int) {
     unsafe {
         if !c.is_null() {
             (*c).carety = ((*c).carety + lines).max(0);
@@ -75,7 +75,7 @@ pub fn ggetkeystate() -> c_int {
     events::getkeystate()
 }
 
-pub unsafe fn scrollcaret(c: textbox, lines: c_int) {
+pub fn scrollcaret(c: textbox, lines: c_int) {
     unsafe {
         if !c.is_null() {
             (*c).carety = ((*c).carety + lines).max(0);
@@ -83,7 +83,7 @@ pub unsafe fn scrollcaret(c: textbox, lines: c_int) {
     }
 }
 
-pub unsafe fn gsetmodified(c: textbox, modified: c_int) {
+pub fn gsetmodified(c: textbox, modified: c_int) {
     unsafe {
         if !c.is_null() {
             (*c).value = i32::from(modified != 0);
@@ -91,7 +91,7 @@ pub unsafe fn gsetmodified(c: textbox, modified: c_int) {
     }
 }
 
-pub unsafe fn ggetmodified(c: textbox) -> c_int {
+pub fn ggetmodified(c: textbox) -> c_int {
     unsafe {
         if c.is_null() {
             0
@@ -101,7 +101,7 @@ pub unsafe fn ggetmodified(c: textbox) -> c_int {
     }
 }
 
-pub unsafe fn getlinelength(c: textbox) -> c_int {
+pub fn getlinelength(c: textbox) -> c_int {
     unsafe {
         if c.is_null() || (*c).text.is_null() {
             return 0;
@@ -115,7 +115,7 @@ pub unsafe fn getlinelength(c: textbox) -> c_int {
     }
 }
 
-pub unsafe fn getcurrentline(c: textbox, line: *mut c_char, length: c_int) {
+pub fn getcurrentline(c: textbox, line: *mut c_char, length: c_int) {
     unsafe {
         if c.is_null() || line.is_null() || length <= 0 {
             return;
@@ -129,7 +129,7 @@ pub unsafe fn getcurrentline(c: textbox, line: *mut c_char, length: c_int) {
     }
 }
 
-pub unsafe fn getseltext(c: textbox, text: *mut c_char) {
+pub fn getseltext(c: textbox, text: *mut c_char) {
     unsafe {
         if c.is_null() || text.is_null() {
             return;
@@ -151,7 +151,7 @@ pub unsafe fn getseltext(c: textbox, text: *mut c_char) {
     }
 }
 
-pub unsafe fn setlimittext(t: textbox, limit: c_long) {
+pub fn setlimittext(t: textbox, limit: c_long) {
     unsafe {
         if !t.is_null() {
             (*t).max = limit.max(0) as c_int;
@@ -160,11 +160,11 @@ pub unsafe fn setlimittext(t: textbox, limit: c_long) {
     }
 }
 
-pub unsafe fn getlimittext(t: textbox) -> c_long {
+pub fn getlimittext(t: textbox) -> c_long {
     unsafe { if t.is_null() { 0 } else { (*t).max as c_long } }
 }
 
-pub unsafe fn checklimittext(t: textbox, n: c_long) {
+pub fn checklimittext(t: textbox, n: c_long) {
     unsafe {
         if t.is_null() || (*t).text.is_null() {
             return;
@@ -189,7 +189,7 @@ pub fn getpastelength() -> c_long {
     0
 }
 
-pub unsafe fn textselectionex(obj: control, start: *mut c_long, end: *mut c_long) {
+pub fn textselectionex(obj: control, start: *mut c_long, end: *mut c_long) {
     unsafe {
         if obj.is_null() {
             return;
@@ -203,7 +203,7 @@ pub unsafe fn textselectionex(obj: control, start: *mut c_long, end: *mut c_long
     }
 }
 
-pub unsafe fn selecttextex(obj: control, start: c_long, end: c_long) {
+pub fn selecttextex(obj: control, start: c_long, end: c_long) {
     unsafe {
         if !obj.is_null() {
             (*obj).size = start.max(0) as c_int;
@@ -212,9 +212,9 @@ pub unsafe fn selecttextex(obj: control, start: c_long, end: c_long) {
     }
 }
 
-pub unsafe fn finddialog(_t: textbox) {}
+pub fn finddialog(_t: textbox) {}
 
-pub unsafe fn replacedialog(_t: textbox) {}
+pub fn replacedialog(_t: textbox) {}
 
 pub fn modeless_active() -> c_int {
     0

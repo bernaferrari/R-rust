@@ -42,7 +42,7 @@ static WIDE_NULL_STRING: [u32; 7] = [
 /// support is limited, this implementation provides the structure and type
 /// handling but the actual variadic extraction would need to be done at a
 /// higher level.  For the standalone port, this serves as the FFI bridge.
-pub unsafe fn printf_fetchargs(_args: *mut c_void, a: *mut arguments) -> c_int {
+pub fn printf_fetchargs(_args: *mut c_void, a: *mut arguments) -> c_int {
     unsafe {
         if a.is_null() {
             return -1;
@@ -157,7 +157,7 @@ mod tests {
     use std::ffi::CStr;
     use std::ptr;
 
-    unsafe fn get_argument_as_int(arg: &argument) -> Option<c_int> {
+    fn get_argument_as_int(arg: &argument) -> Option<c_int> {
         match arg.type_ {
             arg_type::TYPE_SCHAR => Some(unsafe { arg.a.a_schar as c_int }),
             arg_type::TYPE_UCHAR => Some(unsafe { arg.a.a_uchar as c_int }),
@@ -169,7 +169,7 @@ mod tests {
         }
     }
 
-    unsafe fn get_argument_as_string(arg: &argument) -> Option<&str> {
+    fn get_argument_as_string(arg: &argument) -> Option<&str> {
         if arg.type_ == arg_type::TYPE_STRING && !unsafe { arg.a.a_string.is_null() } {
             unsafe { CStr::from_ptr(arg.a.a_string).to_str().ok() }
         } else {
@@ -177,7 +177,7 @@ mod tests {
         }
     }
 
-    unsafe fn get_argument_as_pointer(arg: &argument) -> Option<*mut c_void> {
+    fn get_argument_as_pointer(arg: &argument) -> Option<*mut c_void> {
         if arg.type_ == arg_type::TYPE_POINTER {
             Some(unsafe { arg.a.a_pointer })
         } else {

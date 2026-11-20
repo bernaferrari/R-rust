@@ -22,7 +22,7 @@ pub fn finish_events() {
     with_graphapp_runtime(|runtime| runtime.events.timer = TimerState::default());
 }
 
-pub unsafe fn handle_control(_hwnd: *mut c_void, _message: c_uint) {}
+pub fn handle_control(_hwnd: *mut c_void, _message: c_uint) {}
 
 pub fn getkeystate() -> c_int {
     with_graphapp_runtime(|runtime| runtime.events.keystate)
@@ -68,7 +68,7 @@ pub fn mainloop() {
     }
 }
 
-pub unsafe fn execapp(_cmd: *mut std::os::raw::c_char) -> c_int {
+pub fn execapp(_cmd: *mut std::os::raw::c_char) -> c_int {
     0
 }
 
@@ -81,7 +81,7 @@ pub fn settimer(millisec: c_uint) -> c_int {
     i32::from(millisec > 0)
 }
 
-pub unsafe fn settimerfn(timeout: timerfn, data: *mut c_void) {
+pub fn settimerfn(timeout: timerfn, data: *mut c_void) {
     with_graphapp_runtime(|runtime| {
         let timer = &mut runtime.events.timer;
         timer.timeout = timeout;
@@ -119,7 +119,7 @@ mod tests {
 
     thread_local! { static TIMER_CALLS: Cell<c_int> = Cell::new(0); }
 
-    unsafe extern "C" fn record_timer(_data: *mut c_void) {
+    extern "C" fn record_timer(_data: *mut c_void) {
         TIMER_CALLS.with(|calls| calls.set(calls.get() + 1));
     }
 

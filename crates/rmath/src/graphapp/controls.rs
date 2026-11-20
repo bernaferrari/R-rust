@@ -38,7 +38,7 @@ fn list_length(list: *const *const c_char) -> c_int {
     len
 }
 
-unsafe fn alloc_drawstate(dest: drawing) -> drawstate {
+fn alloc_drawstate(dest: drawing) -> drawstate {
     let state = unsafe { memory::memalloc_bytes(std::mem::size_of::<drawstruct>()) as drawstate };
     if state.is_null() {
         return ptr::null_mut();
@@ -51,7 +51,7 @@ unsafe fn alloc_drawstate(dest: drawing) -> drawstate {
     state
 }
 
-unsafe fn new_control_object(
+fn new_control_object(
     kind: c_int,
     text: *const c_char,
     r: rect,
@@ -76,7 +76,7 @@ unsafe fn new_control_object(
     }
 }
 
-unsafe fn new_bitmap_object(width: c_int, height: c_int, depth: c_int) -> bitmap {
+fn new_bitmap_object(width: c_int, height: c_int, depth: c_int) -> bitmap {
     unsafe {
         let bitmap = new_control_object(
             BitmapObject,
@@ -99,7 +99,7 @@ unsafe fn new_bitmap_object(width: c_int, height: c_int, depth: c_int) -> bitmap
     }
 }
 
-unsafe fn set_bitmap_pixels(bitmap: bitmap, data: *mut GAbyte) {
+fn set_bitmap_pixels(bitmap: bitmap, data: *mut GAbyte) {
     unsafe {
         if bitmap.is_null() || (*bitmap).img.is_null() || data.is_null() {
             return;
@@ -108,112 +108,112 @@ unsafe fn set_bitmap_pixels(bitmap: bitmap, data: *mut GAbyte) {
     }
 }
 
-pub unsafe fn setaction(c: control, fn_: actionfn) {
+pub fn setaction(c: control, fn_: actionfn) {
     unsafe {
         if !c.is_null() {
             (*c).action = fn_;
         }
     }
 }
-pub unsafe fn sethit(c: control, fn_: intfn) {
+pub fn sethit(c: control, fn_: intfn) {
     unsafe {
         if !c.is_null() {
             (*c).hit = fn_;
         }
     }
 }
-pub unsafe fn setdel(c: control, fn_: actionfn) {
+pub fn setdel(c: control, fn_: actionfn) {
     unsafe {
         if !c.is_null() && !(*c).call.is_null() {
             (*(*c).call).die = fn_;
         }
     }
 }
-pub unsafe fn setclose(c: control, fn_: actionfn) {
+pub fn setclose(c: control, fn_: actionfn) {
     unsafe {
         if !c.is_null() && !(*c).call.is_null() {
             (*(*c).call).close = fn_;
         }
     }
 }
-pub unsafe fn setredraw(c: control, fn_: drawfn) {
+pub fn setredraw(c: control, fn_: drawfn) {
     unsafe {
         if !c.is_null() && !(*c).call.is_null() {
             (*(*c).call).redraw = fn_;
         }
     }
 }
-pub unsafe fn setresize(c: control, fn_: drawfn) {
+pub fn setresize(c: control, fn_: drawfn) {
     unsafe {
         if !c.is_null() && !(*c).call.is_null() {
             (*(*c).call).resize = fn_;
         }
     }
 }
-pub unsafe fn setkeydown(c: control, fn_: keyfn) {
+pub fn setkeydown(c: control, fn_: keyfn) {
     unsafe {
         if !c.is_null() && !(*c).call.is_null() {
             (*(*c).call).keydown = fn_;
         }
     }
 }
-pub unsafe fn setkeyaction(c: control, fn_: keyfn) {
+pub fn setkeyaction(c: control, fn_: keyfn) {
     unsafe {
         if !c.is_null() && !(*c).call.is_null() {
             (*(*c).call).keyaction = fn_;
         }
     }
 }
-pub unsafe fn setmousedown(c: control, fn_: mousefn) {
+pub fn setmousedown(c: control, fn_: mousefn) {
     unsafe {
         if !c.is_null() && !(*c).call.is_null() {
             (*(*c).call).mousedown = fn_;
         }
     }
 }
-pub unsafe fn setmousedrag(c: control, fn_: mousefn) {
+pub fn setmousedrag(c: control, fn_: mousefn) {
     unsafe {
         if !c.is_null() && !(*c).call.is_null() {
             (*(*c).call).mousedrag = fn_;
         }
     }
 }
-pub unsafe fn setmouseup(c: control, fn_: mousefn) {
+pub fn setmouseup(c: control, fn_: mousefn) {
     unsafe {
         if !c.is_null() && !(*c).call.is_null() {
             (*(*c).call).mouseup = fn_;
         }
     }
 }
-pub unsafe fn setmousemove(c: control, fn_: mousefn) {
+pub fn setmousemove(c: control, fn_: mousefn) {
     unsafe {
         if !c.is_null() && !(*c).call.is_null() {
             (*(*c).call).mousemove = fn_;
         }
     }
 }
-pub unsafe fn setmouserepeat(c: control, fn_: mousefn) {
+pub fn setmouserepeat(c: control, fn_: mousefn) {
     unsafe {
         if !c.is_null() && !(*c).call.is_null() {
             (*(*c).call).mouserepeat = fn_;
         }
     }
 }
-pub unsafe fn setdrop(c: control, fn_: dropfn) {
+pub fn setdrop(c: control, fn_: dropfn) {
     unsafe {
         if !c.is_null() && !(*c).call.is_null() {
             (*(*c).call).drop = fn_;
         }
     }
 }
-pub unsafe fn setonfocus(c: control, fn_: actionfn) {
+pub fn setonfocus(c: control, fn_: actionfn) {
     unsafe {
         if !c.is_null() && !(*c).call.is_null() {
             (*(*c).call).focus = fn_;
         }
     }
 }
-pub unsafe fn setim(c: control, fn_: imfn) {
+pub fn setim(c: control, fn_: imfn) {
     unsafe {
         if !c.is_null() && !(*c).call.is_null() {
             (*(*c).call).im = fn_;
@@ -221,12 +221,12 @@ pub unsafe fn setim(c: control, fn_: imfn) {
     }
 }
 
-pub unsafe fn clear(c: control) {
+pub fn clear(c: control) {
     unsafe {
         draw(c);
     }
 }
-pub unsafe fn draw(c: control) {
+pub fn draw(c: control) {
     unsafe {
         if c.is_null() || ((*c).state & GA_Visible) == 0 || (*c).call.is_null() {
             return;
@@ -236,33 +236,33 @@ pub unsafe fn draw(c: control) {
         }
     }
 }
-pub unsafe fn redraw(c: control) {
+pub fn redraw(c: control) {
     unsafe {
         draw(c);
     }
 }
-pub unsafe fn resize(c: control, r: rect) {
+pub fn resize(c: control, r: rect) {
     unsafe {
         if !c.is_null() {
             (*c).rect = r;
         }
     }
 }
-pub unsafe fn show_control(c: control) {
+pub fn show_control(c: control) {
     unsafe {
         if !c.is_null() {
             (*c).state |= GA_Visible;
         }
     }
 }
-pub unsafe fn hide_control(c: control) {
+pub fn hide_control(c: control) {
     unsafe {
         if !c.is_null() {
             (*c).state &= !GA_Visible;
         }
     }
 }
-pub unsafe fn isvisible(c: control) -> c_int {
+pub fn isvisible(c: control) -> c_int {
     unsafe {
         if c.is_null() {
             0
@@ -271,21 +271,21 @@ pub unsafe fn isvisible(c: control) -> c_int {
         }
     }
 }
-pub unsafe fn enable(c: control) {
+pub fn enable(c: control) {
     unsafe {
         if !c.is_null() {
             (*c).state |= GA_Enabled;
         }
     }
 }
-pub unsafe fn disable(c: control) {
+pub fn disable(c: control) {
     unsafe {
         if !c.is_null() {
             (*c).state &= !GA_Enabled;
         }
     }
 }
-pub unsafe fn isenabled(c: control) -> c_int {
+pub fn isenabled(c: control) -> c_int {
     unsafe {
         if c.is_null() {
             0
@@ -294,21 +294,21 @@ pub unsafe fn isenabled(c: control) -> c_int {
         }
     }
 }
-pub unsafe fn check(c: control) {
+pub fn check(c: control) {
     unsafe {
         if !c.is_null() {
             (*c).state |= GA_Checked;
         }
     }
 }
-pub unsafe fn uncheck(c: control) {
+pub fn uncheck(c: control) {
     unsafe {
         if !c.is_null() {
             (*c).state &= !GA_Checked;
         }
     }
 }
-pub unsafe fn ischecked(c: control) -> c_int {
+pub fn ischecked(c: control) -> c_int {
     unsafe {
         if c.is_null() {
             0
@@ -317,21 +317,21 @@ pub unsafe fn ischecked(c: control) -> c_int {
         }
     }
 }
-pub unsafe fn highlight(c: control) {
+pub fn highlight(c: control) {
     unsafe {
         if !c.is_null() {
             (*c).state |= GA_Highlighted;
         }
     }
 }
-pub unsafe fn unhighlight(c: control) {
+pub fn unhighlight(c: control) {
     unsafe {
         if !c.is_null() {
             (*c).state &= !GA_Highlighted;
         }
     }
 }
-pub unsafe fn ishighlighted(c: control) -> c_int {
+pub fn ishighlighted(c: control) -> c_int {
     unsafe {
         if c.is_null() {
             0
@@ -344,7 +344,7 @@ pub unsafe fn ishighlighted(c: control) -> c_int {
         }
     }
 }
-pub unsafe fn flashcontrol(c: control) {
+pub fn flashcontrol(c: control) {
     unsafe {
         if c.is_null() || ((*c).state & GA_Enabled) == 0 {
             return;
@@ -359,7 +359,7 @@ pub unsafe fn flashcontrol(c: control) {
         redraw(c);
     }
 }
-pub unsafe fn activatecontrol(c: control) {
+pub fn activatecontrol(c: control) {
     unsafe {
         if c.is_null() || ((*c).state & GA_Enabled) == 0 {
             return;
@@ -378,7 +378,7 @@ pub unsafe fn activatecontrol(c: control) {
     }
 }
 
-pub unsafe fn settext(c: control, text: *const c_char) {
+pub fn settext(c: control, text: *const c_char) {
     unsafe {
         if c.is_null() {
             return;
@@ -389,7 +389,7 @@ pub unsafe fn settext(c: control, text: *const c_char) {
         (*c).text = super::strings::new_string(text);
     }
 }
-pub unsafe fn GA_gettext(c: control) -> *mut c_char {
+pub fn GA_gettext(c: control) -> *mut c_char {
     unsafe {
         if c.is_null() {
             ptr::null_mut()
@@ -399,7 +399,7 @@ pub unsafe fn GA_gettext(c: control) -> *mut c_char {
     }
 }
 #[allow(clippy::if_same_then_else)]
-pub unsafe fn gettextfont(c: control) -> font {
+pub fn gettextfont(c: control) -> font {
     unsafe {
         if c.is_null() || (*c).drawstate.is_null() {
             ptr::null_mut()
@@ -408,51 +408,51 @@ pub unsafe fn gettextfont(c: control) -> font {
         }
     }
 }
-pub unsafe fn settextfont(c: control, f: font) {
+pub fn settextfont(c: control, f: font) {
     unsafe {
         if !c.is_null() && !(*c).drawstate.is_null() {
             (*(*c).drawstate).fnt = f;
         }
     }
 }
-pub unsafe fn setforeground(c: control, fg: rgb) {
+pub fn setforeground(c: control, fg: rgb) {
     unsafe {
         if !c.is_null() {
             (*c).fg = fg;
         }
     }
 }
-pub unsafe fn getforeground(c: control) -> rgb {
+pub fn getforeground(c: control) -> rgb {
     unsafe { if c.is_null() { Black } else { (*c).fg } }
 }
-pub unsafe fn setbackground(c: control, bg: rgb) {
+pub fn setbackground(c: control, bg: rgb) {
     unsafe {
         if !c.is_null() {
             (*c).bg = bg;
         }
     }
 }
-pub unsafe fn getbackground(c: control) -> rgb {
+pub fn getbackground(c: control) -> rgb {
     unsafe { if c.is_null() { Transparent } else { (*c).bg } }
 }
-pub unsafe fn setvalue(c: control, value: c_int) {
+pub fn setvalue(c: control, value: c_int) {
     unsafe {
         if !c.is_null() {
             (*c).value = value;
         }
     }
 }
-pub unsafe fn getvalue(c: control) -> c_int {
+pub fn getvalue(c: control) -> c_int {
     unsafe { if c.is_null() { 0 } else { (*c).value } }
 }
-pub unsafe fn setdata(c: control, data: *mut c_void) {
+pub fn setdata(c: control, data: *mut c_void) {
     unsafe {
         if !c.is_null() {
             (*c).data = data;
         }
     }
 }
-pub unsafe fn getdata(c: control) -> *mut c_void {
+pub fn getdata(c: control) -> *mut c_void {
     unsafe {
         if c.is_null() {
             ptr::null_mut()
@@ -461,7 +461,7 @@ pub unsafe fn getdata(c: control) -> *mut c_void {
         }
     }
 }
-pub unsafe fn parentwindow(c: control) -> window {
+pub fn parentwindow(c: control) -> window {
     unsafe {
         if c.is_null() {
             ptr::null_mut()
@@ -471,10 +471,10 @@ pub unsafe fn parentwindow(c: control) -> window {
     }
 }
 
-pub unsafe fn newcontrol(text: *const c_char, r: rect) -> control {
+pub fn newcontrol(text: *const c_char, r: rect) -> control {
     unsafe { new_control_object(ControlObject, text, r, false) }
 }
-pub unsafe fn newdrawing(r: rect, fn_: drawfn) -> drawing {
+pub fn newdrawing(r: rect, fn_: drawfn) -> drawing {
     unsafe {
         let drawing = new_control_object(UserObject, ptr::null(), r, true);
         if !drawing.is_null() && !(*drawing).call.is_null() {
@@ -483,7 +483,7 @@ pub unsafe fn newdrawing(r: rect, fn_: drawfn) -> drawing {
         drawing
     }
 }
-pub unsafe fn newpicture(img: image, r: rect) -> drawing {
+pub fn newpicture(img: image, r: rect) -> drawing {
     unsafe {
         let picture = newdrawing(r, None);
         if !picture.is_null() {
@@ -492,7 +492,7 @@ pub unsafe fn newpicture(img: image, r: rect) -> drawing {
         picture
     }
 }
-pub unsafe fn newbutton(text: *const c_char, r: rect, fn_: actionfn) -> button {
+pub fn newbutton(text: *const c_char, r: rect, fn_: actionfn) -> button {
     unsafe {
         let button = new_control_object(ButtonObject, text, r, false);
         if !button.is_null() {
@@ -501,7 +501,7 @@ pub unsafe fn newbutton(text: *const c_char, r: rect, fn_: actionfn) -> button {
         button
     }
 }
-pub unsafe fn newimagebutton(img: image, r: rect, fn_: actionfn) -> button {
+pub fn newimagebutton(img: image, r: rect, fn_: actionfn) -> button {
     unsafe {
         let button = newbutton(ptr::null(), r, fn_);
         if !button.is_null() {
@@ -510,14 +510,14 @@ pub unsafe fn newimagebutton(img: image, r: rect, fn_: actionfn) -> button {
         button
     }
 }
-pub unsafe fn setimage(c: control, img: image) {
+pub fn setimage(c: control, img: image) {
     unsafe {
         if !c.is_null() {
             (*c).img = img;
         }
     }
 }
-pub unsafe fn newcheckbox(text: *const c_char, r: rect, fn_: actionfn) -> checkbox {
+pub fn newcheckbox(text: *const c_char, r: rect, fn_: actionfn) -> checkbox {
     unsafe {
         let checkbox = new_control_object(CheckboxObject, text, r, false);
         if !checkbox.is_null() {
@@ -526,7 +526,7 @@ pub unsafe fn newcheckbox(text: *const c_char, r: rect, fn_: actionfn) -> checkb
         checkbox
     }
 }
-pub unsafe fn newimagecheckbox(img: image, r: rect, fn_: actionfn) -> checkbox {
+pub fn newimagecheckbox(img: image, r: rect, fn_: actionfn) -> checkbox {
     unsafe {
         let checkbox = newcheckbox(ptr::null(), r, fn_);
         if !checkbox.is_null() {
@@ -535,7 +535,7 @@ pub unsafe fn newimagecheckbox(img: image, r: rect, fn_: actionfn) -> checkbox {
         checkbox
     }
 }
-pub unsafe fn newradiobutton(text: *const c_char, r: rect, fn_: actionfn) -> radiobutton {
+pub fn newradiobutton(text: *const c_char, r: rect, fn_: actionfn) -> radiobutton {
     unsafe {
         let button = new_control_object(RadioObject, text, r, false);
         if !button.is_null() {
@@ -547,7 +547,7 @@ pub unsafe fn newradiobutton(text: *const c_char, r: rect, fn_: actionfn) -> rad
 pub fn newradiogroup() -> radiogroup {
     unsafe { new_control_object(RadiogroupObject, ptr::null(), rect::default(), false) }
 }
-pub unsafe fn newscrollbar(r: rect, max: c_int, pagesize: c_int, _fn_: scrollfn) -> scrollbar {
+pub fn newscrollbar(r: rect, max: c_int, pagesize: c_int, _fn_: scrollfn) -> scrollbar {
     unsafe {
         let scrollbar = new_control_object(ScrollbarObject, ptr::null(), r, false);
         if !scrollbar.is_null() {
@@ -556,7 +556,7 @@ pub unsafe fn newscrollbar(r: rect, max: c_int, pagesize: c_int, _fn_: scrollfn)
         scrollbar
     }
 }
-pub unsafe fn changescrollbar(s: scrollbar, where_: c_int, max: c_int, size: c_int) {
+pub fn changescrollbar(s: scrollbar, where_: c_int, max: c_int, size: c_int) {
     unsafe {
         if s.is_null() {
             return;
@@ -571,7 +571,7 @@ pub unsafe fn changescrollbar(s: scrollbar, where_: c_int, max: c_int, size: c_i
         (*s).value = where_.clamp(0, limit);
     }
 }
-pub unsafe fn newlabel(text: *const c_char, r: rect, alignment: c_int) -> label {
+pub fn newlabel(text: *const c_char, r: rect, alignment: c_int) -> label {
     unsafe {
         let label = new_control_object(LabelObject, text, r, false);
         if !label.is_null() {
@@ -580,10 +580,10 @@ pub unsafe fn newlabel(text: *const c_char, r: rect, alignment: c_int) -> label 
         label
     }
 }
-pub unsafe fn newfield(text: *const c_char, r: rect) -> field {
+pub fn newfield(text: *const c_char, r: rect) -> field {
     unsafe { new_control_object(FieldObject, text, r, true) }
 }
-pub unsafe fn newpassword(text: *const c_char, r: rect) -> field {
+pub fn newpassword(text: *const c_char, r: rect) -> field {
     unsafe {
         let field = newfield(text, r);
         if !field.is_null() {
@@ -592,16 +592,16 @@ pub unsafe fn newpassword(text: *const c_char, r: rect) -> field {
         field
     }
 }
-pub unsafe fn newtextbox(text: *const c_char, r: rect) -> textbox {
+pub fn newtextbox(text: *const c_char, r: rect) -> textbox {
     unsafe { new_control_object(TextboxObject, text, r, true) }
 }
-pub unsafe fn newtextarea(text: *const c_char, r: rect) -> textbox {
+pub fn newtextarea(text: *const c_char, r: rect) -> textbox {
     unsafe { newtextbox(text, r) }
 }
-pub unsafe fn newrichtextarea(text: *const c_char, r: rect) -> textbox {
+pub fn newrichtextarea(text: *const c_char, r: rect) -> textbox {
     unsafe { newtextbox(text, r) }
 }
-pub unsafe fn newlistbox(
+pub fn newlistbox(
     list: *const *const c_char,
     r: rect,
     _fn_: scrollfn,
@@ -617,7 +617,7 @@ pub unsafe fn newlistbox(
         listbox
     }
 }
-pub unsafe fn newdroplist(list: *const *const c_char, r: rect, fn_: scrollfn) -> listbox {
+pub fn newdroplist(list: *const *const c_char, r: rect, fn_: scrollfn) -> listbox {
     unsafe {
         let listbox = newlistbox(list, r, fn_, None);
         if !listbox.is_null() {
@@ -626,7 +626,7 @@ pub unsafe fn newdroplist(list: *const *const c_char, r: rect, fn_: scrollfn) ->
         listbox
     }
 }
-pub unsafe fn newdropfield(list: *const *const c_char, r: rect, fn_: scrollfn) -> listbox {
+pub fn newdropfield(list: *const *const c_char, r: rect, fn_: scrollfn) -> listbox {
     unsafe {
         let listbox = newlistbox(list, r, fn_, None);
         if !listbox.is_null() {
@@ -635,7 +635,7 @@ pub unsafe fn newdropfield(list: *const *const c_char, r: rect, fn_: scrollfn) -
         listbox
     }
 }
-pub unsafe fn newmultilist(
+pub fn newmultilist(
     list: *const *const c_char,
     r: rect,
     fn_: scrollfn,
@@ -649,7 +649,7 @@ pub unsafe fn newmultilist(
         listbox
     }
 }
-pub unsafe fn isselected(b: listbox, index: c_int) -> c_int {
+pub fn isselected(b: listbox, index: c_int) -> c_int {
     unsafe {
         if !b.is_null() && (*b).value == index {
             1
@@ -658,17 +658,17 @@ pub unsafe fn isselected(b: listbox, index: c_int) -> c_int {
         }
     }
 }
-pub unsafe fn setlistitem(b: listbox, index: c_int) {
+pub fn setlistitem(b: listbox, index: c_int) {
     unsafe {
         if !b.is_null() {
             (*b).value = index.max(-1);
         }
     }
 }
-pub unsafe fn getlistitem(b: listbox) -> c_int {
+pub fn getlistitem(b: listbox) -> c_int {
     unsafe { if b.is_null() { -1 } else { (*b).value } }
 }
-pub unsafe fn changelistbox(b: listbox, list: *const *const c_char) {
+pub fn changelistbox(b: listbox, list: *const *const c_char) {
     unsafe {
         if b.is_null() {
             return;
@@ -678,7 +678,7 @@ pub unsafe fn changelistbox(b: listbox, list: *const *const c_char) {
         (*b).value = -1;
     }
 }
-pub unsafe fn newprogressbar(
+pub fn newprogressbar(
     r: rect,
     pmin: c_int,
     pmax: c_int,
@@ -695,7 +695,7 @@ pub unsafe fn newprogressbar(
         progress
     }
 }
-pub unsafe fn setprogressbar(obj: progressbar, n: c_int) {
+pub fn setprogressbar(obj: progressbar, n: c_int) {
     unsafe {
         if obj.is_null() {
             return;
@@ -706,14 +706,14 @@ pub unsafe fn setprogressbar(obj: progressbar, n: c_int) {
         (*obj).value = n.clamp(min, max);
     }
 }
-pub unsafe fn stepprogressbar(obj: progressbar, n: c_int) {
+pub fn stepprogressbar(obj: progressbar, n: c_int) {
     unsafe {
         if !obj.is_null() {
             setprogressbar(obj, (*obj).value.saturating_add(n));
         }
     }
 }
-pub unsafe fn setprogressbarrange(obj: progressbar, pbmin: c_int, pbmax: c_int) {
+pub fn setprogressbarrange(obj: progressbar, pbmin: c_int, pbmax: c_int) {
     unsafe {
         if obj.is_null() {
             return;
@@ -730,24 +730,24 @@ pub unsafe fn setprogressbarrange(obj: progressbar, pbmin: c_int, pbmax: c_int) 
         (*obj).value = (*obj).value.clamp(min, max);
     }
 }
-pub unsafe fn newmenubar(_fn_: actionfn) -> menubar {
+pub fn newmenubar(_fn_: actionfn) -> menubar {
     ptr::null_mut()
 }
-pub unsafe fn newsubmenu(_parent: menu, _name: *const c_char) -> menu {
+pub fn newsubmenu(_parent: menu, _name: *const c_char) -> menu {
     ptr::null_mut()
 }
-pub unsafe fn newmenu(_name: *const c_char) -> menu {
+pub fn newmenu(_name: *const c_char) -> menu {
     ptr::null_mut()
 }
-pub unsafe fn newmenuitem(_name: *const c_char, _key: c_int, _fn_: menufn) -> menuitem {
+pub fn newmenuitem(_name: *const c_char, _key: c_int, _fn_: menufn) -> menuitem {
     ptr::null_mut()
 }
 
 // Text editing
-pub unsafe fn undotext(_t: textbox) {}
-pub unsafe fn cuttext(_t: textbox) {}
-pub unsafe fn copytext(_t: textbox) {}
-pub unsafe fn cleartext(t: textbox) {
+pub fn undotext(_t: textbox) {}
+pub fn cuttext(_t: textbox) {}
+pub fn copytext(_t: textbox) {}
+pub fn cleartext(t: textbox) {
     unsafe {
         if !t.is_null() {
             settext(t, ptr::null());
@@ -755,8 +755,8 @@ pub unsafe fn cleartext(t: textbox) {
         }
     }
 }
-pub unsafe fn pastetext(_t: textbox) {}
-pub unsafe fn inserttext(t: textbox, text: *const c_char) {
+pub fn pastetext(_t: textbox) {}
+pub fn inserttext(t: textbox, text: *const c_char) {
     unsafe {
         if t.is_null() || text.is_null() {
             return;
@@ -780,7 +780,7 @@ pub unsafe fn inserttext(t: textbox, text: *const c_char) {
         selecttext(t, end, end);
     }
 }
-pub unsafe fn selecttext(t: textbox, start: c_long, end: c_long) {
+pub fn selecttext(t: textbox, start: c_long, end: c_long) {
     unsafe {
         if t.is_null() {
             return;
@@ -798,7 +798,7 @@ pub unsafe fn selecttext(t: textbox, start: c_long, end: c_long) {
         (*t).carety = end as c_int;
     }
 }
-pub unsafe fn textselection(t: textbox, start: *mut c_long, end: *mut c_long) {
+pub fn textselection(t: textbox, start: *mut c_long, end: *mut c_long) {
     unsafe {
         let selection = if t.is_null() {
             (0, 0)
@@ -816,7 +816,7 @@ pub unsafe fn textselection(t: textbox, start: *mut c_long, end: *mut c_long) {
 }
 
 // Font functions
-pub unsafe fn newfont(name: *const c_char, style: c_int, size: c_int) -> font {
+pub fn newfont(name: *const c_char, style: c_int, size: c_int) -> font {
     unsafe {
         objects::init_objects();
         let font = objects::new_object(FontObject, ptr::null_mut(), ptr::null_mut());
@@ -829,7 +829,7 @@ pub unsafe fn newfont(name: *const c_char, style: c_int, size: c_int) -> font {
         font
     }
 }
-pub unsafe fn fontwidth(f: font) -> c_int {
+pub fn fontwidth(f: font) -> c_int {
     unsafe {
         if f.is_null() {
             0
@@ -840,36 +840,36 @@ pub unsafe fn fontwidth(f: font) -> c_int {
         }
     }
 }
-pub unsafe fn fontheight(f: font) -> c_int {
+pub fn fontheight(f: font) -> c_int {
     unsafe { if f.is_null() { 0 } else { (*f).value.max(1) } }
 }
-pub unsafe fn fontascent(f: font) -> c_int {
+pub fn fontascent(f: font) -> c_int {
     let height = unsafe { fontheight(f) };
     (height * 3) / 4
 }
-pub unsafe fn fontdescent(f: font) -> c_int {
+pub fn fontdescent(f: font) -> c_int {
     unsafe { fontheight(f).saturating_sub(fontascent(f)) }
 }
 
 // Height alias
-pub unsafe fn getheight(f: font) -> c_int {
+pub fn getheight(f: font) -> c_int {
     unsafe { fontheight(f) }
 }
-pub unsafe fn getdescent(f: font) -> c_int {
+pub fn getdescent(f: font) -> c_int {
     unsafe { fontdescent(f) }
 }
 
 // Image control
-pub unsafe fn newbitmap(width: c_int, height: c_int, depth: c_int) -> bitmap {
+pub fn newbitmap(width: c_int, height: c_int, depth: c_int) -> bitmap {
     unsafe { new_bitmap_object(width, height, depth) }
 }
-pub unsafe fn loadbitmap(name: *const c_char) -> bitmap {
+pub fn loadbitmap(name: *const c_char) -> bitmap {
     unsafe {
         let img = loadimage(name);
         imagetobitmap(img)
     }
 }
-pub unsafe fn imagetobitmap(img: image) -> bitmap {
+pub fn imagetobitmap(img: image) -> bitmap {
     unsafe {
         if img.is_null() {
             return ptr::null_mut();
@@ -882,17 +882,17 @@ pub unsafe fn imagetobitmap(img: image) -> bitmap {
         bitmap
     }
 }
-pub unsafe fn createbitmap(width: c_int, height: c_int, depth: c_int, data: *mut GAbyte) -> bitmap {
+pub fn createbitmap(width: c_int, height: c_int, depth: c_int, data: *mut GAbyte) -> bitmap {
     unsafe {
         let bitmap = new_bitmap_object(width, height, depth);
         set_bitmap_pixels(bitmap, data);
         bitmap
     }
 }
-pub unsafe fn setbitmapdata(b: bitmap, data: *mut GAbyte) {
+pub fn setbitmapdata(b: bitmap, data: *mut GAbyte) {
     unsafe { set_bitmap_pixels(b, data) }
 }
-pub unsafe fn getbitmapdata(b: bitmap, data: *mut GAbyte) {
+pub fn getbitmapdata(b: bitmap, data: *mut GAbyte) {
     unsafe {
         if b.is_null() || (*b).img.is_null() || data.is_null() {
             return;
@@ -910,7 +910,7 @@ pub unsafe fn getbitmapdata(b: bitmap, data: *mut GAbyte) {
         ptr::copy_nonoverlapping(pixels, data, byte_len);
     }
 }
-pub unsafe fn getbitmapdata2(b: bitmap, data: *mut *mut GAbyte) {
+pub fn getbitmapdata2(b: bitmap, data: *mut *mut GAbyte) {
     unsafe {
         if b.is_null() || (*b).img.is_null() || data.is_null() {
             return;
@@ -920,7 +920,7 @@ pub unsafe fn getbitmapdata2(b: bitmap, data: *mut *mut GAbyte) {
 }
 
 // Cursor functions
-pub unsafe fn newcursor(hotspot: point, img: image) -> cursor {
+pub fn newcursor(hotspot: point, img: image) -> cursor {
     unsafe {
         let cursor = new_control_object(CursorObject, ptr::null(), rect::default(), false);
         if !cursor.is_null() {
@@ -931,14 +931,14 @@ pub unsafe fn newcursor(hotspot: point, img: image) -> cursor {
         cursor
     }
 }
-pub unsafe fn createcursor(
+pub fn createcursor(
     offset: point,
     _white_mask: *mut GAbyte,
     _black_shape: *mut GAbyte,
 ) -> cursor {
     unsafe { newcursor(offset, ptr::null_mut()) }
 }
-pub unsafe fn loadcursor(name: *const c_char) -> cursor {
+pub fn loadcursor(name: *const c_char) -> cursor {
     unsafe {
         let cursor = newcursor(point::default(), ptr::null_mut());
         if !cursor.is_null() {
@@ -949,10 +949,10 @@ pub unsafe fn loadcursor(name: *const c_char) -> cursor {
 }
 
 // Image load/save
-pub unsafe fn loadimage(_filename: *const c_char) -> image {
+pub fn loadimage(_filename: *const c_char) -> image {
     ptr::null_mut()
 }
-pub unsafe fn saveimage(img: image, filename: *const c_char) {
+pub fn saveimage(img: image, filename: *const c_char) {
     unsafe {
         if img.is_null() || filename.is_null() {
             return;
@@ -1004,15 +1004,15 @@ mod tests {
         static REDRAW_CALLS: Cell<c_int> = Cell::new(0);
     }
 
-    unsafe extern "C" fn record_action(_c: control) {
+    extern "C" fn record_action(_c: control) {
         ACTION_CALLS.with(|calls| calls.set(calls.get() + 1));
     }
 
-    unsafe extern "C" fn record_focus(_c: control) {
+    extern "C" fn record_focus(_c: control) {
         FOCUS_CALLS.with(|calls| calls.set(calls.get() + 1));
     }
 
-    unsafe extern "C" fn record_redraw(_c: control, _r: rect) {
+    extern "C" fn record_redraw(_c: control, _r: rect) {
         REDRAW_CALLS.with(|calls| calls.set(calls.get() + 1));
     }
 

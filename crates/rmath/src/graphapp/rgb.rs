@@ -1354,7 +1354,7 @@ fn strcmpi(s1: &str, s2: &str) -> i32 {
 }
 
 /// Look up a colour by name. Returns Transparent if not found.
-pub unsafe fn nametorgb(name: *const c_char) -> rgb {
+pub fn nametorgb(name: *const c_char) -> rgb {
     unsafe {
         if name.is_null() {
             return Transparent;

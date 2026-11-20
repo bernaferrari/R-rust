@@ -16,7 +16,7 @@ use crate::intl::types;
 ///
 /// # Safety
 /// All string pointers must be valid NUL-terminated C strings (or NULL for domainname).
-pub unsafe fn libintl_dngettext(
+pub fn libintl_dngettext(
     domainname: *const c_char,
     msgid1: *const c_char,
     msgid2: *const c_char,
@@ -34,7 +34,7 @@ pub unsafe fn libintl_dngettext(
 }
 
 /// Alias for `libintl_dngettext` (unprefixed, for compatibility).
-pub unsafe fn dngettext(
+pub fn dngettext(
     domainname: *const c_char,
     msgid1: *const c_char,
     msgid2: *const c_char,

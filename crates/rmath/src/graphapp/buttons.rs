@@ -7,7 +7,7 @@ use super::controls;
 use super::types::*;
 use super::windows;
 
-pub unsafe fn clickbutton(w: window, b: button) {
+pub fn clickbutton(w: window, b: button) {
     if !w.is_null() {
         windows::set_current_window(w);
     }

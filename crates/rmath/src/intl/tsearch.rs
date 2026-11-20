@@ -39,7 +39,7 @@ pub(crate) enum VISIT {
 }
 
 /// Action function type for tree walking.
-type action_fn_t = unsafe extern "C" fn(*const c_void, VISIT, c_int);
+type action_fn_t = extern "C" fn(*const c_void, VISIT, c_int);
 
 // ---------------------------------------------------------------------------
 // Node layout helper
@@ -55,7 +55,7 @@ const NODE_LAYOUT: Layout = Layout::new::<node_t>();
 /// edges in a row.
 ///
 /// This is the core rebalancing routine used during insertion.
-unsafe fn maybe_split_for_insert(
+fn maybe_split_for_insert(
     rootp: *mut *mut node_t,
     parentp: *mut *mut node_t,
     gparentp: *mut *mut node_t,
@@ -134,10 +134,10 @@ unsafe fn maybe_split_for_insert(
 /// If the key already exists in the tree, returns a pointer to the matching
 /// node.  Otherwise, inserts a new node for the key and returns it.
 /// Returns `null` if `vrootp` is null or memory allocation fails.
-pub unsafe fn tsearch(
+pub fn tsearch(
     key: *const c_void,
     vrootp: *mut c_void,
-    compar: Option<unsafe extern "C" fn(*const c_void, *const c_void) -> c_int>,
+    compar: Option<extern "C" fn(*const c_void, *const c_void) -> c_int>,
 ) -> *mut c_void {
     unsafe {
         if vrootp.is_null() {
@@ -216,10 +216,10 @@ pub unsafe fn tsearch(
 /// Find a datum in a search tree.
 ///
 /// Returns a pointer to the matching node, or `null` if not found.
-pub unsafe fn tfind(
+pub fn tfind(
     key: *const c_void,
     vrootp: *const c_void,
-    compar: Option<unsafe extern "C" fn(*const c_void, *const c_void) -> c_int>,
+    compar: Option<extern "C" fn(*const c_void, *const c_void) -> c_int>,
 ) -> *mut c_void {
     unsafe {
         if vrootp.is_null() {
@@ -256,10 +256,10 @@ pub unsafe fn tfind(
 ///
 /// Returns a pointer to the parent of the deleted node, or `null` if the
 /// key was not found.
-pub unsafe fn tdelete(
+pub fn tdelete(
     key: *const c_void,
     vrootp: *mut c_void,
-    compar: Option<unsafe extern "C" fn(*const c_void, *const c_void) -> c_int>,
+    compar: Option<extern "C" fn(*const c_void, *const c_void) -> c_int>,
 ) -> *mut c_void {
     unsafe {
         if vrootp.is_null() {
@@ -469,7 +469,7 @@ pub unsafe fn tdelete(
 // ---------------------------------------------------------------------------
 
 /// Recursive tree walker.
-unsafe fn trecurse(vroot: *const c_void, action: action_fn_t, level: c_int) {
+fn trecurse(vroot: *const c_void, action: action_fn_t, level: c_int) {
     unsafe {
         if vroot.is_null() {
             return;
@@ -497,9 +497,9 @@ unsafe fn trecurse(vroot: *const c_void, action: action_fn_t, level: c_int) {
 ///
 /// For non-leaf nodes, `action` is called three times (preorder, postorder,
 /// endorder).  For leaf nodes, `action` is called once (leaf).
-pub unsafe fn twalk(
+pub fn twalk(
     vroot: *const c_void,
-    action: Option<unsafe extern "C" fn(*const c_void, VISIT, c_int)>,
+    action: Option<extern "C" fn(*const c_void, VISIT, c_int)>,
 ) {
     unsafe {
         if vroot.is_null() {
@@ -517,10 +517,10 @@ pub unsafe fn twalk(
 // tdestroy: destroy tree (extension beyond POSIX, from glibc)
 // ---------------------------------------------------------------------------
 
-type free_fn_t = unsafe extern "C" fn(*mut c_void);
+type free_fn_t = extern "C" fn(*mut c_void);
 
 /// Recursive helper to destroy a tree.
-unsafe fn tdestroy_recurse(root: *mut node_t, freefct: free_fn_t) {
+fn tdestroy_recurse(root: *mut node_t, freefct: free_fn_t) {
     unsafe {
         if root.is_null() {
             return;
@@ -538,7 +538,7 @@ unsafe fn tdestroy_recurse(root: *mut node_t, freefct: free_fn_t) {
 
 /// Destroy an entire tree, calling `freefct` on each node's key and then
 /// freeing the node itself.
-pub unsafe fn tdestroy(vroot: *mut c_void, freefct: Option<unsafe extern "C" fn(*mut c_void)>) {
+pub fn tdestroy(vroot: *mut c_void, freefct: Option<extern "C" fn(*mut c_void)>) {
     unsafe {
         if vroot.is_null() {
             return;
@@ -559,7 +559,7 @@ pub unsafe fn tdestroy(vroot: *mut c_void, freefct: Option<unsafe extern "C" fn(
 mod tests {
     use super::*;
 
-    unsafe extern "C" fn int_compar(a: *const c_void, b: *const c_void) -> c_int {
+    extern "C" fn int_compar(a: *const c_void, b: *const c_void) -> c_int {
         let ia = unsafe { *(a as *const i32) };
         let ib = unsafe { *(b as *const i32) };
         ia - ib
@@ -571,7 +571,7 @@ mod tests {
         Box::into_raw(Box::new(root))
     }
 
-    unsafe fn drop_root(p: *mut *mut node_t) {
+    fn drop_root(p: *mut *mut node_t) {
         drop(unsafe { Box::from_raw(p) });
     }
 
@@ -642,7 +642,7 @@ mod tests {
         }
     }
 
-    unsafe extern "C" fn free_int_key(p: *mut c_void) {
+    extern "C" fn free_int_key(p: *mut c_void) {
         if !p.is_null() {
             drop(unsafe { Box::from_raw(p as *mut i32) });
         }
@@ -723,7 +723,7 @@ mod tests {
 
             // Walk the tree - just ensure it doesn't crash.
             thread_local! { static VISIT_COUNT: Cell<c_int> = Cell::new(0); }
-            unsafe extern "C" fn count_visits(_node: *const c_void, _visit: VISIT, _level: c_int) {
+            extern "C" fn count_visits(_node: *const c_void, _visit: VISIT, _level: c_int) {
                 VISIT_COUNT.with(|v| v.set(v.get() + 1));
             }
             VISIT_COUNT.with(|v| v.set(0));

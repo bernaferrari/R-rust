@@ -13,7 +13,7 @@ use super::objects;
 use super::runtime::with_graphapp_runtime;
 use super::types::*;
 
-pub unsafe fn get_app_name() -> *mut c_char {
+pub fn get_app_name() -> *mut c_char {
     with_graphapp_runtime(|runtime| runtime.app.name)
 }
 
@@ -25,7 +25,7 @@ pub fn set_app_initialised(val: c_int) {
     with_graphapp_runtime(|runtime| runtime.app.initialised = val);
 }
 
-pub unsafe fn initapp(argc: c_int, _argv: *mut *mut c_char) -> c_int {
+pub fn initapp(argc: c_int, _argv: *mut *mut c_char) -> c_int {
     unsafe {
         if get_app_initialised() == 0 {
             set_app_initialised(1);
@@ -40,7 +40,7 @@ pub unsafe fn initapp(argc: c_int, _argv: *mut *mut c_char) -> c_int {
     }
 }
 
-pub unsafe fn app_cleanup() {
+pub fn app_cleanup() {
     unsafe {
         if get_app_initialised() != 0 {
             set_app_initialised(0);
@@ -51,7 +51,7 @@ pub unsafe fn app_cleanup() {
     }
 }
 
-pub unsafe fn exitapp() {
+pub fn exitapp() {
     unsafe {
         app_cleanup();
         std::process::exit(0);
@@ -66,7 +66,7 @@ pub fn gamainloop() {
     events::mainloop();
 }
 
-pub unsafe fn startgraphapp(
+pub fn startgraphapp(
     instance: *mut c_void,
     previous_instance: *mut c_void,
     _cmd_show: c_int,
@@ -80,18 +80,18 @@ pub unsafe fn startgraphapp(
     }
 }
 
-pub unsafe fn isTopmost(_w: window) -> c_int {
+pub fn isTopmost(_w: window) -> c_int {
     0
 }
 
-pub unsafe fn BringToTop(w: window, stay: c_int) {
+pub fn BringToTop(w: window, stay: c_int) {
     if !w.is_null() {
         super::windows::set_current_window(w);
     }
     with_graphapp_runtime(|runtime| runtime.app.topmost_dialogs = i32::from(stay != 0));
 }
 
-pub unsafe fn getHandle(w: window) -> *mut c_void {
+pub fn getHandle(w: window) -> *mut c_void {
     unsafe {
         if w.is_null() {
             ptr::null_mut()
@@ -101,7 +101,7 @@ pub unsafe fn getHandle(w: window) -> *mut c_void {
     }
 }
 
-pub unsafe fn GA_msgWindow(c: window, typ: c_int) {
+pub fn GA_msgWindow(c: window, typ: c_int) {
     if typ != 0 && !c.is_null() {
         unsafe {
             BringToTop(c, typ);

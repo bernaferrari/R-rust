@@ -37,7 +37,7 @@ fn menu_text_ptr(name: &'static [u8]) -> *const core::ffi::c_char {
     name.as_ptr() as *const core::ffi::c_char
 }
 
-unsafe fn new_menu_object(kind: c_int, parent: object, text: *const core::ffi::c_char) -> object {
+fn new_menu_object(kind: c_int, parent: object, text: *const core::ffi::c_char) -> object {
     unsafe {
         objects::init_objects();
     }
@@ -54,7 +54,7 @@ unsafe fn new_menu_object(kind: c_int, parent: object, text: *const core::ffi::c
     obj
 }
 
-unsafe fn install_items(parent: menu, items: *mut MenuItem) {
+fn install_items(parent: menu, items: *mut MenuItem) {
     if parent.is_null() || items.is_null() {
         return;
     }
@@ -90,7 +90,7 @@ unsafe fn install_items(parent: menu, items: *mut MenuItem) {
     }
 }
 
-unsafe fn trigger_menu_item(item: menuitem) {
+fn trigger_menu_item(item: menuitem) {
     if item.is_null() || unsafe { controls::isenabled(item) } == 0 {
         return;
     }
@@ -112,13 +112,13 @@ pub fn init_menus() {
     });
 }
 
-pub unsafe fn newmdimenu() -> menu {
+pub fn newmdimenu() -> menu {
     let menu = unsafe { new_menu_object(MenuObject, ptr::null_mut(), menu_text_ptr(b"MDI\0")) };
     with_graphapp_runtime(|runtime| runtime.menus.current_menu = menu);
     menu
 }
 
-pub unsafe fn newpopup(fn_: actionfn) -> menu {
+pub fn newpopup(fn_: actionfn) -> menu {
     let popup = unsafe { new_menu_object(MenuObject, ptr::null_mut(), menu_text_ptr(b"Popup\0")) };
     if !popup.is_null() {
         unsafe {
@@ -129,7 +129,7 @@ pub unsafe fn newpopup(fn_: actionfn) -> menu {
     popup
 }
 
-pub unsafe fn gmenubar(fn_: actionfn, items: *mut MenuItem) -> menubar {
+pub fn gmenubar(fn_: actionfn, items: *mut MenuItem) -> menubar {
     let parent = windows::get_current_window();
     let menubar = unsafe { new_menu_object(MenubarObject, parent, menu_text_ptr(b"Menubar\0")) };
     if !menubar.is_null() {
@@ -147,7 +147,7 @@ pub unsafe fn gmenubar(fn_: actionfn, items: *mut MenuItem) -> menubar {
     menubar
 }
 
-pub unsafe fn gpopup(fn_: actionfn, items: *mut MenuItem) -> menu {
+pub fn gpopup(fn_: actionfn, items: *mut MenuItem) -> menu {
     let popup = unsafe { newpopup(fn_) };
     unsafe {
         install_items(popup, items);
@@ -155,7 +155,7 @@ pub unsafe fn gpopup(fn_: actionfn, items: *mut MenuItem) -> menu {
     popup
 }
 
-pub unsafe fn gchangepopup(w: window, p: menu) {
+pub fn gchangepopup(w: window, p: menu) {
     if w.is_null() {
         return;
     }
@@ -165,7 +165,7 @@ pub unsafe fn gchangepopup(w: window, p: menu) {
     with_graphapp_runtime(|runtime| runtime.menus.current_menu = p);
 }
 
-pub unsafe fn gchangemenubar(mb: menubar) {
+pub fn gchangemenubar(mb: menubar) {
     let window = windows::get_current_window();
     if !window.is_null() {
         unsafe {
@@ -175,7 +175,7 @@ pub unsafe fn gchangemenubar(mb: menubar) {
     with_graphapp_runtime(|runtime| runtime.menus.current_menubar = mb);
 }
 
-pub unsafe fn adjust_menu(wparam: usize) {
+pub fn adjust_menu(wparam: usize) {
     let obj = find_menu_object(wparam);
     if obj.is_null() {
         return;
@@ -205,7 +205,7 @@ pub unsafe fn adjust_menu(wparam: usize) {
     }
 }
 
-pub unsafe fn handle_menu_id(wparam: usize) {
+pub fn handle_menu_id(wparam: usize) {
     let obj = find_menu_object(wparam);
     if obj.is_null() {
         return;
@@ -217,7 +217,7 @@ pub unsafe fn handle_menu_id(wparam: usize) {
     }
 }
 
-pub unsafe fn handle_menu_key(wparam: usize) -> c_int {
+pub fn handle_menu_key(wparam: usize) -> c_int {
     let key = (wparam as u8 as char).to_ascii_uppercase() as c_int;
     let obj = unsafe { objects::find_object(ptr::null_mut(), 0, key) };
     if obj.is_null() {
@@ -243,11 +243,11 @@ mod tests {
         static ADJUST_CALLS: Cell<c_int> = const { Cell::new(0) };
     }
 
-    unsafe extern "C" fn item_callback(_item: menuitem) {
+    extern "C" fn item_callback(_item: menuitem) {
         MENU_CALLS.with(|calls| calls.set(calls.get() + 1));
     }
 
-    unsafe extern "C" fn adjust_callback(_control: control) {
+    extern "C" fn adjust_callback(_control: control) {
         ADJUST_CALLS.with(|calls| calls.set(calls.get() + 1));
     }
 

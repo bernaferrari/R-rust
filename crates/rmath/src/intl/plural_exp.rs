@@ -12,7 +12,7 @@ use std::ptr;
 
 use super::types::*;
 
-unsafe fn PLURAL_PARSE(_arg: *mut parse_args) -> c_int {
+fn PLURAL_PARSE(_arg: *mut parse_args) -> c_int {
     unsafe { super::plural_parse::libintl_gettextparse(_arg) }
 }
 
@@ -69,7 +69,7 @@ fn boxed_germanic_plural() -> *const expression {
 /// and advancing `endp` past the consumed digits.
 ///
 /// Equivalent to `strtoul(nplurals, &endp, 10)` for decimal parsing.
-unsafe fn parse_ulong(s: *const c_char, endp: &mut *const c_char) -> c_ulong {
+fn parse_ulong(s: *const c_char, endp: &mut *const c_char) -> c_ulong {
     unsafe {
         let mut n: c_ulong = 0;
         let mut p = s;
@@ -100,7 +100,7 @@ unsafe fn parse_ulong(s: *const c_char, endp: &mut *const c_char) -> c_ulong {
 /// * `nullentry` - The null entry (metadata string) from the .mo file header.
 /// * `pluralp`   - Output: pointer to the plural expression.
 /// * `npluralsp` - Output: pointer to the number of plural forms.
-pub unsafe fn libintl_gettext_extract_plural(
+pub fn libintl_gettext_extract_plural(
     nullentry: *const c_char,
     pluralp: *mut *const expression,
     npluralsp: *mut c_ulong,
@@ -158,7 +158,7 @@ pub unsafe fn libintl_gettext_extract_plural(
 /// Returns the plural form index (0-indexed).
 ///
 /// This is the standalone (non-_LIBC, non-IN_LIBINTL) implementation.
-pub unsafe fn plural_eval(pexp: *const expression, n: c_ulong) -> c_ulong {
+pub fn plural_eval(pexp: *const expression, n: c_ulong) -> c_ulong {
     unsafe {
         if pexp.is_null() {
             return 0;
@@ -168,7 +168,7 @@ pub unsafe fn plural_eval(pexp: *const expression, n: c_ulong) -> c_ulong {
 }
 
 /// Recursive internal evaluator for plural expression trees.
-unsafe fn plural_eval_internal(pexp: *const expression, n: c_ulong) -> c_ulong {
+fn plural_eval_internal(pexp: *const expression, n: c_ulong) -> c_ulong {
     unsafe {
         let exp = &*pexp;
         match exp.operation {

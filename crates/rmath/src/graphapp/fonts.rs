@@ -13,7 +13,7 @@ use super::runtime::with_graphapp_runtime;
 use super::strings;
 use super::types::*;
 
-unsafe fn alloc_font(name: &str, style: c_int, size: c_int) -> font {
+fn alloc_font(name: &str, style: c_int, size: c_int) -> font {
     let obj = unsafe { objects::new_object(FontObject, ptr::null_mut(), ptr::null_mut()) };
     if obj.is_null() {
         return ptr::null_mut();

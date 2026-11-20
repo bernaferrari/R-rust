@@ -128,11 +128,11 @@ pub(crate) union expression_val {
 }
 
 impl expression_val {
-    pub(crate) unsafe fn get_num(&self) -> std::os::raw::c_ulong {
+    pub(crate) fn get_num(&self) -> std::os::raw::c_ulong {
         unsafe { self.num }
     }
 
-    pub(crate) unsafe fn get_args(&self) -> &[*mut expression; 3] {
+    pub(crate) fn get_args(&self) -> &[*mut expression; 3] {
         unsafe { &self.args }
     }
 }
@@ -321,7 +321,7 @@ pub(crate) fn SWAP(i: nls_uint32) -> nls_uint32 {
 }
 
 /// Duplicate a C string using `std::alloc`.
-pub(crate) unsafe fn c_strdup(s: *const c_char) -> *mut c_char {
+pub(crate) fn c_strdup(s: *const c_char) -> *mut c_char {
     unsafe {
         if s.is_null() {
             return ptr::null_mut();
@@ -338,7 +338,7 @@ pub(crate) unsafe fn c_strdup(s: *const c_char) -> *mut c_char {
 }
 
 /// Free memory previously allocated via c_strdup or std::alloc.
-pub(crate) unsafe fn c_free(p: *mut c_char) {
+pub(crate) fn c_free(p: *mut c_char) {
     unsafe {
         if p.is_null() {
             return;

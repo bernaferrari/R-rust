@@ -165,7 +165,7 @@ pub fn fillroundrect(r: rect) {
 }
 
 /// Draw a polygon.
-pub unsafe fn drawpolygon(p: *mut point, n: c_int) {
+pub fn drawpolygon(p: *mut point, n: c_int) {
     unsafe {
         let ds = get_current_drawstate();
         gdraw::gdrawpolygon(ds.dest, ds.linewidth, lSolid, ds.hue, p, n, 0, 0, 0, 0.0);
@@ -173,7 +173,7 @@ pub unsafe fn drawpolygon(p: *mut point, n: c_int) {
 }
 
 /// Fill a polygon.
-pub unsafe fn fillpolygon(p: *mut point, n: c_int) {
+pub fn fillpolygon(p: *mut point, n: c_int) {
     unsafe {
         let ds = get_current_drawstate();
         gdraw::gfillpolygon(ds.dest, ds.hue, p, n);
@@ -182,7 +182,7 @@ pub unsafe fn fillpolygon(p: *mut point, n: c_int) {
 
 /// Draw a string at the given position.
 #[allow(clippy::if_same_then_else)]
-pub unsafe fn drawstr(p: point, s: *const std::os::raw::c_char) -> c_int {
+pub fn drawstr(p: point, s: *const std::os::raw::c_char) -> c_int {
     unsafe {
         if s.is_null() {
             return 0;
@@ -193,7 +193,7 @@ pub unsafe fn drawstr(p: point, s: *const std::os::raw::c_char) -> c_int {
 }
 
 /// Get the bounding rectangle of a string with the given font.
-pub unsafe fn strrect(f: font, s: *const std::os::raw::c_char) -> rect {
+pub fn strrect(f: font, s: *const std::os::raw::c_char) -> rect {
     unsafe {
         let ds = get_current_drawstate();
         gdraw::gstrrect(ds.dest, f, s)
@@ -201,7 +201,7 @@ pub unsafe fn strrect(f: font, s: *const std::os::raw::c_char) -> rect {
 }
 
 /// Get the size of a string with the given font.
-pub unsafe fn strsize(f: font, s: *const std::os::raw::c_char) -> point {
+pub fn strsize(f: font, s: *const std::os::raw::c_char) -> point {
     unsafe {
         let r = strrect(f, s);
         point {
@@ -212,7 +212,7 @@ pub unsafe fn strsize(f: font, s: *const std::os::raw::c_char) -> point {
 }
 
 /// Get the width of a string with the given font.
-pub unsafe fn strwidth(f: font, s: *const std::os::raw::c_char) -> c_int {
+pub fn strwidth(f: font, s: *const std::os::raw::c_char) -> c_int {
     unsafe { strrect(f, s).width }
 }
 
@@ -294,7 +294,7 @@ pub fn setcliprect(r: rect) {
 }
 
 /// Copy the current draw state.
-pub unsafe fn copydrawstate() -> drawstate {
+pub fn copydrawstate() -> drawstate {
     unsafe {
         let ds = super::memory::memalloc_bytes(std::mem::size_of::<drawstruct>()) as drawstate;
         if !ds.is_null() {

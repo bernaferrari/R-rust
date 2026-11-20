@@ -31,7 +31,7 @@ const PATH_SEPARATOR: c_char = b':' as c_char;
 ///
 /// An argz vector is a sequence of NUL-terminated strings packed together,
 /// terminated by an additional NUL byte.
-unsafe fn __argz_count(argz: *const c_char, len: usize) -> usize {
+fn __argz_count(argz: *const c_char, len: usize) -> usize {
     unsafe {
         if argz.is_null() || len == 0 {
             return 0;
@@ -52,7 +52,7 @@ unsafe fn __argz_count(argz: *const c_char, len: usize) -> usize {
 
 /// Convert an argz vector to a printable string by replacing NUL bytes
 /// with the given separator character.
-unsafe fn __argz_stringify(argz: *mut c_char, len: usize, sep: c_char) {
+fn __argz_stringify(argz: *mut c_char, len: usize, sep: c_char) {
     unsafe {
         if argz.is_null() || len == 0 {
             return;
@@ -74,7 +74,7 @@ unsafe fn __argz_stringify(argz: *mut c_char, len: usize, sep: c_char) {
 /// Return the next entry in an argz vector after `entry`.
 ///
 /// If `entry` is null, returns the first entry. Returns null after the last.
-unsafe fn __argz_next(argz: *const c_char, argz_len: usize, entry: *const c_char) -> *const c_char {
+fn __argz_next(argz: *const c_char, argz_len: usize, entry: *const c_char) -> *const c_char {
     unsafe {
         if entry.is_null() {
             if argz_len > 0 && !argz.is_null() {
@@ -112,7 +112,7 @@ fn pop(x: c_int) -> c_int {
 }
 
 /// Copy a C string, returning a pointer to the NUL terminator.
-unsafe fn stpcpy(dest: *mut c_char, src: *const c_char) -> *mut c_char {
+fn stpcpy(dest: *mut c_char, src: *const c_char) -> *mut c_char {
     unsafe {
         let mut d = dest;
         let mut s = src;
@@ -128,7 +128,7 @@ unsafe fn stpcpy(dest: *mut c_char, src: *const c_char) -> *mut c_char {
 
 /// Check whether a path is absolute (Unix).
 #[cfg(unix)]
-unsafe fn IS_ABSOLUTE_PATH(p: *const c_char) -> bool {
+fn IS_ABSOLUTE_PATH(p: *const c_char) -> bool {
     !p.is_null() && unsafe { *p == b'/' as c_char }
 }
 
@@ -144,7 +144,7 @@ unsafe fn IS_ABSOLUTE_PATH(p: *const c_char) -> bool {
 ///
 /// # Safety
 /// All string pointers must be valid NUL-terminated C strings.
-pub unsafe fn _nl_make_l10nflist(
+pub fn _nl_make_l10nflist(
     l10nfile_list: *mut *mut loaded_l10nfile,
     dirlist: *const c_char,
     dirlist_len: usize,
@@ -332,7 +332,7 @@ pub unsafe fn _nl_make_l10nflist(
 ///
 /// # Safety
 /// `codeset` must be a valid pointer to `name_len` bytes.
-pub unsafe fn _nl_normalize_codeset(codeset: *const c_char, name_len: usize) -> *const c_char {
+pub fn _nl_normalize_codeset(codeset: *const c_char, name_len: usize) -> *const c_char {
     unsafe {
         if codeset.is_null() || name_len == 0 {
             let layout = Layout::from_size_align(1, 1).unwrap_or(Layout::new::<u8>());

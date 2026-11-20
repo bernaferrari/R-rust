@@ -9,7 +9,7 @@ use super::objects;
 use super::runtime::with_graphapp_runtime;
 use super::types::*;
 
-unsafe fn alloc_cursor() -> cursor {
+fn alloc_cursor() -> cursor {
     unsafe { objects::new_object(CursorObject, ptr::null_mut(), ptr::null_mut()) }
 }
 
