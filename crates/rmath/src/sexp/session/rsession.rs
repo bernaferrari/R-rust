@@ -123,7 +123,7 @@ impl RSession {
             // session memory budget, so rendering the original error does not
             // itself fail while allocating the option symbol.
             let _show_error_locations_symbol =
-                crate::sexp::symbol::Rf_install(c"show.error.locations".as_ptr());
+                crate::sexp::symbol::install_str("show.error.locations");
             install_state(&mut (*instance).math_state as *mut MathState);
             install_rng(&mut (*instance).rng_state as *mut RngState);
             // Route the nmath samplers through the full R-level RNG dispatch
@@ -191,14 +191,14 @@ impl RSession {
                 // table). Mirror that end state: baseenv carries a locked
                 // NULL placeholder that only the REPL's raw cell writes
                 // (SET_SYMVALUE) ever update.
-                let last_value_symbol = crate::sexp::symbol::Rf_install(c".Last.value".as_ptr());
+                let last_value_symbol = crate::sexp::symbol::install_str(".Last.value");
                 crate::sexp::accessors::SET_SYMVALUE(
                     last_value_symbol,
                     crate::sexp::globals::R_NilValue(),
                 );
                 crate::sexp::envir::lock_binding_raw(base.as_raw(), last_value_symbol);
-                for name in [c".Device", c".Devices"] {
-                    let symbol = crate::sexp::symbol::Rf_install(name.as_ptr());
+                for name in [".Device", ".Devices"] {
+                    let symbol = crate::sexp::symbol::install_str(name);
                     crate::sexp::envir::unlock_binding_raw(base.as_raw(), symbol);
                 }
                 owner.require_active().expect("live base bootstrap owner");
@@ -677,9 +677,9 @@ impl RSession {
             let _guard = self.activate();
             let factory = SessionNodeFactory::new(self.owner_token().expect("active session"));
             let keep_source = unsafe {
-                let opt = crate::mainutils::options::GetOption1(crate::sexp::symbol::Rf_install(
-                    c"keep.source".as_ptr(),
-                ));
+                let opt = crate::mainutils::options::GetOption1(
+                    crate::sexp::symbol::install_str("keep.source"),
+                );
                 !opt.is_null() && crate::mainutils::coerce::asLogical(opt) == crate::sexp::ffi::TRUE
             };
             let spans = unsafe {

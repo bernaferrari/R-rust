@@ -27,7 +27,6 @@
 //! operations become no-ops or return errors.
 
 use std::cell::UnsafeCell;
-use std::ffi::CString;
 use std::marker::PhantomData;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 #[cfg(test)]
@@ -123,8 +122,7 @@ impl Default for CancellationToken {
 }
 
 fn install_symbol(name: &str) -> Option<SEXP> {
-    let name = CString::new(name).ok()?;
-    let symbol = unsafe { crate::sexp::symbol::Rf_install(name.as_ptr()) };
+    let symbol = crate::sexp::symbol::install_str(name);
     if symbol.is_null() { None } else { Some(symbol) }
 }
 
@@ -194,7 +192,7 @@ fn remember_last_value(value: SEXP) {
         // lives on the symbol's value cell, not in a globalenv binding, so
         // `ls()` never lists `.Last.value` (oracle Rscript: character(0)).
         crate::sexp::accessors::SET_SYMVALUE(
-            crate::sexp::symbol::Rf_install(c".Last.value".as_ptr()),
+            crate::sexp::symbol::install_str(".Last.value"),
             value,
         );
     }
