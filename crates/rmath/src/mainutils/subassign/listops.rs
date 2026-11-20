@@ -30,21 +30,38 @@ use super::*;
 
 /// Port of `GetOneIndex()` -- extracts a single subscript index for pairlist assignment.
 pub(crate) fn GetOneIndex(sub: SEXP, ind: c_int) -> SEXP {
-    unsafe {
-        if ind < 0 || ind + 1 > Rf_length(sub) {
+    {
+        let fail = |error: crate::sexp::object::SexpError| -> ! {
+            crate::sexp::context::r_error(error.to_string())
+        };
+        let subscript = owned(sub);
+        if ind < 0 || ind as R_xlen_t + 1 > subscript.len() {
             // Error: internal error
             return sub;
         }
-        if Rf_length(sub) > 1 {
+        if subscript.len() > 1 {
             match TYPEOF(sub) {
                 INTSXP => {
-                    return ScalarInteger(INTEGER_ELT(sub, ind));
+                    return ScalarInteger(
+                        subscript
+                            .try_integer_elt(ind as R_xlen_t)
+                            .unwrap_or_else(|e| fail(e)),
+                    );
                 }
                 REALSXP => {
-                    return ScalarReal(REAL_ELT(sub, ind));
+                    return ScalarReal(
+                        subscript
+                            .try_real_elt(ind as R_xlen_t)
+                            .unwrap_or_else(|e| fail(e)),
+                    );
                 }
                 STRSXP => {
-                    return ScalarString(STRING_ELT(sub, ind as R_xlen_t));
+                    return ScalarString(
+                        subscript
+                            .try_string_elt(ind as R_xlen_t)
+                            .unwrap_or_else(|e| fail(e))
+                            .as_raw(),
+                    );
                 }
                 _ => {
                     // Error: invalid subscript
@@ -189,34 +206,53 @@ pub(crate) fn listRemove(x: SEXP, s: SEXP, ind: c_int) -> SEXP {
 
 /// Port of `DeleteOneVectorListItem()` -- removes a single element from a vector list.
 pub(crate) fn DeleteOneVectorListItem(x: SEXP, which: R_xlen_t) -> SEXP {
-    unsafe {
+    {
+        let fail = |error: crate::sexp::object::SexpError| -> ! {
+            crate::sexp::context::r_error(error.to_string())
+        };
         let n = XLENGTH(x);
         if which >= 0 && which < n {
-            let y = Rf_allocVector3(TYPEOF(x), n - 1);
-            let _y_guard = protect(y);
+            let factory = factory();
+            let source = owned(x);
+            let y = factory
+                .wrap(alloc_vector(TYPEOF(x), n - 1))
+                .unwrap_or_else(|e| fail(e));
+            let mut y = crate::sexp::object::SexpMut::try_from_checked(y)
+                .unwrap_or_else(|e| fail(e));
             let mut k: R_xlen_t = 0;
             for i in 0..n {
                 if i != which {
-                    SET_VECTOR_ELT(y, k, VECTOR_ELT(x, i));
+                    let elt = source.try_vector_elt(i).unwrap_or_else(|e| fail(e));
+                    y.try_set_vector_elt(k, elt).unwrap_or_else(|e| fail(e));
                     k += 1;
                 }
             }
-            let xnames = getAttrib(x, crate::eval::attrib_core::R_NamesSymbol());
-            let _xnames_guard = protect(xnames);
+            let y = y.freeze();
+            let xnames = super::getAttrib(x, sym_Names());
+            let _xnames_root = if isNull(xnames) {
+                None
+            } else {
+                Some(owned(xnames))
+            };
             if !isNull(xnames) {
-                let ynames = Rf_allocVector3(STRSXP, n - 1);
-                let _ynames_guard = protect(ynames);
+                let xnames = owned(xnames);
+                let ynames = factory
+                    .wrap(alloc_vector(STRSXP, n - 1))
+                    .unwrap_or_else(|e| fail(e));
+                let mut ynames = crate::sexp::object::SexpMut::try_from_checked(ynames)
+                    .unwrap_or_else(|e| fail(e));
                 k = 0;
                 for i in 0..n {
                     if i != which {
-                        SET_STRING_ELT(ynames, k, STRING_ELT(xnames, i));
+                        let elt = xnames.try_string_elt(i).unwrap_or_else(|e| fail(e));
+                        ynames.try_set_string_elt(k, elt).unwrap_or_else(|e| fail(e));
                         k += 1;
                     }
                 }
-                setAttrib(y, crate::eval::attrib_core::R_NamesSymbol(), ynames);
+                super::setAttrib(y.as_raw(), sym_Names(), ynames.freeze().as_raw());
             }
-            copyMostAttrib(x, y);
-            y
+            copyMostAttrib(x, y.as_raw());
+            y.as_raw()
         } else {
             x
         }
