@@ -509,9 +509,7 @@ pub unsafe fn initVP(dd: *const u8) {
         let vp = Rf_eval(vpfn, R_GlobalEnv());
         let _vp_guard = protect(vp);
 
-        let mut dev_width_cm: c_double = 0.0;
-        let mut dev_height_cm: c_double = 0.0;
-        getDeviceSize(dd, &mut dev_width_cm, &mut dev_height_cm);
+        let (dev_width_cm, dev_height_cm) = getDeviceSize(dd);
 
         let xscale = Rf_allocVector(SEXPTYPE::REALSXP, 2);
         let _xscale_guard = protect(xscale);

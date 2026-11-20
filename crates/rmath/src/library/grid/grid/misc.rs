@@ -6,18 +6,8 @@ pub unsafe fn L_clip(x: SEXP, y: SEXP, w: SEXP, h: SEXP, hjust: SEXP, vjust: SEX
         let currentvp = gridStateElement(dd, GSS_VP);
         let currentgp = gridStateElement(dd, GSS_GPAR);
 
-        let mut vpWidthCM: c_double = 0.0;
-        let mut vpHeightCM: c_double = 0.0;
-        let mut rotationAngle: c_double = 0.0;
-        let mut transform: LTransform = [[0.0; 3]; 3];
-        getViewportTransform(
-            currentvp,
-            dd,
-            &mut vpWidthCM,
-            &mut vpHeightCM,
-            &mut transform,
-            &mut rotationAngle,
-        );
+        let (vpWidthCM, vpHeightCM, mut transform, rotationAngle) =
+            getViewportTransform(currentvp, dd);
 
         let mut vpc = LViewportContext::default();
         getViewportContext(currentvp, &mut vpc);
@@ -137,8 +127,12 @@ pub unsafe fn L_pretty2(scale: SEXP, n_: SEXP) -> SEXP {
             max = temp;
         }
 
-        let mut axp = [min, max, n as f64];
-        Rf_CreateAtVector(axp.as_mut_ptr(), ptr::null_mut(), n, 0)
+        crate::library::grdevices::axis_scales::create_at_vector_raw(
+            [min, max, n as f64],
+            [min, max],
+            n,
+            false,
+        )
     }
 }
 

@@ -17,18 +17,8 @@ pub unsafe fn L_raster(
         let _currentgp_guard = protect(currentgp);
         set_gp_fill_string(currentgp, c"transparent".as_ptr());
 
-        let mut vpWidthCM: c_double = 0.0;
-        let mut vpHeightCM: c_double = 0.0;
-        let mut rotationAngle: c_double = 0.0;
-        let mut transform: LTransform = [[0.0; 3]; 3];
-        getViewportTransform(
-            currentvp,
-            dd,
-            &mut vpWidthCM,
-            &mut vpHeightCM,
-            &mut transform,
-            &mut rotationAngle,
-        );
+        let (vpWidthCM, vpHeightCM, mut transform, rotationAngle) =
+            getViewportTransform(currentvp, dd);
         let mut vpc = LViewportContext::default();
         getViewportContext(currentvp, &mut vpc);
 

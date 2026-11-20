@@ -1,61 +1,39 @@
 use super::*;
 
-pub unsafe fn getViewportTransform(
-    currentvp: SEXP,
-    dd: pGEDevDesc,
-    vpWidthCM: *mut c_double,
-    vpHeightCM: *mut c_double,
-    transform: *mut LTransform,
-    rotationAngle: *mut c_double,
-) {
+pub unsafe fn getViewportTransform(currentvp: SEXP, dd: pGEDevDesc) -> (f64, f64, LTransform, f64) {
+    use crate::sexp::accessors::REAL_ELT;
+
     unsafe {
-        let mut devWidthCM: c_double = 0.0;
-        let mut devHeightCM: c_double = 0.0;
-        getDeviceSize(dd, &mut devWidthCM, &mut devHeightCM);
-        if deviceChanged(devWidthCM, devHeightCM, currentvp) {
+        let (device_width, device_height) = getDeviceSize(dd);
+        if deviceChanged(device_width, device_height, currentvp) {
             calcViewportTransform(currentvp, viewportParent(currentvp), true, dd);
         }
 
-        let width_cm = viewportWidthCM(currentvp);
-        let height_cm = viewportHeightCM(currentvp);
+        let width = viewportWidthCM(currentvp);
+        let height = viewportHeightCM(currentvp);
         let rotation = viewportRotation(currentvp);
-        let t = viewportTransform(currentvp);
+        let matrix = viewportTransform(currentvp);
 
-        *vpWidthCM =
-            if !isNull(width_cm) && TYPEOF(width_cm) == SEXPTYPE::REALSXP && LENGTH(width_cm) > 0 {
-                *REAL(width_cm)
+        let real_or = |value, fallback| {
+            if TYPEOF(value) == SEXPTYPE::REALSXP && XLENGTH(value) > 0 {
+                REAL_ELT(value, 0)
             } else {
-                devWidthCM
-            };
-        *vpHeightCM = if !isNull(height_cm)
-            && TYPEOF(height_cm) == SEXPTYPE::REALSXP
-            && LENGTH(height_cm) > 0
-        {
-            *REAL(height_cm)
-        } else {
-            devHeightCM
-        };
-        *rotationAngle =
-            if !isNull(rotation) && TYPEOF(rotation) == SEXPTYPE::REALSXP && LENGTH(rotation) > 0 {
-                *REAL(rotation)
-            } else {
-                0.0
-            };
-
-        if !transform.is_null() {
-            for i in 0..3 {
-                for j in 0..3 {
-                    (*transform)[i][j] = if i == j { 1.0 } else { 0.0 };
-                }
+                fallback
             }
-            if !isNull(t) && TYPEOF(t) == SEXPTYPE::REALSXP && LENGTH(t) >= 9 {
-                for col in 0..3usize {
-                    for row in 0..3usize {
-                        (*transform)[row][col] = *REAL(t).add(col * 3 + row);
-                    }
+        };
+        let width = real_or(width, device_width);
+        let height = real_or(height, device_height);
+        let rotation = real_or(rotation, 0.0);
+
+        let mut transform = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
+        if TYPEOF(matrix) == SEXPTYPE::REALSXP && XLENGTH(matrix) >= 9 {
+            for column in 0..3 {
+                for (row, output_row) in transform.iter_mut().enumerate() {
+                    output_row[column] = REAL_ELT(matrix, (column * 3 + row) as c_int);
                 }
             }
         }
+        (width, height, transform, rotation)
     }
 }
 
@@ -71,18 +49,8 @@ pub unsafe fn L_convert(x: SEXP, whatfrom: SEXP, whatto: SEXP, unitto: SEXP) -> 
         let _currentgp_guard = protect(currentgp);
         set_gp_fill_string(currentgp, c"black".as_ptr());
 
-        let mut vpWidthCM: c_double = 0.0;
-        let mut vpHeightCM: c_double = 0.0;
-        let mut rotationAngle: c_double = 0.0;
-        let mut transform: LTransform = [[0.0; 3]; 3];
-        getViewportTransform(
-            currentvp,
-            dd,
-            &mut vpWidthCM,
-            &mut vpHeightCM,
-            &mut transform,
-            &mut rotationAngle,
-        );
+        let (vpWidthCM, vpHeightCM, _, _) =
+            getViewportTransform(currentvp, dd);
         let mut vpc = LViewportContext::default();
         getViewportContext(currentvp, &mut vpc);
 
@@ -262,18 +230,8 @@ pub unsafe fn L_devLoc(x: SEXP, y: SEXP, device: SEXP) -> SEXP {
         let _currentgp_guard = protect(currentgp);
         set_gp_fill_string(currentgp, c"black".as_ptr());
 
-        let mut vpWidthCM: c_double = 0.0;
-        let mut vpHeightCM: c_double = 0.0;
-        let mut rotationAngle: c_double = 0.0;
-        let mut transform: LTransform = [[0.0; 3]; 3];
-        getViewportTransform(
-            currentvp,
-            dd,
-            &mut vpWidthCM,
-            &mut vpHeightCM,
-            &mut transform,
-            &mut rotationAngle,
-        );
+        let (vpWidthCM, vpHeightCM, mut transform, _) =
+            getViewportTransform(currentvp, dd);
         let mut vpc = LViewportContext::default();
         getViewportContext(currentvp, &mut vpc);
 
@@ -333,18 +291,8 @@ pub unsafe fn L_devDim(x: SEXP, y: SEXP, device: SEXP) -> SEXP {
         let _currentgp_guard = protect(currentgp);
         set_gp_fill_string(currentgp, c"black".as_ptr());
 
-        let mut vpWidthCM: c_double = 0.0;
-        let mut vpHeightCM: c_double = 0.0;
-        let mut rotationAngle: c_double = 0.0;
-        let mut transform: LTransform = [[0.0; 3]; 3];
-        getViewportTransform(
-            currentvp,
-            dd,
-            &mut vpWidthCM,
-            &mut vpHeightCM,
-            &mut transform,
-            &mut rotationAngle,
-        );
+        let (vpWidthCM, vpHeightCM, _, rotationAngle) =
+            getViewportTransform(currentvp, dd);
         let mut vpc = LViewportContext::default();
         getViewportContext(currentvp, &mut vpc);
 
