@@ -1084,8 +1084,7 @@ impl RArena {
     /// Install the owning runtime's canonical blank string before allocating
     /// vectors. This pointer is also retained by that owner's bind state.
     pub(crate) fn install_blank_string(&mut self, blank: SEXP) -> bool {
-        if blank.is_null() || crate::sexp::accessors::TYPEOF(blank) != SEXPTYPE::CHARSXP
-        {
+        if blank.is_null() || crate::sexp::accessors::TYPEOF(blank) != SEXPTYPE::CHARSXP {
             return false;
         }
         if !self.blank_string.is_null() {

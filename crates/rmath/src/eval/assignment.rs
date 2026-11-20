@@ -346,11 +346,7 @@ unsafe fn assign_to_symbol(sym: SEXP, value: SEXP, primval: i32, rho: SEXP) {
 }
 
 unsafe fn bind_assignment(sym: SEXP, value: SEXP, primval: i32, rho: SEXP) {
-    let target_env = if primval == 2 {
-        ENCLOS(rho)
-    } else {
-        rho
-    };
+    let target_env = if primval == 2 { ENCLOS(rho) } else { rho };
     let (Some(sym), Some(value), Some(target_env)) = (
         unsafe { Sexp::from_raw(sym) },
         unsafe { Sexp::from_raw(value) },

@@ -295,9 +295,7 @@ pub(crate) fn private_replacement_path_owned(
         with_runtime(&owner, |access| {
             let lookup = access.with_native(|owner| {
                 if superassign {
-                    owner
-                        .sexp(ENCLOS(environment.as_raw()))?
-                        .into_owned()
+                    owner.sexp(ENCLOS(environment.as_raw()))?.into_owned()
                 } else {
                     Ok(environment.clone())
                 }
@@ -509,9 +507,7 @@ pub(crate) fn private_replacement_chain_owned(
         with_runtime(&owner, |access| {
             let lookup = access.with_native(|owner| {
                 if superassign {
-                    owner
-                        .sexp(ENCLOS(environment.as_raw()))?
-                        .into_owned()
+                    owner.sexp(ENCLOS(environment.as_raw()))?.into_owned()
                 } else {
                     Ok(environment.clone())
                 }
