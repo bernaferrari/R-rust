@@ -27,13 +27,13 @@ use crate::sexp::protect::protect;
 // ---------------------------------------------------------------------------
 
 /// Start an HTTP daemon on the given IP and port.
-pub unsafe fn startHTTPD(sIP: SEXP, sPort: SEXP) -> SEXP {
+pub fn startHTTPD(sIP: SEXP, sPort: SEXP) -> SEXP {
     let _ = (sIP, sPort);
     unsupported("tools::startHTTPD")
 }
 
 /// Stop the HTTP daemon.
-pub unsafe fn stopHTTPD() -> SEXP {
+pub fn stopHTTPD() -> SEXP {
     unsupported("tools::stopHTTPD")
 }
 
@@ -94,7 +94,7 @@ fn remove_dot_segments(p: &str) -> String {
 }
 
 /// Wrapper for remove_dot_segments that operates on a character vector.
-pub unsafe fn remove_dot_segments_wrapper(x: SEXP) -> SEXP {
+pub fn remove_dot_segments_wrapper(x: SEXP) -> SEXP {
     unsafe {
         if x.is_null() {
             return R_NilValue();
@@ -142,7 +142,7 @@ pub unsafe fn remove_dot_segments_wrapper(x: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 #[inline]
-unsafe fn SET_STRING_ELT(x: SEXP, i: R_xlen_t, val: SEXP) {
+fn SET_STRING_ELT(x: SEXP, i: R_xlen_t, val: SEXP) {
     unsafe {
         crate::sexp::accessors::SET_STRING_ELT(x, i, val);
     }

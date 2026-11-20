@@ -35,22 +35,20 @@ fn rsha256_buffer(buffer: *const std::ffi::c_void, len: usize, resblock: &mut [u
         buflen: 0,
         buffer: [0u8; 128],
     };
-    unsafe {
-        crate::library::tools::sha256::Rsha256_init_ctx(&mut ctx);
-        crate::library::tools::sha256::Rsha256_process_bytes(buffer, len, &mut ctx);
-        let result = crate::library::tools::sha256::Rsha256_finish_ctx(
-            &mut ctx,
-            resblock.as_mut_ptr() as *mut std::ffi::c_void,
-        );
-        !result.is_null()
-    }
+    crate::library::tools::sha256::Rsha256_init_ctx(&mut ctx);
+    crate::library::tools::sha256::Rsha256_process_bytes(buffer, len, &mut ctx);
+    let result = crate::library::tools::sha256::Rsha256_finish_ctx(
+        &mut ctx,
+        resblock.as_mut_ptr() as *mut std::ffi::c_void,
+    );
+    !result.is_null()
 }
 
 /// Compute SHA256 hash of files or a raw buffer.
 ///
 /// If `files` is RAWSXP, computes the SHA256 hash of the raw bytes.
 /// If `files` is STRSXP, computes SHA256 hashes for each file path.
-pub unsafe fn Rsha256(files: SEXP) -> SEXP {
+pub fn Rsha256(files: SEXP) -> SEXP {
     unsafe {
         if files.is_null() {
             return R_NilValue();

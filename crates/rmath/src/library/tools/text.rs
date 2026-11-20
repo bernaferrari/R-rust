@@ -35,7 +35,7 @@ use crate::sexp::protect::protect;
 /// -1 if there is none, with attribute "match.length" giving the
 /// length of the matched text (including the end delimiter), or -1
 /// for no match.
-pub unsafe fn delim_match(x: SEXP, delims: SEXP) -> SEXP {
+pub fn delim_match(x: SEXP, delims: SEXP) -> SEXP {
     unsafe {
         if x.is_null() || delims.is_null() {
             return R_NilValue();
@@ -233,7 +233,7 @@ pub unsafe fn delim_match(x: SEXP, delims: SEXP) -> SEXP {
 
 /// Check if all the lines in 'text' are ASCII, after removing
 /// comments and ignoring the contents of quotes (unless ignore_quotes).
-pub unsafe fn check_nonASCII(text: SEXP, ignore_quotes: SEXP) -> SEXP {
+pub fn check_nonASCII(text: SEXP, ignore_quotes: SEXP) -> SEXP {
     unsafe {
         if text.is_null() {
             return Rf_ScalarLogical(FALSE);
@@ -295,7 +295,7 @@ pub unsafe fn check_nonASCII(text: SEXP, ignore_quotes: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Return indices of lines containing non-ASCII characters.
-pub unsafe fn check_nonASCII2(text: SEXP) -> SEXP {
+pub fn check_nonASCII2(text: SEXP) -> SEXP {
     unsafe {
         if text.is_null() {
             return R_NilValue();
@@ -352,7 +352,7 @@ pub unsafe fn check_nonASCII2(text: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Tab expansion for UTF-8 strings only.
-pub unsafe fn doTabExpand(strings: SEXP, starts: SEXP) -> SEXP {
+pub fn doTabExpand(strings: SEXP, starts: SEXP) -> SEXP {
     unsafe {
         if strings.is_null() || starts.is_null() {
             return R_NilValue();
@@ -423,7 +423,7 @@ pub unsafe fn doTabExpand(strings: SEXP, starts: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Split a string by delimiter characters.
-pub unsafe fn splitString(string: SEXP, delims: SEXP) -> SEXP {
+pub fn splitString(string: SEXP, delims: SEXP) -> SEXP {
     unsafe {
         if string.is_null() || delims.is_null() {
             return R_NilValue();
@@ -491,7 +491,7 @@ pub unsafe fn splitString(string: SEXP, delims: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Return a logical vector indicating which strings contain non-ASCII characters.
-pub unsafe fn nonASCII(text: SEXP) -> SEXP {
+pub fn nonASCII(text: SEXP) -> SEXP {
     unsafe {
         if text.is_null() {
             return R_NilValue();
