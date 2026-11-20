@@ -46,7 +46,7 @@ use crate::sexp::memory_ext::{vmaxget, vmaxset};
 /// Get errno pointer (macOS uses __error(), Linux/Android use __errno_location).
 #[cfg(not(target_arch = "wasm32"))]
 #[inline]
-unsafe fn errno_ptr() -> *mut c_int {
+fn errno_ptr() -> *mut c_int {
     unsafe {
         #[cfg(target_os = "macos")]
         {
@@ -67,7 +67,7 @@ unsafe fn errno_ptr() -> *mut c_int {
 /// under base 0). Port of the former wasm-libc facade parser: no errno —
 /// the caller reports overflow through its range check.
 #[cfg(target_arch = "wasm32")]
-unsafe fn c_strtol(nptr: *const c_char, endptr: *mut *mut c_char, base: c_int) -> i64 {
+fn c_strtol(nptr: *const c_char, endptr: *mut *mut c_char, base: c_int) -> i64 {
     unsafe {
         let b = CStr::from_ptr(nptr).to_bytes();
         let mut i = 0;
@@ -118,7 +118,7 @@ unsafe fn c_strtol(nptr: *const c_char, endptr: *mut *mut c_char, base: c_int) -
 /// wasm32 (same six characters: space, \t, \n, \v, \f, \r).
 #[cfg(not(target_arch = "wasm32"))]
 #[inline]
-unsafe fn c_isspace(c: c_int) -> c_int {
+fn c_isspace(c: c_int) -> c_int {
     unsafe { libc::isspace(c) }
 }
 
@@ -133,13 +133,13 @@ fn c_isspace(c: c_int) -> c_int {
 /// literal without its NUL terminator.
 #[cfg(not(target_arch = "wasm32"))]
 #[inline]
-unsafe fn c_strncasecmp_eq(s: *const c_char, lit: &[u8]) -> bool {
+fn c_strncasecmp_eq(s: *const c_char, lit: &[u8]) -> bool {
     unsafe { libc::strncasecmp(s, lit.as_ptr() as *const c_char, lit.len()) == 0 }
 }
 
 #[cfg(target_arch = "wasm32")]
 #[inline]
-unsafe fn c_strncasecmp_eq(s: *const c_char, lit: &[u8]) -> bool {
+fn c_strncasecmp_eq(s: *const c_char, lit: &[u8]) -> bool {
     unsafe {
         let bytes = CStr::from_ptr(s).to_bytes();
         bytes.len() >= lit.len() && bytes[..lit.len()].eq_ignore_ascii_case(lit)
@@ -147,7 +147,7 @@ unsafe fn c_strncasecmp_eq(s: *const c_char, lit: &[u8]) -> bool {
 }
 
 /// Check if string is blank (empty or whitespace-only)
-unsafe fn isBlankString(s: *const core::ffi::c_char) -> c_int {
+fn isBlankString(s: *const core::ffi::c_char) -> c_int {
     unsafe {
         if *s == 0 {
             return 1;
@@ -168,7 +168,7 @@ unsafe fn isBlankString(s: *const core::ffi::c_char) -> c_int {
 }
 
 /// Check if SEXP has a dim attribute (is an array)
-unsafe fn isArray(x: SEXP) -> c_int {
+fn isArray(x: SEXP) -> c_int {
     unsafe {
         let dim = attrib_core::getAttrib(x, attrib_core::R_DimSymbol());
         if dim.is_null() || dim == R_NilValue() {
@@ -211,11 +211,11 @@ unsafe extern "C" {
     fn btowc(c: c_int) -> u32; // wint_t, WEOF sentinel
 }
 
-unsafe fn translateChar(x: SEXP) -> *const c_char {
+fn translateChar(x: SEXP) -> *const c_char {
     unsafe { crate::sexp::accessors::translateChar(x) }
 }
 
-unsafe fn string_elt_key(x: SEXP, index: R_xlen_t) -> Option<Vec<u8>> {
+fn string_elt_key(x: SEXP, index: R_xlen_t) -> Option<Vec<u8>> {
     unsafe {
         let elt = STRING_ELT(x, index);
         if elt.is_null() || elt == NA_STRING() {
@@ -226,7 +226,7 @@ unsafe fn string_elt_key(x: SEXP, index: R_xlen_t) -> Option<Vec<u8>> {
     }
 }
 
-unsafe fn duplicated(x: SEXP, from_last: c_int) -> SEXP {
+fn duplicated(x: SEXP, from_last: c_int) -> SEXP {
     unsafe {
         if TYPEOF(x) != SEXPTYPE::STRSXP {
             Rf_error(
@@ -265,7 +265,7 @@ unsafe fn duplicated(x: SEXP, from_last: c_int) -> SEXP {
     }
 }
 
-unsafe fn sortVector(x: SEXP, decreasing: c_int) {
+fn sortVector(x: SEXP, decreasing: c_int) {
     unsafe {
         if TYPEOF(x) != SEXPTYPE::STRSXP {
             Rf_error(
@@ -295,7 +295,7 @@ unsafe fn sortVector(x: SEXP, decreasing: c_int) {
     }
 }
 
-unsafe fn matchE(table: SEXP, x: SEXP, nomatch: c_int, _env: SEXP) -> SEXP {
+fn matchE(table: SEXP, x: SEXP, nomatch: c_int, _env: SEXP) -> SEXP {
     unsafe {
         if TYPEOF(table) != SEXPTYPE::STRSXP || TYPEOF(x) != SEXPTYPE::STRSXP {
             Rf_error(
@@ -323,7 +323,7 @@ unsafe fn matchE(table: SEXP, x: SEXP, nomatch: c_int, _env: SEXP) -> SEXP {
     }
 }
 
-unsafe fn streql(a: *const c_char, b: *const c_char) -> c_int {
+fn streql(a: *const c_char, b: *const c_char) -> c_int {
     unsafe {
         if a.is_null() || b.is_null() {
             return (a == b) as c_int;
@@ -332,7 +332,7 @@ unsafe fn streql(a: *const c_char, b: *const c_char) -> c_int {
     }
 }
 
-unsafe fn write_connection_cstr(con: c_int, value: *const c_char) {
+fn write_connection_cstr(con: c_int, value: *const c_char) {
     unsafe {
         if value.is_null() {
             return;
@@ -341,11 +341,9 @@ unsafe fn write_connection_cstr(con: c_int, value: *const c_char) {
     }
 }
 
-unsafe fn write_connection_cstr2(con: c_int, first: *const c_char, second: *const c_char) {
-    unsafe {
-        write_connection_cstr(con, first);
-        write_connection_cstr(con, second);
-    }
+fn write_connection_cstr2(con: c_int, first: *const c_char, second: *const c_char) {
+    write_connection_cstr(con, first);
+    write_connection_cstr(con, second);
 }
 
 /* LocalData struct — mirrors the C version */
@@ -418,7 +416,7 @@ fn Rspace(c: c_uint) -> bool {
 
 /* isNAstring — check if a string matches one of the NA strings */
 #[inline]
-unsafe fn isNAstring(buf: *const c_char, mode: c_int, d: &LocalData) -> c_int {
+fn isNAstring(buf: *const c_char, mode: c_int, d: &LocalData) -> c_int {
     unsafe {
         if mode == 0 {
             let len = CStr::from_ptr(buf).to_bytes().len();
@@ -438,7 +436,7 @@ unsafe fn isNAstring(buf: *const c_char, mode: c_int, d: &LocalData) -> c_int {
 }
 
 /* Strtoi — strtol wrapper returning NA_INTEGER on overflow */
-unsafe fn Strtoi(nptr: *const c_char, base: c_int) -> c_int {
+fn Strtoi(nptr: *const c_char, base: c_int) -> c_int {
     unsafe {
         let mut endp: *mut c_char = ptr::null_mut();
         #[cfg(not(target_arch = "wasm32"))]
@@ -475,7 +473,7 @@ unsafe fn Strtoi(nptr: *const c_char, base: c_int) -> c_int {
 /* Strtod — ported from R_strtod5 in r-source/src/main/util.c
  * Handles decimal char substitution, NA/NaN/Inf, hex literals, exact mode.
  */
-unsafe fn Strtod(
+fn Strtod(
     nptr: *const c_char,
     endptr: *mut *mut c_char,
     na: c_int,
@@ -826,7 +824,7 @@ unsafe fn Strtod(
  * Forms: "3.5", "3.5i", "3+4i", "3-4i", "i", "2i"
  * Ported from r-source/src/library/utils/src/io.c
  */
-unsafe fn strtoc(
+fn strtoc(
     nptr: *const c_char,
     endptr: *mut *mut c_char,
     na: c_int,
@@ -886,38 +884,36 @@ unsafe fn strtoc(
  * Legitimate stub: requires R_ReadConsole which is not available
  * without a running R console session. Always returns EOF.
  */
-unsafe fn ConsoleGetcharWithPushBack(con: c_int) -> c_int {
+fn ConsoleGetcharWithPushBack(con: c_int) -> c_int {
     connection_fgetc(con)
 }
 
 /* scanchar_raw — read next character from connection or console */
-unsafe fn scanchar_raw(d: &mut LocalData) -> c_int {
-    unsafe {
-        let c = if d.ttyflag != 0 {
-            ConsoleGetcharWithPushBack(d.con)
-        } else {
-            connection_fgetc(d.con)
-        };
-        if c == 0 {
-            if d.skipNul {
-                let mut c2 = c;
-                loop {
-                    c2 = if d.ttyflag != 0 {
-                        ConsoleGetcharWithPushBack(d.con)
-                    } else {
-                        connection_fgetc(d.con)
-                    };
-                    if c2 != 0 {
-                        break;
-                    }
+fn scanchar_raw(d: &mut LocalData) -> c_int {
+    let c = if d.ttyflag != 0 {
+        ConsoleGetcharWithPushBack(d.con)
+    } else {
+        connection_fgetc(d.con)
+    };
+    if c == 0 {
+        if d.skipNul {
+            let mut c2 = c;
+            loop {
+                c2 = if d.ttyflag != 0 {
+                    ConsoleGetcharWithPushBack(d.con)
+                } else {
+                    connection_fgetc(d.con)
+                };
+                if c2 != 0 {
+                    break;
                 }
-                c2
-            } else {
-                c
             }
+            c2
         } else {
             c
         }
+    } else {
+        c
     }
 }
 
@@ -928,87 +924,85 @@ fn unscanchar(c: c_int, d: &mut LocalData) {
 }
 
 /* scanchar — read next character with comment/escape handling */
-unsafe fn scanchar(inQuote: bool, d: &mut LocalData) -> c_int {
-    unsafe {
-        let mut next;
-        if d.save != 0 {
-            next = d.save;
-            d.save = 0;
-        } else {
+fn scanchar(inQuote: bool, d: &mut LocalData) -> c_int {
+    let mut next;
+    if d.save != 0 {
+        next = d.save;
+        d.save = 0;
+    } else {
+        next = scanchar_raw(d);
+    }
+    if next == d.comchar && !inQuote {
+        loop {
             next = scanchar_raw(d);
-        }
-        if next == d.comchar && !inQuote {
-            loop {
-                next = scanchar_raw(d);
-                if next == '\n' as c_int || next == R_EOF_VAL {
-                    break;
-                }
+            if next == '\n' as c_int || next == R_EOF_VAL {
+                break;
             }
         }
-        if next == '\\' as c_int && d.escapes {
+    }
+    if next == '\\' as c_int && d.escapes {
+        next = scanchar_raw(d);
+        if next >= '0' as c_int && next <= '8' as c_int {
+            let mut octal = next - '0' as c_int;
             next = scanchar_raw(d);
             if next >= '0' as c_int && next <= '8' as c_int {
-                let mut octal = next - '0' as c_int;
+                octal = 8 * octal + next - '0' as c_int;
                 next = scanchar_raw(d);
                 if next >= '0' as c_int && next <= '8' as c_int {
                     octal = 8 * octal + next - '0' as c_int;
-                    next = scanchar_raw(d);
-                    if next >= '0' as c_int && next <= '8' as c_int {
-                        octal = 8 * octal + next - '0' as c_int;
-                    } else {
-                        unscanchar(next, d);
-                    }
                 } else {
                     unscanchar(next, d);
                 }
-                next = octal;
             } else {
-                next = match next {
-                    97 => 0x07,  // 'a' -> BEL
-                    98 => 0x08,  // 'b' -> BS
-                    102 => 0x0c, // 'f' -> FF
-                    110 => 0x0a, // 'n' -> LF
-                    114 => 0x0d, // 'r' -> CR
-                    116 => 0x09, // 't' -> TAB
-                    118 => 0x0b, // 'v' -> VT
-                    120 => {
-                        // 'x'
-                        let mut val = 0;
-                        for _ in 0..2 {
-                            next = scanchar_raw(d);
-                            let ext = if next >= '0' as c_int && next <= '9' as c_int {
-                                next - '0' as c_int
-                            } else if next >= 'A' as c_int && next <= 'F' as c_int {
-                                next - 'A' as c_int + 10
-                            } else if next >= 'a' as c_int && next <= 'f' as c_int {
-                                next - 'a' as c_int + 10
-                            } else {
-                                unscanchar(next, d);
-                                break;
-                            };
-                            val = 16 * val + ext;
-                        }
-                        val
-                    }
-                    _ => {
-                        // Any other char and even EOF escapes to itself,
-                        // but need to preserve \" etc inside quotes.
-                        if inQuote && strchr_quoteset(&d.quoteset, next) {
-                            unscanchar(next, d);
-                            '\\' as c_int
-                        } else {
-                            next
-                        }
-                    }
-                };
+                unscanchar(next, d);
             }
+            next = octal;
+        } else {
+            next = match next {
+                97 => 0x07,  // 'a' -> BEL
+                98 => 0x08,  // 'b' -> BS
+                102 => 0x0c, // 'f' -> FF
+                110 => 0x0a, // 'n' -> LF
+                114 => 0x0d, // 'r' -> CR
+                116 => 0x09, // 't' -> TAB
+                118 => 0x0b, // 'v' -> VT
+                120 => {
+                    // 'x'
+                    let mut val = 0;
+                    for _ in 0..2 {
+                        next = scanchar_raw(d);
+                        let ext = if next >= '0' as c_int && next <= '9' as c_int {
+                            next - '0' as c_int
+                        } else if next >= 'A' as c_int && next <= 'F' as c_int {
+                            next - 'A' as c_int + 10
+                        } else if next >= 'a' as c_int && next <= 'f' as c_int {
+                            next - 'a' as c_int + 10
+                        } else {
+                            unscanchar(next, d);
+                            break;
+                        };
+                        val = 16 * val + ext;
+                    }
+                    val
+                }
+                _ => {
+                    // Any other char and even EOF escapes to itself,
+                    // but need to preserve \" etc inside quotes.
+                    if inQuote && strchr_quoteset(&d.quoteset, next) {
+                        unscanchar(next, d);
+                        '\\' as c_int
+                    } else {
+                        next
+                    }
+                }
+            };
         }
-        next
     }
+    next
 }
 
 /* ruleout_types — determine possible types for a string */
-unsafe fn ruleout_types(
+fn ruleout_types(
     s: *const c_char,
     typeInfo: &mut Typecvt_Info,
     data: &LocalData,
@@ -1059,7 +1053,7 @@ unsafe fn ruleout_types(
 }
 
 /* isna — check if element at index is NA */
-unsafe fn isna(x: SEXP, indx: R_xlen_t) -> bool {
+fn isna(x: SEXP, indx: R_xlen_t) -> bool {
     unsafe {
         match TYPEOF(x) {
             tt if tt == SEXPTYPE::LGLSXP => LOGICAL(x).add(indx as usize).read() == NA_LOGICAL(),
@@ -1079,7 +1073,7 @@ unsafe fn isna(x: SEXP, indx: R_xlen_t) -> bool {
 }
 
 /* NA_STRING — get the NA string sentinel */
-unsafe fn NA_STRING() -> SEXP {
+fn NA_STRING() -> SEXP {
     unsafe { crate::main::relop::NA_STRING() }
 }
 
@@ -1087,25 +1081,25 @@ unsafe fn NA_STRING() -> SEXP {
 
 /// CAD4R — fourth element of args list (CAR of CDR of CDR of CDR of CDR)
 #[inline]
-unsafe fn CAD4R(x: SEXP) -> SEXP {
+fn CAD4R(x: SEXP) -> SEXP {
     CDR(CDR(CDR(CDR(x))))
 }
 
 /// isString — check if SEXP is a character vector
 #[inline]
-unsafe fn isString(x: SEXP) -> bool {
+fn isString(x: SEXP) -> bool {
     TYPEOF(x) == SEXPTYPE::STRSXP
 }
 
 /// isNull — check if SEXP is R_NilValue
 #[inline]
-unsafe fn isNull(x: SEXP) -> bool {
+fn isNull(x: SEXP) -> bool {
     x.is_null() || x == R_NilValue()
 }
 
 /// isVectorList — check if SEXP is a list (VECSXP or EXPRSXP)
 #[inline]
-unsafe fn isVectorList(x: SEXP) -> bool {
+fn isVectorList(x: SEXP) -> bool {
     {
         if x.is_null() {
             return false;
@@ -1122,7 +1116,7 @@ fn isVectorAtomic(x: SEXP) -> bool {
 }
 
 /// inherits — check if object has a given class
-unsafe fn inherits(x: SEXP, _what: *const c_char) -> bool {
+fn inherits(x: SEXP, _what: *const c_char) -> bool {
     unsafe {
         let klass = attrib_core::getAttrib(x, attrib_core::R_ClassSymbol());
         if isNull(klass) {
@@ -1152,7 +1146,7 @@ unsafe fn inherits(x: SEXP, _what: *const c_char) -> bool {
 
 /// SET_TYPEOF — set the type of a SEXP
 #[inline]
-unsafe fn SET_TYPEOF(x: SEXP, v: SEXPTYPE) {
+fn SET_TYPEOF(x: SEXP, v: SEXPTYPE) {
     unsafe {
         crate::sexp::accessors::SET_TYPEOF(x, v.as_c_int());
     }
@@ -1160,7 +1154,7 @@ unsafe fn SET_TYPEOF(x: SEXP, v: SEXPTYPE) {
 
 /// strchr helper for quoteset
 #[inline]
-unsafe fn strchr_quoteset(quoteset: &[c_char; 10], c: c_int) -> bool {
+fn strchr_quoteset(quoteset: &[c_char; 10], c: c_int) -> bool {
     for i in 0..10 {
         if quoteset[i as usize] == 0 {
             break;
@@ -1173,7 +1167,7 @@ unsafe fn strchr_quoteset(quoteset: &[c_char; 10], c: c_int) -> bool {
 }
 
 /// Format an error message and call Rf_error
-unsafe fn r_error(fmt: *const c_char, arg: *const c_char) {
+fn r_error(fmt: *const c_char, arg: *const c_char) {
     unsafe {
         // Rf_error in our Rust port takes a single format string
         // Build the full message using snprintf
@@ -1190,7 +1184,7 @@ unsafe fn r_error(fmt: *const c_char, arg: *const c_char) {
 }
 
 /// Format an error message with int arg and call Rf_error
-unsafe fn r_error_int(fmt: *const c_char, arg: c_int) {
+fn r_error_int(fmt: *const c_char, arg: c_int) {
     unsafe {
         let mut buf = [0 as core::ffi::c_char; 512];
         let fmt_b = CStr::from_ptr(fmt).to_bytes().to_vec();
@@ -1200,7 +1194,7 @@ unsafe fn r_error_int(fmt: *const c_char, arg: c_int) {
 }
 
 /// Format a warning message and call Rf_warning
-unsafe fn r_warning(fmt: *const c_char, arg: *const c_char) {
+fn r_warning(fmt: *const c_char, arg: *const c_char) {
     unsafe {
         let mut buf = [0 as core::ffi::c_char; 512];
         let fmt_b = CStr::from_ptr(fmt).to_bytes().to_vec();
@@ -1217,7 +1211,7 @@ unsafe fn r_warning(fmt: *const c_char, arg: *const c_char) {
 /// EncodeElement2 — encode an element for writetable output.
 /// For STRSXP: quotes the string if requested, handling doubled quotes.
 /// For other types: delegates to EncodeElement0.
-unsafe fn EncodeElement2(
+fn EncodeElement2(
     x: SEXP,
     indx: R_xlen_t,
     quote: bool,
@@ -1284,7 +1278,7 @@ unsafe fn EncodeElement2(
  * Counts the number of fields per line in a file/connection.
  * Ported from r-source/src/library/utils/src/io.c
  */
-pub unsafe fn countfields(args: SEXP) -> SEXP {
+pub fn countfields(args: SEXP) -> SEXP {
     unsafe {
         let mut data = LocalData::new();
         data.NAstrings = R_NilValue();
@@ -1525,7 +1519,7 @@ pub unsafe fn countfields(args: SEXP) -> SEXP {
  * Converts a character vector to logical, integer, numeric, complex,
  * or factor. Full port from r-source/src/library/utils/src/io.c
  */
-pub unsafe fn typeconvert(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub fn typeconvert(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let _ = (call, op, env);
 
@@ -1865,7 +1859,7 @@ pub unsafe fn typeconvert(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
  * which is not available without a running R console session.
  * Always returns 0 (no selection).
  */
-pub unsafe fn menu(choices: SEXP) -> SEXP {
+pub fn menu(choices: SEXP) -> SEXP {
     unsafe {
         let _ = choices;
         Rf_ScalarInteger(0)
@@ -1879,7 +1873,7 @@ pub unsafe fn menu(choices: SEXP) -> SEXP {
  * Simplified version of readLines, with skip of blank lines and comment-only lines.
  * Ported from r-source/src/library/utils/src/io.c
  */
-pub unsafe fn readtablehead(args: SEXP) -> SEXP {
+pub fn readtablehead(args: SEXP) -> SEXP {
     unsafe {
         let mut data = LocalData::new();
         data.NAstrings = R_NilValue();
@@ -2128,7 +2122,7 @@ pub unsafe fn readtablehead(args: SEXP) -> SEXP {
  *
  * Ported from r-source/src/library/utils/src/io.c
  */
-pub unsafe fn writetable(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub fn writetable(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let _ = (call, op, env);
 

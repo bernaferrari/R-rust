@@ -24,6 +24,6 @@ use std::os::raw::c_int;
 use crate::sexp::ffi::*;
 
 /* Stub: DllInfo registration — symbols exported via #[unsafe(no_mangle)] */
-pub unsafe fn R_init_utils(_dll: *mut std::ffi::c_void) {
+pub fn R_init_utils(_dll: *mut std::ffi::c_void) {
     /* Registration handled by Rust's symbol exports */
 }

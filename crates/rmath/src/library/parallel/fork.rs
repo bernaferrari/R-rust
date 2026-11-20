@@ -49,7 +49,7 @@ use libc::{
 /// Get errno pointer (macOS uses __error(), Linux/Android use __errno_location).
 #[cfg(unix)]
 #[inline]
-unsafe fn errno_ptr() -> *mut c_int {
+fn errno_ptr() -> *mut c_int {
     unsafe {
         #[cfg(target_os = "macos")]
         {
@@ -181,7 +181,7 @@ fn current_time() -> c_double {
 }
 
 #[cfg(unix)]
-unsafe fn block_sigchld(oldset: *mut sigset_t) {
+fn block_sigchld(oldset: *mut sigset_t) {
     unsafe {
         let mut ss: sigset_t = std::mem::zeroed();
         sigemptyset(&mut ss);
@@ -191,14 +191,14 @@ unsafe fn block_sigchld(oldset: *mut sigset_t) {
 }
 
 #[cfg(unix)]
-unsafe fn restore_sigchld(oldset: *const sigset_t) {
+fn restore_sigchld(oldset: *const sigset_t) {
     unsafe {
         sigprocmask(libc::SIG_SETMASK, oldset as *mut sigset_t, ptr::null_mut());
     }
 }
 
 #[cfg(unix)]
-unsafe fn close_fds_child_ci(ci: *mut child_info_t) {
+fn close_fds_child_ci(ci: *mut child_info_t) {
     unsafe {
         if (*ci).pfd >= 0 {
             close((*ci).pfd);
@@ -212,7 +212,7 @@ unsafe fn close_fds_child_ci(ci: *mut child_info_t) {
 }
 
 #[cfg(unix)]
-unsafe fn fd_used_by_children(fd: c_int) -> c_int {
+fn fd_used_by_children(fd: c_int) -> c_int {
     unsafe {
         if fd == -1 {
             return 0;
@@ -229,7 +229,7 @@ unsafe fn fd_used_by_children(fd: c_int) -> c_int {
 }
 
 #[cfg(unix)]
-unsafe fn close_non_child_fd(fd: c_int) {
+fn close_non_child_fd(fd: c_int) {
     unsafe {
         if fd_used_by_children(fd) != 0 {
             crate::main::errors::Rf_error(
@@ -245,7 +245,7 @@ unsafe fn close_non_child_fd(fd: c_int) {
 // ---------------------------------------------------------------------------
 
 #[cfg(unix)]
-unsafe fn child_sig_handler(sig: c_int) {
+fn child_sig_handler(sig: c_int) {
     unsafe {
         if sig == SIGUSR1 {
             if let Some(exit_status) = with_current_fork_state(|state| {
@@ -260,7 +260,7 @@ unsafe fn child_sig_handler(sig: c_int) {
 }
 
 #[cfg(unix)]
-unsafe fn parent_sig_handler(_sig: c_int) {
+fn parent_sig_handler(_sig: c_int) {
     unsafe {
         let old_errno = *errno_ptr();
         if let Some(mut ci) = with_current_fork_state(|state| state.children) {
@@ -276,7 +276,7 @@ unsafe fn parent_sig_handler(_sig: c_int) {
 }
 
 #[cfg(unix)]
-unsafe fn wait_for_child_ci(ci: *mut child_info_t) {
+fn wait_for_child_ci(ci: *mut child_info_t) {
     unsafe {
         let mut wstat: c_int = 0;
         if waitpid((*ci).pid, &mut wstat, WNOHANG) == (*ci).pid
@@ -288,7 +288,7 @@ unsafe fn wait_for_child_ci(ci: *mut child_info_t) {
 }
 
 #[cfg(unix)]
-unsafe fn setup_sig_handler() {
+fn setup_sig_handler() {
     unsafe {
         if with_fork_state(|state| state.parent_handler_set) == 0 {
             with_fork_state(|state| state.parent_handler_set = 1);
@@ -303,7 +303,7 @@ unsafe fn setup_sig_handler() {
 }
 
 #[cfg(unix)]
-unsafe fn restore_sig_handler() {
+fn restore_sig_handler() {
     unsafe {
         if with_fork_state(|state| state.parent_handler_set) != 0 {
             let old = with_fork_state(|state| {
@@ -320,7 +320,7 @@ unsafe fn restore_sig_handler() {
 // ---------------------------------------------------------------------------
 
 #[cfg(unix)]
-unsafe fn kill_and_detach_child_ci(ci: *mut child_info_t, sig: c_int) {
+fn kill_and_detach_child_ci(ci: *mut child_info_t, sig: c_int) {
     unsafe {
         let mut ss: sigset_t = std::mem::zeroed();
         block_sigchld(&mut ss);
@@ -342,14 +342,12 @@ unsafe fn kill_and_detach_child_ci(ci: *mut child_info_t, sig: c_int) {
 }
 
 #[cfg(unix)]
-unsafe fn terminate_and_detach_child_ci(ci: *mut child_info_t) {
-    unsafe {
-        kill_and_detach_child_ci(ci, SIGUSR1);
-    }
+fn terminate_and_detach_child_ci(ci: *mut child_info_t) {
+    kill_and_detach_child_ci(ci, SIGUSR1);
 }
 
 #[cfg(unix)]
-unsafe fn kill_detached_child_ci(ci: *mut child_info_t, sig: c_int) {
+fn kill_detached_child_ci(ci: *mut child_info_t, sig: c_int) {
     unsafe {
         let mut ss: sigset_t = std::mem::zeroed();
         block_sigchld(&mut ss);
@@ -366,7 +364,7 @@ unsafe fn kill_detached_child_ci(ci: *mut child_info_t, sig: c_int) {
 }
 
 #[cfg(unix)]
-unsafe fn rm_child(pid: c_int) -> c_int {
+fn rm_child(pid: c_int) -> c_int {
     unsafe {
         let mut ci = with_fork_state(|state| state.children);
         let ppid = libc::getpid();
@@ -382,7 +380,7 @@ unsafe fn rm_child(pid: c_int) -> c_int {
 }
 
 #[cfg(unix)]
-unsafe fn compact_children() {
+fn compact_children() {
     unsafe {
         let mut ci = with_fork_state(|state| state.children);
         let mut prev: *mut child_info_t = ptr::null_mut();
@@ -419,7 +417,7 @@ unsafe fn compact_children() {
 // ---------------------------------------------------------------------------
 
 #[cfg(unix)]
-unsafe fn fdcopy(dst: *mut fd_set, src: *const fd_set, nfds: c_int) {
+fn fdcopy(dst: *mut fd_set, src: *const fd_set, nfds: c_int) {
     unsafe {
         FD_ZERO(dst);
         if nfds as usize > FD_SETSIZE {
@@ -440,7 +438,7 @@ unsafe fn fdcopy(dst: *mut fd_set, src: *const fd_set, nfds: c_int) {
 // ---------------------------------------------------------------------------
 
 #[cfg(unix)]
-unsafe fn readrep(fildes: c_int, buf: *mut c_void, nbyte: size_t) -> ssize_t {
+fn readrep(fildes: c_int, buf: *mut c_void, nbyte: size_t) -> ssize_t {
     unsafe {
         let mut rbyte: size_t = 0;
         let ptr = buf as *mut u8;
@@ -465,7 +463,7 @@ unsafe fn readrep(fildes: c_int, buf: *mut c_void, nbyte: size_t) -> ssize_t {
 }
 
 #[cfg(unix)]
-unsafe fn writerep(fildes: c_int, buf: *const c_void, nbyte: size_t) -> ssize_t {
+fn writerep(fildes: c_int, buf: *const c_void, nbyte: size_t) -> ssize_t {
     unsafe {
         let mut wbyte: size_t = 0;
         let ptr = buf as *const u8;
@@ -494,7 +492,7 @@ unsafe fn writerep(fildes: c_int, buf: *const c_void, nbyte: size_t) -> ssize_t 
 // ---------------------------------------------------------------------------
 
 #[cfg(unix)]
-unsafe fn mc_select(
+fn mc_select(
     n: c_int,
     readfds: *mut fd_set,
     writefds: *mut fd_set,
@@ -514,7 +512,7 @@ unsafe fn mc_select(
 
 /// Insert a cleanup mark into the children list.
 #[cfg(unix)]
-pub unsafe fn mc_prepare_cleanup() -> SEXP {
+pub fn mc_prepare_cleanup() -> SEXP {
     unsafe {
         compact_children();
         let ci = Box::into_raw(Box::new(std::mem::zeroed::<child_info_t>()));
@@ -533,7 +531,7 @@ pub unsafe fn mc_prepare_cleanup() -> SEXP {
 
 /// Terminate and detach all children up to the first cleanup mark.
 #[cfg(unix)]
-pub unsafe fn mc_cleanup(sKill: SEXP, sDetach: SEXP, sShutdown: SEXP) -> SEXP {
+pub fn mc_cleanup(sKill: SEXP, sDetach: SEXP, sShutdown: SEXP) -> SEXP {
     unsafe {
         use crate::main::coerce::{asInteger, asLogical};
 
@@ -628,7 +626,7 @@ pub unsafe fn mc_cleanup(sKill: SEXP, sDetach: SEXP, sShutdown: SEXP) -> SEXP {
 ///   [1] = file descriptor of the data pipe (child->master)
 ///   [2] = file descriptor of the child-stdin pipe (master->child)
 #[cfg(unix)]
-pub unsafe fn mc_fork(sEstranged: SEXP) -> SEXP {
+pub fn mc_fork(sEstranged: SEXP) -> SEXP {
     unsafe {
         #[cfg(target_os = "android")]
         {
@@ -760,7 +758,7 @@ pub unsafe fn mc_fork(sEstranged: SEXP) -> SEXP {
 
 /// Close or redirect stdout.
 #[cfg(unix)]
-pub unsafe fn mc_close_stdout(toNULL: SEXP) -> SEXP {
+pub fn mc_close_stdout(toNULL: SEXP) -> SEXP {
     unsafe {
         use crate::main::coerce::asLogical;
 
@@ -781,7 +779,7 @@ pub unsafe fn mc_close_stdout(toNULL: SEXP) -> SEXP {
 
 /// Close or redirect stderr.
 #[cfg(unix)]
-pub unsafe fn mc_close_stderr(toNULL: SEXP) -> SEXP {
+pub fn mc_close_stderr(toNULL: SEXP) -> SEXP {
     unsafe {
         use crate::main::coerce::asLogical;
 
@@ -802,7 +800,7 @@ pub unsafe fn mc_close_stderr(toNULL: SEXP) -> SEXP {
 
 /// Close file descriptors.
 #[cfg(unix)]
-pub unsafe fn mc_close_fds(sFDS: SEXP) -> SEXP {
+pub fn mc_close_fds(sFDS: SEXP) -> SEXP {
     unsafe {
         if TYPEOF(sFDS) != SEXPTYPE::INTSXP {
             crate::main::errors::Rf_error(
@@ -822,7 +820,7 @@ pub unsafe fn mc_close_fds(sFDS: SEXP) -> SEXP {
 
 /// Send data from child to master process.
 #[cfg(unix)]
-pub unsafe fn mc_send_master(what: SEXP) -> SEXP {
+pub fn mc_send_master(what: SEXP) -> SEXP {
     unsafe {
         if with_fork_state(|state| state.is_master) != 0 {
             crate::main::errors::Rf_error(
@@ -885,7 +883,7 @@ pub unsafe fn mc_send_master(what: SEXP) -> SEXP {
 
 /// Send data from master to child process stdin.
 #[cfg(unix)]
-pub unsafe fn mc_send_child_stdin(sPid: SEXP, what: SEXP) -> SEXP {
+pub fn mc_send_child_stdin(sPid: SEXP, what: SEXP) -> SEXP {
     unsafe {
         use crate::main::coerce::asInteger;
 
@@ -934,7 +932,7 @@ pub unsafe fn mc_send_child_stdin(sPid: SEXP, what: SEXP) -> SEXP {
 
 /// Select children with data available to read.
 #[cfg(unix)]
-pub unsafe fn mc_select_children(sTimeout: SEXP, sWhich: SEXP) -> SEXP {
+pub fn mc_select_children(sTimeout: SEXP, sWhich: SEXP) -> SEXP {
     unsafe {
         use crate::main::coerce::{asInteger, asReal};
 
@@ -1106,7 +1104,7 @@ pub unsafe fn mc_select_children(sTimeout: SEXP, sWhich: SEXP) -> SEXP {
 
 /// Read data from a child process.
 #[cfg(unix)]
-unsafe fn read_child_ci(ci: *mut child_info_t) -> SEXP {
+fn read_child_ci(ci: *mut child_info_t) -> SEXP {
     unsafe {
         if (*ci).detached != 0 {
             return R_NilValue();
@@ -1153,7 +1151,7 @@ unsafe fn read_child_ci(ci: *mut child_info_t) -> SEXP {
 
 /// Read data from a specific child.
 #[cfg(unix)]
-pub unsafe fn mc_read_child(sPid: SEXP) -> SEXP {
+pub fn mc_read_child(sPid: SEXP) -> SEXP {
     unsafe {
         use crate::main::coerce::asInteger;
 
@@ -1175,7 +1173,7 @@ pub unsafe fn mc_read_child(sPid: SEXP) -> SEXP {
 
 /// Read data from any available child.
 #[cfg(unix)]
-pub unsafe fn mc_read_children(sTimeout: SEXP) -> SEXP {
+pub fn mc_read_children(sTimeout: SEXP) -> SEXP {
     unsafe {
         use crate::main::coerce::asReal;
 
@@ -1256,7 +1254,7 @@ pub unsafe fn mc_read_children(sTimeout: SEXP) -> SEXP {
 
 /// Remove a child process.
 #[cfg(unix)]
-pub unsafe fn mc_rm_child(sPid: SEXP) -> SEXP {
+pub fn mc_rm_child(sPid: SEXP) -> SEXP {
     unsafe {
         use crate::main::coerce::asInteger;
 
@@ -1267,7 +1265,7 @@ pub unsafe fn mc_rm_child(sPid: SEXP) -> SEXP {
 
 /// Get list of attached children PIDs.
 #[cfg(unix)]
-pub unsafe fn mc_children() -> SEXP {
+pub fn mc_children() -> SEXP {
     unsafe {
         let mut ci = with_fork_state(|state| state.children);
         let mut count: c_uint = 0;
@@ -1297,7 +1295,7 @@ pub unsafe fn mc_children() -> SEXP {
 
 /// Get file descriptors of attached children.
 #[cfg(unix)]
-pub unsafe fn mc_fds(sFdi: SEXP) -> SEXP {
+pub fn mc_fds(sFdi: SEXP) -> SEXP {
     unsafe {
         use crate::main::coerce::asInteger;
 
@@ -1330,13 +1328,13 @@ pub unsafe fn mc_fds(sFdi: SEXP) -> SEXP {
 
 /// Get the master file descriptor (child side).
 #[cfg(unix)]
-pub unsafe fn mc_master_fd() -> SEXP {
+pub fn mc_master_fd() -> SEXP {
     unsafe { Rf_ScalarInteger(with_fork_state(|state| state.master_fd)) }
 }
 
 /// Check if current process is a child.
 #[cfg(unix)]
-pub unsafe fn mc_is_child() -> SEXP {
+pub fn mc_is_child() -> SEXP {
     unsafe {
         Rf_ScalarLogical(if with_fork_state(|state| state.is_master) != 0 {
             0
@@ -1348,7 +1346,7 @@ pub unsafe fn mc_is_child() -> SEXP {
 
 /// Send a signal to a process.
 #[cfg(unix)]
-pub unsafe fn mc_kill(sPid: SEXP, sSig: SEXP) -> SEXP {
+pub fn mc_kill(sPid: SEXP, sSig: SEXP) -> SEXP {
     unsafe {
         use crate::main::coerce::asInteger;
 
@@ -1363,7 +1361,7 @@ pub unsafe fn mc_kill(sPid: SEXP, sSig: SEXP) -> SEXP {
 
 /// Exit a child process.
 #[cfg(unix)]
-pub unsafe fn mc_exit(sRes: SEXP) -> SEXP {
+pub fn mc_exit(sRes: SEXP) -> SEXP {
     unsafe {
         use crate::main::coerce::asInteger;
 
@@ -1409,7 +1407,7 @@ pub unsafe fn mc_exit(sRes: SEXP) -> SEXP {
 
 /// Get or set the interactive flag.
 #[cfg(unix)]
-pub unsafe fn mc_interactive(sWhat: SEXP) -> SEXP {
+pub fn mc_interactive(sWhat: SEXP) -> SEXP {
     unsafe {
         use crate::main::coerce::asInteger;
 
@@ -1474,17 +1472,17 @@ mod tests {
 // ---------------------------------------------------------------------------
 
 #[cfg(not(unix))]
-pub unsafe fn mc_prepare_cleanup() -> SEXP {
+pub fn mc_prepare_cleanup() -> SEXP {
     unsafe { R_NilValue() }
 }
 
 #[cfg(not(unix))]
-pub unsafe fn mc_cleanup(_sKill: SEXP, _sDetach: SEXP, _sShutdown: SEXP) -> SEXP {
+pub fn mc_cleanup(_sKill: SEXP, _sDetach: SEXP, _sShutdown: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
 #[cfg(not(unix))]
-pub unsafe fn mc_fork(_sEstranged: SEXP) -> SEXP {
+pub fn mc_fork(_sEstranged: SEXP) -> SEXP {
     unsafe {
         crate::main::errors::Rf_error(
             b"forking is not available on this platform\0".as_ptr() as *const c_char
@@ -1494,22 +1492,22 @@ pub unsafe fn mc_fork(_sEstranged: SEXP) -> SEXP {
 }
 
 #[cfg(not(unix))]
-pub unsafe fn mc_close_stdout(_toNULL: SEXP) -> SEXP {
+pub fn mc_close_stdout(_toNULL: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
 #[cfg(not(unix))]
-pub unsafe fn mc_close_stderr(_toNULL: SEXP) -> SEXP {
+pub fn mc_close_stderr(_toNULL: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
 #[cfg(not(unix))]
-pub unsafe fn mc_close_fds(_sFDS: SEXP) -> SEXP {
+pub fn mc_close_fds(_sFDS: SEXP) -> SEXP {
     unsafe { Rf_ScalarLogical(1) }
 }
 
 #[cfg(not(unix))]
-pub unsafe fn mc_send_master(_what: SEXP) -> SEXP {
+pub fn mc_send_master(_what: SEXP) -> SEXP {
     unsafe {
         crate::main::errors::Rf_error(
             b"only children can send data to the master process\0".as_ptr() as *const c_char,
@@ -1519,7 +1517,7 @@ pub unsafe fn mc_send_master(_what: SEXP) -> SEXP {
 }
 
 #[cfg(not(unix))]
-pub unsafe fn mc_send_child_stdin(_sPid: SEXP, _what: SEXP) -> SEXP {
+pub fn mc_send_child_stdin(_sPid: SEXP, _what: SEXP) -> SEXP {
     unsafe {
         crate::main::errors::Rf_error(
             b"only the master process can send data to a child process\0".as_ptr() as *const c_char,
@@ -1529,47 +1527,47 @@ pub unsafe fn mc_send_child_stdin(_sPid: SEXP, _what: SEXP) -> SEXP {
 }
 
 #[cfg(not(unix))]
-pub unsafe fn mc_select_children(_sTimeout: SEXP, _sWhich: SEXP) -> SEXP {
+pub fn mc_select_children(_sTimeout: SEXP, _sWhich: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
 #[cfg(not(unix))]
-pub unsafe fn mc_read_child(_sPid: SEXP) -> SEXP {
+pub fn mc_read_child(_sPid: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
 #[cfg(not(unix))]
-pub unsafe fn mc_read_children(_sTimeout: SEXP) -> SEXP {
+pub fn mc_read_children(_sTimeout: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
 #[cfg(not(unix))]
-pub unsafe fn mc_rm_child(_sPid: SEXP) -> SEXP {
+pub fn mc_rm_child(_sPid: SEXP) -> SEXP {
     unsafe { Rf_ScalarLogical(0) }
 }
 
 #[cfg(not(unix))]
-pub unsafe fn mc_children() -> SEXP {
+pub fn mc_children() -> SEXP {
     unsafe { Rf_allocVector(SEXPTYPE::INTSXP, 0) }
 }
 
 #[cfg(not(unix))]
-pub unsafe fn mc_fds(_sFdi: SEXP) -> SEXP {
+pub fn mc_fds(_sFdi: SEXP) -> SEXP {
     unsafe { Rf_allocVector(SEXPTYPE::INTSXP, 0) }
 }
 
 #[cfg(not(unix))]
-pub unsafe fn mc_master_fd() -> SEXP {
+pub fn mc_master_fd() -> SEXP {
     unsafe { Rf_ScalarInteger(-1) }
 }
 
 #[cfg(not(unix))]
-pub unsafe fn mc_is_child() -> SEXP {
+pub fn mc_is_child() -> SEXP {
     unsafe { Rf_ScalarLogical(0) }
 }
 
 #[cfg(not(unix))]
-pub unsafe fn mc_kill(_sPid: SEXP, _sSig: SEXP) -> SEXP {
+pub fn mc_kill(_sPid: SEXP, _sSig: SEXP) -> SEXP {
     unsafe {
         crate::main::errors::Rf_error(b"'mckill' failed\0".as_ptr() as *const c_char);
         R_NilValue()
@@ -1577,7 +1575,7 @@ pub unsafe fn mc_kill(_sPid: SEXP, _sSig: SEXP) -> SEXP {
 }
 
 #[cfg(not(unix))]
-pub unsafe fn mc_exit(_sRes: SEXP) -> SEXP {
+pub fn mc_exit(_sRes: SEXP) -> SEXP {
     unsafe {
         crate::main::errors::Rf_error(
             b"'mcexit' can only be used in a child process\0".as_ptr() as *const c_char
@@ -1587,11 +1585,11 @@ pub unsafe fn mc_exit(_sRes: SEXP) -> SEXP {
 }
 
 #[cfg(not(unix))]
-pub unsafe fn mc_interactive(_sWhat: SEXP) -> SEXP {
+pub fn mc_interactive(_sWhat: SEXP) -> SEXP {
     unsafe { Rf_ScalarLogical(0) }
 }
 
 #[cfg(not(unix))]
-pub unsafe fn mc_affinity(_req: SEXP) -> SEXP {
+pub fn mc_affinity(_req: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
