@@ -54,6 +54,16 @@ user workflows have passed on native Rport and production Wasm.
 
 ## Main verification
 
+- At `df6decc7`, production Wasm decoded the pinned datasets through
+  the same bounded codec as other lazy-loaded R records. The contract
+  checked all 108 dataset objects and 592,931 serialized graph bytes.
+  The exact Workbench bundle grew 52,209 bytes to 24,024,817 bytes, leaving
+  2,189,583 bytes below 25 MiB. The report rebuild raised the everyday
+  score to 16 of 20 on each target. All 17 selected strict native cases,
+  332 production Wasm contract runs, and seven Chromium deadline checks
+  passed.
+  [Production receipt](ci-checkpoints/wasm-bundle-0ea69c8a.json)
+
 - At `3e5bbcbb`, native and production Wasm verified 15 of 20 everyday
   workflows. The ordinary PDF script produced valid vector output, and
   refusing unsupported raster content preserved the previous output.

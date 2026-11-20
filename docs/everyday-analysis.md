@@ -11,6 +11,16 @@ workflow stays in the denominator. A pass requires a measured result, and an
 unmeasured workflow earns no credit. Silent wrong results, crashes and data
 loss in supported workflows block release even when the score is high.
 
+At `0ea69c8a`, **16 of 20 workflows (80%)** passed on native Rport
+and production Wasm. A source script rebuilt an HTML report, a CSV table and
+a PDF with two fitted lines after one source measurement changed. Both
+targets matched the HTML and CSV produced by pinned GNU R in each run.
+Independent figure checks verified the eight observations, the fitted
+lines and the labels. The second run started in a fresh session with the
+previous artifacts present.
+[Scorecard](ci-checkpoints/everyday-analysis-v1-0ea69c8a.json)
+[Report receipt](ci-checkpoints/everyday-report-0ea69c8a.json)
+
 At `3e5bbcbb`, **15 of 20 workflows (75%)** passed on both targets.
 An ordinary `pdf()` script exported a labeled scatterplot with visible
 data points, axes, a fitted line and a dashed reference line. Independent
@@ -114,6 +124,11 @@ Pass its JSON as a third `--session-report`.
 Set `--workflow base-plot-export` to check a real PDF against pinned GNU R
 using `pdfinfo`, `pdftotext`, and `pdftoppm` from Poppler. Pass the JSON
 output as another `--session-report`.
+
+Set `--workflow repeatable-report` to build the HTML report, forecast
+table, and PDF before and after changing the input CSV. The rendered figure
+checks use the same Poppler tools. Pass the resulting JSON as another
+`--session-report`.
 
 ## Project files in Wasm
 

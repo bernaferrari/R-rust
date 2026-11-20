@@ -1,0 +1,60 @@
+{
+  "runtime_commit": "df6decc75f438b637a53905fac6510cbc5723fdc",
+  "evidence_commit": "0ea69c8a5e1520cd509650668aab60f9781d59c4",
+  "wasm_sha256": "44f972e12f131384919c535e0527b472509c3e0d6b4007f752164e4f53d2e284",
+  "files": {
+    "package.json": 365,
+    "r_wasm.d.ts": 6452,
+    "r_wasm.js": 25125,
+    "r_wasm_bg.wasm": 23989784,
+    "r_wasm_bg.wasm.d.ts": 2615,
+    "rust-runtime-optimization.json": 476
+  },
+  "bundle_bytes": 24024817,
+  "byte_limit": 26214400,
+  "headroom_bytes": 2189583,
+  "bundle_growth_bytes": 52209,
+  "portable_contracts_per_generation": [
+    166,
+    166
+  ],
+  "browser_deadlines": {
+    "expected": 7,
+    "unexpected": 0,
+    "flaky": 0,
+    "skipped": 0,
+    "s4_evaluation_ms": [
+      11246.9,
+      9174.5,
+      10132.1,
+      9988.6,
+      7798.4,
+      7619.0
+    ]
+  },
+  "strict_pinned_native_cases": 17,
+  "datasets": {
+    "wasm": {
+      "checks": 205,
+      "objects": 108,
+      "topics": 91,
+      "covratio_values": 32,
+      "exact_graph_bytes": 592931
+    },
+    "native_public_tests": 7
+  },
+  "everyday_analysis": {
+    "native": {
+      "pass": 16,
+      "fail": 0,
+      "unmeasured": 4,
+      "percent_verified": 80.0
+    },
+    "wasm": {
+      "pass": 16,
+      "fail": 0,
+      "unmeasured": 4,
+      "percent_verified": 80.0
+    }
+  }
+}

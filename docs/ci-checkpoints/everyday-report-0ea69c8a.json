@@ -1,0 +1,232 @@
+{
+  "schema_version": 1,
+  "source_commit": "0ea69c8a5e1520cd509650668aab60f9781d59c4",
+  "source_sha256": "d7db58063f085d08c509f8e9c55487b309418868929be6e99e41bdb63b866d61",
+  "wasm_sha256": "44f972e12f131384919c535e0527b472509c3e0d6b4007f752164e4f53d2e284",
+  "oracle_manifest_sha256": "b2400cc9d83720c794199ebe51856bb88a0aa2e38ee8db276c7c27f04473c679",
+  "workflow": "repeatable-report",
+  "fixture_sha256": {
+    "initial.csv": "f1e973bd17f0ce810e7cde8a9a7a2cb3cea01a065a3506375b822ade6ee249a4",
+    "rebuild.csv": "1b7b0dd12539383f9f5e9f9ed5fe0e3394e5dd1c5c33c23e3232d3352e1474a5",
+    "report.R": "2226ef2284a2f842ace90dd223b3b2b72503343a42dd5a85f53479c17bce0485",
+    "run.R": "11148c5006de64818a5cce7c29d969f3bd959b0fabdf37c20a9f152586cea8cf"
+  },
+  "expected": {
+    "initial": {
+      "output": "",
+      "forecasts": [
+        "16.75",
+        "20.25"
+      ],
+      "html_sha256": "4ae9c7791db817a61f7358d6be52f2cdf9a695c77eebeda68a1c6e39868e3f78",
+      "table_sha256": "02d1b7d32f591bec7d2469535a8049a11599c58500615b1f186783044177ed1a",
+      "figure": {
+        "pages": 1,
+        "page_size_points": [
+          432,
+          288
+        ],
+        "labels": [
+          "Field trial",
+          "Manure applied",
+          "Crop yield"
+        ],
+        "visible_points": [
+          4,
+          4
+        ],
+        "visible_fit_samples": [
+          3,
+          3
+        ]
+      }
+    },
+    "rebuild": {
+      "output": "",
+      "forecasts": [
+        "19",
+        "24"
+      ],
+      "html_sha256": "34bf857fb3ab3fafa88dc305c3ae4648394b13ea5bd5f17a40d756c6b17bdf7f",
+      "table_sha256": "35ed21caf5a3e217659ba78f2add711a09189b367fffabde2390346b3c161463",
+      "figure": {
+        "pages": 1,
+        "page_size_points": [
+          432,
+          288
+        ],
+        "labels": [
+          "Field trial",
+          "Manure applied",
+          "Crop yield"
+        ],
+        "visible_points": [
+          4,
+          4
+        ],
+        "visible_fit_samples": [
+          3,
+          3
+        ]
+      }
+    }
+  },
+  "native": {
+    "initial": {
+      "output": "",
+      "forecasts": [
+        "16.75",
+        "20.25"
+      ],
+      "html_sha256": "4ae9c7791db817a61f7358d6be52f2cdf9a695c77eebeda68a1c6e39868e3f78",
+      "table_sha256": "02d1b7d32f591bec7d2469535a8049a11599c58500615b1f186783044177ed1a",
+      "figure": {
+        "pages": 1,
+        "page_size_points": [
+          432,
+          288
+        ],
+        "labels": [
+          "Field trial",
+          "Manure applied",
+          "Crop yield"
+        ],
+        "visible_points": [
+          4,
+          4
+        ],
+        "visible_fit_samples": [
+          3,
+          3
+        ]
+      }
+    },
+    "rebuild": {
+      "output": "",
+      "forecasts": [
+        "19",
+        "24"
+      ],
+      "html_sha256": "34bf857fb3ab3fafa88dc305c3ae4648394b13ea5bd5f17a40d756c6b17bdf7f",
+      "table_sha256": "35ed21caf5a3e217659ba78f2add711a09189b367fffabde2390346b3c161463",
+      "figure": {
+        "pages": 1,
+        "page_size_points": [
+          432,
+          288
+        ],
+        "labels": [
+          "Field trial",
+          "Manure applied",
+          "Crop yield"
+        ],
+        "visible_points": [
+          4,
+          4
+        ],
+        "visible_fit_samples": [
+          3,
+          3
+        ]
+      }
+    }
+  },
+  "wasm": {
+    "initial": {
+      "output": "",
+      "forecasts": [
+        "16.75",
+        "20.25"
+      ],
+      "html_sha256": "4ae9c7791db817a61f7358d6be52f2cdf9a695c77eebeda68a1c6e39868e3f78",
+      "table_sha256": "02d1b7d32f591bec7d2469535a8049a11599c58500615b1f186783044177ed1a",
+      "figure": {
+        "pages": 1,
+        "page_size_points": [
+          432,
+          288
+        ],
+        "labels": [
+          "Field trial",
+          "Manure applied",
+          "Crop yield"
+        ],
+        "visible_points": [
+          4,
+          4
+        ],
+        "visible_fit_samples": [
+          3,
+          3
+        ]
+      }
+    },
+    "rebuild": {
+      "output": "",
+      "forecasts": [
+        "19",
+        "24"
+      ],
+      "html_sha256": "34bf857fb3ab3fafa88dc305c3ae4648394b13ea5bd5f17a40d756c6b17bdf7f",
+      "table_sha256": "35ed21caf5a3e217659ba78f2add711a09189b367fffabde2390346b3c161463",
+      "figure": {
+        "pages": 1,
+        "page_size_points": [
+          432,
+          288
+        ],
+        "labels": [
+          "Field trial",
+          "Manure applied",
+          "Crop yield"
+        ],
+        "visible_points": [
+          4,
+          4
+        ],
+        "visible_fit_samples": [
+          3,
+          3
+        ]
+      }
+    }
+  },
+  "report_evidence": {
+    "gnu": {
+      "initial": {
+        "pdf_sha256": "f83890ed9765d462cef5d7e2ad74c6e33dba139a4305ef24091c228be0463bf8",
+        "raster_sha256": "40fa03ef5d8615f87360ee7ea22d756cecc77262125e3740092d2d2a74a9d862",
+        "pdf_bytes": 5124
+      },
+      "rebuild": {
+        "pdf_sha256": "2eac081f0f02d4970ecd2ab0e4f8eec96050bd51bcf6cffde184682aeb9503c7",
+        "raster_sha256": "accff224cb71de20181dc9176e3ef73efaaba4c4d8bc52f56fa0a5c74151a312",
+        "pdf_bytes": 5113
+      }
+    },
+    "native": {
+      "initial": {
+        "pdf_sha256": "3fafda557f0b96508edc5d6028179ea758108c55f581b23cb5b8017f8f097dcb",
+        "raster_sha256": "1b72608bf884fdf7f46e646590263ef2e0a46f5385defdbd7f0e15fec45b4118",
+        "pdf_bytes": 386144
+      },
+      "rebuild": {
+        "pdf_sha256": "90c06776121a0b55decdc4a56335fd21dac61e6d2aee9a5b3b42dd076d38658d",
+        "raster_sha256": "2d061afe449b5f0495c3dc3b31a89195c6366a337ea52e372f69b71d078bddbc",
+        "pdf_bytes": 386119
+      }
+    },
+    "wasm": {
+      "initial": {
+        "pdf_sha256": "3fafda557f0b96508edc5d6028179ea758108c55f581b23cb5b8017f8f097dcb",
+        "raster_sha256": "1b72608bf884fdf7f46e646590263ef2e0a46f5385defdbd7f0e15fec45b4118",
+        "pdf_bytes": 386144
+      },
+      "rebuild": {
+        "pdf_sha256": "90c06776121a0b55decdc4a56335fd21dac61e6d2aee9a5b3b42dd076d38658d",
+        "raster_sha256": "2d061afe449b5f0495c3dc3b31a89195c6366a337ea52e372f69b71d078bddbc",
+        "pdf_bytes": 386119
+      }
+    }
+  }
+}
