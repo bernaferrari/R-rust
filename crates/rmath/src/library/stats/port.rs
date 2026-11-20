@@ -10,11 +10,13 @@
 use std::os::raw::{c_char, c_double, c_int};
 
 use crate::appl::lbfgsb::{LbfgsbState, lbfgsb, workspace_lengths};
+use crate::eval::attrib_core::{R_NamesSymbol, getAttrib, setAttrib};
 use crate::sexp::accessors::{INTEGER, LENGTH, REAL, Rf_isNull, TYPEOF};
 use crate::sexp::constructors::Rf_allocVector3;
 use crate::sexp::envir::{R_findVar, defineVar};
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
 use crate::sexp::globals::{R_NilValue, R_UnboundValue};
+use crate::sexp::owner::OwnerToken;
 use crate::sexp::protect::protect;
 use crate::sexp::symbol::Rf_install;
 
@@ -27,6 +29,26 @@ fn error(msg: &str) -> ! {
 
 fn is_null(x: SEXP) -> bool {
     unsafe { Rf_isNull(x) != 0 }
+}
+
+// R counts vector slots from one. These offsets match stats::nlminb.
+const RETURN_CODE: usize = 0;
+const FUNCTION_COUNT: usize = 5;
+const EVAL_MAX: usize = 16;
+const ITER_MAX: usize = 17;
+const TRACE: usize = 18;
+const GRADIENT_COUNT: usize = 29;
+const ITERATIONS: usize = 30;
+const OBJECTIVE_VALUE: usize = 9;
+const WORKSPACE_LIMIT: &str = "nlminb workspace exceeds the session memory limit";
+
+fn workspace_vec<T: Copy>(len: usize, value: T) -> Vec<T> {
+    let mut values = Vec::new();
+    values
+        .try_reserve_exact(len)
+        .unwrap_or_else(|_| error(WORKSPACE_LIMIT));
+    values.resize(len, value);
+    values
 }
 
 // ---------------------------------------------------------------------------
@@ -57,24 +79,55 @@ pub unsafe fn port_ivset(kind: SEXP, iv: SEXP, v: SEXP) -> SEXP {
 struct PortCall {
     expr: SEXP,
     rho: SEXP,
-    n: usize,
-    count: usize,
+    names: SEXP,
+    function_count: c_int,
+    gradient_count: c_int,
 }
 
-/// Publish `x` as `.par` in `rho` (GNU duplicates before each publication so
-/// callbacks cannot alias the working vector) and evaluate `expr`.
-unsafe fn port_eval(call: &mut PortCall, x: &[c_double], sym: SEXP) -> c_double {
-    unsafe {
-        let par = Rf_allocVector3(SEXPTYPE::REALSXP, call.n as i64);
-        let _p = protect(par);
-        for i in 0..call.n {
-            *REAL(par).add(i) = x[i];
+impl PortCall {
+    /// R callbacks see a fresh named vector and cannot alias the solver's input.
+    unsafe fn publish(&self, x: &[c_double], sym: SEXP) {
+        unsafe {
+            let par = Rf_allocVector3(SEXPTYPE::REALSXP, x.len() as i64);
+            let _par = protect(par);
+            std::ptr::copy_nonoverlapping(x.as_ptr(), REAL(par), x.len());
+            if !is_null(self.names) {
+                setAttrib(par, R_NamesSymbol(), self.names);
+            }
+            defineVar(sym, par, self.rho);
         }
-        defineVar(sym, par, call.rho);
-        let value = crate::eval::eval::Rf_eval(call.expr, call.rho);
-        call.count += 1;
-        let f = crate::mainutils::coerce::asReal(value);
-        if f.is_nan() { f64::INFINITY } else { f }
+    }
+
+    unsafe fn value(&mut self, x: &[c_double], sym: SEXP) -> c_double {
+        unsafe {
+            self.publish(x, sym);
+            let value = crate::eval::eval::Rf_eval(self.expr, self.rho);
+            let _value = protect(value);
+            self.function_count = self.function_count.saturating_add(1);
+            let f = crate::mainutils::coerce::asReal(value);
+            if f.is_nan() { f64::INFINITY } else { f }
+        }
+    }
+
+    unsafe fn gradient(&mut self, expr: SEXP, x: &[c_double], g: &mut [c_double], sym: SEXP) {
+        unsafe {
+            self.publish(x, sym);
+            let result = crate::eval::eval::Rf_eval(expr, self.rho);
+            let _result = protect(result);
+            let value =
+                crate::mainutils::coerce::coerceVector(result, SEXPTYPE::REALSXP.as_c_int());
+            let _value = protect(value);
+            if LENGTH(value) as usize != g.len() {
+                error(
+                    "gradient function must return a numeric vector of length equal to the length of 'start'",
+                );
+            }
+            std::ptr::copy_nonoverlapping(REAL(value), g.as_mut_ptr(), g.len());
+            if g.iter().any(|gradient| !gradient.is_finite()) {
+                error("NA/NaN gradient evaluation");
+            }
+            self.gradient_count = self.gradient_count.saturating_add(1);
+        }
     }
 }
 
@@ -95,9 +148,18 @@ pub unsafe fn port_nlminb(
         if is_null(rho) {
             error("use of NULL environment is defunct");
         }
-        let n = LENGTH(d) as usize;
+        if TYPEOF(rho) != SEXPTYPE::ENVSXP {
+            error("'rho' must be an environment");
+        }
+        let n = LENGTH(d);
         if TYPEOF(d) != SEXPTYPE::REALSXP || n < 1 {
             error("'d' must be a nonempty numeric (double) vector");
+        }
+        if TYPEOF(iv) != SEXPTYPE::INTSXP || LENGTH(iv) as usize <= ITERATIONS {
+            error("'iv' must be an integer vector with enough PORT control slots");
+        }
+        if TYPEOF(v) != SEXPTYPE::REALSXP || LENGTH(v) as usize <= OBJECTIVE_VALUE {
+            error("'v' must be a double vector with enough PORT result slots");
         }
         if !is_null(hs_expr) && is_null(gr_expr) {
             error("When Hessian defined must also have gradient defined");
@@ -107,23 +169,49 @@ pub unsafe fn port_nlminb(
         if xpt.is_null() || xpt == R_UnboundValue() {
             error("environment 'rho' must contain a numeric (double) vector '.par'");
         }
-        if TYPEOF(xpt) != SEXPTYPE::REALSXP || LENGTH(xpt) as usize != n {
+        if TYPEOF(xpt) != SEXPTYPE::REALSXP || LENGTH(xpt) != n {
             error(&format!(
                 "environment 'rho' must contain a numeric (double) vector '.par' of length {n}"
             ));
         }
-        let mut x = vec![0.0 as c_double; n];
-        for i in 0..n {
-            x[i] = *REAL(xpt).add(i);
-        }
+        let _start = protect(xpt);
+        let names = getAttrib(xpt, R_NamesSymbol());
+        let _names = protect(names);
+        let history = 10;
+        let (wa_len, iwa_len) = workspace_lengths(n, history)
+            .unwrap_or_else(|| error("nlminb workspace exceeds supported dimensions"));
+        let n = n as usize;
+        let bytes = n
+            .checked_mul(6)
+            .and_then(|words| words.checked_add(wa_len as usize))
+            .and_then(|words| words.checked_mul(size_of::<c_double>()))
+            .and_then(|bytes| {
+                n.checked_add(iwa_len as usize)?
+                    .checked_mul(size_of::<c_int>())?
+                    .checked_add(bytes)
+            })
+            .unwrap_or_else(|| error(WORKSPACE_LIMIT));
+        let owner = OwnerToken::current().unwrap_or_else(|failure| error(&failure.to_string()));
+        let _workspace = owner
+            .with_arena(|arena| arena.reserve_workspace(bytes))
+            .unwrap_or_else(|failure| error(&failure.to_string()))
+            .unwrap_or_else(|| error(WORKSPACE_LIMIT));
+        let mut x = workspace_vec(n, 0.0);
+        std::ptr::copy_nonoverlapping(REAL(xpt), x.as_mut_ptr(), n);
+        let mut best = workspace_vec(n, 0.0);
+        let mut best_value = f64::INFINITY;
 
-        let bounded = LENGTH(lowerb) as usize == n && LENGTH(upperb) as usize == n;
-        let mut lower = vec![f64::NEG_INFINITY; n];
-        let mut upper = vec![f64::INFINITY; n];
-        let mut nbd = vec![0 as c_int; n];
+        let bounded = LENGTH(lowerb) != 0 || LENGTH(upperb) != 0;
+        let mut lower = workspace_vec(n, f64::NEG_INFINITY);
+        let mut upper = workspace_vec(n, f64::INFINITY);
+        let mut nbd = workspace_vec(n, 0 as c_int);
         if bounded {
-            if TYPEOF(lowerb) != SEXPTYPE::REALSXP || TYPEOF(upperb) != SEXPTYPE::REALSXP {
-                error("'lower' and 'upper' must be numeric (double) vectors");
+            if TYPEOF(lowerb) != SEXPTYPE::REALSXP
+                || TYPEOF(upperb) != SEXPTYPE::REALSXP
+                || LENGTH(lowerb) as usize != n
+                || LENGTH(upperb) as usize != n
+            {
+                error("'lower' and 'upper' must be double vectors matching 'start'");
             }
             for i in 0..n {
                 lower[i] = *REAL(lowerb).add(i);
@@ -137,60 +225,28 @@ pub unsafe fn port_nlminb(
             }
         }
 
-        // PORT control slots filled by nlminb() (iv[17]=eval.max, iv[18]=
-        // iter.max, iv[19]=trace).
         let eval_max = {
-            let raw = *INTEGER(iv).add(17);
+            let raw = *INTEGER(iv).add(EVAL_MAX);
             if raw > 0 { raw } else { 200 }
         };
         let iter_max = {
-            let raw = *INTEGER(iv).add(18);
+            let raw = *INTEGER(iv).add(ITER_MAX);
             if raw > 0 { raw } else { 150 }
         };
-        let trace = *INTEGER(iv).add(19);
+        let trace = *INTEGER(iv).add(TRACE);
 
         let mut call = PortCall {
             expr: fn_expr,
             rho,
-            n,
-            count: 0,
+            names,
+            function_count: 0,
+            gradient_count: 0,
         };
-        let gradient = |call: &mut PortCall, x: &[c_double], g: &mut [c_double], sym: SEXP| {
-            if !is_null(gr_expr) {
-                let par = Rf_allocVector3(SEXPTYPE::REALSXP, call.n as i64);
-                let _p = protect(par);
-                for i in 0..call.n {
-                    *REAL(par).add(i) = x[i];
-                }
-                defineVar(sym, par, call.rho);
-                let value = crate::eval::eval::Rf_eval(gr_expr, call.rho);
-                for i in 0..call.n {
-                    g[i] = *REAL(value).add(i);
-                }
-            } else {
-                // Forward differences with PORT-style scaled steps.
-                for i in 0..call.n {
-                    let h = 1e-5 * (x[i].abs() + 1e-5);
-                    let mut xp = x.to_vec();
-                    xp[i] += h;
-                    let fp = port_eval(call, &xp, sym);
-                    let f0 = port_eval(call, x, sym);
-                    g[i] = (fp - f0) / h;
-                }
-            }
-        };
-
-        let lmm = 10 as c_int;
         let mut f = 0.0 as c_double;
-        let mut g = vec![0.0 as c_double; n];
-        let (wa_len, iwa_len) = c_int::try_from(n)
-            .ok()
-            .and_then(|n| workspace_lengths(n, lmm))
-            .unwrap_or_else(|| {
-                crate::sexp::context::r_error("nlminb workspace exceeds supported dimensions")
-            });
-        let mut wa = vec![0.0 as c_double; wa_len as usize];
-        let mut iwa = vec![0 as c_int; iwa_len as usize];
+        let mut g = workspace_vec(n, 0.0);
+        let mut trial = workspace_vec(n, 0.0);
+        let mut wa = workspace_vec(wa_len as usize, 0.0);
+        let mut iwa = workspace_vec(iwa_len as usize, 0 as c_int);
         let mut task: [c_char; 60] = [0; 60];
         for (slot, byte) in b"START\0".iter().enumerate() {
             task[slot] = *byte as c_char;
@@ -198,15 +254,14 @@ pub unsafe fn port_nlminb(
         let mut pgtol = 1e-8 as c_double;
         let factr = 1e7 as c_double;
         let mut isave: [c_int; 44] = [0; 44];
-        let mut converged = false;
         // lbfgsb only prints when iprint >= 0; PORT/optim default to silent.
         let iprint = if trace != 0 { trace } else { -1 };
         let mut state = LbfgsbState::default();
-        loop {
+        let code = 'solver: loop {
             lbfgsb(
                 &mut state,
                 n as c_int,
-                lmm,
+                history,
                 x.as_mut_ptr(),
                 lower.as_ptr() as *mut c_double,
                 upper.as_ptr() as *mut c_double,
@@ -224,36 +279,74 @@ pub unsafe fn port_nlminb(
             let task_len = task.iter().position(|&c| c == 0).unwrap_or(60);
             let task_bytes: &[u8] =
                 std::slice::from_raw_parts(task.as_ptr() as *const u8, task_len);
+            if task_bytes.starts_with(b"CONVERGENCE: NORM") {
+                break 3;
+            }
             if task_bytes.starts_with(b"CONVERGENCE") {
-                converged = true;
-                break;
+                break 4;
             }
-            if task_bytes.starts_with(b"ERROR") {
-                break;
+            if task_bytes.starts_with(b"NEW_X") {
+                if state.iter >= iter_max {
+                    break 10;
+                }
+                continue;
             }
-            if call.count as c_int >= eval_max || isave[29] >= iter_max {
-                break;
+            if !task_bytes.starts_with(b"FG") {
+                break if task_bytes.starts_with(b"ERROR") {
+                    82
+                } else {
+                    8
+                };
             }
-            f = port_eval(&mut call, &x, sym);
-            gradient(&mut call, &x, &mut g, sym);
-        }
+            if call.function_count >= eval_max {
+                x.copy_from_slice(&best);
+                f = best_value;
+                break 9;
+            }
+            f = call.value(&x, sym);
+            if f < best_value || call.function_count == 1 {
+                best.copy_from_slice(&x);
+                best_value = f;
+            }
+            if call.function_count == 1 && !f.is_finite() {
+                break 63;
+            }
+            if !is_null(gr_expr) {
+                call.gradient(gr_expr, &x, &mut g, sym);
+                continue;
+            }
+            trial.copy_from_slice(&x);
+            for i in 0..n {
+                let step = 1e-5 * (x[i].abs() + 1e-5);
+                let forward = (x[i] + step).min(upper[i]);
+                let next = if forward > x[i] {
+                    forward
+                } else {
+                    (x[i] - step).max(lower[i])
+                };
+                if next == x[i] {
+                    g[i] = 0.0;
+                    continue;
+                }
+                if call.function_count >= eval_max {
+                    x.copy_from_slice(&best);
+                    f = best_value;
+                    break 'solver 9;
+                }
+                trial[i] = next;
+                let perturbed = call.value(&trial, sym);
+                g[i] = (perturbed - f) / (next - x[i]);
+                trial[i] = x[i];
+            }
+            call.gradient_count = call.gradient_count.saturating_add(1);
+        };
 
-        // Publish the final iterate as '.par'.
-        let par = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
-        let _p = protect(par);
-        for i in 0..n {
-            *REAL(par).add(i) = x[i];
-        }
-        defineVar(sym, par, rho);
-
-        // Report through the iv/v slots read by nlminb().
-        *INTEGER(iv).add(1) = if converged { 3 } else { 9 };
-        *INTEGER(iv).add(31) = isave[29];
-        *INTEGER(iv).add(6) = call.count as c_int;
-        *INTEGER(iv).add(30) = call.count as c_int;
-        if LENGTH(v) as usize > 10 {
-            *REAL(v).add(10) = f;
-        }
+        call.publish(&x, sym);
+        *INTEGER(iv).add(RETURN_CODE) = code;
+        *INTEGER(iv).add(ITERATIONS) = state.iter;
+        *INTEGER(iv).add(FUNCTION_COUNT) = call.function_count;
+        *INTEGER(iv).add(GRADIENT_COUNT) = call.gradient_count;
+        *REAL(v).add(OBJECTIVE_VALUE) = f;
         R_NilValue()
     }
 }

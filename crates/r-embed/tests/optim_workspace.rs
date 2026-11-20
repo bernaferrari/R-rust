@@ -70,3 +70,36 @@ fn bounded_optimizer_callbacks_can_start_their_own_fit() {
         .unwrap();
     assert_eq!(result, "both fits converged");
 }
+
+#[test]
+fn nlminb_reports_the_objective_at_its_named_parameters() {
+    let mut session = session();
+    let result = session
+        .eval(
+            "start <- c(x=5, y=7)
+             target <- c(1, 2)
+             q <- function(x) {
+               stopifnot(identical(names(x), names(start)), x[1L] >= 2, x[2L] >= -5)
+               sum((x-target)^2)
+             }
+             g <- function(x) 2 * (x-target)
+             for (gradient in list(g, NULL)) {
+               fit <- nlminb(start, q, gradient, lower = c(2, -5))
+               stopifnot(fit$convergence == 0L, identical(names(fit$par), names(start)),
+                         max(abs(fit$par - c(2, 2))) < 1e-4,
+                         abs(fit$objective - 1) < 1e-8,
+                         abs(fit$objective - q(fit$par)) < 1e-12,
+                         all(fit$evaluations > 0L), fit$iterations > 0L)
+             }
+             limited <- nlminb(start, q, g, lower = c(2, -5), control = list(eval.max = 1L))
+             stopifnot(limited$convergence == 1L, identical(limited$par, start),
+                       limited$evaluations[['function']] == 1L,
+                       limited$objective == q(start))
+             limited <- nlminb(start, q, g, lower = c(2, -5), control = list(iter.max = 1L))
+             stopifnot(limited$convergence == 1L, limited$iterations == 1L,
+                       abs(limited$objective - q(limited$par)) < 1e-12)
+             cat('PORT results agree with the returned parameters')",
+        )
+        .unwrap();
+    assert_eq!(result, "PORT results agree with the returned parameters");
+}
