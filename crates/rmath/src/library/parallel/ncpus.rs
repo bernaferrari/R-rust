@@ -64,7 +64,7 @@ fn detect_cpu_counts() -> [c_int; 2] {
 /// Returns a length-2 integer vector:
 ///   [0] = number of physical cores
 ///   [1] = number of logical processors (including hyperthreading)
-pub unsafe fn ncpus(_virtual: SEXP) -> SEXP {
+pub fn ncpus(_virtual: SEXP) -> SEXP {
     let res = unsafe { Rf_allocVector(SEXPTYPE::INTSXP, 2) };
     let _res_guard = unsafe { protect(res) };
     let output = unsafe { slice::from_raw_parts_mut(INTEGER(res), 2) };

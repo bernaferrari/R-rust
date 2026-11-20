@@ -39,7 +39,7 @@ use crate::sexp::ffi::{SEXP, SEXPTYPE};
 use crate::sexp::protect::protect;
 use crate::sexp::symbol::Rf_install;
 
-unsafe fn require_scalar(x: SEXP, message: &[u8]) {
+fn require_scalar(x: SEXP, message: &[u8]) {
     unsafe {
         if LENGTH(x) != 1 {
             Rf_error(message.as_ptr() as *const c_char);
@@ -47,7 +47,7 @@ unsafe fn require_scalar(x: SEXP, message: &[u8]) {
     }
 }
 
-pub unsafe fn sockconnect(sport: SEXP, shost: SEXP) -> SEXP {
+pub fn sockconnect(sport: SEXP, shost: SEXP) -> SEXP {
     unsafe {
         require_scalar(sport, b"invalid 'socket' argument\0");
         let mut port = asInteger(sport);
@@ -58,7 +58,7 @@ pub unsafe fn sockconnect(sport: SEXP, shost: SEXP) -> SEXP {
     }
 }
 
-pub unsafe fn sockread(sport: SEXP, smaxlen: SEXP) -> SEXP {
+pub fn sockread(sport: SEXP, smaxlen: SEXP) -> SEXP {
     unsafe {
         require_scalar(sport, b"invalid 'socket' argument\0");
         let mut sock = asInteger(sport);
@@ -86,7 +86,7 @@ pub unsafe fn sockread(sport: SEXP, smaxlen: SEXP) -> SEXP {
     }
 }
 
-pub unsafe fn sockclose(sport: SEXP) -> SEXP {
+pub fn sockclose(sport: SEXP) -> SEXP {
     unsafe {
         require_scalar(sport, b"invalid 'socket' argument\0");
         let mut sock = asInteger(sport);
@@ -98,7 +98,7 @@ pub unsafe fn sockclose(sport: SEXP) -> SEXP {
     }
 }
 
-pub unsafe fn sockopen(sport: SEXP) -> SEXP {
+pub fn sockopen(sport: SEXP) -> SEXP {
     unsafe {
         require_scalar(sport, b"invalid 'port' argument\0");
         let mut port = asInteger(sport);
@@ -107,7 +107,7 @@ pub unsafe fn sockopen(sport: SEXP) -> SEXP {
     }
 }
 
-pub unsafe fn socklisten(sport: SEXP) -> SEXP {
+pub fn socklisten(sport: SEXP) -> SEXP {
     unsafe {
         require_scalar(sport, b"invalid 'socket' argument\0");
         let mut sock = asInteger(sport);
@@ -127,7 +127,7 @@ pub unsafe fn socklisten(sport: SEXP) -> SEXP {
     }
 }
 
-pub unsafe fn sockwrite(sport: SEXP, sstring: SEXP) -> SEXP {
+pub fn sockwrite(sport: SEXP, sstring: SEXP) -> SEXP {
     unsafe {
         require_scalar(sport, b"invalid 'socket' argument\0");
         let mut sock = asInteger(sport);

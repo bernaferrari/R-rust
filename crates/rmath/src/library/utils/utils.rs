@@ -28,6 +28,6 @@ use crate::sexp::ffi::*;
 use crate::sexp::globals::*;
 
 #[cfg(not(target_arch = "wasm32"))]
-pub unsafe fn download(args: SEXP) -> SEXP {
+pub fn download(args: SEXP) -> SEXP {
     unsafe { in_do_download(CDR(args)) }
 }

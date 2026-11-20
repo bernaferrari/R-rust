@@ -66,26 +66,26 @@ fn Runzip(_args: SEXP) -> SEXP {
 
 fn R_ProcessEvents() {}
 
-pub unsafe fn Rprof(args: SEXP) -> SEXP {
+pub fn Rprof(args: SEXP) -> SEXP {
     do_Rprof(CDR(args))
 }
 
-pub unsafe fn Rprofmem(args: SEXP) -> SEXP {
+pub fn Rprofmem(args: SEXP) -> SEXP {
     do_Rprofmem(CDR(args))
 }
 
-pub unsafe fn unzip(args: SEXP) -> SEXP {
+pub fn unzip(args: SEXP) -> SEXP {
     Runzip(CDR(args))
 }
 
-pub unsafe fn edit(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn edit(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe { do_edit(call, op, CDR(args), rho) }
 }
 
 // ---------------------------------------------------------------------------
 // Helper: check if SEXP is a string (STRSXP)
 // ---------------------------------------------------------------------------
-unsafe fn isString(x: SEXP) -> bool {
+fn isString(x: SEXP) -> bool {
     !x.is_null() && TYPEOF(x) == SEXPTYPE::STRSXP
 }
 
@@ -103,7 +103,7 @@ fn default_history_file() -> PathBuf {
     }
 }
 
-unsafe fn history_file_path(sfile: SEXP) -> Option<PathBuf> {
+fn history_file_path(sfile: SEXP) -> Option<PathBuf> {
     unsafe {
         if !isString(sfile) || LENGTH(sfile) < 1 {
             warn_message("invalid 'file' argument");
@@ -132,7 +132,7 @@ unsafe fn history_file_path(sfile: SEXP) -> Option<PathBuf> {
 // ---------------------------------------------------------------------------
 // loadhistory -- Load command history from a file
 // ---------------------------------------------------------------------------
-pub unsafe fn loadhistory(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn loadhistory(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let _ = (call, op, rho);
         let args = CDR(args);
@@ -175,7 +175,7 @@ pub unsafe fn loadhistory(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 // savehistory -- Save command history to a file
 // ---------------------------------------------------------------------------
-pub unsafe fn savehistory(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn savehistory(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let _ = (call, op, rho);
         let args = CDR(args);
@@ -240,7 +240,7 @@ pub unsafe fn savehistory(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 // addhistory -- Add lines to the command history
 // ---------------------------------------------------------------------------
-pub unsafe fn addhistory(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn addhistory(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let _ = (call, op, rho);
         let args = CDR(args);
@@ -283,7 +283,7 @@ pub unsafe fn addhistory(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 // dataentry -- Data editor (GUI function)
 // ---------------------------------------------------------------------------
-pub unsafe fn dataentry(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub fn dataentry(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let _ = (call, op, args, env);
         let msg = c"data entry editor is not available";
@@ -295,7 +295,7 @@ pub unsafe fn dataentry(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 // dataviewer -- Data viewer (GUI function)
 // ---------------------------------------------------------------------------
-pub unsafe fn dataviewer(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub fn dataviewer(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let _ = (call, op, args, env);
         let msg = c"data viewer is not available";
@@ -307,7 +307,7 @@ pub unsafe fn dataviewer(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 // selectlist -- Select list (GUI function)
 // ---------------------------------------------------------------------------
-pub unsafe fn selectlist(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub fn selectlist(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     {
         let _ = (call, op, args, env);
         // selectlist returns NULL when no GUI is available (matching R behavior)
@@ -319,7 +319,7 @@ pub unsafe fn selectlist(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 // fileedit -- Edit files using an external editor
 // Ported from r-source/src/library/utils/src/stubs.c fileedit()
 // ---------------------------------------------------------------------------
-pub unsafe fn fileedit(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn fileedit(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let _ = (call, op, rho);
         let args = CDR(args);
@@ -394,7 +394,7 @@ pub unsafe fn fileedit(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 // flushconsole -- Flush the console output
 // ---------------------------------------------------------------------------
-pub unsafe fn flushconsole() -> SEXP {
+pub fn flushconsole() -> SEXP {
     {
         crate::unix::system::R_FlushConsole();
         R_NilValue()
@@ -404,7 +404,7 @@ pub unsafe fn flushconsole() -> SEXP {
 // ---------------------------------------------------------------------------
 // processevents -- Process pending GUI events
 // ---------------------------------------------------------------------------
-pub unsafe fn processevents() -> SEXP {
+pub fn processevents() -> SEXP {
     {
         R_ProcessEvents();
         R_NilValue()
@@ -414,7 +414,7 @@ pub unsafe fn processevents() -> SEXP {
 // ---------------------------------------------------------------------------
 // tzcode_type -- Return which timezone code implementation is in use
 // ---------------------------------------------------------------------------
-pub unsafe fn tzcode_type() -> SEXP {
+pub fn tzcode_type() -> SEXP {
     unsafe {
         crate::sexp::constructors::Rf_mkString(b"internal\0".as_ptr() as *const core::ffi::c_char)
     }
@@ -425,7 +425,7 @@ pub unsafe fn tzcode_type() -> SEXP {
 // Ported from r-source/src/library/utils/src/utils.c charClass()
 // Uses wctype() and iswctype() for Unicode-aware classification.
 // ---------------------------------------------------------------------------
-pub unsafe fn charClass(x: SEXP, scl: SEXP) -> SEXP {
+pub fn charClass(x: SEXP, scl: SEXP) -> SEXP {
     unsafe {
         // Validate class argument
         if !isString(scl) || LENGTH(scl) != 1 {
@@ -544,7 +544,7 @@ fn compute_crc64(data: &[u8]) -> u64 {
     crc ^ 0xFFFFFFFFFFFFFFFF // Final XOR matches liblzma
 }
 
-pub unsafe fn crc64(in_: SEXP) -> SEXP {
+pub fn crc64(in_: SEXP) -> SEXP {
     unsafe {
         if !isString(in_) {
             let msg = c"input must be a character string";
@@ -576,7 +576,7 @@ pub unsafe fn crc64(in_: SEXP) -> SEXP {
 // deprecated gethostbyname).
 // ---------------------------------------------------------------------------
 #[cfg(not(target_arch = "wasm32"))]
-pub unsafe fn nsl(hostname: SEXP) -> SEXP {
+pub fn nsl(hostname: SEXP) -> SEXP {
     unsafe {
         if !isString(hostname) || LENGTH(hostname) != 1 {
             let msg = c"'hostname' must be a character vector of length 1";
@@ -650,7 +650,7 @@ pub unsafe fn nsl(hostname: SEXP) -> SEXP {
 /// validation, nsl() always reports resolution failure (NULL + warning),
 /// matching the native getaddrinfo failure path.
 #[cfg(target_arch = "wasm32")]
-pub unsafe fn nsl(hostname: SEXP) -> SEXP {
+pub fn nsl(hostname: SEXP) -> SEXP {
     unsafe {
         if !isString(hostname) || LENGTH(hostname) != 1 {
             let msg = c"'hostname' must be a character vector of length 1";
@@ -676,7 +676,7 @@ pub unsafe fn nsl(hostname: SEXP) -> SEXP {
 // octsize -- Convert file size to octal string representation (for tar)
 // Ported from r-source/src/library/utils/src/stubs.c octsize()
 // ---------------------------------------------------------------------------
-pub unsafe fn octsize(size: SEXP) -> SEXP {
+pub fn octsize(size: SEXP) -> SEXP {
     unsafe {
         let s_val = crate::main::coerce::asReal(size);
 

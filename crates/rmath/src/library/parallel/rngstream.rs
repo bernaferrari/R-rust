@@ -53,7 +53,7 @@ const A2P127: [[Uint64; 3]; 3] = [
     [2824425944, 32183930, 2093834863],
 ];
 
-pub unsafe fn nextStream(x: SEXP) -> SEXP {
+pub fn nextStream(x: SEXP) -> SEXP {
     unsafe {
         let x_int = INTEGER(x);
         let x_vals = slice::from_raw_parts(x_int, 7);
@@ -88,7 +88,7 @@ pub unsafe fn nextStream(x: SEXP) -> SEXP {
     }
 }
 
-pub unsafe fn nextSubStream(x: SEXP) -> SEXP {
+pub fn nextSubStream(x: SEXP) -> SEXP {
     unsafe {
         let x_int = INTEGER(x);
         let x_vals = slice::from_raw_parts(x_int, 7);

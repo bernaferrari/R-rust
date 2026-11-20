@@ -152,30 +152,30 @@ unsafe extern "C-unwind" fn c_rprof(args: crate::sexp::ffi::SEXP) -> crate::sexp
 }
 
 unsafe extern "C-unwind" fn c_countfields(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
-    unsafe { io::countfields(args) }
+    io::countfields(args)
 }
 
 unsafe extern "C-unwind" fn c_flushconsole() -> crate::sexp::ffi::SEXP {
-    unsafe { stubs::flushconsole() }
+    stubs::flushconsole()
 }
 
 unsafe extern "C-unwind" fn c_tzcode_type() -> crate::sexp::ffi::SEXP {
-    unsafe { stubs::tzcode_type() }
+    stubs::tzcode_type()
 }
 
 unsafe extern "C-unwind" fn c_readtablehead(
     args: crate::sexp::ffi::SEXP,
 ) -> crate::sexp::ffi::SEXP {
-    unsafe { io::readtablehead(args) }
+    io::readtablehead(args)
 }
 unsafe extern "C-unwind" fn c_crc64(in_: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
-    unsafe { stubs::crc64(in_) }
+    stubs::crc64(in_)
 }
 unsafe extern "C-unwind" fn c_octsize(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
-    unsafe { stubs::octsize(args) }
+    stubs::octsize(args)
 }
 unsafe extern "C-unwind" fn c_object_size(x: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
-    unsafe { size::objectSize(x) }
+    size::objectSize(x)
 }
 
 unsafe extern "C-unwind" fn c_typeconvert(
@@ -184,7 +184,7 @@ unsafe extern "C-unwind" fn c_typeconvert(
     args: crate::sexp::ffi::SEXP,
     env: crate::sexp::ffi::SEXP,
 ) -> crate::sexp::ffi::SEXP {
-    unsafe { io::typeconvert(call, op, args, env) }
+    io::typeconvert(call, op, args, env)
 }
 unsafe extern "C-unwind" fn c_writetable(
     call: crate::sexp::ffi::SEXP,
@@ -192,7 +192,7 @@ unsafe extern "C-unwind" fn c_writetable(
     args: crate::sexp::ffi::SEXP,
     env: crate::sexp::ffi::SEXP,
 ) -> crate::sexp::ffi::SEXP {
-    unsafe { io::writetable(call, op, args, env) }
+    io::writetable(call, op, args, env)
 }
 unsafe extern "C-unwind" fn c_edit(
     call: crate::sexp::ffi::SEXP,
@@ -203,7 +203,7 @@ unsafe extern "C-unwind" fn c_edit(
     unsafe { crate::mainutils::edit::do_edit(call, op, args, env) }
 }
 
-pub unsafe fn install_utils_call_symbols(env: crate::sexp::ffi::SEXP) {
+pub fn install_utils_call_symbols(env: crate::sexp::ffi::SEXP) {
     unsafe {
         // The original utils wrapper calls .External(C_Rprof, ...). Keep its
         // registration authority in this namespace's original allocation.
