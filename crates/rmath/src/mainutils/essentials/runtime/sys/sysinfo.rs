@@ -1,7 +1,7 @@
 use super::*;
 
 /// R's `Sys.info()` — named character vector with host/user information.
-pub unsafe fn do_Sys_info(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_Sys_info(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let host = sys_info_host_fields();
         let user = sys_info_user();
@@ -91,7 +91,7 @@ fn sys_info_user() -> String {
 }
 
 /// R's `Sys.time()` — current time as REALSXP (seconds since epoch).
-pub unsafe fn do_Sys_time(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_Sys_time(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let secs = crate::mainutils::times::currentTime();
         let result = Rf_ScalarReal(secs);
@@ -109,7 +109,7 @@ pub unsafe fn do_Sys_time(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 }
 
 /// R's `Sys.sleep(time)` — sleep for specified seconds.
-pub unsafe fn do_Sys_sleep(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_Sys_sleep(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     {
         let time_arg = CAR(args);
         let secs = real_or_default(time_arg, 0.0);

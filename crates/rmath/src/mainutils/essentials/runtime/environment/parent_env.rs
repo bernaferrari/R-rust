@@ -173,7 +173,7 @@ fn set(access: &RuntimeAccess, values: &[Sexp<'static>]) -> SexpResult<Sexp<'sta
 
 /// The translated caller supplies evaluated arguments. Capture the whole graph
 /// before symbol installation, S4 extraction or any provider can collect/reenter.
-pub(super) unsafe fn dispatch(raw: SEXP, setter: bool) -> SEXP {
+pub(super) fn dispatch(raw: SEXP, setter: bool) -> SEXP {
     let result = (|| {
         let owner = unsafe { OwnerToken::current()? };
         let list = owner.sexp(raw)?.into_owned()?;

@@ -93,7 +93,7 @@ impl Drop for SourceDirectoryGuard {
 /// GNU `source(file, local, echo, print.eval, exprs, ...)`.
 /// `exprs=` (and the `expr=` partial match used by eval-etc.R) evaluates
 /// already-parsed expressions with optional echo/auto-print.
-pub unsafe fn do_source(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_source(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let parsed = source_call_args(args);
         if let Some(exprs) = parsed.exprs {
@@ -216,7 +216,7 @@ pub unsafe fn do_source(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// GNU `withAutoprint(exprs)` — `source(exprs=..., echo=TRUE, print.eval=TRUE)`
 /// in the calling environment. The argument is substituted, not evaluated twice.
-pub unsafe fn do_with_autoprint(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_with_autoprint(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let (expr, print_eval, echo) = with_autoprint_args(args);
         if expr.is_null() || expr == R_NilValue() || expr == R_MissingArg() {
@@ -365,7 +365,7 @@ fn source_call_args(args: SEXP) -> SourceCallArgs {
 }
 
 fn with_autoprint_args(args: SEXP) -> (SEXP, bool, bool) {
-    unsafe {
+    {
         let mut expr = R_MissingArg();
         let mut print_eval = true;
         let mut echo = true;
@@ -444,7 +444,7 @@ fn logical_arg(value: SEXP, default: bool) -> bool {
     }
 }
 
-unsafe fn brace_or_single_expressions(expr: SEXP) -> SEXP {
+fn brace_or_single_expressions(expr: SEXP) -> SEXP {
     unsafe {
         if TYPEOF(expr) == SEXPTYPE::EXPRSXP {
             return expr;
@@ -483,7 +483,7 @@ unsafe fn brace_or_single_expressions(expr: SEXP) -> SEXP {
     }
 }
 
-unsafe fn eval_source_expressions(
+fn eval_source_expressions(
     exprs: SEXP,
     env: SEXP,
     echo: bool,
@@ -539,7 +539,7 @@ unsafe fn eval_source_expressions(
 /// GNU `source()` echo when there is no srcref: deparse the length-1
 /// `expression(ei)`, drop the `expression(` prefix (substr from 12),
 /// prompt-prefix each line, then `nchar(dep,"c")-1` / `max.deparse.length`.
-unsafe fn echo_source_expression(
+fn echo_source_expression(
     expr: SEXP,
     prompt: &str,
     continue_echo: &str,
@@ -606,7 +606,7 @@ unsafe fn echo_source_expression(
     }
 }
 
-unsafe fn with_visible_result(value: SEXP, visible: i32) -> SEXP {
+fn with_visible_result(value: SEXP, visible: i32) -> SEXP {
     unsafe {
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
         let _result = protect(result);
@@ -623,7 +623,7 @@ unsafe fn with_visible_result(value: SEXP, visible: i32) -> SEXP {
 }
 
 /// R's `sys.source(file, envir, ...)` — source an R file into a specific environment.
-pub unsafe fn do_sys_source(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_sys_source(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let file_arg = arg_by_name_or_position(args, &["file"], 0);
         let envir_arg = arg_by_name_or_position(args, &["envir"], 1);
@@ -663,7 +663,7 @@ pub unsafe fn do_sys_source(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SE
     }
 }
 
-unsafe fn eval_source_text_with_options(
+fn eval_source_text_with_options(
     content: &str,
     env: SEXP,
     filename: &str,
@@ -877,7 +877,7 @@ fn echo_original_lines(
     }
 }
 
-unsafe fn eval_source_text_with_name(
+fn eval_source_text_with_name(
     content: &str,
     env: SEXP,
     filename: &str,
@@ -959,12 +959,12 @@ unsafe fn eval_source_text_with_name(
     }
 }
 
-unsafe fn eval_source_text(content: &str, env: SEXP) -> SEXP {
-    unsafe { eval_source_text_with_name(content, env, "", option_keep_source()) }
+fn eval_source_text(content: &str, env: SEXP) -> SEXP {
+    { eval_source_text_with_name(content, env, "", option_keep_source()) }
 }
 
 /// R's `demo(topic, ...)` — run a demo (simplified).
-pub unsafe fn do_demo(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_demo(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     {
         let topic_arg = CAR(args);
         if topic_arg.is_null() || topic_arg == R_NilValue() {
@@ -994,7 +994,7 @@ pub unsafe fn do_demo(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// GNU `example(topic)` — `substitute(topic)` unless `character.only`.
-pub unsafe fn do_example(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_example(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         if let Some((topic, source)) = portable_example_source(args) {
             let result = run_portable_example(&source, &topic, args, rho);
@@ -1041,7 +1041,7 @@ pub unsafe fn do_example(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// Internal hook used by the portable utils::example wrapper. Returning TRUE
 /// means an embedded source was found and run; FALSE leaves GNU's ordinary
 /// help-file path in control.
-pub unsafe fn do_portable_example(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_portable_example(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let Some((topic, source)) = portable_example_source(args) else {
             crate::sexp::globals::set_R_Visible(TRUE);
@@ -1053,8 +1053,8 @@ pub unsafe fn do_portable_example(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP)
     }
 }
 
-unsafe fn run_portable_example(source: &str, topic: &str, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+fn run_portable_example(source: &str, topic: &str, args: SEXP, rho: SEXP) -> SEXP {
+    {
         let local = example_argument(args, "local")
             .map(|value| force_example_argument(value))
             .unwrap_or(R_NilValue());
@@ -1103,10 +1103,10 @@ fn example_echo_offset(source: &str) -> c_int {
 /// Resolve an embedded package example only for image-backed sessions with
 /// no filesystem package path. Normal installed-package help lookup remains
 /// owned by `utils::example`, including its package and library precedence.
-unsafe fn portable_example_source(
+fn portable_example_source(
     args: SEXP,
 ) -> Option<(String, crate::mainutils::browser_files::FileText)> {
-    unsafe {
+    {
         let topic_arg = CAR(args);
         if topic_arg.is_null() || topic_arg == R_NilValue() || topic_arg == R_MissingArg() {
             return None;
@@ -1169,8 +1169,8 @@ unsafe fn portable_example_source(
     }
 }
 
-unsafe fn example_argument(args: SEXP, name: &str) -> Option<SEXP> {
-    unsafe {
+fn example_argument(args: SEXP, name: &str) -> Option<SEXP> {
+    {
         let mut current = args;
         while !current.is_null() && current != R_NilValue() {
             if tag_name(current).as_deref() == Some(name) {
@@ -1182,7 +1182,7 @@ unsafe fn example_argument(args: SEXP, name: &str) -> Option<SEXP> {
     }
 }
 
-unsafe fn force_example_argument(value: SEXP) -> SEXP {
+fn force_example_argument(value: SEXP) -> SEXP {
     unsafe {
         if !value.is_null() && TYPEOF(value) == SEXPTYPE::PROMSXP {
             crate::sexp::envir::forcePromise(value)
@@ -1192,7 +1192,7 @@ unsafe fn force_example_argument(value: SEXP) -> SEXP {
     }
 }
 
-unsafe fn abbreviate_example_topic(topic: &str) -> String {
+fn abbreviate_example_topic(topic: &str) -> String {
     unsafe {
         let topic_vector = string_vector(&[topic.to_string()]);
         let _topic_guard = protect(topic_vector);
@@ -1214,7 +1214,7 @@ unsafe fn abbreviate_example_topic(topic: &str) -> String {
     }
 }
 
-unsafe fn utils_example_closure() -> Option<SEXP> {
+fn utils_example_closure() -> Option<SEXP> {
     unsafe {
         let namespace =
             crate::mainutils::essentials::load_package_namespace_by_name("utils").ok()?;
@@ -1234,7 +1234,7 @@ unsafe fn utils_example_closure() -> Option<SEXP> {
     }
 }
 
-unsafe fn topic_name_from_arg(topic_arg: SEXP) -> String {
+fn topic_name_from_arg(topic_arg: SEXP) -> String {
     unsafe {
         match TYPEOF(topic_arg) {
             t if t == SEXPTYPE::SYMSXP => {

@@ -595,7 +595,7 @@ mod eval_expression_tests {
 /// environment and return its value (eval.c `do_local`). The default
 /// environment parents to the caller (`_rho`); an explicit ENVSXP `envir`
 /// is used as-is (wrapped in a child so assignments stay local).
-pub unsafe fn do_local(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_local(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let expr = CAR(args);
         let envir_arg = CAR(CDR(args));
@@ -617,7 +617,7 @@ pub unsafe fn do_local(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// Native adapter: retain all inputs before environment conversion or R callbacks.
-pub unsafe fn do_eval(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_eval(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     use crate::sexp::{
         object::SexpError,
         owner::{OwnerToken, with_runtime},
@@ -926,12 +926,12 @@ impl Drop for EvalSrcrefGuard {
 }
 
 /// R's `substitute(expr, env)` — substitute symbols in expression.
-pub unsafe fn do_substitute(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_substitute(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe { crate::mainutils::coerce::do_substitute(_call, _op, args, _rho) }
 }
 
 /// R's `quote(expr)` — return expression unevaluated.
-pub unsafe fn do_quote(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_quote(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::accessors::{CAR, NAMED, SET_NAMED};
         let mut nargs = 0;
@@ -981,7 +981,7 @@ pub unsafe fn do_quote(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// R's `parse(text)` — parse R code strings into an expression vector.
-pub unsafe fn do_parse(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_parse(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let keep_source = {
             let explicit = arg_by_name_or_position(args, &["keep.source"], usize::MAX);
@@ -1037,7 +1037,7 @@ pub unsafe fn do_parse(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// Parse with byte spans and attach srcrefs + srcfile (keep.source).
-pub(crate) unsafe fn parse_with_srcrefs(content: &str, filename: &str) -> SEXP {
+pub(crate) fn parse_with_srcrefs(content: &str, filename: &str) -> SEXP {
     unsafe {
         let parser_factory = crate::eval::parser::active_factory();
         let spans = crate::sexp::memory::with_arena(|arena| {
@@ -1077,12 +1077,12 @@ pub(crate) unsafe fn parse_with_srcrefs(content: &str, filename: &str) -> SEXP {
     }
 }
 
-unsafe fn parse_source_strings(source: &[String]) -> SEXP {
+fn parse_source_strings(source: &[String]) -> SEXP {
     let combined = source.join("\n");
-    unsafe { parse_source_expression_vector(&combined) }
+    { parse_source_expression_vector(&combined) }
 }
 
-pub(crate) unsafe fn parse_source_expression_vector(source: &str) -> SEXP {
+pub(crate) fn parse_source_expression_vector(source: &str) -> SEXP {
     unsafe {
         let parser_factory = crate::eval::parser::active_factory();
         let parsed = crate::sexp::memory::with_arena(|arena| {
@@ -1103,7 +1103,7 @@ pub(crate) unsafe fn parse_source_expression_vector(source: &str) -> SEXP {
     }
 }
 
-unsafe fn d_symbol_name(sym: SEXP) -> String {
+fn d_symbol_name(sym: SEXP) -> String {
     unsafe {
         if TYPEOF(sym) != SEXPTYPE::SYMSXP {
             return String::new();
@@ -1116,7 +1116,7 @@ unsafe fn d_symbol_name(sym: SEXP) -> String {
     }
 }
 
-unsafe fn d_numeric(x: SEXP) -> Option<f64> {
+fn d_numeric(x: SEXP) -> Option<f64> {
     unsafe {
         if TYPEOF(x) == SEXPTYPE::REALSXP && XLENGTH(x) == 1 {
             Some(*REAL(x))
@@ -1128,7 +1128,7 @@ unsafe fn d_numeric(x: SEXP) -> Option<f64> {
     }
 }
 
-unsafe fn d_diff(expr: SEXP, var: &str) -> SEXP {
+fn d_diff(expr: SEXP, var: &str) -> SEXP {
     unsafe {
         if TYPEOF(expr) == SEXPTYPE::SYMSXP {
             return if d_symbol_name(expr) == var {
@@ -1409,7 +1409,7 @@ unsafe fn d_diff(expr: SEXP, var: &str) -> SEXP {
 }
 
 /// GNU `D(expr, name)`.
-pub unsafe fn do_D(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_D(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let mut expr = CAR(args);
         if TYPEOF(expr) == SEXPTYPE::EXPRSXP && XLENGTH(expr) >= 1 {
@@ -1428,7 +1428,7 @@ pub unsafe fn do_D(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// GNU `deriv(~expr, name)` as an evaluable expression.
-pub unsafe fn do_deriv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_deriv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let mut expr = CAR(args);
         if TYPEOF(expr) == SEXPTYPE::LANGSXP && d_symbol_name(CAR(expr)) == "~" {
@@ -1459,7 +1459,7 @@ pub unsafe fn do_deriv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// GNU `deriv3(~expr, name)` with hessian.
-pub unsafe fn do_deriv3(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_deriv3(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let mut expr = CAR(args);
         if TYPEOF(expr) == SEXPTYPE::LANGSXP && d_symbol_name(CAR(expr)) == "~" {

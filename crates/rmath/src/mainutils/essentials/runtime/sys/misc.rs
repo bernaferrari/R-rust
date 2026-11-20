@@ -1,7 +1,7 @@
 use super::*;
 
 /// R's `Sys.Date()` — current date as REALSXP (days since epoch).
-pub unsafe fn do_Sys_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_Sys_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let now = crate::mainutils::times::currentTime();
         let seconds = now.floor() as i64;
@@ -20,7 +20,7 @@ pub unsafe fn do_Sys_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 }
 
 /// R's `Sys.timezone()` — current timezone (simplified).
-pub unsafe fn do_Sys_timezone(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_Sys_timezone(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let tz = system_timezone_name();
         let s = CString::new(tz).unwrap_or_default();
@@ -60,7 +60,7 @@ pub(crate) fn timezone_name_from_zoneinfo_path(path: &Path) -> Option<String> {
 }
 
 /// GNU `utils::sessionInfo()` — enough fields for datetime2.R.
-pub unsafe fn do_sessionInfo(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_sessionInfo(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
         let _r = protect(result);
@@ -71,7 +71,7 @@ pub unsafe fn do_sessionInfo(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) ->
 }
 
 /// GNU `.POSIXct(xx, tz = NULL, cl = c("POSIXct", "POSIXt"))`.
-pub unsafe fn do_dot_POSIXct(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_dot_POSIXct(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let xx = CAR(args);
         if xx.is_null() || xx == R_NilValue() {
@@ -104,7 +104,7 @@ pub unsafe fn do_dot_POSIXct(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> S
 }
 
 /// R's `OlsonNames()` — known IANA timezone names on the current host.
-pub unsafe fn do_OlsonNames(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_OlsonNames(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let zones = olson_names();
         let result = Rf_allocVector3(SEXPTYPE::STRSXP, zones.len() as R_xlen_t);
@@ -181,7 +181,7 @@ pub(crate) fn skip_olson_component(name: &str) -> bool {
 }
 
 /// GNU `q(save="no")` / `quit` — end the script without tearing down the process.
-pub unsafe fn do_quit(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_quit(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     {
         crate::sexp::globals::set_R_Visible(0);
         R_NilValue()

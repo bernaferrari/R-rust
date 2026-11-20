@@ -1,7 +1,7 @@
 use super::*;
 
 /// R's `as.POSIXct(x, tz, origin)` — coerce simple UTC inputs to POSIXct.
-pub unsafe fn do_as_POSIXct(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_as_POSIXct(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = arg_by_name_or_position(args, &["x"], 0);
         if x.is_null() || x == R_NilValue() {
@@ -281,12 +281,12 @@ pub unsafe fn do_as_POSIXct(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
     }
 }
 
-unsafe fn posixlt_as_posixct(call: SEXP, op: SEXP, x: SEXP, rho: SEXP) -> SEXP {
+fn posixlt_as_posixct(call: SEXP, op: SEXP, x: SEXP, rho: SEXP) -> SEXP {
     unsafe { do_as_POSIXct(call, op, Rf_cons(x, R_NilValue()), rho) }
 }
 
 /// GNU `is.na.POSIXlt <- function(x) is.na(as.POSIXct(x))`
-pub unsafe fn do_is_na_POSIXlt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_is_na_POSIXlt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let ct = posixlt_as_posixct(call, op, CAR(args), rho);
         let _ct = protect(ct);
@@ -295,7 +295,7 @@ pub unsafe fn do_is_na_POSIXlt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> S
 }
 
 /// GNU `is.nan.POSIXlt <- function(x) is.nan(as.POSIXct(x))`
-pub unsafe fn do_is_nan_POSIXlt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_is_nan_POSIXlt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let ct = posixlt_as_posixct(call, op, CAR(args), rho);
         let _ct = protect(ct);
@@ -304,7 +304,7 @@ pub unsafe fn do_is_nan_POSIXlt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> 
 }
 
 /// GNU `is.finite.POSIXlt <- function(x) is.finite(as.POSIXct(x))`
-pub unsafe fn do_is_finite_POSIXlt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_is_finite_POSIXlt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let ct = posixlt_as_posixct(call, op, CAR(args), rho);
         let _ct = protect(ct);
@@ -313,7 +313,7 @@ pub unsafe fn do_is_finite_POSIXlt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) 
 }
 
 /// GNU `is.infinite.POSIXlt <- function(x) is.infinite(as.POSIXct(x))`
-pub unsafe fn do_is_infinite_POSIXlt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_is_infinite_POSIXlt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let ct = posixlt_as_posixct(call, op, CAR(args), rho);
         let _ct = protect(ct);

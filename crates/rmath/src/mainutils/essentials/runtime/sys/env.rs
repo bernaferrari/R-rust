@@ -1,7 +1,7 @@
 use super::*;
 
 /// R's `R.home()` — R home directory (simplified).
-pub unsafe fn do_R_home(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_R_home(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let home = std::env::var("R_HOME").unwrap_or_else(|_| discover_installed_r_home());
         let s = CString::new(home).unwrap_or_default();
@@ -47,14 +47,14 @@ fn home_has_rd_macros(home: &str) -> bool {
 }
 
 /// R's `Sys.getenv(x)` — get environment variable.
-pub unsafe fn do_Sys_getenv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_Sys_getenv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = arg_by_name_or_position(args, &["x"], 0);
         if x.is_null() || x == R_NilValue() || XLENGTH(x) == 0 {
             // No names: return the whole environment as "NAME=VALUE" strings,
             // read live from libc's environ so Sys.setenv results are visible.
             let mut vars: Vec<String> = Vec::new();
-            unsafe {
+            {
                 let mut envp: *mut *mut c_char = environ;
                 while !(*envp).is_null() {
                     let entry = CStr::from_ptr(*envp).to_string_lossy();
@@ -136,7 +136,7 @@ fn environment_mutation_allowed() -> bool {
     })
 }
 
-unsafe fn denied_setenv_result(args: SEXP) -> SEXP {
+fn denied_setenv_result(args: SEXP) -> SEXP {
     unsafe {
         let mut n = 0;
         let mut current = args;
@@ -173,7 +173,7 @@ unsafe extern "C" {
 static mut environ: *mut *mut c_char = std::ptr::null_mut();
 
 /// R's `Sys.setenv(...)` — set environment variables.
-pub unsafe fn do_Sys_setenv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_Sys_setenv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         if !environment_mutation_allowed() {
             return denied_setenv_result(args);
@@ -230,7 +230,7 @@ pub unsafe fn do_Sys_setenv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 }
 
 /// R's `Sys.unsetenv(x)` — unset environment variables.
-pub unsafe fn do_Sys_unsetenv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_Sys_unsetenv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         if !environment_mutation_allowed() {
             let x = arg_by_name_or_position(args, &["x"], 0);
@@ -264,8 +264,8 @@ pub unsafe fn do_Sys_unsetenv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
 }
 
 /// R's `Sys.which(names)` — resolve command names against PATH.
-pub unsafe fn do_Sys_which(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_Sys_which(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let names_arg = arg_by_name_or_position(args, &["names"], 0);
         if names_arg.is_null() || names_arg == R_NilValue() || names_arg == R_MissingArg() {
             base_error("argument \"names\" is missing, with no default");

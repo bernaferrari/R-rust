@@ -30,7 +30,7 @@ fn unix_secs_to_utc(secs: i64) -> crate::tzone_strftime::stm {
 }
 
 /// GNU `strftime(x, format, tz)` is `format(as.POSIXlt(x, tz), format)`.
-pub unsafe fn do_strftime(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_strftime(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -80,7 +80,7 @@ pub unsafe fn do_strftime(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 /// GNU `format.Date(x, format="%Y-%m-%d")`.
-pub unsafe fn do_format_Date(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_format_Date(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let mut fmt = "%Y-%m-%d".to_string();
@@ -106,7 +106,7 @@ pub unsafe fn do_format_Date(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
 }
 
 /// GNU `as.character.Date` is `as.character(as.POSIXlt(x))` — no names.
-pub unsafe fn do_as_character_Date(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_as_character_Date(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let out = do_format_Date(call, op, args, rho);
         let _o = protect(out);

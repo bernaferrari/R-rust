@@ -41,7 +41,7 @@ use crate::sexp::symbol::Rf_install;
 // ---------------------------------------------------------------------------
 
 /// R's `commandArgs()` — returns the command line arguments as a character vector.
-pub unsafe fn do_commandArgs(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_commandArgs(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let args: Vec<String> = std::env::args().collect();
         let n = args.len() as R_xlen_t;
@@ -62,27 +62,27 @@ pub unsafe fn do_commandArgs(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) ->
 }
 
 /// R's `getOption(x)` — delegate to the canonical options implementation.
-pub unsafe fn do_getOption(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_getOption(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe { crate::mainutils::options::do_getOption(call, op, args, rho) }
 }
 
 /// R's `options(...)` — delegate to the canonical options implementation.
-pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_options(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe { crate::mainutils::options::do_options(call, op, args, rho) }
 }
 
 /// R's `interactive()` — returns FALSE (not in interactive session).
-pub unsafe fn do_interactive(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_interactive(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     unsafe { Rf_ScalarLogical(FALSE) }
 }
 
 /// Alias for `interactive()`.
-pub unsafe fn do_is_interactive(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_is_interactive(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     unsafe { Rf_ScalarLogical(FALSE) }
 }
 
 /// R's `getRversion()` — returns an `R_system_version` package-version object.
-pub unsafe fn do_getRversion(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_getRversion(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
         if result.is_null() {
@@ -124,12 +124,12 @@ pub unsafe fn do_getRversion(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) ->
 }
 
 /// `getNamespaceVersion(ns)` for a base package is the R version.
-pub unsafe fn do_getNamespaceVersion(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe { do_getRversion(call, op, args, rho) }
+pub fn do_getNamespaceVersion(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    { do_getRversion(call, op, args, rho) }
 }
 
 /// R's `R.version.string` — returns the full R version string.
-pub unsafe fn do_R_version_string(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_R_version_string(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         Rf_mkString(
             crate::mainutils::compatibility_target::VERSION_STRING_C
@@ -144,12 +144,12 @@ pub unsafe fn do_R_version_string(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEX
 // ---------------------------------------------------------------------------
 
 /// R-like `ls_args()` — list argument names of current function (simplified: return empty character).
-pub unsafe fn do_ls_args(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_ls_args(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     unsafe { Rf_allocVector3(SEXPTYPE::STRSXP, 0) }
 }
 
 /// R's `deparse1(expr, collapse, width.cutoff)` — deparse to a single string.
-pub unsafe fn do_deparse1(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_deparse1(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let expr = CAR(args);
         let collapse_arg = CAR(CDR(args));
@@ -164,7 +164,7 @@ pub unsafe fn do_deparse1(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 }
 
 /// R's `dput(x, file, control)` — dump using the requested deparse options.
-pub unsafe fn do_dput(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_dput(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let file_arg = arg_by_name_or_position(args, &["file"], 1);
@@ -223,7 +223,7 @@ pub unsafe fn do_dput(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// GNU `dump(list, file, ...)` — write `name <-` deparsed values.
-pub unsafe fn do_dump(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_dump(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let names = arg_by_name_or_position(args, &["list"], 0);
         if names.is_null()
@@ -313,7 +313,7 @@ fn deparse_lines(expr: SEXP) -> Vec<String> {
 }
 
 /// R's `dget(file)` — read, parse, and evaluate a dumped expression.
-pub unsafe fn do_dget(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_dget(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let file_arg = arg_by_name_or_position(args, &["file"], 0);
         if file_arg.is_null() || file_arg == R_NilValue() || XLENGTH(file_arg) == 0 {
@@ -343,7 +343,7 @@ pub unsafe fn do_dget(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 /// R's `bquote(expr)` — quote with `.(...)` substitution.
-pub unsafe fn do_bquote(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_bquote(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let expr = CAR(args);
         if expr.is_null() {
@@ -374,7 +374,7 @@ pub unsafe fn do_bquote(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     }
 }
 
-unsafe fn bquote_walk(expr: SEXP, rho: SEXP, splice: bool) -> SEXP {
+fn bquote_walk(expr: SEXP, rho: SEXP, splice: bool) -> SEXP {
     unsafe {
         if expr.is_null() || expr == R_NilValue() {
             return R_NilValue();
@@ -445,8 +445,8 @@ unsafe fn bquote_walk(expr: SEXP, rho: SEXP, splice: bool) -> SEXP {
     }
 }
 
-unsafe fn is_bquote_unquote_call(expr: SEXP) -> bool {
-    unsafe {
+fn is_bquote_unquote_call(expr: SEXP) -> bool {
+    {
         if TYPEOF(expr) != SEXPTYPE::LANGSXP {
             return false;
         }
@@ -460,8 +460,8 @@ unsafe fn is_bquote_unquote_call(expr: SEXP) -> bool {
             && (CDR(args).is_null() || CDR(args) == R_NilValue())
     }
 }
-unsafe fn is_bquote_splice_call(expr: SEXP) -> bool {
-    unsafe {
+fn is_bquote_splice_call(expr: SEXP) -> bool {
+    {
         if TYPEOF(expr) != SEXPTYPE::LANGSXP {
             return false;
         }

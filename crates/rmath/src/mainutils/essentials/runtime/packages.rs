@@ -41,7 +41,7 @@ use crate::sexp::symbol::Rf_install;
 // ---------------------------------------------------------------------------
 
 /// R's `.libPaths()` — inspect or replace the session's library search path.
-pub unsafe fn do_lib_paths(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_lib_paths(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     // Stock .libPaths is a closure (base/zdynvars.R): with `new`
     // missing it returns `.lib.loc` visibly; supplying `new` ends in
     // `<<-`, whose assignment tail is invisible.
@@ -84,13 +84,13 @@ pub unsafe fn do_lib_paths(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
 }
 
 /// R's `library.dynam()` — native package loading is outside the pure-R Android runtime.
-pub unsafe fn do_library_dynam(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_library_dynam(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     package_error(
         "library.dynam() loads native extension code, which is disabled in this pure-R Android runtime; use Rust-ported internals or a host-owned native-library policy",
     )
 }
 
-unsafe fn attach_recommended_package_stub(package: &str) {
+fn attach_recommended_package_stub(package: &str) {
     unsafe {
         if package_attached(package) {
             return;
@@ -159,8 +159,8 @@ unsafe fn attach_recommended_package_stub(package: &str) {
 }
 
 /// R's `library(package, ...)` — load a package.
-pub unsafe fn do_library(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_library(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let pkg_arg = CAR(args);
         if pkg_arg.is_null() || pkg_arg == R_NilValue() {
             package_error("no package specified");
@@ -199,7 +199,7 @@ pub unsafe fn do_library(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 }
 
 /// R's `require(package, ...)` — check if a package can be loaded.
-pub unsafe fn do_require(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_require(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let pkg_arg = CAR(args);
         if pkg_arg.is_null() || pkg_arg == R_NilValue() {
@@ -242,14 +242,14 @@ pub unsafe fn do_require(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 }
 
 /// R's `installed.packages(...)` — list installed packages.
-pub unsafe fn do_installed_packages(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_installed_packages(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let packages = installed_package_rows();
         installed_packages_matrix(&packages)
     }
 }
 
-pub unsafe fn do_find_package(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_find_package(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let pkg_arg = CAR(args);
         if pkg_arg.is_null()
@@ -285,8 +285,8 @@ pub unsafe fn do_find_package(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
     }
 }
 
-unsafe fn attached_package_paths() -> SEXP {
-    unsafe {
+fn attached_package_paths() -> SEXP {
+    {
         let mut paths = Vec::new();
         for (label, _) in crate::mainutils::essentials::search_path_entries() {
             let Some(package) = label.strip_prefix("package:") else {
@@ -302,8 +302,8 @@ unsafe fn attached_package_paths() -> SEXP {
 }
 
 /// R's `packageVersion(pkg)` — read a package version from DESCRIPTION.
-pub unsafe fn do_package_version(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_package_version(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let package_arg = arg_by_name_or_position(args, &["pkg", "package"], 0);
         let lib_arg = arg_by_name_or_position(args, &["lib.loc"], 1);
         let package = elt_to_string(package_arg, 0);
@@ -337,8 +337,8 @@ pub unsafe fn do_package_version(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP)
 }
 
 /// R's `packageDescription(pkg, fields = NULL)` — read DESCRIPTION metadata.
-pub unsafe fn do_package_description(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_package_description(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let package_arg = arg_by_name_or_position(args, &["pkg", "package"], 0);
         let fields_arg = arg_by_name_or_position(args, &["fields"], 1);
         let package = elt_to_string(package_arg, 0);
@@ -366,8 +366,8 @@ pub unsafe fn do_package_description(_call: SEXP, _op: SEXP, args: SEXP, _rho: S
 }
 
 /// R's `loadNamespace(package)` — load a package namespace without attaching it.
-pub unsafe fn do_load_namespace(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_load_namespace(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let package_arg = arg_by_name_or_position(args, &["package", "name"], 0);
         let package = elt_to_string(package_arg, 0);
         let requirement =
@@ -468,7 +468,7 @@ impl NamespaceRequirement {
     }
 }
 
-unsafe fn namespace_argument_string(value: SEXP) -> Option<String> {
+fn namespace_argument_string(value: SEXP) -> Option<String> {
     unsafe {
         if TYPEOF(value) != SEXPTYPE::STRSXP
             || XLENGTH(value) != 1
@@ -480,7 +480,7 @@ unsafe fn namespace_argument_string(value: SEXP) -> Option<String> {
     }
 }
 
-unsafe fn namespace_requirement(check: SEXP) -> Result<Option<NamespaceRequirement>, String> {
+fn namespace_requirement(check: SEXP) -> Result<Option<NamespaceRequirement>, String> {
     unsafe {
         if check.is_null() || check == R_NilValue() || check == R_MissingArg() {
             return Ok(None);
@@ -528,7 +528,7 @@ unsafe fn namespace_requirement(check: SEXP) -> Result<Option<NamespaceRequireme
     }
 }
 
-unsafe fn namespace_libraries(lib_loc: SEXP) -> Result<Option<Vec<PathBuf>>, String> {
+fn namespace_libraries(lib_loc: SEXP) -> Result<Option<Vec<PathBuf>>, String> {
     unsafe {
         if lib_loc.is_null() || lib_loc == R_NilValue() || lib_loc == R_MissingArg() {
             return Ok(None);
@@ -546,7 +546,7 @@ unsafe fn namespace_libraries(lib_loc: SEXP) -> Result<Option<Vec<PathBuf>>, Str
 }
 
 /// R's `requireNamespace(package, ..., quietly = FALSE)` — namespace availability probe.
-pub unsafe fn do_require_namespace(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_require_namespace(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let package = elt_to_string(arg_by_name_or_position(args, &["package"], 0), 0);
         let quietly = arg_by_name_or_position(args, &["quietly"], usize::MAX);
@@ -571,13 +571,13 @@ pub unsafe fn do_require_namespace(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEX
 }
 
 /// R's `getNamespace(name)` — return a loaded namespace, loading on demand.
-pub unsafe fn do_get_namespace(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe { do_load_namespace(_call, _op, args, rho) }
+pub fn do_get_namespace(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    { do_load_namespace(_call, _op, args, rho) }
 }
 
 /// R's `asNamespace(ns)` — coerce a package name or environment to a namespace.
-pub unsafe fn do_as_namespace(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_as_namespace(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let ns = CAR(args);
         if !ns.is_null() && TYPEOF(ns) == SEXPTYPE::ENVSXP {
             return ns;
@@ -591,7 +591,7 @@ pub unsafe fn do_as_namespace(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
 }
 
 /// R's `loadedNamespaces()` — list namespaces loaded in this session.
-pub unsafe fn do_loaded_namespaces(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_loaded_namespaces(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let mut names = crate::sexp::instance::with_required_current_instance(|inst| {
             (*inst)
@@ -606,7 +606,7 @@ pub unsafe fn do_loaded_namespaces(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SE
 }
 
 /// R's `unloadNamespace(ns)` — drop a loaded namespace from this session.
-pub unsafe fn do_unload_namespace(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_unload_namespace(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let name = CAR(args);
         let package = if TYPEOF(name) == SEXPTYPE::SYMSXP {
@@ -635,7 +635,7 @@ pub unsafe fn do_unload_namespace(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP
 }
 
 /// `.Internal(getRegisteredNamespace(name))` — loaded namespace or NULL.
-pub unsafe fn do_get_registered_namespace(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_get_registered_namespace(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let name = CAR(args);
         let package = if TYPEOF(name) == SEXPTYPE::SYMSXP {
@@ -659,7 +659,7 @@ pub unsafe fn do_get_registered_namespace(_call: SEXP, _op: SEXP, args: SEXP, _r
 }
 
 /// `.Internal(isRegisteredNamespace(name))` — TRUE if the namespace is loaded.
-pub unsafe fn do_is_registered_namespace(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_is_registered_namespace(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let ns = do_get_registered_namespace(call, op, args, rho);
         Rf_ScalarLogical(if ns.is_null() || ns == R_NilValue() {
@@ -674,8 +674,8 @@ pub unsafe fn do_is_registered_namespace(call: SEXP, op: SEXP, args: SEXP, rho: 
 ///
 /// Installed source/workspace data and the portable pinned datasets database
 /// enter through the package loader; topic loads are returned invisibly.
-pub unsafe fn do_data(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_data(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    {
         let topic_arg = arg_by_name_or_position(args, &["list"], 0);
         let package_arg = arg_by_name_or_position(args, &["package"], 1);
         let envir_arg = arg_by_name_or_position(args, &["envir"], 2);

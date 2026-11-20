@@ -16,7 +16,7 @@ fn iso_arg_num(x: SEXP, default: f64) -> f64 {
     }
 }
 
-unsafe fn iso_posixct(
+fn iso_posixct(
     year: f64,
     month: f64,
     day: f64,
@@ -61,7 +61,7 @@ unsafe fn iso_posixct(
 }
 
 /// GNU `ISOdatetime(year, month, day, hour, min, sec, tz)`.
-pub unsafe fn do_ISOdatetime(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_ISOdatetime(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let year = iso_arg_num(CAR(args), 1970.0);
         let month = iso_arg_num(CAR(CDR(args)), 1.0);
@@ -87,7 +87,7 @@ pub unsafe fn do_ISOdatetime(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
 }
 
 /// GNU `ISOdate(year, month, day)` is noon GMT.
-pub unsafe fn do_ISOdate(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_ISOdate(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let year = iso_arg_num(CAR(args), 1970.0);
         let month = iso_arg_num(CAR(CDR(args)), 1.0);

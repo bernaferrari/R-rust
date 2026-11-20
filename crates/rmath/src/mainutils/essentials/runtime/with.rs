@@ -40,7 +40,7 @@ use crate::sexp::symbol::Rf_install;
 // ---------------------------------------------------------------------------
 
 /// R's `with(data, expr)` — evaluate expr in a data/list environment.
-pub unsafe fn do_with(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_with(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let data_expr = arg_by_name_or_position(args, &["data"], 0);
         let expr = arg_by_name_or_position(args, &["expr"], 1);
@@ -60,7 +60,7 @@ pub unsafe fn do_with(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     }
 }
 
-pub(crate) unsafe fn data_environment(data: SEXP, parent: SEXP) -> SEXP {
+pub(crate) fn data_environment(data: SEXP, parent: SEXP) -> SEXP {
     unsafe {
         if TYPEOF(data) == SEXPTYPE::ENVSXP {
             return data;
@@ -93,7 +93,7 @@ pub(crate) unsafe fn data_environment(data: SEXP, parent: SEXP) -> SEXP {
 }
 
 /// R's `within(data, expr)` — modify data by evaluating expr (simplified).
-pub unsafe fn do_within(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_within(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let data = CAR(args);
         let expr = CAR(CDR(args));
@@ -110,7 +110,7 @@ pub unsafe fn do_within(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 /// GNU `transform.data.frame`: eval extras in the data, then replace/add columns.
-pub unsafe fn do_transform(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_transform(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let data_expr = CAR(args);
         if data_expr.is_null() || data_expr == R_NilValue() {

@@ -40,7 +40,7 @@ use crate::sexp::symbol::Rf_install;
 // ---------------------------------------------------------------------------
 
 /// Match the source call against closure formals without evaluating its arguments.
-pub unsafe fn do_match_call(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_match_call(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         // Use the same matcher for this public wrapper and the inspected call.
         let mut roots = Vec::new();
@@ -254,7 +254,7 @@ pub unsafe fn do_match_call(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEX
 }
 
 /// R's `sys.nframe()` — returns the number of frames on the call stack.
-pub unsafe fn do_sys_nframe(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_sys_nframe(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let top = crate::sexp::context::R_GlobalContext();
         Rf_ScalarInteger(crate::eval::context::framedepth(top))
@@ -262,7 +262,7 @@ pub unsafe fn do_sys_nframe(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> 
 }
 
 /// R's `sys.function(which)` — returns the function at the given frame level.
-pub unsafe fn do_sys_function(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_sys_function(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let which = context_index_arg(args, 0);
         let top = crate::sexp::context::R_GlobalContext();
@@ -276,6 +276,6 @@ pub unsafe fn do_sys_function(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
 
 /// R's `on.exit(expr, add, after)` — register an exit handler for the
 /// current function context.
-pub unsafe fn do_on_exit(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_on_exit(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe { crate::eval::special::do_on_exit_from_args(args, rho) }
 }
