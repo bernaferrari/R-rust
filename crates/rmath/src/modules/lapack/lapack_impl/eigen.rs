@@ -3,7 +3,7 @@ use super::*;
 /// La_rs - real symmetric eigenvalues/eigenvectors.
 ///
 /// Port of: static SEXP La_rs(SEXP x, SEXP only_values)
-pub unsafe fn La_rs(x: SEXP, only_values: SEXP) -> SEXP {
+pub fn La_rs(x: SEXP, only_values: SEXP) -> SEXP {
     unsafe {
         let dim = getAttrib(x, R_DimSymbol());
         if dim.is_null() || dim == R_NilValue() {
@@ -111,7 +111,7 @@ pub unsafe fn La_rs(x: SEXP, only_values: SEXP) -> SEXP {
 /// La_rg - real eigenvalues/eigenvectors (general, non-symmetric).
 ///
 /// Port of: static SEXP La_rg(SEXP x, SEXP only_values)
-pub unsafe fn La_rg(x: SEXP, only_values: SEXP) -> SEXP {
+pub fn La_rg(x: SEXP, only_values: SEXP) -> SEXP {
     unsafe {
         let dim = getAttrib(x, R_DimSymbol());
         if dim.is_null() || dim == R_NilValue() {
@@ -280,7 +280,7 @@ pub unsafe fn La_rg(x: SEXP, only_values: SEXP) -> SEXP {
 /// La_rs_cmplx - complex symmetric eigenvalues/eigenvectors.
 ///
 /// Port of: static SEXP La_rs_cmplx(SEXP xin, SEXP only_values)
-pub unsafe fn La_rs_cmplx(xin: SEXP, only_values: SEXP) -> SEXP {
+pub fn La_rs_cmplx(xin: SEXP, only_values: SEXP) -> SEXP {
     unsafe {
         if TYPEOF(xin) != CPLXSXP_C {
             crate::sexp::context::r_error("'x' must be a complex matrix");
@@ -421,7 +421,7 @@ pub unsafe fn La_rs_cmplx(xin: SEXP, only_values: SEXP) -> SEXP {
 /// La_rg_cmplx - complex eigenvalues/eigenvectors.
 ///
 /// Port of: static SEXP La_rg_cmplx(SEXP x, SEXP only_values)
-pub unsafe fn La_rg_cmplx(x: SEXP, only_values: SEXP) -> SEXP {
+pub fn La_rg_cmplx(x: SEXP, only_values: SEXP) -> SEXP {
     unsafe {
         if TYPEOF(x) != CPLXSXP_C {
             crate::sexp::context::r_error("'x' must be a complex matrix");
@@ -577,7 +577,7 @@ pub unsafe fn La_rg_cmplx(x: SEXP, only_values: SEXP) -> SEXP {
 /// For a nonnegative, representable n-by-n matrix, imaginary and vecs point to
 /// n and n*n initialized f64 elements respectively. These caller-owned native
 /// buffers remain live across allocation/GC; they are not runtime field loans.
-unsafe fn complex_eigenvector_matrix(n: i32, imaginary: *const f64, vecs: *const f64) -> SEXP {
+fn complex_eigenvector_matrix(n: i32, imaginary: *const f64, vecs: *const f64) -> SEXP {
     unsafe {
         let n = usize::try_from(n)
             .unwrap_or_else(|_| crate::sexp::context::r_error("invalid matrix dimensions"));

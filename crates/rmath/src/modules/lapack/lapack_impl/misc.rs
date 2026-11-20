@@ -3,7 +3,7 @@ use super::*;
 /// det_ge_real - real matrix determinant.
 ///
 /// Port of: static SEXP det_ge_real(SEXP ain, SEXP logarithm)
-pub unsafe fn det_ge_real(ain: SEXP, logarithm: SEXP) -> SEXP {
+pub fn det_ge_real(ain: SEXP, logarithm: SEXP) -> SEXP {
     unsafe {
         let ldet = asLogical(logarithm);
         if ldet == NA_INTEGER {
@@ -131,7 +131,7 @@ pub unsafe fn det_ge_real(ain: SEXP, logarithm: SEXP) -> SEXP {
 /// mod_do_lapack - main LAPACK dispatcher.
 ///
 /// Port of: SEXP mod_do_lapack(SEXP call, SEXP op, SEXP args, SEXP env)
-pub unsafe fn mod_do_lapack(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub fn mod_do_lapack(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     {
         // This dispatches based on op symbol to the appropriate La_* function.
         // In R, this is done via the .Internal() mechanism.
@@ -143,7 +143,7 @@ pub unsafe fn mod_do_lapack(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP
 /// R_init_lapack - LAPACK module initialization.
 ///
 /// Port of: void R_init_lapack(DllInfo *dll)
-pub unsafe fn R_init_lapack(_info: *mut std::ffi::c_void) {
+pub fn R_init_lapack(_info: *mut std::ffi::c_void) {
     {
         // Registration would happen here in the full implementation
     }

@@ -3,7 +3,7 @@ use super::*;
 /// La_solve - real linear solve.
 ///
 /// Port of: static SEXP La_solve(SEXP a, SEXP bin, SEXP tolin)
-pub unsafe fn La_solve(a: SEXP, bin: SEXP, tolin: SEXP) -> SEXP {
+pub fn La_solve(a: SEXP, bin: SEXP, tolin: SEXP) -> SEXP {
     unsafe {
         let tol = asReal(tolin);
 
@@ -166,7 +166,7 @@ pub unsafe fn La_solve(a: SEXP, bin: SEXP, tolin: SEXP) -> SEXP {
 /// La_solve_cmplx - complex linear solve.
 ///
 /// Port of: static SEXP La_solve_cmplx(SEXP a, SEXP bin, SEXP tolin)
-pub unsafe fn La_solve_cmplx(a: SEXP, bin: SEXP, tolin: SEXP) -> SEXP {
+pub fn La_solve_cmplx(a: SEXP, bin: SEXP, tolin: SEXP) -> SEXP {
     unsafe {
         let tol = asReal(tolin);
 

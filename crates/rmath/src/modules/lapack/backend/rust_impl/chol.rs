@@ -1,7 +1,7 @@
 use super::*;
 
 /// DPOTRF — Cholesky factorization.
-pub unsafe fn dpotrf_(
+pub fn dpotrf_(
     uplo: *const u8,
     n: *const core::ffi::c_int,
     a: *mut f64,
@@ -100,7 +100,7 @@ pub unsafe fn dpotrf_(
 /// Stock LAPACK never reconstructs `A = UᵀU` / `LLᵀ`. Reconstruction
 /// squares a factor near `1e155` out of binary64, while `U⁻¹U⁻ᵀ` stays
 /// representable near `1e-310`. Only the `uplo` triangle is written.
-pub unsafe fn dpotri_(
+pub fn dpotri_(
     uplo: *const u8,
     n: *const core::ffi::c_int,
     a: *mut f64,
@@ -219,7 +219,7 @@ pub(crate) fn multiply_lower_transpose_by_self(inv: &[f64], n: usize) -> Vec<f64
 }
 
 /// DPSTRF — pivoted Cholesky factorization.
-pub unsafe fn dpstrf_(
+pub fn dpstrf_(
     uplo: *const u8,
     n: *const core::ffi::c_int,
     a: *mut f64,

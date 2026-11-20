@@ -3,7 +3,7 @@ use super::*;
 /// La_qr - real QR decomposition.
 ///
 /// Port of: static SEXP La_qr(SEXP ain)
-pub unsafe fn La_qr(ain: SEXP) -> SEXP {
+pub fn La_qr(ain: SEXP) -> SEXP {
     unsafe {
         if TYPEOF(ain) != REALSXP_C {
             crate::sexp::context::r_error("'a' must be a numeric matrix");
@@ -138,7 +138,7 @@ pub unsafe fn La_qr(ain: SEXP) -> SEXP {
 /// La_qr_cmplx - complex QR decomposition.
 ///
 /// Port of: static SEXP La_qr_cmplx(SEXP ain)
-pub unsafe fn La_qr_cmplx(ain: SEXP) -> SEXP {
+pub fn La_qr_cmplx(ain: SEXP) -> SEXP {
     unsafe {
         if TYPEOF(ain) != CPLXSXP_C {
             crate::sexp::context::r_error("'a' must be a complex matrix");
@@ -329,7 +329,7 @@ pub unsafe fn La_qr_cmplx(ain: SEXP) -> SEXP {
 /// qr_coef_real - real QR coefficients.
 ///
 /// Port of: static SEXP qr_coef_real(SEXP q, SEXP bin)
-pub unsafe fn qr_coef_real(q: SEXP, bin: SEXP) -> SEXP {
+pub fn qr_coef_real(q: SEXP, bin: SEXP) -> SEXP {
     unsafe {
         if TYPEOF(q) != VECSXP_C || XLENGTH(q) < 1 {
             crate::sexp::context::r_error("'qr' must be a QR decomposition");
@@ -439,7 +439,7 @@ pub unsafe fn qr_coef_real(q: SEXP, bin: SEXP) -> SEXP {
 /// qr_coef_cmplx - complex QR coefficients.
 ///
 /// Port of: static SEXP qr_coef_cmplx(SEXP q, SEXP bin)
-pub unsafe fn qr_coef_cmplx(q: SEXP, bin: SEXP) -> SEXP {
+pub fn qr_coef_cmplx(q: SEXP, bin: SEXP) -> SEXP {
     unsafe {
         if TYPEOF(q) != VECSXP_C || XLENGTH(q) < 1 {
             crate::sexp::context::r_error("'qr' must be a QR decomposition");
@@ -623,7 +623,7 @@ pub unsafe fn qr_coef_cmplx(q: SEXP, bin: SEXP) -> SEXP {
 /// qr_qy_real - real QR multiply Q*y.
 ///
 /// Port of: static SEXP qr_qy_real(SEXP q, SEXP bin, SEXP trans)
-pub unsafe fn qr_qy_real(q: SEXP, bin: SEXP, trans: SEXP) -> SEXP {
+pub fn qr_qy_real(q: SEXP, bin: SEXP, trans: SEXP) -> SEXP {
     unsafe {
         if TYPEOF(q) != VECSXP_C || XLENGTH(q) < 3 {
             crate::sexp::context::r_error("'qr' must be a QR decomposition");
@@ -771,7 +771,7 @@ pub unsafe fn qr_qy_real(q: SEXP, bin: SEXP, trans: SEXP) -> SEXP {
 /// qr_qy_cmplx - complex QR multiply Q*y.
 ///
 /// Port of: static SEXP qr_qy_cmplx(SEXP q, SEXP bin, SEXP trans)
-pub unsafe fn qr_qy_cmplx(q: SEXP, bin: SEXP, trans: SEXP) -> SEXP {
+pub fn qr_qy_cmplx(q: SEXP, bin: SEXP, trans: SEXP) -> SEXP {
     unsafe {
         if TYPEOF(q) != VECSXP_C || XLENGTH(q) < 3 {
             crate::sexp::context::r_error("'qr' must be a QR decomposition");
