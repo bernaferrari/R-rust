@@ -158,587 +158,192 @@ unsafe fn nans_produced() {
 }
 
 // ---------------------------------------------------------------------------
-// Math2 helpers (2-argument math functions)
+// Checked numerical recycling for registered d/p/q routines
 // ---------------------------------------------------------------------------
 
-type math2_fn_1 = fn(c_double, c_double, bool) -> c_double;
-type math2_fn_2 = fn(c_double, c_double, bool, bool) -> c_double;
-
-unsafe fn math2_1(sa: SEXP, sb: SEXP, sI: SEXP, f: math2_fn_1) -> SEXP {
-    unsafe {
-        let owner = crate::sexp::owner::OwnerToken::current()
-            .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
-        owner
-            .require_active()
-            .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
-        if !isNumeric(owner, sa) || !isNumeric(owner, sb) {
-            Rf_error(b"Non-numeric argument to mathematical function\0".as_ptr() as *const _);
-            return R_NilValue();
-        }
-
-        let na = XLENGTH(sa);
-        let nb = XLENGTH(sb);
-        if na == 0 || nb == 0 {
-            let sy = Rf_allocVector(SEXPTYPE::REALSXP, 0);
-            let _sy_guard = protect(sy);
-            if na == 0 {
-                copy_math_attributes(owner, sy, sa);
-            }
-            return sy;
-        }
-
-        let n = if na < nb { nb } else { na };
-        let sa = coerceVector(sa, SEXPTYPE::REALSXP.as_c_int());
-        let _sa_guard = protect(sa);
-        let sb = coerceVector(sb, SEXPTYPE::REALSXP.as_c_int());
-        let _sb_guard = protect(sb);
-        let sy = Rf_allocVector3(SEXPTYPE::REALSXP, n);
-        let _sy_guard = protect(sy);
-        let inputs = [(sa, na), (sb, nb)];
-        prepare_inputs(owner, &inputs);
-        let m_opt = as_integer(owner, sI) != 0;
-        check_inputs(owner, &inputs);
-        let a = REAL(sa);
-        let b = REAL(sb);
-        let y = REAL(sy);
-        let mut naflag = false;
-
-        let mut ia: R_xlen_t = 0;
-        let mut ib: R_xlen_t = 0;
-
-        for i in 0..n {
-            let ai = *a.add(ia as usize);
-            let bi = *b.add(ib as usize);
-
-            if R_IsNA(ai) || R_IsNA(bi) {
-                *y.add(i as usize) = NA_REAL;
-            } else if ISNAN(ai) || ISNAN(bi) {
-                *y.add(i as usize) = f64::NAN; // R_NaN
-            } else {
-                *y.add(i as usize) = f(ai, bi, m_opt);
-                if ISNAN(*y.add(i as usize)) {
-                    naflag = true;
-                }
-            }
-
-            ia += 1;
-            if ia >= na {
-                ia = 0;
-            }
-            ib += 1;
-            if ib >= nb {
-                ib = 0;
-            }
-        }
-
-        if naflag {
-            nans_produced();
-        }
-        finish_math_attributes(owner, sy, &inputs, n);
-        sy
-    }
+fn checked<T>(result: crate::sexp::object::SexpResult<T>) -> T {
+    result.unwrap_or_else(|error| crate::mainutils::essentials::base_error(error.to_string()))
 }
 
-unsafe fn math2_2(sa: SEXP, sb: SEXP, sI1: SEXP, sI2: SEXP, f: math2_fn_2) -> SEXP {
-    unsafe {
-        let owner = crate::sexp::owner::OwnerToken::current()
-            .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
-        owner
-            .require_active()
-            .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
-        if !isNumeric(owner, sa) || !isNumeric(owner, sb) {
-            Rf_error(b"Non-numeric argument to mathematical function\0".as_ptr() as *const _);
-            return R_NilValue();
+fn math_recycle<const N: usize, const F: usize>(
+    owner: crate::sexp::owner::OwnerToken<'_>,
+    arguments: [SEXP; N],
+    flags: [SEXP; F],
+    compute: impl Fn([f64; N], [bool; F]) -> f64,
+) -> SEXP {
+    use crate::sexp::object::SexpMut;
+
+    checked(owner.require_active());
+    let source = arguments.map(|raw| checked(owner.sexp(raw)));
+    for operand in &source {
+        // SAFETY: the checked operand roots its entire graph. The existing
+        // predicate also checks the original owner across class lookup.
+        if !unsafe { isNumeric(owner, operand.as_raw()) } {
+            unsafe { Rf_error(c"Non-numeric argument to mathematical function".as_ptr()) };
+            unreachable!("Rf_error does not return");
         }
-
-        let na = XLENGTH(sa);
-        let nb = XLENGTH(sb);
-        if na == 0 || nb == 0 {
-            let sy = Rf_allocVector(SEXPTYPE::REALSXP, 0);
-            let _sy_guard = protect(sy);
-            if na == 0 {
-                copy_math_attributes(owner, sy, sa);
-            }
-            return sy;
-        }
-
-        let n = if na < nb { nb } else { na };
-        let sa = coerceVector(sa, SEXPTYPE::REALSXP.as_c_int());
-        let _sa_guard = protect(sa);
-        let sb = coerceVector(sb, SEXPTYPE::REALSXP.as_c_int());
-        let _sb_guard = protect(sb);
-        let sy = Rf_allocVector3(SEXPTYPE::REALSXP, n);
-        let _sy_guard = protect(sy);
-        let inputs = [(sa, na), (sb, nb)];
-        prepare_inputs(owner, &inputs);
-        let i_1 = as_integer(owner, sI1) != 0;
-        let i_2 = as_integer(owner, sI2) != 0;
-        check_inputs(owner, &inputs);
-        let a = REAL(sa);
-        let b = REAL(sb);
-        let y = REAL(sy);
-        let mut naflag = false;
-
-        let mut ia: R_xlen_t = 0;
-        let mut ib: R_xlen_t = 0;
-
-        for i in 0..n {
-            let ai = *a.add(ia as usize);
-            let bi = *b.add(ib as usize);
-
-            if R_IsNA(ai) || R_IsNA(bi) {
-                *y.add(i as usize) = NA_REAL;
-            } else if ISNAN(ai) || ISNAN(bi) {
-                *y.add(i as usize) = f64::NAN;
-            } else {
-                *y.add(i as usize) = f(ai, bi, i_1, i_2);
-                if ISNAN(*y.add(i as usize)) {
-                    naflag = true;
-                }
-            }
-
-            ia += 1;
-            if ia >= na {
-                ia = 0;
-            }
-            ib += 1;
-            if ib >= nb {
-                ib = 0;
-            }
-        }
-
-        if naflag {
-            nans_produced();
-        }
-        finish_math_attributes(owner, sy, &inputs, n);
-        sy
     }
+
+    let lengths = std::array::from_fn::<_, N, _>(|i| source[i].len());
+    let empty = lengths.contains(&0);
+    let n = if empty {
+        0
+    } else {
+        lengths.iter().copied().max().unwrap_or_default()
+    };
+    let allocate_result = || {
+        checked(owner.require_active());
+        // SAFETY: the owner is active. Keep the legacy allocator's typed
+        // resource error and GC retry semantics before wrapping the result.
+        let raw = unsafe { Rf_allocVector3(SEXPTYPE::REALSXP, n) };
+        checked(owner.require_active());
+        checked(owner.sexp(raw))
+    };
+    if empty {
+        let result = allocate_result();
+        if lengths[0] == 0 {
+            // SAFETY: both checked objects remain rooted during shallow copy.
+            unsafe { copy_math_attributes(owner, result.as_raw(), source[0].as_raw()) };
+        }
+        return result.as_raw();
+    }
+
+    let inputs = source.map(|operand| {
+        checked(owner.require_active());
+        // SAFETY: the checked operand roots its graph across coercion.
+        let raw = unsafe { coerceVector(operand.as_raw(), SEXPTYPE::REALSXP.as_c_int()) };
+        checked(owner.require_active());
+        checked(owner.sexp(raw))
+    });
+    let mut result = checked(SexpMut::try_from_checked(allocate_result()));
+
+    for input in &inputs {
+        checked(crate::sexp::altrep::force_materialization(input));
+        checked(owner.require_active());
+    }
+    let flags = flags.map(|raw| {
+        let value = checked(owner.sexp(raw));
+        // SAFETY: the flag remains rooted while integer coercion can run
+        // providers or condition handlers. as_integer checks the original owner.
+        unsafe { as_integer(owner, value.as_raw()) != 0 }
+    });
+    checked(owner.require_active());
+    for (input, length) in inputs.iter().zip(lengths) {
+        if input.len() != length {
+            crate::mainutils::essentials::base_error(
+                "distribution input length changed during flag coercion",
+            );
+        }
+    }
+
+    let mut cursors = [0; N];
+    let mut produced_nan = false;
+    for i in 0..n {
+        let values = std::array::from_fn(|j| checked(inputs[j].try_real_elt(cursors[j])));
+        let value = if values.into_iter().any(R_IsNA) {
+            NA_REAL
+        } else if values.into_iter().any(f64::is_nan) {
+            f64::NAN
+        } else {
+            let value = compute(values, flags);
+            produced_nan |= value.is_nan();
+            value
+        };
+        checked(result.try_set_real_elt(i, value));
+        for (position, length) in cursors.iter_mut().zip(lengths) {
+            *position += 1;
+            if *position == length {
+                *position = 0;
+            }
+        }
+    }
+
+    let result = result.freeze();
+    if produced_nan {
+        // SAFETY: the result and operands remain rooted during warning dispatch.
+        unsafe { nans_produced() };
+    }
+    if let Some(position) = lengths.iter().position(|&length| length == n) {
+        // SAFETY: both checked objects remain rooted across attribute copying.
+        unsafe { copy_math_attributes(owner, result.as_raw(), inputs[position].as_raw()) };
+    }
+    result.as_raw()
 }
 
-// ---------------------------------------------------------------------------
-// Math3 helpers (3-argument math functions)
-// ---------------------------------------------------------------------------
-
-type math3_fn_1 = fn(c_double, c_double, c_double, bool) -> c_double;
-type math3_fn_2 = fn(c_double, c_double, c_double, bool, bool) -> c_double;
-
-unsafe fn math3_1(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, f: math3_fn_1) -> SEXP {
-    unsafe {
-        let owner = crate::sexp::owner::OwnerToken::current()
-            .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
-        owner
-            .require_active()
-            .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
-        if !isNumeric(owner, sa) || !isNumeric(owner, sb) || !isNumeric(owner, sc) {
-            Rf_error(b"Non-numeric argument to mathematical function\0".as_ptr() as *const _);
-            return R_NilValue();
-        }
-
-        let na = XLENGTH(sa);
-        let nb = XLENGTH(sb);
-        let nc = XLENGTH(sc);
-        if na == 0 || nb == 0 || nc == 0 {
-            let sy = Rf_allocVector(SEXPTYPE::REALSXP, 0);
-            let _sy_guard = protect(sy);
-            if na == 0 {
-                copy_math_attributes(owner, sy, sa);
-            }
-            return sy;
-        }
-
-        let mut n = na;
-        if n < nb {
-            n = nb;
-        }
-        if n < nc {
-            n = nc;
-        }
-
-        let sa = coerceVector(sa, SEXPTYPE::REALSXP.as_c_int());
-        let _sa_guard = protect(sa);
-        let sb = coerceVector(sb, SEXPTYPE::REALSXP.as_c_int());
-        let _sb_guard = protect(sb);
-        let sc = coerceVector(sc, SEXPTYPE::REALSXP.as_c_int());
-        let _sc_guard = protect(sc);
-        let sy = Rf_allocVector3(SEXPTYPE::REALSXP, n);
-        let _sy_guard = protect(sy);
-        let inputs = [(sa, na), (sb, nb), (sc, nc)];
-        prepare_inputs(owner, &inputs);
-        let i_1 = as_integer(owner, sI) != 0;
-        check_inputs(owner, &inputs);
-        let a = REAL(sa);
-        let b = REAL(sb);
-        let c = REAL(sc);
-        let y = REAL(sy);
-        let mut naflag = false;
-
-        let mut ia: R_xlen_t = 0;
-        let mut ib: R_xlen_t = 0;
-        let mut ic: R_xlen_t = 0;
-
-        for i in 0..n {
-            let ai = *a.add(ia as usize);
-            let bi = *b.add(ib as usize);
-            let ci = *c.add(ic as usize);
-
-            if R_IsNA(ai) || R_IsNA(bi) || R_IsNA(ci) {
-                *y.add(i as usize) = NA_REAL;
-            } else if ISNAN(ai) || ISNAN(bi) || ISNAN(ci) {
-                *y.add(i as usize) = f64::NAN;
-            } else {
-                *y.add(i as usize) = f(ai, bi, ci, i_1);
-                if ISNAN(*y.add(i as usize)) {
-                    naflag = true;
-                }
-            }
-
-            ia += 1;
-            if ia >= na {
-                ia = 0;
-            }
-            ib += 1;
-            if ib >= nb {
-                ib = 0;
-            }
-            ic += 1;
-            if ic >= nc {
-                ic = 0;
-            }
-        }
-
-        if naflag {
-            nans_produced();
-        }
-        finish_math_attributes(owner, sy, &inputs, n);
-        sy
-    }
+unsafe fn math2_1(a: SEXP, b: SEXP, i: SEXP, compute: fn(c_double, c_double, bool) -> f64) -> SEXP {
+    // SAFETY: the raw ABI caller retains the active runtime across dispatch.
+    let owner = checked(unsafe { crate::sexp::owner::OwnerToken::current() });
+    math_recycle(owner, [a, b], [i], |[a, b], [i]| compute(a, b, i))
 }
 
-unsafe fn math3_2(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP, f: math3_fn_2) -> SEXP {
-    unsafe {
-        let owner = crate::sexp::owner::OwnerToken::current()
-            .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
-        owner
-            .require_active()
-            .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
-        if !isNumeric(owner, sa) || !isNumeric(owner, sb) || !isNumeric(owner, sc) {
-            Rf_error(b"Non-numeric argument to mathematical function\0".as_ptr() as *const _);
-            return R_NilValue();
-        }
-
-        let na = XLENGTH(sa);
-        let nb = XLENGTH(sb);
-        let nc = XLENGTH(sc);
-        if na == 0 || nb == 0 || nc == 0 {
-            let sy = Rf_allocVector(SEXPTYPE::REALSXP, 0);
-            let _sy_guard = protect(sy);
-            if na == 0 {
-                copy_math_attributes(owner, sy, sa);
-            }
-            return sy;
-        }
-
-        let mut n = na;
-        if n < nb {
-            n = nb;
-        }
-        if n < nc {
-            n = nc;
-        }
-
-        let sa = coerceVector(sa, SEXPTYPE::REALSXP.as_c_int());
-        let _sa_guard = protect(sa);
-        let sb = coerceVector(sb, SEXPTYPE::REALSXP.as_c_int());
-        let _sb_guard = protect(sb);
-        let sc = coerceVector(sc, SEXPTYPE::REALSXP.as_c_int());
-        let _sc_guard = protect(sc);
-        let sy = Rf_allocVector3(SEXPTYPE::REALSXP, n);
-        let _sy_guard = protect(sy);
-        let inputs = [(sa, na), (sb, nb), (sc, nc)];
-        prepare_inputs(owner, &inputs);
-        let i_1 = as_integer(owner, sI) != 0;
-        let i_2 = as_integer(owner, sJ) != 0;
-        check_inputs(owner, &inputs);
-        let a = REAL(sa);
-        let b = REAL(sb);
-        let c = REAL(sc);
-        let y = REAL(sy);
-        let mut naflag = false;
-
-        let mut ia: R_xlen_t = 0;
-        let mut ib: R_xlen_t = 0;
-        let mut ic: R_xlen_t = 0;
-
-        for i in 0..n {
-            let ai = *a.add(ia as usize);
-            let bi = *b.add(ib as usize);
-            let ci = *c.add(ic as usize);
-
-            if R_IsNA(ai) || R_IsNA(bi) || R_IsNA(ci) {
-                *y.add(i as usize) = NA_REAL;
-            } else if ISNAN(ai) || ISNAN(bi) || ISNAN(ci) {
-                *y.add(i as usize) = f64::NAN;
-            } else {
-                *y.add(i as usize) = f(ai, bi, ci, i_1, i_2);
-                if ISNAN(*y.add(i as usize)) {
-                    naflag = true;
-                }
-            }
-
-            ia += 1;
-            if ia >= na {
-                ia = 0;
-            }
-            ib += 1;
-            if ib >= nb {
-                ib = 0;
-            }
-            ic += 1;
-            if ic >= nc {
-                ic = 0;
-            }
-        }
-
-        if naflag {
-            nans_produced();
-        }
-        finish_math_attributes(owner, sy, &inputs, n);
-        sy
-    }
+unsafe fn math2_2(
+    a: SEXP,
+    b: SEXP,
+    i: SEXP,
+    j: SEXP,
+    compute: fn(c_double, c_double, bool, bool) -> f64,
+) -> SEXP {
+    // SAFETY: the raw ABI caller retains the active runtime across dispatch.
+    let owner = checked(unsafe { crate::sexp::owner::OwnerToken::current() });
+    math_recycle(owner, [a, b], [i, j], |[a, b], [i, j]| compute(a, b, i, j))
 }
 
-// ---------------------------------------------------------------------------
-// Math4 helpers (4-argument math functions)
-// ---------------------------------------------------------------------------
+unsafe fn math3_1(
+    a: SEXP,
+    b: SEXP,
+    c: SEXP,
+    i: SEXP,
+    compute: fn(c_double, c_double, c_double, bool) -> f64,
+) -> SEXP {
+    // SAFETY: the raw ABI caller retains the active runtime across dispatch.
+    let owner = checked(unsafe { crate::sexp::owner::OwnerToken::current() });
+    math_recycle(owner, [a, b, c], [i], |[a, b, c], [i]| compute(a, b, c, i))
+}
 
-type math4_fn_1 = fn(c_double, c_double, c_double, c_double, bool) -> c_double;
-type math4_fn_2 = fn(c_double, c_double, c_double, c_double, bool, bool) -> c_double;
+unsafe fn math3_2(
+    a: SEXP,
+    b: SEXP,
+    c: SEXP,
+    i: SEXP,
+    j: SEXP,
+    compute: fn(c_double, c_double, c_double, bool, bool) -> f64,
+) -> SEXP {
+    // SAFETY: the raw ABI caller retains the active runtime across dispatch.
+    let owner = checked(unsafe { crate::sexp::owner::OwnerToken::current() });
+    math_recycle(owner, [a, b, c], [i, j], |[a, b, c], [i, j]| {
+        compute(a, b, c, i, j)
+    })
+}
 
-unsafe fn math4_1(sa: SEXP, sb: SEXP, sc: SEXP, sd: SEXP, sI: SEXP, f: math4_fn_1) -> SEXP {
-    unsafe {
-        let owner = crate::sexp::owner::OwnerToken::current()
-            .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
-        owner
-            .require_active()
-            .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
-        if !isNumeric(owner, sa)
-            || !isNumeric(owner, sb)
-            || !isNumeric(owner, sc)
-            || !isNumeric(owner, sd)
-        {
-            Rf_error(b"Non-numeric argument to mathematical function\0".as_ptr() as *const _);
-            return R_NilValue();
-        }
-
-        let na = XLENGTH(sa);
-        let nb = XLENGTH(sb);
-        let nc = XLENGTH(sc);
-        let nd = XLENGTH(sd);
-        if na == 0 || nb == 0 || nc == 0 || nd == 0 {
-            let sy = Rf_allocVector(SEXPTYPE::REALSXP, 0);
-            let _sy_guard = protect(sy);
-            if na == 0 {
-                copy_math_attributes(owner, sy, sa);
-            }
-            return sy;
-        }
-
-        let mut n = na;
-        if n < nb {
-            n = nb;
-        }
-        if n < nc {
-            n = nc;
-        }
-        if n < nd {
-            n = nd;
-        }
-
-        let sa = coerceVector(sa, SEXPTYPE::REALSXP.as_c_int());
-        let _sa_guard = protect(sa);
-        let sb = coerceVector(sb, SEXPTYPE::REALSXP.as_c_int());
-        let _sb_guard = protect(sb);
-        let sc = coerceVector(sc, SEXPTYPE::REALSXP.as_c_int());
-        let _sc_guard = protect(sc);
-        let sd = coerceVector(sd, SEXPTYPE::REALSXP.as_c_int());
-        let _sd_guard = protect(sd);
-        let sy = Rf_allocVector3(SEXPTYPE::REALSXP, n);
-        let _sy_guard = protect(sy);
-        let inputs = [(sa, na), (sb, nb), (sc, nc), (sd, nd)];
-        prepare_inputs(owner, &inputs);
-        let i_1 = as_integer(owner, sI) != 0;
-        check_inputs(owner, &inputs);
-        let a = REAL(sa);
-        let b = REAL(sb);
-        let c = REAL(sc);
-        let d = REAL(sd);
-        let y = REAL(sy);
-        let mut naflag = false;
-
-        let mut ia: R_xlen_t = 0;
-        let mut ib: R_xlen_t = 0;
-        let mut ic: R_xlen_t = 0;
-        let mut id: R_xlen_t = 0;
-
-        for i in 0..n {
-            let ai = *a.add(ia as usize);
-            let bi = *b.add(ib as usize);
-            let ci = *c.add(ic as usize);
-            let di = *d.add(id as usize);
-
-            if R_IsNA(ai) || R_IsNA(bi) || R_IsNA(ci) || R_IsNA(di) {
-                *y.add(i as usize) = NA_REAL;
-            } else if ISNAN(ai) || ISNAN(bi) || ISNAN(ci) || ISNAN(di) {
-                *y.add(i as usize) = f64::NAN;
-            } else {
-                *y.add(i as usize) = f(ai, bi, ci, di, i_1);
-                if ISNAN(*y.add(i as usize)) {
-                    naflag = true;
-                }
-            }
-
-            ia += 1;
-            if ia >= na {
-                ia = 0;
-            }
-            ib += 1;
-            if ib >= nb {
-                ib = 0;
-            }
-            ic += 1;
-            if ic >= nc {
-                ic = 0;
-            }
-            id += 1;
-            if id >= nd {
-                id = 0;
-            }
-        }
-
-        if naflag {
-            nans_produced();
-        }
-        finish_math_attributes(owner, sy, &inputs, n);
-        sy
-    }
+unsafe fn math4_1(
+    a: SEXP,
+    b: SEXP,
+    c: SEXP,
+    d: SEXP,
+    i: SEXP,
+    compute: fn(c_double, c_double, c_double, c_double, bool) -> f64,
+) -> SEXP {
+    // SAFETY: the raw ABI caller retains the active runtime across dispatch.
+    let owner = checked(unsafe { crate::sexp::owner::OwnerToken::current() });
+    math_recycle(owner, [a, b, c, d], [i], |[a, b, c, d], [i]| {
+        compute(a, b, c, d, i)
+    })
 }
 
 unsafe fn math4_2(
-    sa: SEXP,
-    sb: SEXP,
-    sc: SEXP,
-    sd: SEXP,
-    sI: SEXP,
-    sJ: SEXP,
-    f: math4_fn_2,
+    a: SEXP,
+    b: SEXP,
+    c: SEXP,
+    d: SEXP,
+    i: SEXP,
+    j: SEXP,
+    compute: fn(c_double, c_double, c_double, c_double, bool, bool) -> f64,
 ) -> SEXP {
-    unsafe {
-        let owner = crate::sexp::owner::OwnerToken::current()
-            .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
-        owner
-            .require_active()
-            .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
-        if !isNumeric(owner, sa)
-            || !isNumeric(owner, sb)
-            || !isNumeric(owner, sc)
-            || !isNumeric(owner, sd)
-        {
-            Rf_error(b"Non-numeric argument to mathematical function\0".as_ptr() as *const _);
-            return R_NilValue();
-        }
-
-        let na = XLENGTH(sa);
-        let nb = XLENGTH(sb);
-        let nc = XLENGTH(sc);
-        let nd = XLENGTH(sd);
-        if na == 0 || nb == 0 || nc == 0 || nd == 0 {
-            let sy = Rf_allocVector(SEXPTYPE::REALSXP, 0);
-            let _sy_guard = protect(sy);
-            if na == 0 {
-                copy_math_attributes(owner, sy, sa);
-            }
-            return sy;
-        }
-
-        let mut n = na;
-        if n < nb {
-            n = nb;
-        }
-        if n < nc {
-            n = nc;
-        }
-        if n < nd {
-            n = nd;
-        }
-
-        let sa = coerceVector(sa, SEXPTYPE::REALSXP.as_c_int());
-        let _sa_guard = protect(sa);
-        let sb = coerceVector(sb, SEXPTYPE::REALSXP.as_c_int());
-        let _sb_guard = protect(sb);
-        let sc = coerceVector(sc, SEXPTYPE::REALSXP.as_c_int());
-        let _sc_guard = protect(sc);
-        let sd = coerceVector(sd, SEXPTYPE::REALSXP.as_c_int());
-        let _sd_guard = protect(sd);
-        let sy = Rf_allocVector3(SEXPTYPE::REALSXP, n);
-        let _sy_guard = protect(sy);
-        let inputs = [(sa, na), (sb, nb), (sc, nc), (sd, nd)];
-        prepare_inputs(owner, &inputs);
-        let i_1 = as_integer(owner, sI) != 0;
-        let i_2 = as_integer(owner, sJ) != 0;
-        check_inputs(owner, &inputs);
-        let a = REAL(sa);
-        let b = REAL(sb);
-        let c = REAL(sc);
-        let d = REAL(sd);
-        let y = REAL(sy);
-        let mut naflag = false;
-
-        let mut ia: R_xlen_t = 0;
-        let mut ib: R_xlen_t = 0;
-        let mut ic: R_xlen_t = 0;
-        let mut id: R_xlen_t = 0;
-
-        for i in 0..n {
-            let ai = *a.add(ia as usize);
-            let bi = *b.add(ib as usize);
-            let ci = *c.add(ic as usize);
-            let di = *d.add(id as usize);
-
-            if R_IsNA(ai) || R_IsNA(bi) || R_IsNA(ci) || R_IsNA(di) {
-                *y.add(i as usize) = NA_REAL;
-            } else if ISNAN(ai) || ISNAN(bi) || ISNAN(ci) || ISNAN(di) {
-                *y.add(i as usize) = f64::NAN;
-            } else {
-                *y.add(i as usize) = f(ai, bi, ci, di, i_1, i_2);
-                if ISNAN(*y.add(i as usize)) {
-                    naflag = true;
-                }
-            }
-
-            ia += 1;
-            if ia >= na {
-                ia = 0;
-            }
-            ib += 1;
-            if ib >= nb {
-                ib = 0;
-            }
-            ic += 1;
-            if ic >= nc {
-                ic = 0;
-            }
-            id += 1;
-            if id >= nd {
-                id = 0;
-            }
-        }
-
-        if naflag {
-            nans_produced();
-        }
-        finish_math_attributes(owner, sy, &inputs, n);
-        sy
-    }
+    // SAFETY: the raw ABI caller retains the active runtime across dispatch.
+    let owner = checked(unsafe { crate::sexp::owner::OwnerToken::current() });
+    math_recycle(owner, [a, b, c, d], [i, j], |[a, b, c, d], [i, j]| {
+        compute(a, b, c, d, i, j)
+    })
 }
 
 // ===========================================================================
