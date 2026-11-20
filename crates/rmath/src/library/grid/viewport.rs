@@ -34,7 +34,7 @@ use crate::sexp::envir::findFun;
 use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_GlobalEnv;
 use crate::sexp::globals::R_NilValue;
-use crate::sexp::protect::protect;
+use super::protect;
 use crate::sexp::symbol::Rf_install;
 
 use super::gpar::gcontextFromgpar;
@@ -47,27 +47,29 @@ use super::unit::{
     LViewportContext as UnitViewportContext, transformHeighttoINCHES, transformWidthtoINCHES,
     transformXtoINCHES, transformYtoINCHES,
 };
+use super::{
+    alloc_vector, char_ptr, install, integer_elt, logical_elt, real_elt, scalar_real,
+    set_integer_elt, set_real_elt, set_vector_elt, string_elt, vector_elt,
+};
 
 // ---------------------------------------------------------------------------
 // Local helper: numeric(x, index) — equivalent to REAL(x)[index]
 // (from util.c, not yet ported as a separate module)
 // ---------------------------------------------------------------------------
 
-unsafe fn numeric(x: SEXP, index: c_int) -> f64 {
-    unsafe { *REAL(x).add(index as usize) }
+fn numeric(x: SEXP, index: c_int) -> f64 {
+    real_elt(x, index as R_xlen_t)
 }
 
-unsafe fn scalar_real_or(x: SEXP, default_value: f64) -> f64 {
-    unsafe {
-        if !x.is_null()
-            && Rf_isNull(x) == 0
-            && TYPEOF(x) == SEXPTYPE::REALSXP.as_c_int()
-            && LENGTH(x) > 0
-        {
-            *REAL(x)
-        } else {
-            default_value
-        }
+fn scalar_real_or(x: SEXP, default_value: f64) -> f64 {
+    if !x.is_null()
+        && Rf_isNull(x) == 0
+        && TYPEOF(x) == SEXPTYPE::REALSXP.as_c_int()
+        && LENGTH(x) > 0
+    {
+        real_elt(x, 0)
+    } else {
+        default_value
     }
 }
 
@@ -83,13 +85,11 @@ fn isLogical(x: SEXP) -> bool {
 // Local helper: asBool
 // ---------------------------------------------------------------------------
 
-unsafe fn asBool(x: SEXP) -> bool {
-    unsafe {
-        if isLogical(x) {
-            *LOGICAL(x) != 0
-        } else {
-            false
-        }
+fn asBool(x: SEXP) -> bool {
+    if isLogical(x) {
+        logical_elt(x, 0) != 0
+    } else {
+        false
     }
 }
 
@@ -97,12 +97,8 @@ unsafe fn asBool(x: SEXP) -> bool {
 // Local helper: ScalarReal
 // ---------------------------------------------------------------------------
 
-unsafe fn ScalarReal(x: f64) -> SEXP {
-    unsafe {
-        let s = Rf_allocVector(SEXPTYPE::REALSXP, 1);
-        *REAL(s) = x;
-        s
-    }
+fn ScalarReal(x: f64) -> SEXP {
+    scalar_real(x)
 }
 
 unsafe fn lang1(fn_: SEXP) -> SEXP {
@@ -121,9 +117,9 @@ unsafe fn lang1(fn_: SEXP) -> SEXP {
 
 unsafe fn allocMatrix(sexptype: c_int, nrow: c_int, ncol: c_int) -> SEXP {
     unsafe {
-        let dims = Rf_allocVector(SEXPTYPE::INTSXP, 2);
-        *INTEGER(dims) = nrow;
-        *INTEGER(dims).add(1) = ncol;
+        let dims = alloc_vector(SEXPTYPE::INTSXP, 2);
+        set_integer_elt(dims, 0, nrow);
+        set_integer_elt(dims, 1, ncol);
         let result = Rf_allocVector(sexptype, nrow * ncol);
         crate::attrib_core::setAttrib(result, crate::attrib_core::R_DimSymbol(), dims);
         result
@@ -134,216 +130,195 @@ unsafe fn allocMatrix(sexptype: c_int, nrow: c_int, ncol: c_int) -> SEXP {
 // Simple viewport accessor functions
 // ---------------------------------------------------------------------------
 
-pub unsafe fn viewportX(vp: SEXP) -> SEXP {
-    unsafe { VECTOR_ELT(vp, VP_X as R_xlen_t) }
+pub fn viewportX(vp: SEXP) -> SEXP {
+    vector_elt(vp, VP_X as R_xlen_t)
 }
 
-pub unsafe fn viewportY(vp: SEXP) -> SEXP {
-    unsafe { VECTOR_ELT(vp, VP_Y as R_xlen_t) }
+pub fn viewportY(vp: SEXP) -> SEXP {
+    vector_elt(vp, VP_Y as R_xlen_t)
 }
 
-pub unsafe fn viewportWidth(vp: SEXP) -> SEXP {
-    unsafe { VECTOR_ELT(vp, VP_WIDTH as R_xlen_t) }
+pub fn viewportWidth(vp: SEXP) -> SEXP {
+    vector_elt(vp, VP_WIDTH as R_xlen_t)
 }
 
-pub unsafe fn viewportHeight(vp: SEXP) -> SEXP {
-    unsafe { VECTOR_ELT(vp, VP_HEIGHT as R_xlen_t) }
+pub fn viewportHeight(vp: SEXP) -> SEXP {
+    vector_elt(vp, VP_HEIGHT as R_xlen_t)
 }
 
-pub unsafe fn viewportClipSXP(vp: SEXP) -> SEXP {
-    unsafe { VECTOR_ELT(vp, VP_CLIP as R_xlen_t) }
+pub fn viewportClipSXP(vp: SEXP) -> SEXP {
+    vector_elt(vp, VP_CLIP as R_xlen_t)
 }
 
 // This can be NA_LOGICAL, and it is tested for that in grd.c
-pub unsafe fn viewportClip(vp: SEXP) -> c_int {
-    unsafe { *LOGICAL(VECTOR_ELT(vp, VP_CLIP as R_xlen_t)) }
+pub fn viewportClip(vp: SEXP) -> c_int {
+    logical_elt(vector_elt(vp, VP_CLIP as R_xlen_t), 0)
 }
 
-pub unsafe fn viewportMaskSXP(vp: SEXP) -> SEXP {
-    unsafe { VECTOR_ELT(vp, VP_MASK as R_xlen_t) }
+pub fn viewportMaskSXP(vp: SEXP) -> SEXP {
+    vector_elt(vp, VP_MASK as R_xlen_t)
 }
 
-pub unsafe fn viewportMask(vp: SEXP) -> bool {
-    unsafe {
-        let mask = viewportMaskSXP(vp);
-        if !isLogical(mask) {
-            return false;
-        }
-        asBool(VECTOR_ELT(vp, VP_MASK as R_xlen_t))
+pub fn viewportMask(vp: SEXP) -> bool {
+    let mask = viewportMaskSXP(vp);
+    if !isLogical(mask) {
+        return false;
     }
+    asBool(vector_elt(vp, VP_MASK as R_xlen_t))
 }
 
-pub unsafe fn viewportXScaleMin(vp: SEXP) -> f64 {
-    unsafe { numeric(VECTOR_ELT(vp, VP_XSCALE as R_xlen_t), 0) }
+pub fn viewportXScaleMin(vp: SEXP) -> f64 {
+    real_elt(vector_elt(vp, VP_XSCALE as R_xlen_t), 0)
 }
 
-pub unsafe fn viewportXScaleMax(vp: SEXP) -> f64 {
-    unsafe { numeric(VECTOR_ELT(vp, VP_XSCALE as R_xlen_t), 1) }
+pub fn viewportXScaleMax(vp: SEXP) -> f64 {
+    real_elt(vector_elt(vp, VP_XSCALE as R_xlen_t), 1)
 }
 
-pub unsafe fn viewportYScaleMin(vp: SEXP) -> f64 {
-    unsafe { numeric(VECTOR_ELT(vp, VP_YSCALE as R_xlen_t), 0) }
+pub fn viewportYScaleMin(vp: SEXP) -> f64 {
+    real_elt(vector_elt(vp, VP_YSCALE as R_xlen_t), 0)
 }
 
-pub unsafe fn viewportYScaleMax(vp: SEXP) -> f64 {
-    unsafe { numeric(VECTOR_ELT(vp, VP_YSCALE as R_xlen_t), 1) }
+pub fn viewportYScaleMax(vp: SEXP) -> f64 {
+    real_elt(vector_elt(vp, VP_YSCALE as R_xlen_t), 1)
 }
 
-pub unsafe fn viewportAngle(vp: SEXP) -> f64 {
-    unsafe { numeric(VECTOR_ELT(vp, VP_ANGLE as R_xlen_t), 0) }
+pub fn viewportAngle(vp: SEXP) -> f64 {
+    real_elt(vector_elt(vp, VP_ANGLE as R_xlen_t), 0)
 }
 
-pub unsafe fn viewportLayout(vp: SEXP) -> SEXP {
-    unsafe { VECTOR_ELT(vp, VP_LAYOUT as R_xlen_t) }
+pub fn viewportLayout(vp: SEXP) -> SEXP {
+    vector_elt(vp, VP_LAYOUT as R_xlen_t)
 }
 
-pub unsafe fn viewportHJust(vp: SEXP) -> f64 {
-    unsafe { *REAL(VECTOR_ELT(vp, VP_VALIDJUST as R_xlen_t)) }
+pub fn viewportHJust(vp: SEXP) -> f64 {
+    real_elt(vector_elt(vp, VP_VALIDJUST as R_xlen_t), 0)
 }
 
-pub unsafe fn viewportVJust(vp: SEXP) -> f64 {
-    unsafe { *REAL(VECTOR_ELT(vp, VP_VALIDJUST as R_xlen_t)).add(1) }
+pub fn viewportVJust(vp: SEXP) -> f64 {
+    real_elt(vector_elt(vp, VP_VALIDJUST as R_xlen_t), 1)
 }
 
-pub unsafe fn viewportLayoutPosRow(vp: SEXP) -> SEXP {
-    unsafe { VECTOR_ELT(vp, VP_VALIDLPOSROW as R_xlen_t) }
+pub fn viewportLayoutPosRow(vp: SEXP) -> SEXP {
+    vector_elt(vp, VP_VALIDLPOSROW as R_xlen_t)
 }
 
-pub unsafe fn viewportLayoutPosCol(vp: SEXP) -> SEXP {
-    unsafe { VECTOR_ELT(vp, VP_VALIDLPOSCOL as R_xlen_t) }
+pub fn viewportLayoutPosCol(vp: SEXP) -> SEXP {
+    vector_elt(vp, VP_VALIDLPOSCOL as R_xlen_t)
 }
 
-pub unsafe fn viewportgpar(vp: SEXP) -> SEXP {
-    unsafe { VECTOR_ELT(vp, PVP_GPAR as R_xlen_t) }
+pub fn viewportgpar(vp: SEXP) -> SEXP {
+    vector_elt(vp, PVP_GPAR as R_xlen_t)
 }
 
-pub unsafe fn viewportFontFamily(vp: SEXP) -> *const c_char {
-    unsafe {
-        CHAR(STRING_ELT(
-            VECTOR_ELT(
-                VECTOR_ELT(vp, PVP_GPAR as R_xlen_t),
-                GP_FONTFAMILY as R_xlen_t,
-            ),
-            0,
-        ))
-    }
+pub fn viewportFontFamily(vp: SEXP) -> *const c_char {
+    char_ptr(string_elt(
+        vector_elt(vector_elt(vp, PVP_GPAR as R_xlen_t), GP_FONTFAMILY as R_xlen_t),
+        0,
+    ))
 }
 
-pub unsafe fn viewportFont(vp: SEXP) -> c_int {
-    unsafe {
-        *INTEGER(VECTOR_ELT(
-            VECTOR_ELT(vp, PVP_GPAR as R_xlen_t),
-            GP_FONT as R_xlen_t,
-        ))
-    }
+pub fn viewportFont(vp: SEXP) -> c_int {
+    integer_elt(
+        vector_elt(vector_elt(vp, PVP_GPAR as R_xlen_t), GP_FONT as R_xlen_t),
+        0,
+    )
 }
 
-pub unsafe fn viewportFontSize(vp: SEXP) -> f64 {
-    unsafe {
-        *REAL(VECTOR_ELT(
-            VECTOR_ELT(vp, PVP_GPAR as R_xlen_t),
-            GP_FONTSIZE as R_xlen_t,
-        ))
-    }
+pub fn viewportFontSize(vp: SEXP) -> f64 {
+    real_elt(
+        vector_elt(vector_elt(vp, PVP_GPAR as R_xlen_t), GP_FONTSIZE as R_xlen_t),
+        0,
+    )
 }
 
-pub unsafe fn viewportLineHeight(vp: SEXP) -> f64 {
-    unsafe {
-        *REAL(VECTOR_ELT(
-            VECTOR_ELT(vp, PVP_GPAR as R_xlen_t),
-            GP_LINEHEIGHT as R_xlen_t,
-        ))
-    }
+pub fn viewportLineHeight(vp: SEXP) -> f64 {
+    real_elt(
+        vector_elt(vector_elt(vp, PVP_GPAR as R_xlen_t), GP_LINEHEIGHT as R_xlen_t),
+        0,
+    )
 }
 
-pub unsafe fn viewportCex(vp: SEXP) -> f64 {
-    unsafe {
-        numeric(
-            VECTOR_ELT(VECTOR_ELT(vp, PVP_GPAR as R_xlen_t), GP_CEX as R_xlen_t),
-            0,
-        )
-    }
+pub fn viewportCex(vp: SEXP) -> f64 {
+    real_elt(
+        vector_elt(vector_elt(vp, PVP_GPAR as R_xlen_t), GP_CEX as R_xlen_t),
+        0,
+    )
 }
 
-pub unsafe fn viewportTransform(vp: SEXP) -> SEXP {
-    unsafe { VECTOR_ELT(vp, PVP_TRANS as R_xlen_t) }
+pub fn viewportTransform(vp: SEXP) -> SEXP {
+    vector_elt(vp, PVP_TRANS as R_xlen_t)
 }
 
-pub unsafe fn viewportLayoutWidths(vp: SEXP) -> SEXP {
-    unsafe { VECTOR_ELT(vp, PVP_WIDTHS as R_xlen_t) }
+pub fn viewportLayoutWidths(vp: SEXP) -> SEXP {
+    vector_elt(vp, PVP_WIDTHS as R_xlen_t)
 }
 
-pub unsafe fn viewportLayoutHeights(vp: SEXP) -> SEXP {
-    unsafe { VECTOR_ELT(vp, PVP_HEIGHTS as R_xlen_t) }
+pub fn viewportLayoutHeights(vp: SEXP) -> SEXP {
+    vector_elt(vp, PVP_HEIGHTS as R_xlen_t)
 }
 
-pub unsafe fn viewportWidthCM(vp: SEXP) -> SEXP {
-    unsafe { VECTOR_ELT(vp, PVP_WIDTHCM as R_xlen_t) }
+pub fn viewportWidthCM(vp: SEXP) -> SEXP {
+    vector_elt(vp, PVP_WIDTHCM as R_xlen_t)
 }
 
-pub unsafe fn viewportHeightCM(vp: SEXP) -> SEXP {
-    unsafe { VECTOR_ELT(vp, PVP_HEIGHTCM as R_xlen_t) }
+pub fn viewportHeightCM(vp: SEXP) -> SEXP {
+    vector_elt(vp, PVP_HEIGHTCM as R_xlen_t)
 }
 
-pub unsafe fn viewportRotation(vp: SEXP) -> SEXP {
-    unsafe { VECTOR_ELT(vp, PVP_ROTATION as R_xlen_t) }
+pub fn viewportRotation(vp: SEXP) -> SEXP {
+    vector_elt(vp, PVP_ROTATION as R_xlen_t)
 }
 
-pub unsafe fn viewportClipRect(vp: SEXP) -> SEXP {
-    unsafe { VECTOR_ELT(vp, PVP_CLIPRECT as R_xlen_t) }
+pub fn viewportClipRect(vp: SEXP) -> SEXP {
+    vector_elt(vp, PVP_CLIPRECT as R_xlen_t)
 }
 
-pub unsafe fn viewportParent(vp: SEXP) -> SEXP {
-    unsafe { VECTOR_ELT(vp, PVP_PARENT as R_xlen_t) }
+pub fn viewportParent(vp: SEXP) -> SEXP {
+    vector_elt(vp, PVP_PARENT as R_xlen_t)
 }
 
-pub unsafe fn viewportChildren(vp: SEXP) -> SEXP {
-    unsafe { VECTOR_ELT(vp, PVP_CHILDREN as R_xlen_t) }
+pub fn viewportChildren(vp: SEXP) -> SEXP {
+    vector_elt(vp, PVP_CHILDREN as R_xlen_t)
 }
 
-pub unsafe fn viewportDevWidthCM(vp: SEXP) -> SEXP {
-    unsafe { VECTOR_ELT(vp, PVP_DEVWIDTHCM as R_xlen_t) }
+pub fn viewportDevWidthCM(vp: SEXP) -> SEXP {
+    vector_elt(vp, PVP_DEVWIDTHCM as R_xlen_t)
 }
 
-pub unsafe fn viewportDevHeightCM(vp: SEXP) -> SEXP {
-    unsafe { VECTOR_ELT(vp, PVP_DEVHEIGHTCM as R_xlen_t) }
+pub fn viewportDevHeightCM(vp: SEXP) -> SEXP {
+    vector_elt(vp, PVP_DEVHEIGHTCM as R_xlen_t)
 }
 
-pub unsafe fn viewportParentGPar(vp: SEXP) -> SEXP {
-    unsafe { VECTOR_ELT(vp, PVP_PARENTGPAR as R_xlen_t) }
+pub fn viewportParentGPar(vp: SEXP) -> SEXP {
+    vector_elt(vp, PVP_PARENTGPAR as R_xlen_t)
 }
 
 // ---------------------------------------------------------------------------
 // fillViewportLocationFromViewport / fillViewportContextFromViewport
 // ---------------------------------------------------------------------------
 
-pub unsafe fn fillViewportLocationFromViewport(vp: SEXP, vpl: *mut LViewportLocation) {
-    unsafe {
-        (*vpl).x = viewportX(vp);
-        (*vpl).y = viewportY(vp);
-        (*vpl).width = viewportWidth(vp);
-        (*vpl).height = viewportHeight(vp);
-        (*vpl).hjust = viewportHJust(vp);
-        (*vpl).vjust = viewportVJust(vp);
-    }
+pub fn fillViewportLocationFromViewport(vp: SEXP, vpl: &mut LViewportLocation) {
+    vpl.x = viewportX(vp);
+    vpl.y = viewportY(vp);
+    vpl.width = viewportWidth(vp);
+    vpl.height = viewportHeight(vp);
+    vpl.hjust = viewportHJust(vp);
+    vpl.vjust = viewportVJust(vp);
 }
 
-pub unsafe fn fillViewportContextFromViewport(vp: SEXP, vpc: *mut LViewportContext) {
-    unsafe {
-        (*vpc).xscalemin = viewportXScaleMin(vp);
-        (*vpc).xscalemax = viewportXScaleMax(vp);
-        (*vpc).yscalemin = viewportYScaleMin(vp);
-        (*vpc).yscalemax = viewportYScaleMax(vp);
-    }
+pub fn fillViewportContextFromViewport(vp: SEXP, vpc: &mut LViewportContext) {
+    vpc.xscalemin = viewportXScaleMin(vp);
+    vpc.xscalemax = viewportXScaleMax(vp);
+    vpc.yscalemin = viewportYScaleMin(vp);
+    vpc.yscalemax = viewportYScaleMax(vp);
 }
 
-pub unsafe fn copyViewportContext(vpc1: LViewportContext, vpc2: *mut LViewportContext) {
-    unsafe {
-        (*vpc2).xscalemin = vpc1.xscalemin;
-        (*vpc2).xscalemax = vpc1.xscalemax;
-        (*vpc2).yscalemin = vpc1.yscalemin;
-        (*vpc2).yscalemax = vpc1.yscalemax;
-    }
+pub fn copyViewportContext(vpc1: LViewportContext, vpc2: &mut LViewportContext) {
+    vpc2.xscalemin = vpc1.xscalemin;
+    vpc2.xscalemax = vpc1.xscalemax;
+    vpc2.yscalemin = vpc1.yscalemin;
+    vpc2.yscalemax = vpc1.yscalemax;
 }
 
 // ---------------------------------------------------------------------------
@@ -351,17 +326,16 @@ pub unsafe fn copyViewportContext(vpc1: LViewportContext, vpc2: *mut LViewportCo
 // ---------------------------------------------------------------------------
 
 pub unsafe fn gcontextFromViewport(vp: SEXP, gc: pGEcontext, dd: pGEDevDesc) {
-    unsafe {
-        let gpar = viewportgpar(vp);
-        if gpar.is_null() || Rf_isNull(gpar) != 0 {
-            return;
-        }
-
-        // Narrow limitation: the opaque GEcontext layout still blocks direct field
-        // writes here, but we can at least resolve/validate the viewport gpar
-        // path through the shared gpar accessor.
-        gcontextFromgpar(gpar, 0, gc, dd);
+    let gpar = viewportgpar(vp);
+    if gpar.is_null() || Rf_isNull(gpar) != 0 {
+        return;
     }
+
+    // Narrow limitation: the opaque GEcontext layout still blocks direct field
+    // writes here, but we can at least resolve/validate the viewport gpar
+    // path through the shared gpar accessor.
+    // SAFETY: raw context/device pointers keep their caller contracts.
+    unsafe { gcontextFromgpar(gpar, 0, gc, dd) };
 }
 
 pub unsafe fn calcViewportTransform(vp: SEXP, parent: SEXP, _incremental: bool, dd: pGEDevDesc) {
@@ -458,27 +432,27 @@ pub unsafe fn calcViewportTransform(vp: SEXP, parent: SEXP, _incremental: bool, 
         let width_cm = width_in * 2.54;
         let height_cm = height_in * 2.54;
 
-        SET_VECTOR_ELT(vp, PVP_WIDTHCM as R_xlen_t, ScalarReal(width_cm));
-        SET_VECTOR_ELT(vp, PVP_HEIGHTCM as R_xlen_t, ScalarReal(height_cm));
-        SET_VECTOR_ELT(vp, PVP_ROTATION as R_xlen_t, ScalarReal(viewportAngle(vp)));
+        set_vector_elt(vp, PVP_WIDTHCM as R_xlen_t, ScalarReal(width_cm));
+        set_vector_elt(vp, PVP_HEIGHTCM as R_xlen_t, ScalarReal(height_cm));
+        set_vector_elt(vp, PVP_ROTATION as R_xlen_t, ScalarReal(viewportAngle(vp)));
 
         let transform = allocMatrix(SEXPTYPE::REALSXP.as_c_int(), 3, 3);
         for i in 0..9usize {
-            *REAL(transform).add(i) = 0.0;
+            set_real_elt(transform, i as R_xlen_t, 0.0);
         }
-        *REAL(transform).add(0) = 1.0;
-        *REAL(transform).add(4) = 1.0;
-        *REAL(transform).add(8) = 1.0;
-        *REAL(transform).add(6) = left_in;
-        *REAL(transform).add(7) = bottom_in;
-        SET_VECTOR_ELT(vp, PVP_TRANS as R_xlen_t, transform);
+        set_real_elt(transform, 0, 1.0);
+        set_real_elt(transform, 4, 1.0);
+        set_real_elt(transform, 8, 1.0);
+        set_real_elt(transform, 6, left_in);
+        set_real_elt(transform, 7, bottom_in);
+        set_vector_elt(vp, PVP_TRANS as R_xlen_t, transform);
 
         let clip = Rf_allocVector(SEXPTYPE::REALSXP, 4);
-        *REAL(clip).add(0) = left_in;
-        *REAL(clip).add(1) = bottom_in;
-        *REAL(clip).add(2) = left_in + width_in;
-        *REAL(clip).add(3) = bottom_in + height_in;
-        SET_VECTOR_ELT(vp, PVP_CLIPRECT as R_xlen_t, clip);
+        set_real_elt(clip, 0, left_in);
+        set_real_elt(clip, 1, bottom_in);
+        set_real_elt(clip, 2, left_in + width_in);
+        set_real_elt(clip, 3, bottom_in + height_in);
+        set_vector_elt(vp, PVP_CLIPRECT as R_xlen_t, clip);
 
         if Rf_isNull(viewportLayout(vp)) == 0 {
             calcViewportLayout(
@@ -501,7 +475,7 @@ pub unsafe fn initVP(dd: *const u8) {
     unsafe {
         let dd = dd as pGEDevDesc;
 
-        let vpfnname = Rf_install(b"grid.top.level.vp\0".as_ptr() as *const c_char);
+        let vpfnname = install("grid.top.level.vp");
         let _vpfnname_guard = protect(vpfnname);
         let vpfn_env = grid_eval_env();
         let vpfn = lang1(findFun(vpfnname, vpfn_env));
@@ -513,18 +487,18 @@ pub unsafe fn initVP(dd: *const u8) {
 
         let xscale = Rf_allocVector(SEXPTYPE::REALSXP, 2);
         let _xscale_guard = protect(xscale);
-        *REAL(xscale).add(0) = 0.0;
-        *REAL(xscale).add(1) = dev_width_cm;
-        SET_VECTOR_ELT(vp, VP_XSCALE as R_xlen_t, xscale);
+        set_real_elt(xscale, 0, 0.0);
+        set_real_elt(xscale, 1, dev_width_cm);
+        set_vector_elt(vp, VP_XSCALE as R_xlen_t, xscale);
 
         let yscale = Rf_allocVector(SEXPTYPE::REALSXP, 2);
         let _yscale_guard = protect(yscale);
-        *REAL(yscale).add(0) = 0.0;
-        *REAL(yscale).add(1) = dev_height_cm;
-        SET_VECTOR_ELT(vp, VP_YSCALE as R_xlen_t, yscale);
+        set_real_elt(yscale, 0, 0.0);
+        set_real_elt(yscale, 1, dev_height_cm);
+        set_vector_elt(vp, VP_YSCALE as R_xlen_t, yscale);
 
         let currentgp = gridStateElement(dd, GSS_GPAR);
-        SET_VECTOR_ELT(vp, PVP_GPAR as R_xlen_t, currentgp);
+        set_vector_elt(vp, PVP_GPAR as R_xlen_t, currentgp);
 
         let vp = doSetViewport(vp, 1, 1, dd);
         setGridStateElement(dd, GSS_VP, vp);
