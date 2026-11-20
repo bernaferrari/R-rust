@@ -1204,7 +1204,7 @@ unsafe fn LoadEncoding(
 // AFM Font Metrics loading (stub - needs gz support from R)
 // =========================================================================
 
-unsafe fn PostScriptLoadFontMetrics(
+fn PostScriptLoadFontMetrics(
     _fontpath: *const c_char,
     _metrics: *mut FontMetricInfo,
     _fontname: *mut c_char,
@@ -1212,19 +1212,17 @@ unsafe fn PostScriptLoadFontMetrics(
     _encnames: *mut CNAME,
     _reencode: c_int,
 ) -> c_int {
-    {
-        // In a full implementation, this would open and parse the AFM file
-        // using gzopen/gzgets. For the port we return a stub result.
-        // The real implementation reads from R_HOME/library/grDevices/afm/*.gz
-        0
-    }
+    // In a full implementation, this would open and parse the AFM file
+    // using gzopen/gzgets. For the port we return a stub result.
+    // The real implementation reads from R_HOME/library/grDevices/afm/*.gz
+    0
 }
 
 // =========================================================================
 // String width and metric info functions
 // =========================================================================
 
-unsafe fn PostScriptStringWidth(
+fn PostScriptStringWidth(
     _str: *const u8,
     _enc: c_int,
     metrics: *const FontMetricInfo,
@@ -1232,19 +1230,17 @@ unsafe fn PostScriptStringWidth(
     face: c_int,
     _encoding: *const c_char,
 ) -> f64 {
-    {
-        if metrics.is_null() {
-            if (face % 5) != 0 {
-                // CID font case: assume monospaced with wcwidth
-                // stub: return 0
-                return 0.0;
-            }
-        }
-        if metrics.is_null() {
+    if metrics.is_null() {
+        if (face % 5) != 0 {
+            // CID font case: assume monospaced with wcwidth
+            // stub: return 0
             return 0.0;
         }
-        0.0
     }
+    if metrics.is_null() {
+        return 0.0;
+    }
+    0.0
 }
 
 unsafe fn PostScriptMetricInfo(
@@ -1306,7 +1302,7 @@ unsafe fn PostScriptCIDMetricInfo(c: c_int, ascent: *mut f64, descent: *mut f64,
 // Font constructors and destructors
 // =========================================================================
 
-unsafe fn makeCIDFont() -> cidfontinfo {
+fn makeCIDFont() -> cidfontinfo {
     Box::into_raw(Box::new(CIDFontInfo { name: [0; 50] }))
 }
 
@@ -1594,18 +1590,16 @@ unsafe fn addDeviceEncoding(encoding: encodinginfo, mut devEncs: encodinglist) -
 // Font database access (stub implementations)
 // =========================================================================
 
-unsafe fn getFontDB(fontdbname: *const c_char) -> SEXP {
-    {
-        // In a full implementation, this would:
-        // 1. Find the grDevices namespace
-        // 2. Look up .PSenv
-        // 3. Find the font database
-        // For now, return R_NilValue
-        R_NilValue()
-    }
+fn getFontDB(fontdbname: *const c_char) -> SEXP {
+    // In a full implementation, this would:
+    // 1. Find the grDevices namespace
+    // 2. Look up .PSenv
+    // 3. Find the font database
+    // For now, return R_NilValue
+    R_NilValue()
 }
 
-unsafe fn getFont(_family: *const c_char, _fontdbname: *const c_char) -> SEXP {
+fn getFont(_family: *const c_char, _fontdbname: *const c_char) -> SEXP {
     R_NilValue()
 }
 
