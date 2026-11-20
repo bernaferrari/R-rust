@@ -27,7 +27,7 @@ pub unsafe fn L_raster(
         let mut gc_cache_buf: [u8; 256] = [0; 256];
         let gc = gc_buf.as_mut_ptr() as pGEcontext;
         let gc_cache = gc_cache_buf.as_mut_ptr() as pGEcontext;
-        initGContext(currentgp, gc, dd, gp_is_scalar.as_mut_ptr(), gc_cache);
+        initGContext(currentgp, gc, dd, &mut gp_is_scalar, gc_cache);
 
         let n = LENGTH(raster);
         if n <= 0 {
@@ -67,7 +67,7 @@ pub unsafe fn L_raster(
                 i as c_int,
                 gc,
                 dd,
-                gp_is_scalar.as_mut_ptr(),
+                &mut gp_is_scalar,
                 gc_cache,
             );
 

@@ -58,7 +58,7 @@ pub unsafe fn L_convert(x: SEXP, whatfrom: SEXP, whatto: SEXP, unitto: SEXP) -> 
         let mut gc_cache_buf: [u8; 256] = [0; 256];
         let gc = gc_buf.as_mut_ptr() as pGEcontext;
         let gc_cache = gc_cache_buf.as_mut_ptr() as pGEcontext;
-        initGContext(currentgp, gc, dd, gp_is_scalar.as_mut_ptr(), gc_cache);
+        initGContext(currentgp, gc, dd, &mut gp_is_scalar, gc_cache);
 
         let nx = unitLength(x);
         let answer = Rf_allocVector(SEXPTYPE::REALSXP, nx);
@@ -76,7 +76,7 @@ pub unsafe fn L_convert(x: SEXP, whatfrom: SEXP, whatto: SEXP, unitto: SEXP) -> 
         };
 
         for i in 0..nx {
-            updateGContext(currentgp, i, gc, dd, gp_is_scalar.as_mut_ptr(), gc_cache);
+            updateGContext(currentgp, i, gc, dd, &mut gp_is_scalar, gc_cache);
             let to_unit = *INTEGER(unitto).add((i % unitto_len) as usize);
             let mut rel_convert = (unitUnit(x, i) == L_NATIVE || unitUnit(x, i) == L_NPC)
                 && (to_unit == L_NATIVE || to_unit == L_NPC)
