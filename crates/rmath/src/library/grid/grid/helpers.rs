@@ -23,52 +23,19 @@ pub(crate) unsafe fn SET_TAG(x: SEXP, y: SEXP) {
     }
 }
 
-pub(crate) unsafe fn NewFrameConfirm(_dev: *const c_void) {}
+pub(crate) fn NewFrameConfirm(_dev: *const c_void) {}
 
-pub(crate) unsafe fn Rf_CreateAtVector(
-    axp: *mut c_double,
-    usr: *mut c_double,
-    n: c_int,
-    log: c_int,
-) -> SEXP {
-    unsafe {
-        if axp.is_null() {
-            return R_NilValue();
-        }
-        let axp_values = [*axp, *axp.add(1), *axp.add(2)];
-        let usr_values = if usr.is_null() {
-            [axp_values[0], axp_values[1]]
-        } else {
-            [*usr, *usr.add(1)]
-        };
-        crate::library::grdevices::axis_scales::create_at_vector_raw(
-            axp_values,
-            usr_values,
-            n,
-            log != 0,
-        )
-    }
-}
-
-pub(crate) unsafe fn GEExpressionMetric(
+pub(crate) fn GEExpressionMetric(
     _x: SEXP,
     _gc: pGEcontext,
-    ascent: *mut f64,
-    descent: *mut f64,
-    width: *mut f64,
+    ascent: &mut f64,
+    descent: &mut f64,
+    width: &mut f64,
     _dd: pGEDevDesc,
 ) {
-    unsafe {
-        if !ascent.is_null() {
-            *ascent = 0.0;
-        }
-        if !descent.is_null() {
-            *descent = 0.0;
-        }
-        if !width.is_null() {
-            *width = 0.0;
-        }
-    }
+    *ascent = 0.0;
+    *descent = 0.0;
+    *width = 0.0;
 }
 
 pub(crate) unsafe fn rmath_grid_release_definitions(dd: pGEDevDesc, clear_groups: c_int) {
@@ -113,7 +80,7 @@ pub(crate) const TRC2: f64 = 0.77756015077810708036;
 
 #[inline]
 pub(crate) unsafe fn numeric(x: SEXP, index: c_int) -> f64 {
-    unsafe { *REAL(x).add(index as usize) }
+    unsafe { crate::sexp::accessors::REAL_ELT(x, index) }
 }
 
 /* ==============================
@@ -121,7 +88,7 @@ pub(crate) unsafe fn numeric(x: SEXP, index: c_int) -> f64 {
  * ============================== */
 
 #[inline]
-pub(crate) unsafe fn isNull(x: SEXP) -> bool {
+pub(crate) fn isNull(x: SEXP) -> bool {
     x.is_null() || x == R_NilValue()
 }
 
@@ -151,7 +118,7 @@ pub unsafe fn getDevice() -> pGEDevDesc {
  * getDeviceSize
  * ============================== */
 
-pub unsafe fn getDeviceSize(dd: pGEDevDesc, devWidthCM: *mut c_double, devHeightCM: *mut c_double) {
+pub unsafe fn getDeviceSize(dd: pGEDevDesc) -> (c_double, c_double) {
     unsafe {
         // Prefer device-driven conversion helpers when available.
         // In headless mode these still give deterministic non-zero sizes.
@@ -163,8 +130,7 @@ pub unsafe fn getDeviceSize(dd: pGEDevDesc, devWidthCM: *mut c_double, devHeight
         if !height_in.is_finite() || height_in == 0.0 {
             height_in = 1.0;
         }
-        *devWidthCM = width_in * 2.54;
-        *devHeightCM = height_in * 2.54;
+        (width_in * 2.54, height_in * 2.54)
     }
 }
 
@@ -183,14 +149,15 @@ pub(crate) unsafe fn deviceChanged(
         let _width_guard = protect(pvpDevWidthCM);
         let pvpDevHeightCM = VECTOR_ELT(currentvp, PVP_DEVHEIGHTCM as R_xlen_t);
         let _height_guard = protect(pvpDevHeightCM);
-        if (*REAL(pvpDevWidthCM) - devWidthCM).abs() > 1e-6 {
+        use crate::sexp::accessors::{REAL_ELT, SET_REAL_ELT};
+        if (REAL_ELT(pvpDevWidthCM, 0) - devWidthCM).abs() > 1e-6 {
             result = true;
-            *REAL(pvpDevWidthCM) = devWidthCM;
+            SET_REAL_ELT(pvpDevWidthCM, 0, devWidthCM);
             SET_VECTOR_ELT(currentvp, PVP_DEVWIDTHCM as R_xlen_t, pvpDevWidthCM);
         }
-        if (*REAL(pvpDevHeightCM) - devHeightCM).abs() > 1e-6 {
+        if (REAL_ELT(pvpDevHeightCM, 0) - devHeightCM).abs() > 1e-6 {
             result = true;
-            *REAL(pvpDevHeightCM) = devHeightCM;
+            SET_REAL_ELT(pvpDevHeightCM, 0, devHeightCM);
             SET_VECTOR_ELT(currentvp, PVP_DEVHEIGHTCM as R_xlen_t, pvpDevHeightCM);
         }
         result

@@ -68,14 +68,12 @@ pub unsafe fn L_currentViewport() -> SEXP {
 
 pub unsafe fn doSetViewport(vp: SEXP, topLevelVP: c_int, pushing: c_int, dd: pGEDevDesc) -> SEXP {
     unsafe {
-        let mut devWidthCM: c_double = 0.0;
-        let mut devHeightCM: c_double = 0.0;
         let mut xx1: c_double = 0.0;
         let mut yy1: c_double = 0.0;
         let mut xx2: c_double = 0.0;
         let mut yy2: c_double = 0.0;
 
-        getDeviceSize(dd, &mut devWidthCM, &mut devHeightCM);
+        let (devWidthCM, devHeightCM) = getDeviceSize(dd);
 
         if topLevelVP == 0 && pushing != 0 {
             let parent = gridStateElement(dd, GSS_VP);
@@ -724,9 +722,7 @@ pub unsafe fn L_unsetviewport(n: SEXP) -> SEXP {
             Rf_eval_with_gd(fcall, grid_eval_env(), dd);
         }
 
-        let mut devWidthCM: c_double = 0.0;
-        let mut devHeightCM: c_double = 0.0;
-        getDeviceSize(dd, &mut devWidthCM, &mut devHeightCM);
+        let (devWidthCM, devHeightCM) = getDeviceSize(dd);
         if deviceChanged(devWidthCM, devHeightCM, newvp) {
             calcViewportTransform(newvp, viewportParent(newvp), true, dd);
         }
@@ -789,9 +785,7 @@ pub unsafe fn L_upviewport(n: SEXP) -> SEXP {
             }
         }
 
-        let mut devWidthCM: c_double = 0.0;
-        let mut devHeightCM: c_double = 0.0;
-        getDeviceSize(dd, &mut devWidthCM, &mut devHeightCM);
+        let (devWidthCM, devHeightCM) = getDeviceSize(dd);
         if deviceChanged(devWidthCM, devHeightCM, newvp) {
             calcViewportTransform(newvp, viewportParent(newvp), true, dd);
         }

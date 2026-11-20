@@ -97,20 +97,8 @@ unsafe fn renderGlyphs(runs: SEXP, glyphInfo: SEXP, x: SEXP, y: SEXP, draw: bool
         SET_VECTOR_ELT(currentgp, GP_FILL as R_xlen_t, fill);
     }
 
-    let mut vpWidthCM: f64 = 0.0;
-    let mut vpHeightCM: f64 = 0.0;
-    let mut transform: LTransform = [[0.0; 3]; 3];
-    let mut rotationAngle: f64 = 0.0;
-    unsafe {
-        getViewportTransform(
-            currentvp,
-            dd,
-            &mut vpWidthCM,
-            &mut vpHeightCM,
-            &mut transform,
-            &mut rotationAngle,
-        );
-    }
+    let (vpWidthCM, vpHeightCM, mut transform, rotationAngle) =
+        unsafe { getViewportTransform(currentvp, dd) };
 
     let mut vpc = LViewportContext {
         xscalemin: 0.0,

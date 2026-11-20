@@ -53,18 +53,8 @@ pub unsafe fn L_arrows(
             set_gp_fill_string(currentgp, c"transparent".as_ptr());
         }
 
-        let mut vpWidthCM: c_double = 0.0;
-        let mut vpHeightCM: c_double = 0.0;
-        let mut rotationAngle: c_double = 0.0;
-        let mut transform: LTransform = [[0.0; 3]; 3];
-        getViewportTransform(
-            currentvp,
-            dd,
-            &mut vpWidthCM,
-            &mut vpHeightCM,
-            &mut transform,
-            &mut rotationAngle,
-        );
+        let (vpWidthCM, vpHeightCM, mut transform, _) =
+            getViewportTransform(currentvp, dd);
         let mut vpc = LViewportContext::default();
         getViewportContext(currentvp, &mut vpc);
 
@@ -257,18 +247,8 @@ pub unsafe fn L_polygon(x: SEXP, y: SEXP, index: SEXP) -> SEXP {
             set_gp_fill_string(currentgp, c"black".as_ptr());
         }
 
-        let mut vpWidthCM: c_double = 0.0;
-        let mut vpHeightCM: c_double = 0.0;
-        let mut rotationAngle: c_double = 0.0;
-        let mut transform: LTransform = [[0.0; 3]; 3];
-        getViewportTransform(
-            currentvp,
-            dd,
-            &mut vpWidthCM,
-            &mut vpHeightCM,
-            &mut transform,
-            &mut rotationAngle,
-        );
+        let (vpWidthCM, vpHeightCM, mut transform, _) =
+            getViewportTransform(currentvp, dd);
         let mut vpc = LViewportContext::default();
         getViewportContext(currentvp, &mut vpc);
 
@@ -444,18 +424,8 @@ pub unsafe fn L_path(x: SEXP, y: SEXP, index: SEXP, rule: SEXP) -> SEXP {
             set_gp_fill_string(currentgp, c"black".as_ptr());
         }
 
-        let mut vpWidthCM: c_double = 0.0;
-        let mut vpHeightCM: c_double = 0.0;
-        let mut rotationAngle: c_double = 0.0;
-        let mut transform: LTransform = [[0.0; 3]; 3];
-        getViewportTransform(
-            currentvp,
-            dd,
-            &mut vpWidthCM,
-            &mut vpHeightCM,
-            &mut transform,
-            &mut rotationAngle,
-        );
+        let (vpWidthCM, vpHeightCM, mut transform, _) =
+            getViewportTransform(currentvp, dd);
         let mut vpc = LViewportContext::default();
         getViewportContext(currentvp, &mut vpc);
 
