@@ -13,6 +13,9 @@
 // length matches.
 #![allow(non_snake_case, non_upper_case_globals, dead_code, unused_variables)]
 use super::*;
+use crate::sexp::ffi::{NA_INTEGER, NA_REAL, R_xlen_t};
+use crate::sexp::object::{Sexp, SexpMut, SexpResult};
+use crate::sexp::owner::OwnerToken;
 
 // ---------------------------------------------------------------------------
 // Argument matching
@@ -138,7 +141,7 @@ unsafe fn deparse_arg_value(value: SEXP) -> String {
 
 /// A supplied-and-not-missing slot (explicit NULL counts as supplied).
 fn dpq_supplied(slots: &[SEXP], filled: &[bool], idx: usize) -> bool {
-    unsafe { filled[idx] && slots[idx] != crate::sexp::globals::R_MissingArg() }
+    filled[idx] && slots[idx] != crate::sexp::globals::R_MissingArg()
 }
 
 // ---------------------------------------------------------------------------
@@ -160,13 +163,6 @@ enum DpqOperand {
     /// binary operation.
     Inverse(SEXP),
 }
-fn dpq_operand_len(op: &DpqOperand) -> crate::sexp::ffi::R_xlen_t {
-    match op {
-        DpqOperand::Default(_) => 1,
-        DpqOperand::Numeric(s) | DpqOperand::Inverse(s) => XLENGTH(*s),
-    }
-}
-
 /// Stock `argument "x" is missing, with no default`.
 fn dpq_missing(name: &str) -> ! {
     base_error(format!("argument \"{name}\" is missing, with no default"))
@@ -179,7 +175,7 @@ fn dpq_missing(name: &str) -> ! {
 /// missing error); an explicit NULL or a non-numeric value fails stock's
 /// `isNumeric` check with `nonnum_error` (the rate formals convert at R
 /// level and use the binary-operator message instead).
-unsafe fn dpq_num(
+fn dpq_num(
     slots: &[SEXP],
     filled: &[bool],
     names: &[&str],
@@ -187,93 +183,117 @@ unsafe fn dpq_num(
     default: Option<f64>,
     nonnum_error: &str,
 ) -> DpqOperand {
-    unsafe {
-        let slot = slots[idx];
-        if !dpq_supplied(slots, filled, idx) {
-            return match default {
-                Some(d) => DpqOperand::Default(d),
-                None => dpq_missing(names[idx]),
-            };
-        }
-        if slot != R_NilValue() {
-            let t = TYPEOF(slot);
-            if t == SEXPTYPE::REALSXP || t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-                return DpqOperand::Numeric(slot);
-            }
-        }
-        base_error(nonnum_error)
+    let slot = slots[idx];
+    if !dpq_supplied(slots, filled, idx) {
+        return match default {
+            Some(d) => DpqOperand::Default(d),
+            None => dpq_missing(names[idx]),
+        };
     }
+    if slot != R_NilValue() {
+        let t = TYPEOF(slot);
+        if t == SEXPTYPE::REALSXP || t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
+            return DpqOperand::Numeric(slot);
+        }
+    }
+    base_error(nonnum_error)
 }
 
 /// Resolve a `scale = 1/rate` style formal. Returns `None` when the formal
 /// was not supplied (the caller applies the scalar default). An explicit
 /// NULL still contributes (R computes `1/NULL` = `numeric(0)`), and a
 /// non-numeric value fails with the R-level binary-operator message.
-unsafe fn dpq_inverse(slots: &[SEXP], filled: &[bool], idx: usize) -> Option<DpqOperand> {
-    unsafe {
-        let slot = slots[idx];
-        if !dpq_supplied(slots, filled, idx) {
-            return None;
-        }
-        if slot == R_NilValue() {
-            return Some(DpqOperand::Inverse(slot));
-        }
-        let t = TYPEOF(slot);
-        if t == SEXPTYPE::REALSXP || t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-            Some(DpqOperand::Inverse(slot))
-        } else {
-            base_error("non-numeric argument to binary operator")
-        }
+fn dpq_inverse(slots: &[SEXP], filled: &[bool], idx: usize) -> Option<DpqOperand> {
+    let slot = slots[idx];
+    if !dpq_supplied(slots, filled, idx) {
+        return None;
+    }
+    if slot == R_NilValue() {
+        return Some(DpqOperand::Inverse(slot));
+    }
+    let t = TYPEOF(slot);
+    if t == SEXPTYPE::REALSXP || t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
+        Some(DpqOperand::Inverse(slot))
+    } else {
+        base_error("non-numeric argument to binary operator")
     }
 }
 
-/// Resolve a flag formal (`log`, `lower.tail`, `log.p`) the way stock's
-/// `asInteger()` does: first element, real values truncate, `NA` counts as
-/// nonzero (true).
+fn checked_dpq<T>(result: SexpResult<T>) -> T {
+    result.unwrap_or_else(|error| base_error(error.to_string()))
+}
+
+/// Read an element through the same materialized payload policy as the old
+/// pointer projection. The owner and original value remain rooted across a
+/// provider callback, and no payload reference leaves the accessor.
+fn dpq_scalar(owner: OwnerToken<'_>, value: &Sexp<'_>, index: R_xlen_t) -> f64 {
+    let kind = value.typeof_();
+    checked_dpq(value.materialize_compact_payload_for_raw());
+    checked_dpq(owner.require_active());
+    let integer = match kind {
+        SEXPTYPE::REALSXP => return checked_dpq(value.try_real_elt(index)),
+        SEXPTYPE::INTSXP => checked_dpq(value.try_integer_elt(index)),
+        SEXPTYPE::LGLSXP => checked_dpq(value.try_logical_elt(index)),
+        _ => unreachable!("validated distribution argument"),
+    };
+    if integer == NA_INTEGER {
+        NA_REAL
+    } else {
+        f64::from(integer)
+    }
+}
+
+/// Resolve a flag formal (`log`, `lower.tail`, `log.p`) using its first
+/// element, truncated if real. NA counts as nonzero.
 unsafe fn dpq_flag(slots: &[SEXP], filled: &[bool], idx: usize, default: bool) -> bool {
-    unsafe {
-        let slot = slots[idx];
-        if !dpq_supplied(slots, filled, idx) || slot == R_NilValue() {
-            return default;
-        }
-        // A zero-length flag coerces to NA_INTEGER, which is nonzero and
-        // therefore true (stock `asInteger()`).
-        if XLENGTH(slot) == 0 {
-            return true;
-        }
-        let t = TYPEOF(slot);
-        if t == SEXPTYPE::REALSXP {
-            (*REAL(slot)).trunc() != 0.0
-        } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-            *INTEGER(slot) != 0
-        } else {
-            default
-        }
+    let slot = slots[idx];
+    if !dpq_supplied(slots, filled, idx) || slot == R_NilValue() {
+        return default;
     }
+    if XLENGTH(slot) == 0 {
+        return true;
+    }
+    if !matches!(
+        SEXPTYPE(TYPEOF(slot)),
+        SEXPTYPE::REALSXP | SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP
+    ) {
+        return default;
+    }
+    // SAFETY: the translated builtin enters with a live active owner.
+    let owner = checked_dpq(unsafe { OwnerToken::current() });
+    let value = checked_dpq(owner.sexp(slot));
+    dpq_scalar(owner, &value, 0).trunc() != 0.0
 }
 
-/// SHALLOW_DUPLICATE_ATTRIB: copy every attribute of `src` onto `dst`.
-unsafe fn dpq_copy_attrib(dst: SEXP, src: SEXP) {
-    unsafe {
-        if src.is_null() || src == R_NilValue() {
-            return;
+/// Copy each original attribute through the public setter. Take checked
+/// leases before the first setter, which may allocate or run a callback.
+fn dpq_copy_attrib(owner: OwnerToken<'_>, dst: &Sexp<'_>, src: &Sexp<'_>) {
+    let mut attr = crate::sexp::accessors::ATTRIB(src.as_raw());
+    let mut attributes = Vec::new();
+    while !attr.is_null() && attr != R_NilValue() {
+        let tag = TAG(attr);
+        if !tag.is_null() {
+            let tag = checked_dpq(owner.sexp(tag));
+            let value = CAR(attr);
+            let value = if value.is_null() {
+                None
+            } else {
+                Some(checked_dpq(owner.sexp(value)))
+            };
+            attributes.push((tag, value));
         }
-        let mut attr = crate::sexp::accessors::ATTRIB(src);
-        while !attr.is_null() && attr != R_NilValue() {
-            crate::sexp::attrib_core::setAttrib(dst, TAG(attr), CAR(attr));
-            attr = CDR(attr);
-        }
+        attr = CDR(attr);
     }
+    for (tag, value) in attributes {
+        checked_dpq(owner.require_active());
+        let value = value.as_ref().map_or(std::ptr::null_mut(), Sexp::as_raw);
+        // SAFETY: dst, tag, and any value remain rooted across setter reentry.
+        unsafe { crate::sexp::attrib_core::setAttrib(dst.as_raw(), tag.as_raw(), value) };
+    }
+    checked_dpq(owner.require_active());
 }
 
-/// Evaluate a d/p/q builtin over `operands` with stock recycling.
-///
-/// Result length is the max operand length; every operand recycles modulo
-/// its length; any zero-length operand yields a zero-length result (with
-/// the main operand's attributes when it is the empty one, SETUP_MathN);
-/// the result carries the attributes of the first operand whose length
-/// matches (FINISH_MathN). `NA` inputs propagate as `NA`, `NaN` inputs as
-/// `NaN`, and newly produced `NaN`s warn "NaNs produced" once.
+/// Recycle numeric d/p/q arguments and set checked result cells.
 unsafe fn dpq_evaluate(
     call: SEXP,
     operands: &[DpqOperand],
@@ -281,71 +301,91 @@ unsafe fn dpq_evaluate(
     log_p: bool,
     compute: &mut dyn FnMut(&[f64], bool, bool) -> f64,
 ) -> SEXP {
-    unsafe {
-        // Mathlib warnings raised inside `compute` attribute to this call
-        // (upstream resolves it by walking out of the builtin context).
-        let _mathlib_call = crate::mainutils::errors::mathlib_warning_call_guard(call);
-        for (k, op) in operands.iter().enumerate() {
-            if dpq_operand_len(op) == 0 {
-                let empty = Rf_allocVector3(SEXPTYPE::REALSXP, 0);
-                if empty.is_null() {
-                    return R_NilValue();
-                }
-                if k == 0 {
-                    if let DpqOperand::Numeric(s) | DpqOperand::Inverse(s) = op {
-                        dpq_copy_attrib(empty, *s);
-                    }
-                }
-                return empty;
+    // SAFETY: the translated builtin enters with a live active owner.
+    let owner = checked_dpq(unsafe { OwnerToken::current() });
+    let _mathlib_call = crate::mainutils::errors::mathlib_warning_call_guard(call);
+    let sources: Vec<_> = operands
+        .iter()
+        .map(|operand| match operand {
+            DpqOperand::Default(_) => None,
+            DpqOperand::Numeric(pointer) | DpqOperand::Inverse(pointer) => {
+                Some(checked_dpq(owner.sexp(*pointer)))
             }
-        }
-        let n = operands.iter().map(dpq_operand_len).max().unwrap_or(0);
-        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _result_guard = protect(result);
-        let dst = REAL(result);
-        let mut vals = vec![0.0; operands.len()];
-        let mut naflag = false;
-        for i in 0..n {
-            for (k, op) in operands.iter().enumerate() {
-                vals[k] = match op {
-                    DpqOperand::Default(d) => *d,
-                    DpqOperand::Numeric(s) => elt_real_safe(*s, i),
-                    DpqOperand::Inverse(s) => 1.0 / elt_real_safe(*s, i),
-                };
-            }
-            // if_NA_MathN_set: NA in -> NA, NaN in -> NaN, else compute.
-            let out = if vals
-                .iter()
-                .any(|v| v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN)
-            {
-                crate::sexp::ffi::NA_REAL
-            } else if vals.iter().any(|v| v.is_nan()) {
-                f64::NAN
-            } else {
-                let v = compute(&vals, lower_tail, log_p);
-                if v.is_nan() {
-                    naflag = true;
-                }
-                v
-            };
-            *dst.add(i as usize) = out;
-        }
-        if naflag {
-            crate::mainutils::errors::Rf_warningcall1(call, c"NaNs produced".as_ptr());
-        }
-        for op in operands {
-            if dpq_operand_len(op) == n {
-                if let DpqOperand::Numeric(s) | DpqOperand::Inverse(s) = op {
-                    dpq_copy_attrib(result, *s);
-                }
-                break;
-            }
-        }
-        result
+        })
+        .collect();
+    let length = |source: &Option<Sexp<'_>>| source.as_ref().map_or(1, Sexp::len);
+    let empty = sources.iter().position(|source| length(source) == 0);
+    let n = if empty.is_some() {
+        0
+    } else {
+        sources.iter().map(length).max().unwrap_or(0)
+    };
+    // SAFETY: preserve the translated allocator's admission and retry behavior
+    // with all operands rooted and no loan across allocation.
+    let result = unsafe { Rf_allocVector3(SEXPTYPE::REALSXP, n) };
+    checked_dpq(owner.require_active());
+    if result.is_null() {
+        return R_NilValue();
     }
+    let result = checked_dpq(owner.sexp(result));
+    if let Some(position) = empty {
+        if position == 0
+            && let Some(source) = &sources[0]
+        {
+            dpq_copy_attrib(owner, &result, source);
+        }
+        return result.as_raw();
+    }
+
+    let mut result = checked_dpq(SexpMut::try_from_checked(result));
+    let mut values = vec![0.0; operands.len()];
+    let mut produced_nan = false;
+    for i in 0..n {
+        for ((slot, operand), source) in values.iter_mut().zip(operands).zip(&sources) {
+            *slot = if let Some(source) = source {
+                let len = source.len();
+                let value = if len == 0 {
+                    NA_REAL
+                } else {
+                    dpq_scalar(owner, source, i % len)
+                };
+                if matches!(operand, DpqOperand::Inverse(_)) {
+                    1.0 / value
+                } else {
+                    value
+                }
+            } else if let DpqOperand::Default(value) = operand {
+                *value
+            } else {
+                unreachable!("numeric operands have an owned source")
+            };
+        }
+        let value = if values
+            .iter()
+            .any(|v| v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN)
+        {
+            NA_REAL
+        } else if values.iter().any(|v| v.is_nan()) {
+            f64::NAN
+        } else {
+            let value = compute(&values, lower_tail, log_p);
+            produced_nan |= value.is_nan();
+            value
+        };
+        checked_dpq(owner.require_active());
+        checked_dpq(result.try_set_real_elt(i, value));
+    }
+    let result = result.freeze();
+    if produced_nan {
+        // SAFETY: the result and all arguments remain rooted through warning
+        // dispatch, and the warning format is static.
+        unsafe { crate::mainutils::errors::Rf_warningcall1(call, c"NaNs produced".as_ptr()) };
+        checked_dpq(owner.require_active());
+    }
+    if let Some(Some(source)) = sources.iter().find(|source| length(source) == n) {
+        dpq_copy_attrib(owner, &result, source);
+    }
+    result.as_raw()
 }
 
 /// Resolve the standard dpq operand list: the main argument (slot 0,
@@ -1375,5 +1415,57 @@ pub unsafe fn do_dmultinom(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 
         let result = if give_log { log_prob } else { log_prob.exp() };
         Rf_ScalarReal(result)
+    }
+}
+
+#[cfg(test)]
+mod safety_tests {
+    use super::*;
+
+    #[test]
+    fn translated_dpq_keeps_recycling_na_inverse_and_attributes() {
+        let session = crate::sexp::RSession::new_for_gc_tests();
+        let owner = session.owner_token().unwrap();
+        session.with_active(|| {
+            let make_real = |values: &[f64]| {
+                let value = owner
+                    .node_factory()
+                    .allocate(|arena| {
+                        arena
+                            .alloc_vector_sexp(SEXPTYPE::REALSXP, values.len() as R_xlen_t)
+                            .map(|value| value.as_raw())
+                    })
+                    .unwrap();
+                let mut value = SexpMut::try_from_checked(value).unwrap();
+                for (index, &element) in values.iter().enumerate() {
+                    value.try_set_real_elt(index as R_xlen_t, element).unwrap();
+                }
+                value.freeze()
+            };
+            let source = make_real(&[2.0, NA_REAL, 4.0]);
+            let rate = make_real(&[2.0, 4.0]);
+            let labels = owner.node_factory().strings(&["a", "b", "c"]).unwrap();
+            // SAFETY: owned fixture objects remain rooted through attribute
+            // assignment and the translated builtin call.
+            unsafe {
+                let names = crate::sexp::attrib_core::R_NamesSymbol();
+                crate::sexp::attrib_core::setAttrib(source.as_raw(), names, labels.as_raw());
+                let args = [
+                    DpqOperand::Numeric(source.as_raw()),
+                    DpqOperand::Inverse(rate.as_raw()),
+                ];
+                let result = dpq_evaluate(R_NilValue(), &args, false, false, &mut |x, _, _| {
+                    x[0] * x[1]
+                });
+                let result = owner.sexp(result).unwrap();
+                assert_eq!(result.try_real_elt(0), Ok(1.0));
+                assert_eq!(result.try_real_elt(1).unwrap().to_bits(), NA_REAL.to_bits());
+                assert_eq!(result.try_real_elt(2), Ok(2.0));
+                assert_eq!(
+                    crate::sexp::attrib_core::getAttrib(result.as_raw(), names),
+                    labels.as_raw()
+                );
+            }
+        });
     }
 }
