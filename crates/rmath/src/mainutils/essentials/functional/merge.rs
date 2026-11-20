@@ -3,12 +3,12 @@
 use super::*;
 
 /// GNU `unstack` for a stacked values/ind data.frame.
-pub unsafe fn do_unstack(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_unstack(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if TYPEOF(x) != SEXPTYPE::VECSXP {
             crate::mainutils::errors::errorcall_str(
-                unsafe { crate::mainutils::errors::R_getCurrentCall() },
+                { crate::mainutils::errors::R_getCurrentCall() },
                 "'form' must be a two-sided formula",
             );
         }
@@ -28,7 +28,7 @@ pub unsafe fn do_unstack(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         }
         if values == R_NilValue() || ind == R_NilValue() {
             crate::mainutils::errors::errorcall_str(
-                unsafe { crate::mainutils::errors::R_getCurrentCall() },
+                { crate::mainutils::errors::R_getCurrentCall() },
                 "'form' must be a two-sided formula",
             );
         }
@@ -43,7 +43,7 @@ pub unsafe fn do_unstack(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
             };
         if nlev == 0 {
             crate::mainutils::errors::errorcall_str(
-                unsafe { crate::mainutils::errors::R_getCurrentCall() },
+                { crate::mainutils::errors::R_getCurrentCall() },
                 "'form' must be a two-sided formula",
             );
         }
@@ -134,7 +134,7 @@ pub(super) fn merge_named_value(args: SEXP, name: &str) -> SEXP {
     }
 }
 
-pub(super) unsafe fn store_na(out: SEXP, i: i64) {
+pub(super) fn store_na(out: SEXP, i: i64) {
     unsafe {
         let t = TYPEOF(out);
         if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
@@ -148,7 +148,7 @@ pub(super) unsafe fn store_na(out: SEXP, i: i64) {
 }
 
 /// GNU `merge` inner join on intersecting column names.
-pub unsafe fn do_merge(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_merge(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let y = CAR(CDR(args));
@@ -248,7 +248,7 @@ pub unsafe fn do_merge(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let y = CAR(CDR(args));
         if TYPEOF(x) != SEXPTYPE::VECSXP || TYPEOF(y) != SEXPTYPE::VECSXP {
             crate::mainutils::errors::errorcall_str(
-                unsafe { crate::mainutils::errors::R_getCurrentCall() },
+                { crate::mainutils::errors::R_getCurrentCall() },
                 "'by' must specify one or more columns as numbers, names or logical",
             );
         }
@@ -457,7 +457,7 @@ pub unsafe fn do_merge(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
-pub(super) unsafe fn merge_keys_equal(a: SEXP, i: i64, b: SEXP, j: i64) -> bool {
+pub(super) fn merge_keys_equal(a: SEXP, i: i64, b: SEXP, j: i64) -> bool {
     unsafe {
         if TYPEOF(a) != TYPEOF(b) {
             return format_grid_elt(a, i) == format_grid_elt(b, j);
@@ -473,7 +473,7 @@ pub(super) unsafe fn merge_keys_equal(a: SEXP, i: i64, b: SEXP, j: i64) -> bool 
     }
 }
 
-pub(crate) unsafe fn set_compact_row_names(x: SEXP, nrow: R_xlen_t) {
+pub(crate) fn set_compact_row_names(x: SEXP, nrow: R_xlen_t) {
     unsafe {
         let rn = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
         if rn.is_null() {
@@ -486,7 +486,7 @@ pub(crate) unsafe fn set_compact_row_names(x: SEXP, nrow: R_xlen_t) {
     }
 }
 
-pub(crate) unsafe fn set_data_frame_class(x: SEXP) {
+pub(crate) fn set_data_frame_class(x: SEXP) {
     unsafe {
         let class_vec = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
         if class_vec.is_null() {
@@ -498,7 +498,7 @@ pub(crate) unsafe fn set_data_frame_class(x: SEXP) {
     }
 }
 
-pub(crate) unsafe fn set_summary_default_class(x: SEXP) {
+pub(crate) fn set_summary_default_class(x: SEXP) {
     unsafe {
         let class_vec = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
         if class_vec.is_null() {

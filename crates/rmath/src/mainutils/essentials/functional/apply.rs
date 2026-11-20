@@ -13,7 +13,7 @@ use super::*;
 /// `lapply(x, f, ctx=1)` both reach FUN. Without this, whisker's
 /// `lapply(keys, resolve, context=context, strict=strict)` calls `resolve`
 /// with no `context`, failing on its first formal without a default.
-pub unsafe fn do_lapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_lapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let x = eval_arg_by_name_or_position(args, &["X"], 0, rho);
         let fun = callable_arg_by_name_or_position(args, &["FUN"], 1, rho);
@@ -102,7 +102,7 @@ pub unsafe fn do_lapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// GNU `sapply(X, FUN, ..., simplify = TRUE, USE.NAMES = TRUE)`.
 /// `simplify` / `USE.NAMES` are not forwarded into FUN's `...`.
-pub unsafe fn do_sapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_sapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let x = eval_arg_by_name_or_position(args, &["X"], 0, rho);
         let _x = protect(x);
@@ -166,7 +166,7 @@ pub unsafe fn do_sapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     }
 }
 
-pub(super) unsafe fn sapply_control_args(args: SEXP, x: SEXP, rho: SEXP) -> (SEXP, SEXP, bool) {
+pub(super) fn sapply_control_args(args: SEXP, x: SEXP, rho: SEXP) -> (SEXP, SEXP, bool) {
     unsafe {
         let mut simplify = Rf_ScalarLogical(TRUE);
         let mut _simplify_guard = None;
@@ -233,11 +233,11 @@ pub(super) unsafe fn sapply_control_args(args: SEXP, x: SEXP, rho: SEXP) -> (SEX
     }
 }
 
-pub(super) unsafe fn sapply_is_false(x: SEXP) -> bool {
+pub(super) fn sapply_is_false(x: SEXP) -> bool {
     unsafe { TYPEOF(x) == SEXPTYPE::LGLSXP && XLENGTH(x) == 1 && *LOGICAL(x) == FALSE }
 }
 
-pub(super) unsafe fn sapply_is_array(x: SEXP) -> bool {
+pub(super) fn sapply_is_array(x: SEXP) -> bool {
     TYPEOF(x) == SEXPTYPE::STRSXP && XLENGTH(x) >= 1 && elt_to_string(x, 0) == "array"
 }
 
@@ -255,7 +255,7 @@ pub(super) unsafe fn sapply_is_array(x: SEXP) -> bool {
 /// array of dim c(dim(template), length(X)). USE.NAMES carries X's names
 /// (or X itself when X is character) onto the result; the template's (or
 /// first result's) names/dimnames become the row names.
-pub unsafe fn do_vapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_vapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let x = eval_arg_by_name_or_position(args, &["X"], 0, rho);
         let _x_guard = protect(x);
@@ -671,7 +671,7 @@ pub(super) fn sexp_type_name(t: SEXPTYPE) -> &'static str {
 }
 
 /// R's `Map(f, ...)` — apply f element-wise.
-pub unsafe fn do_map(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_map(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let raw = callable_arg_by_name_or_position(args, &["f", "FUN"], 0, rho);
         let matched = Rf_cons(raw, R_NilValue());
@@ -707,7 +707,7 @@ pub unsafe fn do_map(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 /// R's `Filter(f, x)` — keep elements where f returns TRUE.
-pub unsafe fn do_filter(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_filter(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         crate::mainutils::base_wrappers::apply(
             "Filter",
@@ -720,7 +720,7 @@ pub unsafe fn do_filter(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 /// GNU `replicate(n, expr, simplify = "array")`.
-pub unsafe fn do_replicate(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_replicate(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         crate::mainutils::base_wrappers::apply(
             "replicate",
