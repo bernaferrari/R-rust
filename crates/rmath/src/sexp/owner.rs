@@ -118,6 +118,10 @@ impl OwnerPin {
     pub(crate) fn as_ptr(&self) -> *mut RInstance {
         self.allocation.get()
     }
+    /// Clone this pin's availability witness for later liveness checks.
+    pub(crate) fn liveness(&self) -> super::instance::InstanceLiveness {
+        self.availability.clone()
+    }
     pub(crate) fn require_live(&self) -> SexpResult<()> {
         if self.availability.is_live() {
             Ok(())

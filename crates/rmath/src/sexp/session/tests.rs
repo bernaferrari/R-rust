@@ -14,7 +14,7 @@ fn error_rendering_option_symbol_is_preinterned_per_session_owner() {
                 (*instance).symbols.contains_key("show.error.locations"),
                 "bootstrap must intern the option before user code runs"
             );
-            crate::sexp::symbol::Rf_install(c"show.error.locations".as_ptr())
+            crate::sexp::symbol::install_str("show.error.locations")
         })
     };
     let left_symbol = installed(&left);

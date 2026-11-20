@@ -9,14 +9,12 @@ impl Drop for ProtectGuard<'_> {
         };
         match self.release {
             GuardRelease::LegacyCount(n) if n > 0 => {
-                // SAFETY: See with_guard_owner; the owning session keeps the
-                // instance alive across the scoped interpreter call that owns
-                // the guard.
-                with_guard_owner(owner, |inst| unprotect_count_in(inst, n));
+                // The owning session keeps the instance alive across the
+                // scoped interpreter call that owns the guard.
+                owner.pop_legacy_count(n);
             }
             GuardRelease::RootSlot(slot) if slot.is_active() => {
-                // SAFETY: See with_guard_owner.
-                with_guard_owner(owner, |inst| release_protect_slot_in(inst, slot));
+                owner.release_root(slot);
             }
             _ => {}
         }
@@ -54,7 +52,7 @@ fn try_claim_value(
         return Err(ProtectError::OwnerUnavailable);
     }
     let raw = value.clone().as_raw();
-    with_guard_owner(owner, |inst| try_protect_raw_with_slot_in(inst, raw, true))
+    owner.try_protect_value(raw, true)
 }
 
 /// Protect a raw SEXP and return an RAII guard.
@@ -75,11 +73,12 @@ fn protect_raw(s: SEXP) -> ProtectGuard<'static> {
         };
     }
 
+    let owner = GuardOwner::current();
     with_required_current_instance(|inst| {
         // SAFETY: guard creation requires an active instance; `inst` is it.
         let slot = { protect_raw_with_slot_in(inst, s, "protect") };
         ProtectGuard {
-            owner: Some(unsafe { GuardOwner::new(inst) }),
+            owner: Some(owner.clone()),
             release: GuardRelease::RootSlot(slot),
             _confined: PhantomData,
         }
@@ -97,9 +96,7 @@ pub(crate) fn protect_n(n: usize) -> ProtectGuard<'static> {
         owner: if n == 0 {
             None
         } else {
-            Some(with_required_current_instance(|inst| unsafe {
-                GuardOwner::new(inst)
-            }))
+            Some(GuardOwner::current())
         },
         release: GuardRelease::LegacyCount(n),
         _confined: PhantomData,
@@ -118,9 +115,8 @@ pub(crate) fn protect_n(n: usize) -> ProtectGuard<'static> {
 pub(crate) fn push_protect_in(inst: *mut RInstance, s: SEXP) {
     if !s.is_null() {
         // SAFETY: `inst` is a live instance pointer from the caller; the
-        // RefCell access is strictly local.
-        let value = unsafe { RootValue::from_owner(inst, s) }.expect("invalid protection owner");
-        unsafe { (*inst).legacy_protect.push(value, "protect") };
+        // owner capture borrows only its metadata fields, strictly local.
+        unsafe { GuardOwner::new(inst) }.push_legacy(s);
     }
 }
 
@@ -161,10 +157,9 @@ pub(crate) fn unprotect_ptr_in(inst: *mut RInstance, s: SEXP) {
     if s.is_null() {
         return;
     }
-    // SAFETY: `inst` is a live instance pointer from the caller; the RefCell
-    // access is strictly local.
-    let value = unsafe { RootValue::from_owner(inst, s) }.expect("invalid unprotect owner");
-    unsafe { (*inst).legacy_protect.remove_topmost(&value) };
+    // SAFETY: `inst` is a live instance pointer from the caller; the owner
+    // capture borrows only its metadata fields, strictly local.
+    unsafe { GuardOwner::new(inst) }.remove_topmost_legacy(s);
 }
 
 /// Get the current LEGACY protection stack depth.
@@ -301,8 +296,7 @@ fn try_protect_raw_with_slot_in(
         return Ok(ProtectionSlot::inactive());
     }
     // SAFETY: all callers retain the live native owner for this local access.
-    let value = unsafe { RootValue::from_owner(inst, s) }?;
-    unsafe { (*inst).root_table.try_claim(value, managed) }
+    unsafe { GuardOwner::new(inst) }.try_protect_value(s, managed)
 }
 
 pub(crate) fn reprotect_slot(slot: ProtectionSlot, s: SEXP) {
@@ -315,8 +309,8 @@ fn reprotect_slot_in(inst: *mut RInstance, slot: ProtectionSlot, s: SEXP) {
     if !slot.is_active() {
         return;
     }
-    let value = unsafe { RootValue::from_owner(inst, s) }.expect("invalid root replacement");
-    let _ = unsafe { (*inst).root_table.reprotect(slot, value) };
+    // SAFETY: `inst` is a live instance pointer from the caller.
+    unsafe { GuardOwner::new(inst) }.reprotect_value(slot, s);
 }
 
 pub(crate) fn release_protect_slot(slot: ProtectionSlot) {
@@ -365,10 +359,7 @@ impl<'a> IndexedProtectGuard<'a> {
     pub(crate) fn slot_generation_is(&self, expected: u64) -> bool {
         match self.owner.as_ref() {
             Some(owner) if self.slot.is_active() => {
-                owner.is_live()
-                    && with_guard_owner(owner, |inst| {
-                        protect_slot_generation_in(inst, self.slot) == Some(expected)
-                    })
+                owner.is_live() && owner.root_generation_at(self.slot) == Some(expected)
             }
             _ => true,
         }
@@ -376,8 +367,7 @@ impl<'a> IndexedProtectGuard<'a> {
 
     pub(crate) fn reprotect_raw(&mut self, value: SEXP) {
         if let Some(owner) = self.owner.as_ref().filter(|owner| owner.is_live()) {
-            // SAFETY: See ProtectGuard::drop.
-            with_guard_owner(owner, |inst| reprotect_slot_in(inst, self.slot, value));
+            owner.reprotect_value(self.slot, value);
         }
     }
 
@@ -403,8 +393,7 @@ impl<'a> IndexedProtectGuard<'a> {
 impl Drop for IndexedProtectGuard<'_> {
     fn drop(&mut self) {
         if let Some(owner) = self.owner.as_ref().filter(|owner| owner.is_live()) {
-            // SAFETY: See ProtectGuard::drop.
-            with_guard_owner(owner, |inst| release_protect_slot_in(inst, self.slot));
+            owner.release_root(self.slot);
         }
     }
 }
@@ -561,8 +550,9 @@ pub(crate) fn protect_with_index_raw(s: SEXP, api: &str) -> IndexedProtectGuard<
         };
     }
 
+    let owner = GuardOwner::current();
     with_required_current_instance(|inst| IndexedProtectGuard {
-        owner: Some(unsafe { GuardOwner::new(inst) }),
+        owner: Some(owner.clone()),
         slot: protect_raw_with_slot_in(inst, s, api),
         value_owner: SexpOwner::Unknown,
         _confined: PhantomData,
@@ -624,8 +614,8 @@ pub(crate) fn try_push_preserve_in(
     if s.is_null() {
         return Ok(None);
     }
-    let value = unsafe { RootValue::from_owner(inst, s) }?;
-    unsafe { (*inst).preserve_stack.try_push(value) }.map(Some)
+    // SAFETY: `inst` is a live instance pointer from the caller.
+    unsafe { GuardOwner::new(inst) }.try_preserve(s)
 }
 
 fn push_preserve(s: SEXP) {
@@ -636,10 +626,8 @@ pub(crate) fn release_preserved_in(inst: *mut RInstance, s: SEXP) {
     if s.is_null() {
         return;
     }
-    let value = unsafe { RootValue::from_owner(inst, s) }.expect("invalid preserve release owner");
-    unsafe {
-        (*inst).preserve_stack.remove_first(&value);
-    }
+    // SAFETY: `inst` is a live instance pointer from the caller.
+    unsafe { GuardOwner::new(inst) }.remove_preserved(s);
 }
 
 fn release_preserved(s: SEXP) {
@@ -659,11 +647,8 @@ pub(crate) struct PreserveGuard<'a> {
 impl Drop for PreserveGuard<'_> {
     fn drop(&mut self) {
         if let Some(owner) = self.owner.as_ref().filter(|owner| owner.is_live()) {
-            // SAFETY: See ProtectGuard::drop.
             if let Some(lease) = self.lease {
-                with_guard_owner(owner, |inst| unsafe {
-                    (*inst).preserve_stack.remove_lease(lease);
-                });
+                owner.remove_preserve_lease(lease);
             }
         }
     }
@@ -684,7 +669,7 @@ pub(crate) fn try_preserve_sexp<'a>(value: Sexp<'a>) -> Result<PreserveGuard<'a>
         if !owner.is_live() {
             return Err(ProtectError::OwnerUnavailable);
         }
-        with_guard_owner(owner, |inst| try_push_preserve_in(inst, raw))?
+        owner.try_preserve(raw)?
     } else {
         None
     };
@@ -717,8 +702,7 @@ fn session_owner_handle(value: &Sexp<'_>) -> Option<GuardOwner> {
     match value.owner() {
         SexpOwner::Session(_) => {
             if let Some(owner) = &value.runtime_owner {
-                let pin = owner.pin().ok()?;
-                Some(unsafe { GuardOwner::new(pin.as_ptr()) })
+                GuardOwner::from_weak(owner)
             } else {
                 value
                     .session_owner_ptr
@@ -768,18 +752,18 @@ where
     // Larger views retain the same original-owner admitted snapshot contract.
     let mut legacy_inline = [std::ptr::null_mut(); 32];
     let mut roots_inline = [std::ptr::null_mut(); 32];
-    let legacy_len = unsafe {
-        (*inst)
-            .legacy_protect
-            .copy_native_entries(&mut legacy_inline)
-    };
-    let roots_len = unsafe { (*inst).root_table.copy_native_entries(&mut roots_inline) };
+    // SAFETY: `inst` is a live instance pointer supplied by the caller.
+    let owner = unsafe { GuardOwner::new(inst) };
+    let legacy_len = owner.legacy_copy_native_entries(&mut legacy_inline);
+    let roots_len = owner.root_copy_native_entries(&mut roots_inline);
     let legacy_heap = legacy_len
         .is_none()
-        .then(|| unsafe { (*inst).legacy_protect.entries_snapshot() });
+        .then(|| owner.legacy_entries_snapshot())
+        .flatten();
     let roots_heap = roots_len
         .is_none()
-        .then(|| unsafe { (*inst).root_table.entries_snapshot() });
+        .then(|| owner.root_entries_snapshot())
+        .flatten();
     let legacy = match legacy_len {
         Some(len) => &legacy_inline[..len],
         None => legacy_heap
@@ -814,10 +798,12 @@ where
     // Snapshot native projections and checked identities before callbacks.
     // A callback may remove roots or destroy this owner; neither resurrects an
     // old lease nor permits a subsequent dereference of the destroyed owner.
-    let liveness = unsafe { crate::sexp::instance::instance_liveness(inst) };
-    let legacy = unsafe { (*inst).legacy_protect.updates_snapshot() };
-    let roots = unsafe { (*inst).root_table.updates_snapshot() };
-    for (lease, expected) in legacy {
+    // SAFETY: `inst` is a live instance pointer supplied by the caller.
+    let owner = unsafe { GuardOwner::new(inst) };
+    let liveness = owner.liveness();
+    let legacy = owner.legacy_updates_snapshot();
+    let roots = owner.root_updates_snapshot();
+    for (lease, expected) in legacy.into_iter().flatten() {
         if !liveness.is_live() {
             return;
         }
@@ -828,15 +814,12 @@ where
         if !liveness.is_live() {
             return;
         }
-        let replacement = unsafe { RootValue::from_owner(inst, replacement) }
+        let replacement = owner
+            .root_value(replacement)
             .expect("legacy root update returned an invalid owner projection");
-        unsafe {
-            (*inst)
-                .legacy_protect
-                .replace_if_current(lease, &expected, replacement);
-        }
+        owner.legacy_replace_if_current(lease, &expected, replacement);
     }
-    for (slot, expected) in roots {
+    for (slot, expected) in roots.into_iter().flatten() {
         if !liveness.is_live() {
             return;
         }
@@ -847,13 +830,10 @@ where
         if !liveness.is_live() {
             return;
         }
-        let replacement = unsafe { RootValue::from_owner(inst, replacement) }
+        let replacement = owner
+            .root_value(replacement)
             .expect("root update returned an invalid owner projection");
-        unsafe {
-            (*inst)
-                .root_table
-                .replace_if_current(slot, &expected, replacement);
-        }
+        owner.root_replace_if_current(slot, &expected, replacement);
     }
 }
 
@@ -870,9 +850,11 @@ pub(crate) fn update_preserve_stack_refs_in<F>(inst: *mut RInstance, mut update_
 where
     F: FnMut(SEXP) -> SEXP,
 {
-    let liveness = unsafe { crate::sexp::instance::instance_liveness(inst) };
-    let snapshot = unsafe { (*inst).preserve_stack.updates_snapshot() };
-    for (lease, expected) in snapshot {
+    // SAFETY: `inst` is a live instance pointer supplied by the caller.
+    let owner = unsafe { GuardOwner::new(inst) };
+    let liveness = owner.liveness();
+    let snapshot = owner.preserve_updates_snapshot();
+    for (lease, expected) in snapshot.into_iter().flatten() {
         if !liveness.is_live() {
             return;
         }
@@ -883,13 +865,10 @@ where
         if !liveness.is_live() {
             return;
         }
-        let replacement = unsafe { RootValue::from_owner(inst, replacement) }
+        let replacement = owner
+            .root_value(replacement)
             .expect("preserved root update returned an invalid owner projection");
-        unsafe {
-            (*inst)
-                .preserve_stack
-                .replace_if_current(lease, &expected, replacement);
-        }
+        owner.preserve_replace_if_current(lease, &expected, replacement);
     }
 }
 
@@ -908,7 +887,9 @@ where
 {
     // P2: as with_protected_objects_in.
     // SAFETY: `inst` is a live instance pointer from the caller.
-    let stack = unsafe { (*inst).preserve_stack.entries_snapshot() };
+    let stack = unsafe { GuardOwner::new(inst) }
+        .preserve_entries_snapshot()
+        .expect("preserve owner is live");
     f(&stack)
 }
 

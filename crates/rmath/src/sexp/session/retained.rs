@@ -264,7 +264,7 @@ impl RSession {
             mark_shared(access, previous)?;
             let dot = access
                 .with_native(|owner| {
-                    let raw = unsafe { crate::sexp::symbol::Rf_install(c".".as_ptr()) };
+                    let raw = crate::sexp::symbol::install_str(".");
                     owner.sexp(raw)?.into_owned()
                 })
                 .map_err(ownership_error)?;
