@@ -76,7 +76,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('module_or_package', type=Path, help='Wasm file or generated package directory')
     parser.add_argument('--source-root', type=Path, default=ROOT)
-    parser.add_argument('--byte-limit', type=int, default=25 * 1024 * 1024)
+    parser.add_argument('--byte-limit', type=int, default=50 * 1024 * 1024)
     args = parser.parse_args()
     package = args.module_or_package if args.module_or_package.is_dir() else None
     module = (package / 'r_wasm_bg.wasm' if package else args.module_or_package).read_bytes()

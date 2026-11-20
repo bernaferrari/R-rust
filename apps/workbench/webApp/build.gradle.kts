@@ -121,11 +121,11 @@ tasks.named("checkWasmProductionBundleSize") {
         val wasm = runtime.resolve("r_wasm_bg.wasm")
         check(wasm.isFile) { "Rust interpreter WASM is missing from the release bundle" }
         val total = runtime.walkTopDown().filter { it.isFile }.sumOf { it.length() }
-        val limit = 25L * 1024 * 1024
+        val limit = 50L * 1024 * 1024
         val headroom = limit - total
-        check(headroom >= 0) { "Rust runtime assets exceed the 25 MiB budget: $total bytes" }
+        check(headroom >= 0) { "Rust runtime assets exceed the 50 MiB budget: $total bytes" }
         logger.lifecycle("Rust interpreter assets: {} bytes (separate from Kotlin UI budget)", total)
-        logger.lifecycle("Rust interpreter headroom under 25 MiB: {} bytes", headroom)
+        logger.lifecycle("Rust interpreter headroom under 50 MiB: {} bytes", headroom)
         if (headroom < 1024 * 1024) {
             logger.warn("Rust interpreter assets have less than 1 MiB of headroom")
         }

@@ -261,6 +261,9 @@ user workflows have passed on native Rport and production Wasm.
 
 ## Wasm footprint
 
+The current Workbench release budget is 50 MiB for all raw Rust runtime
+assets. Older checkpoints record the 25 MiB budget in use at the time.
+
 ### Browser analysis tools
 
 The opt-in `browser-analysis-tools` feature replaces six host-oriented

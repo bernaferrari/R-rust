@@ -107,8 +107,8 @@ Later executed evidence is recorded separately in the
 
 The browser run uses the production Wasm bytes identified by the receipt.
 The unchanged sunflower gallery and editor/download flows also pass twice each
-on the actual release build output. The original 15-second evaluation and
-25 MiB package budgets remain in effect. The complete upstream CI union now
+on the actual release build output. That run used the 15-second evaluation and
+25 MiB package budgets. The complete upstream CI union now
 accounts for all 85 workloads. UTF-8 completes in the intended 1800-second
 profile with a strict output difference (Rust execution takes 1335.122 seconds).
 Linux GNU Latin-1 setup succeeds; its strict output difference remains a

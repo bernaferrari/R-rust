@@ -60,9 +60,9 @@ the session; a fatal Wasm trap resets the worker. Ordinary R errors retain state
 
 Gradle builds `r-wasm` through this script with wasm-pack's web target and includes the generated
 module and Wasm asset in the served `rust-runtime/` directory. The release gate
-checks both the Kotlin UI budget (450 KiB) and the Rust runtime asset budget
-(25 MiB). The latter is a ceiling, not a download-size claim. CI executes real
-Rust Wasm under Node and builds the production browser bundle.
+checks the Kotlin UI budget (450 KiB) and the total raw size of the
+Rust runtime assets (50 MiB). CI executes Rust Wasm under Node and builds
+the production browser bundle.
 
 The Chromium test in `tests/browser/rust-runtime.cjs` exercises the real worker,
 UI, errors, nonlocal control flow, plotting, and cancellation/reset.
