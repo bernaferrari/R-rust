@@ -8,10 +8,11 @@
  */
 
 use std::os::raw::{c_double, c_int};
-use std::ptr;
 
 use crate::attrib_core::{R_DimNamesSymbol, R_NamesSymbol, getAttrib, setAttrib};
+use crate::main::coerce::coerceVector;
 use crate::main::errors::Rf_error;
+use crate::main::random::{GetRNGstate, PutRNGstate};
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::ffi::*;
@@ -876,27 +877,20 @@ pub unsafe fn install_stats_call_symbols(env: SEXP) {
 // Type aliases for random number generator function pointers
 // ---------------------------------------------------------------------------
 
-type ran1 = unsafe fn(c_double) -> c_double;
-type ran2 = unsafe fn(c_double, c_double) -> c_double;
-type ran3 = unsafe fn(c_double, c_double, c_double) -> c_double;
+type ran1 = fn(c_double) -> c_double;
+type ran2 = fn(c_double, c_double) -> c_double;
+type ran3 = fn(c_double, c_double, c_double) -> c_double;
 
 // ---------------------------------------------------------------------------
 // Helper: fill vector with NAs
 // ---------------------------------------------------------------------------
 
-unsafe fn fillWithNAs(x: SEXP, n: R_xlen_t, type_: SEXPTYPE) {
-    unsafe {
-        if type_ == SEXPTYPE::INTSXP {
-            for i in 0..n {
-                *INTEGER(x).add(i as usize) = NA_INTEGER;
-            }
-        } else {
-            for i in 0..n {
-                *REAL(x).add(i as usize) = NA_REAL;
-            }
-        }
-        crate::mainutils::errors::Rf_warning1(c"NAs produced".as_ptr());
-    }
+fn fill_with_nas_int(values: &mut [c_int]) {
+    values.fill(NA_INTEGER);
+}
+
+fn fill_with_nas_real(values: &mut [c_double]) {
+    values.fill(NA_REAL);
 }
 
 // ---------------------------------------------------------------------------
@@ -936,7 +930,7 @@ unsafe fn resultLength(lengthArgument: SEXP) -> R_xlen_t {
 // Helper: isNumeric check
 // ---------------------------------------------------------------------------
 
-unsafe fn isNumeric(x: SEXP) -> bool {
+fn isNumeric(x: SEXP) -> bool {
     {
         if x.is_null() {
             return false;
@@ -1008,10 +1002,6 @@ unsafe fn as_integer(x: SEXP) -> c_int {
 // External declarations
 // ---------------------------------------------------------------------------
 
-unsafe fn coerceVector(x: SEXP, type_: c_int) -> SEXP {
-    unsafe { crate::main::coerce::coerceVector(x, type_) }
-}
-
 unsafe fn allocMatrix(sexptype: c_int, nrow: c_int, ncol: c_int) -> SEXP {
     unsafe {
         let ans = Rf_allocVector(sexptype, nrow * ncol);
@@ -1025,19 +1015,7 @@ unsafe fn allocMatrix(sexptype: c_int, nrow: c_int, ncol: c_int) -> SEXP {
     }
 }
 
-unsafe fn duplicate(x: SEXP) -> SEXP {
-    unsafe { crate::main::duplicate::duplicate(x) }
-}
-
-unsafe fn GetRNGstate() {
-    unsafe { crate::main::random::GetRNGstate() }
-}
-
-unsafe fn PutRNGstate() {
-    unsafe { crate::main::random::PutRNGstate() }
-}
-
-use crate::library::stats::rcont::rcont2;
+use crate::library::stats::rcont::rcont2_slices;
 
 // ---------------------------------------------------------------------------
 // random1 -- 1-parameter random sampling
@@ -1058,7 +1036,12 @@ unsafe fn random1(sn: SEXP, sa: SEXP, fn_ptr: ran1, type_: SEXPTYPE) -> SEXP {
         let na = XLENGTH(sa);
 
         if na < 1 {
-            fillWithNAs(x, n, type_);
+            if type_ == SEXPTYPE::INTSXP {
+                fill_with_nas_int(std::slice::from_raw_parts_mut(INTEGER(x), n as usize));
+            } else {
+                fill_with_nas_real(std::slice::from_raw_parts_mut(REAL(x), n as usize));
+            }
+            crate::mainutils::errors::Rf_warning1(c"NAs produced".as_ptr());
         } else {
             let mut naflag = false;
             let a = coerceVector(sa, SEXPTYPE::REALSXP.as_c_int());
@@ -1066,27 +1049,27 @@ unsafe fn random1(sn: SEXP, sa: SEXP, fn_ptr: ran1, type_: SEXPTYPE) -> SEXP {
             let mut i0: R_xlen_t = 0;
             let mut use_type = type_;
             GetRNGstate();
-            let ra = REAL(a);
+            let ra = std::slice::from_raw_parts(REAL(a), na as usize);
 
             let mut overflow_rx = 0.0f64;
             if type_ == SEXPTYPE::INTSXP {
-                let ix = INTEGER(x);
+                let ix = std::slice::from_raw_parts_mut(INTEGER(x), n as usize);
                 let mut i: R_xlen_t = 0;
                 loop {
                     if i >= n {
                         break;
                     }
-                    let rx = fn_ptr(*ra.add((i % na) as usize));
+                    let rx = fn_ptr(ra[(i % na) as usize]);
                     if ISNAN(rx) {
                         naflag = true;
-                        *ix.add(i as usize) = NA_INTEGER;
+                        ix[i as usize] = NA_INTEGER;
                     } else if rx > c_int::MAX as c_double || rx <= c_int::MIN as c_double {
                         i0 = i;
                         overflow_rx = rx;
                         use_type = SEXPTYPE::REALSXP;
                         break;
                     } else {
-                        *ix.add(i as usize) = rx as c_int;
+                        ix[i as usize] = rx as c_int;
                     }
                     i += 1;
                 }
@@ -1096,19 +1079,25 @@ unsafe fn random1(sn: SEXP, sa: SEXP, fn_ptr: ran1, type_: SEXPTYPE) -> SEXP {
                 let x_real = if type_ == SEXPTYPE::INTSXP {
                     let xr = Rf_allocVector(SEXPTYPE::REALSXP, n as c_int);
                     x_real_guard = Some(protect(xr));
-                    for i in 0..i0 {
-                        *REAL(xr).add(i as usize) = *INTEGER(x).add(i as usize) as c_double;
+                    let src = std::slice::from_raw_parts(INTEGER(x), n as usize);
+                    let dst = std::slice::from_raw_parts_mut(REAL(xr), n as usize);
+                    for i in 0..i0 as usize {
+                        dst[i] = src[i] as c_double;
                     }
-                    *REAL(xr).add(i0 as usize) = overflow_rx;
+                    dst[i0 as usize] = overflow_rx;
                     xr
                 } else {
                     x
                 };
-                let rx = REAL(x_real);
-                let start = if type_ == SEXPTYPE::INTSXP { i0 + 1 } else { 0 };
-                for i in start..n {
-                    *rx.add(i as usize) = fn_ptr(*ra.add((i % na) as usize));
-                    if ISNAN(*rx.add(i as usize)) {
+                let rx = std::slice::from_raw_parts_mut(REAL(x_real), n as usize);
+                let start = if type_ == SEXPTYPE::INTSXP {
+                    i0 as usize + 1
+                } else {
+                    0
+                };
+                for i in start..n as usize {
+                    rx[i] = fn_ptr(ra[i % na as usize]);
+                    if ISNAN(rx[i]) {
                         naflag = true;
                     }
                 }
@@ -1148,7 +1137,12 @@ unsafe fn random2(sn: SEXP, sa: SEXP, sb: SEXP, fn_ptr: ran2, type_: SEXPTYPE) -
         let nb = XLENGTH(sb);
 
         if na < 1 || nb < 1 {
-            fillWithNAs(x, n, type_);
+            if type_ == SEXPTYPE::INTSXP {
+                fill_with_nas_int(std::slice::from_raw_parts_mut(INTEGER(x), n as usize));
+            } else {
+                fill_with_nas_real(std::slice::from_raw_parts_mut(REAL(x), n as usize));
+            }
+            crate::mainutils::errors::Rf_warning1(c"NAs produced".as_ptr());
         } else {
             let mut naflag = false;
             let a = coerceVector(sa, SEXPTYPE::REALSXP.as_c_int());
@@ -1158,28 +1152,28 @@ unsafe fn random2(sn: SEXP, sa: SEXP, sb: SEXP, fn_ptr: ran2, type_: SEXPTYPE) -
             let mut i0: R_xlen_t = 0;
             let mut use_type = type_;
             GetRNGstate();
-            let ra = REAL(a);
-            let rb = REAL(b);
+            let ra = std::slice::from_raw_parts(REAL(a), na as usize);
+            let rb = std::slice::from_raw_parts(REAL(b), nb as usize);
 
             let mut overflow_rx = 0.0f64;
             if type_ == SEXPTYPE::INTSXP {
-                let ix = INTEGER(x);
+                let ix = std::slice::from_raw_parts_mut(INTEGER(x), n as usize);
                 let mut i: R_xlen_t = 0;
                 loop {
                     if i >= n {
                         break;
                     }
-                    let rx = fn_ptr(*ra.add((i % na) as usize), *rb.add((i % nb) as usize));
+                    let rx = fn_ptr(ra[(i % na) as usize], rb[(i % nb) as usize]);
                     if ISNAN(rx) {
                         naflag = true;
-                        *ix.add(i as usize) = NA_INTEGER;
+                        ix[i as usize] = NA_INTEGER;
                     } else if rx > c_int::MAX as c_double || rx <= c_int::MIN as c_double {
                         i0 = i;
                         overflow_rx = rx;
                         use_type = SEXPTYPE::REALSXP;
                         break;
                     } else {
-                        *ix.add(i as usize) = rx as c_int;
+                        ix[i as usize] = rx as c_int;
                     }
                     i += 1;
                 }
@@ -1189,20 +1183,25 @@ unsafe fn random2(sn: SEXP, sa: SEXP, sb: SEXP, fn_ptr: ran2, type_: SEXPTYPE) -
                 let x_real = if type_ == SEXPTYPE::INTSXP {
                     let xr = Rf_allocVector(SEXPTYPE::REALSXP, n as c_int);
                     x_real_guard = Some(protect(xr));
-                    for i in 0..i0 {
-                        *REAL(xr).add(i as usize) = *INTEGER(x).add(i as usize) as c_double;
+                    let src = std::slice::from_raw_parts(INTEGER(x), n as usize);
+                    let dst = std::slice::from_raw_parts_mut(REAL(xr), n as usize);
+                    for i in 0..i0 as usize {
+                        dst[i] = src[i] as c_double;
                     }
-                    *REAL(xr).add(i0 as usize) = overflow_rx;
+                    dst[i0 as usize] = overflow_rx;
                     xr
                 } else {
                     x
                 };
-                let rx = REAL(x_real);
-                let start = if type_ == SEXPTYPE::INTSXP { i0 + 1 } else { 0 };
-                for i in start..n {
-                    *rx.add(i as usize) =
-                        fn_ptr(*ra.add((i % na) as usize), *rb.add((i % nb) as usize));
-                    if ISNAN(*rx.add(i as usize)) {
+                let rx = std::slice::from_raw_parts_mut(REAL(x_real), n as usize);
+                let start = if type_ == SEXPTYPE::INTSXP {
+                    i0 as usize + 1
+                } else {
+                    0
+                };
+                for i in start..n as usize {
+                    rx[i] = fn_ptr(ra[i % na as usize], rb[i % nb as usize]);
+                    if ISNAN(rx[i]) {
                         naflag = true;
                     }
                 }
@@ -1243,7 +1242,12 @@ unsafe fn random3(sn: SEXP, sa: SEXP, sb: SEXP, sc: SEXP, fn_ptr: ran3, type_: S
         let nc = XLENGTH(sc);
 
         if na < 1 || nb < 1 || nc < 1 {
-            fillWithNAs(x, n, type_);
+            if type_ == SEXPTYPE::INTSXP {
+                fill_with_nas_int(std::slice::from_raw_parts_mut(INTEGER(x), n as usize));
+            } else {
+                fill_with_nas_real(std::slice::from_raw_parts_mut(REAL(x), n as usize));
+            }
+            crate::mainutils::errors::Rf_warning1(c"NAs produced".as_ptr());
         } else {
             let mut naflag = false;
             let a = coerceVector(sa, SEXPTYPE::REALSXP.as_c_int());
@@ -1255,33 +1259,33 @@ unsafe fn random3(sn: SEXP, sa: SEXP, sb: SEXP, sc: SEXP, fn_ptr: ran3, type_: S
             let mut i0: R_xlen_t = 0;
             let mut use_type = type_;
             GetRNGstate();
-            let ra = REAL(a);
-            let rb = REAL(b);
-            let rc = REAL(c);
+            let ra = std::slice::from_raw_parts(REAL(a), na as usize);
+            let rb = std::slice::from_raw_parts(REAL(b), nb as usize);
+            let rc = std::slice::from_raw_parts(REAL(c), nc as usize);
 
             let mut overflow_rx = 0.0f64;
             if type_ == SEXPTYPE::INTSXP {
-                let ix = INTEGER(x);
+                let ix = std::slice::from_raw_parts_mut(INTEGER(x), n as usize);
                 let mut i: R_xlen_t = 0;
                 loop {
                     if i >= n {
                         break;
                     }
                     let rx = fn_ptr(
-                        *ra.add((i % na) as usize),
-                        *rb.add((i % nb) as usize),
-                        *rc.add((i % nc) as usize),
+                        ra[(i % na) as usize],
+                        rb[(i % nb) as usize],
+                        rc[(i % nc) as usize],
                     );
                     if ISNAN(rx) {
                         naflag = true;
-                        *ix.add(i as usize) = NA_INTEGER;
+                        ix[i as usize] = NA_INTEGER;
                     } else if rx > c_int::MAX as c_double || rx <= c_int::MIN as c_double {
                         i0 = i;
                         overflow_rx = rx;
                         use_type = SEXPTYPE::REALSXP;
                         break;
                     } else {
-                        *ix.add(i as usize) = rx as c_int;
+                        ix[i as usize] = rx as c_int;
                     }
                     i += 1;
                 }
@@ -1291,23 +1295,25 @@ unsafe fn random3(sn: SEXP, sa: SEXP, sb: SEXP, sc: SEXP, fn_ptr: ran3, type_: S
                 let x_real = if type_ == SEXPTYPE::INTSXP {
                     let xr = Rf_allocVector(SEXPTYPE::REALSXP, n as c_int);
                     x_real_guard = Some(protect(xr));
-                    for i in 0..i0 {
-                        *REAL(xr).add(i as usize) = *INTEGER(x).add(i as usize) as c_double;
+                    let src = std::slice::from_raw_parts(INTEGER(x), n as usize);
+                    let dst = std::slice::from_raw_parts_mut(REAL(xr), n as usize);
+                    for i in 0..i0 as usize {
+                        dst[i] = src[i] as c_double;
                     }
-                    *REAL(xr).add(i0 as usize) = overflow_rx;
+                    dst[i0 as usize] = overflow_rx;
                     xr
                 } else {
                     x
                 };
-                let rx = REAL(x_real);
-                let start = if type_ == SEXPTYPE::INTSXP { i0 + 1 } else { 0 };
-                for i in start..n {
-                    *rx.add(i as usize) = fn_ptr(
-                        *ra.add((i % na) as usize),
-                        *rb.add((i % nb) as usize),
-                        *rc.add((i % nc) as usize),
-                    );
-                    if ISNAN(*rx.add(i as usize)) {
+                let rx = std::slice::from_raw_parts_mut(REAL(x_real), n as usize);
+                let start = if type_ == SEXPTYPE::INTSXP {
+                    i0 as usize + 1
+                } else {
+                    0
+                };
+                for i in start..n as usize {
+                    rx[i] = fn_ptr(ra[i % na as usize], rb[i % nb as usize], rc[i % nc as usize]);
+                    if ISNAN(rx[i]) {
                         naflag = true;
                     }
                 }
@@ -1590,31 +1596,35 @@ pub unsafe fn do_rhyper(sn: SEXP, sa: SEXP, sb: SEXP, sc: SEXP) -> SEXP {
 // FixupProb -- normalize probability vector
 // ---------------------------------------------------------------------------
 
-unsafe fn FixupProb(p: *mut c_double, n: c_int) {
-    unsafe {
-        let mut sum = 0.0;
-        let mut npos = 0;
-        for i in 0..n {
-            if !R_FINITE(*p.add(i as usize)) {
+fn fixup_prob(p: &mut [c_double]) {
+    let mut sum = 0.0;
+    let mut npos = 0;
+    for value in p.iter() {
+        if !R_FINITE(*value) {
+            unsafe {
                 Rf_error(b"NA in probability vector\0".as_ptr() as *const _);
-                return;
             }
-            if *p.add(i as usize) < 0.0 {
-                Rf_error(b"negative probability\0".as_ptr() as *const _);
-                return;
-            }
-            if *p.add(i as usize) > 0.0 {
-                npos += 1;
-                sum += *p.add(i as usize);
-            }
-        }
-        if npos == 0 {
-            Rf_error(b"no positive probabilities\0".as_ptr() as *const _);
             return;
         }
-        for i in 0..n {
-            *p.add(i as usize) /= sum;
+        if *value < 0.0 {
+            unsafe {
+                Rf_error(b"negative probability\0".as_ptr() as *const _);
+            }
+            return;
         }
+        if *value > 0.0 {
+            npos += 1;
+            sum += *value;
+        }
+    }
+    if npos == 0 {
+        unsafe {
+            Rf_error(b"no positive probabilities\0".as_ptr() as *const _);
+        }
+        return;
+    }
+    for value in p.iter_mut() {
+        *value /= sum;
     }
 }
 
@@ -1634,25 +1644,22 @@ pub unsafe fn do_rmultinom(sn: SEXP, ssize: SEXP, prob: SEXP) -> SEXP {
             Rf_error(b"invalid second argument 'size'\0".as_ptr() as *const _);
             return R_NilValue();
         }
-        let mut prob = coerceVector(prob, SEXPTYPE::REALSXP.as_c_int());
+        let prob = coerceVector(prob, SEXPTYPE::REALSXP.as_c_int());
         let k = LENGTH(prob);
         let _prob_guard = protect(prob);
-        FixupProb(REAL(prob), k);
+        let prob_slice = std::slice::from_raw_parts_mut(REAL(prob), k as usize);
+        fixup_prob(prob_slice);
 
         GetRNGstate();
         let ans = allocMatrix(SEXPTYPE::INTSXP.into(), k, n);
         let _ans_guard = protect(ans);
+        let cells = std::slice::from_raw_parts_mut(INTEGER(ans), (k * n) as usize);
         let mut rn_buf: Vec<f64> = vec![0.0; k as usize];
-        for i in 0..n as R_xlen_t {
-            let ik = i * k as R_xlen_t;
-            crate::nmath::dist::multinom::rmultinom_inner(
-                size,
-                std::slice::from_raw_parts(REAL(prob), k as usize),
-                &mut rn_buf,
-            );
+        for i in 0..n as usize {
+            crate::nmath::dist::multinom::rmultinom_inner(size, prob_slice, &mut rn_buf);
             // Copy f64 results to integer output
             for j in 0..k as usize {
-                *INTEGER(ans).add((ik + j as R_xlen_t) as usize) = rn_buf[j] as c_int;
+                cells[i * k as usize + j] = rn_buf[j] as c_int;
             }
         }
         PutRNGstate();
@@ -1665,35 +1672,6 @@ pub unsafe fn do_rmultinom(sn: SEXP, ssize: SEXP, prob: SEXP) -> SEXP {
             setAttrib(ans, R_DimNamesSymbol(), dimnms);
         }
         ans
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Helper: allocate double/int arrays (replaces R_alloc)
-// ---------------------------------------------------------------------------
-
-unsafe fn alloc_double_array(n: usize) -> *mut c_double {
-    unsafe {
-        let layout = std::alloc::Layout::array::<c_double>(n).unwrap_or_else(|_| {
-            std::alloc::handle_alloc_error(std::alloc::Layout::new::<c_double>())
-        });
-        let ptr = std::alloc::alloc(layout) as *mut c_double;
-        if ptr.is_null() {
-            std::alloc::handle_alloc_error(layout);
-        }
-        ptr
-    }
-}
-
-unsafe fn alloc_int_array(n: usize) -> *mut c_int {
-    unsafe {
-        let layout = std::alloc::Layout::array::<c_int>(n)
-            .unwrap_or_else(|_| std::alloc::handle_alloc_error(std::alloc::Layout::new::<c_int>()));
-        let ptr = std::alloc::alloc(layout) as *mut c_int;
-        if ptr.is_null() {
-            std::alloc::handle_alloc_error(layout);
-        }
-        ptr
     }
 }
 
@@ -1718,23 +1696,22 @@ pub unsafe fn r2dtable(n: SEXP, r: SEXP, c: SEXP) -> SEXP {
         }
 
         let n_of_samples = *INTEGER(n);
-        let row_sums = INTEGER(r);
-        let col_sums = INTEGER(c);
+        let row_sums = std::slice::from_raw_parts(INTEGER(r), nr as usize);
+        let col_sums = std::slice::from_raw_parts(INTEGER(c), nc as usize);
 
         // Compute total cases as sum of row sums
         let mut n_of_cases: c_int = 0;
-        for i in 0..nr {
-            n_of_cases += *row_sums.add(i as usize);
+        for value in row_sums {
+            n_of_cases += *value;
         }
 
         // Log-factorials
-        let fact = alloc_double_array((n_of_cases + 1) as usize);
-        *fact.add(0) = 0.0;
-        for i in 1..=n_of_cases {
-            *fact.add(i as usize) = crate::nmath::special::gamma::lgammafn((i + 1) as c_double);
+        let mut fact = vec![0.0f64; (n_of_cases + 1) as usize];
+        for i in 1..=n_of_cases as usize {
+            fact[i] = crate::nmath::special::gamma::lgammafn((i + 1) as c_double);
         }
 
-        let jwork = alloc_int_array(nc as usize);
+        let mut jwork = vec![0; nc as usize];
         let ans = Rf_allocVector(SEXPTYPE::VECSXP, n_of_samples);
         let _ans_guard = protect(ans);
 
@@ -1743,15 +1720,17 @@ pub unsafe fn r2dtable(n: SEXP, r: SEXP, c: SEXP) -> SEXP {
         for i in 0..n_of_samples {
             let tmp = allocMatrix(SEXPTYPE::INTSXP.into(), nr, nc);
             let _tmp_guard = protect(tmp);
-            rcont2(
+            // Buffers satisfy the dimension contract; degenerate margins are
+            // rejected by the checked wrapper instead of producing garbage.
+            let _ = rcont2_slices(
                 nr,
                 nc,
                 row_sums,
                 col_sums,
                 n_of_cases,
-                fact,
-                jwork,
-                INTEGER(tmp),
+                &fact,
+                &mut jwork,
+                std::slice::from_raw_parts_mut(INTEGER(tmp), (nr * nc) as usize),
             );
             SET_VECTOR_ELT(ans, i as R_xlen_t, tmp);
         }
@@ -1767,7 +1746,7 @@ pub unsafe fn r2dtable(n: SEXP, r: SEXP, c: SEXP) -> SEXP {
 // The port has no R closures, so these adapters reproduce that front end.
 // ---------------------------------------------------------------------------
 
-unsafe fn adapter_absent(x: SEXP) -> bool {
+fn adapter_absent(x: SEXP) -> bool {
     x.is_null() || x == R_NilValue() || x == R_MissingArg()
 }
 
@@ -1783,8 +1762,8 @@ unsafe fn match_formals(call: SEXP, args: SEXP, names: &[&str]) -> Vec<SEXP> {
     unsafe { crate::mainutils::match_mod::match_formal_slots(call, args, names) }
 }
 
-unsafe fn require_slot(call: SEXP, slot: SEXP, name: &str) -> SEXP {
-    if unsafe { adapter_absent(slot) } {
+fn require_slot(call: SEXP, slot: SEXP, name: &str) -> SEXP {
+    if adapter_absent(slot) {
         missing_required(call, name);
     }
     slot
@@ -1813,12 +1792,13 @@ unsafe fn reciprocal_vector(x: SEXP) -> SEXP {
     unsafe {
         let v = coerceVector(x, SEXPTYPE::REALSXP.as_c_int());
         let _v_guard = protect(v);
-        let out = Rf_allocVector(SEXPTYPE::REALSXP.0, XLENGTH(v) as c_int);
+        let n = XLENGTH(v) as usize;
+        let out = Rf_allocVector(SEXPTYPE::REALSXP.0, n as c_int);
         let _out_guard = protect(out);
-        let src = REAL(v);
-        let dst = REAL(out);
-        for i in 0..XLENGTH(v) as usize {
-            *dst.add(i) = 1.0 / *src.add(i);
+        let src = std::slice::from_raw_parts(REAL(v), n);
+        let dst = std::slice::from_raw_parts_mut(REAL(out), n);
+        for i in 0..n {
+            dst[i] = 1.0 / src[i];
         }
         out
     }
@@ -1829,12 +1809,13 @@ unsafe fn scaled_vector(x: SEXP, s: c_double) -> SEXP {
     unsafe {
         let v = coerceVector(x, SEXPTYPE::REALSXP.as_c_int());
         let _v_guard = protect(v);
-        let out = Rf_allocVector(SEXPTYPE::REALSXP.0, XLENGTH(v) as c_int);
+        let n = XLENGTH(v) as usize;
+        let out = Rf_allocVector(SEXPTYPE::REALSXP.0, n as c_int);
         let _out_guard = protect(out);
-        let src = REAL(v);
-        let dst = REAL(out);
-        for i in 0..XLENGTH(v) as usize {
-            *dst.add(i) = s * *src.add(i);
+        let src = std::slice::from_raw_parts(REAL(v), n);
+        let dst = std::slice::from_raw_parts_mut(REAL(out), n);
+        for i in 0..n {
+            dst[i] = s * src[i];
         }
         out
     }
@@ -1842,40 +1823,41 @@ unsafe fn scaled_vector(x: SEXP, s: c_double) -> SEXP {
 
 /// Elementwise binary op on two REALSXP results with stock recycling of the
 /// shorter operand (used by the ncp composition closures).
-unsafe fn vector_binop(a: SEXP, b: SEXP, f: unsafe fn(c_double, c_double) -> c_double) -> SEXP {
+unsafe fn vector_binop(a: SEXP, b: SEXP, f: fn(c_double, c_double) -> c_double) -> SEXP {
     unsafe {
-        let na = XLENGTH(a);
-        let nb = XLENGTH(b);
+        let na = XLENGTH(a) as usize;
+        let nb = XLENGTH(b) as usize;
         let n = na.max(nb);
         let out = Rf_allocVector(SEXPTYPE::REALSXP.0, n as c_int);
         let _out_guard = protect(out);
-        let pa = REAL(a);
-        let pb = REAL(b);
-        let dst = REAL(out);
-        for i in 0..n as usize {
-            *dst.add(i) = f(*pa.add(i % na as usize), *pb.add(i % nb as usize));
+        let pa = std::slice::from_raw_parts(REAL(a), na);
+        let pb = std::slice::from_raw_parts(REAL(b), nb);
+        let dst = std::slice::from_raw_parts_mut(REAL(out), n);
+        for i in 0..n {
+            dst[i] = f(pa[i % na], pb[i % nb]);
         }
         out
     }
 }
 
-unsafe fn div(a: c_double, b: c_double) -> c_double {
+fn div(a: c_double, b: c_double) -> c_double {
     a / b
 }
 
-unsafe fn add(a: c_double, b: c_double) -> c_double {
+fn add(a: c_double, b: c_double) -> c_double {
     a + b
 }
 
 /// Elementwise sqrt on a REALSXP vector.
 unsafe fn sqrt_vector(x: SEXP) -> SEXP {
     unsafe {
-        let out = Rf_allocVector(SEXPTYPE::REALSXP.0, XLENGTH(x) as c_int);
+        let n = XLENGTH(x) as usize;
+        let out = Rf_allocVector(SEXPTYPE::REALSXP.0, n as c_int);
         let _out_guard = protect(out);
-        let src = REAL(x);
-        let dst = REAL(out);
-        for i in 0..XLENGTH(x) as usize {
-            *dst.add(i) = (*src.add(i)).sqrt();
+        let src = std::slice::from_raw_parts(REAL(x), n);
+        let dst = std::slice::from_raw_parts_mut(REAL(out), n);
+        for i in 0..n {
+            dst[i] = src[i].sqrt();
         }
         out
     }
