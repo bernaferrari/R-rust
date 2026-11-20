@@ -250,7 +250,8 @@ pub(crate) unsafe fn eval_lang_safe<'a>(e: Sexp<'a>, rho: Sexp<'a>) -> Result<Se
         SEXPTYPE::BUILTINSXP => apply_builtin_safe(fun_val, e, args, rho),
         kind => {
             let head = if fun.typeof_() == SEXPTYPE::SYMSXP {
-                unsafe { get_symbol_name(fun.as_raw()) }
+                crate::sexp::symbol::symbol_name_from_ptr(fun.as_raw())
+                    .unwrap_or_else(|| "???".to_string())
             } else {
                 format!("{:?}", fun.typeof_())
             };
