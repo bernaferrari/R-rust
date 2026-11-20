@@ -11,7 +11,7 @@ use std::ptr;
 #[cfg(test)]
 pub(super) mod fault;
 
-unsafe fn alloc(layout: Layout) -> *mut u8 {
+fn alloc(layout: Layout) -> *mut u8 {
     #[cfg(test)]
     if fault::deny() {
         return ptr::null_mut();
@@ -22,7 +22,7 @@ unsafe fn alloc(layout: Layout) -> *mut u8 {
     pointer
 }
 
-unsafe fn dealloc(pointer: *mut u8, layout: Layout) {
+fn dealloc(pointer: *mut u8, layout: Layout) {
     #[cfg(test)]
     fault::deallocated(pointer);
     unsafe { std::alloc::dealloc(pointer, layout) };
@@ -54,7 +54,8 @@ impl tre_mem_struct {
 }
 
 /// Legacy standalone ownership; runtime compilation keeps this value on stack.
-pub unsafe fn tre_mem_new() -> tre_mem_t {
+pub fn tre_mem_new() -> tre_mem_t {
+    // SAFETY: the box is written before the raw pointer escapes.
     unsafe {
         let allocation = alloc(Layout::new::<tre_mem_struct>()).cast::<tre_mem_struct>();
         if allocation.is_null() {
@@ -67,7 +68,8 @@ pub unsafe fn tre_mem_new() -> tre_mem_t {
     }
 }
 
-pub unsafe fn tre_mem_destroy(mem: tre_mem_t) {
+pub fn tre_mem_destroy(mem: tre_mem_t) {
+    // SAFETY: `mem` is a live tre_mem_new allocation or null.
     unsafe {
         if !mem.is_null() {
             ptr::drop_in_place(mem);
@@ -76,7 +78,8 @@ pub unsafe fn tre_mem_destroy(mem: tre_mem_t) {
     }
 }
 
-pub unsafe fn tre_mem_alloc(mem: tre_mem_t, size: usize) -> *mut c_void {
+pub fn tre_mem_alloc(mem: tre_mem_t, size: usize) -> *mut c_void {
+    // SAFETY: `mem` is a live tre_mem_t arena per the allocator contract.
     unsafe {
         if mem.is_null() || (*mem).failed != 0 {
             return ptr::null_mut();
@@ -92,8 +95,8 @@ pub unsafe fn tre_mem_alloc(mem: tre_mem_t, size: usize) -> *mut c_void {
 }
 
 /// Fresh safe-owned cells are initialized to zero before any pointer publication.
-pub unsafe fn tre_mem_calloc(mem: tre_mem_t, size: usize) -> *mut c_void {
-    unsafe { tre_mem_alloc(mem, size) }
+pub fn tre_mem_calloc(mem: tre_mem_t, size: usize) -> *mut c_void {
+    tre_mem_alloc(mem, size)
 }
 
 /* Simple xmalloc/xrealloc/xfree replacements using std::alloc.
@@ -116,7 +119,8 @@ pub(crate) fn xallocation_size(size: usize) -> Option<usize> {
     allocation_layout(size).map(|layout| layout.size())
 }
 
-pub unsafe fn xmalloc(size: usize) -> *mut c_void {
+pub fn xmalloc(size: usize) -> *mut c_void {
+    // SAFETY: the header slot lives inside the fresh allocation.
     unsafe {
         if size == 0 {
             return ptr::null_mut();
@@ -134,7 +138,8 @@ pub unsafe fn xmalloc(size: usize) -> *mut c_void {
     }
 }
 
-pub unsafe fn xcalloc(nmemb: usize, size: usize) -> *mut c_void {
+pub fn xcalloc(nmemb: usize, size: usize) -> *mut c_void {
+    // SAFETY: `p` points at `total_data` writable bytes on success.
     unsafe {
         if nmemb == 0 || size == 0 {
             return ptr::null_mut();
@@ -150,7 +155,9 @@ pub unsafe fn xcalloc(nmemb: usize, size: usize) -> *mut c_void {
     }
 }
 
-pub unsafe fn xrealloc(ptr: *mut c_void, new_size: usize) -> *mut c_void {
+pub fn xrealloc(ptr: *mut c_void, new_size: usize) -> *mut c_void {
+    // SAFETY: `ptr` is a live xmalloc allocation or null per the realloc
+    // contract.
     unsafe {
         if new_size == 0 {
             xfree(ptr);
@@ -185,7 +192,8 @@ pub unsafe fn xrealloc(ptr: *mut c_void, new_size: usize) -> *mut c_void {
     }
 }
 
-pub unsafe fn xfree(ptr: *mut c_void) {
+pub fn xfree(ptr: *mut c_void) {
+    // SAFETY: `ptr` is a live xmalloc allocation or null.
     unsafe {
         if !ptr.is_null() {
             let raw = (ptr as *mut u8).sub(XALLOC_HEADER);

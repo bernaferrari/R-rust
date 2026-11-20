@@ -36,7 +36,8 @@ pub struct tre_stack_rec {
 
 pub type tre_stack_t = *mut tre_stack_rec;
 
-pub unsafe fn tre_stack_new(size: c_int, max_size: c_int, increment: c_int) -> tre_stack_t {
+pub fn tre_stack_new(size: c_int, max_size: c_int, increment: c_int) -> tre_stack_t {
+    // SAFETY: `s` is initialized before the raw pointer escapes.
     unsafe {
         if size <= 0 || max_size < size || increment <= 0 {
             return ptr::null_mut();
@@ -68,7 +69,8 @@ pub unsafe fn tre_stack_new(size: c_int, max_size: c_int, increment: c_int) -> t
 
 /// Create a compiler stack whose descriptor and full item-buffer capacities
 /// are admitted to the originating regex workspace before allocation.
-pub(crate) unsafe fn tre_stack_new_owned(size: c_int, workspace: &RegexWorkspace) -> tre_stack_t {
+pub(crate) fn tre_stack_new_owned(size: c_int, workspace: &RegexWorkspace) -> tre_stack_t {
+    // SAFETY: `s` is initialized before the raw pointer escapes.
     unsafe {
         if size <= 0 {
             return ptr::null_mut();
@@ -107,7 +109,8 @@ pub(crate) unsafe fn tre_stack_new_owned(size: c_int, workspace: &RegexWorkspace
     }
 }
 
-pub unsafe fn tre_stack_destroy(s: tre_stack_t) {
+pub fn tre_stack_destroy(s: tre_stack_t) {
+    // SAFETY: `s` is a live tre_stack_new allocation or null.
     unsafe {
         if s.is_null() {
             return;
@@ -122,7 +125,8 @@ pub unsafe fn tre_stack_destroy(s: tre_stack_t) {
     }
 }
 
-pub unsafe fn tre_stack_num_objects(s: tre_stack_t) -> c_int {
+pub fn tre_stack_num_objects(s: tre_stack_t) -> c_int {
+    // SAFETY: `s` is a live stack or null.
     unsafe {
         if s.is_null() {
             return 0;
@@ -131,7 +135,8 @@ pub unsafe fn tre_stack_num_objects(s: tre_stack_t) -> c_int {
     }
 }
 
-unsafe fn tre_stack_push(s: tre_stack_t, value: tre_stack_item) -> c_int {
+fn tre_stack_push(s: tre_stack_t, value: tre_stack_item) -> c_int {
+    // SAFETY: `s` is a live stack with capacity bookkeeping in `rec`.
     unsafe {
         let stack = &mut *s;
         if stack.ptr == stack.max_size {
@@ -176,22 +181,21 @@ unsafe fn tre_stack_push(s: tre_stack_t, value: tre_stack_item) -> c_int {
     }
 }
 
-pub unsafe fn tre_stack_push_voidptr(s: tre_stack_t, value: *mut c_void) -> c_int {
-    unsafe {
-        tre_stack_push(
-            s,
-            tre_stack_item {
-                voidptr_value: value,
-            },
-        )
-    }
+pub fn tre_stack_push_voidptr(s: tre_stack_t, value: *mut c_void) -> c_int {
+    tre_stack_push(
+        s,
+        tre_stack_item {
+            voidptr_value: value,
+        },
+    )
 }
 
-pub unsafe fn tre_stack_push_int(s: tre_stack_t, value: c_int) -> c_int {
-    unsafe { tre_stack_push(s, tre_stack_item { int_value: value }) }
+pub fn tre_stack_push_int(s: tre_stack_t, value: c_int) -> c_int {
+    tre_stack_push(s, tre_stack_item { int_value: value })
 }
 
-unsafe fn tre_stack_pop(s: tre_stack_t) -> tre_stack_item {
+fn tre_stack_pop(s: tre_stack_t) -> tre_stack_item {
+    // SAFETY: `s` is a live stack with a nonzero object count.
     unsafe {
         let stack = &mut *s;
         stack.ptr -= 1;
@@ -204,11 +208,13 @@ unsafe fn tre_stack_pop(s: tre_stack_t) -> tre_stack_item {
     }
 }
 
-pub unsafe fn tre_stack_pop_voidptr(s: tre_stack_t) -> *mut c_void {
+pub fn tre_stack_pop_voidptr(s: tre_stack_t) -> *mut c_void {
+    // SAFETY: the stack contract stores a voidptr item for this pop.
     unsafe { tre_stack_pop(s).voidptr_value }
 }
 
-pub unsafe fn tre_stack_pop_int(s: tre_stack_t) -> c_int {
+pub fn tre_stack_pop_int(s: tre_stack_t) -> c_int {
+    // SAFETY: the stack contract stores an int item for this pop.
     unsafe { tre_stack_pop(s).int_value }
 }
 
