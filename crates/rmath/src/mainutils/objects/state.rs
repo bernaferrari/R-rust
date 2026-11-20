@@ -36,7 +36,7 @@ pub(crate) fn with_objects_runtime<T>(
 /// # Safety
 /// The field operation must not allocate R values, execute R, or retain a
 /// reference to the runtime. These native field loans end before callbacks.
-pub(super) unsafe fn objects_state_in<T>(
+pub(super) fn objects_state_in<T>(
     access: &RuntimeAccess,
     operation: impl FnOnce(&mut ObjectsRuntimeState) -> T,
 ) -> SexpResult<T> {
@@ -68,7 +68,7 @@ pub(crate) fn IS_S4_OBJECT(x: SEXP) -> c_int {
 }
 
 /// Set the S4 object bit.
-unsafe fn SET_S4_OBJECT(x: SEXP) {
+fn SET_S4_OBJECT(x: SEXP) {
     unsafe {
         if !x.is_null() {
             let gp = (*x).sxpinfo.gp();
@@ -78,7 +78,7 @@ unsafe fn SET_S4_OBJECT(x: SEXP) {
 }
 
 /// Unset the S4 object bit.
-unsafe fn UNSET_S4_OBJECT(x: SEXP) {
+fn UNSET_S4_OBJECT(x: SEXP) {
     unsafe {
         if !x.is_null() {
             let gp = (*x).sxpinfo.gp();
@@ -92,18 +92,18 @@ unsafe fn UNSET_S4_OBJECT(x: SEXP) {
 // ---------------------------------------------------------------------------
 
 /// Get or install the ".__S3MethodsTable__." symbol.
-pub(crate) unsafe fn S3MethodsTable_symbol() -> SEXP {
+pub(crate) fn S3MethodsTable_symbol() -> SEXP {
     unsafe { Rf_install(b".__S3MethodsTable__.\x00".as_ptr() as *const c_char) }
 }
 
-pub(crate) unsafe fn error(msg: &str) -> ! {
+pub(crate) fn error(msg: &str) -> ! {
     std::panic::panic_any(crate::sexp::context::RError {
         message: msg.to_string(),
     });
 }
 
 /// Install a named symbol, caching the result.
-pub(crate) unsafe fn sym(name: &str) -> SEXP {
+pub(crate) fn sym(name: &str) -> SEXP {
     unsafe {
         let cstr = std::ffi::CString::new(name).unwrap_or_default();
         Rf_install(cstr.as_ptr())
@@ -252,7 +252,7 @@ pub(crate) fn set_s4_validity(name: &str) -> bool {
 
 pub(crate) fn set_s4_validity_fn(name: &str, method: SEXP) -> bool {
     with_objects_runtime(|access| {
-        if !unsafe { objects_state_in(access, |state| state.s4_classes.contains_key(name)) }? {
+        if ! { objects_state_in(access, |state| state.s4_classes.contains_key(name)) }? {
             return Ok(false);
         }
         let domain = access.domain();
@@ -261,7 +261,7 @@ pub(crate) fn set_s4_validity_fn(name: &str, method: SEXP) -> bool {
         } else {
             domain.wrap(method)?
         };
-        unsafe {
+         {
             objects_state_in(access, |state| {
                 if method.is_nil() {
                     state.s4_validity.remove(name);
@@ -404,7 +404,7 @@ pub(crate) fn sync_s4_class_graph_from_gnu(name: &str) {
         if !seen.insert(class.clone()) {
             continue;
         }
-        let Some(parents) = (unsafe { gnu_class_contains(&class) }) else {
+        let Some(parents) = ( { gnu_class_contains(&class) }) else {
             continue;
         };
 
@@ -432,7 +432,7 @@ pub(crate) fn sync_s4_class_graph_from_gnu(name: &str) {
     }
 }
 
-unsafe fn gnu_class_def(name: &str) -> Option<SEXP> {
+fn gnu_class_def(name: &str) -> Option<SEXP> {
     unsafe {
         let meta = format!(".__C__{name}");
         let meta_c = std::ffi::CString::new(meta.as_str()).ok()?;
@@ -457,7 +457,7 @@ unsafe fn gnu_class_def(name: &str) -> Option<SEXP> {
     }
 }
 
-unsafe fn named_list_names(list: SEXP) -> Vec<String> {
+fn named_list_names(list: SEXP) -> Vec<String> {
     unsafe {
         if list.is_null() || list == crate::sexp::globals::R_NilValue() {
             return Vec::new();
@@ -488,7 +488,7 @@ unsafe fn named_list_names(list: SEXP) -> Vec<String> {
     }
 }
 
-unsafe fn gnu_class_contains(name: &str) -> Option<Vec<String>> {
+fn gnu_class_contains(name: &str) -> Option<Vec<String>> {
     unsafe {
         let def = gnu_class_def(name)?;
         let contains_sym = Rf_install(c"contains".as_ptr());
@@ -498,7 +498,7 @@ unsafe fn gnu_class_contains(name: &str) -> Option<Vec<String>> {
 
 /// GNU `classRepresentation@slots` names via attributes (not `R_do_slot`,
 /// which panics/recurses when the metadata object is incomplete).
-pub(crate) unsafe fn gnu_s4_slot_names(name: &str) -> Option<Vec<String>> {
+pub(crate) fn gnu_s4_slot_names(name: &str) -> Option<Vec<String>> {
     unsafe {
         let def = gnu_class_def(name)?;
         let slots_sym = Rf_install(c"slots".as_ptr());
@@ -528,7 +528,7 @@ fn s4_extends_registered(
         .any(|parent| parent == class2 || s4_extends_registered(classes, parent, class2, visited))
 }
 
-pub(crate) unsafe fn primitive_offset(op: SEXP) -> Option<usize> {
+pub(crate) fn primitive_offset(op: SEXP) -> Option<usize> {
     {
         if op.is_null()
             || (TYPEOF(op) != SEXPTYPE::BUILTINSXP && TYPEOF(op) != SEXPTYPE::SPECIALSXP)

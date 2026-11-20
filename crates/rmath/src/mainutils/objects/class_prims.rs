@@ -13,7 +13,7 @@ use super::*;
 // ---------------------------------------------------------------------------
 
 /// R's unclass() primitive. Removes the class attribute from an object.
-pub(crate) unsafe fn objects_do_unclass(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub(crate) fn objects_do_unclass(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         if args.is_null() || args == R_NilValue() {
             return R_NilValue();
@@ -49,7 +49,7 @@ pub(crate) unsafe fn objects_do_unclass(_call: SEXP, _op: SEXP, args: SEXP, _env
 
 /// Version of inherits() that supports S4 inheritance and implicit classes.
 /// Returns TRUE/FALSE as c_int.
-pub unsafe fn inherits2(x: SEXP, what: *const c_char) -> c_int {
+pub fn inherits2(x: SEXP, what: *const c_char) -> c_int {
     unsafe {
         if x.is_null() || what.is_null() {
             return FALSE;
@@ -85,7 +85,7 @@ pub unsafe fn inherits2(x: SEXP, what: *const c_char) -> c_int {
 ///
 /// If which is false, returns a single logical TRUE or FALSE.
 /// If which is true, returns an integer vector of length(what).
-pub(crate) unsafe fn inherits3(x: SEXP, what: SEXP, which: SEXP) -> SEXP {
+pub(crate) fn inherits3(x: SEXP, what: SEXP, which: SEXP) -> SEXP {
     unsafe {
         if x.is_null() || what.is_null() {
             return Rf_ScalarLogical(FALSE);
@@ -143,7 +143,7 @@ pub(crate) unsafe fn inherits3(x: SEXP, what: SEXP, which: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// GNU `base::nameOfClass(X)` — S3 generic used by inherits().
-unsafe fn nameOfClass(what: SEXP, env: SEXP) -> SEXP {
+fn nameOfClass(what: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let args = Rf_cons(what, R_NilValue());
         let _args = protect(args);
@@ -158,7 +158,7 @@ unsafe fn nameOfClass(what: SEXP, env: SEXP) -> SEXP {
 }
 
 /// GNU `nameOfClass <- function(x) UseMethod("nameOfClass")`
-pub unsafe fn do_nameOfClass(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_nameOfClass(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         crate::mainutils::base_wrappers::apply(
             "nameOfClass",
@@ -171,7 +171,7 @@ pub unsafe fn do_nameOfClass(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> S
 }
 
 /// GNU `nameOfClass.default <- function(x) NULL`
-pub unsafe fn do_nameOfClass_default(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_nameOfClass_default(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     R_NilValue()
 }
 
@@ -180,7 +180,7 @@ pub unsafe fn do_nameOfClass_default(_call: SEXP, _op: SEXP, _args: SEXP, _rho: 
 // ---------------------------------------------------------------------------
 
 /// R's inherits(x, what, which = FALSE) primitive.
-pub unsafe fn do_inherits(_call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub fn do_inherits(_call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         if args.is_null() {
             return Rf_ScalarLogical(FALSE);
@@ -222,7 +222,7 @@ pub unsafe fn do_inherits(_call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP
 
 /// R's class() function. Returns the class attribute of an object.
 /// Note: canonical version lives in print.rs
-pub(crate) unsafe fn do_class_objects(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub(crate) fn do_class_objects(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         if args.is_null() {
             return R_NilValue();
@@ -241,7 +241,7 @@ pub(crate) unsafe fn do_class_objects(_call: SEXP, _op: SEXP, args: SEXP, _env: 
 
 /// R's is.object() function. Returns TRUE if the object has an explicit class.
 /// Note: canonical version lives in attrib.rs
-pub(crate) unsafe fn do_isobject(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub(crate) fn do_isobject(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         if args.is_null() {
             return Rf_ScalarLogical(FALSE);
@@ -256,7 +256,7 @@ pub(crate) unsafe fn do_isobject(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP)
 // ---------------------------------------------------------------------------
 
 /// R's oldClass() function. Gets/sets the class attribute directly.
-pub unsafe fn do_oldClass(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub fn do_oldClass(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         if args.is_null() {
             return R_NilValue();
@@ -286,7 +286,7 @@ pub unsafe fn do_oldClass(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Internal function to get the dispatch environment.
-pub unsafe fn do_procdest(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_procdest(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     // Unimplemented: requires R methods package infrastructure
     {
         // proc.dest is used internally for debugging; simplified
@@ -299,7 +299,7 @@ pub unsafe fn do_procdest(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SE
 // ---------------------------------------------------------------------------
 
 /// R's isS4() function. Returns TRUE if the object has the S4 bit set.
-pub unsafe fn do_isS4(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_isS4(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         if args.is_null() {
             return Rf_ScalarLogical(FALSE);
@@ -314,8 +314,8 @@ pub unsafe fn do_isS4(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// R's asS4() function. Sets or unsets the S4 object bit.
-pub unsafe fn do_asS4(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
+pub fn do_asS4(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+     {
         if args.is_null() {
             error("invalid 'flag' argument");
         }
@@ -360,14 +360,14 @@ pub unsafe fn do_asS4(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 /// This low-level entry point should never silently succeed without a
 /// registered dispatcher: callers depend on dispatch either producing a method
 /// result or reporting that methods support is incomplete.
-pub unsafe fn R_S4_method_dispatch(
+pub fn R_S4_method_dispatch(
     _call: SEXP,
     _op: SEXP,
     _args: SEXP,
     _rho: SEXP,
     _method: SEXP,
 ) -> SEXP {
-    unsafe { error("S4 method dispatch is not available through this low-level entry point") }
+     { error("S4 method dispatch is not available through this low-level entry point") }
 }
 
 // ---------------------------------------------------------------------------
@@ -379,7 +379,7 @@ pub unsafe fn R_S4_method_dispatch(
 /// The evaluator registers the Rust-shaped implementation in
 /// `mainutils::essentials`; keep this symbol as a thin compatibility route so
 /// all class definitions land in the same session-local S4 registry.
-pub unsafe fn do_setClass(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub fn do_setClass(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         if args.is_null() || args == R_NilValue() {
             error("'Class' must name an S4 class");
@@ -393,8 +393,8 @@ pub unsafe fn do_setClass(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// setRefClass() is an R-level function from the methods package.
-pub unsafe fn do_setRefClass(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
-    unsafe { error("setRefClass is not implemented in this Rust runtime yet") }
+pub fn do_setRefClass(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+     { error("setRefClass is not implemented in this Rust runtime yet") }
 }
 
 // ---------------------------------------------------------------------------
@@ -403,7 +403,7 @@ pub unsafe fn do_setRefClass(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) ->
 
 /// Return the 0-based index of an is() match in a vector of class-name
 /// strings terminated by an empty string. Returns -1 for no match.
-pub unsafe fn R_check_class_and_super(x: SEXP, valid: *const *const c_char, _rho: SEXP) -> c_int {
+pub fn R_check_class_and_super(x: SEXP, valid: *const *const c_char, _rho: SEXP) -> c_int {
     unsafe {
         if x.is_null() || valid.is_null() {
             return -1;
@@ -437,6 +437,6 @@ pub unsafe fn R_check_class_and_super(x: SEXP, valid: *const *const c_char, _rho
 // R_check_class_etc -- simplified class check (no environment)
 // ---------------------------------------------------------------------------
 
-pub unsafe fn R_check_class_etc(x: SEXP, valid: *const *const c_char) -> c_int {
-    unsafe { R_check_class_and_super(x, valid, ptr::null_mut()) }
+pub fn R_check_class_etc(x: SEXP, valid: *const *const c_char) -> c_int {
+     { R_check_class_and_super(x, valid, ptr::null_mut()) }
 }

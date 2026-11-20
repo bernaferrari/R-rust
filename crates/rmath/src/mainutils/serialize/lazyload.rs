@@ -4,7 +4,7 @@ use super::*;
 // Lazy-load helpers (module-private)
 // ---------------------------------------------------------------------------
 
-pub unsafe fn CallHook(x: SEXP, fun: SEXP) -> SEXP {
+pub fn CallHook(x: SEXP, fun: SEXP) -> SEXP {
     unsafe {
         let _fun_guard = protect(fun);
         let _x_guard = protect(x);
@@ -15,8 +15,8 @@ pub unsafe fn CallHook(x: SEXP, fun: SEXP) -> SEXP {
     }
 }
 
-pub unsafe fn checkNotPromise(val: SEXP) -> SEXP {
-    unsafe {
+pub fn checkNotPromise(val: SEXP) -> SEXP {
+     {
         if TYPEOF(val) == SEXPTYPE::PROMSXP {
             error("cannot return a promise (PROMSXP) object");
         }
@@ -24,7 +24,7 @@ pub unsafe fn checkNotPromise(val: SEXP) -> SEXP {
     }
 }
 
-pub unsafe fn appendRawToFile(file: SEXP, bytes: SEXP) -> SEXP {
+pub fn appendRawToFile(file: SEXP, bytes: SEXP) -> SEXP {
     unsafe {
         let path = sexp_to_path(file);
         if TYPEOF(bytes) != SEXPTYPE::RAWSXP {
@@ -65,7 +65,7 @@ pub unsafe fn appendRawToFile(file: SEXP, bytes: SEXP) -> SEXP {
     }
 }
 
-pub unsafe fn readRawFromFile(file: SEXP, key: SEXP) -> SEXP {
+pub fn readRawFromFile(file: SEXP, key: SEXP) -> SEXP {
     unsafe {
         let owner =
             crate::sexp::owner::OwnerToken::current().unwrap_or_else(|e| error(&e.to_string()));
@@ -173,14 +173,14 @@ pub unsafe fn readRawFromFile(file: SEXP, key: SEXP) -> SEXP {
     }
 }
 
-pub unsafe fn R_lazyLoadDBinsertValue(
+pub fn R_lazyLoadDBinsertValue(
     value: SEXP,
     file: SEXP,
     ascii: SEXP,
     compsxp: SEXP,
     hook: SEXP,
 ) -> SEXP {
-    unsafe {
+     {
         let mut data = R_serialize(value, R_NilValue(), ascii, R_NilValue(), hook);
         let compress = asInteger(compsxp);
         if compress == 3 {
@@ -194,7 +194,7 @@ pub unsafe fn R_lazyLoadDBinsertValue(
     }
 }
 
-pub unsafe fn R_getVarsFromFrame(vars: SEXP, env: SEXP, forcesxp: SEXP) -> SEXP {
+pub fn R_getVarsFromFrame(vars: SEXP, env: SEXP, forcesxp: SEXP) -> SEXP {
     unsafe {
         if TYPEOF(env) == SEXPTYPE::NILSXP {
             error("use of NULL environment is defunct");

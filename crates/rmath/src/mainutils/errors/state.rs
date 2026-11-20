@@ -438,7 +438,7 @@ pub(super) fn set_restart_stack(val: SEXP) {
 }
 
 /// Get the current error buffer contents as a string.
-pub unsafe fn R_curErrorBuf() -> *const c_char {
+pub fn R_curErrorBuf() -> *const c_char {
     with_error_state(|state| state.error_buffer.as_ptr() as *const c_char)
 }
 
@@ -496,7 +496,7 @@ pub(super) fn set_rendered_error_buffer(
 }
 
 /// Set the error message buffer (C FFI).
-pub unsafe fn R_SetErrmessage_c(s: *const c_char) {
+pub fn R_SetErrmessage_c(s: *const c_char) {
     unsafe {
         if s.is_null() {
             return;

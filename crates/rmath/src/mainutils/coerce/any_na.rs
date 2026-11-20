@@ -25,7 +25,7 @@ pub fn any_na_impl(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> bool {
     let tail = args.try_cdr().expect("anyNA argument tail");
     let recursive = if is_list(&x) && !tail.is_nil() {
         let flag = tail.try_car().expect("anyNA recursive flag");
-        let result = unsafe { super::asRbool(flag.as_raw(), call) != 0 };
+        let result =  { super::asRbool(flag.as_raw(), call) != 0 };
         check();
         result
     } else {
@@ -205,7 +205,7 @@ impl NestedDispatch<'_, '_> {
         let answer = factory.wrap(answer).expect("anyNA nested dispatch result");
         // GNU's recursive dispatch checks the integer result of asLogical.
         // FALSE falls through to the default traversal and NA short-circuits.
-        let found = unsafe { super::asLogical(answer.as_raw()) } != 0;
+        let found =  { super::asLogical(answer.as_raw()) } != 0;
         check();
         found
     }

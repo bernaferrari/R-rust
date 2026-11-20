@@ -12,7 +12,7 @@ pub struct membuf_st {
     pub buf: *mut u8,
 }
 
-pub unsafe fn resize_buffer(mb: *mut membuf_st, needed: R_size_t) {
+pub fn resize_buffer(mb: *mut membuf_st, needed: R_size_t) {
     unsafe {
         if mb.is_null() {
             return;
@@ -41,7 +41,7 @@ pub unsafe fn resize_buffer(mb: *mut membuf_st, needed: R_size_t) {
     }
 }
 
-pub unsafe extern "C" fn OutCharMem(stream: R_outpstream_t, c: c_int) {
+pub extern "C" fn OutCharMem(stream: R_outpstream_t, c: c_int) {
     unsafe {
         if stream.is_null() {
             return;
@@ -60,7 +60,7 @@ pub unsafe extern "C" fn OutCharMem(stream: R_outpstream_t, c: c_int) {
     }
 }
 
-pub unsafe extern "C" fn OutBytesMem(stream: R_outpstream_t, buf: *const c_void, length: c_int) {
+pub extern "C" fn OutBytesMem(stream: R_outpstream_t, buf: *const c_void, length: c_int) {
     unsafe {
         if stream.is_null() || buf.is_null() || length <= 0 {
             return;
@@ -84,7 +84,7 @@ pub unsafe extern "C" fn OutBytesMem(stream: R_outpstream_t, buf: *const c_void,
     }
 }
 
-pub unsafe extern "C" fn InCharMem(stream: R_inpstream_t) -> c_int {
+pub extern "C" fn InCharMem(stream: R_inpstream_t) -> c_int {
     unsafe {
         if stream.is_null() {
             return -1;
@@ -102,7 +102,7 @@ pub unsafe extern "C" fn InCharMem(stream: R_inpstream_t) -> c_int {
     }
 }
 
-pub unsafe extern "C" fn InBytesMem(stream: R_inpstream_t, buf: *mut c_void, length: c_int) {
+pub extern "C" fn InBytesMem(stream: R_inpstream_t, buf: *mut c_void, length: c_int) {
     unsafe {
         if stream.is_null() || buf.is_null() || length <= 0 {
             return;
@@ -119,7 +119,7 @@ pub unsafe extern "C" fn InBytesMem(stream: R_inpstream_t, buf: *mut c_void, len
     }
 }
 
-pub unsafe fn InitMemInPStream(
+pub fn InitMemInPStream(
     stream: R_inpstream_t,
     mb: *mut membuf_st,
     buf: *mut c_void,
@@ -146,7 +146,7 @@ pub unsafe fn InitMemInPStream(
     }
 }
 
-pub unsafe fn InitMemOutPStream(
+pub fn InitMemOutPStream(
     stream: R_outpstream_t,
     mb: *mut membuf_st,
     type_: R_pstream_format_t,
@@ -174,7 +174,7 @@ pub unsafe fn InitMemOutPStream(
     }
 }
 
-pub unsafe fn CloseMemOutPStream(stream: R_outpstream_t) -> SEXP {
+pub fn CloseMemOutPStream(stream: R_outpstream_t) -> SEXP {
     unsafe {
         if stream.is_null() {
             error("cannot allocate buffer");
@@ -193,7 +193,7 @@ pub unsafe fn CloseMemOutPStream(stream: R_outpstream_t) -> SEXP {
     }
 }
 
-pub unsafe fn free_mem_buffer(data: *mut c_void) {
+pub fn free_mem_buffer(data: *mut c_void) {
     unsafe {
         if data.is_null() {
             return;
@@ -210,7 +210,7 @@ pub unsafe fn free_mem_buffer(data: *mut c_void) {
 // Buffer-connection operations
 // ---------------------------------------------------------------------------
 
-pub unsafe fn InitBConOutPStream(
+pub fn InitBConOutPStream(
     stream: R_outpstream_t,
     bbs: *mut c_void,
     con: *mut c_void,
@@ -219,7 +219,7 @@ pub unsafe fn InitBConOutPStream(
     phook: Option<unsafe extern "C" fn(SEXP, SEXP) -> SEXP>,
     pdata: SEXP,
 ) {
-    unsafe {
+     {
         if !bbs.is_null() {
             R_InitOutPStream(
                 stream,
@@ -246,7 +246,7 @@ pub unsafe fn InitBConOutPStream(
     }
 }
 
-pub unsafe fn flush_bcon_buffer(bbs: *mut c_void) {
+pub fn flush_bcon_buffer(bbs: *mut c_void) {
     unsafe {
         if !bbs.is_null() {
             let fp = bbs as *mut RFile;
@@ -259,7 +259,7 @@ pub unsafe fn flush_bcon_buffer(bbs: *mut c_void) {
 // File I/O callbacks
 // ---------------------------------------------------------------------------
 
-pub unsafe extern "C" fn OutCharFile(stream: R_outpstream_t, c: c_int) {
+pub extern "C" fn OutCharFile(stream: R_outpstream_t, c: c_int) {
     unsafe {
         if stream.is_null() {
             return;
@@ -272,7 +272,7 @@ pub unsafe extern "C" fn OutCharFile(stream: R_outpstream_t, c: c_int) {
     }
 }
 
-pub unsafe extern "C" fn OutBytesFile(stream: R_outpstream_t, buf: *const c_void, length: c_int) {
+pub extern "C" fn OutBytesFile(stream: R_outpstream_t, buf: *const c_void, length: c_int) {
     unsafe {
         if stream.is_null() || buf.is_null() || length <= 0 {
             return;
@@ -288,7 +288,7 @@ pub unsafe extern "C" fn OutBytesFile(stream: R_outpstream_t, buf: *const c_void
     }
 }
 
-pub unsafe extern "C" fn InCharFile(stream: R_inpstream_t) -> c_int {
+pub extern "C" fn InCharFile(stream: R_inpstream_t) -> c_int {
     unsafe {
         if stream.is_null() {
             return -1;
@@ -301,7 +301,7 @@ pub unsafe extern "C" fn InCharFile(stream: R_inpstream_t) -> c_int {
     }
 }
 
-pub unsafe extern "C" fn InBytesFile(stream: R_inpstream_t, buf: *mut c_void, length: c_int) {
+pub extern "C" fn InBytesFile(stream: R_inpstream_t, buf: *mut c_void, length: c_int) {
     unsafe {
         if stream.is_null() || buf.is_null() || length <= 0 {
             return;
@@ -317,8 +317,8 @@ pub unsafe extern "C" fn InBytesFile(stream: R_inpstream_t, buf: *mut c_void, le
     }
 }
 
-pub unsafe fn InInit(stream: R_inpstream_t, buf: *mut c_void, length: c_int) {
-    unsafe {
+pub fn InInit(stream: R_inpstream_t, buf: *mut c_void, length: c_int) {
+     {
         if !stream.is_null() && !buf.is_null() && length > 0 {
             InBytesFile(stream, buf, length);
         }
@@ -329,7 +329,7 @@ pub unsafe fn InInit(stream: R_inpstream_t, buf: *mut c_void, length: c_int) {
 // Connection I/O
 // ---------------------------------------------------------------------------
 
-pub unsafe fn R_WriteConnection(con: *mut c_void, buf: *const c_void, n: usize) -> usize {
+pub fn R_WriteConnection(con: *mut c_void, buf: *const c_void, n: usize) -> usize {
     unsafe {
         if con.is_null() || buf.is_null() || n == 0 {
             return 0;

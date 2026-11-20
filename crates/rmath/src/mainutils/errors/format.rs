@@ -29,7 +29,7 @@ unsafe extern "C" {
 /// `format_varargs`). Mirror that contract: copy the format string as the
 /// final message, honoring the size/truncation-return semantics.
 #[cfg(target_arch = "wasm32")]
-pub(super) unsafe fn vsnprintf_c(
+pub(super) fn vsnprintf_c(
     buf: *mut c_char,
     size: usize,
     format: *const c_char,
@@ -60,7 +60,7 @@ pub fn wd(buf: &str) -> usize {
 }
 
 /// Display width from C string.
-pub(super) unsafe fn wd_c(s: *const c_char) -> usize {
+pub(super) fn wd_c(s: *const c_char) -> usize {
     unsafe {
         if s.is_null() {
             return 0;
@@ -124,7 +124,7 @@ pub(super) fn print_trunc(buf: &mut [u8; BUFSIZE + 1], truncated: bool) {
 /// Note: The `ap` parameter is only meaningful when called from C code that passes
 /// a real va_list. When called from Rust, ap is typically null and the format
 /// string should be pre-formatted.
-pub(super) unsafe fn format_varargs(format: *const c_char, ap: *mut c_void) -> String {
+pub(super) fn format_varargs(format: *const c_char, ap: *mut c_void) -> String {
     unsafe {
         if format.is_null() {
             return String::new();
@@ -153,7 +153,7 @@ pub(super) unsafe fn format_varargs(format: *const c_char, ap: *mut c_void) -> S
 
 /// Format a printf-style format string with variadic arguments into a buffer.
 /// Uses C's vsnprintf via FFI. Returns (formatted_string, was_truncated).
-pub(super) unsafe fn format_varargs_to_buf(
+pub(super) fn format_varargs_to_buf(
     format: *const c_char,
     ap: *mut c_void,
 ) -> (String, bool) {

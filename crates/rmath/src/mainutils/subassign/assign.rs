@@ -27,7 +27,7 @@ use crate::mainutils::essentials::{elt_real_safe, elt_to_string};
 
 // ---------------------------------------------------------------------------
 // Exported functions
-unsafe fn value_deletes_columns(value: SEXP) -> bool {
+fn value_deletes_columns(value: SEXP) -> bool {
     unsafe {
         if value.is_null() || value == R_NilValue() {
             return true;
@@ -45,7 +45,7 @@ unsafe fn value_deletes_columns(value: SEXP) -> bool {
     }
 }
 
-unsafe fn drop_data_frame_columns(frame: SEXP, index: SEXP) -> SEXP {
+fn drop_data_frame_columns(frame: SEXP, index: SEXP) -> SEXP {
     unsafe {
         let ncol = XLENGTH(frame);
         let mut drop = vec![false; ncol as usize];
@@ -112,7 +112,7 @@ unsafe fn drop_data_frame_columns(frame: SEXP, index: SEXP) -> SEXP {
     }
 }
 
-unsafe fn data_frame_assign_cells(frame: SEXP, subs: SEXP, value: SEXP) -> Option<SEXP> {
+fn data_frame_assign_cells(frame: SEXP, subs: SEXP, value: SEXP) -> Option<SEXP> {
     unsafe {
         let ncol = XLENGTH(frame);
         if ncol == 0 || value.is_null() || value == R_NilValue() {
@@ -381,7 +381,7 @@ unsafe fn data_frame_assign_cells(frame: SEXP, subs: SEXP, value: SEXP) -> Optio
         Some(frame)
     }
 }
-unsafe fn lengthen_with_na(col: SEXP, n: i64) -> SEXP {
+fn lengthen_with_na(col: SEXP, n: i64) -> SEXP {
     unsafe {
         if col.is_null() || n <= XLENGTH(col) {
             return col;
@@ -433,7 +433,7 @@ unsafe fn lengthen_with_na(col: SEXP, n: i64) -> SEXP {
     }
 }
 
-unsafe fn data_frame_assign_matrix(frame: SEXP, index: SEXP, value: SEXP) -> Option<SEXP> {
+fn data_frame_assign_matrix(frame: SEXP, index: SEXP, value: SEXP) -> Option<SEXP> {
     unsafe {
         let dim =
             crate::sexp::attrib_core::getAttrib(index, crate::sexp::attrib_core::R_DimSymbol());
@@ -456,7 +456,7 @@ unsafe fn data_frame_assign_matrix(frame: SEXP, index: SEXP, value: SEXP) -> Opt
     }
 }
 
-unsafe fn subscript_positions(index: SEXP, n: i64) -> Option<Vec<i64>> {
+fn subscript_positions(index: SEXP, n: i64) -> Option<Vec<i64>> {
     unsafe {
         if index.is_null() || index == R_NilValue() || index == crate::sexp::globals::R_MissingArg()
         {
@@ -499,7 +499,7 @@ unsafe fn subscript_positions(index: SEXP, n: i64) -> Option<Vec<i64>> {
     }
 }
 
-unsafe fn column_positions(frame: SEXP, index: SEXP) -> Option<Vec<i64>> {
+fn column_positions(frame: SEXP, index: SEXP) -> Option<Vec<i64>> {
     unsafe {
         if index.is_null() || index == R_NilValue() || index == crate::sexp::globals::R_MissingArg()
         {
@@ -531,7 +531,7 @@ unsafe fn column_positions(frame: SEXP, index: SEXP) -> Option<Vec<i64>> {
     }
 }
 
-unsafe fn assign_column_rows(col: SEXP, rows: &[i64], value: SEXP, value_len: i64) -> SEXP {
+fn assign_column_rows(col: SEXP, rows: &[i64], value: SEXP, value_len: i64) -> SEXP {
     unsafe {
         let col = crate::mainutils::duplicate::shallow_duplicate(col);
         let levels =
@@ -582,26 +582,24 @@ unsafe fn assign_column_rows(col: SEXP, rows: &[i64], value: SEXP, value_len: i6
 // ---------------------------------------------------------------------------
 
 /// Port of `do_subassign()` -- the `[<-` operator.
-pub(crate) unsafe fn do_subassign(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let mut ans: SEXP = ptr::null_mut();
-        if R_DispatchOrEvalSP(
-            call,
-            op,
-            b"[<-\0".as_ptr() as *const c_char,
-            args,
-            rho,
-            &mut ans,
-        ) != 0
-        {
-            return ans;
-        }
-        do_subassign_dflt(call, op, ans, rho)
+pub(crate) fn do_subassign(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    let mut ans: SEXP = ptr::null_mut();
+    if R_DispatchOrEvalSP(
+        call,
+        op,
+        b"[<-\0".as_ptr() as *const c_char,
+        args,
+        rho,
+        &mut ans,
+    ) != 0
+    {
+        return ans;
     }
+    do_subassign_dflt(call, op, ans, rho)
 }
 
 /// Port of `do_subassign_dflt()` -- default `[<-` implementation.
-pub unsafe fn do_subassign_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_subassign_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let _ = op;
         let _args_guard = protect(args);
@@ -749,26 +747,24 @@ pub unsafe fn do_subassign_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> 
 }
 
 /// Port of `do_subassign2()` -- the `[[<-` operator.
-pub(crate) unsafe fn do_subassign2(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let mut ans: SEXP = ptr::null_mut();
-        if R_DispatchOrEvalSP(
-            call,
-            op,
-            b"[[<-\0".as_ptr() as *const c_char,
-            args,
-            rho,
-            &mut ans,
-        ) != 0
-        {
-            return ans;
-        }
-        do_subassign2_dflt(call, op, ans, rho)
+pub(crate) fn do_subassign2(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    let mut ans: SEXP = ptr::null_mut();
+    if R_DispatchOrEvalSP(
+        call,
+        op,
+        b"[[<-\0".as_ptr() as *const c_char,
+        args,
+        rho,
+        &mut ans,
+    ) != 0
+    {
+        return ans;
     }
+    do_subassign2_dflt(call, op, ans, rho)
 }
 
 /// Port of `do_subassign2_dflt()` -- default `[[<-` implementation.
-pub unsafe fn do_subassign2_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_subassign2_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let _ = op;
         use crate::eval::attrib_core::R_DimNamesSymbol;

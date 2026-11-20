@@ -18,7 +18,7 @@ struct TraceFrame {
     srcref: Option<crate::sexp::object::Sexp<'static>>,
 }
 
-unsafe fn traceback_frames(
+fn traceback_frames(
     instance: *mut crate::sexp::instance::RInstance,
     skip: c_int,
 ) -> Vec<TraceFrame> {
@@ -70,7 +70,7 @@ unsafe fn traceback_frames(
     }
 }
 
-unsafe fn own_trace_value(
+fn own_trace_value(
     instance: *mut crate::sexp::instance::RInstance,
     value: SEXP,
 ) -> Option<crate::sexp::object::Sexp<'static>> {
@@ -94,7 +94,7 @@ fn trace_projection(value: Option<&crate::sexp::object::Sexp<'static>>) -> SEXP 
 
 /// R_GetTracebackOnly — return traceback without deparsing calls.
 /// Ported from errors.c R_GetTracebackOnly().
-pub unsafe fn R_GetTracebackOnly(skip: c_int) -> SEXP {
+pub fn R_GetTracebackOnly(skip: c_int) -> SEXP {
     unsafe {
         let instance = crate::sexp::instance::with_required_current_instance(|instance| instance);
         let pin = crate::sexp::context::pin_context_owner_in(instance);
@@ -136,7 +136,7 @@ pub unsafe fn R_GetTracebackOnly(skip: c_int) -> SEXP {
 /// Runtime traceback publication bypasses user-facing base binding locks,
 /// as GNU's internal base-symbol write does. Each graph and the original
 /// runtime remain owned through the one allocating step.
-unsafe fn publish_error_traceback(trace: SEXP) {
+fn publish_error_traceback(trace: SEXP) {
     let owner = unsafe { crate::sexp::owner::OwnerToken::current() }
         .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
     let _pin = owner
@@ -199,7 +199,7 @@ unsafe fn publish_error_traceback(trace: SEXP) {
     }
 }
 
-pub unsafe fn save_error_traceback() {
+pub fn save_error_traceback() {
     unsafe {
         let trace = R_GetTracebackOnly(0);
         if trace.is_null()
@@ -223,7 +223,7 @@ pub unsafe fn save_error_traceback() {
 
 /// R_ConciseTraceback — return a concise call chain as a string.
 /// Ported from errors.c R_ConciseTraceback().
-pub unsafe fn R_ConciseTraceback(call: SEXP, skip: c_int) -> String {
+pub fn R_ConciseTraceback(call: SEXP, skip: c_int) -> String {
     unsafe {
         let instance = crate::sexp::instance::with_required_current_instance(|instance| instance);
         let _pin = crate::sexp::context::pin_context_owner_in(instance);
@@ -282,8 +282,8 @@ pub unsafe fn R_ConciseTraceback(call: SEXP, skip: c_int) -> String {
 }
 
 /// do_traceback — traceback().
-pub unsafe fn do_traceback(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_traceback(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+     {
         checkArity(op, args);
         let skip = crate::mainutils::coerce::asInteger(CAR(args));
         if skip == crate::sexp::ffi::NA_INTEGER || skip < 0 {
@@ -298,7 +298,7 @@ pub unsafe fn do_traceback(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
 // ---------------------------------------------------------------------------
 
 /// R_GetCurrentSrcref — get the current source reference.
-pub unsafe fn R_GetCurrentSrcref(skip: c_int) -> SEXP {
+pub fn R_GetCurrentSrcref(skip: c_int) -> SEXP {
     {
         // Simplified: no source references in Rust port yet
         globals::R_NilValue()
@@ -306,7 +306,7 @@ pub unsafe fn R_GetCurrentSrcref(skip: c_int) -> SEXP {
 }
 
 /// R_GetSrcFilename — get source filename from a srcref.
-pub unsafe fn R_GetSrcFilename(_srcref: SEXP) -> SEXP {
+pub fn R_GetSrcFilename(_srcref: SEXP) -> SEXP {
     unsafe { Rf_mkString(b"\x00".as_ptr() as *const c_char) }
 }
 

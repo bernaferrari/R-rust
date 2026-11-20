@@ -57,7 +57,7 @@ impl Drop for PrimitiveStatusGuard {
 // ---------------------------------------------------------------------------
 
 /// Set or query the primitive method table for a given operation.
-pub unsafe fn do_set_prim_method(
+pub fn do_set_prim_method(
     op: SEXP,
     code_string: *const c_char,
     fundef: SEXP,
@@ -149,7 +149,7 @@ pub unsafe fn do_set_prim_method(
 }
 
 /// R_set_prim_method -- public API for setting primitive methods.
-pub unsafe fn R_set_prim_method(
+pub fn R_set_prim_method(
     fname: SEXP,
     mut op: SEXP,
     code_vec: SEXP,
@@ -210,8 +210,8 @@ pub unsafe fn R_set_prim_method(
 }
 
 /// R_primitive_methods -- get the methods list for a primitive.
-pub unsafe fn R_primitive_methods(op: SEXP) -> SEXP {
-    unsafe {
+pub fn R_primitive_methods(op: SEXP) -> SEXP {
+     {
         let Some(offset) = primitive_offset(op) else {
             return R_NilValue();
         };
@@ -221,14 +221,14 @@ pub unsafe fn R_primitive_methods(op: SEXP) -> SEXP {
                 .get(offset)
                 .and_then(RuntimeValue::owned)
                 .map(|value| value.as_raw())
-                .unwrap_or_else(|| unsafe { R_NilValue() })
+                .unwrap_or_else(||  { R_NilValue() })
         })
     }
 }
 
 /// R_primitive_generic -- get the generic function for a primitive.
-pub unsafe fn R_primitive_generic(op: SEXP) -> SEXP {
-    unsafe {
+pub fn R_primitive_generic(op: SEXP) -> SEXP {
+     {
         let Some(offset) = primitive_offset(op) else {
             return R_NilValue();
         };
@@ -238,14 +238,14 @@ pub unsafe fn R_primitive_generic(op: SEXP) -> SEXP {
                 .get(offset)
                 .and_then(RuntimeValue::owned)
                 .map(|value| value.as_raw())
-                .unwrap_or_else(|| unsafe { R_NilValue() })
+                .unwrap_or_else(||  { R_NilValue() })
         })
     }
 }
 
 /// R_has_methods -- check whether methods might exist for this op.
-pub unsafe fn R_has_methods(_op: SEXP) -> c_int {
-    unsafe {
+pub fn R_has_methods(_op: SEXP) -> c_int {
+     {
         let ptr = R_get_standardGeneric_ptr();
         if ptr.is_none() {
             return FALSE;
@@ -273,10 +273,10 @@ pub unsafe fn R_has_methods(_op: SEXP) -> c_int {
 }
 
 /// R_deferred_default_method -- return the deferred default method marker.
-pub unsafe fn R_deferred_default_method() -> SEXP {
+pub fn R_deferred_default_method() -> SEXP {
     with_objects_runtime(|access| {
         if let Some(marker) =
-            unsafe { objects_state_in(access, |state| state.deferred_default_object.owned()) }?
+             { objects_state_in(access, |state| state.deferred_default_object.owned()) }?
         {
             return Ok(marker.as_raw());
         }
@@ -284,7 +284,7 @@ pub unsafe fn R_deferred_default_method() -> SEXP {
             let raw = unsafe { Rf_install(c"__Deferred_Default_Marker__".as_ptr()) };
             owner.sexp(raw)?.into_owned()
         })?;
-        let marker = unsafe {
+        let marker =  {
             objects_state_in(access, |state| {
                 if state.deferred_default_object.is_null() {
                     state.deferred_default_object = RuntimeValue::from_owned(marker);
@@ -300,7 +300,7 @@ pub unsafe fn R_deferred_default_method() -> SEXP {
 }
 
 /// R_set_quick_method_check -- set the quick method check function pointer.
-pub unsafe fn R_set_quick_method_check(_value: R_stdGen_ptr_t) {
+pub fn R_set_quick_method_check(_value: R_stdGen_ptr_t) {
     with_objects_state(|state| {
         state.quick_method_check_ptr = _value;
     });
@@ -310,7 +310,7 @@ pub unsafe fn R_set_quick_method_check(_value: R_stdGen_ptr_t) {
 ///
 /// Main entry point for S4 method dispatch on primitive functions.
 /// Ported from objects.c:1610-1696.
-pub unsafe fn R_possible_dispatch(
+pub fn R_possible_dispatch(
     call: SEXP,
     op: SEXP,
     args: SEXP,
@@ -318,13 +318,13 @@ pub unsafe fn R_possible_dispatch(
     promisedArgs: c_int,
 ) -> SEXP {
     with_objects_runtime(|access| {
-        let result = unsafe { possible_dispatch_in(access, call, op, args, rho, promisedArgs) };
+        let result =  { possible_dispatch_in(access, call, op, args, rho, promisedArgs) };
         access.require_active()?;
         Ok(result)
     })
 }
 
-unsafe fn possible_dispatch_in(
+fn possible_dispatch_in(
     access: &crate::sexp::owner::RuntimeAccess,
     call: SEXP,
     op: SEXP,
@@ -561,7 +561,7 @@ unsafe fn possible_dispatch_in(
     }
 }
 
-unsafe fn get_primitive_methods(
+fn get_primitive_methods(
     access: &crate::sexp::owner::RuntimeAccess,
     op: SEXP,
     rho: SEXP,

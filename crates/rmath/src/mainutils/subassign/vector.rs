@@ -30,7 +30,7 @@ use super::*;
 
 /// Port of `getNames()` -- retrieves names attribute from a vector,
 /// deferring to getAttrib if a 'dim' attribute is present.
-pub(crate) unsafe fn getNames(x: SEXP) -> SEXP {
+pub(crate) fn getNames(x: SEXP) -> SEXP {
     unsafe {
         use crate::eval::attrib_core::R_DimSymbol;
 
@@ -57,7 +57,7 @@ pub(crate) unsafe fn getNames(x: SEXP) -> SEXP {
 
 /// Port of `EnlargeVector()` -- changes vector length to newlen,
 /// allowing assignment past the end of a vector.
-pub(crate) unsafe fn EnlargeVector(x: SEXP, newlen: R_xlen_t) -> SEXP {
+pub(crate) fn EnlargeVector(x: SEXP, newlen: R_xlen_t) -> SEXP {
     unsafe {
         let len = XLENGTH(x);
         if !super::support::MAYBE_SHARED(x)
@@ -179,7 +179,7 @@ pub(crate) unsafe fn EnlargeVector(x: SEXP, newlen: R_xlen_t) -> SEXP {
 }
 
 /// Port of `EnlargeNames()` -- grows a names attribute vector.
-pub(crate) unsafe fn EnlargeNames(names: SEXP, len: R_xlen_t, newlen: R_xlen_t) -> SEXP {
+pub(crate) fn EnlargeNames(names: SEXP, len: R_xlen_t, newlen: R_xlen_t) -> SEXP {
     unsafe {
         if TYPEOF(names) != STRSXP || XLENGTH(names) != len {
             // Error case - just return names unchanged
@@ -196,7 +196,7 @@ pub(crate) unsafe fn EnlargeNames(names: SEXP, len: R_xlen_t, newlen: R_xlen_t) 
 
 /// Port of `embedInVector()` -- embeds a non-vector in a list for
 /// SubassignTypeFix (used for S4 objects).
-pub(crate) unsafe fn embedInVector(v: SEXP, _call: SEXP) -> SEXP {
+pub(crate) fn embedInVector(v: SEXP, _call: SEXP) -> SEXP {
     unsafe {
         let ans = Rf_allocVector3(VECSXP, 1);
         let _ans_guard = protect(ans);
@@ -206,7 +206,7 @@ pub(crate) unsafe fn embedInVector(v: SEXP, _call: SEXP) -> SEXP {
 }
 
 /// Port of `dispatch_asvector()` -- DispatchOrEval("as.vector") on *x.
-pub(crate) unsafe fn dispatch_asvector(x: *mut SEXP, call: SEXP, rho: SEXP) -> bool {
+pub(crate) fn dispatch_asvector(x: *mut SEXP, call: SEXP, rho: SEXP) -> bool {
     unsafe {
         if x.is_null() || (*x).is_null() {
             return false;
@@ -238,7 +238,7 @@ pub(crate) unsafe fn dispatch_asvector(x: *mut SEXP, call: SEXP, rho: SEXP) -> b
 
 /// Port of `SubassignTypeFix()` -- coerces LHS/RHS to compatible types
 /// for subassignment. Returns the type code `100 * TYPEOF(x) + TYPEOF(y)`.
-pub(crate) unsafe fn SubassignTypeFix(
+pub(crate) fn SubassignTypeFix(
     x: *mut SEXP,
     y: *mut SEXP,
     stretch: R_xlen_t,
@@ -375,7 +375,7 @@ pub(crate) unsafe fn SubassignTypeFix(
 }
 
 /// Port of `gi()` -- gets an index value from an integer or real subscript vector.
-pub(crate) unsafe fn gi(indx: SEXP, i: R_xlen_t) -> R_xlen_t {
+pub(crate) fn gi(indx: SEXP, i: R_xlen_t) -> R_xlen_t {
     unsafe {
         if TYPEOF(indx) == REALSXP {
             let d = REAL_ELT(indx, i as c_int);
@@ -391,7 +391,7 @@ pub(crate) unsafe fn gi(indx: SEXP, i: R_xlen_t) -> R_xlen_t {
 }
 
 /// Port of `DeleteListElements()` -- removes specified elements from a vector list.
-pub(crate) unsafe fn DeleteListElements(x: SEXP, which: SEXP) -> SEXP {
+pub(crate) fn DeleteListElements(x: SEXP, which: SEXP) -> SEXP {
     unsafe {
         let len = XLENGTH(x);
         let lenw = XLENGTH(which);
@@ -447,7 +447,7 @@ pub(crate) unsafe fn DeleteListElements(x: SEXP, which: SEXP) -> SEXP {
 }
 
 /// Port of `VECTOR_ELT_FIX_NAMED()` -- sets NAMED=NAMEDMAX if needed for PR15098.
-pub(crate) unsafe fn VECTOR_ELT_FIX_NAMED(y: SEXP, i: R_xlen_t) -> SEXP {
+pub(crate) fn VECTOR_ELT_FIX_NAMED(y: SEXP, i: R_xlen_t) -> SEXP {
     unsafe {
         let val = VECTOR_ELT(y, i);
         if NAMED(y) != 0 || NAMED(val) != 0 {
@@ -462,7 +462,7 @@ pub(crate) unsafe fn VECTOR_ELT_FIX_NAMED(y: SEXP, i: R_xlen_t) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Port of `VectorAssign()` -- handles `x[s] <- y` for vectors.
-pub(crate) unsafe fn VectorAssign(call: SEXP, rho: SEXP, x: SEXP, s: SEXP, y: SEXP) -> SEXP {
+pub(crate) fn VectorAssign(call: SEXP, rho: SEXP, x: SEXP, s: SEXP, y: SEXP) -> SEXP {
     unsafe {
         if crate::mainutils::subset::is_data_frame(x)
             && TYPEOF(s) == SEXPTYPE::STRSXP

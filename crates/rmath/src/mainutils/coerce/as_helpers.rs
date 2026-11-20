@@ -8,14 +8,14 @@ use super::*;
 ///
 /// This is R's `asLogical()` from coerce.c. Returns NA_LOGICAL for
 /// empty vectors, and dispatches based on the vector's type.
-pub unsafe fn asLogical(x: SEXP) -> c_int {
-    unsafe { asLogical2(x, 0, R_NilValue()) }
+pub fn asLogical(x: SEXP) -> c_int {
+     { asLogical2(x, 0, R_NilValue()) }
 }
 
 /// Convert the first element of a vector to a logical value, with length checking.
 ///
 /// This is R's `asLogical2()` from coerce.c.
-pub unsafe fn asLogical2(x: SEXP, checking: c_int, call: SEXP) -> c_int {
+pub fn asLogical2(x: SEXP, checking: c_int, call: SEXP) -> c_int {
     unsafe {
         let mut warn: c_int = 0;
 
@@ -53,7 +53,7 @@ pub unsafe fn asLogical2(x: SEXP, checking: c_int, call: SEXP) -> c_int {
 /// Convert the first element of a vector to an integer value.
 ///
 /// This is R's `asInteger()` from coerce.c.
-pub unsafe fn asInteger(x: SEXP) -> c_int {
+pub fn asInteger(x: SEXP) -> c_int {
     unsafe {
         let mut warn: c_int = 0;
 
@@ -90,7 +90,7 @@ pub unsafe fn asInteger(x: SEXP) -> c_int {
 /// Convert the first element of a vector to a real (double) value.
 ///
 /// This is R's `asReal()` from coerce.c.
-pub unsafe fn asReal(x: SEXP) -> c_double {
+pub fn asReal(x: SEXP) -> c_double {
     unsafe {
         let mut warn: c_int = 0;
 
@@ -132,7 +132,7 @@ pub fn isReal(x: SEXP) -> c_int {
 /// Convert the first element of a vector to a complex value.
 ///
 /// This is R's `asComplex()` from coerce.c.
-pub unsafe fn asComplex(x: SEXP) -> Rcomplex {
+pub fn asComplex(x: SEXP) -> Rcomplex {
     unsafe {
         let mut warn: c_int = 0;
         let mut z = Rcomplex {
@@ -185,8 +185,8 @@ pub unsafe fn asComplex(x: SEXP) -> Rcomplex {
 ///
 /// This follows the same pattern as asInteger/asReal, returning 0 for
 /// out-of-range or NA values.
-pub unsafe fn asRaw(x: SEXP) -> Rbyte {
-    unsafe {
+pub fn asRaw(x: SEXP) -> Rbyte {
+     {
         if isVectorAtomic(x) && xlength(x) >= 1 {
             let val = asInteger(x);
             if val == NA_INTEGER || val < 0 || val > 255 {
@@ -204,8 +204,8 @@ pub unsafe fn asRaw(x: SEXP) -> Rbyte {
 
 /// Coerce to Rboolean (c_int), erroring on NA_LOGICAL.
 /// This matches R's asRboolean() from coerce.c.
-pub unsafe fn asRbool(x: SEXP, call: SEXP) -> c_int {
-    unsafe {
+pub fn asRbool(x: SEXP, call: SEXP) -> c_int {
+     {
         let ans = asLogical2(x, 1, call);
         if ans == NA_LOGICAL {
             errorcall(call, "NA in coercion to boolean");
@@ -216,8 +216,8 @@ pub unsafe fn asRbool(x: SEXP, call: SEXP) -> c_int {
 
 /// Coerce to bool, erroring on NA_LOGICAL.
 /// This matches R's asBool() from coerce.c.
-pub unsafe fn asBool(x: SEXP) -> c_int {
-    unsafe {
+pub fn asBool(x: SEXP) -> c_int {
+     {
         let ans = asLogical2(x, 1, R_NilValue());
         if ans == NA_LOGICAL {
             error("NA in coercion to boolean");
@@ -233,7 +233,7 @@ pub unsafe fn asBool(x: SEXP) -> c_int {
 /// Convert a factor to a character vector using its levels.
 ///
 /// This is R's `asCharacterFactor()` from coerce.c.
-pub unsafe fn asCharacterFactor(x: SEXP) -> SEXP {
+pub fn asCharacterFactor(x: SEXP) -> SEXP {
     unsafe {
         let n = xlength(x);
         let labels = getAttrib(x, R_LevelsSymbol());

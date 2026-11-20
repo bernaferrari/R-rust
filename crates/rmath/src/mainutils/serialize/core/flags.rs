@@ -39,7 +39,7 @@ pub fn PackFlags(type_: c_int, levs: c_int, isobj: c_int, hasattr: c_int, hastag
     val
 }
 
-pub unsafe fn UnpackFlags(
+pub fn UnpackFlags(
     flags: c_int,
     ptype: *mut c_int,
     plevs: *mut c_int,
@@ -75,7 +75,7 @@ pub unsafe fn UnpackFlags(
 /// Our `SETLEVELS` only keeps JIT bits (gp 0..1). GNU writes the full
 /// LEVELS word, including S4 (gp bit 4). Methods lazy-load stores
 /// standardGeneric / MethodDefinition as CLOSXP with that bit set.
-pub(crate) unsafe fn restore_serialized_gp(s: SEXP, levs: c_int, isobj: c_int) {
+pub(crate) fn restore_serialized_gp(s: SEXP, levs: c_int, isobj: c_int) {
     unsafe {
         SETLEVELS(s, levs);
         if isobj != 0 {
@@ -100,7 +100,7 @@ pub(crate) fn altrep_symbol_name(sym: SEXP) -> String {
     }
 }
 
-pub(crate) unsafe fn altrep_state_triple(state: SEXP) -> Result<(f64, f64, f64), String> {
+pub(crate) fn altrep_state_triple(state: SEXP) -> Result<(f64, f64, f64), String> {
     unsafe {
         if state.is_null() {
             return Err("invalid ALTREP compact sequence state".into());
@@ -117,7 +117,7 @@ pub(crate) unsafe fn altrep_state_triple(state: SEXP) -> Result<(f64, f64, f64),
     }
 }
 
-pub(crate) unsafe fn expand_compact_intseq(state: SEXP) -> Result<SEXP, String> {
+pub(crate) fn expand_compact_intseq(state: SEXP) -> Result<SEXP, String> {
     unsafe {
         let (n, first, incr) = altrep_state_triple(state)?;
         if n < 0.0 || n > i32::MAX as f64 {
@@ -141,7 +141,7 @@ pub(crate) unsafe fn expand_compact_intseq(state: SEXP) -> Result<SEXP, String> 
     }
 }
 
-pub(crate) unsafe fn expand_compact_realseq(state: SEXP) -> Result<SEXP, String> {
+pub(crate) fn expand_compact_realseq(state: SEXP) -> Result<SEXP, String> {
     unsafe {
         let (n, first, incr) = altrep_state_triple(state)?;
         if n < 0.0 || n > i32::MAX as f64 {
@@ -163,7 +163,7 @@ pub(crate) unsafe fn expand_compact_realseq(state: SEXP) -> Result<SEXP, String>
     }
 }
 
-pub(crate) unsafe fn expand_deferred_string(state: SEXP) -> Result<SEXP, String> {
+pub(crate) fn expand_deferred_string(state: SEXP) -> Result<SEXP, String> {
     use crate::sexp::object::SexpMut;
 
     // Capture both edges before the first allocation: formatting and character
@@ -277,7 +277,7 @@ pub(crate) unsafe fn expand_deferred_string(state: SEXP) -> Result<SEXP, String>
     Ok(result.as_raw())
 }
 
-pub(crate) unsafe fn altrep_unserialize_ex(
+pub(crate) fn altrep_unserialize_ex(
     info: SEXP,
     state: SEXP,
     attr: SEXP,

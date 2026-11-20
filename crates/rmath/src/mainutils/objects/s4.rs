@@ -12,7 +12,7 @@ use super::*;
 // S4 class infrastructure
 // ---------------------------------------------------------------------------
 
-pub(crate) unsafe fn sexp_to_string(x: SEXP) -> Option<String> {
+pub(crate) fn sexp_to_string(x: SEXP) -> Option<String> {
     unsafe {
         if x.is_null() || x == R_NilValue() {
             return None;
@@ -91,7 +91,7 @@ pub(crate) fn make_class_by_name(name: &str) -> crate::sexp::object::Sexp<'stati
     }
 }
 
-pub unsafe fn R_do_new_object(class_def: SEXP) -> SEXP {
+pub fn R_do_new_object(class_def: SEXP) -> SEXP {
     unsafe {
         if class_def.is_null() {
             error("C level NEW macro called with null class definition pointer");
@@ -140,7 +140,7 @@ pub unsafe fn R_do_new_object(class_def: SEXP) -> SEXP {
 // S4 object manipulation
 // ---------------------------------------------------------------------------
 
-pub unsafe fn R_seemsOldStyleS4Object(object: SEXP) -> c_int {
+pub fn R_seemsOldStyleS4Object(object: SEXP) -> c_int {
     unsafe {
         if object.is_null() {
             return FALSE;
@@ -164,7 +164,7 @@ pub unsafe fn R_seemsOldStyleS4Object(object: SEXP) -> c_int {
     }
 }
 
-pub unsafe fn isS4(s: SEXP) -> c_int {
+pub fn isS4(s: SEXP) -> c_int {
     {
         if s.is_null() {
             return FALSE;
@@ -173,7 +173,7 @@ pub unsafe fn isS4(s: SEXP) -> c_int {
     }
 }
 
-pub unsafe fn asS4(s: SEXP, flag: c_int, complete: c_int) -> SEXP {
+pub fn asS4(s: SEXP, flag: c_int, complete: c_int) -> SEXP {
     unsafe {
         if s.is_null() {
             return s;
@@ -256,21 +256,21 @@ pub unsafe fn asS4(s: SEXP, flag: c_int, complete: c_int) -> SEXP {
 ///
 /// This is the equivalent of R's `R_allocObject()` — the constructor behind
 /// `.OBJSXP()`, as used e.g. by S7.
-pub unsafe fn R_allocObject() -> SEXP {
+pub fn R_allocObject() -> SEXP {
     unsafe { crate::sexp::memory_ext::allocSExp(SEXPTYPE::OBJSXP) }
 }
 
 /// R's `.OBJSXP()` — a bare OBJSXP object without the S4 bit.
-pub unsafe fn do_objsxp(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
-    unsafe { R_allocObject() }
+pub fn do_objsxp(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+     { R_allocObject() }
 }
 
 // ---------------------------------------------------------------------------
 // do_setS4Object -- internal .setS4Object()
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_setS4Object(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
+pub fn do_setS4Object(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+     {
         if args.is_null() {
             return R_NilValue();
         }

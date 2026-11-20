@@ -23,7 +23,7 @@ fn checked<T>(result: SexpResult<T>) -> T {
     result.unwrap_or_else(|e| context::r_error(e.to_string()))
 }
 
-pub(super) unsafe fn error_buffer_entry(op: SEXP, args: SEXP, write: bool) -> SEXP {
+pub(super) fn error_buffer_entry(op: SEXP, args: SEXP, write: bool) -> SEXP {
     let owner = checked(unsafe { OwnerToken::current() });
     let _pin = checked(owner.pin());
     let op = checked(owner.sexp(op).and_then(Sexp::into_owned));
@@ -35,7 +35,7 @@ pub(super) unsafe fn error_buffer_entry(op: SEXP, args: SEXP, write: bool) -> SE
         &weak,
         |access| -> SexpResult<Sexp<'static>> {
             access.with_native(|original| {
-                unsafe { super::checkArity(op.as_raw(), args.as_raw()) };
+                 { super::checkArity(op.as_raw(), args.as_raw()) };
                 original.require_active()
             })?;
             if write {
@@ -74,7 +74,7 @@ pub(crate) fn raise_owned_diagnostic(
         |access| -> SexpResult<()> {
             let _message = diagnostic.message(access)?;
             let (call, names, class) = access.with_native(|original| {
-                let call = unsafe { super::R_getCurrentCall() };
+                let call =  { super::R_getCurrentCall() };
                 let call = if call.is_null() {
                     access.domain().nil()
                 } else {
@@ -91,7 +91,7 @@ pub(crate) fn raise_owned_diagnostic(
             })?;
             let condition = diagnostic.condition(access, &call, &names, &class)?;
             access.with_native(|original| {
-                unsafe {
+                 {
                     super::conditions::signal_simple_error(
                         access,
                         &diagnostic,
@@ -336,7 +336,7 @@ pub fn try_catch_owned(
     }
 }
 
-pub(crate) unsafe fn catch_native(
+pub(crate) fn catch_native(
     body: Option<NativeBody>,
     bdata: *mut c_void,
     classes: SEXP,
@@ -414,7 +414,7 @@ pub(super) fn dispatch_calling_handler(handler: SEXP, condition: SEXP) -> bool {
     true
 }
 
-pub(crate) unsafe fn calling_native(
+pub(crate) fn calling_native(
     body: Option<NativeBody>,
     bdata: *mut c_void,
     handler: Option<NativeHandler>,
@@ -482,10 +482,10 @@ mod tests {
                 .unwrap();
         }
     }
-    unsafe extern "C-unwind" fn body_error(_: *mut c_void) -> SEXP {
+    extern "C-unwind" fn body_error(_: *mut c_void) -> SEXP {
         context::r_error("native body error")
     }
-    unsafe extern "C-unwind" fn body_rendered_error(_: *mut c_void) -> SEXP {
+    extern "C-unwind" fn body_rendered_error(_: *mut c_void) -> SEXP {
         unsafe {
             super::super::errorcall(
                 crate::sexp::globals::R_NilValue(),
@@ -494,7 +494,7 @@ mod tests {
         }
         unreachable!()
     }
-    unsafe extern "C-unwind" fn handler_collects(condition: SEXP, data: *mut c_void) -> SEXP {
+    extern "C-unwind" fn handler_collects(condition: SEXP, data: *mut c_void) -> SEXP {
         let condition = unsafe { context::own_control_value(condition) };
         let message = condition
             .try_vector_elt(0)
@@ -518,7 +518,7 @@ mod tests {
         );
         condition.as_raw()
     }
-    unsafe extern "C-unwind" fn finally_collects(data: *mut c_void) {
+    extern "C-unwind" fn finally_collects(data: *mut c_void) {
         unsafe { &*data.cast::<Trace>() }.collect("finally");
     }
     fn trace(session: &RSession) -> Trace {
@@ -657,7 +657,7 @@ mod tests {
         trace: Trace,
         exit_only: i32,
     }
-    unsafe extern "C-unwind" fn body_typed_error(data: *mut c_void) -> SEXP {
+    extern "C-unwind" fn body_typed_error(data: *mut c_void) -> SEXP {
         unsafe {
             let factory = OwnerToken::current().unwrap().node_factory();
             let condition = context::own_control_value(super::super::R_makeErrorCondition(
@@ -689,7 +689,7 @@ mod tests {
         }
         unreachable!("typed native error must exit")
     }
-    unsafe fn check_typed_condition(
+    fn check_typed_condition(
         condition: SEXP,
         data: *mut c_void,
         event: &'static str,
@@ -723,18 +723,18 @@ mod tests {
         );
         condition.as_raw()
     }
-    unsafe extern "C-unwind" fn typed_calling(condition: SEXP, data: *mut c_void) -> SEXP {
+    extern "C-unwind" fn typed_calling(condition: SEXP, data: *mut c_void) -> SEXP {
         unsafe { check_typed_condition(condition, data, "calling") }
     }
-    unsafe extern "C-unwind" fn typed_exiting(condition: SEXP, data: *mut c_void) -> SEXP {
+    extern "C-unwind" fn typed_exiting(condition: SEXP, data: *mut c_void) -> SEXP {
         unsafe { check_typed_condition(condition, data, "exiting") }
     }
-    unsafe extern "C-unwind" fn typed_finally(data: *mut c_void) {
+    extern "C-unwind" fn typed_finally(data: *mut c_void) {
         unsafe { &*data.cast::<TypedTrace>() }
             .trace
             .collect("finally");
     }
-    unsafe extern "C-unwind" fn body_calling_typed(data: *mut c_void) -> SEXP {
+    extern "C-unwind" fn body_calling_typed(data: *mut c_void) -> SEXP {
         unsafe {
             super::super::R_withCallingErrorHandler(
                 Some(body_typed_error),
@@ -851,7 +851,7 @@ mod tests {
         assert!(owner.pin().is_err());
     }
 
-    unsafe extern "C-unwind" fn capture_calling_handler(data: *mut c_void) -> SEXP {
+    extern "C-unwind" fn capture_calling_handler(data: *mut c_void) -> SEXP {
         let handler = unsafe {
             super::super::conditions::ENTRY_HANDLER(crate::sexp::accessors::CAR(
                 super::super::handler_stack(),
@@ -892,7 +892,7 @@ mod tests {
             );
         });
     }
-    unsafe extern "C-unwind" fn body_return(data: *mut c_void) -> SEXP {
+    extern "C-unwind" fn body_return(data: *mut c_void) -> SEXP {
         let value = unsafe { *data.cast::<SEXP>() };
         let ticket = unsafe { context::return_transfer(std::ptr::null_mut(), value) };
         std::panic::panic_any(RSignal::Return(ticket));

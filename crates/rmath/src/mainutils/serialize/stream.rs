@@ -4,7 +4,7 @@ use super::*;
 // Basic output routines (C stream-based, module-private)
 // ---------------------------------------------------------------------------
 
-pub unsafe fn OutInteger(stream: R_outpstream_t, i: c_int) {
+pub fn OutInteger(stream: R_outpstream_t, i: c_int) {
     unsafe {
         if stream.is_null() {
             return;
@@ -16,7 +16,7 @@ pub unsafe fn OutInteger(stream: R_outpstream_t, i: c_int) {
     }
 }
 
-pub unsafe fn OutReal(stream: R_outpstream_t, d: c_double) {
+pub fn OutReal(stream: R_outpstream_t, d: c_double) {
     unsafe {
         if stream.is_null() {
             return;
@@ -28,14 +28,14 @@ pub unsafe fn OutReal(stream: R_outpstream_t, d: c_double) {
     }
 }
 
-pub unsafe fn OutComplex(stream: R_outpstream_t, c: Rcomplex) {
-    unsafe {
+pub fn OutComplex(stream: R_outpstream_t, c: Rcomplex) {
+     {
         OutReal(stream, c.r);
         OutReal(stream, c.i);
     }
 }
 
-pub unsafe fn OutByte(stream: R_outpstream_t, i: Rbyte) {
+pub fn OutByte(stream: R_outpstream_t, i: Rbyte) {
     unsafe {
         if stream.is_null() {
             return;
@@ -46,7 +46,7 @@ pub unsafe fn OutByte(stream: R_outpstream_t, i: Rbyte) {
     }
 }
 
-pub unsafe fn OutString(stream: R_outpstream_t, s: *const c_char, length: c_int) {
+pub fn OutString(stream: R_outpstream_t, s: *const c_char, length: c_int) {
     unsafe {
         if stream.is_null() || s.is_null() || length <= 0 {
             return;
@@ -57,7 +57,7 @@ pub unsafe fn OutString(stream: R_outpstream_t, s: *const c_char, length: c_int)
     }
 }
 
-pub unsafe fn OutFormat(stream: R_outpstream_t) {
+pub fn OutFormat(stream: R_outpstream_t) {
     unsafe {
         if stream.is_null() {
             return;
@@ -89,7 +89,7 @@ pub unsafe fn OutFormat(stream: R_outpstream_t) {
 // Basic input routines (C stream-based, module-private)
 // ---------------------------------------------------------------------------
 
-pub unsafe fn InInteger(stream: R_inpstream_t) -> c_int {
+pub fn InInteger(stream: R_inpstream_t) -> c_int {
     unsafe {
         if stream.is_null() {
             return 0;
@@ -106,7 +106,7 @@ pub unsafe fn InInteger(stream: R_inpstream_t) -> c_int {
     }
 }
 
-pub unsafe fn InReal(stream: R_inpstream_t) -> c_double {
+pub fn InReal(stream: R_inpstream_t) -> c_double {
     unsafe {
         if stream.is_null() {
             return 0.0;
@@ -123,8 +123,8 @@ pub unsafe fn InReal(stream: R_inpstream_t) -> c_double {
     }
 }
 
-pub unsafe fn InComplex(stream: R_inpstream_t) -> Rcomplex {
-    unsafe {
+pub fn InComplex(stream: R_inpstream_t) -> Rcomplex {
+     {
         Rcomplex {
             r: InReal(stream),
             i: InReal(stream),
@@ -132,7 +132,7 @@ pub unsafe fn InComplex(stream: R_inpstream_t) -> Rcomplex {
     }
 }
 
-pub unsafe fn InString(stream: R_inpstream_t, buf: *mut c_char, length: c_int) {
+pub fn InString(stream: R_inpstream_t, buf: *mut c_char, length: c_int) {
     unsafe {
         if stream.is_null() || buf.is_null() || length <= 0 {
             return;
@@ -143,14 +143,14 @@ pub unsafe fn InString(stream: R_inpstream_t, buf: *mut c_char, length: c_int) {
     }
 }
 
-pub unsafe fn InWord(stream: R_inpstream_t, buf: *mut c_char, size: c_int) {
-    unsafe {
+pub fn InWord(stream: R_inpstream_t, buf: *mut c_char, size: c_int) {
+     {
         // Simplified: just read size bytes
         InString(stream, buf, size);
     }
 }
 
-pub unsafe fn InFormat(stream: R_inpstream_t) {
+pub fn InFormat(stream: R_inpstream_t) {
     unsafe {
         if stream.is_null() {
             return;
@@ -208,14 +208,14 @@ pub unsafe fn InFormat(stream: R_inpstream_t) {
 // Hash table for write reference tracking (C SEXP-based, for C API)
 // ---------------------------------------------------------------------------
 
-pub unsafe fn MakeHashTable() -> SEXP {
+pub fn MakeHashTable() -> SEXP {
     unsafe {
         let vec = Rf_allocVector3(SEXPTYPE::VECSXP, HASHSIZE as R_xlen_t);
         Rf_cons(Rf_ScalarInteger(0), vec)
     }
 }
 
-pub unsafe fn HashAdd(obj: SEXP, ht: SEXP) {
+pub fn HashAdd(obj: SEXP, ht: SEXP) {
     unsafe {
         if ht.is_null() || TYPEOF(ht) != SEXPTYPE::LISTSXP {
             return;
@@ -243,7 +243,7 @@ pub unsafe fn HashAdd(obj: SEXP, ht: SEXP) {
     }
 }
 
-pub unsafe fn HashGet(item: SEXP, ht: SEXP) -> c_int {
+pub fn HashGet(item: SEXP, ht: SEXP) -> c_int {
     unsafe {
         if ht.is_null() || TYPEOF(ht) != SEXPTYPE::LISTSXP {
             return 0;
@@ -277,7 +277,7 @@ pub unsafe fn HashGet(item: SEXP, ht: SEXP) -> c_int {
 // Persistent name / special hooks
 // ---------------------------------------------------------------------------
 
-pub unsafe fn GetPersistentName(stream: R_outpstream_t, s: SEXP) -> SEXP {
+pub fn GetPersistentName(stream: R_outpstream_t, s: SEXP) -> SEXP {
     unsafe {
         if stream.is_null() {
             error("read error");
@@ -299,7 +299,7 @@ pub unsafe fn GetPersistentName(stream: R_outpstream_t, s: SEXP) -> SEXP {
     }
 }
 
-pub unsafe fn PersistentRestore(stream: R_inpstream_t, s: SEXP) -> SEXP {
+pub fn PersistentRestore(stream: R_inpstream_t, s: SEXP) -> SEXP {
     unsafe {
         if stream.is_null() {
             error("read error");
@@ -311,16 +311,16 @@ pub unsafe fn PersistentRestore(stream: R_inpstream_t, s: SEXP) -> SEXP {
     }
 }
 
-pub unsafe fn SaveSpecialHookItem(item: SEXP) -> c_int {
-    unsafe { SaveSpecialHook(item) }
+pub fn SaveSpecialHookItem(item: SEXP) -> c_int {
+     { SaveSpecialHook(item) }
 }
 
 // ---------------------------------------------------------------------------
 // Length writing
 // ---------------------------------------------------------------------------
 
-pub unsafe fn WriteLENGTH(stream: R_outpstream_t, s: SEXP) {
-    unsafe {
+pub fn WriteLENGTH(stream: R_outpstream_t, s: SEXP) {
+     {
         OutInteger(stream, LENGTH(s));
     }
 }
@@ -329,7 +329,7 @@ pub unsafe fn WriteLENGTH(stream: R_outpstream_t, s: SEXP) {
 // Vector serialization (C stream-based, module-private)
 // ---------------------------------------------------------------------------
 
-pub unsafe fn OutStringVec(stream: R_outpstream_t, s: SEXP, ref_table: SEXP) {
+pub fn OutStringVec(stream: R_outpstream_t, s: SEXP, ref_table: SEXP) {
     unsafe {
         let len = XLENGTH(s);
         OutInteger(stream, 0);
@@ -341,7 +341,7 @@ pub unsafe fn OutStringVec(stream: R_outpstream_t, s: SEXP, ref_table: SEXP) {
     }
 }
 
-pub unsafe fn InStringVec(stream: R_inpstream_t, ref_table: SEXP) -> SEXP {
+pub fn InStringVec(stream: R_inpstream_t, ref_table: SEXP) -> SEXP {
     unsafe {
         if InInteger(stream) != 0 {
             error("names in persistent strings are not supported yet");
@@ -405,7 +405,7 @@ pub unsafe fn InStringVec(stream: R_inpstream_t, ref_table: SEXP) -> SEXP {
     }
 }
 
-pub unsafe fn OutIntegerVec(stream: R_outpstream_t, s: SEXP, length: R_xlen_t) {
+pub fn OutIntegerVec(stream: R_outpstream_t, s: SEXP, length: R_xlen_t) {
     unsafe {
         let int_data = INTEGER(s);
         for i in 0..length as isize {
@@ -414,7 +414,7 @@ pub unsafe fn OutIntegerVec(stream: R_outpstream_t, s: SEXP, length: R_xlen_t) {
     }
 }
 
-pub unsafe fn InIntegerVec(stream: R_inpstream_t, obj: SEXP, length: R_xlen_t) {
+pub fn InIntegerVec(stream: R_inpstream_t, obj: SEXP, length: R_xlen_t) {
     unsafe {
         let int_data = INTEGER(obj);
         for i in 0..length as isize {
@@ -423,7 +423,7 @@ pub unsafe fn InIntegerVec(stream: R_inpstream_t, obj: SEXP, length: R_xlen_t) {
     }
 }
 
-pub unsafe fn OutRealVec(stream: R_outpstream_t, s: SEXP, length: R_xlen_t) {
+pub fn OutRealVec(stream: R_outpstream_t, s: SEXP, length: R_xlen_t) {
     unsafe {
         let real_data = REAL(s);
         for i in 0..length as isize {
@@ -432,7 +432,7 @@ pub unsafe fn OutRealVec(stream: R_outpstream_t, s: SEXP, length: R_xlen_t) {
     }
 }
 
-pub unsafe fn InRealVec(stream: R_inpstream_t, obj: SEXP, length: R_xlen_t) {
+pub fn InRealVec(stream: R_inpstream_t, obj: SEXP, length: R_xlen_t) {
     unsafe {
         let real_data = REAL(obj);
         for i in 0..length as isize {
@@ -441,7 +441,7 @@ pub unsafe fn InRealVec(stream: R_inpstream_t, obj: SEXP, length: R_xlen_t) {
     }
 }
 
-pub unsafe fn OutComplexVec(stream: R_outpstream_t, s: SEXP, length: R_xlen_t) {
+pub fn OutComplexVec(stream: R_outpstream_t, s: SEXP, length: R_xlen_t) {
     unsafe {
         let cpx_data = COMPLEX(s);
         for i in 0..length as isize {
@@ -451,7 +451,7 @@ pub unsafe fn OutComplexVec(stream: R_outpstream_t, s: SEXP, length: R_xlen_t) {
     }
 }
 
-pub unsafe fn InComplexVec(stream: R_inpstream_t, obj: SEXP, length: R_xlen_t) {
+pub fn InComplexVec(stream: R_inpstream_t, obj: SEXP, length: R_xlen_t) {
     unsafe {
         let cpx_data = COMPLEX(obj);
         for i in 0..length as isize {
@@ -464,7 +464,7 @@ pub unsafe fn InComplexVec(stream: R_inpstream_t, obj: SEXP, length: R_xlen_t) {
 // Bytecode serialization helpers
 // ---------------------------------------------------------------------------
 
-pub unsafe fn WriteBC(s: SEXP, ref_table: SEXP, stream: R_outpstream_t) {
+pub fn WriteBC(s: SEXP, ref_table: SEXP, stream: R_outpstream_t) {
     unsafe {
         let _ = ref_table;
         if stream.is_null() {
@@ -490,7 +490,7 @@ pub unsafe fn WriteBC(s: SEXP, ref_table: SEXP, stream: R_outpstream_t) {
     }
 }
 
-pub unsafe fn ReadBC(ref_table: SEXP, stream: R_inpstream_t) -> SEXP {
+pub fn ReadBC(ref_table: SEXP, stream: R_inpstream_t) -> SEXP {
     unsafe {
         let _ = ref_table;
         if stream.is_null() {
@@ -524,7 +524,7 @@ pub unsafe fn ReadBC(ref_table: SEXP, stream: R_inpstream_t) -> SEXP {
 // Character conversion and reading
 // ---------------------------------------------------------------------------
 
-pub unsafe fn ReadChar(stream: R_inpstream_t, buf: *mut c_char, length: c_int, levs: c_int) {
+pub fn ReadChar(stream: R_inpstream_t, buf: *mut c_char, length: c_int, levs: c_int) {
     unsafe {
         InString(stream, buf, length);
         if !buf.is_null() && length >= 0 {
@@ -537,14 +537,14 @@ pub unsafe fn ReadChar(stream: R_inpstream_t, buf: *mut c_char, length: c_int, l
 // Read reference table (C SEXP-based)
 // ---------------------------------------------------------------------------
 
-pub unsafe fn MakeReadRefTable() -> SEXP {
+pub fn MakeReadRefTable() -> SEXP {
     unsafe {
         let data = Rf_allocVector3(SEXPTYPE::VECSXP, INITIAL_REFREAD_TABLE_SIZE as R_xlen_t);
         Rf_cons(data, Rf_ScalarInteger(0))
     }
 }
 
-pub unsafe fn GetReadRef(table: SEXP, index: c_int) -> SEXP {
+pub fn GetReadRef(table: SEXP, index: c_int) -> SEXP {
     unsafe {
         if table.is_null() || TYPEOF(table) != SEXPTYPE::LISTSXP || index <= 0 {
             error("reference index out of range");
@@ -561,7 +561,7 @@ pub unsafe fn GetReadRef(table: SEXP, index: c_int) -> SEXP {
     }
 }
 
-pub unsafe fn AddReadRef(table: SEXP, value: SEXP) {
+pub fn AddReadRef(table: SEXP, value: SEXP) {
     unsafe {
         if table.is_null() || TYPEOF(table) != SEXPTYPE::LISTSXP {
             return;
@@ -595,6 +595,6 @@ pub unsafe fn AddReadRef(table: SEXP, value: SEXP) {
 // R_InitSerializeRoutines
 // ---------------------------------------------------------------------------
 
-pub unsafe fn R_InitSerializeRoutines() {
+pub fn R_InitSerializeRoutines() {
     // all routines are statically available.
 }

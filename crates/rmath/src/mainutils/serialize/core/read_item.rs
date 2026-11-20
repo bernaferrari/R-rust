@@ -11,14 +11,14 @@ pub(crate) enum ReadContext {
     PromiseExpression,
 }
 
-pub unsafe fn ReadItemInternal(
+pub fn ReadItemInternal(
     reader: &mut BinaryReader,
     ref_table: &mut ReadRefTable,
 ) -> Result<SEXP, String> {
-    unsafe { read_item_in_context(reader, ref_table, ReadContext::Data) }
+     { read_item_in_context(reader, ref_table, ReadContext::Data) }
 }
 
-pub(crate) unsafe fn read_item_in_context(
+pub(crate) fn read_item_in_context(
     reader: &mut BinaryReader,
     ref_table: &mut ReadRefTable,
     context: ReadContext,
@@ -29,7 +29,7 @@ pub(crate) unsafe fn read_item_in_context(
         return Err("read error: serialized object nesting exceeds 128 levels".into());
     }
     reader.item_depth += 1;
-    let result = unsafe { read_item_body(reader, ref_table, context) };
+    let result =  { read_item_body(reader, ref_table, context) };
     reader.item_depth -= 1;
     result
 }
@@ -39,7 +39,7 @@ pub(crate) unsafe fn read_item_in_context(
 /// allocating two additional R nodes for every imported closure.
 type ImportedMetadata = [crate::sexp::object::Sexp<'static>; 2];
 
-unsafe fn imported_bytecode_metadata() -> Result<Option<ImportedMetadata>, String> {
+fn imported_bytecode_metadata() -> Result<Option<ImportedMetadata>, String> {
     use crate::sexp::{instance::RuntimeValue, object::SexpError, owner::OwnerToken};
     let owner = unsafe { OwnerToken::current() }.map_err(|e| e.to_string())?;
     if owner.weak_owner().is_none() {
@@ -98,7 +98,7 @@ unsafe fn imported_bytecode_metadata() -> Result<Option<ImportedMetadata>, Strin
 // Read GNU compiler constants completely and retain the instruction stream in
 // an explicitly tagged internal BCODESXP. Standalone GNU bytecode remains
 // rejected below; this path is reached only for executable closure bodies or promise expressions.
-pub(crate) unsafe fn read_bc_source(
+pub(crate) fn read_bc_source(
     reader: &mut BinaryReader,
     refs: &mut ReadRefTable,
     reps: SEXP,
@@ -209,7 +209,7 @@ pub(crate) unsafe fn read_bc_source(
     result
 }
 
-pub(crate) unsafe fn read_bc_language(
+pub(crate) fn read_bc_language(
     kind: i32,
     reader: &mut BinaryReader,
     refs: &mut ReadRefTable,
@@ -273,7 +273,7 @@ pub(crate) unsafe fn read_bc_language(
     reader.item_depth -= 1;
     result
 }
-pub(crate) unsafe fn read_packed_string_vec(
+pub(crate) fn read_packed_string_vec(
     reader: &mut BinaryReader,
     ref_table: &mut ReadRefTable,
 ) -> Result<SEXP, String> {
@@ -309,7 +309,7 @@ pub(crate) fn first_string_elt(names: SEXP) -> String {
     }
 }
 
-pub(crate) unsafe fn read_promise(
+pub(crate) fn read_promise(
     reader: &mut BinaryReader,
     ref_table: &mut ReadRefTable,
     hasattr: i32,
@@ -392,12 +392,12 @@ pub(crate) struct ItemFlags {
 }
 
 #[inline(never)]
-pub(crate) unsafe fn read_item_body(
+pub(crate) fn read_item_body(
     reader: &mut BinaryReader,
     ref_table: &mut ReadRefTable,
     context: ReadContext,
 ) -> Result<SEXP, String> {
-    unsafe {
+     {
         let packed = reader.read_i32()?;
         let mut flags = ItemFlags {
             stype: 0,
@@ -424,7 +424,7 @@ pub(crate) unsafe fn read_item_body(
 }
 
 #[inline(never)]
-pub(crate) unsafe fn read_list_item(
+pub(crate) fn read_list_item(
     reader: &mut BinaryReader,
     ref_table: &mut ReadRefTable,
     flags: ItemFlags,
@@ -457,7 +457,7 @@ pub(crate) unsafe fn read_list_item(
 }
 
 #[inline(never)]
-pub(crate) unsafe fn read_closure_item(
+pub(crate) fn read_closure_item(
     reader: &mut BinaryReader,
     ref_table: &mut ReadRefTable,
     flags: ItemFlags,
@@ -487,7 +487,7 @@ pub(crate) unsafe fn read_closure_item(
 }
 
 #[inline(never)]
-pub(crate) unsafe fn read_references_item(
+pub(crate) fn read_references_item(
     reader: &mut BinaryReader,
     ref_table: &mut ReadRefTable,
     flags: ItemFlags,
@@ -545,7 +545,7 @@ pub(crate) unsafe fn read_references_item(
 }
 
 #[inline(never)]
-pub(crate) unsafe fn read_remaining_item(
+pub(crate) fn read_remaining_item(
     reader: &mut BinaryReader,
     ref_table: &mut ReadRefTable,
     packed: c_int,
@@ -623,7 +623,7 @@ pub(crate) unsafe fn read_remaining_item(
 }
 
 #[inline(never)]
-pub(crate) unsafe fn read_weakref_item(
+pub(crate) fn read_weakref_item(
     reader: &mut BinaryReader,
     ref_table: &mut ReadRefTable,
     item: ItemFlags,
@@ -653,7 +653,7 @@ pub(crate) unsafe fn read_weakref_item(
 }
 
 #[inline(never)]
-pub(crate) unsafe fn read_persistent_item(
+pub(crate) fn read_persistent_item(
     reader: &mut BinaryReader,
     ref_table: &mut ReadRefTable,
     item: ItemFlags,
@@ -728,7 +728,7 @@ pub(crate) unsafe fn read_persistent_item(
 }
 
 #[inline(never)]
-pub(crate) unsafe fn read_namespace_item(
+pub(crate) fn read_namespace_item(
     reader: &mut BinaryReader,
     ref_table: &mut ReadRefTable,
     item: ItemFlags,
@@ -752,7 +752,7 @@ pub(crate) unsafe fn read_namespace_item(
 }
 
 #[inline(never)]
-pub(crate) unsafe fn read_environment_item(
+pub(crate) fn read_environment_item(
     reader: &mut BinaryReader,
     ref_table: &mut ReadRefTable,
     item: ItemFlags,
@@ -827,7 +827,7 @@ pub(crate) unsafe fn read_environment_item(
 }
 
 #[inline(never)]
-pub(crate) unsafe fn read_symbol_item(
+pub(crate) fn read_symbol_item(
     reader: &mut BinaryReader,
     ref_table: &mut ReadRefTable,
     item: ItemFlags,
@@ -842,7 +842,7 @@ pub(crate) unsafe fn read_symbol_item(
 }
 
 #[inline(never)]
-pub(crate) unsafe fn read_character_item(
+pub(crate) fn read_character_item(
     reader: &mut BinaryReader,
     _ref_table: &mut ReadRefTable,
     item: ItemFlags,
@@ -868,7 +868,7 @@ pub(crate) unsafe fn read_character_item(
 }
 
 #[inline(never)]
-pub(crate) unsafe fn read_integer_item(
+pub(crate) fn read_integer_item(
     reader: &mut BinaryReader,
     ref_table: &mut ReadRefTable,
     item: ItemFlags,
@@ -909,7 +909,7 @@ pub(crate) unsafe fn read_integer_item(
 }
 
 #[inline(never)]
-pub(crate) unsafe fn read_real_item(
+pub(crate) fn read_real_item(
     reader: &mut BinaryReader,
     ref_table: &mut ReadRefTable,
     item: ItemFlags,
@@ -938,7 +938,7 @@ pub(crate) unsafe fn read_real_item(
 }
 
 #[inline(never)]
-pub(crate) unsafe fn read_complex_item(
+pub(crate) fn read_complex_item(
     reader: &mut BinaryReader,
     ref_table: &mut ReadRefTable,
     item: ItemFlags,
@@ -969,7 +969,7 @@ pub(crate) unsafe fn read_complex_item(
 }
 
 #[inline(never)]
-pub(crate) unsafe fn read_strings_item(
+pub(crate) fn read_strings_item(
     reader: &mut BinaryReader,
     ref_table: &mut ReadRefTable,
     item: ItemFlags,
@@ -1013,7 +1013,7 @@ pub(crate) unsafe fn read_strings_item(
 }
 
 #[inline(never)]
-pub(crate) unsafe fn read_raw_item(
+pub(crate) fn read_raw_item(
     reader: &mut BinaryReader,
     ref_table: &mut ReadRefTable,
     item: ItemFlags,
@@ -1041,7 +1041,7 @@ pub(crate) unsafe fn read_raw_item(
 }
 
 #[inline(never)]
-pub(crate) unsafe fn read_bytecode_source_item(
+pub(crate) fn read_bytecode_source_item(
     reader: &mut BinaryReader,
     ref_table: &mut ReadRefTable,
     item: ItemFlags,
@@ -1059,7 +1059,7 @@ pub(crate) unsafe fn read_bytecode_source_item(
 }
 
 #[inline(never)]
-pub(crate) unsafe fn read_bytecode_item(
+pub(crate) fn read_bytecode_item(
     reader: &mut BinaryReader,
     ref_table: &mut ReadRefTable,
     item: ItemFlags,
@@ -1090,7 +1090,7 @@ pub(crate) unsafe fn read_bytecode_item(
 }
 
 #[inline(never)]
-pub(crate) unsafe fn read_primitive_item(
+pub(crate) fn read_primitive_item(
     reader: &mut BinaryReader,
     _ref_table: &mut ReadRefTable,
     item: ItemFlags,
@@ -1116,7 +1116,7 @@ pub(crate) unsafe fn read_primitive_item(
 }
 
 #[inline(never)]
-pub(crate) unsafe fn read_external_item(
+pub(crate) fn read_external_item(
     reader: &mut BinaryReader,
     ref_table: &mut ReadRefTable,
     item: ItemFlags,
@@ -1147,7 +1147,7 @@ pub(crate) unsafe fn read_external_item(
 }
 
 #[inline(never)]
-pub(crate) unsafe fn read_s4_item(
+pub(crate) fn read_s4_item(
     reader: &mut BinaryReader,
     ref_table: &mut ReadRefTable,
     item: ItemFlags,
@@ -1173,7 +1173,7 @@ pub(crate) unsafe fn read_s4_item(
 }
 
 #[inline(never)]
-pub(crate) unsafe fn read_altrep_item(
+pub(crate) fn read_altrep_item(
     reader: &mut BinaryReader,
     ref_table: &mut ReadRefTable,
     item: ItemFlags,

@@ -13,12 +13,12 @@ use super::*;
 // ---------------------------------------------------------------------------
 
 /// Get the current standardGeneric function pointer.
-pub(crate) unsafe fn R_get_standardGeneric_ptr() -> R_stdGen_ptr_t {
+pub(crate) fn R_get_standardGeneric_ptr() -> R_stdGen_ptr_t {
     with_objects_state(|state| state.standard_generic_ptr)
 }
 
 /// Set the standardGeneric function pointer.
-pub unsafe fn R_set_standardGeneric_ptr(val: R_stdGen_ptr_t, _envir: SEXP) -> R_stdGen_ptr_t {
+pub fn R_set_standardGeneric_ptr(val: R_stdGen_ptr_t, _envir: SEXP) -> R_stdGen_ptr_t {
     with_objects_state(|state| {
         let old = state.standard_generic_ptr;
         state.standard_generic_ptr = val;
@@ -27,7 +27,7 @@ pub unsafe fn R_set_standardGeneric_ptr(val: R_stdGen_ptr_t, _envir: SEXP) -> R_
 }
 
 /// Check whether S4 methods dispatch is currently enabled.
-pub unsafe fn isMethodsDispatchOn() -> c_int {
+pub fn isMethodsDispatchOn() -> c_int {
     match with_objects_state(|state| state.standard_generic_ptr) {
         None => FALSE,
         Some(_) => TRUE,
@@ -35,7 +35,7 @@ pub unsafe fn isMethodsDispatchOn() -> c_int {
 }
 
 /// do_S4on -- primitive for .isMethodsDispatchOn()
-pub unsafe fn do_S4on(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_S4on(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         if args.is_null() || args == R_NilValue() || length(args) == 0 {
             return Rf_ScalarLogical(isMethodsDispatchOn());
@@ -51,7 +51,7 @@ pub unsafe fn do_S4on(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 /// then evaluates a call to it with the same arguments.
 ///
 /// Ported from objects.c:1275-1319.
-pub(crate) unsafe fn dispatchNonGeneric(name: SEXP, env: SEXP, _fdef: SEXP) -> SEXP {
+pub(crate) fn dispatchNonGeneric(name: SEXP, env: SEXP, _fdef: SEXP) -> SEXP {
     unsafe {
         let symbol = crate::mainutils::subset::installTrChar(asChar(name));
 
@@ -136,7 +136,7 @@ pub(crate) unsafe fn dispatchNonGeneric(name: SEXP, env: SEXP, _fdef: SEXP) -> S
 /// directly as the function definition.
 ///
 /// Ported from objects.c:1540-1562.
-unsafe fn get_this_generic(args: SEXP) -> SEXP {
+fn get_this_generic(args: SEXP) -> SEXP {
     unsafe {
         let cdr_args = CDR(args);
         if !cdr_args.is_null() && cdr_args != R_NilValue() {
@@ -166,7 +166,7 @@ unsafe fn get_this_generic(args: SEXP) -> SEXP {
 /// do_standardGeneric -- standardGeneric() .Internal
 ///
 /// Ported from objects.c:1324-1370.
-pub unsafe fn do_standardGeneric(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub fn do_standardGeneric(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         crate::mainutils::seq::check1arg(args, call, c"f".as_ptr());
         if args.is_null() || args == R_NilValue() {

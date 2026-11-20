@@ -4,7 +4,7 @@ use super::*;
 // R_Serialize -- serialize an R object to a stream (C API)
 // ---------------------------------------------------------------------------
 
-pub unsafe fn R_Serialize(s: SEXP, stream: R_outpstream_t) {
+pub fn R_Serialize(s: SEXP, stream: R_outpstream_t) {
     unsafe {
         if stream.is_null() {
             return;
@@ -92,7 +92,7 @@ pub unsafe fn R_Serialize(s: SEXP, stream: R_outpstream_t) {
 // R_Unserialize -- unserialize an R object from a stream (C API)
 // ---------------------------------------------------------------------------
 
-pub unsafe fn R_Unserialize(stream: R_inpstream_t) -> SEXP {
+pub fn R_Unserialize(stream: R_inpstream_t) -> SEXP {
     unsafe {
         let owner =
             crate::sexp::owner::OwnerToken::current().unwrap_or_else(|e| error(&e.to_string()));
@@ -118,7 +118,7 @@ pub unsafe fn R_Unserialize(stream: R_inpstream_t) -> SEXP {
 // R_SerializeInfo
 // ---------------------------------------------------------------------------
 
-pub unsafe fn R_SerializeInfo(stream: R_inpstream_t) -> SEXP {
+pub fn R_SerializeInfo(stream: R_inpstream_t) -> SEXP {
     unsafe {
         if stream.is_null() {
             error("read error");
@@ -197,7 +197,7 @@ pub unsafe fn R_SerializeInfo(stream: R_inpstream_t) -> SEXP {
 // R_ReadItem / R_WriteItem (C stream API)
 // ---------------------------------------------------------------------------
 
-pub unsafe fn R_ReadItem(stream: R_inpstream_t) -> SEXP {
+pub fn R_ReadItem(stream: R_inpstream_t) -> SEXP {
     unsafe {
         let owner =
             crate::sexp::owner::OwnerToken::current().unwrap_or_else(|e| error(&e.to_string()));
@@ -218,7 +218,7 @@ pub unsafe fn R_ReadItem(stream: R_inpstream_t) -> SEXP {
     }
 }
 
-pub unsafe fn R_WriteItem(s: SEXP, stream: R_outpstream_t) {
+pub fn R_WriteItem(s: SEXP, stream: R_outpstream_t) {
     unsafe {
         if stream.is_null() {
             return;
@@ -251,7 +251,7 @@ pub unsafe fn R_WriteItem(s: SEXP, stream: R_outpstream_t) {
     }
 }
 
-pub(crate) unsafe fn read_stream_bytes_via_inchar(
+pub(crate) fn read_stream_bytes_via_inchar(
     stream: R_inpstream_t,
     owner: &crate::sexp::owner::OwnerToken<'_>,
 ) -> super::owned_input::InputBytes {
@@ -289,7 +289,7 @@ pub(crate) unsafe fn read_stream_bytes_via_inchar(
 // Stream initializers
 // ---------------------------------------------------------------------------
 
-pub unsafe fn R_InitInPStream(
+pub fn R_InitInPStream(
     stream: R_inpstream_t,
     data: R_pstream_data_t,
     type_: R_pstream_format_t,
@@ -314,7 +314,7 @@ pub unsafe fn R_InitInPStream(
     }
 }
 
-pub unsafe fn R_InitOutPStream(
+pub fn R_InitOutPStream(
     stream: R_outpstream_t,
     data: R_pstream_data_t,
     type_: R_pstream_format_t,
@@ -343,7 +343,7 @@ pub unsafe fn R_InitOutPStream(
     }
 }
 
-pub unsafe fn R_InitFileOutPStream(
+pub fn R_InitFileOutPStream(
     stream: R_outpstream_t,
     fp: *mut c_void,
     type_: R_pstream_format_t,
@@ -351,7 +351,7 @@ pub unsafe fn R_InitFileOutPStream(
     phook: Option<unsafe extern "C" fn(SEXP, SEXP) -> SEXP>,
     pdata: SEXP,
 ) {
-    unsafe {
+     {
         R_InitOutPStream(
             stream,
             fp,
@@ -365,14 +365,14 @@ pub unsafe fn R_InitFileOutPStream(
     }
 }
 
-pub unsafe fn R_InitFileInPStream(
+pub fn R_InitFileInPStream(
     stream: R_inpstream_t,
     fp: *mut c_void,
     type_: R_pstream_format_t,
     phook: Option<unsafe extern "C" fn(SEXP, SEXP) -> SEXP>,
     pdata: SEXP,
 ) {
-    unsafe {
+     {
         R_InitInPStream(
             stream,
             fp,
@@ -385,7 +385,7 @@ pub unsafe fn R_InitFileInPStream(
     }
 }
 
-pub unsafe fn R_InitConnOutPStream(
+pub fn R_InitConnOutPStream(
     stream: R_outpstream_t,
     con: *mut c_void,
     type_: R_pstream_format_t,
@@ -393,7 +393,7 @@ pub unsafe fn R_InitConnOutPStream(
     phook: Option<unsafe extern "C" fn(SEXP, SEXP) -> SEXP>,
     pdata: SEXP,
 ) {
-    unsafe {
+     {
         R_InitOutPStream(
             stream,
             con,
@@ -407,14 +407,14 @@ pub unsafe fn R_InitConnOutPStream(
     }
 }
 
-pub unsafe fn R_InitConnInPStream(
+pub fn R_InitConnInPStream(
     stream: R_inpstream_t,
     con: *mut c_void,
     type_: R_pstream_format_t,
     phook: Option<unsafe extern "C" fn(SEXP, SEXP) -> SEXP>,
     pdata: SEXP,
 ) {
-    unsafe {
+     {
         R_InitInPStream(
             stream,
             con,
@@ -433,17 +433,17 @@ pub unsafe fn R_InitConnInPStream(
 
 /// Serialize an R object to a raw vector (when icon is R_NilValue).
 /// This is the main entry point for `serialize()` in R.
-pub unsafe fn R_serialize(
+pub fn R_serialize(
     object: SEXP,
     icon: SEXP,
     ascii: SEXP,
     Sversion: SEXP,
     fun: SEXP,
 ) -> SEXP {
-    unsafe { R_serialize_with_xdr(object, icon, ascii, R_NilValue(), Sversion, fun) }
+     { R_serialize_with_xdr(object, icon, ascii, R_NilValue(), Sversion, fun) }
 }
 
-pub unsafe fn R_serialize_with_xdr(
+pub fn R_serialize_with_xdr(
     object: SEXP,
     icon: SEXP,
     ascii: SEXP,
@@ -499,7 +499,7 @@ pub unsafe fn R_serialize_with_xdr(
 }
 
 /// Encode a complete, arena-admitted workspace before publishing its file.
-pub(crate) unsafe fn serialize_workspace_snapshot(
+pub(crate) fn serialize_workspace_snapshot(
     owner: &crate::sexp::owner::OwnerToken<'_>,
     bindings: SEXP,
     version: c_int,
@@ -510,9 +510,9 @@ pub(crate) unsafe fn serialize_workspace_snapshot(
         (3, false) => b"RDX3\n",
         (2, true) => b"RDA2\n",
         (3, true) => b"RDA3\n",
-        _ => unsafe { error(&format!("version {version} not supported")) },
+        _ =>  { error(&format!("version {version} not supported")) },
     };
-    unsafe {
+     {
         let format = if ascii {
             SnapshotFormat::Ascii { hex: false }
         } else {
@@ -528,7 +528,7 @@ enum SnapshotFormat {
     Native,
 }
 
-unsafe fn serialize_snapshot(
+fn serialize_snapshot(
     owner: &crate::sexp::owner::OwnerToken<'_>,
     object: SEXP,
     hook: SEXP,
@@ -586,7 +586,7 @@ unsafe fn serialize_snapshot(
 }
 
 /// Unserialize an R object from a raw vector.
-pub unsafe fn R_unserialize(icon: SEXP, fun: SEXP) -> SEXP {
+pub fn R_unserialize(icon: SEXP, fun: SEXP) -> SEXP {
     unsafe {
         if !fun.is_null() && fun != R_NilValue() && TYPEOF(fun) == SEXPTYPE::ENVSXP {
             let owner =
@@ -733,7 +733,7 @@ impl Drop for PendingPersistEnvironment<'_> {
     }
 }
 
-unsafe fn persist_restore_inner(
+fn persist_restore_inner(
     names: SEXP,
     data: SEXP,
     owner: crate::sexp::owner::OwnerToken<'_>,
@@ -963,8 +963,8 @@ unsafe fn persist_restore_inner(
     }
 }
 
-unsafe fn persist_hook_is_r_function(hook: SEXP) -> bool {
-    unsafe {
+fn persist_hook_is_r_function(hook: SEXP) -> bool {
+     {
         !hook.is_null()
             && hook != R_NilValue()
             && (TYPEOF(hook) == SEXPTYPE::CLOSXP
@@ -973,7 +973,7 @@ unsafe fn persist_hook_is_r_function(hook: SEXP) -> bool {
     }
 }
 
-unsafe fn R_unserialize_from_stream_hooks(
+fn R_unserialize_from_stream_hooks(
     icon: SEXP,
     hook_func: Option<unsafe extern "C" fn(SEXP, SEXP) -> SEXP>,
     hook_data: SEXP,
@@ -1051,14 +1051,14 @@ unsafe fn R_unserialize_from_stream_hooks(
 /// Decode an already admitted immutable native snapshot. Callers retain the
 /// original hook graph across restoration callbacks; no borrowed R payload or
 /// interpreter field loan may span this operation.
-unsafe fn unserialize_owned_input(
+fn unserialize_owned_input(
     owner: &crate::sexp::owner::OwnerToken<'_>,
     data: &[u8],
     hook_func: Option<unsafe extern "C" fn(SEXP, SEXP) -> SEXP>,
     hook_data: SEXP,
     lazy_restore: Option<LazyLoadRestore>,
 ) -> SEXP {
-    unsafe {
+     {
         let _pin = owner.pin().unwrap_or_else(|e| error(&e.to_string()));
         owner
             .require_active()
@@ -1111,7 +1111,7 @@ pub(crate) fn unserialize_native_snapshot(
     };
     // SAFETY: the native slice is immutable and its caller owns its complete
     // backing across callbacks. The original hook graph is owned above.
-    let result = unsafe { unserialize_owned_input(owner, data, None, hook_data, lazy_restore) };
+    let result =  { unserialize_owned_input(owner, data, None, hook_data, lazy_restore) };
     owner.require_active()?;
     owner.sexp(result)?.into_owned()
 }
@@ -1137,7 +1137,7 @@ pub(crate) fn decode_workspace_snapshot(
     let mut reader = BinaryReader::new(body);
     // SAFETY: the caller keeps the complete, admitted body alive through
     // decoding; no R payload loan is live.
-    let decoded = unsafe { decode_stream_object(owner, &mut reader) };
+    let decoded =  { decode_stream_object(owner, &mut reader) };
     owner.require_active()?;
     let trailing = &body[reader.pos..];
     if !(trailing.is_empty() || ascii && trailing.iter().all(u8::is_ascii_whitespace)) {
@@ -1149,11 +1149,11 @@ pub(crate) fn decode_workspace_snapshot(
 /// Parse the stream header (format, versions, native encoding) and decode the
 /// single object that follows. The reader's byte source — slice or pull —
 /// determines how many input bytes this consumes.
-unsafe fn decode_stream_object(
+fn decode_stream_object(
     owner: &crate::sexp::owner::OwnerToken<'_>,
     reader: &mut BinaryReader<'_>,
 ) -> SEXP {
-    unsafe {
+     {
         // Read format header: two bytes (`A\n`, `B\n`, or `X\n`).
         let mut fmt1 = reader.read_byte().unwrap_or(0);
         let mut fmt2 = reader.read_byte().unwrap_or(0);
@@ -1229,7 +1229,7 @@ unsafe fn decode_stream_object(
 /// `unserialize(connection)`: decode exactly one serialized object from the
 /// connection, pulling bytes on demand (GNU `R_InitConnInPStream` /
 /// `ConnReadChar` data flow). Trailing bytes stay unread in the connection.
-unsafe fn R_unserialize_from_conn(index: std::os::raw::c_int, hook: SEXP) -> SEXP {
+fn R_unserialize_from_conn(index: std::os::raw::c_int, hook: SEXP) -> SEXP {
     unsafe {
         let owner =
             crate::sexp::owner::OwnerToken::current().unwrap_or_else(|e| error(&e.to_string()));
@@ -1288,12 +1288,12 @@ unsafe fn R_unserialize_from_conn(index: std::os::raw::c_int, hook: SEXP) -> SEX
 }
 
 /// Apply the `refhook` argument of `unserialize(connection, refhook)`.
-unsafe fn configure_conn_hooks(
+fn configure_conn_hooks(
     owner: &crate::sexp::owner::OwnerToken<'_>,
     reader: &mut BinaryReader<'_>,
     hook: SEXP,
 ) {
-    unsafe {
+     {
         if !hook.is_null() && hook != R_NilValue() && TYPEOF(hook) == SEXPTYPE::ENVSXP {
             let data = owner
                 .sexp(hook)
@@ -1310,8 +1310,8 @@ unsafe fn configure_conn_hooks(
 // R_serializeb
 // ---------------------------------------------------------------------------
 
-pub unsafe fn R_serializeb(object: SEXP, icon: SEXP, xdr: SEXP, Sversion: SEXP, fun: SEXP) -> SEXP {
-    unsafe { R_serialize_with_xdr(object, icon, R_NilValue(), xdr, Sversion, fun) }
+pub fn R_serializeb(object: SEXP, icon: SEXP, xdr: SEXP, Sversion: SEXP, fun: SEXP) -> SEXP {
+     { R_serialize_with_xdr(object, icon, R_NilValue(), xdr, Sversion, fun) }
 }
 
 // ---------------------------------------------------------------------------
@@ -1320,7 +1320,7 @@ pub unsafe fn R_serializeb(object: SEXP, icon: SEXP, xdr: SEXP, Sversion: SEXP, 
 
 /// GNU base's wrapper supplies `(object, connection, type, version, refhook)`.
 /// Keep this adapter separate from the public six-argument builtin contract.
-pub unsafe fn do_serialize_internal(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub fn do_serialize_internal(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let object = require_arg(args, 0);
         let conn = require_arg(args, 1);
@@ -1346,7 +1346,7 @@ pub unsafe fn do_serialize_internal(call: SEXP, op: SEXP, args: SEXP, env: SEXP)
     }
 }
 
-pub unsafe fn do_serialize(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub fn do_serialize(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let _ = (call, op, env);
         if args.is_null() || args == R_NilValue() {
@@ -1394,7 +1394,7 @@ pub unsafe fn do_serialize(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP 
 // do_serializeToConn
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_serializeToConn(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub fn do_serializeToConn(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let _ = (call, op, env);
         if args.is_null() || args == R_NilValue() {
@@ -1427,7 +1427,7 @@ pub unsafe fn do_serializeToConn(call: SEXP, op: SEXP, args: SEXP, env: SEXP) ->
 // do_unserializeFromConn
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_unserializeFromConn(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub fn do_unserializeFromConn(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let _ = (call, op, env);
         if args.is_null() || args == R_NilValue() {
@@ -1482,8 +1482,8 @@ pub unsafe fn do_unserializeFromConn(call: SEXP, op: SEXP, args: SEXP, env: SEXP
 // Lazy-load database functions
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_lazyLoadDBflush(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe {
+pub fn do_lazyLoadDBflush(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+     {
         let _ = (call, op, env);
         let file = require_arg(args, 0);
         let _ = sexp_to_path(file);
@@ -1514,7 +1514,7 @@ pub(crate) fn decode_lazy_record(
     }
 }
 
-pub unsafe fn do_lazyLoadDBfetch(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub fn do_lazyLoadDBfetch(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let _ = (call, op, env);
         let key = require_arg(args, 0);
@@ -1626,8 +1626,8 @@ pub unsafe fn do_lazyLoadDBfetch(call: SEXP, op: SEXP, args: SEXP, env: SEXP) ->
     }
 }
 
-pub unsafe fn do_getVarsFromFrame(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe {
+pub fn do_getVarsFromFrame(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+     {
         let _ = (call, op, env);
         let vars = require_arg(args, 0);
         let env = require_arg(args, 1);
@@ -1636,8 +1636,8 @@ pub unsafe fn do_getVarsFromFrame(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -
     }
 }
 
-pub unsafe fn do_lazyLoadDBinsertValue(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe {
+pub fn do_lazyLoadDBinsertValue(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+     {
         let _ = (call, op, env);
         let value = require_arg(args, 0);
         let file = require_arg(args, 1);
