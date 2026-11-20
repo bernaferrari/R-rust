@@ -118,7 +118,7 @@ use crate::eval::attrib_core::getAttrib;
 // is not yet available.
 // ---------------------------------------------------------------------------
 
-unsafe fn NA_STRING() -> SEXP {
+fn NA_STRING() -> SEXP {
      crate::mainutils::relop::NA_STRING() 
 }
 

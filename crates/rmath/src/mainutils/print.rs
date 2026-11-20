@@ -363,7 +363,7 @@ unsafe fn isValidName(s: *const c_char) -> bool {
 }
 
 /// NA_STRING accessor.
-unsafe fn NA_STRING_local() -> SEXP {
+fn NA_STRING_local() -> SEXP {
      crate::mainutils::relop::NA_STRING() 
 }
 

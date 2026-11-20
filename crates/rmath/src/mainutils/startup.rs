@@ -280,7 +280,7 @@ pub fn R_DefParamsEx(_Rp: *mut c_void, _RstartVersion: c_int) -> c_int {
 }
 
 // Define default startup parameters.
-pub unsafe fn R_DefParams(_Rp: *mut c_void) {
+pub fn R_DefParams(_Rp: *mut c_void) {
     {
         let _ = R_DefParamsEx(_Rp, 0);
     }

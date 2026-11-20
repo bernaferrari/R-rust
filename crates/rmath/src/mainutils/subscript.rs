@@ -100,7 +100,7 @@ fn subscript_index_name(sindex: SEXP) -> String {
 }
 
 /// Report an out-of-bounds error.
-pub unsafe fn ECALL_OutOfBounds(x: SEXP, subscript: c_int, index: R_xlen_t, _call: SEXP) {
+pub fn ECALL_OutOfBounds(x: SEXP, subscript: c_int, index: R_xlen_t, _call: SEXP) {
     let msg = format!(
         "subscript out of bounds: type '{}' subscript {} index {}",
         sexptype_name(x),
@@ -111,12 +111,12 @@ pub unsafe fn ECALL_OutOfBounds(x: SEXP, subscript: c_int, index: R_xlen_t, _cal
 }
 
 /// Report a missing subscript error.
-pub unsafe fn ECALL_MissingSubs(_call: SEXP) {
+pub fn ECALL_MissingSubs(_call: SEXP) {
      error("subscript is missing");
 }
 
 /// Report an out-of-bounds error for character subscripts.
-pub unsafe fn ECALL_OutOfBoundsCHAR(x: SEXP, subscript: c_int, sindex: SEXP, _call: SEXP) {
+pub fn ECALL_OutOfBoundsCHAR(x: SEXP, subscript: c_int, sindex: SEXP, _call: SEXP) {
     let msg = format!(
         "subscript out of bounds: type '{}' subscript {} index {}",
         sexptype_name(x),
@@ -138,7 +138,7 @@ pub unsafe fn ECALL_OutOfBoundsCHAR(x: SEXP, subscript: c_int, sindex: SEXP, _ca
 ///
 /// Returns -1 on error (in full R this would be unreachable due to error calls).
 #[inline]
-unsafe fn integerOneIndex(i: c_int, len: R_xlen_t, _call: SEXP) -> R_xlen_t {
+fn integerOneIndex(i: c_int, len: R_xlen_t, _call: SEXP) -> R_xlen_t {
     {
         let mut indx: R_xlen_t = -1;
         if i > 0 {
@@ -1516,7 +1516,7 @@ mod tests {
     #[test]
     fn test_integer_one_index_positive() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
+        {
             // 1-based index 3 -> 0-based index 2
             assert_eq!(integerOneIndex(3, 10, ptr::null_mut()), 2);
             // 1-based index 1 -> 0-based index 0
@@ -1528,7 +1528,7 @@ mod tests {
     #[should_panic]
     fn test_integer_one_index_zero() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
+        {
             integerOneIndex(0, 10, ptr::null_mut());
         }
     }
@@ -1536,7 +1536,7 @@ mod tests {
     #[test]
     fn test_integer_one_index_negative_len2() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
+        {
             // For length-2 vector, -1 selects element 1, -2 selects element 0
             assert_eq!(integerOneIndex(-1, 2, ptr::null_mut()), 1);
             assert_eq!(integerOneIndex(-2, 2, ptr::null_mut()), 0);
@@ -1547,7 +1547,7 @@ mod tests {
     #[should_panic]
     fn test_integer_one_index_negative_len2_out_of_range() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
+        {
             integerOneIndex(-3, 2, ptr::null_mut());
         }
     }
@@ -1556,7 +1556,7 @@ mod tests {
     #[should_panic]
     fn test_integer_one_index_negative_other_lengths() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
+        {
             integerOneIndex(-1, 1, ptr::null_mut());
         }
     }
@@ -1659,7 +1659,7 @@ mod tests {
     #[test]
     fn test_ecall_out_of_bounds_reports_context() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
+        {
             let x = make_int_vector(&[1, 2, 3]);
             let msg = panic_message(|| {
                 ECALL_OutOfBounds(x, 2, 7, ptr::null_mut());
@@ -1675,7 +1675,7 @@ mod tests {
     fn test_ecall_missing_subs_reports_context() {
         let _session = crate::sexp::session::RSession::new();
         let msg = panic_message(|| {
-            unsafe { ECALL_MissingSubs(ptr::null_mut()) };
+             ECALL_MissingSubs(ptr::null_mut());
         });
         assert_eq!(msg, "subscript is missing");
     }

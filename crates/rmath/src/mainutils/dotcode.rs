@@ -126,7 +126,7 @@ fn errorcall(_call: SEXP, msg: &str) -> ! {
     })
 }
 
-unsafe fn native_extension_policy_error(call: SEXP, entrypoint: &str) -> ! {
+fn native_extension_policy_error(call: SEXP, entrypoint: &str) -> ! {
     {
         errorcall(
             call,
@@ -245,7 +245,7 @@ unsafe fn isNativeSymbolInfo(op: SEXP) -> bool {
 // check1arg2
 // ---------------------------------------------------------------------------
 
-unsafe fn check1arg2(arg: SEXP, call: SEXP, _formal: &str) {
+fn check1arg2(arg: SEXP, call: SEXP, _formal: &str) {
     {
         if TAG(arg).is_null() || TAG(arg).is_null() {
             // Untagged — fine, it's positional
@@ -1151,7 +1151,7 @@ unsafe fn invoke_native_handler(
                 .validate_request(interface, operands.payload.len())
                 .map_err(|error| native_admission_error(error.to_string()))?;
         } else if native_extension_policy_enabled() {
-            unsafe { native_extension_policy_error(call.as_raw(), &interface.to_string()) };
+             native_extension_policy_error(call.as_raw(), &interface.to_string());
         }
         let result = if let Some(routine) = routine {
             match interface {
