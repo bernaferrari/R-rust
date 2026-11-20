@@ -18,25 +18,15 @@ const NA_FAIL: c_int = 4;
 
 static BIG_dbl: c_double = 8.888888888e307;
 
-unsafe fn Srunmed(
-    y: *const c_double,
-    smo: *mut c_double,
-    n: R_xlen_t,
-    bw: c_int,
-    end_rule: c_int,
-    _print_level: c_int,
-) {
-    unsafe {
-        if bw > n as c_int {
-            Rf_error(b"bandwidth/span of running medians is larger than n\0".as_ptr() as *const _);
-        }
-
+fn Srunmed(y: &[c_double], smo: &mut [c_double], bw: c_int, end_rule: c_int, _print_level: c_int) {
+    {
+        let n = y.len() as R_xlen_t;
         let mut scrat = vec![0.0f64; bw as usize];
 
         // 1. Compute rmed := Median of the first 'band' values
         let mut i: c_int = 0;
         while i < bw {
-            scrat[i as usize] = *y.add(i as usize);
+            scrat[i as usize] = y[i as usize];
             i += 1;
         }
 
@@ -80,17 +70,17 @@ unsafe fn Srunmed(
         if end_rule == 0 {
             let mut i: R_xlen_t = 0;
             while i < band2 as R_xlen_t {
-                *smo.add(i as usize) = *y.add(i as usize);
+                smo[i as usize] = y[i as usize];
                 i += 1;
             }
         } else {
             let mut i: R_xlen_t = 0;
             while i < band2 as R_xlen_t {
-                *smo.add(i as usize) = rmed;
+                smo[i as usize] = rmed;
                 i += 1;
             }
         }
-        *smo.add(band2 as usize) = rmed;
+        smo[band2 as usize] = rmed;
         band2 += 1;
 
         // Big FOR Loop: RUNNING median, update the median 'rmed'
@@ -99,8 +89,8 @@ unsafe fn Srunmed(
         let mut ismo: R_xlen_t = band2 as R_xlen_t;
 
         while last < n as c_int {
-            let yin = *y.add(last as usize);
-            let yout = *y.add((first - 1) as usize);
+            let yin = y[last as usize];
+            let yout = y[(first - 1) as usize];
 
             let mut rnew = rmed;
 
@@ -112,7 +102,7 @@ unsafe fn Srunmed(
                         rnew = yin;
                         let mut ii = first;
                         while ii <= last {
-                            let yi = *y.add(ii as usize);
+                            let yi = y[ii as usize];
                             if yi < rmed {
                                 kminus += 1;
                                 if yi > rnew {
@@ -130,7 +120,7 @@ unsafe fn Srunmed(
                         let mut rts = yin;
                         let mut ii = first;
                         while ii <= last {
-                            let yi = *y.add(ii as usize);
+                            let yi = y[ii as usize];
                             if yi <= rmed {
                                 if yi < rmed {
                                     kminus += 1;
@@ -158,7 +148,7 @@ unsafe fn Srunmed(
                         rnew = yin;
                         let mut ii = first;
                         while ii <= last {
-                            let yi = *y.add(ii as usize);
+                            let yi = y[ii as usize];
                             if yi > rmed {
                                 kplus += 1;
                                 if yi < rnew {
@@ -176,7 +166,7 @@ unsafe fn Srunmed(
                         let mut rtb = yin;
                         let mut ii = first;
                         while ii <= last {
-                            let yi = *y.add(ii as usize);
+                            let yi = y[ii as usize];
                             if yi >= rmed {
                                 if yi > rmed {
                                     kplus += 1;
@@ -198,7 +188,7 @@ unsafe fn Srunmed(
             }
 
             rmed = rnew;
-            *smo.add(ismo as usize) = rmed;
+            smo[ismo as usize] = rmed;
 
             first += 1;
             last += 1;
@@ -208,30 +198,28 @@ unsafe fn Srunmed(
         if end_rule == 0 {
             let mut i = ismo;
             while i < n {
-                *smo.add(i as usize) = *y.add(i as usize);
+                smo[i as usize] = y[i as usize];
                 i += 1;
             }
         } else {
             let mut i = ismo;
             while i < n {
-                *smo.add(i as usize) = rmed;
+                smo[i as usize] = rmed;
                 i += 1;
             }
         }
     }
 }
 
-unsafe fn R_firstNA_dbl(x: *const c_double, n: R_xlen_t) -> R_xlen_t {
-    unsafe {
-        let mut k: R_xlen_t = 0;
-        while k < n {
-            if x.add(k as usize).read().is_nan() {
-                return k + 1;
-            }
-            k += 1;
+fn R_firstNA_dbl(x: &[c_double]) -> R_xlen_t {
+    let mut k: R_xlen_t = 0;
+    while k < x.len() as R_xlen_t {
+        if x[k as usize].is_nan() {
+            return k + 1;
         }
-        0
+        k += 1;
     }
+    0
 }
 
 pub unsafe fn runmed(
@@ -259,7 +247,7 @@ pub unsafe fn runmed(
         let na_action = asInteger(naAct);
         let _print_level = asInteger(printLev);
 
-        let firstNA = R_firstNA_dbl(x, n);
+        let firstNA = R_firstNA_dbl(std::slice::from_raw_parts(x, n as usize));
         let mut nn = n;
 
         let xx: *const c_double;
@@ -347,7 +335,18 @@ pub unsafe fn runmed(
             let ans_slice = std::slice::from_raw_parts_mut(REAL(ans), nn as usize);
             Trunmed(xx_slice, ans_slice, nn, k as i64, end_rule);
         } else {
-            Srunmed(xx, REAL(ans), nn, k, end_rule, 0);
+            if k > nn as c_int {
+                Rf_error(
+                    b"bandwidth/span of running medians is larger than n\0".as_ptr() as *const _,
+                );
+            }
+            Srunmed(
+                std::slice::from_raw_parts(xx, nn as usize),
+                std::slice::from_raw_parts_mut(REAL(ans), nn as usize),
+                k,
+                end_rule,
+                0,
+            );
         }
 
         if firstNA != 0 {
