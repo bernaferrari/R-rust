@@ -44,14 +44,18 @@ impl Default for InternetRuntimeState {
     }
 }
 
+/// Single seam for session-owned internet module state: the one justified
+/// instance-field deref lives here instead of per call site.
+pub(crate) fn with_internet_state<R>(f: impl FnOnce(&mut InternetRuntimeState) -> R) -> R {
+    with_required_current_instance(|instance| f(unsafe { &mut (*instance).internet_state }))
+}
+
 fn internet_quiet() -> c_int {
-    with_required_current_instance(|instance| unsafe { (*instance).internet_state.quiet })
+    with_internet_state(|state| state.quiet)
 }
 
 fn set_internet_quiet(value: c_int) {
-    with_required_current_instance(|instance| unsafe {
-        (*instance).internet_state.quiet = value;
-    });
+    with_internet_state(|state| state.quiet = value);
 }
 
 // SEXP type constants
