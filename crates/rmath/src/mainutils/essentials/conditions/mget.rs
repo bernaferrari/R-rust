@@ -179,10 +179,7 @@ impl Mode {
         }
         if kind == SEXPTYPE::OBJSXP {
             return access.with_native(|_| {
-                Ok(
-                    (crate::mainutils::coerce::IS_S4_OBJECT(value.as_raw()) != 0)
-                        == self.s4,
-                )
+                Ok((crate::mainutils::coerce::IS_S4_OBJECT(value.as_raw()) != 0) == self.s4)
             });
         }
         Ok(true)
