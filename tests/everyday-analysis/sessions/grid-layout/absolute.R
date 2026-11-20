@@ -1,0 +1,12 @@
+library(grid)
+pdf("source.pdf", width = 6, height = 4)
+dev.control(displaylist = "enable")
+grid.newpage()
+grid.rect(x = unit(0.9, "inches"), y = 0.65, width = unit(0.5, "inches"),
+          height = unit(0.3, "inches"), gp = gpar(fill = "red", col = NA))
+grid.text("Fixed text", y = 0.35, gp = gpar(fontsize = 14))
+recorded <- serialize(recordPlot(), NULL)
+invisible(dev.off())
+pdf("replay.pdf", width = 8, height = 5)
+replayPlot(unserialize(recorded))
+invisible(dev.off())

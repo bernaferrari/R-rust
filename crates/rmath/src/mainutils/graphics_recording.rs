@@ -246,6 +246,7 @@ unsafe fn decode_grid_state(
     recording: SEXP,
     source: (u32, u32),
     target: (u32, u32),
+    target_dpi: f64,
 ) -> Result<Option<crate::mainutils::portable_grid::GridState>, &'static str> {
     unsafe {
         let symbol = Rf_install(GRID_STATE_ATTR.as_ptr() as *const _);
@@ -258,7 +259,7 @@ unsafe fn decode_grid_state(
         }
         let bytes = std::slice::from_raw_parts(RAW(value), XLENGTH(value) as usize);
         let mut state = crate::mainutils::portable_grid::GridState::decode_snapshot(bytes)?;
-        state.scale_snapshot(source, target)?;
+        state.scale_snapshot(source, target, target_dpi)?;
         Ok(Some(state))
     }
 }
@@ -356,8 +357,13 @@ pub(crate) unsafe fn replay(_: SEXP, _: SEXP, args: SEXP, _: SEXP) -> SEXP {
         let state = decode_portable_state(recording).unwrap_or_else(|e| base_error(e));
         let source_dimensions = scene.dimensions();
         let target_dimensions = r_graphics_engine::DrawTarget::dimensions(&target);
-        let grid_state = decode_grid_state(recording, source_dimensions, target_dimensions)
-            .unwrap_or_else(|e| base_error(e));
+        let grid_state = decode_grid_state(
+            recording,
+            source_dimensions,
+            target_dimensions,
+            crate::mainutils::portable_grid::device_dpi(&target),
+        )
+        .unwrap_or_else(|e| base_error(e));
         if !scene.operations().is_empty() {
             target
                 .begin_pdf_replay_page()

@@ -1,6 +1,16 @@
 use super::*;
 
 pub(crate) const DPI: f64 = 96.;
+const PDF_DPI: f64 = 72.;
+
+fn default_dpi() -> f64 {
+    DPI
+}
+
+pub(crate) fn device_dpi(target: &crate::library::grdevices::target::GraphicsTarget) -> f64 {
+    if target.is_pdf() { PDF_DPI } else { DPI }
+}
+
 pub(crate) const CLEAR: Color = Color {
     r: 0,
     g: 0,
@@ -36,6 +46,8 @@ impl Default for Gp {
 pub(crate) struct Frame {
     pub(crate) width: f64,
     pub(crate) height: f64,
+    #[serde(default = "default_dpi")]
+    pub(crate) dpi: f64,
     pub(crate) matrix: [f64; 6],
     pub(crate) scale: [[f64; 2]; 2],
     pub(crate) clip: Option<[f32; 4]>,
@@ -187,6 +199,7 @@ impl GridState {
         &mut self,
         source: (u32, u32),
         target: (u32, u32),
+        target_dpi: f64,
     ) -> Result<(), &'static str> {
         if self.is_empty() {
             self.dimensions = target;
@@ -198,6 +211,8 @@ impl GridState {
         let sx = target.0 as f64 / source.0.max(1) as f64;
         let sy = target.1 as f64 / source.1.max(1) as f64;
         let scale = |f: &mut Frame| {
+            f.gp.size *= target_dpi / f.dpi;
+            f.dpi = target_dpi;
             f.width *= sx;
             f.height *= sy;
             f.matrix[0] *= sx;
@@ -243,16 +258,20 @@ impl GridState {
         }
         Ok(())
     }
-    pub(crate) fn ensure(&mut self, dims: (u32, u32)) {
-        if self.frames.is_empty() || self.dimensions != dims {
+    pub(crate) fn ensure(&mut self, dims: (u32, u32), dpi: f64) {
+        if self.dimensions != dims || self.frames.first().is_none_or(|root| root.dpi != dpi) {
             self.dimensions = dims;
             let root = Frame {
                 width: dims.0 as f64,
                 height: dims.1 as f64,
+                dpi,
                 matrix: [1., 0., 0., -1., 0., dims.1 as f64],
                 scale: [[0., 1.], [0., 1.]],
                 clip: None,
-                gp: Gp::default(),
+                gp: Gp {
+                    size: 12. * dpi / 72.,
+                    ..Gp::default()
+                },
                 layout: None,
                 name: None,
                 anchor_x: dims.0 as f64 / 2.,
@@ -271,7 +290,8 @@ impl GridState {
 impl Frame {
     pub(crate) fn valid(&self) -> bool {
         let gp = &self.gp;
-        self.width.is_finite()
+        [PDF_DPI, DPI].contains(&self.dpi)
+            && self.width.is_finite()
             && self.width >= 0.
             && self.height.is_finite()
             && self.height >= 0.
@@ -344,15 +364,15 @@ impl Frame {
                     -scale[0] * extent / (scale[1] - scale[0])
                 },
             ),
-            "inches" => (DPI, 0.),
-            "cm" => (DPI / 2.54, 0.),
-            "mm" => (DPI / 25.4, 0.),
-            "points" => (DPI / 72.27, 0.),
-            "bigpts" => (DPI / 72., 0.),
-            "picas" => (DPI * 12. / 72.27, 0.),
-            "dida" => (DPI / 72.27 * 1157. / 1238., 0.),
-            "cicero" => (DPI / 72.27 * 1157. / 1238. * 12., 0.),
-            "scaledpts" => (DPI / 72.27 / 65536., 0.),
+            "inches" => (self.dpi, 0.),
+            "cm" => (self.dpi / 2.54, 0.),
+            "mm" => (self.dpi / 25.4, 0.),
+            "points" => (self.dpi / 72.27, 0.),
+            "bigpts" => (self.dpi / 72., 0.),
+            "picas" => (self.dpi * 12. / 72.27, 0.),
+            "dida" => (self.dpi / 72.27 * 1157. / 1238., 0.),
+            "cicero" => (self.dpi / 72.27 * 1157. / 1238. * 12., 0.),
+            "scaledpts" => (self.dpi / 72.27 / 65536., 0.),
             "lines" => (self.gp.size * self.gp.lineheight, 0.),
             "char" => (self.gp.size, 0.),
             "strwidth" | "strheight" => (self.gp.size * 0.6, 0.),
@@ -445,12 +465,12 @@ pub(crate) unsafe fn result(v: &[f64]) -> SEXP {
         x
     }
 }
-pub(crate) fn plot_params(style: &Gp) -> PlotParameters {
+pub(crate) fn plot_params(style: &Gp, dpi: f64) -> PlotParameters {
     PlotParameters {
         font_face: style.face,
         font_size: style.size as f32,
         text_color: Color::BLACK,
-        dpi: DPI as f32,
+        dpi: dpi as f32,
         text_anchor: TextAnchor::Start,
         text_angle: 0.,
     }
@@ -458,12 +478,12 @@ pub(crate) fn plot_params(style: &Gp) -> PlotParameters {
 /// Width and height, in device pixels, of one label at `index`.
 /// A list (stringWidth's data) selects one element; a character or
 /// expression vector selects one label. An empty string still has font height.
-pub(crate) unsafe fn label_box(item: SEXP, index: usize, style: &Gp) -> (f64, f64) {
+pub(crate) unsafe fn label_box(item: SEXP, index: usize, style: &Gp, dpi: f64) -> (f64, f64) {
     unsafe {
         if item == R_NilValue() {
             base_error("data is required for stringWidth/stringHeight units");
         }
-        let params = plot_params(style);
+        let params = plot_params(style, dpi);
         let owned = if TYPEOF(item) == SEXPTYPE::VECSXP {
             if XLENGTH(item) == 0 {
                 return (0., 0.);
@@ -494,7 +514,7 @@ pub(crate) unsafe fn label_box(item: SEXP, index: usize, style: &Gp) -> (f64, f6
 /// the grob's own rotation, using the grob gpar over the viewport gpar.
 pub(crate) unsafe fn text_grob_extent(grob: SEXP, data: SEXP, frame: &Frame, axis: usize) -> f64 {
     unsafe {
-        let style = gp(field(grob, "gp"), &frame.gp);
+        let style = gp(field(grob, "gp"), frame);
         let labels = field(data, "label");
         if labels == R_NilValue() || XLENGTH(labels) == 0 {
             return 0.;
@@ -515,7 +535,7 @@ pub(crate) unsafe fn text_grob_extent(grob: SEXP, data: SEXP, frame: &Frame, axi
         let mut ymin = f64::INFINITY;
         let mut ymax = f64::NEG_INFINITY;
         for i in 0..n {
-            let (w, h) = label_box(labels, i, &style);
+            let (w, h) = label_box(labels, i, &style, frame.dpi);
             let x = xs[i % xs.len()];
             let y = ys[i % ys.len()];
             for (cx, cy) in [(0., 0.), (w, 0.), (w, h), (0., h)] {
@@ -626,7 +646,7 @@ pub(crate) unsafe fn units(
                 if name == "strwidth" || name == "strheight" {
                     // Measured advances are device pixels. The strwidth factor
                     // below is a 0.6em stand-in and must not scale them again.
-                    let (width, height) = label_box(data, i, &frame.gp);
+                    let (width, height) = label_box(data, i, &frame.gp, frame.dpi);
                     let resolved = v * if name == "strwidth" { width } else { height };
                     if !resolved.is_finite() {
                         base_error("grid unit conversion overflow");
@@ -672,9 +692,9 @@ pub(crate) unsafe fn color_values(x: SEXP, old: &[Color]) -> Vec<Color> {
             .collect()
     }
 }
-pub(crate) unsafe fn gp(x: SEXP, old: &Gp) -> Gp {
+pub(crate) unsafe fn gp(x: SEXP, frame: &Frame) -> Gp {
     unsafe {
-        let mut p = old.clone();
+        let mut p = frame.gp.clone();
         if x == R_NilValue() {
             return p;
         }
@@ -700,8 +720,8 @@ pub(crate) unsafe fn gp(x: SEXP, old: &Gp) -> Gp {
         p.col = color_values(field(x, "col"), &p.col);
         p.fill = color_values(field(x, "fill"), &p.fill);
         p.width = num(field(x, "lwd"), p.width);
-        p.size =
-            num(field(x, "fontsize"), p.size * 72. / DPI) * DPI / 72. * num(field(x, "cex"), 1.);
+        p.size = num(field(x, "fontsize"), p.size * 72. / frame.dpi) * frame.dpi / 72.
+            * num(field(x, "cex"), 1.);
         p.alpha *= num(field(x, "alpha"), 1.);
         if p.width < 0.
             || p.width > f32::MAX as f64

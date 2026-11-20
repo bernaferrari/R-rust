@@ -142,7 +142,7 @@ pub(crate) unsafe fn arrow_heads(
         let length = units(field(arrow, "length"), "inches", frame, 0, true)
             .first()
             .copied()
-            .unwrap_or(0.25 * DPI);
+            .unwrap_or(0.25 * frame.dpi);
         if !length.is_finite() || length <= 0. {
             base_error("grid arrow length must be positive");
         }
@@ -361,7 +361,7 @@ pub(crate) unsafe fn draw_commands(
                     font_face: frame.gp.face,
                     font_size: frame.gp.size as f32,
                     text_color: alpha(frame.gp.col[0], frame.gp.alpha),
-                    dpi: DPI as f32,
+                    dpi: frame.dpi as f32,
                     text_anchor: if just[0] == 0. {
                         TextAnchor::Start
                     } else if just[0] == 1. {

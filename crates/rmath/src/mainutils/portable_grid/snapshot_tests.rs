@@ -2,7 +2,7 @@ use super::*;
 #[test]
 fn malformed_grid_snapshots_are_rejected_without_panicking() {
     let mut state = GridState::default();
-    state.ensure((200, 100));
+    state.ensure((200, 100), DPI);
     let valid = serde_json::to_value(&state).unwrap();
     assert!(GridState::decode_snapshot(&serde_json::to_vec(&valid).unwrap()).is_ok());
     for (path, value) in [
@@ -13,6 +13,7 @@ fn malformed_grid_snapshots_are_rejected_without_panicking() {
         ("/nodes/0/frame/gp/col", serde_json::json!([])),
         ("/nodes/0/frame/scale", serde_json::json!([[0, 0], [0, 1]])),
         ("/nodes/0/frame/gp/lineheight", serde_json::json!(-1)),
+        ("/frames/0/dpi", serde_json::json!(0)),
     ] {
         let mut bad = valid.clone();
         *bad.pointer_mut(path).unwrap() = value;
@@ -31,12 +32,40 @@ fn malformed_grid_snapshots_are_rejected_without_panicking() {
             .is_empty()
     );
 }
+
+#[test]
+fn physical_units_follow_device_resolution_and_old_snapshots_keep_screen_units() {
+    let mut state = GridState::default();
+    state.ensure((432, 288), DPI);
+    let mut old = serde_json::to_value(&state).unwrap();
+    for frame in ["/frames/0", "/nodes/0/frame"] {
+        old.pointer_mut(frame)
+            .unwrap()
+            .as_object_mut()
+            .unwrap()
+            .remove("dpi");
+    }
+    let mut restored = GridState::decode_snapshot(&serde_json::to_vec(&old).unwrap()).unwrap();
+    assert_eq!(restored.frames[0].dpi, DPI);
+    assert_eq!(restored.frames[0].gp.size, 16.);
+    restored
+        .scale_snapshot((432, 288), (432, 288), 72.)
+        .unwrap();
+    assert_eq!(current_inches(&restored), [3., 2., 6., 4.]);
+    assert_eq!(restored.frames[0].gp.size, 12.);
+    assert_eq!(
+        restored.frames[0].unit_factor("inches", 0, true),
+        Ok((72., 0.))
+    );
+}
 #[test]
 fn replay_scales_viewport_inches_once() {
     let mut root_only = GridState::default();
-    root_only.ensure((192, 96));
+    root_only.ensure((192, 96), DPI);
     let before_root = current_inches(&root_only);
-    root_only.scale_snapshot((192, 96), (384, 192)).unwrap();
+    root_only
+        .scale_snapshot((192, 96), (384, 192), DPI)
+        .unwrap();
     let after_root = current_inches(&root_only);
     for i in 0..4 {
         assert!(
@@ -45,7 +74,7 @@ fn replay_scales_viewport_inches_once() {
         );
     }
     let mut state = GridState::default();
-    state.ensure((192, 96));
+    state.ensure((192, 96), DPI);
     let parent = state.frames[0].clone();
     let anchor_x = 96.;
     let anchor_y = 48.;
@@ -65,7 +94,7 @@ fn replay_scales_viewport_inches_once() {
         (before[2] - 1.).abs() < 1e-9 && (before[3] - 0.25).abs() < 1e-9,
         "{before:?}"
     );
-    state.scale_snapshot((192, 96), (384, 192)).unwrap();
+    state.scale_snapshot((192, 96), (384, 192), DPI).unwrap();
     let after = current_inches(&state);
     for (i, expected) in [2., 1., 2., 0.5].into_iter().enumerate() {
         assert!((after[i] - expected).abs() < 1e-9, "child {i}: {after:?}");

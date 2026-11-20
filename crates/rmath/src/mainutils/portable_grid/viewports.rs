@@ -148,10 +148,11 @@ pub(crate) unsafe fn push(data: SEXP, parent: &Frame) -> Frame {
         let mut f = Frame {
             width,
             height,
+            dpi: parent.dpi,
             matrix: compose(parent.matrix, local),
             scale: parent.scale,
             clip: parent.clip,
-            gp: gp(field(data, "gp"), &parent.gp),
+            gp: gp(field(data, "gp"), parent),
             layout: None,
             name: None,
             anchor_x: x,
@@ -417,10 +418,10 @@ pub(crate) fn current_inches(state: &GridState) -> [f64; 4] {
         (x, state.dimensions.1 as f64 - y_down)
     };
     [
-        x_px / DPI,
-        y_px / DPI,
-        frame.width / DPI,
-        frame.height / DPI,
+        x_px / frame.dpi,
+        y_px / frame.dpi,
+        frame.width / frame.dpi,
+        frame.height / frame.dpi,
     ]
 }
 
@@ -687,8 +688,9 @@ pub unsafe fn dispatch(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let data = arg_by_name_or_position(args, &["data"], 1);
         let mut target = device();
         let dims = target.dimensions();
+        let dpi = device_dpi(&target);
         let mut state = with_required_current_instance(|p| (*p).portable_grid.clone());
-        state.ensure(dims);
+        state.ensure(dims, dpi);
         let parent = state.frames.last().unwrap().clone();
         let mut returned = R_NilValue();
         match operation.as_str() {
@@ -700,7 +702,7 @@ pub unsafe fn dispatch(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     std::mem::take(&mut state.display_list)
                 };
                 state = GridState::default();
-                state.ensure(dims);
+                state.ensure(dims, dpi);
                 state.display_list = kept;
                 (&mut target).clear(Color::WHITE);
             }
@@ -919,7 +921,7 @@ pub unsafe fn dispatch(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             }
             "draw" => {
                 let mut frame = parent;
-                frame.gp = gp(field(data, "gp"), &frame.gp);
+                frame.gp = gp(field(data, "gp"), &frame);
                 let primitive = string(field(data, "primitive"), "");
                 let drawing = field(data, "data");
                 let commands = draw_commands(&primitive, drawing, &frame, &target);
