@@ -89,11 +89,11 @@ pub(crate) fn unicode_display_width(ch: char) -> usize {
 // ---------------------------------------------------------------------------
 
 pub fn do_substr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    { substring_entry(args, _rho, super::substring_owned::Operation::Extract) }
+     substring_entry(args, _rho, super::substring_owned::Operation::Extract) 
 }
 
 pub fn do_substrgets(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    { substring_entry(args, _rho, super::substring_owned::Operation::Replace) }
+     substring_entry(args, _rho, super::substring_owned::Operation::Replace) 
 }
 
 fn substring_entry(
@@ -176,7 +176,7 @@ pub fn do_strrep(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// length max(len(text), len(first), len(last)) first (character.R);
 /// zero-length text stays zero-length.
 pub fn do_substring(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    { substring_entry(args, _rho, super::substring_owned::Operation::Recycle) }
+     substring_entry(args, _rho, super::substring_owned::Operation::Recycle) 
 }
 
 // ---------------------------------------------------------------------------
@@ -185,12 +185,12 @@ pub fn do_substring(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R's `tolower(x)`.
 pub fn do_tolower(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    { do_case_convert(args, true) }
+     do_case_convert(args, true) 
 }
 
 /// R's `toupper(x)`.
 pub fn do_toupper(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    { do_case_convert(args, false) }
+     do_case_convert(args, false) 
 }
 
 /// GNU `casefold(x, upper=FALSE)`.

@@ -2,7 +2,7 @@ use super::*;
 
 /// R's `computeRestarts()` — compute available restarts for current condition.
 pub fn do_computeRestarts(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    { restart_stack_as_list() }
+     restart_stack_as_list() 
 }
 
 /// R's `findRestart(name)` — find a restart by name.
@@ -19,7 +19,7 @@ pub fn do_findRestart(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R's `restarts()` — list available restarts.
 pub fn do_restarts(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    { restart_stack_as_list() }
+     restart_stack_as_list() 
 }
 
 /// R's `invokeRestart(restart, ...)` — call a restart and return to its dynamic extent.
@@ -421,7 +421,7 @@ fn restart_name(restart: SEXP) -> Option<String> {
 }
 
 pub(crate) fn restart_handler(restart: SEXP) -> SEXP {
-    { restart_field(restart, "handler", 2) }
+     restart_field(restart, "handler", 2) 
 }
 
 fn restart_field(restart: SEXP, field_name: &str, fallback_index: R_xlen_t) -> SEXP {

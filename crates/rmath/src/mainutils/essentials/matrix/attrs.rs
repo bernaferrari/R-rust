@@ -95,7 +95,7 @@ pub fn row_names_stored(x: SEXP) -> SEXP {
 
 /// Stored `row.names`, including the compact `c(NA, -n)` form.
 pub fn do_row_names_stored(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    { row_names_stored(CAR(args)) }
+     row_names_stored(CAR(args)) 
 }
 pub fn do_rownames(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
@@ -478,12 +478,12 @@ pub(super) fn set_array_dimnames(x: SEXP, value: SEXP) {
 
 /// R's `rownames(x) <- value` — set matrix row names through dimnames[[1]].
 pub fn do_rownames_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    { set_matrix_dimname(args, 0) }
+     set_matrix_dimname(args, 0) 
 }
 
 /// R's `colnames(x) <- value` — set matrix column names through dimnames[[2]].
 pub fn do_colnames_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    { set_matrix_dimname(args, 1) }
+     set_matrix_dimname(args, 1) 
 }
 
 pub fn set_matrix_dimname(args: SEXP, axis: i64) -> SEXP {

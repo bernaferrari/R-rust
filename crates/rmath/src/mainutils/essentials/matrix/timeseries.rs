@@ -362,12 +362,12 @@ fn cbind_ts(args: SEXP, union: bool) -> SEXP {
 
 /// GNU `ts.union(a, b)` — align two series on the union of their times.
 pub fn do_ts_union(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    { cbind_ts(args, true) }
+     cbind_ts(args, true) 
 }
 
 /// GNU `ts.intersect(a, b)` — align two series on the overlap of their times.
 pub fn do_ts_intersect(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    { cbind_ts(args, false) }
+     cbind_ts(args, false) 
 }
 
 #[cfg(test)]

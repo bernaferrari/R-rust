@@ -314,7 +314,7 @@ pub fn do_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 /// R's `lengths(x)` alias — lengths of list elements.
 /// Wrapper that delegates to do_lengths (already registered separately).
 pub fn do_length_list(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    { do_lengths(_call, _op, args, _rho) }
+     do_lengths(_call, _op, args, _rho) 
 }
 
 /// R's `names(x)` for lists — names of list elements.

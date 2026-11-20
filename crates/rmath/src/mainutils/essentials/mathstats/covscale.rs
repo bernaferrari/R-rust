@@ -631,7 +631,7 @@ pub fn do_rle(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         );
         if has_dim || !(atomic || TYPEOF(x) == SEXPTYPE::VECSXP) {
             crate::mainutils::errors::errorcall_str(
-                { crate::mainutils::errors::R_getCurrentCall() },
+                 crate::mainutils::errors::R_getCurrentCall() ,
                 "'x' must be a vector of an atomic type",
             );
         }
@@ -855,7 +855,7 @@ pub fn do_rowsum(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         }
         if xt != SEXPTYPE::INTSXP && xt != SEXPTYPE::REALSXP && xt != SEXPTYPE::LGLSXP {
             crate::mainutils::errors::errorcall_str(
-                { crate::mainutils::errors::R_getCurrentCall() },
+                 crate::mainutils::errors::R_getCurrentCall() ,
                 "'x' must be numeric",
             );
         }
@@ -871,7 +871,7 @@ pub fn do_rowsum(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         };
         if XLENGTH(group) != nr {
             crate::mainutils::errors::errorcall_str(
-                { crate::mainutils::errors::R_getCurrentCall() },
+                 crate::mainutils::errors::R_getCurrentCall() ,
                 "incorrect length for 'group'",
             );
         }
@@ -1020,7 +1020,7 @@ pub fn do_jitter(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let xt = TYPEOF(x);
         if xt != SEXPTYPE::INTSXP && xt != SEXPTYPE::REALSXP && xt != SEXPTYPE::LGLSXP {
             crate::mainutils::errors::errorcall_str(
-                { crate::mainutils::errors::R_getCurrentCall() },
+                 crate::mainutils::errors::R_getCurrentCall() ,
                 "'x' must be numeric",
             );
         }
@@ -1146,7 +1146,7 @@ pub fn do_margin_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let xt = TYPEOF(x);
         if xt != SEXPTYPE::INTSXP && xt != SEXPTYPE::REALSXP && xt != SEXPTYPE::LGLSXP {
             crate::mainutils::errors::errorcall_str(
-                { crate::mainutils::errors::R_getCurrentCall() },
+                 crate::mainutils::errors::R_getCurrentCall() ,
                 "'x' is not an array",
             );
         }
@@ -1241,7 +1241,7 @@ pub fn do_mad(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let xt = TYPEOF(x);
         if xt != SEXPTYPE::INTSXP && xt != SEXPTYPE::REALSXP && xt != SEXPTYPE::LGLSXP {
             crate::mainutils::errors::errorcall_str(
-                { crate::mainutils::errors::R_getCurrentCall() },
+                 crate::mainutils::errors::R_getCurrentCall() ,
                 "'x' must be numeric",
             );
         }

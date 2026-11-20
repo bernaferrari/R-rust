@@ -136,12 +136,12 @@ pub fn do_environment(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R's `parent.env(env)` — returns the parent environment.
 pub fn do_parent_env(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    { parent_env::dispatch(args, false) }
+     parent_env::dispatch(args, false) 
 }
 
 /// GNU replacement returns the original operand, including S4 environment data.
 pub fn do_set_parent_env(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    { parent_env::dispatch(args, true) }
+     parent_env::dispatch(args, true) 
 }
 
 mod parent_env;
@@ -218,7 +218,7 @@ pub(crate) fn namespace_spec(env: SEXP) -> Option<SEXP> {
 
 /// R's `environmentName(env)` — returns the name of an environment.
 pub fn do_environment_name(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    { do_env_name(_call, _op, args, _rho) }
+     do_env_name(_call, _op, args, _rho) 
 }
 
 /// R-like `is_empty(env)` — check if environment is empty (simplified).

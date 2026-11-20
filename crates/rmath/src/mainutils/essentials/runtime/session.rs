@@ -125,7 +125,7 @@ pub fn do_getRversion(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
 
 /// `getNamespaceVersion(ns)` for a base package is the R version.
 pub fn do_getNamespaceVersion(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    { do_getRversion(call, op, args, rho) }
+     do_getRversion(call, op, args, rho) 
 }
 
 /// R's `R.version.string` — returns the full R version string.

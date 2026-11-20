@@ -56,7 +56,7 @@ pub fn do_conditionCall(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 
 /// R's `simpleError(message, call)` — create a simple error condition.
 pub fn do_simpleError(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    { simple_constructor(args, &["simpleError", "error", "condition"]) }
+     simple_constructor(args, &["simpleError", "error", "condition"]) 
 }
 
 /// Own selections before coercion, dispatch, or a constructor can reenter R.
@@ -136,13 +136,13 @@ fn simple_constructor(args: SEXP, classes: &[&str]) -> SEXP {
 /// value is the message). zeallot's error paths build their conditions
 /// through this.
 pub fn do_errorCondition(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    { error_or_warning_condition(args, "error") }
+     error_or_warning_condition(args, "error") 
 }
 
 /// R's `warningCondition(message, ..., class = NULL, call = NULL)` —
 /// see [`do_errorCondition`].
 pub fn do_warningCondition(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    { error_or_warning_condition(args, "warning") }
+     error_or_warning_condition(args, "warning") 
 }
 
 fn error_or_warning_condition(args: SEXP, kind: &str) -> SEXP {
@@ -242,9 +242,9 @@ fn error_or_warning_condition(args: SEXP, kind: &str) -> SEXP {
 
 /// R's `simpleWarning(message, call)` — create a simple warning condition.
 pub fn do_simpleWarning(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    { simple_constructor(args, &["simpleWarning", "warning", "condition"]) }
+     simple_constructor(args, &["simpleWarning", "warning", "condition"]) 
 }
 
 pub(super) fn native_simple_condition(args: SEXP) -> SEXP {
-    { simple_constructor(args, &["simpleCondition", "condition"]) }
+     simple_constructor(args, &["simpleCondition", "condition"]) 
 }

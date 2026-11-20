@@ -63,7 +63,7 @@ pub(super) fn attached_package_env(package: &str) -> Option<SEXP> {
 
 pub(crate) fn load_pure_r_package(package: &str, package_dir: &Path) -> Result<(), String> {
     let mut loading = Vec::<String>::new();
-    { load_pure_r_package_recursive(package, package_dir, &mut loading) }
+     load_pure_r_package_recursive(package, package_dir, &mut loading) 
 }
 
 pub(crate) fn load_pure_r_package_recursive(
@@ -411,7 +411,7 @@ pub(crate) fn finalize_methods_namespace(namespace: SEXP) {
             .pin()
             .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
         for step in [
-            bind_methods_base_primitives as unsafe fn(SEXP),
+            bind_methods_base_primitives as fn(SEXP),
             purge_missing_arg_placeholders,
             retarget_methods_generics,
             run_methods_onload_cache_metadata,

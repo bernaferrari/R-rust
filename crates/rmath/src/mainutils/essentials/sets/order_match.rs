@@ -1232,11 +1232,11 @@ fn reverse_names_attribute(x: SEXP, result: SEXP, len: R_xlen_t) {
 
 /// GNU Boolean Summary default with original-owner roots and admitted coercion.
 pub fn do_any(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    { super::boolean_summary::run(call, op, args, rho, true) }
+     super::boolean_summary::run(call, op, args, rho, true) 
 }
 
 pub fn do_all(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    { super::boolean_summary::run(call, op, args, rho, false) }
+     super::boolean_summary::run(call, op, args, rho, false) 
 }
 
 /// R's `cumsum(x)` — cumulative sum.

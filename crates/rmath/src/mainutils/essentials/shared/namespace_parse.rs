@@ -557,7 +557,7 @@ pub(crate) fn namespace_export_environment(package_env: SEXP) -> Option<SEXP> {
 }
 
 pub(crate) fn frame_binding_names(env: SEXP, include_hidden: bool) -> Vec<String> {
-    { collect_frame_binding_names(env, include_hidden, false) }
+     collect_frame_binding_names(env, include_hidden, false) 
 }
 
 /// Public environment-name enumeration must report every bound name when
@@ -566,7 +566,7 @@ pub(crate) fn frame_binding_names_for_listing(
     env: SEXP,
     include_hidden: bool,
 ) -> Vec<String> {
-    { collect_frame_binding_names(env, include_hidden, true) }
+     collect_frame_binding_names(env, include_hidden, true) 
 }
 
 fn collect_frame_binding_names(

@@ -535,7 +535,7 @@ fn c_arg_elem_name(tag: SEXP, arg_names: SEXP, i: R_xlen_t, n: R_xlen_t) -> SEXP
 
 /// GNU's internal integer-counting kernel; public validation stays in R.
 pub fn do_tabulate(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    { super::tabulate::evaluate(call, op, args, rho) }
+     super::tabulate::evaluate(call, op, args, rho) 
 }
 
 // ---------------------------------------------------------------------------
@@ -901,12 +901,12 @@ fn copy_pminmax_shape(first: SEXP, result: SEXP, max_len: R_xlen_t) {
 
 /// GNU's first minimum index, including selected names and object transforms.
 pub fn do_which_min(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    { super::which_extrema::evaluate(call, op, args, rho, true) }
+     super::which_extrema::evaluate(call, op, args, rho, true) 
 }
 
 /// GNU's first maximum index, including selected names and object transforms.
 pub fn do_which_max(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    { super::which_extrema::evaluate(call, op, args, rho, false) }
+     super::which_extrema::evaluate(call, op, args, rho, false) 
 }
 
 // ---------------------------------------------------------------------------

@@ -307,10 +307,10 @@ pub fn do_localeToCharset(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 
 /// Own the original argument graph before any conversion or allocation.
 pub fn do_iconv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    { iconv_entry(args, false) }
+     iconv_entry(args, false) 
 }
 pub fn do_iconvlist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    { iconv_entry(args, true) }
+     iconv_entry(args, true) 
 }
 fn iconv_entry(args: SEXP, inventory: bool) -> SEXP {
     use crate::sexp::{

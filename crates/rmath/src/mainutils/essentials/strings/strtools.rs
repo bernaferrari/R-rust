@@ -151,7 +151,7 @@ pub fn do_str_count(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R's `str_replace(x, pattern, replacement)` — alias for sub.
 pub fn do_str_replace(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    { do_sub(_call, _op, args, _rho) }
+     do_sub(_call, _op, args, _rho) 
 }
 
 // ---------------------------------------------------------------------------
@@ -487,7 +487,7 @@ pub fn do_str_locate_all(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 
 /// R's `str_sub(x, start, end)` — extract substring (alias for substr).
 pub fn do_str_sub(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    { do_substr(_call, _op, args, _rho) }
+     do_substr(_call, _op, args, _rho) 
 }
 
 /// R's `str_sub_all(x, start, end)` — all substrings (simplified).

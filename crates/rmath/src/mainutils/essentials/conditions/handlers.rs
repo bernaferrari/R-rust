@@ -449,7 +449,7 @@ fn pairlist_len(mut p: SEXP) -> i64 {
 
 /// GNU `simpleCondition(message, call = NULL)`.
 pub fn do_simpleCondition(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    { super::condition_objects::native_simple_condition(args) }
+     super::condition_objects::native_simple_condition(args) 
 }
 
 /// GNU `signalCondition(cond)` — invoke matching calling handlers.

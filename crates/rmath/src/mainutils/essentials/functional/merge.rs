@@ -8,7 +8,7 @@ pub fn do_unstack(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let x = CAR(args);
         if TYPEOF(x) != SEXPTYPE::VECSXP {
             crate::mainutils::errors::errorcall_str(
-                { crate::mainutils::errors::R_getCurrentCall() },
+                 crate::mainutils::errors::R_getCurrentCall() ,
                 "'form' must be a two-sided formula",
             );
         }
@@ -28,7 +28,7 @@ pub fn do_unstack(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         }
         if values == R_NilValue() || ind == R_NilValue() {
             crate::mainutils::errors::errorcall_str(
-                { crate::mainutils::errors::R_getCurrentCall() },
+                 crate::mainutils::errors::R_getCurrentCall() ,
                 "'form' must be a two-sided formula",
             );
         }
@@ -43,7 +43,7 @@ pub fn do_unstack(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             };
         if nlev == 0 {
             crate::mainutils::errors::errorcall_str(
-                { crate::mainutils::errors::R_getCurrentCall() },
+                 crate::mainutils::errors::R_getCurrentCall() ,
                 "'form' must be a two-sided formula",
             );
         }
@@ -248,7 +248,7 @@ pub fn do_merge(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let y = CAR(CDR(args));
         if TYPEOF(x) != SEXPTYPE::VECSXP || TYPEOF(y) != SEXPTYPE::VECSXP {
             crate::mainutils::errors::errorcall_str(
-                { crate::mainutils::errors::R_getCurrentCall() },
+                 crate::mainutils::errors::R_getCurrentCall() ,
                 "'by' must specify one or more columns as numbers, names or logical",
             );
         }

@@ -33,12 +33,12 @@ pub fn do_trimws(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R's `gsub(pattern, replacement, x)` — global string substitution (literal).
 pub fn do_gsub(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    { do_string_replace(args, true) }
+     do_string_replace(args, true) 
 }
 
 /// R's `sub(pattern, replacement, x)` — first match substitution (literal).
 pub fn do_sub(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    { do_string_replace(args, false) }
+     do_string_replace(args, false) 
 }
 
 fn string_arg_is_na(arg: SEXP) -> bool {

@@ -960,7 +960,7 @@ fn eval_source_text_with_name(
 }
 
 fn eval_source_text(content: &str, env: SEXP) -> SEXP {
-    { eval_source_text_with_name(content, env, "", option_keep_source()) }
+     eval_source_text_with_name(content, env, "", option_keep_source()) 
 }
 
 /// R's `demo(topic, ...)` — run a demo (simplified).

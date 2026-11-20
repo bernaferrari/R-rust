@@ -28,7 +28,7 @@ use crate::sexp::symbol::Rf_install;
 
 /// R's `class(x)` — get S3 class vector.
 pub fn do_S3_class(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    { do_class_get(_call, _op, args, _rho) }
+     do_class_get(_call, _op, args, _rho) 
 }
 
 /// R's `isS4(x)` — check if object is S4.
@@ -457,7 +457,7 @@ fn methods_exported_closure(name: &std::ffi::CStr) -> Option<SEXP> {
 
 /// Use the GNU `methods::new` closure once that namespace is loaded.
 fn methods_new_closure() -> Option<SEXP> {
-    { methods_exported_closure(c"new") }
+     methods_exported_closure(c"new") 
 }
 
 /// GNU `new(Class, ...)` — construct an S4 object.
@@ -635,7 +635,7 @@ fn valid_object_owned(
         return Ok(domain.logical(true));
     }
     if let Some(message) = access
-        .with_native(|_| Ok({ super::print::factor_validity_message(object.as_raw()) }))?
+        .with_native(|_| Ok( super::print::factor_validity_message(object.as_raw()) ))?
     {
         return Err(SexpError::EvaluationFailed { message });
     }
@@ -1595,12 +1595,12 @@ pub fn do_getMethods(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R's `existsMethod(f, signature)` — check if method exists.
 pub fn do_existsMethod(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    { s4_method_exists(args, _rho, false) }
+     s4_method_exists(args, _rho, false) 
 }
 
 /// R's `hasMethod(f, signature)` — check exact or inherited methods.
 pub fn do_hasMethod(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    { s4_method_exists(args, _rho, true) }
+     s4_method_exists(args, _rho, true) 
 }
 
 fn s4_method_exists(args: SEXP, rho: SEXP, inherit: bool) -> SEXP {
