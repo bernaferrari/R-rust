@@ -65,10 +65,10 @@ const RTLD_LOCAL: c_int = 0x0;
 
 struct OsDynSymbolTable {
     loadLibrary:
-        Option<unsafe extern "C" fn(*const c_char, c_int, c_int, *const c_char) -> *mut c_void>,
-    dlsym_fn: Option<unsafe extern "C" fn(*mut DllInfo, *const c_char) -> DL_FUNC>,
-    closeLibrary: Option<unsafe extern "C" fn(*mut c_void)>,
-    getError: Option<unsafe extern "C" fn(*mut c_char, c_int)>,
+        Option<extern "C" fn(*const c_char, c_int, c_int, *const c_char) -> *mut c_void>,
+    dlsym_fn: Option<extern "C" fn(*mut DllInfo, *const c_char) -> DL_FUNC>,
+    closeLibrary: Option<extern "C" fn(*mut c_void)>,
+    getError: Option<extern "C" fn(*mut c_char, c_int)>,
 }
 
 fn os_dyn_symbol_table() -> OsDynSymbolTable {
@@ -104,20 +104,18 @@ pub(crate) fn compute_dlopen_flag(as_local: c_int, now: c_int) -> c_int {
 }
 
 /// Load a shared library using dlopen.
-unsafe extern "C" fn load_library(
+extern "C" fn load_library(
     path: *const c_char,
     as_local: c_int,
     now: c_int,
     _search: *const c_char,
 ) -> *mut c_void {
-    unsafe {
-        let open_flag = compute_dlopen_flag(as_local, now);
-        libc_dlopen(path, open_flag)
-    }
+    let open_flag = compute_dlopen_flag(as_local, now);
+    libc_dlopen(path, open_flag)
 }
 
 /// Look up a symbol in a shared library using dlsym.
-unsafe extern "C" fn local_dlsym(info: *mut DllInfo, name: *const c_char) -> DL_FUNC {
+extern "C" fn local_dlsym(info: *mut DllInfo, name: *const c_char) -> DL_FUNC {
     // In the full implementation, info->handle is used with dlsym.
     // For now, return null since DllInfo is a stub.
     let _ = info;
@@ -126,14 +124,13 @@ unsafe extern "C" fn local_dlsym(info: *mut DllInfo, name: *const c_char) -> DL_
 }
 
 /// Close a shared library using dlclose.
-unsafe extern "C" fn close_library(handle: *mut c_void) {
-    unsafe {
-        libc_dlclose(handle);
-    }
+extern "C" fn close_library(handle: *mut c_void) {
+    libc_dlclose(handle);
 }
 
 /// Get the last dlerror message.
-unsafe extern "C" fn get_system_error(buf: *mut c_char, len: c_int) {
+extern "C" fn get_system_error(buf: *mut c_char, len: c_int) {
+    // SAFETY: `buf` has `len` writable bytes per the vtable contract.
     unsafe {
         if len > 0 {
             let err = libc_dlerror();
@@ -166,38 +163,42 @@ unsafe extern "C" {
 /// wasm32 sandbox: dynamic loading is unsupported — same reject policy as the
 /// Android sandbox. `dyn.load` fails cleanly; nothing is ever loaded.
 #[cfg(target_arch = "wasm32")]
-pub(crate) unsafe fn dlopen(_filename: *const c_char, _flag: c_int) -> *mut c_void {
+pub(crate) fn dlopen(_filename: *const c_char, _flag: c_int) -> *mut c_void {
     std::ptr::null_mut()
 }
 #[cfg(target_arch = "wasm32")]
-pub(crate) unsafe fn dlsym(_handle: *mut c_void, _symbol: *const c_char) -> *mut c_void {
+pub(crate) fn dlsym(_handle: *mut c_void, _symbol: *const c_char) -> *mut c_void {
     std::ptr::null_mut()
 }
 #[cfg(target_arch = "wasm32")]
-pub(crate) unsafe fn dlclose(_handle: *mut c_void) -> c_int {
+pub(crate) fn dlclose(_handle: *mut c_void) -> c_int {
     0
 }
 #[cfg(target_arch = "wasm32")]
-pub(crate) unsafe fn dlerror() -> *mut c_char {
+pub(crate) fn dlerror() -> *mut c_char {
     static MSG: &[u8] = b"dynamic loading is not supported on this platform\0";
     MSG.as_ptr() as *mut c_char
 }
 
-unsafe fn libc_dlopen(path: *const c_char, flag: c_int) -> *mut c_void {
+fn libc_dlopen(path: *const c_char, flag: c_int) -> *mut c_void {
+    // SAFETY: `path` is NUL-terminated per the dlopen contract.
     unsafe { dlopen(path, flag) }
 }
 
-unsafe fn libc_dlsym(handle: *mut c_void, name: *const c_char) -> *mut c_void {
+fn libc_dlsym(handle: *mut c_void, name: *const c_char) -> *mut c_void {
+    // SAFETY: `handle` is a live dlopen handle and `name` is NUL-terminated.
     unsafe { dlsym(handle, name) }
 }
 
-unsafe fn libc_dlclose(handle: *mut c_void) {
+fn libc_dlclose(handle: *mut c_void) {
+    // SAFETY: `handle` is a live dlopen handle.
     unsafe {
         dlclose(handle);
     }
 }
 
-unsafe fn libc_dlerror() -> *mut c_char {
+fn libc_dlerror() -> *mut c_char {
+    // SAFETY: dlerror has no pointer contract.
     unsafe { dlerror() }
 }
 
@@ -213,12 +214,12 @@ pub fn InitFunctionHashing() {
 }
 
 /// Delete cached symbols for a DLL (stub).
-pub unsafe fn Rf_deleteCachedSymbol(_name: *const c_char) -> c_int {
+pub fn Rf_deleteCachedSymbol(_name: *const c_char) -> c_int {
     0
 }
 
 /// Look up a cached symbol (stub).
-pub unsafe fn Rf_lookupCachedSymbol(_name: *const c_char, _can_cache: c_int) -> DL_FUNC {
+pub fn Rf_lookupCachedSymbol(_name: *const c_char, _can_cache: c_int) -> DL_FUNC {
     None
 }
 
@@ -226,7 +227,7 @@ pub unsafe fn Rf_lookupCachedSymbol(_name: *const c_char, _can_cache: c_int) -> 
 pub fn Rf_deleteCachedSymbols() {}
 
 /// Look up a cached symbol (stub).
-pub unsafe fn Rf_lookupCachedSymbols(_name: *const c_char, _can_cache: c_int) -> DL_FUNC {
+pub fn Rf_lookupCachedSymbols(_name: *const c_char, _can_cache: c_int) -> DL_FUNC {
     None
 }
 
