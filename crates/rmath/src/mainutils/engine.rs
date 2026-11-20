@@ -2121,7 +2121,7 @@ mod tests {
         if event == GE_CheckPlot {
             data
         } else {
-            unsafe { R_NilValue() }
+            R_NilValue()
         }
     }
 

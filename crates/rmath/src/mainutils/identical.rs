@@ -658,18 +658,14 @@ pub unsafe fn R_compute_identical(x: SEXP, y: SEXP, flags: c_int) -> c_int {
             // ENVSXP/SYMSXP: pointer equality only (already checked x != y)
             return 0;
         } else if t == SEXPTYPE::PROMSXP {
-            let ex = unsafe {
-                crate::mainutils::coerce::substitute(
-                    crate::sexp::accessors::PRCODE(x),
-                    crate::sexp::accessors::PRENV(x),
-                )
-            };
-            let ey = unsafe {
-                crate::mainutils::coerce::substitute(
-                    crate::sexp::accessors::PRCODE(y),
-                    crate::sexp::accessors::PRENV(y),
-                )
-            };
+            let ex = crate::mainutils::coerce::substitute(
+                crate::sexp::accessors::PRCODE(x),
+                crate::sexp::accessors::PRENV(x),
+            );
+            let ey = crate::mainutils::coerce::substitute(
+                crate::sexp::accessors::PRCODE(y),
+                crate::sexp::accessors::PRENV(y),
+            );
             return R_compute_identical(ex, ey, flags);
         } else if t == SEXPTYPE::OBJSXP {
             // OBJSXP: attributes already tested, so all slots identical

@@ -2243,14 +2243,12 @@ mod tests {
     #[test]
     fn test_type_checking_functions() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            // R_NilValue should be detected as NULL
-            assert_eq!(Rf_isNull_memory(R_NilValue()), 1);
-            assert_eq!(Rf_isNull_memory(ptr::null_mut()), 1);
+        // R_NilValue should be detected as NULL
+        assert_eq!(Rf_isNull_memory(R_NilValue()), 1);
+        assert_eq!(Rf_isNull_memory(ptr::null_mut()), 1);
 
-            // Non-null non-NilValue should not be NULL
-            // (can't easily test without a valid SEXP)
-        }
+        // Non-null non-NilValue should not be NULL
+        // (can't easily test without a valid SEXP)
     }
 
     #[test]

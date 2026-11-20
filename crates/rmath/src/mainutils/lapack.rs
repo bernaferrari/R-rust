@@ -99,16 +99,14 @@ mod tests {
 
     #[test]
     fn test_do_lapack_returns_nil() {
-        unsafe {
-            let _session = crate::sexp::session::RSession::new();
-            let result = do_lapack(
-                ptr::null_mut(),
-                ptr::null_mut(),
-                ptr::null_mut(),
-                ptr::null_mut(),
-            );
-            assert!(result.is_null() || result == R_NilValue());
-        }
+        let _session = crate::sexp::session::RSession::new();
+        let result = do_lapack(
+            ptr::null_mut(),
+            ptr::null_mut(),
+            ptr::null_mut(),
+            ptr::null_mut(),
+        );
+        assert!(result.is_null() || result == R_NilValue());
     }
 
     #[test]

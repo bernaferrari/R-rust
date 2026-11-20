@@ -1168,7 +1168,7 @@ mod tests {
                 .unwrap();
             assert_eq!(result.try_string_value_elt(0).unwrap().unwrap(), "é:é");
             let element = result.try_string_elt(0).unwrap();
-            assert_eq!(unsafe { getCharCE(element.as_raw()) }, CE_UTF8);
+            assert_eq!(getCharCE(element.as_raw()), CE_UTF8);
         });
     }
 

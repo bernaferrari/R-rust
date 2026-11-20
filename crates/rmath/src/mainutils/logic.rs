@@ -593,7 +593,7 @@ pub unsafe fn do_logic(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             return binary_logic_raw(code, x, y);
         }
 
-        let is_frame = |s: SEXP| unsafe {
+        let is_frame = |s: SEXP| {
             let class = crate::sexp::attrib_core::getAttrib(
                 s,
                 crate::sexp::symbol::Rf_install(c"class".as_ptr()),
@@ -646,7 +646,7 @@ pub unsafe fn do_logic(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             return out;
         }
         let inherits_oct =
-            |s: SEXP| unsafe { crate::mainutils::objects::inherits2(s, c"octmode".as_ptr()) != 0 };
+            |s: SEXP| crate::mainutils::objects::inherits2(s, c"octmode".as_ptr()) != 0;
         if inherits_oct(x) || inherits_oct(y) {
             let a = crate::mainutils::essentials::do_as_octmode(
                 call,

@@ -263,7 +263,7 @@ pub unsafe fn do_mapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     {
                         let charsxp = crate::sexp::accessors::STRING_ELT(names, j);
                         let chars = crate::sexp::accessors::CHAR(charsxp);
-                        if !chars.is_null() && unsafe { *chars != 0 } {
+                        if !chars.is_null() && *chars != 0 {
                             crate::sexp::symbol::Rf_install(chars)
                         } else {
                             R_NilValue()
