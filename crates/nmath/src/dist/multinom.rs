@@ -104,20 +104,10 @@ pub fn rmultinom_inner(n: i32, prob: &[f64], rn: &mut [f64]) {
 
 // ---- FFI shim ----
 
-pub fn rmultinom(n: c_int, prob: *const c_double, k: c_int, rn: *mut c_double) {
-    if prob.is_null() || rn.is_null() || k < 0 {
-        return;
-    }
-    let k_usize = k as usize;
-    let n_i32 = n;
-
-    unsafe {
-        let prob_slice = std::slice::from_raw_parts(prob, k_usize);
-        let rn_slice = std::slice::from_raw_parts_mut(rn, k_usize);
-        rmultinom_inner(n_i32, prob_slice, rn_slice);
-    }
+pub fn rmultinom(n: c_int, prob: &[c_double], rn: &mut [c_double]) {
+    rmultinom_inner(n, prob, rn);
 }
 
-pub fn Rf_rmultinom(n: c_int, prob: *const c_double, k: c_int, rn: *mut c_double) {
-    rmultinom(n, prob, k, rn);
+pub fn Rf_rmultinom(n: c_int, prob: &[c_double], rn: &mut [c_double]) {
+    rmultinom(n, prob, rn);
 }

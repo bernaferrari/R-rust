@@ -2324,33 +2324,21 @@ fn gamln(a: f64) -> f64 {
 // C FFI shims
 // =====================================================================
 
-/// C-compatible bratio: stores results via pointers.
+/// C-compatible bratio: stores results via mutable references.
 pub fn Rf_bratio(
     a: f64,
     b: f64,
     x: f64,
     y: f64,
-    w: *mut f64,
-    w1: *mut f64,
-    ierr: *mut std::os::raw::c_int,
+    w: &mut f64,
+    w1: &mut f64,
+    ierr: &mut std::os::raw::c_int,
     log_p: std::os::raw::c_int,
 ) {
     let (w_val, w1_val, ierr_val) = bratio(a, b, x, y, log_p != 0);
-    if !w.is_null() {
-        unsafe {
-            *w = w_val;
-        }
-    }
-    if !w1.is_null() {
-        unsafe {
-            *w1 = w1_val;
-        }
-    }
-    if !ierr.is_null() {
-        unsafe {
-            *ierr = ierr_val;
-        }
-    }
+    *w = w_val;
+    *w1 = w1_val;
+    *ierr = ierr_val;
 }
 
 #[cfg(test)]

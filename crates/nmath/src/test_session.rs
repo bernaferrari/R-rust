@@ -25,10 +25,8 @@ impl TestSession {
             math: Box::new(MathState::default()),
             rng: Box::new(crate::rng::RngState::default()),
         };
-        unsafe {
-            install_state(&mut *session.math as *mut MathState);
-            install_rng(&mut *session.rng as *mut crate::rng::RngState);
-        }
+        install_state(&mut *session.math as *mut MathState);
+        install_rng(&mut *session.rng as *mut crate::rng::RngState);
         session
     }
 

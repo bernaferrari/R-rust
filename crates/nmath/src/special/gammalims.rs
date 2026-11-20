@@ -24,15 +24,9 @@ pub fn gammalims() -> (f64, f64) {
     (-170.5674972726612, 171.61447887182298)
 }
 
-pub unsafe fn Rf_gammalims(xmin: *mut f64, xmax: *mut f64) {
-    if xmin.is_null() || xmax.is_null() {
-        return;
-    }
-
+pub fn Rf_gammalims(xmin: &mut f64, xmax: &mut f64) {
     let (xmin_value, xmax_value) = gammalims();
 
-    unsafe {
-        *xmin = xmin_value;
-        *xmax = xmax_value;
-    }
+    *xmin = xmin_value;
+    *xmax = xmax_value;
 }
