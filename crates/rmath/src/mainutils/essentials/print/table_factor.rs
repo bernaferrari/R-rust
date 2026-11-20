@@ -1,7 +1,7 @@
 use super::*;
 
 /// R's `print.table(x)` — print a table object.
-pub unsafe fn do_print_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_print_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = print_method_x(_call, args, "table");
         if x.is_null() || x == R_NilValue() {
@@ -115,7 +115,7 @@ pub unsafe fn do_print_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
 /// it through the stock character-vector printer (`quote`, IndexWidth label
 /// justification, width wrapping), then the `Levels:` line with encodeString
 /// quoting, the smart max.levels default, and ordered ` < ` separators.
-pub unsafe fn do_print_factor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_print_factor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = print_method_x(_call, args, "factor");
         if x.is_null() || x == R_NilValue() {
@@ -307,7 +307,7 @@ pub unsafe fn do_print_factor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
         x
     }
 }
-pub(crate) unsafe fn factor_validity_message(x: SEXP) -> Option<String> {
+pub(crate) fn factor_validity_message(x: SEXP) -> Option<String> {
     unsafe {
         let class =
             crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_ClassSymbol());
@@ -355,7 +355,7 @@ pub(crate) unsafe fn factor_validity_message(x: SEXP) -> Option<String> {
 /// GNU `print.rle(x, digits = getOption("digits"), prefix = "", ...)` (base
 /// rle.R): "Run Length Encoding" header, then `str()` of `$lengths` (default
 /// digits.d) and `$values` (digits.d = `digits`), joined onto the cat() text.
-pub unsafe fn do_print_rle(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_print_rle(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = print_method_x(_call, args, "rle");
         if x.is_null()
@@ -411,7 +411,7 @@ pub unsafe fn do_print_rle(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
 
 /// GNU `print.eigen(x, ...)`: header line plus `print(unclass(x), ...)`;
 /// returns invisible x (base eigen.R).
-pub unsafe fn do_print_eigen(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_print_eigen(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = print_method_x(_call, args, "eigen");
         if x.is_null()
@@ -441,7 +441,7 @@ pub unsafe fn do_print_eigen(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
 /// GNU `print.proc_time(x, ...)`: `print(summary(x, ...))`; invisible x.
 /// `summary.proc_time` adds the child times into user/sys, keeps the first
 /// three entries and names them user/system/elapsed (base time.R).
-pub unsafe fn do_print_proc_time(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_print_proc_time(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);

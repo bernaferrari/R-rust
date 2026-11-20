@@ -87,7 +87,7 @@ fn str_drop0trailing(s: &str) -> String {
 }
 
 /// GNU `format(x, trim=TRUE, drop0trailing=TRUE)` under `options(digits=digits.d)`.
-unsafe fn str_format_real(x: f64) -> String {
+fn str_format_real(x: f64) -> String {
     unsafe {
         if x.is_nan() {
             return if crate::sexp::ffi::is_na_real(x) {
@@ -125,7 +125,7 @@ unsafe fn str_format_real(x: f64) -> String {
     }
 }
 
-unsafe fn str_numeric_integer_like(x: SEXP, n_check: usize) -> bool {
+fn str_numeric_integer_like(x: SEXP, n_check: usize) -> bool {
     unsafe {
         if TYPEOF(x) == SEXPTYPE::INTSXP {
             return true;
@@ -152,7 +152,7 @@ unsafe fn str_numeric_integer_like(x: SEXP, n_check: usize) -> bool {
 }
 
 /// GNU str.default S4 non-envRefClass header + `..@ slot :` lines.
-unsafe fn str_s4_formal_class(x: SEXP) {
+fn str_s4_formal_class(x: SEXP) {
     unsafe {
         let class_val =
             crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_ClassSymbol());
@@ -233,11 +233,11 @@ unsafe fn str_s4_formal_class(x: SEXP) {
     }
 }
 
-unsafe fn str_atomic_summary(x: SEXP) -> String {
-    unsafe { str_atomic_summary_opts(x, true, false) }
+fn str_atomic_summary(x: SEXP) -> String {
+    { str_atomic_summary_opts(x, true, false) }
 }
 
-unsafe fn str_atomic_summary_opts(x: SEXP, give_length: bool, nested: bool) -> String {
+fn str_atomic_summary_opts(x: SEXP, give_length: bool, nested: bool) -> String {
     unsafe {
         if x.is_null() || x == R_NilValue() {
             return "NULL".to_string();
@@ -339,7 +339,7 @@ unsafe fn str_atomic_summary_opts(x: SEXP, give_length: bool, nested: bool) -> S
 
 /// GNU str.default factor header: `Factor`/`Ord.factor`, quoted levels,
 /// integer codes after the colon.
-unsafe fn str_factor_summary(x: SEXP) -> String {
+fn str_factor_summary(x: SEXP) -> String {
     unsafe {
         let ordered = sexp_has_class_name(x, "ordered");
         let kind = if ordered { "Ord.factor" } else { "Factor" };
@@ -395,7 +395,7 @@ unsafe fn str_factor_summary(x: SEXP) -> String {
     }
 }
 
-unsafe fn str_date_summary(x: SEXP, give_length: bool) -> String {
+fn str_date_summary(x: SEXP, give_length: bool) -> String {
     unsafe {
         let n = XLENGTH(x);
         let formatted = crate::mainutils::essentials::do_format_Date(
@@ -434,7 +434,7 @@ unsafe fn str_date_summary(x: SEXP, give_length: bool) -> String {
     }
 }
 
-unsafe fn str_language_summary(x: SEXP) -> String {
+fn str_language_summary(x: SEXP) -> String {
     unsafe {
         let deparsed = crate::mainutils::deparse::deparse_symbolic(x, true);
         let _deparsed = protect(deparsed);
@@ -461,7 +461,7 @@ unsafe fn str_language_summary(x: SEXP) -> String {
     }
 }
 
-unsafe fn str_environment_brief(env: SEXP) -> String {
+fn str_environment_brief(env: SEXP) -> String {
     unsafe {
         if env == crate::sexp::globals::R_EmptyEnv() {
             "<environment: R_EmptyEnv>".to_string()
@@ -478,11 +478,11 @@ unsafe fn str_environment_brief(env: SEXP) -> String {
 static STR_LEVEL: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(100);
 static STR_LIST_LEN: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(99);
 
-unsafe fn str_list_summary(x: SEXP) -> String {
-    unsafe { str_list_summary_indent(x, "  ..$ ") }
+fn str_list_summary(x: SEXP) -> String {
+    { str_list_summary_indent(x, "  ..$ ") }
 }
 
-unsafe fn str_list_summary_indent(x: SEXP, child_prefix: &str) -> String {
+fn str_list_summary_indent(x: SEXP, child_prefix: &str) -> String {
     unsafe {
         let n = XLENGTH(x);
         let names = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"names".as_ptr()));
@@ -528,7 +528,7 @@ unsafe fn str_list_summary_indent(x: SEXP, child_prefix: &str) -> String {
     }
 }
 
-unsafe fn str_child_dimnames_lines(x: SEXP) -> Option<String> {
+fn str_child_dimnames_lines(x: SEXP) -> Option<String> {
     unsafe {
         let dn =
             crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimNamesSymbol());
@@ -542,7 +542,7 @@ unsafe fn str_child_dimnames_lines(x: SEXP) -> Option<String> {
     }
 }
 
-unsafe fn str_preview_ints(x: SEXP, max: usize) -> String {
+fn str_preview_ints(x: SEXP, max: usize) -> String {
     unsafe {
         let n = XLENGTH(x) as usize;
         let quote = TYPEOF(x) == SEXPTYPE::STRSXP;
@@ -590,7 +590,7 @@ unsafe fn str_preview_ints(x: SEXP, max: usize) -> String {
     }
 }
 
-unsafe fn str_preview_reals_or_ints(x: SEXP, max: usize) -> String {
+fn str_preview_reals_or_ints(x: SEXP, max: usize) -> String {
     unsafe {
         if TYPEOF(x) != SEXPTYPE::REALSXP && TYPEOF(x) != SEXPTYPE::INTSXP {
             return str_preview_ints(x, max);
@@ -630,7 +630,7 @@ unsafe fn str_preview_reals_or_ints(x: SEXP, max: usize) -> String {
 }
 
 /// GNU `format(object[seq_len(ile)], trim=TRUE, drop0trailing=TRUE)` under digits.d.
-unsafe fn str_format_real_slice(x: SEXP, show: usize) -> Vec<String> {
+fn str_format_real_slice(x: SEXP, show: usize) -> Vec<String> {
     unsafe {
         let tmp = Rf_allocVector3(SEXPTYPE::REALSXP, show as R_xlen_t);
         if tmp.is_null() {
@@ -716,7 +716,7 @@ pub(crate) fn emit_print_text(text: &str) {
     }
 }
 
-unsafe fn str_emit_nonstandard_attrs(x: SEXP, skip: &[&str]) {
+fn str_emit_nonstandard_attrs(x: SEXP, skip: &[&str]) {
     unsafe {
         let mut attrs = crate::sexp::accessors::ATTRIB(x);
         while !attrs.is_null() && attrs != R_NilValue() {
@@ -743,7 +743,7 @@ unsafe fn str_emit_nonstandard_attrs(x: SEXP, skip: &[&str]) {
 }
 
 /// R's `str(x)` — compact structure display.
-pub unsafe fn do_str(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_str(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         // utils::str(digits.d = .): numeric formatting precision override.
         let mut str_digits_arg: Option<i32> = None;

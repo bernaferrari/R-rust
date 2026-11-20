@@ -16,7 +16,7 @@ pub(crate) fn quantile_type7(sorted: &[f64], prob: f64) -> f64 {
     lower + frac * (upper - lower)
 }
 
-unsafe fn named_summary_result(ty: SEXPTYPE, names: &[&str]) -> SEXP {
+fn named_summary_result(ty: SEXPTYPE, names: &[&str]) -> SEXP {
     unsafe {
         let result = Rf_allocVector3(ty, names.len() as R_xlen_t);
         if !result.is_null() {
@@ -32,7 +32,7 @@ unsafe fn named_summary_result(ty: SEXPTYPE, names: &[&str]) -> SEXP {
     }
 }
 
-pub(crate) unsafe fn summary_tagged_int(args: SEXP, name: &str, default: i32) -> i32 {
+pub(crate) fn summary_tagged_int(args: SEXP, name: &str, default: i32) -> i32 {
     unsafe {
         let mut cell = CDR(args);
         while !cell.is_null() && cell != R_NilValue() {
@@ -48,7 +48,7 @@ pub(crate) unsafe fn summary_tagged_int(args: SEXP, name: &str, default: i32) ->
     }
 }
 
-pub(crate) unsafe fn summary_factor_result(x: SEXP, levels: Vec<String>, maxsum: i32) -> SEXP {
+pub(crate) fn summary_factor_result(x: SEXP, levels: Vec<String>, maxsum: i32) -> SEXP {
     unsafe {
         let mut counts = vec![0_i32; levels.len()];
         let mut na_count = 0_i32;
@@ -93,7 +93,7 @@ pub(crate) unsafe fn summary_factor_result(x: SEXP, levels: Vec<String>, maxsum:
     }
 }
 
-pub unsafe fn format_summary_warnings(x: SEXP) -> String {
+pub fn format_summary_warnings(x: SEXP) -> String {
     unsafe {
         let n = if x.is_null() || x == R_NilValue() || TYPEOF(x) != SEXPTYPE::VECSXP {
             0
@@ -172,8 +172,8 @@ pub unsafe fn format_summary_warnings(x: SEXP) -> String {
     }
 }
 
-pub unsafe fn emit_summary_warnings(x: SEXP) {
-    unsafe {
+pub fn emit_summary_warnings(x: SEXP) {
+    {
         let text = format_summary_warnings(x);
         for line in text.lines() {
             str_emit_line(line);
@@ -181,7 +181,7 @@ pub unsafe fn emit_summary_warnings(x: SEXP) {
     }
 }
 
-unsafe fn summary_warnings(x: SEXP) -> SEXP {
+fn summary_warnings(x: SEXP) -> SEXP {
     unsafe {
         let n = if x.is_null() || x == R_NilValue() || TYPEOF(x) != SEXPTYPE::VECSXP {
             0
@@ -262,7 +262,7 @@ unsafe fn summary_warnings(x: SEXP) -> SEXP {
 }
 
 /// R's `summary.default(x)`: return GNU R-shaped summaryDefault/table vectors.
-pub unsafe fn do_summary_default(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_summary_default(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -484,7 +484,7 @@ pub unsafe fn do_summary_default(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP)
     }
 }
 
-pub(crate) unsafe fn sexp_has_class_name(x: SEXP, class_name: &str) -> bool {
+pub(crate) fn sexp_has_class_name(x: SEXP, class_name: &str) -> bool {
     unsafe {
         let class = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"class".as_ptr()));
         if class.is_null() || TYPEOF(class) != SEXPTYPE::STRSXP {
@@ -494,7 +494,7 @@ pub(crate) unsafe fn sexp_has_class_name(x: SEXP, class_name: &str) -> bool {
     }
 }
 
-pub(crate) unsafe fn sexp_first_class_name(x: SEXP) -> Option<String> {
+pub(crate) fn sexp_first_class_name(x: SEXP) -> Option<String> {
     unsafe {
         let class = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"class".as_ptr()));
         if class.is_null() || TYPEOF(class) != SEXPTYPE::STRSXP || XLENGTH(class) < 1 {

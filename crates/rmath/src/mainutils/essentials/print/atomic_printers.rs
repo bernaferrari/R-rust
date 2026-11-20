@@ -5,7 +5,7 @@ use super::*;
 // ---------------------------------------------------------------------------
 
 /// R's `print.integer(x)` — print integer vector with index labels.
-pub unsafe fn do_print_integer(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_print_integer(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -28,7 +28,7 @@ pub unsafe fn do_print_integer(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
 }
 
 /// R's `print.numeric(x)` — print numeric (double) vector with index labels.
-pub unsafe fn do_print_numeric(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_print_numeric(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -51,7 +51,7 @@ pub unsafe fn do_print_numeric(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
 }
 
 /// R's `print.logical(x)` — print logical vector with index labels.
-pub unsafe fn do_print_logical(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_print_logical(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -74,7 +74,7 @@ pub unsafe fn do_print_logical(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
 }
 
 /// R's `print.character(x)` — print character vector with index labels.
-pub unsafe fn do_print_character(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_print_character(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -103,7 +103,7 @@ pub unsafe fn do_print_character(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP)
 }
 
 /// R's `print.complex(x)` — print complex vector with index labels.
-pub unsafe fn do_print_complex(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_print_complex(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -182,7 +182,7 @@ pub(crate) fn function_srcref_text(x: SEXP) -> Option<String> {
 
 /// R's `print.function(x)` — GNU PrintClosure: deparse the closure, then
 /// the enclosing environment pointer.
-pub unsafe fn do_print_function(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_print_function(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -246,7 +246,7 @@ pub unsafe fn do_print_function(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) 
 
 /// Append the closure's environment line, mirroring GNU `PrintClosure`:
 /// printed on every path for which `CLOENV(s) != R_GlobalEnv`.
-pub(crate) unsafe fn append_closure_environment(x: SEXP, rendered: &mut String) {
+pub(crate) fn append_closure_environment(x: SEXP, rendered: &mut String) {
     unsafe {
         let env = crate::sexp::accessors::CLOENV(x);
         if !env.is_null() && env != R_NilValue() && env != crate::sexp::globals::R_GlobalEnv() {
@@ -260,7 +260,7 @@ pub(crate) unsafe fn append_closure_environment(x: SEXP, rendered: &mut String) 
 }
 
 /// R's `print.environment(x)` — print environment summary.
-pub unsafe fn do_print_environment(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_print_environment(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -288,16 +288,16 @@ pub unsafe fn do_print_environment(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEX
 }
 
 /// R's `enc2native(x)` — normalize character encodings to the native runtime encoding.
-pub unsafe fn do_enc2native(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { do_enc2(args, false) }
+pub fn do_enc2native(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    { do_enc2(args, false) }
 }
 
 /// R's `enc2utf8(x)` — normalize character encodings to UTF-8.
-pub unsafe fn do_enc2utf8(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { do_enc2(args, true) }
+pub fn do_enc2utf8(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    { do_enc2(args, true) }
 }
 
-unsafe fn do_enc2(args: SEXP, normalize_utf8: bool) -> SEXP {
+fn do_enc2(args: SEXP, normalize_utf8: bool) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || TYPEOF(x) != SEXPTYPE::STRSXP {
@@ -365,7 +365,7 @@ unsafe fn do_enc2(args: SEXP, normalize_utf8: bool) -> SEXP {
 }
 
 /// R's `print.formula(x)` — print formula.
-pub unsafe fn do_print_formula(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_print_formula(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -403,8 +403,8 @@ pub unsafe fn do_print_formula(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
 }
 
 /// R's `print.call(x)` — print call/language object.
-pub unsafe fn do_print_call(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_print_call(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
             println!("NULL");
@@ -424,7 +424,7 @@ pub unsafe fn do_print_call(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 }
 
 /// R's `print.pairlist(x)` — print pairlist.
-pub unsafe fn do_print_pairlist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_print_pairlist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -469,7 +469,7 @@ pub unsafe fn do_print_pairlist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) 
 }
 
 /// R's `print.raw(x)` — print raw (byte) vector.
-pub unsafe fn do_print_raw(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_print_raw(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {

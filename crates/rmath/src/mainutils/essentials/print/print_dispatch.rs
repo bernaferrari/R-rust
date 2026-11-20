@@ -8,12 +8,12 @@ use super::*;
 /// (including `print(x, useS4 = FALSE)` from `showDefault`) set
 /// `noParams = 0` so S4 objects print via `PrintValueRec` instead of
 /// re-entering `show()`.
-pub unsafe fn do_print_default(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_print_default(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe { crate::mainutils::print::do_printdefault(call, op, args, rho) }
 }
 
 /// GNU `print.Date(x, max = NULL, ...)`.
-pub unsafe fn do_print_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_print_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -51,7 +51,7 @@ pub unsafe fn do_print_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 }
 
 /// GNU `print.POSIXct(x, ..., usetz = TRUE, digits = getOption("digits.secs"))`.
-pub unsafe fn do_print_POSIXct(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_print_POSIXct(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() || XLENGTH(x) == 0 {

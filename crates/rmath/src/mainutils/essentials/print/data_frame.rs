@@ -223,7 +223,7 @@ fn print_data_frame_column_texts(
     }
 }
 fn print_data_frame_column(col: SEXP) -> bool {
-    unsafe {
+    {
         if col.is_null() || col == R_NilValue() {
             return true;
         }
@@ -361,7 +361,7 @@ fn data_frame_row_labels(x: SEXP, nrow: R_xlen_t, limit: R_xlen_t) -> Vec<String
     (1..=n).map(|i| i.to_string()).collect()
 }
 
-pub(crate) unsafe fn print_method_x(call: SEXP, args: SEXP, class: &str) -> SEXP {
+pub(crate) fn print_method_x(call: SEXP, args: SEXP, class: &str) -> SEXP {
     unsafe {
         if !call.is_null() && call != R_NilValue() {
             let matched =
@@ -387,7 +387,7 @@ pub(crate) unsafe fn print_method_x(call: SEXP, args: SEXP, class: &str) -> SEXP
 }
 
 /// R's `print.data.frame(x)` — print a data.frame nicely with aligned columns.
-pub unsafe fn do_print_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_print_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         // GNU print(x, ...) UseMethod matches `x` before the method runs.
         // `print(width = 101, df)` therefore passes the data.frame as `x`,
@@ -512,7 +512,7 @@ pub unsafe fn do_print_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP
     }
 }
 /// GNU `summary.data.frame` — character table of per-column summaries.
-pub unsafe fn do_summary_data_frame(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_summary_data_frame(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -659,7 +659,7 @@ pub unsafe fn do_summary_data_frame(call: SEXP, op: SEXP, args: SEXP, rho: SEXP)
     }
 }
 
-unsafe fn summarize_frame_column(col: SEXP, maxsum: i32, rho: SEXP) -> SEXP {
+fn summarize_frame_column(col: SEXP, maxsum: i32, rho: SEXP) -> SEXP {
     unsafe {
         if col.is_null() || col == R_NilValue() {
             return Rf_allocVector3(SEXPTYPE::INTSXP, 0);
@@ -673,7 +673,7 @@ unsafe fn summarize_frame_column(col: SEXP, maxsum: i32, rho: SEXP) -> SEXP {
     }
 }
 
-unsafe fn format_summary_column(sms: SEXP, digits: i32, rho: SEXP) -> (Vec<String>, usize) {
+fn format_summary_column(sms: SEXP, digits: i32, rho: SEXP) -> (Vec<String>, usize) {
     unsafe {
         if sms.is_null() || sms == R_NilValue() {
             return (Vec::new(), 0);
@@ -735,7 +735,7 @@ unsafe fn format_summary_column(sms: SEXP, digits: i32, rho: SEXP) -> (Vec<Strin
 /// GNU `format.data.frame(x, ...)` — dispatch to the verbatim base
 /// closure (per-column format dispatch, corrupt-frame padding, exact
 /// as.data.frame.list assembly with cut.names).
-pub unsafe fn do_format_data_frame(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_format_data_frame(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let fun = crate::sexp::envir::R_findVarInFrame(
             crate::sexp::globals::R_BaseEnv(),
@@ -764,7 +764,7 @@ pub unsafe fn do_format_data_frame(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP
     }
 }
 
-unsafe fn format_data_frame_rest_args(args: SEXP) -> SEXP {
+fn format_data_frame_rest_args(args: SEXP) -> SEXP {
     unsafe {
         let rest = CDR(args);
         let mut cell = rest;
@@ -782,7 +782,7 @@ unsafe fn format_data_frame_rest_args(args: SEXP) -> SEXP {
     }
 }
 
-unsafe fn mark_asis_if_character(x: SEXP) -> SEXP {
+fn mark_asis_if_character(x: SEXP) -> SEXP {
     unsafe {
         if x.is_null() || TYPEOF(x) != SEXPTYPE::STRSXP {
             return x;
