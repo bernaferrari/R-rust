@@ -5,13 +5,13 @@ use super::*;
 // ---------------------------------------------------------------------------
 
 /// R-like `cat_args(...)` — cat with better formatting.
-pub unsafe fn do_cat_args(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_cat_args(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe { do_cat(_call, _op, args, _rho) }
 }
 
 /// R-like `message_args(...)` — message with domain.
-pub unsafe fn do_message_args(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_message_args(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let output = condition_message_text(args, &["domain", "appendLF"]);
         eprintln!("{}", output);
         crate::sexp::globals::set_R_Visible(FALSE);
@@ -20,7 +20,7 @@ pub unsafe fn do_message_args(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
 }
 
 /// R's `packageStartupMessage(...)` — startup message.
-pub unsafe fn do_package_startup_message(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_package_startup_message(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let output = condition_message_text(args, &["domain", "appendLF"]);
         let message = if output.ends_with('\n') {
@@ -74,7 +74,7 @@ impl Drop for MessageSinkGuard {
     }
 }
 /// R's `capture.output(expr)` — capture printed stdout as a character vector.
-pub unsafe fn do_capture_output(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_capture_output(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let control_name = |cell: SEXP| -> Option<String> {
             let tag = TAG(cell);
@@ -276,7 +276,7 @@ pub unsafe fn do_capture_output(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -
 }
 
 /// R's `withVisible(x)` — returns a list with $value and $visible.
-pub unsafe fn do_with_visible(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_with_visible(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let visible = crate::sexp::globals::R_Visible();
@@ -312,7 +312,7 @@ pub unsafe fn do_with_visible(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
 
 /// R's `invisible(x)` — return x, setting visibility to FALSE.
 /// `invisible()` with no argument is NULL (inspect.c do_invisible + missing formal).
-pub unsafe fn do_invisible(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_invisible(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     {
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
         if args.is_null() || args == R_NilValue() {
@@ -337,7 +337,7 @@ pub unsafe fn do_invisible(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
 /// `warning()` builtin), and the errors-machinery suppress depth is raised so
 /// C-level warnings (`Rf_warning` → collection) are dropped before collection,
 /// matching upstream's muffle restart.
-pub unsafe fn do_suppress_warnings(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_suppress_warnings(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let expr = CAR(args);
         if expr.is_null() || expr == R_NilValue() {
@@ -400,7 +400,7 @@ pub unsafe fn do_suppress_warnings(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP
 }
 
 /// R's `suppressMessages(expr)` — evaluate expr with captured diagnostics suppressed.
-pub unsafe fn do_suppress_messages(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_suppress_messages(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let expr = CAR(args);
         if expr.is_null() || expr == R_NilValue() {
@@ -457,7 +457,7 @@ pub unsafe fn do_suppress_messages(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP
 }
 
 /// R's `force(x)` — force evaluation of a promise.
-pub unsafe fn do_force(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_force(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -477,7 +477,7 @@ pub unsafe fn do_force(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// R's enhanced `cat(..., file, sep, fill, labels, append)` — simplified.
-pub unsafe fn do_cat_enhanced(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_cat_enhanced(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         // Simplified: delegates to existing do_cat
         do_cat(_call, _op, args, _rho)
@@ -485,8 +485,8 @@ pub unsafe fn do_cat_enhanced(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
 }
 
 /// R's enhanced `message(..., domain, appendLF)` — simplified.
-pub unsafe fn do_message_enhanced(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_message_enhanced(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let output = condition_message_text(args, &["domain", "appendLF"]);
         eprintln!("{}", output);
         R_NilValue()
@@ -494,8 +494,8 @@ pub unsafe fn do_message_enhanced(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP
 }
 
 /// R's enhanced `warning(..., call., immediate., noBreaks., domain.)` — simplified.
-pub unsafe fn do_warning_enhanced(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_warning_enhanced(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let mut output =
             condition_message_text(args, &["call.", "immediate.", "noBreaks.", "domain"]);
         if output.is_empty() {

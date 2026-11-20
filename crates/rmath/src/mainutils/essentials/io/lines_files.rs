@@ -30,7 +30,7 @@ pub(crate) fn resolve_package_relative_path(file_path: String) -> String {
 }
 
 /// R's `writeLines(text, con = stdout(), sep = "\n", useBytes = FALSE)`.
-pub unsafe fn do_writeLines(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_writeLines(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let text = CAR(args);
         if text.is_null() || text == R_NilValue() {
@@ -107,7 +107,7 @@ pub unsafe fn do_writeLines(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 }
 
 /// R's `readLines(con)` — read lines from file.
-pub unsafe fn do_readLines(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_readLines(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let con = CAR(args);
         if con.is_null() {
@@ -138,7 +138,7 @@ pub unsafe fn do_readLines(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
 }
 
 /// R's `file.exists(...)` — check if files exist.
-pub unsafe fn do_file_exists(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_file_exists(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -166,7 +166,7 @@ pub unsafe fn do_file_exists(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
 }
 
 /// R's `list.files(path)` — list files in directory.
-pub unsafe fn do_list_files(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_list_files(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let path_arg = CAR(args);
         let path = if path_arg.is_null() || path_arg == R_NilValue() {
@@ -202,7 +202,7 @@ pub unsafe fn do_list_files(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 }
 
 /// R's `system(command, intern = FALSE)` — run a system command.
-pub unsafe fn do_system(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_system(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let cmd = CAR(args);
         if cmd.is_null() {
@@ -257,7 +257,7 @@ pub unsafe fn do_system(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 }
 
 /// R's `system2(command, args, stdout, stderr, wait, input)` — run a command.
-pub unsafe fn do_system2(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_system2(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let command_arg = arg_by_name_or_position(args, &["command"], 0);
         if command_arg.is_null() || command_arg == R_NilValue() {
@@ -325,7 +325,7 @@ pub(crate) fn pipe_commands_disabled_by_runtime_policy() -> bool {
 /// R's `stopifnot(...)` — stop if any condition is FALSE.
 ///
 /// GNU `stopifnot(exprs = { ... })` evaluates each brace statement.
-pub unsafe fn do_stopifnot(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_stopifnot(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let fail = |value: SEXP| {
             if value.is_null() || TYPEOF(value) != SEXPTYPE::LGLSXP {
@@ -382,7 +382,7 @@ pub unsafe fn do_stopifnot(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEX
 }
 
 /// R's `nargs()` — number of arguments in the current call.
-pub unsafe fn do_nargs(_call: SEXP, _op: SEXP, _args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_nargs(_call: SEXP, _op: SEXP, _args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         // GNU util.c do_nargs: the first CTXT_FUNCTION context whose cloenv
         // is the calling environment supplies the promised-argument count;

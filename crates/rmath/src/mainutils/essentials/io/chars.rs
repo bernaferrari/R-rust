@@ -1,7 +1,7 @@
 use super::*;
 
 /// R's `readChar(con, nchars)` — read characters from connection.
-pub unsafe fn do_readChar(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_readChar(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let con_arg = CAR(args);
         let nchars_arg = CAR(CDR(args));
@@ -32,7 +32,7 @@ pub unsafe fn do_readChar(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
     }
 }
 
-unsafe fn read_chars_from_connection(connection: c_int, nchars: i64) -> String {
+fn read_chars_from_connection(connection: c_int, nchars: i64) -> String {
     let opened_here = {
         let index = crate::mainutils::connections::checked_connection_index(connection);
         let mut table = crate::mainutils::connections::connection_table();
@@ -99,8 +99,8 @@ unsafe fn read_chars_from_connection(connection: c_int, nchars: i64) -> String {
 }
 
 /// R's `writeChar(object, con, nchars)` — write characters to connection.
-pub unsafe fn do_writeChar(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_writeChar(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let object_arg = CAR(args);
         let con_arg = CAR(CDR(args));
         let nchars_arg = CAR(CDR(CDR(args)));
@@ -134,7 +134,7 @@ pub unsafe fn do_writeChar(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
     }
 }
 
-pub(crate) unsafe fn connection_index(con: SEXP) -> c_int {
+pub(crate) fn connection_index(con: SEXP) -> c_int {
     unsafe {
         if con.is_null()
             || con == R_NilValue()

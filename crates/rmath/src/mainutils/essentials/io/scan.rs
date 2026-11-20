@@ -47,7 +47,7 @@ fn parse_scan_logical(value: &str) -> Option<c_int> {
     }
 }
 
-pub(crate) unsafe fn named_arg(args: SEXP, name: &str) -> Option<SEXP> {
+pub(crate) fn named_arg(args: SEXP, name: &str) -> Option<SEXP> {
     unsafe {
         let mut current = args;
         while !current.is_null() && current != R_NilValue() {
@@ -70,7 +70,7 @@ pub(crate) unsafe fn named_arg(args: SEXP, name: &str) -> Option<SEXP> {
 /// R's `scan(file, what, nmax, sep, ...)` — read data from a file path.
 /// This covers the file-backed scalar-vector surface used by scripts and tests;
 /// interactive console and connection scans report explicit R errors.
-pub unsafe fn do_scan(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_scan(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         // Resolve arguments the way stock .Internal(scan(...)) sees them, by
         // named tag first, then positional slot:
@@ -464,7 +464,7 @@ pub unsafe fn do_scan(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// R's `write.table(x, file, sep=" ", ...)` — write data to file.
-pub unsafe fn do_write_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_write_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let mut x_arg = R_NilValue();
         let mut file_arg = R_NilValue();
@@ -603,7 +603,7 @@ pub unsafe fn do_write_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
 }
 
 /// R's `sink(file, append, type, split)` — redirect output to a connection.
-pub unsafe fn do_sink(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_sink(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let mut file_arg = R_NilValue();
         let mut append_arg = Rf_ScalarLogical(FALSE);
@@ -685,7 +685,7 @@ pub unsafe fn do_sink(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// R's `sink.number(type)` — report output or message sink depth.
-pub unsafe fn do_sink_number(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_sink_number(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let type_arg = if args.is_null() || args == R_NilValue() {
             Rf_mkString(c"output".as_ptr())
@@ -704,7 +704,7 @@ pub unsafe fn do_sink_number(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
     }
 }
 
-unsafe fn logical_scalar_or(arg: SEXP, default: c_int) -> c_int {
+fn logical_scalar_or(arg: SEXP, default: c_int) -> c_int {
     unsafe {
         if arg.is_null() || arg == R_NilValue() || arg == R_MissingArg() {
             return default;
