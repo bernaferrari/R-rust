@@ -33,41 +33,27 @@ const PATH_SEPARATOR: c_char = b':' as c_char;
 /// An argz vector is a sequence of NUL-terminated strings packed together,
 /// terminated by an additional NUL byte.
 fn __argz_count(argz: *const c_char, len: usize) -> usize {
-    unsafe {
-        if argz.is_null() || len == 0 {
-            return 0;
-        }
-        let mut count = 0usize;
-        let mut remaining = len;
-        let mut p = argz;
-        while remaining > 0 {
-            let s = CStr::from_ptr(p);
-            let part_len = s.to_bytes_with_nul().len();
-            p = p.add(part_len);
-            remaining -= part_len;
-            count += 1;
-        }
-        count
+    if argz.is_null() || len == 0 {
+        return 0;
     }
+    // Read the `len`-byte argz vector; each NUL terminates one string.
+    let bytes = unsafe { std::slice::from_raw_parts(argz as *const u8, len) };
+    bytes.iter().filter(|&&b| b == 0).count()
 }
 
 /// Convert an argz vector to a printable string by replacing NUL bytes
 /// with the given separator character.
 fn __argz_stringify(argz: *mut c_char, len: usize, sep: c_char) {
-    unsafe {
-        if argz.is_null() || len == 0 {
-            return;
-        }
-        let mut remaining = len;
-        let mut p = argz;
-        while remaining > 0 {
-            let s = CStr::from_ptr(p);
-            let part_len = s.to_bytes_with_nul().len();
-            p = p.add(part_len);
-            remaining -= part_len;
-            if remaining > 0 {
-                *p.sub(1) = sep;
-            }
+    if argz.is_null() || len == 0 {
+        return;
+    }
+    // Rewrite the `len`-byte argz vector in place, leaving the final
+    // byte untouched as the C original does.
+    let bytes = unsafe { std::slice::from_raw_parts_mut(argz as *mut u8, len) };
+    let last = bytes.len() - 1;
+    for (i, b) in bytes.iter_mut().enumerate() {
+        if *b == 0 && i != last {
+            *b = sep as u8;
         }
     }
 }
@@ -76,20 +62,21 @@ fn __argz_stringify(argz: *mut c_char, len: usize, sep: c_char) {
 ///
 /// If `entry` is null, returns the first entry. Returns null after the last.
 fn __argz_next(argz: *const c_char, argz_len: usize, entry: *const c_char) -> *const c_char {
-    unsafe {
-        if entry.is_null() {
-            if argz_len > 0 && !argz.is_null() {
-                return argz;
-            }
-            return ptr::null();
+    if entry.is_null() {
+        if argz_len > 0 && !argz.is_null() {
+            return argz;
         }
+        return ptr::null();
+    }
+    // Walk the caller's `argz_len`-byte argz vector by pointer.
+    unsafe {
         let end = if argz.is_null() {
             ptr::null()
         } else {
             argz.add(argz_len)
         };
         if entry < end {
-            let next = CStr::from_ptr(entry).to_bytes_with_nul().len();
+            let next = cstr(entry).map_or(0, |s| s.to_bytes_with_nul().len());
             let next_ptr = entry.add(next);
             if next_ptr >= end {
                 return ptr::null();
@@ -114,6 +101,8 @@ fn pop(x: c_int) -> c_int {
 
 /// Copy a C string, returning a pointer to the NUL terminator.
 fn stpcpy(dest: *mut c_char, src: *const c_char) -> *mut c_char {
+    // Copy the NUL-terminated `src` into `dest`; callers guarantee
+    // `dest` has room for the whole string.
     unsafe {
         let mut d = dest;
         let mut s = src;
@@ -130,7 +119,7 @@ fn stpcpy(dest: *mut c_char, src: *const c_char) -> *mut c_char {
 /// Check whether a path is absolute (Unix).
 #[cfg(unix)]
 fn IS_ABSOLUTE_PATH(p: *const c_char) -> bool {
-    !p.is_null() && unsafe { *p == b'/' as c_char }
+    ptr_ref(p).is_some_and(|c| *c == b'/' as c_char)
 }
 
 // ---------------------------------------------------------------------------
