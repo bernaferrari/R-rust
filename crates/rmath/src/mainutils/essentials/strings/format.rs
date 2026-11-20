@@ -1667,7 +1667,7 @@ unsafe fn calendar_label_builtin(args: SEXP, kind: CalendarLabel) -> SEXP {
             let charsxp = label
                 .and_then(|label| CString::new(label).ok())
                 .map(|label| Rf_mkChar(label.as_ptr()))
-                .unwrap_or_else(|| crate::sexp::globals::R_NaString());
+                .unwrap_or_else(crate::sexp::globals::R_NaString);
             SET_STRING_ELT(result, i, charsxp);
         }
         result

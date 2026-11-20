@@ -553,7 +553,7 @@ pub unsafe fn do_new(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     .slot_types
                     .get(slot)
                     .map(|ty| s4_prototype_for_type(ty))
-                    .unwrap_or_else(|| R_NilValue());
+                    .unwrap_or_else(R_NilValue);
                 if !proto.is_null() && proto != R_NilValue() {
                     proto_guards.push(protect(proto));
                 }

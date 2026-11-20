@@ -1783,7 +1783,7 @@ pub unsafe fn do_as_character(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SE
                 let charsxp = crate::mainutils::essentials::posix_seconds_to_iso(seconds, false)
                     .and_then(|text| CString::new(text).ok())
                     .map(|text| Rf_mkChar(text.as_ptr()))
-                    .unwrap_or_else(|| crate::sexp::globals::R_NaString());
+                    .unwrap_or_else(crate::sexp::globals::R_NaString);
                 SET_STRING_ELT(result, i, charsxp);
             }
             return result;
@@ -1800,7 +1800,7 @@ pub unsafe fn do_as_character(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SE
                 let charsxp = crate::mainutils::essentials::date_days_to_iso(days)
                     .and_then(|text| CString::new(text).ok())
                     .map(|text| Rf_mkChar(text.as_ptr()))
-                    .unwrap_or_else(|| crate::sexp::globals::R_NaString());
+                    .unwrap_or_else(crate::sexp::globals::R_NaString);
                 SET_STRING_ELT(result, i, charsxp);
             }
             return result;

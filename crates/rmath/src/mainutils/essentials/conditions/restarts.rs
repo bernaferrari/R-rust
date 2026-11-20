@@ -13,7 +13,7 @@ pub unsafe fn do_findRestart(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
             return R_NilValue();
         }
         let name = elt_to_string(name_arg, 0);
-        find_restart_by_name(&name).unwrap_or_else(|| R_NilValue())
+        find_restart_by_name(&name).unwrap_or_else(R_NilValue)
     }
 }
 

@@ -42,7 +42,7 @@ impl<'arena, 'session> Parser<'arena, 'session> {
         } else if exprs.len() == 1 {
             unsafe {
                 let brace_sym = Rf_install(c"{".as_ptr());
-                self.lang2(brace_sym, exprs.pop().unwrap_or_else(|| R_NilValue()))?
+                self.lang2(brace_sym, exprs.pop().unwrap_or_else(R_NilValue))?
             }
         } else {
             unsafe {

@@ -644,12 +644,7 @@ unsafe fn save_arguments(args: SEXP) -> ([Option<SEXP>; 9], Vec<String>) {
 }
 
 unsafe fn eval_save_argument(arg: Option<SEXP>, rho: SEXP) -> SEXP {
-    unsafe {
-        arg.map_or_else(
-            || R_NilValue(),
-            |expr| crate::eval::eval::Rf_eval(expr, rho),
-        )
-    }
+    unsafe { arg.map_or_else(R_NilValue, |expr| crate::eval::eval::Rf_eval(expr, rho)) }
 }
 
 unsafe fn names_from_save_list(list: SEXP) -> Vec<String> {

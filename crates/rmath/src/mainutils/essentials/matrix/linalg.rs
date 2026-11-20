@@ -153,8 +153,8 @@ pub unsafe fn do_solve(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         }
         let a = matched[0]
             .unwrap_or_else(|| base_error("argument 'a' is missing, with no default".to_owned()));
-        let b = matched[1].unwrap_or_else(|| R_NilValue());
-        let tol_arg = matched[2].unwrap_or_else(|| R_NilValue());
+        let b = matched[1].unwrap_or_else(R_NilValue);
+        let tol_arg = matched[2].unwrap_or_else(R_NilValue);
         let dim_sym = crate::sexp::attrib_core::R_DimSymbol();
         let dims = crate::sexp::attrib_core::getAttrib(a, dim_sym);
         if dims == R_NilValue() || XLENGTH(dims) != 2 {

@@ -127,7 +127,7 @@ pub unsafe fn do_subassign2_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) ->
 /// Ported from R's `seq_int()` in eval.c. Used by the bytecode interpreter
 /// for the STEPFOR instruction.
 pub unsafe fn seq_int(n1: c_int, n2: c_int) -> SEXP {
-    int_sequence_current(n1, n2).unwrap_or_else(|| R_NilValue())
+    int_sequence_current(n1, n2).unwrap_or_else(R_NilValue)
 }
 
 // ---------------------------------------------------------------------------

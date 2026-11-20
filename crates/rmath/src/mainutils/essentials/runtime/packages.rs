@@ -654,7 +654,7 @@ pub unsafe fn do_get_registered_namespace(_call: SEXP, _op: SEXP, args: SEXP, _r
         }
 
         crate::mainutils::essentials::shared::cached_namespace_by_name(&package)
-            .unwrap_or_else(|| R_NilValue())
+            .unwrap_or_else(R_NilValue)
     }
 }
 

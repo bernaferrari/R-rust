@@ -1848,7 +1848,7 @@ pub(crate) unsafe fn R_findVarInFrame(rho: SEXP, symbol: SEXP) -> SEXP {
         match (Sexp::from_raw(rho), Sexp::from_raw(symbol)) {
             (Some(rho), Some(symbol)) => find_var_in_frame_safe(rho, symbol)
                 .map(|s: Sexp<'_>| s.as_raw())
-                .unwrap_or_else(|| R_UnboundValue()),
+                .unwrap_or_else(R_UnboundValue),
             _ => R_UnboundValue(),
         }
     }
@@ -1866,7 +1866,7 @@ pub unsafe fn R_findVar(symbol: SEXP, rho: SEXP) -> SEXP {
         match (Sexp::from_raw(symbol), Sexp::from_raw(rho)) {
             (Some(symbol), Some(rho)) => find_var_safe(symbol, rho)
                 .map(|s: Sexp<'_>| s.as_raw())
-                .unwrap_or_else(|| R_UnboundValue()),
+                .unwrap_or_else(R_UnboundValue),
             _ => R_UnboundValue(),
         }
     }
@@ -1884,7 +1884,7 @@ pub unsafe fn forcePromise(prom: SEXP) -> SEXP {
         match Sexp::from_raw(prom) {
             Some(prom) => force_promise_safe(prom)
                 .map(|s: Sexp<'_>| s.as_raw())
-                .unwrap_or_else(|| R_NilValue()),
+                .unwrap_or_else(R_NilValue),
             None => R_NilValue(),
         }
     }
@@ -1959,7 +1959,7 @@ pub(crate) unsafe fn findFun(symbol: SEXP, rho: SEXP) -> SEXP {
         match (Sexp::from_raw(symbol), Sexp::from_raw(rho)) {
             (Some(symbol), Some(rho)) => find_fun_safe(symbol, rho)
                 .map(|s: Sexp<'_>| s.as_raw())
-                .unwrap_or_else(|| R_UnboundValue()),
+                .unwrap_or_else(R_UnboundValue),
             _ => R_UnboundValue(),
         }
     }
@@ -2044,7 +2044,7 @@ pub unsafe fn ddfindVar(symbol: SEXP, rho: SEXP) -> SEXP {
         match (Sexp::from_raw(symbol), Sexp::from_raw(rho)) {
             (Some(symbol), Some(rho)) => dd_find_var_safe(symbol, rho)
                 .map(|s: Sexp<'_>| s.as_raw())
-                .unwrap_or_else(|| R_UnboundValue()),
+                .unwrap_or_else(R_UnboundValue),
             _ => R_UnboundValue(),
         }
     }

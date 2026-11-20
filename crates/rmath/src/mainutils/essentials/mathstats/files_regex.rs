@@ -205,9 +205,9 @@ pub unsafe fn do_tempfile(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
                 _ => {}
             }
         }
-        let n1 = pattern.map(|sx| XLENGTH(sx)).unwrap_or(1).max(1);
-        let n2 = tmpdir.map(|sx| XLENGTH(sx)).unwrap_or(1).max(1);
-        let n3 = fileext.map(|sx| XLENGTH(sx)).unwrap_or(1).max(1);
+        let n1 = pattern.map(XLENGTH).unwrap_or(1).max(1);
+        let n2 = tmpdir.map(XLENGTH).unwrap_or(1).max(1);
+        let n3 = fileext.map(XLENGTH).unwrap_or(1).max(1);
         let n = n1.max(n2).max(n3);
         let default_tmp = session_temp_dir();
         let ans = Rf_allocVector3(SEXPTYPE::STRSXP, n);

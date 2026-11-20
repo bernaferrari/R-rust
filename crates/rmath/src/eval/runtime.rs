@@ -18,12 +18,12 @@ use crate::sexp::instance::with_required_current_instance;
 
 #[inline]
 pub(crate) fn global_env() -> SEXP {
-    with_required_current_instance(|instance| R_GlobalEnv_in(instance))
+    with_required_current_instance(R_GlobalEnv_in)
 }
 
 #[inline]
 pub(crate) fn base_env() -> SEXP {
-    with_required_current_instance(|instance| R_BaseEnv_in(instance))
+    with_required_current_instance(R_BaseEnv_in)
 }
 
 #[inline]
@@ -38,7 +38,7 @@ pub(crate) fn set_global_env(env: SEXP) {
 
 #[inline]
 pub(crate) fn visible() -> c_int {
-    with_required_current_instance(|instance| R_Visible_in(instance))
+    with_required_current_instance(R_Visible_in)
 }
 
 #[inline]
