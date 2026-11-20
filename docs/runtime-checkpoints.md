@@ -261,6 +261,37 @@ user workflows have passed on native Rport and production Wasm.
 
 ## Wasm footprint
 
+### Browser analysis tools
+
+The opt-in `browser-analysis-tools` feature replaces six host-oriented
+`tools` functions with an error naming the selected profile. These are
+the entry points for `R CMD check`, `R CMD build`, `R CMD INSTALL`, the
+CRAN incoming checks and their formatter, and `check_packages_in_dir()`.
+The remaining 970 records are byte-identical to the full archive.
+Package loading, dependency queries and ordinary `tools` helpers use
+their existing code. The full archive is the default.
+
+The optimized analysis module uses 23,429,095 bytes, saving 554,207
+bytes. The Workbench runtime bundle leaves 2,750,272 bytes below 25 MiB.
+The default Wasm module matches the previous release byte for byte.
+The analysis build passed all 332 Wasm contract runs, the pinned R6 package
+analysis, dependency checks and PNG and PDF export checks. Chromium
+verified the error and continued running analysis in the same session.
+[Verification receipt](ci-checkpoints/browser-analysis-tools-650ceb87.json)
+
+```sh
+RPORT_WASM_FEATURES=browser-analysis-tools \
+  scripts/build_wasm_runtime.sh --target web --release --out-dir "$PWD/pkg-analysis"
+```
+
+The build assembles the smaller archive from the pinned full archive
+and a compact overlay. When updating the pinned `tools` assets, run
+`pack_browser_analysis_tools.R` with pinned GNU R and pass the full
+asset directory and its `browser-analysis` subdirectory as arguments.
+The build detects an overlay generated from a different input archive.
+
+### Size experiments
+
 Disabling file-backed PDF export at `b64ff134` reduced the optimized Wasm
 module from 23,983,302 bytes to 23,810,089 bytes, a saving of 173,213
 bytes. Both builds ran the same normal optimizer. The smaller build still

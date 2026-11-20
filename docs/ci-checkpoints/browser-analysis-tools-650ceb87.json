@@ -1,0 +1,46 @@
+{
+  "source_commit": "650ceb87f27d0320c2fdc668d5c843d73290a14e",
+  "feature": "browser-analysis-tools",
+  "binaryen_version": 133,
+  "default_wasm_sha256": "2bef60b98d40a4f0b4f6e81ffd1e8d33d4b85d04ce86822e9295bd4da7c51ec1",
+  "default_wasm_matches_previous_release": true,
+  "default_wasm_bytes": 23983302,
+  "analysis_wasm_sha256": "0fa83b5d606e8e613b15e9c710cb2f3dcef96e6f3734007b6ce7cecebf0fbc4b",
+  "analysis_wasm_bytes": 23429095,
+  "module_bytes_saved": 554207,
+  "analysis_workbench_bundle_bytes": 23464128,
+  "workbench_byte_limit": 26214400,
+  "analysis_workbench_headroom_bytes": 2750272,
+  "archive_data_bytes_saved": 554214,
+  "compact_overlay_bytes": 44837,
+  "unchanged_tools_records": 970,
+  "wasm_contracts_per_generation": [
+    166,
+    166
+  ],
+  "dependency_scanner_and_s4": {
+    "wasm_sha256": "0fa83b5d606e8e613b15e9c710cb2f3dcef96e6f3734007b6ce7cecebf0fbc4b",
+    "dependency_scans_passed": 4,
+    "s4_after_dependency_scans": "pass"
+  },
+  "smoke": {
+    "wasm_sha256": "0fa83b5d606e8e613b15e9c710cb2f3dcef96e6f3734007b6ce7cecebf0fbc4b",
+    "omitted_diagnostics": 6,
+    "file_helpers": "pass",
+    "png": "pass",
+    "pdf": "pass"
+  },
+  "pinned_pure_r_package": {
+    "wasm_sha256": "0fa83b5d606e8e613b15e9c710cb2f3dcef96e6f3734007b6ce7cecebf0fbc4b",
+    "archive_sha256": "59c6eba8b1b912eb7e104f65053235604be853425ee67c152ac4e86a1f2073b4",
+    "output": "Loaded R6 2.6.1; analyzed observations with mean 7\n"
+  },
+  "chromium": {
+    "browser": "153.0.8010.12",
+    "wasm_sha256": "0fa83b5d606e8e613b15e9c710cb2f3dcef96e6f3734007b6ce7cecebf0fbc4b",
+    "maintenance_diagnostic": "pass",
+    "analysis_and_plots": "pass"
+  },
+  "gradle_rebuilt_when_returning_to_default": true,
+  "native_feature_typecheck": "pass"
+}
