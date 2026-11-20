@@ -1,5 +1,6 @@
 #![allow(non_snake_case, non_upper_case_globals, dead_code)]
 #![allow(clippy::missing_safety_doc)]
+#![warn(unused_unsafe)]
 
 //! Status bar functions for GraphApp.
 
@@ -35,11 +36,11 @@ pub fn delstatusbar() -> c_int {
     0
 }
 pub fn setstatus(text: *const c_char) {
-    unsafe { write_status_bytes(text) };
+    write_status_bytes(text);
 }
 
 pub fn updatestatus(text: *const c_char) {
-    unsafe { write_status_bytes(text) };
+    write_status_bytes(text);
 }
 
 #[cfg(test)]

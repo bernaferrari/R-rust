@@ -1,3 +1,4 @@
+#![warn(unused_unsafe)]
 //! Admission checks before recursively formatting or copying an R result.
 //! Counts occurrences, not unique objects: shared lists expand during export.
 #![forbid(unsafe_code)]

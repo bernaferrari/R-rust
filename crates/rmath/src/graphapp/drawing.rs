@@ -1,5 +1,6 @@
 #![allow(non_snake_case, non_upper_case_globals, dead_code)]
 #![allow(clippy::missing_safety_doc)]
+#![warn(unused_unsafe)]
 
 //! Drawing primitives for GraphApp.
 //!
@@ -166,54 +167,44 @@ pub fn fillroundrect(r: rect) {
 
 /// Draw a polygon.
 pub fn drawpolygon(p: *mut point, n: c_int) {
-    unsafe {
-        let ds = get_current_drawstate();
-        gdraw::gdrawpolygon(ds.dest, ds.linewidth, lSolid, ds.hue, p, n, 0, 0, 0, 0.0);
-    }
+    let ds = get_current_drawstate();
+    gdraw::gdrawpolygon(ds.dest, ds.linewidth, lSolid, ds.hue, p, n, 0, 0, 0, 0.0);
 }
 
 /// Fill a polygon.
 pub fn fillpolygon(p: *mut point, n: c_int) {
-    unsafe {
-        let ds = get_current_drawstate();
-        gdraw::gfillpolygon(ds.dest, ds.hue, p, n);
-    }
+    let ds = get_current_drawstate();
+    gdraw::gfillpolygon(ds.dest, ds.hue, p, n);
 }
 
 /// Draw a string at the given position.
 #[allow(clippy::if_same_then_else)]
 pub fn drawstr(p: point, s: *const std::os::raw::c_char) -> c_int {
-    unsafe {
-        if s.is_null() {
-            return 0;
-        }
-        let ds = get_current_drawstate();
-        gdraw::gdrawstr(ds.dest, ds.fnt, ds.hue, p, s)
+    if s.is_null() {
+        return 0;
     }
+    let ds = get_current_drawstate();
+    gdraw::gdrawstr(ds.dest, ds.fnt, ds.hue, p, s)
 }
 
 /// Get the bounding rectangle of a string with the given font.
 pub fn strrect(f: font, s: *const std::os::raw::c_char) -> rect {
-    unsafe {
-        let ds = get_current_drawstate();
-        gdraw::gstrrect(ds.dest, f, s)
-    }
+    let ds = get_current_drawstate();
+    gdraw::gstrrect(ds.dest, f, s)
 }
 
 /// Get the size of a string with the given font.
 pub fn strsize(f: font, s: *const std::os::raw::c_char) -> point {
-    unsafe {
-        let r = strrect(f, s);
-        point {
-            x: r.width,
-            y: r.height,
-        }
+    let r = strrect(f, s);
+    point {
+        x: r.width,
+        y: r.height,
     }
 }
 
 /// Get the width of a string with the given font.
 pub fn strwidth(f: font, s: *const std::os::raw::c_char) -> c_int {
-    unsafe { strrect(f, s).width }
+    strrect(f, s).width
 }
 
 /// Get a pixel colour.

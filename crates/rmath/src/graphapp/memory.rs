@@ -1,5 +1,6 @@
 #![allow(non_snake_case, non_upper_case_globals, dead_code)]
 #![allow(clippy::missing_safety_doc)]
+#![warn(unused_unsafe)]
 
 //! Memory management functions for GraphApp.
 //!
@@ -41,7 +42,7 @@ pub fn memalloc_bytes(size: usize) -> *mut u8 {
     let Ok(size) = c_long::try_from(size) else {
         return ptr::null_mut();
     };
-    unsafe { memalloc(size) }
+    memalloc(size)
 }
 
 /// Allocate zeroed memory of the given size.
@@ -143,24 +144,22 @@ pub fn memfree(a: *mut u8) {
 
 /// Expand a block by appending extra bytes at the end.
 pub fn memexpand(a: *mut u8, extra: c_long) -> *mut u8 {
-    unsafe {
-        if extra == 0 {
-            return a;
-        }
-
-        if a.is_null() {
-            return memalloc(extra);
-        }
-
-        if extra < 0 {
-            return ptr::null_mut();
-        }
-        let size = memlength(a);
-        let Some(new_size) = size.checked_add(extra) else {
-            return ptr::null_mut();
-        };
-        memrealloc(a, new_size)
+    if extra == 0 {
+        return a;
     }
+
+    if a.is_null() {
+        return memalloc(extra);
+    }
+
+    if extra < 0 {
+        return ptr::null_mut();
+    }
+    let size = memlength(a);
+    let Some(new_size) = size.checked_add(extra) else {
+        return ptr::null_mut();
+    };
+    memrealloc(a, new_size)
 }
 
 /// Join two blocks: append b to a and return the result.
@@ -189,16 +188,15 @@ mod tests {
             .max(std::mem::align_of::<imagedata>());
         assert!(std::mem::align_of::<MemHeader>() >= required_alignment);
         assert_eq!(HEADER_SIZE % required_alignment, 0);
-        unsafe {
-            for size in [0, 1, 8, 128] {
-                let data = memalloc(size);
-                assert!(!data.is_null());
-                assert_eq!(data.addr() % required_alignment, 0);
-                let grown = memrealloc(data, 256);
-                assert!(!grown.is_null());
-                assert_eq!(grown.addr() % required_alignment, 0);
-                memfree(grown);
-            }
+
+        for size in [0, 1, 8, 128] {
+            let data = memalloc(size);
+            assert!(!data.is_null());
+            assert_eq!(data.addr() % required_alignment, 0);
+            let grown = memrealloc(data, 256);
+            assert!(!grown.is_null());
+            assert_eq!(grown.addr() % required_alignment, 0);
+            memfree(grown);
         }
     }
 

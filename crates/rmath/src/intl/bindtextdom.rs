@@ -1,3 +1,4 @@
+#![warn(unused_unsafe)]
 //! Domain binding management for GNU gettext.
 //!
 //! Ported from `bindtextdom.c` in the GNU gettext `intl/` library.
@@ -250,11 +251,9 @@ pub unsafe fn libintl_bindtextdomain(
     domainname: *const c_char,
     dirname: *const c_char,
 ) -> *mut c_char {
-    unsafe {
-        let mut dirname_mut: *const c_char = dirname;
-        set_binding_values(domainname, &mut dirname_mut, ptr::null_mut());
-        dirname_mut as *mut c_char
-    }
+    let mut dirname_mut: *const c_char = dirname;
+    set_binding_values(domainname, &mut dirname_mut, ptr::null_mut());
+    dirname_mut as *mut c_char
 }
 
 /// Specify the character encoding in which messages from the DOMAINNAME
@@ -265,11 +264,9 @@ pub fn libintl_bind_textdomain_codeset(
     domainname: *const c_char,
     codeset: *const c_char,
 ) -> *mut c_char {
-    unsafe {
-        let mut codeset_mut: *const c_char = codeset;
-        set_binding_values(domainname, ptr::null_mut(), &mut codeset_mut);
-        codeset_mut as *mut c_char
-    }
+    let mut codeset_mut: *const c_char = codeset;
+    set_binding_values(domainname, ptr::null_mut(), &mut codeset_mut);
+    codeset_mut as *mut c_char
 }
 
 // ---------------------------------------------------------------------------
@@ -322,44 +319,34 @@ mod tests {
 
     #[test]
     fn test_libc_strcmp_equal() {
-        unsafe {
-            let a = b"hello\0".as_ptr() as *const c_char;
-            let b = b"hello\0".as_ptr() as *const c_char;
-            assert_eq!(libc_strcmp(a, b), 0);
-        }
+        let a = b"hello\0".as_ptr() as *const c_char;
+        let b = b"hello\0".as_ptr() as *const c_char;
+        assert_eq!(libc_strcmp(a, b), 0);
     }
 
     #[test]
     fn test_libc_strcmp_less() {
-        unsafe {
-            let a = b"abc\0".as_ptr() as *const c_char;
-            let b = b"abd\0".as_ptr() as *const c_char;
-            assert!(libc_strcmp(a, b) < 0);
-        }
+        let a = b"abc\0".as_ptr() as *const c_char;
+        let b = b"abd\0".as_ptr() as *const c_char;
+        assert!(libc_strcmp(a, b) < 0);
     }
 
     #[test]
     fn test_libc_strcmp_greater() {
-        unsafe {
-            let a = b"abd\0".as_ptr() as *const c_char;
-            let b = b"abc\0".as_ptr() as *const c_char;
-            assert!(libc_strcmp(a, b) > 0);
-        }
+        let a = b"abd\0".as_ptr() as *const c_char;
+        let b = b"abc\0".as_ptr() as *const c_char;
+        assert!(libc_strcmp(a, b) > 0);
     }
 
     #[test]
     fn test_libc_strlen() {
-        unsafe {
-            let s = b"hello\0".as_ptr() as *const c_char;
-            assert_eq!(libc_strlen(s), 5);
-        }
+        let s = b"hello\0".as_ptr() as *const c_char;
+        assert_eq!(libc_strlen(s), 5);
     }
 
     #[test]
     fn test_libc_strlen_null() {
-        unsafe {
-            assert_eq!(libc_strlen(ptr::null()), 0);
-        }
+        assert_eq!(libc_strlen(ptr::null()), 0);
     }
 
     #[test]

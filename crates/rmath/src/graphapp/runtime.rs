@@ -1,4 +1,5 @@
 #![allow(dead_code)]
+#![warn(unused_unsafe)]
 
 use std::collections::BTreeMap;
 use std::collections::HashMap;

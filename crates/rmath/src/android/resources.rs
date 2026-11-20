@@ -1,4 +1,5 @@
 #![forbid(unsafe_code)]
+#![warn(unused_unsafe)]
 //! Host-owned buffers share the original session's arena admission ledger.
 
 use crate::sexp::{memory::WorkspaceReservation, owner::WeakOwner};

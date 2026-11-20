@@ -1,5 +1,6 @@
 #![allow(non_snake_case, non_upper_case_globals, dead_code)]
 #![allow(clippy::missing_safety_doc)]
+#![warn(unused_unsafe)]
 
 use std::os::raw::{c_char, c_int, c_void};
 use std::ptr;
@@ -26,36 +27,30 @@ pub fn set_app_initialised(val: c_int) {
 }
 
 pub fn initapp(argc: c_int, _argv: *mut *mut c_char) -> c_int {
-    unsafe {
-        if get_app_initialised() == 0 {
-            set_app_initialised(1);
-            objects::init_objects();
-            events::init_events();
-            fonts::init_fonts();
-            cursors::init_cursors();
-            context::init_contexts();
-            menus::init_menus();
-        }
-        if argc < 1 { 1 } else { argc }
+    if get_app_initialised() == 0 {
+        set_app_initialised(1);
+        objects::init_objects();
+        events::init_events();
+        fonts::init_fonts();
+        cursors::init_cursors();
+        context::init_contexts();
+        menus::init_menus();
     }
+    if argc < 1 { 1 } else { argc }
 }
 
 pub fn app_cleanup() {
-    unsafe {
-        if get_app_initialised() != 0 {
-            set_app_initialised(0);
-            context::finish_contexts();
-            objects::finish_objects();
-            events::finish_events();
-        }
+    if get_app_initialised() != 0 {
+        set_app_initialised(0);
+        context::finish_contexts();
+        objects::finish_objects();
+        events::finish_events();
     }
 }
 
 pub fn exitapp() {
-    unsafe {
-        app_cleanup();
-        std::process::exit(0);
-    }
+    app_cleanup();
+    std::process::exit(0);
 }
 
 pub fn gabeep() {
@@ -66,18 +61,13 @@ pub fn gamainloop() {
     events::mainloop();
 }
 
-pub fn startgraphapp(
-    instance: *mut c_void,
-    previous_instance: *mut c_void,
-    _cmd_show: c_int,
-) {
+pub fn startgraphapp(instance: *mut c_void, previous_instance: *mut c_void, _cmd_show: c_int) {
     with_graphapp_runtime(|runtime| {
         runtime.app.this_instance = instance;
         runtime.app.prev_instance = previous_instance;
     });
-    unsafe {
-        initapp(0, ptr::null_mut());
-    }
+
+    initapp(0, ptr::null_mut());
 }
 
 pub fn isTopmost(_w: window) -> c_int {
@@ -103,8 +93,6 @@ pub fn getHandle(w: window) -> *mut c_void {
 
 pub fn GA_msgWindow(c: window, typ: c_int) {
     if typ != 0 && !c.is_null() {
-        unsafe {
-            BringToTop(c, typ);
-        }
+        BringToTop(c, typ);
     }
 }

@@ -1,5 +1,6 @@
 #![allow(non_snake_case, non_upper_case_globals, dead_code)]
 #![allow(clippy::missing_safety_doc)]
+#![warn(unused_unsafe)]
 
 //! String utility functions for GraphApp.
 //!
@@ -34,10 +35,8 @@ pub fn new_string(src: *const c_char) -> *mut c_char {
 
 /// Delete a previously allocated string.
 pub fn del_string(str: *const c_char) {
-    unsafe {
-        if !str.is_null() {
-            memory::memfree(str as *mut u8);
-        }
+    if !str.is_null() {
+        memory::memfree(str as *mut u8);
     }
 }
 
@@ -148,18 +147,14 @@ pub fn char_to_string(ch: c_char) -> *mut c_char {
 
 /// Convert an integer to a newly allocated string.
 pub fn int_to_string(i: c_long) -> *mut c_char {
-    unsafe {
-        let str_val = format!("{}", i);
-        new_string_from_bytes(str_val.as_bytes())
-    }
+    let str_val = format!("{}", i);
+    new_string_from_bytes(str_val.as_bytes())
 }
 
 /// Convert a float to a newly allocated string.
 pub fn float_to_string(f: f32) -> *mut c_char {
-    unsafe {
-        let str_val = format!("{}", f);
-        new_string_from_bytes(str_val.as_bytes())
-    }
+    let str_val = format!("{}", f);
+    new_string_from_bytes(str_val.as_bytes())
 }
 
 /// Case-insensitive string comparison.

@@ -1,5 +1,6 @@
 #![allow(non_snake_case, non_upper_case_globals, dead_code)]
 #![allow(clippy::missing_safety_doc)]
+#![warn(unused_unsafe)]
 
 //! Window management for GraphApp.
 //!
@@ -124,23 +125,19 @@ pub fn GetCurrentWinPos(obj: object) -> rect {
 }
 
 pub fn show_window(obj: object) {
-    unsafe {
-        show(obj);
-        if !obj.is_null() {
-            set_current_window(obj);
-        }
+    show(obj);
+    if !obj.is_null() {
+        set_current_window(obj);
     }
 }
 pub fn hide_window(obj: object) {
-    unsafe {
-        hide(obj);
-        if get_current_window() == obj {
-            set_current_window(ptr::null_mut());
-        }
+    hide(obj);
+    if get_current_window() == obj {
+        set_current_window(ptr::null_mut());
     }
 }
 pub fn simple_window() -> window {
-    unsafe { newwindow(ptr::null(), rect::default(), SimpleWindow as c_long) }
+    newwindow(ptr::null(), rect::default(), SimpleWindow as c_long)
 }
 pub fn screen_coords(obj: object) -> rect {
     unsafe {

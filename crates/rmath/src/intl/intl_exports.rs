@@ -1,3 +1,4 @@
+#![warn(unused_unsafe)]
 //! Port of intl-exports.c -- Symbol exports for C ABI compatibility.
 //!
 //! The C version uses Cygwin-specific assembler directives to export

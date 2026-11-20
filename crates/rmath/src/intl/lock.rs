@@ -1,3 +1,4 @@
+#![warn(unused_unsafe)]
 //! Port of lock.c -- Thread synchronization / locking primitives.
 //!
 //! The C version provides platform-specific locking implementations for
@@ -150,10 +151,7 @@ impl gl_once_t {
 /// # Safety
 /// `once_control` must be a valid pointer to a `gl_once_t`.
 /// `initfunction` must be a valid function pointer.
-pub fn glthread_once(
-    once_control: *mut gl_once_t,
-    initfunction: Option<extern "C" fn()>,
-) {
+pub fn glthread_once(once_control: *mut gl_once_t, initfunction: Option<extern "C" fn()>) {
     unsafe {
         if once_control.is_null() {
             return;
@@ -205,51 +203,44 @@ mod tests {
     #[test]
     fn test_once_initialization() {
         use std::cell::Cell;
-        unsafe {
-            thread_local! { static INIT_CALLED: Cell<bool> = const { Cell::new(false) }; }
-            extern "C" fn init_fn() {
-                INIT_CALLED.with(|v| v.set(true));
-            }
 
-            let mut once = gl_once_t::new();
-            glthread_once(&mut once, Some(init_fn));
-            assert_eq!(INIT_CALLED.with(|v| v.get()), true);
-
-            // Calling again should not re-initialize.
-            INIT_CALLED.with(|v| v.set(false));
-            glthread_once(&mut once, Some(init_fn));
-            assert_eq!(INIT_CALLED.with(|v| v.get()), false);
+        thread_local! { static INIT_CALLED: Cell<bool> = const { Cell::new(false) }; }
+        extern "C" fn init_fn() {
+            INIT_CALLED.with(|v| v.set(true));
         }
+
+        let mut once = gl_once_t::new();
+        glthread_once(&mut once, Some(init_fn));
+        assert_eq!(INIT_CALLED.with(|v| v.get()), true);
+
+        // Calling again should not re-initialize.
+        INIT_CALLED.with(|v| v.set(false));
+        glthread_once(&mut once, Some(init_fn));
+        assert_eq!(INIT_CALLED.with(|v| v.get()), false);
     }
 
     #[test]
     fn test_once_singlethreaded() {
-        unsafe {
-            let mut once = gl_once_t::new();
-            let result1 = glthread_once_singlethreaded(&mut once);
-            assert_eq!(result1, 1);
-            let result2 = glthread_once_singlethreaded(&mut once);
-            assert_eq!(result2, 0);
-        }
+        let mut once = gl_once_t::new();
+        let result1 = glthread_once_singlethreaded(&mut once);
+        assert_eq!(result1, 1);
+        let result2 = glthread_once_singlethreaded(&mut once);
+        assert_eq!(result2, 0);
     }
 
     #[test]
     fn test_glthread_in_use() {
-        unsafe {
-            assert_eq!(glthread_in_use(), 0);
-        }
+        assert_eq!(glthread_in_use(), 0);
     }
 
     #[test]
     fn test_rwlock_operations() {
-        unsafe {
-            let mut lock = gl_rwlock_t { _opaque: [] };
-            glthread_rwlock_init(&mut lock);
-            glthread_rwlock_rdlock(&mut lock);
-            glthread_rwlock_rdlock(&mut lock);
-            glthread_rwlock_wrlock(&mut lock);
-            glthread_rwlock_unlock(&mut lock);
-            glthread_rwlock_destroy(&mut lock);
-        }
+        let mut lock = gl_rwlock_t { _opaque: [] };
+        glthread_rwlock_init(&mut lock);
+        glthread_rwlock_rdlock(&mut lock);
+        glthread_rwlock_rdlock(&mut lock);
+        glthread_rwlock_wrlock(&mut lock);
+        glthread_rwlock_unlock(&mut lock);
+        glthread_rwlock_destroy(&mut lock);
     }
 }

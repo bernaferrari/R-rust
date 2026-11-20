@@ -1,3 +1,4 @@
+#![warn(unused_unsafe)]
 //! Port of textdomain.c -- Set/get text domain.
 //!
 //! Set the current default message catalog to DOMAINNAME.
@@ -88,7 +89,7 @@ pub fn libintl_textdomain(domainname: *const c_char) -> *mut c_char {
 
 /// Alias for `libintl_textdomain` (unprefixed, for compatibility).
 pub fn textdomain(domainname: *const c_char) -> *mut c_char {
-    unsafe { libintl_textdomain(domainname) }
+    libintl_textdomain(domainname)
 }
 
 #[cfg(test)]
@@ -148,18 +149,17 @@ mod tests {
     #[test]
     fn test_counter_increments() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            let empty = b"\0" as *const u8 as *const c_char;
-            let _ = libintl_textdomain(empty);
 
-            let before = types::with_intl_runtime(|intl| intl.msg_cat_cntr);
-            let custom = b"counter_test\0" as *const u8 as *const c_char;
-            let _ = libintl_textdomain(custom);
-            assert!(types::with_intl_runtime(|intl| intl.msg_cat_cntr) > before);
+        let empty = b"\0" as *const u8 as *const c_char;
+        let _ = libintl_textdomain(empty);
 
-            // Clean up.
-            let _ = libintl_textdomain(empty);
-        }
+        let before = types::with_intl_runtime(|intl| intl.msg_cat_cntr);
+        let custom = b"counter_test\0" as *const u8 as *const c_char;
+        let _ = libintl_textdomain(custom);
+        assert!(types::with_intl_runtime(|intl| intl.msg_cat_cntr) > before);
+
+        // Clean up.
+        let _ = libintl_textdomain(empty);
     }
 
     #[test]

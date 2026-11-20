@@ -1,3 +1,4 @@
+#![warn(unused_unsafe)]
 //! Port of osdep.c -- OS-dependent initialization.
 //!
 //! The C version conditionally includes platform-specific files:

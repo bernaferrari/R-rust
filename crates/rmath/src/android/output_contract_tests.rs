@@ -1,3 +1,4 @@
+#![warn(unused_unsafe)]
 //! Exact console emission with a base-only fixture, independent of package startup.
 
 use super::*;

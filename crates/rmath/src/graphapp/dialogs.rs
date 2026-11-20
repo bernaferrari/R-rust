@@ -1,5 +1,6 @@
 #![allow(non_snake_case, non_upper_case_globals, dead_code)]
 #![allow(clippy::missing_safety_doc)]
+#![warn(unused_unsafe)]
 
 //! Dialog functions for GraphApp.
 
@@ -49,11 +50,11 @@ fn cstr_to_string(ptr: *const c_char) -> String {
 
 fn make_graphapp_string(value: &str) -> *mut c_char {
     if let Ok(cstr) = CString::new(value) {
-        unsafe { strings::new_string(cstr.as_ptr()) }
+        strings::new_string(cstr.as_ptr())
     } else {
         let filtered: String = value.chars().filter(|ch| *ch != '\0').collect();
         match CString::new(filtered) {
-            Ok(cstr) => unsafe { strings::new_string(cstr.as_ptr()) },
+            Ok(cstr) => strings::new_string(cstr.as_ptr()),
             Err(_) => ptr::null_mut(),
         }
     }
@@ -122,7 +123,7 @@ fn write_status(obj: object, text: &str) {
 }
 
 pub fn apperror(errstr: *const c_char) {
-    let text = unsafe { cstr_to_string(errstr) };
+    let text = cstr_to_string(errstr);
     let message = if text.is_empty() {
         "Unspecified error".to_owned()
     } else {
@@ -133,7 +134,7 @@ pub fn apperror(errstr: *const c_char) {
 }
 
 pub fn askok(info: *const c_char) {
-    let text = unsafe { cstr_to_string(info) };
+    let text = cstr_to_string(info);
     remember_message(1, &text);
 }
 
@@ -153,15 +154,15 @@ pub fn askyesnocancel(_question: *const c_char) -> c_int {
 }
 
 pub fn askstring(_question: *const c_char, default_string: *const c_char) -> *mut c_char {
-    make_graphapp_string(&selected_text(unsafe { cstr_to_string(default_string) }))
+    make_graphapp_string(&selected_text(cstr_to_string(default_string)))
 }
 
 pub fn askpassword(_question: *const c_char, default_string: *const c_char) -> *mut c_char {
-    make_graphapp_string(&selected_text(unsafe { cstr_to_string(default_string) }))
+    make_graphapp_string(&selected_text(cstr_to_string(default_string)))
 }
 
 pub fn askfilename(title: *const c_char, default_name: *const c_char) -> *mut c_char {
-    unsafe { askfilenamewithdir(title, default_name, ptr::null()) }
+    askfilenamewithdir(title, default_name, ptr::null())
 }
 
 pub fn askfilenamewithdir(
@@ -169,9 +170,7 @@ pub fn askfilenamewithdir(
     default_name: *const c_char,
     dir: *const c_char,
 ) -> *mut c_char {
-    let value = select_path(unsafe { cstr_to_string(default_name) }, unsafe {
-        cstr_to_string(dir)
-    });
+    let value = select_path(cstr_to_string(default_name), cstr_to_string(dir));
     if value.is_empty() {
         ptr::null_mut()
     } else {
@@ -180,7 +179,7 @@ pub fn askfilenamewithdir(
 }
 
 pub fn askfilesave(title: *const c_char, default_name: *const c_char) -> *mut c_char {
-    unsafe { askfilesavewithdir(title, default_name, ptr::null()) }
+    askfilesavewithdir(title, default_name, ptr::null())
 }
 
 pub fn askUserPass(_title: *const c_char) -> *mut c_char {
@@ -189,7 +188,7 @@ pub fn askUserPass(_title: *const c_char) -> *mut c_char {
 
 pub fn setuserfilter(filter: *const c_char) {
     with_graphapp_runtime(|runtime| {
-        runtime.dialogs.user_filter = CString::new(unsafe { cstr_to_string(filter) }).ok();
+        runtime.dialogs.user_filter = CString::new(cstr_to_string(filter)).ok();
     });
 }
 
@@ -200,7 +199,7 @@ pub fn askchangedir() {
 }
 
 pub fn askcdstring(_question: *const c_char, default_string: *const c_char) -> *mut c_char {
-    make_graphapp_string(&selected_text(unsafe { cstr_to_string(default_string) }))
+    make_graphapp_string(&selected_text(cstr_to_string(default_string)))
 }
 
 pub fn askfilesavewithdir(
@@ -208,9 +207,7 @@ pub fn askfilesavewithdir(
     default_name: *const c_char,
     dir: *const c_char,
 ) -> *mut c_char {
-    let value = select_path(unsafe { cstr_to_string(default_name) }, unsafe {
-        cstr_to_string(dir)
-    });
+    let value = select_path(cstr_to_string(default_name), cstr_to_string(dir));
     if value.is_empty() {
         ptr::null_mut()
     } else {
@@ -228,9 +225,7 @@ pub fn askfilenames(
     bufsize: c_int,
     dir: *const c_char,
 ) -> *mut c_char {
-    let value = select_path(unsafe { cstr_to_string(default_name) }, unsafe {
-        cstr_to_string(dir)
-    });
+    let value = select_path(cstr_to_string(default_name), cstr_to_string(dir));
     copy_into_buffer(&value, strbuf, bufsize)
 }
 
@@ -246,14 +241,14 @@ pub fn countFilenames(strbuf: *const c_char) -> c_int {
             break;
         }
         count += 1;
-        let len = unsafe { strings::string_length(current) as usize };
+        let len = strings::string_length(current) as usize;
         offset += len + 1;
     }
     count
 }
 
 pub fn myMessageBox(obj: object, text: *const c_char, typ: c_int) {
-    let message = unsafe { cstr_to_string(text) };
+    let message = cstr_to_string(text);
     remember_message(typ, &message);
     write_status(obj, &message);
 }
@@ -313,13 +308,12 @@ mod tests {
     #[test]
     fn message_box_records_status_text() {
         let _session = crate::sexp::session::RSession::new_for_gc_tests();
-        unsafe {
-            let text = CString::new("hello").unwrap_or_else(|e| panic!("{e}"));
-            myMessageBox(ptr::null_mut(), text.as_ptr(), 7);
-            assert_eq!(
-                with_graphapp_runtime(|runtime| runtime.dialogs.last_message.clone()),
-                Some((7, "hello".to_owned()))
-            );
-        }
+
+        let text = CString::new("hello").unwrap_or_else(|e| panic!("{e}"));
+        myMessageBox(ptr::null_mut(), text.as_ptr(), 7);
+        assert_eq!(
+            with_graphapp_runtime(|runtime| runtime.dialogs.last_message.clone()),
+            Some((7, "hello".to_owned()))
+        );
     }
 }

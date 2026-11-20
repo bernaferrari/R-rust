@@ -1,3 +1,4 @@
+#![warn(unused_unsafe)]
 //! Port of dngettext.c -- Domain-specific plural translation wrapper.
 //!
 //! Look up MSGID1/MSGID2 in the DOMAINNAME message catalog of the current
@@ -22,15 +23,7 @@ pub fn libintl_dngettext(
     msgid2: *const c_char,
     n: c_ulong,
 ) -> *mut c_char {
-    unsafe {
-        crate::intl::dcngettext::libintl_dcngettext(
-            domainname,
-            msgid1,
-            msgid2,
-            n,
-            types::LC_MESSAGES,
-        )
-    }
+    crate::intl::dcngettext::libintl_dcngettext(domainname, msgid1, msgid2, n, types::LC_MESSAGES)
 }
 
 /// Alias for `libintl_dngettext` (unprefixed, for compatibility).
@@ -40,7 +33,7 @@ pub fn dngettext(
     msgid2: *const c_char,
     n: c_ulong,
 ) -> *mut c_char {
-    unsafe { libintl_dngettext(domainname, msgid1, msgid2, n) }
+    libintl_dngettext(domainname, msgid1, msgid2, n)
 }
 
 #[cfg(test)]
@@ -50,24 +43,22 @@ mod tests {
     #[test]
     fn test_singular_with_domain() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            let domain = b"myapp\0" as *const u8 as *const c_char;
-            let s1 = b"file\0" as *const u8 as *const c_char;
-            let s2 = b"files\0" as *const u8 as *const c_char;
-            let result = libintl_dngettext(domain, s1, s2, 1);
-            assert_eq!(result, s1 as *mut c_char);
-        }
+
+        let domain = b"myapp\0" as *const u8 as *const c_char;
+        let s1 = b"file\0" as *const u8 as *const c_char;
+        let s2 = b"files\0" as *const u8 as *const c_char;
+        let result = libintl_dngettext(domain, s1, s2, 1);
+        assert_eq!(result, s1 as *mut c_char);
     }
 
     #[test]
     fn test_plural_no_catalog() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            let domain = b"myapp\0" as *const u8 as *const c_char;
-            let s1 = b"file\0" as *const u8 as *const c_char;
-            let s2 = b"files\0" as *const u8 as *const c_char;
-            let result = libintl_dngettext(domain, s1, s2, 10);
-            assert_eq!(result, s1 as *mut c_char);
-        }
+
+        let domain = b"myapp\0" as *const u8 as *const c_char;
+        let s1 = b"file\0" as *const u8 as *const c_char;
+        let s2 = b"files\0" as *const u8 as *const c_char;
+        let result = libintl_dngettext(domain, s1, s2, 10);
+        assert_eq!(result, s1 as *mut c_char);
     }
 }

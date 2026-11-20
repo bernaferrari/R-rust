@@ -1,5 +1,6 @@
 #![allow(non_snake_case, non_upper_case_globals, dead_code)]
 #![allow(clippy::missing_safety_doc)]
+#![warn(unused_unsafe)]
 
 //! RGB colour name table and colour manipulation functions.
 //!
@@ -1478,18 +1479,14 @@ mod tests {
 
     #[test]
     fn dialog_background_uses_button_face_fallback() {
-        unsafe {
-            assert_eq!(dialog_bg(), LightGrey);
-        }
+        assert_eq!(dialog_bg(), LightGrey);
     }
 
     #[test]
     fn system_colour_fallbacks_cover_text_and_highlight_roles() {
-        unsafe {
-            assert_eq!(myGetSysColor(3), rgb_make(10, 36, 106));
-            assert_eq!(myGetSysColor(6), Black);
-            assert_eq!(myGetSysColor(999), White);
-        }
+        assert_eq!(myGetSysColor(3), rgb_make(10, 36, 106));
+        assert_eq!(myGetSysColor(6), Black);
+        assert_eq!(myGetSysColor(999), White);
     }
 
     #[test]

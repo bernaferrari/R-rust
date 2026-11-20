@@ -1,5 +1,6 @@
 #![allow(non_snake_case, non_upper_case_globals, dead_code)]
 #![allow(clippy::missing_safety_doc)]
+#![warn(unused_unsafe)]
 
 //! Font management for GraphApp.
 //!
@@ -14,7 +15,7 @@ use super::strings;
 use super::types::*;
 
 fn alloc_font(name: &str, style: c_int, size: c_int) -> font {
-    let obj = unsafe { objects::new_object(FontObject, ptr::null_mut(), ptr::null_mut()) };
+    let obj = objects::new_object(FontObject, ptr::null_mut(), ptr::null_mut());
     if obj.is_null() {
         return ptr::null_mut();
     }
@@ -37,7 +38,7 @@ fn alloc_font(name: &str, style: c_int, size: c_int) -> font {
 macro_rules! ensure_font {
     ($field:ident, $name:expr, $style:expr, $size:expr) => {
         if with_graphapp_runtime(|runtime| runtime.fonts.$field.is_null()) {
-            let font = unsafe { alloc_font($name, $style, $size) };
+            let font = alloc_font($name, $style, $size);
             with_graphapp_runtime(|runtime| {
                 if runtime.fonts.$field.is_null() {
                     runtime.fonts.$field = font;
@@ -66,9 +67,9 @@ mod tests {
     #[test]
     fn init_fonts_populates_default_handles() {
         let _session = crate::sexp::session::RSession::new_for_gc_tests();
-        unsafe {
-            objects::init_objects();
-        }
+
+        objects::init_objects();
+
         init_fonts();
         with_graphapp_runtime(|runtime| {
             assert!(!runtime.fonts.system.is_null());

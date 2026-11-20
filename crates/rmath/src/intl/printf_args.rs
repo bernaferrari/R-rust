@@ -1,3 +1,4 @@
+#![warn(unused_unsafe)]
 //! Decomposed printf argument list handling.
 //!
 //! Ported from `printf-args.c` in the GNU gettext `intl/` library.
@@ -187,10 +188,8 @@ mod tests {
 
     #[test]
     fn test_fetchargs_null_a() {
-        unsafe {
-            let result = printf_fetchargs(ptr::null_mut(), ptr::null_mut());
-            assert_eq!(result, -1);
-        }
+        let result = printf_fetchargs(ptr::null_mut(), ptr::null_mut());
+        assert_eq!(result, -1);
     }
 
     #[test]
@@ -236,76 +235,64 @@ mod tests {
 
     #[test]
     fn test_fetchargs_unknown_type() {
-        unsafe {
-            let mut arg = argument {
-                type_: arg_type::TYPE_NONE,
-                a: argument_val { a_int: 0 },
-            };
-            let mut args_struct = arguments {
-                count: 1,
-                arg: &mut arg,
-            };
-            let result = printf_fetchargs(ptr::null_mut(), &mut args_struct);
-            assert_eq!(result, -1);
-        }
+        let mut arg = argument {
+            type_: arg_type::TYPE_NONE,
+            a: argument_val { a_int: 0 },
+        };
+        let mut args_struct = arguments {
+            count: 1,
+            arg: &mut arg,
+        };
+        let result = printf_fetchargs(ptr::null_mut(), &mut args_struct);
+        assert_eq!(result, -1);
     }
 
     #[test]
     fn test_get_argument_as_int() {
-        unsafe {
-            let arg = argument {
-                type_: arg_type::TYPE_INT,
-                a: argument_val { a_int: 42 },
-            };
-            assert_eq!(get_argument_as_int(&arg), Some(42));
-        }
+        let arg = argument {
+            type_: arg_type::TYPE_INT,
+            a: argument_val { a_int: 42 },
+        };
+        assert_eq!(get_argument_as_int(&arg), Some(42));
     }
 
     #[test]
     fn test_get_argument_as_int_schar() {
-        unsafe {
-            let arg = argument {
-                type_: arg_type::TYPE_SCHAR,
-                a: argument_val { a_schar: -5 },
-            };
-            assert_eq!(get_argument_as_int(&arg), Some(-5));
-        }
+        let arg = argument {
+            type_: arg_type::TYPE_SCHAR,
+            a: argument_val { a_schar: -5 },
+        };
+        assert_eq!(get_argument_as_int(&arg), Some(-5));
     }
 
     #[test]
     fn test_get_argument_as_int_wrong_type() {
-        unsafe {
-            let arg = argument {
-                type_: arg_type::TYPE_STRING,
-                a: argument_val {
-                    a_string: ptr::null(),
-                },
-            };
-            assert_eq!(get_argument_as_int(&arg), None);
-        }
+        let arg = argument {
+            type_: arg_type::TYPE_STRING,
+            a: argument_val {
+                a_string: ptr::null(),
+            },
+        };
+        assert_eq!(get_argument_as_int(&arg), None);
     }
 
     #[test]
     fn test_get_argument_as_string() {
-        unsafe {
-            let s = b"hello\0".as_ptr() as *const c_char;
-            let arg = argument {
-                type_: arg_type::TYPE_STRING,
-                a: argument_val { a_string: s },
-            };
-            assert_eq!(get_argument_as_string(&arg), Some("hello"));
-        }
+        let s = b"hello\0".as_ptr() as *const c_char;
+        let arg = argument {
+            type_: arg_type::TYPE_STRING,
+            a: argument_val { a_string: s },
+        };
+        assert_eq!(get_argument_as_string(&arg), Some("hello"));
     }
 
     #[test]
     fn test_get_argument_as_pointer() {
-        unsafe {
-            let p = 0x1234 as *mut c_void;
-            let arg = argument {
-                type_: arg_type::TYPE_POINTER,
-                a: argument_val { a_pointer: p },
-            };
-            assert_eq!(get_argument_as_pointer(&arg), Some(p));
-        }
+        let p = 0x1234 as *mut c_void;
+        let arg = argument {
+            type_: arg_type::TYPE_POINTER,
+            a: argument_val { a_pointer: p },
+        };
+        assert_eq!(get_argument_as_pointer(&arg), Some(p));
     }
 }

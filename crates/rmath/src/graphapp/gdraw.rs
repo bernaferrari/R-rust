@@ -1,5 +1,6 @@
 #![allow(non_snake_case, non_upper_case_globals, dead_code)]
 #![allow(clippy::missing_safety_doc)]
+#![warn(unused_unsafe)]
 
 //! Extended drawing functions for GraphApp.
 //!
@@ -337,20 +338,19 @@ fn fill_polygon_impl(d: drawing, points: &[point], color: rgb, odd_even: bool) {
         return;
     };
     if rect_area(bounds).unwrap_or(usize::MAX) > MAX_RASTER_PIXELS {
-        unsafe {
-            gdrawpolygon(
-                d,
-                1,
-                lSolid,
-                color,
-                points.as_ptr() as *mut point,
-                points.len() as c_int,
-                0,
-                0,
-                0,
-                0.0,
-            );
-        }
+        gdrawpolygon(
+            d,
+            1,
+            lSolid,
+            color,
+            points.as_ptr() as *mut point,
+            points.len() as c_int,
+            0,
+            0,
+            0,
+            0.0,
+        );
+
         return;
     }
     let Some((x0, y0, x1, y1)) = rect_bounds(bounds) else {
@@ -718,7 +718,7 @@ pub fn gdrawpolygon(
     ljoin: c_int,
     lmitre: f32,
 ) {
-    unsafe { gdrawpolyline(d, width, style, c, p, n, 1, fast, lend, ljoin, lmitre) };
+    gdrawpolyline(d, width, style, c, p, n, 1, fast, lend, ljoin, lmitre);
 }
 
 pub fn gsetpolyfillmode(d: drawing, oddeven: c_int) {
@@ -734,13 +734,7 @@ pub fn gfillpolygon(d: drawing, fill: rgb, p: *mut point, n: c_int) {
     fill_polygon_impl(d, &points, fill, odd_even);
 }
 
-pub fn gfillpolypolygon(
-    d: drawing,
-    fill: rgb,
-    p: *mut point,
-    npoly: c_int,
-    nper: *mut c_int,
-) {
+pub fn gfillpolypolygon(d: drawing, fill: rgb, p: *mut point, npoly: c_int, nper: *mut c_int) {
     if p.is_null() || nper.is_null() || npoly <= 0 {
         return;
     }
@@ -767,9 +761,9 @@ pub fn gmaskimage(d: drawing, img: image, dr: rect, sr: rect, mask: image) {
 }
 
 pub fn gdrawstr(d: drawing, f: font, c: rgb, p: point, s: *const c_char) -> c_int {
-    let width = unsafe { gstrwidth(d, f, s) };
+    let width = gstrwidth(d, f, s);
     let char_w = font_char_width(f).max(1);
-    let len = unsafe { c_string_len(s) } as c_int;
+    let len = c_string_len(s) as c_int;
     for idx in 0..len {
         set_pixel_if_visible(d, p.x + idx * char_w, p.y, c);
     }
@@ -777,32 +771,32 @@ pub fn gdrawstr(d: drawing, f: font, c: rgb, p: point, s: *const c_char) -> c_in
 }
 
 pub fn gdrawstr1(d: drawing, f: font, c: rgb, p: point, s: *const c_char, hadj: f64) {
-    let width = unsafe { gstrwidth(d, f, s) };
+    let width = gstrwidth(d, f, s);
     let start = point {
         x: p.x - (hadj * width as f64).round() as c_int,
         y: p.y,
     };
-    unsafe { gdrawstr(d, f, c, start, s) };
+    gdrawstr(d, f, c, start, s);
 }
 
 pub fn gstrrect(_d: drawing, f: font, s: *const c_char) -> rect {
     rect {
         x: 0,
         y: 0,
-        width: unsafe { gstrwidth(ptr::null_mut(), f, s) },
+        width: gstrwidth(ptr::null_mut(), f, s),
         height: text_height(f),
     }
 }
 
 pub fn gstrsize(_d: drawing, f: font, s: *const c_char) -> point {
     point {
-        x: unsafe { gstrwidth(ptr::null_mut(), f, s) },
+        x: gstrwidth(ptr::null_mut(), f, s),
         y: text_height(f),
     }
 }
 
 pub fn gstrwidth(_d: drawing, f: font, s: *const c_char) -> c_int {
-    text_width(f, unsafe { c_string_len(s) })
+    text_width(f, c_string_len(s))
 }
 
 pub fn gcharmetric(
@@ -828,7 +822,7 @@ pub fn gnewfont(
     rot: f64,
     usePoints: c_int,
 ) -> font {
-    unsafe { gnewfont2(d, face, style, size, rot, usePoints, 0) }
+    gnewfont2(d, face, style, size, rot, usePoints, 0)
 }
 
 pub fn gnewfont2(
@@ -840,8 +834,8 @@ pub fn gnewfont2(
     usePoints: c_int,
     quality: c_int,
 ) -> font {
-    unsafe { objects::init_objects() };
-    let font = unsafe { objects::new_object(FontObject, ptr::null_mut(), ptr::null_mut()) };
+    objects::init_objects();
+    let font = objects::new_object(FontObject, ptr::null_mut(), ptr::null_mut());
     if font.is_null() {
         return ptr::null_mut();
     }
@@ -889,8 +883,8 @@ pub fn ghasfixedwidth(f: font) -> c_int {
 }
 
 pub fn newfield_no_border(text: *const c_char, r: rect) -> field {
-    unsafe { objects::init_objects() };
-    let field = unsafe { objects::new_object(FieldObject, ptr::null_mut(), ptr::null_mut()) };
+    objects::init_objects();
+    let field = objects::new_object(FieldObject, ptr::null_mut(), ptr::null_mut());
     if field.is_null() {
         return ptr::null_mut();
     }
@@ -905,7 +899,7 @@ pub fn newfield_no_border(text: *const c_char, r: rect) -> field {
 }
 
 pub fn gdrawwcs(d: drawing, f: font, c: rgb, p: point, s: *const c_int) -> c_int {
-    let chars = unsafe { wide_string(s, None) };
+    let chars = wide_string(s, None);
     let width = text_width(f, chars.len());
     let char_w = font_char_width(f).max(1);
     for (idx, _) in chars.iter().enumerate() {
@@ -915,7 +909,7 @@ pub fn gdrawwcs(d: drawing, f: font, c: rgb, p: point, s: *const c_int) -> c_int
 }
 
 pub fn gwcswidth(_d: drawing, f: font, s: *const c_int) -> c_int {
-    text_width(f, unsafe { wide_string(s, None) }.len())
+    text_width(f, wide_string(s, None).len())
 }
 
 pub fn gwcharmetric(
@@ -926,19 +920,11 @@ pub fn gwcharmetric(
     descent: *mut c_int,
     width: *mut c_int,
 ) {
-    unsafe { gcharmetric(d, f, c, ascent, descent, width) };
+    gcharmetric(d, f, c, ascent, descent, width);
 }
 
-pub fn gwdrawstr1(
-    d: drawing,
-    f: font,
-    c: rgb,
-    p: point,
-    s: *const c_int,
-    cnt: c_int,
-    hadj: f64,
-) {
-    let chars = unsafe { wide_string(s, Some(cnt)) };
+pub fn gwdrawstr1(d: drawing, f: font, c: rgb, p: point, s: *const c_int, cnt: c_int, hadj: f64) {
+    let chars = wide_string(s, Some(cnt));
     let width = text_width(f, chars.len());
     let char_w = font_char_width(f).max(1);
     let start_x = p.x - (hadj * width as f64).round() as c_int;
@@ -948,7 +934,7 @@ pub fn gwdrawstr1(
 }
 
 pub fn gstrwidth1(_d: drawing, f: font, s: *const c_char, _enc: c_int) -> c_int {
-    text_width(f, unsafe { c_string_len(s) })
+    text_width(f, c_string_len(s))
 }
 
 #[cfg(test)]
@@ -960,23 +946,22 @@ mod tests {
     fn clip_rect_and_pixels_are_tracked_per_drawing() {
         let _session = crate::sexp::session::RSession::new_for_gc_tests();
         let drawing = 1usize as drawing;
-        unsafe {
-            gsetcliprect(
-                drawing,
-                rect {
-                    x: 1,
-                    y: 1,
-                    width: 2,
-                    height: 2,
-                },
-            );
-            gsetpixel(drawing, point { x: 0, y: 0 }, White);
-            gsetpixel(drawing, point { x: 1, y: 1 }, White);
 
-            assert_eq!(ggetcliprect(drawing).width, 2);
-            assert_eq!(ggetpixel(drawing, point { x: 0, y: 0 }), Black);
-            assert_eq!(ggetpixel(drawing, point { x: 1, y: 1 }), White);
-        }
+        gsetcliprect(
+            drawing,
+            rect {
+                x: 1,
+                y: 1,
+                width: 2,
+                height: 2,
+            },
+        );
+        gsetpixel(drawing, point { x: 0, y: 0 }, White);
+        gsetpixel(drawing, point { x: 1, y: 1 }, White);
+
+        assert_eq!(ggetcliprect(drawing).width, 2);
+        assert_eq!(ggetpixel(drawing, point { x: 0, y: 0 }), Black);
+        assert_eq!(ggetpixel(drawing, point { x: 1, y: 1 }), White);
     }
 
     #[test]
@@ -984,42 +969,41 @@ mod tests {
         let _session = crate::sexp::session::RSession::new_for_gc_tests();
         let src = 2usize as drawing;
         let dst = 3usize as drawing;
-        unsafe {
-            gfillrect(
-                src,
-                gaRed,
-                rect {
-                    x: 0,
-                    y: 0,
-                    width: 2,
-                    height: 2,
-                },
-            );
-            gbitblt(
-                dst,
-                src,
-                point { x: 4, y: 5 },
-                rect {
-                    x: 0,
-                    y: 0,
-                    width: 2,
-                    height: 2,
-                },
-            );
-            assert_eq!(ggetpixel(dst, point { x: 4, y: 5 }), gaRed);
 
-            gscroll(
-                dst,
-                point { x: 1, y: -1 },
-                rect {
-                    x: 4,
-                    y: 5,
-                    width: 2,
-                    height: 2,
-                },
-            );
-            assert_eq!(ggetpixel(dst, point { x: 5, y: 4 }), gaRed);
-        }
+        gfillrect(
+            src,
+            gaRed,
+            rect {
+                x: 0,
+                y: 0,
+                width: 2,
+                height: 2,
+            },
+        );
+        gbitblt(
+            dst,
+            src,
+            point { x: 4, y: 5 },
+            rect {
+                x: 0,
+                y: 0,
+                width: 2,
+                height: 2,
+            },
+        );
+        assert_eq!(ggetpixel(dst, point { x: 4, y: 5 }), gaRed);
+
+        gscroll(
+            dst,
+            point { x: 1, y: -1 },
+            rect {
+                x: 4,
+                y: 5,
+                width: 2,
+                height: 2,
+            },
+        );
+        assert_eq!(ggetpixel(dst, point { x: 5, y: 4 }), gaRed);
     }
 
     #[test]
@@ -1027,24 +1011,23 @@ mod tests {
         let _session = crate::sexp::session::RSession::new_for_gc_tests();
         let face = CString::new("Mono").unwrap_or_else(|e| panic!("{e}"));
         let text = CString::new("abcd").unwrap_or_else(|e| panic!("{e}"));
-        unsafe {
-            let font = gnewfont2(ptr::null_mut(), face.as_ptr(), FixedWidth, 12, 0.0, 1, 2);
-            assert_eq!(ghasfixedwidth(font), 1);
-            assert_eq!(gstrwidth(ptr::null_mut(), font, text.as_ptr()), 24);
 
-            let mut ascent = 0;
-            let mut descent = 0;
-            let mut width = 0;
-            gcharmetric(
-                ptr::null_mut(),
-                font,
-                'a' as c_int,
-                &mut ascent,
-                &mut descent,
-                &mut width,
-            );
-            assert_eq!(width, 6);
-            assert_eq!(ascent + descent, 12);
-        }
+        let font = gnewfont2(ptr::null_mut(), face.as_ptr(), FixedWidth, 12, 0.0, 1, 2);
+        assert_eq!(ghasfixedwidth(font), 1);
+        assert_eq!(gstrwidth(ptr::null_mut(), font, text.as_ptr()), 24);
+
+        let mut ascent = 0;
+        let mut descent = 0;
+        let mut width = 0;
+        gcharmetric(
+            ptr::null_mut(),
+            font,
+            'a' as c_int,
+            &mut ascent,
+            &mut descent,
+            &mut width,
+        );
+        assert_eq!(width, 6);
+        assert_eq!(ascent + descent, 12);
     }
 }

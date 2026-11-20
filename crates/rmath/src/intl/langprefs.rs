@@ -1,3 +1,4 @@
+#![warn(unused_unsafe)]
 //! Port of langprefs.c -- Language preferences (macOS CoreFoundation).
 //!
 //! On macOS, this determines the user's language preferences by querying
@@ -42,15 +43,13 @@ mod macos {
     /// Returns a colon-separated list of locale names, or NULL if not available.
     /// The result must not be freed.
     pub fn _nl_language_preferences_default() -> *const c_char {
-        unsafe {
-            // Use CoreFoundation to get AppleLanguages preference.
-            let preferences = crate::intl::langprefs::macos::cf_preferences_copy_app_value();
-            if !preferences.is_null() {
-                return crate::intl::langprefs::macos::extract_languages(preferences);
-            }
-
-            ptr::null()
+        // Use CoreFoundation to get AppleLanguages preference.
+        let preferences = crate::intl::langprefs::macos::cf_preferences_copy_app_value();
+        if !preferences.is_null() {
+            return crate::intl::langprefs::macos::extract_languages(preferences);
         }
+
+        ptr::null()
     }
 
     /// Stub: CFPreferencesCopyAppValue (placeholder for CoreFoundation).
@@ -100,11 +99,9 @@ mod tests {
 
     #[test]
     fn test_language_preferences_returns() {
-        unsafe {
-            let _result = _nl_language_preferences_default();
-            // On non-macOS, this should be null.
-            #[cfg(not(target_os = "macos"))]
-            assert!(_result.is_null());
-        }
+        let _result = _nl_language_preferences_default();
+        // On non-macOS, this should be null.
+        #[cfg(not(target_os = "macos"))]
+        assert!(_result.is_null());
     }
 }

@@ -1,3 +1,4 @@
+#![warn(unused_unsafe)]
 //! Port of loadmsgcat.c -- Message catalog loading.
 //!
 //! Loads a .mo (Machine Object) message catalog file into memory and sets up
@@ -259,18 +260,16 @@ mod tests {
 
     #[test]
     fn test_load_domain_null_file() {
-        unsafe {
-            let mut l10nfile = loaded_l10nfile {
-                filename: ptr::null(),
-                decided: 0,
-                data: ptr::null(),
-                next: ptr::null_mut(),
-                successor: [ptr::null_mut()],
-            };
-            _nl_load_domain(&mut l10nfile, ptr::null_mut());
-            assert_eq!(l10nfile.decided, 1);
-            assert!(l10nfile.data.is_null());
-        }
+        let mut l10nfile = loaded_l10nfile {
+            filename: ptr::null(),
+            decided: 0,
+            data: ptr::null(),
+            next: ptr::null_mut(),
+            successor: [ptr::null_mut()],
+        };
+        _nl_load_domain(&mut l10nfile, ptr::null_mut());
+        assert_eq!(l10nfile.decided, 1);
+        assert!(l10nfile.data.is_null());
     }
 
     #[test]
@@ -300,10 +299,8 @@ mod tests {
 
     #[test]
     fn test_read_mo_file_null() {
-        unsafe {
-            let mut size: usize = 0;
-            let result = read_mo_file(ptr::null(), &mut size);
-            assert!(result.is_null());
-        }
+        let mut size: usize = 0;
+        let result = read_mo_file(ptr::null(), &mut size);
+        assert!(result.is_null());
     }
 }
