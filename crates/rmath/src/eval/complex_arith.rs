@@ -4,12 +4,15 @@
 //! Supports vectorized binary operations (+, -, *, /) with recycling,
 //! and complex constructors.
 
-use crate::sexp::accessors::{COMPLEX, INTEGER, REAL, TYPEOF, XLENGTH};
+#[cfg(test)]
+use crate::sexp::accessors::{COMPLEX, REAL};
+use crate::sexp::accessors::{TYPEOF, XLENGTH};
 #[allow(unused_imports)]
 use crate::sexp::constructors::{Rf_ScalarComplex, Rf_allocVector3};
 use crate::sexp::ffi::{NA_INTEGER, R_xlen_t, Rcomplex, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
-use crate::sexp::protect::protect;
+use crate::sexp::object::{Sexp, SexpMut, SexpResult};
+use crate::sexp::owner::OwnerToken;
 
 /// NA sentinel for complex: both real and imaginary parts are NA_REAL.
 pub const NA_COMPLEX: Rcomplex = Rcomplex {
@@ -28,64 +31,81 @@ pub fn is_na_complex(z: Rcomplex) -> bool {
 // Element access with recycling
 // ---------------------------------------------------------------------------
 
-/// Get a complex value at index i with recycling from a CPLXSXP vector.
-#[inline]
-unsafe fn elt_complex(x: SEXP, i: R_xlen_t) -> Rcomplex {
-    unsafe {
-        let n = XLENGTH(x);
-        let idx = if n == 0 { 0 } else { i % n };
-        *COMPLEX(x).add(idx as usize)
-    }
+fn checked<T>(result: SexpResult<T>) -> T {
+    result.unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
 }
 
-/// Get a complex value from any numeric SEXP (REALSXP, INTSXP, LGLSXP, CPLXSXP).
-#[inline]
-unsafe fn elt_complex_coerce(x: SEXP, i: R_xlen_t) -> Rcomplex {
-    unsafe {
-        let t = TYPEOF(x);
-        if t == SEXPTYPE::CPLXSXP {
-            return elt_complex(x, i);
-        }
-        let n = XLENGTH(x);
-        let idx = if n == 0 { 0 } else { i % n };
-        let r = if t == SEXPTYPE::REALSXP {
-            *REAL(x).add(idx as usize)
-        } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-            let v = *INTEGER(x).add(idx as usize);
-            if v == NA_INTEGER {
-                crate::sexp::ffi::NA_REAL
-            } else {
-                v as f64
-            }
-        } else {
-            crate::sexp::ffi::NA_REAL
+/// Copy a numeric element after applying the existing materialization policy.
+fn elt_complex_coerce(owner: OwnerToken<'_>, value: &Sexp<'_>, i: R_xlen_t) -> Rcomplex {
+    let kind = value.typeof_();
+    let len = value.len();
+    let index = if len == 0 { 0 } else { i % len };
+    if !matches!(
+        kind,
+        SEXPTYPE::CPLXSXP | SEXPTYPE::REALSXP | SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP
+    ) {
+        return Rcomplex {
+            r: crate::sexp::ffi::NA_REAL,
+            i: 0.0,
         };
-        Rcomplex { r, i: 0.0 }
     }
+    checked(value.materialize_compact_payload_for_raw());
+    checked(owner.require_active());
+    if kind == SEXPTYPE::CPLXSXP {
+        return checked(value.try_complex_elt(index));
+    }
+    if kind == SEXPTYPE::REALSXP {
+        return Rcomplex {
+            r: checked(value.try_real_elt(index)),
+            i: 0.0,
+        };
+    }
+    let integer = if kind == SEXPTYPE::INTSXP {
+        checked(value.try_integer_elt(index))
+    } else {
+        checked(value.try_logical_elt(index))
+    };
+    let r = if integer == NA_INTEGER {
+        crate::sexp::ffi::NA_REAL
+    } else {
+        f64::from(integer)
+    };
+    Rcomplex { r, i: 0.0 }
 }
 
-// ---------------------------------------------------------------------------
-// Coercion helpers
-// ---------------------------------------------------------------------------
+fn allocate_vector<'a>(
+    owner: OwnerToken<'a>,
+    kind: SEXPTYPE,
+    len: R_xlen_t,
+) -> Option<SexpMut<'a>> {
+    checked(owner.require_active());
+    // SAFETY: the owner is active, and no Rust payload loan crosses allocation.
+    let raw = unsafe { Rf_allocVector3(kind, len) };
+    checked(owner.require_active());
+    (!raw.is_null()).then(|| checked(SexpMut::try_from_checked(checked(owner.sexp(raw)))))
+}
 
 /// Coerce a numeric SEXP to CPLXSXP.
 pub unsafe fn coerce_to_complex(x: SEXP) -> SEXP {
-    unsafe {
-        let t = TYPEOF(x);
-        if t == SEXPTYPE::CPLXSXP {
-            return x;
-        }
-        let n = XLENGTH(x);
-        let result = Rf_allocVector3(SEXPTYPE::CPLXSXP, n);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let dst = COMPLEX(result);
-        for i in 0..n {
-            *dst.add(i as usize) = elt_complex_coerce(x, i);
-        }
-        result
+    if TYPEOF(x) == SEXPTYPE::CPLXSXP {
+        return x;
     }
+    let n = XLENGTH(x);
+    if n == 0 {
+        // SAFETY: the translated caller retains the active runtime.
+        let raw = unsafe { Rf_allocVector3(SEXPTYPE::CPLXSXP, 0) };
+        return if raw.is_null() { R_NilValue() } else { raw };
+    }
+    // SAFETY: the translated caller retains the active runtime.
+    let owner = checked(unsafe { OwnerToken::current() });
+    let source = checked(owner.sexp(x));
+    let Some(mut result) = allocate_vector(owner, SEXPTYPE::CPLXSXP, n) else {
+        return R_NilValue();
+    };
+    for i in 0..n {
+        checked(result.try_set_complex_elt(i, elt_complex_coerce(owner, &source, i)));
+    }
+    result.freeze().as_raw()
 }
 
 // ---------------------------------------------------------------------------
@@ -97,93 +117,89 @@ pub unsafe fn coerce_to_complex(x: SEXP) -> SEXP {
 /// If both inputs are REALSXP/INTSXP/LGLSXP, the result is REALSXP if possible.
 /// If either input is CPLXSXP, the result is CPLXSXP.
 pub unsafe fn complex_binary(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
-    unsafe {
-        let na = XLENGTH(sa);
-        let nb = XLENGTH(sb);
-        let n = if na == 0 || nb == 0 {
-            0
-        } else if na >= nb {
-            na
-        } else {
-            nb
-        };
-        if n == 0 {
-            return Rf_allocVector3(SEXPTYPE::CPLXSXP, 0);
-        }
-
-        let a_is_complex = TYPEOF(sa) == SEXPTYPE::CPLXSXP;
-        let b_is_complex = TYPEOF(sb) == SEXPTYPE::CPLXSXP;
-        let result_is_complex = a_is_complex || b_is_complex;
-
-        // If both are real, delegate to real_binary
-        if !result_is_complex {
-            // Use the real arithmetic path
-            return crate::eval::arithmetic::real_binary(op, sa, sb);
-        }
-
-        let result = Rf_allocVector3(SEXPTYPE::CPLXSXP, n);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _result_guard = protect(result);
-        let dst = COMPLEX(result);
-        super::arithmetic::warn_if_non_multiple_recycling(na, nb);
-
-        for i in 0..n {
-            let x = elt_complex_coerce(sa, i);
-            let y = elt_complex_coerce(sb, i);
-
-            if op != "+" && op != "-" && (is_na_complex(x) || is_na_complex(y)) {
-                *dst.add(i as usize) = NA_COMPLEX;
-                continue;
-            }
-
-            let val = match op {
-                "+" => {
-                    let na = crate::sexp::ffi::NA_REAL;
-                    let r_na = |v: f64| v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN;
-                    Rcomplex {
-                        r: if r_na(x.r) || r_na(y.r) {
-                            na
-                        } else {
-                            x.r + y.r
-                        },
-                        i: if r_na(x.i) || r_na(y.i) {
-                            na
-                        } else {
-                            x.i + y.i
-                        },
-                    }
-                }
-                "-" => Rcomplex {
-                    r: x.r - y.r,
-                    i: x.i - y.i,
-                },
-                "*" => Rcomplex {
-                    r: x.r * y.r - x.i * y.i,
-                    i: x.r * y.i + x.i * y.r,
-                },
-                "/" => {
-                    let denom = y.r * y.r + y.i * y.i;
-                    if denom == 0.0 {
-                        NA_COMPLEX
-                    } else {
-                        Rcomplex {
-                            r: (x.r * y.r + x.i * y.i) / denom,
-                            i: (x.i * y.r - x.r * y.i) / denom,
-                        }
-                    }
-                }
-                "^" => complex_pow(x, y),
-                _ => NA_COMPLEX,
-            };
-
-            *dst.add(i as usize) = val;
-        }
-
-        super::arithmetic::propagate_arithmetic_attributes(result, sa, sb, n);
-        result
+    let na = XLENGTH(sa);
+    let nb = XLENGTH(sb);
+    if na == 0 || nb == 0 {
+        // SAFETY: the translated caller retains the active runtime.
+        return unsafe { Rf_allocVector3(SEXPTYPE::CPLXSXP, 0) };
     }
+    if TYPEOF(sa) != SEXPTYPE::CPLXSXP && TYPEOF(sb) != SEXPTYPE::CPLXSXP {
+        // SAFETY: the translated caller retains both original arguments.
+        return unsafe { crate::eval::arithmetic::real_binary(op, sa, sb) };
+    }
+
+    let n = na.max(nb);
+    // SAFETY: the translated caller retains the active runtime.
+    let owner = checked(unsafe { OwnerToken::current() });
+    let a = checked(owner.sexp(sa));
+    let b = checked(owner.sexp(sb));
+    let Some(mut result) = allocate_vector(owner, SEXPTYPE::CPLXSXP, n) else {
+        return R_NilValue();
+    };
+    super::arithmetic::warn_if_non_multiple_recycling(na, nb);
+    checked(owner.require_active());
+
+    for i in 0..n {
+        let x = elt_complex_coerce(owner, &a, i);
+        let y = elt_complex_coerce(owner, &b, i);
+        if op != "+" && op != "-" && (is_na_complex(x) || is_na_complex(y)) {
+            checked(result.try_set_complex_elt(i, NA_COMPLEX));
+            continue;
+        }
+        let val = match op {
+            "+" => {
+                let na = crate::sexp::ffi::NA_REAL;
+                let r_na = |v: f64| v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN;
+                Rcomplex {
+                    r: if r_na(x.r) || r_na(y.r) {
+                        na
+                    } else {
+                        x.r + y.r
+                    },
+                    i: if r_na(x.i) || r_na(y.i) {
+                        na
+                    } else {
+                        x.i + y.i
+                    },
+                }
+            }
+            "-" => Rcomplex {
+                r: x.r - y.r,
+                i: x.i - y.i,
+            },
+            "*" => Rcomplex {
+                r: x.r * y.r - x.i * y.i,
+                i: x.r * y.i + x.i * y.r,
+            },
+            "/" => {
+                let denom = y.r * y.r + y.i * y.i;
+                if denom == 0.0 {
+                    NA_COMPLEX
+                } else {
+                    Rcomplex {
+                        r: (x.r * y.r + x.i * y.i) / denom,
+                        i: (x.i * y.r - x.r * y.i) / denom,
+                    }
+                }
+            }
+            "^" => complex_pow(x, y),
+            _ => NA_COMPLEX,
+        };
+
+        checked(result.try_set_complex_elt(i, val));
+    }
+    let result = result.freeze();
+    // SAFETY: the checked operands and result stay rooted during attribute propagation.
+    unsafe {
+        super::arithmetic::propagate_arithmetic_attributes(
+            result.as_raw(),
+            a.as_raw(),
+            b.as_raw(),
+            n,
+        )
+    };
+    checked(owner.require_active());
+    result.as_raw()
 }
 
 /// Complex power via GNU `mycpow` (integer exponents stay exact).
@@ -206,52 +222,47 @@ fn complex_abs(z: Rcomplex) -> f64 {
 
 /// Complex absolute value (Modulus) — returns REALSXP.
 pub unsafe fn complex_abs_vec(sa: SEXP) -> SEXP {
-    unsafe {
-        if sa.is_null() || TYPEOF(sa) != SEXPTYPE::CPLXSXP {
-            return R_NilValue();
-        }
-        let n = XLENGTH(sa);
-        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _result_guard = protect(result);
-        let dst = REAL(result);
-        for i in 0..n {
-            let z = *COMPLEX(sa).add(i as usize);
-            if is_na_complex(z) {
-                *dst.add(i as usize) = crate::sexp::ffi::NA_REAL;
-            } else {
-                *dst.add(i as usize) = complex_abs(z);
-            }
-        }
-        result
+    if sa.is_null() || TYPEOF(sa) != SEXPTYPE::CPLXSXP {
+        return R_NilValue();
     }
+    // SAFETY: the translated caller retains the active runtime.
+    let owner = checked(unsafe { OwnerToken::current() });
+    let source = checked(owner.sexp(sa));
+    let n = source.len();
+    let Some(mut result) = allocate_vector(owner, SEXPTYPE::REALSXP, n) else {
+        return R_NilValue();
+    };
+    for i in 0..n {
+        let z = elt_complex_coerce(owner, &source, i);
+        let value = if is_na_complex(z) {
+            crate::sexp::ffi::NA_REAL
+        } else {
+            complex_abs(z)
+        };
+        checked(result.try_set_real_elt(i, value));
+    }
+    result.freeze().as_raw()
 }
 
 /// Apply a unary complex function element-wise.
 pub unsafe fn complex_unary_vec(sa: SEXP, f: fn(Rcomplex) -> Rcomplex) -> SEXP {
-    unsafe {
-        if sa.is_null() || TYPEOF(sa) != SEXPTYPE::CPLXSXP {
-            return R_NilValue();
-        }
-        let n = XLENGTH(sa);
-        let result = Rf_allocVector3(SEXPTYPE::CPLXSXP, n);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _result_guard = protect(result);
-        let dst = COMPLEX(result);
-        for i in 0..n {
-            let z = *COMPLEX(sa).add(i as usize);
-            if is_na_complex(z) {
-                *dst.add(i as usize) = NA_COMPLEX;
-            } else {
-                *dst.add(i as usize) = f(z);
-            }
-        }
-        result
+    if sa.is_null() || TYPEOF(sa) != SEXPTYPE::CPLXSXP {
+        return R_NilValue();
     }
+    // SAFETY: the translated caller retains the active runtime.
+    let owner = checked(unsafe { OwnerToken::current() });
+    let source = checked(owner.sexp(sa));
+    let n = source.len();
+    let Some(mut result) = allocate_vector(owner, SEXPTYPE::CPLXSXP, n) else {
+        return R_NilValue();
+    };
+    for i in 0..n {
+        let z = elt_complex_coerce(owner, &source, i);
+        let value = if is_na_complex(z) { NA_COMPLEX } else { f(z) };
+        checked(owner.require_active());
+        checked(result.try_set_complex_elt(i, value));
+    }
+    result.freeze().as_raw()
 }
 
 /// Complex square root.
@@ -379,6 +390,50 @@ pub fn complex_atanh(z: Rcomplex) -> Rcomplex {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn checked_complex_arithmetic_copies_after_altrep_collection() {
+        use crate::sexp::altrep::{AltrepBuilder, AltrepClass, AltrepContext, AltrepElement};
+        use std::{cell::Cell, rc::Rc};
+
+        struct CollectingReal(Rc<Cell<usize>>);
+        impl AltrepClass for CollectingReal {
+            fn vector_type(&self) -> SEXPTYPE {
+                SEXPTYPE::REALSXP
+            }
+            fn length(&self, _: &AltrepContext<'_>) -> SexpResult<R_xlen_t> {
+                Ok(1)
+            }
+            fn element<'a>(
+                &self,
+                _: &AltrepContext<'a>,
+                _: R_xlen_t,
+            ) -> SexpResult<AltrepElement<'a>> {
+                self.0.set(self.0.get() + 1);
+                // SAFETY: the provider runs in its pinned original runtime.
+                unsafe { crate::sexp::gengc::full_gc() };
+                Ok(AltrepElement::Real(5.0))
+            }
+        }
+
+        let session = crate::sexp::RSession::new_for_gc_tests();
+        let owner = session.owner_token().unwrap();
+        let callbacks = Rc::new(Cell::new(0));
+        let class = session
+            .register_altrep_class("complex.collection", CollectingReal(callbacks.clone()))
+            .unwrap();
+        let real = AltrepBuilder::new(class).build().unwrap();
+        session.with_active(|| {
+            // SAFETY: the owner remains active and all evaluated inputs are
+            // rooted through materialization, computation, and publication.
+            let complex = unsafe { Rf_ScalarComplex(Rcomplex { r: 2.0, i: 3.0 }) };
+            let complex = owner.sexp(complex).unwrap();
+            let raw = unsafe { complex_binary("*", complex.as_raw(), real.as_raw()) };
+            let value = owner.sexp(raw).unwrap().try_complex_elt(0).unwrap();
+            assert_eq!((value.r, value.i), (10.0, 15.0));
+        });
+        assert_eq!(callbacks.get(), 1);
+    }
 
     #[test]
     fn test_complex_add() {
