@@ -1,0 +1,153 @@
+{
+  "source_commit": "59df2b2c71a9763a45122d26749dffb45ce1d36e",
+  "runtime_commit": "6b6dfaab13c6e7c9d41ef54474c7d0561d7efc96",
+  "wasm_sha256": "506a81179577089d71f35c8f437d61f51e4b812a7f10c398998c54c8a76ea7db",
+  "files": {
+    "package.json": 365,
+    "r_wasm.d.ts": 6452,
+    "r_wasm.js": 25125,
+    "r_wasm_bg.wasm": 23955562,
+    "r_wasm_bg.wasm.d.ts": 2615,
+    "rust-runtime-optimization.json": 476
+  },
+  "bundle_bytes": 23990595,
+  "byte_limit": 26214400,
+  "headroom_bytes": 2223805,
+  "headroom_warning_bytes": 1048576,
+  "baseline_bundle_bytes": 24938750,
+  "bundle_byte_savings": 948155,
+  "gradle_task": ":webApp:checkWasmProductionBundleSize",
+  "excludes_rebuilding_rust": true,
+  "production_contracts": [
+    166,
+    166
+  ],
+  "stats4_maximum_likelihood_namespace_contract": "pass",
+  "chromium_budget": {
+    "expected": 7,
+    "unexpected": 0,
+    "flaky": 0,
+    "skipped": 0,
+    "s4_evaluation_ms": [
+      12545.2,
+      9626.5,
+      10785.4,
+      10535.5,
+      8309.7,
+      8623.2
+    ]
+  },
+  "node_timing_ms": {
+    "baseline": {
+      "bootstrap": 2454.4,
+      "first": 213.1,
+      "warm": 171.8
+    },
+    "candidate": {
+      "bootstrap": 2250.1,
+      "first": 214.3,
+      "warm": 169.6
+    },
+    "platform": "Darwin arm64",
+    "node": "v24.22.3",
+    "workload": "Start a session, fit a linear model, and call tools::file_ext, utils::read.csv, and grDevices::palette. Repeat inside the same session.",
+    "baseline_source": "87328a0c",
+    "alternating_pairs": 7
+  },
+  "packed_databases": {
+    "tools": {
+      "gnu_database_bytes": 2360298,
+      "packed_data_bytes": 2027973,
+      "block_directory_bytes": 1360,
+      "index_bytes": 41964,
+      "byte_equal": {
+        "variables": 936,
+        "references": 40
+      }
+    },
+    "stats": {
+      "gnu_database_bytes": 1857724,
+      "packed_data_bytes": 1556139,
+      "block_directory_bytes": 1464,
+      "index_bytes": 35590,
+      "byte_equal": {
+        "variables": 1002,
+        "references": 4
+      }
+    },
+    "methods": {
+      "gnu_database_bytes": 1361830,
+      "packed_data_bytes": 1036625,
+      "block_directory_bytes": 1096,
+      "index_bytes": 45029,
+      "byte_equal": {
+        "variables": 725,
+        "references": 520
+      }
+    },
+    "utils": {
+      "gnu_database_bytes": 1043845,
+      "packed_data_bytes": 869922,
+      "block_directory_bytes": 800,
+      "index_bytes": 22296,
+      "byte_equal": {
+        "variables": 568,
+        "references": 11
+      }
+    },
+    "graphics": {
+      "gnu_database_bytes": 336632,
+      "packed_data_bytes": 297830,
+      "block_directory_bytes": 264,
+      "index_bytes": 4892,
+      "byte_equal": {
+        "variables": 135,
+        "references": 5
+      }
+    },
+    "grDevices": {
+      "gnu_database_bytes": 268167,
+      "packed_data_bytes": 204783,
+      "block_directory_bytes": 192,
+      "index_bytes": 9064,
+      "byte_equal": {
+        "variables": 242,
+        "references": 11
+      }
+    },
+    "stats4": {
+      "gnu_database_bytes": 187384,
+      "packed_data_bytes": 138179,
+      "block_directory_bytes": 136,
+      "index_bytes": 3563,
+      "byte_equal": {
+        "variables": 30,
+        "references": 75
+      }
+    }
+  },
+  "offline_size_probes": {
+    "second_convergent_binaryen_pass_saved_bytes": 6308,
+    "starting_module": "40b2af9bed9ce6f853f3806afc3aa253b464f0ef46d457964571d9fb1d2ac19b",
+    "font_archive_bytes_by_face_set": {
+      "all_four_faces": 860516,
+      "regular_only": 301672,
+      "regular_and_bold": 496984
+    }
+  },
+  "native_pinned_strict_cases": 17,
+  "everyday_analysis": {
+    "native": {
+      "pass": 14,
+      "fail": 0,
+      "unmeasured": 6,
+      "percent_verified": 70.0
+    },
+    "wasm": {
+      "pass": 14,
+      "fail": 0,
+      "unmeasured": 6,
+      "percent_verified": 70.0
+    }
+  }
+}

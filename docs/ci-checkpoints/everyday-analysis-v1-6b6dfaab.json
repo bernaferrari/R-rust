@@ -1,0 +1,169 @@
+{
+  "inventory_version": 1,
+  "workflow_count": 20,
+  "native_execution": {
+    "build_rustflags": "-Awarnings",
+    "case_timeout_seconds": 300.0,
+    "corpus_sha256": "d6c3c2e5794a48cda0821c8b3fdb9aa7a3cda2bf8cc02c6cf94c2c53cca3fa6d",
+    "engine_major_minor": "4.7",
+    "locale": {
+      "LC_CTYPE": "en_US.UTF-8",
+      "other_categories": "C"
+    },
+    "oracle_manifest_sha256": "b2400cc9d83720c794199ebe51856bb88a0aa2e38ee8db276c7c27f04473c679",
+    "pinned_oracle_required": true,
+    "profile": "release",
+    "schema_version": 1,
+    "source_commit": "59df2b2c71a9763a45122d26749dffb45ce1d36e",
+    "source_sha256": "06592de5b7be5c0377173c2c1ac6a8b6d615570362d4278a0554d0846e9440d2",
+    "strict": true
+  },
+  "wasm_sha256": "506a81179577089d71f35c8f437d61f51e4b812a7f10c398998c54c8a76ea7db",
+  "totals": {
+    "native": {
+      "pass": 14,
+      "fail": 0,
+      "unmeasured": 6,
+      "percent_verified": 70.0
+    },
+    "wasm": {
+      "pass": 14,
+      "fail": 0,
+      "unmeasured": 6,
+      "percent_verified": 70.0
+    }
+  },
+  "workflows": [
+    {
+      "id": "csv-summary",
+      "workflow": "Import quoted CSV data, join a lookup table, summarize by group and export results",
+      "case": "1208_everyday_csv_summary",
+      "native": "pass",
+      "wasm": "pass"
+    },
+    {
+      "id": "model-persistence",
+      "workflow": "Fit and predict a linear model with categorical inputs and save the results as RDS",
+      "case": "1209_everyday_model_persistence",
+      "native": "pass",
+      "wasm": "pass"
+    },
+    {
+      "id": "categorical-analysis",
+      "workflow": "Inspect and summarize categorical data with missing and unused levels",
+      "case": "1210_everyday_categorical_analysis",
+      "native": "pass",
+      "wasm": "pass"
+    },
+    {
+      "id": "calendar-analysis",
+      "workflow": "Parse timestamps and summarize observations by local day across a time-zone transition",
+      "case": "1211_everyday_calendar_analysis",
+      "native": "pass",
+      "wasm": "pass"
+    },
+    {
+      "id": "reproducible-resampling",
+      "workflow": "Run a seeded resampling analysis and reproduce its estimates in a fresh session",
+      "case": "1216_everyday_seeded_resampling",
+      "native": "pass",
+      "wasm": "pass"
+    },
+    {
+      "id": "binomial-model",
+      "workflow": "Fit a binomial model with missing observations and export probabilities for new rows",
+      "case": "1213_everyday_binomial_model",
+      "native": "pass",
+      "wasm": "pass"
+    },
+    {
+      "id": "missing-data-cleaning",
+      "workflow": "Clean, filter and summarize measurements with missing values and non-finite inputs",
+      "case": "1212_everyday_missing_data_cleaning",
+      "native": "pass",
+      "wasm": "pass"
+    },
+    {
+      "id": "compressed-data",
+      "workflow": "Read compressed delimited data and export a cleaned table",
+      "case": "1217_everyday_compressed_table",
+      "native": "pass",
+      "wasm": "pass"
+    },
+    {
+      "id": "matrix-analysis",
+      "workflow": "Analyze a rank-deficient design matrix and diagnose its fit",
+      "case": "1214_everyday_matrix_analysis",
+      "native": "pass",
+      "wasm": "pass"
+    },
+    {
+      "id": "base-plot-export",
+      "workflow": "Generate and export a labeled, layered base R plot",
+      "native": "unmeasured",
+      "wasm": "unmeasured"
+    },
+    {
+      "id": "grid-layout",
+      "workflow": "Lay out a multi-panel grid figure and replay it at a different size",
+      "native": "unmeasured",
+      "wasm": "unmeasured"
+    },
+    {
+      "id": "series-forecast",
+      "workflow": "Fit and forecast a seasonal time series with validation on held-out observations",
+      "case": "1215_everyday_seasonal_forecast",
+      "native": "pass",
+      "wasm": "pass"
+    },
+    {
+      "id": "multi-file-script",
+      "workflow": "Run a multi-file analysis after copying an existing script directory",
+      "case": "1218_everyday_multifile_project",
+      "native": "pass",
+      "wasm": "pass"
+    },
+    {
+      "id": "fresh-session-restore",
+      "workflow": "Restore saved analysis objects and reproduce results in a fresh session",
+      "native": "pass",
+      "wasm": "pass"
+    },
+    {
+      "id": "pure-r-package",
+      "workflow": "Install or provision a pinned pure-R package, load it and use it in an analysis",
+      "native": "pass",
+      "wasm": "pass"
+    },
+    {
+      "id": "package-native-code",
+      "workflow": "Provision a package that uses compiled numerical code and run its analysis example",
+      "native": "unmeasured",
+      "wasm": "unmeasured"
+    },
+    {
+      "id": "package-wrangling",
+      "workflow": "Run an existing grouped join and transformation using a widely used wrangling package",
+      "native": "unmeasured",
+      "wasm": "unmeasured"
+    },
+    {
+      "id": "package-plotting",
+      "workflow": "Run an existing faceted plot using a widely used plotting package",
+      "native": "unmeasured",
+      "wasm": "unmeasured"
+    },
+    {
+      "id": "repeatable-report",
+      "workflow": "Rebuild an analysis report with model results, tables and plots from source data",
+      "native": "unmeasured",
+      "wasm": "unmeasured"
+    },
+    {
+      "id": "file-round-trip",
+      "workflow": "Import a user file, export an analysis result and reload it in a fresh session",
+      "native": "pass",
+      "wasm": "pass"
+    }
+  ]
+}

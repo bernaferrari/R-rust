@@ -11,6 +11,12 @@ workflow stays in the denominator. A pass requires a measured result, and an
 unmeasured workflow earns no credit. Silent wrong results, crashes and data
 loss in supported workflows block release even when the score is high.
 
+At `6b6dfaab`, **14 of 20 workflows (70%)** passed on native Rport and the
+smaller production Wasm build. Fresh sessions repeated the CSV round
+trip, nine workspace interchange combinations, and the pinned R6 analysis.
+[Scorecard](ci-checkpoints/everyday-analysis-v1-6b6dfaab.json)
+[Production Wasm receipt](ci-checkpoints/wasm-bundle-6b6dfaab.json)
+
 At `87328a0c`, **14 of 20 workflows (70%)** passed on both native Rport and
 production Wasm. An ordinary multi-file project now copies its nested source
 tree, reads sibling CSV input through `source(chdir = TRUE)`, writes the

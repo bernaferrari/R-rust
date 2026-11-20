@@ -200,6 +200,35 @@ user workflows have passed on native Rport and production Wasm.
 
 ## Wasm footprint
 
+At `6b6dfaab`, Workbench packages **23,990,595 bytes**, leaving
+**2,223,805 bytes (2.12 MiB)** below the 25 MiB ceiling. The bundle is
+948,155 bytes smaller than at `87328a0c`. The code section remains
+13,991,677 bytes and the data section is 9,937,820 bytes. The Workbench
+build logs the full bundle reserve and warns when it drops below 1 MiB.
+[Production size and timing receipt](ci-checkpoints/wasm-bundle-6b6dfaab.json)
+[Module section breakdown](ci-checkpoints/wasm-size-6b6dfaab.json)
+
+The Wasm images of `stats`, `methods`, `utils`, `graphics`, `grDevices`,
+and `stats4` now use the same bounded block decoder as `tools`. All 3,328
+newly packed records match the pinned GNU serializations byte for byte.
+Native builds use the original GNU databases. `tools` (1.93 MiB), `stats`
+(1.48 MiB), and `methods` (0.99 MiB) are the largest packed data payloads.
+The existing bundled DejaVu faces add 0.82 MiB. The section report lists
+only contiguous embedded files. The bundle receipt also counts the packed
+database inputs that Binaryen splits across data segments.
+
+Across seven alternating pairs on macOS arm64, median Node session startup
+measured 2.45 seconds before packing and 2.25 seconds afterward. The first
+model fit and package calls measured 213 and 214 ms. The exact production
+artifact passed 332 public contract executions, the `stats4` maximum-
+likelihood contract, and all seven Chromium deadline checks. All 17 selected
+strict native cases passed against pinned GNU R.
+
+An extra Binaryen convergence pass on the previous optimized module saved
+6,308 bytes. Packing only DejaVu regular and bold would save 363,532 data
+bytes and lose the bundled italic faces. The current bundle carries all
+four faces and uses the original optimizer invocation.
+
 The optimized `eddd0913` module left **28,359 bytes** under 25 MiB. Its code
 section used 14,023,273 bytes and its data section used 12,136,792. The
 complete generated Rust package was 26,221,075 bytes, 6,675 over that limit.
