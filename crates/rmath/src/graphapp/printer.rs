@@ -15,17 +15,15 @@ pub fn newprinter(w: f64, h: f64, name: *const std::os::raw::c_char) -> printer 
         return ptr::null_mut();
     }
 
-    unsafe {
-        (*printer).rect.width = w.round() as i32;
-        (*printer).rect.height = h.round() as i32;
-        (*printer).text = super::strings::new_string(name);
+    if let Some(data) = obj_mut(printer) {
+        data.rect.width = w.round() as i32;
+        data.rect.height = h.round() as i32;
+        data.text = super::strings::new_string(name);
     }
     printer
 }
 pub fn nextpage(p: printer) {
-    unsafe {
-        if !p.is_null() {
-            (*p).value += 1;
-        }
+    if let Some(data) = obj_mut(p) {
+        data.value += 1;
     }
 }

@@ -82,13 +82,7 @@ pub fn BringToTop(w: window, stay: c_int) {
 }
 
 pub fn getHandle(w: window) -> *mut c_void {
-    unsafe {
-        if w.is_null() {
-            ptr::null_mut()
-        } else {
-            (*w).handle
-        }
-    }
+    obj_ref(w).map_or(ptr::null_mut(), |data| data.handle)
 }
 
 pub fn GA_msgWindow(c: window, typ: c_int) {

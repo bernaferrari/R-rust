@@ -6,26 +6,25 @@
 
 use std::os::raw::{c_char, c_int};
 
+use super::types::{cstr, obj_mut};
 use super::windows;
 
 fn write_status_bytes(text: *const c_char) {
     let window = windows::get_current_window();
-    if window.is_null() {
+    let Some(data) = obj_mut(window) else {
         return;
-    }
-
-    unsafe {
-        let status = &mut (*window).status;
-        status.fill(0);
-        if text.is_null() {
-            return;
-        }
-
-        let mut i = 0usize;
-        while i + 1 < status.len() && *text.add(i) != 0 {
-            status[i] = *text.add(i);
-            i += 1;
-        }
+    };
+    data.status.fill(0);
+    let Some(text) = cstr(text) else {
+        return;
+    };
+    for (idx, &byte) in text
+        .to_bytes()
+        .iter()
+        .take(data.status.len().saturating_sub(1))
+        .enumerate()
+    {
+        data.status[idx] = byte as c_char;
     }
 }
 
