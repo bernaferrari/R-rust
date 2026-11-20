@@ -1423,12 +1423,10 @@ pub unsafe fn mc_interactive(sWhat: SEXP) -> SEXP {
 
 /// Get or set CPU affinity (stub on non-Linux).
 #[cfg(unix)]
-pub unsafe fn mc_affinity(_req: SEXP) -> SEXP {
-    unsafe {
-        // CPU affinity is Linux-specific with sched_setaffinity/sched_getaffinity.
-        // On macOS/BSD, these APIs are not available. Return nil.
-        R_NilValue()
-    }
+pub fn mc_affinity(_req: SEXP) -> SEXP {
+    // CPU affinity is Linux-specific with sched_setaffinity/sched_getaffinity.
+    // On macOS/BSD, these APIs are not available. Return nil.
+    R_NilValue()
 }
 
 #[cfg(all(test, unix))]

@@ -593,7 +593,7 @@ pub unsafe fn nsl(hostname: SEXP) -> SEXP {
         let name = CStr::from_ptr(c_ptr).to_string_lossy();
 
         // Use getaddrinfo for DNS resolution
-        let mut hints: libc::addrinfo = unsafe { std::mem::zeroed() };
+        let mut hints: libc::addrinfo = std::mem::zeroed();
         hints.ai_family = libc::AF_INET; // Request IPv4 for R compatibility
         hints.ai_socktype = libc::SOCK_STREAM;
 
