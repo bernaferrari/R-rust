@@ -6,7 +6,6 @@
 //!
 //! Ported from rgb.c - provides named colour lookup and system colour access.
 
-use std::ffi::CStr;
 use std::os::raw::{c_char, c_int, c_ulong};
 
 use super::types::*;
@@ -1356,13 +1355,10 @@ fn strcmpi(s1: &str, s2: &str) -> i32 {
 
 /// Look up a colour by name. Returns Transparent if not found.
 pub fn nametorgb(name: *const c_char) -> rgb {
-    unsafe {
-        if name.is_null() {
-            return Transparent;
-        }
-        let s = match CStr::from_ptr(name).to_str() {
-            Ok(s) => s,
-            Err(_) => return Transparent,
+    {
+        let s = match cstr(name).and_then(|c| c.to_str().ok()) {
+            Some(s) => s,
+            None => return Transparent,
         };
 
         let mut low: i32 = 0;

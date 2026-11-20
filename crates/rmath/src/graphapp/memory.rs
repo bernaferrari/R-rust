@@ -164,16 +164,16 @@ pub fn memexpand(a: *mut u8, extra: c_long) -> *mut u8 {
 
 /// Join two blocks: append b to a and return the result.
 pub fn memjoin(a: *mut u8, b: *mut u8) -> *mut u8 {
-    unsafe {
-        let size = memlength(a);
-        let extra = memlength(b);
-        let result = memexpand(a, extra);
-        if !result.is_null() && !b.is_null() {
-            let source = if a == b { result } else { b };
-            ptr::copy_nonoverlapping(source, result.add(size as usize), extra as usize);
-        }
-        result
+    let size = memlength(a);
+    let extra = memlength(b);
+    let result = memexpand(a, extra);
+    if !result.is_null() && !b.is_null() {
+        let source = if a == b { result } else { b };
+        // Copy `extra` bytes of the source payload after a's grown
+        // `size`-byte region; both fit by construction.
+        unsafe { ptr::copy_nonoverlapping(source, result.add(size as usize), extra as usize) };
     }
+    result
 }
 
 #[cfg(test)]

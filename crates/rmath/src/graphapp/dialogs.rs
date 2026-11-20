@@ -5,7 +5,7 @@
 //! Dialog functions for GraphApp.
 
 use std::env;
-use std::ffi::{CStr, CString};
+use std::ffi::CString;
 use std::os::raw::{c_char, c_int};
 use std::path::{Path, PathBuf};
 use std::ptr;
@@ -41,11 +41,7 @@ fn env_dialog_input() -> Option<String> {
 }
 
 fn cstr_to_string(ptr: *const c_char) -> String {
-    if ptr.is_null() {
-        String::new()
-    } else {
-        unsafe { CStr::from_ptr(ptr).to_string_lossy().into_owned() }
-    }
+    cstr(ptr).map_or_else(String::new, |s| s.to_string_lossy().into_owned())
 }
 
 fn make_graphapp_string(value: &str) -> *mut c_char {
@@ -85,6 +81,7 @@ fn copy_into_buffer(result: &str, strbuf: *mut c_char, bufsize: c_int) -> *mut c
     }
     let bytes = result.as_bytes();
     let max_copy = (bufsize as usize).saturating_sub(1).min(bytes.len());
+    // Zero and fill the caller's `bufsize`-byte buffer.
     unsafe {
         ptr::write_bytes(strbuf as *mut u8, 0, bufsize as usize);
         ptr::copy_nonoverlapping(bytes.as_ptr(), strbuf as *mut u8, max_copy);
@@ -105,20 +102,18 @@ fn change_dir_if_allowed(path: &Path) -> bool {
 }
 
 fn write_status(obj: object, text: &str) {
-    if obj.is_null() {
+    let Some(data) = obj_mut(obj) else {
         return;
-    }
-    unsafe {
-        (*obj).status.fill(0);
-        for (idx, byte) in text
-            .as_bytes()
-            .iter()
-            .copied()
-            .take((*obj).status.len().saturating_sub(1))
-            .enumerate()
-        {
-            (*obj).status[idx] = byte as c_char;
-        }
+    };
+    data.status.fill(0);
+    for (idx, byte) in text
+        .as_bytes()
+        .iter()
+        .copied()
+        .take(data.status.len().saturating_sub(1))
+        .enumerate()
+    {
+        data.status[idx] = byte as c_char;
     }
 }
 
@@ -236,13 +231,16 @@ pub fn countFilenames(strbuf: *const c_char) -> c_int {
     let mut count = 0;
     let mut offset = 0usize;
     loop {
+        // Step through the caller's multi-NUL-terminated buffer.
         let current = unsafe { strbuf.add(offset) };
-        if unsafe { *current } == 0 {
+        let Some(segment) = cstr(current) else {
+            break;
+        };
+        if segment.to_bytes().is_empty() {
             break;
         }
         count += 1;
-        let len = strings::string_length(current) as usize;
-        offset += len + 1;
+        offset += segment.to_bytes().len() + 1;
     }
     count
 }

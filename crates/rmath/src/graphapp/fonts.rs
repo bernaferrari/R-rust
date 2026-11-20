@@ -24,13 +24,13 @@ fn alloc_font(name: &str, style: c_int, size: c_int) -> font {
     bytes.extend_from_slice(name.as_bytes());
     bytes.push(0);
 
-    unsafe {
-        (*obj).text = strings::new_string(bytes.as_ptr() as *const core::ffi::c_char);
-        (*obj).state = style as _;
-        (*obj).value = size;
-        (*obj).size = size;
-        (*obj).xsize = (size / 2).max(1);
-        (*obj).max = (size * 4) / 5;
+    if let Some(data) = obj_mut(obj) {
+        data.text = strings::new_string(bytes.as_ptr() as *const core::ffi::c_char);
+        data.state = style as _;
+        data.value = size;
+        data.size = size;
+        data.xsize = (size / 2).max(1);
+        data.max = (size * 4) / 5;
     }
     obj
 }

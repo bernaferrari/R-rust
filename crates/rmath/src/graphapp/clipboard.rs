@@ -19,20 +19,13 @@ fn set_clipboard_bytes(bytes: &[u8]) {
 pub fn copytoclipboard(_src: drawing) {}
 
 pub fn copystringtoclipboard(str_: *const std::os::raw::c_char) -> c_int {
-    unsafe {
-        if str_.is_null() {
-            set_clipboard_bytes(&[]);
-            return 0;
-        }
-
-        let mut len = 0usize;
-        while *str_.add(len) != 0 {
-            len += 1;
-        }
-        let bytes = std::slice::from_raw_parts(str_ as *const u8, len);
-        set_clipboard_bytes(bytes);
-        len as c_int
-    }
+    let Some(s) = cstr(str_) else {
+        set_clipboard_bytes(&[]);
+        return 0;
+    };
+    let bytes = s.to_bytes();
+    set_clipboard_bytes(bytes);
+    bytes.len() as c_int
 }
 
 pub fn getstringfromclipboard(str_: *mut std::os::raw::c_char, n: c_int) -> c_int {
@@ -42,12 +35,12 @@ pub fn getstringfromclipboard(str_: *mut std::os::raw::c_char, n: c_int) -> c_in
 
     with_graphapp_runtime(|runtime| {
         let count = runtime.clipboard_text.len().min((n - 1) as usize);
-        if count > 0 {
-            unsafe {
+        // Write up to `n - 1` bytes plus NUL into the caller's `n`-byte
+        // buffer.
+        unsafe {
+            if count > 0 {
                 ptr::copy_nonoverlapping(runtime.clipboard_text.as_ptr(), str_ as *mut u8, count);
             }
-        }
-        unsafe {
             *str_.add(count) = 0;
         }
         count as c_int

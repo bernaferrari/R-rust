@@ -582,6 +582,7 @@ impl Framebuffer {
 
     /// Get raw pixel data as bytes (RGBA format).
     pub fn as_bytes(&self) -> &[u8] {
+        // Reinterpret the contiguous `Vec<Pixel>` storage as bytes.
         unsafe {
             std::slice::from_raw_parts(
                 self.pixels.as_ptr() as *const u8,
@@ -610,69 +611,49 @@ impl<T> std::ops::DerefMut for MutPtr<T> {
 /// Extract a Framebuffer pointer from an ObjInfo's handle field.
 #[inline]
 pub fn get_framebuffer(obj: objptr) -> Option<MutPtr<Framebuffer>> {
-    unsafe {
-        if obj.is_null() {
-            return None;
-        }
-        let handle = (*obj).handle;
-        if handle.is_null() {
-            return None;
-        }
-        Some(MutPtr(handle as *mut Framebuffer))
+    let handle = obj_ref(obj)?.handle;
+    if handle.is_null() {
+        return None;
     }
+    Some(MutPtr(handle as *mut Framebuffer))
 }
 
 pub fn attach_framebuffer(obj: objptr, width: c_int, height: c_int) -> Option<*mut Framebuffer> {
-    unsafe {
-        if obj.is_null() {
-            return None;
-        }
-        let fb = Box::into_raw(Box::new(Framebuffer::new(width, height)));
-        (*obj).handle = fb as *mut c_void;
-        (*obj).depth = 32;
-        (*obj).rect.width = width;
-        (*obj).rect.height = height;
-        Some(fb)
-    }
+    let data = obj_mut(obj)?;
+    let fb = Box::into_raw(Box::new(Framebuffer::new(width, height)));
+    data.handle = fb as *mut c_void;
+    data.depth = 32;
+    data.rect.width = width;
+    data.rect.height = height;
+    Some(fb)
 }
 
 pub fn detach_framebuffer(obj: objptr) {
-    unsafe {
-        if obj.is_null() {
-            return;
-        }
-        let handle = (*obj).handle;
-        if !handle.is_null() {
-            let _ = Box::from_raw(handle as *mut Framebuffer);
-            (*obj).handle = ptr::null_mut();
-        }
+    let Some(data) = obj_mut(obj) else {
+        return;
+    };
+    let handle = data.handle;
+    if !handle.is_null() {
+        // Reclaim the framebuffer installed by `attach_framebuffer`.
+        let _ = unsafe { Box::from_raw(handle as *mut Framebuffer) };
+        data.handle = ptr::null_mut();
     }
 }
 
 pub fn framebuffer_from_drawstate() -> Option<MutPtr<Framebuffer>> {
-    unsafe {
-        let ds = super::drawing::get_current_drawstate();
-        if ds.dest.is_null() {
-            return None;
-        }
-        let handle = (*ds.dest).handle;
-        if handle.is_null() {
-            return None;
-        }
-        Some(MutPtr(handle as *mut Framebuffer))
+    let ds = super::drawing::get_current_drawstate();
+    let handle = obj_ref(ds.dest)?.handle;
+    if handle.is_null() {
+        return None;
     }
+    Some(MutPtr(handle as *mut Framebuffer))
 }
 
 #[inline]
 pub fn framebuffer_from_drawing(d: drawing) -> Option<MutPtr<Framebuffer>> {
-    unsafe {
-        if d.is_null() {
-            return None;
-        }
-        let handle = (*d).handle;
-        if handle.is_null() {
-            return None;
-        }
-        Some(MutPtr(handle as *mut Framebuffer))
+    let handle = obj_ref(d)?.handle;
+    if handle.is_null() {
+        return None;
     }
+    Some(MutPtr(handle as *mut Framebuffer))
 }

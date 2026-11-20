@@ -286,21 +286,18 @@ pub fn setcliprect(r: rect) {
 
 /// Copy the current draw state.
 pub fn copydrawstate() -> drawstate {
-    unsafe {
-        let ds = super::memory::memalloc_bytes(std::mem::size_of::<drawstruct>()) as drawstate;
-        if !ds.is_null() {
-            *ds = with_graphapp_runtime(|runtime| runtime.current_drawstate.clone());
-        }
-        ds
+    let ds = super::memory::memalloc_bytes(std::mem::size_of::<drawstruct>()) as drawstate;
+    if let Some(state) = ptr_mut(ds) {
+        *state = with_graphapp_runtime(|runtime| runtime.current_drawstate.clone());
     }
+    ds
 }
 
 /// Set the draw state.
 pub extern "C" fn setdrawstate(saved: drawstate) {
-    if !saved.is_null() {
-        unsafe {
-            with_graphapp_runtime(|runtime| runtime.current_drawstate = (*saved).clone());
-        }
+    if let Some(state) = ptr_ref(saved) {
+        let state = state.clone();
+        with_graphapp_runtime(|runtime| runtime.current_drawstate = state);
     }
 }
 
