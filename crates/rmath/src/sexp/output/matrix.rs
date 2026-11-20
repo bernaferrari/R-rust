@@ -245,14 +245,14 @@ pub(crate) fn format_real_matrix_gnu(x: Sexp<'_>, nrow: usize, ncol: usize) -> S
                 NA_REAL
             } else {
                 // SAFETY: `data` is the live real buffer. A null buffer took the other branch.
-                unsafe { *data.add(r + c * nrow) }
+                *data.add(r + c * nrow)
             };
             // SAFETY: EncodeReal writes a session print buffer, not an R node.
-            let encoded = unsafe { EncodeReal(val, w, d, e, b'.' as _) };
+            let encoded = EncodeReal(val, w, d, e, b'.' as _);
             if encoded.is_null() {
                 String::new()
             } else {
-                unsafe { std::ffi::CStr::from_ptr(encoded) }
+                std::ffi::CStr::from_ptr(encoded)
                     .to_string_lossy()
                     .into_owned()
             }

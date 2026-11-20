@@ -162,7 +162,7 @@ pub(crate) fn format_posixct_vector_max(
 }
 
 pub(crate) fn posixlt_time_length(x: Sexp<'_>) -> R_xlen_t {
-    unsafe {
+     {
         let raw = x.as_raw();
         let ncomp = XLENGTH(raw);
         let mut n = 0;

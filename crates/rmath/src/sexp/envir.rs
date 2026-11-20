@@ -42,7 +42,7 @@ pub type EnvResult<T> = Result<T, String>;
 /// `isBaseFun` / `getPackageName` recognize it by pointer. Before
 /// `retarget_base_closure_envs` republishes the binding, the lookup is
 /// `R_BaseEnv` itself.
-pub unsafe fn R_BaseNamespace() -> SEXP {
+pub fn R_BaseNamespace() -> SEXP {
     unsafe {
         let base = super::globals::R_BaseEnv();
         if base.is_null() {
@@ -67,7 +67,7 @@ pub unsafe fn R_BaseNamespace() -> SEXP {
 /// New bindings prepend a cell and `SET_FRAME` only the environment that was
 /// assigned into, so the two frames diverge unless the peer is updated too.
 /// Resolved on each call; callers must snapshot this before replacing `FRAME`.
-unsafe fn base_binding_peer(env: SEXP) -> Option<SEXP> {
+fn base_binding_peer(env: SEXP) -> Option<SEXP> {
     if env.is_null() {
         return None;
     }
@@ -95,11 +95,11 @@ unsafe fn base_binding_peer(env: SEXP) -> Option<SEXP> {
     }
 }
 
-unsafe fn mirror_base_frame(env: SEXP, peer: Option<SEXP>) {
+fn mirror_base_frame(env: SEXP, peer: Option<SEXP>) {
     let Some(peer) = peer else {
         return;
     };
-    unsafe {
+     {
         let frame = FRAME(env);
         if FRAME(peer) != frame {
             SET_FRAME(peer, frame);
@@ -114,7 +114,7 @@ unsafe fn mirror_base_frame(env: SEXP, peer: Option<SEXP>) {
 /// cell-only bindings such as `.Last.value` (main.c REPL `SET_SYMVALUE`) and
 /// `last.warning` (errors.c) resolve through it. Null cells, `R_UnboundValue`
 /// and self-referential marker cells mean unbound, as in GNU.
-unsafe fn base_env_symbol_cell_raw(env: SEXP, symbol: SEXP) -> Option<SEXP> {
+fn base_env_symbol_cell_raw(env: SEXP, symbol: SEXP) -> Option<SEXP> {
     if env.is_null() || symbol.is_null() {
         return None;
     }
@@ -325,7 +325,7 @@ pub(crate) fn remove_binding_raw(env: SEXP, symbol: SEXP) {
                 } else {
                     SETCDR(previous, next);
                 }
-                with_required_current_instance(|instance| unsafe {
+                with_required_current_instance(|instance| {
                     // P2: strictly-local map writes; no other raw path
                     // touches the instance inside this closure.
                     let key = binding_key(env, symbol);
@@ -365,7 +365,7 @@ pub(crate) fn make_active_binding_raw(env: SEXP, symbol: SEXP, fun: SEXP) {
                     binding_error("cannot change value of locked binding");
                 }
                 SETCAR(frame, fun);
-                with_required_current_instance(|instance| unsafe {
+                with_required_current_instance(|instance| {
                     // P2: single-field write; no other raw path touches the
                     // instance inside this closure.
                     (*instance)
@@ -394,7 +394,7 @@ pub(crate) fn make_active_binding_raw(env: SEXP, symbol: SEXP, fun: SEXP) {
         SETTAG(new_cell, symbol);
         SET_FRAME(env, new_cell);
         mirror_base_frame(env, peer);
-        with_required_current_instance(|instance| unsafe {
+        with_required_current_instance(|instance| {
             // P2: single-field write; no other raw path touches the
             // instance inside this closure.
             (*instance)
@@ -442,7 +442,7 @@ fn call_active_binding(env: SEXP, fun: SEXP, value: Option<SEXP>) -> Sexp<'stati
     owner
         .require_active()
         .unwrap_or_else(|error| binding_error(error.to_string()));
-    unsafe { crate::sexp::accessors::SET_TYPEOF(call.as_raw(), SEXPTYPE::LANGSXP.as_c_int()) };
+    crate::sexp::accessors::SET_TYPEOF(call.as_raw(), SEXPTYPE::LANGSXP.as_c_int());
     let result = unsafe {
         if fun.is_closure() {
             crate::eval::closure::applyClosure(
@@ -494,26 +494,17 @@ impl<'a> Environment<'a> {
     }
 
     /// Find a binding in this environment frame only.
-    /// # Safety
-    /// Activate the live owner of all inputs and retain their reachable graphs
-    /// through allocation and R reentry. No Rust payload loan may cross execution.
-    pub unsafe fn find_in_frame(self, symbol: Sexp<'a>) -> EnvResult<LookupResult<'a>> {
+    pub fn find_in_frame(self, symbol: Sexp<'a>) -> EnvResult<LookupResult<'a>> {
         unsafe { find_var_in_frame_result(self.env, symbol) }
     }
 
     /// Find a binding through this environment's parent chain.
-    /// # Safety
-    /// Activate the live owner of all inputs and retain their reachable graphs
-    /// through allocation and R reentry. No Rust payload loan may cross execution.
-    pub unsafe fn find(self, symbol: Sexp<'a>) -> EnvResult<LookupResult<'a>> {
+    pub fn find(self, symbol: Sexp<'a>) -> EnvResult<LookupResult<'a>> {
         unsafe { find_var_result(symbol, self.env) }
     }
 
     /// Define or update a binding in this environment frame.
-    /// # Safety
-    /// Activate the live owner of all inputs and retain their reachable graphs
-    /// through allocation and R reentry. No Rust payload loan may cross execution.
-    pub unsafe fn define(self, symbol: Sexp<'_>, value: Sexp<'_>) -> EnvResult<()> {
+    pub fn define(self, symbol: Sexp<'_>, value: Sexp<'_>) -> EnvResult<()> {
         if unsafe { define_var_safe(symbol, value, self.env) } {
             Ok(())
         } else {
@@ -522,10 +513,7 @@ impl<'a> Environment<'a> {
     }
 
     /// Set a binding through the parent chain, falling back to the global env.
-    /// # Safety
-    /// Activate the live owner of all inputs and retain their reachable graphs
-    /// through allocation and R reentry. No Rust payload loan may cross execution.
-    pub unsafe fn set(self, symbol: Sexp<'_>, value: Sexp<'_>) {
+    pub fn set(self, symbol: Sexp<'_>, value: Sexp<'_>) {
         unsafe { set_var_safe(symbol, value, self.env) };
     }
 
@@ -543,10 +531,7 @@ impl<'a> Environment<'a> {
 ///
 /// Returns `None` if the symbol is not found or if inputs are invalid.
 #[must_use]
-/// # Safety
-/// Activate the live owner of all inputs and retain their reachable graphs
-/// through allocation and R reentry. No Rust payload loan may cross execution.
-pub unsafe fn find_var_in_frame_safe<'a>(rho: Sexp<'a>, symbol: Sexp<'a>) -> LookupResult<'a> {
+pub fn find_var_in_frame_safe<'a>(rho: Sexp<'a>, symbol: Sexp<'a>) -> LookupResult<'a> {
     unsafe { find_var_in_frame_result(rho, symbol) }
         .ok()
         .flatten()
@@ -556,10 +541,7 @@ pub unsafe fn find_var_in_frame_safe<'a>(rho: Sexp<'a>, symbol: Sexp<'a>) -> Loo
 ///
 /// `Ok(None)` means no binding was found. `Err` means the supplied value was
 /// not an environment or a binding cell was malformed.
-/// # Safety
-/// Activate the live owner of all inputs and retain their reachable graphs
-/// through allocation and R reentry. No Rust payload loan may cross execution.
-pub unsafe fn find_var_in_frame_result<'a>(
+pub fn find_var_in_frame_result<'a>(
     rho: Sexp<'a>,
     symbol: Sexp<'a>,
 ) -> EnvResult<LookupResult<'a>> {
@@ -647,18 +629,12 @@ pub unsafe fn find_var_in_frame_result<'a>(
 /// Returns `None` if the variable is not found in the environment chain.
 /// Forces promises if encountered.
 #[must_use]
-/// # Safety
-/// Activate the live owner of all inputs and retain their reachable graphs
-/// through allocation and R reentry. No Rust payload loan may cross execution.
-pub unsafe fn find_var_safe<'a>(symbol: Sexp<'a>, rho: Sexp<'a>) -> LookupResult<'a> {
+pub fn find_var_safe<'a>(symbol: Sexp<'a>, rho: Sexp<'a>) -> LookupResult<'a> {
     unsafe { find_var_result(symbol, rho) }.ok().flatten()
 }
 
 /// Checked variable lookup through an environment chain.
-/// # Safety
-/// Activate the live owner of all inputs and retain their reachable graphs
-/// through allocation and R reentry. No Rust payload loan may cross execution.
-pub unsafe fn find_var_result<'a>(symbol: Sexp<'a>, rho: Sexp<'a>) -> EnvResult<LookupResult<'a>> {
+pub fn find_var_result<'a>(symbol: Sexp<'a>, rho: Sexp<'a>) -> EnvResult<LookupResult<'a>> {
     let mut current = rho;
 
     loop {
@@ -684,13 +660,13 @@ pub unsafe fn find_var_result<'a>(symbol: Sexp<'a>, rho: Sexp<'a>) -> EnvResult<
                     // `exists(..., mode = "function")` must find them too.
                     | SEXPTYPE::BUILTINSXP
                     | SEXPTYPE::CLOSXP
-                    if current.as_raw() == unsafe { crate::sexp::globals::R_BaseEnv() }
+                    if current.as_raw() == crate::sexp::globals::R_BaseEnv()
                     || sym_val.clone().typeof_() == SEXPTYPE::SPECIALSXP
             )
         {
             return Ok(Some(sym_val));
         }
-        if current.as_raw() == unsafe { crate::sexp::globals::R_BaseEnv() }
+        if current.as_raw() == crate::sexp::globals::R_BaseEnv()
             && let Some(val) = (unsafe { base_builtin_fallback(symbol.clone()) })
         {
             return Ok(Some(val));
@@ -709,10 +685,7 @@ pub unsafe fn find_var_result<'a>(symbol: Sexp<'a>, rho: Sexp<'a>) -> EnvResult<
 /// environment bindings, so `exists()`/`get()` style lookups must find them
 /// once the walk reaches the base environment.
 ///
-/// # Safety
-/// Activate the live owner of all inputs and retain their reachable graphs
-/// through allocation and R reentry. No Rust payload loan may cross execution.
-unsafe fn base_builtin_fallback<'a>(symbol: Sexp<'a>) -> Option<Sexp<'a>> {
+fn base_builtin_fallback<'a>(symbol: Sexp<'a>) -> Option<Sexp<'a>> {
     let raw = symbol.as_raw();
     let name = unsafe {
         let pname = crate::sexp::accessors::PRINTNAME(raw);
@@ -759,10 +732,7 @@ unsafe fn base_builtin_fallback<'a>(symbol: Sexp<'a>) -> Option<Sexp<'a>> {
 /// `R_MissingArg` *binding* as missing, and only afterwards forces a
 /// promise — so a forced empty-symbol value (lapply of formals) is not
 /// a missing argument.
-/// # Safety
-/// Activate the live owner of all inputs and retain their reachable graphs
-/// through allocation and R reentry. No Rust payload loan may cross execution.
-pub unsafe fn find_var_binding_result<'a>(
+pub fn find_var_binding_result<'a>(
     symbol: Sexp<'a>,
     rho: Sexp<'a>,
 ) -> EnvResult<LookupResult<'a>> {
@@ -781,13 +751,13 @@ pub unsafe fn find_var_binding_result<'a>(
                 SEXPTYPE::SPECIALSXP
                     | SEXPTYPE::BUILTINSXP
                     | SEXPTYPE::CLOSXP
-                    if current.as_raw() == unsafe { crate::sexp::globals::R_BaseEnv() }
+                    if current.as_raw() == crate::sexp::globals::R_BaseEnv()
                     || sym_val.clone().typeof_() == SEXPTYPE::SPECIALSXP
             )
         {
             return Ok(Some(sym_val));
         }
-        if current.as_raw() == unsafe { crate::sexp::globals::R_BaseEnv() }
+        if current.as_raw() == crate::sexp::globals::R_BaseEnv()
             && let Some(val) = (unsafe { base_builtin_fallback(symbol.clone()) })
         {
             return Ok(Some(val));
@@ -823,18 +793,12 @@ fn promise_callback<T>(
 ///
 /// If the input is not a promise, returns it as-is.
 #[must_use]
-/// # Safety
-/// Activate the live owner of all inputs and retain their reachable graphs
-/// through allocation and R reentry. No Rust payload loan may cross execution.
-pub unsafe fn force_promise_safe(prom: Sexp<'_>) -> LookupResult<'_> {
+pub fn force_promise_safe(prom: Sexp<'_>) -> LookupResult<'_> {
     unsafe { force_promise_result(prom) }.ok().flatten()
 }
 
 /// Checked promise forcing.
-/// # Safety
-/// Activate the live owner of all inputs and retain their reachable graphs
-/// through allocation and R reentry. No Rust payload loan may cross execution.
-pub unsafe fn force_promise_result<'a>(prom: Sexp<'a>) -> EnvResult<LookupResult<'a>> {
+pub fn force_promise_result<'a>(prom: Sexp<'a>) -> EnvResult<LookupResult<'a>> {
     use super::owner::{OwnerToken, StoredOwner};
 
     // Immutable singleton values need no execution authority or heap mutation.
@@ -973,7 +937,7 @@ fn definition_cell<'s>(rho: &Sexp<'s>, symbol: &Sexp<'s>) -> EnvResult<Option<Se
     Ok(None)
 }
 
-unsafe fn update_definition_cell(
+fn update_definition_cell(
     owner: super::owner::OwnerToken<'_>,
     rho: &Sexp<'_>,
     symbol: &Sexp<'_>,
@@ -993,7 +957,7 @@ unsafe fn update_definition_cell(
             .unwrap_or_else(|error| binding_error(error.to_string()));
         return;
     }
-    unsafe {
+     {
         SETCAR(cell.as_raw(), value.as_raw());
         super::accessors::SET_MISSING(cell.as_raw(), 0);
     }
@@ -1004,10 +968,7 @@ unsafe fn update_definition_cell(
 ///
 /// If the symbol already exists, its value is updated.
 /// If not, a new binding is created at the front of the frame.
-/// # Safety
-/// Activate the live owner of all inputs and retain their reachable graphs
-/// through allocation and R reentry. No Rust payload loan may cross execution.
-pub unsafe fn define_var_safe(symbol: Sexp<'_>, value: Sexp<'_>, rho: Sexp<'_>) -> bool {
+pub fn define_var_safe(symbol: Sexp<'_>, value: Sexp<'_>, rho: Sexp<'_>) -> bool {
     if !rho.is_environment() || !symbol.is_symbol() {
         return false;
     }
@@ -1055,7 +1016,7 @@ pub unsafe fn define_var_safe(symbol: Sexp<'_>, value: Sexp<'_>, rho: Sexp<'_>) 
         .unwrap_or_else(|error| binding_error(error.to_string()));
     // Only the owning cells and copied identities remain live while the
     // canonical mutation updates its one existing nonowning binding index.
-    unsafe { SETCDR(new_cell.as_raw(), frame.as_raw()) };
+    SETCDR(new_cell.as_raw(), frame.as_raw());
     let peer = unsafe { base_binding_peer(rho.as_raw()) };
     let peer_owner = peer.map(|peer| {
         domain
@@ -1103,7 +1064,7 @@ pub(crate) fn publish_workspace_bindings(
     if !target.is_environment() {
         return Err("invalid 'envir' argument".into());
     }
-    if target.as_raw() == unsafe { R_EmptyEnv() } {
+    if target.as_raw() == R_EmptyEnv() {
         return Err("cannot assign values in the empty environment".into());
     }
 
@@ -1218,10 +1179,7 @@ pub(crate) fn publish_workspace_bindings(
 /// Set a variable value, searching parent environments.
 ///
 /// If the variable is not found, it's defined in the global environment.
-/// # Safety
-/// Activate the live owner of all inputs and retain their reachable graphs
-/// through allocation and R reentry. No Rust payload loan may cross execution.
-pub unsafe fn set_var_safe(symbol: Sexp<'_>, value: Sexp<'_>, rho: Sexp<'_>) {
+pub fn set_var_safe(symbol: Sexp<'_>, value: Sexp<'_>, rho: Sexp<'_>) {
     let mut current = rho;
 
     loop {
@@ -1245,7 +1203,7 @@ pub unsafe fn set_var_safe(symbol: Sexp<'_>, value: Sexp<'_>, rho: Sexp<'_>) {
                     call_active_binding(current.as_raw(), fun, Some(value.as_raw()));
                     return;
                 }
-                unsafe {
+                 {
                     SETCAR(cell.as_raw(), value.clone().as_raw());
                 }
                 increment_named_on_assign(value.clone().as_raw());
@@ -1273,18 +1231,12 @@ pub unsafe fn set_var_safe(symbol: Sexp<'_>, value: Sexp<'_>, rho: Sexp<'_>) {
 ///
 /// Searches through environments, looking for closures, builtins, or specials.
 #[must_use]
-/// # Safety
-/// Activate the live owner of all inputs and retain their reachable graphs
-/// through allocation and R reentry. No Rust payload loan may cross execution.
-pub unsafe fn find_fun_safe<'a>(symbol: Sexp<'a>, rho: Sexp<'a>) -> LookupResult<'a> {
+pub fn find_fun_safe<'a>(symbol: Sexp<'a>, rho: Sexp<'a>) -> LookupResult<'a> {
     unsafe { find_fun_result(symbol, rho) }.ok().flatten()
 }
 
 /// Checked function lookup through an environment chain.
-/// # Safety
-/// Activate the live owner of all inputs and retain their reachable graphs
-/// through allocation and R reentry. No Rust payload loan may cross execution.
-pub unsafe fn find_fun_result<'a>(symbol: Sexp<'a>, rho: Sexp<'a>) -> EnvResult<LookupResult<'a>> {
+pub fn find_fun_result<'a>(symbol: Sexp<'a>, rho: Sexp<'a>) -> EnvResult<LookupResult<'a>> {
     let mut current = rho;
 
     loop {
@@ -1370,11 +1322,11 @@ pub unsafe fn find_fun_result<'a>(symbol: Sexp<'a>, rho: Sexp<'a>) -> EnvResult<
 
 /// Check if a symbol has a missing argument in the given environment.
 #[must_use]
-pub unsafe fn is_missing_safe(symbol: Sexp<'_>, rho: Sexp<'_>) -> bool {
+pub fn is_missing_safe(symbol: Sexp<'_>, rho: Sexp<'_>) -> bool {
     unsafe { is_missing_with_depth(symbol, rho, 0) }
 }
 
-unsafe fn is_missing_with_depth(symbol: Sexp<'_>, rho: Sexp<'_>, depth: u32) -> bool {
+fn is_missing_with_depth(symbol: Sexp<'_>, rho: Sexp<'_>, depth: u32) -> bool {
     if let Some(n) = dd_val(symbol.clone()) {
         return unsafe { dd_missing_in_frame(n, rho, false, depth) };
     }
@@ -1391,7 +1343,7 @@ unsafe fn is_missing_with_depth(symbol: Sexp<'_>, rho: Sexp<'_>, depth: u32) -> 
 /// Empty `...` (no extras in the call) is missing, matching GNU
 /// `split.default` / `missing(...)`.
 #[must_use]
-pub unsafe fn r_missing_safe(symbol: Sexp<'_>, rho: Sexp<'_>) -> bool {
+pub fn r_missing_safe(symbol: Sexp<'_>, rho: Sexp<'_>) -> bool {
     if let Some(n) = dd_val(symbol.clone()) {
         return unsafe { dd_missing_in_frame(n, rho, true, 0) };
     }
@@ -1401,7 +1353,7 @@ pub unsafe fn r_missing_safe(symbol: Sexp<'_>, rho: Sexp<'_>) -> bool {
     unsafe { ordinary_frame_is_missing(symbol, rho, 0) }
 }
 
-unsafe fn dots_formal_is_missing(rho: Sexp<'_>, error_if_absent: bool) -> bool {
+fn dots_formal_is_missing(rho: Sexp<'_>, error_if_absent: bool) -> bool {
     let Some(dots) = (unsafe { find_var_in_frame_safe(rho.clone(), dots_symbol()) }) else {
         if error_if_absent {
             binding_error("'missing(...)' did not find an argument");
@@ -1417,7 +1369,7 @@ unsafe fn dots_formal_is_missing(rho: Sexp<'_>, error_if_absent: bool) -> bool {
     false
 }
 
-unsafe fn ordinary_frame_is_missing(symbol: Sexp<'_>, rho: Sexp<'_>, depth: u32) -> bool {
+fn ordinary_frame_is_missing(symbol: Sexp<'_>, rho: Sexp<'_>, depth: u32) -> bool {
     // Upstream R_isMissing (envir.c): a symbol NOT bound in this frame is
     // simply not missing — the missing check exists for the current
     // call's formals (bound as promises or R_MissingArg in the closure
@@ -1449,7 +1401,7 @@ unsafe fn ordinary_frame_is_missing(symbol: Sexp<'_>, rho: Sexp<'_>, depth: u32)
 /// still `missing()` inside that function, but once a default promise is
 /// installed, passing the symbol onward is not a missing argument.
 /// `function(x = 1) g(x)` makes `missing(x)` false in `g`.
-unsafe fn propagated_missing(symbol: Sexp<'_>, rho: Sexp<'_>, depth: u32) -> bool {
+fn propagated_missing(symbol: Sexp<'_>, rho: Sexp<'_>, depth: u32) -> bool {
     if depth > 64 {
         return false;
     }
@@ -1573,8 +1525,8 @@ fn dots_car_at<'a>(dots: Sexp<'a>, index: i32) -> Option<Sexp<'a>> {
 ///
 /// GNU `R_findDotsEnv` accepts `R_MissingArg` or `DOTSXP`. rport binds an
 /// unused `...` formal to `R_NilValue`, so that empty list is accepted too.
-unsafe fn find_dots_binding<'a>(rho: Sexp<'a>) -> Option<Sexp<'a>> {
-    let empty = unsafe { R_EmptyEnv() };
+fn find_dots_binding<'a>(rho: Sexp<'a>) -> Option<Sexp<'a>> {
+    let empty = R_EmptyEnv();
     let dots_sym = dots_symbol();
     let mut current = rho;
     while current.clone().is_environment() && current.clone().as_raw() != empty {
@@ -1618,7 +1570,7 @@ fn find_root_promise(mut val: Sexp<'_>) -> Sexp<'_> {
     val
 }
 
-unsafe fn value_is_missing(val: Sexp<'_>, depth: u32) -> bool {
+fn value_is_missing(val: Sexp<'_>, depth: u32) -> bool {
     let missing_arg = missing_arg_value();
     if val == missing_arg {
         return true;
@@ -1716,7 +1668,7 @@ fn bytecode_loads_missing_symbol(code: Sexp<'_>, env: Sexp<'_>, depth: u32) -> b
     }
 }
 
-unsafe fn dd_missing_in_frame(n: i32, rho: Sexp<'_>, error_if_absent: bool, depth: u32) -> bool {
+fn dd_missing_in_frame(n: i32, rho: Sexp<'_>, error_if_absent: bool, depth: u32) -> bool {
     let Some(dots) = (unsafe { find_var_in_frame_safe(rho, dots_symbol()) }) else {
         if error_if_absent {
             binding_error("'missing(...)' did not find an argument");
@@ -1742,10 +1694,7 @@ unsafe fn dd_missing_in_frame(n: i32, rho: Sexp<'_>, error_if_absent: bool, dept
 /// GNU `ddfindVar` parses N from the symbol, walks to the dots environment,
 /// and returns the Nth cell (1-based), forcing promises.
 #[must_use]
-/// # Safety
-/// Activate the live owner of all inputs and retain their reachable graphs
-/// through allocation and R reentry. No Rust payload loan may cross execution.
-pub unsafe fn dd_find_var_safe<'a>(symbol: Sexp<'a>, rho: Sexp<'a>) -> LookupResult<'a> {
+pub fn dd_find_var_safe<'a>(symbol: Sexp<'a>, rho: Sexp<'a>) -> LookupResult<'a> {
     let n = dd_val(symbol).unwrap_or(0);
     if n <= 0 {
         binding_error(format!("indexing '...' with non-positive index {n}"));
@@ -1802,7 +1751,7 @@ pub fn check_formals_safe(formals: Sexp<'_>) -> EnvResult<()> {
 // ---------------------------------------------------------------------------
 
 /// Add missing variable bindings for unprovided arguments.
-pub unsafe fn add_missing_vars_to_new_env_safe(
+pub fn add_missing_vars_to_new_env_safe(
     formals: Sexp<'_>,
     args: Sexp<'_>,
     newrho: Sexp<'_>,
@@ -1900,7 +1849,7 @@ pub unsafe fn defineVar(symbol: SEXP, value: SEXP, rho: SEXP) {
 }
 
 fn increment_named_on_assign(value: SEXP) {
-    unsafe {
+     {
         // A binding is one reference. Raising 1 to 2 here makes every
         // assigned object look shared, so `named(m)` is 2 before any read.
         if super::accessors::NAMED(value) == 0 {
@@ -2051,7 +2000,7 @@ pub unsafe fn ddfindVar(symbol: SEXP, rho: SEXP) -> SEXP {
 }
 
 /// Convert a SEXPTYPE integer to its string representation.
-pub unsafe fn R_typeToChar(stype: c_int) -> SEXP {
+pub fn R_typeToChar(stype: c_int) -> SEXP {
     {
         let _name = match stype {
             0 => "NULL",

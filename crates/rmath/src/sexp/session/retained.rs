@@ -312,7 +312,7 @@ fn mark_shared(access: &RuntimeAccess, value: &Sexp<'_>) -> RResult<()> {
     access
         .with_native(|_| {
             // Native metadata projection only; no payload borrow or callback.
-            unsafe {
+             {
                 let named = crate::sexp::accessors::NAMED(value.as_raw());
                 crate::sexp::accessors::SET_NAMED(value.as_raw(), named.max(2));
             }

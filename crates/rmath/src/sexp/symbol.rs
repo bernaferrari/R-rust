@@ -205,102 +205,142 @@ pub(crate) unsafe fn Rf_installChar_in(
 // ---------------------------------------------------------------------------
 
 /// Get or create the "base" symbol.
-pub unsafe fn R_BaseSymbol() -> SEXP {
+pub fn R_BaseSymbol() -> SEXP {
+    // SAFETY: intern a static NUL-terminated literal; the returned
+    // projection carries no dereference authority.
     unsafe { Rf_install(c"base".as_ptr()) }
 }
 
 /// Get or create the "{ brace" symbol.
-pub unsafe fn R_BraceSymbol() -> SEXP {
+pub fn R_BraceSymbol() -> SEXP {
+    // SAFETY: intern a static NUL-terminated literal; the returned
+    // projection carries no dereference authority.
     unsafe { Rf_install(c"{".as_ptr()) }
 }
 
 /// Get or create the "[[" symbol.
-pub unsafe fn R_Bracket2Symbol() -> SEXP {
+pub fn R_Bracket2Symbol() -> SEXP {
+    // SAFETY: intern a static NUL-terminated literal; the returned
+    // projection carries no dereference authority.
     unsafe { Rf_install(c"[[".as_ptr()) }
 }
 
 /// Get or create the "[" symbol.
-pub unsafe fn R_BracketSymbol() -> SEXP {
+pub fn R_BracketSymbol() -> SEXP {
+    // SAFETY: intern a static NUL-terminated literal; the returned
+    // projection carries no dereference authority.
     unsafe { Rf_install(c"[".as_ptr()) }
 }
 
 /// Get or create the "function" symbol.
-pub unsafe fn R_FunctionSymbol() -> SEXP {
+pub fn R_FunctionSymbol() -> SEXP {
+    // SAFETY: intern a static NUL-terminated literal; the returned
+    // projection carries no dereference authority.
     unsafe { Rf_install(c"function".as_ptr()) }
 }
 
 /// Get or create the "while" symbol.
-pub unsafe fn R_WhileSymbol() -> SEXP {
+pub fn R_WhileSymbol() -> SEXP {
+    // SAFETY: intern a static NUL-terminated literal; the returned
+    // projection carries no dereference authority.
     unsafe { Rf_install(c"while".as_ptr()) }
 }
 
 /// Get or create the "for" symbol.
-pub unsafe fn R_ForSymbol() -> SEXP {
+pub fn R_ForSymbol() -> SEXP {
+    // SAFETY: intern a static NUL-terminated literal; the returned
+    // projection carries no dereference authority.
     unsafe { Rf_install(c"for".as_ptr()) }
 }
 
 /// Get or create the "if" symbol.
-pub unsafe fn R_IfSymbol() -> SEXP {
+pub fn R_IfSymbol() -> SEXP {
+    // SAFETY: intern a static NUL-terminated literal; the returned
+    // projection carries no dereference authority.
     unsafe { Rf_install(c"if".as_ptr()) }
 }
 
 /// Get or create the "repeat" symbol.
-pub unsafe fn R_RepeatSymbol() -> SEXP {
+pub fn R_RepeatSymbol() -> SEXP {
+    // SAFETY: intern a static NUL-terminated literal; the returned
+    // projection carries no dereference authority.
     unsafe { Rf_install(c"repeat".as_ptr()) }
 }
 
 /// Get or create the "break" symbol.
-pub unsafe fn R_BreakSymbol() -> SEXP {
+pub fn R_BreakSymbol() -> SEXP {
+    // SAFETY: intern a static NUL-terminated literal; the returned
+    // projection carries no dereference authority.
     unsafe { Rf_install(c"break".as_ptr()) }
 }
 
 /// Get or create the "next" symbol.
-pub unsafe fn R_NextSymbol() -> SEXP {
+pub fn R_NextSymbol() -> SEXP {
+    // SAFETY: intern a static NUL-terminated literal; the returned
+    // projection carries no dereference authority.
     unsafe { Rf_install(c"next".as_ptr()) }
 }
 
 /// Get or create the "..." symbol.
-pub unsafe fn R_DotsSymbol() -> SEXP {
+pub fn R_DotsSymbol() -> SEXP {
+    // SAFETY: intern a static NUL-terminated literal; the returned
+    // projection carries no dereference authority.
     unsafe { Rf_install(c"...".as_ptr()) }
 }
 
 /// Get or create the "double colon" symbol (::).
-pub unsafe fn R_DoubleColonSymbol() -> SEXP {
+pub fn R_DoubleColonSymbol() -> SEXP {
+    // SAFETY: intern a static NUL-terminated literal; the returned
+    // projection carries no dereference authority.
     unsafe { Rf_install(c"::".as_ptr()) }
 }
 
 /// Get or create the "triple colon" symbol (:::).
-pub unsafe fn R_TripleColonSymbol() -> SEXP {
+pub fn R_TripleColonSymbol() -> SEXP {
+    // SAFETY: intern a static NUL-terminated literal; the returned
+    // projection carries no dereference authority.
     unsafe { Rf_install(c":::".as_ptr()) }
 }
 
 /// Get or create the "$" symbol.
-pub unsafe fn R_DollarSymbol() -> SEXP {
+pub fn R_DollarSymbol() -> SEXP {
+    // SAFETY: intern a static NUL-terminated literal; the returned
+    // projection carries no dereference authority.
     unsafe { Rf_install(c"$".as_ptr()) }
 }
 
 /// Get or create the "@" symbol.
-pub unsafe fn R_AtSymbol() -> SEXP {
+pub fn R_AtSymbol() -> SEXP {
+    // SAFETY: intern a static NUL-terminated literal; the returned
+    // projection carries no dereference authority.
     unsafe { Rf_install(c"@".as_ptr()) }
 }
 
 /// Get or create the "=" symbol.
-pub unsafe fn R_EqSymbol() -> SEXP {
+pub fn R_EqSymbol() -> SEXP {
+    // SAFETY: intern a static NUL-terminated literal; the returned
+    // projection carries no dereference authority.
     unsafe { Rf_install(c"=".as_ptr()) }
 }
 
 /// Get or create the "<-" symbol.
-pub unsafe fn R_LeftAssignSymbol() -> SEXP {
+pub fn R_LeftAssignSymbol() -> SEXP {
+    // SAFETY: intern a static NUL-terminated literal; the returned
+    // projection carries no dereference authority.
     unsafe { Rf_install(c"<-".as_ptr()) }
 }
 
 /// Get or create the "<<" symbol.
-pub unsafe fn R_DoubleLeftAssignSymbol() -> SEXP {
+pub fn R_DoubleLeftAssignSymbol() -> SEXP {
+    // SAFETY: intern a static NUL-terminated literal; the returned
+    // projection carries no dereference authority.
     unsafe { Rf_install(c"<<-".as_ptr()) }
 }
 
 /// Get or create the "as" symbol.
-pub unsafe fn R_AsSymbol() -> SEXP {
+pub fn R_AsSymbol() -> SEXP {
+    // SAFETY: intern a static NUL-terminated literal; the returned
+    // projection carries no dereference authority.
     unsafe { Rf_install(c"as".as_ptr()) }
 }
 

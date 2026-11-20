@@ -64,15 +64,15 @@ pub fn R_RestartToken() -> SEXP {
 // Global environment accessor functions
 // ---------------------------------------------------------------------------
 
-pub unsafe fn R_GlobalEnv() -> SEXP {
+pub fn R_GlobalEnv() -> SEXP {
     with_required_current_instance(R_GlobalEnv_in)
 }
 
-pub unsafe fn R_BaseEnv() -> SEXP {
+pub fn R_BaseEnv() -> SEXP {
     with_required_current_instance(R_BaseEnv_in)
 }
 
-pub unsafe fn R_EmptyEnv() -> SEXP {
+pub fn R_EmptyEnv() -> SEXP {
     with_required_current_instance(R_EmptyEnv_in)
 }
 
@@ -92,17 +92,17 @@ pub(crate) fn R_EmptyEnv_in(inst: *mut RInstance) -> SEXP {
 }
 
 /// Set the global environment.
-pub unsafe fn set_R_GlobalEnv(env: SEXP) {
+pub fn set_R_GlobalEnv(env: SEXP) {
     with_required_current_instance(|inst| set_R_GlobalEnv_in(inst, env));
 }
 
 /// Set the base environment.
-pub unsafe fn set_R_BaseEnv(env: SEXP) {
+pub fn set_R_BaseEnv(env: SEXP) {
     with_required_current_instance(|inst| set_R_BaseEnv_in(inst, env));
 }
 
 /// Set the empty environment.
-pub unsafe fn set_R_EmptyEnv(env: SEXP) {
+pub fn set_R_EmptyEnv(env: SEXP) {
     with_required_current_instance(|inst| set_R_EmptyEnv_in(inst, env));
 }
 
@@ -206,33 +206,33 @@ pub(crate) fn R_EvalDepthLimit_in(inst: *mut RInstance) -> i32 {
 // ---------------------------------------------------------------------------
 
 /// Get R_DotsSymbol (the "..." symbol).
-pub unsafe fn R_DotsSymbol_fn() -> SEXP {
-    unsafe { super::symbol::R_DotsSymbol() }
+pub fn R_DotsSymbol_fn() -> SEXP {
+    super::symbol::R_DotsSymbol()
 }
 
 /// Get R_IfSymbol (the "if" symbol).
-pub unsafe fn R_IfSymbol_fn() -> SEXP {
-    unsafe { super::symbol::R_IfSymbol() }
+pub fn R_IfSymbol_fn() -> SEXP {
+    super::symbol::R_IfSymbol()
 }
 
 /// Get R_WhileSymbol (the "while" symbol).
-pub unsafe fn R_WhileSymbol_fn() -> SEXP {
-    unsafe { super::symbol::R_WhileSymbol() }
+pub fn R_WhileSymbol_fn() -> SEXP {
+    super::symbol::R_WhileSymbol()
 }
 
 /// Get R_ForSymbol (the "for" symbol).
-pub unsafe fn R_ForSymbol_fn() -> SEXP {
-    unsafe { super::symbol::R_ForSymbol() }
+pub fn R_ForSymbol_fn() -> SEXP {
+    super::symbol::R_ForSymbol()
 }
 
 /// Get R_RepeatSymbol (the "repeat" symbol).
-pub unsafe fn R_RepeatSymbol_fn() -> SEXP {
-    unsafe { super::symbol::R_RepeatSymbol() }
+pub fn R_RepeatSymbol_fn() -> SEXP {
+    super::symbol::R_RepeatSymbol()
 }
 
 /// Get R_BraceSymbol (the "{" symbol).
-pub unsafe fn R_BraceSymbol_fn() -> SEXP {
-    unsafe { super::symbol::R_BraceSymbol() }
+pub fn R_BraceSymbol_fn() -> SEXP {
+    super::symbol::R_BraceSymbol()
 }
 
 // ---------------------------------------------------------------------------

@@ -153,12 +153,9 @@ pub fn TYPEOF(x: SEXP) -> c_int {
 }
 
 /// Change the kind only when the existing canonical body and payload support it.
-/// Immutable sentinels and NULL retain their original kind.
-///
-/// # Safety
-/// The projection must refer to the active runtime or a retained live allocation.
-/// No payload loan may cross a successful kind change.
-pub unsafe fn SET_TYPEOF(x: SEXP, kind: c_int) {
+/// Immutable sentinels and NULL retain their original kind. Unowned or stale
+/// projections raise an error instead of mutating foreign memory.
+pub fn SET_TYPEOF(x: SEXP, kind: c_int) {
     if x.is_null() || immutable_lease(x).is_some() {
         return;
     }
@@ -217,7 +214,7 @@ pub fn TRUELENGTH(x: SEXP) -> c_int {
 }
 
 /// Set the true length of a vector SEXP.
-pub unsafe fn SET_TRUELENGTH(x: SEXP, v: c_int) {
+pub fn SET_TRUELENGTH(x: SEXP, v: c_int) {
     mutate_header(x, |header| header.set_vecsxp_truelength(v as R_xlen_t));
 }
 
@@ -272,7 +269,7 @@ pub fn ATTRIB(x: SEXP) -> SEXP {
 }
 
 /// Set the attributes of an SEXP.
-pub unsafe fn SET_ATTRIB(x: SEXP, v: SEXP) {
+pub fn SET_ATTRIB(x: SEXP, v: SEXP) {
     if x.is_null() {
         return;
     }
@@ -296,7 +293,7 @@ pub fn OBJECT(x: SEXP) -> c_int {
 }
 
 /// Set the OBJECT flag on an SEXP.
-pub unsafe fn SET_OBJECT(x: SEXP, v: c_int) {
+pub fn SET_OBJECT(x: SEXP, v: c_int) {
     mutate_header(x, |header| header.sxpinfo.set_obj(v != 0));
 }
 
@@ -311,14 +308,14 @@ pub(crate) fn checked_s4_object_flag(x: SEXP) -> c_int {
 }
 
 /// Set the S4 object bit (gp bit 4).
-pub unsafe fn SET_S4_OBJECT(x: SEXP) {
+pub fn SET_S4_OBJECT(x: SEXP) {
     mutate_header(x, |header| {
         header.sxpinfo.set_gp(header.sxpinfo.gp() | S4_OBJECT_MASK)
     });
 }
 
 /// Unset the S4 object bit (gp bit 4).
-pub unsafe fn UNSET_S4_OBJECT(x: SEXP) {
+pub fn UNSET_S4_OBJECT(x: SEXP) {
     mutate_header(x, |header| {
         header.sxpinfo.set_gp(header.sxpinfo.gp() & !S4_OBJECT_MASK)
     });
@@ -330,7 +327,7 @@ pub fn NAMED(x: SEXP) -> c_int {
 }
 
 /// Set the namedness level.
-pub unsafe fn SET_NAMED(x: SEXP, v: c_int) {
+pub fn SET_NAMED(x: SEXP, v: c_int) {
     mutate_header(x, |header| header.sxpinfo.set_named(v as u8));
 }
 
@@ -340,7 +337,7 @@ pub fn LEVELS(x: SEXP) -> c_int {
 }
 
 /// Set the LEVELS field.
-pub unsafe fn SETLEVELS(x: SEXP, v: c_int) {
+pub fn SETLEVELS(x: SEXP, v: c_int) {
     mutate_header(x, |header| {
         header
             .sxpinfo
@@ -354,7 +351,7 @@ pub fn MISSING(x: SEXP) -> c_int {
 }
 
 /// GNU `SET_MISSING(x, v)` — mark an unmatched formal on its frame cell.
-pub unsafe fn SET_MISSING(x: SEXP, v: c_int) {
+pub fn SET_MISSING(x: SEXP, v: c_int) {
     mutate_header(x, |header| {
         header.sxpinfo.set_gp(if v != 0 {
             header.sxpinfo.gp() | 0x04
@@ -374,7 +371,7 @@ pub fn IS_SCALAR(x: SEXP, requested_type: c_int) -> c_int {
 }
 
 /// Set the scalar flag.
-pub unsafe fn SET_SCALAR(x: SEXP, v: c_int) {
+pub fn SET_SCALAR(x: SEXP, v: c_int) {
     mutate_header(x, |header| header.sxpinfo.set_scalar(v != 0));
 }
 
@@ -384,7 +381,7 @@ pub fn ALTREP(x: SEXP) -> c_int {
 }
 
 /// Set the ALT flag.
-pub unsafe fn SET_ALTREP(x: SEXP, v: c_int) {
+pub fn SET_ALTREP(x: SEXP, v: c_int) {
     mutate_header(x, |header| header.sxpinfo.set_alt(v != 0));
 }
 
@@ -394,7 +391,7 @@ pub fn MARK(x: SEXP) -> c_int {
 }
 
 /// Set the mark bit.
-pub unsafe fn SET_MARK(x: SEXP, v: c_int) {
+pub fn SET_MARK(x: SEXP, v: c_int) {
     mutate_header(x, |header| header.sxpinfo.set_mark(v != 0));
 }
 
@@ -428,17 +425,17 @@ pub fn TAG(x: SEXP) -> SEXP {
 }
 
 /// Set the CAR of a cons cell.
-pub unsafe fn SETCAR(x: SEXP, y: SEXP) {
+pub fn SETCAR(x: SEXP, y: SEXP) {
     graph_set_edge(x, EdgeField::ListCar, y);
 }
 
 /// Set the CDR of a cons cell.
-pub unsafe fn SETCDR(x: SEXP, y: SEXP) {
+pub fn SETCDR(x: SEXP, y: SEXP) {
     graph_set_edge(x, EdgeField::ListCdr, y);
 }
 
 /// Set the TAG of a cons cell.
-pub unsafe fn SETTAG(x: SEXP, y: SEXP) {
+pub fn SETTAG(x: SEXP, y: SEXP) {
     graph_set_edge(x, EdgeField::ListTag, y);
 }
 
@@ -543,17 +540,17 @@ pub fn INTERNAL(x: SEXP) -> SEXP {
 }
 
 /// Set the print name of a symbol.
-pub unsafe fn SET_PRINTNAME(x: SEXP, v: SEXP) {
+pub fn SET_PRINTNAME(x: SEXP, v: SEXP) {
     graph_set_edge(x, EdgeField::SymbolName, v);
 }
 
 /// Set the value of a symbol.
-pub unsafe fn SET_SYMVALUE(x: SEXP, v: SEXP) {
+pub fn SET_SYMVALUE(x: SEXP, v: SEXP) {
     graph_set_edge(x, EdgeField::SymbolValue, v);
 }
 
 /// Set the internal value of a symbol.
-pub unsafe fn SET_INTERNAL(x: SEXP, v: SEXP) {
+pub fn SET_INTERNAL(x: SEXP, v: SEXP) {
     graph_set_edge(x, EdgeField::SymbolInternal, v);
 }
 
@@ -577,17 +574,17 @@ pub fn CLOENV(x: SEXP) -> SEXP {
 }
 
 /// Set the formals of a closure.
-pub unsafe fn SET_FORMALS(x: SEXP, v: SEXP) {
+pub fn SET_FORMALS(x: SEXP, v: SEXP) {
     graph_set_edge(x, EdgeField::ClosureFormals, v);
 }
 
 /// Set the body of a closure.
-pub unsafe fn SET_BODY(x: SEXP, v: SEXP) {
+pub fn SET_BODY(x: SEXP, v: SEXP) {
     graph_set_edge(x, EdgeField::ClosureBody, v);
 }
 
 /// Set the environment of a closure.
-pub unsafe fn SET_CLOENV(x: SEXP, v: SEXP) {
+pub fn SET_CLOENV(x: SEXP, v: SEXP) {
     graph_set_edge(x, EdgeField::ClosureEnvironment, v);
 }
 
@@ -611,17 +608,17 @@ pub fn HASHTAB(x: SEXP) -> SEXP {
 }
 
 /// Set the frame of an environment.
-pub unsafe fn SET_FRAME(x: SEXP, v: SEXP) {
+pub fn SET_FRAME(x: SEXP, v: SEXP) {
     graph_set_edge(x, EdgeField::EnvironmentFrame, v);
 }
 
 /// Set the enclosing environment.
-pub unsafe fn SET_ENCLOS(x: SEXP, v: SEXP) {
+pub fn SET_ENCLOS(x: SEXP, v: SEXP) {
     graph_set_edge(x, EdgeField::EnvironmentEnclosure, v);
 }
 
 /// Set the hash table of an environment.
-pub unsafe fn SET_HASHTAB(x: SEXP, v: SEXP) {
+pub fn SET_HASHTAB(x: SEXP, v: SEXP) {
     graph_set_edge(x, EdgeField::EnvironmentHashTable, v);
 }
 
@@ -645,17 +642,17 @@ pub fn PRENV(x: SEXP) -> SEXP {
 }
 
 /// Set the value of a promise.
-pub unsafe fn SET_PRVALUE(x: SEXP, v: SEXP) {
+pub fn SET_PRVALUE(x: SEXP, v: SEXP) {
     graph_set_edge(x, EdgeField::PromiseValue, v);
 }
 
 /// Set the expression of a promise.
-pub unsafe fn SET_PRCODE(x: SEXP, v: SEXP) {
+pub fn SET_PRCODE(x: SEXP, v: SEXP) {
     graph_set_edge(x, EdgeField::PromiseExpression, v);
 }
 
 /// Set the environment of a promise.
-pub unsafe fn SET_PRENV(x: SEXP, v: SEXP) {
+pub fn SET_PRENV(x: SEXP, v: SEXP) {
     graph_set_edge(x, EdgeField::PromiseEnvironment, v);
 }
 
@@ -669,7 +666,7 @@ pub fn PRIMOFFSET(x: SEXP) -> c_int {
 }
 
 /// Set the offset of a primitive function.
-pub unsafe fn SET_PRIMOFFSET(x: SEXP, v: c_int) {
+pub fn SET_PRIMOFFSET(x: SEXP, v: c_int) {
     mutate_header(x, |header| header.data.primitive_mut().offset = v);
 }
 
@@ -1114,7 +1111,7 @@ mod element_slot_kani {
 }
 
 /// Get the i-th element from checked canonical string storage.
-pub unsafe fn STRING_ELT(x: SEXP, i: R_xlen_t) -> SEXP {
+pub fn STRING_ELT(x: SEXP, i: R_xlen_t) -> SEXP {
     let slot = checked_reference_slot(x, i, true);
     if let Some(value) = unsafe { super::altrep::lazy_raw(slot.pointer, i) } {
         if let super::altrep::AltrepElement::String(value) =
@@ -1130,7 +1127,7 @@ pub unsafe fn STRING_ELT(x: SEXP, i: R_xlen_t) -> SEXP {
 }
 
 /// Store a string child through typed cells and the collector barrier.
-pub unsafe fn SET_STRING_ELT(x: SEXP, i: R_xlen_t, val: SEXP) {
+pub fn SET_STRING_ELT(x: SEXP, i: R_xlen_t, val: SEXP) {
     let slot = checked_reference_slot(x, i, true);
     let value = ReferenceValue::capture(&slot, val);
     let _ = unsafe { DATAPTR(slot.pointer) };
@@ -1143,7 +1140,7 @@ pub unsafe fn SET_STRING_ELT(x: SEXP, i: R_xlen_t, val: SEXP) {
 }
 
 /// Get a checked reference-array element, including bytecode constants.
-pub unsafe fn VECTOR_ELT(x: SEXP, i: R_xlen_t) -> SEXP {
+pub fn VECTOR_ELT(x: SEXP, i: R_xlen_t) -> SEXP {
     let slot = checked_reference_slot(x, i, false);
     if let Some(value) = unsafe { super::altrep::lazy_raw(slot.pointer, i) } {
         if let super::altrep::AltrepElement::List(value) =
@@ -1158,7 +1155,7 @@ pub unsafe fn VECTOR_ELT(x: SEXP, i: R_xlen_t) -> SEXP {
 }
 
 /// Store a checked reference-array child and record old-to-young edges.
-pub unsafe fn SET_VECTOR_ELT(x: SEXP, i: R_xlen_t, val: SEXP) {
+pub fn SET_VECTOR_ELT(x: SEXP, i: R_xlen_t, val: SEXP) {
     let slot = checked_reference_slot(x, i, false);
     let value = ReferenceValue::capture(&slot, val);
     let _ = unsafe { DATAPTR(slot.pointer) };
@@ -1183,7 +1180,7 @@ pub fn LOGICAL_ELT(x: SEXP, i: c_int) -> c_int {
 }
 
 /// Update a bounded canonical logical cell; immutable sentinels stay unchanged.
-pub unsafe fn SET_LOGICAL_ELT(x: SEXP, i: c_int, v: c_int) {
+pub fn SET_LOGICAL_ELT(x: SEXP, i: c_int, v: c_int) {
     if x.is_null() || immutable_lease(x).is_some() {
         return;
     }
@@ -1209,7 +1206,7 @@ pub fn INTEGER_ELT(x: SEXP, i: c_int) -> c_int {
 }
 
 /// Update a bounded canonical integer cell; immutable sentinels stay unchanged.
-pub unsafe fn SET_INTEGER_ELT(x: SEXP, i: c_int, v: c_int) {
+pub fn SET_INTEGER_ELT(x: SEXP, i: c_int, v: c_int) {
     if x.is_null() || immutable_lease(x).is_some() {
         return;
     }
@@ -1232,7 +1229,7 @@ pub fn REAL_ELT(x: SEXP, i: c_int) -> c_double {
 }
 
 /// Update a bounded canonical real cell; immutable sentinels stay unchanged.
-pub unsafe fn SET_REAL_ELT(x: SEXP, i: c_int, v: c_double) {
+pub fn SET_REAL_ELT(x: SEXP, i: c_int, v: c_double) {
     if x.is_null() || immutable_lease(x).is_some() {
         return;
     }
@@ -1255,7 +1252,7 @@ pub fn COMPLEX_ELT(x: SEXP, i: c_int) -> Rcomplex {
 }
 
 /// Update a bounded canonical complex cell; immutable sentinels stay unchanged.
-pub unsafe fn SET_COMPLEX_ELT(x: SEXP, i: c_int, v: Rcomplex) {
+pub fn SET_COMPLEX_ELT(x: SEXP, i: c_int, v: Rcomplex) {
     if x.is_null() || immutable_lease(x).is_some() {
         return;
     }
@@ -1275,7 +1272,7 @@ pub fn RAW_ELT(x: SEXP, i: c_int) -> super::ffi::Rbyte {
 }
 
 /// Update a bounded canonical raw cell; immutable sentinels stay unchanged.
-pub unsafe fn SET_RAW_ELT(x: SEXP, i: c_int, v: super::ffi::Rbyte) {
+pub fn SET_RAW_ELT(x: SEXP, i: c_int, v: super::ffi::Rbyte) {
     if x.is_null() || immutable_lease(x).is_some() {
         return;
     }
@@ -1799,7 +1796,7 @@ pub fn IS_LATIN1(x: SEXP) -> c_int {
 }
 
 /// Set exactly one of UTF-8 / latin1 / bytes, or clear all (native/unknown).
-pub unsafe fn mark_charsxp_encoding(x: SEXP, kind: &str) {
+pub fn mark_charsxp_encoding(x: SEXP, kind: &str) {
     mutate_header(x, |header| {
         let gp = (header.sxpinfo.gp() & !ENCODING_MASK)
             | TextEncoding::from_label(kind)
@@ -1831,7 +1828,7 @@ pub unsafe fn translateChar(x: SEXP) -> *const c_char {
 }
 
 /// Bytes of a CHARSXP translated to UTF-8, like GNU `translateCharUTF8`.
-pub unsafe fn charsxp_as_utf8(x: SEXP) -> Vec<u8> {
+pub fn charsxp_as_utf8(x: SEXP) -> Vec<u8> {
     unsafe {
         if !is_valid_sexp_ptr(x) || x == crate::sexp::globals::R_NaString() {
             return Vec::new();

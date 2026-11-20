@@ -745,8 +745,8 @@ impl RInstance {
                 // evaluates base bindings. Install the owning arena's copy
                 // now so every STRSXP allocated during bootstrap starts with
                 // valid, session-local character references.
-                let blank = unsafe { super::super::mainutils::bind::R_BlankString() };
-                let installed = unsafe {
+                let blank = super::super::mainutils::bind::R_BlankString();
+                let installed =  {
                     super::memory::with_arena_in(instance, |arena| {
                         arena.install_blank_string(blank)
                     })

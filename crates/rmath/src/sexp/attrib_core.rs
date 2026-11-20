@@ -32,52 +32,72 @@ mod tsp_tests;
 // ---------------------------------------------------------------------------
 
 /// Get the "class" symbol.
-pub unsafe fn R_ClassSymbol() -> SEXP {
+pub fn R_ClassSymbol() -> SEXP {
+    // SAFETY: intern a static NUL-terminated literal; the returned
+    // projection carries no dereference authority.
     unsafe { Rf_install(c"class".as_ptr()) }
 }
 
 /// Get the "names" symbol.
-pub unsafe fn R_NamesSymbol() -> SEXP {
+pub fn R_NamesSymbol() -> SEXP {
+    // SAFETY: intern a static NUL-terminated literal; the returned
+    // projection carries no dereference authority.
     unsafe { Rf_install(c"names".as_ptr()) }
 }
 
 /// Get the "dim" symbol.
-pub unsafe fn R_DimSymbol() -> SEXP {
+pub fn R_DimSymbol() -> SEXP {
+    // SAFETY: intern a static NUL-terminated literal; the returned
+    // projection carries no dereference authority.
     unsafe { Rf_install(c"dim".as_ptr()) }
 }
 
 /// Get the "dimnames" symbol.
-pub unsafe fn R_DimNamesSymbol() -> SEXP {
+pub fn R_DimNamesSymbol() -> SEXP {
+    // SAFETY: intern a static NUL-terminated literal; the returned
+    // projection carries no dereference authority.
     unsafe { Rf_install(c"dimnames".as_ptr()) }
 }
 
 /// Get the "levels" symbol.
-pub unsafe fn R_LevelsSymbol() -> SEXP {
+pub fn R_LevelsSymbol() -> SEXP {
+    // SAFETY: intern a static NUL-terminated literal; the returned
+    // projection carries no dereference authority.
     unsafe { Rf_install(c"levels".as_ptr()) }
 }
 
 /// Get the "tsp" symbol.
-pub unsafe fn R_TspSymbol() -> SEXP {
+pub fn R_TspSymbol() -> SEXP {
+    // SAFETY: intern a static NUL-terminated literal; the returned
+    // projection carries no dereference authority.
     unsafe { Rf_install(c"tsp".as_ptr()) }
 }
 
 /// Get the "srcref" symbol.
-pub unsafe fn R_SrcRefSymbol() -> SEXP {
+pub fn R_SrcRefSymbol() -> SEXP {
+    // SAFETY: intern a static NUL-terminated literal; the returned
+    // projection carries no dereference authority.
     unsafe { Rf_install(c"srcref".as_ptr()) }
 }
 
 /// Get the "srcfile" symbol.
-pub unsafe fn R_SrcFileSymbol() -> SEXP {
+pub fn R_SrcFileSymbol() -> SEXP {
+    // SAFETY: intern a static NUL-terminated literal; the returned
+    // projection carries no dereference authority.
     unsafe { Rf_install(c"srcfile".as_ptr()) }
 }
 
 /// Get the "row.names" symbol.
-pub unsafe fn R_RowNamesSymbol() -> SEXP {
+pub fn R_RowNamesSymbol() -> SEXP {
+    // SAFETY: intern a static NUL-terminated literal; the returned
+    // projection carries no dereference authority.
     unsafe { Rf_install(c"row.names".as_ptr()) }
 }
 
 /// Get the ".Environment" symbol.
-pub unsafe fn R_EnvironmentSymbol() -> SEXP {
+pub fn R_EnvironmentSymbol() -> SEXP {
+    // SAFETY: intern a static NUL-terminated literal; the returned
+    // projection carries no dereference authority.
     unsafe { Rf_install(c".Environment".as_ptr()) }
 }
 
@@ -1059,7 +1079,7 @@ impl ClassedNamesSnapshot {
             .and_then(|mut value| value.try_set_attribute(&self.copied))
             .map_err(|e| e.to_string())?;
         access
-            .with_native(|owner| unsafe {
+            .with_native(|owner| {
                 super::accessors::SET_OBJECT(normalized.as_raw(), i32::from(self.is_object));
                 owner.require_active()
             })

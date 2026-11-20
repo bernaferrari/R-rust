@@ -21,7 +21,7 @@ mod pressure_tests;
 // FFI-compatible constructor functions
 // ---------------------------------------------------------------------------
 
-pub(crate) unsafe fn require_allocation(value: SEXP) -> SEXP {
+pub(crate) fn require_allocation(value: SEXP) -> SEXP {
     if !value.is_null() {
         return value;
     }
@@ -72,7 +72,7 @@ pub(crate) unsafe fn allocate_with_gc_retry<const N: usize>(
     })
 }
 
-unsafe fn alloc_vector3_inner(sexptype: SEXPTYPE, length: R_xlen_t) -> SEXP {
+fn alloc_vector3_inner(sexptype: SEXPTYPE, length: R_xlen_t) -> SEXP {
     unsafe {
         // GNU allocVector also accepts pairlists/calls, but those need a
         // chain of nodes rather than a vector header with integer lengths in
@@ -119,25 +119,25 @@ unsafe fn alloc_vector3_inner(sexptype: SEXPTYPE, length: R_xlen_t) -> SEXP {
     }
 }
 
-unsafe fn alloc_vector_inner(sexptype: SEXPTYPE, length: c_int) -> SEXP {
+fn alloc_vector_inner(sexptype: SEXPTYPE, length: c_int) -> SEXP {
     unsafe { alloc_vector3_inner(sexptype, length as R_xlen_t) }
 }
 
-pub unsafe fn Rf_allocVector3<T: Into<SEXPTYPE>>(sexptype: T, length: R_xlen_t) -> SEXP {
+pub fn Rf_allocVector3<T: Into<SEXPTYPE>>(sexptype: T, length: R_xlen_t) -> SEXP {
     unsafe { alloc_vector3_inner(sexptype.into(), length) }
 }
 
-pub unsafe fn Rf_allocVector<T: Into<SEXPTYPE>>(sexptype: T, length: c_int) -> SEXP {
+pub fn Rf_allocVector<T: Into<SEXPTYPE>>(sexptype: T, length: c_int) -> SEXP {
     unsafe { alloc_vector_inner(sexptype.into(), length) }
 }
 
-pub unsafe fn Rf_cons(car: SEXP, cdr: SEXP) -> SEXP {
+pub fn Rf_cons(car: SEXP, cdr: SEXP) -> SEXP {
     unsafe { allocate_with_gc_retry([car, cdr], |arena| arena.cons(car, cdr, ptr::null_mut())) }
 }
 
 /// Allocate and finish a call graph before deferred collection can observe it.
 /// Every input becomes reachable from the fresh head within the same lend.
-unsafe fn language<const N: usize>(items: [SEXP; N]) -> SEXP {
+fn language<const N: usize>(items: [SEXP; N]) -> SEXP {
     unsafe {
         allocate_with_gc_retry(items, |arena| {
             let mut head = R_NilValue();
@@ -154,26 +154,26 @@ unsafe fn language<const N: usize>(items: [SEXP; N]) -> SEXP {
 }
 
 /// Create a two-element call.
-pub unsafe fn Rf_lang2(car: SEXP, cdr: SEXP) -> SEXP {
+pub fn Rf_lang2(car: SEXP, cdr: SEXP) -> SEXP {
     unsafe { language([car, cdr]) }
 }
 
 /// Create a three-element call.
-pub unsafe fn Rf_lang3(car: SEXP, cdr: SEXP, tag: SEXP) -> SEXP {
+pub fn Rf_lang3(car: SEXP, cdr: SEXP, tag: SEXP) -> SEXP {
     unsafe { language([car, cdr, tag]) }
 }
 
 /// Create a four-element call.
-pub unsafe fn Rf_lang4(car: SEXP, a2: SEXP, a3: SEXP, a4: SEXP) -> SEXP {
+pub fn Rf_lang4(car: SEXP, a2: SEXP, a3: SEXP, a4: SEXP) -> SEXP {
     unsafe { language([car, a2, a3, a4]) }
 }
 
 /// Create a five-element call.
-pub unsafe fn Rf_lang5(car: SEXP, a2: SEXP, a3: SEXP, a4: SEXP, a5: SEXP) -> SEXP {
+pub fn Rf_lang5(car: SEXP, a2: SEXP, a3: SEXP, a4: SEXP, a5: SEXP) -> SEXP {
     unsafe { language([car, a2, a3, a4, a5]) }
 }
 /// Allocate a pairlist chain of n NILSXP elements.
-pub unsafe fn Rf_allocList(n: c_int) -> SEXP {
+pub fn Rf_allocList(n: c_int) -> SEXP {
     let value = unsafe { allocate_with_gc_retry([], |arena| arena.alloc_list_chain(n)) };
     if n == 0 {
         value
@@ -237,7 +237,7 @@ pub unsafe fn Rf_mkString(s: *const c_char) -> SEXP {
 
 /// Allocate and initialize a scalar before allocation notifications run.
 /// The initializer writes checked typed cells without lending payload bytes.
-unsafe fn scalar(
+fn scalar(
     sexptype: SEXPTYPE,
     initialize: impl FnOnce(&mut super::object::SexpMut<'_>) -> super::object::SexpResult<()>,
 ) -> SEXP {
@@ -259,12 +259,12 @@ unsafe fn scalar(
 }
 
 /// Create a scalar STRSXP containing NA_STRING (R's NA_character_).
-pub unsafe fn Rf_mkNAString() -> SEXP {
+pub fn Rf_mkNAString() -> SEXP {
     unsafe { Rf_ScalarString(super::globals::R_NaString()) }
 }
 
 /// Create a scalar logical value.
-pub unsafe fn Rf_ScalarLogical(x: c_int) -> SEXP {
+pub fn Rf_ScalarLogical(x: c_int) -> SEXP {
     // Pinned GNU Rinlinedfuns.h ScalarLogical shares immutable scalars and
     // normalizes every nonzero, non-NA input. Writable callers allocate a
     // logical vector or duplicate before attaching attributes or changing it.
@@ -280,22 +280,22 @@ pub unsafe fn Rf_ScalarLogical(x: c_int) -> SEXP {
 }
 
 /// Create a scalar integer value.
-pub unsafe fn Rf_ScalarInteger(x: c_int) -> SEXP {
+pub fn Rf_ScalarInteger(x: c_int) -> SEXP {
     unsafe { scalar(SEXPTYPE::INTSXP, |value| value.try_set_integer_elt(0, x)) }
 }
 
 /// Create a scalar real value.
-pub unsafe fn Rf_ScalarReal(x: c_double) -> SEXP {
+pub fn Rf_ScalarReal(x: c_double) -> SEXP {
     unsafe { scalar(SEXPTYPE::REALSXP, |value| value.try_set_real_elt(0, x)) }
 }
 
 /// Create a scalar complex value.
-pub unsafe fn Rf_ScalarComplex(x: super::ffi::Rcomplex) -> SEXP {
+pub fn Rf_ScalarComplex(x: super::ffi::Rcomplex) -> SEXP {
     unsafe { scalar(SEXPTYPE::CPLXSXP, |value| value.try_set_complex_elt(0, x)) }
 }
 
 /// Create a scalar string from a CHARSXP.
-pub unsafe fn Rf_ScalarString(x: SEXP) -> SEXP {
+pub fn Rf_ScalarString(x: SEXP) -> SEXP {
     unsafe {
         require_allocation(memory::with_arena(|arena| {
             let value = arena.alloc_vector(SEXPTYPE::STRSXP, 1);
@@ -308,7 +308,7 @@ pub unsafe fn Rf_ScalarString(x: SEXP) -> SEXP {
 }
 
 /// Create a scalar raw value.
-pub unsafe fn Rf_ScalarRaw(x: super::ffi::Rbyte) -> SEXP {
+pub fn Rf_ScalarRaw(x: super::ffi::Rbyte) -> SEXP {
     unsafe { scalar(SEXPTYPE::RAWSXP, |value| value.try_set_raw_elt(0, x)) }
 }
 
@@ -320,8 +320,8 @@ pub unsafe fn Rf_ScalarRaw(x: super::ffi::Rbyte) -> SEXP {
 pub(crate) use crate::sexp::accessors::Rf_isNull;
 
 /// Get the length of an SEXP.
-pub unsafe fn Rf_length(x: SEXP) -> c_int {
-    unsafe {
+pub fn Rf_length(x: SEXP) -> c_int {
+     {
         if x.is_null() || x == R_NilValue() {
             return 0;
         }
@@ -705,7 +705,7 @@ pub unsafe fn persistent_cons(car: SEXP, cdr: SEXP) -> SEXP {
     unsafe { super::memory_ext::cons_raw(car, cdr) }
 }
 
-pub unsafe fn persistent_scalar_integer(val: c_int) -> SEXP {
+pub fn persistent_scalar_integer(val: c_int) -> SEXP {
     super::instance::with_required_current_instance(|owner| unsafe {
         (*owner)
             .persistent_nodes
@@ -714,7 +714,7 @@ pub unsafe fn persistent_scalar_integer(val: c_int) -> SEXP {
     })
 }
 
-pub unsafe fn persistent_scalar_logical(val: c_int) -> SEXP {
+pub fn persistent_scalar_logical(val: c_int) -> SEXP {
     super::instance::with_required_current_instance(|owner| unsafe {
         (*owner)
             .persistent_nodes
@@ -723,7 +723,7 @@ pub unsafe fn persistent_scalar_logical(val: c_int) -> SEXP {
     })
 }
 
-pub unsafe fn persistent_scalar_real(val: c_double) -> SEXP {
+pub fn persistent_scalar_real(val: c_double) -> SEXP {
     super::instance::with_required_current_instance(|owner| unsafe {
         (*owner)
             .persistent_nodes
