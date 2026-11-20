@@ -105,15 +105,20 @@ unsafe fn choose_ops_method(
     }
 }
 
-unsafe fn method_name_is(method: SEXP, name: &[u8]) -> bool {
-    unsafe {
+fn method_name_is(method: SEXP, name: &[u8]) -> bool {
+    {
         if method.is_null() || TYPEOF(method) != SEXPTYPE::SYMSXP {
             return false;
         }
-        let printed = PRINTNAME(method);
-        !printed.is_null()
-            && !CHAR(printed).is_null()
-            && std::ffi::CStr::from_ptr(CHAR(printed)).to_bytes() == name
+        // SAFETY: the translated caller retains the active runtime.
+        let Ok(owner) = (unsafe { crate::sexp::owner::OwnerToken::current() }) else {
+            return false;
+        };
+        owner
+            .sexp(method)
+            .and_then(|method| method.try_printname())
+            .and_then(|printed| printed.try_char_eq(name))
+            .unwrap_or(false)
     }
 }
 
@@ -163,22 +168,12 @@ fn try_summary_method_arguments<'s>(
     while !current.is_nil() {
         let value = current.try_car()?;
         let tag = current.try_tag()?;
-        let is_na_rm = if tag.is_nil() {
+        let is_na_rm = if tag.is_nil() || tag.typeof_() != SEXPTYPE::SYMSXP {
             false
         } else {
-            unsafe {
-                if isSymbol(tag.as_raw()) == FALSE {
-                    false
-                } else {
-                    let printed = PRINTNAME(tag.as_raw());
-                    if printed.is_null() {
-                        false
-                    } else {
-                        let chars = CHAR(printed);
-                        !chars.is_null() && std::ffi::CStr::from_ptr(chars).to_bytes() == b"na.rm"
-                    }
-                }
-            }
+            tag.printname()
+                .and_then(|printed| printed.try_char_eq(b"na.rm").ok())
+                .unwrap_or(false)
         };
         if is_na_rm {
             if na_rm_value.is_some() {
