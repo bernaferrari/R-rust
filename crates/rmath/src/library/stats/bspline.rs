@@ -270,9 +270,13 @@ pub unsafe fn bvalue(
         // Find interval containing x using interv (0-indexed result)
         let mut i: usize;
         if x != *t.add(n) || *t.add(n) != *t.add(nplusk - 1) {
-            let mut mflag: c_int = 0;
-            let i_ret =
-                crate::appl::interv::findInterval(t, nplusk as c_int, x, 0, 0, 1, &mut mflag);
+            let (i_ret, mflag) = crate::appl::interv::findInterval(
+                std::slice::from_raw_parts(t, nplusk),
+                x,
+                false,
+                false,
+                1,
+            );
             if mflag != 0 {
                 return 0.0;
             }
