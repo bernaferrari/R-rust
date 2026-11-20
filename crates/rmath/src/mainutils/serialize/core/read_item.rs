@@ -15,7 +15,7 @@ pub fn ReadItemInternal(
     reader: &mut BinaryReader,
     ref_table: &mut ReadRefTable,
 ) -> Result<SEXP, String> {
-     { read_item_in_context(reader, ref_table, ReadContext::Data) }
+     read_item_in_context(reader, ref_table, ReadContext::Data)
 }
 
 pub(crate) fn read_item_in_context(

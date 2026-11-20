@@ -312,7 +312,7 @@ pub fn PersistentRestore(stream: R_inpstream_t, s: SEXP) -> SEXP {
 }
 
 pub fn SaveSpecialHookItem(item: SEXP) -> c_int {
-     { SaveSpecialHook(item) }
+     SaveSpecialHook(item)
 }
 
 // ---------------------------------------------------------------------------

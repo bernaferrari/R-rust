@@ -440,7 +440,7 @@ pub fn R_serialize(
     Sversion: SEXP,
     fun: SEXP,
 ) -> SEXP {
-     { R_serialize_with_xdr(object, icon, ascii, R_NilValue(), Sversion, fun) }
+     R_serialize_with_xdr(object, icon, ascii, R_NilValue(), Sversion, fun)
 }
 
 pub fn R_serialize_with_xdr(
@@ -1311,7 +1311,7 @@ fn configure_conn_hooks(
 // ---------------------------------------------------------------------------
 
 pub fn R_serializeb(object: SEXP, icon: SEXP, xdr: SEXP, Sversion: SEXP, fun: SEXP) -> SEXP {
-     { R_serialize_with_xdr(object, icon, R_NilValue(), xdr, Sversion, fun) }
+     R_serialize_with_xdr(object, icon, R_NilValue(), xdr, Sversion, fun)
 }
 
 // ---------------------------------------------------------------------------

@@ -262,7 +262,7 @@ pub fn R_allocObject() -> SEXP {
 
 /// R's `.OBJSXP()` — a bare OBJSXP object without the S4 bit.
 pub fn do_objsxp(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
-     { R_allocObject() }
+     R_allocObject()
 }
 
 // ---------------------------------------------------------------------------

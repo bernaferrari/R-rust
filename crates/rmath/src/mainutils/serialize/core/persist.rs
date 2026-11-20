@@ -104,7 +104,7 @@ pub(crate) fn persistent_hook_eligible(s: SEXP) -> bool {
 }
 
 pub(crate) fn persistent_name(s: SEXP, hook: SEXP) -> SEXP {
-     { invoke_persist_hook(s, None, hook) }
+     invoke_persist_hook(s, None, hook)
 }
 
 pub(crate) fn invoke_persist_hook(
