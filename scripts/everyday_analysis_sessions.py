@@ -36,11 +36,11 @@ def build_native_runner(directory, env, renderplot=False):
 set -euo pipefail
 ROOT_DIR="$1"
 source "$ROOT_DIR/scripts/conformance_artifacts.sh"
-graphics=()
+build_args=(--locked)
 if [[ "$3" == renderplot ]]; then
-    graphics=(--features renderplot-device)
+    build_args+=(--features renderplot-device)
 fi
-rlib="$(conformance_build_rmath --locked "${graphics[@]}")"
+rlib="$(conformance_build_rmath "${build_args[@]}")"
 cp -f "$rlib" "$2/librmath.rlib"
 rustc --edition=2024 "$ROOT_DIR/tests/conformance/src/main.rs" \
     -L dependency="$(conformance_dependency_dir)" \
