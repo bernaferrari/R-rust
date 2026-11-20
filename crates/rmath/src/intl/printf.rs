@@ -12,9 +12,10 @@
 
 #![allow(non_snake_case, dead_code)]
 
-use std::ffi::CStr;
 use std::os::raw::{c_char, c_int, c_void};
 use std::ptr;
+
+use super::types::{c_free, c_strdup, cstr, ptr_mut};
 
 // ---------------------------------------------------------------------------
 // Internal vasnprintf stub
@@ -35,38 +36,27 @@ fn libintl_vasnprintf(
     format: *const c_char,
     _args: *mut c_void,
 ) -> *mut c_char {
-    unsafe {
-        if format.is_null() {
-            return ptr::null_mut();
-        }
+    let Some(fmt) = cstr(format) else {
+        return ptr::null_mut();
+    };
 
-        // For the standalone port, we handle format strings without '$' by
-        // returning the format string itself as-is (a placeholder).
-        // A full implementation would parse the format string and format the args.
-        let fmt = CStr::from_ptr(format);
-        let bytes = fmt.to_bytes_with_nul();
+    // For the standalone port, we handle format strings without '$' by
+    // returning the format string itself as-is (a placeholder).
+    // A full implementation would parse the format string and format the args.
+    let len = fmt.to_bytes().len();
 
-        let len = bytes.len() - 1; // Exclude trailing NUL.
+    let _ = resultbuf;
 
-        if !resultbuf.is_null() {
-            // Check if the result fits in the provided buffer.
-            // We don't know the buffer size here, so we allocate new memory.
-        }
-
-        let layout = std::alloc::Layout::from_size_align(bytes.len(), 1)
-            .unwrap_or_else(|_| std::alloc::Layout::new::<u8>());
-        let result = std::alloc::alloc(layout) as *mut c_char;
-        if result.is_null() {
-            return ptr::null_mut();
-        }
-        ptr::copy_nonoverlapping(bytes.as_ptr(), result as *mut u8, bytes.len());
-
-        if !lengthp.is_null() {
-            *lengthp = len;
-        }
-
-        result
+    let result = c_strdup(format);
+    if result.is_null() {
+        return ptr::null_mut();
     }
+
+    if let Some(p) = ptr_mut(lengthp) {
+        *p = len;
+    }
+
+    result
 }
 
 // ---------------------------------------------------------------------------
@@ -78,48 +68,27 @@ fn libintl_vasnprintf(
 /// If the format string contains '$' (positional arguments), uses the internal
 /// vasnprintf implementation. Otherwise, delegates to the system vfprintf.
 pub fn libintl_vfprintf(_stream: *mut c_void, format: *const c_char, args: *mut c_void) -> c_int {
-    unsafe {
-        // Check if format contains '$'.
-        let has_dollar = if !format.is_null() {
-            let mut p = format;
-            let mut found = false;
-            while *p != 0 {
-                if *p == b'$' as c_char {
-                    found = true;
-                    break;
-                }
-                p = p.add(1);
-            }
-            found
-        } else {
-            false
-        };
+    // Check if format contains '$'.
+    let has_dollar = cstr(format).is_some_and(|f| f.to_bytes().contains(&b'$'));
 
-        if !has_dollar {
-            // No positional args -- we can't call C's vfprintf from Rust easily,
-            // so just return a stub value.
-            return -1;
-        }
-
-        let mut length: usize = 0;
-        let result = libintl_vasnprintf(ptr::null_mut(), &mut length, format, args);
-        if result.is_null() {
-            return -1;
-        }
-        if length > c_int::MAX as usize {
-            std::alloc::dealloc(
-                result as *mut u8,
-                std::alloc::Layout::from_size_align_unchecked(length + 1, 1),
-            );
-            return -1;
-        }
-        let retval = length as c_int;
-        std::alloc::dealloc(
-            result as *mut u8,
-            std::alloc::Layout::from_size_align_unchecked(length + 1, 1),
-        );
-        retval
+    if !has_dollar {
+        // No positional args -- we can't call C's vfprintf from Rust easily,
+        // so just return a stub value.
+        return -1;
     }
+
+    let mut length: usize = 0;
+    let result = libintl_vasnprintf(ptr::null_mut(), &mut length, format, args);
+    if result.is_null() {
+        return -1;
+    }
+    if length > c_int::MAX as usize {
+        c_free(result);
+        return -1;
+    }
+    let retval = length as c_int;
+    c_free(result);
+    retval
 }
 
 /// Write formatted output to stdout.
@@ -129,25 +98,20 @@ pub fn libintl_vprintf(format: *const c_char, args: *mut c_void) -> c_int {
 
 /// Write formatted output to a string buffer.
 pub fn libintl_vsprintf(resultbuf: *mut c_char, format: *const c_char, args: *mut c_void) -> c_int {
-    unsafe {
-        let mut length: usize = 0;
-        let result = libintl_vasnprintf(resultbuf, &mut length, format, args);
-        if result.is_null() {
-            return -1;
-        }
-        if result != resultbuf {
-            // Didn't fit in the buffer.
-            std::alloc::dealloc(
-                result as *mut u8,
-                std::alloc::Layout::from_size_align_unchecked(length + 1, 1),
-            );
-            return -1;
-        }
-        if length > c_int::MAX as usize {
-            return -1;
-        }
-        length as c_int
+    let mut length: usize = 0;
+    let result = libintl_vasnprintf(resultbuf, &mut length, format, args);
+    if result.is_null() {
+        return -1;
     }
+    if result != resultbuf {
+        // Didn't fit in the buffer.
+        c_free(result);
+        return -1;
+    }
+    if length > c_int::MAX as usize {
+        return -1;
+    }
+    length as c_int
 }
 
 /// Write formatted output to a string buffer with maximum length.
@@ -157,32 +121,31 @@ pub fn libintl_vsnprintf(
     format: *const c_char,
     args: *mut c_void,
 ) -> c_int {
-    unsafe {
-        let mut length: usize = 0;
-        let result = libintl_vasnprintf(resultbuf, &mut length, format, args);
-        if result.is_null() {
-            return -1;
-        }
-        if result != resultbuf {
-            if _maxlength > 0 && !resultbuf.is_null() {
-                let pruned = if length < _maxlength {
-                    length
-                } else {
-                    _maxlength - 1
-                };
+    let mut length: usize = 0;
+    let result = libintl_vasnprintf(resultbuf, &mut length, format, args);
+    if result.is_null() {
+        return -1;
+    }
+    if result != resultbuf {
+        if _maxlength > 0 && !resultbuf.is_null() {
+            let pruned = if length < _maxlength {
+                length
+            } else {
+                _maxlength - 1
+            };
+            // Copy `pruned` bytes plus NUL into the caller's
+            // `maxlength`-byte buffer.
+            unsafe {
                 ptr::copy_nonoverlapping(result, resultbuf, pruned);
                 *resultbuf.add(pruned) = 0;
             }
-            std::alloc::dealloc(
-                result as *mut u8,
-                std::alloc::Layout::from_size_align_unchecked(length + 1, 1),
-            );
         }
-        if length > c_int::MAX as usize {
-            return -1;
-        }
-        length as c_int
+        c_free(result);
     }
+    if length > c_int::MAX as usize {
+        return -1;
+    }
+    length as c_int
 }
 
 /// Write formatted output to a dynamically allocated string.
@@ -191,29 +154,21 @@ pub fn libintl_vasprintf(
     format: *const c_char,
     args: *mut c_void,
 ) -> c_int {
-    unsafe {
-        let mut length: usize = 0;
-        let result = libintl_vasnprintf(ptr::null_mut(), &mut length, format, args);
-        if result.is_null() {
-            return -1;
-        }
-        if length > c_int::MAX as usize {
-            std::alloc::dealloc(
-                result as *mut u8,
-                std::alloc::Layout::from_size_align_unchecked(length + 1, 1),
-            );
-            return -1;
-        }
-        if !resultp.is_null() {
-            *resultp = result;
-        } else {
-            std::alloc::dealloc(
-                result as *mut u8,
-                std::alloc::Layout::from_size_align_unchecked(length + 1, 1),
-            );
-        }
-        length as c_int
+    let mut length: usize = 0;
+    let result = libintl_vasnprintf(ptr::null_mut(), &mut length, format, args);
+    if result.is_null() {
+        return -1;
     }
+    if length > c_int::MAX as usize {
+        c_free(result);
+        return -1;
+    }
+    if let Some(p) = ptr_mut(resultp) {
+        *p = result;
+    } else {
+        c_free(result);
+    }
+    length as c_int
 }
 
 // ---------------------------------------------------------------------------
