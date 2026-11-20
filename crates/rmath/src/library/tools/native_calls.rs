@@ -14,6 +14,7 @@ const TOOLS_CALL_NAMES: &[&str] = &[
     "C_doTabExpand",
     "doTabExpand",
     "C_nonASCII",
+    "C_package_dependencies_scan",
     "nonASCII",
     "C_delim_match",
     "delim_match",
@@ -156,6 +157,13 @@ pub(crate) fn lookup(name: &str) -> Option<crate::mainutils::native_routines::Na
         "doTabExpand" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
             crate::mainutils::native_routines::CallRoutine::Args2(c_do_tab_expand),
         )),
+        "package_dependencies_scan" => {
+            Some(crate::mainutils::native_routines::NativeRoutine::Call(
+                crate::mainutils::native_routines::CallRoutine::Args1(
+                    super::pdscan::package_dependencies_scan,
+                ),
+            ))
+        }
         "nonASCII" => Some(crate::mainutils::native_routines::NativeRoutine::Call(
             crate::mainutils::native_routines::CallRoutine::Args1(c_non_ascii),
         )),
