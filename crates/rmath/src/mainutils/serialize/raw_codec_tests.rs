@@ -5,14 +5,21 @@ type Encoder = unsafe fn(SEXP) -> SEXP;
 #[cfg(not(miri))]
 type Decoder = unsafe fn(SEXP, *mut Rboolean) -> SEXP;
 
+#[cfg(not(miri))]
+fn evidence_directory() -> std::path::PathBuf {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../target/serialization-workspace-evidence");
+    std::fs::create_dir_all(&path).unwrap();
+    path
+}
+
 #[test]
 #[cfg(not(miri))]
 fn serialization_workspace_lazy_file_input_and_r_result_share_peak_admission() {
     let session = RSession::new_for_gc_tests();
     let owner = session.owner_token().unwrap();
     let factory = owner.node_factory();
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../target/serialization-workspace-evidence/lazy-input-budget.bin");
+    let path = evidence_directory().join("lazy-input-budget.bin");
     std::fs::write(&path, vec![7; 32768]).unwrap();
     let file = factory.strings(&[path.to_str().unwrap()]).unwrap();
     let key = factory
@@ -65,6 +72,7 @@ fn serialization_workspace_raw_codecs_decode_gnu_and_export_independent_records(
             R_decompress3,
         ),
     ];
+    let evidence = evidence_directory();
     for (index, (fixture, encode, decode)) in cases.into_iter().enumerate() {
         let input = raw(&factory, fixture);
         let mut invalid = 0;
@@ -81,10 +89,7 @@ fn serialization_workspace_raw_codecs_decode_gnu_and_export_independent_records(
             panic!("raw encode");
         };
         std::fs::write(
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(format!(
-                "../../target/serialization-workspace-evidence/rust-raw-mode{}.bin",
-                index + 1
-            )),
+            evidence.join(format!("rust-raw-mode{}.bin", index + 1)),
             bytes,
         )
         .unwrap();

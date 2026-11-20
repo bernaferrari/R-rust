@@ -83,6 +83,32 @@ pub struct ReadRefTable {
 }
 
 impl ReadRefTable {
+    /// Retain the fresh decoder destination from the original session.
+    /// Stream callbacks can run between element writes, so no raw payload
+    /// pointer or borrowed slice may cross a reader call.
+    pub(super) fn atomic_payload(
+        &self,
+        value: SEXP,
+        kind: SEXPTYPE,
+        length: R_xlen_t,
+    ) -> Result<crate::sexp::payload::PayloadLease, String> {
+        self.require_active()?;
+        let value = self.owner.sexp(value).map_err(|err| err.to_string())?;
+        let node = value.allocation().map_err(|err| err.to_string())?;
+        let (header, payload) = node
+            .heap_identity()
+            .snapshot_with_payload(node)
+            .ok_or("decoded vector is no longer live")?;
+        if header.sxpinfo.type_of() != kind || header.vecsxp_length() != length {
+            return Err("unexpected decoded vector shape".into());
+        }
+        payload.ok_or_else(|| "decoded vector has no typed payload".into())
+    }
+
+    pub(super) fn require_active(&self) -> Result<(), String> {
+        self.owner.require_active().map_err(|err| err.to_string())
+    }
+
     pub(super) fn workspace<T>(&self) -> Result<WorkspaceVec<T>, String> {
         self.owner.require_active().map_err(|e| e.to_string())?;
         Ok(WorkspaceVec::with_reservation(

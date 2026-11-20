@@ -894,10 +894,9 @@ pub(crate) unsafe fn read_integer_item(
         }
         let s = Rf_allocVector3(stype, len as R_xlen_t);
         let _s_guard = protect(s);
-        let int_data = INTEGER(s);
-        for i in 0..len as isize {
-            *int_data.offset(i) = reader.read_i32()?;
-        }
+        fill_atomic_payload(ref_table, s, stype.into(), len, |payload, index| {
+            Ok(payload.set_integer_elt(index, reader.read_i32()?))
+        })?;
         restore_serialized_gp(s, levs, isobj);
         if hasattr != 0 {
             let attr = ReadItemInternal(reader, ref_table)?;
@@ -924,10 +923,9 @@ pub(crate) unsafe fn read_real_item(
         let len = reader.read_vector_length(8)?;
         let s = Rf_allocVector3(stype, len as R_xlen_t);
         let _s_guard = protect(s);
-        let real_data = REAL(s);
-        for i in 0..len as isize {
-            *real_data.offset(i) = reader.read_f64()?;
-        }
+        fill_atomic_payload(ref_table, s, SEXPTYPE::REALSXP, len, |payload, index| {
+            Ok(payload.set_real_elt(index, reader.read_f64()?))
+        })?;
         restore_serialized_gp(s, levs, isobj);
         if hasattr != 0 {
             let attr = ReadItemInternal(reader, ref_table)?;
@@ -954,12 +952,11 @@ pub(crate) unsafe fn read_complex_item(
         let len = reader.read_vector_length(16)?;
         let s = Rf_allocVector3(stype, len as R_xlen_t);
         let _s_guard = protect(s);
-        let cpx_data = COMPLEX(s);
-        for i in 0..len as isize {
+        fill_atomic_payload(ref_table, s, SEXPTYPE::CPLXSXP, len, |payload, index| {
             let r = reader.read_f64()?;
             let im = reader.read_f64()?;
-            *cpx_data.offset(i) = Rcomplex { r, i: im };
-        }
+            Ok(payload.set_complex_elt(index, Rcomplex { r, i: im }))
+        })?;
         restore_serialized_gp(s, levs, isobj);
         if hasattr != 0 {
             let attr = ReadItemInternal(reader, ref_table)?;
@@ -1029,10 +1026,9 @@ pub(crate) unsafe fn read_raw_item(
         let len = reader.read_vector_length(1)?;
         let s = Rf_allocVector3(SEXPTYPE::RAWSXP, len as R_xlen_t);
         let _s_guard = protect(s);
-        let raw_data = RAW(s);
-        for i in 0..len as isize {
-            *raw_data.offset(i) = reader.read_byte()?;
-        }
+        fill_atomic_payload(ref_table, s, SEXPTYPE::RAWSXP, len, |payload, index| {
+            Ok(payload.set_byte_elt(index, reader.read_byte()?))
+        })?;
         restore_serialized_gp(s, levs, isobj);
         if hasattr != 0 {
             let attr = ReadItemInternal(reader, ref_table)?;
@@ -1196,6 +1192,22 @@ pub(crate) unsafe fn read_altrep_item(
 // defaultSerializeVersion
 // ---------------------------------------------------------------------------
 
-pub unsafe fn defaultSerializeVersion() -> c_int {
+pub fn defaultSerializeVersion() -> c_int {
     R_DEFAULT_SERIALIZE_VERSION
+}
+
+fn fill_atomic_payload(
+    refs: &ReadRefTable,
+    value: SEXP,
+    kind: SEXPTYPE,
+    length: c_int,
+    mut fill: impl FnMut(&crate::sexp::payload::PayloadLease, usize) -> Result<Option<()>, String>,
+) -> Result<(), String> {
+    if length != 0 {
+        let payload = refs.atomic_payload(value, kind, R_xlen_t::from(length))?;
+        for index in 0..length as usize {
+            fill(&payload, index)?.ok_or("invalid decoded vector element write")?;
+        }
+    }
+    refs.require_active()
 }

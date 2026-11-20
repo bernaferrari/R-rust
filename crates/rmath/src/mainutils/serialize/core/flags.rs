@@ -4,13 +4,7 @@ use super::*;
 // Flag packing/unpacking
 // ---------------------------------------------------------------------------
 
-pub unsafe fn PackFlags(
-    type_: c_int,
-    levs: c_int,
-    isobj: c_int,
-    hasattr: c_int,
-    hastag: c_int,
-) -> c_int {
+pub fn PackFlags(type_: c_int, levs: c_int, isobj: c_int, hasattr: c_int, hastag: c_int) -> c_int {
     let mut levs = levs;
     if type_ == SEXPTYPE::CHARSXP.as_c_int() {
         // GNU: levs &= ~(CACHED_MASK | HASHASH_MASK)
