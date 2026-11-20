@@ -39,9 +39,9 @@ fn test_initialize_base_bindings_use_canonical_primitive_identity() {
         initialize_r();
 
         let base = R_BaseEnv();
-        let plus = Rf_install(c"+".as_ptr());
-        let if_sym = Rf_install(c"if".as_ptr());
-        let log = Rf_install(c"log".as_ptr());
+        let plus = crate::sexp::symbol::install_str("+");
+        let if_sym = crate::sexp::symbol::install_str("if");
+        let log = crate::sexp::symbol::install_str("log");
 
         let plus_val = crate::sexp::envir::R_findVarInFrame(base, plus);
         let if_val = crate::sexp::envir::R_findVarInFrame(base, if_sym);
@@ -266,13 +266,13 @@ fn test_pre_interned_symbols() {
     unsafe {
         initialize_r();
 
-        let plus = Rf_install(c"+".as_ptr());
+        let plus = crate::sexp::symbol::install_str("+");
         assert!(!plus.is_null());
 
-        let plus2 = Rf_install(c"+".as_ptr());
+        let plus2 = crate::sexp::symbol::install_str("+");
         assert_eq!(plus, plus2);
 
-        let if_sym = Rf_install(c"if".as_ptr());
+        let if_sym = crate::sexp::symbol::install_str("if");
         assert!(!if_sym.is_null());
 
         shutdown_r();

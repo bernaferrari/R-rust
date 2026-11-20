@@ -256,6 +256,14 @@ impl<'a> Sexp<'a> {
         Sexp::from_singleton(pool.nil(), pool)
     }
 
+    /// Return R's immutable `R_MissingArg` sentinel as an owner-independent
+    /// handle.
+    #[inline]
+    pub fn missing() -> Sexp<'static> {
+        let pool = crate::sexp::globals::immutable_singleton_pool();
+        Sexp::from_singleton(pool.missing(), pool)
+    }
+
     /// Retain NULL from this value's original singleton bank, including after
     /// the runtime closes or the ambient bank rotates.
     pub(crate) fn original_singleton_nil(&self) -> Option<Sexp<'static>> {
@@ -2095,7 +2103,7 @@ mod tests {
         let second_value = second.as_raw();
         let na_rm = session.with_active(|| unsafe {
             factory
-                .wrap(crate::sexp::symbol::Rf_install(c"na.rm".as_ptr()))
+                .wrap(crate::sexp::symbol::install_str("na.rm"))
                 .unwrap()
         });
         let mut list = pairlist::PairlistBuilder::from_factory(factory);

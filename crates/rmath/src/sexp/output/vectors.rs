@@ -249,7 +249,7 @@ pub(crate) fn table_title(x: Sexp<'_>) -> Option<String> {
     unsafe {
         let title = crate::sexp::attrib_core::getAttrib(
             x.as_raw(),
-            crate::sexp::symbol::Rf_install(c"table.name".as_ptr()),
+            crate::sexp::symbol::install_str("table.name"),
         );
         let title = Sexp::from_raw(title)?;
         if title.clone().typeof_() != SEXPTYPE::STRSXP || title.clone().len() == 0 {

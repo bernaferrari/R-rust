@@ -42,6 +42,41 @@ fn symbol_allocation_error() -> ! {
     super::context::r_error("permanent symbol allocation exceeds session memory limit")
 }
 
+/// Intern a Rust `&str` in the active session's symbol table.
+///
+/// Checked spelling of [`Rf_install`] for callers that already hold UTF-8:
+/// the ambient entry pins the original instance, so no unsafe contract is
+/// left for the caller to uphold.
+pub(crate) fn install_str(name: &str) -> SEXP {
+    super::instance::with_required_current_instance(|inst| unsafe {
+        install_str_in(inst, name)
+    })
+}
+
+/// Intern `name` in `inst`'s symbol table, returning the existing SYMSXP
+/// when the name was already installed.
+///
+/// # Safety
+/// `inst` must point at a live [`RInstance`] whose owner stays active across
+/// this strictly-local table update; no callback or allocation reentry may
+/// overlap the field lends.
+pub(crate) unsafe fn install_str_in(inst: *mut RInstance, name: &str) -> SEXP {
+    check_symbol_length(name.len());
+    // P1/P2: strictly-local field lends; no interpreter callback runs during
+    // these owned allocations.
+    unsafe {
+        if let Some(&existing) = (*inst).symbols.get(name) {
+            return existing;
+        }
+        intern_symbol(
+            &mut (*inst).symbols,
+            &mut (*inst).symbol_nodes,
+            &mut (*inst).persistent_nodes,
+            name.to_string(),
+        )
+    }
+}
+
 fn intern_symbol(
     symbols: &mut HashMap<String, SEXP>,
     nodes: &mut Vec<*mut SexprecCore>,
@@ -136,29 +171,14 @@ pub(crate) unsafe fn Rf_install(name: *const c_char) -> SEXP {
 }
 
 pub(crate) unsafe fn Rf_install_in(inst: *mut RInstance, name: *const c_char) -> SEXP {
-    unsafe {
-        if name.is_null() {
-            return ptr::null_mut();
-        }
-
-        let cstr = std::ffi::CStr::from_ptr(name);
-        check_symbol_length(cstr.to_bytes().len());
-        let name_str = match cstr.to_str() {
-            Ok(s) => s.to_string(),
-            Err(_) => return ptr::null_mut(),
-        };
-
-        if let Some(&existing) = (*inst).symbols.get(&name_str) {
-            return existing;
-        }
-        // The safe allocator publishes the name and symbol together.
-        intern_symbol(
-            &mut (*inst).symbols,
-            &mut (*inst).symbol_nodes,
-            &mut (*inst).persistent_nodes,
-            name_str,
-        )
+    if name.is_null() {
+        return ptr::null_mut();
     }
+    let name_str = match unsafe { std::ffi::CStr::from_ptr(name) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(),
+    };
+    unsafe { install_str_in(inst, name_str) }
 }
 
 /// Install a symbol with a known length (not null-terminated).
@@ -181,23 +201,10 @@ pub(crate) unsafe fn Rf_installChar_in(
     };
     check_symbol_length(length);
     let bytes = unsafe { std::slice::from_raw_parts(name as *const u8, length) };
-    let name_str = match std::str::from_utf8(bytes) {
-        Ok(s) => s.to_string(),
-        Err(_) => return ptr::null_mut(),
+    let Ok(name_str) = std::str::from_utf8(bytes) else {
+        return ptr::null_mut();
     };
-
-    // No interpreter callback runs during these owned allocations.
-    unsafe {
-        if let Some(&existing) = (*inst).symbols.get(&name_str) {
-            return existing;
-        }
-        intern_symbol(
-            &mut (*inst).symbols,
-            &mut (*inst).symbol_nodes,
-            &mut (*inst).persistent_nodes,
-            name_str,
-        )
-    }
+    unsafe { install_str_in(inst, name_str) }
 }
 
 // ---------------------------------------------------------------------------
@@ -206,142 +213,102 @@ pub(crate) unsafe fn Rf_installChar_in(
 
 /// Get or create the "base" symbol.
 pub fn R_BaseSymbol() -> SEXP {
-    // SAFETY: intern a static NUL-terminated literal; the returned
-    // projection carries no dereference authority.
-    unsafe { Rf_install(c"base".as_ptr()) }
+    install_str("base")
 }
 
 /// Get or create the "{ brace" symbol.
 pub fn R_BraceSymbol() -> SEXP {
-    // SAFETY: intern a static NUL-terminated literal; the returned
-    // projection carries no dereference authority.
-    unsafe { Rf_install(c"{".as_ptr()) }
+    install_str("{")
 }
 
 /// Get or create the "[[" symbol.
 pub fn R_Bracket2Symbol() -> SEXP {
-    // SAFETY: intern a static NUL-terminated literal; the returned
-    // projection carries no dereference authority.
-    unsafe { Rf_install(c"[[".as_ptr()) }
+    install_str("[[")
 }
 
 /// Get or create the "[" symbol.
 pub fn R_BracketSymbol() -> SEXP {
-    // SAFETY: intern a static NUL-terminated literal; the returned
-    // projection carries no dereference authority.
-    unsafe { Rf_install(c"[".as_ptr()) }
+    install_str("[")
 }
 
 /// Get or create the "function" symbol.
 pub fn R_FunctionSymbol() -> SEXP {
-    // SAFETY: intern a static NUL-terminated literal; the returned
-    // projection carries no dereference authority.
-    unsafe { Rf_install(c"function".as_ptr()) }
+    install_str("function")
 }
 
 /// Get or create the "while" symbol.
 pub fn R_WhileSymbol() -> SEXP {
-    // SAFETY: intern a static NUL-terminated literal; the returned
-    // projection carries no dereference authority.
-    unsafe { Rf_install(c"while".as_ptr()) }
+    install_str("while")
 }
 
 /// Get or create the "for" symbol.
 pub fn R_ForSymbol() -> SEXP {
-    // SAFETY: intern a static NUL-terminated literal; the returned
-    // projection carries no dereference authority.
-    unsafe { Rf_install(c"for".as_ptr()) }
+    install_str("for")
 }
 
 /// Get or create the "if" symbol.
 pub fn R_IfSymbol() -> SEXP {
-    // SAFETY: intern a static NUL-terminated literal; the returned
-    // projection carries no dereference authority.
-    unsafe { Rf_install(c"if".as_ptr()) }
+    install_str("if")
 }
 
 /// Get or create the "repeat" symbol.
 pub fn R_RepeatSymbol() -> SEXP {
-    // SAFETY: intern a static NUL-terminated literal; the returned
-    // projection carries no dereference authority.
-    unsafe { Rf_install(c"repeat".as_ptr()) }
+    install_str("repeat")
 }
 
 /// Get or create the "break" symbol.
 pub fn R_BreakSymbol() -> SEXP {
-    // SAFETY: intern a static NUL-terminated literal; the returned
-    // projection carries no dereference authority.
-    unsafe { Rf_install(c"break".as_ptr()) }
+    install_str("break")
 }
 
 /// Get or create the "next" symbol.
 pub fn R_NextSymbol() -> SEXP {
-    // SAFETY: intern a static NUL-terminated literal; the returned
-    // projection carries no dereference authority.
-    unsafe { Rf_install(c"next".as_ptr()) }
+    install_str("next")
 }
 
 /// Get or create the "..." symbol.
 pub fn R_DotsSymbol() -> SEXP {
-    // SAFETY: intern a static NUL-terminated literal; the returned
-    // projection carries no dereference authority.
-    unsafe { Rf_install(c"...".as_ptr()) }
+    install_str("...")
 }
 
 /// Get or create the "double colon" symbol (::).
 pub fn R_DoubleColonSymbol() -> SEXP {
-    // SAFETY: intern a static NUL-terminated literal; the returned
-    // projection carries no dereference authority.
-    unsafe { Rf_install(c"::".as_ptr()) }
+    install_str("::")
 }
 
 /// Get or create the "triple colon" symbol (:::).
 pub fn R_TripleColonSymbol() -> SEXP {
-    // SAFETY: intern a static NUL-terminated literal; the returned
-    // projection carries no dereference authority.
-    unsafe { Rf_install(c":::".as_ptr()) }
+    install_str(":::")
 }
 
 /// Get or create the "$" symbol.
 pub fn R_DollarSymbol() -> SEXP {
-    // SAFETY: intern a static NUL-terminated literal; the returned
-    // projection carries no dereference authority.
-    unsafe { Rf_install(c"$".as_ptr()) }
+    install_str("$")
 }
 
 /// Get or create the "@" symbol.
 pub fn R_AtSymbol() -> SEXP {
-    // SAFETY: intern a static NUL-terminated literal; the returned
-    // projection carries no dereference authority.
-    unsafe { Rf_install(c"@".as_ptr()) }
+    install_str("@")
 }
 
 /// Get or create the "=" symbol.
 pub fn R_EqSymbol() -> SEXP {
-    // SAFETY: intern a static NUL-terminated literal; the returned
-    // projection carries no dereference authority.
-    unsafe { Rf_install(c"=".as_ptr()) }
+    install_str("=")
 }
 
 /// Get or create the "<-" symbol.
 pub fn R_LeftAssignSymbol() -> SEXP {
-    // SAFETY: intern a static NUL-terminated literal; the returned
-    // projection carries no dereference authority.
-    unsafe { Rf_install(c"<-".as_ptr()) }
+    install_str("<-")
 }
 
 /// Get or create the "<<" symbol.
 pub fn R_DoubleLeftAssignSymbol() -> SEXP {
-    // SAFETY: intern a static NUL-terminated literal; the returned
-    // projection carries no dereference authority.
-    unsafe { Rf_install(c"<<-".as_ptr()) }
+    install_str("<<-")
 }
 
 /// Get or create the "as" symbol.
 pub fn R_AsSymbol() -> SEXP {
-    // SAFETY: intern a static NUL-terminated literal; the returned
-    // projection carries no dereference authority.
-    unsafe { Rf_install(c"as".as_ptr()) }
+    install_str("as")
 }
 
 // ---------------------------------------------------------------------------
@@ -467,7 +434,7 @@ mod tests {
     #[test]
     fn test_install_basic() {
         with_session(|| unsafe {
-            let s1 = Rf_install(c"hello".as_ptr());
+            let s1 = install_str("hello");
             assert!(!s1.is_null());
             assert_eq!((*s1).sxpinfo.type_of(), SEXPTYPE::SYMSXP);
         });
@@ -476,8 +443,8 @@ mod tests {
     #[test]
     fn test_install_interning() {
         with_session(|| unsafe {
-            let s1 = Rf_install(c"myvar".as_ptr());
-            let s2 = Rf_install(c"myvar".as_ptr());
+            let s1 = install_str("myvar");
+            let s2 = install_str("myvar");
             assert_eq!(s1, s2); // Same pointer
         });
     }
@@ -485,8 +452,8 @@ mod tests {
     #[test]
     fn test_install_different() {
         with_session(|| unsafe {
-            let s1 = Rf_install(c"x".as_ptr());
-            let s2 = Rf_install(c"y".as_ptr());
+            let s1 = install_str("x");
+            let s2 = install_str("y");
             assert_ne!(s1, s2);
         });
     }
@@ -496,9 +463,9 @@ mod tests {
         let left = RSession::new();
         let right = RSession::new();
 
-        let left_a = left.with_active(|| unsafe { Rf_install(c"session_local_symbol".as_ptr()) });
-        let left_b = left.with_active(|| unsafe { Rf_install(c"session_local_symbol".as_ptr()) });
-        let right_a = right.with_active(|| unsafe { Rf_install(c"session_local_symbol".as_ptr()) });
+        let left_a = left.with_active(|| unsafe { install_str("session_local_symbol") });
+        let left_b = left.with_active(|| unsafe { install_str("session_local_symbol") });
+        let right_a = right.with_active(|| unsafe { install_str("session_local_symbol") });
 
         assert_eq!(left_a, left_b);
         assert_ne!(left_a, right_a);
@@ -509,8 +476,8 @@ mod tests {
         use crate::sexp::memory::projection_directory_probe_count;
 
         let _session = RSession::new_for_gc_tests();
-        let left = unsafe { Rf_install(c"left_symbol_name".as_ptr()) };
-        let right = unsafe { Rf_install(c"right_symbol_name".as_ptr()) };
+        let left = unsafe { install_str("left_symbol_name") };
+        let right = unsafe { install_str("right_symbol_name") };
 
         let before = projection_directory_probe_count();
         assert!(symbol_name_bytes_equal(left, left));
@@ -532,7 +499,7 @@ mod tests {
                     accessors::STRING_ELT, constructors::Rf_ScalarString, globals::R_NilValue,
                     protect::protect,
                 };
-                let name = PRINTNAME(Rf_install(c"shared_decoded_name".as_ptr()));
+                let name = PRINTNAME(install_str("shared_decoded_name"));
                 let source = Rf_ScalarString(name);
                 let _source = protect(source);
                 let wire = crate::mainutils::serialize::R_serialize(
@@ -557,14 +524,14 @@ mod tests {
     fn canonical_character_lookup_rejects_modified_headers_and_non_ascii_names() {
         let session = RSession::new_for_gc_tests();
         session.with_active(|| unsafe {
-            let name = PRINTNAME(Rf_install(c"changed_decoded_name".as_ptr()));
+            let name = PRINTNAME(install_str("changed_decoded_name"));
             assert_eq!(
                 interned_ascii_character(b"changed_decoded_name"),
                 Some(name)
             );
             crate::sexp::accessors::SETLEVELS(name, 1);
             assert_eq!(interned_ascii_character(b"changed_decoded_name"), None);
-            Rf_install(c"café".as_ptr());
+            install_str("café");
             assert_eq!(interned_ascii_character("café".as_bytes()), None);
             assert_eq!(interned_ascii_character(b"not_interned"), None);
         });

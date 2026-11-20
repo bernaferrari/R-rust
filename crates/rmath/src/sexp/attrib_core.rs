@@ -17,7 +17,6 @@ use super::accessors::{
 use super::constructors::*;
 use super::ffi::{SEXP, SEXPTYPE};
 use super::globals::R_NilValue;
-use super::symbol::Rf_install;
 
 #[cfg(test)]
 #[path = "names_atomic_tests.rs"]
@@ -33,72 +32,52 @@ mod tsp_tests;
 
 /// Get the "class" symbol.
 pub fn R_ClassSymbol() -> SEXP {
-    // SAFETY: intern a static NUL-terminated literal; the returned
-    // projection carries no dereference authority.
-    unsafe { Rf_install(c"class".as_ptr()) }
+    super::symbol::install_str("class")
 }
 
 /// Get the "names" symbol.
 pub fn R_NamesSymbol() -> SEXP {
-    // SAFETY: intern a static NUL-terminated literal; the returned
-    // projection carries no dereference authority.
-    unsafe { Rf_install(c"names".as_ptr()) }
+    super::symbol::install_str("names")
 }
 
 /// Get the "dim" symbol.
 pub fn R_DimSymbol() -> SEXP {
-    // SAFETY: intern a static NUL-terminated literal; the returned
-    // projection carries no dereference authority.
-    unsafe { Rf_install(c"dim".as_ptr()) }
+    super::symbol::install_str("dim")
 }
 
 /// Get the "dimnames" symbol.
 pub fn R_DimNamesSymbol() -> SEXP {
-    // SAFETY: intern a static NUL-terminated literal; the returned
-    // projection carries no dereference authority.
-    unsafe { Rf_install(c"dimnames".as_ptr()) }
+    super::symbol::install_str("dimnames")
 }
 
 /// Get the "levels" symbol.
 pub fn R_LevelsSymbol() -> SEXP {
-    // SAFETY: intern a static NUL-terminated literal; the returned
-    // projection carries no dereference authority.
-    unsafe { Rf_install(c"levels".as_ptr()) }
+    super::symbol::install_str("levels")
 }
 
 /// Get the "tsp" symbol.
 pub fn R_TspSymbol() -> SEXP {
-    // SAFETY: intern a static NUL-terminated literal; the returned
-    // projection carries no dereference authority.
-    unsafe { Rf_install(c"tsp".as_ptr()) }
+    super::symbol::install_str("tsp")
 }
 
 /// Get the "srcref" symbol.
 pub fn R_SrcRefSymbol() -> SEXP {
-    // SAFETY: intern a static NUL-terminated literal; the returned
-    // projection carries no dereference authority.
-    unsafe { Rf_install(c"srcref".as_ptr()) }
+    super::symbol::install_str("srcref")
 }
 
 /// Get the "srcfile" symbol.
 pub fn R_SrcFileSymbol() -> SEXP {
-    // SAFETY: intern a static NUL-terminated literal; the returned
-    // projection carries no dereference authority.
-    unsafe { Rf_install(c"srcfile".as_ptr()) }
+    super::symbol::install_str("srcfile")
 }
 
 /// Get the "row.names" symbol.
 pub fn R_RowNamesSymbol() -> SEXP {
-    // SAFETY: intern a static NUL-terminated literal; the returned
-    // projection carries no dereference authority.
-    unsafe { Rf_install(c"row.names".as_ptr()) }
+    super::symbol::install_str("row.names")
 }
 
 /// Get the ".Environment" symbol.
 pub fn R_EnvironmentSymbol() -> SEXP {
-    // SAFETY: intern a static NUL-terminated literal; the returned
-    // projection carries no dereference authority.
-    unsafe { Rf_install(c".Environment".as_ptr()) }
+    super::symbol::install_str(".Environment")
 }
 
 // ---------------------------------------------------------------------------
@@ -1434,7 +1413,8 @@ fn tsp_parameters(
         // before scalar dispatch; no payload loan crosses that callback.
         access
             .with_native(|owner| unsafe {
-                let option = crate::mainutils::options::GetOption1(Rf_install(c"ts.eps".as_ptr()));
+                let option =
+                    crate::mainutils::options::GetOption1(super::symbol::install_str("ts.eps"));
                 let option = owner.sexp(option)?.into_owned()?;
                 Ok(crate::mainutils::coerce::asReal(option.as_raw()))
             })
@@ -1650,7 +1630,7 @@ pub fn R_classgets(x: SEXP, klass: SEXP) -> SEXP {
 /// Get the length of an object via the "length" attribute.
 pub fn R_length_gets(x: SEXP) -> c_int {
     unsafe {
-        let len_sym = Rf_install(c"length".as_ptr());
+        let len_sym = super::symbol::install_str("length");
         let val = getAttrib(x, len_sym);
         if !val.is_null() && TYPEOF(val) == SEXPTYPE::INTSXP {
             let data = super::accessors::INTEGER(val);

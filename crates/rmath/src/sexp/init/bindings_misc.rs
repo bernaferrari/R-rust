@@ -90,7 +90,7 @@ pub(crate) fn install(base_env: SEXP) {
              }",
         );
         {
-            let sym = crate::sexp::symbol::Rf_install(c"identity".as_ptr());
+            let sym = crate::sexp::symbol::install_str("identity");
             let fun = crate::sexp::envir::R_findVarInFrame(base_env, sym);
             let _ = crate::eval::bc_compile::compile_closure(fun);
         }

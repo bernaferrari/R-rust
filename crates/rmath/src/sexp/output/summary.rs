@@ -79,7 +79,7 @@ pub(crate) fn format_summary_default_unnamed_numeric(x: Sexp<'_>) -> String {
 
 pub(crate) fn format_summary_via_format(x: Sexp<'_>) -> Option<Vec<String>> {
     unsafe {
-        let sym = crate::sexp::symbol::Rf_install(c"format".as_ptr());
+        let sym = crate::sexp::symbol::install_str("format");
         let fun = crate::sexp::envir::findFun(sym, crate::sexp::globals::R_GlobalEnv());
         if fun.is_null() || fun == crate::sexp::globals::R_UnboundValue() {
             return None;

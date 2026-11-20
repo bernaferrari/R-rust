@@ -401,11 +401,11 @@ fn attribute_cycle_does_not_hide_an_earlier_match_or_mutate_on_error() {
         .unwrap()
         .into_owned()
         .unwrap();
-    let present = unsafe { token.sexp(crate::sexp::symbol::Rf_install(c"present".as_ptr())) }
+    let present = unsafe { token.sexp(crate::sexp::symbol::install_str("present")) }
         .unwrap()
         .into_owned()
         .unwrap();
-    let missing = unsafe { token.sexp(crate::sexp::symbol::Rf_install(c"missing".as_ptr())) }
+    let missing = unsafe { token.sexp(crate::sexp::symbol::install_str("missing")) }
         .unwrap()
         .into_owned()
         .unwrap();

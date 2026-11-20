@@ -37,12 +37,10 @@ pub(crate) fn first_deparse_line(text: crate::sexp::ffi::SEXP) -> Option<String>
 
 pub(crate) fn primitive_args_prototype(name: &str) -> Option<crate::sexp::ffi::SEXP> {
     unsafe {
-        let name_c = std::ffi::CString::new(name).ok()?;
-        let symbol = crate::sexp::symbol::Rf_install(name_c.as_ptr());
+        let symbol = crate::sexp::symbol::install_str(name);
         let base = crate::sexp::globals::R_BaseEnv();
         for registry in [".ArgsEnv", ".GenericArgsEnv"] {
-            let registry_c = std::ffi::CString::new(registry).ok()?;
-            let registry_sym = crate::sexp::symbol::Rf_install(registry_c.as_ptr());
+            let registry_sym = crate::sexp::symbol::install_str(registry);
             let mut env = crate::sexp::envir::R_findVarInFrame(base, registry_sym);
             if env.is_null() || env == crate::sexp::globals::R_UnboundValue() {
                 continue;
@@ -399,9 +397,7 @@ pub(crate) fn format_try_error(x: Sexp<'_>) -> String {
                 crate::sexp::attrib_core::R_ClassSymbol(),
             );
             let has_condition = {
-                let cond_sym = crate::sexp::symbol::Rf_install(
-                    b"condition\0".as_ptr() as *const std::os::raw::c_char
-                );
+                let cond_sym = crate::sexp::symbol::install_str("condition");
                 let cond = crate::sexp::attrib_core::getAttrib(x.clone().as_raw(), cond_sym);
                 !cond.is_null() && cond != R_NilValue()
             };
@@ -416,9 +412,7 @@ pub(crate) fn format_try_error(x: Sexp<'_>) -> String {
                     }
                 }
             }
-            let cond_sym = crate::sexp::symbol::Rf_install(
-                b"condition\0".as_ptr() as *const std::os::raw::c_char
-            );
+            let cond_sym = crate::sexp::symbol::install_str("condition");
             let cond = crate::sexp::attrib_core::getAttrib(x.as_raw(), cond_sym);
             if let Some(cond) = Sexp::from_raw(cond) {
                 if cond.clone().typeof_() != SEXPTYPE::NILSXP {
