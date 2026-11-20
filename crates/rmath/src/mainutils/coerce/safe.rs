@@ -459,7 +459,7 @@ pub fn is_logical_safe(x: Sexp) -> c_int {
 }
 
 pub fn is_function_safe(x: Sexp) -> c_int {
-    { (Rf_isFunction(x.as_raw()) != 0) as c_int }
+    (Rf_isFunction(x.as_raw()) != 0) as c_int
 }
 
 pub fn is_matrix_safe(x: Sexp) -> c_int {

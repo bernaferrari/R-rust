@@ -1123,7 +1123,7 @@ pub(crate) fn sort_logical_arg(args: SEXP, names: &[&str], position: usize) -> O
 }
 
 pub(crate) fn charsxp_is_na(value: SEXP) -> bool {
-    { value.is_null() || value == crate::sexp::globals::R_NaString() }
+    value.is_null() || value == crate::sexp::globals::R_NaString()
 }
 
 pub(crate) fn collate_str(a: &str, b: &str) -> std::cmp::Ordering {

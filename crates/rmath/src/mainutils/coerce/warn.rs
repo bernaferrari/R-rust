@@ -342,7 +342,7 @@ pub unsafe fn CoercionWarning(warn: c_int) {
                 if call.is_null() {
                     Ok(None)
                 } else {
-                    { token.sexp(call)?.into_owned().map(Some) }
+                    token.sexp(call)?.into_owned().map(Some)
                 }
             })?;
             for (flag, message) in [

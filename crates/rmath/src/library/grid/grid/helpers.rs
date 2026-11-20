@@ -122,7 +122,7 @@ pub(crate) unsafe fn numeric(x: SEXP, index: c_int) -> f64 {
 
 #[inline]
 pub(crate) unsafe fn isNull(x: SEXP) -> bool {
-    { x.is_null() || x == R_NilValue() }
+    x.is_null() || x == R_NilValue()
 }
 
 /* ==============================
