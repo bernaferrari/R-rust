@@ -34,13 +34,39 @@ pub extern "C" fn R_pretty(
     eps_correction: std::os::raw::c_int,
     return_bounds: std::os::raw::c_int,
 ) -> f64 {
-    let h = unsafe { *high_u_fact.add(0) };
-    let h5 = unsafe { *high_u_fact.add(1) };
-    let f_min = unsafe { *high_u_fact.add(2) };
+    // Raw Fortran pointers: one scalar each, and three high_u_fact factors.
+    unsafe {
+        pretty_impl(
+            &mut *lo,
+            &mut *up,
+            &mut *ndiv,
+            min_n,
+            shrink_sml,
+            *high_u_fact.add(0),
+            *high_u_fact.add(1),
+            *high_u_fact.add(2),
+            eps_correction,
+            return_bounds,
+        )
+    }
+}
 
-    let lo_ = unsafe { *lo };
-    let up_ = unsafe { *up };
-    let ndiv_val = unsafe { *ndiv } as i32;
+#[allow(clippy::too_many_arguments)]
+fn pretty_impl(
+    lo: &mut f64,
+    up: &mut f64,
+    ndiv: &mut std::os::raw::c_int,
+    min_n: std::os::raw::c_int,
+    shrink_sml: f64,
+    h: f64,
+    h5: f64,
+    f_min: f64,
+    eps_correction: std::os::raw::c_int,
+    return_bounds: std::os::raw::c_int,
+) -> f64 {
+    let lo_ = *lo;
+    let up_ = *up;
+    let ndiv_val = *ndiv as i32;
     let dx = up_ - lo_;
 
     let cell: f64;
@@ -171,29 +197,27 @@ pub extern "C" fn R_pretty(
 
     if eps_correction > 0 && (eps_correction > 1 || !i_small) {
         let d_max = dbL_MAX * (1.0 - ldexp(dbL_EPSILON, -1));
-        unsafe {
-            if *lo < 0.0 {
-                *lo *= 1.0 + dbL_EPSILON;
-            } else if *lo > 0.0 {
-                *lo *= 1.0 - dbL_EPSILON;
-            } else {
-                *lo = -fmin2(unit, dbL_MIN);
-            }
+        if *lo < 0.0 {
+            *lo *= 1.0 + dbL_EPSILON;
+        } else if *lo > 0.0 {
+            *lo *= 1.0 - dbL_EPSILON;
+        } else {
+            *lo = -fmin2(unit, dbL_MIN);
+        }
 
-            if *up < 0.0 {
-                *up *= 1.0 - dbL_EPSILON;
-            } else if *up > 0.0 {
-                if *up < d_max {
-                    *up *= 1.0 + dbL_EPSILON;
-                }
-            } else {
-                *up = fmin2(unit, dbL_MIN);
+        if *up < 0.0 {
+            *up *= 1.0 - dbL_EPSILON;
+        } else if *up > 0.0 {
+            if *up < d_max {
+                *up *= 1.0 + dbL_EPSILON;
             }
+        } else {
+            *up = fmin2(unit, dbL_MIN);
         }
     }
 
     let mut guard = 0;
-    while ns * unit > unsafe { *lo } + ROUNDING_EPS * unit && guard < 10000 {
+    while ns * unit > *lo + ROUNDING_EPS * unit && guard < 10000 {
         ns -= 1.0;
         guard += 1;
     }
@@ -203,7 +227,7 @@ pub extern "C" fn R_pretty(
         guard += 1;
     }
     guard = 0;
-    while nu * unit < unsafe { *up } - ROUNDING_EPS * unit && guard < 10000 {
+    while nu * unit < *up - ROUNDING_EPS * unit && guard < 10000 {
         nu += 1.0;
         guard += 1;
     }
@@ -233,20 +257,18 @@ pub extern "C" fn R_pretty(
         k
     };
 
-    unsafe {
-        if return_bounds != 0 {
-            if ns * unit < *lo {
-                *lo = ns * unit;
-            }
-            if nu * unit > *up {
-                *up = nu * unit;
-            }
-        } else {
-            *lo = ns;
-            *up = nu;
+    if return_bounds != 0 {
+        if ns * unit < *lo {
+            *lo = ns * unit;
         }
-        *ndiv = new_ndiv;
+        if nu * unit > *up {
+            *up = nu * unit;
+        }
+    } else {
+        *lo = ns;
+        *up = nu;
     }
+    *ndiv = new_ndiv;
 
     unit
 }

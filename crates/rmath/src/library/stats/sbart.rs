@@ -115,16 +115,13 @@ unsafe fn sgram(
         let mut ileft: c_int = 0;
 
         for i in 1..=nk {
-            let mut mflag: c_int = 0;
-            let raw = crate::appl::interv::findInterval2(
-                knot,
-                (nk + 1) as c_int,
+            let (raw, _mflag) = crate::appl::interv::findInterval2(
+                std::slice::from_raw_parts(knot, nk + 1),
                 *knot.add(i - 1),
                 false,
                 false,
                 false,
                 ileft,
-                &mut mflag,
             );
             ileft = raw;
             let left = raw + 1;
@@ -311,15 +308,12 @@ unsafe fn stxwx(
 
         for i in 0..n {
             // Find interval
-            let mut mflag: c_int = 0;
-            let ret = crate::appl::interv::findInterval(
-                knot,
-                (nk + 1) as c_int,
+            let (ret, mflag) = crate::appl::interv::findInterval(
+                std::slice::from_raw_parts(knot, nk + 1),
                 *xs.add(i),
-                0,
-                0,
+                false,
+                false,
                 ileft,
-                &mut mflag,
             );
             // findInterval returns the 0-based interval index; for the right
             // boundary (mflag == 1) it returns n = nk+1, which already equals
@@ -490,16 +484,14 @@ unsafe fn sslvrg(
 
             for i in 0..n {
                 let mut xv = *xs.add(i);
-                let mut mflag: c_int = 0;
-                ileft = crate::appl::interv::findInterval(
-                    knot,
-                    (nk + 1) as c_int,
+                let (i_ret, mflag) = crate::appl::interv::findInterval(
+                    std::slice::from_raw_parts(knot, nk + 1),
                     xv,
-                    0,
-                    0,
+                    false,
+                    false,
                     ileft,
-                    &mut mflag,
                 );
+                ileft = i_ret;
                 ileft += 1; // convert to 1-based
 
                 if mflag == -1 {
