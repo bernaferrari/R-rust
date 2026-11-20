@@ -16,7 +16,7 @@ use std::os::raw::{c_char, c_int, c_long, c_ulong};
 use std::ptr;
 
 /// Count the number of characters in a string.
-pub unsafe fn trio_length(string: *const c_char) -> usize {
+pub fn trio_length(string: *const c_char) -> usize {
     unsafe {
         if string.is_null() {
             return 0;
@@ -30,7 +30,7 @@ pub unsafe fn trio_length(string: *const c_char) -> usize {
 }
 
 /// Count at most `max` characters in a string.
-pub unsafe fn trio_length_max(string: *const c_char, max: usize) -> usize {
+pub fn trio_length_max(string: *const c_char, max: usize) -> usize {
     unsafe {
         if string.is_null() {
             return 0;
@@ -47,7 +47,7 @@ pub unsafe fn trio_length_max(string: *const c_char, max: usize) -> usize {
 }
 
 /// Append `source` at the end of `target`.
-pub unsafe fn trio_append(target: *mut c_char, source: *const c_char) -> c_int {
+pub fn trio_append(target: *mut c_char, source: *const c_char) -> c_int {
     unsafe {
         if target.is_null() || source.is_null() {
             return 0;
@@ -61,7 +61,7 @@ pub unsafe fn trio_append(target: *mut c_char, source: *const c_char) -> c_int {
 }
 
 /// Append at most `max` characters from `source` to `target`.
-pub unsafe fn trio_append_max(target: *mut c_char, max: usize, source: *const c_char) -> c_int {
+pub fn trio_append_max(target: *mut c_char, max: usize, source: *const c_char) -> c_int {
     unsafe {
         let length = trio_length(target);
         if max > length && !source.is_null() {
@@ -75,7 +75,7 @@ pub unsafe fn trio_append_max(target: *mut c_char, max: usize, source: *const c_
 }
 
 /// Determine if a string contains a substring.
-pub unsafe fn trio_contains(string: *const c_char, substring: *const c_char) -> c_int {
+pub fn trio_contains(string: *const c_char, substring: *const c_char) -> c_int {
     unsafe {
         if string.is_null() || substring.is_null() {
             return 0;
@@ -99,7 +99,7 @@ pub unsafe fn trio_contains(string: *const c_char, substring: *const c_char) -> 
 }
 
 /// Copy `source` to `target`.
-pub unsafe fn trio_copy(target: *mut c_char, source: *const c_char) -> c_int {
+pub fn trio_copy(target: *mut c_char, source: *const c_char) -> c_int {
     unsafe {
         if target.is_null() || source.is_null() {
             return 0;
@@ -113,7 +113,7 @@ pub unsafe fn trio_copy(target: *mut c_char, source: *const c_char) -> c_int {
 
 /// Copy at most `max` characters from `source` to `target`.
 /// Always null-terminates.
-pub unsafe fn trio_copy_max(target: *mut c_char, max: usize, source: *const c_char) -> c_int {
+pub fn trio_copy_max(target: *mut c_char, max: usize, source: *const c_char) -> c_int {
     unsafe {
         if target.is_null() || source.is_null() {
             return 0;
@@ -130,7 +130,7 @@ pub unsafe fn trio_copy_max(target: *mut c_char, max: usize, source: *const c_ch
 }
 
 /// Duplicate a string.
-pub unsafe fn trio_duplicate(source: *const c_char) -> *mut c_char {
+pub fn trio_duplicate(source: *const c_char) -> *mut c_char {
     unsafe {
         if source.is_null() {
             return ptr::null_mut();
@@ -146,7 +146,7 @@ pub unsafe fn trio_duplicate(source: *const c_char) -> *mut c_char {
 }
 
 /// Duplicate at most `max` characters of `source`.
-pub unsafe fn trio_duplicate_max(source: *const c_char, max: usize) -> *mut c_char {
+pub fn trio_duplicate_max(source: *const c_char, max: usize) -> *mut c_char {
     unsafe {
         if source.is_null() {
             return ptr::null_mut();
@@ -163,7 +163,7 @@ pub unsafe fn trio_duplicate_max(source: *const c_char, max: usize) -> *mut c_ch
 }
 
 /// Compare two strings for equality (case-insensitive).
-pub unsafe fn trio_equal(first: *const c_char, second: *const c_char) -> c_int {
+pub fn trio_equal(first: *const c_char, second: *const c_char) -> c_int {
     unsafe {
         if first.is_null() || second.is_null() {
             return 0;
@@ -188,7 +188,7 @@ pub unsafe fn trio_equal(first: *const c_char, second: *const c_char) -> c_int {
 }
 
 /// Compare two strings for equality (case-sensitive).
-pub unsafe fn trio_equal_case(first: *const c_char, second: *const c_char) -> c_int {
+pub fn trio_equal_case(first: *const c_char, second: *const c_char) -> c_int {
     unsafe {
         if first.is_null() || second.is_null() {
             return 0;
@@ -211,7 +211,7 @@ pub unsafe fn trio_equal_case(first: *const c_char, second: *const c_char) -> c_
 }
 
 /// Compare two strings up to `max` characters (case-sensitive).
-pub unsafe fn trio_equal_case_max(
+pub fn trio_equal_case_max(
     first: *const c_char,
     max: usize,
     second: *const c_char,
@@ -235,15 +235,13 @@ pub unsafe fn trio_equal_case_max(
 }
 
 /// Compare two strings for equality using locale collation.
-pub unsafe fn trio_equal_locale(first: *const c_char, second: *const c_char) -> c_int {
-    unsafe {
-        // Simplified: fall back to byte comparison (no locale support)
-        trio_equal_case(first, second)
-    }
+pub fn trio_equal_locale(first: *const c_char, second: *const c_char) -> c_int {
+    // Simplified: fall back to byte comparison (no locale support)
+    trio_equal_case(first, second)
 }
 
 /// Compare two strings up to `max` characters (case-insensitive).
-pub unsafe fn trio_equal_max(first: *const c_char, max: usize, second: *const c_char) -> c_int {
+pub fn trio_equal_max(first: *const c_char, max: usize, second: *const c_char) -> c_int {
     unsafe {
         if first.is_null() || second.is_null() {
             return 0;
@@ -270,14 +268,14 @@ pub unsafe fn trio_equal_max(first: *const c_char, max: usize, second: *const c_
 }
 
 /// Get textual description of an error number.
-pub unsafe fn trio_error(_error_number: c_int) -> *const c_char {
+pub fn trio_error(_error_number: c_int) -> *const c_char {
     // Simplified: return a static string
     static UNKNOWN: &[u8] = b"Unknown error\0";
     UNKNOWN.as_ptr() as *const c_char
 }
 
 /// Find first occurrence of a character in a string.
-pub unsafe fn trio_index(string: *const c_char, character: c_int) -> *mut c_char {
+pub fn trio_index(string: *const c_char, character: c_int) -> *mut c_char {
     unsafe {
         if string.is_null() {
             return ptr::null_mut();
@@ -294,7 +292,7 @@ pub unsafe fn trio_index(string: *const c_char, character: c_int) -> *mut c_char
 }
 
 /// Find last occurrence of a character in a string.
-pub unsafe fn trio_index_last(string: *const c_char, character: c_int) -> *mut c_char {
+pub fn trio_index_last(string: *const c_char, character: c_int) -> *mut c_char {
     unsafe {
         if string.is_null() {
             return ptr::null_mut();
@@ -322,7 +320,7 @@ pub fn trio_to_upper(source: c_int) -> c_int {
 }
 
 /// Convert the alphabetic letters in the string to lower-case.
-pub unsafe fn trio_lower(target: *mut c_char) -> c_int {
+pub fn trio_lower(target: *mut c_char) -> c_int {
     unsafe {
         if target.is_null() {
             return 0;
@@ -340,7 +338,7 @@ pub unsafe fn trio_lower(target: *mut c_char) -> c_int {
 }
 
 /// Convert a string to upper-case.
-pub unsafe fn trio_upper(target: *mut c_char) -> c_int {
+pub fn trio_upper(target: *mut c_char) -> c_int {
     unsafe {
         if target.is_null() {
             return 0;
@@ -360,7 +358,7 @@ pub unsafe fn trio_upper(target: *mut c_char) -> c_int {
 /// Compare two strings using wildcards (case-insensitive).
 ///
 /// Wildcards: `*` matches any number of characters, `?` matches a single character.
-pub unsafe fn trio_match(string: *const c_char, pattern: *const c_char) -> c_int {
+pub fn trio_match(string: *const c_char, pattern: *const c_char) -> c_int {
     unsafe {
         let mut s = string;
         let mut p = pattern;
@@ -396,7 +394,7 @@ pub unsafe fn trio_match(string: *const c_char, pattern: *const c_char) -> c_int
 }
 
 /// Tokenize a string.
-pub unsafe fn trio_tokenize(string: *mut c_char, delimiters: *const c_char) -> *mut c_char {
+pub fn trio_tokenize(string: *mut c_char, delimiters: *const c_char) -> *mut c_char {
     unsafe {
         // Simplified: find next token
         if string.is_null() || delimiters.is_null() {
@@ -446,7 +444,7 @@ pub unsafe fn trio_tokenize(string: *mut c_char, delimiters: *const c_char) -> *
 }
 
 /// Convert string to double.
-pub unsafe fn trio_to_double(source: *const c_char, _endp: *mut *mut c_char) -> f64 {
+pub fn trio_to_double(source: *const c_char, _endp: *mut *mut c_char) -> f64 {
     unsafe {
         if source.is_null() {
             return 0.0;
@@ -457,7 +455,7 @@ pub unsafe fn trio_to_double(source: *const c_char, _endp: *mut *mut c_char) -> 
 }
 
 /// Convert string to float.
-pub unsafe fn trio_to_float(source: *const c_char, _endp: *mut *mut c_char) -> f32 {
+pub fn trio_to_float(source: *const c_char, _endp: *mut *mut c_char) -> f32 {
     unsafe {
         if source.is_null() {
             return 0.0;
@@ -468,7 +466,7 @@ pub unsafe fn trio_to_float(source: *const c_char, _endp: *mut *mut c_char) -> f
 }
 
 /// Convert string to long.
-pub unsafe fn trio_to_long(source: *const c_char, _endp: *mut *mut c_char, base: c_int) -> c_long {
+pub fn trio_to_long(source: *const c_char, _endp: *mut *mut c_char, base: c_int) -> c_long {
     unsafe {
         if source.is_null() {
             return 0;
@@ -487,7 +485,7 @@ pub unsafe fn trio_to_long(source: *const c_char, _endp: *mut *mut c_char, base:
 }
 
 /// Convert string to unsigned long.
-pub unsafe fn trio_to_unsigned_long(
+pub fn trio_to_unsigned_long(
     source: *const c_char,
     _endp: *mut *mut c_char,
     base: c_int,
@@ -510,7 +508,7 @@ pub unsafe fn trio_to_unsigned_long(
 }
 
 /// Convert string to long double (returns bits of f64).
-pub unsafe fn trio_to_long_double(source: *const c_char, _endp: *mut *mut c_char) -> u64 {
+pub fn trio_to_long_double(source: *const c_char, _endp: *mut *mut c_char) -> u64 {
     unsafe {
         if source.is_null() {
             return 0;
@@ -522,7 +520,7 @@ pub unsafe fn trio_to_long_double(source: *const c_char, _endp: *mut *mut c_char
 }
 
 /// Apply a function to each character in the target string.
-pub unsafe fn trio_span_function(
+pub fn trio_span_function(
     target: *mut c_char,
     source: *const c_char,
     function: unsafe extern "C" fn(c_int) -> c_int,
@@ -541,7 +539,7 @@ pub unsafe fn trio_span_function(
 }
 
 /// Find substring in string.
-pub unsafe fn trio_substring(string: *const c_char, substring: *const c_char) -> *mut c_char {
+pub fn trio_substring(string: *const c_char, substring: *const c_char) -> *mut c_char {
     unsafe {
         if string.is_null() || substring.is_null() {
             return ptr::null_mut();
@@ -564,7 +562,7 @@ pub unsafe fn trio_substring(string: *const c_char, substring: *const c_char) ->
 }
 
 /// Find substring up to max characters.
-pub unsafe fn trio_substring_max(
+pub fn trio_substring_max(
     string: *const c_char,
     max: usize,
     substring: *const c_char,
@@ -604,7 +602,7 @@ pub unsafe fn trio_substring_max(
 }
 
 /// Calculate a hash value for a string.
-pub unsafe fn trio_hash(string: *const c_char, _hash_type: c_int) -> c_ulong {
+pub fn trio_hash(string: *const c_char, _hash_type: c_int) -> c_ulong {
     unsafe {
         let mut value: c_ulong = 0;
         let mut p = string;
@@ -618,7 +616,7 @@ pub unsafe fn trio_hash(string: *const c_char, _hash_type: c_int) -> c_ulong {
 }
 
 /// Allocate a string of given size.
-pub unsafe fn trio_create(size: usize) -> *mut c_char {
+pub fn trio_create(size: usize) -> *mut c_char {
     unsafe {
         let layout =
             std::alloc::Layout::from_size_align(size, 1).unwrap_or(std::alloc::Layout::new::<u8>());
@@ -632,7 +630,7 @@ pub unsafe fn trio_create(size: usize) -> *mut c_char {
 }
 
 /// Free a string.
-pub unsafe fn trio_destroy(string: *mut c_char) {
+pub fn trio_destroy(string: *mut c_char) {
     unsafe {
         if !string.is_null() {
             // We don't know the original size, so we use a minimal layout
