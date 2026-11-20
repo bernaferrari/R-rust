@@ -54,6 +54,14 @@ user workflows have passed on native Rport and production Wasm.
 
 ## Main verification
 
+- At `9bdd1b88`, header and pairlist reads validate the registered
+  allocation before reading its data. Distribution recycling uses
+  rooted values and typed elements. Compared with `2b3002e0`, the
+  runtime and CLI have 513 fewer production unsafe sites, including
+  385 explicit blocks. Forty native accessor tests, five focused
+  strict-provenance Miri tests, and all 332 production Wasm contracts
+  passed. [First unsafe reduction receipt](ci-checkpoints/unsafe-reduction-9bdd1b88.json)
+
 - At `1ab76d6f`, the distribution registrations call safe numerical
   kernels directly. The core runtime and CLI have 150 fewer written
   unsafe sites than `2b3002e0`. The same checkpoint fixes bounded

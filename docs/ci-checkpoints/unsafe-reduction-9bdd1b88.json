@@ -1,0 +1,46 @@
+{
+  "source_commit": "9bdd1b880acc1a66d1bfb56bf9574f17f4cc1ce6",
+  "published_format_checkpoint": "a7a6e7dad02f7710b2a3bd41ad5f324c122589de",
+  "baseline_commit": "2b3002e003925c899bbf67ba693ac4dbef1931af",
+  "scope": [
+    "crates/rmath/src",
+    "crates/nmath/src",
+    "crates/r-host-cli/src"
+  ],
+  "baseline_written_syntax": {
+    "unsafe_blocks": 15448,
+    "unsafe_foreign_modules": 28,
+    "unsafe_function_declarations": 8637,
+    "unsafe_function_types": 219,
+    "unsafe_implementations": 5
+  },
+  "final_written_syntax": {
+    "unsafe_blocks": 15062,
+    "unsafe_foreign_modules": 28,
+    "unsafe_function_declarations": 8515,
+    "unsafe_function_types": 213,
+    "unsafe_implementations": 5
+  },
+  "net_test_only_blocks_removed": 1,
+  "net_production_blocks_removed": 385,
+  "net_production_function_declarations_removed": 122,
+  "net_production_function_pointer_types_removed": 6,
+  "net_production_sites_removed": 513,
+  "native": {
+    "distribution_tests_passed": 11,
+    "singleton_tests_passed": 20,
+    "accessor_tests_passed": 40,
+    "accessor_timing_probes_ignored": 1,
+    "optimizer_and_namespace_tests_passed": 5,
+    "strict_provenance_miri_projection_tests_passed": 5
+  },
+  "wasm": {
+    "wasm_sha256": "3c9a354f33299e1c38d8052985014e5f6a8d9ccb10b4db61c6bd2acdd8864128",
+    "dependency_scans_passed": 4,
+    "s4_after_dependency_scans": "pass",
+    "nlminb": "pass",
+    "distributions": "pass",
+    "namespace": "pass",
+    "portable_contracts_passed": 332
+  }
+}
