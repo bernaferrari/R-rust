@@ -2,6 +2,7 @@ use r_embed::RSession;
 
 const NAMESPACE_QUALIFIED_LOOKUP_SCRIPT: &str = r##"
     stopifnot(inherits(try(base::lm, silent=TRUE), "try-error"))
+    stopifnot(identical(tryCatch(base::lm, error=conditionMessage), "object 'lm' not found"))
     stopifnot(inherits(try(base:::lm, silent=TRUE), "try-error"))
     stopifnot(inherits(try(graphics::log, silent=TRUE), "try-error"))
     stopifnot(is.function(graphics::plot))
@@ -10,6 +11,9 @@ const NAMESPACE_QUALIFIED_LOOKUP_SCRIPT: &str = r##"
     stopifnot(is.function(plot_export), identical(graphics::plot, plot_export))
     stopifnot(identical(base::as.list, as.list))
     stopifnot(identical(base:::as.list, as.list))
+    stopifnot(identical(base::stop, getExportedValue("base", "stop")))
+    stopifnot(identical(tryCatch(base::stop("qualified sentinel"), error=conditionMessage),
+                        "qualified sentinel"))
     stopifnot(identical(base::.S3PrimitiveGenerics,
                         get(".S3PrimitiveGenerics", asNamespace("base"))))
     stopifnot(identical(stats::lm, stats:::lm))

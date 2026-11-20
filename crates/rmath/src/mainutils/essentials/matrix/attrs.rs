@@ -1210,8 +1210,11 @@ pub unsafe fn do_namespace_get(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> 
             let private_lookup = symbol_name(CAR(call)).as_deref() == Some(":::")
                 || crate::eval::builtin::PRIMNAME(op) == ":::";
             if !private_lookup
-                && crate::mainutils::essentials::shared::namespace_export_environment(namespace)
-                    .is_some()
+                && (namespace == crate::sexp::envir::R_BaseNamespace()
+                    || crate::mainutils::essentials::shared::namespace_export_environment(
+                        namespace,
+                    )
+                    .is_some())
             {
                 return namespace_value(namespace, name, true);
             }
