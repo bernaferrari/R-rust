@@ -43,10 +43,44 @@ const BIG: f64 = 1.0e+35;
 // BFGS variable-metric method (vmmin)
 // =====================================================================
 
-/// BFGS variable-metric minimization.
+mod bfgs;
+pub(crate) use bfgs::{BfgsObjective, BfgsSettings, minimize_bfgs};
+
+struct CObjective {
+    evaluate: OptimFn,
+    differentiate: OptimGr,
+    context: *mut std::ffi::c_void,
+}
+
+impl BfgsObjective for CObjective {
+    fn value(&mut self, point: &mut [f64]) -> Result<f64, &'static str> {
+        // SAFETY: vmmin establishes the original ABI and passes every
+        // coordinate for the duration of each synchronous callback.
+        Ok(unsafe { (self.evaluate)(point.len() as i32, point.as_mut_ptr(), self.context) })
+    }
+
+    fn gradient(&mut self, point: &mut [f64], slope: &mut [f64]) -> Result<(), &'static str> {
+        // SAFETY: both buffers have the original ABI dimension and the
+        // callback can write them during this call.
+        unsafe {
+            (self.differentiate)(
+                point.len() as i32,
+                point.as_mut_ptr(),
+                slope.as_mut_ptr(),
+                self.context,
+            );
+        }
+        Ok(())
+    }
+}
+
+/// BFGS variable-metric minimization, based on J. C. Nash's recurrence.
 ///
-/// Based on Pascal code in J.C. Nash, 'Compact Numerical Methods for
-/// Computers', 2nd edition.
+/// # Safety
+///
+/// The parameter and result buffers must be valid for the declared dimension.
+/// Callbacks may use the borrowed parameter and gradient buffers during each
+/// call and must respect the original context's lifetime.
 pub unsafe fn vmmin(
     n0: std::os::raw::c_int,
     b: *mut f64,
@@ -64,200 +98,57 @@ pub unsafe fn vmmin(
     grcount: *mut std::os::raw::c_int,
     fail: *mut std::os::raw::c_int,
 ) {
-    unsafe {
-        let n0 = n0 as i32;
-        let maxit = maxit as i32;
-        let trace = trace != 0;
-        let nreport = nreport as i32;
-
-        if maxit <= 0 {
+    if n0 < 0 {
+        crate::sexp::context::r_error("invalid BFGS parameter count");
+    }
+    // A zero-iteration call need not provide a mask, and receives the
+    // original buffer pointer even for zero coordinates.
+    if maxit <= 0 {
+        unsafe {
             *fail = 0;
-            *fmin = fminfn(n0 as std::os::raw::c_int, b, ex);
+            *fmin = fminfn(n0, b, ex);
             *fncount = 0;
             *grcount = 0;
-            return;
         }
-        if nreport <= 0 {
-            Rf_error(c"REPORT must be > 0 (method = \"BFGS\")".as_ptr());
+        return;
+    }
+    let (point, mask) = if n0 == 0 {
+        (&mut [][..], &[][..])
+    } else {
+        // SAFETY: the legacy caller supplies disjoint buffers of n0 values.
+        unsafe {
+            (
+                std::slice::from_raw_parts_mut(b, n0 as usize),
+                std::slice::from_raw_parts(mask, n0 as usize),
+            )
         }
-
-        // Count active parameters (where mask[i] != 0)
-        let mut l: Vec<usize> = Vec::with_capacity(n0 as usize);
-        for i in 0..n0 as usize {
-            if *mask.add(i) != 0 {
-                l.push(i);
-            }
-        }
-        let n = l.len() as i32;
-        let n_usize = n as usize;
-
-        let mut g = vec![0.0f64; n0 as usize];
-        let mut t = vec![0.0f64; n_usize];
-        let mut x = vec![0.0f64; n_usize];
-        let mut c = vec![0.0f64; n_usize];
-
-        // Lower triangular matrix B stored as Vec of rows
-        let mut bmat: Vec<Vec<f64>> = Vec::with_capacity(n_usize);
-        for i in 0..n_usize {
-            bmat.push(vec![0.0f64; i + 1]);
-        }
-
-        let mut f = fminfn(n0 as std::os::raw::c_int, b, ex);
-        if !f.is_finite() {
-            Rf_error(c"initial value in 'vmmin' is not finite".as_ptr());
-        }
-        if trace {
-            eprintln!("initial  value {} ", f);
-        }
-        *fmin = f;
-        let mut funcount: i32 = 1;
-        let mut gradcount: i32 = 1;
-        fmingr(n0 as std::os::raw::c_int, b, g.as_mut_ptr(), ex);
-        let mut iter: i32 = 1;
-        let mut ilast = gradcount;
-
-        loop {
-            if ilast == gradcount {
-                for i in 0..n_usize {
-                    for j in 0..i {
-                        bmat[i][j] = 0.0;
-                    }
-                    bmat[i][i] = 1.0;
-                }
-            }
-            for i in 0..n_usize {
-                x[i] = *b.add(l[i]);
-                c[i] = g[l[i]];
-            }
-            let mut gradproj = 0.0_f64;
-            // Keep GNU's fused scalar BFGS arithmetic explicit so native and
-            // Wasm searches take the same rounding path, independent of the
-            // compiler's implicit floating-point contraction policy.
-            for i in 0..n_usize {
-                let mut s = 0.0_f64;
-                for j in 0..=i {
-                    s = (-bmat[i][j]).mul_add(g[l[j]], s);
-                }
-                for j in (i + 1)..n_usize {
-                    s = (-bmat[j][i]).mul_add(g[l[j]], s);
-                }
-                t[i] = s;
-                gradproj = s.mul_add(g[l[i]], gradproj);
-            }
-
-            let mut count: i32 = 0;
-            if gradproj < 0.0 {
-                // search direction is downhill
-                let mut steplength = 1.0_f64;
-                let mut accpoint = false;
-                loop {
-                    count = 0;
-                    for i in 0..n_usize {
-                        *b.add(l[i]) = steplength.mul_add(t[i], x[i]);
-                        if RELTEST + x[i] == RELTEST + *b.add(l[i]) {
-                            count += 1;
-                        }
-                    }
-                    if count < n {
-                        f = fminfn(n0 as std::os::raw::c_int, b, ex);
-                        funcount += 1;
-                        accpoint =
-                            f.is_finite() && f <= (gradproj * steplength).mul_add(ACCTOL, *fmin);
-                        if !accpoint {
-                            steplength *= STEPREDN;
-                        }
-                    }
-                    if count == n || accpoint {
-                        break;
-                    }
-                }
-
-                let enough = f > abstol && fabs(f - *fmin) > reltol * (fabs(*fmin) + reltol);
-                if !enough {
-                    count = n;
-                    *fmin = f;
-                }
-                if count < n {
-                    // making progress
-                    *fmin = f;
-                    fmingr(n0 as std::os::raw::c_int, b, g.as_mut_ptr(), ex);
-                    gradcount += 1;
-                    iter += 1;
-                    let mut d1 = 0.0_f64;
-                    for i in 0..n_usize {
-                        t[i] *= steplength;
-                        c[i] = g[l[i]] - c[i];
-                        d1 = t[i].mul_add(c[i], d1);
-                    }
-                    if d1 > 0.0 {
-                        let mut d2 = 0.0_f64;
-                        for i in 0..n_usize {
-                            let mut s = 0.0_f64;
-                            for j in 0..=i {
-                                s = bmat[i][j].mul_add(c[j], s);
-                            }
-                            for j in (i + 1)..n_usize {
-                                s = bmat[j][i].mul_add(c[j], s);
-                            }
-                            x[i] = s;
-                            d2 = s.mul_add(c[i], d2);
-                        }
-                        let d2 = 1.0 + d2 / d1;
-                        for i in 0..n_usize {
-                            for j in 0..=i {
-                                let update = (d2 * t[i]).mul_add(t[j], -(x[i] * t[j]));
-                                bmat[i][j] += (-t[i]).mul_add(x[j], update) / d1;
-                            }
-                        }
-                    } else {
-                        ilast = gradcount;
-                    }
-                } else {
-                    // no progress
-                    if ilast < gradcount {
-                        count = 0;
-                        ilast = gradcount;
-                    }
-                }
-            } else {
-                // uphill search
-                count = 0;
-                if ilast == gradcount {
-                    count = n;
-                } else {
-                    ilast = gradcount;
-                }
-            }
-
-            if trace && iter % nreport == 0 {
-                eprintln!("iter{:4} value {}", iter, f);
-            }
-            if iter >= maxit {
-                break;
-            }
-            if gradcount - ilast > 2 * n {
-                ilast = gradcount;
-            }
-
-            // A curvature restart can happen while the search still makes
-            // progress. GNU stops only when the actual no-progress count
-            // reaches every active parameter and the gradient is unchanged.
-            if count == n && ilast == gradcount {
-                break;
-            }
-        }
-
-        if trace {
-            eprintln!("final  value {} ", *fmin);
-            if iter < maxit {
-                eprintln!("converged");
-            } else {
-                eprintln!("stopped after {} iterations", iter);
-            }
-        }
-        *fail = if iter < maxit { 0 } else { 1 };
-        *fncount = funcount;
-        *grcount = gradcount;
+    };
+    let mut objective = CObjective {
+        evaluate: fminfn,
+        differentiate: fmingr,
+        context: ex,
+    };
+    let settings = BfgsSettings {
+        max_iterations: maxit,
+        trace: trace != 0,
+        report_interval: nreport,
+        absolute_tolerance: abstol,
+        relative_tolerance: reltol,
+    };
+    // SAFETY: the legacy boundary retains the active interpreter for the call.
+    // The standalone optimizer can also be called with no R session.
+    let owner = unsafe { crate::sexp::owner::OwnerToken::current() }.ok();
+    let result =
+        minimize_bfgs(point, mask, &mut objective, settings, owner).unwrap_or_else(|message| {
+            let message = std::ffi::CString::new(message).unwrap_or_default();
+            unsafe { Rf_error(message.as_ptr()) };
+            unreachable!("Rf_error does not return")
+        });
+    unsafe {
+        *fmin = result.value;
+        *fncount = result.function_count;
+        *grcount = result.gradient_count;
+        *fail = result.failure;
     }
 }
 
