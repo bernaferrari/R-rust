@@ -312,7 +312,7 @@ pub type drawstate = *mut drawstruct;
 
 /// Internal callback information structure.
 #[repr(C)]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct callinfo {
     pub die: actionfn,
     pub close: actionfn,
@@ -380,6 +380,58 @@ pub struct ObjInfo {
     pub caretx: c_int,
     pub carety: c_int,
     pub edit_winproc: *const c_void,
+}
+
+impl Default for ObjInfo {
+    /// A zero-initialised object; the plain-old-data layout mirrors the C
+    /// port's `write_bytes(obj, 0, sizeof(ObjInfo))` initialisation.
+    fn default() -> Self {
+        ObjInfo {
+            kind: 0,
+            refcount: 0,
+            handle: ptr::null_mut(),
+            menubar: ptr::null_mut(),
+            popup: ptr::null_mut(),
+            toolbar: ptr::null_mut(),
+            status: [0; 256],
+            next: ptr::null_mut(),
+            prev: ptr::null_mut(),
+            parent: ptr::null_mut(),
+            child: ptr::null_mut(),
+            die: None,
+            rect: rect::default(),
+            depth: 0,
+            drawstate: ptr::null_mut(),
+            img: ptr::null_mut(),
+            id: 0,
+            state: 0,
+            flags: 0,
+            data: ptr::null_mut(),
+            text: ptr::null_mut(),
+            fg: 0,
+            bg: 0,
+            action: None,
+            dble: None,
+            hit: None,
+            value: 0,
+            key: 0,
+            shortcut: 0,
+            max: 0,
+            size: 0,
+            xmax: 0,
+            xsize: 0,
+            call: ptr::null_mut(),
+            extra: ptr::null_mut(),
+            winproc: ptr::null(),
+            caretwidth: 0,
+            caretheight: 0,
+            caretshowing: 0,
+            caretexists: 0,
+            caretx: 0,
+            carety: 0,
+            edit_winproc: ptr::null(),
+        }
+    }
 }
 
 /// Object pointer type (same as objptr).
