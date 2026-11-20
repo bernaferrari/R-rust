@@ -1,6 +1,25 @@
 #![allow(unreachable_code)]
 #![allow(non_snake_case, non_upper_case_globals, dead_code, unused_variables)]
 use super::*;
+use crate::sexp::object::{Sexp, SexpMut, SexpResult, SessionNodeFactory};
+
+fn checked<T>(result: SexpResult<T>) -> T {
+    result.unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+}
+
+/// Checked handle lease for this translated boundary: the current runtime is
+/// active inside every do_* entry point below.
+fn sexp_factory() -> SessionNodeFactory<'static> {
+    SessionNodeFactory::new(
+        // SAFETY: the caller retains the active runtime for the lease scope.
+        unsafe { crate::sexp::owner::OwnerToken::current() }
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
+    )
+}
+
+fn wrap_arg(x: SEXP) -> Sexp<'static> {
+    checked(sexp_factory().wrap(x))
+}
 
 pub fn R_runif(a: c_double, b: c_double) -> c_double {
     if !a.is_finite() || !b.is_finite() {
@@ -118,15 +137,13 @@ pub fn R_binom_kind() -> c_int {
 // ---------------------------------------------------------------------------
 
 /// One-parameter random generation using a function pointer wrapper.
-fn random1_call(f: fn(f64) -> f64, a: *const f64, na: R_xlen_t, x: *mut f64, n: R_xlen_t) -> bool {
+fn random1_call(f: fn(f64) -> f64, a: &Sexp, na: R_xlen_t, x: &mut SexpMut, n: R_xlen_t) -> bool {
     let mut naflag = false;
     let mut ia: R_xlen_t = 0;
     for i in 0..n {
-        let ai = unsafe { *a.add(ia as usize) };
+        let ai = checked(a.try_real_elt(ia));
         let val = f(ai);
-        unsafe {
-            *x.add(i as usize) = val;
-        };
+        checked(x.try_set_real_elt(i, val));
         if val.is_nan() {
             naflag = true;
         }
@@ -141,23 +158,21 @@ fn random1_call(f: fn(f64) -> f64, a: *const f64, na: R_xlen_t, x: *mut f64, n: 
 /// Two-parameter random generation using a function pointer wrapper.
 fn random2_call(
     f: fn(f64, f64) -> f64,
-    a: *const f64,
+    a: &Sexp,
     na: R_xlen_t,
-    b: *const f64,
+    b: &Sexp,
     nb: R_xlen_t,
-    x: *mut f64,
+    x: &mut SexpMut,
     n: R_xlen_t,
 ) -> bool {
     let mut naflag = false;
     let mut ia: R_xlen_t = 0;
     let mut ib: R_xlen_t = 0;
     for i in 0..n {
-        let ai = unsafe { *a.add(ia as usize) };
-        let bi = unsafe { *b.add(ib as usize) };
+        let ai = checked(a.try_real_elt(ia));
+        let bi = checked(b.try_real_elt(ib));
         let val = f(ai, bi);
-        unsafe {
-            *x.add(i as usize) = val;
-        };
+        checked(x.try_set_real_elt(i, val));
         if val.is_nan() {
             naflag = true;
         }
@@ -176,13 +191,13 @@ fn random2_call(
 /// Three-parameter random generation using a function pointer wrapper.
 fn random3_call(
     f: fn(f64, f64, f64) -> f64,
-    a: *const f64,
+    a: &Sexp,
     na: R_xlen_t,
-    b: *const f64,
+    b: &Sexp,
     nb: R_xlen_t,
-    c: *const f64,
+    c: &Sexp,
     nc: R_xlen_t,
-    x: *mut f64,
+    x: &mut SexpMut,
     n: R_xlen_t,
 ) -> bool {
     let mut naflag = false;
@@ -190,13 +205,11 @@ fn random3_call(
     let mut ib: R_xlen_t = 0;
     let mut ic: R_xlen_t = 0;
     for i in 0..n {
-        let ai = unsafe { *a.add(ia as usize) };
-        let bi = unsafe { *b.add(ib as usize) };
-        let ci = unsafe { *c.add(ic as usize) };
+        let ai = checked(a.try_real_elt(ia));
+        let bi = checked(b.try_real_elt(ib));
+        let ci = checked(c.try_real_elt(ic));
         let val = f(ai, bi, ci);
-        unsafe {
-            *x.add(i as usize) = val;
-        };
+        checked(x.try_set_real_elt(i, val));
         if val.is_nan() {
             naflag = true;
         }
@@ -240,58 +253,61 @@ fn isNumeric(x: SEXP) -> bool {
     }
 }
 
-unsafe fn asInteger_local(x: SEXP) -> c_int {
-    unsafe {
-        if x.is_null() {
-            return NA_INTEGER;
-        }
-        let t = TYPEOF(x);
-        if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-            *INTEGER(x)
-        } else if t == SEXPTYPE::REALSXP {
-            let v = *REAL(x);
-            if !v.is_finite() || v > i32::MAX as f64 || v < i32::MIN as f64 {
-                NA_INTEGER
-            } else {
-                v as c_int
-            }
-        } else {
+fn asInteger_local(x: SEXP) -> c_int {
+    if x.is_null() {
+        return NA_INTEGER;
+    }
+    let t = TYPEOF(x);
+    let Ok(x) = sexp_factory().wrap(x) else {
+        return NA_INTEGER;
+    };
+    if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
+        x.try_integer_elt(0).unwrap_or(NA_INTEGER)
+    } else if t == SEXPTYPE::REALSXP {
+        let v = x.try_real_elt(0).unwrap_or(f64::NAN);
+        if !v.is_finite() || v > i32::MAX as f64 || v < i32::MIN as f64 {
             NA_INTEGER
+        } else {
+            v as c_int
         }
+    } else {
+        NA_INTEGER
     }
 }
 
-unsafe fn asReal_local(x: SEXP) -> c_double {
-    unsafe {
-        if x.is_null() {
-            return f64::NAN;
-        }
-        let t = TYPEOF(x);
-        if t == SEXPTYPE::REALSXP {
-            *REAL(x)
-        } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-            let v = *INTEGER(x);
-            if v == NA_INTEGER { f64::NAN } else { v as f64 }
-        } else {
-            f64::NAN
-        }
+fn asReal_local(x: SEXP) -> c_double {
+    if x.is_null() {
+        return f64::NAN;
+    }
+    let t = TYPEOF(x);
+    let Ok(x) = sexp_factory().wrap(x) else {
+        return f64::NAN;
+    };
+    if t == SEXPTYPE::REALSXP {
+        x.try_real_elt(0).unwrap_or(f64::NAN)
+    } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
+        let v = x.try_integer_elt(0).unwrap_or(NA_INTEGER);
+        if v == NA_INTEGER { f64::NAN } else { v as f64 }
+    } else {
+        f64::NAN
     }
 }
 
 #[allow(clippy::if_same_then_else)]
-unsafe fn asLogical_local(x: SEXP) -> c_int {
-    unsafe {
-        if x.is_null() {
-            return NA_INTEGER;
-        }
-        let t = TYPEOF(x);
-        if t == SEXPTYPE::LGLSXP {
-            *INTEGER(x)
-        } else if t == SEXPTYPE::INTSXP {
-            *INTEGER(x)
-        } else {
-            NA_INTEGER
-        }
+fn asLogical_local(x: SEXP) -> c_int {
+    if x.is_null() {
+        return NA_INTEGER;
+    }
+    let t = TYPEOF(x);
+    let Ok(x) = sexp_factory().wrap(x) else {
+        return NA_INTEGER;
+    };
+    if t == SEXPTYPE::LGLSXP {
+        x.try_logical_elt(0).unwrap_or(NA_INTEGER)
+    } else if t == SEXPTYPE::INTSXP {
+        x.try_integer_elt(0).unwrap_or(NA_INTEGER)
+    } else {
+        NA_INTEGER
     }
 }
 
@@ -311,73 +327,95 @@ fn PRIMVAL_local(op: SEXP) -> c_int {
 // do_random1 -- random sampling from 1 parameter families
 // ---------------------------------------------------------------------------
 
+/// Allocate an owned REALSXP handle at this audited boundary. The length is
+/// truncated through `c_int`, matching the original `Rf_allocVector` call.
+fn alloc_real_vector(n: R_xlen_t) -> Sexp<'static> {
+    let len = R_xlen_t::from(n as c_int);
+    checked(sexp_factory().allocate(|arena| {
+        Some(arena.alloc_vector(SEXPTYPE::REALSXP, len))
+    }))
+}
+
+/// Allocate an owned INTSXP handle at this audited boundary. The length is
+/// truncated through `c_int`, matching the original `Rf_allocVector` call.
+fn alloc_int_vector(n: R_xlen_t) -> Sexp<'static> {
+    let len = R_xlen_t::from(n as c_int);
+    checked(sexp_factory().allocate(|arena| {
+        Some(arena.alloc_vector(SEXPTYPE::INTSXP, len))
+    }))
+}
+
+/// Coerce to a checked REALSXP handle at this audited boundary.
+fn coerce_real(x: SEXP) -> Sexp<'static> {
+    checked(sexp_factory().wrap(unsafe {
+        coerceVector(x, SEXPTYPE::REALSXP.as_c_int())
+    }))
+}
+
 /// R's .Internal interface for 1-parameter distributions:
 /// rchisq, rexp, rgeom, rpois, rt, rsignrank
-pub unsafe fn do_random1(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        checkArity(op, args);
+pub fn do_random1(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    checkArity(op, args);
 
-        if !isVector(CAR(args)) || !isNumeric(CADR(args)) {
+    if !isVector(CAR(args)) || !isNumeric(CADR(args)) {
+        error("invalid arguments");
+    }
+
+    let n: R_xlen_t;
+    if XLENGTH(CAR(args)) == 1 {
+        let dn = asReal_local(CAR(args));
+        if dn.is_nan() || dn < 0.0 {
             error("invalid arguments");
         }
-
-        let n: R_xlen_t;
-        if XLENGTH(CAR(args)) == 1 {
-            let dn = asReal_local(CAR(args));
-            if dn.is_nan() || dn < 0.0 {
-                error("invalid arguments");
-            }
-            n = dn as R_xlen_t;
-        } else {
-            n = XLENGTH(CAR(args));
-        }
-
-        let x = Rf_allocVector(SEXPTYPE::REALSXP, n as c_int);
-        let _x_guard = protect(x);
-        if n == 0 {
-            return x;
-        }
-
-        let na = XLENGTH(CADR(args));
-        if na < 1 {
-            for i in 0..n {
-                *REAL(x).add(i as usize) = f64::NAN;
-            }
-            return x;
-        }
-
-        let a = coerceVector(CADR(args), SEXPTYPE::REALSXP.as_c_int());
-        let _a_guard = protect(a);
-        GetRNGstate();
-
-        let primval = PRIMVAL_local(op);
-        let _naflag: bool;
-
-        match primval {
-            0 => {
-                let _ = random1_call(crate::dist::chisq::rchisq, REAL(a), na, REAL(x), n);
-            }
-            1 => {
-                let _ = random1_call(crate::dist::exponential::rexp, REAL(a), na, REAL(x), n);
-            }
-            2 => {
-                let _ = random1_call(crate::dist::geometric::rgeom, REAL(a), na, REAL(x), n);
-            }
-            3 => {
-                let _ = random1_call(crate::dist::poisson::rpois, REAL(a), na, REAL(x), n);
-            }
-            4 => {
-                let _ = random1_call(crate::dist::t_dist::rt, REAL(a), na, REAL(x), n);
-            }
-            5 => {
-                let _ = random1_call(crate::dist::signrank::rsignrank, REAL(a), na, REAL(x), n);
-            }
-            _ => {} // intentionally unhandled: unknown distribution type
-        }
-
-        PutRNGstate();
-        x
+        n = dn as R_xlen_t;
+    } else {
+        n = XLENGTH(CAR(args));
     }
+
+    let x = alloc_real_vector(n);
+    if n == 0 {
+        return x.as_raw();
+    }
+    let mut x_mut = checked(SexpMut::try_from_checked(x.clone()));
+
+    let na = XLENGTH(CADR(args));
+    if na < 1 {
+        for i in 0..n {
+            checked(x_mut.try_set_real_elt(i, f64::NAN));
+        }
+        return x.as_raw();
+    }
+
+    let a = coerce_real(CADR(args));
+    GetRNGstate();
+
+    let primval = PRIMVAL_local(op);
+    let _naflag: bool;
+
+    match primval {
+        0 => {
+            let _ = random1_call(crate::dist::chisq::rchisq, &a, na, &mut x_mut, n);
+        }
+        1 => {
+            let _ = random1_call(crate::dist::exponential::rexp, &a, na, &mut x_mut, n);
+        }
+        2 => {
+            let _ = random1_call(crate::dist::geometric::rgeom, &a, na, &mut x_mut, n);
+        }
+        3 => {
+            let _ = random1_call(crate::dist::poisson::rpois, &a, na, &mut x_mut, n);
+        }
+        4 => {
+            let _ = random1_call(crate::dist::t_dist::rt, &a, na, &mut x_mut, n);
+        }
+        5 => {
+            let _ = random1_call(crate::dist::signrank::rsignrank, &a, na, &mut x_mut, n);
+        }
+        _ => {} // intentionally unhandled: unknown distribution type
+    }
+
+    PutRNGstate();
+    x.as_raw()
 }
 
 // ---------------------------------------------------------------------------
@@ -387,209 +425,67 @@ pub unsafe fn do_random1(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 /// R's .Internal interface for 2-parameter distributions:
 /// rbeta, rbinom, rcauchy, rf, rgamma, rlnorm, rlogis, rnbinom, rnorm, runif,
 /// rweibull, rwilcox, rnchisq, rnbinom_mu
-pub unsafe fn do_random2(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        checkArity(op, args);
+pub fn do_random2(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    checkArity(op, args);
 
-        if !isVector(CAR(args)) || !isNumeric(CADR(args)) || !isNumeric(CADDR(args)) {
+    if !isVector(CAR(args)) || !isNumeric(CADR(args)) || !isNumeric(CADDR(args)) {
+        error("invalid arguments");
+    }
+
+    let n: R_xlen_t;
+    if XLENGTH(CAR(args)) == 1 {
+        let dn = asReal_local(CAR(args));
+        if dn.is_nan() || dn < 0.0 {
             error("invalid arguments");
         }
-
-        let n: R_xlen_t;
-        if XLENGTH(CAR(args)) == 1 {
-            let dn = asReal_local(CAR(args));
-            if dn.is_nan() || dn < 0.0 {
-                error("invalid arguments");
-            }
-            n = dn as R_xlen_t;
-        } else {
-            n = XLENGTH(CAR(args));
-        }
-
-        let x = Rf_allocVector(SEXPTYPE::REALSXP, n as c_int);
-        let _x_guard = protect(x);
-        if n == 0 {
-            return x;
-        }
-
-        let na = XLENGTH(CADR(args));
-        let nb = XLENGTH(CADDR(args));
-        if na < 1 || nb < 1 {
-            for i in 0..n {
-                *REAL(x).add(i as usize) = f64::NAN;
-            }
-            return x;
-        }
-
-        let a = coerceVector(CADR(args), SEXPTYPE::REALSXP.as_c_int());
-        let _a_guard = protect(a);
-        let b = coerceVector(CADDR(args), SEXPTYPE::REALSXP.as_c_int());
-        let _b_guard = protect(b);
-        GetRNGstate();
-
-        let primval = PRIMVAL_local(op);
-
-        match primval {
-            0 => {
-                let _ = random2_call(
-                    crate::dist::beta::rbeta,
-                    REAL(a),
-                    na,
-                    REAL(b),
-                    nb,
-                    REAL(x),
-                    n,
-                );
-            }
-            1 => {
-                let _ = random2_call(
-                    crate::dist::binomial::rbinom,
-                    REAL(a),
-                    na,
-                    REAL(b),
-                    nb,
-                    REAL(x),
-                    n,
-                );
-            }
-            2 => {
-                let _ = random2_call(
-                    crate::dist::cauchy::rcauchy,
-                    REAL(a),
-                    na,
-                    REAL(b),
-                    nb,
-                    REAL(x),
-                    n,
-                );
-            }
-            3 => {
-                let _ = random2_call(
-                    crate::dist::f_dist::rf,
-                    REAL(a),
-                    na,
-                    REAL(b),
-                    nb,
-                    REAL(x),
-                    n,
-                );
-            }
-            4 => {
-                let _ = random2_call(
-                    crate::dist::gamma::rgamma,
-                    REAL(a),
-                    na,
-                    REAL(b),
-                    nb,
-                    REAL(x),
-                    n,
-                );
-            }
-            5 => {
-                let _ = random2_call(
-                    crate::dist::lnorm::rlnorm,
-                    REAL(a),
-                    na,
-                    REAL(b),
-                    nb,
-                    REAL(x),
-                    n,
-                );
-            }
-            6 => {
-                let _ = random2_call(
-                    crate::dist::logistic::rlogis,
-                    REAL(a),
-                    na,
-                    REAL(b),
-                    nb,
-                    REAL(x),
-                    n,
-                );
-            }
-            7 => {
-                let _ = random2_call(
-                    crate::dist::nbinom::rnbinom,
-                    REAL(a),
-                    na,
-                    REAL(b),
-                    nb,
-                    REAL(x),
-                    n,
-                );
-            }
-            8 => {
-                let _ = random2_call(
-                    crate::dist::normal::rnorm,
-                    REAL(a),
-                    na,
-                    REAL(b),
-                    nb,
-                    REAL(x),
-                    n,
-                );
-            }
-            9 => {
-                let _ = random2_call(
-                    crate::dist::uniform::runif,
-                    REAL(a),
-                    na,
-                    REAL(b),
-                    nb,
-                    REAL(x),
-                    n,
-                );
-            }
-            10 => {
-                let _ = random2_call(
-                    crate::dist::weibull::rweibull,
-                    REAL(a),
-                    na,
-                    REAL(b),
-                    nb,
-                    REAL(x),
-                    n,
-                );
-            }
-            11 => {
-                let _ = random2_call(
-                    crate::dist::wilcox::rwilcox,
-                    REAL(a),
-                    na,
-                    REAL(b),
-                    nb,
-                    REAL(x),
-                    n,
-                );
-            }
-            12 => {
-                let _ = random2_call(
-                    crate::dist::nchisq::rnchisq,
-                    REAL(a),
-                    na,
-                    REAL(b),
-                    nb,
-                    REAL(x),
-                    n,
-                );
-            }
-            13 => {
-                let _ = random2_call(
-                    crate::dist::nbinom::rnbinom_mu,
-                    REAL(a),
-                    na,
-                    REAL(b),
-                    nb,
-                    REAL(x),
-                    n,
-                );
-            }
-            _ => {} // intentionally unhandled: unknown distribution type
-        }
-
-        PutRNGstate();
-        x
+        n = dn as R_xlen_t;
+    } else {
+        n = XLENGTH(CAR(args));
     }
+
+    let x = alloc_real_vector(n);
+    if n == 0 {
+        return x.as_raw();
+    }
+    let mut x_mut = checked(SexpMut::try_from_checked(x.clone()));
+
+    let na = XLENGTH(CADR(args));
+    let nb = XLENGTH(CADDR(args));
+    if na < 1 || nb < 1 {
+        for i in 0..n {
+            checked(x_mut.try_set_real_elt(i, f64::NAN));
+        }
+        return x.as_raw();
+    }
+
+    let a = coerce_real(CADR(args));
+    let b = coerce_real(CADDR(args));
+    GetRNGstate();
+
+    let primval = PRIMVAL_local(op);
+    let dist: fn(f64, f64) -> f64 = match primval {
+        0 => crate::dist::beta::rbeta,
+        1 => crate::dist::binomial::rbinom,
+        2 => crate::dist::cauchy::rcauchy,
+        3 => crate::dist::f_dist::rf,
+        4 => crate::dist::gamma::rgamma,
+        5 => crate::dist::lnorm::rlnorm,
+        6 => crate::dist::logistic::rlogis,
+        7 => crate::dist::nbinom::rnbinom,
+        8 => crate::dist::normal::rnorm,
+        9 => crate::dist::uniform::runif,
+        10 => crate::dist::weibull::rweibull,
+        11 => crate::dist::wilcox::rwilcox,
+        12 => crate::dist::nchisq::rnchisq,
+        13 => crate::dist::nbinom::rnbinom_mu,
+        _ => crate::dist::beta::rbeta, // intentionally unhandled: unknown distribution type
+    };
+    if (0..=13).contains(&primval) {
+        let _ = random2_call(dist, &a, na, &b, nb, &mut x_mut, n);
+    }
+
+    PutRNGstate();
+    x.as_raw()
 }
 
 // ---------------------------------------------------------------------------
@@ -598,78 +494,73 @@ pub unsafe fn do_random2(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 
 /// R's .Internal interface for 3-parameter distributions:
 /// rhyper
-pub unsafe fn do_random3(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        checkArity(op, args);
+pub fn do_random3(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    checkArity(op, args);
 
-        if !isVector(CAR(args)) {
+    if !isVector(CAR(args)) {
+        error("invalid arguments");
+    }
+
+    let n: R_xlen_t;
+    if XLENGTH(CAR(args)) == 1 {
+        let dn = asReal_local(CAR(args));
+        if dn.is_nan() || dn < 0.0 {
             error("invalid arguments");
         }
-
-        let n: R_xlen_t;
-        if XLENGTH(CAR(args)) == 1 {
-            let dn = asReal_local(CAR(args));
-            if dn.is_nan() || dn < 0.0 {
-                error("invalid arguments");
-            }
-            n = dn as R_xlen_t;
-        } else {
-            n = XLENGTH(CAR(args));
-        }
-
-        let x = Rf_allocVector(SEXPTYPE::REALSXP, n as c_int);
-        let _x_guard = protect(x);
-        if n == 0 {
-            return x;
-        }
-
-        let mut args_rest = CDR(args);
-        let a = CAR(args_rest);
-        args_rest = CDR(args_rest);
-        let b = CAR(args_rest);
-        args_rest = CDR(args_rest);
-        let c = CAR(args_rest);
-        if !isNumeric(a) || !isNumeric(b) || !isNumeric(c) {
-            return x;
-        }
-
-        let na = XLENGTH(a);
-        let nb = XLENGTH(b);
-        let nc = XLENGTH(c);
-        if na < 1 || nb < 1 || nc < 1 {
-            for i in 0..n {
-                *REAL(x).add(i as usize) = f64::NAN;
-            }
-            return x;
-        }
-
-        let a = coerceVector(a, SEXPTYPE::REALSXP.as_c_int());
-        let _a_guard = protect(a);
-        let b = coerceVector(b, SEXPTYPE::REALSXP.as_c_int());
-        let _b_guard = protect(b);
-        let c = coerceVector(c, SEXPTYPE::REALSXP.as_c_int());
-        let _c_guard = protect(c);
-        GetRNGstate();
-
-        let primval = PRIMVAL_local(op);
-
-        if primval == 0 {
-            let _ = random3_call(
-                crate::dist::hypergeometric::rhyper,
-                REAL(a),
-                na,
-                REAL(b),
-                nb,
-                REAL(c),
-                nc,
-                REAL(x),
-                n,
-            );
-        }
-
-        PutRNGstate();
-        x
+        n = dn as R_xlen_t;
+    } else {
+        n = XLENGTH(CAR(args));
     }
+
+    let x = alloc_real_vector(n);
+    if n == 0 {
+        return x.as_raw();
+    }
+    let mut x_mut = checked(SexpMut::try_from_checked(x.clone()));
+
+    let mut args_rest = CDR(args);
+    let a = CAR(args_rest);
+    args_rest = CDR(args_rest);
+    let b = CAR(args_rest);
+    args_rest = CDR(args_rest);
+    let c = CAR(args_rest);
+    if !isNumeric(a) || !isNumeric(b) || !isNumeric(c) {
+        return x.as_raw();
+    }
+
+    let na = XLENGTH(a);
+    let nb = XLENGTH(b);
+    let nc = XLENGTH(c);
+    if na < 1 || nb < 1 || nc < 1 {
+        for i in 0..n {
+            checked(x_mut.try_set_real_elt(i, f64::NAN));
+        }
+        return x.as_raw();
+    }
+
+    let a = coerce_real(a);
+    let b = coerce_real(b);
+    let c = coerce_real(c);
+    GetRNGstate();
+
+    let primval = PRIMVAL_local(op);
+
+    if primval == 0 {
+        let _ = random3_call(
+            crate::dist::hypergeometric::rhyper,
+            &a,
+            na,
+            &b,
+            nb,
+            &c,
+            nc,
+            &mut x_mut,
+            n,
+        );
+    }
+
+    PutRNGstate();
+    x.as_raw()
 }
 
 // ---------------------------------------------------------------------------
@@ -727,73 +618,74 @@ fn arg_is_absent(x: SEXP) -> bool {
 /// True when the slot carries the given parameter tag. The evaluator keeps
 /// call order, so `RNGkind(normal.kind = "Inversion")` delivers the value in
 /// the first slot; tag inspection restores the stock parameter mapping.
-unsafe fn kind_tag_is(x: SEXP, name: &str) -> bool {
-    unsafe {
-        if x.is_null() {
-            return false;
-        }
-        let tag = TAG(x);
-        if tag.is_null() || tag == R_NilValue() {
-            return false;
-        }
-        let pname = PRINTNAME(tag);
-        if pname.is_null() {
-            return false;
-        }
-        std::ffi::CStr::from_ptr(CHAR(pname)).to_bytes() == name.as_bytes()
+fn kind_tag_is(x: SEXP, name: &str) -> bool {
+    if x.is_null() {
+        return false;
     }
+    let tag = TAG(x);
+    if tag.is_null() || tag == R_NilValue() {
+        return false;
+    }
+    let pname = PRINTNAME(tag);
+    if pname.is_null() {
+        return false;
+    }
+    sexp_factory()
+        .wrap(pname)
+        .ok()
+        .and_then(|pname| pname.try_char_eq(name.as_bytes()).ok())
+        .unwrap_or(false)
 }
 
 /// Map positional slots to kind parameters by tag when any tag is present.
 ///
 /// `cells` are the pairlist cells holding the kind/normal.kind/sample.kind/
 /// binom.kind arguments in call order; TAG is read from the cell, not the value.
-unsafe fn resolve_kind_args(cells: [SEXP; 4]) -> (SEXP, SEXP, SEXP, SEXP) {
-    unsafe {
-        let nil = R_NilValue();
-        let mut kind = nil;
-        let mut norm = nil;
-        let mut sample = nil;
-        let mut binom = nil;
-        for cell in cells {
-            if cell.is_null() || cell == nil {
-                continue;
-            }
-            let x = CAR(cell);
-            if arg_is_absent(x) {
-                continue;
-            }
-            if kind_tag_is(cell, "normal.kind") {
+fn resolve_kind_args(cells: [SEXP; 4]) -> (SEXP, SEXP, SEXP, SEXP) {
+    let nil = R_NilValue();
+    let mut kind = nil;
+    let mut norm = nil;
+    let mut sample = nil;
+    let mut binom = nil;
+    for cell in cells {
+        if cell.is_null() || cell == nil {
+            continue;
+        }
+        let x = CAR(cell);
+        if arg_is_absent(x) {
+            continue;
+        }
+        if kind_tag_is(cell, "normal.kind") {
+            norm = x;
+        } else if kind_tag_is(cell, "sample.kind") {
+            sample = x;
+        } else if kind_tag_is(cell, "binom.kind") {
+            binom = x;
+        } else {
+            // Untagged slots fill kind, then normal.kind, then
+            // sample.kind, then binom.kind (stock positional order).
+            if kind == nil {
+                kind = x;
+            } else if norm == nil {
                 norm = x;
-            } else if kind_tag_is(cell, "sample.kind") {
+            } else if sample == nil {
                 sample = x;
-            } else if kind_tag_is(cell, "binom.kind") {
-                binom = x;
             } else {
-                // Untagged slots fill kind, then normal.kind, then
-                // sample.kind, then binom.kind (stock positional order).
-                if kind == nil {
-                    kind = x;
-                } else if norm == nil {
-                    norm = x;
-                } else if sample == nil {
-                    sample = x;
-                } else {
-                    binom = x;
-                }
+                binom = x;
             }
         }
-        (kind, norm, sample, binom)
     }
+    (kind, norm, sample, binom)
 }
 
-unsafe fn kind_string(arg: SEXP) -> String {
-    unsafe {
-        let char_sexp = STRING_ELT(arg, 0);
-        std::ffi::CStr::from_ptr(CHAR(char_sexp))
-            .to_string_lossy()
-            .into_owned()
-    }
+/// First string element as lossy UTF-8; `NA_character_` reads as "NA", like
+/// `CHAR(STRING_ELT(arg, 0))` in the original translation.
+fn kind_string(arg: SEXP) -> String {
+    sexp_factory()
+        .wrap(arg)
+        .ok()
+        .and_then(|arg| arg.try_string_value_elt(0).ok().flatten())
+        .unwrap_or_else(|| "NA".to_string())
 }
 
 fn kind_error(msg: &str) -> ! {
@@ -808,90 +700,82 @@ fn kind_error(msg: &str) -> ! {
 }
 
 /// `kind = NULL` absent | code 0..=7 | -1 for "default".
-unsafe fn parse_rng_kind_arg(arg: SEXP) -> Option<i32> {
-    unsafe {
-        if arg_is_absent(arg) || (TYPEOF(arg) == SEXPTYPE::STRSXP && XLENGTH(arg) == 0) {
-            return None;
-        }
-        if TYPEOF(arg) != SEXPTYPE::STRSXP || XLENGTH(arg) > 1 {
-            kind_error("'kind' must be a character string (RNG to be used).");
-        }
-        let s = kind_string(arg);
-        match pmatch_one(&s, &RNG_KIND_NAMES) {
-            Some(i) if i == RNG_KIND_NAMES.len() - 1 => Some(-1),
-            Some(i) => Some(i as i32),
-            None => kind_error(&format!("'{s}' is not a valid abbreviation of an RNG")),
-        }
+fn parse_rng_kind_arg(arg: SEXP) -> Option<i32> {
+    if arg_is_absent(arg) || (TYPEOF(arg) == SEXPTYPE::STRSXP && XLENGTH(arg) == 0) {
+        return None;
+    }
+    if TYPEOF(arg) != SEXPTYPE::STRSXP || XLENGTH(arg) > 1 {
+        kind_error("'kind' must be a character string (RNG to be used).");
+    }
+    let s = kind_string(arg);
+    match pmatch_one(&s, &RNG_KIND_NAMES) {
+        Some(i) if i == RNG_KIND_NAMES.len() - 1 => Some(-1),
+        Some(i) => Some(i as i32),
+        None => kind_error(&format!("'{s}' is not a valid abbreviation of an RNG")),
     }
 }
 
 /// `normal.kind = NULL` absent | code 0..=5 | -1 for "default".
-unsafe fn parse_normal_kind_arg(arg: SEXP, from_setseed: bool) -> Option<i32> {
-    unsafe {
-        if arg_is_absent(arg) {
-            return None;
-        }
-        if TYPEOF(arg) != SEXPTYPE::STRSXP || XLENGTH(arg) != 1 {
-            kind_error("'normal.kind' must be a character string");
-        }
-        let s = kind_string(arg);
-        match pmatch_one(&s, &N01_KIND_NAMES) {
-            None => kind_error(&format!("'{s}' is not valid for 'normal.kind'")),
-            Some(0) => {
-                // Buggy Kinderman-Ramage
-                if from_setseed {
-                    kind_error("buggy version of Kinderman-Ramage generator is not allowed");
-                }
-                warn("buggy version of Kinderman-Ramage generator used");
-                Some(0)
+fn parse_normal_kind_arg(arg: SEXP, from_setseed: bool) -> Option<i32> {
+    if arg_is_absent(arg) {
+        return None;
+    }
+    if TYPEOF(arg) != SEXPTYPE::STRSXP || XLENGTH(arg) != 1 {
+        kind_error("'normal.kind' must be a character string");
+    }
+    let s = kind_string(arg);
+    match pmatch_one(&s, &N01_KIND_NAMES) {
+        None => kind_error(&format!("'{s}' is not valid for 'normal.kind'")),
+        Some(0) => {
+            // Buggy Kinderman-Ramage
+            if from_setseed {
+                kind_error("buggy version of Kinderman-Ramage generator is not allowed");
             }
-            Some(i) if i == N01_KIND_NAMES.len() - 1 => Some(-1),
-            Some(i) => Some(i as i32),
+            warn("buggy version of Kinderman-Ramage generator used");
+            Some(0)
         }
+        Some(i) if i == N01_KIND_NAMES.len() - 1 => Some(-1),
+        Some(i) => Some(i as i32),
     }
 }
 
 /// `sample.kind = NULL` absent | code 0..=1 | -1 for "default".
-unsafe fn parse_sample_kind_arg(arg: SEXP) -> Option<i32> {
-    unsafe {
-        if arg_is_absent(arg) {
-            return None;
+fn parse_sample_kind_arg(arg: SEXP) -> Option<i32> {
+    if arg_is_absent(arg) {
+        return None;
+    }
+    if TYPEOF(arg) != SEXPTYPE::STRSXP || XLENGTH(arg) != 1 {
+        kind_error("'sample.kind' must be a character string");
+    }
+    let s = kind_string(arg);
+    match pmatch_one(&s, &SAMPLE_KIND_NAMES) {
+        None => kind_error(&format!("'{s}' is not valid for 'sample.kind'")),
+        Some(0) => {
+            warn("non-uniform 'Rounding' sampler used");
+            Some(0)
         }
-        if TYPEOF(arg) != SEXPTYPE::STRSXP || XLENGTH(arg) != 1 {
-            kind_error("'sample.kind' must be a character string");
-        }
-        let s = kind_string(arg);
-        match pmatch_one(&s, &SAMPLE_KIND_NAMES) {
-            None => kind_error(&format!("'{s}' is not valid for 'sample.kind'")),
-            Some(0) => {
-                warn("non-uniform 'Rounding' sampler used");
-                Some(0)
-            }
-            Some(i) if i == SAMPLE_KIND_NAMES.len() - 1 => Some(-1),
-            Some(i) => Some(i as i32),
-        }
+        Some(i) if i == SAMPLE_KIND_NAMES.len() - 1 => Some(-1),
+        Some(i) => Some(i as i32),
     }
 }
 
 /// `binom.kind = NULL` absent | code 0..=1 | -1 for "default".
-unsafe fn parse_binom_kind_arg(arg: SEXP) -> Option<i32> {
-    unsafe {
-        if arg_is_absent(arg) {
-            return None;
+fn parse_binom_kind_arg(arg: SEXP) -> Option<i32> {
+    if arg_is_absent(arg) {
+        return None;
+    }
+    if TYPEOF(arg) != SEXPTYPE::STRSXP || XLENGTH(arg) != 1 {
+        kind_error("'binom.kind' must be a character string");
+    }
+    let s = kind_string(arg);
+    match pmatch_one(&s, &BINOM_KIND_NAMES) {
+        None => kind_error(&format!("'{s}' is not valid for 'binom.kind'")),
+        Some(0) => {
+            warn("Buggy BTPE algorithm used for rbinom()");
+            Some(0)
         }
-        if TYPEOF(arg) != SEXPTYPE::STRSXP || XLENGTH(arg) != 1 {
-            kind_error("'binom.kind' must be a character string");
-        }
-        let s = kind_string(arg);
-        match pmatch_one(&s, &BINOM_KIND_NAMES) {
-            None => kind_error(&format!("'{s}' is not valid for 'binom.kind'")),
-            Some(0) => {
-                warn("Buggy BTPE algorithm used for rbinom()");
-                Some(0)
-            }
-            Some(i) if i == BINOM_KIND_NAMES.len() - 1 => Some(-1),
-            Some(i) => Some(i as i32),
-        }
+        Some(i) if i == BINOM_KIND_NAMES.len() - 1 => Some(-1),
+        Some(i) => Some(i as i32),
     }
 }
 
@@ -944,199 +828,183 @@ fn binom_kind_from_code(code: i32) -> Binomtype {
 ///
 /// Returns the *old* kind names as a character vector; the value is visible
 /// when nothing was set and invisible otherwise (stock closure behavior).
-pub unsafe fn do_RNGkind(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
-        checkArity(op, args);
-        GetRNGstate(); /* might not be initialized */
+pub fn do_RNGkind(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+    checkArity(op, args);
+    GetRNGstate(); /* might not be initialized */
 
-        let (rng_code, norm_code, sample_code, binom_code) =
-            resolve_kind_args([args, CDR(args), CDR(CDR(args)), CDR(CDR(CDR(args)))]);
-        let rng_parsed = parse_rng_kind_arg(rng_code);
-        let norm_parsed = parse_normal_kind_arg(norm_code, false);
-        let sample_parsed = parse_sample_kind_arg(sample_code);
-        let binom_parsed = parse_binom_kind_arg(binom_code);
+    let (rng_code, norm_code, sample_code, binom_code) =
+        resolve_kind_args([args, CDR(args), CDR(CDR(args)), CDR(CDR(CDR(args)))]);
+    let rng_parsed = parse_rng_kind_arg(rng_code);
+    let norm_parsed = parse_normal_kind_arg(norm_code, false);
+    let sample_parsed = parse_sample_kind_arg(sample_code);
+    let binom_parsed = parse_binom_kind_arg(binom_code);
 
-        // Snapshot the old kinds before applying anything.
-        let (old_rng, old_n01, old_sample, old_binom) = with_rng_state(|rng| {
-            (
-                rng.rng_kind.get() as c_int,
-                rng.n01_kind.get() as c_int,
-                rng.sample_kind.get() as c_int,
-                rng.binom_kind.get() as c_int,
-            )
-        });
+    // Snapshot the old kinds before applying anything.
+    let (old_rng, old_n01, old_sample, old_binom) = with_rng_state(|rng| {
+        (
+            rng.rng_kind.get() as c_int,
+            rng.n01_kind.get() as c_int,
+            rng.sample_kind.get() as c_int,
+            rng.binom_kind.get() as c_int,
+        )
+    });
 
-        // Stock pulls the kind codes from .Random.seed (if present) before
-        // switching; reloading the full state from the same source matches.
-        GetRNGstate();
+    // Stock pulls the kind codes from .Random.seed (if present) before
+    // switching; reloading the full state from the same source matches.
+    GetRNGstate();
 
-        if let Some(code) = rng_parsed {
-            r_RNGkind(rng_kind_from_code(code));
-        }
-        if let Some(code) = norm_parsed {
-            r_Norm_kind(n01_kind_from_code(code));
-        }
-        if let Some(code) = sample_parsed {
-            r_Samp_kind(sample_kind_from_code(code));
-        }
-        if let Some(code) = binom_parsed {
-            r_Bin_kind(binom_kind_from_code(code));
-        }
-
-        let ans = Rf_allocVector(SEXPTYPE::STRSXP, 4);
-        let _ans_guard = protect(ans);
-        for (i, name) in [
-            RNG_KIND_NAMES[old_rng as usize],
-            N01_KIND_NAMES[old_n01 as usize],
-            SAMPLE_KIND_NAMES[old_sample as usize],
-            BINOM_KIND_NAMES[old_binom as usize],
-        ]
-        .iter()
-        .enumerate()
-        {
-            let cstr = std::ffi::CString::new(*name).unwrap_or_default();
-            SET_STRING_ELT(ans, i as R_xlen_t, Rf_mkChar(cstr.as_ptr()));
-        }
-
-        crate::sexp::globals::set_R_Visible(i32::from(
-            rng_parsed.is_none()
-                && norm_parsed.is_none()
-                && sample_parsed.is_none()
-                && binom_parsed.is_none(),
-        ));
-        ans
+    if let Some(code) = rng_parsed {
+        r_RNGkind(rng_kind_from_code(code));
     }
+    if let Some(code) = norm_parsed {
+        r_Norm_kind(n01_kind_from_code(code));
+    }
+    if let Some(code) = sample_parsed {
+        r_Samp_kind(sample_kind_from_code(code));
+    }
+    if let Some(code) = binom_parsed {
+        r_Bin_kind(binom_kind_from_code(code));
+    }
+
+    let ans = checked(sexp_factory().strings(&[
+        RNG_KIND_NAMES[old_rng as usize],
+        N01_KIND_NAMES[old_n01 as usize],
+        SAMPLE_KIND_NAMES[old_sample as usize],
+        BINOM_KIND_NAMES[old_binom as usize],
+    ]));
+
+    crate::sexp::globals::set_R_Visible(i32::from(
+        rng_parsed.is_none()
+            && norm_parsed.is_none()
+            && sample_parsed.is_none()
+            && binom_parsed.is_none(),
+    ));
+    ans.as_raw()
 }
 
 /// GNU `RNGversion(vstr)` — select RNGkind for a historical R version.
-pub unsafe fn do_RNGversion(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
-        let v = CAR(args);
-        if v.is_null() || v == R_NilValue() || TYPEOF(v) != SEXPTYPE::STRSXP || XLENGTH(v) < 1 {
-            error("malformed version string");
-        }
-        let raw = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(v, 0)))
-            .to_string_lossy()
-            .into_owned();
-        let parts: Vec<i32> = raw
-            .split('.')
-            .filter_map(|p| p.parse::<i32>().ok())
-            .collect();
-        if parts.len() < 2 {
-            error("malformed version string");
-        }
-        let major = parts[0];
-        let minor = parts[1];
-        let (rng, norm, sample, binom) = if major == 0 && minor < 99 {
-            (
-                RNGtype::WICHMANN_HILL,
-                N01type::BUGGY_KINDERMAN_RAMAGE,
-                Sampletype::ROUNDING,
-                Binomtype::BUGGY_BTPE,
-            )
-        } else if major == 0 || (major == 1 && minor <= 6) {
-            (
-                RNGtype::MARSAGLIA_MULTICARRY,
-                N01type::BUGGY_KINDERMAN_RAMAGE,
-                Sampletype::ROUNDING,
-                Binomtype::BUGGY_BTPE,
-            )
-        } else if major <= 2 || (major == 3 && minor <= 5) {
-            (
-                RNGtype::MERSENNE_TWISTER,
-                N01type::INVERSION,
-                Sampletype::ROUNDING,
-                Binomtype::BUGGY_BTPE,
-            )
-        } else if major <= 3 || (major == 4 && minor <= 6) {
-            (
-                RNGtype::MERSENNE_TWISTER,
-                N01type::INVERSION,
-                Sampletype::REJECTION,
-                Binomtype::BUGGY_BTPE,
-            )
-        } else {
-            (
-                RNGtype::MERSENNE_TWISTER,
-                N01type::INVERSION,
-                Sampletype::REJECTION,
-                Binomtype::BTPE,
-            )
-        };
-        r_RNGkind(rng);
-        r_Norm_kind(norm);
-        r_Samp_kind(sample);
-        r_Bin_kind(binom);
-        if matches!(binom, Binomtype::BUGGY_BTPE) {
-            // RNGkind() warns when "Buggy BTPE" is (re)selected; under
-            // options(warn = 2) this becomes the error RNGversion() raises.
-            warn("Buggy BTPE algorithm used for rbinom()");
-        }
-        crate::sexp::globals::set_R_Visible(0);
-        R_NilValue()
+pub fn do_RNGversion(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+    let v = CAR(args);
+    if v.is_null() || v == R_NilValue() || TYPEOF(v) != SEXPTYPE::STRSXP || XLENGTH(v) < 1 {
+        error("malformed version string");
     }
+    let raw = kind_string(v);
+    let parts: Vec<i32> = raw
+        .split('.')
+        .filter_map(|p| p.parse::<i32>().ok())
+        .collect();
+    if parts.len() < 2 {
+        error("malformed version string");
+    }
+    let major = parts[0];
+    let minor = parts[1];
+    let (rng, norm, sample, binom) = if major == 0 && minor < 99 {
+        (
+            RNGtype::WICHMANN_HILL,
+            N01type::BUGGY_KINDERMAN_RAMAGE,
+            Sampletype::ROUNDING,
+            Binomtype::BUGGY_BTPE,
+        )
+    } else if major == 0 || (major == 1 && minor <= 6) {
+        (
+            RNGtype::MARSAGLIA_MULTICARRY,
+            N01type::BUGGY_KINDERMAN_RAMAGE,
+            Sampletype::ROUNDING,
+            Binomtype::BUGGY_BTPE,
+        )
+    } else if major <= 2 || (major == 3 && minor <= 5) {
+        (
+            RNGtype::MERSENNE_TWISTER,
+            N01type::INVERSION,
+            Sampletype::ROUNDING,
+            Binomtype::BUGGY_BTPE,
+        )
+    } else if major <= 3 || (major == 4 && minor <= 6) {
+        (
+            RNGtype::MERSENNE_TWISTER,
+            N01type::INVERSION,
+            Sampletype::REJECTION,
+            Binomtype::BUGGY_BTPE,
+        )
+    } else {
+        (
+            RNGtype::MERSENNE_TWISTER,
+            N01type::INVERSION,
+            Sampletype::REJECTION,
+            Binomtype::BTPE,
+        )
+    };
+    r_RNGkind(rng);
+    r_Norm_kind(norm);
+    r_Samp_kind(sample);
+    r_Bin_kind(binom);
+    if matches!(binom, Binomtype::BUGGY_BTPE) {
+        // RNGkind() warns when "Buggy BTPE" is (re)selected; under
+        // options(warn = 2) this becomes the error RNGversion() raises.
+        warn("Buggy BTPE algorithm used for rbinom()");
+    }
+    crate::sexp::globals::set_R_Visible(0);
+    R_NilValue()
 }
 
 /// R's `set.seed(seed, kind = NULL, normal.kind = NULL, sample.kind = NULL,
 /// binom.kind = NULL)`.
 ///
 /// Returns invisible NULL.
-pub unsafe fn do_setseed(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
-        checkArity(op, args);
+pub fn do_setseed(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+    checkArity(op, args);
 
-        // The stock closure validates kind arguments before any state change.
-        let tail = CDR(args);
-        let (skind, nkind, sampkind, binomkind) =
-            resolve_kind_args([tail, CDR(tail), CDR(CDR(tail)), CDR(CDR(CDR(tail)))]);
-        let kind_parsed = parse_rng_kind_arg(skind);
-        let norm_parsed = parse_normal_kind_arg(nkind, true);
-        let sample_parsed = parse_sample_kind_arg(sampkind);
-        let binom_parsed = parse_binom_kind_arg(binomkind);
+    // The stock closure validates kind arguments before any state change.
+    let tail = CDR(args);
+    let (skind, nkind, sampkind, binomkind) =
+        resolve_kind_args([tail, CDR(tail), CDR(CDR(tail)), CDR(CDR(CDR(tail)))]);
+    let kind_parsed = parse_rng_kind_arg(skind);
+    let norm_parsed = parse_normal_kind_arg(nkind, true);
+    let sample_parsed = parse_sample_kind_arg(sampkind);
+    let binom_parsed = parse_binom_kind_arg(binomkind);
 
-        let seed: i64;
-        if !isNull(CAR(args)) && CAR(args) != R_MissingArg() {
-            let arg = CAR(args);
-            if TYPEOF(arg) == SEXPTYPE::STRSXP {
-                // asInteger() coerces strings via NAs
-                warn("NAs introduced by coercion");
-                kind_error("supplied seed is not a valid integer");
-            }
-            let v = asInteger_local(arg);
-            if v == NA_INTEGER {
-                kind_error("supplied seed is not a valid integer");
-            }
-            seed = v as i64;
-        } else {
-            seed = TimeToSeed() as i64;
+    let seed: i64;
+    if !isNull(CAR(args)) && CAR(args) != R_MissingArg() {
+        let arg = CAR(args);
+        if TYPEOF(arg) == SEXPTYPE::STRSXP {
+            // asInteger() coerces strings via NAs
+            warn("NAs introduced by coercion");
+            kind_error("supplied seed is not a valid integer");
         }
-
-        // Pull RNG_kind/N01_kind from .Random.seed if present (stock).
-        GetRNGstate();
-
-        if let Some(code) = kind_parsed {
-            r_RNGkind(rng_kind_from_code(code));
+        let v = asInteger_local(arg);
+        if v == NA_INTEGER {
+            kind_error("supplied seed is not a valid integer");
         }
-        if let Some(code) = norm_parsed {
-            r_Norm_kind(n01_kind_from_code(code));
-        }
-        if let Some(code) = sample_parsed {
-            r_Samp_kind(sample_kind_from_code(code));
-        }
-        if let Some(code) = binom_parsed {
-            r_Bin_kind(binom_kind_from_code(code));
-        }
-
-        // Initialize the RNG with the seed (zaps Box-Muller history)
-        with_rng_state(|rng| {
-            let kind = rng.rng_kind.get();
-            RNG_Init(rng, kind, seed);
-        });
-        PutRNGstate();
-
-        crate::sexp::globals::set_R_Visible(0);
-        R_NilValue()
+        seed = v as i64;
+    } else {
+        seed = TimeToSeed() as i64;
     }
+
+    // Pull RNG_kind/N01_kind from .Random.seed if present (stock).
+    GetRNGstate();
+
+    if let Some(code) = kind_parsed {
+        r_RNGkind(rng_kind_from_code(code));
+    }
+    if let Some(code) = norm_parsed {
+        r_Norm_kind(n01_kind_from_code(code));
+    }
+    if let Some(code) = sample_parsed {
+        r_Samp_kind(sample_kind_from_code(code));
+    }
+    if let Some(code) = binom_parsed {
+        r_Bin_kind(binom_kind_from_code(code));
+    }
+
+    // Initialize the RNG with the seed (zaps Box-Muller history)
+    with_rng_state(|rng| {
+        let kind = rng.rng_kind.get();
+        RNG_Init(rng, kind, seed);
+    });
+    PutRNGstate();
+
+    crate::sexp::globals::set_R_Visible(0);
+    R_NilValue()
 }
 
 /// Seed the session's R-level RNG from a 64-bit host seed and write
@@ -1189,114 +1057,115 @@ pub fn nmath_binom_kind_hook() -> crate::nmath::rng::Binomtype {
 // do_sample -- R's sample() function
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_sample(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
-        checkArity(op, args);
+pub fn do_sample(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+    checkArity(op, args);
 
-        let sn = CAR(args);
-        let args2 = CDR(args);
-        let sk = CAR(args2);
-        let args3 = CDR(args2);
-        let sreplace = CAR(args3);
-        let args4 = CDR(args3);
-        let prob = CAR(args4);
+    let sn = CAR(args);
+    let args2 = CDR(args);
+    let sk = CAR(args2);
+    let args3 = CDR(args2);
+    let sreplace = CAR(args3);
+    let args4 = CDR(args3);
+    let prob = CAR(args4);
 
-        if LENGTH(sk) != 1 {
-            error("invalid 'size' argument");
-        }
-        if LENGTH(sreplace) != 1 {
-            error("invalid 'replace' argument");
-        }
-        let replace = asLogical_local(sreplace);
-        if replace == NA_INTEGER {
-            error("invalid 'replace' argument");
-        }
+    if LENGTH(sk) != 1 {
+        error("invalid 'size' argument");
+    }
+    if LENGTH(sreplace) != 1 {
+        error("invalid 'replace' argument");
+    }
+    let replace = asLogical_local(sreplace);
+    if replace == NA_INTEGER {
+        error("invalid 'replace' argument");
+    }
 
-        GetRNGstate();
+    GetRNGstate();
 
-        if !isNull(prob) {
-            let n = asInteger_local(sn);
-            let k = asInteger_local(sk);
-            if n == NA_INTEGER || n < 0 || (k > 0 && n == 0) {
-                PutRNGstate();
-                error("invalid first argument");
-            }
-            if k == NA_INTEGER || k < 0 {
-                PutRNGstate();
-                error("invalid 'size' argument");
-            }
-            if replace == 0 && k > n {
-                PutRNGstate();
-                error("cannot take a sample larger than the population when 'replace = FALSE'");
-            }
-
-            let y = Rf_allocVector(SEXPTYPE::INTSXP, k);
-            let _y_guard = protect(y);
-            for i in 0..k as usize {
-                *INTEGER(y).add(i) = 0;
-            }
-            PutRNGstate();
-            return y;
-        }
-
-        // Uniform sampling
-        let dn = asReal_local(sn);
-        let k = if asReal_local(sk).is_nan() {
-            0
-        } else {
-            asReal_local(sk) as R_xlen_t
-        };
-        if !dn.is_finite() || dn < 0.0 || dn > 4.5e15 {
+    if !isNull(prob) {
+        let n = asInteger_local(sn);
+        let k = asInteger_local(sk);
+        if n == NA_INTEGER || n < 0 || (k > 0 && n == 0) {
             PutRNGstate();
             error("invalid first argument");
         }
-        if k < 0 {
+        if k == NA_INTEGER || k < 0 {
             PutRNGstate();
             error("invalid 'size' argument");
         }
-        if replace == 0 && k > dn as R_xlen_t {
+        if replace == 0 && k > n {
             PutRNGstate();
             error("cannot take a sample larger than the population when 'replace = FALSE'");
         }
 
-        if dn > i32::MAX as f64 || k > i32::MAX as R_xlen_t {
-            // Long vector support
-            let y = Rf_allocVector(SEXPTYPE::REALSXP, k as c_int);
-            let _y_guard = protect(y);
-            let ry = REAL(y);
-            if replace != 0 {
-                for i in 0..k as usize {
-                    *ry.add(i) = r_R_unif_index(dn) + 1.0;
-                }
-            }
-            PutRNGstate();
-            return y;
+        let y = alloc_int_vector(R_xlen_t::from(k));
+        let mut y_mut = checked(SexpMut::try_from_checked(y.clone()));
+        for i in 0..k {
+            checked(y_mut.try_set_integer_elt(R_xlen_t::from(i), 0));
         }
-
-        let n = dn as i32;
-        let kk = k as i32;
-        let y = Rf_allocVector(SEXPTYPE::INTSXP, kk);
-        let _y_guard = protect(y);
-        let iy = INTEGER(y);
-
-        if replace != 0 || kk < 2 {
-            for i in 0..kk as usize {
-                *iy.add(i) = r_R_unif_index(n as f64) as i32 + 1;
-            }
-        } else {
-            // Without replacement: Fisher-Yates shuffle
-            let mut x: Vec<i32> = (0..n).collect();
-            for i in 0..kk as usize {
-                let remaining = (n - i as i32) as usize;
-                let j = r_R_unif_index(remaining as f64) as usize;
-                *iy.add(i) = x[j] + 1;
-                x[j] = x[remaining - 1];
-            }
-        }
-
         PutRNGstate();
-        y
+        return y.as_raw();
     }
+
+    // Uniform sampling
+    let dn = asReal_local(sn);
+    let k = if asReal_local(sk).is_nan() {
+        0
+    } else {
+        asReal_local(sk) as R_xlen_t
+    };
+    if !dn.is_finite() || dn < 0.0 || dn > 4.5e15 {
+        PutRNGstate();
+        error("invalid first argument");
+    }
+    if k < 0 {
+        PutRNGstate();
+        error("invalid 'size' argument");
+    }
+    if replace == 0 && k > dn as R_xlen_t {
+        PutRNGstate();
+        error("cannot take a sample larger than the population when 'replace = FALSE'");
+    }
+
+    if dn > i32::MAX as f64 || k > i32::MAX as R_xlen_t {
+        // Long vector support
+        let y = alloc_real_vector(k);
+        let mut y_mut = checked(SexpMut::try_from_checked(y.clone()));
+        if replace != 0 {
+            for i in 0..k {
+                checked(y_mut.try_set_real_elt(i, r_R_unif_index(dn) + 1.0));
+            }
+        }
+        PutRNGstate();
+        return y.as_raw();
+    }
+
+    let n = dn as i32;
+    let kk = k as i32;
+    let y = alloc_int_vector(R_xlen_t::from(kk));
+    let mut y_mut = checked(SexpMut::try_from_checked(y.clone()));
+
+    if replace != 0 || kk < 2 {
+        for i in 0..kk {
+            checked(
+                y_mut.try_set_integer_elt(
+                    R_xlen_t::from(i),
+                    r_R_unif_index(n as f64) as i32 + 1,
+                ),
+            );
+        }
+    } else {
+        // Without replacement: Fisher-Yates shuffle
+        let mut x: Vec<i32> = (0..n).collect();
+        for i in 0..kk as usize {
+            let remaining = (n - i as i32) as usize;
+            let j = r_R_unif_index(remaining as f64) as usize;
+            checked(y_mut.try_set_integer_elt(i as R_xlen_t, x[j] + 1));
+            x[j] = x[remaining - 1];
+        }
+    }
+
+    PutRNGstate();
+    y.as_raw()
 }
 
 // ---------------------------------------------------------------------------
