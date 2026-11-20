@@ -797,7 +797,7 @@ fn type_to_char(x: SEXP) -> &'static str {
 /// Port of R's `GetRNGstate`: loads kind codes and the engine state from the
 /// global `.Random.seed`; a missing or corrupt seed falls back to defaults
 /// with a time-based seed (and a warning + write-back for corrupt values).
-pub unsafe fn GetRNGstate() {
+pub fn GetRNGstate() {
     unsafe {
         let seeds_sym = R_SeedsSymbol();
         let seeds = R_findVarInFrame(R_GlobalEnv(), seeds_sym);
@@ -952,7 +952,7 @@ fn rng_kind_out_of_range() -> bool {
 }
 
 /// Copy seeds out to .Random.seed.
-pub unsafe fn PutRNGstate() {
+pub fn PutRNGstate() {
     unsafe {
         if rng_kind_out_of_range() {
             warn("Internal .Random.seed is corrupt: not saving");
@@ -1033,7 +1033,7 @@ pub(crate) fn r_RNGkind(newkind: RNGtype) {
         ));
     }
 
-    unsafe { GetRNGstate() };
+    GetRNGstate();
     // Precaution against corruption as per package randtoolbox
     let u = r_unif_rand();
     let seed = if !(0.0..=1.0).contains(&u) {
@@ -1048,9 +1048,7 @@ pub(crate) fn r_RNGkind(newkind: RNGtype) {
         rng.rng_kind.set(newkind);
     });
 
-    unsafe {
-        PutRNGstate();
-    }
+    PutRNGstate();
 }
 
 pub(crate) fn r_Norm_kind(kind: N01type) {
@@ -1069,36 +1067,30 @@ pub(crate) fn r_Norm_kind(kind: N01type) {
     if kind == N01type::USER_NORM {
         error("'user_norm_rand' not in load table");
     }
-    unsafe { GetRNGstate() }; /* might not be initialized */
+    GetRNGstate(); /* might not be initialized */
     if kind == N01type::BOX_MULLER {
         with_rng_state(|rng| rng.bm_norm_keep.set(0.0)); /* zap Box-Muller history */
     }
     with_rng_state(|rng| rng.n01_kind.set(kind));
-    unsafe {
-        PutRNGstate();
-    }
+    PutRNGstate();
 }
 
 pub(crate) fn r_Samp_kind(kind: Sampletype) {
     if kind as i32 > 1 {
         error("invalid sample type in 'RNGkind'");
     }
-    unsafe { GetRNGstate() }; /* might not be initialized */
+    GetRNGstate(); /* might not be initialized */
     with_rng_state(|rng| rng.sample_kind.set(kind));
-    unsafe {
-        PutRNGstate();
-    }
+    PutRNGstate();
 }
 
 pub(crate) fn r_Bin_kind(kind: Binomtype) {
     if kind as i32 > 1 {
         error("invalid binom type in 'RNGkind'");
     }
-    unsafe { GetRNGstate() }; /* might not be initialized */
+    GetRNGstate(); /* might not be initialized */
     with_rng_state(|rng| rng.binom_kind.set(kind));
-    unsafe {
-        PutRNGstate();
-    }
+    PutRNGstate();
 }
 
 // ---------------------------------------------------------------------------

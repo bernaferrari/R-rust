@@ -1146,9 +1146,7 @@ pub fn set_session_seed64(seed: i64) {
         let kind = rng.rng_kind.get();
         RNG_Init(rng, kind, seed);
     });
-    unsafe {
-        PutRNGstate();
-    }
+    PutRNGstate();
 }
 
 /// Hook installed into the nmath crate so its samplers draw from the
@@ -1538,18 +1536,14 @@ pub fn SampleNoReplace_r(n: usize, nans: usize) -> Vec<c_int> {
 // S compatibility stubs
 // ---------------------------------------------------------------------------
 
-pub unsafe fn seed_in(ignored: *mut std::os::raw::c_long) {
-    unsafe {
-        let _ = ignored;
-        GetRNGstate();
-    }
+pub fn seed_in(ignored: *mut std::os::raw::c_long) {
+    let _ = ignored;
+    GetRNGstate();
 }
 
-pub unsafe fn seed_out(ignored: *mut std::os::raw::c_long) {
-    unsafe {
-        let _ = ignored;
-        PutRNGstate();
-    }
+pub fn seed_out(ignored: *mut std::os::raw::c_long) {
+    let _ = ignored;
+    PutRNGstate();
 }
 
 // ---------------------------------------------------------------------------

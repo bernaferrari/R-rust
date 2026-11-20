@@ -160,7 +160,7 @@ pub(crate) fn makelt(tm: &stm, ans: SEXP, i: R_xlen_t, valid: bool, frac_secs: c
 
 /// Build the standard POSIXlt VECSXP with 11 named components.
 /// Returns (ans, ansnames) both protected.
-pub(crate) unsafe fn make_posixlt_skeleton(n: R_xlen_t) -> (SEXP, SEXP) {
+pub(crate) fn make_posixlt_skeleton(n: R_xlen_t) -> (SEXP, SEXP) {
     unsafe {
         let nans: c_int = 11;
         let ans = Rf_allocVector3(SEXPTYPE::VECSXP, nans as R_xlen_t);
@@ -301,7 +301,7 @@ pub(crate) unsafe fn set_posixlt_balanced(ans: SEXP) {
     }
 }
 
-unsafe fn posixlt_tzone_sexp(tz: &str, is_utc: bool) -> SEXP {
+fn posixlt_tzone_sexp(tz: &str, is_utc: bool) -> SEXP {
     unsafe {
         if is_utc {
             let name = if tz.is_empty() { "UTC" } else { tz };
