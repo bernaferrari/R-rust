@@ -3,7 +3,7 @@
 use super::*;
 
 /// GNU `.Internal(make.unique(names, sep))`.
-pub unsafe fn do_make_unique(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_make_unique(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let names = CAR(args);
         if names.is_null() || names == R_NilValue() {
@@ -122,7 +122,7 @@ fn make_names_is_valid(name: &str) -> bool {
 /// The public `make.names` handler instead parses the closure-visible
 /// positional order `(names, unique, allow_)`. Tag the second evaluated
 /// argument so both shapes resolve identically.
-pub unsafe fn do_make_names_internal(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_make_names_internal(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let second = CDR(args);
         if !second.is_null() && second != R_NilValue() {
@@ -136,7 +136,7 @@ pub unsafe fn do_make_names_internal(call: SEXP, op: SEXP, args: SEXP, rho: SEXP
     }
 }
 /// GNU `make.names(names, unique=FALSE, allow_=TRUE)`.
-pub unsafe fn do_make_names(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_make_names(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let names = CAR(args);
         if names.is_null() || names == R_NilValue() {
@@ -213,7 +213,7 @@ pub unsafe fn do_make_names(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
             if need_prefix {
                 s.insert(0, 'X');
             }
-            let bytes = unsafe { s.as_bytes_mut() };
+            let bytes = { s.as_bytes_mut() };
             for b in bytes.iter_mut() {
                 if *b == b'.' || (allow_ && *b == b'_') {
                     continue;

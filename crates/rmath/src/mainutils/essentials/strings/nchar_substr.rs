@@ -9,8 +9,8 @@ use super::*;
 /// R's `nchar(x, type = "chars", allowNA = FALSE, keepNA = NA)`.
 ///
 /// GNU default `type="chars"` counts Unicode code points, not bytes.
-pub unsafe fn do_nchar(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_nchar(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    {
         super::vector_text_entry::evaluate(args, rho, super::vector_text_owned::Operation::Count)
     }
 }
@@ -32,7 +32,7 @@ fn file_ext_of(path: &str) -> String {
 }
 
 /// GNU `tools::file_ext(x)`.
-pub unsafe fn do_file_ext(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_file_ext(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -52,7 +52,7 @@ pub unsafe fn do_file_ext(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 }
 
 /// GNU `tools::file_path_sans_ext(x)`.
-pub unsafe fn do_file_path_sans_ext(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_file_path_sans_ext(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -88,15 +88,15 @@ pub(crate) fn unicode_display_width(ch: char) -> usize {
 // do_substr — substring extraction
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_substr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { substring_entry(args, _rho, super::substring_owned::Operation::Extract) }
+pub fn do_substr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    { substring_entry(args, _rho, super::substring_owned::Operation::Extract) }
 }
 
-pub unsafe fn do_substrgets(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { substring_entry(args, _rho, super::substring_owned::Operation::Replace) }
+pub fn do_substrgets(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    { substring_entry(args, _rho, super::substring_owned::Operation::Replace) }
 }
 
-unsafe fn substring_entry(
+fn substring_entry(
     args: SEXP,
     rho: SEXP,
     operation: super::substring_owned::Operation,
@@ -165,8 +165,8 @@ unsafe fn substring_entry(
 }
 
 /// GNU `strrep(x, times)` — recycle `x` and `times` to a common length.
-pub unsafe fn do_strrep(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_strrep(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    {
         super::vector_text_entry::evaluate(args, rho, super::vector_text_owned::Operation::Repeat)
     }
 }
@@ -175,8 +175,8 @@ pub unsafe fn do_strrep(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// wrapper over the same internal that rep_lens `text` to the common
 /// length max(len(text), len(first), len(last)) first (character.R);
 /// zero-length text stays zero-length.
-pub unsafe fn do_substring(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { substring_entry(args, _rho, super::substring_owned::Operation::Recycle) }
+pub fn do_substring(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    { substring_entry(args, _rho, super::substring_owned::Operation::Recycle) }
 }
 
 // ---------------------------------------------------------------------------
@@ -184,17 +184,17 @@ pub unsafe fn do_substring(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
 // ---------------------------------------------------------------------------
 
 /// R's `tolower(x)`.
-pub unsafe fn do_tolower(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { do_case_convert(args, true) }
+pub fn do_tolower(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    { do_case_convert(args, true) }
 }
 
 /// R's `toupper(x)`.
-pub unsafe fn do_toupper(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { do_case_convert(args, false) }
+pub fn do_toupper(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    { do_case_convert(args, false) }
 }
 
 /// GNU `casefold(x, upper=FALSE)`.
-pub unsafe fn do_casefold(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_casefold(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let mut upper = false;
         let rest = CDR(args);
@@ -216,11 +216,11 @@ pub unsafe fn do_casefold(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     }
 }
 
-unsafe fn do_case_convert(args: SEXP, to_lower: bool) -> SEXP {
+fn do_case_convert(args: SEXP, to_lower: bool) -> SEXP {
     unsafe { crate::mainutils::character::case_entry(args, !to_lower) }
 }
 
-pub(crate) unsafe fn as_character_element_is_na(x: SEXP, i: R_xlen_t) -> bool {
+pub(crate) fn as_character_element_is_na(x: SEXP, i: R_xlen_t) -> bool {
     unsafe {
         if x.is_null() || x == R_NilValue() {
             return false;

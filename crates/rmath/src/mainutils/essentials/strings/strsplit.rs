@@ -11,7 +11,7 @@ use super::*;
 /// token. A trailing remainder is kept only when non-empty. The `split`
 /// vector recycles across `x`; an empty pattern splits into characters; an
 /// NA split token does not split; NA strings pass through as NA.
-pub unsafe fn do_strsplit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_strsplit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x_arg = arg_by_name_or_position(args, &["x"], 0);
         let split_arg = arg_by_name_or_position(args, &["split"], 1);
@@ -129,14 +129,14 @@ pub unsafe fn do_strsplit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 // ---------------------------------------------------------------------------
 
 /// R's `chartr(old, new, x)` — character-by-character translation.
-pub unsafe fn do_chartr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_chartr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let old_arg = CAR(args);
         let new_arg = CAR(CDR(args));
         let x_arg = CAR(CDR(CDR(args)));
         // SAFETY: this primitive entry point is dispatched with one active,
         // live original R owner and retains no arena or payload loan here.
-        let owner = unsafe { crate::sexp::owner::OwnerToken::current() }
+        let owner = { crate::sexp::owner::OwnerToken::current() }
             .unwrap_or_else(|_| chartr_original_owner_error());
         if old_arg.is_null() || new_arg.is_null() {
             return R_NilValue();

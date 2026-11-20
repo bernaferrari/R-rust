@@ -3,7 +3,7 @@
 use super::*;
 
 /// GNU `gettext(...)` without catalogs is identity.
-pub unsafe fn do_gettext(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_gettext(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -17,7 +17,7 @@ pub unsafe fn do_gettext(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 }
 
 /// GNU `gettextf(fmt, ..., domain=, trim=)` — sprintf of untranslated fmt.
-pub unsafe fn do_gettextf(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_gettextf(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let fmt = CAR(args);
         let mut sprintf_tail = R_NilValue();
@@ -48,7 +48,7 @@ pub unsafe fn do_gettextf(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 /// GNU `ngettext(n, msg1, msg2)` without catalogs.
-pub unsafe fn do_ngettext(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_ngettext(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let n_s = CAR(args);
         let n = if TYPEOF(n_s) == SEXPTYPE::INTSXP && XLENGTH(n_s) > 0 {
@@ -84,7 +84,7 @@ fn bindtextdomain_map() -> &'static std::sync::Mutex<std::collections::HashMap<S
 }
 
 /// GNU `bindtextdomain(domain, dirname)`.
-pub unsafe fn do_bindtextdomain(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_bindtextdomain(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let domain = CAR(args);
         let dirname = CAR(CDR(args));

@@ -3,7 +3,7 @@
 use super::*;
 
 /// GNU `intToBits(x)`: 32 LSB-first raw bits per integer.
-pub unsafe fn do_intToBits(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_intToBits(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let n = if x.is_null() || x == R_NilValue() {
@@ -32,7 +32,7 @@ pub unsafe fn do_intToBits(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
 }
 
 /// GNU `rawToBits(x)`: 8 LSB-first raw bits per byte.
-pub unsafe fn do_rawToBits(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_rawToBits(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let n = if x.is_null() || x == R_NilValue() || TYPEOF(x) != SEXPTYPE::RAWSXP {
@@ -53,7 +53,7 @@ pub unsafe fn do_rawToBits(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
 }
 
 /// GNU `rawShift(x, n)`.
-pub unsafe fn do_rawShift(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_rawShift(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() || TYPEOF(x) != SEXPTYPE::RAWSXP {
@@ -96,7 +96,7 @@ pub unsafe fn do_rawShift(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 }
 
 /// GNU `packBits(x, type)`.
-pub unsafe fn do_packBits(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_packBits(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -176,7 +176,7 @@ pub unsafe fn do_packBits(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
     }
 }
 
-unsafe fn packbits_bit(x: SEXP, idx: i64) -> u8 {
+fn packbits_bit(x: SEXP, idx: i64) -> u8 {
     unsafe {
         match TYPEOF(x) {
             t if t == SEXPTYPE::RAWSXP => *RAW(x).add(idx as usize) & 1,
@@ -188,7 +188,7 @@ unsafe fn packbits_bit(x: SEXP, idx: i64) -> u8 {
 }
 
 /// GNU `numToInts(x)`: two little-endian ints per double.
-pub unsafe fn do_numToInts(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_numToInts(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let n = if x.is_null() || x == R_NilValue() {
@@ -216,7 +216,7 @@ pub unsafe fn do_numToInts(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
 }
 
 /// GNU `numToBits(x)`: 64 LSB-first raw bits per double.
-pub unsafe fn do_numToBits(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_numToBits(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let n = if x.is_null() || x == R_NilValue() {
@@ -246,7 +246,7 @@ pub unsafe fn do_numToBits(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
 }
 
 /// GNU `utf8ToInt(x)`: UTF-8 code points of a length-1 string.
-pub unsafe fn do_utf8ToInt(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_utf8ToInt(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() || TYPEOF(x) != SEXPTYPE::STRSXP || XLENGTH(x) == 0 {
@@ -287,7 +287,7 @@ pub unsafe fn do_utf8ToInt(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
 }
 
 /// GNU `intToUtf8(x, multiple=FALSE, allow_surrogate_pairs=FALSE)`.
-pub unsafe fn do_intToUtf8(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_intToUtf8(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let matched = crate::mainutils::match_mod::match_formal_slots(
             crate::mainutils::errors::R_getCurrentCall(),
@@ -472,7 +472,7 @@ fn utf8_bytes_valid(s: SEXP) -> bool {
 }
 
 /// GNU `validUTF8(x)`.
-pub unsafe fn do_validUTF8(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_validUTF8(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() || TYPEOF(x) != SEXPTYPE::STRSXP {
@@ -496,7 +496,7 @@ pub unsafe fn do_validUTF8(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
 }
 
 /// GNU `validEnc(x)`.
-pub unsafe fn do_validEnc(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_validEnc(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() || TYPEOF(x) != SEXPTYPE::STRSXP {

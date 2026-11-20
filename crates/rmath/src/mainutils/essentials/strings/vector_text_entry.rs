@@ -5,7 +5,7 @@ use crate::sexp::{
     object::Sexp,
     owner::{OwnerToken, with_runtime},
 };
-pub(super) unsafe fn evaluate(args: SEXP, rho: SEXP, operation: Operation) -> SEXP {
+pub(super) fn evaluate(args: SEXP, rho: SEXP, operation: Operation) -> SEXP {
     fn fail(e: crate::sexp::object::SexpError) -> ! {
         crate::sexp::context::r_error(e.to_string())
     }
