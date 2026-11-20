@@ -244,7 +244,7 @@ pub unsafe fn do_setenv(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
         // as the public Sys.setenv implementation.  Without this check a
         // default session could mutate the process environment by bypassing
         // the capability-gated builtin.
-        let allowed = crate::sexp::instance::with_required_current_instance(|inst| unsafe {
+        let allowed = crate::sexp::instance::with_required_current_instance(|inst| {
             (*inst).eval_state.capabilities.allow_environment_mutation
         });
 
@@ -287,7 +287,7 @@ pub unsafe fn do_unsetenv(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP
         }
 
         let n = LENGTH(nm);
-        let allowed = crate::sexp::instance::with_required_current_instance(|inst| unsafe {
+        let allowed = crate::sexp::instance::with_required_current_instance(|inst| {
             (*inst).eval_state.capabilities.allow_environment_mutation
         });
         let ans = Rf_allocVector3(SEXPTYPE::LGLSXP, n as R_xlen_t);

@@ -459,7 +459,7 @@ pub(crate) fn set_current_srcref_location(expr: SEXP, vector: SEXP, index: usize
                 }
             }
         };
-        crate::sexp::instance::with_required_current_instance(|inst| unsafe {
+        crate::sexp::instance::with_required_current_instance(|inst| {
             (*inst).error_state.current_srcref_location = loc;
             crate::eval::profiling::set_current_srcref_in(inst, active_srcref);
         });
@@ -489,10 +489,8 @@ pub unsafe fn do_remove_source(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
         } else if ty == SEXPTYPE::SYMSXP || ty == SEXPTYPE::LANGSXP || ty == SEXPTYPE::EXPRSXP {
             recurse_remove_source(x)
         } else {
-            let kind = unsafe {
-                std::ffi::CStr::from_ptr(crate::mainutils::util_main::type2char(TYPEOF(x)))
-                    .to_string_lossy()
-            };
+            let kind = std::ffi::CStr::from_ptr(crate::mainutils::util_main::type2char(TYPEOF(x)))
+                .to_string_lossy();
 
             crate::sexp::context::r_error(format!(
                 "argument is not a function or language object:{kind}"

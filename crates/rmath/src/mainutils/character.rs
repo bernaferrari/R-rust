@@ -1159,9 +1159,9 @@ mod tests {
     /// Helper to build a pairlist (args) from a vec of SEXP values.
     unsafe fn make_args(items: &[SEXP]) -> SEXP {
         if items.is_empty() {
-            return unsafe { R_NilValue() };
+            return R_NilValue();
         }
-        let mut result = unsafe { R_NilValue() };
+        let mut result = R_NilValue();
         for item in items.iter().rev() {
             result = unsafe { Rf_cons(*item, result) };
         }

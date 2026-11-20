@@ -1146,9 +1146,7 @@ unsafe fn stringSubscript(
         *stretch = 0;
 
         let is_non_null_string = |elt: SEXP| -> bool {
-            unsafe {
-                !elt.is_null() && elt != R_NilValue() && elt != crate::sexp::globals::R_NaString()
-            }
+            !elt.is_null() && elt != R_NilValue() && elt != crate::sexp::globals::R_NaString()
         };
 
         // First pass: match against the names on x. Unmatched entries stay 0.
@@ -1170,8 +1168,7 @@ unsafe fn stringSubscript(
                     for j in 0..nx {
                         let name_j = STRING_ELT(names, j);
                         if is_non_null_string(name_j) {
-                            let nbytes =
-                                unsafe { std::ffi::CStr::from_ptr(CHAR(name_j)) }.to_bytes();
+                            let nbytes = std::ffi::CStr::from_ptr(CHAR(name_j)).to_bytes();
                             if !sbytes.is_empty() && nbytes == sbytes {
                                 sub = j + 1;
                                 break;

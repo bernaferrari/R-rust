@@ -1249,17 +1249,13 @@ mod tests {
     #[test]
     fn test_MAYBE_REFERENCED_null() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            assert_eq!(MAYBE_REFERENCED(ptr::null_mut()), false);
-        }
+        assert_eq!(MAYBE_REFERENCED(ptr::null_mut()), false);
     }
 
     #[test]
     fn test_MAYBE_SHARED_null() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            assert_eq!(MAYBE_SHARED(ptr::null_mut()), false);
-        }
+        assert_eq!(MAYBE_SHARED(ptr::null_mut()), false);
     }
 
     #[test]

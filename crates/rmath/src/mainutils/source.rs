@@ -278,7 +278,7 @@ fn parse_failure(message: impl Into<String>) -> ! {
             b"colno\0".as_ptr() as *const std::os::raw::c_char,
             colno,
         );
-        crate::sexp::instance::with_required_current_instance(|inst| unsafe {
+        crate::sexp::instance::with_required_current_instance(|inst| {
             (*inst).error_state.signalled_condition =
                 crate::sexp::instance::RuntimeValue::from_raw_in(inst, cond);
         });

@@ -112,7 +112,7 @@ unsafe fn define_machine_binding(rho: SEXP, ans: SEXP) {
         return;
     };
     let Some(machine_symbol) =
-        (unsafe { Sexp::from_raw(unsafe { install(c".Machine".as_ptr()) }) })
+        (unsafe { Sexp::from_raw(install(c".Machine".as_ptr())) })
     else {
         return;
     };
