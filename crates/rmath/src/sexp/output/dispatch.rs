@@ -194,10 +194,9 @@ pub(crate) fn auto_print_method_supported(x: &Sexp<'_>) -> bool {
     {
         return false;
     }
-    if {
-        crate::mainutils::coerce::IS_S4_OBJECT(x.clone().as_raw()) != 0
-            || x.typeof_() == SEXPTYPE::S4SXP
-    } {
+    if crate::mainutils::coerce::IS_S4_OBJECT(x.clone().as_raw()) != 0
+        || x.typeof_() == SEXPTYPE::S4SXP
+    {
         return false;
     }
     true
