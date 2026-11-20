@@ -13,7 +13,7 @@ use crate::sexp::ffi::*;
 use crate::sexp::globals::R_NilValue;
 
 /// R_dummy_extern_place - placeholder for external pointer initializers.
-pub unsafe fn R_dummy_extern_place() -> SEXP {
+pub fn R_dummy_extern_place() -> SEXP {
     std::panic::panic_any(RError {
         message: "calling the C routine used as an initializer for 'externalptr' objects"
             .to_string(),
@@ -21,7 +21,7 @@ pub unsafe fn R_dummy_extern_place() -> SEXP {
 }
 
 /// R_externalptr_prototype_object - create the prototype for externalptr objects.
-pub unsafe fn R_externalptr_prototype_object() -> SEXP {
+pub fn R_externalptr_prototype_object() -> SEXP {
     unsafe {
         R_MakeExternalPtr(
             R_dummy_extern_place as *mut c_void,

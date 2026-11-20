@@ -17,7 +17,7 @@ use crate::sexp::globals::*;
 use crate::sexp::protect::*;
 use crate::sexp::symbol::Rf_install;
 
-unsafe fn slot_name_charsxp(name: SEXP) -> SEXP {
+fn slot_name_charsxp(name: SEXP) -> SEXP {
     unsafe {
         if name.is_null() || name == R_NilValue() {
             return R_NilValue();
@@ -31,7 +31,7 @@ unsafe fn slot_name_charsxp(name: SEXP) -> SEXP {
     }
 }
 
-unsafe fn slot_name_matches(names: SEXP, index: c_int, name: SEXP) -> bool {
+fn slot_name_matches(names: SEXP, index: c_int, name: SEXP) -> bool {
     unsafe {
         let name = slot_name_charsxp(name);
         if name.is_null() || name == R_NilValue() {
@@ -54,7 +54,7 @@ unsafe fn slot_name_matches(names: SEXP, index: c_int, name: SEXP) -> bool {
 
 /// R_get_slot - get the value of a slot in an S4 object.
 /// Simplified counterpart of R_do_slot (mainutils/essentials/s4.rs).
-pub unsafe fn R_get_slot(obj: SEXP, name: SEXP) -> SEXP {
+pub fn R_get_slot(obj: SEXP, name: SEXP) -> SEXP {
     unsafe {
         if obj.is_null() || obj == R_NilValue() || name.is_null() || name == R_NilValue() {
             return R_NilValue();
@@ -81,7 +81,7 @@ pub unsafe fn R_get_slot(obj: SEXP, name: SEXP) -> SEXP {
 /// R_set_slot - set the value of a slot in an S4 object.
 /// Simplified counterpart of R_do_slot_assign (slot lookup itself lives in
 /// mainutils/essentials/s4.rs).
-pub unsafe fn R_set_slot(obj: SEXP, name: SEXP, value: SEXP) -> SEXP {
+pub fn R_set_slot(obj: SEXP, name: SEXP, value: SEXP) -> SEXP {
     unsafe {
         if obj.is_null() || obj == R_NilValue() || name.is_null() || name == R_NilValue() {
             return obj;
@@ -109,7 +109,7 @@ pub unsafe fn R_set_slot(obj: SEXP, name: SEXP, value: SEXP) -> SEXP {
 /// R_hasSlot - check if an S4 object has a given slot.
 /// Simplified counterpart of R_has_slot (see R_do_slot in
 /// mainutils/essentials/s4.rs).
-pub unsafe fn R_hasSlot(obj: SEXP, name: SEXP) -> SEXP {
+pub fn R_hasSlot(obj: SEXP, name: SEXP) -> SEXP {
     unsafe {
         let has_slot =
             if obj.is_null() || obj == R_NilValue() || name.is_null() || name == R_NilValue() {

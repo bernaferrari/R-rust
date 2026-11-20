@@ -12,7 +12,7 @@ use crate::sexp::memory_ext::NewEnvironment;
 use crate::sexp::protect::protect;
 
 /// Substitute in an already evaluated object with an explicit list-like environment.
-pub unsafe fn do_substitute_direct(f: SEXP, mut env: SEXP) -> SEXP {
+pub fn do_substitute_direct(f: SEXP, mut env: SEXP) -> SEXP {
     unsafe {
         if TYPEOF(env) == SEXPTYPE::VECSXP {
             let pairlist = crate::mainutils::subassign::VectorToPairList(env);

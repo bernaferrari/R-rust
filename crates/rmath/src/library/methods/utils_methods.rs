@@ -15,7 +15,7 @@ use crate::sexp::accessors::{
 };
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
 
-unsafe fn class_name_owned(class_name: SEXP) -> AdmittedClassName {
+fn class_name_owned(class_name: SEXP) -> AdmittedClassName {
     unsafe {
         let owner = crate::sexp::owner::OwnerToken::current()
             .unwrap_or_else(|failure| crate::sexp::context::r_error(failure.to_string()));
@@ -62,7 +62,7 @@ unsafe fn class_name_owned(class_name: SEXP) -> AdmittedClassName {
 }
 
 // GNU util.c asChar: this is scalar coercion, without R-level dispatch.
-unsafe fn class_name_chars(value: SEXP, owner: crate::sexp::owner::OwnerToken<'_>) -> SEXP {
+fn class_name_chars(value: SEXP, owner: crate::sexp::owner::OwnerToken<'_>) -> SEXP {
     unsafe {
         let kind = SEXPTYPE(TYPEOF(value));
         if kind == SEXPTYPE::CHARSXP {
@@ -125,7 +125,7 @@ unsafe fn class_name_chars(value: SEXP, owner: crate::sexp::owner::OwnerToken<'_
 }
 
 /// R_methods_test_MAKE_CLASS - create a class definition for testing.
-pub unsafe fn R_methods_test_MAKE_CLASS(className: SEXP) -> SEXP {
+pub fn R_methods_test_MAKE_CLASS(className: SEXP) -> SEXP {
     unsafe {
         let class_name = class_name_owned(className);
         crate::mainutils::objects::make_class_by_name(class_name.as_str()).as_raw()
@@ -133,7 +133,7 @@ pub unsafe fn R_methods_test_MAKE_CLASS(className: SEXP) -> SEXP {
 }
 
 /// R_methods_test_NEW - create a new object of a given class for testing.
-pub unsafe fn R_methods_test_NEW(className: SEXP) -> SEXP {
+pub fn R_methods_test_NEW(className: SEXP) -> SEXP {
     unsafe {
         let class_name = class_name_owned(className);
         let class_def = crate::mainutils::objects::make_class_by_name(class_name.as_str());
