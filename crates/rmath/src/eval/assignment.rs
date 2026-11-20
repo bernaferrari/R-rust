@@ -6,8 +6,8 @@
 
 use crate::sexp::accessors::ENCLOS;
 use crate::sexp::accessors::{
-    CADDR, CADR, CAR, CDDR, CDR, CHAR, INTEGER_ELT, LOGICAL_ELT, NAMED, PRINTNAME, REAL_ELT,
-    SET_INTEGER_ELT, SET_LOGICAL_ELT, SET_REAL_ELT, SETTAG, STRING_ELT, TAG, TYPEOF, XLENGTH,
+    CADDR, CADR, CAR, CDDR, CDR, INTEGER_ELT, LOGICAL_ELT, NAMED, REAL_ELT,
+    SETTAG, STRING_ELT, TAG, TYPEOF, XLENGTH,
 };
 
 use crate::sexp::envir::Environment;
@@ -150,13 +150,13 @@ fn apply_custom_replacement(
                     .map_err(|message| SexpError::EvaluationFailed { message })?
             } else {
                 let result = unsafe { Rf_eval(setter.as_raw(), environment.as_raw()) };
-                unsafe { Sexp::from_raw(result) }
+                owner.sexp(result).ok()
             };
             let Some(function) = function else {
                 return Err(SexpError::EvaluationFailed {
                     message: format!(
                         "could not find function \"{}\"",
-                        unsafe { symbol_name(setter.as_raw()) }.unwrap_or_default(),
+                        symbol_name(setter.as_raw()).unwrap_or_default(),
                     ),
                 });
             };
@@ -187,7 +187,7 @@ fn apply_custom_replacement(
                 })?;
             if canonical_kind
                 && setter.is_symbol()
-                && unsafe { symbol_name(setter.as_raw()) }.as_deref() == Some(name.as_str())
+                && symbol_name(setter.as_raw()).as_deref() == Some(name.as_str())
                 && matches!(
                     name.as_str(),
                     "[<-"
@@ -694,28 +694,17 @@ pub unsafe fn applydefine(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     }
 }
 
-unsafe fn symbol_name(symbol: SEXP) -> Option<String> {
-    unsafe {
+fn symbol_name(symbol: SEXP) -> Option<String> {
+    {
         if symbol.is_null() || TYPEOF(symbol) != SEXPTYPE::SYMSXP {
             return None;
         }
-        let printname = PRINTNAME(symbol);
-        if printname.is_null() {
-            return None;
-        }
-        let chars = CHAR(printname);
-        if chars.is_null() {
-            return None;
-        }
-        std::ffi::CStr::from_ptr(chars)
-            .to_str()
-            .ok()
-            .map(str::to_owned)
+        crate::sexp::symbol::symbol_name_from_ptr(symbol)
     }
 }
 
-unsafe fn dollar_field_symbol(field: SEXP) -> Option<SEXP> {
-    unsafe {
+fn dollar_field_symbol(field: SEXP) -> Option<SEXP> {
+    {
         if field.is_null() || field == R_NilValue() {
             return None;
         }
@@ -723,9 +712,13 @@ unsafe fn dollar_field_symbol(field: SEXP) -> Option<SEXP> {
             return Some(field);
         }
         if TYPEOF(field) == SEXPTYPE::STRSXP && XLENGTH(field) > 0 {
-            return Some(crate::mainutils::subset::installTrChar(STRING_ELT(
-                field, 0,
-            )));
+            // SAFETY: the translated caller retains the active runtime, and
+            // installTrChar only inspects a checked STRSXP element.
+            return unsafe {
+                let owner = crate::sexp::owner::OwnerToken::current().ok()?;
+                let charsxp = owner.sexp(field).ok()?.try_string_elt(0).ok()?;
+                Some(crate::mainutils::subset::installTrChar(charsxp.as_raw()))
+            };
         }
         None
     }
@@ -804,8 +797,8 @@ unsafe fn apply_replacement_call(assign_fn: SEXP, call: SEXP, args: SEXP, rho: S
     }
 }
 
-unsafe fn try_simple_vector_subassign(target: SEXP, subs: SEXP, value: SEXP) -> Option<SEXP> {
-    unsafe {
+fn try_simple_vector_subassign(target: SEXP, subs: SEXP, value: SEXP) -> Option<SEXP> {
+    {
         if subs == R_NilValue() || subs.is_null() || CDR(subs) != R_NilValue() {
             return None;
         }
@@ -833,6 +826,13 @@ unsafe fn try_simple_vector_subassign(target: SEXP, subs: SEXP, value: SEXP) -> 
             return None;
         }
 
+        // SAFETY: the translated caller retains the active runtime.
+        let owner = unsafe { crate::sexp::owner::OwnerToken::current() }.ok()?;
+        let mut target_mut = crate::sexp::object::SexpMut::try_from_checked(
+            owner.sexp(target).ok()?,
+        )
+        .ok()?;
+
         match TYPEOF(target) {
             t if t == SEXPTYPE::REALSXP => {
                 let replacement = match TYPEOF(value) {
@@ -851,7 +851,7 @@ unsafe fn try_simple_vector_subassign(target: SEXP, subs: SEXP, value: SEXP) -> 
                     }
                     _ => return None,
                 };
-                SET_REAL_ELT(target, index as i32, replacement);
+                target_mut.try_set_real_elt(index, replacement).ok()?;
                 Some(target)
             }
             t if t == SEXPTYPE::INTSXP => {
@@ -860,7 +860,7 @@ unsafe fn try_simple_vector_subassign(target: SEXP, subs: SEXP, value: SEXP) -> 
                     vt if vt == SEXPTYPE::LGLSXP => LOGICAL_ELT(value, 0),
                     _ => return None,
                 };
-                SET_INTEGER_ELT(target, index as i32, replacement);
+                target_mut.try_set_integer_elt(index, replacement).ok()?;
                 Some(target)
             }
             t if t == SEXPTYPE::LGLSXP => {
@@ -868,7 +868,7 @@ unsafe fn try_simple_vector_subassign(target: SEXP, subs: SEXP, value: SEXP) -> 
                     vt if vt == SEXPTYPE::LGLSXP => LOGICAL_ELT(value, 0),
                     _ => return None,
                 };
-                SET_LOGICAL_ELT(target, index as i32, replacement);
+                target_mut.try_set_logical_elt(index, replacement).ok()?;
                 Some(target)
             }
             _ => None,
