@@ -296,7 +296,7 @@ mod tests {
 
         let first = unsafe { Rf_ScalarInteger(1) };
         let second = unsafe { Rf_ScalarInteger(2) };
-        let tag = unsafe { Rf_install(c"answer".as_ptr()) };
+        let tag = unsafe { crate::sexp::symbol::install_str("answer") };
         let first_value = session.sexp(first).expect("first value belongs to session");
         let second_value = session
             .sexp(second)

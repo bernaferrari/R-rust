@@ -241,7 +241,7 @@ fn string_coercion_restores_the_live_original_digits_option_after_collection() {
     use crate::sexp::accessors::*;
     let session = RSession::new_for_gc_tests();
     session.with_active(|| unsafe {
-        let digits = crate::sexp::symbol::Rf_install(c"digits".as_ptr());
+        let digits = crate::sexp::symbol::install_str("digits");
         let original = Rf_ScalarInteger(4);
         let original_allocation = memory::checked_projection(original).unwrap().1;
         crate::mainutils::options::R_SetOption(digits, original);

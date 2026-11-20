@@ -1696,10 +1696,7 @@ fn defined_in(env: SEXP, name: &str) -> bool {
 }
 
 fn Rf_install_in_current(name: &str) -> SEXP {
-    unsafe {
-        let cstring = std::ffi::CString::new(name).unwrap_or_default();
-        crate::sexp::symbol::Rf_install(cstring.as_ptr())
-    }
+    crate::sexp::symbol::install_str(name)
 }
 
 /// Whether evaluating `expr` assigns to a blocked export name (including

@@ -82,7 +82,7 @@ pub(crate) fn format_dispatched_show(raw: crate::sexp::ffi::SEXP) -> Option<Stri
             );
         }
         let namespace = crate::mainutils::essentials::cached_namespace_by_name("methods")?;
-        let symbol = crate::sexp::symbol::Rf_install(c"show".as_ptr());
+        let symbol = crate::sexp::symbol::install_str("show");
         let mut fun = crate::sexp::envir::R_findVarInFrame(namespace, symbol);
         if fun.is_null() || fun == crate::sexp::globals::R_UnboundValue() {
             return None;
@@ -166,7 +166,7 @@ pub(crate) fn dispatch_print_method(x: Sexp<'_>) -> Option<()> {
         };
         let args = crate::sexp::constructors::Rf_cons(raw, extras);
         let _args = crate::sexp::protect::protect(args);
-        let print_sym = crate::sexp::symbol::Rf_install(c"print".as_ptr());
+        let print_sym = crate::sexp::symbol::install_str("print");
         let call = crate::sexp::constructors::Rf_cons(print_sym, args);
         if !call.is_null() {
             crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());

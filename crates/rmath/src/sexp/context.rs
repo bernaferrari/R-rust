@@ -332,7 +332,7 @@ pub unsafe fn Rf_begincontext_in(
         let srcref = unsafe {
             crate::sexp::attrib_core::getAttrib(
                 call.as_raw(),
-                crate::sexp::symbol::Rf_install(c"srcref".as_ptr()),
+                crate::sexp::symbol::install_str("srcref"),
             )
         };
         require_context_owner_live(owner_pin.as_ref());

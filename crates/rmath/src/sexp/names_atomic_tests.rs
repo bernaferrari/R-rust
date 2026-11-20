@@ -1942,7 +1942,7 @@ fn pairlist_names_target_rechecks_owner_and_tags_after_callbacks() {
                 .into_owned()
                 .unwrap();
             let other_tag = factory
-                .wrap(crate::sexp::symbol::Rf_install(c"changed".as_ptr()))
+                .wrap(crate::sexp::symbol::install_str("changed"))
                 .unwrap()
                 .into_owned()
                 .unwrap();
@@ -2013,7 +2013,7 @@ fn pairlist_names_target_allocation_denial_does_not_change_tags() {
         let factory = owner.node_factory();
         let nil = factory.nil();
         let original_tag = factory
-            .wrap(crate::sexp::symbol::Rf_install(c"original".as_ptr()))
+            .wrap(crate::sexp::symbol::install_str("original"))
             .unwrap();
         let target = factory.pairlist_cell(&nil, &nil, &original_tag).unwrap();
         let child = factory

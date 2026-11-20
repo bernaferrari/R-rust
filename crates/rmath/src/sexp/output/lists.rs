@@ -171,7 +171,7 @@ pub(crate) fn data_frame_nrows(x: Sexp<'_>) -> R_xlen_t {
     unsafe {
         let row_names = crate::sexp::attrib_core::getAttrib(
             x.clone().as_raw(),
-            crate::sexp::symbol::Rf_install(c"row.names".as_ptr()),
+            crate::sexp::symbol::install_str("row.names"),
         );
         if let Some(row_names) = Sexp::from_raw(row_names)
             && row_names.clone().typeof_() == SEXPTYPE::INTSXP
@@ -190,7 +190,7 @@ pub(crate) fn data_frame_row_labels(x: Sexp<'_>, nrow: R_xlen_t) -> Vec<String> 
     unsafe {
         let row_names = crate::sexp::attrib_core::getAttrib(
             x.clone().as_raw(),
-            crate::sexp::symbol::Rf_install(c"row.names".as_ptr()),
+            crate::sexp::symbol::install_str("row.names"),
         );
         if let Some(row_names) = Sexp::from_raw(row_names)
             && row_names.clone().typeof_() == SEXPTYPE::STRSXP

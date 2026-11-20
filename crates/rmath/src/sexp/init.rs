@@ -13,7 +13,6 @@ use super::envir::{R_findVarInFrame, defineVar};
 use super::ffi::{FALSE, SEXP, SEXPTYPE, TRUE};
 use super::globals::{R_EmptyEnv, R_MissingArg, R_NilValue, R_UnboundValue};
 use super::instance::{RInstance, current_instance_ptr, with_required_current_instance};
-use super::symbol::Rf_install_in;
 use std::ffi::CString;
 
 /// Acquire the sole original interpreter before initialization can execute R.
@@ -752,10 +751,7 @@ fn string_scalar(value: &str) -> SEXP {
 }
 
 fn Rf_install_in_current(name: &str) -> SEXP {
-    unsafe {
-        let c_name = CString::new(name).expect("static R symbol name has no interior NUL");
-        super::symbol::Rf_install(c_name.as_ptr())
-    }
+    super::symbol::install_str(name)
 }
 
 fn pre_intern_symbols() {
@@ -881,8 +877,7 @@ unsafe fn pre_intern_symbols_in(inst: *mut RInstance) {
         ];
 
         for name in &symbols {
-            let c_name = CString::new(*name).expect("static R symbol name has no interior NUL");
-            Rf_install_in(inst, c_name.as_ptr());
+            super::symbol::install_str_in(inst, name);
             require_initialization_live(&pin);
         }
     }

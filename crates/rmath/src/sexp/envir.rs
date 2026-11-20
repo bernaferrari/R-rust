@@ -19,7 +19,7 @@ use super::accessors::{
 };
 use super::constructors::Rf_cons;
 use super::ffi::{SEXP, SEXPTYPE};
-use super::globals::{R_EmptyEnv, R_GlobalEnv_in, R_MissingArg, R_NilValue, R_UnboundValue};
+use super::globals::{R_EmptyEnv, R_GlobalEnv_in, R_NilValue, R_UnboundValue};
 use super::instance::{with_current_instance, with_required_current_instance};
 use super::memory_ext::NewEnvironment;
 use super::object::{PairlistIter, Sexp, SexpError};
@@ -48,7 +48,7 @@ pub fn R_BaseNamespace() -> SEXP {
         if base.is_null() {
             return base;
         }
-        let sym = super::symbol::Rf_install(c".BaseNamespaceEnv".as_ptr());
+        let sym = super::symbol::install_str(".BaseNamespaceEnv");
         let ns = R_findVarInFrame(base, sym);
         if !ns.is_null()
             && ns != R_UnboundValue()
@@ -126,8 +126,8 @@ fn base_env_symbol_cell_raw(env: SEXP, symbol: SEXP) -> Option<SEXP> {
         if env != base {
             // The base namespace redirects to the same symbol cells. Read
             // its binding cell directly so this never re-enters lookup.
-            let namespace = crate::sexp::accessors::SYMVALUE(super::symbol::Rf_install(
-                c".BaseNamespaceEnv".as_ptr(),
+            let namespace = crate::sexp::accessors::SYMVALUE(super::symbol::install_str(
+                ".BaseNamespaceEnv",
             ));
             let is_base_namespace = !namespace.is_null()
                 && namespace != R_UnboundValue()
@@ -1183,7 +1183,7 @@ pub fn set_var_safe(symbol: Sexp<'_>, value: Sexp<'_>, rho: Sexp<'_>) {
 
         let frame = match current.clone().try_frame() {
             Ok(f) => f,
-            Err(_) => unsafe { Sexp::from_raw_unchecked(R_NilValue()) },
+            Err(_) => Sexp::nil(),
         };
 
         for cell in PairlistIter::new(frame) {
@@ -1471,7 +1471,7 @@ fn dots_symbol<'a>() -> Sexp<'a> {
 }
 
 fn missing_arg_value<'a>() -> Sexp<'a> {
-    unsafe { Sexp::from_raw_unchecked(R_MissingArg()) }
+    Sexp::missing()
 }
 
 fn is_empty_dots_value(value: Sexp<'_>) -> bool {
@@ -1486,33 +1486,34 @@ fn dots_len(dots: Sexp<'_>) -> i32 {
     if is_empty_dots_value(dots.clone()) {
         return 0;
     }
-    {
-        let mut n = 0;
-        let mut cell = dots.as_raw();
-        while !cell.is_null() && cell != R_NilValue() {
-            n += 1;
-            cell = CDR(cell);
+    let mut n = 0;
+    let mut cell = Some(dots);
+    while let Some(current) = cell {
+        if current.clone().is_nil() {
+            break;
         }
-        n
+        n += 1;
+        cell = current.cdr();
     }
+    n
 }
 
 fn dots_car_at<'a>(dots: Sexp<'a>, index: i32) -> Option<Sexp<'a>> {
     if index <= 0 {
         return None;
     }
-    unsafe {
-        let mut cell = dots.as_raw();
-        let mut i = 1;
-        while !cell.is_null() && cell != R_NilValue() {
-            if i == index {
-                return Sexp::from_raw(CAR(cell));
-            }
-            i += 1;
-            cell = CDR(cell);
+    let mut cell = dots;
+    let mut i = 1;
+    loop {
+        if cell.clone().is_nil() {
+            return None;
         }
+        if i == index {
+            return cell.car();
+        }
+        i += 1;
+        cell = cell.cdr()?;
     }
-    None
 }
 
 /// Walk enclosing environments for the first usable `...` binding.
@@ -1746,7 +1747,7 @@ pub fn check_formals_safe(formals: Sexp<'_>) -> EnvResult<()> {
 
 /// Add missing variable bindings for unprovided arguments.
 pub fn add_missing_vars_to_new_env_safe(formals: Sexp<'_>, args: Sexp<'_>, newrho: Sexp<'_>) {
-    let missing_arg = unsafe { Sexp::from_raw_unchecked(R_MissingArg()) };
+    let missing_arg = Sexp::missing();
 
     for f in PairlistIter::new(formals) {
         if let Ok(sym) = f.try_tag()
@@ -2184,7 +2185,7 @@ mod tests {
         let session = crate::sexp::session::RSession::new_for_gc_tests();
         session.with_active(|| unsafe {
             let env = memory::with_arena(|arena| arena.alloc_node(SEXPTYPE::ENVSXP));
-            let sym = Rf_install(c"missing_depth_test".as_ptr());
+            let sym = crate::sexp::symbol::install_str("missing_depth_test");
             defineVar(sym, R_MissingArg(), env);
             let symbol = Sexp::from_raw(sym).expect("symbol");
             let environment = Sexp::from_raw(env).expect("environment");
@@ -2209,7 +2210,7 @@ mod tests {
             let env = factory
                 .allocate(|arena| Some(arena.alloc_node(SEXPTYPE::ENVSXP)))
                 .unwrap();
-            let symbol = Sexp::from_raw(Rf_install(c"bytecode_missing_test".as_ptr())).unwrap();
+            let symbol = Sexp::from_raw(crate::sexp::symbol::install_str("bytecode_missing_test")).unwrap();
             defineVar(symbol.as_raw(), R_MissingArg(), env.as_raw());
             let words = factory
                 .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::INTSXP, 3)))
@@ -2253,7 +2254,7 @@ mod tests {
             let env = factory
                 .allocate(|arena| Some(arena.alloc_node(SEXPTYPE::ENVSXP)))
                 .unwrap();
-            let symbol = Sexp::from_raw(Rf_install(c"gnu_missing_test".as_ptr())).unwrap();
+            let symbol = Sexp::from_raw(crate::sexp::symbol::install_str("gnu_missing_test")).unwrap();
             defineVar(symbol.as_raw(), R_MissingArg(), env.as_raw());
             let words = factory
                 .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::INTSXP, 4)))
@@ -2332,9 +2333,9 @@ mod tests {
                 let env = factory
                     .allocate(|arena| Some(arena.alloc_node(SEXPTYPE::ENVSXP)))
                     .unwrap();
-                let leaf = Sexp::from_raw(Rf_install(c"missing_reentry_leaf".as_ptr())).unwrap();
+                let leaf = Sexp::from_raw(crate::sexp::symbol::install_str("missing_reentry_leaf")).unwrap();
                 let middle =
-                    Sexp::from_raw(Rf_install(c"missing_reentry_middle".as_ptr())).unwrap();
+                    Sexp::from_raw(crate::sexp::symbol::install_str("missing_reentry_middle")).unwrap();
                 defineVar(leaf.as_raw(), R_MissingArg(), env.as_raw());
                 let entered = Rc::new(Cell::new(false));
                 let armed = Rc::new(Cell::new(false));
@@ -2351,7 +2352,7 @@ mod tests {
                                         let env = memory::with_arena(|arena| {
                                             arena.alloc_node(SEXPTYPE::ENVSXP)
                                         });
-                                        let sym = Rf_install(c"nested_missing".as_ptr());
+                                        let sym = crate::sexp::symbol::install_str("nested_missing");
                                         defineVar(sym, R_MissingArg(), env);
                                         assert!(is_missing_safe(
                                             Sexp::from_raw(sym).unwrap(),
@@ -2651,12 +2652,12 @@ mod tests {
     fn test_dd_val_parses_gnu_dot_dot_names() {
         let _session = crate::sexp::session::RSession::new();
         unsafe {
-            let dd1 = Sexp::from_raw(Rf_install(c"..1".as_ptr())).expect("..1");
-            let dd0 = Sexp::from_raw(Rf_install(c"..0".as_ptr())).expect("..0");
-            let dd01 = Sexp::from_raw(Rf_install(c"..01".as_ptr())).expect("..01");
-            let dd2 = Sexp::from_raw(Rf_install(c"..2".as_ptr())).expect("..2");
-            let dots = Sexp::from_raw(Rf_install(c"..".as_ptr())).expect("..");
-            let x = Sexp::from_raw(Rf_install(c"x".as_ptr())).expect("x");
+            let dd1 = Sexp::from_raw(crate::sexp::symbol::install_str("..1")).expect("..1");
+            let dd0 = Sexp::from_raw(crate::sexp::symbol::install_str("..0")).expect("..0");
+            let dd01 = Sexp::from_raw(crate::sexp::symbol::install_str("..01")).expect("..01");
+            let dd2 = Sexp::from_raw(crate::sexp::symbol::install_str("..2")).expect("..2");
+            let dots = Sexp::from_raw(crate::sexp::symbol::install_str("..")).expect("..");
+            let x = Sexp::from_raw(crate::sexp::symbol::install_str("x")).expect("x");
             assert_eq!(dd_val(dd1), Some(1));
             assert_eq!(dd_val(dd0), Some(0));
             assert_eq!(dd_val(dd01), Some(1));
