@@ -242,6 +242,15 @@ user workflows have passed on native Rport and production Wasm.
 
 ## Wasm footprint
 
+At `d55ab963`, the 24,020,763-byte module contains 14,052,599 bytes of
+compiled code and 9,941,817 bytes of initialized data. The exact module
+compressed to 11,492,492 bytes with Brotli 1.2.1 at quality 11 and
+13,674,858 bytes with gzip at level 9. In a local Chromium 153 run, the
+generated loader streamed the Brotli HTTP response through
+`WebAssembly.instantiateStreaming` and evaluated `mean(c(2, 4, 6))` in a
+new R session. The Workbench size gate continues to count raw assets.
+[Module section breakdown](ci-checkpoints/wasm-size-d55ab963.json)
+
 At `fa0c3340`, Workbench packages 24,034,743 raw bytes and leaves 2,179,657
 bytes below 25 MiB. The Wasm module contains 14,031,170 bytes of executable
 code and 9,942,374 bytes of initialized data. Compressing that exact module
