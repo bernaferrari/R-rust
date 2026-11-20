@@ -34,7 +34,13 @@ pub(crate) unsafe fn resolve_call_function<'a>(
 }
 
 pub(crate) fn primitive_for_symbol<'a>(symbol: Sexp<'a>) -> Option<Sexp<'a>> {
-    let name = unsafe { get_symbol_name(symbol.as_raw()) };
+    let name = crate::sexp::symbol::symbol_name_from_ptr(symbol.as_raw())?;
+    let wrap = |raw: SEXP| {
+        symbol
+            .node_factory()
+            .ok()
+            .and_then(|factory| factory.wrap(raw).ok())
+    };
     if crate::eval::builtin::is_hidden_builtin_name(&name) {
         return None;
     }
@@ -42,21 +48,21 @@ pub(crate) fn primitive_for_symbol<'a>(symbol: Sexp<'a>) -> Option<Sexp<'a>> {
         let primitive =
             unsafe { crate::eval::primitive::make_primitive_binding(&name, SEXPTYPE::BUILTINSXP) };
         if !primitive.is_null() && primitive != R_NilValue() {
-            return Some(unsafe { Sexp::from_raw_unchecked(primitive) });
+            return wrap(primitive);
         }
     }
     if let Some(primitive) = CString::new(name.as_str())
         .ok()
         .map(|n| unsafe { crate::mainutils::names::R_Primitive(n.as_ptr()) })
         .filter(|primitive| !primitive.is_null() && *primitive != R_NilValue())
-        .map(|primitive| unsafe { Sexp::from_raw_unchecked(primitive) })
+        .and_then(wrap)
     {
         return Some(primitive);
     }
     if let Some(kind) = crate::eval::builtin::builtin_primitive_kind(&name) {
         let primitive = unsafe { crate::eval::primitive::make_primitive_binding(&name, kind) };
         if !primitive.is_null() && primitive != R_NilValue() {
-            return Some(unsafe { Sexp::from_raw_unchecked(primitive) });
+            return wrap(primitive);
         }
     }
     None
@@ -101,18 +107,12 @@ pub(crate) unsafe fn find_var_result<'a>(
     symbol: Sexp<'a>,
     rho: Sexp<'a>,
 ) -> Result<Option<Sexp<'a>>, String> {
-    if symbol == unsafe { Sexp::from_raw_unchecked(R_DotsSymbol()) } {
+    if symbol.clone().as_raw() == unsafe { R_DotsSymbol() } {
         return Ok(None);
     }
-    let missing_symbol = unsafe {
-        let raw = symbol.clone().as_raw();
-        let pname = crate::sexp::accessors::PRINTNAME(raw);
-        pname.is_null()
-            || crate::sexp::accessors::CHAR(pname).is_null()
-            || std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(pname))
-                .to_bytes()
-                .is_empty()
-    };
+    let missing_symbol =
+        crate::sexp::symbol::symbol_name_from_ptr(symbol.clone().as_raw())
+            .map_or(true, |name| name.is_empty());
     if missing_symbol {
         missing_arg_error("");
     }
@@ -127,7 +127,8 @@ pub(crate) unsafe fn find_var_result<'a>(
             return Ok(None);
         };
         if value.clone().as_raw() == R_MissingArg() {
-            let name = unsafe { get_symbol_name(symbol.as_raw()) };
+            let name = crate::sexp::symbol::symbol_name_from_ptr(symbol.clone().as_raw())
+                .unwrap_or_else(|| "???".to_string());
             missing_arg_error(&name);
         }
         return Ok(Some(value));
@@ -144,7 +145,8 @@ pub(crate) unsafe fn find_var_result<'a>(
         return Ok(None);
     };
     if binding.clone().as_raw() == R_MissingArg() {
-        let name = unsafe { get_symbol_name(symbol.as_raw()) };
+        let name = crate::sexp::symbol::symbol_name_from_ptr(symbol.clone().as_raw())
+            .unwrap_or_else(|| "???".to_string());
         missing_arg_error(&name);
     }
     if binding.clone().typeof_() == SEXPTYPE::PROMSXP {
