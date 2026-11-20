@@ -265,30 +265,26 @@ unsafe fn dpq_flag(slots: &[SEXP], filled: &[bool], idx: usize, default: bool) -
     dpq_scalar(owner, &value, 0).trunc() != 0.0
 }
 
-/// Copy each original attribute through the public setter. Take checked
-/// leases before the first setter, which may allocate or run a callback.
+/// Copy one attribute at a time, retaining its links before the setter can
+/// allocate, detach the source chain, or run a callback.
 fn dpq_copy_attrib(owner: OwnerToken<'_>, dst: &Sexp<'_>, src: &Sexp<'_>) {
-    let mut attr = crate::sexp::accessors::ATTRIB(src.as_raw());
-    let mut attributes = Vec::new();
-    while !attr.is_null() && attr != R_NilValue() {
-        let tag = TAG(attr);
-        if !tag.is_null() {
-            let tag = checked_dpq(owner.sexp(tag));
-            let value = CAR(attr);
-            let value = if value.is_null() {
+    let mut attr = checked_dpq(src.try_attrib());
+    while !attr.is_nil() {
+        checked_dpq(owner.require_active());
+        let next = checked_dpq(attr.try_cdr());
+        if !TAG(attr.as_raw()).is_null() {
+            let tag = checked_dpq(attr.try_tag());
+            let value = if CAR(attr.as_raw()).is_null() {
                 None
             } else {
-                Some(checked_dpq(owner.sexp(value)))
+                Some(checked_dpq(attr.try_car()))
             };
-            attributes.push((tag, value));
+            let pointer = value.as_ref().map_or(std::ptr::null_mut(), Sexp::as_raw);
+            // SAFETY: current cell, next cell, tag and value stay rooted
+            // through setter reentry, as do the source and destination.
+            unsafe { crate::sexp::attrib_core::setAttrib(dst.as_raw(), tag.as_raw(), pointer) };
         }
-        attr = CDR(attr);
-    }
-    for (tag, value) in attributes {
-        checked_dpq(owner.require_active());
-        let value = value.as_ref().map_or(std::ptr::null_mut(), Sexp::as_raw);
-        // SAFETY: dst, tag, and any value remain rooted across setter reentry.
-        unsafe { crate::sexp::attrib_core::setAttrib(dst.as_raw(), tag.as_raw(), value) };
+        attr = next;
     }
     checked_dpq(owner.require_active());
 }
@@ -1421,6 +1417,69 @@ pub unsafe fn do_dmultinom(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 #[cfg(test)]
 mod safety_tests {
     use super::*;
+
+    #[test]
+    fn translated_dpq_attribute_copy_retains_next_cell_during_collection() {
+        use crate::sexp::accessors::SET_ATTRIB;
+        use std::{cell::Cell, rc::Rc};
+
+        let session = crate::sexp::RSession::new_for_gc_tests();
+        let owner = session.owner_token().unwrap();
+        let source = session.with_active(|| unsafe {
+            owner
+                .sexp(Rf_ScalarReal(1.0))
+                .unwrap()
+                .into_owned()
+                .unwrap()
+        });
+        let target = session.with_active(|| unsafe { owner.sexp(Rf_ScalarReal(2.0)).unwrap() });
+        let (first, second) = session.with_active(|| unsafe {
+            let first = owner.sexp(Rf_install(c"dpq.first".as_ptr())).unwrap();
+            let second = owner.sexp(Rf_install(c"dpq.second".as_ptr())).unwrap();
+            crate::sexp::attrib_core::setAttrib(
+                source.as_raw(),
+                first.as_raw(),
+                Rf_ScalarInteger(7),
+            );
+            crate::sexp::attrib_core::setAttrib(
+                source.as_raw(),
+                second.as_raw(),
+                Rf_ScalarInteger(9),
+            );
+            (first, second)
+        });
+
+        let called = Rc::new(Cell::new(false));
+        let observed = called.clone();
+        let callback_source = source.clone();
+        session.with_active(|| {
+            crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
+                if !observed.replace(true) {
+                    // SAFETY: the callback retains the admitted original
+                    // source handle throughout detachment and collection.
+                    unsafe {
+                        SET_ATTRIB(callback_source.as_raw(), R_NilValue());
+                        crate::sexp::gengc::full_gc();
+                    }
+                }
+            }));
+        });
+        session.with_active_in(|instance| unsafe {
+            (*instance).memory_state.gc_force_gap = 1;
+            (*instance).memory_state.gc_force_wait = 1;
+        });
+        session.with_active(|| dpq_copy_attrib(owner, &target, &source));
+        assert!(called.get());
+        assert!(source.try_attrib().unwrap().is_nil());
+        session.with_active(|| {
+            for (tag, expected) in [(first, 7), (second, 9)] {
+                // SAFETY: the checked target and tag remain live.
+                let value =
+                    unsafe { crate::sexp::attrib_core::getAttrib(target.as_raw(), tag.as_raw()) };
+                assert_eq!(owner.sexp(value).unwrap().try_integer_elt(0), Ok(expected));
+            }
+        });
+    }
 
     #[test]
     fn translated_dpq_keeps_recycling_na_inverse_and_attributes() {
