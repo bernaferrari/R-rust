@@ -19,164 +19,150 @@ use crate::sexp::ffi::*;
 use crate::sexp::globals::*;
 use crate::sexp::protect::*;
 
+// Registered .Call entry points keep the raw ABI edge: the trampoline macro
+// writes the unsafe declaration and dispatch once for every handler instead of
+// repeating it per routine. Each generated function forwards its SEXP
+// arguments to a `pub unsafe fn` handler that owns the ABI contract.
+macro_rules! call_trampoline {
+    ($name:ident, ($($arg:ident),*) => $handler:expr) => {
+        // SAFETY: this is a registered .Call routine; the interpreter holds the
+        // runtime lock across dispatch and the callee owns the raw SEXP
+        // contract for these arguments.
+        unsafe extern "C-unwind" fn $name($($arg: SEXP),*) -> SEXP {
+            unsafe { $handler }
+        }
+    };
+}
+
+// SAFETY: registered .Call routine; the safe sampling kernel owns
+// argument validation under the held runtime lock.
 unsafe extern "C-unwind" fn c_rchisq(n: SEXP, a: SEXP) -> SEXP {
-    unsafe { do_rchisq(n, a) }
+    do_rchisq(n, a)
 }
+// SAFETY: registered .Call routine; the safe sampling kernel owns
+// argument validation under the held runtime lock.
 unsafe extern "C-unwind" fn c_rexp(n: SEXP, a: SEXP) -> SEXP {
-    unsafe { do_rexp(n, a) }
+    do_rexp(n, a)
 }
+// SAFETY: registered .Call routine; the safe sampling kernel owns
+// argument validation under the held runtime lock.
 unsafe extern "C-unwind" fn c_rgeom(n: SEXP, a: SEXP) -> SEXP {
-    unsafe { do_rgeom(n, a) }
+    do_rgeom(n, a)
 }
+// SAFETY: registered .Call routine; the safe sampling kernel owns
+// argument validation under the held runtime lock.
 unsafe extern "C-unwind" fn c_rpois(n: SEXP, a: SEXP) -> SEXP {
-    unsafe { do_rpois(n, a) }
+    do_rpois(n, a)
 }
+// SAFETY: registered .Call routine; the safe sampling kernel owns
+// argument validation under the held runtime lock.
 unsafe extern "C-unwind" fn c_rt(n: SEXP, a: SEXP) -> SEXP {
-    unsafe { do_rt(n, a) }
+    do_rt(n, a)
 }
+// SAFETY: registered .Call routine; the safe sampling kernel owns
+// argument validation under the held runtime lock.
 unsafe extern "C-unwind" fn c_rsignrank(n: SEXP, a: SEXP) -> SEXP {
-    unsafe { do_rsignrank(n, a) }
+    do_rsignrank(n, a)
 }
+// SAFETY: registered .Call routine; the safe sampling kernel owns
+// argument validation under the held runtime lock.
 unsafe extern "C-unwind" fn c_rbeta(n: SEXP, a: SEXP, b: SEXP) -> SEXP {
-    unsafe { do_rbeta(n, a, b) }
+    do_rbeta(n, a, b)
 }
+// SAFETY: registered .Call routine; the safe sampling kernel owns
+// argument validation under the held runtime lock.
 unsafe extern "C-unwind" fn c_rbinom(n: SEXP, a: SEXP, b: SEXP) -> SEXP {
-    unsafe { do_rbinom(n, a, b) }
+    do_rbinom(n, a, b)
 }
+// SAFETY: registered .Call routine; the safe sampling kernel owns
+// argument validation under the held runtime lock.
 unsafe extern "C-unwind" fn c_rcauchy(n: SEXP, a: SEXP, b: SEXP) -> SEXP {
-    unsafe { do_rcauchy(n, a, b) }
+    do_rcauchy(n, a, b)
 }
+// SAFETY: registered .Call routine; the safe sampling kernel owns
+// argument validation under the held runtime lock.
 unsafe extern "C-unwind" fn c_rf(n: SEXP, a: SEXP, b: SEXP) -> SEXP {
-    unsafe { do_rf(n, a, b) }
+    do_rf(n, a, b)
 }
+// SAFETY: registered .Call routine; the safe sampling kernel owns
+// argument validation under the held runtime lock.
 unsafe extern "C-unwind" fn c_rgamma(n: SEXP, a: SEXP, b: SEXP) -> SEXP {
-    unsafe { do_rgamma(n, a, b) }
+    do_rgamma(n, a, b)
 }
+// SAFETY: registered .Call routine; the safe sampling kernel owns
+// argument validation under the held runtime lock.
 unsafe extern "C-unwind" fn c_rlnorm(n: SEXP, a: SEXP, b: SEXP) -> SEXP {
-    unsafe { do_rlnorm(n, a, b) }
+    do_rlnorm(n, a, b)
 }
+// SAFETY: registered .Call routine; the safe sampling kernel owns
+// argument validation under the held runtime lock.
 unsafe extern "C-unwind" fn c_rlogis(n: SEXP, a: SEXP, b: SEXP) -> SEXP {
-    unsafe { do_rlogis(n, a, b) }
+    do_rlogis(n, a, b)
 }
+// SAFETY: registered .Call routine; the safe sampling kernel owns
+// argument validation under the held runtime lock.
 unsafe extern "C-unwind" fn c_rnbinom(n: SEXP, a: SEXP, b: SEXP) -> SEXP {
-    unsafe { do_rnbinom(n, a, b) }
+    do_rnbinom(n, a, b)
 }
+// SAFETY: registered .Call routine; the safe sampling kernel owns
+// argument validation under the held runtime lock.
 unsafe extern "C-unwind" fn c_rnorm(n: SEXP, mu: SEXP, sd: SEXP) -> SEXP {
-    unsafe { do_rnorm(n, mu, sd) }
+    do_rnorm(n, mu, sd)
 }
+// SAFETY: registered .Call routine; the safe sampling kernel owns
+// argument validation under the held runtime lock.
 unsafe extern "C-unwind" fn c_runif(n: SEXP, a: SEXP, b: SEXP) -> SEXP {
-    unsafe { do_runif(n, a, b) }
+    do_runif(n, a, b)
 }
+// SAFETY: registered .Call routine; the safe sampling kernel owns
+// argument validation under the held runtime lock.
 unsafe extern "C-unwind" fn c_rweibull(n: SEXP, a: SEXP, b: SEXP) -> SEXP {
-    unsafe { do_rweibull(n, a, b) }
+    do_rweibull(n, a, b)
 }
+// SAFETY: registered .Call routine; the safe sampling kernel owns
+// argument validation under the held runtime lock.
 unsafe extern "C-unwind" fn c_rwilcox(n: SEXP, a: SEXP, b: SEXP) -> SEXP {
-    unsafe { do_rwilcox(n, a, b) }
+    do_rwilcox(n, a, b)
 }
+// SAFETY: registered .Call routine; the safe sampling kernel owns
+// argument validation under the held runtime lock.
 unsafe extern "C-unwind" fn c_rnchisq(n: SEXP, a: SEXP, b: SEXP) -> SEXP {
-    unsafe { do_rnchisq(n, a, b) }
+    do_rnchisq(n, a, b)
 }
+// SAFETY: registered .Call routine; the safe sampling kernel owns
+// argument validation under the held runtime lock.
 unsafe extern "C-unwind" fn c_rnbinom_mu(n: SEXP, a: SEXP, b: SEXP) -> SEXP {
-    unsafe { do_rnbinom_mu(n, a, b) }
+    do_rnbinom_mu(n, a, b)
 }
+// SAFETY: registered .Call routine; the safe sampling kernel owns
+// argument validation under the held runtime lock.
 unsafe extern "C-unwind" fn c_rhyper(n: SEXP, a: SEXP, b: SEXP, c: SEXP) -> SEXP {
-    unsafe { do_rhyper(n, a, b, c) }
+    do_rhyper(n, a, b, c)
 }
-unsafe extern "C-unwind" fn c_rmultinom(n: SEXP, size: SEXP, prob: SEXP) -> SEXP {
-    unsafe { do_rmultinom(n, size, prob) }
-}
-unsafe extern "C-unwind" fn c_r2dtable(n: SEXP, r: SEXP, c: SEXP) -> SEXP {
-    unsafe {
-        let n_i = coerceVector(n, SEXPTYPE::INTSXP.as_c_int());
-        let _n = protect(n_i);
-        let r_i = coerceVector(r, SEXPTYPE::INTSXP.as_c_int());
-        let _r = protect(r_i);
-        let c_i = coerceVector(c, SEXPTYPE::INTSXP.as_c_int());
-        let _c = protect(c_i);
-        r2dtable(n_i, r_i, c_i)
-    }
-}
-unsafe extern "C-unwind" fn c_termsform(args: SEXP) -> SEXP {
-    unsafe { super::filter::termsform(args) }
-}
-unsafe extern "C-unwind" fn c_call_dqags(args: SEXP) -> SEXP {
-    unsafe { super::integrate::call_dqags(args) }
-}
-unsafe extern "C-unwind" fn c_call_dqagi(args: SEXP) -> SEXP {
-    unsafe { super::integrate::call_dqagi(args) }
-}
-unsafe extern "C-unwind" fn c_modelframe(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe { super::filter::modelframe(call, op, args, env) }
-}
-unsafe extern "C-unwind" fn c_modelmatrix(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe { super::filter::modelmatrix(call, op, args, env) }
-}
-unsafe extern "C-unwind" fn c_cdqrls(x: SEXP, y: SEXP, tol: SEXP, chk: SEXP) -> SEXP {
-    unsafe { super::lm::Cdqrls(x, y, tol, chk) }
-}
-unsafe extern "C-unwind" fn c_compcases(args: SEXP) -> SEXP {
-    unsafe { super::complete_cases::compcases(args) }
-}
-unsafe extern "C-unwind" fn c_influence(mqr: SEXP, e: SEXP, stol: SEXP) -> SEXP {
-    unsafe { super::influence::influence(mqr, e, stol) }
-}
-unsafe extern "C-unwind" fn c_cov(x: SEXP, y: SEXP, na_method: SEXP, kendall: SEXP) -> SEXP {
-    unsafe { super::correlation::cov(x, y, na_method, kendall) }
-}
-unsafe extern "C-unwind" fn c_cor(x: SEXP, y: SEXP, na_method: SEXP, kendall: SEXP) -> SEXP {
-    unsafe { super::correlation::cor(x, y, na_method, kendall) }
-}
-unsafe extern "C-unwind" fn c_chisq_sim(sr: SEXP, sc: SEXP, b: SEXP, e: SEXP) -> SEXP {
-    unsafe { super::chisqsim::chisq_sim(sr, sc, b, e) }
-}
-unsafe extern "C-unwind" fn c_nextn(n: SEXP, f: SEXP) -> SEXP {
-    unsafe { super::fourier::nextn(n, f) }
-}
-unsafe extern "C-unwind" fn c_cdist(x: SEXP, method: SEXP, attrs: SEXP, p: SEXP) -> SEXP {
-    unsafe { super::distance::Cdist(x, method, attrs, p) }
-}
-unsafe extern "C-unwind" fn c_do_d(args: SEXP) -> SEXP {
-    unsafe { super::deriv::do_d(args) }
-}
-unsafe extern "C-unwind" fn c_deriv(args: SEXP) -> SEXP {
-    unsafe { super::deriv::do_deriv(args) }
-}
-unsafe extern "C-unwind" fn c_fft(z: SEXP, inverse: SEXP) -> SEXP {
-    unsafe { super::fourier::fft(z, inverse) }
-}
-unsafe extern "C-unwind" fn c_mvfft(z: SEXP, inverse: SEXP) -> SEXP {
-    unsafe { super::fourier::mvfft(z, inverse) }
-}
-unsafe extern "C-unwind" fn c_approx_test(
-    x: SEXP,
-    y: SEXP,
-    method: SEXP,
-    f: SEXP,
-    na_rm: SEXP,
-) -> SEXP {
-    unsafe { super::approx::ApproxTest(x, y, method, f, na_rm) }
-}
-unsafe extern "C-unwind" fn c_approx(
-    x: SEXP,
-    y: SEXP,
-    v: SEXP,
-    method: SEXP,
-    yleft: SEXP,
-    yright: SEXP,
-    f: SEXP,
-    na_rm: SEXP,
-) -> SEXP {
-    unsafe { super::approx::Approx(x, y, v, method, yleft, yright, f, na_rm) }
-}
-unsafe extern "C-unwind" fn c_fisher_sim(sr: SEXP, sc: SEXP, sB: SEXP) -> SEXP {
-    unsafe { super::chisqsim::Fisher_sim(sr, sc, sB) }
-}
-unsafe extern "C-unwind" fn c_zeroin2(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe { super::zeroin::zeroin2(call, op, args, env) }
-}
-unsafe extern "C-unwind" fn c_do_fmin(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe { super::zeroin::do_fmin(call, op, args, env) }
-}
+call_trampoline!(c_rmultinom, (n, size, prob) => do_rmultinom(n, size, prob));
+call_trampoline!(c_r2dtable, (n, r, c) => { let n_i = coerceVector(n, SEXPTYPE::INTSXP.as_c_int()); let _n = protect(n_i); let r_i = coerceVector(r, SEXPTYPE::INTSXP.as_c_int()); let _r = protect(r_i); let c_i = coerceVector(c, SEXPTYPE::INTSXP.as_c_int()); let _c = protect(c_i); r2dtable(n_i, r_i, c_i) });
+call_trampoline!(c_termsform, (args) => super::filter::termsform(args));
+call_trampoline!(c_call_dqags, (args) => super::integrate::call_dqags(args));
+call_trampoline!(c_call_dqagi, (args) => super::integrate::call_dqagi(args));
+call_trampoline!(c_modelframe, (call, op, args, env) => super::filter::modelframe(call, op, args, env));
+call_trampoline!(c_modelmatrix, (call, op, args, env) => super::filter::modelmatrix(call, op, args, env));
+call_trampoline!(c_cdqrls, (x, y, tol, chk) => super::lm::Cdqrls(x, y, tol, chk));
+call_trampoline!(c_compcases, (args) => super::complete_cases::compcases(args));
+call_trampoline!(c_influence, (mqr, e, stol) => super::influence::influence(mqr, e, stol));
+call_trampoline!(c_cov, (x, y, na_method, kendall) => super::correlation::cov(x, y, na_method, kendall));
+call_trampoline!(c_cor, (x, y, na_method, kendall) => super::correlation::cor(x, y, na_method, kendall));
+call_trampoline!(c_chisq_sim, (sr, sc, b, e) => super::chisqsim::chisq_sim(sr, sc, b, e));
+call_trampoline!(c_nextn, (n, f) => super::fourier::nextn(n, f));
+call_trampoline!(c_cdist, (x, method, attrs, p) => super::distance::Cdist(x, method, attrs, p));
+call_trampoline!(c_do_d, (args) => super::deriv::do_d(args));
+call_trampoline!(c_deriv, (args) => super::deriv::do_deriv(args));
+call_trampoline!(c_fft, (z, inverse) => super::fourier::fft(z, inverse));
+call_trampoline!(c_mvfft, (z, inverse) => super::fourier::mvfft(z, inverse));
+call_trampoline!(c_approx_test, (x, y, method, f, na_rm) => super::approx::ApproxTest(x, y, method, f, na_rm));
+call_trampoline!(c_approx, (x, y, v, method, yleft, yright, f, na_rm) => super::approx::Approx(x, y, v, method, yleft, yright, f, na_rm));
+call_trampoline!(c_fisher_sim, (sr, sc, sB) => super::chisqsim::Fisher_sim(sr, sc, sB));
+call_trampoline!(c_zeroin2, (call, op, args, env) => super::zeroin::zeroin2(call, op, args, env));
+call_trampoline!(c_do_fmin, (call, op, args, env) => super::zeroin::do_fmin(call, op, args, env));
 
 pub(super) fn reject_var_on_factor(x: SEXP) {
     unsafe {
@@ -338,84 +324,36 @@ const RAND_CALL_NAMES: &[&str] = &[
     "C_pkolmogorov_two_exact",
 ];
 
-unsafe extern "C-unwind" fn c_bindist(sx: SEXP, sw: SEXP, slo: SEXP, shi: SEXP, sn: SEXP) -> SEXP {
-    unsafe { super::massdist::BinDist(sx, sw, slo, shi, sn) }
-}
+call_trampoline!(c_bindist, (sx, sw, slo, shi, sn) => super::massdist::BinDist(sx, sw, slo, shi, sn));
 
-unsafe extern "C-unwind" fn c_isoreg(y: SEXP) -> SEXP {
-    unsafe { super::isoreg::isoreg(y) }
-}
+call_trampoline!(c_isoreg, (y) => super::isoreg::isoreg(y));
 
-unsafe extern "C-unwind" fn c_pansari(q: SEXP, m: SEXP, n: SEXP) -> SEXP {
-    unsafe { super::ansari::pAnsari(q, m, n) }
-}
+call_trampoline!(c_pansari, (q, m, n) => super::ansari::pAnsari(q, m, n));
 
-unsafe extern "C-unwind" fn c_qansari(p: SEXP, m: SEXP, n: SEXP) -> SEXP {
-    unsafe { super::ansari::qAnsari(p, m, n) }
-}
+call_trampoline!(c_qansari, (p, m, n) => super::ansari::qAnsari(p, m, n));
 
-unsafe extern "C-unwind" fn c_intgrt_vec(x: SEXP, xi: SEXP, lag: SEXP) -> SEXP {
-    unsafe { super::ppsum::intgrt_vec(x, xi, lag) }
-}
+call_trampoline!(c_intgrt_vec, (x, xi, lag) => super::ppsum::intgrt_vec(x, xi, lag));
 
-unsafe extern "C-unwind" fn c_pp_sum(u: SEXP, l: SEXP) -> SEXP {
-    unsafe { super::ppsum::pp_sum(u, l) }
-}
+call_trampoline!(c_pp_sum, (u, l) => super::ppsum::pp_sum(u, l));
 
-unsafe extern "C-unwind" fn c_armatoma(ar: SEXP, ma: SEXP, lag_max: SEXP) -> SEXP {
-    unsafe { super::filter::ARMAtoMA(ar, ma, lag_max) }
-}
+call_trampoline!(c_armatoma, (ar, ma, lag_max) => super::filter::ARMAtoMA(ar, ma, lag_max));
 
-unsafe extern "C-unwind" fn c_burg(x: SEXP, order: SEXP) -> SEXP {
-    unsafe { super::burg::Burg(x, order) }
-}
+call_trampoline!(c_burg, (x, order) => super::burg::Burg(x, order));
 
-unsafe extern "C-unwind" fn c_loglin(
-    dtab: SEXP,
-    conf: SEXP,
-    table: SEXP,
-    start: SEXP,
-    nmar: SEXP,
-    eps: SEXP,
-    iter: SEXP,
-) -> SEXP {
-    unsafe { super::loglin::LogLin(dtab, conf, table, start, nmar, eps, iter) }
-}
+call_trampoline!(c_loglin, (dtab, conf, table, start, nmar, eps, iter) => super::loglin::LogLin(dtab, conf, table, start, nmar, eps, iter));
 
-unsafe extern "C-unwind" fn c_port_ivset(kind: SEXP, iv: SEXP, v: SEXP) -> SEXP {
-    unsafe { super::port::port_ivset(kind, iv, v) }
-}
+call_trampoline!(c_port_ivset, (kind, iv, v) => super::port::port_ivset(kind, iv, v));
 
 #[allow(clippy::too_many_arguments)]
-unsafe extern "C-unwind" fn c_port_nlminb(
-    fn_expr: SEXP,
-    gr_expr: SEXP,
-    hs_expr: SEXP,
-    rho: SEXP,
-    lowerb: SEXP,
-    upperb: SEXP,
-    d: SEXP,
-    iv: SEXP,
-    v: SEXP,
-) -> SEXP {
-    unsafe { super::port::port_nlminb(fn_expr, gr_expr, hs_expr, rho, lowerb, upperb, d, iv, v) }
-}
+call_trampoline!(c_port_nlminb, (fn_expr, gr_expr, hs_expr, rho, lowerb, upperb, d, iv, v) => super::port::port_nlminb(fn_expr, gr_expr, hs_expr, rho, lowerb, upperb, d, iv, v));
 
-unsafe extern "C-unwind" fn c_smirnov_sim(sr: SEXP, sc: SEXP, sb: SEXP, twosided: SEXP) -> SEXP {
-    unsafe { super::ks::Smirnov_sim(sr, sc, sb, twosided) }
-}
+call_trampoline!(c_smirnov_sim, (sr, sc, sb, twosided) => super::ks::Smirnov_sim(sr, sc, sb, twosided));
 
-unsafe extern "C-unwind" fn c_pkolmogorov_two_limit(sq: SEXP, lower: SEXP, tol: SEXP) -> SEXP {
-    unsafe { super::ks::pkolmogorov_two_limit(sq, lower, tol) }
-}
+call_trampoline!(c_pkolmogorov_two_limit, (sq, lower, tol) => super::ks::pkolmogorov_two_limit(sq, lower, tol));
 
-unsafe extern "C-unwind" fn c_pkolmogorov_two_exact(sq: SEXP, sn: SEXP) -> SEXP {
-    unsafe { super::ks::pkolmogorov_two_exact(sq, sn) }
-}
+call_trampoline!(c_pkolmogorov_two_exact, (sq, sn) => super::ks::pkolmogorov_two_exact(sq, sn));
 
-unsafe extern "C-unwind" fn c_swilk(x: SEXP) -> SEXP {
-    unsafe { super::swilk::SWilk(x) }
-}
+call_trampoline!(c_swilk, (x) => super::swilk::SWilk(x));
 
 /// Routines whose real signature is `.External2` `(call, op, args, env)`.
 /// `.External` must not transmute a `.Call` pointer from `lookup_call`.
@@ -877,10 +815,6 @@ pub unsafe fn install_stats_call_symbols(env: SEXP) {
 // Type aliases for random number generator function pointers
 // ---------------------------------------------------------------------------
 
-type ran1 = fn(c_double) -> c_double;
-type ran2 = fn(c_double, c_double) -> c_double;
-type ran3 = fn(c_double, c_double, c_double) -> c_double;
-
 // ---------------------------------------------------------------------------
 // Helper: fill vector with NAs
 // ---------------------------------------------------------------------------
@@ -897,32 +831,31 @@ fn fill_with_nas_real(values: &mut [c_double]) {
 // Helper: determine result length from length argument
 // ---------------------------------------------------------------------------
 
-unsafe fn resultLength(lengthArgument: SEXP) -> R_xlen_t {
-    unsafe {
-        let t = TYPEOF(lengthArgument);
-        if t != SEXPTYPE::REALSXP && t != SEXPTYPE::INTSXP && t != SEXPTYPE::LGLSXP {
-            Rf_error(b"invalid arguments\0".as_ptr() as *const _);
-            return 0;
-        }
-        if XLENGTH(lengthArgument) == 1 {
-            let dn = if t == SEXPTYPE::REALSXP {
-                *REAL(lengthArgument)
-            } else {
-                let iv = *INTEGER(lengthArgument);
-                if iv == NA_INTEGER {
-                    f64::NAN
-                } else {
-                    iv as c_double
-                }
-            };
-            if dn.is_nan() || dn < 0.0 {
-                Rf_error(b"invalid arguments\0".as_ptr() as *const _);
-                return 0;
-            }
-            dn as R_xlen_t
+fn checked<T>(result: crate::sexp::object::SexpResult<T>) -> T {
+    result.unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()))
+}
+
+fn result_length(owner: crate::sexp::owner::OwnerToken<'_>, length_argument: SEXP) -> R_xlen_t {
+    let value = checked(owner.sexp(length_argument));
+    let t = value.typeof_();
+    if !matches!(t, SEXPTYPE::REALSXP | SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP) {
+        crate::mainutils::essentials::base_error("invalid arguments");
+    }
+    if value.len() == 1 {
+        let dn = if t == SEXPTYPE::REALSXP {
+            checked(value.try_real_elt(0))
         } else {
-            XLENGTH(lengthArgument)
+            match value.integer_elt(0) {
+                Some(v) if v != NA_INTEGER => v as c_double,
+                _ => f64::NAN,
+            }
+        };
+        if dn.is_nan() || dn < 0.0 {
+            crate::mainutils::essentials::base_error("invalid arguments");
         }
+        dn as R_xlen_t
+    } else {
+        value.len()
     }
 }
 
@@ -1021,313 +954,152 @@ use crate::library::stats::rcont::rcont2_slices;
 // random1 -- 1-parameter random sampling
 // ---------------------------------------------------------------------------
 
-unsafe fn random1(sn: SEXP, sa: SEXP, fn_ptr: ran1, type_: SEXPTYPE) -> SEXP {
-    unsafe {
-        if !isNumeric(sa) {
-            Rf_error(b"invalid arguments\0".as_ptr() as *const _);
-            return R_NilValue();
-        }
-        let n = resultLength(sn);
-        let x = Rf_allocVector(type_.0, n as c_int);
-        if n == 0 {
-            return x;
-        }
-        let _x_guard = protect(x);
-        let na = XLENGTH(sa);
+fn random_n<const K: usize>(
+    sn: SEXP,
+    sargs: [SEXP; K],
+    sample: impl Fn([c_double; K]) -> c_double,
+    type_: SEXPTYPE,
+) -> SEXP {
+    use crate::sexp::object::SexpMut;
 
-        if na < 1 {
-            if type_ == SEXPTYPE::INTSXP {
-                fill_with_nas_int(std::slice::from_raw_parts_mut(INTEGER(x), n as usize));
-            } else {
-                fill_with_nas_real(std::slice::from_raw_parts_mut(REAL(x), n as usize));
-            }
-            crate::mainutils::errors::Rf_warning1(c"NAs produced".as_ptr());
-        } else {
-            let mut naflag = false;
-            let a = coerceVector(sa, SEXPTYPE::REALSXP.as_c_int());
-            let _a_guard = protect(a);
-            let mut i0: R_xlen_t = 0;
-            let mut use_type = type_;
-            GetRNGstate();
-            let ra = std::slice::from_raw_parts(REAL(a), na as usize);
-
-            let mut overflow_rx = 0.0f64;
-            if type_ == SEXPTYPE::INTSXP {
-                let ix = std::slice::from_raw_parts_mut(INTEGER(x), n as usize);
-                let mut i: R_xlen_t = 0;
-                loop {
-                    if i >= n {
-                        break;
-                    }
-                    let rx = fn_ptr(ra[(i % na) as usize]);
-                    if ISNAN(rx) {
-                        naflag = true;
-                        ix[i as usize] = NA_INTEGER;
-                    } else if rx > c_int::MAX as c_double || rx <= c_int::MIN as c_double {
-                        i0 = i;
-                        overflow_rx = rx;
-                        use_type = SEXPTYPE::REALSXP;
-                        break;
-                    } else {
-                        ix[i as usize] = rx as c_int;
-                    }
-                    i += 1;
-                }
-            }
-            if use_type == SEXPTYPE::REALSXP {
-                let mut x_real_guard = None;
-                let x_real = if type_ == SEXPTYPE::INTSXP {
-                    let xr = Rf_allocVector(SEXPTYPE::REALSXP, n as c_int);
-                    x_real_guard = Some(protect(xr));
-                    let src = std::slice::from_raw_parts(INTEGER(x), n as usize);
-                    let dst = std::slice::from_raw_parts_mut(REAL(xr), n as usize);
-                    for i in 0..i0 as usize {
-                        dst[i] = src[i] as c_double;
-                    }
-                    dst[i0 as usize] = overflow_rx;
-                    xr
-                } else {
-                    x
-                };
-                let rx = std::slice::from_raw_parts_mut(REAL(x_real), n as usize);
-                let start = if type_ == SEXPTYPE::INTSXP {
-                    i0 as usize + 1
-                } else {
-                    0
-                };
-                for i in start..n as usize {
-                    rx[i] = fn_ptr(ra[i % na as usize]);
-                    if ISNAN(rx[i]) {
-                        naflag = true;
-                    }
-                }
-                if naflag {
-                    crate::mainutils::errors::Rf_warning1(c"NAs produced".as_ptr());
-                }
-                PutRNGstate();
-                drop(x_real_guard);
-                return x_real;
-            }
-            if naflag {
-                crate::mainutils::errors::Rf_warning1(c"NAs produced".as_ptr());
-            }
-            PutRNGstate();
+    // SAFETY: the raw ABI caller retains the active runtime across dispatch.
+    let owner = checked(unsafe { crate::sexp::owner::OwnerToken::current() });
+    for argument in sargs {
+        if !isNumeric(argument) {
+            crate::mainutils::essentials::base_error("invalid arguments");
         }
-        x
     }
-}
-
-// ---------------------------------------------------------------------------
-// random2 -- 2-parameter random sampling
-// ---------------------------------------------------------------------------
-
-unsafe fn random2(sn: SEXP, sa: SEXP, sb: SEXP, fn_ptr: ran2, type_: SEXPTYPE) -> SEXP {
-    unsafe {
-        if !isNumeric(sa) || !isNumeric(sb) {
-            Rf_error(b"invalid arguments\0".as_ptr() as *const _);
-            return R_NilValue();
-        }
-        let n = resultLength(sn);
-        let x = Rf_allocVector(type_.0, n as c_int);
-        if n == 0 {
-            return x;
-        }
-        let _x_guard = protect(x);
-        let na = XLENGTH(sa);
-        let nb = XLENGTH(sb);
-
-        if na < 1 || nb < 1 {
+    let n = result_length(owner, sn);
+    if sargs
+        .iter()
+        .any(|argument| checked(owner.sexp(*argument)).len() < 1)
+    {
+        // SAFETY: the owner is active; the fresh vector is protected while its
+        // payload is filled for the checked extent n.
+        let x = unsafe {
+            let x = Rf_allocVector3(type_, n);
+            let _x_guard = protect(x);
             if type_ == SEXPTYPE::INTSXP {
                 fill_with_nas_int(std::slice::from_raw_parts_mut(INTEGER(x), n as usize));
             } else {
                 fill_with_nas_real(std::slice::from_raw_parts_mut(REAL(x), n as usize));
             }
-            crate::mainutils::errors::Rf_warning1(c"NAs produced".as_ptr());
-        } else {
-            let mut naflag = false;
-            let a = coerceVector(sa, SEXPTYPE::REALSXP.as_c_int());
-            let _a_guard = protect(a);
-            let b = coerceVector(sb, SEXPTYPE::REALSXP.as_c_int());
-            let _b_guard = protect(b);
-            let mut i0: R_xlen_t = 0;
-            let mut use_type = type_;
-            GetRNGstate();
-            let ra = std::slice::from_raw_parts(REAL(a), na as usize);
-            let rb = std::slice::from_raw_parts(REAL(b), nb as usize);
-
-            let mut overflow_rx = 0.0f64;
-            if type_ == SEXPTYPE::INTSXP {
-                let ix = std::slice::from_raw_parts_mut(INTEGER(x), n as usize);
-                let mut i: R_xlen_t = 0;
-                loop {
-                    if i >= n {
-                        break;
-                    }
-                    let rx = fn_ptr(ra[(i % na) as usize], rb[(i % nb) as usize]);
-                    if ISNAN(rx) {
-                        naflag = true;
-                        ix[i as usize] = NA_INTEGER;
-                    } else if rx > c_int::MAX as c_double || rx <= c_int::MIN as c_double {
-                        i0 = i;
-                        overflow_rx = rx;
-                        use_type = SEXPTYPE::REALSXP;
-                        break;
-                    } else {
-                        ix[i as usize] = rx as c_int;
-                    }
-                    i += 1;
-                }
-            }
-            if use_type == SEXPTYPE::REALSXP {
-                let mut x_real_guard = None;
-                let x_real = if type_ == SEXPTYPE::INTSXP {
-                    let xr = Rf_allocVector(SEXPTYPE::REALSXP, n as c_int);
-                    x_real_guard = Some(protect(xr));
-                    let src = std::slice::from_raw_parts(INTEGER(x), n as usize);
-                    let dst = std::slice::from_raw_parts_mut(REAL(xr), n as usize);
-                    for i in 0..i0 as usize {
-                        dst[i] = src[i] as c_double;
-                    }
-                    dst[i0 as usize] = overflow_rx;
-                    xr
-                } else {
-                    x
-                };
-                let rx = std::slice::from_raw_parts_mut(REAL(x_real), n as usize);
-                let start = if type_ == SEXPTYPE::INTSXP {
-                    i0 as usize + 1
-                } else {
-                    0
-                };
-                for i in start..n as usize {
-                    rx[i] = fn_ptr(ra[i % na as usize], rb[i % nb as usize]);
-                    if ISNAN(rx[i]) {
-                        naflag = true;
-                    }
-                }
-                if naflag {
-                    crate::mainutils::errors::Rf_warning1(c"NAs produced".as_ptr());
-                }
-                PutRNGstate();
-                drop(x_real_guard);
-                return x_real;
-            }
-            if naflag {
-                crate::mainutils::errors::Rf_warning1(c"NAs produced".as_ptr());
-            }
-            PutRNGstate();
-        }
-        x
+            x
+        };
+        // SAFETY: the warning is dispatched under the active runtime.
+        unsafe { crate::mainutils::errors::Rf_warning1(c"NAs produced".as_ptr()) };
+        return x;
     }
-}
 
-// ---------------------------------------------------------------------------
-// random3 -- 3-parameter random sampling
-// ---------------------------------------------------------------------------
+    // SAFETY: the owner is active. The legacy allocator/coercion keep their
+    // typed resource error and GC retry semantics; every result is protected
+    // inside the same block before it can be collected.
+    let (coerced, _arg_guards) = unsafe {
+        let coerced: [SEXP; K] =
+            sargs.map(|s| coerceVector(s, SEXPTYPE::REALSXP.as_c_int()));
+        let guards = coerced.map(|s| protect(s));
+        (coerced, guards)
+    };
+    let sources = coerced.map(|c| checked(owner.sexp(c)));
+    let lens: [R_xlen_t; K] = std::array::from_fn(|i| sources[i].len());
 
-unsafe fn random3(sn: SEXP, sa: SEXP, sb: SEXP, sc: SEXP, fn_ptr: ran3, type_: SEXPTYPE) -> SEXP {
+    // SAFETY: RNG state is process-global behind the interpreter lock; the
+    // loan covers the whole sampling region including any overflow result
+    // allocation, so the state is released exactly once per dispatch.
     unsafe {
-        if !isNumeric(sa) || !isNumeric(sb) || !isNumeric(sc) {
-            Rf_error(b"invalid arguments\0".as_ptr() as *const _);
-            return R_NilValue();
-        }
-        let n = resultLength(sn);
-        let x = Rf_allocVector(type_.0, n as c_int);
-        if n == 0 {
-            return x;
-        }
-        let _x_guard = protect(x);
-        let na = XLENGTH(sa);
-        let nb = XLENGTH(sb);
-        let nc = XLENGTH(sc);
-
-        if na < 1 || nb < 1 || nc < 1 {
-            if type_ == SEXPTYPE::INTSXP {
-                fill_with_nas_int(std::slice::from_raw_parts_mut(INTEGER(x), n as usize));
-            } else {
-                fill_with_nas_real(std::slice::from_raw_parts_mut(REAL(x), n as usize));
-            }
-            crate::mainutils::errors::Rf_warning1(c"NAs produced".as_ptr());
-        } else {
-            let mut naflag = false;
-            let a = coerceVector(sa, SEXPTYPE::REALSXP.as_c_int());
-            let _a_guard = protect(a);
-            let b = coerceVector(sb, SEXPTYPE::REALSXP.as_c_int());
-            let _b_guard = protect(b);
-            let c = coerceVector(sc, SEXPTYPE::REALSXP.as_c_int());
-            let _c_guard = protect(c);
+        GetRNGstate();
+        let mut naflag = false;
+        if type_ == SEXPTYPE::INTSXP {
+            let x = Rf_allocVector3(type_, n);
+            let _x_guard = protect(x);
+            let mut output = checked(SexpMut::try_from_checked(checked(owner.sexp(x))));
+            let mut cursors = [0i64; K];
             let mut i0: R_xlen_t = 0;
-            let mut use_type = type_;
-            GetRNGstate();
-            let ra = std::slice::from_raw_parts(REAL(a), na as usize);
-            let rb = std::slice::from_raw_parts(REAL(b), nb as usize);
-            let rc = std::slice::from_raw_parts(REAL(c), nc as usize);
-
             let mut overflow_rx = 0.0f64;
-            if type_ == SEXPTYPE::INTSXP {
-                let ix = std::slice::from_raw_parts_mut(INTEGER(x), n as usize);
-                let mut i: R_xlen_t = 0;
-                loop {
-                    if i >= n {
-                        break;
+            let mut overflow = false;
+            for i in 0..n {
+                let draw = sample(std::array::from_fn(|j| {
+                    checked(sources[j].try_real_elt(cursors[j]))
+                }));
+                for (cursor, length) in cursors.iter_mut().zip(lens) {
+                    *cursor += 1;
+                    if *cursor == length {
+                        *cursor = 0;
                     }
-                    let rx = fn_ptr(
-                        ra[(i % na) as usize],
-                        rb[(i % nb) as usize],
-                        rc[(i % nc) as usize],
-                    );
-                    if ISNAN(rx) {
-                        naflag = true;
-                        ix[i as usize] = NA_INTEGER;
-                    } else if rx > c_int::MAX as c_double || rx <= c_int::MIN as c_double {
-                        i0 = i;
-                        overflow_rx = rx;
-                        use_type = SEXPTYPE::REALSXP;
-                        break;
-                    } else {
-                        ix[i as usize] = rx as c_int;
-                    }
-                    i += 1;
+                }
+                if ISNAN(draw) {
+                    naflag = true;
+                    checked(output.try_set_integer_elt(i, NA_INTEGER));
+                } else if draw > c_int::MAX as c_double || draw <= c_int::MIN as c_double {
+                    i0 = i;
+                    overflow_rx = draw;
+                    overflow = true;
+                    break;
+                } else {
+                    checked(output.try_set_integer_elt(i, draw as c_int));
                 }
             }
-            if use_type == SEXPTYPE::REALSXP {
-                let mut x_real_guard = None;
-                let x_real = if type_ == SEXPTYPE::INTSXP {
-                    let xr = Rf_allocVector(SEXPTYPE::REALSXP, n as c_int);
-                    x_real_guard = Some(protect(xr));
-                    let src = std::slice::from_raw_parts(INTEGER(x), n as usize);
-                    let dst = std::slice::from_raw_parts_mut(REAL(xr), n as usize);
-                    for i in 0..i0 as usize {
-                        dst[i] = src[i] as c_double;
+            if overflow {
+                let xr = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+                let _xr_guard = protect(xr);
+                let mut real_out =
+                    checked(SexpMut::try_from_checked(checked(owner.sexp(xr))));
+                for i in 0..i0 {
+                    let value = output
+                        .integer_elt(i)
+                        .unwrap_or_else(|| crate::mainutils::essentials::base_error("integer result read failed"));
+                    checked(real_out.try_set_real_elt(i, value as c_double));
+                }
+                checked(real_out.try_set_real_elt(i0, overflow_rx));
+                for i in (i0 + 1)..n {
+                    let draw = sample(std::array::from_fn(|j| {
+                        checked(sources[j].try_real_elt(cursors[j]))
+                    }));
+                    for (cursor, length) in cursors.iter_mut().zip(lens) {
+                        *cursor += 1;
+                        if *cursor == length {
+                            *cursor = 0;
+                        }
                     }
-                    dst[i0 as usize] = overflow_rx;
-                    xr
-                } else {
-                    x
-                };
-                let rx = std::slice::from_raw_parts_mut(REAL(x_real), n as usize);
-                let start = if type_ == SEXPTYPE::INTSXP {
-                    i0 as usize + 1
-                } else {
-                    0
-                };
-                for i in start..n as usize {
-                    rx[i] = fn_ptr(ra[i % na as usize], rb[i % nb as usize], rc[i % nc as usize]);
-                    if ISNAN(rx[i]) {
+                    if ISNAN(draw) {
                         naflag = true;
                     }
+                    checked(real_out.try_set_real_elt(i, draw));
                 }
+                PutRNGstate();
                 if naflag {
                     crate::mainutils::errors::Rf_warning1(c"NAs produced".as_ptr());
                 }
-                PutRNGstate();
-                drop(x_real_guard);
-                return x_real;
+                return xr;
             }
+            PutRNGstate();
             if naflag {
                 crate::mainutils::errors::Rf_warning1(c"NAs produced".as_ptr());
             }
-            PutRNGstate();
+            return x;
+        }
+        let x = Rf_allocVector3(type_, n);
+        let _x_guard = protect(x);
+        let mut output = checked(SexpMut::try_from_checked(checked(owner.sexp(x))));
+        let mut cursors = [0i64; K];
+        for i in 0..n {
+            let draw = sample(std::array::from_fn(|j| {
+                checked(sources[j].try_real_elt(cursors[j]))
+            }));
+            for (cursor, length) in cursors.iter_mut().zip(lens) {
+                *cursor += 1;
+                if *cursor == length {
+                    *cursor = 0;
+                }
+            }
+            if ISNAN(draw) {
+                naflag = true;
+            }
+            checked(output.try_set_real_elt(i, draw));
+        }
+        PutRNGstate();
+        if naflag {
+            crate::mainutils::errors::Rf_warning1(c"NAs produced".as_ptr());
         }
         x
     }
@@ -1337,259 +1109,96 @@ unsafe fn random3(sn: SEXP, sa: SEXP, sb: SEXP, sc: SEXP, fn_ptr: ran3, type_: S
 // 1-parameter random samplers
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_rchisq(sn: SEXP, sa: SEXP) -> SEXP {
-    unsafe {
-        random1(
-            sn,
-            sa,
-            crate::nmath::dist::chisq::rchisq_inner,
-            SEXPTYPE::REALSXP,
-        )
-    }
+pub fn do_rchisq(sn: SEXP, sa: SEXP) -> SEXP {
+    random_n(sn, [sa], |v| crate::nmath::dist::chisq::rchisq_inner(v[0]), SEXPTYPE::REALSXP)
 }
 
-pub unsafe fn do_rexp(sn: SEXP, sa: SEXP) -> SEXP {
-    unsafe {
-        random1(
-            sn,
-            sa,
-            crate::nmath::dist::exponential::rexp_inner,
-            SEXPTYPE::REALSXP,
-        )
-    }
+pub fn do_rexp(sn: SEXP, sa: SEXP) -> SEXP {
+    random_n(sn, [sa], |v| crate::nmath::dist::exponential::rexp_inner(v[0]), SEXPTYPE::REALSXP)
 }
 
-pub unsafe fn do_rgeom(sn: SEXP, sa: SEXP) -> SEXP {
-    unsafe {
-        random1(
-            sn,
-            sa,
-            crate::nmath::dist::geometric::rgeom_inner,
-            SEXPTYPE::INTSXP,
-        )
-    }
+pub fn do_rgeom(sn: SEXP, sa: SEXP) -> SEXP {
+    random_n(sn, [sa], |v| crate::nmath::dist::geometric::rgeom_inner(v[0]), SEXPTYPE::INTSXP)
 }
 
-pub unsafe fn do_rpois(sn: SEXP, sa: SEXP) -> SEXP {
-    unsafe {
-        random1(
-            sn,
-            sa,
-            crate::nmath::dist::poisson::rpois_inner,
-            SEXPTYPE::INTSXP,
-        )
-    }
+pub fn do_rpois(sn: SEXP, sa: SEXP) -> SEXP {
+    random_n(sn, [sa], |v| crate::nmath::dist::poisson::rpois_inner(v[0]), SEXPTYPE::INTSXP)
 }
 
-pub unsafe fn do_rt(sn: SEXP, sa: SEXP) -> SEXP {
-    unsafe {
-        random1(
-            sn,
-            sa,
-            crate::nmath::dist::t_dist::rt_inner,
-            SEXPTYPE::REALSXP,
-        )
-    }
+pub fn do_rt(sn: SEXP, sa: SEXP) -> SEXP {
+    random_n(sn, [sa], |v| crate::nmath::dist::t_dist::rt_inner(v[0]), SEXPTYPE::REALSXP)
 }
 
-pub unsafe fn do_rsignrank(sn: SEXP, sa: SEXP) -> SEXP {
-    unsafe {
-        random1(
-            sn,
-            sa,
-            crate::nmath::dist::signrank::rsignrank_inner,
-            SEXPTYPE::INTSXP,
-        )
-    }
+pub fn do_rsignrank(sn: SEXP, sa: SEXP) -> SEXP {
+    random_n(sn, [sa], |v| crate::nmath::dist::signrank::rsignrank_inner(v[0]), SEXPTYPE::INTSXP)
 }
 
 // ---------------------------------------------------------------------------
 // 2-parameter random samplers
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_rbeta(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
-    unsafe {
-        random2(
-            sn,
-            sa,
-            sb,
-            crate::nmath::dist::beta::rbeta_inner,
-            SEXPTYPE::REALSXP,
-        )
-    }
+pub fn do_rbeta(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
+    random_n(sn, [sa, sb], |v| crate::nmath::dist::beta::rbeta_inner(v[0], v[1]), SEXPTYPE::REALSXP)
 }
 
-pub unsafe fn do_rbinom(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
-    unsafe {
-        random2(
-            sn,
-            sa,
-            sb,
-            crate::nmath::dist::binomial::rbinom_inner,
-            SEXPTYPE::INTSXP,
-        )
-    }
+pub fn do_rbinom(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
+    random_n(sn, [sa, sb], |v| crate::nmath::dist::binomial::rbinom_inner(v[0], v[1]), SEXPTYPE::INTSXP)
 }
 
-pub unsafe fn do_rcauchy(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
-    unsafe {
-        random2(
-            sn,
-            sa,
-            sb,
-            crate::nmath::dist::cauchy::rcauchy_inner,
-            SEXPTYPE::REALSXP,
-        )
-    }
+pub fn do_rcauchy(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
+    random_n(sn, [sa, sb], |v| crate::nmath::dist::cauchy::rcauchy_inner(v[0], v[1]), SEXPTYPE::REALSXP)
 }
 
-pub unsafe fn do_rf(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
-    unsafe {
-        random2(
-            sn,
-            sa,
-            sb,
-            crate::nmath::dist::f_dist::rf_inner,
-            SEXPTYPE::REALSXP,
-        )
-    }
+pub fn do_rf(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
+    random_n(sn, [sa, sb], |v| crate::nmath::dist::f_dist::rf_inner(v[0], v[1]), SEXPTYPE::REALSXP)
 }
 
-pub unsafe fn do_rgamma(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
-    unsafe {
-        random2(
-            sn,
-            sa,
-            sb,
-            crate::nmath::dist::gamma::rgamma_inner,
-            SEXPTYPE::REALSXP,
-        )
-    }
+pub fn do_rgamma(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
+    random_n(sn, [sa, sb], |v| crate::nmath::dist::gamma::rgamma_inner(v[0], v[1]), SEXPTYPE::REALSXP)
 }
 
-pub unsafe fn do_rlnorm(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
-    unsafe {
-        random2(
-            sn,
-            sa,
-            sb,
-            crate::nmath::dist::lnorm::rlnorm_inner,
-            SEXPTYPE::REALSXP,
-        )
-    }
+pub fn do_rlnorm(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
+    random_n(sn, [sa, sb], |v| crate::nmath::dist::lnorm::rlnorm_inner(v[0], v[1]), SEXPTYPE::REALSXP)
 }
 
-pub unsafe fn do_rlogis(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
-    unsafe {
-        random2(
-            sn,
-            sa,
-            sb,
-            crate::nmath::dist::logistic::rlogis_inner,
-            SEXPTYPE::REALSXP,
-        )
-    }
+pub fn do_rlogis(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
+    random_n(sn, [sa, sb], |v| crate::nmath::dist::logistic::rlogis_inner(v[0], v[1]), SEXPTYPE::REALSXP)
 }
 
-pub unsafe fn do_rnbinom(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
-    unsafe {
-        random2(
-            sn,
-            sa,
-            sb,
-            crate::nmath::dist::nbinom::rnbinom_inner,
-            SEXPTYPE::INTSXP,
-        )
-    }
+pub fn do_rnbinom(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
+    random_n(sn, [sa, sb], |v| crate::nmath::dist::nbinom::rnbinom_inner(v[0], v[1]), SEXPTYPE::INTSXP)
 }
 
-pub unsafe fn do_rnorm(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
-    unsafe {
-        random2(
-            sn,
-            sa,
-            sb,
-            crate::nmath::dist::normal::rnorm_inner,
-            SEXPTYPE::REALSXP,
-        )
-    }
+pub fn do_rnorm(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
+    random_n(sn, [sa, sb], |v| crate::nmath::dist::normal::rnorm_inner(v[0], v[1]), SEXPTYPE::REALSXP)
 }
 
-pub unsafe fn do_runif(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
-    unsafe {
-        random2(
-            sn,
-            sa,
-            sb,
-            crate::nmath::dist::uniform::runif_inner,
-            SEXPTYPE::REALSXP,
-        )
-    }
+pub fn do_runif(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
+    random_n(sn, [sa, sb], |v| crate::nmath::dist::uniform::runif_inner(v[0], v[1]), SEXPTYPE::REALSXP)
 }
 
-pub unsafe fn do_rweibull(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
-    unsafe {
-        random2(
-            sn,
-            sa,
-            sb,
-            crate::nmath::dist::weibull::rweibull_inner,
-            SEXPTYPE::REALSXP,
-        )
-    }
+pub fn do_rweibull(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
+    random_n(sn, [sa, sb], |v| crate::nmath::dist::weibull::rweibull_inner(v[0], v[1]), SEXPTYPE::REALSXP)
 }
 
-pub unsafe fn do_rwilcox(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
-    unsafe {
-        random2(
-            sn,
-            sa,
-            sb,
-            crate::nmath::dist::wilcox::rwilcox_inner,
-            SEXPTYPE::INTSXP,
-        )
-    }
+pub fn do_rwilcox(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
+    random_n(sn, [sa, sb], |v| crate::nmath::dist::wilcox::rwilcox_inner(v[0], v[1]), SEXPTYPE::INTSXP)
 }
 
-pub unsafe fn do_rnchisq(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
-    unsafe {
-        random2(
-            sn,
-            sa,
-            sb,
-            crate::nmath::dist::nchisq::rnchisq_inner,
-            SEXPTYPE::REALSXP,
-        )
-    }
+pub fn do_rnchisq(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
+    random_n(sn, [sa, sb], |v| crate::nmath::dist::nchisq::rnchisq_inner(v[0], v[1]), SEXPTYPE::REALSXP)
 }
 
-pub unsafe fn do_rnbinom_mu(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
-    unsafe {
-        random2(
-            sn,
-            sa,
-            sb,
-            crate::nmath::dist::nbinom::rnbinom_mu_inner,
-            SEXPTYPE::INTSXP,
-        )
-    }
+pub fn do_rnbinom_mu(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
+    random_n(sn, [sa, sb], |v| crate::nmath::dist::nbinom::rnbinom_mu_inner(v[0], v[1]), SEXPTYPE::INTSXP)
 }
 
 // ---------------------------------------------------------------------------
 // 3-parameter random samplers
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_rhyper(sn: SEXP, sa: SEXP, sb: SEXP, sc: SEXP) -> SEXP {
-    unsafe {
-        random3(
-            sn,
-            sa,
-            sb,
-            sc,
-            crate::nmath::dist::hypergeometric::rhyper_inner,
-            SEXPTYPE::INTSXP,
-        )
-    }
+pub fn do_rhyper(sn: SEXP, sa: SEXP, sb: SEXP, sc: SEXP) -> SEXP {
+    random_n(sn, [sa, sb, sc], |v| crate::nmath::dist::hypergeometric::rhyper_inner(v[0], v[1], v[2]), SEXPTYPE::INTSXP)
 }
 
 // ---------------------------------------------------------------------------
