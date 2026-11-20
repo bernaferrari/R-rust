@@ -292,21 +292,17 @@ fn fmt_yconv(
 
 /// Extract the time zone name from `t.tm_zone`, falling back to the
 /// `R_tzname` stubs. Returns an empty slice if nothing is available.
-unsafe fn get_tz_name<'a>(t: *const stm) -> &'a [u8] {
+fn get_tz_name<'a>(t: &'a stm) -> &'a [u8] {
     unsafe {
-        if !t.is_null() {
-            let tm_zone = (*t).tm_zone;
-            if !tm_zone.is_null() {
-                let cstr = CStr::from_ptr(tm_zone);
+        if !t.tm_zone.is_null() {
+            let cstr = CStr::from_ptr(t.tm_zone);
+            return cstr.to_bytes();
+        }
+        if t.tm_isdst >= 0 {
+            let tzname = r_tzname(t.tm_isdst != 0);
+            if !tzname.is_null() {
+                let cstr = CStr::from_ptr(tzname);
                 return cstr.to_bytes();
-            }
-            let isdst = (*t).tm_isdst;
-            if isdst >= 0 {
-                let tzname = r_tzname(isdst != 0);
-                if !tzname.is_null() {
-                    let cstr = CStr::from_ptr(tzname);
-                    return cstr.to_bytes();
-                }
             }
         }
         b""
@@ -316,399 +312,390 @@ unsafe fn get_tz_name<'a>(t: *const stm) -> &'a [u8] {
 /// Recursive format processor -- the heart of `R_strftime`.
 ///
 /// This is the direct port of the C `_fmt` function.
-unsafe fn fmt_do(
-    buf: &mut [u8],
-    format: &[u8],
-    t: *const stm,
-    mut pt: usize,
-    ptlim: usize,
-) -> usize {
-    unsafe {
-        let mut idx: usize = 0;
-        let len = format.len();
+fn fmt_do(buf: &mut [u8], format: &[u8], t: &stm, mut pt: usize, ptlim: usize) -> usize {
+    let mut idx: usize = 0;
+    let len = format.len();
 
-        while idx < len {
-            if format[idx] == b'%' {
-                // -----------------------------------------------------------
-                // First check for POSIX 2008 / GNU modifiers for %Y
-                // -----------------------------------------------------------
-                let mut pad: u8 = 0;
-                let mut width: i32 = -1;
+    while idx < len {
+        if format[idx] == b'%' {
+            // -----------------------------------------------------------
+            // First check for POSIX 2008 / GNU modifiers for %Y
+            // -----------------------------------------------------------
+            let mut pad: u8 = 0;
+            let mut width: i32 = -1;
 
-                // Look ahead to see if this ends with 'Y'
-                let mut f_idx = idx + 1;
-                while f_idx < len {
-                    let ch = format[f_idx];
-                    if !(ch.is_ascii_digit() || ch == b'_' || ch == b'+') {
+            // Look ahead to see if this ends with 'Y'
+            let mut f_idx = idx + 1;
+            while f_idx < len {
+                let ch = format[f_idx];
+                if !(ch.is_ascii_digit() || ch == b'_' || ch == b'+') {
+                    break;
+                }
+                f_idx += 1;
+            }
+
+            let is_year = f_idx < len && format[f_idx] == b'Y';
+
+            if is_year {
+                // Consume padding modifiers and width
+                loop {
+                    idx += 1;
+                    if idx >= len {
                         break;
                     }
-                    f_idx += 1;
+                    match format[idx] {
+                        b'0' | b'+' | b'_' => {
+                            pad = format[idx];
+                        }
+                        _ => break,
+                    }
+                }
+                // Parse width (digits)
+                if idx < len && format[idx].is_ascii_digit() {
+                    width = 0;
+                    while idx < len && format[idx].is_ascii_digit() {
+                        let d = (format[idx] - b'0') as i32;
+                        if width > i32::MAX / 10 || (width == i32::MAX / 10 && d > i32::MAX % 10) {
+                            width = i32::MAX;
+                        } else {
+                            width = width * 10 + d;
+                        }
+                        idx += 1;
+                    }
+                }
+                // Back up one so the label: switch consumes 'Y'
+                #[allow(clippy::implicit_saturating_sub)]
+                if idx > 0 {
+                    idx -= 1;
+                }
+            }
+
+            // -----------------------------------------------------------
+            // Main switch on the format specifier
+            // -----------------------------------------------------------
+            idx += 1;
+            if idx >= len {
+                // Trailing '%' -- output it literally
+                if pt < ptlim {
+                    buf[pt] = b'%';
+                    pt += 1;
+                }
+                break;
+            }
+
+            match format[idx] {
+                b'\0' => {
+                    // This shouldn't happen with a &[u8] slice but guard anyway.
+                    idx -= 1;
                 }
 
-                let is_year = f_idx < len && format[f_idx] == b'Y';
+                // ---- Locale-dependent: full/abbreviated day/month names ----
+                b'A' => {
+                    let name = if t.tm_wday < 0 || t.tm_wday >= DAYSPERWEEK {
+                        "?"
+                    } else {
+                        DAY_NAMES[t.tm_wday as usize]
+                    };
+                    pt = fmt_add_str(buf, pt, ptlim, name);
+                }
+                b'a' => {
+                    let name = if t.tm_wday < 0 || t.tm_wday >= DAYSPERWEEK {
+                        "?"
+                    } else {
+                        ABDAY_NAMES[t.tm_wday as usize]
+                    };
+                    pt = fmt_add_str(buf, pt, ptlim, name);
+                }
+                b'B' => {
+                    let name = if t.tm_mon < 0 || t.tm_mon >= MONSPERYEAR {
+                        "?"
+                    } else {
+                        MON_NAMES[t.tm_mon as usize]
+                    };
+                    pt = fmt_add_str(buf, pt, ptlim, name);
+                }
+                b'b' | b'h' => {
+                    let name = if t.tm_mon < 0 || t.tm_mon >= MONSPERYEAR {
+                        "?"
+                    } else {
+                        ABMON_NAMES[t.tm_mon as usize]
+                    };
+                    pt = fmt_add_str(buf, pt, ptlim, name);
+                }
+                b'c' => {
+                    pt = fmt_do(buf, D_T_FMT.as_bytes(), t, pt, ptlim);
+                }
 
-                if is_year {
-                    // Consume padding modifiers and width
-                    loop {
+                // ---- AM / PM ----
+                b'p' => {
+                    let s = if t.tm_hour < 12 { AM_STR } else { PM_STR };
+                    pt = fmt_add_str(buf, pt, ptlim, s);
+                }
+                b'P' => {
+                    // R addition: lowercase AM/PM
+                    let s = if t.tm_hour < 12 { AM_STR } else { PM_STR };
+                    let lower: String = s.chars().map(|c| c.to_ascii_lowercase()).collect();
+                    pt = fmt_add_str(buf, pt, ptlim, &lower);
+                }
+
+                // ---- Locale date/time formats ----
+                b'X' => {
+                    pt = fmt_do(buf, T_FMT.as_bytes(), t, pt, ptlim);
+                }
+                b'x' => {
+                    pt = fmt_do(buf, D_FMT.as_bytes(), t, pt, ptlim);
+                }
+
+                // ---- Locale-independent specifiers ----
+                b'C' => {
+                    pt = fmt_yconv(buf, pt, ptlim, t.tm_year, TM_YEAR_BASE, true, false);
+                }
+                b'D' => {
+                    pt = fmt_do(buf, b"%m/%d/%y", t, pt, ptlim);
+                }
+                b'd' => {
+                    pt = fmt_conv(buf, pt, ptlim, t.tm_mday, "%02d");
+                }
+
+                // Locale modifiers -- skip and re-process the next char
+                b'E' | b'O' => {
+                    // Locale modifiers (C99): GNU tzcode re-processes the
+                    // next character as a plain specifier (goto label).
+                    if idx + 1 < len {
+                        pt = fmt_do(buf, &[b'%', format[idx + 1]], t, pt, ptlim);
                         idx += 1;
-                        if idx >= len {
+                    }
+                }
+
+                b'e' => {
+                    pt = fmt_conv(buf, pt, ptlim, t.tm_mday, "%2d");
+                }
+                b'F' => {
+                    pt = fmt_do(buf, b"%Y-%m-%d", t, pt, ptlim);
+                }
+                b'H' => {
+                    pt = fmt_conv(buf, pt, ptlim, t.tm_hour, "%02d");
+                }
+                b'I' => {
+                    let h = t.tm_hour % 12;
+                    let h12 = if h != 0 { h } else { 12 };
+                    pt = fmt_conv(buf, pt, ptlim, h12, "%02d");
+                }
+                b'j' => {
+                    pt = fmt_conv(buf, pt, ptlim, t.tm_yday + 1, "%03d");
+                }
+                b'k' => {
+                    pt = fmt_conv(buf, pt, ptlim, t.tm_hour, "%2d");
+                }
+                b'l' => {
+                    let h = t.tm_hour % 12;
+                    let h12 = if h != 0 { h } else { 12 };
+                    pt = fmt_conv(buf, pt, ptlim, h12, "%2d");
+                }
+                b'M' => {
+                    pt = fmt_conv(buf, pt, ptlim, t.tm_min, "%02d");
+                }
+                b'm' => {
+                    pt = fmt_conv(buf, pt, ptlim, t.tm_mon + 1, "%02d");
+                }
+                b'n' => {
+                    pt = fmt_add(buf, pt, ptlim, b"\n");
+                }
+                b'R' => {
+                    pt = fmt_do(buf, b"%H:%M", t, pt, ptlim);
+                }
+                b'r' => {
+                    pt = fmt_do(buf, b"%I:%M:%S %p", t, pt, ptlim);
+                }
+                b'S' => {
+                    pt = fmt_conv(buf, pt, ptlim, t.tm_sec, "%02d");
+                }
+                b's' => {
+                    // GNU extra/tzone strftime.c: %s = R_mktime(&tm).
+                    // R_mktime keeps its raw `*mut stm` boundary for the
+                    // datetime callers that still pass owned pointers.
+                    let mut tm_copy = *t;
+                    let mkt = unsafe {
+                        crate::tzone::R_mktime(&mut tm_copy as *mut stm as *mut crate::tzone::stm)
+                    };
+                    let mkt_str = format!("{}", mkt);
+                    pt = fmt_add_str(buf, pt, ptlim, &mkt_str);
+                }
+                b'T' => {
+                    pt = fmt_do(buf, b"%H:%M:%S", t, pt, ptlim);
+                }
+                b't' => {
+                    pt = fmt_add(buf, pt, ptlim, b"\t");
+                }
+                b'U' => {
+                    let val = (t.tm_yday + DAYSPERWEEK - t.tm_wday) / DAYSPERWEEK;
+                    pt = fmt_conv(buf, pt, ptlim, val, "%02d");
+                }
+                b'u' => {
+                    let val = if t.tm_wday == 0 {
+                        DAYSPERWEEK
+                    } else {
+                        t.tm_wday
+                    };
+                    pt = fmt_conv(buf, pt, ptlim, val, "%d");
+                }
+
+                // ISO 8601 week number / year
+                b'V' | b'G' | b'g' => {
+                    let spec = format[idx];
+                    let mut year = t.tm_year;
+                    let mut base = TM_YEAR_BASE;
+                    let mut yday = t.tm_yday;
+                    let wday = t.tm_wday;
+                    let w: i32;
+
+                    loop {
+                        let year_len = if isleap_sum(year, base) {
+                            DAYSPERLYEAR
+                        } else {
+                            DAYSPERNYEAR
+                        };
+
+                        // What yday (-3 ... 3) does the ISO year begin on?
+                        let bot = ((yday + 11 - wday) % DAYSPERWEEK) - 3;
+                        // What yday does the NEXT ISO year begin on?
+                        let mut top = bot - (year_len % DAYSPERWEEK);
+                        if top < -3 {
+                            top += DAYSPERWEEK;
+                        }
+                        top += year_len;
+
+                        if yday >= top {
+                            base += 1;
+                            w = 1;
                             break;
                         }
-                        match format[idx] {
-                            b'0' | b'+' | b'_' => {
-                                pad = format[idx];
-                            }
-                            _ => break,
+                        if yday >= bot {
+                            w = 1 + (yday - bot) / DAYSPERWEEK;
+                            break;
                         }
+                        base -= 1;
+                        yday += if isleap_sum(year, base) {
+                            DAYSPERLYEAR
+                        } else {
+                            DAYSPERNYEAR
+                        };
                     }
-                    // Parse width (digits)
-                    if idx < len && format[idx].is_ascii_digit() {
-                        width = 0;
-                        while idx < len && format[idx].is_ascii_digit() {
-                            let d = (format[idx] - b'0') as i32;
-                            if width > i32::MAX / 10
-                                || (width == i32::MAX / 10 && d > i32::MAX % 10)
-                            {
-                                width = i32::MAX;
-                            } else {
-                                width = width * 10 + d;
-                            }
-                            idx += 1;
-                        }
-                    }
-                    // Back up one so the label: switch consumes 'Y'
-                    #[allow(clippy::implicit_saturating_sub)]
-                    if idx > 0 {
-                        idx -= 1;
+
+                    // Note: XPG4_1994_04_09 section is not active (commented out in R)
+                    if spec == b'V' {
+                        pt = fmt_conv(buf, pt, ptlim, w, "%02d");
+                    } else if spec == b'g' {
+                        pt = fmt_yconv(buf, pt, ptlim, year, base, false, true);
+                    } else {
+                        // %G
+                        pt = fmt_yconv(buf, pt, ptlim, year, base, true, true);
                     }
                 }
 
-                // -----------------------------------------------------------
-                // Main switch on the format specifier
-                // -----------------------------------------------------------
-                idx += 1;
-                if idx >= len {
-                    // Trailing '%' -- output it literally
+                b'v' => {
+                    pt = fmt_do(buf, b"%e-%b-%Y", t, pt, ptlim);
+                }
+                b'W' => {
+                    let wday_adj = if t.tm_wday != 0 {
+                        t.tm_wday - 1
+                    } else {
+                        DAYSPERWEEK - 1
+                    };
+                    let val = (t.tm_yday + DAYSPERWEEK - wday_adj) / DAYSPERWEEK;
+                    pt = fmt_conv(buf, pt, ptlim, val, "%02d");
+                }
+                b'w' => {
+                    pt = fmt_conv(buf, pt, ptlim, t.tm_wday, "%d");
+                }
+                b'y' => {
+                    pt = fmt_yconv(buf, pt, ptlim, t.tm_year, TM_YEAR_BASE, false, true);
+                }
+
+                b'Y' => {
+                    // Year with optional padding support (POSIX 2008 / GNU)
+                    let year = TM_YEAR_BASE + t.tm_year;
+                    let pad_char = pad;
+                    let pad_width = width;
+
+                    // Check R_PAD_YEARS_BY_ZERO environment variable
+                    let env_val =
+                        env::var("R_PAD_YEARS_BY_ZERO").unwrap_or_else(|_| "yes".to_string());
+
+                    let (effective_pad, effective_width) = if env_val == "yes" && pad_char == 0 {
+                        (b'0', 4)
+                    } else {
+                        (pad_char, pad_width)
+                    };
+
+                    // Build format string
+                    let mut fmt_str = String::from("%");
+                    if effective_pad == b'0' || effective_pad == b'+' {
+                        fmt_str.push('0');
+                    }
+                    if effective_width > 0 {
+                        let _ = write!(fmt_str, "{}", effective_width);
+                    }
+                    if effective_pad == b'+' && year > 9999 {
+                        fmt_str.push('+');
+                    }
+                    fmt_str.push('d');
+                    pt = fmt_conv(buf, pt, ptlim, year, &fmt_str);
+                }
+
+                b'Z' => {
+                    let tz = get_tz_name(t);
+                    pt = fmt_add(buf, pt, ptlim, tz);
+                }
+
+                b'z' => {
+                    if t.tm_isdst < 0 {
+                        // continue to next iteration
+                    } else {
+                        let mut diff = t.tm_gmtoff;
+                        let sign: &[u8] = if diff < 0 {
+                            diff = -diff;
+                            b"-"
+                        } else {
+                            b"+"
+                        };
+                        pt = fmt_add(buf, pt, ptlim, sign);
+                        diff /= SECSPERMIN;
+                        let diff = (diff / MINSPERHOUR) * 100 + (diff % MINSPERHOUR);
+                        pt = fmt_conv(buf, pt, ptlim, diff as i32, "%04d");
+                    }
+                }
+
+                b'+' => {
+                    pt = fmt_do(buf, b"%a %b %e %H:%M:%S %Z %Y", t, pt, ptlim);
+                }
+
+                b'%' => {
                     if pt < ptlim {
                         buf[pt] = b'%';
                         pt += 1;
                     }
-                    break;
                 }
 
-                match format[idx] {
-                    b'\0' => {
-                        // This shouldn't happen with a &[u8] slice but guard anyway.
-                        idx -= 1;
+                // Any other character after % is output literally
+                _ => {
+                    if pt < ptlim {
+                        buf[pt] = format[idx];
+                        pt += 1;
                     }
-
-                    // ---- Locale-dependent: full/abbreviated day/month names ----
-                    b'A' => {
-                        let name = if (*t).tm_wday < 0 || (*t).tm_wday >= DAYSPERWEEK {
-                            "?"
-                        } else {
-                            DAY_NAMES[(*t).tm_wday as usize]
-                        };
-                        pt = fmt_add_str(buf, pt, ptlim, name);
-                    }
-                    b'a' => {
-                        let name = if (*t).tm_wday < 0 || (*t).tm_wday >= DAYSPERWEEK {
-                            "?"
-                        } else {
-                            ABDAY_NAMES[(*t).tm_wday as usize]
-                        };
-                        pt = fmt_add_str(buf, pt, ptlim, name);
-                    }
-                    b'B' => {
-                        let name = if (*t).tm_mon < 0 || (*t).tm_mon >= MONSPERYEAR {
-                            "?"
-                        } else {
-                            MON_NAMES[(*t).tm_mon as usize]
-                        };
-                        pt = fmt_add_str(buf, pt, ptlim, name);
-                    }
-                    b'b' | b'h' => {
-                        let name = if (*t).tm_mon < 0 || (*t).tm_mon >= MONSPERYEAR {
-                            "?"
-                        } else {
-                            ABMON_NAMES[(*t).tm_mon as usize]
-                        };
-                        pt = fmt_add_str(buf, pt, ptlim, name);
-                    }
-                    b'c' => {
-                        pt = fmt_do(buf, D_T_FMT.as_bytes(), t, pt, ptlim);
-                    }
-
-                    // ---- AM / PM ----
-                    b'p' => {
-                        let s = if (*t).tm_hour < 12 { AM_STR } else { PM_STR };
-                        pt = fmt_add_str(buf, pt, ptlim, s);
-                    }
-                    b'P' => {
-                        // R addition: lowercase AM/PM
-                        let s = if (*t).tm_hour < 12 { AM_STR } else { PM_STR };
-                        let lower: String = s.chars().map(|c| c.to_ascii_lowercase()).collect();
-                        pt = fmt_add_str(buf, pt, ptlim, &lower);
-                    }
-
-                    // ---- Locale date/time formats ----
-                    b'X' => {
-                        pt = fmt_do(buf, T_FMT.as_bytes(), t, pt, ptlim);
-                    }
-                    b'x' => {
-                        pt = fmt_do(buf, D_FMT.as_bytes(), t, pt, ptlim);
-                    }
-
-                    // ---- Locale-independent specifiers ----
-                    b'C' => {
-                        pt = fmt_yconv(buf, pt, ptlim, (*t).tm_year, TM_YEAR_BASE, true, false);
-                    }
-                    b'D' => {
-                        pt = fmt_do(buf, b"%m/%d/%y", t, pt, ptlim);
-                    }
-                    b'd' => {
-                        pt = fmt_conv(buf, pt, ptlim, (*t).tm_mday, "%02d");
-                    }
-
-                    // Locale modifiers -- skip and re-process the next char
-                    b'E' | b'O' => {
-                        // Locale modifiers (C99): GNU tzcode re-processes the
-                        // next character as a plain specifier (goto label).
-                        if idx + 1 < len {
-                            pt = fmt_do(buf, &[b'%', format[idx + 1]], t, pt, ptlim);
-                            idx += 1;
-                        }
-                    }
-
-                    b'e' => {
-                        pt = fmt_conv(buf, pt, ptlim, (*t).tm_mday, "%2d");
-                    }
-                    b'F' => {
-                        pt = fmt_do(buf, b"%Y-%m-%d", t, pt, ptlim);
-                    }
-                    b'H' => {
-                        pt = fmt_conv(buf, pt, ptlim, (*t).tm_hour, "%02d");
-                    }
-                    b'I' => {
-                        let h = (*t).tm_hour % 12;
-                        let h12 = if h != 0 { h } else { 12 };
-                        pt = fmt_conv(buf, pt, ptlim, h12, "%02d");
-                    }
-                    b'j' => {
-                        pt = fmt_conv(buf, pt, ptlim, (*t).tm_yday + 1, "%03d");
-                    }
-                    b'k' => {
-                        pt = fmt_conv(buf, pt, ptlim, (*t).tm_hour, "%2d");
-                    }
-                    b'l' => {
-                        let h = (*t).tm_hour % 12;
-                        let h12 = if h != 0 { h } else { 12 };
-                        pt = fmt_conv(buf, pt, ptlim, h12, "%2d");
-                    }
-                    b'M' => {
-                        pt = fmt_conv(buf, pt, ptlim, (*t).tm_min, "%02d");
-                    }
-                    b'm' => {
-                        pt = fmt_conv(buf, pt, ptlim, (*t).tm_mon + 1, "%02d");
-                    }
-                    b'n' => {
-                        pt = fmt_add(buf, pt, ptlim, b"\n");
-                    }
-                    b'R' => {
-                        pt = fmt_do(buf, b"%H:%M", t, pt, ptlim);
-                    }
-                    b'r' => {
-                        pt = fmt_do(buf, b"%I:%M:%S %p", t, pt, ptlim);
-                    }
-                    b'S' => {
-                        pt = fmt_conv(buf, pt, ptlim, (*t).tm_sec, "%02d");
-                    }
-                    b's' => {
-                        // GNU extra/tzone strftime.c: %s = R_mktime(&tm).
-                        let mut tm_copy = *t;
-                        let mkt = crate::tzone::R_mktime(
-                            &mut tm_copy as *mut stm as *mut crate::tzone::stm,
-                        );
-                        let mkt_str = format!("{}", mkt);
-                        pt = fmt_add_str(buf, pt, ptlim, &mkt_str);
-                    }
-                    b'T' => {
-                        pt = fmt_do(buf, b"%H:%M:%S", t, pt, ptlim);
-                    }
-                    b't' => {
-                        pt = fmt_add(buf, pt, ptlim, b"\t");
-                    }
-                    b'U' => {
-                        let val = ((*t).tm_yday + DAYSPERWEEK - (*t).tm_wday) / DAYSPERWEEK;
-                        pt = fmt_conv(buf, pt, ptlim, val, "%02d");
-                    }
-                    b'u' => {
-                        let val = if (*t).tm_wday == 0 {
-                            DAYSPERWEEK
-                        } else {
-                            (*t).tm_wday
-                        };
-                        pt = fmt_conv(buf, pt, ptlim, val, "%d");
-                    }
-
-                    // ISO 8601 week number / year
-                    b'V' | b'G' | b'g' => {
-                        let spec = format[idx];
-                        let mut year = (*t).tm_year;
-                        let mut base = TM_YEAR_BASE;
-                        let mut yday = (*t).tm_yday;
-                        let wday = (*t).tm_wday;
-                        let w: i32;
-
-                        loop {
-                            let year_len = if isleap_sum(year, base) {
-                                DAYSPERLYEAR
-                            } else {
-                                DAYSPERNYEAR
-                            };
-
-                            // What yday (-3 ... 3) does the ISO year begin on?
-                            let bot = ((yday + 11 - wday) % DAYSPERWEEK) - 3;
-                            // What yday does the NEXT ISO year begin on?
-                            let mut top = bot - (year_len % DAYSPERWEEK);
-                            if top < -3 {
-                                top += DAYSPERWEEK;
-                            }
-                            top += year_len;
-
-                            if yday >= top {
-                                base += 1;
-                                w = 1;
-                                break;
-                            }
-                            if yday >= bot {
-                                w = 1 + (yday - bot) / DAYSPERWEEK;
-                                break;
-                            }
-                            base -= 1;
-                            yday += if isleap_sum(year, base) {
-                                DAYSPERLYEAR
-                            } else {
-                                DAYSPERNYEAR
-                            };
-                        }
-
-                        // Note: XPG4_1994_04_09 section is not active (commented out in R)
-                        if spec == b'V' {
-                            pt = fmt_conv(buf, pt, ptlim, w, "%02d");
-                        } else if spec == b'g' {
-                            pt = fmt_yconv(buf, pt, ptlim, year, base, false, true);
-                        } else {
-                            // %G
-                            pt = fmt_yconv(buf, pt, ptlim, year, base, true, true);
-                        }
-                    }
-
-                    b'v' => {
-                        pt = fmt_do(buf, b"%e-%b-%Y", t, pt, ptlim);
-                    }
-                    b'W' => {
-                        let wday_adj = if (*t).tm_wday != 0 {
-                            (*t).tm_wday - 1
-                        } else {
-                            DAYSPERWEEK - 1
-                        };
-                        let val = ((*t).tm_yday + DAYSPERWEEK - wday_adj) / DAYSPERWEEK;
-                        pt = fmt_conv(buf, pt, ptlim, val, "%02d");
-                    }
-                    b'w' => {
-                        pt = fmt_conv(buf, pt, ptlim, (*t).tm_wday, "%d");
-                    }
-                    b'y' => {
-                        pt = fmt_yconv(buf, pt, ptlim, (*t).tm_year, TM_YEAR_BASE, false, true);
-                    }
-
-                    b'Y' => {
-                        // Year with optional padding support (POSIX 2008 / GNU)
-                        let year = TM_YEAR_BASE + (*t).tm_year;
-                        let pad_char = pad;
-                        let pad_width = width;
-
-                        // Check R_PAD_YEARS_BY_ZERO environment variable
-                        let env_val =
-                            env::var("R_PAD_YEARS_BY_ZERO").unwrap_or_else(|_| "yes".to_string());
-
-                        let (effective_pad, effective_width) = if env_val == "yes" && pad_char == 0
-                        {
-                            (b'0', 4)
-                        } else {
-                            (pad_char, pad_width)
-                        };
-
-                        // Build format string
-                        let mut fmt_str = String::from("%");
-                        if effective_pad == b'0' || effective_pad == b'+' {
-                            fmt_str.push('0');
-                        }
-                        if effective_width > 0 {
-                            let _ = write!(fmt_str, "{}", effective_width);
-                        }
-                        if effective_pad == b'+' && year > 9999 {
-                            fmt_str.push('+');
-                        }
-                        fmt_str.push('d');
-                        pt = fmt_conv(buf, pt, ptlim, year, &fmt_str);
-                    }
-
-                    b'Z' => {
-                        let tz = get_tz_name(t);
-                        pt = fmt_add(buf, pt, ptlim, tz);
-                    }
-
-                    b'z' => {
-                        if (*t).tm_isdst < 0 {
-                            // continue to next iteration
-                        } else {
-                            let mut diff = (*t).tm_gmtoff;
-                            let sign: &[u8] = if diff < 0 {
-                                diff = -diff;
-                                b"-"
-                            } else {
-                                b"+"
-                            };
-                            pt = fmt_add(buf, pt, ptlim, sign);
-                            diff /= SECSPERMIN;
-                            let diff = (diff / MINSPERHOUR) * 100 + (diff % MINSPERHOUR);
-                            pt = fmt_conv(buf, pt, ptlim, diff as i32, "%04d");
-                        }
-                    }
-
-                    b'+' => {
-                        pt = fmt_do(buf, b"%a %b %e %H:%M:%S %Z %Y", t, pt, ptlim);
-                    }
-
-                    b'%' => {
-                        if pt < ptlim {
-                            buf[pt] = b'%';
-                            pt += 1;
-                        }
-                    }
-
-                    // Any other character after % is output literally
-                    _ => {
-                        if pt < ptlim {
-                            buf[pt] = format[idx];
-                            pt += 1;
-                        }
-                    }
-                }
-            } else {
-                // Literal character
-                if pt < ptlim {
-                    buf[pt] = format[idx];
-                    pt += 1;
                 }
             }
-            idx += 1;
+        } else {
+            // Literal character
+            if pt < ptlim {
+                buf[pt] = format[idx];
+                pt += 1;
+            }
         }
-
-        pt
+        idx += 1;
     }
+
+    pt
 }
 
 // ---------------------------------------------------------------------------
@@ -730,7 +717,7 @@ pub unsafe fn R_strftime(
     s: *mut u8,
     maxsize: usize,
     format: *const core::ffi::c_char,
-    t: *const stm,
+    t: &stm,
 ) -> usize {
     unsafe {
         r_tzset();
@@ -775,7 +762,7 @@ pub fn strftime_safe(format: &str, t: &stm) -> Option<String> {
     let maxsize: usize = 1024;
     let mut buf = vec![0u8; maxsize];
 
-    let pt = unsafe { fmt_do(&mut buf, format.as_bytes(), t as *const stm, 0, maxsize) };
+    let pt = fmt_do(&mut buf, format.as_bytes(), t, 0, maxsize);
 
     if pt == maxsize {
         return None;
@@ -1094,7 +1081,7 @@ mod tests {
         // The FFI function with null format should use "%c"
         let t = make_stm(0, 30, 14, 15, 2, 124, 5, 74, 0, 0, ptr::null());
         let mut buf = vec![0u8; 256];
-        let result = unsafe { R_strftime(buf.as_mut_ptr(), 256, ptr::null(), &t as *const stm) };
+        let result = unsafe { R_strftime(buf.as_mut_ptr(), 256, ptr::null(), &t) };
         assert!(result > 0);
         let s = String::from_utf8_lossy(&buf[..result]);
         assert!(s.contains("2024"));

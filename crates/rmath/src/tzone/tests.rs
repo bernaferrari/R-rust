@@ -78,7 +78,7 @@ mod tests {
         let _session = activate_test_session();
         unsafe {
             let t: i64 = 0;
-            let result = R_gmtime(&t);
+            let result = R_gmtime(Some(&t));
             assert!(!result.is_null());
             let tm = &*result;
             assert_eq!(tm.tm_year, 70); // 1970 - 1900
@@ -174,7 +174,7 @@ mod tests {
         unsafe {
             // 2024-01-01 00:00:00 UTC = 1704067200
             let t: i64 = 1704067200;
-            let result = R_gmtime(&t);
+            let result = R_gmtime(Some(&t));
             assert!(!result.is_null());
             let tm = &*result;
             assert_eq!(tm.tm_year, 124); // 2024 - 1900
@@ -212,12 +212,12 @@ mod tests {
             let mut first = RInstance::new();
             set_current_instance(&mut first);
             let t: i64 = 0;
-            let first_tm = R_gmtime(&t);
+            let first_tm = R_gmtime(Some(&t));
             assert!(!first_tm.is_null());
 
             let mut second = RInstance::new();
             set_current_instance(&mut second);
-            let second_tm = R_gmtime(&t);
+            let second_tm = R_gmtime(Some(&t));
             assert!(!second_tm.is_null());
 
             assert_ne!(first_tm, second_tm);

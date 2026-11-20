@@ -239,7 +239,33 @@ pub(super) fn tzload_with<B: std::ops::Deref<Target = [u8]>>(
         if data.len() < std::mem::size_of::<tzhead>() {
             return -1;
         }
-        let head = unsafe { &*(data.as_ptr() as *const tzhead) };
+        // Decode the fixed-size header by copying each field out of the
+        // byte buffer (data.len() >= size_of::<tzhead>() was checked above).
+        let head = {
+            let mut head = tzhead {
+                tzh_magic: [0; 4],
+                tzh_version: [0; 1],
+                tzh_reserved: [0; 15],
+                tzh_ttisgmtcnt: [0; 4],
+                tzh_ttisstdcnt: [0; 4],
+                tzh_leapcnt: [0; 4],
+                tzh_timecnt: [0; 4],
+                tzh_typecnt: [0; 4],
+                tzh_charcnt: [0; 4],
+            };
+            let mut field =
+                |dst: &mut [u8], at: usize| dst.copy_from_slice(&data[at..at + dst.len()]);
+            field(&mut head.tzh_magic, 0);
+            field(&mut head.tzh_version, 4);
+            field(&mut head.tzh_reserved, 5);
+            field(&mut head.tzh_ttisgmtcnt, 20);
+            field(&mut head.tzh_ttisstdcnt, 24);
+            field(&mut head.tzh_leapcnt, 28);
+            field(&mut head.tzh_timecnt, 32);
+            field(&mut head.tzh_typecnt, 36);
+            field(&mut head.tzh_charcnt, 40);
+            head
+        };
 
         let ttisstdcnt = detzcode(&head.tzh_ttisstdcnt) as i32;
         let ttisgmtcnt = detzcode(&head.tzh_ttisgmtcnt) as i32;
