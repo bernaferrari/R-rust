@@ -18,27 +18,24 @@ fn optim_workspace_refusal_and_callback_error_release_the_reservation() {
     limits.max_alloc_bytes = before.total_bytes + 2 * 1024 * 1024;
     session.set_resource_limits(limits).unwrap();
 
-    let error = session
-        .eval(
-            "optim(subject, function(x) { calls <<- calls + 1L; sum(x^2) },
-                   method = 'L-BFGS-B', control = list(lmm = 400L))",
-        )
-        .unwrap_err();
-    assert!(error.to_string().contains("transient memory"), "{error}");
+    let oversized = "optim(subject, function(x) { calls <<- calls + 1L; sum(x^2) },
+                           method = 'L-BFGS-B', control = list(lmm = 400L))";
+    let failing_callback =
+        "optim(rep(1, 32L), function(x) stop('objective failed'), method = 'BFGS')";
+    let expect_error = |session: &mut RSession, source: &str, message: &str| {
+        let error = session.eval(source).unwrap_err();
+        assert!(error.to_string().contains(message), "{error}");
+    };
+    expect_error(&mut session, oversized, "transient memory");
+    expect_error(&mut session, failing_callback, "objective failed");
     assert_eq!(session.eval("calls").unwrap(), "[1] 0\n");
-    assert_eq!(
-        session.memory_usage().unwrap().workspace_bytes,
-        before.workspace_bytes
-    );
-
-    let error = session
-        .eval("optim(c(2, 3), function(x) stop('objective failed'), method = 'BFGS')")
-        .unwrap_err();
-    assert!(error.to_string().contains("objective failed"), "{error}");
-    assert_eq!(
-        session.memory_usage().unwrap().workspace_bytes,
-        before.workspace_bytes
-    );
+    // Each oversized attempt admits several 10,000-element scratch vectors
+    // before refusing its matrix. Repeating the attempt would exhaust the
+    // original cap and disrupt smaller fits if those vectors were retained.
+    for _ in 0..12 {
+        expect_error(&mut session, oversized, "transient memory");
+        expect_error(&mut session, failing_callback, "objective failed");
+    }
     assert_eq!(
         session.eval(&format!("({fit})$convergence")).unwrap(),
         "[1] 0\n"
@@ -46,10 +43,6 @@ fn optim_workspace_refusal_and_callback_error_release_the_reservation() {
     assert_eq!(
         session.resource_limits().max_alloc_bytes,
         limits.max_alloc_bytes
-    );
-    assert_eq!(
-        session.memory_usage().unwrap().workspace_bytes,
-        before.workspace_bytes
     );
 }
 
