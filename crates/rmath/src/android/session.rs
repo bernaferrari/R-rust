@@ -89,7 +89,7 @@ fn result_from_eval(
             );
         }
         if crate::mainutils::errors::collect_warnings() > 0 {
-            if let Some(block) = unsafe { crate::mainutils::errors::take_warnings_block() } {
+            if let Some(block) = crate::mainutils::errors::take_warnings_block() {
                 captured.stderr.push_str(&block);
                 captured.interleaved.push_str(&block);
             }
@@ -144,7 +144,7 @@ fn error_result_with_captured(
         with_output_authority(owner, || {
             let rendered = crate::mainutils::errors::try_last_rendered_message(&message);
             let warnings = if crate::mainutils::errors::collect_warnings() > 0 {
-                unsafe { crate::mainutils::errors::take_warnings_block() }
+                crate::mainutils::errors::take_warnings_block()
             } else {
                 None
             };
