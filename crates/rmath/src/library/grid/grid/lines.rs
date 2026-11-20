@@ -159,13 +159,13 @@ pub unsafe fn L_lines(x: SEXP, y: SEXP, index: SEXP, arrow: SEXP) -> SEXP {
         let mut gc_cache_buf: [u8; 256] = [0; 256];
         let gc = gc_buf.as_mut_ptr() as pGEcontext;
         let gc_cache = gc_cache_buf.as_mut_ptr() as pGEcontext;
-        initGContext(currentgp, gc, dd, gp_is_scalar.as_mut_ptr(), gc_cache);
+        initGContext(currentgp, gc, dd, &mut gp_is_scalar, gc_cache);
 
         GEMode(1, dd);
         let nl = LENGTH(index);
         for j in 0..nl {
             let indices = VECTOR_ELT(index, j as R_xlen_t);
-            updateGContext(currentgp, j, gc, dd, gp_is_scalar.as_mut_ptr(), gc_cache);
+            updateGContext(currentgp, j, gc, dd, &mut gp_is_scalar, gc_cache);
             let nx = LENGTH(indices);
             if nx <= 0 {
                 continue;
@@ -358,7 +358,7 @@ pub unsafe fn L_segments(x0: SEXP, y0: SEXP, x1: SEXP, y1: SEXP, arrow: SEXP) ->
         let mut gc_cache_buf: [u8; 256] = [0; 256];
         let gc = gc_buf.as_mut_ptr() as pGEcontext;
         let gc_cache = gc_cache_buf.as_mut_ptr() as pGEcontext;
-        initGContext(currentgp, gc, dd, gp_is_scalar.as_mut_ptr(), gc_cache);
+        initGContext(currentgp, gc, dd, &mut gp_is_scalar, gc_cache);
 
         let maxn = unitLength(x0)
             .max(unitLength(y0))
@@ -366,7 +366,7 @@ pub unsafe fn L_segments(x0: SEXP, y0: SEXP, x1: SEXP, y1: SEXP, arrow: SEXP) ->
             .max(unitLength(y1));
         GEMode(1, dd);
         for i in 0..maxn {
-            updateGContext(currentgp, i, gc, dd, gp_is_scalar.as_mut_ptr(), gc_cache);
+            updateGContext(currentgp, i, gc, dd, &mut gp_is_scalar, gc_cache);
             let mut xx0: c_double = NA_REAL;
             let mut yy0: c_double = NA_REAL;
             let mut xx1: c_double = NA_REAL;

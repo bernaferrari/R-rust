@@ -66,7 +66,7 @@ pub unsafe fn L_arrows(
         let mut gc_cache_buf: [u8; 256] = [0; 256];
         let gc = gc_buf.as_mut_ptr() as pGEcontext;
         let gc_cache = gc_cache_buf.as_mut_ptr() as pGEcontext;
-        initGContext(currentgp, gc, dd, gp_is_scalar.as_mut_ptr(), gc_cache);
+        initGContext(currentgp, gc, dd, &mut gp_is_scalar, gc_cache);
 
         GEMode(1, dd);
         for i in 0..maxn {
@@ -77,7 +77,7 @@ pub unsafe fn L_arrows(
                 1 => last = false,
                 _ => {}
             }
-            updateGContext(currentgp, i, gc, dd, gp_is_scalar.as_mut_ptr(), gc_cache);
+            updateGContext(currentgp, i, gc, dd, &mut gp_is_scalar, gc_cache);
 
             let devloc = if isNull(x1) {
                 gridStateElement(dd, GSS_CURRLOC)
@@ -255,13 +255,13 @@ pub unsafe fn L_polygon(x: SEXP, y: SEXP, index: SEXP) -> SEXP {
         let mut gc_cache_buf: [u8; 256] = [0; 256];
         let gc = gc_buf.as_mut_ptr() as pGEcontext;
         let gc_cache = gc_cache_buf.as_mut_ptr() as pGEcontext;
-        initGContext(currentgp, gc, dd, gp_is_scalar.as_mut_ptr(), gc_cache);
+        initGContext(currentgp, gc, dd, &mut gp_is_scalar, gc_cache);
 
         GEMode(1, dd);
         let np = LENGTH(index);
         for i in 0..np {
             let indices = VECTOR_ELT(index, i as R_xlen_t);
-            updateGContext(currentgp, i, gc, dd, gp_is_scalar.as_mut_ptr(), gc_cache);
+            updateGContext(currentgp, i, gc, dd, &mut gp_is_scalar, gc_cache);
             let nx = LENGTH(indices);
             if nx <= 0 {
                 continue;
@@ -427,7 +427,7 @@ pub unsafe fn L_path(x: SEXP, y: SEXP, index: SEXP, rule: SEXP) -> SEXP {
         let mut gc_cache_buf: [u8; 256] = [0; 256];
         let gc = gc_buf.as_mut_ptr() as pGEcontext;
         let gc_cache = gc_cache_buf.as_mut_ptr() as pGEcontext;
-        initGContext(currentgp, gc, dd, gp_is_scalar.as_mut_ptr(), gc_cache);
+        initGContext(currentgp, gc, dd, &mut gp_is_scalar, gc_cache);
 
         GEMode(1, dd);
 
@@ -477,7 +477,7 @@ pub unsafe fn L_path(x: SEXP, y: SEXP, index: SEXP, rule: SEXP) -> SEXP {
                 }
             }
 
-            updateGContext(currentgp, h, gc, dd, gp_is_scalar.as_mut_ptr(), gc_cache);
+            updateGContext(currentgp, h, gc, dd, &mut gp_is_scalar, gc_cache);
             GEPath(
                 xx.as_mut_ptr(),
                 yy.as_mut_ptr(),
