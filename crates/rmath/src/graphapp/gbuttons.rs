@@ -105,12 +105,15 @@ pub fn getcurrentline(c: textbox, line: *mut c_char, length: c_int) {
     let count = getlinelength(c).min(length - 1).max(0) as usize;
     // Copy `count` bytes into the caller's `length`-byte buffer and
     // NUL-terminate it.
-    unsafe {
-        if !source.is_null() && count > 0 {
-            ptr::copy_nonoverlapping(source, line, count);
-        }
-        *line.add(count) = 0;
+    let Some(out) = slice_mut(line as *mut u8, length as usize) else {
+        return;
+    };
+    if count > 0
+        && let Some(src) = slice_ref(source as *const u8, count)
+    {
+        out[..count].copy_from_slice(src);
     }
+    out[count] = 0;
 }
 
 pub fn getseltext(c: textbox, text: *mut c_char) {
@@ -120,7 +123,9 @@ pub fn getseltext(c: textbox, text: *mut c_char) {
     let source = obj_ref(c).map_or(ptr::null_mut(), |data| data.text);
     if source.is_null() {
         // NUL-terminate the caller's buffer.
-        unsafe { *text = 0 };
+        if let Some(t) = ptr_mut(text) {
+            *t = 0;
+        }
         return;
     }
 
@@ -129,12 +134,16 @@ pub fn getseltext(c: textbox, text: *mut c_char) {
     let count = end.saturating_sub(start);
     // Copy the selected range into the caller's buffer, sized for the
     // full text plus NUL, and terminate it.
-    unsafe {
-        if count > 0 {
-            ptr::copy_nonoverlapping(source.add(start), text, count);
-        }
-        *text.add(count) = 0;
+    let Some(out) = slice_mut(text as *mut u8, count + 1) else {
+        return;
+    };
+    if count > 0
+        && let Some(src) = slice_ref(source as *const u8, len)
+            .and_then(|s| s.get(start..end))
+    {
+        out[..count].copy_from_slice(src);
     }
+    out[count] = 0;
 }
 
 pub fn setlimittext(t: textbox, limit: c_long) {
@@ -167,9 +176,12 @@ pub fn checklimittext(t: textbox, n: c_long) {
     }
 
     let text = data.text;
-    if text_len(text) > limit {
+    let len = text_len(text);
+    if len > limit {
         // Truncate the NUL-terminated text buffer at `limit` bytes.
-        unsafe { *text.add(limit) = 0 };
+        if let Some(b) = slice_mut(text as *mut u8, len + 1).and_then(|s| s.get_mut(limit)) {
+            *b = 0;
+        }
     }
 }
 
@@ -182,13 +194,11 @@ pub fn textselectionex(obj: control, start: *mut c_long, end: *mut c_long) {
         return;
     };
     // Write through the caller's out-pointers after null checks.
-    unsafe {
-        if !start.is_null() {
-            *start = data.size as c_long;
-        }
-        if !end.is_null() {
-            *end = data.xsize as c_long;
-        }
+    if let Some(p) = ptr_mut(start) {
+        *p = data.size as c_long;
+    }
+    if let Some(p) = ptr_mut(end) {
+        *p = data.xsize as c_long;
     }
 }
 

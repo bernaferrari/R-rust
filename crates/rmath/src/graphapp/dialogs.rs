@@ -82,10 +82,10 @@ fn copy_into_buffer(result: &str, strbuf: *mut c_char, bufsize: c_int) -> *mut c
     let bytes = result.as_bytes();
     let max_copy = (bufsize as usize).saturating_sub(1).min(bytes.len());
     // Zero and fill the caller's `bufsize`-byte buffer.
-    unsafe {
-        ptr::write_bytes(strbuf as *mut u8, 0, bufsize as usize);
-        ptr::copy_nonoverlapping(bytes.as_ptr(), strbuf as *mut u8, max_copy);
-        *strbuf.add(max_copy) = 0;
+    if let Some(buf) = slice_mut(strbuf as *mut u8, bufsize as usize) {
+        buf.fill(0);
+        buf[..max_copy].copy_from_slice(&bytes[..max_copy]);
+        buf[max_copy] = 0;
     }
     strbuf
 }
@@ -95,8 +95,8 @@ fn remember_message(kind: c_int, text: &str) {
 }
 
 fn change_dir_if_allowed(path: &Path) -> bool {
-    let allowed = crate::sexp::instance::with_required_current_instance(|inst| unsafe {
-        (*inst).eval_state.capabilities.allow_environment_mutation
+    let allowed = crate::sexp::instance::with_required_current_instance(|inst| {
+        ptr_mut(inst).is_some_and(|i| i.eval_state.capabilities.allow_environment_mutation)
     });
     allowed && env::set_current_dir(path).is_ok()
 }

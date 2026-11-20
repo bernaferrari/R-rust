@@ -12,7 +12,7 @@ use std::os::raw::{c_char, c_int, c_long};
 use std::ptr;
 
 use super::memory;
-use super::types::cstr;
+use super::types::{cstr, ptr_mut, slice_mut};
 
 /// Create and return a newly allocated copy of a string.
 /// Null strings are converted into empty strings.
@@ -22,9 +22,9 @@ pub fn new_string(src: *const c_char) -> *mut c_char {
         None => {
             // Allocate empty string
             let p = memory::memalloc(1);
-            if !p.is_null() {
-                // Terminate the fresh 1-byte allocation.
-                unsafe { *p = 0 };
+            // Terminate the fresh 1-byte allocation.
+            if let Some(b) = ptr_mut(p) {
+                *b = 0;
             }
             p as *mut c_char
         }
@@ -45,18 +45,14 @@ pub fn string_length(s: *const c_char) -> c_long {
 
 /// Copy a string. Avoids doing anything to null strings.
 pub fn copy_string(dest: *mut c_char, src: *const c_char) {
-    if dest.is_null() || src.is_null() {
+    let Some(s) = cstr(src) else {
         return;
-    }
-    // Copy `src` byte by byte up to and including its NUL; callers
-    // guarantee `dest` has room for the whole string.
-    unsafe {
-        let mut i: c_long = 0;
-        while *src.add(i as usize) != 0 {
-            *dest.add(i as usize) = *src.add(i as usize);
-            i += 1;
-        }
-        *dest.add(i as usize) = 0;
+    };
+    // Copy `src` up to and including its NUL; callers guarantee `dest`
+    // has room for the whole string.
+    let bytes = s.to_bytes_with_nul();
+    if let Some(d) = slice_mut(dest as *mut u8, bytes.len()) {
+        d.copy_from_slice(bytes);
     }
 }
 
@@ -110,11 +106,11 @@ fn new_string_from_bytes(bytes: &[u8]) -> *mut c_char {
         return ptr::null_mut();
     }
     // Fill the fresh `len + 1`-byte allocation, NUL included.
-    unsafe {
-        for (idx, byte) in bytes.iter().take(len).enumerate() {
-            *out.add(idx) = *byte as c_char;
+    if let Some(buf) = slice_mut(out as *mut u8, len + 1) {
+        for (d, &b) in buf.iter_mut().zip(bytes.iter().take(len)) {
+            *d = b;
         }
-        *out.add(len) = 0;
+        buf[len] = 0;
     }
     out
 }
@@ -134,7 +130,10 @@ pub fn add_strings(s1: *const c_char, s2: *const c_char) -> *mut c_char {
     if !buf.is_null() {
         copy_string(buf, s1);
         // Move `len1` bytes into the fresh `len1 + len2 + 1`-byte buffer.
-        copy_string(unsafe { buf.add(len1 as usize) }, s2);
+        let tail = slice_mut(buf as *mut u8, (len1 + len2 + 1) as usize)
+            .and_then(|b| b.get_mut(len1 as usize..))
+            .map_or(ptr::null_mut(), |t| t.as_mut_ptr() as *mut c_char);
+        copy_string(tail, s2);
     }
     buf
 }
@@ -142,12 +141,10 @@ pub fn add_strings(s1: *const c_char, s2: *const c_char) -> *mut c_char {
 /// Convert a char to a newly allocated string.
 pub fn char_to_string(ch: c_char) -> *mut c_char {
     let out = memory::memalloc(2) as *mut c_char;
-    if !out.is_null() {
-        // Fill the fresh 2-byte allocation.
-        unsafe {
-            *out = ch;
-            *out.add(1) = 0;
-        }
+    // Fill the fresh 2-byte allocation.
+    if let Some(b) = slice_mut(out, 2) {
+        b[0] = ch;
+        b[1] = 0;
     }
     out
 }
@@ -212,19 +209,19 @@ pub fn to_dos_string(text: *const c_char) -> *mut c_char {
     }
 
     // Write the converted bytes into the fresh `length + 1`-byte buffer.
-    unsafe {
+    if let Some(out) = slice_mut(newstr as *mut u8, length + 1) {
+        let mut w = 0usize;
         prev = 0;
-        let mut ss = newstr;
         for &b in bytes {
             if b == b'\n' && prev != b'\r' {
-                *ss = b'\r' as c_char;
-                ss = ss.add(1);
+                out[w] = b'\r';
+                w += 1;
             }
-            *ss = b as c_char;
+            out[w] = b;
             prev = b;
-            ss = ss.add(1);
+            w += 1;
         }
-        *ss = 0;
+        out[w] = 0;
     }
 
     newstr
@@ -251,18 +248,18 @@ pub fn to_c_string(text: *const c_char) -> *mut c_char {
     }
 
     // Write the converted bytes into the fresh `length + 1`-byte buffer.
-    unsafe {
-        let mut ss = newstr;
+    if let Some(out) = slice_mut(newstr as *mut u8, length + 1) {
+        let mut w = 0usize;
         let mut i = 0usize;
         while i < bytes.len() {
             if bytes[i] == b'\r' && bytes.get(i + 1) == Some(&b'\n') {
                 i += 1; // skip CR
             }
-            *ss = bytes[i] as c_char;
-            ss = ss.add(1);
+            out[w] = bytes[i];
+            w += 1;
             i += 1;
         }
-        *ss = 0;
+        out[w] = 0;
     }
 
     newstr

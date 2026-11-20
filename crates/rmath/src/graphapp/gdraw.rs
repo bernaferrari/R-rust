@@ -260,7 +260,8 @@ fn points_from_raw(p: *mut point, n: c_int) -> Vec<point> {
     if p.is_null() || n <= 0 {
         Vec::new()
     } else {
-        unsafe { std::slice::from_raw_parts(p, n as usize).to_vec() }
+        // Borrow the caller's `n`-point array.
+        slice_ref(p, n as usize).map_or_else(Vec::new, |s| s.to_vec())
     }
 }
 
@@ -377,22 +378,31 @@ fn wide_string(codepoints: *const c_int, count: Option<c_int>) -> Vec<char> {
     if codepoints.is_null() {
         return Vec::new();
     }
-    let mut chars = Vec::new();
-    let mut idx = 0usize;
-    loop {
-        if let Some(max) = count
-            && idx >= max.max(0) as usize
-        {
-            break;
+    let to_char = |value: c_int| char::from_u32(value.max(0) as u32).unwrap_or('\u{FFFD}');
+    match count {
+        Some(max) => {
+            // Borrow the caller's `max`-codepoint array.
+            slice_ref(codepoints, max.max(0) as usize)
+                .unwrap_or(&[])
+                .iter()
+                .map(|&v| to_char(v))
+                .collect()
         }
-        let value = unsafe { *codepoints.add(idx) };
-        if count.is_none() && value == 0 {
-            break;
+        None => {
+            // Walk the caller's NUL-terminated codepoint array.
+            let mut chars = Vec::new();
+            let mut idx = 0usize;
+            loop {
+                let value = unsafe { *codepoints.add(idx) };
+                if value == 0 {
+                    break;
+                }
+                chars.push(to_char(value));
+                idx += 1;
+            }
+            chars
         }
-        chars.push(char::from_u32(value.max(0) as u32).unwrap_or('\u{FFFD}'));
-        idx += 1;
     }
-    chars
 }
 
 fn font_info(f: font) -> FontInfo {
@@ -458,27 +468,25 @@ fn read_image_pixel(img: image, x: c_int, y: c_int) -> Option<rgb> {
         return None;
     }
     let index = usize::try_from(y.checked_mul(width)? + x).ok()?;
-    // Raw pixel buffer: bounds were checked against the recorded
-    // width/height/depth above; one element is read per depth case.
-    unsafe {
-        if depth >= 32 {
-            let offset = index.checked_mul(4)?;
-            let pixels = img.pixels.add(offset);
-            Some(rgb_make(
-                *pixels as rgb,
-                *pixels.add(1) as rgb,
-                *pixels.add(2) as rgb,
-            ))
-        } else if depth >= 8 {
-            let value = *img.pixels.add(index) as usize;
-            if !img.cmap.is_null() && value < img.cmapsize.max(0) as usize {
-                Some(*img.cmap.add(value))
-            } else {
-                Some(rgb_make(value as rgb, value as rgb, value as rgb))
-            }
+    let total = usize::try_from(width.checked_mul(height)?).ok()?;
+    if depth >= 32 {
+        // Borrow the owned 4-bytes-per-pixel buffer of `total` pixels.
+        let offset = index.checked_mul(4)?;
+        let pixels = slice_ref(img.pixels, total.checked_mul(4)?)?;
+        let base = pixels.get(offset..offset + 3)?;
+        Some(rgb_make(base[0] as rgb, base[1] as rgb, base[2] as rgb))
+    } else if depth >= 8 {
+        // Borrow the owned index buffer of `total` pixels and palette.
+        let pixels = slice_ref(img.pixels, total)?;
+        let value = *pixels.get(index)? as usize;
+        let cmap = slice_ref(img.cmap, img.cmapsize.max(0) as usize).unwrap_or(&[]);
+        if let Some(&col) = cmap.get(value) {
+            Some(col)
         } else {
-            None
+            Some(rgb_make(value as rgb, value as rgb, value as rgb))
         }
+    } else {
+        None
     }
 }
 
@@ -738,19 +746,22 @@ pub fn gfillpolypolygon(d: drawing, fill: rgb, p: *mut point, npoly: c_int, nper
     }
     let odd_even = with_state(d, |state| state.odd_even_fill);
     let mut offset = 0usize;
-    // Raw point/count arrays supplied by the caller; the per-polygon
-    // element counts bound each slice before it is read.
-    unsafe {
-        let counts = std::slice::from_raw_parts(nper, npoly as usize);
-        for count in counts {
-            let count = (*count).max(0) as usize;
-            if count == 0 {
-                continue;
-            }
-            let slice = std::slice::from_raw_parts(p.add(offset), count);
-            fill_polygon_impl(d, slice, fill, odd_even);
-            offset += count;
+    // Borrow the caller's `npoly`-entry count array and the point array
+    // holding `sum(nper)` points.
+    let Some(counts) = slice_ref(nper, npoly as usize) else {
+        return;
+    };
+    let total: usize = counts.iter().map(|&c| c.max(0) as usize).sum();
+    let Some(all_points) = slice_ref(p, total) else {
+        return;
+    };
+    for &count in counts {
+        let count = count.max(0) as usize;
+        if count == 0 {
+            continue;
         }
+        fill_polygon_impl(d, &all_points[offset..offset + count], fill, odd_even);
+        offset += count;
     }
 }
 
