@@ -624,7 +624,7 @@ pub unsafe fn R_MakeWeakRefC(key: SEXP, val: SEXP, fin: R_CFinalizer_t, onexit: 
     }
 }
 
-pub unsafe fn R_WeakRefKey(w: SEXP) -> SEXP {
+pub fn R_WeakRefKey(w: SEXP) -> SEXP {
     {
         if w.is_null() {
             return R_NilValue();
@@ -634,7 +634,7 @@ pub unsafe fn R_WeakRefKey(w: SEXP) -> SEXP {
     }
 }
 
-pub unsafe fn R_WeakRefValue(w: SEXP) -> SEXP {
+pub fn R_WeakRefValue(w: SEXP) -> SEXP {
     {
         if w.is_null() {
             return R_NilValue();
@@ -644,13 +644,11 @@ pub unsafe fn R_WeakRefValue(w: SEXP) -> SEXP {
     }
 }
 
-pub unsafe fn R_RegisterFinalizer(s: SEXP, fun: SEXP) {
-    unsafe {
-        R_RegisterFinalizerEx(s, fun, 0);
-    }
+pub fn R_RegisterFinalizer(s: SEXP, fun: SEXP) {
+    R_RegisterFinalizerEx(s, fun, 0);
 }
 
-pub unsafe fn R_RegisterFinalizerEx(s: SEXP, fun: SEXP, onexit: c_int) {
+pub fn R_RegisterFinalizerEx(s: SEXP, fun: SEXP, onexit: c_int) {
     {
         if s.is_null() || fun.is_null() || fun == R_NilValue() {
             return;
@@ -663,13 +661,11 @@ pub unsafe fn R_RegisterFinalizerEx(s: SEXP, fun: SEXP, onexit: c_int) {
     }
 }
 
-pub unsafe fn R_RegisterCFinalizer(s: SEXP, fun: R_CFinalizer_t) {
-    unsafe {
-        R_RegisterCFinalizerEx(s, fun, 0);
-    }
+pub fn R_RegisterCFinalizer(s: SEXP, fun: R_CFinalizer_t) {
+    R_RegisterCFinalizerEx(s, fun, 0);
 }
 
-pub unsafe fn R_RegisterCFinalizerEx(s: SEXP, fun: R_CFinalizer_t, _onexit: c_int) {
+pub fn R_RegisterCFinalizerEx(s: SEXP, fun: R_CFinalizer_t, _onexit: c_int) {
     {
         if s.is_null() {
             return;

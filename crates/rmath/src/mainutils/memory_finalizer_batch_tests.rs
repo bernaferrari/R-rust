@@ -78,10 +78,8 @@ fn ready_finalizer_batch_retains_current_and_later_transitive_graphs_during_gc()
     session.with_active(|| {
         let (first, first_root) = graph();
         let (second, second_root) = graph();
-        unsafe {
-            R_RegisterCFinalizer(first, collect_and_check_batch);
-            R_RegisterCFinalizer(second, collect_and_check_batch);
-        }
+        R_RegisterCFinalizer(first, collect_and_check_batch);
+        R_RegisterCFinalizer(second, collect_and_check_batch);
         drop(first_root);
         drop(second_root);
         full_gc();
@@ -133,10 +131,8 @@ fn ready_finalizer_batch_roots_later_r_function_before_first_c_callback() {
                 (function, crate::sexp::protect::protect(function))
             })
         };
-        unsafe {
-            R_RegisterCFinalizer(first, collect_and_check_batch);
-            R_RegisterFinalizer(second, function);
-        }
+        R_RegisterCFinalizer(first, collect_and_check_batch);
+        R_RegisterFinalizer(second, function);
         drop(first_root);
         drop(second_root);
         drop(function_root);
@@ -222,7 +218,7 @@ fn nested_pending_runner_keeps_outer_running_flag_set() {
     reset_observations();
     session.with_active(|| {
         let (key, root) = graph();
-        unsafe { R_RegisterCFinalizer(key, nested_runner) };
+        R_RegisterCFinalizer(key, nested_runner);
         drop(root);
         full_gc();
         unsafe { R_RunPendingFinalizers() };
@@ -243,10 +239,8 @@ fn ready_batch_root_claim_failure_keeps_queue_and_releases_partial_roots() {
     session.with_active(|| {
         let (first, first_root) = graph();
         let (second, second_root) = graph();
-        unsafe {
-            R_RegisterCFinalizer(first, count_only);
-            R_RegisterCFinalizer(second, count_only);
-        }
+        R_RegisterCFinalizer(first, count_only);
+        R_RegisterCFinalizer(second, count_only);
         drop(first_root);
         drop(second_root);
         full_gc();
@@ -286,10 +280,8 @@ fn ready_batch_stops_after_callback_destroys_its_original_owner() {
     reset_observations();
     let (first, first_root) = graph();
     let (second, second_root) = graph();
-    unsafe {
-        R_RegisterCFinalizer(first, destroy_owner);
-        R_RegisterCFinalizer(second, count_only);
-    }
+    R_RegisterCFinalizer(first, destroy_owner);
+    R_RegisterCFinalizer(second, count_only);
     drop(first_root);
     drop(second_root);
     full_gc();
