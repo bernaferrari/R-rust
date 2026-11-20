@@ -34,18 +34,18 @@ const C_STACK_DIRECTION: c_int = -1;
 // Function pointer types for system interface
 // ---------------------------------------------------------------------------
 
-type PtrSuicide = Option<unsafe extern "C" fn(*const c_char)>;
-type PtrShowMessage = Option<unsafe extern "C" fn(*const c_char)>;
-type PtrReadConsole = Option<unsafe extern "C" fn(*const c_char, *mut u8, c_int, c_int) -> c_int>;
-type PtrWriteConsole = Option<unsafe extern "C" fn(*const c_char, c_int)>;
-type PtrWriteConsoleEx = Option<unsafe extern "C" fn(*const c_char, c_int, c_int)>;
-type PtrResetConsole = Option<unsafe extern "C" fn()>;
-type PtrFlushConsole = Option<unsafe extern "C" fn()>;
-type PtrClearerrConsole = Option<unsafe extern "C" fn()>;
-type PtrBusy = Option<unsafe extern "C" fn(c_int)>;
-type PtrCleanUp = Option<unsafe extern "C" fn(c_int, c_int, c_int)>;
+type PtrSuicide = Option<extern "C" fn(*const c_char)>;
+type PtrShowMessage = Option<extern "C" fn(*const c_char)>;
+type PtrReadConsole = Option<extern "C" fn(*const c_char, *mut u8, c_int, c_int) -> c_int>;
+type PtrWriteConsole = Option<extern "C" fn(*const c_char, c_int)>;
+type PtrWriteConsoleEx = Option<extern "C" fn(*const c_char, c_int, c_int)>;
+type PtrResetConsole = Option<extern "C" fn()>;
+type PtrFlushConsole = Option<extern "C" fn()>;
+type PtrClearerrConsole = Option<extern "C" fn()>;
+type PtrBusy = Option<extern "C" fn(c_int)>;
+type PtrCleanUp = Option<extern "C" fn(c_int, c_int, c_int)>;
 type PtrShowFiles = Option<
-    unsafe extern "C" fn(
+    extern "C" fn(
         c_int,
         *const *const c_char,
         *const *const c_char,
@@ -54,10 +54,10 @@ type PtrShowFiles = Option<
         *const c_char,
     ) -> c_int,
 >;
-type PtrChooseFile = Option<unsafe extern "C" fn(c_int, *mut c_char, c_int) -> c_int>;
-type PtrHistory = Option<unsafe extern "C" fn(*const c_char)>;
+type PtrChooseFile = Option<extern "C" fn(c_int, *mut c_char, c_int) -> c_int>;
+type PtrHistory = Option<extern "C" fn(*const c_char)>;
 type PtrEditFiles = Option<
-    unsafe extern "C" fn(c_int, *const *const c_char, *const *const c_char, *const c_char) -> c_int,
+    extern "C" fn(c_int, *const *const c_char, *const *const c_char, *const c_char) -> c_int,
 >;
 
 // ---------------------------------------------------------------------------
@@ -136,8 +136,8 @@ fn with_system_state<R>(f: impl FnOnce(&mut UnixSystemRuntimeState) -> R) -> R {
 }
 
 #[cfg(test)]
-pub(crate) unsafe fn set_read_console_callback_for_tests(
-    callback: Option<unsafe extern "C" fn(*const c_char, *mut u8, c_int, c_int) -> c_int>,
+pub(crate) fn set_read_console_callback_for_tests(
+    callback: Option<extern "C" fn(*const c_char, *mut u8, c_int, c_int) -> c_int>,
 ) {
     with_system_state(|state| {
         state.callbacks.read_console = callback;
@@ -148,7 +148,8 @@ pub(crate) unsafe fn set_read_console_callback_for_tests(
 // Default implementations (Rstd_* equivalents)
 // ---------------------------------------------------------------------------
 
-unsafe extern "C" fn Rstd_Suicide(msg: *const c_char) {
+extern "C" fn Rstd_Suicide(msg: *const c_char) {
+    // SAFETY: the dispatch contract passes a NUL-terminated message.
     unsafe {
         let s = std::ffi::CStr::from_ptr(msg);
         eprintln!("FATAL: {}", s.to_string_lossy());
@@ -156,14 +157,15 @@ unsafe extern "C" fn Rstd_Suicide(msg: *const c_char) {
     }
 }
 
-unsafe extern "C" fn Rstd_ShowMessage(msg: *const c_char) {
+extern "C" fn Rstd_ShowMessage(msg: *const c_char) {
+    // SAFETY: the dispatch contract passes a NUL-terminated message.
     unsafe {
         let s = std::ffi::CStr::from_ptr(msg);
         eprintln!("{}", s.to_string_lossy());
     }
 }
 
-unsafe extern "C" fn Rstd_ReadConsole(
+extern "C" fn Rstd_ReadConsole(
     _prompt: *const c_char,
     _buf: *mut u8,
     _len: c_int,
@@ -172,32 +174,34 @@ unsafe extern "C" fn Rstd_ReadConsole(
     0
 }
 
-unsafe extern "C" fn Rstd_WriteConsole(buf: *const c_char, len: c_int) {
+extern "C" fn Rstd_WriteConsole(buf: *const c_char, len: c_int) {
+    // SAFETY: the dispatch contract passes `len` readable bytes at `buf`.
     unsafe {
         let slice = std::slice::from_raw_parts(buf as *const u8, len as usize);
         let _ = io::stdout().write_all(slice);
     }
 }
 
-unsafe extern "C" fn Rstd_WriteConsoleEx(buf: *const c_char, len: c_int, _otype: c_int) {
+extern "C" fn Rstd_WriteConsoleEx(buf: *const c_char, len: c_int, _otype: c_int) {
+    // SAFETY: the dispatch contract passes `len` readable bytes at `buf`.
     unsafe {
         let slice = std::slice::from_raw_parts(buf as *const u8, len as usize);
         let _ = io::stdout().write_all(slice);
     }
 }
 
-unsafe extern "C" fn Rstd_ResetConsole() {}
-unsafe extern "C" fn Rstd_FlushConsole() {
+extern "C" fn Rstd_ResetConsole() {}
+extern "C" fn Rstd_FlushConsole() {
     let _ = io::stdout().flush();
 }
-unsafe extern "C" fn Rstd_ClearerrConsole() {}
-unsafe extern "C" fn Rstd_Busy(_which: c_int) {}
+extern "C" fn Rstd_ClearerrConsole() {}
+extern "C" fn Rstd_Busy(_which: c_int) {}
 
-unsafe extern "C" fn Rstd_CleanUp(_saveact: c_int, status: c_int, _runLast: c_int) {
+extern "C" fn Rstd_CleanUp(_saveact: c_int, status: c_int, _runLast: c_int) {
     std::process::exit(status);
 }
 
-unsafe extern "C" fn Rstd_ShowFiles(
+extern "C" fn Rstd_ShowFiles(
     _nfile: c_int,
     _file: *const *const c_char,
     _headers: *const *const c_char,
@@ -208,115 +212,95 @@ unsafe extern "C" fn Rstd_ShowFiles(
     0
 }
 
-unsafe extern "C" fn Rstd_ChooseFile(_new: c_int, _buf: *mut c_char, _len: c_int) -> c_int {
+extern "C" fn Rstd_ChooseFile(_new: c_int, _buf: *mut c_char, _len: c_int) -> c_int {
     0
 }
 
-unsafe extern "C" fn Rstd_loadhistory(_file: *const c_char) {}
-unsafe extern "C" fn Rstd_savehistory(_file: *const c_char) {}
-unsafe extern "C" fn Rstd_addhistory(_line: *const c_char) {}
-unsafe fn Rstd_read_history(_file: *const c_char) {}
+extern "C" fn Rstd_loadhistory(_file: *const c_char) {}
+extern "C" fn Rstd_savehistory(_file: *const c_char) {}
+extern "C" fn Rstd_addhistory(_line: *const c_char) {}
+fn Rstd_read_history(_file: *const c_char) {}
 
 // ---------------------------------------------------------------------------
 // Public system interface functions (dispatch through pointers)
 // ---------------------------------------------------------------------------
 
-pub unsafe fn R_Suicide(s: *const c_char) {
-    unsafe {
-        if let Some(f) = with_system_state(|state| state.callbacks.suicide) {
-            f(s);
-        }
-        std::process::exit(2);
+pub fn R_Suicide(s: *const c_char) {
+    if let Some(f) = with_system_state(|state| state.callbacks.suicide) {
+        f(s);
+    }
+    std::process::exit(2);
+}
+
+pub fn R_ShowMessage(s: *const c_char) {
+    if let Some(f) = with_system_state(|state| state.callbacks.show_message) {
+        f(s);
     }
 }
 
-pub unsafe fn R_ShowMessage(s: *const c_char) {
-    unsafe {
-        if let Some(f) = with_system_state(|state| state.callbacks.show_message) {
-            f(s);
-        }
-    }
-}
-
-pub unsafe fn R_ReadConsole(
+pub fn R_ReadConsole(
     prompt: *const c_char,
     buf: *mut u8,
     len: c_int,
     addtohistory: c_int,
 ) -> c_int {
-    unsafe {
-        if let Some(f) = with_system_state(|state| state.callbacks.read_console) {
-            f(prompt, buf, len, addtohistory)
-        } else {
-            0
-        }
+    if let Some(f) = with_system_state(|state| state.callbacks.read_console) {
+        f(prompt, buf, len, addtohistory)
+    } else {
+        0
     }
 }
 
-pub unsafe fn R_WriteConsole(buf: *const c_char, len: c_int) {
-    unsafe {
-        let callbacks = with_system_state(|state| state.callbacks);
-        if let Some(f) = callbacks.write_console {
-            f(buf, len);
-        } else if let Some(f) = callbacks.write_console_ex {
-            f(buf, len, 0);
-        }
+pub fn R_WriteConsole(buf: *const c_char, len: c_int) {
+    let callbacks = with_system_state(|state| state.callbacks);
+    if let Some(f) = callbacks.write_console {
+        f(buf, len);
+    } else if let Some(f) = callbacks.write_console_ex {
+        f(buf, len, 0);
     }
 }
 
-pub unsafe fn R_WriteConsoleEx(buf: *const c_char, len: c_int, otype: c_int) {
-    unsafe {
-        let callbacks = with_system_state(|state| state.callbacks);
-        if let Some(f) = callbacks.write_console {
-            f(buf, len);
-        } else if let Some(f) = callbacks.write_console_ex {
-            f(buf, len, otype);
-        }
+pub fn R_WriteConsoleEx(buf: *const c_char, len: c_int, otype: c_int) {
+    let callbacks = with_system_state(|state| state.callbacks);
+    if let Some(f) = callbacks.write_console {
+        f(buf, len);
+    } else if let Some(f) = callbacks.write_console_ex {
+        f(buf, len, otype);
     }
 }
 
 pub fn R_ResetConsole() {
-    unsafe {
-        if let Some(f) = with_system_state(|state| state.callbacks.reset_console) {
-            f();
-        }
+    if let Some(f) = with_system_state(|state| state.callbacks.reset_console) {
+        f();
     }
 }
 
 pub fn R_FlushConsole() {
-    unsafe {
-        if let Some(f) = with_system_state(|state| state.callbacks.flush_console) {
-            f();
-        }
+    if let Some(f) = with_system_state(|state| state.callbacks.flush_console) {
+        f();
     }
 }
 
 pub fn R_ClearerrConsole() {
-    unsafe {
-        if let Some(f) = with_system_state(|state| state.callbacks.clearerr_console) {
-            f();
-        }
+    if let Some(f) = with_system_state(|state| state.callbacks.clearerr_console) {
+        f();
     }
 }
 
 pub fn R_Busy(which: c_int) {
-    unsafe {
-        if let Some(f) = with_system_state(|state| state.callbacks.busy) {
-            f(which);
-        }
+    if let Some(f) = with_system_state(|state| state.callbacks.busy) {
+        f(which);
     }
 }
 
-pub unsafe fn R_CleanUp(saveact: c_int, status: c_int, runLast: c_int) {
-    unsafe {
-        if let Some(f) = with_system_state(|state| state.callbacks.cleanup) {
-            f(saveact, status, runLast);
-        }
-        std::process::exit(status);
+pub fn R_CleanUp(saveact: c_int, status: c_int, runLast: c_int) {
+    if let Some(f) = with_system_state(|state| state.callbacks.cleanup) {
+        f(saveact, status, runLast);
     }
+    std::process::exit(status);
 }
 
-pub unsafe fn R_ShowFiles(
+pub fn R_ShowFiles(
     nfile: c_int,
     file: *const *const c_char,
     headers: *const *const c_char,
@@ -324,37 +308,31 @@ pub unsafe fn R_ShowFiles(
     del: c_int,
     pager: *const c_char,
 ) -> c_int {
-    unsafe {
-        if let Some(f) = with_system_state(|state| state.callbacks.show_files) {
-            f(nfile, file, headers, wtitle, del, pager)
-        } else {
-            0
-        }
+    if let Some(f) = with_system_state(|state| state.callbacks.show_files) {
+        f(nfile, file, headers, wtitle, del, pager)
+    } else {
+        0
     }
 }
 
-pub unsafe fn R_ChooseFile(new: c_int, buf: *mut c_char, len: c_int) -> c_int {
-    unsafe {
-        if let Some(f) = with_system_state(|state| state.callbacks.choose_file) {
-            f(new, buf, len)
-        } else {
-            0
-        }
+pub fn R_ChooseFile(new: c_int, buf: *mut c_char, len: c_int) -> c_int {
+    if let Some(f) = with_system_state(|state| state.callbacks.choose_file) {
+        f(new, buf, len)
+    } else {
+        0
     }
 }
 
-pub unsafe fn R_EditFiles(
+pub fn R_EditFiles(
     nfile: c_int,
     file: *const *const c_char,
     title: *const *const c_char,
     editor: *const c_char,
 ) -> c_int {
-    unsafe {
-        if let Some(f) = with_system_state(|state| state.callbacks.edit_files) {
-            f(nfile, file, title, editor)
-        } else {
-            0
-        }
+    if let Some(f) = with_system_state(|state| state.callbacks.edit_files) {
+        f(nfile, file, title, editor)
+    } else {
+        0
     }
 }
 
@@ -382,6 +360,7 @@ pub fn R_setupHistory() {
 }
 
 pub fn R_GetFDLimit() -> c_int {
+    // SAFETY: `rlim` is a valid out-pointer for getrlimit.
     unsafe {
         #[cfg(all(unix, not(target_os = "macos")))]
         {
@@ -410,6 +389,7 @@ pub fn R_GetFDLimit() -> c_int {
 }
 
 pub fn R_EnsureFDLimit(desired: c_int) -> c_int {
+    // SAFETY: `rlim` is a valid out/in pointer for getrlimit/setrlimit.
     unsafe {
         #[cfg(unix)]
         {
@@ -449,7 +429,9 @@ pub fn R_EnsureFDLimit(desired: c_int) -> c_int {
 // Rf_initialize_R
 // ---------------------------------------------------------------------------
 
-unsafe fn unescape_arg(src: *const c_char, dst: *mut c_char) -> *mut c_char {
+fn unescape_arg(src: *const c_char, dst: *mut c_char) -> *mut c_char {
+    // SAFETY: `src` is a NUL-terminated C string and `dst` has room for the
+    // unescaped result; the caller (Rf_initialize_R) owns both buffers.
     unsafe {
         let mut q = dst;
         let mut p = src;
@@ -480,39 +462,39 @@ unsafe fn unescape_arg(src: *const c_char, dst: *mut c_char) -> *mut c_char {
     }
 }
 
-unsafe fn R_Decode2Long(_s: *const c_char, _ierr: *mut c_int) -> i64 {
+fn R_Decode2Long(_s: *const c_char, _ierr: *mut c_int) -> i64 {
     0
 }
 
-unsafe fn R_HomeDir() -> CString {
+fn R_HomeDir() -> CString {
     CString::new("/usr/lib/R").unwrap()
 }
 
-unsafe fn BindDomain(_home: *const c_char) {}
-unsafe fn process_system_Renviron() {}
-unsafe fn process_site_Renviron() {}
-unsafe fn process_user_Renviron() {}
-unsafe fn R_set_command_line_arguments(_ac: c_int, _av: *mut *mut c_char) {}
-unsafe fn R_common_command_line(_ac: *const c_int, _av: *mut *mut c_char, _rp: *mut c_void) {}
-unsafe fn R_DefParamsEx(_rp: *mut c_void, _version: c_int) {}
-unsafe fn R_SetParams(_rp: *mut c_void) {}
-unsafe fn R_SizeFromEnv(_rp: *mut c_void) {}
-unsafe fn R_isatty(_fd: c_int) -> c_int {
+fn BindDomain(_home: *const c_char) {}
+fn process_system_Renviron() {}
+fn process_site_Renviron() {}
+fn process_user_Renviron() {}
+fn R_set_command_line_arguments(_ac: c_int, _av: *mut *mut c_char) {}
+fn R_common_command_line(_ac: *const c_int, _av: *mut *mut c_char, _rp: *mut c_void) {}
+fn R_DefParamsEx(_rp: *mut c_void, _version: c_int) {}
+fn R_SetParams(_rp: *mut c_void) {}
+fn R_SizeFromEnv(_rp: *mut c_void) {}
+fn R_isatty(_fd: c_int) -> c_int {
     0
 }
-unsafe fn R_isWriteableDir(_path: *const c_char) -> c_int {
+fn R_isWriteableDir(_path: *const c_char) -> c_int {
     0
 }
-unsafe fn R_fopen(
+fn R_fopen(
     _path: *const c_char,
     _mode: *const c_char,
 ) -> *mut crate::mainutils::rfile::RFile {
     ptr::null_mut()
 }
-unsafe fn R_setStartTime() {}
-unsafe fn fpu_setup(_start: c_int) {}
+fn R_setStartTime() {}
+fn fpu_setup(_start: c_int) {}
 
-pub unsafe fn Rf_initialize_R(ac: c_int, av: *mut *mut c_char) -> c_int {
+pub fn Rf_initialize_R(ac: c_int, av: *mut *mut c_char) -> c_int {
     unsafe {
         if with_system_state(|state| state.num_initialized) != 0 {
             eprintln!("R is already initialized\n");
@@ -688,7 +670,7 @@ mod tests {
         std::thread_local! {
             static FLUSHES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
         }
-        unsafe extern "C" fn flush() {
+        extern "C" fn flush() {
             FLUSHES.set(FLUSHES.get() + 1);
             crate::sexp::gengc::full_gc();
         }
@@ -717,9 +699,7 @@ mod tests {
     #[test]
     fn test_system_dispatch_nulls() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            R_ShowMessage(b"test\0".as_ptr() as *const c_char);
-        }
+        R_ShowMessage(b"test\0".as_ptr() as *const c_char);
     }
 
     #[test]
@@ -764,31 +744,25 @@ mod tests {
 
     #[test]
     fn test_get_fd_limit() {
-        unsafe {
-            let limit = R_GetFDLimit();
-            #[cfg(unix)]
-            assert!(limit > 0);
-        }
+        let limit = R_GetFDLimit();
+        #[cfg(unix)]
+        assert!(limit > 0);
     }
 
     #[test]
     fn test_ensure_fd_limit() {
-        unsafe {
-            let result = R_EnsureFDLimit(256);
-            #[cfg(unix)]
-            assert!(result > 0 || result == -1);
-        }
+        let result = R_EnsureFDLimit(256);
+        #[cfg(unix)]
+        assert!(result > 0 || result == -1);
     }
 
     #[test]
     fn test_unescape_arg() {
-        unsafe {
-            let src = b"hello~+~world\0";
-            let mut dst = [0i8; 16];
-            let end = unescape_arg(src.as_ptr() as *const c_char, dst.as_mut_ptr());
-            let written = (end as usize) - (dst.as_mut_ptr() as usize);
-            assert_eq!(written, 11);
-            assert_eq!(&dst[..11], b"hello world".map(|b| b as i8));
-        }
+        let src = b"hello~+~world\0";
+        let mut dst = [0i8; 16];
+        let end = unescape_arg(src.as_ptr() as *const c_char, dst.as_mut_ptr());
+        let written = (end as usize) - (dst.as_mut_ptr() as usize);
+        assert_eq!(written, 11);
+        assert_eq!(&dst[..11], b"hello world".map(|b| b as i8));
     }
 }
