@@ -1,7 +1,7 @@
 use super::*;
 
 /// R's `setdiff(x, y)` — elements in x but not in y.
-pub unsafe fn do_setdiff(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_setdiff(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = arg_by_name_or_position(args, &["x"], 0);
         let y = arg_by_name_or_position(args, &["y"], 1);
@@ -72,7 +72,7 @@ pub unsafe fn do_setdiff(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 }
 
 /// R's `union(x, y)` — unique elements from both vectors.
-pub unsafe fn do_union(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_union(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = arg_by_name_or_position(args, &["x"], 0);
         let y = arg_by_name_or_position(args, &["y"], 1);
@@ -113,7 +113,7 @@ pub unsafe fn do_union(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// R's `intersect(x, y)` — elements common to both vectors.
-pub unsafe fn do_intersect(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_intersect(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = arg_by_name_or_position(args, &["x"], 0);
         let y = arg_by_name_or_position(args, &["y"], 1);
@@ -151,7 +151,7 @@ pub unsafe fn do_intersect(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
 }
 
 /// R's `setequal(x, y)` — TRUE if x and y contain the same unique values.
-pub unsafe fn do_setequal(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_setequal(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = arg_by_name_or_position(args, &["x"], 0);
         let y = arg_by_name_or_position(args, &["y"], 1);
@@ -184,7 +184,7 @@ pub unsafe fn do_setequal(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 // ---------------------------------------------------------------------------
 
 /// GNU `.Internal(order(na.last, decreasing, ...))`.
-pub unsafe fn do_order(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_order(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         if args.is_null() || args == R_NilValue() {
             return Rf_allocVector3(SEXPTYPE::INTSXP, 0);
@@ -532,7 +532,7 @@ pub(crate) fn order_na_placement(args: SEXP, position: usize) -> SortNaPlacement
 // ---------------------------------------------------------------------------
 
 /// R's `rank(x)` — returns ranks of elements (average ties method).
-pub unsafe fn do_rank(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_rank(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = arg_by_name_or_position(args, &["x"], 0);
         if x.is_null() || x == R_NilValue() {
@@ -757,7 +757,7 @@ fn assign_tied_ranks<T, F>(
 /// - `incomparables`: values to exclude from duplicate checking (typically NA or FALSE)
 /// - `fromLast`: if TRUE, consider last occurrence as original (mark earlier as dup)
 /// - `nmax`: max number of unique elements expected (optimization hint; NA_INTEGER = no limit)
-pub unsafe fn do_duplicated(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_duplicated(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = arg_by_name_or_position(args, &["x"], 0);
         if x.is_null() || x == R_NilValue() {
@@ -858,7 +858,7 @@ pub unsafe fn do_duplicated(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 /// R's `anyDuplicated(x, incomparables, fromLast, nmax)` — returns index of first duplicate (0 if none).
 ///
 /// Supports incomparables, fromLast, and nmax parameters just like `duplicated()`.
-pub unsafe fn do_anyDuplicated(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_anyDuplicated(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = arg_by_name_or_position(args, &["x"], 0);
         if x.is_null() || x == R_NilValue() {
@@ -932,7 +932,7 @@ pub unsafe fn do_anyDuplicated(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
 /// - `x`: array or matrix
 /// - `MARGIN`: which margin to check (1=rows, 2=cols, etc.)
 /// - `fromLast`: if TRUE, last occurrence is original
-pub unsafe fn do_duplicated_array(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_duplicated_array(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -1182,7 +1182,7 @@ pub unsafe fn do_duplicated_array(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP
 // ---------------------------------------------------------------------------
 
 /// R's `anyDuplicated.array(x, MARGIN, fromLast)` — returns index of first duplicate in array (0 if none).
-pub unsafe fn do_anyDuplicated_array(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_anyDuplicated_array(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -1338,7 +1338,7 @@ pub unsafe fn do_anyDuplicated_array(_call: SEXP, _op: SEXP, args: SEXP, _rho: S
 // ---------------------------------------------------------------------------
 
 /// R's `match(x, table, nomatch, incomparables)` — first table index for each x.
-pub unsafe fn do_match(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_match(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = match_arg(args, 0, "x", R_NilValue());
         let table = match_arg(args, 1, "table", R_NilValue());
@@ -1403,7 +1403,7 @@ pub unsafe fn do_match(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
-unsafe fn posixlt_key(x: SEXP, index: R_xlen_t) -> MatchKey {
+fn posixlt_key(x: SEXP, index: R_xlen_t) -> MatchKey {
     unsafe {
         let mut parts = String::new();
         let ncomp = XLENGTH(x);
@@ -1420,7 +1420,7 @@ unsafe fn posixlt_key(x: SEXP, index: R_xlen_t) -> MatchKey {
     }
 }
 
-unsafe fn integer_scalar_or(arg: SEXP, default: c_int) -> c_int {
+fn integer_scalar_or(arg: SEXP, default: c_int) -> c_int {
     unsafe {
         if arg.is_null() || arg == R_NilValue() || arg == R_MissingArg() {
             return default;
@@ -1482,7 +1482,7 @@ fn match_common_type(x: SEXP, table: SEXP) -> SEXPTYPE {
     }
 }
 
-unsafe fn complex_match_key(x: SEXP, index: R_xlen_t) -> MatchKey {
+fn complex_match_key(x: SEXP, index: R_xlen_t) -> MatchKey {
     unsafe {
         let z = match TYPEOF(x) {
             t if t == SEXPTYPE::CPLXSXP => crate::sexp::accessors::COMPLEX_ELT(x, index as c_int),
@@ -1513,7 +1513,7 @@ unsafe fn complex_match_key(x: SEXP, index: R_xlen_t) -> MatchKey {
     }
 }
 
-unsafe fn match_key(x: SEXP, index: R_xlen_t, common_type: SEXPTYPE) -> MatchKey {
+fn match_key(x: SEXP, index: R_xlen_t, common_type: SEXPTYPE) -> MatchKey {
     unsafe {
         if x.is_null() || x == R_NilValue() {
             return MatchKey::Missing;
