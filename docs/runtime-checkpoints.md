@@ -54,6 +54,13 @@ user workflows have passed on native Rport and production Wasm.
 
 ## Main verification
 
+- At `d55ab963`, 17 of 20 everyday workflows passed on both targets.
+  Native and Wasm grid replay matched 14 rendered PDFs from pinned GNU R.
+  All 18 selected strict native cases, 332 Wasm contract runs, the
+  dependency and S4 gate, and seven Chromium deadline checks passed.
+  The Workbench bundle uses 24,055,796 bytes and leaves 2,158,604 bytes
+  below 25 MiB. [Production receipt](ci-checkpoints/wasm-bundle-d55ab963.json)
+
 - At `1790c295`, the source package loader checks versioned `Imports`
   that are used by `NAMESPACE` and versioned `Depends` at attachment.
   The pinned R6 workflow verified refusal, retry, and loaded identity on

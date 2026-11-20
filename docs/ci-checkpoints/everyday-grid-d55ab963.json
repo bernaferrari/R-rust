@@ -1,0 +1,1034 @@
+{
+  "schema_version": 1,
+  "source_commit": "d55ab963160db547e4c27275406bc4b30ef30eff",
+  "source_sha256": "1e7c91cd30b240eaf54185408ab7594fe1584202b9c3172585f0a1cdecb46f9e",
+  "wasm_sha256": "b7a895a4522e901d585cd23070c7602a9e9d1a5898e3ce4596a15611142a7389",
+  "oracle_manifest_sha256": "b2400cc9d83720c794199ebe51856bb88a0aa2e38ee8db276c7c27f04473c679",
+  "workflow": "grid-layout",
+  "fixture_sha256": {
+    "absolute.R": "24eb837dd64ee030cf4f72e3e42082fa1e3b4fb4f90af26ebe4a3b09d81eee53",
+    "paging.R": "b51a81d70d2718e1da8fc93fcc4ba71d1f3fd3ef82fa07b6625b7b8537cb00e3",
+    "plot.R": "ccc23925a63a308c5faa14cb64892a742cdb6bc38b7b06eb6795d2b8acb532af",
+    "recording.R": "3ab3ab0590831e555020552c9759b09cd5516d0f514290c13db3106527dde266",
+    "restore.R": "f31bb0abb04246cd2c4ed7cbb5f6b8e22e3312a5981ab34c0d451caa3c47b7b5",
+    "safety.R": "cd3246ebf2b6ec0683d66780fa5b1a9389f38708de072bc61b2fff3ec6ef0a48"
+  },
+  "expected": {
+    "figures": {
+      "plot/panels.pdf": {
+        "page_size_points": [
+          432,
+          288
+        ],
+        "pages": [
+          {
+            "text": "Control panel Treatment panel",
+            "blank": false,
+            "rectangles": [
+              [
+                40,
+                68,
+                185,
+                195
+              ],
+              [
+                247,
+                68,
+                392,
+                195
+              ]
+            ]
+          }
+        ]
+      },
+      "plot/panels-live.pdf": {
+        "page_size_points": [
+          576,
+          360
+        ],
+        "pages": [
+          {
+            "text": "Control panel Treatment panel",
+            "blank": false,
+            "rectangles": [
+              [
+                53,
+                85,
+                247,
+                243
+              ],
+              [
+                329,
+                85,
+                523,
+                243
+              ]
+            ]
+          }
+        ]
+      },
+      "plot/panels-replay.pdf": {
+        "page_size_points": [
+          576,
+          360
+        ],
+        "pages": [
+          {
+            "text": "",
+            "blank": true,
+            "rectangles": []
+          },
+          {
+            "text": "Control panel Treatment panel",
+            "blank": false,
+            "rectangles": [
+              [
+                53,
+                85,
+                247,
+                243
+              ],
+              [
+                329,
+                85,
+                523,
+                243
+              ]
+            ]
+          }
+        ]
+      },
+      "plot/panels-restored.pdf": {
+        "page_size_points": [
+          576,
+          360
+        ],
+        "pages": [
+          {
+            "text": "Control panel Treatment panel",
+            "blank": false,
+            "rectangles": [
+              [
+                53,
+                85,
+                247,
+                243
+              ],
+              [
+                329,
+                85,
+                523,
+                243
+              ]
+            ]
+          }
+        ]
+      },
+      "absolute/source.pdf": {
+        "page_size_points": [
+          432,
+          288
+        ],
+        "pages": [
+          {
+            "text": "Fixed text",
+            "blank": false,
+            "rectangles": [
+              [
+                47,
+                90,
+                83,
+                112
+              ]
+            ]
+          }
+        ]
+      },
+      "absolute/replay.pdf": {
+        "page_size_points": [
+          576,
+          360
+        ],
+        "pages": [
+          {
+            "text": "",
+            "blank": true,
+            "rectangles": []
+          },
+          {
+            "text": "Fixed text",
+            "blank": false,
+            "rectangles": [
+              [
+                47,
+                115,
+                83,
+                137
+              ]
+            ]
+          }
+        ]
+      },
+      "recording/source.pdf": {
+        "page_size_points": [
+          504,
+          504
+        ],
+        "pages": [
+          {
+            "text": "After inhibit With recording Before recording",
+            "blank": false,
+            "rectangles": []
+          }
+        ]
+      },
+      "recording/with.pdf": {
+        "page_size_points": [
+          576,
+          360
+        ],
+        "pages": [
+          {
+            "text": "Destination",
+            "blank": false,
+            "rectangles": []
+          },
+          {
+            "text": "With recording",
+            "blank": false,
+            "rectangles": []
+          }
+        ]
+      },
+      "recording/without.pdf": {
+        "page_size_points": [
+          576,
+          360
+        ],
+        "pages": [
+          {
+            "text": "Destination",
+            "blank": false,
+            "rectangles": []
+          }
+        ]
+      },
+      "recording/inhibited.pdf": {
+        "page_size_points": [
+          576,
+          360
+        ],
+        "pages": [
+          {
+            "text": "Destination",
+            "blank": false,
+            "rectangles": []
+          }
+        ]
+      },
+      "paging/grob-viewport.pdf": {
+        "page_size_points": [
+          576,
+          360
+        ],
+        "pages": [
+          {
+            "text": "Marker",
+            "blank": false,
+            "rectangles": []
+          }
+        ]
+      },
+      "paging/unrecorded-push.pdf": {
+        "page_size_points": [
+          576,
+          360
+        ],
+        "pages": [
+          {
+            "text": "",
+            "blank": true,
+            "rectangles": []
+          },
+          {
+            "text": "Marker",
+            "blank": false,
+            "rectangles": []
+          }
+        ]
+      },
+      "paging/unrecorded-page.pdf": {
+        "page_size_points": [
+          576,
+          360
+        ],
+        "pages": [
+          {
+            "text": "Marker",
+            "blank": false,
+            "rectangles": []
+          }
+        ]
+      },
+      "paging/late-push.pdf": {
+        "page_size_points": [
+          576,
+          360
+        ],
+        "pages": [
+          {
+            "text": "Marker",
+            "blank": false,
+            "rectangles": []
+          },
+          {
+            "text": "Marker",
+            "blank": false,
+            "rectangles": []
+          }
+        ]
+      }
+    },
+    "font_sizes_preserved": true
+  },
+  "native": {
+    "figures": {
+      "plot/panels.pdf": {
+        "page_size_points": [
+          432,
+          288
+        ],
+        "pages": [
+          {
+            "text": "Control panel Treatment panel",
+            "blank": false,
+            "rectangles": [
+              [
+                40,
+                68,
+                185,
+                195
+              ],
+              [
+                247,
+                68,
+                392,
+                195
+              ]
+            ]
+          }
+        ]
+      },
+      "plot/panels-live.pdf": {
+        "page_size_points": [
+          576,
+          360
+        ],
+        "pages": [
+          {
+            "text": "Control panel Treatment panel",
+            "blank": false,
+            "rectangles": [
+              [
+                53,
+                85,
+                247,
+                243
+              ],
+              [
+                329,
+                85,
+                523,
+                243
+              ]
+            ]
+          }
+        ]
+      },
+      "plot/panels-replay.pdf": {
+        "page_size_points": [
+          576,
+          360
+        ],
+        "pages": [
+          {
+            "text": "",
+            "blank": true,
+            "rectangles": []
+          },
+          {
+            "text": "Control panel Treatment panel",
+            "blank": false,
+            "rectangles": [
+              [
+                53,
+                85,
+                247,
+                243
+              ],
+              [
+                329,
+                85,
+                523,
+                243
+              ]
+            ]
+          }
+        ]
+      },
+      "plot/panels-restored.pdf": {
+        "page_size_points": [
+          576,
+          360
+        ],
+        "pages": [
+          {
+            "text": "Control panel Treatment panel",
+            "blank": false,
+            "rectangles": [
+              [
+                53,
+                85,
+                247,
+                243
+              ],
+              [
+                329,
+                85,
+                523,
+                243
+              ]
+            ]
+          }
+        ]
+      },
+      "absolute/source.pdf": {
+        "page_size_points": [
+          432,
+          288
+        ],
+        "pages": [
+          {
+            "text": "Fixed text",
+            "blank": false,
+            "rectangles": [
+              [
+                47,
+                90,
+                83,
+                112
+              ]
+            ]
+          }
+        ]
+      },
+      "absolute/replay.pdf": {
+        "page_size_points": [
+          576,
+          360
+        ],
+        "pages": [
+          {
+            "text": "",
+            "blank": true,
+            "rectangles": []
+          },
+          {
+            "text": "Fixed text",
+            "blank": false,
+            "rectangles": [
+              [
+                47,
+                115,
+                83,
+                137
+              ]
+            ]
+          }
+        ]
+      },
+      "recording/source.pdf": {
+        "page_size_points": [
+          504,
+          504
+        ],
+        "pages": [
+          {
+            "text": "After inhibit With recording Before recording",
+            "blank": false,
+            "rectangles": []
+          }
+        ]
+      },
+      "recording/with.pdf": {
+        "page_size_points": [
+          576,
+          360
+        ],
+        "pages": [
+          {
+            "text": "Destination",
+            "blank": false,
+            "rectangles": []
+          },
+          {
+            "text": "With recording",
+            "blank": false,
+            "rectangles": []
+          }
+        ]
+      },
+      "recording/without.pdf": {
+        "page_size_points": [
+          576,
+          360
+        ],
+        "pages": [
+          {
+            "text": "Destination",
+            "blank": false,
+            "rectangles": []
+          }
+        ]
+      },
+      "recording/inhibited.pdf": {
+        "page_size_points": [
+          576,
+          360
+        ],
+        "pages": [
+          {
+            "text": "Destination",
+            "blank": false,
+            "rectangles": []
+          }
+        ]
+      },
+      "paging/grob-viewport.pdf": {
+        "page_size_points": [
+          576,
+          360
+        ],
+        "pages": [
+          {
+            "text": "Marker",
+            "blank": false,
+            "rectangles": []
+          }
+        ]
+      },
+      "paging/unrecorded-push.pdf": {
+        "page_size_points": [
+          576,
+          360
+        ],
+        "pages": [
+          {
+            "text": "",
+            "blank": true,
+            "rectangles": []
+          },
+          {
+            "text": "Marker",
+            "blank": false,
+            "rectangles": []
+          }
+        ]
+      },
+      "paging/unrecorded-page.pdf": {
+        "page_size_points": [
+          576,
+          360
+        ],
+        "pages": [
+          {
+            "text": "Marker",
+            "blank": false,
+            "rectangles": []
+          }
+        ]
+      },
+      "paging/late-push.pdf": {
+        "page_size_points": [
+          576,
+          360
+        ],
+        "pages": [
+          {
+            "text": "Marker",
+            "blank": false,
+            "rectangles": []
+          },
+          {
+            "text": "Marker",
+            "blank": false,
+            "rectangles": []
+          }
+        ]
+      }
+    },
+    "font_sizes_preserved": true
+  },
+  "wasm": {
+    "figures": {
+      "plot/panels.pdf": {
+        "page_size_points": [
+          432,
+          288
+        ],
+        "pages": [
+          {
+            "text": "Control panel Treatment panel",
+            "blank": false,
+            "rectangles": [
+              [
+                40,
+                68,
+                185,
+                195
+              ],
+              [
+                247,
+                68,
+                392,
+                195
+              ]
+            ]
+          }
+        ]
+      },
+      "plot/panels-live.pdf": {
+        "page_size_points": [
+          576,
+          360
+        ],
+        "pages": [
+          {
+            "text": "Control panel Treatment panel",
+            "blank": false,
+            "rectangles": [
+              [
+                53,
+                85,
+                247,
+                243
+              ],
+              [
+                329,
+                85,
+                523,
+                243
+              ]
+            ]
+          }
+        ]
+      },
+      "plot/panels-replay.pdf": {
+        "page_size_points": [
+          576,
+          360
+        ],
+        "pages": [
+          {
+            "text": "",
+            "blank": true,
+            "rectangles": []
+          },
+          {
+            "text": "Control panel Treatment panel",
+            "blank": false,
+            "rectangles": [
+              [
+                53,
+                85,
+                247,
+                243
+              ],
+              [
+                329,
+                85,
+                523,
+                243
+              ]
+            ]
+          }
+        ]
+      },
+      "plot/panels-restored.pdf": {
+        "page_size_points": [
+          576,
+          360
+        ],
+        "pages": [
+          {
+            "text": "Control panel Treatment panel",
+            "blank": false,
+            "rectangles": [
+              [
+                53,
+                85,
+                247,
+                243
+              ],
+              [
+                329,
+                85,
+                523,
+                243
+              ]
+            ]
+          }
+        ]
+      },
+      "absolute/source.pdf": {
+        "page_size_points": [
+          432,
+          288
+        ],
+        "pages": [
+          {
+            "text": "Fixed text",
+            "blank": false,
+            "rectangles": [
+              [
+                47,
+                90,
+                83,
+                112
+              ]
+            ]
+          }
+        ]
+      },
+      "absolute/replay.pdf": {
+        "page_size_points": [
+          576,
+          360
+        ],
+        "pages": [
+          {
+            "text": "",
+            "blank": true,
+            "rectangles": []
+          },
+          {
+            "text": "Fixed text",
+            "blank": false,
+            "rectangles": [
+              [
+                47,
+                115,
+                83,
+                137
+              ]
+            ]
+          }
+        ]
+      },
+      "recording/source.pdf": {
+        "page_size_points": [
+          504,
+          504
+        ],
+        "pages": [
+          {
+            "text": "After inhibit With recording Before recording",
+            "blank": false,
+            "rectangles": []
+          }
+        ]
+      },
+      "recording/with.pdf": {
+        "page_size_points": [
+          576,
+          360
+        ],
+        "pages": [
+          {
+            "text": "Destination",
+            "blank": false,
+            "rectangles": []
+          },
+          {
+            "text": "With recording",
+            "blank": false,
+            "rectangles": []
+          }
+        ]
+      },
+      "recording/without.pdf": {
+        "page_size_points": [
+          576,
+          360
+        ],
+        "pages": [
+          {
+            "text": "Destination",
+            "blank": false,
+            "rectangles": []
+          }
+        ]
+      },
+      "recording/inhibited.pdf": {
+        "page_size_points": [
+          576,
+          360
+        ],
+        "pages": [
+          {
+            "text": "Destination",
+            "blank": false,
+            "rectangles": []
+          }
+        ]
+      },
+      "paging/grob-viewport.pdf": {
+        "page_size_points": [
+          576,
+          360
+        ],
+        "pages": [
+          {
+            "text": "Marker",
+            "blank": false,
+            "rectangles": []
+          }
+        ]
+      },
+      "paging/unrecorded-push.pdf": {
+        "page_size_points": [
+          576,
+          360
+        ],
+        "pages": [
+          {
+            "text": "",
+            "blank": true,
+            "rectangles": []
+          },
+          {
+            "text": "Marker",
+            "blank": false,
+            "rectangles": []
+          }
+        ]
+      },
+      "paging/unrecorded-page.pdf": {
+        "page_size_points": [
+          576,
+          360
+        ],
+        "pages": [
+          {
+            "text": "Marker",
+            "blank": false,
+            "rectangles": []
+          }
+        ]
+      },
+      "paging/late-push.pdf": {
+        "page_size_points": [
+          576,
+          360
+        ],
+        "pages": [
+          {
+            "text": "Marker",
+            "blank": false,
+            "rectangles": []
+          },
+          {
+            "text": "Marker",
+            "blank": false,
+            "rectangles": []
+          }
+        ]
+      }
+    },
+    "font_sizes_preserved": true
+  },
+  "grid_evidence": {
+    "gnu": {
+      "absolute/replay.pdf": {
+        "sha256": "6f70da7a447ebeed7ac10451058d03788fd9112d15f3a07223952b65b8bc8fa8",
+        "bytes": 4293
+      },
+      "absolute/source.pdf": {
+        "sha256": "900e22fe6599294715e969ba0f24d7e4c56264a9414b9d3d1e81256118321aee",
+        "bytes": 4073
+      },
+      "paging/grob-viewport.pdf": {
+        "sha256": "7e8a467ffbac8794d2256dad6107c7572d527306710dbd72517fb8f893ad9704",
+        "bytes": 4048
+      },
+      "paging/late-push.pdf": {
+        "sha256": "ceeaebb9fa177568210127f406659c49145cf4fd23f1169b4a94c0f1304a7671",
+        "bytes": 4357
+      },
+      "paging/unrecorded-page.pdf": {
+        "sha256": "30427c90808138052fc14f8f75e8f13ba79d03a916ac8742861c2dbdb5d139e9",
+        "bytes": 4047
+      },
+      "paging/unrecorded-push.pdf": {
+        "sha256": "c598661fb81a1835db6e4c76234f3f3f6e9adac7091f37d0c81f435e96e26174",
+        "bytes": 4268
+      },
+      "plot/panels-live.pdf": {
+        "sha256": "416345a55b5d5a10a2e25b14796cac1c4a2cadee1200824e5e4d79764ba6ca58",
+        "bytes": 4118
+      },
+      "plot/panels-replay.pdf": {
+        "sha256": "9be3c7c3856cd0136eda6845cd3ff9595fcce7dcdff030a276fdbfd574f3413f",
+        "bytes": 4339
+      },
+      "plot/panels-restored.pdf": {
+        "sha256": "416345a55b5d5a10a2e25b14796cac1c4a2cadee1200824e5e4d79764ba6ca58",
+        "bytes": 4118
+      },
+      "plot/panels.pdf": {
+        "sha256": "4fed4e3813635b3e1ede7e3177680052c2d42488a3e2b62b5c83f7a9b871bd5a",
+        "bytes": 4116
+      },
+      "recording/inhibited.pdf": {
+        "sha256": "38a769a0582846478cbdbb749fb3f9727a30c748e5b3f83c33e0320d76ee9cc1",
+        "bytes": 4035
+      },
+      "recording/source.pdf": {
+        "sha256": "2dd3e257ba1d6ffaab74a9cd502168bbfc6be2d7a4f7e3e51bf2c57db0ee1d41",
+        "bytes": 4098
+      },
+      "recording/with.pdf": {
+        "sha256": "8023e02fddb324086b8371b8a5736a99b3a7404b7cbd277b322c8279393be6a6",
+        "bytes": 4337
+      },
+      "recording/without.pdf": {
+        "sha256": "38a769a0582846478cbdbb749fb3f9727a30c748e5b3f83c33e0320d76ee9cc1",
+        "bytes": 4035
+      }
+    },
+    "native": {
+      "absolute/replay.pdf": {
+        "sha256": "e63360cf6c293f71bf8274aebdbd65c7dcc85f064061afa7954ca7386cb2928c",
+        "bytes": 384848
+      },
+      "absolute/source.pdf": {
+        "sha256": "241b3542bc7bad0925747b0396906c757bcdcf3def2d110b1dd4337173f40862",
+        "bytes": 384567
+      },
+      "paging/grob-viewport.pdf": {
+        "sha256": "f2553fd4fd98fee6be071d2a8f8d287c5259abea54d3ce2560463604252056a3",
+        "bytes": 384452
+      },
+      "paging/late-push.pdf": {
+        "sha256": "98d41f0da6a0f8dfe8f470e639784922674a7c9d69304321c7201efb54a00e65",
+        "bytes": 384806
+      },
+      "paging/unrecorded-page.pdf": {
+        "sha256": "8b90dad6761047a8561f22fa1ff32181dfa53b8de058e19e49f4aaa002b431d0",
+        "bytes": 384466
+      },
+      "paging/unrecorded-push.pdf": {
+        "sha256": "21f19d33a3e0ed558d1a767af66cdd01664ce920476b4f4bfa7abe8219eb97c3",
+        "bytes": 384733
+      },
+      "plot/panels-live.pdf": {
+        "sha256": "6d43b6e196a15bbb114970cf52aa9bdad8b20ccae6cf9238ce1d4f92bf050cea",
+        "bytes": 384782
+      },
+      "plot/panels-replay.pdf": {
+        "sha256": "702c29bbf9aa175eeee687f5f834876ab7c0c2f16d750ea06693d2e94e9185d3",
+        "bytes": 385063
+      },
+      "plot/panels-restored.pdf": {
+        "sha256": "6d43b6e196a15bbb114970cf52aa9bdad8b20ccae6cf9238ce1d4f92bf050cea",
+        "bytes": 384782
+      },
+      "plot/panels.pdf": {
+        "sha256": "fd0816dd1853913ef5315a9a64f9000e7f59cdc92c89020329e09edd29cd92b1",
+        "bytes": 384781
+      },
+      "recording/inhibited.pdf": {
+        "sha256": "65a77201236b3519bf7fd9a8de21f5e94ff0c5754a25492a2962c12f138d4aed",
+        "bytes": 384539
+      },
+      "recording/source.pdf": {
+        "sha256": "06c787a010977984df21ce33d8635d7ad7370cc8135be125b438ab64eaa6c32f",
+        "bytes": 384823
+      },
+      "recording/with.pdf": {
+        "sha256": "bbcf8379a1078ed79ed191a5ea47b51ffcb71cb1b1e146eea32a6431b5a295a7",
+        "bytes": 385095
+      },
+      "recording/without.pdf": {
+        "sha256": "65a77201236b3519bf7fd9a8de21f5e94ff0c5754a25492a2962c12f138d4aed",
+        "bytes": 384539
+      },
+      "safety/safety.pdf": {
+        "sha256": "4b8c2457790b038bc39ff97392b940ee19137c9914d347e7db75362e9979470b",
+        "bytes": 384775
+      }
+    },
+    "wasm": {
+      "absolute/replay.pdf": {
+        "sha256": "e63360cf6c293f71bf8274aebdbd65c7dcc85f064061afa7954ca7386cb2928c",
+        "bytes": 384848
+      },
+      "absolute/source.pdf": {
+        "sha256": "241b3542bc7bad0925747b0396906c757bcdcf3def2d110b1dd4337173f40862",
+        "bytes": 384567
+      },
+      "paging/grob-viewport.pdf": {
+        "sha256": "f2553fd4fd98fee6be071d2a8f8d287c5259abea54d3ce2560463604252056a3",
+        "bytes": 384452
+      },
+      "paging/late-push.pdf": {
+        "sha256": "98d41f0da6a0f8dfe8f470e639784922674a7c9d69304321c7201efb54a00e65",
+        "bytes": 384806
+      },
+      "paging/unrecorded-page.pdf": {
+        "sha256": "8b90dad6761047a8561f22fa1ff32181dfa53b8de058e19e49f4aaa002b431d0",
+        "bytes": 384466
+      },
+      "paging/unrecorded-push.pdf": {
+        "sha256": "21f19d33a3e0ed558d1a767af66cdd01664ce920476b4f4bfa7abe8219eb97c3",
+        "bytes": 384733
+      },
+      "plot/panels-live.pdf": {
+        "sha256": "6d43b6e196a15bbb114970cf52aa9bdad8b20ccae6cf9238ce1d4f92bf050cea",
+        "bytes": 384782
+      },
+      "plot/panels-replay.pdf": {
+        "sha256": "702c29bbf9aa175eeee687f5f834876ab7c0c2f16d750ea06693d2e94e9185d3",
+        "bytes": 385063
+      },
+      "plot/panels-restored.pdf": {
+        "sha256": "6d43b6e196a15bbb114970cf52aa9bdad8b20ccae6cf9238ce1d4f92bf050cea",
+        "bytes": 384782
+      },
+      "plot/panels.pdf": {
+        "sha256": "fd0816dd1853913ef5315a9a64f9000e7f59cdc92c89020329e09edd29cd92b1",
+        "bytes": 384781
+      },
+      "recording/inhibited.pdf": {
+        "sha256": "65a77201236b3519bf7fd9a8de21f5e94ff0c5754a25492a2962c12f138d4aed",
+        "bytes": 384539
+      },
+      "recording/source.pdf": {
+        "sha256": "06c787a010977984df21ce33d8635d7ad7370cc8135be125b438ab64eaa6c32f",
+        "bytes": 384823
+      },
+      "recording/with.pdf": {
+        "sha256": "bbcf8379a1078ed79ed191a5ea47b51ffcb71cb1b1e146eea32a6431b5a295a7",
+        "bytes": 385095
+      },
+      "recording/without.pdf": {
+        "sha256": "65a77201236b3519bf7fd9a8de21f5e94ff0c5754a25492a2962c12f138d4aed",
+        "bytes": 384539
+      },
+      "safety/safety.pdf": {
+        "sha256": "4b8c2457790b038bc39ff97392b940ee19137c9914d347e7db75362e9979470b",
+        "bytes": 384775
+      }
+    }
+  }
+}

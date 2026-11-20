@@ -11,6 +11,14 @@ workflow stays in the denominator. A pass requires a measured result, and an
 unmeasured workflow earns no credit. Silent wrong results, crashes and data
 loss in supported workflows block release even when the score is high.
 
+At `d55ab963`, **17 of 20 workflows (85%)** passed on native Rport and
+production Wasm. The `grid` workflow rendered and inspected 14 PDFs on
+each target. Page counts, labels and rectangle bounds matched pinned GNU
+R. A half-inch rectangle measured 36 points on both page sizes, and
+resizing preserved the text size. Three package workflows remain
+unmeasured. [Scorecard](ci-checkpoints/everyday-analysis-v1-d55ab963.json)
+[Grid receipt](ci-checkpoints/everyday-grid-d55ab963.json)
+
 At `1790c295`, **16 of 20 workflows (80%)** passed on both targets. The
 pinned R6 workflow also verified that loading refuses incompatible versions
 for namespace imports and package attachment. A failed load left the
@@ -139,6 +147,11 @@ table, and PDF before and after changing the input CSV. The rendered figure
 checks use the same Poppler tools. Pass the resulting JSON as another
 `--session-report`.
 
+Set `--workflow grid-layout` to compare the rendered PDFs from live,
+serialized and fresh-session replay against pinned GNU R. The check
+also verifies that a rejected replay preserves existing drawing.
+Pass the resulting JSON as another `--session-report`.
+
 ## Project files in Wasm
 
 R code resolves absolute paths inside its own virtual filesystem. Relative
@@ -166,3 +179,9 @@ subject to the session memory budget. Wasm PDF files also use the virtual
 filesystem limits of 1 MiB per file and 8 MiB per session. PDF options for
 title metadata and printer-specific layout settings are outside the verified
 support boundary.
+
+PDF replay recalculates recorded grid commands for the destination
+page dimensions. When an incomplete or mixed recording requires a size
+change, replay reports an error before changing the destination. Grid
+character units still use a 12-point default when `pdf(pointsize = ...)`
+specifies a different starting size.
