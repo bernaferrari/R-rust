@@ -3,7 +3,7 @@
 use super::*;
 
 /// GNU `encodeString(x, width, quote, na.encode, justify)`.
-pub unsafe fn do_encodeString(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_encodeString(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x0 = CAR(args);
         if x0.is_null() || x0 == R_NilValue() {
@@ -136,7 +136,7 @@ pub unsafe fn do_encodeString(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
 /// `do_encodeString` handler parses the closure-visible positional order
 /// `encodeString(x, width, quote, na.encode, justify)`. Tag the two
 /// trailing arguments by name so both shapes resolve identically.
-pub unsafe fn do_encodeString_internal(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_encodeString_internal(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let mut cell = crate::sexp::accessors::CDR(args);
         let mut index = 0;
@@ -157,7 +157,7 @@ pub unsafe fn do_encodeString_internal(call: SEXP, op: SEXP, args: SEXP, rho: SE
 }
 
 /// GNU `Encoding(x)` — per-element "unknown"/"latin1"/"UTF-8"/"bytes".
-pub unsafe fn do_encoding(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_encoding(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if TYPEOF(x) != SEXPTYPE::STRSXP {
@@ -188,7 +188,7 @@ pub unsafe fn do_encoding(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 }
 
 /// GNU `Encoding<-` — mark CHARSXP encodings, recycling `value`.
-pub unsafe fn do_setencoding(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_setencoding(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let mut x = CAR(args);
         let enc = CADR(args);
@@ -255,7 +255,7 @@ pub unsafe fn do_setencoding(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
 }
 
 /// GNU `localeToCharset(locale)`.
-pub unsafe fn do_localeToCharset(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_localeToCharset(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let mut locale = String::new();
         let first = CAR(args);
@@ -306,13 +306,13 @@ pub unsafe fn do_localeToCharset(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP)
 }
 
 /// Own the original argument graph before any conversion or allocation.
-pub unsafe fn do_iconv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { iconv_entry(args, false) }
+pub fn do_iconv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    { iconv_entry(args, false) }
 }
-pub unsafe fn do_iconvlist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { iconv_entry(args, true) }
+pub fn do_iconvlist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    { iconv_entry(args, true) }
 }
-unsafe fn iconv_entry(args: SEXP, inventory: bool) -> SEXP {
+fn iconv_entry(args: SEXP, inventory: bool) -> SEXP {
     use crate::sexp::{
         object::Sexp,
         owner::{OwnerToken, with_runtime},

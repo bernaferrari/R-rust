@@ -3,7 +3,7 @@
 use super::*;
 
 /// GNU `nclass.Sturges(x)` is ceiling(log2(length(x)) + 1).
-pub unsafe fn do_nclass_sturges(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_nclass_sturges(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let n = if x.is_null() || x == R_NilValue() {
@@ -82,7 +82,7 @@ fn nclass_iqr(mut x: Vec<f64>) -> f64 {
 }
 
 /// GNU `nclass.scott(x)`.
-pub unsafe fn do_nclass_scott(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_nclass_scott(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = nclass_numeric_copy(CAR(args));
         let n = x.len() as f64;
@@ -97,7 +97,7 @@ pub unsafe fn do_nclass_scott(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
 }
 
 /// GNU `nclass.FD(x)`.
-pub unsafe fn do_nclass_fd(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_nclass_fd(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = nclass_numeric_copy(CAR(args));
         let n = x.len() as f64;
@@ -144,7 +144,7 @@ pub unsafe fn do_nclass_fd(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
 }
 
 /// GNU `bw.nrd0(x)`.
-pub unsafe fn do_bw_nrd0(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_bw_nrd0(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = nclass_numeric_copy(CAR(args));
         if x.len() < 2 {
@@ -169,7 +169,7 @@ pub unsafe fn do_bw_nrd0(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 }
 
 /// GNU `bw.nrd(x)`.
-pub unsafe fn do_bw_nrd(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_bw_nrd(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = nclass_numeric_copy(CAR(args));
         if x.len() < 2 {
@@ -237,7 +237,7 @@ fn bw_phi_binned(x: &[f64], h: f64, deriv: i32) -> f64 {
 }
 
 /// GNU `bw.SJ(x, method="dpi")` — Sheather–Jones direct plug-in.
-pub unsafe fn do_bw_sj(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_bw_sj(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = nclass_numeric_copy(CAR(args));
         let n = x.len();
@@ -307,7 +307,7 @@ fn bw_ucv_at(n: usize, dd: f64, cnt: &[f64], h: f64) -> f64 {
 }
 
 /// GNU `bw.ucv(x)` — unbiased cross-validation bandwidth.
-pub unsafe fn do_bw_ucv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_bw_ucv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = nclass_numeric_copy(CAR(args));
         let n = x.len();
@@ -368,7 +368,7 @@ fn bw_bcv_at(n: usize, dd: f64, cnt: &[f64], h: f64) -> f64 {
 }
 
 /// GNU `bw.bcv(x)` — biased cross-validation bandwidth.
-pub unsafe fn do_bw_bcv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_bw_bcv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = nclass_numeric_copy(CAR(args));
         let n = x.len();

@@ -45,7 +45,7 @@ fn as_mode_integer(x: SEXP, base: i32) -> Option<SEXP> {
     }
 }
 
-unsafe fn set_mode_class(x: SEXP, class: &str) -> SEXP {
+fn set_mode_class(x: SEXP, class: &str) -> SEXP {
     unsafe {
         let dup = crate::mainutils::duplicate::Rf_duplicate(x);
         let _d = protect(dup);
@@ -60,7 +60,7 @@ unsafe fn set_mode_class(x: SEXP, class: &str) -> SEXP {
 }
 
 /// GNU `as.hexmode(x)`.
-pub unsafe fn do_as_hexmode(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_as_hexmode(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if crate::mainutils::objects::inherits2(x, c"hexmode".as_ptr()) != FALSE {
@@ -77,7 +77,7 @@ pub unsafe fn do_as_hexmode(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 }
 
 /// GNU `as.octmode(x)`.
-pub unsafe fn do_as_octmode(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_as_octmode(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if crate::mainutils::objects::inherits2(x, c"octmode".as_ptr()) != FALSE {
@@ -195,22 +195,22 @@ pub(crate) fn mode_keep_str(args: SEXP) -> bool {
 }
 
 /// GNU `as.character.hexmode`: unpadded `%x`; copy dim only if `keepStr`.
-pub unsafe fn do_as_character_hexmode(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_as_character_hexmode(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     as_character_mode(CAR(args), true, mode_keep_str(args))
 }
 
 /// GNU `format.hexmode`: zero-pad to the widest value.
-pub unsafe fn do_format_hexmode(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_format_hexmode(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     format_mode_ints(CAR(args), true)
 }
 
 /// GNU `as.character.octmode`: unpadded `%o`; copy dim only if `keepStr`.
-pub unsafe fn do_as_character_octmode(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_as_character_octmode(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     as_character_mode(CAR(args), false, mode_keep_str(args))
 }
 
 /// GNU `format.octmode`: zero-pad to the widest value.
-pub unsafe fn do_format_octmode(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_format_octmode(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     format_mode_ints(CAR(args), false)
 }
 
@@ -384,7 +384,7 @@ fn formatc_one(v: f64, digits: i32, format: &str, alt: bool) -> String {
 }
 
 /// GNU `formatC(x, digits, width, format)`.
-pub unsafe fn do_formatC(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_formatC(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         // GNU util.c do_formatC: positional (x, type, width, digits,
         // format, flag, i.strlen). The R-level formatC closure in
@@ -494,7 +494,7 @@ pub unsafe fn do_formatC(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 }
 
 /// Read element 0 of a string argument with a fallback.
-unsafe fn string_elt_or(x: &SEXP, fallback: &str) -> String {
+fn string_elt_or(x: &SEXP, fallback: &str) -> String {
     unsafe {
         if !x.is_null() && *x != R_NilValue() && TYPEOF(*x) == SEXPTYPE::STRSXP && XLENGTH(*x) > 0 {
             let ch = STRING_ELT(*x, 0);
@@ -509,7 +509,7 @@ unsafe fn string_elt_or(x: &SEXP, fallback: &str) -> String {
 }
 
 /// `asInteger` for the internal numeric arguments.
-unsafe fn int_or_na(x: &SEXP) -> i32 {
+fn int_or_na(x: &SEXP) -> i32 {
     unsafe {
         if !x.is_null() && *x != R_NilValue() {
             if TYPEOF(*x) == SEXPTYPE::INTSXP && XLENGTH(*x) > 0 {
@@ -615,7 +615,7 @@ fn pretty_num_split(args: SEXP) -> (SEXP, SEXP) {
 }
 
 /// GNU `prettyNum(x, big.mark, decimal.mark)`.
-pub unsafe fn do_prettyNum(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_prettyNum(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let (x, rest) = pretty_num_split(args);
         if x.is_null() || x == R_NilValue() {
@@ -670,7 +670,7 @@ pub unsafe fn do_prettyNum(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
 }
 
 /// R's `format(x, digits, nsmall)` — format numbers as strings.
-pub unsafe fn do_format(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_format(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let digits_arg = CAR(CDR(args));
@@ -817,7 +817,7 @@ pub unsafe fn do_format(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 /// invokes the C entry directly regardless of R-level bindings; S3 dispatch
 /// already happened at the generic, so re-dispatching here would loop
 /// format.AsIs -> format.default -> .Internal(format) -> format.AsIs.
-unsafe fn called_from_format_generic_or_default() -> bool {
+fn called_from_format_generic_or_default() -> bool {
     unsafe {
         let mut ctx = crate::sexp::context::R_GlobalContext();
         while !ctx.is_null() {
@@ -847,7 +847,7 @@ unsafe fn called_from_format_generic_or_default() -> bool {
 /// GNU `format.default` for atomic numeric vectors: shared width/digits
 /// across the vector, honoring `digits`, `trim`, `nsmall`, `width`, and
 /// `scientific` (TRUE/FALSE/NA/numeric → scipen -99/310/keep/value).
-unsafe fn format_numeric_vector(x: SEXP, n: R_xlen_t, args: SEXP) -> SEXP {
+fn format_numeric_vector(x: SEXP, n: R_xlen_t, args: SEXP) -> SEXP {
     unsafe {
         let mut trim = false;
         let mut digits_opt: Option<c_int> = None;
@@ -1397,7 +1397,7 @@ fn format_zero_print(original: &str, zero: &str) -> String {
     chars.into_iter().collect()
 }
 
-unsafe fn format_character_vector(x: SEXP, n: R_xlen_t, args: SEXP) -> SEXP {
+fn format_character_vector(x: SEXP, n: R_xlen_t, args: SEXP) -> SEXP {
     unsafe {
         // GNU format.default: match.arg(justify) defaults to "left" (0).
         // 0=left, 1=right, 2=centre, 3=none.
@@ -1550,7 +1550,7 @@ unsafe fn format_character_vector(x: SEXP, n: R_xlen_t, args: SEXP) -> SEXP {
 
 /// GNU format retains names and array shape, excluding class and unrelated
 /// attributes. Character formatting follows the same contract as numeric.
-unsafe fn copy_format_shape(x: SEXP, result: SEXP) {
+fn copy_format_shape(x: SEXP, result: SEXP) {
     unsafe {
         use crate::sexp::attrib_core::{
             R_DimNamesSymbol, R_DimSymbol, R_NamesSymbol, getAttrib, setAttrib,
@@ -1587,7 +1587,7 @@ enum CalendarLabel {
     Quarter,
 }
 
-unsafe fn calendar_days_from_element(x: SEXP, i: R_xlen_t) -> Option<f64> {
+fn calendar_days_from_element(x: SEXP, i: R_xlen_t) -> Option<f64> {
     unsafe {
         if TYPEOF(x) != SEXPTYPE::REALSXP {
             return None;
@@ -1642,7 +1642,7 @@ fn calendar_label(days: f64, kind: CalendarLabel) -> Option<String> {
     }
 }
 
-unsafe fn calendar_label_builtin(args: SEXP, kind: CalendarLabel) -> SEXP {
+fn calendar_label_builtin(args: SEXP, kind: CalendarLabel) -> SEXP {
     unsafe {
         let x = arg_by_name_or_position(args, &["x"], 0);
         if x.is_null() || x == R_NilValue() {
@@ -1675,16 +1675,16 @@ unsafe fn calendar_label_builtin(args: SEXP, kind: CalendarLabel) -> SEXP {
 }
 
 /// R's `weekdays(x)` for Date/POSIXct values.
-pub unsafe fn do_weekdays(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { calendar_label_builtin(args, CalendarLabel::Weekday) }
+pub fn do_weekdays(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    { calendar_label_builtin(args, CalendarLabel::Weekday) }
 }
 
 /// R's `months(x)` for Date/POSIXct values.
-pub unsafe fn do_months(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { calendar_label_builtin(args, CalendarLabel::Month) }
+pub fn do_months(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    { calendar_label_builtin(args, CalendarLabel::Month) }
 }
 
 /// R's `quarters(x)` for Date/POSIXct values.
-pub unsafe fn do_quarters(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { calendar_label_builtin(args, CalendarLabel::Quarter) }
+pub fn do_quarters(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    { calendar_label_builtin(args, CalendarLabel::Quarter) }
 }

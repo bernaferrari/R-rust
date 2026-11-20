@@ -43,7 +43,7 @@ fn glob2rx_one(pattern: &str, trim_head: bool, trim_tail: bool) -> String {
 }
 
 /// GNU `glob2rx(pattern, trim.head=FALSE, trim.tail=TRUE)`.
-pub unsafe fn do_glob2rx(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_glob2rx(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let pattern = CAR(args);
         if pattern.is_null() || pattern == R_NilValue() {
@@ -185,7 +185,7 @@ fn adist_path(a: &str, b: &str) -> (i32, String, i32, i32, i32) {
     (dp[n][m], ops.into_iter().collect(), del, ins, sub)
 }
 
-unsafe fn ints_to_char_vector(list: SEXP) -> SEXP {
+fn ints_to_char_vector(list: SEXP) -> SEXP {
     unsafe {
         let n = XLENGTH(list);
         let out = Rf_allocVector3(SEXPTYPE::STRSXP, n);
@@ -215,7 +215,7 @@ unsafe fn ints_to_char_vector(list: SEXP) -> SEXP {
 }
 
 /// GNU `adist(x, y)` Levenshtein distances as an integer matrix.
-pub unsafe fn do_adist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_adist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let mut x = CAR(args);
         if TYPEOF(x) == SEXPTYPE::VECSXP {
@@ -388,7 +388,7 @@ fn aregexec_match(pat: &str, text: &str, maxd: i32) -> Option<(i32, i32)> {
 }
 
 /// GNU `aregexec(pattern, text, max.distance)` for literal patterns.
-pub unsafe fn do_aregexec(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_aregexec(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let pat = CAR(args);
         let text = CAR(CDR(args));
@@ -633,7 +633,7 @@ fn abbreviate_unique(names: &[String], minlength: usize) -> Vec<String> {
 }
 
 /// GNU `abbreviate(names.arg, minlength=4)`.
-pub unsafe fn do_abbreviate(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_abbreviate(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let names_s = CAR(args);
         if names_s.is_null() || names_s == R_NilValue() || TYPEOF(names_s) != SEXPTYPE::STRSXP {

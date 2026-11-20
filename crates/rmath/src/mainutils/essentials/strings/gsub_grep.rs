@@ -6,7 +6,7 @@ use super::*;
 mod replacement_missing_tests;
 
 /// R's `trimws(x, which="both")` — trim whitespace from strings.
-pub unsafe fn do_trimws(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_trimws(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -32,16 +32,16 @@ pub unsafe fn do_trimws(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 }
 
 /// R's `gsub(pattern, replacement, x)` — global string substitution (literal).
-pub unsafe fn do_gsub(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { do_string_replace(args, true) }
+pub fn do_gsub(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    { do_string_replace(args, true) }
 }
 
 /// R's `sub(pattern, replacement, x)` — first match substitution (literal).
-pub unsafe fn do_sub(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { do_string_replace(args, false) }
+pub fn do_sub(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    { do_string_replace(args, false) }
 }
 
-unsafe fn string_arg_is_na(arg: SEXP) -> bool {
+fn string_arg_is_na(arg: SEXP) -> bool {
     unsafe {
         if arg.is_null() || arg == R_NilValue() || XLENGTH(arg) == 0 {
             return false;
@@ -56,7 +56,7 @@ unsafe fn string_arg_is_na(arg: SEXP) -> bool {
     }
 }
 
-unsafe fn na_integer_vector(n: R_xlen_t) -> SEXP {
+fn na_integer_vector(n: R_xlen_t) -> SEXP {
     unsafe {
         let result = Rf_allocVector3(SEXPTYPE::INTSXP, n);
         if result.is_null() {
@@ -70,7 +70,7 @@ unsafe fn na_integer_vector(n: R_xlen_t) -> SEXP {
 }
 
 /// R's `grep(pattern, x, ..., value = FALSE)` for fixed and ERE matching.
-pub unsafe fn do_grep(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_grep(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let pattern_arg = arg_by_name_or_position(args, &["pattern"], 0);
         let x_arg = arg_by_name_or_position(args, &["x", "text"], 1);
@@ -178,7 +178,7 @@ pub unsafe fn do_grep(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// R's `grepl(pattern, x, ...)` for fixed and ERE matching.
-pub unsafe fn do_grepl(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_grepl(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let pattern_arg = arg_by_name_or_position(args, &["pattern"], 0);
         let x_arg = arg_by_name_or_position(args, &["x", "text"], 1);
@@ -220,7 +220,7 @@ pub unsafe fn do_grepl(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// R's `agrep(pattern, x, ...)` — approximate fixed-string matching.
-pub unsafe fn do_agrep(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_agrep(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let pattern_arg = arg_by_name_or_position(args, &["pattern"], 0);
         let x_arg = arg_by_name_or_position(args, &["x", "text"], 1);
@@ -317,7 +317,7 @@ pub unsafe fn do_agrep(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// R's `agrepl(pattern, x, ...)` — logical approximate matching.
-pub unsafe fn do_agrepl(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_agrepl(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let pattern_arg = arg_by_name_or_position(args, &["pattern"], 0);
         let x_arg = arg_by_name_or_position(args, &["x", "text"], 1);
@@ -349,7 +349,7 @@ pub unsafe fn do_agrepl(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 }
 
 /// R's `pcre_config()` — report regex engine feature switches.
-pub unsafe fn do_pcre_config(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_pcre_config(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     const FEATURES: [(&str, c_int); 4] = [
         ("UTF-8", TRUE),
         ("Unicode properties", TRUE),
@@ -405,7 +405,7 @@ fn agrep_max_distance(args: SEXP, pattern_arg: SEXP) -> usize {
     }
 }
 
-unsafe fn agrep_match_any(
+fn agrep_match_any(
     x: SEXP,
     patterns: &[&str],
     max_distance: usize,
@@ -466,7 +466,7 @@ fn approximate_contains(pattern: &str, text: &str, max_distance: usize, ignore_c
     false
 }
 
-unsafe fn do_string_replace(args: SEXP, global: bool) -> SEXP {
+fn do_string_replace(args: SEXP, global: bool) -> SEXP {
     unsafe {
         let pattern_arg = CAR(args);
         let replacement_arg = CAR(CDR(args));

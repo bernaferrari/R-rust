@@ -2,7 +2,7 @@
 
 use super::*;
 
-pub unsafe fn do_format_info(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_format_info(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let m =
             crate::mainutils::match_mod::match_formal_slots(call, args, &["x", "digits", "nsmall"]);
@@ -46,20 +46,20 @@ pub unsafe fn do_format_info(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
 // ---------------------------------------------------------------------------
 
 /// R's `startsWith(x, prefix)` — check if strings start with prefix.
-pub unsafe fn do_startsWith(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_startsWith(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    {
         super::vector_text_entry::evaluate(args, rho, super::vector_text_owned::Operation::Prefix)
     }
 }
 
-pub unsafe fn do_endsWith(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_endsWith(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    {
         super::vector_text_entry::evaluate(args, rho, super::vector_text_owned::Operation::Suffix)
     }
 }
 
 /// R's `str_pad(x, width, side="left", pad=" ")` — pad strings to a width.
-pub unsafe fn do_str_pad(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_str_pad(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let width_arg = CAR(CDR(args));
@@ -121,7 +121,7 @@ pub unsafe fn do_str_pad(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 }
 
 /// R's `str_count(x, pattern)` — count occurrences of pattern in strings.
-pub unsafe fn do_str_count(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_str_count(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let pattern_arg = CAR(CDR(args));
@@ -150,8 +150,8 @@ pub unsafe fn do_str_count(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
 }
 
 /// R's `str_replace(x, pattern, replacement)` — alias for sub.
-pub unsafe fn do_str_replace(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { do_sub(_call, _op, args, _rho) }
+pub fn do_str_replace(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    { do_sub(_call, _op, args, _rho) }
 }
 
 // ---------------------------------------------------------------------------
@@ -160,7 +160,7 @@ pub unsafe fn do_str_replace(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
 // ---------------------------------------------------------------------------
 
 /// R-like `str_detect(x, pattern)` — returns logical vector indicating which elements match.
-pub unsafe fn do_str_detect(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_str_detect(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let pattern_arg = CAR(CDR(args));
@@ -189,7 +189,7 @@ pub unsafe fn do_str_detect(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 }
 
 /// R-like `str_extract(x, pattern)` — extracts first occurrence of pattern from each element.
-pub unsafe fn do_str_extract(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_str_extract(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let pattern_arg = CAR(CDR(args));
@@ -230,7 +230,7 @@ pub unsafe fn do_str_extract(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
 // ---------------------------------------------------------------------------
 
 /// R-like `str_interp(string, values)` — interpolate values into string (simplified: sprintf-like).
-pub unsafe fn do_str_interp(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_str_interp(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let string_arg = CAR(args);
         let values_arg = CAR(CDR(args));
@@ -259,7 +259,7 @@ pub unsafe fn do_str_interp(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 
 /// GNU `strwrap(...)` — dispatch to the verbatim base closure so wrapping
 /// (width 0.9*getOption("width"), indent/exdent/prefix/initial) is identical.
-pub unsafe fn do_strwrap(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_strwrap(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let fun = crate::sexp::envir::R_findVarInFrame(
             crate::sexp::globals::R_BaseEnv(),
@@ -292,7 +292,7 @@ pub unsafe fn do_strwrap(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
 }
 
 /// R-like `strwrap(x, width)` / `str_wrap(x, width)` — wrap text to width.
-pub unsafe fn do_str_wrap(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_str_wrap(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -341,7 +341,7 @@ fn wrap_text_words(text: &str, width: usize) -> Vec<String> {
 }
 
 /// R-like `path_package(package, ...)` — find package paths through the session library policy.
-pub unsafe fn do_path_package(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_path_package(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let package_arg = arg_by_name_or_position(args, &["package"], 0);
         if package_arg.is_null() || package_arg == R_NilValue() || XLENGTH(package_arg) == 0 {
@@ -361,7 +361,7 @@ pub unsafe fn do_path_package(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
 }
 
 /// R's `system.file(..., package)` — find files inside an installed package.
-pub unsafe fn do_system_file(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_system_file(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let package_arg = arg_by_name_or_position(args, &["package"], usize::MAX);
         let package = if package_arg.is_null() || package_arg == R_NilValue() {
@@ -426,7 +426,7 @@ pub unsafe fn do_system_file(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
 }
 
 fn system_file_parts(args: SEXP) -> Vec<String> {
-    unsafe {
+    {
         let mut parts = Vec::new();
         let mut current = args;
         while !current.is_null() && current != R_NilValue() {
@@ -451,7 +451,7 @@ fn system_file_parts(args: SEXP) -> Vec<String> {
 // ---------------------------------------------------------------------------
 
 /// R's `str_locate(x, pattern)` — locate first occurrence of pattern (simplified).
-pub unsafe fn do_str_locate(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_str_locate(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let pattern = CAR(CDR(args));
@@ -473,7 +473,7 @@ pub unsafe fn do_str_locate(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 }
 
 /// R's `str_locate_all(x, pattern)` — locate all occurrences (simplified).
-pub unsafe fn do_str_locate_all(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_str_locate_all(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let _pattern = CAR(CDR(args));
@@ -486,12 +486,12 @@ pub unsafe fn do_str_locate_all(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) 
 }
 
 /// R's `str_sub(x, start, end)` — extract substring (alias for substr).
-pub unsafe fn do_str_sub(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { do_substr(_call, _op, args, _rho) }
+pub fn do_str_sub(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    { do_substr(_call, _op, args, _rho) }
 }
 
 /// R's `str_sub_all(x, start, end)` — all substrings (simplified).
-pub unsafe fn do_str_sub_all(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_str_sub_all(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
