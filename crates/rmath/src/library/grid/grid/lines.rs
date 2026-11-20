@@ -12,8 +12,7 @@ pub unsafe fn L_moveTo(x: SEXP, y: SEXP) -> SEXP {
         let _prevloc_guard = protect(prevloc);
         let devloc = gridStateElement(dd, GSS_CURRLOC);
         let _devloc_guard = protect(devloc);
-        let (vpWidthCM, vpHeightCM, mut transform, _) =
-            getViewportTransform(currentvp, dd);
+        let (vpWidthCM, vpHeightCM, mut transform, _) = getViewportTransform(currentvp, dd);
         let mut vpc = LViewportContext::default();
         getViewportContext(currentvp, &mut vpc);
 
@@ -70,8 +69,7 @@ pub unsafe fn L_lineTo(x: SEXP, y: SEXP, arrow: SEXP) -> SEXP {
         let _prevloc_guard = protect(prevloc);
         let devloc = gridStateElement(dd, GSS_CURRLOC);
         let _devloc_guard = protect(devloc);
-        let (vpWidthCM, vpHeightCM, mut transform, _) =
-            getViewportTransform(currentvp, dd);
+        let (vpWidthCM, vpHeightCM, mut transform, _) = getViewportTransform(currentvp, dd);
         let mut vpc = LViewportContext::default();
         getViewportContext(currentvp, &mut vpc);
 
@@ -152,8 +150,7 @@ pub unsafe fn L_lines(x: SEXP, y: SEXP, index: SEXP, arrow: SEXP) -> SEXP {
         if gp_fill_is_pattern(currentgp) {
             set_gp_fill_string(currentgp, c"transparent".as_ptr());
         }
-        let (vpWidthCM, vpHeightCM, mut transform, _) =
-            getViewportTransform(currentvp, dd);
+        let (vpWidthCM, vpHeightCM, mut transform, _) = getViewportTransform(currentvp, dd);
         let mut vpc = LViewportContext::default();
         getViewportContext(currentvp, &mut vpc);
 
@@ -352,8 +349,7 @@ pub unsafe fn L_segments(x0: SEXP, y0: SEXP, x1: SEXP, y1: SEXP, arrow: SEXP) ->
             set_gp_fill_string(currentgp, c"transparent".as_ptr());
         }
 
-        let (vpWidthCM, vpHeightCM, mut transform, _) =
-            getViewportTransform(currentvp, dd);
+        let (vpWidthCM, vpHeightCM, mut transform, _) = getViewportTransform(currentvp, dd);
         let mut vpc = LViewportContext::default();
         getViewportContext(currentvp, &mut vpc);
 
