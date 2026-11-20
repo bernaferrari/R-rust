@@ -26,7 +26,7 @@ use crate::sexp::protect::protect;
 
 /// Recursively fix up permissions: used for R CMD INSTALL and build.
 /// 'gwsxp' means set group-write permissions on directories.
-pub unsafe fn dirchmod(dr: SEXP, gwsxp: SEXP) -> SEXP {
+pub fn dirchmod(dr: SEXP, gwsxp: SEXP) -> SEXP {
     unsafe {
         if dr.is_null() {
             return R_NilValue();
@@ -136,7 +136,7 @@ const APPENDBUFSIZE: usize = if cfg!(target_os = "windows") {
 /// upstream window change: the new `enc` argument names the collation
 /// encoding; when it is "UTF-8" a leading UTF-8 BOM on each appended file
 /// is consumed instead of copied, keeping collated sources BOM-free.
-pub unsafe fn codeFilesAppend(f1: SEXP, f2: SEXP, enc: SEXP) -> SEXP {
+pub fn codeFilesAppend(f1: SEXP, f2: SEXP, enc: SEXP) -> SEXP {
     unsafe {
         if f1.is_null() || f2.is_null() || enc.is_null() {
             return Rf_allocVector(SEXPTYPE::LGLSXP, 0);

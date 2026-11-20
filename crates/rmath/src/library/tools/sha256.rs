@@ -273,13 +273,13 @@ fn sha256_process_bytes(mut buffer: &[u8], ctx: &mut Sha256Ctx) {
 }
 
 /// Initialize the SHA256 computation context. (FIPS 180-2:5.3.2)
-pub unsafe fn Rsha256_init_ctx(ctx: *mut Sha256Ctx) {
+pub fn Rsha256_init_ctx(ctx: *mut Sha256Ctx) {
     let ctx = unsafe { &mut *ctx };
     sha256_init_ctx(ctx);
 }
 
 /// Feed arbitrary bytes into the SHA256 computation.
-pub unsafe fn Rsha256_process_bytes(buffer: *const c_void, len: usize, ctx: *mut Sha256Ctx) {
+pub fn Rsha256_process_bytes(buffer: *const c_void, len: usize, ctx: *mut Sha256Ctx) {
     let input = if len == 0 {
         &[]
     } else {
@@ -291,7 +291,7 @@ pub unsafe fn Rsha256_process_bytes(buffer: *const c_void, len: usize, ctx: *mut
 
 /// Process the remaining bytes in the internal buffer and the usual
 /// prolog according to the standard and write the result to RESBUF.
-pub unsafe fn Rsha256_finish_ctx(ctx: *mut Sha256Ctx, resbuf: *mut c_void) -> *mut c_void {
+pub fn Rsha256_finish_ctx(ctx: *mut Sha256Ctx, resbuf: *mut c_void) -> *mut c_void {
     let ctx = unsafe { &mut *ctx };
     let resbuf = unsafe { &mut *(resbuf as *mut [u8; 32]) };
     sha256_finish_ctx(ctx, resbuf);
@@ -300,7 +300,7 @@ pub unsafe fn Rsha256_finish_ctx(ctx: *mut Sha256Ctx, resbuf: *mut c_void) -> *m
 
 /// Compute SHA256 message digest for bytes read from STREAM.
 /// Returns 0 on success, 1 on error.
-pub unsafe fn Rsha256_stream(stream: *mut RFile, resblock: *mut c_void) -> c_int {
+pub fn Rsha256_stream(stream: *mut RFile, resblock: *mut c_void) -> c_int {
     let mut ctx = Sha256Ctx {
         H: [0; 8],
         total: [0; 2],

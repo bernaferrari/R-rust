@@ -28,7 +28,7 @@ use super::md5::md5_buffer;
 ///
 /// If `files` is RAWSXP, computes the MD5 hash of the raw bytes.
 /// If `files` is STRSXP, computes MD5 hashes for each file path.
-pub unsafe fn Rmd5(files: SEXP) -> SEXP {
+pub fn Rmd5(files: SEXP) -> SEXP {
     unsafe {
         if files.is_null() {
             return R_NilValue();

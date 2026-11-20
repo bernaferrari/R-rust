@@ -19,7 +19,7 @@ use crate::sexp::ffi::{FALSE, NA_INTEGER, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::protect::protect;
 
 /// ps_kill: send a signal to a process.
-pub unsafe fn ps_kill(spid: SEXP, ssignal: SEXP) -> SEXP {
+pub fn ps_kill(spid: SEXP, ssignal: SEXP) -> SEXP {
     unsafe {
         let signal = coerce_to_int(ssignal);
         let sspid = Rf_coerceVector(spid, SEXPTYPE::INTSXP.as_c_int());
@@ -77,7 +77,7 @@ pub unsafe fn ps_kill(spid: SEXP, ssignal: SEXP) -> SEXP {
 }
 
 /// ps_priority: get/set process priority.
-pub unsafe fn ps_priority(spid: SEXP, svalue: SEXP) -> SEXP {
+pub fn ps_priority(spid: SEXP, svalue: SEXP) -> SEXP {
     unsafe {
         let val = coerce_to_int(svalue);
         let sspid = Rf_coerceVector(spid, SEXPTYPE::INTSXP.as_c_int());
@@ -137,7 +137,7 @@ pub unsafe fn ps_priority(spid: SEXP, svalue: SEXP) -> SEXP {
 }
 
 /// ps_sigs: map signal number to platform signal value.
-pub unsafe fn ps_sigs(signo: SEXP) -> SEXP {
+pub fn ps_sigs(signo: SEXP) -> SEXP {
     let s = coerce_to_int(signo);
     let res: c_int = match s {
         1 => {

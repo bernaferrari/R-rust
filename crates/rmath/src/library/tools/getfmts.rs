@@ -30,7 +30,7 @@ const MAXNARGS: usize = 100;
 ///
 /// Returns a character vector of format strings, one per argument.
 /// This is used by sprintf to determine the types of arguments needed.
-pub unsafe fn getfmts(format: SEXP) -> SEXP {
+pub fn getfmts(format: SEXP) -> SEXP {
     unsafe {
         if format.is_null() {
             return R_NilValue();

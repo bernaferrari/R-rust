@@ -22,7 +22,7 @@
 use crate::mainutils::printutils::Rprintf;
 
 /* Test function used in tests/encodings.R */
-pub unsafe fn Renctest(x: *mut *mut core::ffi::c_char) {
+pub fn Renctest(x: *mut *mut core::ffi::c_char) {
     unsafe {
         let s = std::ffi::CStr::from_ptr(*x);
         let len = s.to_bytes().len();
@@ -33,6 +33,6 @@ pub unsafe fn Renctest(x: *mut *mut core::ffi::c_char) {
 }
 
 /* Stub: DllInfo registration */
-pub unsafe fn R_init_tools(_dll: *mut std::ffi::c_void) {
+pub fn R_init_tools(_dll: *mut std::ffi::c_void) {
     /* Registration handled by Rust's symbol exports */
 }

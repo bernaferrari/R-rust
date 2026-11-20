@@ -82,18 +82,18 @@ unsafe extern "C-unwind" fn c_parse_latex(_call: SEXP, _op: SEXP, args: SEXP, _e
 }
 
 unsafe extern "C-unwind" fn c_do_tab_expand(strings: SEXP, starts: SEXP) -> SEXP {
-    unsafe { doTabExpand(strings, starts) }
+    doTabExpand(strings, starts)
 }
 
 unsafe extern "C-unwind" fn c_non_ascii(text: SEXP) -> SEXP {
-    unsafe { nonASCII(text) }
+    nonASCII(text)
 }
 
 unsafe extern "C-unwind" fn c_delim_match(x: SEXP, delims: SEXP) -> SEXP {
-    unsafe { delim_match(x, delims) }
+    delim_match(x, delims)
 }
 unsafe extern "C-unwind" fn c_split_string(string: SEXP, delims: SEXP) -> SEXP {
-    unsafe { splitString(string, delims) }
+    splitString(string, delims)
 }
 
 unsafe extern "C-unwind" fn c_deparse_rd(element: SEXP, state: SEXP) -> SEXP {
@@ -398,7 +398,7 @@ pub(crate) fn lookup_buffer(
     }
 }
 
-pub unsafe fn install_tools_call_symbols(env: SEXP) {
+pub fn install_tools_call_symbols(env: SEXP) {
     unsafe {
         for name in TOOLS_CALL_NAMES {
             let cname = CString::new(*name).unwrap_or_default();
@@ -411,7 +411,7 @@ pub unsafe fn install_tools_call_symbols(env: SEXP) {
     }
 }
 
-unsafe fn eval_tools_source(env: SEXP, source: &str) {
+fn eval_tools_source(env: SEXP, source: &str) {
     unsafe {
         let parser_factory = crate::eval::parser::active_factory();
         let parsed = crate::sexp::memory::with_arena(|arena| {
@@ -426,7 +426,7 @@ unsafe fn eval_tools_source(env: SEXP, source: &str) {
         }
     }
 }
-pub unsafe fn install_tools_assert_closures(env: SEXP) {
+pub fn install_tools_assert_closures(env: SEXP) {
     unsafe {
         let already =
             crate::sexp::envir::R_findVarInFrame(env, Rf_install(c"assertError".as_ptr()));
