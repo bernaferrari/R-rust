@@ -40,15 +40,13 @@ fn new_menu_object(kind: c_int, parent: object, text: *const core::ffi::c_char) 
     objects::init_objects();
 
     let obj = objects::new_object(kind, ptr::null_mut(), parent);
-    if obj.is_null() {
+    let Some(data) = obj_mut(obj) else {
         return ptr::null_mut();
-    }
-    unsafe {
-        (*obj).text = strings::new_string(text);
-        (*obj).id = next_menu_id();
-        (*obj).state |= GA_Enabled;
-        (*obj).handle = (*obj).id as usize as *mut c_void;
-    }
+    };
+    data.text = strings::new_string(text);
+    data.id = next_menu_id();
+    data.state |= GA_Enabled;
+    data.handle = data.id as usize as *mut c_void;
     obj
 }
 
@@ -58,7 +56,10 @@ fn install_items(parent: menu, items: *mut MenuItem) {
     }
     let mut idx = 0usize;
     loop {
-        let item = unsafe { &*items.add(idx) };
+        // Walk the caller's sentinel-terminated `MenuItem` array.
+        let Some(item) = ptr_ref(unsafe { items.add(idx) }) else {
+            break;
+        };
         if item.nm.is_null() && item.fn_.is_none() && item.key == 0 {
             break;
         }
@@ -67,8 +68,8 @@ fn install_items(parent: menu, items: *mut MenuItem) {
         if menu_item.is_null() {
             break;
         }
-        unsafe {
-            (*menu_item).key = if (0..=255).contains(&item.key) {
+        if let Some(data) = obj_mut(menu_item) {
+            data.key = if (0..=255).contains(&item.key) {
                 (item.key as u8).to_ascii_uppercase() as c_int
             } else {
                 item.key
@@ -78,10 +79,8 @@ fn install_items(parent: menu, items: *mut MenuItem) {
             runtime.menus.actions.insert(menu_item as usize, item.fn_);
         });
 
-        if !item.m.is_null() {
-            unsafe {
-                (*item.m).parent = parent;
-            }
+        if let Some(submenu) = obj_mut(item.m) {
+            submenu.parent = parent;
         }
 
         idx += 1;
@@ -116,10 +115,8 @@ pub fn newmdimenu() -> menu {
 
 pub fn newpopup(fn_: actionfn) -> menu {
     let popup = new_menu_object(MenuObject, ptr::null_mut(), menu_text_ptr(b"Popup\0"));
-    if !popup.is_null() {
-        unsafe {
-            (*popup).action = fn_;
-        }
+    if let Some(data) = obj_mut(popup) {
+        data.action = fn_;
     }
     with_graphapp_runtime(|runtime| runtime.menus.current_menu = popup);
     popup
@@ -129,11 +126,11 @@ pub fn gmenubar(fn_: actionfn, items: *mut MenuItem) -> menubar {
     let parent = windows::get_current_window();
     let menubar = new_menu_object(MenubarObject, parent, menu_text_ptr(b"Menubar\0"));
     if !menubar.is_null() {
-        unsafe {
-            (*menubar).action = fn_;
-            if !parent.is_null() {
-                (*parent).menubar = menubar;
-            }
+        if let Some(data) = obj_mut(menubar) {
+            data.action = fn_;
+        }
+        if let Some(parent_data) = obj_mut(parent) {
+            parent_data.menubar = menubar;
         }
         with_graphapp_runtime(|runtime| runtime.menus.current_menubar = menubar);
 
@@ -151,79 +148,67 @@ pub fn gpopup(fn_: actionfn, items: *mut MenuItem) -> menu {
 }
 
 pub fn gchangepopup(w: window, p: menu) {
-    if w.is_null() {
+    if let Some(data) = obj_mut(w) {
+        data.popup = p;
+    } else {
         return;
-    }
-    unsafe {
-        (*w).popup = p;
     }
     with_graphapp_runtime(|runtime| runtime.menus.current_menu = p);
 }
 
 pub fn gchangemenubar(mb: menubar) {
     let window = windows::get_current_window();
-    if !window.is_null() {
-        unsafe {
-            (*window).menubar = mb;
-        }
+    if let Some(data) = obj_mut(window) {
+        data.menubar = mb;
     }
     with_graphapp_runtime(|runtime| runtime.menus.current_menubar = mb);
 }
 
 pub fn adjust_menu(wparam: usize) {
     let obj = find_menu_object(wparam);
-    if obj.is_null() {
+    let Some(data) = obj_ref(obj) else {
         return;
-    }
+    };
 
-    unsafe {
-        match (*obj).kind {
-            MenubarObject => {
-                with_graphapp_runtime(|runtime| runtime.menus.current_menubar = obj);
-                if let Some(action) = (*obj).action {
-                    action(obj);
-                }
+    match data.kind {
+        MenubarObject => {
+            with_graphapp_runtime(|runtime| runtime.menus.current_menubar = obj);
+            if let Some(action) = data.action {
+                action(obj);
             }
-            MenuObject => {
-                with_graphapp_runtime(|runtime| runtime.menus.current_menu = obj);
-                if let Some(action) = (*obj).action {
-                    action(obj);
-                }
-            }
-            MenuitemObject => {
-                if let Some(parent) = (!(*obj).parent.is_null()).then_some((*obj).parent) {
-                    adjust_menu((*parent).id as usize);
-                }
-            }
-            _ => {}
         }
+        MenuObject => {
+            with_graphapp_runtime(|runtime| runtime.menus.current_menu = obj);
+            if let Some(action) = data.action {
+                action(obj);
+            }
+        }
+        MenuitemObject => {
+            if let Some(parent_id) = obj_ref(data.parent).map(|parent| parent.id) {
+                adjust_menu(parent_id as usize);
+            }
+        }
+        _ => {}
     }
 }
 
 pub fn handle_menu_id(wparam: usize) {
     let obj = find_menu_object(wparam);
-    if obj.is_null() {
-        return;
-    }
-    unsafe {
-        if (*obj).kind == MenuitemObject {
-            trigger_menu_item(obj);
-        }
+    if obj_ref(obj).is_some_and(|data| data.kind == MenuitemObject) {
+        trigger_menu_item(obj);
     }
 }
 
 pub fn handle_menu_key(wparam: usize) -> c_int {
     let key = (wparam as u8 as char).to_ascii_uppercase() as c_int;
     let obj = objects::find_object(ptr::null_mut(), 0, key);
-    if obj.is_null() {
+    let Some(data) = obj_ref(obj) else {
         return 0;
+    };
+    if let Some(parent_id) = obj_ref(data.parent).map(|parent| parent.id) {
+        adjust_menu(parent_id as usize);
     }
-    unsafe {
-        if !(*obj).parent.is_null() {
-            adjust_menu((*(*obj).parent).id as usize);
-        }
-        trigger_menu_item(obj);
-    }
+    trigger_menu_item(obj);
     1
 }
 
