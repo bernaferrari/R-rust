@@ -7,7 +7,6 @@
 //! Ported from controls.c - manipulating buttons, text fields,
 //! scrollbars, checkboxes, and other controls.
 
-use std::ffi::CStr;
 use std::fs::File;
 use std::io::Write;
 use std::os::raw::{c_char, c_int, c_long, c_void};
@@ -742,40 +741,39 @@ pub fn loadimage(_filename: *const c_char) -> image {
     ptr::null_mut()
 }
 pub fn saveimage(img: image, filename: *const c_char) {
-    unsafe {
-        if img.is_null() || filename.is_null() {
-            return;
-        }
-        let Ok(path) = CStr::from_ptr(filename).to_str() else {
-            return;
-        };
-        let Ok(mut file) = File::create(path) else {
-            return;
-        };
-        let width = (*img).width.max(0);
-        let height = (*img).height.max(0);
+    let Some(data) = ptr_ref(img) else {
+        return;
+    };
+    let Some(path) = cstr(filename).and_then(|f| f.to_str().ok()) else {
+        return;
+    };
+    let Ok(mut file) = File::create(path) else {
+        return;
+    };
+    let width = data.width.max(0);
+    let height = data.height.max(0);
 
-        if (*img).depth <= 8 {
-            let _ = writeln!(file, "P5\n{} {}\n255", width, height);
-            let pixels = image_api::getpixels(img);
-            if !pixels.is_null() {
-                let bytes = std::slice::from_raw_parts(pixels, (width * height) as usize);
-                let _ = file.write_all(bytes);
-            }
-            return;
+    if data.depth <= 8 {
+        let _ = writeln!(file, "P5\n{} {}\n255", width, height);
+        let pixels = image_api::getpixels(img);
+        if !pixels.is_null() {
+            // Read `width * height` bytes from the owned pixel buffer.
+            let bytes = unsafe { std::slice::from_raw_parts(pixels, (width * height) as usize) };
+            let _ = file.write_all(bytes);
         }
+        return;
+    }
 
-        let _ = writeln!(file, "P6\n{} {}\n255", width, height);
-        for y in 0..height {
-            for x in 0..width {
-                let pixel = image_api::get_image_pixel(img, x, y);
-                let bytes = [
-                    getred(pixel) as u8,
-                    getgreen(pixel) as u8,
-                    getblue(pixel) as u8,
-                ];
-                let _ = file.write_all(&bytes);
-            }
+    let _ = writeln!(file, "P6\n{} {}\n255", width, height);
+    for y in 0..height {
+        for x in 0..width {
+            let pixel = image_api::get_image_pixel(img, x, y);
+            let bytes = [
+                getred(pixel) as u8,
+                getgreen(pixel) as u8,
+                getblue(pixel) as u8,
+            ];
+            let _ = file.write_all(&bytes);
         }
     }
 }
