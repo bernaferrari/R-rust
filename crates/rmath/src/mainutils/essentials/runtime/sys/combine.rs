@@ -3,7 +3,7 @@ use super::*;
 /// Build a fresh argument list for `c.<class>()` with every element passed
 /// through `convert` (GNU's `lapply(list(...), function(e) ...)`) and the
 /// `recursive` formal dropped. Tags are preserved.
-unsafe fn convert_c_args(args: SEXP, rho: SEXP, convert: &dyn Fn(SEXP) -> SEXP) -> SEXP {
+fn convert_c_args(args: SEXP, rho: SEXP, convert: &dyn Fn(SEXP) -> SEXP) -> SEXP {
     unsafe {
         let mut out = R_NilValue();
         let mut tail: SEXP = std::ptr::null_mut();
@@ -42,7 +42,7 @@ unsafe fn convert_c_args(args: SEXP, rho: SEXP, convert: &dyn Fn(SEXP) -> SEXP) 
 
 /// GNU `c.Date(...)`:
 /// `.Date(c(unlist(lapply(list(...), function(e) unclass(as.Date(e))))))`
-pub unsafe fn do_c_Date(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_c_Date(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let converted = convert_c_args(args, rho, &|v| {
             if sexp_has_class(v, "Date") {
@@ -64,7 +64,7 @@ pub unsafe fn do_c_Date(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// `x <- lapply(list(...), function(e) unclass(as.POSIXct(e)))`;
 /// `tz <- if(length(unique(tzones)) == 1L) tzones[[1L]] else NULL`;
 /// `.POSIXct(c(unlist(x)), tz)`
-pub unsafe fn do_c_POSIXct(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_c_POSIXct(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let converted = convert_c_args(args, rho, &|v| {
             if sexp_has_class(v, "POSIXct") {
@@ -168,7 +168,7 @@ fn names_have_label(names: SEXP) -> bool {
 }
 
 /// GNU `c.POSIXlt(...)`.
-pub unsafe fn do_c_POSIXlt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_c_POSIXlt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let mut converted = R_NilValue();
         let mut fracs: Vec<f64> = Vec::new();
@@ -370,12 +370,12 @@ pub unsafe fn do_c_POSIXlt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
 }
 
 /// GNU `is.numeric.Date` / `is.numeric.POSIXt`.
-pub unsafe fn do_is_numeric_Date(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_is_numeric_Date(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     unsafe { Rf_ScalarLogical(FALSE) }
 }
 
 /// GNU `xtfrm.Date(x)` is `as.numeric(x)`.
-pub unsafe fn do_xtfrm_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_xtfrm_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -406,7 +406,7 @@ pub unsafe fn do_xtfrm_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 }
 
 /// GNU `diff.Date(x)`.
-pub unsafe fn do_diff_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_diff_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -462,7 +462,7 @@ pub unsafe fn do_diff_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
 }
 
 /// GNU `.Date(xx, cl = "Date")` — `class<-`(xx, cl).
-pub unsafe fn do_dot_Date(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_dot_Date(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let xx = CAR(args);
         if xx.is_null() || xx == R_NilValue() {

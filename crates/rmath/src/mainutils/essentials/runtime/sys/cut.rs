@@ -1,7 +1,7 @@
 use super::*;
 
 /// GNU `cut.Date(x, breaks)` for week/month/year.
-pub unsafe fn do_cut_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_cut_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -190,7 +190,7 @@ pub unsafe fn do_cut_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 }
 
 /// GNU `cut.POSIXt(x, breaks)` for day/week/month/year/quarter.
-pub unsafe fn do_cut_POSIXt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_cut_POSIXt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {

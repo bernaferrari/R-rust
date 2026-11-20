@@ -1,7 +1,7 @@
 use super::*;
 
 /// GNU `julian.Date(x, origin=as.Date("1970-01-01"))`.
-pub unsafe fn do_julian(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_julian(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -116,7 +116,7 @@ fn difftime_seconds_at(x: SEXP, i: i64) -> f64 {
 }
 
 /// GNU `difftime(time1, time2, units="auto")`.
-pub unsafe fn do_difftime(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_difftime(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let time1 = CAR(args);
         let time2 = CAR(CDR(args));
@@ -219,7 +219,7 @@ pub unsafe fn do_difftime(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 }
 
 /// GNU `as.difftime(tim, units)`.
-pub unsafe fn do_as_difftime(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_as_difftime(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let tim = CAR(args);
         if crate::mainutils::objects::inherits2(tim, c"difftime".as_ptr()) != 0 {
@@ -364,7 +364,7 @@ pub unsafe fn do_as_difftime(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
 }
 
 /// GNU `units(x)` is attr(x, "units").
-pub unsafe fn do_units(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_units(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         crate::sexp::attrib_core::getAttrib(
             CAR(args),

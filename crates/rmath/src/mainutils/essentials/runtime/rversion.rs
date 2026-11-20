@@ -40,7 +40,7 @@ use crate::sexp::symbol::Rf_install;
 // R runtime essentials
 // ---------------------------------------------------------------------------
 
-unsafe fn make_r_version_list(simple_list_class: bool) -> SEXP {
+fn make_r_version_list(simple_list_class: bool) -> SEXP {
     unsafe {
         let fields = crate::mainutils::compatibility_target::FIELDS;
 
@@ -80,23 +80,23 @@ unsafe fn make_r_version_list(simple_list_class: bool) -> SEXP {
 }
 
 /// R's `version` — legacy constant alias for `R.version`.
-pub unsafe fn do_version(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { make_r_version_list(true) }
+pub fn do_version(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+    { make_r_version_list(true) }
 }
 
 /// R's `R.version` — returns a named list with version info.
-pub unsafe fn do_R_version(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { make_r_version_list(true) }
+pub fn do_R_version(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+    { make_r_version_list(true) }
 }
 
 /// R's `R.Version()` — returns the version info list without `simple.list` class.
-pub unsafe fn do_R_Version(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { make_r_version_list(false) }
+pub fn do_R_Version(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+    { make_r_version_list(false) }
 }
 
 /// R's `args(fn)` — returns the formal arguments of a function as a pairlist.
 /// With the body set to NULL.
-pub unsafe fn do_args(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_args(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let fn_arg = CAR(args);
         if fn_arg.is_null() || fn_arg == R_NilValue() {
@@ -146,7 +146,7 @@ pub unsafe fn do_args(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// R's `formals(fn)` — get the formal arguments (parameter list) of a function.
-pub unsafe fn do_formals(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_formals(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let fn_arg = CAR(args);
         if fn_arg.is_null() || fn_arg == R_NilValue() {
@@ -176,13 +176,13 @@ pub unsafe fn do_formals(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 }
 
 /// R's `formals(fun) <- value` — replace formals, keep body and environment.
-pub unsafe fn do_formalsgets(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { replace_closure_part(call, args, ClosurePart::Formals) }
+pub fn do_formalsgets(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    { replace_closure_part(call, args, ClosurePart::Formals) }
 }
 
 /// R's `body(fun) <- value` — replace body, keep formals and environment.
-pub unsafe fn do_bodygets(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { replace_closure_part(call, args, ClosurePart::Body) }
+pub fn do_bodygets(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    { replace_closure_part(call, args, ClosurePart::Body) }
 }
 
 enum ClosurePart {
@@ -190,7 +190,7 @@ enum ClosurePart {
     Body,
 }
 
-unsafe fn replace_closure_part(call: SEXP, args: SEXP, part: ClosurePart) -> SEXP {
+fn replace_closure_part(call: SEXP, args: SEXP, part: ClosurePart) -> SEXP {
     unsafe {
         let fun = CAR(args);
         // GNU `body(fun, envir = environment(fun)) <- value` has an optional
@@ -242,7 +242,7 @@ unsafe fn replace_closure_part(call: SEXP, args: SEXP, part: ClosurePart) -> SEX
     }
 }
 
-unsafe fn list_or_pairlist_to_formals(call: SEXP, value: SEXP) -> SEXP {
+fn list_or_pairlist_to_formals(call: SEXP, value: SEXP) -> SEXP {
     unsafe {
         if value.is_null() || value == R_NilValue() {
             return R_NilValue();
@@ -287,7 +287,7 @@ unsafe fn list_or_pairlist_to_formals(call: SEXP, value: SEXP) -> SEXP {
 }
 
 /// R's `body(fn)` — get the body of a function.
-pub unsafe fn do_body(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_body(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let fn_arg = CAR(args);
         if fn_arg.is_null()
@@ -323,6 +323,6 @@ pub unsafe fn do_body(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R's `environment(fn)` — get the environment of a closure.
 /// Same as do_environment, provided as an alternative name.
-pub unsafe fn do_environment_of(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { do_environment(_call, _op, args, _rho) }
+pub fn do_environment_of(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    { do_environment(_call, _op, args, _rho) }
 }

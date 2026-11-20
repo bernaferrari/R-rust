@@ -41,7 +41,7 @@ unsafe fn r_setlocale(_category: c_int, _locale: *const c_char) -> *mut c_char {
 // ---------------------------------------------------------------------------
 
 /// R's `Sys.localeconv()` — locale formatting conventions.
-pub unsafe fn do_Sys_localeconv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_Sys_localeconv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let names = [
             "decimal_point",
@@ -96,15 +96,15 @@ pub unsafe fn do_Sys_localeconv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) 
 }
 
 /// R's `Sys.getlocale(category)` — get locale (simplified).
-pub unsafe fn do_Sys_getlocale(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_Sys_getlocale(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let category = locale_category_from_arg(CAR(args));
         locale_string_from_libc(category)
     }
 }
 
 /// R's `Sys.setlocale(category, locale)` — set locale (simplified).
-pub unsafe fn do_Sys_setlocale(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_Sys_setlocale(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let allowed = crate::sexp::instance::with_required_current_instance(|inst| {
             (*inst).eval_state.capabilities.allow_environment_mutation
@@ -129,7 +129,7 @@ pub unsafe fn do_Sys_setlocale(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
     }
 }
 
-unsafe fn locale_category_from_arg(category: SEXP) -> c_int {
+fn locale_category_from_arg(category: SEXP) -> c_int {
     unsafe {
         if category.is_null() || category == R_NilValue() {
             return LC_ALL;
@@ -168,7 +168,7 @@ fn locale_category_from_name(name: &str) -> c_int {
     }
 }
 
-unsafe fn locale_string_arg(locale: SEXP) -> Option<CString> {
+fn locale_string_arg(locale: SEXP) -> Option<CString> {
     {
         if locale.is_null() || locale == R_NilValue() {
             return None;
@@ -182,7 +182,7 @@ unsafe fn locale_string_arg(locale: SEXP) -> Option<CString> {
     }
 }
 
-unsafe fn locale_string_from_libc(category: c_int) -> SEXP {
+fn locale_string_from_libc(category: c_int) -> SEXP {
     unsafe {
         let result = r_setlocale(category, std::ptr::null());
         if result.is_null() {

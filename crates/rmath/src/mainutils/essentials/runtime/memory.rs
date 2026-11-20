@@ -48,7 +48,7 @@ use crate::sexp::symbol::Rf_install;
 /// fallback) instead of silently returning success. Stopping `Rprof()` with
 /// an empty filename stays a silent no-op.
 #[cfg(not(target_arch = "wasm32"))]
-pub unsafe fn do_Rprof(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_Rprof(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let result = crate::eval::profiling::do_Rprof(call, op, args, rho);
         crate::sexp::globals::set_R_Visible(FALSE);
@@ -56,7 +56,7 @@ pub unsafe fn do_Rprof(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     }
 }
 #[cfg(target_arch = "wasm32")]
-pub unsafe fn do_Rprof(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_Rprof(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let result = crate::eval::profiling::do_Rprof_wasm(call, op, args, rho);
         crate::sexp::globals::set_R_Visible(FALSE);
@@ -69,7 +69,7 @@ pub unsafe fn do_Rprof(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// catchable R platform-unavailable error as `do_Rprof` (matching upstream's
 /// `error(_("memory profiling is not available on this system"))` fallback).
 #[cfg(not(target_arch = "wasm32"))]
-pub unsafe fn do_Rprofmem(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_Rprofmem(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let result = crate::eval::profiling::do_Rprofmem(call, op, args, rho);
         crate::sexp::globals::set_R_Visible(FALSE);
@@ -77,7 +77,7 @@ pub unsafe fn do_Rprofmem(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     }
 }
 #[cfg(target_arch = "wasm32")]
-pub unsafe fn do_Rprofmem(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_Rprofmem(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let result = crate::eval::profiling::do_Rprofmem_wasm(call, op, args, rho);
         crate::sexp::globals::set_R_Visible(FALSE);
@@ -130,7 +130,7 @@ fn set_real_matrix_cell(data: *mut f64, row: usize, col: usize, rows: usize, val
 /// (max(physical memory, 16 Gb)), so the column usually renders there.
 /// The `limit (Mb)` column is always present (NA where no ceiling applies).
 /// Unlike the old port, the result is *visible* (stock prints it).
-pub unsafe fn do_gc(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_gc(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         crate::mainutils::memory_main::R_gc();
         let snapshot = runtime_memory_snapshot();
@@ -269,12 +269,12 @@ pub unsafe fn do_gc(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// R's `gc.time()` — current GC timing counters.
-pub unsafe fn do_gc_time(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_gc_time(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     unsafe { Rf_allocVector3(SEXPTYPE::REALSXP, 5) }
 }
 
 /// R's `gcinfo(on)` — set session-local GC reporting verbosity.
-pub unsafe fn do_gcinfo(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_gcinfo(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         if args.is_null() || args == R_NilValue() || CAR(args) == R_MissingArg() {
             base_error("argument \"verbose\" is missing, with no default");
@@ -286,7 +286,7 @@ pub unsafe fn do_gcinfo(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 /// R's `gctorture(on = TRUE)` — set session-local GC torture mode.
-pub unsafe fn do_gctorture(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_gctorture(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let on = if args.is_null() || args == R_NilValue() || CAR(args) == R_MissingArg() {
             Rf_ScalarLogical(TRUE)
@@ -302,7 +302,7 @@ pub unsafe fn do_gctorture(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
 }
 
 /// R's `gctorture2(step, wait = 0, inhibit_release = FALSE)` session state.
-pub unsafe fn do_gctorture2(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_gctorture2(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         if args.is_null() || args == R_NilValue() || CAR(args) == R_MissingArg() {
             base_error("argument \"step\" is missing, with no default");
@@ -328,7 +328,7 @@ pub unsafe fn do_gctorture2(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP
 }
 
 /// R's `memory.size(max)` — current or peak arena memory in MB.
-pub unsafe fn do_memory_size(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_memory_size(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let max = crate::mainutils::coerce::asLogical(CAR(args));
         let snapshot = runtime_memory_snapshot();
@@ -342,7 +342,7 @@ pub unsafe fn do_memory_size(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
 }
 
 /// R's `memory.profile()` — session-local object counts by SEXPTYPE class.
-pub unsafe fn do_memory_profile(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_memory_profile(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     const PROFILE_TYPES: [(&str, SEXPTYPE); 24] = [
         ("NULL", SEXPTYPE::NILSXP),
         ("symbol", SEXPTYPE::SYMSXP),
@@ -415,7 +415,7 @@ pub unsafe fn do_memory_profile(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP)
 
 /// R's `object.size(x)` — estimate object size in bytes (simplified).
 /// Returns a numeric scalar with class "object_size".
-pub unsafe fn do_object_size(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_object_size(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {

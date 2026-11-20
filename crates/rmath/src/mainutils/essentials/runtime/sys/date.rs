@@ -1,6 +1,6 @@
 use super::*;
 
-pub(crate) unsafe fn set_single_class(x: SEXP, class_name: &str) {
+pub(crate) fn set_single_class(x: SEXP, class_name: &str) {
     unsafe {
         let class = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
         if class.is_null() {
@@ -16,7 +16,7 @@ pub(crate) unsafe fn set_single_class(x: SEXP, class_name: &str) {
     }
 }
 
-pub(crate) unsafe fn set_posixct_class(x: SEXP, tz: &str) {
+pub(crate) fn set_posixct_class(x: SEXP, tz: &str) {
     unsafe {
         let class = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
         if !class.is_null() {
@@ -55,7 +55,7 @@ pub(crate) fn posixct_tz_arg(args: SEXP) -> String {
 }
 
 /// R's `as.Date(x, origin)` — coerce ISO date strings or day counts to Date.
-pub unsafe fn do_as_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_as_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = arg_by_name_or_position(args, &["x"], 0);
         if x.is_null() || x == R_NilValue() {
@@ -214,7 +214,7 @@ pub unsafe fn do_as_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 }
 
 /// GNU `trunc.Date(x, units)`.
-pub unsafe fn do_trunc_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_trunc_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -243,7 +243,7 @@ pub unsafe fn do_trunc_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 }
 
 /// GNU `round.Date(x, units)`.
-pub unsafe fn do_round_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_round_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {

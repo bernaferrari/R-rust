@@ -40,17 +40,17 @@ use crate::sexp::symbol::Rf_install;
 // ---------------------------------------------------------------------------
 
 /// R's `parallel::mclapply(X, FUN, ...)` — parallel lapply (simplified serial version).
-pub unsafe fn do_mclapply(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe { do_lapply(call, op, args, rho) }
+pub fn do_mclapply(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    { do_lapply(call, op, args, rho) }
 }
 
 /// R's `future.apply::future_lapply(X, FUN, ...)` — future lapply (simplified serial version).
-pub unsafe fn do_future_lapply(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe { do_lapply(call, op, args, rho) }
+pub fn do_future_lapply(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    { do_lapply(call, op, args, rho) }
 }
 
 /// R's `doParallel::foreach(...)` — parallel foreach (simplified serial version).
-pub unsafe fn do_foreach(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_foreach(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
 

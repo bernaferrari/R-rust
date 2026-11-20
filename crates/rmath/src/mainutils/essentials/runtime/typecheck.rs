@@ -41,7 +41,7 @@ use crate::sexp::symbol::Rf_install;
 // ---------------------------------------------------------------------------
 
 /// R's `is.single(x)` — stock R exposes this but errors because single is unimplemented.
-pub unsafe fn do_is_single(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_is_single(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     {
         let _x = CAR(args);
         std::panic::panic_any(crate::sexp::context::RError {
@@ -57,7 +57,7 @@ pub unsafe fn do_is_single(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
 /// mode must be the type name (`"name"` means `"symbol"`). A names attribute
 /// is allowed; every other attribute makes the result false. A missing mode
 /// is `"any"`, which is what `is.vector(x)` and `str()` pass.
-pub unsafe fn do_is_vector(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_is_vector(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         if args.is_null() || args == R_NilValue() {
             return Rf_ScalarLogical(FALSE);
@@ -89,7 +89,7 @@ pub unsafe fn do_is_vector(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
     }
 }
 
-unsafe fn vector_mode_argument(args: SEXP) -> Result<String, &'static str> {
+fn vector_mode_argument(args: SEXP) -> Result<String, &'static str> {
     unsafe {
         let cell = CDR(args);
         if cell.is_null() || cell == R_NilValue() {
@@ -132,7 +132,7 @@ fn is_gnu_vector(t: c_int) -> bool {
         || t == SEXPTYPE::EXPRSXP
 }
 
-unsafe fn is_numeric_mode(x: SEXP) -> bool {
+fn is_numeric_mode(x: SEXP) -> bool {
     unsafe {
         let t = TYPEOF(x);
         if t == SEXPTYPE::INTSXP {
@@ -143,7 +143,7 @@ unsafe fn is_numeric_mode(x: SEXP) -> bool {
     }
 }
 
-unsafe fn sexptype_mode_name(x: SEXP) -> String {
+fn sexptype_mode_name(x: SEXP) -> String {
     unsafe {
         let t = TYPEOF(x);
         if t == SEXPTYPE::OBJSXP {
@@ -162,7 +162,7 @@ unsafe fn sexptype_mode_name(x: SEXP) -> String {
     }
 }
 
-unsafe fn has_disallowed_vector_attribute(x: SEXP) -> bool {
+fn has_disallowed_vector_attribute(x: SEXP) -> bool {
     unsafe {
         let names_sym = crate::sexp::attrib_core::R_NamesSymbol();
         let nil = R_NilValue();
@@ -178,7 +178,7 @@ unsafe fn has_disallowed_vector_attribute(x: SEXP) -> bool {
 }
 
 /// R's `is.scalar(x)` — check if x has length 1 (simplified).
-pub unsafe fn do_is_scalar(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_is_scalar(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -190,7 +190,7 @@ pub unsafe fn do_is_scalar(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
 }
 
 /// R's `is.named(x)` — check if x has names attribute.
-pub unsafe fn do_is_named(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_is_named(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -207,7 +207,7 @@ pub unsafe fn do_is_named(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 /// Missing values dominate the default result just as in GNU R: with
 /// `na.rm = FALSE`, any NA/NaN makes the result `NA`, even if another pair is
 /// visibly out of order.
-pub unsafe fn do_is_unsorted(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_is_unsorted(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -243,7 +243,7 @@ pub unsafe fn do_is_unsorted(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
     }
 }
 
-unsafe fn logical_arg_with_default(
+fn logical_arg_with_default(
     args: SEXP,
     name: &str,
     position: usize,
@@ -283,7 +283,7 @@ fn panic_r_error(message: impl Into<String>) -> ! {
     })
 }
 
-unsafe fn is_unsorted_int_like(x: SEXP, n: R_xlen_t, na_rm: bool, strictly: bool) -> c_int {
+fn is_unsorted_int_like(x: SEXP, n: R_xlen_t, na_rm: bool, strictly: bool) -> c_int {
     unsafe {
         let mut previous: Option<c_int> = None;
         for i in 0..n {
@@ -305,7 +305,7 @@ unsafe fn is_unsorted_int_like(x: SEXP, n: R_xlen_t, na_rm: bool, strictly: bool
     }
 }
 
-unsafe fn is_unsorted_real(x: SEXP, n: R_xlen_t, na_rm: bool, strictly: bool) -> c_int {
+fn is_unsorted_real(x: SEXP, n: R_xlen_t, na_rm: bool, strictly: bool) -> c_int {
     unsafe {
         let mut previous: Option<f64> = None;
         for i in 0..n {
@@ -327,7 +327,7 @@ unsafe fn is_unsorted_real(x: SEXP, n: R_xlen_t, na_rm: bool, strictly: bool) ->
     }
 }
 
-unsafe fn is_unsorted_complex(x: SEXP, n: R_xlen_t, na_rm: bool, strictly: bool) -> c_int {
+fn is_unsorted_complex(x: SEXP, n: R_xlen_t, na_rm: bool, strictly: bool) -> c_int {
     unsafe {
         let mut previous: Option<Rcomplex> = None;
         for i in 0..n {
@@ -349,7 +349,7 @@ unsafe fn is_unsorted_complex(x: SEXP, n: R_xlen_t, na_rm: bool, strictly: bool)
     }
 }
 
-unsafe fn is_unsorted_character(x: SEXP, n: R_xlen_t, na_rm: bool, strictly: bool) -> c_int {
+fn is_unsorted_character(x: SEXP, n: R_xlen_t, na_rm: bool, strictly: bool) -> c_int {
     unsafe {
         let mut previous: Option<String> = None;
         for i in 0..n {
@@ -376,7 +376,7 @@ unsafe fn is_unsorted_character(x: SEXP, n: R_xlen_t, na_rm: bool, strictly: boo
     }
 }
 
-unsafe fn is_unsorted_raw(x: SEXP, n: R_xlen_t, strictly: bool) -> c_int {
+fn is_unsorted_raw(x: SEXP, n: R_xlen_t, strictly: bool) -> c_int {
     unsafe {
         for i in 1..n {
             let prev = *RAW(x).add((i - 1) as usize);
@@ -425,7 +425,7 @@ fn out_of_order_complex(previous: Rcomplex, current: Rcomplex, strictly: bool) -
 }
 
 /// R's `is.loaded(...)` — delegates to `dotcode::do_isloaded` (R_lookupLoadedSymbol).
-pub unsafe fn do_is_loaded(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_is_loaded(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe { crate::mainutils::dotcode::do_isloaded(call, op, args, rho) }
 }
 
@@ -434,7 +434,7 @@ pub unsafe fn do_is_loaded(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
 // ---------------------------------------------------------------------------
 
 /// R's `is.primitive(x)` — `typeof(x)` is `"builtin"` or `"special"`.
-pub unsafe fn do_is_primitive(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_is_primitive(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -451,7 +451,7 @@ pub unsafe fn do_is_primitive(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
 
 /// R's `is.generic(x)` — check if x is a generic function (simplified).
 /// Returns TRUE for CLOSXP with "generic" in name or with useMethod call.
-pub unsafe fn do_is_generic(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_is_generic(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -476,7 +476,7 @@ pub unsafe fn do_is_generic(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 // ---------------------------------------------------------------------------
 
 /// R's `isTRUE(x)` — returns TRUE if x is exactly length-1 TRUE.
-pub unsafe fn do_is_true(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_is_true(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -492,7 +492,7 @@ pub unsafe fn do_is_true(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 }
 
 /// R's `isFALSE(x)` — returns TRUE if x is exactly length-1 FALSE.
-pub unsafe fn do_is_false(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_is_false(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -508,7 +508,7 @@ pub unsafe fn do_is_false(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 }
 
 /// R's `anyNA(x)` — internal generic with a rooted default traversal.
-pub unsafe fn do_any_na(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_any_na(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let owner = crate::sexp::owner::OwnerToken::current().expect("active anyNA owner");
         let pin = owner.pin().expect("live anyNA owner");
@@ -551,7 +551,7 @@ pub unsafe fn do_any_na(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 /// R's `allNA(x)` — returns TRUE if all elements are NA.
-pub unsafe fn do_all_na(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_all_na(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -571,7 +571,7 @@ pub unsafe fn do_all_na(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 }
 
 /// R's `anyNaN(x)` — returns TRUE if any element is NaN.
-pub unsafe fn do_any_nan(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_any_nan(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -593,7 +593,7 @@ pub unsafe fn do_any_nan(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 }
 
 /// R's `allNaN(x)` — returns TRUE if all elements are NaN.
-pub unsafe fn do_all_nan(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_all_nan(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {

@@ -1,7 +1,7 @@
 use super::*;
 
 /// GNU `mean.Date(x)`.
-pub unsafe fn do_mean_Date(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_mean_Date(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let m = crate::eval::arithmetic::do_mean(call, op, args, rho);
         let _m = protect(m);
@@ -11,7 +11,7 @@ pub unsafe fn do_mean_Date(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
 }
 
 /// GNU `mean.POSIXct(x)`.
-pub unsafe fn do_mean_POSIXct(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_mean_POSIXct(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let tz = crate::sexp::attrib_core::getAttrib(
@@ -36,7 +36,7 @@ pub unsafe fn do_mean_POSIXct(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SE
 }
 
 /// GNU `mean.POSIXlt(x)`.
-pub unsafe fn do_mean_POSIXlt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_mean_POSIXlt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let ct = do_as_POSIXct(call, op, Rf_cons(x, R_NilValue()), rho);
@@ -48,7 +48,7 @@ pub unsafe fn do_mean_POSIXlt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SE
 }
 
 /// GNU `diff.POSIXt(x)`.
-pub unsafe fn do_diff_POSIXt(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_diff_POSIXt(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -167,7 +167,7 @@ pub unsafe fn do_diff_POSIXt(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
 }
 
 /// GNU `trunc.POSIXt(x, units)`.
-pub unsafe fn do_trunc_POSIXt(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_trunc_POSIXt(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -224,7 +224,7 @@ pub unsafe fn do_trunc_POSIXt(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
 }
 
 /// GNU `round.POSIXt(x, units)`.
-pub unsafe fn do_round_POSIXt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_round_POSIXt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {

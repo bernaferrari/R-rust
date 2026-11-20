@@ -41,17 +41,17 @@ use crate::sexp::symbol::Rf_install;
 // ---------------------------------------------------------------------------
 
 /// R's `emptyenv()` — returns the empty environment (root of environment chain).
-pub unsafe fn do_emptyenv(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_emptyenv(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     unsafe { crate::sexp::globals::R_EmptyEnv() }
 }
 
 /// R's `baseenv()` — returns the base environment.
-pub unsafe fn do_baseenv(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_baseenv(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     unsafe { crate::sexp::globals::R_BaseEnv() }
 }
 
 /// R's `globalenv()` — returns the global environment.
-pub unsafe fn do_globalenv(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_globalenv(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     unsafe { crate::sexp::globals::R_GlobalEnv() }
 }
 
@@ -63,7 +63,7 @@ pub unsafe fn do_globalenv(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> S
 /// environment `rho`. Sourcing package files with `envir = <namespace>`
 /// therefore nests `new.env()` children under the namespace, matching
 /// GNU R (aaa.R's `capsule` must enclose under namespace:R6).
-pub unsafe fn do_new_env(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_new_env(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let parent_arg = arg_by_name_or_position(args, &["parent"], 1);
         let missing =
@@ -105,7 +105,7 @@ pub unsafe fn do_new_env(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 /// With no argument, returns the current evaluation environment (callers
 /// rely on `environment()` inside `local({...})` blocks to capture the
 /// fresh child env).
-pub unsafe fn do_environment(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_environment(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let fn_arg = CAR(args);
         if fn_arg.is_null() || fn_arg == R_NilValue() {
@@ -135,19 +135,19 @@ pub unsafe fn do_environment(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
 // ---------------------------------------------------------------------------
 
 /// R's `parent.env(env)` — returns the parent environment.
-pub unsafe fn do_parent_env(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { parent_env::dispatch(args, false) }
+pub fn do_parent_env(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    { parent_env::dispatch(args, false) }
 }
 
 /// GNU replacement returns the original operand, including S4 environment data.
-pub unsafe fn do_set_parent_env(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { parent_env::dispatch(args, true) }
+pub fn do_set_parent_env(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    { parent_env::dispatch(args, true) }
 }
 
 mod parent_env;
 
 /// R's `env_name(env)` — returns the name of an environment.
-pub unsafe fn do_env_name(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_env_name(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let mut env = CAR(args);
         if env.is_null() || env == R_NilValue() {
@@ -199,7 +199,7 @@ pub unsafe fn do_env_name(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 }
 
 /// The non-base namespace spec shared by recognition and naming.
-pub(crate) unsafe fn namespace_spec(env: SEXP) -> Option<SEXP> {
+pub(crate) fn namespace_spec(env: SEXP) -> Option<SEXP> {
     unsafe {
         if env.is_null() || TYPEOF(env) != SEXPTYPE::ENVSXP {
             return None;
@@ -217,12 +217,12 @@ pub(crate) unsafe fn namespace_spec(env: SEXP) -> Option<SEXP> {
 }
 
 /// R's `environmentName(env)` — returns the name of an environment.
-pub unsafe fn do_environment_name(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { do_env_name(_call, _op, args, _rho) }
+pub fn do_environment_name(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    { do_env_name(_call, _op, args, _rho) }
 }
 
 /// R-like `is_empty(env)` — check if environment is empty (simplified).
-pub unsafe fn do_is_empty(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_is_empty(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let env = CAR(args);
         if env.is_null() || env == R_NilValue() {
@@ -244,7 +244,7 @@ pub unsafe fn do_is_empty(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 }
 
 /// GNU `.Internal(env.profile(env))`.
-pub unsafe fn do_envprofile(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_envprofile(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let env = CAR(args);
         if env.is_null() || TYPEOF(env) != SEXPTYPE::ENVSXP {
