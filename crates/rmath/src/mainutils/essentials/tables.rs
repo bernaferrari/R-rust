@@ -29,7 +29,7 @@ use crate::sexp::symbol::Rf_install;
 // ---------------------------------------------------------------------------
 
 /// R's `prop.table(x, margin)` — proportion table for numeric vectors and 2D matrices.
-pub unsafe fn do_prop_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_prop_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -118,7 +118,7 @@ pub unsafe fn do_prop_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
     }
 }
 
-unsafe fn numeric_value_at(x: SEXP, t: c_int, index: R_xlen_t) -> f64 {
+fn numeric_value_at(x: SEXP, t: c_int, index: R_xlen_t) -> f64 {
     unsafe {
         if t == SEXPTYPE::INTSXP {
             let value = *INTEGER(x).add(index as usize);
@@ -134,7 +134,7 @@ unsafe fn numeric_value_at(x: SEXP, t: c_int, index: R_xlen_t) -> f64 {
 }
 
 /// R's `addmargins(A)` — add row, column, and grand totals for 2D numeric tables.
-pub unsafe fn do_addmargins(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_addmargins(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -213,8 +213,8 @@ pub unsafe fn do_addmargins(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 }
 
 /// R's `ftable(x)` — flat table.
-pub unsafe fn do_ftable(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_ftable(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
@@ -227,7 +227,7 @@ pub unsafe fn do_ftable(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 }
 
 /// GNU `write.ftable(x, file)` — write values and return `x`.
-pub unsafe fn do_write_ftable(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_write_ftable(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let mut file = R_NilValue();
@@ -275,7 +275,7 @@ pub unsafe fn do_write_ftable(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
 }
 
 /// GNU `read.ftable(file)` — read values written by `write.ftable`.
-pub unsafe fn do_read_ftable(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_read_ftable(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let file = CAR(args);
         if file.is_null() || file == R_NilValue() || TYPEOF(file) != SEXPTYPE::STRSXP {
@@ -305,7 +305,7 @@ pub unsafe fn do_read_ftable(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
     }
 }
 
-unsafe fn ftable_one_dim_table(x: SEXP) -> Option<SEXP> {
+fn ftable_one_dim_table(x: SEXP) -> Option<SEXP> {
     unsafe {
         let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
         if dim.is_null()
@@ -399,7 +399,7 @@ unsafe fn ftable_one_dim_table(x: SEXP) -> Option<SEXP> {
     }
 }
 
-unsafe fn named_empty_list() -> SEXP {
+fn named_empty_list() -> SEXP {
     unsafe {
         let list = Rf_allocVector3(SEXPTYPE::VECSXP, 0);
         if list.is_null() {
@@ -420,7 +420,7 @@ unsafe fn named_empty_list() -> SEXP {
 }
 
 /// R's `xtabs(formula, data)` — cross-tabulation (simplified).
-pub unsafe fn do_xtabs(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_xtabs(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let formula = CAR(args);
         let data = CAR(CDR(args));
@@ -434,7 +434,7 @@ pub unsafe fn do_xtabs(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     }
 }
 
-unsafe fn xtabs_two_way_data_frame(formula: SEXP, data: SEXP) -> Option<SEXP> {
+fn xtabs_two_way_data_frame(formula: SEXP, data: SEXP) -> Option<SEXP> {
     unsafe {
         if formula.is_null() || formula == R_NilValue() || TYPEOF(formula) != SEXPTYPE::LANGSXP {
             return None;
@@ -521,7 +521,7 @@ unsafe fn xtabs_two_way_data_frame(formula: SEXP, data: SEXP) -> Option<SEXP> {
     }
 }
 
-unsafe fn xtabs_one_sided_vector(formula: SEXP, data: SEXP, rho: SEXP) -> Option<SEXP> {
+fn xtabs_one_sided_vector(formula: SEXP, data: SEXP, rho: SEXP) -> Option<SEXP> {
     unsafe {
         if formula.is_null() || formula == R_NilValue() || TYPEOF(formula) != SEXPTYPE::LANGSXP {
             return None;
@@ -626,7 +626,7 @@ unsafe fn xtabs_one_sided_vector(formula: SEXP, data: SEXP, rho: SEXP) -> Option
     }
 }
 
-unsafe fn xtabs_resolve_rhs(rhs: SEXP, data: SEXP, rho: SEXP) -> SEXP {
+fn xtabs_resolve_rhs(rhs: SEXP, data: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         if !data.is_null() && data != R_NilValue() && TYPEOF(rhs) == SEXPTYPE::SYMSXP {
             if let Some(name) = symbol_name(rhs) {
@@ -639,7 +639,7 @@ unsafe fn xtabs_resolve_rhs(rhs: SEXP, data: SEXP, rho: SEXP) -> SEXP {
     }
 }
 
-unsafe fn set_xtabs_two_dim_metadata(
+fn set_xtabs_two_dim_metadata(
     result: SEXP,
     nrow: R_xlen_t,
     ncol: R_xlen_t,
@@ -712,7 +712,7 @@ fn xtabs_supported_atomic(x: SEXP) -> bool {
         || value_type == SEXPTYPE::LGLSXP
 }
 
-pub(crate) unsafe fn list_element_by_name(list: SEXP, name: &str) -> Option<SEXP> {
+pub(crate) fn list_element_by_name(list: SEXP, name: &str) -> Option<SEXP> {
     unsafe {
         if list.is_null() || list == R_NilValue() || TYPEOF(list) != SEXPTYPE::VECSXP {
             return None;
@@ -731,7 +731,7 @@ pub(crate) unsafe fn list_element_by_name(list: SEXP, name: &str) -> Option<SEXP
     }
 }
 
-unsafe fn pairlist_apply_len(x: SEXP) -> R_xlen_t {
+fn pairlist_apply_len(x: SEXP) -> R_xlen_t {
     {
         let mut len = 0;
         let mut current = x;
@@ -743,7 +743,7 @@ unsafe fn pairlist_apply_len(x: SEXP) -> R_xlen_t {
     }
 }
 
-unsafe fn deparse_one_line(expr: SEXP) -> String {
+fn deparse_one_line(expr: SEXP) -> String {
     unsafe {
         let lines = crate::mainutils::deparse::deparse1(
             expr,
@@ -759,7 +759,7 @@ unsafe fn deparse_one_line(expr: SEXP) -> String {
 }
 
 /// R's `aggregate(x, by, FUN)` — aggregate numeric vectors by list columns.
-pub unsafe fn do_aggregate(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_aggregate(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let by = CAR(CDR(args));
@@ -783,7 +783,7 @@ pub unsafe fn do_aggregate(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
 }
 
 /// GNU `aggregate.data.frame(x, by, sum)` — one numeric column, one group.
-pub unsafe fn do_aggregate_df(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_aggregate_df(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let by = CAR(CDR(args));
@@ -925,7 +925,7 @@ struct AggregateGroupValue {
     factor_code: Option<i32>,
 }
 
-unsafe fn aggregate_numeric_by_groups(x: SEXP, by: SEXP, fun: SEXP, call: SEXP) -> Option<SEXP> {
+fn aggregate_numeric_by_groups(x: SEXP, by: SEXP, fun: SEXP, call: SEXP) -> Option<SEXP> {
     unsafe {
         let summary = aggregate_summary_fun(fun, call)?;
         let input_columns = aggregate_input_columns(x)?;
@@ -1063,7 +1063,7 @@ unsafe fn aggregate_numeric_by_groups(x: SEXP, by: SEXP, fun: SEXP, call: SEXP) 
     }
 }
 
-unsafe fn aggregate_input_columns(x: SEXP) -> Option<Vec<AggregateInputColumn>> {
+fn aggregate_input_columns(x: SEXP) -> Option<Vec<AggregateInputColumn>> {
     unsafe {
         match TYPEOF(x) {
             t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::REALSXP => {
@@ -1132,7 +1132,7 @@ fn aggregate_input_row_count(columns: &[AggregateInputColumn]) -> Option<R_xlen_
     }
 }
 
-pub(crate) unsafe fn aggregate_factor_levels(group: SEXP) -> Option<Vec<String>> {
+pub(crate) fn aggregate_factor_levels(group: SEXP) -> Option<Vec<String>> {
     unsafe {
         if TYPEOF(group) != SEXPTYPE::INTSXP {
             return None;
@@ -1150,7 +1150,7 @@ pub(crate) unsafe fn aggregate_factor_levels(group: SEXP) -> Option<Vec<String>>
     }
 }
 
-pub(crate) unsafe fn set_factor_attrs(column: SEXP, levels: &[String]) {
+pub(crate) fn set_factor_attrs(column: SEXP, levels: &[String]) {
     unsafe {
         let levels_sexp = Rf_allocVector3(SEXPTYPE::STRSXP, levels.len() as R_xlen_t);
         if levels_sexp.is_null() {
@@ -1182,7 +1182,7 @@ pub(crate) unsafe fn set_factor_attrs(column: SEXP, levels: &[String]) {
     }
 }
 
-unsafe fn aggregate_column_value(column: &AggregateInputColumn, i: R_xlen_t) -> f64 {
+fn aggregate_column_value(column: &AggregateInputColumn, i: R_xlen_t) -> f64 {
     unsafe {
         if column.data_type == SEXPTYPE::REALSXP {
             *REAL(column.data).add(i as usize)
@@ -1197,8 +1197,8 @@ unsafe fn aggregate_column_value(column: &AggregateInputColumn, i: R_xlen_t) -> 
     }
 }
 
-pub(crate) unsafe fn aggregate_summary_fun(fun: SEXP, call: SEXP) -> Option<AggregateSummary> {
-    unsafe {
+pub(crate) fn aggregate_summary_fun(fun: SEXP, call: SEXP) -> Option<AggregateSummary> {
+    {
         match call_fun_name(call).as_deref() {
             Some("median") => return Some(AggregateSummary::Median),
             Some("sd") => return Some(AggregateSummary::Sd),
@@ -1282,8 +1282,8 @@ fn sample_variance_value(values: &[f64]) -> f64 {
         / (values.len() - 1) as f64
 }
 
-unsafe fn call_fun_name(call: SEXP) -> Option<String> {
-    unsafe {
+fn call_fun_name(call: SEXP) -> Option<String> {
+    {
         if call.is_null() || call == R_NilValue() || TYPEOF(call) != SEXPTYPE::LANGSXP {
             return None;
         }
@@ -1292,7 +1292,7 @@ unsafe fn call_fun_name(call: SEXP) -> Option<String> {
     }
 }
 
-unsafe fn aggregate_group_value(
+fn aggregate_group_value(
     group: &AggregateByColumn,
     i: R_xlen_t,
 ) -> Option<AggregateGroupValue> {
@@ -1336,7 +1336,7 @@ unsafe fn aggregate_group_value(
 }
 
 /// R's `ave(x, ...)` — group averages for numeric vectors using the default mean.
-pub unsafe fn do_ave(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_ave(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -1456,7 +1456,7 @@ pub unsafe fn do_ave(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// GNU `by(data, INDICES, FUN, ...)` — dispatch to the verbatim base
 /// closure (tapply-based grouping with by.data.frame/by.default methods
 /// and print.by) bound from gnu_by.R.
-pub unsafe fn do_by(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_by(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let fun = crate::sexp::envir::R_findVarInFrame(
             crate::sexp::globals::R_BaseEnv(),
@@ -1486,8 +1486,8 @@ pub unsafe fn do_by(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 /// R's `interaction(...)` — factor interaction (simplified).
-pub unsafe fn do_interaction(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_interaction(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let mut inputs = Vec::new();
         let mut cursor = args;
         while !cursor.is_null() && cursor != R_NilValue() {
@@ -1513,7 +1513,7 @@ pub unsafe fn do_interaction(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
     }
 }
 
-unsafe fn interaction_factor(inputs: &[SEXP], sep: &str) -> SEXP {
+fn interaction_factor(inputs: &[SEXP], sep: &str) -> SEXP {
     unsafe {
         let n = inputs.iter().map(|arg| XLENGTH(*arg)).max().unwrap_or(0);
         if n == 0 {
@@ -1566,8 +1566,8 @@ unsafe fn interaction_factor(inputs: &[SEXP], sep: &str) -> SEXP {
     }
 }
 
-unsafe fn interaction_levels_for_arg(arg: SEXP) -> Vec<String> {
-    unsafe {
+fn interaction_levels_for_arg(arg: SEXP) -> Vec<String> {
+    {
         if let Some(levels) = aggregate_factor_levels(arg) {
             return levels;
         }
@@ -1599,7 +1599,7 @@ fn interaction_cartesian_levels(levels: &[Vec<String>], sep: &str) -> Vec<String
     labels
 }
 
-unsafe fn interaction_value_at(arg: SEXP, i: R_xlen_t) -> Option<String> {
+fn interaction_value_at(arg: SEXP, i: R_xlen_t) -> Option<String> {
     unsafe {
         let arg_type = TYPEOF(arg);
         if arg_type == SEXPTYPE::STRSXP {
@@ -1632,7 +1632,7 @@ unsafe fn interaction_value_at(arg: SEXP, i: R_xlen_t) -> Option<String> {
 }
 
 /// R's `relevel(x, ref)` — relevel factor (simplified).
-pub unsafe fn do_relevel(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_relevel(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         // S3 dispatch rewrites the generic's call head to the method name
         // (relevel -> relevel.factor); stock R attributes errors raised
@@ -1646,7 +1646,7 @@ pub unsafe fn do_relevel(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     }
 }
 
-unsafe fn relevel_impl(args: SEXP) -> SEXP {
+fn relevel_impl(args: SEXP) -> SEXP {
     unsafe {
         let ref_arg = CAR(CDR(args));
         let x = CAR(args);
@@ -1731,7 +1731,7 @@ unsafe fn relevel_impl(args: SEXP) -> SEXP {
 }
 
 /// R's `droplevels(x)` — remove unused levels from a factor.
-pub unsafe fn do_droplevels(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_droplevels(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = arg_by_name_or_position(args, &["x"], 0);
         if inherits_class(x, "data.frame") && TYPEOF(x) == SEXPTYPE::VECSXP {
@@ -1804,7 +1804,7 @@ pub unsafe fn do_droplevels(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 
 /// GNU `factor(x, levels, labels, exclude = NA, ...)`.
 /// `exclude = ""` keeps missing values as an explicit NA level.
-pub unsafe fn do_factor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_factor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = arg_by_name_or_position(args, &["x"], 0);
         if x.is_null() || x == R_NilValue() {
@@ -1982,7 +1982,7 @@ fn apply_factor_exclude(levels: &mut Vec<Option<String>>, args: SEXP) {
 /// NULL means the formal was omitted (default exclude = NA).
 /// R_NilValue is the explicit `exclude = NULL` keep-all case.
 fn factor_exclude_arg(args: SEXP) -> SEXP {
-    unsafe {
+    {
         let mut current = args;
         let mut positional = 0;
         let mut fourth = std::ptr::null_mut();
@@ -2007,8 +2007,8 @@ fn factor_exclude_arg(args: SEXP) -> SEXP {
     }
 }
 
-pub unsafe fn do_ordered(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_ordered(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    {
         let result = do_factor(call, op, args, rho);
         if !result.is_null() && result != R_NilValue() && TYPEOF(result) == SEXPTYPE::INTSXP {
             set_ordered_factor_class(result);
@@ -2018,8 +2018,8 @@ pub unsafe fn do_ordered(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 /// R's `as.factor(x)` — factors are returned unchanged; other atomic values use factor().
-pub unsafe fn do_as_factor(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_as_factor(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    {
         let x = arg_by_name_or_position(args, &["x"], 0);
         if aggregate_factor_levels(x).is_some() {
             x
@@ -2030,8 +2030,8 @@ pub unsafe fn do_as_factor(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
 }
 
 /// R's `as.ordered(x)` — coerce to an ordered factor.
-pub unsafe fn do_as_ordered(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_as_ordered(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    {
         let x = arg_by_name_or_position(args, &["x"], 0);
         if inherits_class(x, "ordered") {
             return x;
@@ -2043,7 +2043,7 @@ pub unsafe fn do_as_ordered(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP
     }
 }
 
-unsafe fn ordered_from_factor(x: SEXP, levels: &[String]) -> SEXP {
+fn ordered_from_factor(x: SEXP, levels: &[String]) -> SEXP {
     unsafe {
         let mut used = BTreeSet::new();
         for i in 0..XLENGTH(x) {
@@ -2096,7 +2096,7 @@ unsafe fn ordered_from_factor(x: SEXP, levels: &[String]) -> SEXP {
 }
 
 /// R's `gl(n, k, length = n*k, labels = seq_len(n), ordered = FALSE)`.
-pub unsafe fn do_gl(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_gl(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let n_arg = arg_by_name_or_position(args, &["n"], 0);
         let k_arg = arg_by_name_or_position(args, &["k"], 1);
@@ -2162,7 +2162,7 @@ pub unsafe fn do_gl(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
-unsafe fn gl_nonnegative_count(arg: SEXP, error_message: &str) -> R_xlen_t {
+fn gl_nonnegative_count(arg: SEXP, error_message: &str) -> R_xlen_t {
     unsafe {
         let value = if arg.is_null() || arg == R_NilValue() || XLENGTH(arg) == 0 {
             NA_REAL
@@ -2187,7 +2187,7 @@ unsafe fn gl_nonnegative_count(arg: SEXP, error_message: &str) -> R_xlen_t {
     }
 }
 
-unsafe fn set_ordered_factor_class(x: SEXP) {
+fn set_ordered_factor_class(x: SEXP) {
     unsafe {
         let class = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
         if class.is_null() {
@@ -2201,7 +2201,7 @@ unsafe fn set_ordered_factor_class(x: SEXP) {
 }
 
 /// R's `addNA(x, ifany = FALSE)` — turn missing values into an explicit factor level.
-pub unsafe fn do_addNA(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_addNA(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = arg_by_name_or_position(args, &["x"], 0);
         if x.is_null() || x == R_NilValue() {
@@ -2263,7 +2263,7 @@ pub unsafe fn do_addNA(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
-unsafe fn set_factor_attrs_with_optional_levels(column: SEXP, levels: &[Option<String>]) {
+fn set_factor_attrs_with_optional_levels(column: SEXP, levels: &[Option<String>]) {
     unsafe {
         let levels_sexp = Rf_allocVector3(SEXPTYPE::STRSXP, levels.len() as R_xlen_t);
         if levels_sexp.is_null() {
@@ -2339,7 +2339,7 @@ fn explicit_factor_levels(levels_arg: SEXP) -> Vec<String> {
 }
 
 /// R's `is.factor(x)` — check if factor (simplified: checks class attribute).
-pub unsafe fn do_is_factor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_is_factor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -2367,7 +2367,7 @@ pub unsafe fn do_is_factor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
 }
 
 /// R's `is.ordered(x)` — check if ordered factor (simplified).
-pub unsafe fn do_is_ordered(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_is_ordered(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -2394,7 +2394,7 @@ pub unsafe fn do_is_ordered(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 }
 
 /// R's `levels(x)` — factor levels (simplified).
-pub unsafe fn do_levels(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_levels(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -2410,7 +2410,7 @@ pub unsafe fn do_levels(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 }
 
 /// R's `levels(x) <- value` — replace factor levels or the raw levels attribute.
-pub unsafe fn do_levels_set(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_levels_set(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         crate::mainutils::seq::check1arg(args, call, c"x".as_ptr());
         let mut ans = R_NilValue();
@@ -2449,7 +2449,7 @@ pub unsafe fn do_levels_set(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP
     }
 }
 
-unsafe fn replace_factor_levels(x: SEXP, value: SEXP) -> SEXP {
+fn replace_factor_levels(x: SEXP, value: SEXP) -> SEXP {
     unsafe {
         let old_levels = string_vector_values(crate::sexp::attrib_core::getAttrib(
             x,
@@ -2512,7 +2512,7 @@ unsafe fn replace_factor_levels(x: SEXP, value: SEXP) -> SEXP {
     }
 }
 
-unsafe fn factor_levels_from_named_list(value: SEXP, old_levels: &[String]) -> Vec<Option<String>> {
+fn factor_levels_from_named_list(value: SEXP, old_levels: &[String]) -> Vec<Option<String>> {
     unsafe {
         let names =
             crate::sexp::attrib_core::getAttrib(value, crate::sexp::attrib_core::R_NamesSymbol());
@@ -2554,7 +2554,7 @@ fn match_string(values: &[String], needle: &str) -> Option<usize> {
     values.iter().position(|value| value == needle)
 }
 
-pub(crate) unsafe fn inherits_class(x: SEXP, class_name: &str) -> bool {
+pub(crate) fn inherits_class(x: SEXP, class_name: &str) -> bool {
     unsafe {
         let class =
             crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_ClassSymbol());
@@ -2566,7 +2566,7 @@ pub(crate) unsafe fn inherits_class(x: SEXP, class_name: &str) -> bool {
 }
 
 /// R's `nlevels(x)` — number of levels (simplified).
-pub unsafe fn do_nlevels(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_nlevels(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {

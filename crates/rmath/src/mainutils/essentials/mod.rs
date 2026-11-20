@@ -90,7 +90,7 @@ fn is_rport_private_base_name(name: &str) -> bool {
 }
 
 /// Register essential builtins in the base environment.
-pub unsafe fn register_essentials_builtins(env: SEXP) {
+pub fn register_essentials_builtins(env: SEXP) {
     unsafe {
         use crate::sexp::accessors::SET_FRAME;
 

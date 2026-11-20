@@ -5,7 +5,7 @@ use crate::sexp::{
     owner::OwnerToken,
 };
 
-pub(super) unsafe fn evaluate(call: SEXP, op: SEXP, args: SEXP, rho: SEXP, minimum: bool) -> SEXP {
+pub(super) fn evaluate(call: SEXP, op: SEXP, args: SEXP, rho: SEXP, minimum: bool) -> SEXP {
     unsafe {
         let owner = OwnerToken::current().expect("active extrema owner");
         let pin = owner.pin().expect("live extrema owner");
@@ -128,7 +128,7 @@ pub(super) unsafe fn evaluate(call: SEXP, op: SEXP, args: SEXP, rho: SEXP, minim
     }
 }
 
-unsafe fn is_data_frame(
+fn is_data_frame(
     factory: &SessionNodeFactory<'_>,
     input: &Sexp<'_>,
     check: impl Fn(),

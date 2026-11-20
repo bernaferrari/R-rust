@@ -14,7 +14,7 @@ struct Inputs<'s> {
     values: Vec<Input<'s>>,
     _ticket: WorkspaceReservation,
 }
-unsafe fn flag(cell: &Sexp<'_>) -> bool {
+fn flag(cell: &Sexp<'_>) -> bool {
     unsafe {
         let tag = cell.try_tag().expect("parallel extrema argument tag");
         if tag.is_nil() {
@@ -46,7 +46,7 @@ fn valid(kind: SEXPTYPE) -> bool {
     .contains(&kind)
 }
 
-pub(super) unsafe fn numeric(
+pub(super) fn numeric(
     call: SEXP,
     op: SEXP,
     args: SEXP,
@@ -303,7 +303,7 @@ fn read(input: &Input<'_>, index: i64) -> f64 {
         f64::from(value)
     }
 }
-unsafe fn shape(f: &SessionNodeFactory<'_>, input: &Sexp<'_>, result: &Sexp<'_>, check: impl Fn()) {
+fn shape(f: &SessionNodeFactory<'_>, input: &Sexp<'_>, result: &Sexp<'_>, check: impl Fn()) {
     unsafe {
         use crate::sexp::attrib_core::{
             R_DimNamesSymbol, R_DimSymbol, R_NamesSymbol, getAttrib, setAttrib,

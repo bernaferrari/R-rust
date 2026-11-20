@@ -28,7 +28,7 @@ use crate::sexp::symbol::Rf_install;
 // ---------------------------------------------------------------------------
 
 /// bind.c AnswerType()/ListAnswer() classify a plain pairlist cell-wise.
-unsafe fn is_bind_pairlist(t: c_int) -> bool {
+fn is_bind_pairlist(t: c_int) -> bool {
     t == SEXPTYPE::LISTSXP
 }
 
@@ -37,7 +37,7 @@ unsafe fn is_bind_pairlist(t: c_int) -> bool {
 /// as exactly one element and forces a list result.  Using the raw
 /// XLENGTH() on these is undefined (their length field overlaps the
 /// pairlist pointers, which used to yield astronomic allocations).
-unsafe fn is_bind_single_object(t: c_int) -> bool {
+fn is_bind_single_object(t: c_int) -> bool {
     t == SEXPTYPE::LANGSXP
         || t == SEXPTYPE::ENVSXP
         || t == SEXPTYPE::DOTSXP
@@ -52,8 +52,8 @@ unsafe fn is_bind_single_object(t: c_int) -> bool {
 }
 
 /// Number of list slots `x` occupies in a c() result.
-unsafe fn bind_length(x: SEXP, t: c_int) -> R_xlen_t {
-    unsafe {
+fn bind_length(x: SEXP, t: c_int) -> R_xlen_t {
+    {
         if is_bind_pairlist(t) {
             let mut cell = x;
             let mut n: R_xlen_t = 0;
@@ -71,7 +71,7 @@ unsafe fn bind_length(x: SEXP, t: c_int) -> R_xlen_t {
 }
 
 /// The i-th list slot of `x` under c() binding semantics.
-unsafe fn bind_element(x: SEXP, t: c_int, i: R_xlen_t) -> SEXP {
+fn bind_element(x: SEXP, t: c_int, i: R_xlen_t) -> SEXP {
     unsafe {
         if is_bind_pairlist(t) {
             let mut cell = x;
@@ -92,7 +92,7 @@ unsafe fn bind_element(x: SEXP, t: c_int, i: R_xlen_t) -> SEXP {
 }
 
 /// bind.c HasNames() for a pairlist: any non-NULL cell TAG.
-unsafe fn bind_pairlist_has_tags(x: SEXP) -> bool {
+fn bind_pairlist_has_tags(x: SEXP) -> bool {
     {
         let mut cell = x;
         while !cell.is_null() && cell != R_NilValue() {
@@ -107,7 +107,7 @@ unsafe fn bind_pairlist_has_tags(x: SEXP) -> bool {
 }
 
 /// bind.c ListAnswer / NewExtractNames: printname of the i-th pairlist TAG.
-unsafe fn bind_pairlist_cell_name(x: SEXP, i: R_xlen_t) -> SEXP {
+fn bind_pairlist_cell_name(x: SEXP, i: R_xlen_t) -> SEXP {
     {
         let mut cell = x;
         let mut k: R_xlen_t = 0;
@@ -131,7 +131,7 @@ unsafe fn bind_pairlist_cell_name(x: SEXP, i: R_xlen_t) -> SEXP {
 ///
 /// Coercion rules: STRSXP > CPLXSXP > REALSXP > INTSXP > LGLSXP.
 /// If any arg is STRSXP, result is STRSXP.
-pub unsafe fn do_c(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_c(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let args = crate::mainutils::bind::R_listCompact(args, true);
         let mut ans = R_NilValue();
@@ -479,7 +479,7 @@ pub unsafe fn do_c(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// GNU bind.c `NewName`: tag, tag.elem, or tag1/tag2 when a tagged
 /// argument expands to more than one element.
-unsafe fn c_arg_elem_name(tag: SEXP, arg_names: SEXP, i: R_xlen_t, n: R_xlen_t) -> SEXP {
+fn c_arg_elem_name(tag: SEXP, arg_names: SEXP, i: R_xlen_t, n: R_xlen_t) -> SEXP {
     unsafe {
         let own = if !arg_names.is_null()
             && arg_names != R_NilValue()
@@ -534,8 +534,8 @@ unsafe fn c_arg_elem_name(tag: SEXP, arg_names: SEXP, i: R_xlen_t, n: R_xlen_t) 
 // ---------------------------------------------------------------------------
 
 /// GNU's internal integer-counting kernel; public validation stays in R.
-pub unsafe fn do_tabulate(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe { super::tabulate::evaluate(call, op, args, rho) }
+pub fn do_tabulate(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    { super::tabulate::evaluate(call, op, args, rho) }
 }
 
 // ---------------------------------------------------------------------------
@@ -543,16 +543,16 @@ pub unsafe fn do_tabulate(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// R's `pmin(...)` — parallel minimum across vectors (element-wise min with recycling).
-pub unsafe fn do_pmin(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_pmin(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    {
         super::parallel_extrema::numeric(call, op, args, rho, true, false)
             .unwrap_or_else(|| do_pminmax(args, true))
     }
 }
 
 /// R's `pmax(...)` — parallel maximum across vectors (element-wise max with recycling).
-pub unsafe fn do_pmax(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_pmax(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    {
         super::parallel_extrema::numeric(call, op, args, rho, false, false)
             .unwrap_or_else(|| do_pminmax(args, false))
     }
@@ -561,23 +561,23 @@ pub unsafe fn do_pmax(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// `.Internal(pmax(na.rm, ...))` wrapper: the GNU internal contract passes
 /// the `na.rm` flag as the first, untagged argument. The numeric kernel
 /// reads it directly; legacy character/classed paths still use retagging.
-pub unsafe fn do_pmax_internal(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_pmax_internal(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    {
         super::parallel_extrema::numeric(call, op, args, rho, false, true)
             .unwrap_or_else(|| do_pminmax(retag_internal_narm(args), false))
     }
 }
 
 /// `.Internal(pmin(na.rm, ...))` wrapper; see `do_pmax_internal`.
-pub unsafe fn do_pmin_internal(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_pmin_internal(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    {
         super::parallel_extrema::numeric(call, op, args, rho, true, true)
             .unwrap_or_else(|| do_pminmax(retag_internal_narm(args), true))
     }
 }
 
 /// Tag the leading `na.rm` flag of a GNU internal pmin/pmax argument list.
-unsafe fn retag_internal_narm(args: SEXP) -> SEXP {
+fn retag_internal_narm(args: SEXP) -> SEXP {
     unsafe {
         if !args.is_null() && args != R_NilValue() {
             let cstring = std::ffi::CString::new("na.rm").unwrap_or_default();
@@ -587,7 +587,7 @@ unsafe fn retag_internal_narm(args: SEXP) -> SEXP {
     }
 }
 
-unsafe fn do_pminmax(args: SEXP, is_min: bool) -> SEXP {
+fn do_pminmax(args: SEXP, is_min: bool) -> SEXP {
     unsafe {
         let na_rm = named_logical_arg(args, "na.rm").unwrap_or(false);
         let mut arg_vecs: Vec<SEXP> = Vec::new();
@@ -726,7 +726,7 @@ fn difftime_unit_seconds(x: SEXP) -> f64 {
     }
 }
 
-unsafe fn pminmax_character(
+fn pminmax_character(
     arg_vecs: &[SEXP],
     max_len: R_xlen_t,
     is_min: bool,
@@ -779,7 +779,7 @@ unsafe fn pminmax_character(
         result
     }
 }
-unsafe fn pminmax_factor_result(
+fn pminmax_factor_result(
     arg_vecs: &[SEXP],
     max_len: R_xlen_t,
     is_min: bool,
@@ -865,7 +865,7 @@ unsafe fn pminmax_factor_result(
 }
 /// GNU `pmin`/`pmax` copy the first argument's dimensions onto a result of
 /// the same length (`mostattributes<-`).
-unsafe fn copy_pminmax_shape(first: SEXP, result: SEXP, max_len: R_xlen_t) {
+fn copy_pminmax_shape(first: SEXP, result: SEXP, max_len: R_xlen_t) {
     unsafe {
         if XLENGTH(first) != max_len {
             return;
@@ -900,13 +900,13 @@ unsafe fn copy_pminmax_shape(first: SEXP, result: SEXP, max_len: R_xlen_t) {
 }
 
 /// GNU's first minimum index, including selected names and object transforms.
-pub unsafe fn do_which_min(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe { super::which_extrema::evaluate(call, op, args, rho, true) }
+pub fn do_which_min(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    { super::which_extrema::evaluate(call, op, args, rho, true) }
 }
 
 /// GNU's first maximum index, including selected names and object transforms.
-pub unsafe fn do_which_max(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe { super::which_extrema::evaluate(call, op, args, rho, false) }
+pub fn do_which_max(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    { super::which_extrema::evaluate(call, op, args, rho, false) }
 }
 
 // ---------------------------------------------------------------------------
@@ -914,7 +914,7 @@ pub unsafe fn do_which_max(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
 // ---------------------------------------------------------------------------
 
 /// R's `append(x, values, after)` — insert values into vector at position.
-pub unsafe fn do_append(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_append(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let values = CAR(CDR(args));
@@ -1073,7 +1073,7 @@ pub unsafe fn do_append(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 ///
 /// A missing argument arrives as Nil, same as an explicit NULL, so Nil keeps
 /// the default 6. The closure path rejects NULL.
-unsafe fn head_tail_n(n_arg: SEXP) -> i64 {
+fn head_tail_n(n_arg: SEXP) -> i64 {
     unsafe {
         if n_arg.is_null() || n_arg == R_NilValue() {
             return 6;
@@ -1106,7 +1106,7 @@ unsafe fn head_tail_n(n_arg: SEXP) -> i64 {
     }
 }
 
-unsafe fn head_tail_n_all_missing(n_arg: SEXP, kind: c_int, nlen: R_xlen_t) -> bool {
+fn head_tail_n_all_missing(n_arg: SEXP, kind: c_int, nlen: R_xlen_t) -> bool {
     unsafe {
         if kind == SEXPTYPE::LGLSXP || kind == SEXPTYPE::INTSXP {
             let data = INTEGER(n_arg);
@@ -1180,7 +1180,7 @@ unsafe fn head_tail_n_all_missing(n_arg: SEXP, kind: c_int, nlen: R_xlen_t) -> b
 }
 
 /// R's `head(x, n=6)` — first n elements.
-pub unsafe fn do_head(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_head(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let n_arg = CAR(CDR(args));
@@ -1213,7 +1213,7 @@ pub unsafe fn do_head(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// R's `tail(x, n=6)` — last n elements.
-pub unsafe fn do_tail(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_tail(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let n_arg = CAR(CDR(args));
@@ -1275,7 +1275,7 @@ pub(crate) fn copy_vector_element(
     }
 }
 
-unsafe fn slice_names_attribute(x: SEXP, result: SEXP, start: R_xlen_t, len: R_xlen_t) {
+fn slice_names_attribute(x: SEXP, result: SEXP, start: R_xlen_t, len: R_xlen_t) {
     unsafe {
         let names =
             crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
@@ -1299,7 +1299,7 @@ unsafe fn slice_names_attribute(x: SEXP, result: SEXP, start: R_xlen_t, len: R_x
 }
 
 /// R's `x[i]` — subset extraction (simplified: integer index vector).
-pub unsafe fn do_subset(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_subset(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let i = CAR(CDR(args));
@@ -1335,7 +1335,7 @@ pub unsafe fn do_subset(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 // Type checking: is.finite, is.infinite, is.nan, is.matrix, is.array, is.list
 // ---------------------------------------------------------------------------
 
-pub(super) unsafe fn dispatch_is(
+pub(super) fn dispatch_is(
     call: SEXP,
     op: SEXP,
     args: SEXP,
@@ -1363,8 +1363,8 @@ pub(super) unsafe fn dispatch_is(
 }
 
 /// GNU `is.finite` with checked element reads and original-owner roots.
-pub unsafe fn do_is_finite(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_is_finite(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    {
         super::finite_predicates::evaluate(
             call,
             op,
@@ -1376,8 +1376,8 @@ pub unsafe fn do_is_finite(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
 }
 
 /// GNU `is.infinite` with checked element reads and original-owner roots.
-pub unsafe fn do_is_infinite(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_is_infinite(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    {
         super::finite_predicates::evaluate(
             call,
             op,
@@ -1389,8 +1389,8 @@ pub unsafe fn do_is_infinite(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
 }
 
 /// GNU `is.nan` with checked element reads and original-owner roots.
-pub unsafe fn do_is_nan(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_is_nan(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    {
         super::finite_predicates::evaluate(
             call,
             op,
@@ -1402,7 +1402,7 @@ pub unsafe fn do_is_nan(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 /// R's `is.matrix(x)` — check if x has a dim attribute with exactly 2 dimensions.
-pub unsafe fn do_is_matrix(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_is_matrix(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let mut ans = R_NilValue();
         if crate::eval::dispatch::DispatchOrEval(
@@ -1430,7 +1430,7 @@ pub unsafe fn do_is_matrix(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
 }
 
 /// R's `is.array(x)` — check if x has a dim attribute.
-pub unsafe fn do_is_array(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_is_array(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let mut ans = R_NilValue();
         if crate::eval::dispatch::DispatchOrEval(
@@ -1460,7 +1460,7 @@ pub unsafe fn do_is_array(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 /// R's `is.list(x)` — check if x is a VECSXP (list).
-pub unsafe fn do_is_list(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_is_list(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -1476,7 +1476,7 @@ pub unsafe fn do_is_list(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
     }
 }
 
-unsafe fn is_data_frame(x: SEXP) -> bool {
+fn is_data_frame(x: SEXP) -> bool {
     unsafe {
         if x.is_null() || TYPEOF(x) != SEXPTYPE::VECSXP {
             return false;
@@ -1495,7 +1495,7 @@ unsafe fn is_data_frame(x: SEXP) -> bool {
     }
 }
 
-unsafe fn pminmax_data_frame(arg_vecs: &[SEXP], is_min: bool) -> Option<SEXP> {
+fn pminmax_data_frame(arg_vecs: &[SEXP], is_min: bool) -> Option<SEXP> {
     unsafe {
         let frame = arg_vecs.iter().copied().find(|arg| is_data_frame(*arg))?;
         let ncol = XLENGTH(frame);
@@ -1552,7 +1552,7 @@ unsafe fn pminmax_data_frame(arg_vecs: &[SEXP], is_min: bool) -> Option<SEXP> {
     }
 }
 
-unsafe fn pminmax_frame_column(
+fn pminmax_frame_column(
     column: SEXP,
     arg_vecs: &[SEXP],
     _index: R_xlen_t,
@@ -1678,7 +1678,7 @@ mod head_tail_n_tests {
         }
     }
 
-    unsafe fn letters_vector() -> SEXP {
+    fn letters_vector() -> SEXP {
         unsafe {
             let out = Rf_allocVector3(SEXPTYPE::STRSXP, 26);
             let _guard = protect(out);
@@ -1691,7 +1691,7 @@ mod head_tail_n_tests {
         }
     }
 
-    unsafe fn direct_report() -> String {
+    fn direct_report() -> String {
         unsafe {
             let letters = letters_vector();
             let _letters = protect(letters);
@@ -1715,7 +1715,7 @@ mod head_tail_n_tests {
 
     // SAFETY: callers activate the original managed fixture and keep returned
     // raw values live before any subsequent allocating fixture operation.
-    unsafe fn scalar_complex(re: f64, im: f64) -> SEXP {
+    fn scalar_complex(re: f64, im: f64) -> SEXP {
         unsafe {
             let z = Rf_allocVector3(SEXPTYPE::CPLXSXP, 1);
             let data = COMPLEX(z);
@@ -1725,7 +1725,7 @@ mod head_tail_n_tests {
         }
     }
 
-    unsafe fn classed(x: SEXP, classes: &[&str]) -> SEXP {
+    fn classed(x: SEXP, classes: &[&str]) -> SEXP {
         unsafe {
             let input = crate::sexp::context::own_control_value(x);
             let class = Rf_allocVector3(SEXPTYPE::STRSXP, classes.len() as i64);
@@ -1743,7 +1743,7 @@ mod head_tail_n_tests {
         }
     }
 
-    unsafe fn list_of(elts: &[SEXP]) -> SEXP {
+    fn list_of(elts: &[SEXP]) -> SEXP {
         unsafe {
             let inputs: Vec<_> = elts
                 .iter()
@@ -1758,7 +1758,7 @@ mod head_tail_n_tests {
     }
 
     /// GNU R 4.6.1 `utils:::.checkHT` on the head/tail builtins.
-    unsafe fn builtin_missing_and_class_report() -> String {
+    fn builtin_missing_and_class_report() -> String {
         unsafe {
             let letters = letters_vector();
             let _letters = protect(letters);

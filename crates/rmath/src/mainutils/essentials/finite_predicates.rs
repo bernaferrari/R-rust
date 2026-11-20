@@ -31,7 +31,7 @@ impl Predicate {
 
 /// Root and pin the original invocation before dispatch or ALTREP callbacks.
 /// No payload span or runtime borrow is held while a provider executes.
-pub(super) unsafe fn evaluate(
+pub(super) fn evaluate(
     call: SEXP,
     op: SEXP,
     args: SEXP,
@@ -153,7 +153,7 @@ pub(super) unsafe fn evaluate(
     }
 }
 
-unsafe fn snapshot_shape<'s>(
+fn snapshot_shape<'s>(
     factory: &SessionNodeFactory<'s>,
     input: &Sexp<'_>,
     check: impl Fn(),
@@ -177,7 +177,7 @@ unsafe fn snapshot_shape<'s>(
     }
 }
 
-unsafe fn apply_shape(output: &Sexp<'_>, dims: &Sexp<'_>, names: &Sexp<'_>, check: impl Fn()) {
+fn apply_shape(output: &Sexp<'_>, dims: &Sexp<'_>, names: &Sexp<'_>, check: impl Fn()) {
     unsafe {
         use crate::sexp::attrib_core::{R_DimNamesSymbol, R_DimSymbol, R_NamesSymbol, setAttrib};
         if !dims.is_nil() {

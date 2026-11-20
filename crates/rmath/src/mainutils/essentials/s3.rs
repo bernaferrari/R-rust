@@ -26,7 +26,7 @@ use crate::sexp::symbol::Rf_install;
 // ---------------------------------------------------------------------------
 
 /// R's `setOldClass(Class)` — register old-style S3 class. Simplified: returns Class.
-pub unsafe fn do_setOldClass(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_setOldClass(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     {
         let class_arg = CAR(args);
         if class_arg.is_null() || class_arg == R_NilValue() {
@@ -41,7 +41,7 @@ pub unsafe fn do_setOldClass(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
 /// Closures (package `.__S3MethodsTable__.` entries) go through
 /// `applyClosure`. Builtin/special methods (`format.POSIXct`, `print.Date`,
 /// …) are invoked through their PRIMFUN, matching `eval::apply`.
-pub(crate) unsafe fn apply_s3_closure_method(
+pub(crate) fn apply_s3_closure_method(
     generic: &str,
     call: SEXP,
     args: SEXP,
@@ -92,7 +92,7 @@ pub(crate) unsafe fn apply_s3_closure_method(
 }
 
 /// R's `methods(generic)` — list methods known to the Rust runtime.
-pub unsafe fn do_methods(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_methods(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let mut class_arg = R_NilValue();
         let mut generic_arg = R_NilValue();
@@ -243,7 +243,7 @@ fn all_runtime_method_names() -> Vec<String> {
     methods.dedup();
     methods
 }
-unsafe fn methods_function(ans: SEXP) -> SEXP {
+fn methods_function(ans: SEXP) -> SEXP {
     unsafe {
         let class = Rf_mkString(c"MethodsFunction".as_ptr());
         let _g = protect(class);
@@ -258,12 +258,12 @@ unsafe fn methods_function(ans: SEXP) -> SEXP {
 
 /// R's `UseMethod(generic, obj)` — delegate to the translated object-system
 /// dispatch implementation.
-pub unsafe fn do_usemethod(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_usemethod(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe { crate::mainutils::objects::do_usemethod(call, op, args, rho) }
 }
 
 /// R's `missing(x)` — check if argument was missing in call.
-pub unsafe fn do_missing(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_missing(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe { crate::eval::missing::do_missing(call, op, args, rho) }
 }
 
@@ -284,7 +284,7 @@ pub unsafe fn do_missing(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// caller (zeallot's `%<-%` passes `list_assign(pairs, parent.frame())`;
 /// the promise is forced inside list_assign, yet must name `%<-%`'s
 /// caller).
-pub unsafe fn do_parent_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_parent_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let n = context_index_arg(args, 1);
         if n == NA_INTEGER || n < 1 {
@@ -366,7 +366,7 @@ pub(crate) unsafe fn sys_query_context() -> *mut crate::sexp::context::RCNTXT {
     }
 }
 /// R's `sys.call(which)` — get the call that's currently being evaluated.
-pub unsafe fn do_sys_call(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_sys_call(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let which = context_index_arg(args, 0);
         let top = sys_query_context();
@@ -388,7 +388,7 @@ pub unsafe fn do_sys_call(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 /// so syscall(1) is the outermost frame). Calls are shallow-duplicated
 /// so later mutation cannot rewrite the stack; zeallot's error paths
 /// deparse these to attribute assignment-operator calls.
-pub unsafe fn do_sys_calls(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_sys_calls(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         // sys.calls is a builtin here, so (outside forced promises) the
         // innermost context is its caller's frame already — no own closure
@@ -419,7 +419,7 @@ pub unsafe fn do_sys_calls(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> S
 /// such that `sys.frame(sys.parent(n))` is the n-th parent environment
 /// (upstream do_sys: `i = framedepth(cptr); while n > 0 { i =
 /// R_sysparent(nframe - i + 1, cptr) }`).
-pub unsafe fn do_sys_parent(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_sys_parent(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let n = context_index_arg(args, 1);
         if n == NA_INTEGER {
@@ -441,7 +441,7 @@ pub unsafe fn do_sys_parent(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 }
 
 /// R's `sys.frame(which)` — get frame at specified level.
-pub unsafe fn do_sys_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_sys_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let which = context_index_arg(args, 0);
         let top = sys_query_context();
@@ -466,7 +466,7 @@ pub(crate) unsafe fn current_function_context() -> Option<*mut crate::sexp::cont
     }
 }
 
-pub(crate) unsafe fn pairlist_len(mut list: SEXP) -> c_int {
+pub(crate) fn pairlist_len(mut list: SEXP) -> c_int {
     {
         let mut len = 0;
         while !list.is_null() && list != R_NilValue() {
@@ -477,7 +477,7 @@ pub(crate) unsafe fn pairlist_len(mut list: SEXP) -> c_int {
     }
 }
 
-pub(crate) unsafe fn context_index_arg(args: SEXP, default: c_int) -> c_int {
+pub(crate) fn context_index_arg(args: SEXP, default: c_int) -> c_int {
     {
         if args.is_null() || args == R_NilValue() {
             default
@@ -488,7 +488,7 @@ pub(crate) unsafe fn context_index_arg(args: SEXP, default: c_int) -> c_int {
 }
 
 /// R's `getwd()` — get working directory.
-pub unsafe fn do_getwd(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_getwd(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         use crate::mainutils::browser_files;
         if browser_files::enabled() {
@@ -507,7 +507,7 @@ pub unsafe fn do_getwd(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP 
 }
 
 /// R's `setwd(dir)` — set working directory.
-pub unsafe fn do_setwd(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_setwd(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         use crate::mainutils::browser_files;
         let dir_arg = CAR(args);
@@ -574,22 +574,22 @@ mod host_state_tests {
 }
 
 /// R's `basename(path)` — final path component, vectorized over character input.
-pub unsafe fn do_basename(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_basename(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     map_path_strings(CAR(args), r_basename)
 }
 
 /// R's `dirname(path)` — parent path component, vectorized over character input.
-pub unsafe fn do_dirname(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_dirname(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     map_path_strings(CAR(args), r_dirname)
 }
 
 /// R's `file.path(...)` — join path components element-wise with recycling.
-pub unsafe fn do_file_path(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub fn do_file_path(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe { crate::mainutils::paste_impl::do_filepath_public(call, op, args, env) }
 }
 
 /// R's `dir.exists(paths)` — check if directories exist.
-pub unsafe fn do_dir_exists(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_dir_exists(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -615,7 +615,7 @@ pub unsafe fn do_dir_exists(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 }
 
 /// R's `file.create(...)` — create empty files.
-pub unsafe fn do_file_create(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_file_create(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -655,7 +655,7 @@ fn unlink_glob(pat: &str, name: &str) -> bool {
     rec(pat.as_bytes(), name.as_bytes())
 }
 
-pub unsafe fn do_unlink(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_unlink(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         // Browser paths are resolved only inside the owning session.
         if crate::mainutils::browser_files::enabled() {
@@ -723,7 +723,7 @@ pub unsafe fn do_unlink(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 /// R's `nzchar(x)` — check if strings are non-empty.
-pub unsafe fn do_nzchar(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_nzchar(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -748,7 +748,7 @@ pub unsafe fn do_nzchar(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 // S3 generics
 // ---------------------------------------------------------------------------
 
-pub(crate) unsafe fn matrix_column(x: SEXP, nrow: R_xlen_t, column: R_xlen_t) -> SEXP {
+pub(crate) fn matrix_column(x: SEXP, nrow: R_xlen_t, column: R_xlen_t) -> SEXP {
     unsafe {
         let ty = TYPEOF(x);
         let result = Rf_allocVector3(ty, nrow);
@@ -785,7 +785,7 @@ pub(crate) unsafe fn matrix_column(x: SEXP, nrow: R_xlen_t, column: R_xlen_t) ->
     }
 }
 
-unsafe fn matrix_as_data_frame(x: SEXP, dim: SEXP) -> SEXP {
+fn matrix_as_data_frame(x: SEXP, dim: SEXP) -> SEXP {
     unsafe {
         let nrow = INTEGER_ELT(dim, 0) as R_xlen_t;
         let ncol = INTEGER_ELT(dim, 1) as R_xlen_t;
@@ -837,7 +837,7 @@ unsafe fn matrix_as_data_frame(x: SEXP, dim: SEXP) -> SEXP {
     }
 }
 
-unsafe fn list_as_data_frame(x: SEXP) -> SEXP {
+fn list_as_data_frame(x: SEXP) -> SEXP {
     unsafe {
         let ncol = XLENGTH(x);
         let names_attr =
@@ -878,7 +878,7 @@ unsafe fn list_as_data_frame(x: SEXP) -> SEXP {
 }
 
 /// R's `as.data.frame(x)` — convert to data.frame.
-pub unsafe fn do_as_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_as_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let mut x = CAR(args);
 
@@ -985,7 +985,7 @@ pub unsafe fn do_as_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
 }
 
 /// GNU `as.data.frame(NULL)`: zero columns and zero rows.
-unsafe fn empty_data_frame() -> SEXP {
+fn empty_data_frame() -> SEXP {
     unsafe {
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, 0);
         let _p = protect(result);
@@ -999,7 +999,7 @@ unsafe fn empty_data_frame() -> SEXP {
     }
 }
 
-unsafe fn asis_matrix_as_data_frame(x: SEXP, dim: SEXP) -> SEXP {
+fn asis_matrix_as_data_frame(x: SEXP, dim: SEXP) -> SEXP {
     unsafe {
         let nrow = INTEGER_ELT(dim, 0) as R_xlen_t;
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
@@ -1074,7 +1074,7 @@ mod as_data_frame_tests {
 
 /// R's `as.list(x)` — generic list conversion.
 /// Delegates to do_as_list but available as a separate entry point.
-pub unsafe fn do_as_list_generic(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_as_list_generic(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe { do_as_list(_call, _op, args, _rho) }
 }
 
@@ -1086,14 +1086,14 @@ pub unsafe fn do_as_list_generic(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP)
 ///
 /// Not ported: this runtime does not implement `reshape()`. Fail loudly
 /// instead of silently returning the input unchanged.
-pub unsafe fn do_reshape(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_reshape(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     package_error(
         "reshape() is not ported in this pure-R Android runtime; use aggregate(), melt-style helpers, or explicit subsetting/assignment instead",
     )
 }
 
 /// R's `complete_cases(...)` — returns logical vector: TRUE where all args are non-NA.
-pub unsafe fn do_complete_cases(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_complete_cases(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         // Collect all argument vectors
         let mut arg_vecs: Vec<SEXP> = Vec::new();
@@ -1136,16 +1136,16 @@ pub unsafe fn do_complete_cases(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) 
 }
 
 /// R's `na.omit(x)` — returns x with rows containing any NA removed (simplified: works on vectors).
-pub unsafe fn do_na_omit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { na_omit_atomic(args, "omit") }
+pub fn do_na_omit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    { na_omit_atomic(args, "omit") }
 }
 
 /// R's `na.exclude(x)` — like na.omit with "exclude" na.action metadata.
-pub unsafe fn do_na_exclude(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { na_omit_atomic(args, "exclude") }
+pub fn do_na_exclude(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    { na_omit_atomic(args, "exclude") }
 }
 
-unsafe fn na_omit_atomic(args: SEXP, action_class: &str) -> SEXP {
+fn na_omit_atomic(args: SEXP, action_class: &str) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -1187,7 +1187,7 @@ unsafe fn na_omit_atomic(args: SEXP, action_class: &str) -> SEXP {
     }
 }
 
-unsafe fn set_selected_names_attribute(x: SEXP, result: SEXP, indices: &[R_xlen_t]) {
+fn set_selected_names_attribute(x: SEXP, result: SEXP, indices: &[R_xlen_t]) {
     unsafe {
         let names =
             crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
@@ -1210,7 +1210,7 @@ unsafe fn set_selected_names_attribute(x: SEXP, result: SEXP, indices: &[R_xlen_
     }
 }
 
-unsafe fn set_na_action_attribute(
+fn set_na_action_attribute(
     source: SEXP,
     result: SEXP,
     dropped: &[R_xlen_t],
@@ -1262,7 +1262,7 @@ unsafe fn set_na_action_attribute(
 }
 
 /// R's `is_complete(x)` — logical vector of complete cases for a single vector.
-pub unsafe fn do_is_complete(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_is_complete(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -1288,8 +1288,8 @@ pub unsafe fn do_is_complete(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
 // ---------------------------------------------------------------------------
 
 /// R-like `rownames_to_column(x, var)` — convert row names to a leading column.
-pub unsafe fn do_rownames_to_column(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_rownames_to_column(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let x = CAR(args);
         if !is_data_frame_like(x) {
             data_frame_error("rownames_to_column() requires a data frame");
@@ -1310,7 +1310,7 @@ pub unsafe fn do_rownames_to_column(_call: SEXP, _op: SEXP, args: SEXP, _rho: SE
 }
 
 /// R-like `column_to_rownames(x, var)` — convert a column to row names.
-pub unsafe fn do_column_to_rownames(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_column_to_rownames(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if !is_data_frame_like(x) {
@@ -1344,7 +1344,7 @@ pub unsafe fn do_column_to_rownames(_call: SEXP, _op: SEXP, args: SEXP, _rho: SE
 }
 
 /// R-like `relocate(x, cols, .before, .after)` — reorder data-frame columns.
-pub unsafe fn do_relocate(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_relocate(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if !is_data_frame_like(x) {
@@ -1397,7 +1397,7 @@ pub unsafe fn do_relocate(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 }
 
 pub(crate) fn is_data_frame_like(x: SEXP) -> bool {
-    unsafe {
+    {
         !x.is_null()
             && x != R_NilValue()
             && TYPEOF(x) == SEXPTYPE::VECSXP
@@ -1464,8 +1464,8 @@ fn string_arg_values(x: SEXP) -> Vec<String> {
     }
 }
 
-pub(crate) unsafe fn condition_message_text(args: SEXP, option_names: &[&str]) -> String {
-    unsafe {
+pub(crate) fn condition_message_text(args: SEXP, option_names: &[&str]) -> String {
+    {
         let mut parts = Vec::new();
         let mut current = args;
         while !current.is_null() && current != R_NilValue() {
@@ -1573,7 +1573,7 @@ pub(crate) fn elt_to_sexp(x: SEXP, i: R_xlen_t) -> SEXP {
     }
 }
 
-unsafe fn constructor_length(value: SEXP) -> R_xlen_t {
+fn constructor_length(value: SEXP) -> R_xlen_t {
     unsafe {
         if value.is_null() || value == R_NilValue() {
             return 0;
@@ -1604,8 +1604,8 @@ unsafe fn constructor_length(value: SEXP) -> R_xlen_t {
     }
 }
 
-unsafe fn first_constructor_arg(args: SEXP, name: &str, position: usize) -> SEXP {
-    unsafe {
+fn first_constructor_arg(args: SEXP, name: &str, position: usize) -> SEXP {
+    {
         let mut current = args;
         let mut positional = 0;
         while !current.is_null() && current != R_NilValue() {
@@ -1626,7 +1626,7 @@ unsafe fn first_constructor_arg(args: SEXP, name: &str, position: usize) -> SEXP
     }
 }
 
-unsafe fn allocate_initialized_vector(sexptype: SEXPTYPE, length: R_xlen_t) -> SEXP {
+fn allocate_initialized_vector(sexptype: SEXPTYPE, length: R_xlen_t) -> SEXP {
     unsafe {
         let result = Rf_allocVector3(sexptype, length);
         if result.is_null() {
@@ -1651,8 +1651,8 @@ unsafe fn allocate_initialized_vector(sexptype: SEXPTYPE, length: R_xlen_t) -> S
     }
 }
 
-unsafe fn do_typed_vector_constructor(args: SEXP, sexptype: SEXPTYPE) -> SEXP {
-    unsafe {
+fn do_typed_vector_constructor(args: SEXP, sexptype: SEXPTYPE) -> SEXP {
+    {
         let length_arg = first_constructor_arg(args, "length", 0);
         let length = constructor_length(length_arg);
         allocate_initialized_vector(sexptype, length)
@@ -1660,22 +1660,22 @@ unsafe fn do_typed_vector_constructor(args: SEXP, sexptype: SEXPTYPE) -> SEXP {
 }
 
 /// R's `logical(length = 0)` constructor.
-pub unsafe fn do_logical_constructor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { do_typed_vector_constructor(args, SEXPTYPE::LGLSXP) }
+pub fn do_logical_constructor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    { do_typed_vector_constructor(args, SEXPTYPE::LGLSXP) }
 }
 
 /// R's `integer(length = 0)` constructor.
-pub unsafe fn do_integer_constructor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { do_typed_vector_constructor(args, SEXPTYPE::INTSXP) }
+pub fn do_integer_constructor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    { do_typed_vector_constructor(args, SEXPTYPE::INTSXP) }
 }
 
 /// R's `numeric(length = 0)` / `double(length = 0)` constructor.
-pub unsafe fn do_numeric_constructor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { do_typed_vector_constructor(args, SEXPTYPE::REALSXP) }
+pub fn do_numeric_constructor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    { do_typed_vector_constructor(args, SEXPTYPE::REALSXP) }
 }
 
 /// R's legacy `single(length = 0)` constructor.
-pub unsafe fn do_single_constructor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_single_constructor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let result = do_typed_vector_constructor(args, SEXPTYPE::REALSXP);
         if result.is_null() || result == R_NilValue() {
@@ -1699,7 +1699,7 @@ pub unsafe fn do_single_constructor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SE
 /// `pans[i].i = im[i %% ni]`, `n = max(asInteger(length.out), nr, ni)`);
 /// otherwise it builds `rep_len(modulus, n) * exp(1i * rep_len(argument, n))`
 /// with `n = max(length.out, length(argument), length(modulus))`.
-pub unsafe fn do_complex_constructor(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_complex_constructor(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         // Upstream evaluates this inside base::complex's closure, so
         // coercion warnings raised here attribute to that call ("In
@@ -1727,7 +1727,7 @@ const COMPLEX_FORMALS: [&str; 5] = ["length.out", "real", "imaginary", "modulus"
 /// a prefix matches one formal or none), then positional arguments fill the
 /// remaining slots in order.
 unsafe fn match_complex_formals(args: SEXP) -> [Option<SEXP>; 5] {
-    unsafe {
+    {
         let mut slots: [Option<SEXP>; 5] = [None; 5];
         let mut positionals: Vec<SEXP> = Vec::new();
         let mut cell = args;
@@ -1772,7 +1772,7 @@ unsafe fn match_complex_formals(args: SEXP) -> [Option<SEXP>; 5] {
 }
 
 /// Render a constructor argument for an error message.
-unsafe fn described_constructor_arg(value: SEXP) -> String {
+fn described_constructor_arg(value: SEXP) -> String {
     unsafe {
         let deparsed = crate::mainutils::deparse::deparse_symbolic(value, true);
         if deparsed.is_null() || deparsed == R_NilValue() {
@@ -1789,7 +1789,7 @@ unsafe fn described_constructor_arg(value: SEXP) -> String {
 
 /// Coerce a constructor argument to REALSXP (stock coerceVector returns the
 /// input unchanged when it is already real; NULL coerces to an empty real).
-unsafe fn complex_real_part(x: SEXP) -> SEXP {
+fn complex_real_part(x: SEXP) -> SEXP {
     unsafe {
         if x.is_null() || x == R_NilValue() {
             return Rf_allocVector3(SEXPTYPE::REALSXP, 0);
@@ -1802,7 +1802,7 @@ unsafe fn complex_real_part(x: SEXP) -> SEXP {
 }
 
 /// `.Internal(complex(length.out, real, imaginary))`.
-unsafe fn complex_from_real_imaginary(supplied: &[Option<SEXP>; 5]) -> SEXP {
+fn complex_from_real_imaginary(supplied: &[Option<SEXP>; 5]) -> SEXP {
     unsafe {
         let na = crate::mainutils::coerce::asInteger(match supplied[0] {
             Some(v) => v,
@@ -1853,7 +1853,7 @@ unsafe fn complex_from_real_imaginary(supplied: &[Option<SEXP>; 5]) -> SEXP {
 /// Wrapper's polar branch:
 /// `n <- max(length.out, length(argument), length(modulus));
 ///  rep_len(modulus, n) * exp(1i * rep_len(argument, n))`.
-unsafe fn complex_from_polar(supplied: &[Option<SEXP>; 5]) -> SEXP {
+fn complex_from_polar(supplied: &[Option<SEXP>; 5]) -> SEXP {
     unsafe {
         let m = complex_real_part(match supplied[3] {
             Some(v) => v,               // supplied `modulus`
@@ -1940,17 +1940,17 @@ unsafe fn complex_from_polar(supplied: &[Option<SEXP>; 5]) -> SEXP {
 }
 
 /// R's `character(length = 0)` constructor.
-pub unsafe fn do_character_constructor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { do_typed_vector_constructor(args, SEXPTYPE::STRSXP) }
+pub fn do_character_constructor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    { do_typed_vector_constructor(args, SEXPTYPE::STRSXP) }
 }
 /// R's `raw(length = 0)` constructor.
-pub unsafe fn do_raw_constructor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { do_typed_vector_constructor(args, SEXPTYPE::RAWSXP) }
+pub fn do_raw_constructor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    { do_typed_vector_constructor(args, SEXPTYPE::RAWSXP) }
 }
 
 /// R's `vector(mode = "logical", length = 0)` constructor.
-pub unsafe fn do_vector_constructor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_vector_constructor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let mode_arg = first_constructor_arg(args, "mode", 0);
         let length_arg = first_constructor_arg(args, "length", 1);
         let mode = if mode_arg.is_null() || mode_arg == R_NilValue() {
@@ -1979,7 +1979,7 @@ pub unsafe fn do_vector_constructor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SE
 // ---------------------------------------------------------------------------
 
 /// R's `as.complex(x)` — coerce to CPLXSXP through the shared vector coercer.
-pub unsafe fn do_as_complex(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_as_complex(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let owner = crate::sexp::owner::OwnerToken::current()
             .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
@@ -2048,7 +2048,7 @@ pub unsafe fn do_as_complex(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP
 }
 
 /// R's `as.raw(x)` — coerce to RAWSXP.
-pub unsafe fn do_as_raw(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_as_raw(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let owner = crate::sexp::owner::OwnerToken::current()
             .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
@@ -2117,7 +2117,7 @@ pub unsafe fn do_as_raw(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 /// R's `as(x, Class)` — S4-style coercion (simplified: delegates to appropriate as.* function).
-pub unsafe fn do_as(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_as(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let class_arg = CAR(CDR(args));
@@ -2145,8 +2145,8 @@ pub unsafe fn do_as(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R's `subset(x, subset, select, drop)` — subset data.frame (simplified).
 /// Already defined as do_subset above — this is an alias with named args.
-pub unsafe fn do_subset_named(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_subset_named(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         // Delegate to existing do_subset
         do_subset(_call, _op, args, _rho)
     }
@@ -2182,7 +2182,7 @@ fn is_known_non_s3_method(generic: &str, class: &str) -> bool {
 }
 
 /// R's `getS3method(generic, class)` — get S3 method function.
-pub unsafe fn do_getS3method(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_getS3method(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let generic = elt_to_string(CAR(args), 0);
         let class = elt_to_string(CAR(CDR(args)), 0);
@@ -2218,7 +2218,7 @@ pub unsafe fn do_getS3method(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> S
 }
 
 /// R's `hasS3method(generic, class)` — check if S3 method exists.
-pub unsafe fn do_hasS3method(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_hasS3method(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let generic = elt_to_string(CAR(args), 0);
         let class = elt_to_string(CAR(CDR(args)), 0);
@@ -2240,7 +2240,7 @@ pub unsafe fn do_hasS3method(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> S
 }
 
 /// R's `registerS3method(generic, class, method)` — register S3 method.
-pub unsafe fn do_registerS3method(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_registerS3method(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let generic = elt_to_string(CAR(args), 0);
         let class = elt_to_string(CAR(CDR(args)), 0);
@@ -2298,11 +2298,11 @@ pub unsafe fn do_registerS3method(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP)
     }
 }
 
-pub(crate) unsafe fn s3_methods_table_symbol() -> SEXP {
+pub(crate) fn s3_methods_table_symbol() -> SEXP {
     unsafe { crate::mainutils::objects::S3MethodsTable_symbol() }
 }
 
-pub(crate) unsafe fn ensure_s3_methods_table(env: SEXP) -> Result<SEXP, String> {
+pub(crate) fn ensure_s3_methods_table(env: SEXP) -> Result<SEXP, String> {
     unsafe {
         if env.is_null() || env == R_NilValue() || TYPEOF(env) != SEXPTYPE::ENVSXP {
             return Err("S3 method registration requires an environment".to_string());
@@ -2331,7 +2331,7 @@ pub(crate) unsafe fn ensure_s3_methods_table(env: SEXP) -> Result<SEXP, String> 
     }
 }
 
-pub(crate) unsafe fn define_s3_method(
+pub(crate) fn define_s3_method(
     env: SEXP,
     generic: &str,
     class: &str,
@@ -2356,7 +2356,7 @@ pub(crate) unsafe fn define_s3_method(
     }
 }
 
-unsafe fn effective_s3_defrho(rho: SEXP) -> SEXP {
+fn effective_s3_defrho(rho: SEXP) -> SEXP {
     unsafe {
         if rho.is_null() || rho == R_NilValue() || TYPEOF(rho) != SEXPTYPE::ENVSXP {
             crate::sexp::globals::R_GlobalEnv()
@@ -2374,7 +2374,7 @@ unsafe fn effective_s3_defrho(rho: SEXP) -> SEXP {
     }
 }
 
-pub(crate) unsafe fn is_function_value(value: SEXP) -> bool {
+pub(crate) fn is_function_value(value: SEXP) -> bool {
     {
         !value.is_null()
             && value != R_NilValue()
@@ -2388,7 +2388,7 @@ pub(crate) unsafe fn is_function_value(value: SEXP) -> bool {
     }
 }
 
-unsafe fn initialize_generic_dispatch_tables(generic: SEXP) {
+fn initialize_generic_dispatch_tables(generic: SEXP) {
     unsafe {
         if generic.is_null() || generic == R_NilValue() || TYPEOF(generic) != SEXPTYPE::CLOSXP {
             return;
@@ -2444,7 +2444,7 @@ unsafe fn initialize_generic_dispatch_tables(generic: SEXP) {
 }
 
 /// R's `setGeneric(f, fdef, ...)` — set generic function.
-pub unsafe fn do_setGeneric(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_setGeneric(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let f_arg = CAR(args);
         let fdef_arg = if CDR(args).is_null() || CDR(args) == R_NilValue() {
@@ -2535,7 +2535,7 @@ pub unsafe fn do_setGeneric(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SE
     }
 }
 
-unsafe fn is_function_type(value: SEXP) -> bool {
+fn is_function_type(value: SEXP) -> bool {
     {
         !value.is_null()
             && value != R_NilValue()
@@ -2548,7 +2548,7 @@ unsafe fn is_function_type(value: SEXP) -> bool {
 
 /// Search an environment's frame (and hash chain) for a symbol whose binding
 /// holds exactly `value`; returns the first matching symbol.
-unsafe fn find_binding_name_for_value(env: SEXP, value: SEXP) -> Option<SEXP> {
+fn find_binding_name_for_value(env: SEXP, value: SEXP) -> Option<SEXP> {
     unsafe {
         if env.is_null() || TYPEOF(env) != SEXPTYPE::ENVSXP {
             return None;
@@ -2583,7 +2583,7 @@ unsafe fn find_binding_name_for_value(env: SEXP, value: SEXP) -> Option<SEXP> {
 }
 
 /// R's `setMethod(f, signature, definition, ...)` — set S4 method.
-pub unsafe fn do_setMethod(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_setMethod(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let f_arg = CAR(args);
         let signature_arg = CAR(CDR(args));

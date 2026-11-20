@@ -35,8 +35,8 @@ use crate::sexp::owner::OwnerToken;
 /// tagged empty argument (`f(x=)`) is dropped entirely. A supplied arg
 /// that matches no formal is an "unused argument" error, mirroring stock R
 /// (e.g. `pnorm(1, foo=2)` errors).
-unsafe fn dist_match(args: SEXP, names: &[&str]) -> (Vec<SEXP>, Vec<bool>) {
-    unsafe {
+fn dist_match(args: SEXP, names: &[&str]) -> (Vec<SEXP>, Vec<bool>) {
+    {
         let mut out: Vec<SEXP> = names.iter().map(|_| R_NilValue()).collect();
         let mut filled = vec![false; names.len()];
         let mut supplied: Vec<(Option<String>, SEXP)> = Vec::new();
@@ -124,7 +124,7 @@ unsafe fn dist_match(args: SEXP, names: &[&str]) -> (Vec<SEXP>, Vec<bool>) {
 
 /// Deparse an argument value for stock-style "unused argument (...)"
 /// messages (stock uses the deparsed value, not a placeholder).
-unsafe fn deparse_arg_value(value: SEXP) -> String {
+fn deparse_arg_value(value: SEXP) -> String {
     unsafe {
         let text = crate::mainutils::deparse::deparse1line(value, false);
         if !text.is_null() && text != R_NilValue() && XLENGTH(text) > 0 {
@@ -245,7 +245,7 @@ fn dpq_scalar(owner: OwnerToken<'_>, value: &Sexp<'_>, index: R_xlen_t) -> f64 {
 
 /// Resolve a flag formal (`log`, `lower.tail`, `log.p`) using its first
 /// element, truncated if real. NA counts as nonzero.
-unsafe fn dpq_flag(slots: &[SEXP], filled: &[bool], idx: usize, default: bool) -> bool {
+fn dpq_flag(slots: &[SEXP], filled: &[bool], idx: usize, default: bool) -> bool {
     let slot = slots[idx];
     if !dpq_supplied(slots, filled, idx) || slot == R_NilValue() {
         return default;
@@ -290,7 +290,7 @@ fn dpq_copy_attrib(owner: OwnerToken<'_>, dst: &Sexp<'_>, src: &Sexp<'_>) {
 }
 
 /// Recycle numeric d/p/q arguments and set checked result cells.
-unsafe fn dpq_evaluate(
+fn dpq_evaluate(
     call: SEXP,
     operands: &[DpqOperand],
     lower_tail: bool,
@@ -387,12 +387,12 @@ unsafe fn dpq_evaluate(
 /// Resolve the standard dpq operand list: the main argument (slot 0,
 /// required) plus one parameter formal per entry of `defaults` (slots
 /// `1..`), all with stock non-numeric checks.
-unsafe fn dpq_operands(
+fn dpq_operands(
     args: SEXP,
     names: &[&str],
     defaults: &[Option<f64>],
 ) -> (Vec<DpqOperand>, Vec<SEXP>, Vec<bool>) {
-    unsafe {
+    {
         let (slots, filled) = dist_match(args, names);
         let mut ops = Vec::with_capacity(defaults.len() + 1);
         ops.push(dpq_num(&slots, &filled, names, 0, None, DPQ_NONNUM));
@@ -408,8 +408,8 @@ unsafe fn dpq_operands(
 // ---------------------------------------------------------------------------
 
 /// R's `dnorm(x, mean=0, sd=1, log=FALSE)` — normal density.
-pub unsafe fn do_dnorm(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_dnorm(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let names = ["x", "mean", "sd", "log"];
         let (ops, slots, filled) = dpq_operands(args, &names, &[Some(0.0), Some(1.0)]);
         let log_p = dpq_flag(&slots, &filled, 3, false);
@@ -420,8 +420,8 @@ pub unsafe fn do_dnorm(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// R's `pnorm(q, mean=0, sd=1, lower.tail=TRUE, log.p=FALSE)` — normal CDF.
-pub unsafe fn do_pnorm(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_pnorm(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let names = ["q", "mean", "sd", "lower.tail", "log.p"];
         let (ops, slots, filled) = dpq_operands(args, &names, &[Some(0.0), Some(1.0)]);
         let lower_tail = dpq_flag(&slots, &filled, 3, true);
@@ -433,8 +433,8 @@ pub unsafe fn do_pnorm(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// R's `qnorm(p, mean=0, sd=1, lower.tail=TRUE, log.p=FALSE)` — normal quantile.
-pub unsafe fn do_qnorm(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_qnorm(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let names = ["p", "mean", "sd", "lower.tail", "log.p"];
         let (ops, slots, filled) = dpq_operands(args, &names, &[Some(0.0), Some(1.0)]);
         let lower_tail = dpq_flag(&slots, &filled, 3, true);
@@ -446,8 +446,8 @@ pub unsafe fn do_qnorm(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// R's `dpois(x, lambda, log=FALSE)` — Poisson density.
-pub unsafe fn do_dpois(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_dpois(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let names = ["x", "lambda", "log"];
         let (ops, slots, filled) = dpq_operands(args, &names, &[Some(1.0)]);
         let log_p = dpq_flag(&slots, &filled, 2, false);
@@ -458,8 +458,8 @@ pub unsafe fn do_dpois(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// R's `ppois(q, lambda, lower.tail=TRUE, log.p=FALSE)` — Poisson CDF.
-pub unsafe fn do_ppois(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_ppois(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let names = ["q", "lambda", "lower.tail", "log.p"];
         let (ops, slots, filled) = dpq_operands(args, &names, &[Some(1.0)]);
         let lower_tail = dpq_flag(&slots, &filled, 2, true);
@@ -471,8 +471,8 @@ pub unsafe fn do_ppois(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// R's `qpois(p, lambda, lower.tail=TRUE, log.p=FALSE)` — Poisson quantile.
-pub unsafe fn do_qpois(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_qpois(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let names = ["p", "lambda", "lower.tail", "log.p"];
         let (ops, slots, filled) = dpq_operands(args, &names, &[Some(1.0)]);
         let lower_tail = dpq_flag(&slots, &filled, 2, true);
@@ -484,8 +484,8 @@ pub unsafe fn do_qpois(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// R's `dbinom(x, size, prob, log=FALSE)` — binomial density.
-pub unsafe fn do_dbinom(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_dbinom(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let names = ["x", "size", "prob", "log"];
         let (ops, slots, filled) = dpq_operands(args, &names, &[None, None]);
         let log_p = dpq_flag(&slots, &filled, 3, false);
@@ -496,8 +496,8 @@ pub unsafe fn do_dbinom(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// R's `pbinom(q, size, prob, lower.tail=TRUE, log.p=FALSE)` — binomial CDF.
-pub unsafe fn do_pbinom(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_pbinom(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let names = ["q", "size", "prob", "lower.tail", "log.p"];
         let (ops, slots, filled) = dpq_operands(args, &names, &[None, None]);
         let lower_tail = dpq_flag(&slots, &filled, 3, true);
@@ -509,8 +509,8 @@ pub unsafe fn do_pbinom(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// R's `qbinom(p, size, prob, lower.tail=TRUE, log.p=FALSE)` — binomial quantile.
-pub unsafe fn do_qbinom(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_qbinom(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let names = ["p", "size", "prob", "lower.tail", "log.p"];
         let (ops, slots, filled) = dpq_operands(args, &names, &[None, None]);
         let lower_tail = dpq_flag(&slots, &filled, 3, true);
@@ -524,8 +524,8 @@ pub unsafe fn do_qbinom(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 /// R's `dexp(x, rate=1, log=FALSE)` — exponential density. The R wrapper
 /// converts `rate` to `scale` with a binary operation (`1/rate`), so the
 /// conversion recycles per element and uses binary-op error semantics.
-pub unsafe fn do_dexp(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_dexp(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let names = ["x", "rate", "log"];
         let (slots, filled) = dist_match(args, &names);
         let x = dpq_num(&slots, &filled, &names, 0, None, DPQ_NONNUM);
@@ -538,8 +538,8 @@ pub unsafe fn do_dexp(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// R's `pexp(q, rate=1, lower.tail=TRUE, log.p=FALSE)` — exponential CDF.
-pub unsafe fn do_pexp(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_pexp(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let names = ["q", "rate", "lower.tail", "log.p"];
         let (slots, filled) = dist_match(args, &names);
         let q = dpq_num(&slots, &filled, &names, 0, None, DPQ_NONNUM);
@@ -553,8 +553,8 @@ pub unsafe fn do_pexp(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// R's `qexp(p, rate=1, lower.tail=TRUE, log.p=FALSE)` — exponential quantile.
-pub unsafe fn do_qexp(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_qexp(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let names = ["p", "rate", "lower.tail", "log.p"];
         let (slots, filled) = dist_match(args, &names);
         let p = dpq_num(&slots, &filled, &names, 0, None, DPQ_NONNUM);
@@ -574,7 +574,7 @@ pub unsafe fn do_qexp(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 /// The gamma-family rate/scale conflict handling from the stats R wrappers:
 /// supplying both warns when they agree (`|rate*scale - 1| < 1e-15`) and
 /// stops otherwise.
-unsafe fn gamma_rate_scale_conflict(slots: &[SEXP], filled: &[bool]) {
+fn gamma_rate_scale_conflict(slots: &[SEXP], filled: &[bool]) {
     unsafe {
         if dpq_supplied(slots, filled, 2) && dpq_supplied(slots, filled, 3) {
             let rate = real_or_default(slots[2], 1.0);
@@ -592,8 +592,8 @@ unsafe fn gamma_rate_scale_conflict(slots: &[SEXP], filled: &[bool]) {
 
 /// The gamma-family scale operand: supplied `scale` wins, else the
 /// R-level `1/rate` conversion, else 1.
-unsafe fn gamma_scale_operand(slots: &[SEXP], filled: &[bool], names: &[&str]) -> DpqOperand {
-    unsafe {
+fn gamma_scale_operand(slots: &[SEXP], filled: &[bool], names: &[&str]) -> DpqOperand {
+    {
         if dpq_supplied(slots, filled, 3) {
             dpq_num(slots, filled, names, 3, Some(1.0), DPQ_NONNUM)
         } else if let Some(inv) = dpq_inverse(slots, filled, 2) {
@@ -605,8 +605,8 @@ unsafe fn gamma_scale_operand(slots: &[SEXP], filled: &[bool], names: &[&str]) -
 }
 
 /// R's `dgamma(x, shape, rate=1, scale=1/rate, log=FALSE)` — gamma density.
-pub unsafe fn do_dgamma(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_dgamma(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let names = ["x", "shape", "rate", "scale", "log"];
         let (slots, filled) = dist_match(args, &names);
         gamma_rate_scale_conflict(&slots, &filled);
@@ -621,8 +621,8 @@ pub unsafe fn do_dgamma(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// R's `pgamma(q, shape, rate=1, scale=1/rate, lower.tail=TRUE, log.p=FALSE)`.
-pub unsafe fn do_pgamma(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_pgamma(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let names = ["q", "shape", "rate", "scale", "lower.tail", "log.p"];
         let (slots, filled) = dist_match(args, &names);
         gamma_rate_scale_conflict(&slots, &filled);
@@ -642,8 +642,8 @@ pub unsafe fn do_pgamma(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// R's `qgamma(p, shape, rate=1, scale=1/rate, lower.tail=TRUE, log.p=FALSE)`.
-pub unsafe fn do_qgamma(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_qgamma(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let names = ["p", "shape", "rate", "scale", "lower.tail", "log.p"];
         let (slots, filled) = dist_match(args, &names);
         gamma_rate_scale_conflict(&slots, &filled);
@@ -663,8 +663,8 @@ pub unsafe fn do_qgamma(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// R's `dbeta(x, shape1, shape2, log=FALSE)` — beta density.
-pub unsafe fn do_dbeta(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_dbeta(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let names = ["x", "shape1", "shape2", "log"];
         let (ops, slots, filled) = dpq_operands(args, &names, &[None, None]);
         let log_p = dpq_flag(&slots, &filled, 3, false);
@@ -675,8 +675,8 @@ pub unsafe fn do_dbeta(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// R's `pbeta(q, shape1, shape2, lower.tail=TRUE, log.p=FALSE)` — beta CDF.
-pub unsafe fn do_pbeta(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_pbeta(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let names = ["q", "shape1", "shape2", "lower.tail", "log.p"];
         let (ops, slots, filled) = dpq_operands(args, &names, &[None, None]);
         let lower_tail = dpq_flag(&slots, &filled, 3, true);
@@ -688,8 +688,8 @@ pub unsafe fn do_pbeta(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// R's `qbeta(p, shape1, shape2, lower.tail=TRUE, log.p=FALSE)` — beta quantile.
-pub unsafe fn do_qbeta(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_qbeta(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let names = ["p", "shape1", "shape2", "lower.tail", "log.p"];
         let (ops, slots, filled) = dpq_operands(args, &names, &[None, None]);
         let lower_tail = dpq_flag(&slots, &filled, 3, true);
@@ -702,8 +702,8 @@ pub unsafe fn do_qbeta(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R's `dt(x, df, ncp, log=FALSE)` — t density. Supplying `ncp` switches to
 /// the noncentral variant, like stock's `dt()` wrapper.
-pub unsafe fn do_dt(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_dt(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let names = ["x", "df", "ncp", "log"];
         let (slots, filled) = dist_match(args, &names);
         let x = dpq_num(&slots, &filled, &names, 0, None, DPQ_NONNUM);
@@ -723,8 +723,8 @@ pub unsafe fn do_dt(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// R's `pt(q, df, ncp, lower.tail=TRUE, log.p=FALSE)` — t CDF.
-pub unsafe fn do_pt(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_pt(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let names = ["q", "df", "ncp", "lower.tail", "log.p"];
         let (slots, filled) = dist_match(args, &names);
         let q = dpq_num(&slots, &filled, &names, 0, None, DPQ_NONNUM);
@@ -745,8 +745,8 @@ pub unsafe fn do_pt(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// R's `qt(p, df, ncp, lower.tail=TRUE, log.p=FALSE)` — t quantile.
-pub unsafe fn do_qt(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_qt(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let names = ["p", "df", "ncp", "lower.tail", "log.p"];
         let (slots, filled) = dist_match(args, &names);
         let p = dpq_num(&slots, &filled, &names, 0, None, DPQ_NONNUM);
@@ -767,8 +767,8 @@ pub unsafe fn do_qt(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// R's `dchisq(x, df, log=FALSE)` — chi-squared density.
-pub unsafe fn do_dchisq(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_dchisq(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let names = ["x", "df", "log"];
         let (ops, slots, filled) = dpq_operands(args, &names, &[None]);
         let log_p = dpq_flag(&slots, &filled, 2, false);
@@ -779,8 +779,8 @@ pub unsafe fn do_dchisq(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// R's `pchisq(q, df, lower.tail=TRUE, log.p=FALSE)` — chi-squared CDF.
-pub unsafe fn do_pchisq(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_pchisq(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let names = ["q", "df", "lower.tail", "log.p"];
         let (ops, slots, filled) = dpq_operands(args, &names, &[None]);
         let lower_tail = dpq_flag(&slots, &filled, 2, true);
@@ -792,8 +792,8 @@ pub unsafe fn do_pchisq(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// R's `qchisq(p, df, lower.tail=TRUE, log.p=FALSE)` — chi-squared quantile.
-pub unsafe fn do_qchisq(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_qchisq(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let names = ["p", "df", "lower.tail", "log.p"];
         let (ops, slots, filled) = dpq_operands(args, &names, &[None]);
         let lower_tail = dpq_flag(&slots, &filled, 2, true);
@@ -805,8 +805,8 @@ pub unsafe fn do_qchisq(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// R's `dcauchy(x, location=0, scale=1, log=FALSE)` — Cauchy density.
-pub unsafe fn do_dcauchy(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_dcauchy(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let names = ["x", "location", "scale", "log"];
         let (ops, slots, filled) = dpq_operands(args, &names, &[Some(0.0), Some(1.0)]);
         let log_p = dpq_flag(&slots, &filled, 3, false);
@@ -817,8 +817,8 @@ pub unsafe fn do_dcauchy(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 }
 
 /// R's `pcauchy(q, location=0, scale=1, lower.tail=TRUE, log.p=FALSE)` — Cauchy CDF.
-pub unsafe fn do_pcauchy(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_pcauchy(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let names = ["q", "location", "scale", "lower.tail", "log.p"];
         let (ops, slots, filled) = dpq_operands(args, &names, &[Some(0.0), Some(1.0)]);
         let lower_tail = dpq_flag(&slots, &filled, 3, true);
@@ -830,8 +830,8 @@ pub unsafe fn do_pcauchy(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 }
 
 /// R's `qcauchy(p, location=0, scale=1, lower.tail=TRUE, log.p=FALSE)` — Cauchy quantile.
-pub unsafe fn do_qcauchy(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_qcauchy(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let names = ["p", "location", "scale", "lower.tail", "log.p"];
         let (ops, slots, filled) = dpq_operands(args, &names, &[Some(0.0), Some(1.0)]);
         let lower_tail = dpq_flag(&slots, &filled, 3, true);
@@ -843,8 +843,8 @@ pub unsafe fn do_qcauchy(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 }
 
 /// R's `dweibull(x, shape, scale=1, log=FALSE)` — Weibull density.
-pub unsafe fn do_dweibull(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_dweibull(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let names = ["x", "shape", "scale", "log"];
         let (ops, slots, filled) = dpq_operands(args, &names, &[None, Some(1.0)]);
         let log_p = dpq_flag(&slots, &filled, 3, false);
@@ -855,8 +855,8 @@ pub unsafe fn do_dweibull(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 }
 
 /// R's `pweibull(q, shape, scale=1, lower.tail=TRUE, log.p=FALSE)` — Weibull CDF.
-pub unsafe fn do_pweibull(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_pweibull(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let names = ["q", "shape", "scale", "lower.tail", "log.p"];
         let (ops, slots, filled) = dpq_operands(args, &names, &[None, Some(1.0)]);
         let lower_tail = dpq_flag(&slots, &filled, 3, true);
@@ -868,8 +868,8 @@ pub unsafe fn do_pweibull(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 }
 
 /// R's `qweibull(p, shape, scale=1, lower.tail=TRUE, log.p=FALSE)` — Weibull quantile.
-pub unsafe fn do_qweibull(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_qweibull(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let names = ["p", "shape", "scale", "lower.tail", "log.p"];
         let (ops, slots, filled) = dpq_operands(args, &names, &[None, Some(1.0)]);
         let lower_tail = dpq_flag(&slots, &filled, 3, true);
@@ -881,8 +881,8 @@ pub unsafe fn do_qweibull(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 }
 
 /// R's `df(x, df1, df2, ncp, log=FALSE)` — F density.
-pub unsafe fn do_df(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_df(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let names = ["x", "df1", "df2", "ncp", "log"];
         let (slots, filled) = dist_match(args, &names);
         let x = dpq_num(&slots, &filled, &names, 0, None, DPQ_NONNUM);
@@ -903,8 +903,8 @@ pub unsafe fn do_df(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// R's `pf(q, df1, df2, ncp, lower.tail=TRUE, log.p=FALSE)` — F CDF.
-pub unsafe fn do_pf(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_pf(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let names = ["q", "df1", "df2", "ncp", "lower.tail", "log.p"];
         let (slots, filled) = dist_match(args, &names);
         let q = dpq_num(&slots, &filled, &names, 0, None, DPQ_NONNUM);
@@ -930,8 +930,8 @@ pub unsafe fn do_pf(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// R's `qf(p, df1, df2, ncp, lower.tail=TRUE, log.p=FALSE)` — F quantile.
-pub unsafe fn do_qf(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_qf(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let names = ["p", "df1", "df2", "ncp", "lower.tail", "log.p"];
         let (slots, filled) = dist_match(args, &names);
         let p = dpq_num(&slots, &filled, &names, 0, None, DPQ_NONNUM);
@@ -957,8 +957,8 @@ pub unsafe fn do_qf(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// R's `dunif(x, min=0, max=1, log=FALSE)` — uniform density.
-pub unsafe fn do_dunif(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_dunif(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let names = ["x", "min", "max", "log"];
         let (ops, slots, filled) = dpq_operands(args, &names, &[Some(0.0), Some(1.0)]);
         let log_p = dpq_flag(&slots, &filled, 3, false);
@@ -969,8 +969,8 @@ pub unsafe fn do_dunif(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// R's `punif(q, min=0, max=1, lower.tail=TRUE, log.p=FALSE)` — uniform CDF.
-pub unsafe fn do_punif(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_punif(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let names = ["q", "min", "max", "lower.tail", "log.p"];
         let (ops, slots, filled) = dpq_operands(args, &names, &[Some(0.0), Some(1.0)]);
         let lower_tail = dpq_flag(&slots, &filled, 3, true);
@@ -982,8 +982,8 @@ pub unsafe fn do_punif(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// R's `qunif(p, min=0, max=1, lower.tail=TRUE, log.p=FALSE)` — uniform quantile.
-pub unsafe fn do_qunif(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_qunif(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let names = ["p", "min", "max", "lower.tail", "log.p"];
         let (ops, slots, filled) = dpq_operands(args, &names, &[Some(0.0), Some(1.0)]);
         let lower_tail = dpq_flag(&slots, &filled, 3, true);
@@ -997,8 +997,8 @@ pub unsafe fn do_qunif(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 /// R's `dnbinom(x, size, prob, mu, log=FALSE)` — negative binomial density.
 /// The stats wrapper dispatches to the mu variant when `mu` is supplied
 /// (erroring if `prob` is also given); `prob` is required otherwise.
-pub unsafe fn do_dnbinom(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_dnbinom(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let names = ["x", "size", "prob", "mu", "log"];
         let (slots, filled) = dist_match(args, &names);
         let x = dpq_num(&slots, &filled, &names, 0, None, DPQ_NONNUM);
@@ -1023,8 +1023,8 @@ pub unsafe fn do_dnbinom(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 }
 
 /// R's `pnbinom(q, size, prob, mu, lower.tail=TRUE, log.p=FALSE)` — negative binomial CDF.
-pub unsafe fn do_pnbinom(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_pnbinom(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let names = ["q", "size", "prob", "mu", "lower.tail", "log.p"];
         let (slots, filled) = dist_match(args, &names);
         let q = dpq_num(&slots, &filled, &names, 0, None, DPQ_NONNUM);
@@ -1054,8 +1054,8 @@ pub unsafe fn do_pnbinom(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 }
 
 /// R's `qnbinom(p, size, prob, mu, lower.tail=TRUE, log.p=FALSE)` — negative binomial quantile.
-pub unsafe fn do_qnbinom(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_qnbinom(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let names = ["p", "size", "prob", "mu", "lower.tail", "log.p"];
         let (slots, filled) = dist_match(args, &names);
         let p = dpq_num(&slots, &filled, &names, 0, None, DPQ_NONNUM);
@@ -1085,8 +1085,8 @@ pub unsafe fn do_qnbinom(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 }
 
 /// R's `dgeom(x, prob, log=FALSE)` — geometric density.
-pub unsafe fn do_dgeom(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_dgeom(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let names = ["x", "prob", "log"];
         let (ops, slots, filled) = dpq_operands(args, &names, &[None]);
         let log_p = dpq_flag(&slots, &filled, 2, false);
@@ -1097,8 +1097,8 @@ pub unsafe fn do_dgeom(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// R's `pgeom(q, prob, lower.tail=TRUE, log.p=FALSE)` — geometric CDF.
-pub unsafe fn do_pgeom(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_pgeom(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let names = ["q", "prob", "lower.tail", "log.p"];
         let (ops, slots, filled) = dpq_operands(args, &names, &[None]);
         let lower_tail = dpq_flag(&slots, &filled, 2, true);
@@ -1110,8 +1110,8 @@ pub unsafe fn do_pgeom(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// R's `qgeom(p, prob, lower.tail=TRUE, log.p=FALSE)` — geometric quantile.
-pub unsafe fn do_qgeom(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_qgeom(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let names = ["p", "prob", "lower.tail", "log.p"];
         let (ops, slots, filled) = dpq_operands(args, &names, &[None]);
         let lower_tail = dpq_flag(&slots, &filled, 2, true);
@@ -1127,8 +1127,8 @@ pub unsafe fn do_qgeom(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// R's `dlnorm(x, meanlog=0, sdlog=1, log=FALSE)` — lognormal density.
-pub unsafe fn do_dlnorm(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_dlnorm(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let names = ["x", "meanlog", "sdlog", "log"];
         let (ops, slots, filled) = dpq_operands(args, &names, &[Some(0.0), Some(1.0)]);
         let log_p = dpq_flag(&slots, &filled, 3, false);
@@ -1139,8 +1139,8 @@ pub unsafe fn do_dlnorm(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// R's `plnorm(q, meanlog=0, sdlog=1, lower.tail=TRUE, log.p=FALSE)` — lognormal CDF.
-pub unsafe fn do_plnorm(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_plnorm(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let names = ["q", "meanlog", "sdlog", "lower.tail", "log.p"];
         let (ops, slots, filled) = dpq_operands(args, &names, &[Some(0.0), Some(1.0)]);
         let lower_tail = dpq_flag(&slots, &filled, 3, true);
@@ -1152,8 +1152,8 @@ pub unsafe fn do_plnorm(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// R's `qlnorm(p, meanlog=0, sdlog=1, lower.tail=TRUE, log.p=FALSE)` — lognormal quantile.
-pub unsafe fn do_qlnorm(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_qlnorm(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let names = ["p", "meanlog", "sdlog", "lower.tail", "log.p"];
         let (ops, slots, filled) = dpq_operands(args, &names, &[Some(0.0), Some(1.0)]);
         let lower_tail = dpq_flag(&slots, &filled, 3, true);
@@ -1165,8 +1165,8 @@ pub unsafe fn do_qlnorm(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// R's `dlogis(x, location=0, scale=1, log=FALSE)` — logistic density.
-pub unsafe fn do_dlogis(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_dlogis(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let names = ["x", "location", "scale", "log"];
         let (ops, slots, filled) = dpq_operands(args, &names, &[Some(0.0), Some(1.0)]);
         let log_p = dpq_flag(&slots, &filled, 3, false);
@@ -1177,8 +1177,8 @@ pub unsafe fn do_dlogis(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// R's `plogis(q, location=0, scale=1, lower.tail=TRUE, log.p=FALSE)` — logistic CDF.
-pub unsafe fn do_plogis(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_plogis(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let names = ["q", "location", "scale", "lower.tail", "log.p"];
         let (ops, slots, filled) = dpq_operands(args, &names, &[Some(0.0), Some(1.0)]);
         let lower_tail = dpq_flag(&slots, &filled, 3, true);
@@ -1190,8 +1190,8 @@ pub unsafe fn do_plogis(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// R's `qlogis(p, location=0, scale=1, lower.tail=TRUE, log.p=FALSE)` — logistic quantile.
-pub unsafe fn do_qlogis(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_qlogis(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let names = ["p", "location", "scale", "lower.tail", "log.p"];
         let (ops, slots, filled) = dpq_operands(args, &names, &[Some(0.0), Some(1.0)]);
         let lower_tail = dpq_flag(&slots, &filled, 3, true);
@@ -1203,8 +1203,8 @@ pub unsafe fn do_qlogis(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// R's `dsignrank(x, n, log=FALSE)` — Wilcoxon signed rank density.
-pub unsafe fn do_dsignrank(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_dsignrank(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let names = ["x", "n", "log"];
         let (ops, slots, filled) = dpq_operands(args, &names, &[None]);
         let log_p = dpq_flag(&slots, &filled, 2, false);
@@ -1215,8 +1215,8 @@ pub unsafe fn do_dsignrank(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 }
 
 /// R's `psignrank(q, n, lower.tail=TRUE, log.p=FALSE)` — Wilcoxon signed rank CDF.
-pub unsafe fn do_psignrank(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_psignrank(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let names = ["q", "n", "lower.tail", "log.p"];
         let (ops, slots, filled) = dpq_operands(args, &names, &[None]);
         let lower_tail = dpq_flag(&slots, &filled, 2, true);
@@ -1228,8 +1228,8 @@ pub unsafe fn do_psignrank(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 }
 
 /// R's `qsignrank(p, n, lower.tail=TRUE, log.p=FALSE)` — Wilcoxon signed rank quantile.
-pub unsafe fn do_qsignrank(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_qsignrank(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let names = ["p", "n", "lower.tail", "log.p"];
         let (ops, slots, filled) = dpq_operands(args, &names, &[None]);
         let lower_tail = dpq_flag(&slots, &filled, 2, true);
@@ -1241,8 +1241,8 @@ pub unsafe fn do_qsignrank(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 }
 
 /// R's `dwilcox(x, m, n, log=FALSE)` — Wilcoxon rank sum density.
-pub unsafe fn do_dwilcox(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_dwilcox(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let names = ["x", "m", "n", "log"];
         let (ops, slots, filled) = dpq_operands(args, &names, &[None, None]);
         let log_p = dpq_flag(&slots, &filled, 3, false);
@@ -1253,8 +1253,8 @@ pub unsafe fn do_dwilcox(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 }
 
 /// R's `pwilcox(q, m, n, lower.tail=TRUE, log.p=FALSE)` — Wilcoxon rank sum CDF.
-pub unsafe fn do_pwilcox(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_pwilcox(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let names = ["q", "m", "n", "lower.tail", "log.p"];
         let (ops, slots, filled) = dpq_operands(args, &names, &[None, None]);
         let lower_tail = dpq_flag(&slots, &filled, 3, true);
@@ -1266,8 +1266,8 @@ pub unsafe fn do_pwilcox(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 }
 
 /// R's `qwilcox(p, m, n, lower.tail=TRUE, log.p=FALSE)` — Wilcoxon rank sum quantile.
-pub unsafe fn do_qwilcox(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_qwilcox(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let names = ["p", "m", "n", "lower.tail", "log.p"];
         let (ops, slots, filled) = dpq_operands(args, &names, &[None, None]);
         let lower_tail = dpq_flag(&slots, &filled, 3, true);
@@ -1279,8 +1279,8 @@ pub unsafe fn do_qwilcox(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 }
 
 /// R's `dhyper(x, m, n, k, log=FALSE)` — hypergeometric density (4 params).
-pub unsafe fn do_dhyper(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_dhyper(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let names = ["x", "m", "n", "k", "log"];
         let (ops, slots, filled) = dpq_operands(args, &names, &[None, None, None]);
         let log_p = dpq_flag(&slots, &filled, 4, false);
@@ -1291,8 +1291,8 @@ pub unsafe fn do_dhyper(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// R's `phyper(q, m, n, k, lower.tail=TRUE, log.p=FALSE)` — hypergeometric CDF (4 params).
-pub unsafe fn do_phyper(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_phyper(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let names = ["q", "m", "n", "k", "lower.tail", "log.p"];
         let (ops, slots, filled) = dpq_operands(args, &names, &[None, None, None]);
         let lower_tail = dpq_flag(&slots, &filled, 4, true);
@@ -1304,8 +1304,8 @@ pub unsafe fn do_phyper(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// R's `qhyper(p, m, n, k, lower.tail=TRUE, log.p=FALSE)` — hypergeometric quantile (4 params).
-pub unsafe fn do_qhyper(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_qhyper(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let names = ["p", "m", "n", "k", "lower.tail", "log.p"];
         let (ops, slots, filled) = dpq_operands(args, &names, &[None, None, None]);
         let lower_tail = dpq_flag(&slots, &filled, 4, true);
@@ -1318,8 +1318,8 @@ pub unsafe fn do_qhyper(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R's `ptukey(q, nmeans, df, nranges=1, lower.tail=TRUE, log.p=FALSE)` —
 /// Studentized range CDF.
-pub unsafe fn do_ptukey(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_ptukey(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let names = ["q", "nmeans", "df", "nranges", "lower.tail", "log.p"];
         let (ops, slots, filled) = dpq_operands(args, &names, &[None, None, Some(1.0)]);
         let lower_tail = dpq_flag(&slots, &filled, 4, true);
@@ -1332,8 +1332,8 @@ pub unsafe fn do_ptukey(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R's `qtukey(p, nmeans, df, nranges=1, lower.tail=TRUE, log.p=FALSE)` —
 /// Studentized range quantile.
-pub unsafe fn do_qtukey(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_qtukey(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let names = ["p", "nmeans", "df", "nranges", "lower.tail", "log.p"];
         let (ops, slots, filled) = dpq_operands(args, &names, &[None, None, Some(1.0)]);
         let lower_tail = dpq_flag(&slots, &filled, 4, true);
@@ -1345,7 +1345,7 @@ pub unsafe fn do_qtukey(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// R's `dmultinom(x, prob, log=FALSE)` — multinomial probability.
-pub unsafe fn do_dmultinom(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_dmultinom(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let (m, _filled) = dist_match(args, &["x", "prob", "log"]);
         let x_arg = m[0];
