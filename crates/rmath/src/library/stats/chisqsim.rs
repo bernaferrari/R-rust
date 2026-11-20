@@ -3,7 +3,7 @@
 
 use std::os::raw::{c_double, c_int};
 
-use crate::library::stats::rcont::rcont2;
+use crate::library::stats::rcont::rcont2_slices;
 use crate::main::coerce::{asInteger, coerceVector};
 use crate::main::random::{GetRNGstate, PutRNGstate};
 use crate::sexp::accessors::{INTEGER, LENGTH, REAL, TYPEOF};
@@ -11,34 +11,39 @@ use crate::sexp::constructors::Rf_allocVector;
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
 use crate::sexp::protect::protect;
 
-unsafe fn chisqsim(
+fn chisqsim(
     nrow: c_int,
     ncol: c_int,
-    nrowt: *const c_int,
-    ncolt: *const c_int,
+    nrowt: &[c_int],
+    ncolt: &[c_int],
     n: c_int,
     B: c_int,
-    expected: *const c_double,
-    observed: *mut c_int,
-    fact: *mut c_double,
-    jwork: *mut c_int,
-    results: *mut c_double,
+    expected: &[c_double],
+    observed: &mut [c_int],
+    fact: &mut [c_double],
+    jwork: &mut [c_int],
+    results: &mut [c_double],
 ) {
-    unsafe {
+    {
         // Calculate log-factorials: fact[i] = lgamma(i+1)
-        *fact = 0.0;
-        *fact.add(1) = 0.0;
+        fact[0] = 0.0;
+        fact[1] = 0.0;
         let mut i: c_int = 2;
         while i <= n {
-            *fact.add(i as usize) = *fact.add((i - 1) as usize) + (i as c_double).ln();
+            fact[i as usize] = fact[(i - 1) as usize] + (i as c_double).ln();
             i += 1;
         }
 
-        GetRNGstate();
+        unsafe {
+            // RNG state is process-global behind the interpreter lock.
+            GetRNGstate();
+        }
 
         let mut iter: c_int = 0;
         while iter < B {
-            rcont2(nrow, ncol, nrowt, ncolt, n, fact, jwork, observed);
+            // Buffers satisfy the dimension contract; degenerate margins are
+            // rejected by the checked wrapper instead of producing garbage.
+            let _ = rcont2_slices(nrow, ncol, nrowt, ncolt, n, fact, jwork, observed);
             // Calculate chi-squared value from the random table
             let mut chisq: c_double = 0.0;
             let mut j: c_int = 0;
@@ -46,49 +51,57 @@ unsafe fn chisqsim(
                 let mut i: c_int = 0;
                 let mut ii = j * nrow;
                 while i < nrow {
-                    let e = *expected.add(ii as usize);
-                    let o = *observed.add(ii as usize) as c_double;
+                    let e = expected[ii as usize];
+                    let o = observed[ii as usize] as c_double;
                     chisq += (o - e) * (o - e) / e;
                     i += 1;
                     ii += 1;
                 }
                 j += 1;
             }
-            *results.add(iter as usize) = chisq;
+            results[iter as usize] = chisq;
             iter += 1;
         }
 
-        PutRNGstate();
+        unsafe {
+            // RNG state is process-global behind the interpreter lock.
+            PutRNGstate();
+        }
     }
 }
 
-unsafe fn fisher_sim(
+fn fisher_sim(
     nrow: c_int,
     ncol: c_int,
-    nrowt: *const c_int,
-    ncolt: *const c_int,
+    nrowt: &[c_int],
+    ncolt: &[c_int],
     n: c_int,
     B: c_int,
-    observed: *mut c_int,
-    fact: *mut c_double,
-    jwork: *mut c_int,
-    results: *mut c_double,
+    observed: &mut [c_int],
+    fact: &mut [c_double],
+    jwork: &mut [c_int],
+    results: &mut [c_double],
 ) {
-    unsafe {
+    {
         // Calculate log-factorials: fact[i] = lgamma(i+1)
-        *fact = 0.0;
-        *fact.add(1) = 0.0;
+        fact[0] = 0.0;
+        fact[1] = 0.0;
         let mut i: c_int = 2;
         while i <= n {
-            *fact.add(i as usize) = *fact.add((i - 1) as usize) + (i as c_double).ln();
+            fact[i as usize] = fact[(i - 1) as usize] + (i as c_double).ln();
             i += 1;
         }
 
-        GetRNGstate();
+        unsafe {
+            // RNG state is process-global behind the interpreter lock.
+            GetRNGstate();
+        }
 
         let mut iter: c_int = 0;
         while iter < B {
-            rcont2(nrow, ncol, nrowt, ncolt, n, fact, jwork, observed);
+            // Buffers satisfy the dimension contract; degenerate margins are
+            // rejected by the checked wrapper instead of producing garbage.
+            let _ = rcont2_slices(nrow, ncol, nrowt, ncolt, n, fact, jwork, observed);
             // Calculate log-prob value from the random table
             let mut ans: c_double = 0.0;
             let mut j: c_int = 0;
@@ -96,17 +109,20 @@ unsafe fn fisher_sim(
                 let mut i: c_int = 0;
                 let mut ii = j * nrow;
                 while i < nrow {
-                    ans -= *fact.add(*observed.add(ii as usize) as usize);
+                    ans -= fact[observed[ii as usize] as usize];
                     i += 1;
                     ii += 1;
                 }
                 j += 1;
             }
-            *results.add(iter as usize) = ans;
+            results[iter as usize] = ans;
             iter += 1;
         }
 
-        PutRNGstate();
+        unsafe {
+            // RNG state is process-global behind the interpreter lock.
+            PutRNGstate();
+        }
     }
 }
 
@@ -134,14 +150,14 @@ pub unsafe fn Fisher_sim(sr: SEXP, sc: SEXP, sB: SEXP) -> SEXP {
         fisher_sim(
             nr,
             nc,
-            isr,
-            INTEGER(sc),
+            std::slice::from_raw_parts(isr, nr as usize),
+            std::slice::from_raw_parts(INTEGER(sc), nc as usize),
             n,
             B,
-            observed.as_mut_ptr(),
-            fact.as_mut_ptr(),
-            jwork.as_mut_ptr(),
-            REAL(ans),
+            &mut observed,
+            &mut fact,
+            &mut jwork,
+            std::slice::from_raw_parts_mut(REAL(ans), B as usize),
         );
         ans
     }
@@ -173,15 +189,15 @@ pub unsafe fn chisq_sim(sr: SEXP, sc: SEXP, sB: SEXP, E: SEXP) -> SEXP {
         chisqsim(
             nr,
             nc,
-            isr,
-            INTEGER(sc),
+            std::slice::from_raw_parts(isr, nr as usize),
+            std::slice::from_raw_parts(INTEGER(sc), nc as usize),
             n,
             B,
-            REAL(E),
-            observed.as_mut_ptr(),
-            fact.as_mut_ptr(),
-            jwork.as_mut_ptr(),
-            REAL(ans),
+            std::slice::from_raw_parts(REAL(E), (nr * nc) as usize),
+            &mut observed,
+            &mut fact,
+            &mut jwork,
+            std::slice::from_raw_parts_mut(REAL(ans), B as usize),
         );
         ans
     }

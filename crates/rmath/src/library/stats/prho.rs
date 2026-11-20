@@ -8,8 +8,8 @@ use crate::nmath::dist::normal::pnorm5_inner;
 use crate::sexp::constructors::Rf_ScalarReal;
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
 
-unsafe fn prho(n: c_int, is: c_double, pv: *mut c_double, ifault: *mut c_int, lower_tail: c_int) {
-    unsafe {
+fn prho(n: c_int, is: c_double, pv: &mut c_double, ifault: &mut c_int, lower_tail: c_int) {
+    {
         // Edgeworth coefficients
         let c1: c_double = 0.2274;
         let c2: c_double = 0.2531;
