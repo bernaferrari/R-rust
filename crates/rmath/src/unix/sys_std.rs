@@ -35,7 +35,8 @@ const SA_SUICIDE: c_int = 3;
 // ---------------------------------------------------------------------------
 
 /// Fatal error handler called at startup.
-pub unsafe fn Rstd_Suicide(s: *const c_char) {
+pub fn Rstd_Suicide(s: *const c_char) {
+    // SAFETY: `s` is NUL-terminated or null per the console contract.
     unsafe {
         if !s.is_null() {
             let msg = std::ffi::CStr::from_ptr(s);
@@ -78,12 +79,13 @@ fn read_console_from(reader: &mut impl BufRead, buf: &mut [u8]) -> c_int {
     }
 }
 
-pub unsafe fn Rstd_ReadConsole(
+pub fn Rstd_ReadConsole(
     prompt: *const c_char,
     buf: *mut u8,
     len: c_int,
     _addtohistory: c_int,
 ) -> c_int {
+    // SAFETY: `buf` has `len` writable bytes; `prompt` is NUL-terminated.
     unsafe {
         if len <= 0 || buf.is_null() {
             return 0;
@@ -109,7 +111,8 @@ pub unsafe fn Rstd_ReadConsole(
 // ---------------------------------------------------------------------------
 
 /// Write to the console (legacy interface).
-pub unsafe fn Rstd_WriteConsole(buf: *const c_char, len: c_int) {
+pub fn Rstd_WriteConsole(buf: *const c_char, len: c_int) {
+    // SAFETY: `buf` has `len` readable bytes per the console contract.
     unsafe {
         if len <= 0 || buf.is_null() {
             return;
@@ -121,7 +124,8 @@ pub unsafe fn Rstd_WriteConsole(buf: *const c_char, len: c_int) {
 
 /// Write to the console with output type.
 /// otype=0: normal, otype=1: warning/error
-pub unsafe fn Rstd_WriteConsoleEx(buf: *const c_char, len: c_int, otype: c_int) {
+pub fn Rstd_WriteConsoleEx(buf: *const c_char, len: c_int, otype: c_int) {
+    // SAFETY: `buf` has `len` readable bytes per the console contract.
     unsafe {
         if len <= 0 || buf.is_null() {
             return;
@@ -159,7 +163,8 @@ pub fn Rstd_Busy(_which: c_int) {}
 // ---------------------------------------------------------------------------
 
 /// Show a message (used for warnings during initialization).
-pub unsafe fn Rstd_ShowMessage(s: *const c_char) {
+pub fn Rstd_ShowMessage(s: *const c_char) {
+    // SAFETY: `s` is NUL-terminated or null per the console contract.
     unsafe {
         if !s.is_null() {
             let msg = std::ffi::CStr::from_ptr(s);
@@ -192,7 +197,7 @@ pub fn Rstd_CleanUp(_saveact: c_int, status: c_int, _runLast: c_int) {
 // ---------------------------------------------------------------------------
 
 /// Show files using a pager.
-pub unsafe fn Rstd_ShowFiles(
+pub fn Rstd_ShowFiles(
     _nfile: c_int,
     _file: *const *const c_char,
     _headers: *const *const c_char,
@@ -204,14 +209,14 @@ pub unsafe fn Rstd_ShowFiles(
 }
 
 /// Choose a file (file dialog).
-pub unsafe fn Rstd_ChooseFile(_new: c_int, _buf: *mut c_char, _len: c_int) -> c_int {
+pub fn Rstd_ChooseFile(_new: c_int, _buf: *mut c_char, _len: c_int) -> c_int {
     0
 }
 
 #[derive(Default)]
 pub(crate) struct SysStdRuntimeState {
-    pub(crate) r_polled_events: Option<unsafe extern "C" fn()>,
-    pub(crate) rg_polled_events: Option<unsafe extern "C" fn()>,
+    pub(crate) r_polled_events: Option<extern "C" fn()>,
+    pub(crate) rg_polled_events: Option<extern "C" fn()>,
     history: Vec<String>,
     readline_word_breaks: Option<String>,
 }
@@ -228,7 +233,7 @@ fn cstr_to_string(ptr: *const c_char) -> Option<String> {
 // ---------------------------------------------------------------------------
 
 /// Load command history from file.
-pub unsafe fn Rstd_loadhistory(file: *const c_char) {
+pub fn Rstd_loadhistory(file: *const c_char) {
     let Some(path) = cstr_to_string(file) else {
         return;
     };
@@ -241,7 +246,7 @@ pub unsafe fn Rstd_loadhistory(file: *const c_char) {
 }
 
 /// Save command history to file.
-pub unsafe fn Rstd_savehistory(file: *const c_char) {
+pub fn Rstd_savehistory(file: *const c_char) {
     let Some(path) = cstr_to_string(file) else {
         return;
     };
@@ -256,7 +261,7 @@ pub unsafe fn Rstd_savehistory(file: *const c_char) {
 }
 
 /// Add a line to the history.
-pub unsafe fn Rstd_addhistory(line: *const c_char) {
+pub fn Rstd_addhistory(line: *const c_char) {
     let Some(line) = cstr_to_string(line) else {
         return;
     };
@@ -266,31 +271,31 @@ pub unsafe fn Rstd_addhistory(line: *const c_char) {
 }
 
 /// Read history from file (readline interface).
-pub unsafe fn Rstd_read_history(file: *const c_char) {
-    unsafe { Rstd_loadhistory(file) }
+pub fn Rstd_read_history(file: *const c_char) {
+    Rstd_loadhistory(file)
 }
 
 // ---------------------------------------------------------------------------
 // Event loop callbacks
 // ---------------------------------------------------------------------------
 
-pub(crate) fn set_r_polled_events(callback: Option<unsafe extern "C" fn()>) {
+pub(crate) fn set_r_polled_events(callback: Option<extern "C" fn()>) {
     with_required_current_instance(|instance| unsafe {
         (*instance).sys_std_state.r_polled_events = callback;
     });
 }
 
-pub(crate) fn set_rg_polled_events(callback: Option<unsafe extern "C" fn()>) {
+pub(crate) fn set_rg_polled_events(callback: Option<extern "C" fn()>) {
     with_required_current_instance(|instance| unsafe {
         (*instance).sys_std_state.rg_polled_events = callback;
     });
 }
 
-pub(crate) fn r_polled_events() -> Option<unsafe extern "C" fn()> {
+pub(crate) fn r_polled_events() -> Option<extern "C" fn()> {
     with_required_current_instance(|instance| unsafe { (*instance).sys_std_state.r_polled_events })
 }
 
-pub(crate) fn rg_polled_events() -> Option<unsafe extern "C" fn()> {
+pub(crate) fn rg_polled_events() -> Option<extern "C" fn()> {
     with_required_current_instance(|instance| unsafe { (*instance).sys_std_state.rg_polled_events })
 }
 
@@ -306,7 +311,7 @@ pub fn Rg_wait_usec(_usec: c_int) {
 }
 
 /// Set readline word break characters.
-pub unsafe fn set_rl_word_breaks(value: *const c_char) {
+pub fn set_rl_word_breaks(value: *const c_char) {
     let word_breaks = cstr_to_string(value);
     with_required_current_instance(|instance| unsafe {
         (*instance).sys_std_state.readline_word_breaks = word_breaks;
@@ -314,7 +319,9 @@ pub unsafe fn set_rl_word_breaks(value: *const c_char) {
 }
 
 /// Expand filename using the frontend-compatible readline hook.
-pub unsafe fn R_ExpandFileName_readline(s: *const c_char, buff: *mut c_char) -> *mut c_char {
+pub fn R_ExpandFileName_readline(s: *const c_char, buff: *mut c_char) -> *mut c_char {
+    // SAFETY: `s` is NUL-terminated and `buff` holds R_PATH_MAX bytes per
+    // the readline contract.
     unsafe {
         if s.is_null() || buff.is_null() {
             return ptr::null_mut();
@@ -347,15 +354,15 @@ mod tests {
 
     use super::*;
 
-    unsafe extern "C" fn first_callback() {}
+    extern "C" fn first_callback() {}
 
-    unsafe extern "C" fn second_callback() {}
+    extern "C" fn second_callback() {}
 
-    fn callback_addr(callback: Option<unsafe extern "C" fn()>) -> usize {
+    fn callback_addr(callback: Option<extern "C" fn()>) -> usize {
         callback.map(callback_fn_addr).unwrap_or(0)
     }
 
-    fn callback_fn_addr(callback: unsafe extern "C" fn()) -> usize {
+    fn callback_fn_addr(callback: extern "C" fn()) -> usize {
         callback as *const () as usize
     }
 
@@ -405,59 +412,43 @@ mod tests {
 
     #[test]
     fn test_std_write_console() {
-        unsafe {
-            Rstd_WriteConsole(b"hello\0".as_ptr() as *const c_char, 5);
-        }
+        Rstd_WriteConsole(b"hello\0".as_ptr() as *const c_char, 5);
     }
 
     #[test]
     fn test_std_write_console_ex_normal() {
-        unsafe {
-            Rstd_WriteConsoleEx(b"hello\0".as_ptr() as *const c_char, 5, 0);
-        }
+        Rstd_WriteConsoleEx(b"hello\0".as_ptr() as *const c_char, 5, 0);
     }
 
     #[test]
     fn test_std_write_console_ex_error() {
-        unsafe {
-            Rstd_WriteConsoleEx(b"error\0".as_ptr() as *const c_char, 5, 1);
-        }
+        Rstd_WriteConsoleEx(b"error\0".as_ptr() as *const c_char, 5, 1);
     }
 
     #[test]
     fn test_std_show_message() {
-        unsafe {
-            Rstd_ShowMessage(b"test message\0".as_ptr() as *const c_char);
-        }
+        Rstd_ShowMessage(b"test message\0".as_ptr() as *const c_char);
     }
 
     #[test]
     fn test_std_reset_console() {
-        unsafe {
-            Rstd_ResetConsole();
-        }
+        Rstd_ResetConsole();
     }
 
     #[test]
     fn test_std_flush_console() {
-        unsafe {
-            Rstd_FlushConsole();
-        }
+        Rstd_FlushConsole();
     }
 
     #[test]
     fn test_std_busy() {
-        unsafe {
-            Rstd_Busy(1);
-            Rstd_Busy(0);
-        }
+        Rstd_Busy(1);
+        Rstd_Busy(0);
     }
 
     #[test]
     fn test_std_clearerr_console() {
-        unsafe {
-            Rstd_ClearerrConsole();
-        }
+        Rstd_ClearerrConsole();
     }
 
     #[test]
@@ -469,11 +460,9 @@ mod tests {
             std::thread::current().name().unwrap_or("test")
         ));
         let c_path = std::ffi::CString::new(path.to_string_lossy().as_bytes()).unwrap();
-        unsafe {
-            Rstd_addhistory(b"1 + 1\0".as_ptr() as *const c_char);
-            Rstd_addhistory(b"plot(1:3)\0".as_ptr() as *const c_char);
-            Rstd_savehistory(c_path.as_ptr());
-        }
+        Rstd_addhistory(b"1 + 1\0".as_ptr() as *const c_char);
+        Rstd_addhistory(b"plot(1:3)\0".as_ptr() as *const c_char);
+        Rstd_savehistory(c_path.as_ptr());
 
         let saved = std::fs::read_to_string(&path).expect("history should be saved");
         assert_eq!(saved, "1 + 1\nplot(1:3)\n");
@@ -481,8 +470,8 @@ mod tests {
         let mut other = RInstance::new();
         unsafe {
             set_current_instance(&mut other);
-            Rstd_loadhistory(c_path.as_ptr());
         }
+        Rstd_loadhistory(c_path.as_ptr());
         assert_eq!(
             other.sys_std_state.history,
             vec!["1 + 1".to_string(), "plot(1:3)".to_string()]
@@ -494,9 +483,7 @@ mod tests {
     #[test]
     fn test_set_rl_word_breaks() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            set_rl_word_breaks(b" \t\n\0".as_ptr() as *const c_char);
-        }
+        set_rl_word_breaks(b" \t\n\0".as_ptr() as *const c_char);
         crate::sexp::instance::with_required_current_instance(|instance| unsafe {
             assert_eq!(
                 (*instance).sys_std_state.readline_word_breaks.as_deref(),
@@ -524,11 +511,9 @@ mod tests {
 
     #[test]
     fn test_std_write_console_null() {
-        unsafe {
-            Rstd_WriteConsole(ptr::null(), 5);
-            Rstd_WriteConsole(b"hello\0".as_ptr() as *const c_char, 0);
-            Rstd_WriteConsole(b"hello\0".as_ptr() as *const c_char, -1);
-        }
+        Rstd_WriteConsole(ptr::null(), 5);
+        Rstd_WriteConsole(b"hello\0".as_ptr() as *const c_char, 0);
+        Rstd_WriteConsole(b"hello\0".as_ptr() as *const c_char, -1);
     }
 
     #[test]
