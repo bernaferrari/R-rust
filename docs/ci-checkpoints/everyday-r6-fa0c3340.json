@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "source_commit": "fa0c3340f228984c13ac9a0d3b9c9d13f3f2168b",
+  "source_sha256": "2ff500040d868252304c5e29bddc486e79fae0ea531b419d115e8266c31c2e5f",
+  "wasm_sha256": "2f0a9e3ffcee3263e62be0138f84e64049e3143f178f24ade609d5a4e3e7ef21",
+  "oracle_manifest_sha256": "b2400cc9d83720c794199ebe51856bb88a0aa2e38ee8db276c7c27f04473c679",
+  "workflow": "pure-r-package",
+  "fixture_sha256": {
+    "analysis.R": "317f4ea7e0b631fd12b5030062fca3c29ce755d24db103192bb9b038103e10c9"
+  },
+  "expected": {
+    "output": "Loaded R6 2.6.1; analyzed observations with mean 7\n"
+  },
+  "native": {
+    "output": "Loaded R6 2.6.1; analyzed observations with mean 7\n"
+  },
+  "wasm": {
+    "output": "Loaded R6 2.6.1; analyzed observations with mean 7\n"
+  },
+  "archive_sha256": "59c6eba8b1b912eb7e104f65053235604be853425ee67c152ac4e86a1f2073b4"
+}

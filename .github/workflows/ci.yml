@@ -489,6 +489,7 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/showcase-evidence"
           node tests/browser/portable-package-contracts.mjs "$RPORT_WASM_PKG" | tee "$RUNNER_TEMP/showcase-evidence/portable-package-contracts.log"
+          node tests/browser/package-dependencies-contract.mjs "$RPORT_WASM_PKG" | tee "$RUNNER_TEMP/showcase-evidence/package-dependencies-contract.log"
 
       - name: Install browser test dependencies
         run: |

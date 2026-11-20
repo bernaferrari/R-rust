@@ -54,6 +54,14 @@ user workflows have passed on native Rport and production Wasm.
 
 ## Main verification
 
+- At `fa0c3340`, `loadNamespace()` checked an explicit library and rejected
+  incompatible R6 version requests before registration. A loaded R6 namespace
+  retained its version and identity after the library search path changed.
+  The pinned package workflow repeated all checks on GNU R, native Rport and
+  exact production Wasm. The original tools function also matched pinned GNU
+  direct, recursive and reverse dependency queries.
+  [Production receipt](ci-checkpoints/wasm-bundle-fa0c3340.json)
+
 - At `df6decc7`, production Wasm decoded the pinned datasets through
   the same bounded codec as other lazy-loaded R records. The contract
   checked all 108 dataset objects and 592,931 serialized graph bytes.

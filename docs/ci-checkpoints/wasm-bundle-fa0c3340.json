@@ -1,0 +1,56 @@
+{
+  "runtime_commit": "fa0c3340f228984c13ac9a0d3b9c9d13f3f2168b",
+  "wasm_sha256": "2f0a9e3ffcee3263e62be0138f84e64049e3143f178f24ade609d5a4e3e7ef21",
+  "files": {
+    "package.json": 365,
+    "r_wasm.d.ts": 6452,
+    "r_wasm.js": 25125,
+    "r_wasm_bg.wasm": 23999710,
+    "r_wasm_bg.wasm.d.ts": 2615,
+    "rust-runtime-optimization.json": 476
+  },
+  "bundle_bytes": 24034743,
+  "byte_limit": 26214400,
+  "headroom_bytes": 2179657,
+  "bundle_growth_bytes": 9926,
+  "portable_contracts_per_generation": [
+    166,
+    166
+  ],
+  "package_dependencies_contract": {
+    "wasm_sha256": "2f0a9e3ffcee3263e62be0138f84e64049e3143f178f24ade609d5a4e3e7ef21",
+    "dependency_scans_passed": 4,
+    "s4_after_dependency_scans": "pass",
+    "log_sha256": "0bd4f1ea59698fcecbb235fd63af8e31262d6b209ef5b09d7f8a041915b66a9b"
+  },
+  "combined_stress_attempt": "Adding the dependency contract to the long portable suite crossed the session allocation limit in the subsequent S4 check. The original suite still passes in both generations and the separate dependency contract passes four scans followed by the S4 check.",
+  "browser_deadlines": {
+    "expected": 7,
+    "unexpected": 0,
+    "flaky": 0,
+    "skipped": 0,
+    "s4_evaluation_ms": [
+      11701.7,
+      9558.8,
+      10258.6,
+      10947.2,
+      8202.8,
+      8275.3
+    ]
+  },
+  "strict_pinned_native_cases": 18,
+  "everyday_analysis": {
+    "native": {
+      "pass": 16,
+      "fail": 0,
+      "unmeasured": 4,
+      "percent_verified": 80.0
+    },
+    "wasm": {
+      "pass": 16,
+      "fail": 0,
+      "unmeasured": 4,
+      "percent_verified": 80.0
+    }
+  }
+}
