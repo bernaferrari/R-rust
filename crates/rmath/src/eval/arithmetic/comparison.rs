@@ -267,7 +267,7 @@ pub(crate) unsafe fn data_frame_arith(op: &str, sa: SEXP, sb: SEXP) -> Option<SE
     }
 }
 
-pub(crate) unsafe fn validate_data_frame_operand(value: SEXP, is_frame: bool, ncol: R_xlen_t) {
+pub(crate) fn validate_data_frame_operand(value: SEXP, is_frame: bool, ncol: R_xlen_t) {
     {
         if is_frame
             || value == R_NilValue()

@@ -18,7 +18,7 @@ pub unsafe fn BCODE_STACK(x: SEXP) -> c_int {
     value
 }
 
-pub(crate) unsafe fn read_operand(
+pub(crate) fn read_operand(
     code_ptr: &[c_int],
     pc: &mut c_int,
     code_len: c_int,
@@ -44,7 +44,7 @@ pub(crate) unsafe fn read_jump_target(
     code_len: c_int,
     opname: &str,
 ) -> c_int {
-    unsafe {
+    {
         let target = read_operand(code_ptr, pc, code_len, opname);
         if target < 0 || target > code_len {
             bc_error(format!(

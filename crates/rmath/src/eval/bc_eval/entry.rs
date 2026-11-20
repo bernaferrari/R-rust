@@ -1090,7 +1090,7 @@ pub(crate) unsafe fn bc_eval_private(
 // ---------------------------------------------------------------------------
 
 /// Initialize the bytecode evaluation system.
-pub unsafe fn R_initialize_bcode() {
+pub fn R_initialize_bcode() {
     // In the full implementation, this sets up the bytecode interpreter
     // and registers the compiler.
 }

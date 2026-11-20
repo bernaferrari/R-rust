@@ -124,7 +124,7 @@ pub fn bytecode_compiler_available() -> bool {
 /// Ported from R's `hashexpr1()` in eval.c. Uses the djb2 hash algorithm.
 type R_exprhash_t = u64;
 
-unsafe fn hash(data: &[u8], mut h: R_exprhash_t) -> R_exprhash_t {
+fn hash(data: &[u8], mut h: R_exprhash_t) -> R_exprhash_t {
     for &byte in data {
         h = h.wrapping_mul(33).wrapping_add(byte as u64);
     }
@@ -233,7 +233,7 @@ unsafe fn hashsrcref(e: SEXP, mut h: R_exprhash_t) -> R_exprhash_t {
 /// - Expression hash (for caching)
 ///
 /// Functions with a score >= MIN_JIT_SCORE are compiled to bytecode.
-pub unsafe fn JIT_score(e: SEXP) -> c_int {
+pub fn JIT_score(e: SEXP) -> c_int {
     {
         if e.is_null() || TYPEOF(e) != SEXPTYPE::CLOSXP {
             return 0;
@@ -480,7 +480,7 @@ pub(crate) unsafe fn r_parse_string(str: *const c_char) -> SEXP {
 /// Check compiler options.
 ///
 /// Ported from R's `checkCompilerOptions()` in eval.c.
-unsafe fn checkCompilerOptions(jitEnabled: c_int) {
+fn checkCompilerOptions(jitEnabled: c_int) {
     let (min_jit_score, loop_jit_score) = jit_thresholds(jitEnabled);
     with_required_current_instance(|inst| {
         set_R_min_jit_score_in(inst, min_jit_score);
@@ -511,7 +511,7 @@ pub unsafe fn compiler_enable_jit(level: SEXP) -> c_int {
 /// - R_DISABLE_BYTECODE: disable bytecode
 /// - _R_COMPILE_PKGS_: compile packages
 pub unsafe fn R_init_jit_enabled() {
-    unsafe {
+    {
         let settings = current_env_settings();
         checkCompilerOptions(settings.jit_enabled);
         apply_jit_settings(settings);
@@ -830,7 +830,7 @@ unsafe fn tailcall_promise_args<'s>(
     args
 }
 
-unsafe fn tailcall_error(message: impl Into<String>) -> ! {
+fn tailcall_error(message: impl Into<String>) -> ! {
     std::panic::panic_any(crate::sexp::context::RError {
         message: message.into(),
     })
@@ -1060,7 +1060,7 @@ pub unsafe fn do_tailcall(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 ///
 /// Ported from R's `do_declare()` in eval.c.
 // no_mangle removed (duplicate)
-pub unsafe fn do_declare(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_declare(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     R_NilValue()
 }
 

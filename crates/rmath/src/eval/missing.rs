@@ -84,7 +84,7 @@ pub(crate) unsafe fn R_findVarLocInFrame(rho: SEXP, symbol: SEXP) -> R_varloc_t 
     }
 }
 
-unsafe fn find_binding_cell(mut cell: SEXP, symbol: SEXP) -> SEXP {
+fn find_binding_cell(mut cell: SEXP, symbol: SEXP) -> SEXP {
     {
         while !cell.is_null() && cell != R_NilValue() {
             if crate::sexp::symbol::symbol_name_bytes_equal(TAG(cell), symbol) {
@@ -118,7 +118,7 @@ unsafe fn current_dots(rho: SEXP) -> SEXP {
     }
 }
 
-unsafe fn dots_len(dots: SEXP) -> c_int {
+fn dots_len(dots: SEXP) -> c_int {
     {
         let mut n = 0;
         let mut cell = dots;
@@ -130,7 +130,7 @@ unsafe fn dots_len(dots: SEXP) -> c_int {
     }
 }
 
-unsafe fn dots_cell_at(dots: SEXP, index: c_int) -> SEXP {
+fn dots_cell_at(dots: SEXP, index: c_int) -> SEXP {
     {
         if index <= 0 {
             dots_context_error("indexing '...' with an invalid index");
@@ -413,7 +413,7 @@ unsafe fn dispatch_primitive(generic_sym: SEXP) -> SEXP {
     }
 }
 
-unsafe fn dispatch_op_usable(op: SEXP) -> bool {
+fn dispatch_op_usable(op: SEXP) -> bool {
     {
         !op.is_null()
             && op != R_UnboundValue()
@@ -1251,7 +1251,7 @@ pub(crate) fn set_R_BCIntActive_in(inst: *mut RInstance, val: c_int) {
 /// interpreter (missing, ..., etc.).
 ///
 /// Ported from R's `markSpecialArgs()` in eval.c.
-pub unsafe fn markSpecialArgs(args: SEXP) -> SEXP {
+pub fn markSpecialArgs(args: SEXP) -> SEXP {
     {
         if args.is_null() || args == R_NilValue() {
             return args;
@@ -1272,7 +1272,7 @@ pub unsafe fn markSpecialArgs(args: SEXP) -> SEXP {
 /// Ported from R's `inflateAssignmentCall()` in eval.c. The bytecode
 /// compiler produces compact assignment calls that need to be expanded
 /// to their full form for the interpreter.
-pub unsafe fn inflateAssignmentCall(expr: SEXP) -> SEXP {
+pub fn inflateAssignmentCall(expr: SEXP) -> SEXP {
     {
         if expr.is_null() || expr == R_NilValue() {
             return R_NilValue();
@@ -1291,7 +1291,7 @@ pub unsafe fn inflateAssignmentCall(expr: SEXP) -> SEXP {
 /// Check for user interrupts during bytecode execution.
 ///
 /// Ported from R's `bc_check_sigint()` in eval.c.
-pub unsafe fn bc_check_sigint() {
+pub fn bc_check_sigint() {
     // In the full implementation, this calls R_CheckUserInterrupt()
     // and R_RunPendingFinalizers()
 }
@@ -1303,7 +1303,7 @@ pub unsafe fn bc_check_sigint() {
 /// Find a location table entry in bytecode constants.
 ///
 /// Ported from R's `findLocTable()` in eval.c.
-pub unsafe fn findLocTable(constants: SEXP, tclass: *const c_char) -> SEXP {
+pub fn findLocTable(constants: SEXP, tclass: *const c_char) -> SEXP {
     R_NilValue()
 }
 
@@ -1314,7 +1314,7 @@ pub unsafe fn findLocTable(constants: SEXP, tclass: *const c_char) -> SEXP {
 /// Find the source location of the currently executing bytecode.
 ///
 /// Ported from R's `R_findBCInterpreterLocation()` in eval.c.
-pub unsafe fn R_findBCInterpreterLocation(_cptr: SEXP, _iname: *const c_char) -> SEXP {
+pub fn R_findBCInterpreterLocation(_cptr: SEXP, _iname: *const c_char) -> SEXP {
     R_NilValue()
 }
 
@@ -1325,7 +1325,7 @@ pub unsafe fn R_findBCInterpreterLocation(_cptr: SEXP, _iname: *const c_char) ->
 /// Find the expression currently being evaluated by the bytecode interpreter.
 ///
 /// Ported from R's `R_findBCInterpreterExpression()` in eval.c.
-pub unsafe fn R_findBCInterpreterExpression() -> SEXP {
+pub fn R_findBCInterpreterExpression() -> SEXP {
     R_NilValue()
 }
 
@@ -1363,7 +1363,7 @@ pub unsafe fn do_missing(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// Run on.exit handlers registered in contexts.
 ///
 /// This is called when a function exits (normally or via error).
-pub unsafe fn run_onexits() {
+pub fn run_onexits() {
     {
         super::context::R_run_onexits();
     }
@@ -1388,7 +1388,7 @@ pub unsafe fn set_R_Srcref(srcref: SEXP) {
 ///
 /// Ported from R's `R_initialize_bcode()` in eval.c (the full version
 /// that sets up the opcode table for threaded code).
-pub unsafe fn R_initialize_bcode_full() {
+pub fn R_initialize_bcode_full() {
     // In the full implementation, this initializes the opcode table
     // for the threaded code interpreter. Our simplified version
     // doesn't need this.

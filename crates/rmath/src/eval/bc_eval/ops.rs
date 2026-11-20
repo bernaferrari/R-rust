@@ -143,7 +143,7 @@ pub(crate) unsafe fn eval_nested_call(
 
 /// Apply a resolved loop jump: discard partial loop operands and for-loop
 /// state, then continue at the loop's break/next target.
-pub(crate) unsafe fn apply_loop_jump<T>(
+pub(crate) fn apply_loop_jump<T>(
     stack: &mut R_bcstack_t,
     for_loops: &mut Vec<T>,
     jump: LoopJump,
@@ -155,7 +155,7 @@ pub(crate) unsafe fn apply_loop_jump<T>(
     }
 }
 
-pub(crate) unsafe fn for_sequence_length(sequence: SEXP) -> Option<c_int> {
+pub(crate) fn for_sequence_length(sequence: SEXP) -> Option<c_int> {
     {
         match TYPEOF(sequence) {
             t if t == SEXPTYPE::NILSXP => Some(0),
