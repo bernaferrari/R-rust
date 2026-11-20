@@ -15,14 +15,14 @@ use super::*;
 /// Get the current call from the context stack.
 /// In C this walks R_GlobalContext; here we use the thread-local context.
 pub(super) fn getCurrentCall() -> SEXP {
-     { current_call(false) }
+     current_call(false)
 }
 
 /// Public stop/warning stand in for GNU closures. Their caller excludes the
 /// bytecode expression marker, but includes native tryCatch's synthetic call.
 /// Implicit errors retain that marker through getCurrentCall().
 pub(crate) fn condition_caller_call() -> SEXP {
-     { current_call(true) }
+     current_call(true)
 }
 
 fn current_call(skip_expression_contexts: bool) -> SEXP {
@@ -78,7 +78,7 @@ fn current_call(skip_expression_contexts: bool) -> SEXP {
 /// top frame). Used by interpreter raise sites to attribute errors to the
 /// enclosing R call, like upstream `R_MissingArgError`/`error()`.
 pub fn R_getCurrentCall() -> SEXP {
-     { getCurrentCall() }
+     getCurrentCall()
 }
 
 /// findCall: find the function context's call for error reporting.
@@ -988,7 +988,7 @@ fn collect_warning_owned(call: SEXP, message: &str) {
         let mut text = message.to_owned();
         if r_show_warn_calls() && !call.is_nil() {
             let trace = collection_checked(
-                access.with_native(|_| Ok( { R_ConciseTraceback(call.as_raw(), 0) })),
+                access.with_native(|_| Ok( R_ConciseTraceback(call.as_raw(), 0))),
             );
             if !trace.is_empty() && text.len() + trace.len() + 8 < BUFSIZE {
                 text.push_str("\nCalls: ");

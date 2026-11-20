@@ -511,7 +511,7 @@ pub fn VectorToPairList(x: SEXP) -> SEXP {
 
 /// coerceVector: coerce a vector to a different type.
 pub(crate) fn coerceVector(x: SEXP, type_: c_int) -> SEXP {
-     { crate::mainutils::coerce::coerceVector(x, type_) }
+     crate::mainutils::coerce::coerceVector(x, type_)
 }
 
 /// getAttrib: get an attribute from an object.
@@ -597,7 +597,7 @@ pub(crate) fn listAppend(t: SEXP, s: SEXP) -> SEXP {
 
 /// asInteger: coerce to integer.
 pub(crate) fn asInteger(x: SEXP) -> c_int {
-     { crate::mainutils::coerce::asInteger(x) }
+     crate::mainutils::coerce::asInteger(x)
 }
 
 /// nrows: get number of rows of a matrix.

@@ -232,7 +232,7 @@ pub fn do_signalCondition(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// and that entry plus newer handlers are removed before invoking its callback.
 /// Restore the original owner's stack on normal return and every unwind path.
 pub(crate) fn signal_condition_object(cond: SEXP, msg: SEXP, ecall: SEXP) -> bool {
-     { signal_condition_handlers(cond, msg, ecall, SignalMode::Condition) }
+     signal_condition_handlers(cond, msg, ecall, SignalMode::Condition)
 }
 
 #[derive(Clone, Copy)]
@@ -432,7 +432,7 @@ pub(super) fn make_condition(
 
 /// R_signalErrorCondition — signal an error condition.
 pub fn R_signalErrorCondition(cond: SEXP, call: SEXP) {
-     { R_signalErrorConditionEx(cond, call, 0) }
+     R_signalErrorConditionEx(cond, call, 0)
 }
 
 /// Signal the original typed condition before default rendering. Native errors
@@ -1094,7 +1094,7 @@ pub fn R_makeMissingSubscriptError1(call: SEXP) -> SEXP {
 }
 /// Signal a missing subscript with the object when the caller has it.
 pub fn R_MissingSubscriptError(x: SEXP, call: SEXP) -> ! {
-     { signal_missing_subscript(call, Some(x)) }
+     signal_missing_subscript(call, Some(x))
 }
 
 pub(crate) fn signal_missing_subscript(call: SEXP, object: Option<SEXP>) -> ! {
@@ -1193,7 +1193,7 @@ pub fn R_tryCatch(
     finally: Option<super::NativeFinally>,
     fdata: *mut c_void,
 ) -> SEXP {
-     { super::native::catch_native(body, bdata, classes, handler, hdata, finally, fdata) }
+     super::native::catch_native(body, bdata, classes, handler, hdata, finally, fdata)
 }
 
 /// Native calling error handler. Callback data follows the same scoped contract.
@@ -1203,7 +1203,7 @@ pub fn R_withCallingErrorHandler(
     handler: Option<super::NativeHandler>,
     hdata: *mut c_void,
 ) -> SEXP {
-     { super::native::calling_native(body, bdata, handler, hdata) }
+     super::native::calling_native(body, bdata, handler, hdata)
 }
 
 #[cfg(test)]

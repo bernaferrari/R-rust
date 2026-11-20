@@ -9,7 +9,7 @@ use super::*;
 /// This is R's `asLogical()` from coerce.c. Returns NA_LOGICAL for
 /// empty vectors, and dispatches based on the vector's type.
 pub fn asLogical(x: SEXP) -> c_int {
-     { asLogical2(x, 0, R_NilValue()) }
+     asLogical2(x, 0, R_NilValue())
 }
 
 /// Convert the first element of a vector to a logical value, with length checking.

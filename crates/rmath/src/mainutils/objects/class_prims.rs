@@ -367,7 +367,7 @@ pub fn R_S4_method_dispatch(
     _rho: SEXP,
     _method: SEXP,
 ) -> SEXP {
-     { error("S4 method dispatch is not available through this low-level entry point") }
+     error("S4 method dispatch is not available through this low-level entry point")
 }
 
 // ---------------------------------------------------------------------------
@@ -394,7 +394,7 @@ pub fn do_setClass(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 
 /// setRefClass() is an R-level function from the methods package.
 pub fn do_setRefClass(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
-     { error("setRefClass is not implemented in this Rust runtime yet") }
+     error("setRefClass is not implemented in this Rust runtime yet")
 }
 
 // ---------------------------------------------------------------------------
@@ -438,5 +438,5 @@ pub fn R_check_class_and_super(x: SEXP, valid: *const *const c_char, _rho: SEXP)
 // ---------------------------------------------------------------------------
 
 pub fn R_check_class_etc(x: SEXP, valid: *const *const c_char) -> c_int {
-     { R_check_class_and_super(x, valid, ptr::null_mut()) }
+     R_check_class_and_super(x, valid, ptr::null_mut())
 }

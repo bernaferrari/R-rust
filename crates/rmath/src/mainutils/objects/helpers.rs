@@ -126,15 +126,15 @@ pub(crate) fn isValidString(x: SEXP) -> c_int {
 }
 
 pub(crate) fn asRbool(x: SEXP, call: SEXP) -> c_int {
-     { crate::mainutils::coerce::asRbool(x, call) }
+     crate::mainutils::coerce::asRbool(x, call)
 }
 
 pub(crate) fn asLogical(x: SEXP) -> c_int {
-     { crate::mainutils::coerce::asLogical(x) }
+     crate::mainutils::coerce::asLogical(x)
 }
 
 pub(crate) fn asInteger(x: SEXP) -> c_int {
-     { crate::mainutils::coerce::asInteger(x) }
+     crate::mainutils::coerce::asInteger(x)
 }
 
 /// isNull check.
