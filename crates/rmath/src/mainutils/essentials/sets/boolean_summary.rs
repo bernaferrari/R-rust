@@ -11,7 +11,7 @@ fn fail(message: &str) -> ! {
     crate::sexp::context::r_error(message)
 }
 
-pub(super) unsafe fn run(call: SEXP, op: SEXP, args: SEXP, rho: SEXP, any: bool) -> SEXP {
+pub(super) fn run(call: SEXP, op: SEXP, args: SEXP, rho: SEXP, any: bool) -> SEXP {
     unsafe {
         let owner = OwnerToken::current().expect("active Boolean summary owner");
         let pin = owner.pin().expect("live Boolean summary owner");

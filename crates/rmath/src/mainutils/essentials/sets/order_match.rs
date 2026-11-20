@@ -1,7 +1,7 @@
 use super::*;
 
-pub(crate) unsafe fn match_arg(args: SEXP, position: usize, name: &str, default: SEXP) -> SEXP {
-    unsafe {
+pub(crate) fn match_arg(args: SEXP, position: usize, name: &str, default: SEXP) -> SEXP {
+    {
         if let Some(value) = named_arg(args, name) {
             return value;
         }
@@ -30,7 +30,7 @@ pub(crate) unsafe fn match_arg(args: SEXP, position: usize, name: &str, default:
 // ---------------------------------------------------------------------------
 
 /// R's `findInterval(x, vec)` — for each x, find j such that vec[j] <= x < vec[j+1].
-pub unsafe fn do_findInterval(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_findInterval(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = arg_by_name_or_position(args, &["x"], 0);
         let vec = arg_by_name_or_position(args, &["vec"], 1);
@@ -120,7 +120,7 @@ pub unsafe fn do_findInterval(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
 // ---------------------------------------------------------------------------
 
 /// R's `cut(x, breaks)` — cut a numeric vector into interval factor codes.
-pub unsafe fn do_cut(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_cut(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = arg_by_name_or_position(args, &["x"], 0);
         let breaks_arg = arg_by_name_or_position(args, &["breaks"], 1);
@@ -364,7 +364,7 @@ fn format_cut_number(value: f64) -> String {
 // Set operations: unique, sort, order, rev, match, %in%, setequal, union, intersect, setdiff
 // ---------------------------------------------------------------------------
 
-unsafe fn unique_matrix_rows(x: SEXP, sexptype: SEXPTYPE) -> Option<SEXP> {
+fn unique_matrix_rows(x: SEXP, sexptype: SEXPTYPE) -> Option<SEXP> {
     unsafe {
         let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
         if dim.is_null()
@@ -425,7 +425,7 @@ unsafe fn unique_matrix_rows(x: SEXP, sexptype: SEXPTYPE) -> Option<SEXP> {
 }
 
 /// R's `unique(x)` — return unique atomic elements in R's retained-index order.
-pub unsafe fn do_unique(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_unique(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = arg_by_name_or_position(args, &["x"], 0);
         if x.is_null() || x == R_NilValue() {
@@ -520,7 +520,7 @@ pub unsafe fn do_unique(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     }
 }
 
-pub(crate) unsafe fn restore_datetime_or_difftime_class(source: SEXP, result: SEXP) {
+pub(crate) fn restore_datetime_or_difftime_class(source: SEXP, result: SEXP) {
     unsafe {
         if result.is_null() || result == R_NilValue() {
             return;
@@ -732,7 +732,7 @@ pub(crate) fn copy_atomic_element(
 }
 
 /// R's `sort(x, decreasing, na.last)` — sort an atomic vector.
-unsafe fn sort_with_index(x: SEXP, decreasing: bool, na_placement: SortNaPlacement) -> SEXP {
+fn sort_with_index(x: SEXP, decreasing: bool, na_placement: SortNaPlacement) -> SEXP {
     unsafe {
         let n = XLENGTH(x) as usize;
         let t = TYPEOF(x);
@@ -854,7 +854,7 @@ unsafe fn sort_with_index(x: SEXP, decreasing: bool, na_placement: SortNaPlaceme
 }
 
 /// R's `sort(x, decreasing, na.last)` — sort an atomic vector.
-unsafe fn copy_sorted_names(x: SEXP, result: SEXP, order: &[usize], keep: bool) {
+fn copy_sorted_names(x: SEXP, result: SEXP, order: &[usize], keep: bool) {
     unsafe {
         if !keep {
             return;
@@ -879,7 +879,7 @@ unsafe fn copy_sorted_names(x: SEXP, result: SEXP, order: &[usize], keep: bool) 
     }
 }
 
-pub unsafe fn do_sort(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_sort(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = arg_by_name_or_position(args, &["x"], 0);
         if x.is_null() || x == R_NilValue() {
@@ -1171,7 +1171,7 @@ pub(crate) fn compare_charsxp_for_sort(a: SEXP, b: SEXP) -> std::cmp::Ordering {
 }
 
 /// R's `rev(x)` — reverse a vector.
-pub unsafe fn do_rev(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_rev(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -1206,7 +1206,7 @@ pub unsafe fn do_rev(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
-unsafe fn reverse_names_attribute(x: SEXP, result: SEXP, len: R_xlen_t) {
+fn reverse_names_attribute(x: SEXP, result: SEXP, len: R_xlen_t) {
     unsafe {
         let names =
             crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
@@ -1231,16 +1231,16 @@ unsafe fn reverse_names_attribute(x: SEXP, result: SEXP, len: R_xlen_t) {
 }
 
 /// GNU Boolean Summary default with original-owner roots and admitted coercion.
-pub unsafe fn do_any(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe { super::boolean_summary::run(call, op, args, rho, true) }
+pub fn do_any(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    { super::boolean_summary::run(call, op, args, rho, true) }
 }
 
-pub unsafe fn do_all(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe { super::boolean_summary::run(call, op, args, rho, false) }
+pub fn do_all(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    { super::boolean_summary::run(call, op, args, rho, false) }
 }
 
 /// R's `cumsum(x)` — cumulative sum.
-pub unsafe fn do_cumsum(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_cumsum(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let mut dispatched = R_NilValue();
         if crate::eval::dispatch::DispatchGroup(
@@ -1259,7 +1259,7 @@ pub unsafe fn do_cumsum(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 /// R's `cumprod(x)` — cumulative product.
-pub unsafe fn do_cumprod(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_cumprod(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let mut dispatched = R_NilValue();
         if crate::eval::dispatch::DispatchGroup(
@@ -1278,7 +1278,7 @@ pub unsafe fn do_cumprod(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 /// R's `cumvar(x)` — cumulative sample variance by Youngs-Cramer algorithm.
-pub unsafe fn do_cumvar(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_cumvar(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let mut dispatched = R_NilValue();
         if crate::eval::dispatch::DispatchGroup(
@@ -1339,7 +1339,7 @@ pub unsafe fn do_cumvar(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 /// R's `diff(x, lag)` — lagged differences.
-pub unsafe fn do_diff(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_diff(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let lag_arg = CAR(CDR(args));
