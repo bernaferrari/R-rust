@@ -277,7 +277,7 @@ fn tre_expand_macro(regex: &[tre_char_t], regex_end: usize, buf: &mut [tre_char_
 
 const MAX_NEG_CLASSES: usize = 64;
 
-unsafe fn tre_new_item(
+fn tre_new_item(
     mem: mem::tre_mem_t,
     min: c_int,
     max: c_int,
@@ -311,7 +311,7 @@ unsafe fn tre_new_item(
     }
 }
 
-unsafe fn tre_expand_ctype(
+fn tre_expand_ctype(
     mem: mem::tre_mem_t,
     class: tre_ctype_t,
     items: &mut *mut *mut tre_ast_node_t,
@@ -319,35 +319,33 @@ unsafe fn tre_expand_ctype(
     max_i: &mut c_int,
     cflags: c_int,
 ) -> c_int {
-    unsafe {
-        let mut status: c_int = REG_OK;
-        let mut min: c_int = -1;
-        let mut max: c_int = 0;
+    let mut status: c_int = REG_OK;
+    let mut min: c_int = -1;
+    let mut max: c_int = 0;
 
-        for j in 0..256i32 {
-            let c = j as tre_cint_t;
-            if tre_isctype(c, class)
-                || ((cflags & REG_ICASE) != 0
-                    && (tre_isctype(tre_tolower(c), class) || tre_isctype(tre_toupper(c), class)))
-            {
-                if min < 0 {
-                    min = c as c_int;
-                }
-                max = c as c_int;
-            } else if min >= 0 {
-                status = tre_new_item(mem, min, max, i, max_i, items);
-                min = -1;
+    for j in 0..256i32 {
+        let c = j as tre_cint_t;
+        if tre_isctype(c, class)
+            || ((cflags & REG_ICASE) != 0
+                && (tre_isctype(tre_tolower(c), class) || tre_isctype(tre_toupper(c), class)))
+        {
+            if min < 0 {
+                min = c as c_int;
             }
-        }
-        if min >= 0 && status == REG_OK {
+            max = c as c_int;
+        } else if min >= 0 {
             status = tre_new_item(mem, min, max, i, max_i, items);
+            min = -1;
         }
-        status
     }
+    if min >= 0 && status == REG_OK {
+        status = tre_new_item(mem, min, max, i, max_i, items);
+    }
+    status
 }
 
 #[allow(clippy::if_same_then_else)]
-unsafe fn tre_parse_bracket_items(
+fn tre_parse_bracket_items(
     ctx: &mut tre_parse_ctx_t,
     negate: c_int,
     neg_classes: &mut [tre_ctype_t],
@@ -536,7 +534,7 @@ unsafe fn tre_parse_bracket_items(
     }
 }
 
-unsafe fn tre_parse_bracket(ctx: &mut tre_parse_ctx_t, result: &mut *mut tre_ast_node_t) -> c_int {
+fn tre_parse_bracket(ctx: &mut tre_parse_ctx_t, result: &mut *mut tre_ast_node_t) -> c_int {
     unsafe {
         // The opening bracket may be the final character of a bounded input.
         if ctx.re >= ctx.re_end {
@@ -701,7 +699,7 @@ unsafe fn tre_parse_bracket(ctx: &mut tre_parse_ctx_t, result: &mut *mut tre_ast
     }
 }
 
-unsafe fn tre_parse_int(regex: &mut *const tre_char_t, regex_end: *const tre_char_t) -> c_int {
+fn tre_parse_int(regex: &mut *const tre_char_t, regex_end: *const tre_char_t) -> c_int {
     unsafe {
         let mut num: c_int = -1;
         let mut overflow = 0;
@@ -723,7 +721,7 @@ unsafe fn tre_parse_int(regex: &mut *const tre_char_t, regex_end: *const tre_cha
 }
 
 #[allow(clippy::if_same_then_else)]
-unsafe fn tre_parse_bound(ctx: &mut tre_parse_ctx_t, result: &mut *mut tre_ast_node_t) -> c_int {
+fn tre_parse_bound(ctx: &mut tre_parse_ctx_t, result: &mut *mut tre_ast_node_t) -> c_int {
     unsafe {
         let mut min: c_int;
         let mut max: c_int;
@@ -975,7 +973,7 @@ enum tre_parse_re_stack_symbol_t {
     PARSE_RESTORE_CFLAGS,
 }
 
-pub unsafe fn tre_parse(ctx: *mut tre_parse_ctx_t) -> c_int {
+pub fn tre_parse(ctx: *mut tre_parse_ctx_t) -> c_int {
     unsafe {
         let ctx = &mut *ctx;
         let mut result: *mut tre_ast_node_t = ptr::null_mut();
@@ -1729,7 +1727,7 @@ pub unsafe fn tre_parse(ctx: *mut tre_parse_ctx_t) -> c_int {
     }
 }
 
-unsafe fn parse_literal(
+fn parse_literal(
     ctx: &mut tre_parse_ctx_t,
     temporary_cflags: &mut c_int,
     result: &mut *mut tre_ast_node_t,

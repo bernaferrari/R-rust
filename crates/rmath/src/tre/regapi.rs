@@ -21,7 +21,7 @@ mod compile_error_tests;
 
 // ===== tre_fill_pmatch =====
 
-pub unsafe fn tre_fill_pmatch(
+pub fn tre_fill_pmatch(
     nmatch: usize,
     pmatch: *mut regmatch_t,
     cflags: c_int,
@@ -91,7 +91,7 @@ pub unsafe fn tre_fill_pmatch(
 
 // ===== Internal match dispatch =====
 
-unsafe fn tre_match(
+fn tre_match(
     tnfa: *const tre_tnfa_t,
     string: *const c_void,
     len: usize,
@@ -166,7 +166,7 @@ unsafe fn tre_match(
 
 // ===== regcomp functions =====
 
-pub unsafe fn tre_regncomp(
+pub fn tre_regncomp(
     preg: *mut regex_t,
     regex: *const c_char,
     n: usize,
@@ -191,7 +191,7 @@ pub unsafe fn tre_regncomp(
     }
 }
 
-pub unsafe fn tre_regncompb(
+pub fn tre_regncompb(
     preg: *mut regex_t,
     regex: *const c_char,
     n: usize,
@@ -214,7 +214,7 @@ pub unsafe fn tre_regncompb(
     }
 }
 
-pub unsafe fn tre_regcomp(preg: *mut regex_t, regex: *const c_char, cflags: c_int) -> c_int {
+pub fn tre_regcomp(preg: *mut regex_t, regex: *const c_char, cflags: c_int) -> c_int {
     unsafe {
         let n: usize = if !regex.is_null() {
             let mut len: isize = 0;
@@ -229,7 +229,7 @@ pub unsafe fn tre_regcomp(preg: *mut regex_t, regex: *const c_char, cflags: c_in
     }
 }
 
-pub unsafe fn tre_regcompb(preg: *mut regex_t, regex: *const c_char, cflags: c_int) -> c_int {
+pub fn tre_regcompb(preg: *mut regex_t, regex: *const c_char, cflags: c_int) -> c_int {
     unsafe {
         let n: usize = if !regex.is_null() {
             let mut len: isize = 0;
@@ -259,15 +259,13 @@ pub unsafe fn tre_regcompb(preg: *mut regex_t, regex: *const c_char, cflags: c_i
     }
 }
 
-pub unsafe fn tre_regfree(preg: *mut regex_t) {
-    unsafe {
-        compile::tre_free(preg);
-    }
+pub fn tre_regfree(preg: *mut regex_t) {
+    compile::tre_free(preg);
 }
 
 // ===== regexec functions =====
 
-pub unsafe fn tre_regnexec(
+pub fn tre_regnexec(
     preg: *const regex_t,
     str: *const c_char,
     len: usize,
@@ -291,36 +289,34 @@ pub unsafe fn tre_regnexec(
 
 /// Match a bounded Unicode scalar buffer. Offsets count scalar values; the
 /// UTF-8 adapter translates them back to original byte positions.
-pub(crate) unsafe fn tre_regwnexec(
+pub(crate) fn tre_regwnexec(
     preg: &regex_t,
     text: &[tre_char_t],
     matches: &mut [regmatch_t],
     flags: c_int,
 ) -> c_int {
-    unsafe {
-        tre_match(
-            preg.value as *const tre_tnfa_t,
-            text.as_ptr().cast(),
-            text.len(),
-            tre_str_type_t::STR_WIDE,
-            matches.len(),
-            matches.as_mut_ptr(),
-            flags,
-        )
-    }
+    tre_match(
+        preg.value as *const tre_tnfa_t,
+        text.as_ptr().cast(),
+        text.len(),
+        tre_str_type_t::STR_WIDE,
+        matches.len(),
+        matches.as_mut_ptr(),
+        flags,
+    )
 }
 
-pub unsafe fn tre_regexec(
+pub fn tre_regexec(
     preg: *const regex_t,
     str: *const c_char,
     nmatch: usize,
     pmatch: *mut regmatch_t,
     eflags: c_int,
 ) -> c_int {
-    unsafe { tre_regnexec(preg, str, usize::MAX, nmatch, pmatch, eflags) }
+    tre_regnexec(preg, str, usize::MAX, nmatch, pmatch, eflags)
 }
 
-pub unsafe fn tre_regexecb(
+pub fn tre_regexecb(
     preg: *const regex_t,
     str: *const c_char,
     nmatch: usize,
@@ -341,7 +337,7 @@ pub unsafe fn tre_regexecb(
     }
 }
 
-pub unsafe fn tre_regnexecb(
+pub fn tre_regnexecb(
     preg: *const regex_t,
     str: *const c_char,
     len: usize,
@@ -382,7 +378,7 @@ static TRE_ERROR_MESSAGES: [&str; 14] = [
     "Invalid use of repetition operators", // REG_BADRPT
 ];
 
-pub unsafe fn tre_regerror(
+pub fn tre_regerror(
     errcode: c_int,
     preg: *const regex_t,
     errbuf: *mut c_char,
@@ -417,7 +413,7 @@ pub unsafe fn tre_regerror(
 
 // ===== Approximate matching API =====
 
-pub unsafe fn tre_regaparams_default(params: *mut regaparams_t) {
+pub fn tre_regaparams_default(params: *mut regaparams_t) {
     unsafe {
         ptr::write_bytes(params as *mut u8, 0, std::mem::size_of::<regaparams_t>());
         (*params).cost_ins = 1;
@@ -431,7 +427,7 @@ pub unsafe fn tre_regaparams_default(params: *mut regaparams_t) {
     }
 }
 
-unsafe fn tre_match_approx(
+fn tre_match_approx(
     tnfa: *const tre_tnfa_t,
     string: *const c_void,
     len: usize,
@@ -498,7 +494,7 @@ unsafe fn tre_match_approx(
     }
 }
 
-pub unsafe fn tre_reganexec(
+pub fn tre_reganexec(
     preg: *const regex_t,
     str: *const c_char,
     len: usize,
@@ -520,17 +516,17 @@ pub unsafe fn tre_reganexec(
     }
 }
 
-pub unsafe fn tre_regaexec(
+pub fn tre_regaexec(
     preg: *const regex_t,
     str: *const c_char,
     amatch: *mut regamatch_t,
     params: regaparams_t,
     eflags: c_int,
 ) -> c_int {
-    unsafe { tre_reganexec(preg, str, usize::MAX, amatch, params, eflags) }
+    tre_reganexec(preg, str, usize::MAX, amatch, params, eflags)
 }
 
-pub unsafe fn tre_regaexecb(
+pub fn tre_regaexecb(
     preg: *const regex_t,
     str: *const c_char,
     amatch: *mut regamatch_t,
