@@ -1,13 +1,13 @@
 use super::*;
 
 /// R's `computeRestarts()` — compute available restarts for current condition.
-pub unsafe fn do_computeRestarts(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { restart_stack_as_list() }
+pub fn do_computeRestarts(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    { restart_stack_as_list() }
 }
 
 /// R's `findRestart(name)` — find a restart by name.
-pub unsafe fn do_findRestart(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_findRestart(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let name_arg = CAR(args);
         if name_arg.is_null() || name_arg == R_NilValue() {
             return R_NilValue();
@@ -18,13 +18,13 @@ pub unsafe fn do_findRestart(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
 }
 
 /// R's `restarts()` — list available restarts.
-pub unsafe fn do_restarts(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { restart_stack_as_list() }
+pub fn do_restarts(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    { restart_stack_as_list() }
 }
 
 /// R's `invokeRestart(restart, ...)` — call a restart and return to its dynamic extent.
-pub unsafe fn do_invokeRestart(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_invokeRestart(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    {
         let restart_arg = CAR(args);
         let restart = resolve_restart_arg(restart_arg, true).unwrap_or_else(|| {
             base_error(format!(
@@ -37,8 +37,8 @@ pub unsafe fn do_invokeRestart(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) ->
 }
 
 /// R's `tryInvokeRestart(restart, ...)` — invoke a restart if one is active.
-pub unsafe fn do_tryInvokeRestart(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_tryInvokeRestart(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    {
         let restart_arg = CAR(args);
         match resolve_restart_arg(restart_arg, true) {
             Some(restart) => invoke_restart(restart, CDR(args), rho),
@@ -48,7 +48,7 @@ pub unsafe fn do_tryInvokeRestart(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP)
 }
 
 /// R's `isRestart(x)` — check for a restart object.
-pub unsafe fn do_isRestart(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_isRestart(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         Rf_ScalarLogical(if is_restart_object(CAR(args)) {
             TRUE
@@ -59,7 +59,7 @@ pub unsafe fn do_isRestart(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
 }
 
 /// R's `restartDescription(r)` — return the restart description, if any.
-pub unsafe fn do_restartDescription(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_restartDescription(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let restart = CAR(args);
         if !is_restart_object(restart) {
@@ -74,8 +74,8 @@ pub unsafe fn do_restartDescription(_call: SEXP, _op: SEXP, args: SEXP, _rho: SE
     }
 }
 
-unsafe fn resolve_restart_arg(restart_arg: SEXP, require_active_object: bool) -> Option<SEXP> {
-    unsafe {
+fn resolve_restart_arg(restart_arg: SEXP, require_active_object: bool) -> Option<SEXP> {
+    {
         if restart_arg.is_null() || restart_arg == R_NilValue() {
             return None;
         }
@@ -103,7 +103,7 @@ unsafe fn resolve_restart_arg(restart_arg: SEXP, require_active_object: bool) ->
     }
 }
 
-unsafe fn restart_arg_name(restart_arg: SEXP) -> String {
+fn restart_arg_name(restart_arg: SEXP) -> String {
     {
         if !restart_arg.is_null()
             && restart_arg != R_NilValue()
@@ -118,8 +118,8 @@ unsafe fn restart_arg_name(restart_arg: SEXP) -> String {
 
 /// Native condition adapter: retain the original physical value and revocable
 /// runtime capability before any allocation, callback, or non-local transfer.
-pub(crate) unsafe fn restart_owned(value: SEXP) -> crate::sexp::object::Sexp<'static> {
-    let factory = unsafe { condition_entry_factory() };
+pub(crate) fn restart_owned(value: SEXP) -> crate::sexp::object::Sexp<'static> {
+    let factory = { condition_entry_factory() };
     condition_entry_value(&factory, value)
         .into_owned()
         .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
@@ -132,7 +132,7 @@ pub(crate) struct ScopedRestartStack {
 }
 
 impl ScopedRestartStack {
-    pub(crate) unsafe fn capture() -> Self {
+    pub(crate) fn capture() -> Self {
         let owner = unsafe { crate::sexp::owner::OwnerToken::current() }
             .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
         let pin = owner
@@ -203,7 +203,7 @@ pub(crate) fn consume_matching_restart(ticket: crate::sexp::transfer::TransferTi
         .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
 }
 
-unsafe fn invoke_restart(restart: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+fn invoke_restart(restart: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let target_owned = restart_owned(restart);
         let args_owned = restart_owned(args);
@@ -220,7 +220,7 @@ unsafe fn invoke_restart(restart: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
-pub(crate) unsafe fn call_function_with_args(
+pub(crate) fn call_function_with_args(
     handler: SEXP,
     args: SEXP,
     rho: SEXP,
@@ -292,7 +292,7 @@ pub(crate) fn set_restart_stack(stack: SEXP) {
     });
 }
 
-unsafe fn restart_stack_as_list() -> SEXP {
+fn restart_stack_as_list() -> SEXP {
     unsafe {
         let owner = crate::sexp::owner::OwnerToken::current()
             .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
@@ -342,8 +342,8 @@ unsafe fn restart_stack_as_list() -> SEXP {
     }
 }
 
-unsafe fn find_restart_by_name(name: &str) -> Option<SEXP> {
-    unsafe {
+fn find_restart_by_name(name: &str) -> Option<SEXP> {
+    {
         let factory = condition_entry_factory();
         let stack = restart_stack();
         let mut cursor = if stack.is_null() {
@@ -377,8 +377,8 @@ unsafe fn find_restart_by_name(name: &str) -> Option<SEXP> {
     }
 }
 
-unsafe fn find_restart_by_object(needle: SEXP) -> Option<SEXP> {
-    unsafe {
+fn find_restart_by_object(needle: SEXP) -> Option<SEXP> {
+    {
         let factory = condition_entry_factory();
         let stack = restart_stack();
         let mut cursor = if stack.is_null() {
@@ -407,8 +407,8 @@ unsafe fn find_restart_by_object(needle: SEXP) -> Option<SEXP> {
     }
 }
 
-unsafe fn restart_name(restart: SEXP) -> Option<String> {
-    unsafe {
+fn restart_name(restart: SEXP) -> Option<String> {
+    {
         if restart.is_null() || restart == R_NilValue() || TYPEOF(restart) != SEXPTYPE::VECSXP {
             return None;
         }
@@ -420,11 +420,11 @@ unsafe fn restart_name(restart: SEXP) -> Option<String> {
     }
 }
 
-pub(crate) unsafe fn restart_handler(restart: SEXP) -> SEXP {
-    unsafe { restart_field(restart, "handler", 2) }
+pub(crate) fn restart_handler(restart: SEXP) -> SEXP {
+    { restart_field(restart, "handler", 2) }
 }
 
-unsafe fn restart_field(restart: SEXP, field_name: &str, fallback_index: R_xlen_t) -> SEXP {
+fn restart_field(restart: SEXP, field_name: &str, fallback_index: R_xlen_t) -> SEXP {
     unsafe {
         if restart.is_null() || restart == R_NilValue() || TYPEOF(restart) != SEXPTYPE::VECSXP {
             return R_NilValue();
@@ -453,7 +453,7 @@ unsafe fn restart_field(restart: SEXP, field_name: &str, fallback_index: R_xlen_
     }
 }
 
-pub(crate) unsafe fn restart_entry(name: &str, handler: SEXP, exit: SEXP) -> SEXP {
+pub(crate) fn restart_entry(name: &str, handler: SEXP, exit: SEXP) -> SEXP {
     unsafe {
         let handler_owned = restart_owned(handler);
         let exit_owned = restart_owned(exit);
@@ -498,7 +498,7 @@ pub(crate) unsafe fn restart_entry(name: &str, handler: SEXP, exit: SEXP) -> SEX
     }
 }
 
-unsafe fn abort_restart_entry() -> SEXP {
+fn abort_restart_entry() -> SEXP {
     unsafe {
         let restart = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
         if restart.is_null() {
@@ -520,8 +520,8 @@ unsafe fn abort_restart_entry() -> SEXP {
     }
 }
 
-unsafe fn is_restart_object(value: SEXP) -> bool {
-    unsafe {
+fn is_restart_object(value: SEXP) -> bool {
+    {
         !value.is_null()
             && value != R_NilValue()
             && TYPEOF(value) == SEXPTYPE::VECSXP

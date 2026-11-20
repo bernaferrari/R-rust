@@ -5,7 +5,7 @@ use super::*;
 // ---------------------------------------------------------------------------
 
 /// R's `conditionMessage(cond)` — get message from condition object.
-pub unsafe fn do_conditionMessage(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_conditionMessage(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let cond = CAR(args);
         if cond.is_null() || cond == R_NilValue() {
@@ -32,8 +32,8 @@ pub unsafe fn do_conditionMessage(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP
 }
 
 /// R's `conditionCall(cond)` — get call from condition object.
-pub unsafe fn do_conditionCall(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_conditionCall(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let cond = CAR(args);
         if cond.is_null() || cond == R_NilValue() {
             return R_NilValue();
@@ -55,12 +55,12 @@ pub unsafe fn do_conditionCall(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
 }
 
 /// R's `simpleError(message, call)` — create a simple error condition.
-pub unsafe fn do_simpleError(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { simple_constructor(args, &["simpleError", "error", "condition"]) }
+pub fn do_simpleError(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    { simple_constructor(args, &["simpleError", "error", "condition"]) }
 }
 
 /// Own selections before coercion, dispatch, or a constructor can reenter R.
-unsafe fn simple_constructor(args: SEXP, classes: &[&str]) -> SEXP {
+fn simple_constructor(args: SEXP, classes: &[&str]) -> SEXP {
     use crate::sexp::{
         object::{SexpError, SexpResult},
         owner::{OwnerToken, with_runtime},
@@ -135,17 +135,17 @@ unsafe fn simple_constructor(args: SEXP, classes: &[&str]) -> SEXP {
 /// message/class/call formals are picked out by tag (the first untagged
 /// value is the message). zeallot's error paths build their conditions
 /// through this.
-pub unsafe fn do_errorCondition(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { error_or_warning_condition(args, "error") }
+pub fn do_errorCondition(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    { error_or_warning_condition(args, "error") }
 }
 
 /// R's `warningCondition(message, ..., class = NULL, call = NULL)` —
 /// see [`do_errorCondition`].
-pub unsafe fn do_warningCondition(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { error_or_warning_condition(args, "warning") }
+pub fn do_warningCondition(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    { error_or_warning_condition(args, "warning") }
 }
 
-unsafe fn error_or_warning_condition(args: SEXP, kind: &str) -> SEXP {
+fn error_or_warning_condition(args: SEXP, kind: &str) -> SEXP {
     unsafe {
         let mut message: SEXP = R_NilValue();
         let mut class_arg: SEXP = R_NilValue();
@@ -241,10 +241,10 @@ unsafe fn error_or_warning_condition(args: SEXP, kind: &str) -> SEXP {
 }
 
 /// R's `simpleWarning(message, call)` — create a simple warning condition.
-pub unsafe fn do_simpleWarning(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { simple_constructor(args, &["simpleWarning", "warning", "condition"]) }
+pub fn do_simpleWarning(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    { simple_constructor(args, &["simpleWarning", "warning", "condition"]) }
 }
 
-pub(super) unsafe fn native_simple_condition(args: SEXP) -> SEXP {
-    unsafe { simple_constructor(args, &["simpleCondition", "condition"]) }
+pub(super) fn native_simple_condition(args: SEXP) -> SEXP {
+    { simple_constructor(args, &["simpleCondition", "condition"]) }
 }

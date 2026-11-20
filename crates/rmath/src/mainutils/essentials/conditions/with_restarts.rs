@@ -1,7 +1,7 @@
 use super::*;
 
 /// R's `withRestarts(expr, ...)` — evaluate an expression with dynamic restarts.
-pub unsafe fn do_withRestarts(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_withRestarts(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let scope = ScopedRestartStack::capture();
         let args = restart_owned(args);
@@ -119,7 +119,7 @@ pub unsafe fn do_withRestarts(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> 
     }
 }
 
-unsafe fn restart_stack_from_args(
+fn restart_stack_from_args(
     args: SEXP,
     rho: SEXP,
     old_stack: SEXP,
@@ -174,7 +174,7 @@ unsafe fn restart_stack_from_args(
     }
 }
 
-unsafe fn deparse_assert_expr(expr: SEXP) -> String {
+fn deparse_assert_expr(expr: SEXP) -> String {
     unsafe {
         let dcall = crate::mainutils::deparse::deparse1s(expr);
         if !dcall.is_null() && dcall != R_NilValue() {
@@ -188,7 +188,7 @@ unsafe fn deparse_assert_expr(expr: SEXP) -> String {
 }
 
 /// GNU `tools::assertError(expr)` — require `expr` to signal an error.
-pub unsafe fn do_assertError(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_assertError(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let expr = CAR(args);
         let dtext = deparse_assert_expr(expr);
@@ -221,7 +221,7 @@ pub unsafe fn do_assertError(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> S
 }
 
 /// GNU `tools::assertWarning(expr)` — require a warning, reject a bare error.
-pub unsafe fn do_assertWarning(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_assertWarning(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let expr = CAR(args);
         let dtext = deparse_assert_expr(expr);
@@ -268,7 +268,7 @@ pub unsafe fn do_assertWarning(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) ->
 }
 
 /// GNU `tools::assertCondition(expr)` — require any condition.
-pub unsafe fn do_assertCondition(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_assertCondition(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let expr = CAR(args);
         let dtext = deparse_assert_expr(expr);

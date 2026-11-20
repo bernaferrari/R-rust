@@ -7,7 +7,7 @@ use super::*;
 /// R's `stop(...)` — raise error.
 /// GNU `stop(..., call. = TRUE)`: `call.` is a named argument after `...`.
 /// Default TRUE (include the current call). `call. = FALSE` is `errorcall(R_NilValue)`.
-unsafe fn named_call_dot(args: SEXP) -> bool {
+fn named_call_dot(args: SEXP) -> bool {
     unsafe {
         let mut cell = args;
         while !cell.is_null() && cell != R_NilValue() {
@@ -20,7 +20,7 @@ unsafe fn named_call_dot(args: SEXP) -> bool {
     }
 }
 
-pub unsafe fn do_stop(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_stop(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let _ctx = crate::sexp::context::begin_context_guard(
             crate::sexp::context::ctxt_flags::CTXT_BUILTIN,
@@ -87,7 +87,7 @@ pub unsafe fn do_stop(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 fn condition_object(value: SEXP) -> SEXP {
-    unsafe {
+    {
         if value.is_null() || value == R_NilValue() {
             return std::ptr::null_mut();
         }
@@ -103,7 +103,7 @@ fn condition_object(value: SEXP) -> SEXP {
 }
 
 /// R's `warning(...)` — issue warning.
-pub unsafe fn do_warning(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_warning(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let _ctx = crate::sexp::context::begin_context_guard(
             crate::sexp::context::ctxt_flags::CTXT_BUILTIN,
@@ -220,7 +220,7 @@ pub unsafe fn do_warning(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
 }
 
 /// GNU `warnings()` — return `last.warning` as a `"warnings"` object.
-pub unsafe fn do_warnings(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_warnings(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let sym = Rf_install(c"last.warning".as_ptr());
         let mut last = crate::sexp::accessors::SYMVALUE(sym);
@@ -250,7 +250,7 @@ pub unsafe fn do_warnings(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SE
 }
 
 /// R's `message(...)` — print message.
-pub unsafe fn do_message(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_message(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let first = CAR(args);
         let passed = condition_object(first);
@@ -317,7 +317,7 @@ pub unsafe fn do_message(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
 }
 
 /// R's `inherits(x, what)` — check class.
-pub unsafe fn do_inherits(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_inherits(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let what = CAR(CDR(args));
@@ -339,11 +339,11 @@ pub unsafe fn do_inherits(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
     }
 }
 
-pub(crate) unsafe fn simple_error_condition(message: &str) -> SEXP {
-    unsafe { simple_error_condition_at(message, None) }
+pub(crate) fn simple_error_condition(message: &str) -> SEXP {
+    { simple_error_condition_at(message, None) }
 }
 
-pub(crate) unsafe fn simple_error_condition_at(message: &str, call: Option<SEXP>) -> SEXP {
+pub(crate) fn simple_error_condition_at(message: &str, call: Option<SEXP>) -> SEXP {
     unsafe {
         // GNU stop() inside tryCatch attributes to doTryCatch because that
         // is getCurrentCall(). Unused-arg / Math1 pass the applied call to
@@ -387,7 +387,7 @@ pub(crate) unsafe fn simple_error_condition_at(message: &str, call: Option<SEXP>
     }
 }
 
-pub(crate) unsafe fn simple_warning_condition(message: &str, call: SEXP) -> SEXP {
+pub(crate) fn simple_warning_condition(message: &str, call: SEXP) -> SEXP {
     unsafe {
         let call = if call.is_null() {
             crate::sexp::globals::R_NilValue()
@@ -405,11 +405,11 @@ pub(crate) unsafe fn simple_warning_condition(message: &str, call: SEXP) -> SEXP
         )
     }
 }
-pub(crate) unsafe fn simple_condition(message: &str, classes: &[&str]) -> SEXP {
-    unsafe { simple_condition_at(message, classes, R_NilValue()) }
+pub(crate) fn simple_condition(message: &str, classes: &[&str]) -> SEXP {
+    { simple_condition_at(message, classes, R_NilValue()) }
 }
 
-pub(crate) unsafe fn simple_condition_at(message: &str, classes: &[&str], call: SEXP) -> SEXP {
+pub(crate) fn simple_condition_at(message: &str, classes: &[&str], call: SEXP) -> SEXP {
     unsafe {
         // GNU simpleWarning/simpleMessage/simpleCondition all carry both a
         // `message` and a `call` field (GNU conditions.R / message.R).

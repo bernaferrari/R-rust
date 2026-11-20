@@ -10,7 +10,7 @@ use std::{
     rc::Rc,
 };
 
-unsafe fn construct(kind: u8, args: SEXP) -> SEXP {
+fn construct(kind: u8, args: SEXP) -> SEXP {
     unsafe {
         match kind {
             0 => do_simpleError(R_NilValue(), R_NilValue(), args, R_NilValue()),

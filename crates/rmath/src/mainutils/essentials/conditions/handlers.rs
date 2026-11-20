@@ -5,7 +5,7 @@ use super::*;
 // ---------------------------------------------------------------------------
 
 /// R's `withCallingHandlers(expr, ...)` evaluates handlers before unwinding.
-pub unsafe fn do_withCallingHandlers(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_withCallingHandlers(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         // GNU formals `(expr, ...)`. `expr=` binds by name; other tags are handlers.
         let expr_sym = Rf_install(c"expr".as_ptr());
@@ -55,7 +55,7 @@ pub unsafe fn do_withCallingHandlers(_call: SEXP, _op: SEXP, args: SEXP, rho: SE
     }
 }
 
-unsafe fn handlers_structurally_equal(a: SEXP, b: SEXP) -> bool {
+fn handlers_structurally_equal(a: SEXP, b: SEXP) -> bool {
     unsafe {
         if a == b {
             return true;
@@ -90,7 +90,7 @@ unsafe fn handlers_structurally_equal(a: SEXP, b: SEXP) -> bool {
     }
 }
 
-unsafe fn lang_equal_ignore_srcref(a: SEXP, b: SEXP) -> bool {
+fn lang_equal_ignore_srcref(a: SEXP, b: SEXP) -> bool {
     unsafe {
         if a == b {
             return true;
@@ -109,7 +109,7 @@ unsafe fn lang_equal_ignore_srcref(a: SEXP, b: SEXP) -> bool {
     }
 }
 
-unsafe fn attribs_equal_ignore_source(mut a: SEXP, mut b: SEXP) -> bool {
+fn attribs_equal_ignore_source(mut a: SEXP, mut b: SEXP) -> bool {
     unsafe {
         fn skip_src(mut p: SEXP) -> SEXP {
             unsafe {
@@ -141,7 +141,7 @@ unsafe fn attribs_equal_ignore_source(mut a: SEXP, mut b: SEXP) -> bool {
 }
 
 /// GNU `globalCallingHandlers(...)` — register/inspect/clear global calling handlers.
-pub unsafe fn do_globalCallingHandlers(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_globalCallingHandlers(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         if args.is_null() || args == R_NilValue() {
             crate::sexp::globals::set_R_Visible(TRUE);
@@ -205,11 +205,11 @@ fn set_global_handlers_list(list: SEXP) {
     });
 }
 
-unsafe fn empty_named_list() -> SEXP {
+fn empty_named_list() -> SEXP {
     unsafe { Rf_allocVector3(SEXPTYPE::VECSXP, 0) }
 }
 
-unsafe fn named_list_from_dots(mut args: SEXP) -> SEXP {
+fn named_list_from_dots(mut args: SEXP) -> SEXP {
     unsafe {
         let mut n = 0;
         let mut p = args;
@@ -238,7 +238,7 @@ unsafe fn named_list_from_dots(mut args: SEXP) -> SEXP {
     }
 }
 
-unsafe fn validate_named_handlers(list: SEXP) {
+fn validate_named_handlers(list: SEXP) {
     unsafe {
         let n = XLENGTH(list);
         let names =
@@ -272,7 +272,7 @@ unsafe fn validate_named_handlers(list: SEXP) {
     }
 }
 
-unsafe fn prepend_handlers(new: SEXP, old: SEXP) -> SEXP {
+fn prepend_handlers(new: SEXP, old: SEXP) -> SEXP {
     unsafe {
         let nn = XLENGTH(new);
         let no = if old.is_null() || old == R_NilValue() {
@@ -308,7 +308,7 @@ unsafe fn prepend_handlers(new: SEXP, old: SEXP) -> SEXP {
     }
 }
 
-unsafe fn drop_duplicate_class_handlers(list: SEXP) -> SEXP {
+fn drop_duplicate_class_handlers(list: SEXP) -> SEXP {
     unsafe {
         let n = XLENGTH(list);
         if n <= 1 {
@@ -376,7 +376,7 @@ unsafe fn drop_duplicate_class_handlers(list: SEXP) -> SEXP {
     }
 }
 
-unsafe fn chars_equal(a: SEXP, b: SEXP) -> bool {
+fn chars_equal(a: SEXP, b: SEXP) -> bool {
     unsafe {
         if a.is_null() || b.is_null() {
             return a == b;
@@ -390,8 +390,8 @@ unsafe fn chars_equal(a: SEXP, b: SEXP) -> bool {
     }
 }
 
-unsafe fn refuse_if_local_handlers() {
-    unsafe {
+fn refuse_if_local_handlers() {
+    {
         let gh = global_handlers_list();
         let n = if gh.is_null() || gh == R_NilValue() {
             0
@@ -406,7 +406,7 @@ unsafe fn refuse_if_local_handlers() {
     }
 }
 
-unsafe fn install_global_handler_stack(rho: SEXP) {
+fn install_global_handler_stack(rho: SEXP) {
     unsafe {
         let factory = condition_entry_factory();
         let rho = condition_entry_value(&factory, rho);
@@ -436,7 +436,7 @@ unsafe fn install_global_handler_stack(rho: SEXP) {
     }
 }
 
-unsafe fn pairlist_len(mut p: SEXP) -> i64 {
+fn pairlist_len(mut p: SEXP) -> i64 {
     {
         let mut n = 0i64;
         while !p.is_null() && p != R_NilValue() {
@@ -448,12 +448,12 @@ unsafe fn pairlist_len(mut p: SEXP) -> i64 {
 }
 
 /// GNU `simpleCondition(message, call = NULL)`.
-pub unsafe fn do_simpleCondition(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { super::condition_objects::native_simple_condition(args) }
+pub fn do_simpleCondition(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    { super::condition_objects::native_simple_condition(args) }
 }
 
 /// GNU `signalCondition(cond)` — invoke matching calling handlers.
-pub unsafe fn do_signalCondition_r(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_signalCondition_r(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let mut cond = if args.is_null() || args == R_NilValue() {
             R_NilValue()
