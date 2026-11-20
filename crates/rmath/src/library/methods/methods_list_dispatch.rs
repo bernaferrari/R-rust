@@ -529,12 +529,10 @@ fn nearest_method(methods: Vec<TableMethod>) -> Option<TableMethod> {
                     other.signature != candidate.signature
                         && other.signature.iter().zip(&candidate.signature).all(
                             |(derived, base)| {
-                                derived == base
-                                    || base == "ANY"
-                                    || {
-                                        crate::mainutils::objects::s4_class_distance(derived, base)
-                                            .is_some()
-                                    }
+                                derived == base || base == "ANY" || {
+                                    crate::mainutils::objects::s4_class_distance(derived, base)
+                                        .is_some()
+                                }
                             },
                         )
                 })

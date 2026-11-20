@@ -331,8 +331,7 @@ pub(crate) fn output_sink_active_in(instance: *mut RInstance) -> bool {
 }
 
 pub(crate) fn write_output_sink(bytes: &[u8]) -> bool {
-    with_current_instance(|instance| write_output_sink_in(instance, bytes))
-        .unwrap_or(false)
+    with_current_instance(|instance| write_output_sink_in(instance, bytes)).unwrap_or(false)
 }
 // P1/P2: raw *mut — reenters via init_connections_table/r_error/connection I/O; field borrows stay local.
 pub(crate) fn write_output_sink_in(instance: *mut RInstance, bytes: &[u8]) -> bool {

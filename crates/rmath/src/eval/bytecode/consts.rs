@@ -23,9 +23,10 @@ pub(crate) fn format_expression_vector(
                     .wrap(unsafe { crate::mainutils::deparse::deparse1line(expr.as_raw(), false) })
             })?
             .map_err(|e| sexp_err("deparsed expression", e))?;
-        parts.push(execution.native(|_| {
-            crate::mainutils::essentials::elt_to_string(deparsed.as_raw(), 0)
-        })?);
+        parts.push(
+            execution
+                .native(|_| crate::mainutils::essentials::elt_to_string(deparsed.as_raw(), 0))?,
+        );
         execution.require_live()?;
     }
     Ok(format!("expression({})", parts.join(", ")))

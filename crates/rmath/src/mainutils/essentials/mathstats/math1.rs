@@ -647,12 +647,10 @@ unsafe fn checked_math(
     active();
     match validation {
         Ok(Ok(Ok(false))) => {}
-        Ok(Ok(Ok(true))) => {
-            crate::mainutils::errors::errorcall_str(
-                call.as_raw(),
-                "non-numeric argument to mathematical function",
-            )
-        },
+        Ok(Ok(Ok(true))) => crate::mainutils::errors::errorcall_str(
+            call.as_raw(),
+            "non-numeric argument to mathematical function",
+        ),
         Ok(Ok(Err(error))) | Ok(Err(error)) => crate::sexp::context::r_error(error.to_string()),
         Err(payload) => std::panic::resume_unwind(payload),
     }

@@ -98,8 +98,7 @@ pub(crate) fn drain_trace_worklist(mut pending: gc_trace::TraceWorklist) {
         // SAFETY: GC is quiescent and the owner remains live through marking.
         // Published payloads retain their native span invariants. The bridge
         // revalidates the token, copies edges, and lends no mutable fields.
-        let children =
-            trace_result(gc_trace_bridge::snapshot_children(&node, pending.context()));
+        let children = trace_result(gc_trace_bridge::snapshot_children(&node, pending.context()));
         for child in children.into_edges() {
             trace_result(pending.enqueue_link(child));
         }
