@@ -113,7 +113,7 @@ pub fn R_Log10(x: c_double) -> c_double {
 
 /// GMapUnits -- map R interpreted unit codes to internal GUnit values.
 /// In interpreted R: 1 = "user", 2 = "figure", 3 = "inches".
-pub unsafe fn GMapUnits(runits: c_int) -> GUnit {
+pub fn GMapUnits(runits: c_int) -> GUnit {
     match runits {
         1 => USER,
         2 => NFC,
@@ -135,176 +135,128 @@ fn graphics_unit_to_engine(unit: GUnit) -> Option<c_int> {
     }
 }
 
-unsafe fn gpar_for_device(dd: pGEDevDesc) -> *mut GPar {
-    unsafe { gpptr(dd) as *mut GPar }
+unsafe fn gpar_for_device<'a>(dd: pGEDevDesc) -> Option<&'a GPar> {
+    // SAFETY: the graphics parameters live inside the device descriptor for as
+    // long as the descriptor is alive; callers only read from the projection.
+    unsafe { (gpptr(dd) as *const GPar).as_ref() }
 }
 
-unsafe fn x_usr_to_npc(x: c_double, gp: *mut GPar) -> c_double {
-    unsafe {
-        if gp.is_null() {
-            return x;
-        }
-        let left = (*gp).usr[0];
-        let right = (*gp).usr[1];
-        if left == right {
-            return 0.0;
-        }
-        (x - left) / (right - left)
+fn x_usr_to_npc(x: c_double, gp: Option<&GPar>) -> c_double {
+    let Some(gp) = gp else { return x };
+    let left = gp.usr[0];
+    let right = gp.usr[1];
+    if left == right {
+        return 0.0;
     }
+    (x - left) / (right - left)
 }
 
-unsafe fn y_usr_to_npc(y: c_double, gp: *mut GPar) -> c_double {
-    unsafe {
-        if gp.is_null() {
-            return y;
-        }
-        let bottom = (*gp).usr[2];
-        let top = (*gp).usr[3];
-        if bottom == top {
-            return 0.0;
-        }
-        (y - bottom) / (top - bottom)
+fn y_usr_to_npc(y: c_double, gp: Option<&GPar>) -> c_double {
+    let Some(gp) = gp else { return y };
+    let bottom = gp.usr[2];
+    let top = gp.usr[3];
+    if bottom == top {
+        return 0.0;
     }
+    (y - bottom) / (top - bottom)
 }
 
-unsafe fn x_npc_to_usr(x: c_double, gp: *mut GPar) -> c_double {
-    unsafe {
-        if gp.is_null() {
-            return x;
-        }
-        (*gp).usr[0] + x * ((*gp).usr[1] - (*gp).usr[0])
+fn x_npc_to_usr(x: c_double, gp: Option<&GPar>) -> c_double {
+    let Some(gp) = gp else { return x };
+    gp.usr[0] + x * (gp.usr[1] - gp.usr[0])
+}
+
+fn y_npc_to_usr(y: c_double, gp: Option<&GPar>) -> c_double {
+    let Some(gp) = gp else { return y };
+    gp.usr[2] + y * (gp.usr[3] - gp.usr[2])
+}
+
+fn x_npc_to_ndc(x: c_double, gp: Option<&GPar>) -> c_double {
+    let Some(gp) = gp else { return x };
+    gp.plt[0] + x * (gp.plt[1] - gp.plt[0])
+}
+
+fn y_npc_to_ndc(y: c_double, gp: Option<&GPar>) -> c_double {
+    let Some(gp) = gp else { return y };
+    gp.plt[2] + y * (gp.plt[3] - gp.plt[2])
+}
+
+fn x_ndc_to_npc(x: c_double, gp: Option<&GPar>) -> c_double {
+    let Some(gp) = gp else { return x };
+    let left = gp.plt[0];
+    let right = gp.plt[1];
+    if left == right {
+        return 0.0;
     }
+    (x - left) / (right - left)
 }
 
-unsafe fn y_npc_to_usr(y: c_double, gp: *mut GPar) -> c_double {
-    unsafe {
-        if gp.is_null() {
-            return y;
-        }
-        (*gp).usr[2] + y * ((*gp).usr[3] - (*gp).usr[2])
+fn y_ndc_to_npc(y: c_double, gp: Option<&GPar>) -> c_double {
+    let Some(gp) = gp else { return y };
+    let bottom = gp.plt[2];
+    let top = gp.plt[3];
+    if bottom == top {
+        return 0.0;
     }
+    (y - bottom) / (top - bottom)
 }
 
-unsafe fn x_npc_to_ndc(x: c_double, gp: *mut GPar) -> c_double {
-    unsafe {
-        if gp.is_null() {
-            return x;
-        }
-        (*gp).plt[0] + x * ((*gp).plt[1] - (*gp).plt[0])
+fn x_nfc_to_ndc(x: c_double, gp: Option<&GPar>) -> c_double {
+    let Some(gp) = gp else { return x };
+    gp.fig[0] + x * (gp.fig[1] - gp.fig[0])
+}
+
+fn y_nfc_to_ndc(y: c_double, gp: Option<&GPar>) -> c_double {
+    let Some(gp) = gp else { return y };
+    gp.fig[2] + y * (gp.fig[3] - gp.fig[2])
+}
+
+fn x_ndc_to_nfc(x: c_double, gp: Option<&GPar>) -> c_double {
+    let Some(gp) = gp else { return x };
+    let left = gp.fig[0];
+    let right = gp.fig[1];
+    if left == right {
+        return 0.0;
     }
+    (x - left) / (right - left)
 }
 
-unsafe fn y_npc_to_ndc(y: c_double, gp: *mut GPar) -> c_double {
-    unsafe {
-        if gp.is_null() {
-            return y;
-        }
-        (*gp).plt[2] + y * ((*gp).plt[3] - (*gp).plt[2])
+fn y_ndc_to_nfc(y: c_double, gp: Option<&GPar>) -> c_double {
+    let Some(gp) = gp else { return y };
+    let bottom = gp.fig[2];
+    let top = gp.fig[3];
+    if bottom == top {
+        return 0.0;
     }
+    (y - bottom) / (top - bottom)
 }
 
-unsafe fn x_ndc_to_npc(x: c_double, gp: *mut GPar) -> c_double {
+unsafe fn x_chars_to_device(x: c_double, gp: Option<&GPar>, dd: pGEDevDesc) -> c_double {
     unsafe {
-        if gp.is_null() {
-            return x;
-        }
-        let left = (*gp).plt[0];
-        let right = (*gp).plt[1];
-        if left == right {
-            return 0.0;
-        }
-        (x - left) / (right - left)
-    }
-}
-
-unsafe fn y_ndc_to_npc(y: c_double, gp: *mut GPar) -> c_double {
-    unsafe {
-        if gp.is_null() {
-            return y;
-        }
-        let bottom = (*gp).plt[2];
-        let top = (*gp).plt[3];
-        if bottom == top {
-            return 0.0;
-        }
-        (y - bottom) / (top - bottom)
-    }
-}
-
-unsafe fn x_nfc_to_ndc(x: c_double, gp: *mut GPar) -> c_double {
-    unsafe {
-        if gp.is_null() {
-            return x;
-        }
-        (*gp).fig[0] + x * ((*gp).fig[1] - (*gp).fig[0])
-    }
-}
-
-unsafe fn y_nfc_to_ndc(y: c_double, gp: *mut GPar) -> c_double {
-    unsafe {
-        if gp.is_null() {
-            return y;
-        }
-        (*gp).fig[2] + y * ((*gp).fig[3] - (*gp).fig[2])
-    }
-}
-
-unsafe fn x_ndc_to_nfc(x: c_double, gp: *mut GPar) -> c_double {
-    unsafe {
-        if gp.is_null() {
-            return x;
-        }
-        let left = (*gp).fig[0];
-        let right = (*gp).fig[1];
-        if left == right {
-            return 0.0;
-        }
-        (x - left) / (right - left)
-    }
-}
-
-unsafe fn y_ndc_to_nfc(y: c_double, gp: *mut GPar) -> c_double {
-    unsafe {
-        if gp.is_null() {
-            return y;
-        }
-        let bottom = (*gp).fig[2];
-        let top = (*gp).fig[3];
-        if bottom == top {
-            return 0.0;
-        }
-        (y - bottom) / (top - bottom)
-    }
-}
-
-unsafe fn x_chars_to_device(x: c_double, gp: *mut GPar, dd: pGEDevDesc) -> c_double {
-    unsafe {
-        let gp = gp;
-        let cex = if gp.is_null() { 1.0 } else { (*gp).cex };
+        let cex = gp.map_or(1.0, |gp| gp.cex);
         let width = GStrWidth(c"m".as_ptr(), 0, DEVICE, dd);
         x * cex * width
     }
 }
 
-unsafe fn y_chars_to_device(y: c_double, gp: *mut GPar, dd: pGEDevDesc) -> c_double {
+unsafe fn y_chars_to_device(y: c_double, gp: Option<&GPar>, dd: pGEDevDesc) -> c_double {
     unsafe {
-        let gp = gp;
-        let cex = if gp.is_null() { 1.0 } else { (*gp).cex };
+        let cex = gp.map_or(1.0, |gp| gp.cex);
         let height = GStrHeight(c"m".as_ptr(), 0, DEVICE, dd);
         y * cex * height
     }
 }
 
-unsafe fn x_lines_to_device(x: c_double, gp: *mut GPar, dd: pGEDevDesc) -> c_double {
+unsafe fn x_lines_to_device(x: c_double, gp: Option<&GPar>, dd: pGEDevDesc) -> c_double {
     unsafe {
-        let lheight = if gp.is_null() { 1.0 } else { (*gp).lheight };
+        let lheight = gp.map_or(1.0, |gp| gp.lheight);
         x_chars_to_device(x * lheight, gp, dd)
     }
 }
 
-unsafe fn y_lines_to_device(y: c_double, gp: *mut GPar, dd: pGEDevDesc) -> c_double {
+unsafe fn y_lines_to_device(y: c_double, gp: Option<&GPar>, dd: pGEDevDesc) -> c_double {
     unsafe {
-        let lheight = if gp.is_null() { 1.0 } else { (*gp).lheight };
+        let lheight = gp.map_or(1.0, |gp| gp.lheight);
         y_chars_to_device(y * lheight, gp, dd)
     }
 }
@@ -410,7 +362,7 @@ unsafe fn x_from_device_units(x: c_double, toUnits: GUnit, dd: pGEDevDesc) -> c_
                 if toUnits == CHARS {
                     chars
                 } else {
-                    let lheight = if gp.is_null() { 1.0 } else { (*gp).lheight };
+                    let lheight = gp.map_or(1.0, |gp| gp.lheight);
                     if lheight == 0.0 { 0.0 } else { chars / lheight }
                 }
             }
@@ -458,7 +410,7 @@ unsafe fn y_from_device_units(y: c_double, toUnits: GUnit, dd: pGEDevDesc) -> c_
                 if toUnits == CHARS {
                     chars
                 } else {
-                    let lheight = if gp.is_null() { 1.0 } else { (*gp).lheight };
+                    let lheight = gp.map_or(1.0, |gp| gp.lheight);
                     if lheight == 0.0 { 0.0 } else { chars / lheight }
                 }
             }
@@ -609,7 +561,7 @@ pub unsafe fn GConvertY(y: c_double, from: GUnit, to: GUnit, dd: pGEDevDesc) -> 
 
 /// GMapWin2Fig -- set up the transformation from user to NFC coordinates.
 /// Stub: does nothing.
-pub unsafe fn GMapWin2Fig(_dd: pGEDevDesc) {
+pub fn GMapWin2Fig(_dd: pGEDevDesc) {
     /* Stub: full implementation sets win2fig.{ax,ay,bx,by} from
     gpptr(dd)->plt and usr/logusr arrays */
 }
@@ -623,13 +575,13 @@ pub unsafe fn GNewPlot(_recording: Rboolean) -> pGEDevDesc {
 
 /// GRecording -- check whether graphics operations should be recorded.
 /// Stub: returns 0 (FALSE).
-pub unsafe fn GRecording(_call: SEXP, _dd: pGEDevDesc) -> Rboolean {
+pub fn GRecording(_call: SEXP, _dd: pGEDevDesc) -> Rboolean {
     0
 }
 
 /// GReset -- reset graphics parameters after device resize.
 /// Stub: does nothing.
-pub unsafe fn GReset(_dd: pGEDevDesc) {
+pub fn GReset(_dd: pGEDevDesc) {
     /* Stub: full implementation recalculates all mappings */
 }
 
@@ -639,37 +591,37 @@ pub unsafe fn GReset(_dd: pGEDevDesc) {
 
 /// GInit -- initialize default graphics parameter values in a GPar struct.
 /// Stub: does nothing.
-pub unsafe fn GInit(_dp: *mut c_void) {
+pub fn GInit(_dp: *mut c_void) {
     /* Stub: full implementation sets all fields of GPar to defaults */
 }
 
 /// copyGPar -- copy a GPar structure from source to dest.
 /// Stub: does nothing.
-pub unsafe fn copyGPar(_source: *mut c_void, _dest: *mut c_void) {
+pub fn copyGPar(_source: *mut c_void, _dest: *mut c_void) {
     /* Stub: full implementation does memcpy(dest, source, sizeof(GPar)) */
 }
 
 /// GRestore -- restore graphics parameters from the device copy.
 /// Stub: does nothing.
-pub unsafe fn GRestore(_dd: pGEDevDesc) {
+pub fn GRestore(_dd: pGEDevDesc) {
     /* Stub: full implementation calls copyGPar(dpptr(dd), gpptr(dd)) */
 }
 
 /// GSavePars -- save inline graphical parameters.
 /// Stub: does nothing.
-pub unsafe fn GSavePars(_dd: pGEDevDesc) {
+pub fn GSavePars(_dd: pGEDevDesc) {
     /* Stub: full implementation saves all inline pars to static vars */
 }
 
 /// GRestorePars -- restore inline graphical parameters.
 /// Stub: does nothing.
-pub unsafe fn GRestorePars(_dd: pGEDevDesc) {
+pub fn GRestorePars(_dd: pGEDevDesc) {
     /* Stub: full implementation restores all inline pars from static vars */
 }
 
 /// GNU stores the plot-frame flag on the individual graphics device.
 /// A null pointer denotes the current device for the device-less profile.
-pub unsafe fn GSetState(newstate: c_int, dd: pGEDevDesc) {
+pub fn GSetState(newstate: c_int, dd: pGEDevDesc) {
     crate::library::grdevices::device_registry::plot_frame_state(dd, Some(newstate > 0))
         .unwrap_or_else(|| crate::sexp::context::r_error("invalid graphics device"));
 }
@@ -698,7 +650,7 @@ pub(crate) fn set_plot_new_state() {
 }
 
 /// GCheckState -- enquire whether GNewPlot was called on this device.
-pub unsafe fn GCheckState(dd: pGEDevDesc) {
+pub fn GCheckState(dd: pGEDevDesc) {
     let started = crate::library::grdevices::device_registry::plot_frame_state(dd, None)
         .unwrap_or_else(|| crate::sexp::context::r_error("invalid graphics device"));
     if !started {
@@ -714,14 +666,14 @@ pub unsafe fn GCheckState(dd: pGEDevDesc) {
 /// Provides default axis information i.e., if user has NOT specified
 /// par(usr=.., {x,y}axp= ..).
 /// Stub: does nothing.
-pub unsafe fn GScale(_min: c_double, _max: c_double, _axis: c_int, _dd: pGEDevDesc) {
+pub fn GScale(_min: c_double, _max: c_double, _axis: c_int, _dd: pGEDevDesc) {
     /* Stub: full implementation computes axis parameters based on
     lab, xaxs/yaxs, xlog/ylog from gpptr(dd) and calls GAxisPars */
 }
 
 /// GSetupAxis -- set up default axis information when user specifies par(usr=...).
 /// Stub: does nothing.
-pub unsafe fn GSetupAxis(_axis: c_int, _dd: pGEDevDesc) {
+pub fn GSetupAxis(_axis: c_int, _dd: pGEDevDesc) {
     /* Stub: full implementation calls GPretty and stores axp */
 }
 
@@ -731,45 +683,35 @@ pub unsafe fn GSetupAxis(_axis: c_int, _dd: pGEDevDesc) {
 
 /// GClip -- update the device clipping region (depends on GP->xpd).
 /// Stub: does nothing.
-pub unsafe fn GClip(_dd: pGEDevDesc) {
+pub fn GClip(_dd: pGEDevDesc) {
     /* Stub: full implementation calls setClipRect + GESetClip */
 }
 
 /// GForceClip -- forced update of the device clipping region.
 /// Stub: does nothing.
-pub unsafe fn GForceClip(_dd: pGEDevDesc) {
+pub fn GForceClip(_dd: pGEDevDesc) {
     /* Stub: full implementation calls setClipRect + GESetClip */
 }
 
 /// setClipRect -- set the clipping rectangle for a given coordinate system.
 /// Stub: sets all outputs to 0.0.
-pub unsafe fn setClipRect(
-    x1: *mut c_double,
-    y1: *mut c_double,
-    x2: *mut c_double,
-    y2: *mut c_double,
+pub fn setClipRect(
+    x1: &mut c_double,
+    y1: &mut c_double,
+    x2: &mut c_double,
+    y2: &mut c_double,
     _coords: GUnit,
     _dd: pGEDevDesc,
 ) {
-    unsafe {
-        if !x1.is_null() {
-            *x1 = 0.0;
-        }
-        if !y1.is_null() {
-            *y1 = 0.0;
-        }
-        if !x2.is_null() {
-            *x2 = 0.0;
-        }
-        if !y2.is_null() {
-            *y2 = 0.0;
-        }
-    }
+    *x1 = 0.0;
+    *y1 = 0.0;
+    *x2 = 0.0;
+    *y2 = 0.0;
 }
 
 /// gcontextFromGP -- generate an R_GE_gcontext from gpptr info.
 /// Stub: does nothing.
-pub unsafe fn gcontextFromGP(_gc: pGEcontext, _dd: pGEDevDesc) {
+pub fn gcontextFromGP(_gc: pGEcontext, _dd: pGEDevDesc) {
     /* Stub: full implementation copies all graphics context fields
     from gpptr(dd) to the gc struct */
 }
@@ -827,44 +769,30 @@ pub unsafe fn GLine(
 
 /// GLocator -- read the current pen position interactively.
 /// Stub: returns 0 (FALSE).
-pub unsafe fn GLocator(
-    x: *mut c_double,
-    y: *mut c_double,
+pub fn GLocator(
+    x: &mut c_double,
+    y: &mut c_double,
     _coords: c_int,
     _dd: pGEDevDesc,
 ) -> Rboolean {
-    unsafe {
-        if !x.is_null() {
-            *x = 0.0;
-        }
-        if !y.is_null() {
-            *y = 0.0;
-        }
-    }
+    *x = 0.0;
+    *y = 0.0;
     0
 }
 
 /// GMetricInfo -- access character font metric information.
 /// Stub: sets all outputs to 0.0.
-pub unsafe fn GMetricInfo(
+pub fn GMetricInfo(
     _c: c_int,
-    ascent: *mut c_double,
-    descent: *mut c_double,
-    width: *mut c_double,
+    ascent: &mut c_double,
+    descent: &mut c_double,
+    width: &mut c_double,
     _units: GUnit,
     _dd: pGEDevDesc,
 ) {
-    unsafe {
-        if !ascent.is_null() {
-            *ascent = 0.0;
-        }
-        if !descent.is_null() {
-            *descent = 0.0;
-        }
-        if !width.is_null() {
-            *width = 0.0;
-        }
-    }
+    *ascent = 0.0;
+    *descent = 0.0;
+    *width = 0.0;
 }
 
 /// GMode -- set graphics mode (0=off, 1=on, 2=input on).
@@ -880,7 +808,7 @@ pub unsafe fn GMode(mode: c_int, dd: pGEDevDesc) {
 /// GClipPolygon -- clip a polygon to the current clip region.
 /// Uses Sutherland-Hodgman polygon clipping algorithm.
 /// Stub: returns 0.
-pub unsafe fn GClipPolygon(
+pub fn GClipPolygon(
     _x: *mut c_double,
     _y: *mut c_double,
     _n: c_int,
@@ -982,7 +910,7 @@ pub unsafe fn GRect(
 
 /// GPath -- draw a path (possibly with holes).
 /// Stub: does nothing.
-pub unsafe fn GPath(
+pub fn GPath(
     _x: *mut c_double,
     _y: *mut c_double,
     _npoly: c_int,
@@ -997,7 +925,7 @@ pub unsafe fn GPath(
 
 /// GRaster -- draw a raster image.
 /// Stub: does nothing.
-pub unsafe fn GRaster(
+pub fn GRaster(
     _image: *mut c_uint,
     _w: c_int,
     _h: c_int,
@@ -1080,7 +1008,7 @@ pub unsafe fn GText(
 /// GArrow -- draw an arrow from (xfrom,yfrom) to (xto,yto).
 /// The length parameter is in inches.
 /// Stub: does nothing.
-pub unsafe fn GArrow(
+pub fn GArrow(
     _xfrom: c_double,
     _yfrom: c_double,
     _xto: c_double,
@@ -1097,7 +1025,7 @@ pub unsafe fn GArrow(
 /// GBox -- draw a box around one of several regions (box(which)).
 /// which=1: plot region (with bty styles), 2: figure, 3: inner, 4: outer/device.
 /// Stub: does nothing.
-pub unsafe fn GBox(_which: c_int, _dd: pGEDevDesc) {
+pub fn GBox(_which: c_int, _dd: pGEDevDesc) {
     /* Stub: full implementation draws a box around plot/figure/device region
     with various bty styles (o, l, 7, c, [, ], u, n) */
 }
@@ -1131,7 +1059,7 @@ pub unsafe fn GSymbol(x: c_double, y: c_double, coords: c_int, pch: c_int, dd: p
 /// side: 1=bottom, 2=left, 3=top, 4=right.
 /// las: 0=parallel to axis, 1=always horizontal, 2=perpendicular, 3=vertical.
 /// Stub: does nothing.
-pub unsafe fn GMtext(
+pub fn GMtext(
     _str: *const c_char,
     _enc: cetype_t,
     _side: c_int,
@@ -1151,19 +1079,19 @@ pub unsafe fn GMtext(
 
 /// GExpressionWidth -- compute the width of a mathematical expression.
 /// Stub: returns 0.0.
-pub unsafe fn GExpressionWidth(_expr: SEXP, _units: GUnit, _dd: pGEDevDesc) -> c_double {
+pub fn GExpressionWidth(_expr: SEXP, _units: GUnit, _dd: pGEDevDesc) -> c_double {
     0.0
 }
 
 /// GExpressionHeight -- compute the height of a mathematical expression.
 /// Stub: returns 0.0.
-pub unsafe fn GExpressionHeight(_expr: SEXP, _units: GUnit, _dd: pGEDevDesc) -> c_double {
+pub fn GExpressionHeight(_expr: SEXP, _units: GUnit, _dd: pGEDevDesc) -> c_double {
     0.0
 }
 
 /// GMathText -- draw a mathematical expression at a location.
 /// Stub: does nothing.
-pub unsafe fn GMathText(
+pub fn GMathText(
     _x: c_double,
     _y: c_double,
     _coords: c_int,
@@ -1178,7 +1106,7 @@ pub unsafe fn GMathText(
 
 /// GMMathText -- draw a mathematical expression in the plot margins.
 /// Stub: does nothing.
-pub unsafe fn GMMathText(
+pub fn GMMathText(
     _str: SEXP,
     _side: c_int,
     _line: c_double,

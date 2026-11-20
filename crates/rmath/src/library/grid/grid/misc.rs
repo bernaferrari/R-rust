@@ -154,11 +154,9 @@ pub unsafe fn L_locator() -> SEXP {
  * L_locnBounds
  * ============================== */
 
-pub unsafe fn L_locnBounds(x: SEXP, y: SEXP, theta: SEXP) -> SEXP {
-    {
-        // Full implementation requires unit conversion
-        R_NilValue()
-    }
+pub fn L_locnBounds(x: SEXP, y: SEXP, theta: SEXP) -> SEXP {
+    // Full implementation requires unit conversion
+    R_NilValue()
 }
 
 /* ==============================
@@ -229,6 +227,6 @@ pub unsafe fn L_stringMetric(label: SEXP) -> SEXP {
  * L_convertToNative (deprecated)
  * ============================== */
 
-pub unsafe fn L_convertToNative(_x: SEXP, _what: SEXP) -> SEXP {
+pub fn L_convertToNative(_x: SEXP, _what: SEXP) -> SEXP {
     R_NilValue()
 }

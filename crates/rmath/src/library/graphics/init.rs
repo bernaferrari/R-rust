@@ -22,7 +22,7 @@
 use crate::sexp::ffi::*;
 
 /* Stub: DllInfo registration */
-pub unsafe fn R_init_graphics(_dll: *mut std::ffi::c_void) {
+pub fn R_init_graphics(_dll: *mut std::ffi::c_void) {
     /* Registration handled by Rust's symbol exports */
 }
 

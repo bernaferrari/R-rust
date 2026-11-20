@@ -31,6 +31,6 @@ use crate::mainutils::registration::DllInfo;
 ///   L_stroke, L_fill, L_fillStroke, L_glyph,
 ///   validUnits, constructUnits, asUnit, conformingUnits, matchUnit,
 ///   addUnits, multUnits, flipUnits, absoluteUnits, summaryUnits
-pub unsafe fn R_init_grid(_dll: *mut DllInfo) {
+pub fn R_init_grid(_dll: *mut DllInfo) {
     // Stub: actual registration deferred until grid .Call functions are ported.
 }

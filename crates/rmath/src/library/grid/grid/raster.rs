@@ -127,9 +127,7 @@ pub unsafe fn L_raster(
                     );
                 }
             } else {
-                let mut xadj: c_double = 0.0;
-                let mut yadj: c_double = 0.0;
-                justification(ww, hh, hjust_i, vjust_i, &mut xadj, &mut yadj);
+                let (xadj, yadj) = justification(ww, hh, hjust_i, vjust_i);
                 let xadjInches = unit(xadj, L_INCHES);
                 let _xadj_guard = protect(xadjInches);
                 let yadjInches = unit(yadj, L_INCHES);
