@@ -141,7 +141,7 @@ type Rservsockconn = *mut servsockconn;
 // Internal allocation helpers (Rust std::alloc, no C heap involved)
 // ---------------------------------------------------------------------------
 
-unsafe fn alloc_c_string(len: usize) -> *mut c_char {
+fn alloc_c_string(len: usize) -> *mut c_char {
     unsafe {
         if len == 0 {
             return std::ptr::null_mut();
@@ -151,7 +151,7 @@ unsafe fn alloc_c_string(len: usize) -> *mut c_char {
     }
 }
 
-unsafe fn free_c_string(p: *mut c_char) {
+fn free_c_string(p: *mut c_char) {
     unsafe {
         if p.is_null() {
             return;
@@ -162,7 +162,7 @@ unsafe fn free_c_string(p: *mut c_char) {
     }
 }
 
-unsafe fn alloc_boxed<T>() -> *mut T {
+fn alloc_boxed<T>() -> *mut T {
     unsafe {
         let layout = Layout::new::<T>();
         let ptr = alloc(layout) as *mut T;
@@ -173,7 +173,7 @@ unsafe fn alloc_boxed<T>() -> *mut T {
     }
 }
 
-unsafe fn free_boxed<T>(p: *mut T) {
+fn free_boxed<T>(p: *mut T) {
     unsafe {
         if p.is_null() {
             return;
@@ -190,7 +190,7 @@ unsafe fn free_boxed<T>(p: *mut T) {
 /// init_con - initialize connection fields that don't depend on the connection type.
 /// Simplified version of Rf_init_con from connections.c.
 /// Sets mode, isopen=false, text=true, canread/canwrite/canseek, blocking=true, etc.
-unsafe fn init_con(new: Rconnection, description: *const c_char, enc: c_int, mode: *const c_char) {
+fn init_con(new: Rconnection, description: *const c_char, enc: c_int, mode: *const c_char) {
     unsafe {
         (*new).enc = enc;
         // Copy mode string (max 4 chars + null)
@@ -252,7 +252,7 @@ unsafe fn init_con(new: Rconnection, description: *const c_char, enc: c_int, mod
 
 /// dummy_vfprintf - stub vfprintf for connections that don't support it.
 /// Matches C: int dummy_vfprintf(Rconnection con, const char *format, va_list ap)
-unsafe extern "C" fn dummy_vfprintf(
+extern "C" fn dummy_vfprintf(
     _con: Rconnection,
     _format: *const c_char,
     _ap: *mut c_void,
@@ -262,7 +262,7 @@ unsafe extern "C" fn dummy_vfprintf(
 
 /// dummy_fgetc - stub fgetc for connections that use fgetc_internal instead.
 /// Matches C: int dummy_fgetc(Rconnection con)
-unsafe extern "C" fn dummy_fgetc(_con: Rconnection) -> c_int {
+extern "C" fn dummy_fgetc(_con: Rconnection) -> c_int {
     R_EOF
 }
 
@@ -272,7 +272,7 @@ unsafe extern "C" fn dummy_fgetc(_con: Rconnection) -> c_int {
 
 /// listencleanup - close the listening socket on error/jump.
 /// Matches C: static void listencleanup(void *data)
-unsafe fn listencleanup(data: *mut c_void) {
+fn listencleanup(data: *mut c_void) {
     unsafe {
         let psock = data as *mut c_int;
         if !psock.is_null() {
@@ -287,7 +287,7 @@ unsafe fn listencleanup(data: *mut c_void) {
 
 /// sock_open - open a socket connection (server or client).
 /// Matches C: static Rboolean sock_open(Rconnection con)
-unsafe fn sock_open(con: Rconnection) -> c_int {
+fn sock_open(con: Rconnection) -> c_int {
     unsafe {
         if con.is_null() {
             return R_FALSE;
@@ -432,7 +432,7 @@ unsafe fn sock_open(con: Rconnection) -> c_int {
 
 /// sock_close - close a socket connection.
 /// Matches C: static void sock_close(Rconnection con)
-unsafe fn sock_close(con: Rconnection) {
+fn sock_close(con: Rconnection) {
     unsafe {
         if con.is_null() {
             return;
@@ -451,7 +451,7 @@ unsafe fn sock_close(con: Rconnection) {
 
 /// servsock_close - close a server socket connection.
 /// Matches C: static void servsock_close(Rconnection con)
-unsafe fn servsock_close(con: Rconnection) {
+fn servsock_close(con: Rconnection) {
     unsafe {
         if con.is_null() {
             return;
@@ -471,7 +471,7 @@ unsafe fn servsock_close(con: Rconnection) {
 /// sock_read_helper - read `size` bytes from the socket connection into `ptr`.
 /// Uses an internal 4096-byte buffer for efficiency.
 /// Matches C: static ssize_t sock_read_helper(Rconnection con, void *ptr, size_t size)
-unsafe fn sock_read_helper(con: Rconnection, mut ptr: *mut c_void, mut size: size_t) -> ssize_t {
+fn sock_read_helper(con: Rconnection, mut ptr: *mut c_void, mut size: size_t) -> ssize_t {
     unsafe {
         if con.is_null() {
             return -1;
@@ -554,12 +554,10 @@ unsafe fn sock_read_helper(con: Rconnection, mut ptr: *mut c_void, mut size: siz
 
 /// sock_fgetc_internal - read a single character from a socket connection.
 /// Matches C: static int sock_fgetc_internal(Rconnection con)
-unsafe fn sock_fgetc_internal(con: Rconnection) -> c_int {
-    unsafe {
-        let mut c: u8 = 0;
-        let n = sock_read_helper(con, &mut c as *mut u8 as *mut c_void, 1);
-        if n == 1 { c as c_int } else { R_EOF }
-    }
+fn sock_fgetc_internal(con: Rconnection) -> c_int {
+    let mut c: u8 = 0;
+    let n = sock_read_helper(con, &mut c as *mut u8 as *mut c_void, 1);
+    if n == 1 { c as c_int } else { R_EOF }
 }
 
 // ---------------------------------------------------------------------------
@@ -568,19 +566,17 @@ unsafe fn sock_fgetc_internal(con: Rconnection) -> c_int {
 
 /// sock_read - read `nitems` objects of `size` bytes each from socket.
 /// Matches C: static size_t sock_read(void *ptr, size_t size, size_t nitems, Rconnection con)
-unsafe extern "C" fn sock_read(
+extern "C" fn sock_read(
     ptr: *mut c_void,
     size: size_t,
     nitems: size_t,
     con: Rconnection,
 ) -> size_t {
-    unsafe {
-        if size == 0 {
-            return 0;
-        }
-        let n = sock_read_helper(con, ptr, size * nitems) / (size as ssize_t);
-        if n > 0 { n as size_t } else { 0 }
+    if size == 0 {
+        return 0;
     }
+    let n = sock_read_helper(con, ptr, size * nitems) / (size as ssize_t);
+    if n > 0 { n as size_t } else { 0 }
 }
 
 // ---------------------------------------------------------------------------
@@ -589,7 +585,7 @@ unsafe extern "C" fn sock_read(
 
 /// sock_write - write `nitems` objects of `size` bytes each to socket.
 /// Matches C: static size_t sock_write(const void *ptr, size_t size, size_t nitems, Rconnection con)
-unsafe extern "C" fn sock_write(
+extern "C" fn sock_write(
     ptr: *const c_void,
     size: size_t,
     nitems: size_t,
@@ -617,27 +613,23 @@ unsafe extern "C" fn sock_write(
 // ---------------------------------------------------------------------------
 
 /// Trampoline for sock_open to match the Rconn.open function pointer signature.
-unsafe extern "C" fn sock_open_trampoline(con: *mut Rconn) -> c_int {
-    unsafe { sock_open(con) }
+extern "C" fn sock_open_trampoline(con: *mut Rconn) -> c_int {
+    sock_open(con)
 }
 
 /// Trampoline for sock_close to match the Rconn.close function pointer signature.
-unsafe extern "C" fn sock_close_trampoline(con: *mut Rconn) {
-    unsafe {
-        sock_close(con);
-    }
+extern "C" fn sock_close_trampoline(con: *mut Rconn) {
+    sock_close(con);
 }
 
 /// Trampoline for servsock_close to match the Rconn.close function pointer signature.
-unsafe extern "C" fn servsock_close_trampoline(con: *mut Rconn) {
-    unsafe {
-        servsock_close(con);
-    }
+extern "C" fn servsock_close_trampoline(con: *mut Rconn) {
+    servsock_close(con);
 }
 
 /// Trampoline for sock_fgetc_internal to match the Rconn.fgetc_internal function pointer signature.
-unsafe extern "C" fn sock_fgetc_internal_trampoline(con: *mut Rconn) -> c_int {
-    unsafe { sock_fgetc_internal(con) }
+extern "C" fn sock_fgetc_internal_trampoline(con: *mut Rconn) -> c_int {
+    sock_fgetc_internal(con)
 }
 
 // ---------------------------------------------------------------------------
@@ -648,7 +640,7 @@ unsafe extern "C" fn sock_fgetc_internal_trampoline(con: *mut Rconn) -> c_int {
 /// Allocates and initializes the Rconn struct with socket-specific fields.
 /// Matches C: Rconnection in_R_newsock(const char *host, int port, int server,
 ///              int serverfd, const char * const mode, int timeout, int options)
-pub(crate) unsafe fn in_R_newsock(
+pub(crate) fn in_R_newsock(
     host: *const c_char,
     port: c_int,
     server: c_int,
@@ -741,7 +733,7 @@ pub(crate) unsafe fn in_R_newsock(
 /// in_R_newservsock - create a new server socket connection (Rconnection).
 /// Opens a listening socket on the given port.
 /// Matches C: Rconnection in_R_newservsock(int port)
-pub(crate) unsafe fn in_R_newservsock(port: c_int) -> Rconnection {
+pub(crate) fn in_R_newservsock(port: c_int) -> Rconnection {
     unsafe {
         // Allocate the Rconn struct
         let new = alloc_boxed::<Rconn>();

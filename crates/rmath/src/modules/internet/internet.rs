@@ -59,20 +59,20 @@ const NA_LOGICAL: c_int = -2147483648; // NA_INTEGER value
 
 // Helper: check if SEXP is a string vector with at least 1 element
 #[inline]
-unsafe fn is_single_string(x: SEXP) -> bool {
-    unsafe { TYPEOF(x) == SEXPTYPE::STRSXP && LENGTH(x) >= 1 }
+fn is_single_string(x: SEXP) -> bool {
+    TYPEOF(x) == SEXPTYPE::STRSXP && LENGTH(x) >= 1
 }
 
 // Helper: check if SEXP is a string vector of exactly length 1
 #[inline]
-unsafe fn is_string_len1(x: SEXP) -> bool {
-    unsafe { TYPEOF(x) == SEXPTYPE::STRSXP && LENGTH(x) == 1 }
+fn is_string_len1(x: SEXP) -> bool {
+    TYPEOF(x) == SEXPTYPE::STRSXP && LENGTH(x) == 1
 }
 
 // Helper: convert a logical SEXP to c_int (Rboolean-like)
 // Returns 0 for FALSE, 1 for TRUE, NA_LOGICAL for NA
 #[inline]
-unsafe fn asRbool(x: SEXP) -> c_int {
+fn asRbool(x: SEXP) -> c_int {
     unsafe {
         if x == R_NilValue() {
             return NA_LOGICAL;
@@ -91,13 +91,13 @@ unsafe fn asRbool(x: SEXP) -> c_int {
 
 // Helper: convert a logical SEXP to asLogical-style result
 #[inline]
-unsafe fn asLogical_val(x: SEXP) -> c_int {
-    unsafe { asRbool(x) }
+fn asLogical_val(x: SEXP) -> c_int {
+    asRbool(x)
 }
 
 // Helper: safe CStr to Rust &str
 #[inline]
-unsafe fn cstr_to_str<'a>(s: *const c_char) -> &'a str {
+fn cstr_to_str<'a>(s: *const c_char) -> &'a str {
     unsafe {
         if s.is_null() {
             return "";
@@ -211,170 +211,168 @@ fn http_parse_url(url: &str) -> Option<(CString, u16, String)> {
 /// Returns a boxed inetconn on success, null on failure.
 ///
 /// This is the Unix equivalent of the Windows wininet-based in_R_HTTPOpen2.
-unsafe fn http_open(
+fn http_open(
     url: *const c_char,
     agent: *const c_char,
     headers: *const c_char,
     _cacheOK: c_int,
 ) -> *mut c_void {
-    unsafe {
-        let url_str = match cstr_to_str(url) {
-            "" => return ptr::null_mut(),
-            s => s,
-        };
+    let url_str = match cstr_to_str(url) {
+        "" => return ptr::null_mut(),
+        s => s,
+    };
 
-        // Only handle http:// (not https:// — that requires TLS)
-        if !url_str.starts_with("http://") {
-            return ptr::null_mut();
-        }
-
-        let (host_cstr, port, path) = match http_parse_url(url_str) {
-            Some(parts) => parts,
-            None => return ptr::null_mut(),
-        };
-
-        let agent_str = if agent.is_null() {
-            "RMath-Rust/1.0"
-        } else {
-            cstr_to_str(agent)
-        };
-
-        // Open TCP connection
-        let addr = format!("{}:{}", host_cstr.to_str().unwrap_or(""), port);
-        let mut stream = match TcpStream::connect(&*addr) {
-            Ok(s) => s,
-            Err(_) => return ptr::null_mut(),
-        };
-
-        // Set read timeout to avoid hanging forever
-        let _ = stream.set_read_timeout(Some(std::time::Duration::from_secs(30)));
-        let _ = stream.set_write_timeout(Some(std::time::Duration::from_secs(30)));
-
-        // Build HTTP GET request
-        let mut request = format!(
-            "GET {} HTTP/1.1\r\nHost: {}\r\nUser-Agent: {}\r\nConnection: close\r\n",
-            path,
-            host_cstr.to_str().unwrap_or(""),
-            agent_str
-        );
-
-        // Add custom headers if provided
-        if !headers.is_null() {
-            let headers_str = cstr_to_str(headers);
-            if !headers_str.is_empty() {
-                // Split on newlines and add each header
-                for line in headers_str.split('\n') {
-                    let line = line.trim();
-                    if !line.is_empty() {
-                        request.push_str(line);
-                        request.push_str("\r\n");
-                    }
-                }
-            }
-        }
-
-        request.push_str("\r\n");
-
-        // Send request
-        if stream.write_all(request.as_bytes()).is_err() {
-            return ptr::null_mut();
-        }
-
-        // Read response - we need to parse headers to find content length
-        let mut response_buf = Vec::with_capacity(IBUFSIZE * 4);
-        let mut temp_buf = [0u8; IBUFSIZE];
-
-        // Read until we find the end of headers (\r\n\r\n)
-        let mut header_end = None;
-        let mut total_read = 0usize;
-        let max_header_size = 64 * 1024; // 64KB max header size
-
-        while total_read < max_header_size {
-            match stream.read(&mut temp_buf) {
-                Ok(0) => break, // EOF
-                Ok(n) => {
-                    response_buf.extend_from_slice(&temp_buf[..n]);
-                    total_read += n;
-
-                    // Check for end of headers
-                    if let Some(pos) = find_header_end(&response_buf) {
-                        header_end = Some(pos);
-                        break;
-                    }
-                }
-                Err(_) => return ptr::null_mut(),
-            }
-        }
-
-        let header_end_pos = match header_end {
-            Some(pos) => pos,
-            None => return ptr::null_mut(),
-        };
-
-        // Parse status code
-        let header_str = String::from_utf8_lossy(&response_buf[..header_end_pos]);
-        let status_code = parse_status_code(&header_str);
-        if status_code.is_none()
-            || status_code.unwrap_or_default() < 200
-            || status_code.unwrap_or_default() >= 300
-        {
-            // Non-2xx status
-            return ptr::null_mut();
-        }
-
-        // Parse content length
-        let content_length = parse_content_length(&header_str);
-
-        // Parse content type
-        let content_type_cstr =
-            CString::new(parse_content_type(&header_str).unwrap_or_else(|| "unknown".to_string()))
-                .unwrap_or_default();
-
-        // Report content info if not quiet
-        if internet_quiet() == 0 {
-            eprint!(
-                "Content type '{}'",
-                content_type_cstr.to_str().unwrap_or("unknown")
-            );
-            if let Some(len) = content_length {
-                if len > 1024 * 1024 {
-                    eprintln!(
-                        " length {} bytes ({:.1} MB)",
-                        len,
-                        len as f64 / 1024.0 / 1024.0
-                    );
-                } else if len > 10240 {
-                    eprintln!(" length {} bytes ({} KB)", len, len / 1024);
-                } else {
-                    eprintln!(" length {} bytes", len);
-                }
-            } else {
-                eprintln!(" length unknown");
-            }
-        }
-
-        // Convert the TcpStream into a raw file descriptor that we own.
-        // wasm32 has no file descriptors (no sockets at all); http_open is
-        // unreachable there because every connect fails beforehand.
-        #[cfg(target_arch = "wasm32")]
-        let raw_fd: c_int = -1;
-        #[cfg(not(target_arch = "wasm32"))]
-        let raw_fd = stream.into_raw_fd();
-
-        // Allocate the inetconn context
-        let ctx = Box::new(inetconn {
-            length: content_length.unwrap_or(-1),
-            content_type: content_type_cstr.into_raw(),
-            fd: raw_fd,
-        });
-
-        Box::into_raw(ctx) as *mut c_void
+    // Only handle http:// (not https:// — that requires TLS)
+    if !url_str.starts_with("http://") {
+        return ptr::null_mut();
     }
+
+    let (host_cstr, port, path) = match http_parse_url(url_str) {
+        Some(parts) => parts,
+        None => return ptr::null_mut(),
+    };
+
+    let agent_str = if agent.is_null() {
+        "RMath-Rust/1.0"
+    } else {
+        cstr_to_str(agent)
+    };
+
+    // Open TCP connection
+    let addr = format!("{}:{}", host_cstr.to_str().unwrap_or(""), port);
+    let mut stream = match TcpStream::connect(&*addr) {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(),
+    };
+
+    // Set read timeout to avoid hanging forever
+    let _ = stream.set_read_timeout(Some(std::time::Duration::from_secs(30)));
+    let _ = stream.set_write_timeout(Some(std::time::Duration::from_secs(30)));
+
+    // Build HTTP GET request
+    let mut request = format!(
+        "GET {} HTTP/1.1\r\nHost: {}\r\nUser-Agent: {}\r\nConnection: close\r\n",
+        path,
+        host_cstr.to_str().unwrap_or(""),
+        agent_str
+    );
+
+    // Add custom headers if provided
+    if !headers.is_null() {
+        let headers_str = cstr_to_str(headers);
+        if !headers_str.is_empty() {
+            // Split on newlines and add each header
+            for line in headers_str.split('\n') {
+                let line = line.trim();
+                if !line.is_empty() {
+                    request.push_str(line);
+                    request.push_str("\r\n");
+                }
+            }
+        }
+    }
+
+    request.push_str("\r\n");
+
+    // Send request
+    if stream.write_all(request.as_bytes()).is_err() {
+        return ptr::null_mut();
+    }
+
+    // Read response - we need to parse headers to find content length
+    let mut response_buf = Vec::with_capacity(IBUFSIZE * 4);
+    let mut temp_buf = [0u8; IBUFSIZE];
+
+    // Read until we find the end of headers (\r\n\r\n)
+    let mut header_end = None;
+    let mut total_read = 0usize;
+    let max_header_size = 64 * 1024; // 64KB max header size
+
+    while total_read < max_header_size {
+        match stream.read(&mut temp_buf) {
+            Ok(0) => break, // EOF
+            Ok(n) => {
+                response_buf.extend_from_slice(&temp_buf[..n]);
+                total_read += n;
+
+                // Check for end of headers
+                if let Some(pos) = find_header_end(&response_buf) {
+                    header_end = Some(pos);
+                    break;
+                }
+            }
+            Err(_) => return ptr::null_mut(),
+        }
+    }
+
+    let header_end_pos = match header_end {
+        Some(pos) => pos,
+        None => return ptr::null_mut(),
+    };
+
+    // Parse status code
+    let header_str = String::from_utf8_lossy(&response_buf[..header_end_pos]);
+    let status_code = parse_status_code(&header_str);
+    if status_code.is_none()
+        || status_code.unwrap_or_default() < 200
+        || status_code.unwrap_or_default() >= 300
+    {
+        // Non-2xx status
+        return ptr::null_mut();
+    }
+
+    // Parse content length
+    let content_length = parse_content_length(&header_str);
+
+    // Parse content type
+    let content_type_cstr =
+        CString::new(parse_content_type(&header_str).unwrap_or_else(|| "unknown".to_string()))
+            .unwrap_or_default();
+
+    // Report content info if not quiet
+    if internet_quiet() == 0 {
+        eprint!(
+            "Content type '{}'",
+            content_type_cstr.to_str().unwrap_or("unknown")
+        );
+        if let Some(len) = content_length {
+            if len > 1024 * 1024 {
+                eprintln!(
+                    " length {} bytes ({:.1} MB)",
+                    len,
+                    len as f64 / 1024.0 / 1024.0
+                );
+            } else if len > 10240 {
+                eprintln!(" length {} bytes ({} KB)", len, len / 1024);
+            } else {
+                eprintln!(" length {} bytes", len);
+            }
+        } else {
+            eprintln!(" length unknown");
+        }
+    }
+
+    // Convert the TcpStream into a raw file descriptor that we own.
+    // wasm32 has no file descriptors (no sockets at all); http_open is
+    // unreachable there because every connect fails beforehand.
+    #[cfg(target_arch = "wasm32")]
+    let raw_fd: c_int = -1;
+    #[cfg(not(target_arch = "wasm32"))]
+    let raw_fd = stream.into_raw_fd();
+
+    // Allocate the inetconn context
+    let ctx = Box::new(inetconn {
+        length: content_length.unwrap_or(-1),
+        content_type: content_type_cstr.into_raw(),
+        fd: raw_fd,
+    });
+
+    Box::into_raw(ctx) as *mut c_void
 }
 
 /// http_read - read data from an open HTTP connection.
 /// Returns number of bytes read, 0 on EOF, -1 on error.
-unsafe fn http_read(ctx: *mut c_void, dest: *mut u8, len: usize) -> isize {
+fn http_read(ctx: *mut c_void, dest: *mut u8, len: usize) -> isize {
     unsafe {
         let conn = ctx as *mut inetconn;
         if conn.is_null() || (*conn).fd < 0 {
@@ -388,7 +386,7 @@ unsafe fn http_read(ctx: *mut c_void, dest: *mut u8, len: usize) -> isize {
 }
 
 /// http_close - close an open HTTP connection and free resources.
-unsafe fn http_close(ctx: *mut c_void) {
+fn http_close(ctx: *mut c_void) {
     unsafe {
         let conn = ctx as *mut inetconn;
         if conn.is_null() {
@@ -468,7 +466,7 @@ fn parse_content_type(headers: &str) -> Option<String> {
 /// This is the Unix implementation of the file:// branch in in_do_download.
 ///
 /// Returns 0 on success, 1 on failure.
-unsafe fn file_download(url: *const c_char, file: *const c_char, mode: *const c_char) -> c_int {
+fn file_download(url: *const c_char, file: *const c_char, mode: *const c_char) -> c_int {
     unsafe {
         let url_str = cstr_to_str(url);
         let file_str = cstr_to_str(file);
@@ -539,7 +537,7 @@ unsafe fn file_download(url: *const c_char, file: *const c_char, mode: *const c_
 /// This is the Unix implementation of the http:// branch in in_do_download.
 ///
 /// Returns 0 on success, 1 on failure.
-unsafe fn http_download(
+fn http_download(
     url: *const c_char,
     file: *const c_char,
     mode: *const c_char,
@@ -688,7 +686,7 @@ unsafe fn http_download(
 ///   ftp:// URLs — error (defunct in R 4.2+)
 ///
 /// Returns: ScalarInteger with status code (0 = success, 1 = failure)
-pub(crate) unsafe fn in_do_download(args: SEXP) -> SEXP {
+pub(crate) fn in_do_download(args: SEXP) -> SEXP {
     unsafe {
         let mut args = args;
 
@@ -795,7 +793,7 @@ pub(crate) unsafe fn in_do_download(args: SEXP) -> SEXP {
 /// function pointers via R_setInternetRoutines(). In the Rust port, we
 /// don't have the full R_InternetRoutines infrastructure, so we perform
 /// minimal initialization.
-pub(crate) unsafe fn R_init_internet(_info: *mut c_void) {
+pub(crate) fn R_init_internet(_info: *mut c_void) {
     // In R's C implementation, this function:
     //   1. Allocates an R_InternetRoutines struct via R_Calloc
     //   2. Registers function pointers for:

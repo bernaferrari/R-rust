@@ -273,7 +273,7 @@ fn ftp_errstr(status: c_long) -> *const c_char {
 }
 
 /// streql - compare two C strings for equality
-unsafe fn streql(a: *const c_char, b: *const c_char) -> bool {
+fn streql(a: *const c_char, b: *const c_char) -> bool {
     unsafe {
         if a.is_null() || b.is_null() {
             return false;
@@ -377,7 +377,7 @@ fn header_ptr(index: usize) -> *const c_char {
     with_libcurl_state(|state| state.headers[index].as_ptr())
 }
 
-unsafe fn push_header(buffer: *const c_char, len: usize) {
+fn push_header(buffer: *const c_char, len: usize) {
     with_libcurl_state(|state| {
         let used = state.headers_used as usize;
         if used >= MAX_HEADERS {
@@ -394,26 +394,24 @@ unsafe fn push_header(buffer: *const c_char, len: usize) {
 }
 
 /// rcvHeaders - callback for receiving HTTP headers (used by curlGetHeaders)
-unsafe fn rcvHeaders(
+fn rcvHeaders(
     buffer: *mut c_void,
     size: size_t,
     nmemb: size_t,
     _userp: *mut c_void,
 ) -> size_t {
-    unsafe {
-        let d = buffer as *mut c_char;
-        let result = size * nmemb;
-        let res = if result > 2048 { 2048 } else { result };
-        if (headers_used() as usize) >= MAX_HEADERS {
-            return result;
-        }
-        push_header(d, res);
-        result
+    let d = buffer as *mut c_char;
+    let result = size * nmemb;
+    let res = if result > 2048 { 2048 } else { result };
+    if (headers_used() as usize) >= MAX_HEADERS {
+        return result;
     }
+    push_header(d, res);
+    result
 }
 
 /// rcvBody - callback for receiving response body (discard spurious FTP body)
-unsafe fn rcvBody(buffer: *mut c_void, size: size_t, nmemb: size_t, _userp: *mut c_void) -> size_t {
+fn rcvBody(buffer: *mut c_void, size: size_t, nmemb: size_t, _userp: *mut c_void) -> size_t {
     size * nmemb
 }
 
@@ -421,7 +419,7 @@ unsafe fn rcvBody(buffer: *mut c_void, size: size_t, nmemb: size_t, _userp: *mut
 // handle_cleanup - cleanup handler for curl easy handles
 // ============================================================
 
-unsafe fn handle_cleanup(data: *mut c_void) {
+fn handle_cleanup(data: *mut c_void) {
     unsafe {
         let hnd = data as *mut CURL;
         if !hnd.is_null() {
@@ -453,7 +451,7 @@ struct download_cleanup_info {
 }
 
 /// download_cleanup_url - clean up a single URL at given index
-unsafe fn download_cleanup_url(i: c_int, c: *mut download_cleanup_info) {
+fn download_cleanup_url(i: c_int, c: *mut download_cleanup_info) {
     unsafe {
         let c_ref = &mut *c;
         if !c_ref.out.is_null() && !(*c_ref.out.add(i as usize)).is_null() {
@@ -503,7 +501,7 @@ unsafe fn download_cleanup_url(i: c_int, c: *mut download_cleanup_info) {
 }
 
 /// download_cleanup - cleanup all resources for a batch download
-unsafe fn download_cleanup(data: *mut c_void) {
+fn download_cleanup(data: *mut c_void) {
     unsafe {
         let c = data as *mut download_cleanup_info;
         if c.is_null() {
@@ -525,7 +523,7 @@ unsafe fn download_cleanup(data: *mut c_void) {
 }
 
 /// download_report_url_error - report a download error based on libcurl message
-unsafe fn download_report_url_error(msg: *mut CURLMsg) {
+fn download_report_url_error(msg: *mut CURLMsg) {
     unsafe {
         let mut url: *const c_char = std::ptr::null();
         let mut status: c_long = 0;
@@ -588,7 +586,7 @@ unsafe fn download_report_url_error(msg: *mut CURLMsg) {
 }
 
 /// curlMultiCheckerrs - check curl_multi_info_read for errors, return count
-unsafe fn curlMultiCheckerrs(mhnd: *mut CURLM) -> c_int {
+fn curlMultiCheckerrs(mhnd: *mut CURLM) -> c_int {
     unsafe {
         let mut retval: c_int = 0;
         let mut n: c_int = 1;
@@ -607,7 +605,7 @@ unsafe fn curlMultiCheckerrs(mhnd: *mut CURLM) -> c_int {
 // curlCommon - common curl handle setup
 // ============================================================
 
-unsafe fn curlCommon(hnd: *mut CURL, redirect: c_int, verify: c_int) {
+fn curlCommon(hnd: *mut CURL, redirect: c_int, verify: c_int) {
     unsafe {
         if verify != 0 {
             if let Ok(bundle) = std::env::var("CURL_CA_BUNDLE") {
@@ -696,7 +694,7 @@ unsafe fn curlCommon(hnd: *mut CURL, redirect: c_int, verify: c_int) {
 
 /// putdashes - print download progress dashes (Unix)
 #[cfg(unix)]
-unsafe fn putdashes(pold: *mut c_int, new: c_int) {
+fn putdashes(pold: *mut c_int, new: c_int) {
     unsafe {
         let old_val = *pold;
         for _i in old_val..new {
@@ -709,10 +707,10 @@ unsafe fn putdashes(pold: *mut c_int, new: c_int) {
 }
 
 #[cfg(not(unix))]
-unsafe fn putdashes(_pold: *mut c_int, _new: c_int) {}
+fn putdashes(_pold: *mut c_int, _new: c_int) {}
 
 /// progress - download progress callback (single URL)
-unsafe fn progress(
+fn progress(
     clientp: *mut c_void,
     dltotal: c_double,
     dlnow: c_double,
@@ -772,7 +770,7 @@ unsafe fn progress(
 }
 
 /// progress_multi - download progress callback (multi URL) - implements absolute-time timeout
-unsafe fn progress_multi(
+fn progress_multi(
     clientp: *mut c_void,
     dltotal: c_double,
     dlnow: c_double,
@@ -794,7 +792,7 @@ unsafe fn progress_multi(
 }
 
 /// prereq_multi - pre-request callback for multi downloads
-unsafe fn prereq_multi(
+fn prereq_multi(
     clientp: *mut c_void,
     _conn_primary_ip: *mut c_char,
     _conn_local_ip: *mut c_char,
@@ -816,7 +814,7 @@ unsafe fn prereq_multi(
 
 /// download_add_url - open file, create easy handle, add to multi-handle.
 /// Returns 0 on success. Reports errors only when mustWork != 0.
-unsafe fn download_add_url(
+fn download_add_url(
     i: c_int,
     scmd: SEXP,
     mode: *const c_char,
@@ -907,7 +905,7 @@ unsafe fn download_add_url(
 }
 
 /// download_add_one_url - add one URL to the multi-handle, possibly trying multiple URLs
-unsafe fn download_add_one_url(
+fn download_add_one_url(
     i_ptr: *mut c_int,
     scmd: SEXP,
     mode: *const c_char,
@@ -929,7 +927,7 @@ unsafe fn download_add_one_url(
 }
 
 /// download_try_add_urls - try adding up to n URLs to the multi-handle
-unsafe fn download_try_add_urls(
+fn download_try_add_urls(
     i_ptr: *mut c_int,
     n: c_int,
     scmd: SEXP,
@@ -954,7 +952,7 @@ unsafe fn download_try_add_urls(
 }
 
 /// download_close_finished - clean up finished downloads from multi handle
-unsafe fn download_close_finished(c: *mut download_cleanup_info) {
+fn download_close_finished(c: *mut download_cleanup_info) {
     unsafe {
         let c_ref = &mut *c;
         let mut n: c_int = 1;
@@ -991,7 +989,7 @@ unsafe fn download_close_finished(c: *mut download_cleanup_info) {
 
 /// in_do_curlVersion - .Internal(curlVersion())
 /// Returns a character vector with libcurl version info and attributes.
-pub(crate) unsafe fn in_do_curlVersion(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub(crate) fn in_do_curlVersion(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let _ = (call, op, args, rho);
         checkArity(op, args);
@@ -1056,7 +1054,7 @@ pub(crate) unsafe fn in_do_curlVersion(call: SEXP, op: SEXP, args: SEXP, rho: SE
 }
 
 /// in_do_curlGetHeaders - .Internal(curlGetHeaders(url, redirect, verify, timeout, TLS))
-pub(crate) unsafe fn in_do_curlGetHeaders(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub(crate) fn in_do_curlGetHeaders(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let _ = (call, op, rho);
         checkArity(op, args);
@@ -1174,7 +1172,7 @@ pub(crate) unsafe fn in_do_curlGetHeaders(call: SEXP, op: SEXP, args: SEXP, rho:
 }
 
 /// in_do_curlDownload - .Internal(curlDownload(urls, destfiles, quiet, mode, headers, cacheOK))
-pub(crate) unsafe fn in_do_curlDownload(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub(crate) fn in_do_curlDownload(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let _ = (call, op, rho);
         checkArity(op, args);
@@ -1486,7 +1484,7 @@ pub(crate) unsafe fn in_do_curlDownload(call: SEXP, op: SEXP, args: SEXP, rho: S
 
 /// in_newCurlUrl - create a new libcurl URL connection
 /// Signature: Rconnection in_newCurlUrl(const char *description, const char *mode, SEXP headers, int type)
-pub(crate) unsafe fn in_newCurlUrl(
+pub(crate) fn in_newCurlUrl(
     description: *const c_char,
     mode: *const c_char,
     headers: SEXP,
@@ -1504,40 +1502,40 @@ pub(crate) unsafe fn in_newCurlUrl(
 // ============================================================
 
 /// GetOption1 - get a single option value by symbol name
-unsafe fn GetOption1(tag: SEXP) -> SEXP {
+fn GetOption1(tag: SEXP) -> SEXP {
     unsafe { crate::main::options::GetOption1(tag) }
 }
 
 /// install - intern a symbol name
-unsafe fn install(name: *const c_char) -> SEXP {
+fn install(name: *const c_char) -> SEXP {
     unsafe { crate::sexp::symbol::Rf_install(name) }
 }
 
 /// asInteger - coerce SEXP to integer
-unsafe fn asInteger(x: SEXP) -> c_int {
+fn asInteger(x: SEXP) -> c_int {
     unsafe { crate::main::coerce::asInteger(x) }
 }
 
 /// asLogical - coerce SEXP to logical
-unsafe fn asLogical(x: SEXP) -> c_int {
+fn asLogical(x: SEXP) -> c_int {
     unsafe { crate::main::coerce::asLogical(x) }
 }
 
-unsafe fn translateChar(x: SEXP) -> *const c_char {
+fn translateChar(x: SEXP) -> *const c_char {
     unsafe { crate::sexp::accessors::translateChar(x) }
 }
 
-unsafe fn translateCharFP(x: SEXP) -> *const c_char {
+fn translateCharFP(x: SEXP) -> *const c_char {
     unsafe { crate::sexp::accessors::translateChar(x) }
 }
 
 /// R_ExpandFileName - expand ~ in file paths
-unsafe fn R_ExpandFileName(path: *const c_char) -> *const c_char {
-    unsafe { crate::unix::sys_unix::R_ExpandFileName(path) }
+fn R_ExpandFileName(path: *const c_char) -> *const c_char {
+    crate::unix::sys_unix::R_ExpandFileName(path)
 }
 
 /// checkArity - check function call arity
-unsafe fn checkArity(op: SEXP, args: SEXP) {
+fn checkArity(op: SEXP, args: SEXP) {
     unsafe {
         crate::mainutils::relop::checkArity(op, args);
     }
@@ -1549,19 +1547,19 @@ fn currentTime() -> f64 {
 }
 
 /// Rf_warning1 - issue a warning (single string)
-unsafe fn Rf_warning1(msg: *const c_char) {
+fn Rf_warning1(msg: *const c_char) {
     unsafe {
         crate::mainutils::errors::Rf_warning1(msg);
     }
 }
 
 /// CAD4R - CDR(CDR(CDR(CDR(args))))
-unsafe fn CAD4R(args: SEXP) -> SEXP {
+fn CAD4R(args: SEXP) -> SEXP {
     CDR(CDR(CDR(CDR(args))))
 }
 
 /// Validate the fifth curlGetHeaders argument before curl handle creation.
-unsafe fn curl_header_tls(args: SEXP) -> *const c_char {
+fn curl_header_tls(args: SEXP) -> *const c_char {
     unsafe {
         let tls = CAR(CAD4R(args));
         if TYPEOF(tls) != SEXPTYPE::STRSXP || LENGTH(tls) != 1 {
@@ -1572,8 +1570,8 @@ unsafe fn curl_header_tls(args: SEXP) -> *const c_char {
 }
 
 /// isString - check if SEXP is a character vector
-unsafe fn isString(x: SEXP) -> c_int {
-    unsafe { if TYPEOF(x) == SEXPTYPE::STRSXP { 1 } else { 0 } }
+fn isString(x: SEXP) -> c_int {
+    if TYPEOF(x) == SEXPTYPE::STRSXP { 1 } else { 0 }
 }
 
 #[cfg(test)]
