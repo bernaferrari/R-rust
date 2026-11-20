@@ -13,6 +13,8 @@ use std::cell::Cell;
 use std::os::raw::{c_int, c_void};
 use std::ptr;
 
+use super::types::{ptr_mut, ptr_ref};
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -222,31 +224,29 @@ pub fn tfind(
     vrootp: *const c_void,
     compar: Option<extern "C" fn(*const c_void, *const c_void) -> c_int>,
 ) -> *mut c_void {
-    unsafe {
-        if vrootp.is_null() {
-            return ptr::null_mut();
-        }
-        let compar = match compar {
-            Some(f) => f,
-            None => return ptr::null_mut(),
-        };
-
-        let mut rootp = vrootp as *const *mut node_t;
-
-        while !(*rootp).is_null() {
-            let root = *rootp;
-            let r = compar(key, (*root).key);
-            if r == 0 {
-                return root as *mut c_void;
-            }
-            rootp = if r < 0 {
-                &(*root).left as *const *mut node_t
-            } else {
-                &(*root).right as *const *mut node_t
-            };
-        }
-        ptr::null_mut()
+    if vrootp.is_null() {
+        return ptr::null_mut();
     }
+    let compar = match compar {
+        Some(f) => f,
+        None => return ptr::null_mut(),
+    };
+
+    let mut rootp = vrootp as *const *mut node_t;
+
+    while let Some(&root) = ptr_ref(rootp) {
+        let Some(n) = ptr_ref(root) else { break };
+        let r = compar(key, n.key);
+        if r == 0 {
+            return root as *mut c_void;
+        }
+        rootp = if r < 0 {
+            &n.left as *const *mut node_t
+        } else {
+            &n.right as *const *mut node_t
+        };
+    }
+    ptr::null_mut()
 }
 
 // ---------------------------------------------------------------------------
@@ -471,26 +471,23 @@ pub fn tdelete(
 
 /// Recursive tree walker.
 fn trecurse(vroot: *const c_void, action: action_fn_t, level: c_int) {
-    unsafe {
-        if vroot.is_null() {
-            return;
-        }
+    let Some(root) = ptr_ref(vroot as *const node_t) else {
+        return;
+    };
+    let rootp = root as *const node_t;
 
-        let root = vroot as *const node_t;
-
-        if (*root).left.is_null() && (*root).right.is_null() {
-            action(root as *const c_void, VISIT::leaf, level);
-        } else {
-            action(root as *const c_void, VISIT::preorder, level);
-            if !(*root).left.is_null() {
-                trecurse((*root).left as *const c_void, action, level + 1);
-            }
-            action(root as *const c_void, VISIT::postorder, level);
-            if !(*root).right.is_null() {
-                trecurse((*root).right as *const c_void, action, level + 1);
-            }
-            action(root as *const c_void, VISIT::endorder, level);
+    if root.left.is_null() && root.right.is_null() {
+        action(rootp as *const c_void, VISIT::leaf, level);
+    } else {
+        action(rootp as *const c_void, VISIT::preorder, level);
+        if !root.left.is_null() {
+            trecurse(root.left as *const c_void, action, level + 1);
         }
+        action(rootp as *const c_void, VISIT::postorder, level);
+        if !root.right.is_null() {
+            trecurse(root.right as *const c_void, action, level + 1);
+        }
+        action(rootp as *const c_void, VISIT::endorder, level);
     }
 }
 
@@ -517,19 +514,20 @@ type free_fn_t = extern "C" fn(*mut c_void);
 
 /// Recursive helper to destroy a tree.
 fn tdestroy_recurse(root: *mut node_t, freefct: free_fn_t) {
-    unsafe {
-        if root.is_null() {
-            return;
-        }
-        if !(*root).left.is_null() {
-            tdestroy_recurse((*root).left, freefct);
-        }
-        if !(*root).right.is_null() {
-            tdestroy_recurse((*root).right, freefct);
-        }
-        freefct((*root).key as *mut c_void);
-        alloc::dealloc(root as *mut u8, NODE_LAYOUT);
+    let Some(n) = ptr_mut(root) else {
+        return;
+    };
+    let left = n.left;
+    let right = n.right;
+    if !left.is_null() {
+        tdestroy_recurse(left, freefct);
     }
+    if !right.is_null() {
+        tdestroy_recurse(right, freefct);
+    }
+    freefct(n.key as *mut c_void);
+    // Free the node allocated with NODE_LAYOUT in `tsearch`.
+    unsafe { alloc::dealloc(root as *mut u8, NODE_LAYOUT) };
 }
 
 /// Destroy an entire tree, calling `freefct` on each node's key and then

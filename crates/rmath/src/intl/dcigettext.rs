@@ -17,7 +17,6 @@
 
 #![allow(non_snake_case)]
 
-use std::alloc::Layout;
 use std::ffi::CString;
 use std::os::raw::{c_char, c_int, c_ulong};
 use std::ptr;
@@ -30,16 +29,7 @@ use super::types::*;
 
 /// Allocate a NUL-terminated copy of a `CString` using `std::alloc`.
 fn alloc_cstring(s: &CString) -> *mut c_char {
-    let bytes = s.as_bytes_with_nul();
-    let layout = Layout::from_size_align(bytes.len(), 1).unwrap_or_else(|_| Layout::new::<u8>());
-    // Allocate `bytes.len()` bytes and copy the string, NUL included.
-    unsafe {
-        let p = std::alloc::alloc(layout);
-        if !p.is_null() {
-            ptr::copy_nonoverlapping(bytes.as_ptr(), p, bytes.len());
-        }
-        p as *mut c_char
-    }
+    c_strdup(s.as_ptr())
 }
 
 /// Check if two C strings are equal.
@@ -286,20 +276,29 @@ fn lookup_message_in_domain(
     };
 
     let nstrings = dom.nstrings;
-    if nstrings == 0 {
+    if nstrings == 0 || dom.data.is_null() || dom.orig_tab.is_null() || dom.trans_tab.is_null() {
         return ptr::null_mut();
     }
 
     let is_plural = !msgid_plural.is_null();
     let must_swap = dom.must_swap;
-    let data = dom.data;
-    let orig_tab = dom.orig_tab;
-    let trans_tab = dom.trans_tab;
+
+    let (data, orig_tab, trans_tab) = unsafe {
+        // Borrow the loaded catalog image and its two string tables;
+        // `mmap_size` covers the whole file and each table holds
+        // `nstrings` entries, all validated by `loadmsgcat`.
+        (
+            std::slice::from_raw_parts(dom.data, dom.mmap_size),
+            std::slice::from_raw_parts(dom.orig_tab, nstrings as usize),
+            std::slice::from_raw_parts(dom.trans_tab, nstrings as usize),
+        )
+    };
 
     // Read one table entry; indexes are bounded by `nstrings`.
-    let table_entry = |tab: *const string_desc, i: usize| -> (nls_uint32, nls_uint32) {
-        // Read the `string_desc` at index `i` in the catalog's table.
-        let entry = unsafe { &*tab.add(i) };
+    let table_entry = |tab: &[string_desc], i: usize| -> (nls_uint32, nls_uint32) {
+        let Some(entry) = tab.get(i) else {
+            return (0, 0);
+        };
         let length = if must_swap != 0 {
             SWAP(entry.length)
         } else {
@@ -313,25 +312,49 @@ fn lookup_message_in_domain(
         (length, offset)
     };
 
+    // Form a checked pointer at `off` inside the catalog image.
+    let in_blob = |off: usize| -> *const c_char {
+        if off < data.len() {
+            // `off` is a valid index into the `mmap_size`-byte image.
+            unsafe { data.as_ptr().add(off) }
+        } else {
+            ptr::null()
+        }
+    };
+
+    // Return the catalog string at `offset` if it is in bounds and
+    // NUL-terminated within the image.
+    let blob_str = |offset: nls_uint32| -> *const c_char {
+        match data.get(offset as usize..) {
+            Some(tail) if tail.contains(&0) => in_blob(offset as usize),
+            _ => ptr::null(),
+        }
+    };
+
     // Use hash table for lookup if available.
     if dom.hash_size > 0 && !dom.hash_tab.is_null() {
-        let hash_tab = dom.hash_tab;
         let hash_size = dom.hash_size;
         let must_swap_hash_tab = dom.must_swap_hash_tab;
+        // Borrow the `hash_size`-entry hash table as raw bytes so reads
+        // stay correct even on unaligned catalog images.
+        let hash_bytes = unsafe {
+            std::slice::from_raw_parts(dom.hash_tab as *const u8, hash_size as usize * 4)
+        };
         let hash_val = super::hash_string::__hash_string(msgid);
         let mut idx = (hash_val as nls_uint32) % hash_size;
         let incr = 1u32 + (hash_val as nls_uint32) % (hash_size - 1);
 
         for _ in 0..hash_size {
-            // Read the hash entry at `idx` from the `hash_size`-entry table.
-            let hash_entry = unsafe {
-                let val = ptr::read_unaligned(hash_tab.add(idx as usize));
-                if must_swap_hash_tab != 0 {
-                    SWAP(val)
-                } else {
-                    val
-                }
-            };
+            let hash_entry = hash_bytes
+                .get(idx as usize * 4..idx as usize * 4 + 4)
+                .map_or(0, |b| {
+                    let val = nls_uint32::from_ne_bytes([b[0], b[1], b[2], b[3]]);
+                    if must_swap_hash_tab != 0 {
+                        SWAP(val)
+                    } else {
+                        val
+                    }
+                });
 
             if hash_entry == 0 {
                 // Empty slot, not found.
@@ -341,47 +364,53 @@ fn lookup_message_in_domain(
             let string_idx = hash_entry - 1;
             if string_idx < nstrings {
                 let (_orig_length, orig_offset) = table_entry(orig_tab, string_idx as usize);
-                // Point into the catalog string blob at `orig_offset`.
-                let orig_str = unsafe { data.add(orig_offset as usize) };
-                if cstr(orig_str) == Some(msgid_cstr) {
+                if cstr(blob_str(orig_offset)) == Some(msgid_cstr) {
                     // Found! Get the translation.
-                    let (trans_length, trans_offset) = table_entry(trans_tab, string_idx as usize);
+                    let (trans_length, trans_offset) =
+                        table_entry(trans_tab, string_idx as usize);
 
                     if trans_length == 0 {
                         return ptr::null_mut();
                     }
 
-                    // Point into the catalog string blob at `trans_offset`.
-                    let trans_str = unsafe { data.add(trans_offset as usize) };
-
                     if is_plural {
                         // For plural forms, find the correct form.
                         let plural_form = super::plural_exp::plural_eval(dom.plural, n);
                         if plural_form == 0 {
-                            // First form is at trans_str, separated by NUL from subsequent forms.
-                            return trans_str as *mut c_char;
+                            // First form starts at trans_offset, separated
+                            // by NUL from subsequent forms.
+                            return blob_str(trans_offset) as *mut c_char;
                         }
-                        // Walk the NUL-separated plural forms within the
-                        // translation string.
-                        unsafe {
-                            let mut p = trans_str;
-                            let mut remaining = plural_form as usize;
-                            while remaining > 0 && *p != 0 {
-                                // Skip to next NUL.
-                                while *p != 0 {
-                                    p = p.add(1);
+                        // Skip `plural_form` NUL-separated strings within
+                        // the translation starting at `trans_offset`.
+                        let mut off = trans_offset as usize;
+                        let mut remaining = plural_form as usize;
+                        while remaining > 0 {
+                            let Some(tail) = data.get(off..) else {
+                                off = data.len();
+                                break;
+                            };
+                            if tail.first() == Some(&0) {
+                                break;
+                            }
+                            match tail.iter().position(|&c| c == 0) {
+                                Some(nul) => {
+                                    off += nul + 1;
+                                    remaining -= 1;
                                 }
-                                p = p.add(1);
-                                remaining -= 1;
+                                None => {
+                                    off = data.len();
+                                    break;
+                                }
                             }
-                            if *p != 0 {
-                                return p as *mut c_char;
-                            }
+                        }
+                        if data.get(off).is_some_and(|&c| c != 0) {
+                            return in_blob(off) as *mut c_char;
                         }
                         // Not enough plural forms, return the last one.
                         return msgid as *mut c_char;
                     }
-                    return trans_str as *mut c_char;
+                    return blob_str(trans_offset) as *mut c_char;
                 }
             }
 
@@ -391,18 +420,15 @@ fn lookup_message_in_domain(
         // Linear search through the original strings.
         for i in 0..nstrings as usize {
             let (_orig_length, orig_offset) = table_entry(orig_tab, i);
-            // Point into the catalog string blob at `orig_offset`.
-            let orig_str = unsafe { data.add(orig_offset as usize) };
 
-            if cstr(orig_str) == Some(msgid_cstr) {
+            if cstr(blob_str(orig_offset)) == Some(msgid_cstr) {
                 let (trans_length, trans_offset) = table_entry(trans_tab, i);
 
                 if trans_length == 0 {
                     return ptr::null_mut();
                 }
 
-                // Point into the catalog string blob at `trans_offset`.
-                return unsafe { data.add(trans_offset as usize) as *mut c_char };
+                return blob_str(trans_offset) as *mut c_char;
             }
         }
     }
@@ -494,13 +520,8 @@ pub fn libintl_dcigettext(
         locale,
     );
 
-    // Free locale string if we allocated it.
-    if let Some(loc) = cstr(locale) {
-        let len = loc.to_bytes().len() + 1;
-        let layout = Layout::from_size_align(len, 1).unwrap_or_else(|_| Layout::new::<u8>());
-        // Free the `len`-byte locale string allocated above.
-        unsafe { std::alloc::dealloc(locale as *mut u8, layout) };
-    }
+    // Free the locale string allocated via `c_strdup` above.
+    c_free(locale);
 
     if result.is_null() {
         msgid as *mut c_char
