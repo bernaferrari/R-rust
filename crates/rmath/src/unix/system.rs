@@ -36,7 +36,9 @@ const C_STACK_DIRECTION: c_int = -1;
 
 type PtrSuicide = Option<extern "C" fn(*const c_char)>;
 type PtrShowMessage = Option<extern "C" fn(*const c_char)>;
-type PtrReadConsole = Option<extern "C" fn(*const c_char, *mut u8, c_int, c_int) -> c_int>;
+// Read-console callbacks are installed as `unsafe extern "C" fn` by callers
+// outside this module, so the slot keeps that type.
+type PtrReadConsole = Option<unsafe extern "C" fn(*const c_char, *mut u8, c_int, c_int) -> c_int>;
 type PtrWriteConsole = Option<extern "C" fn(*const c_char, c_int)>;
 type PtrWriteConsoleEx = Option<extern "C" fn(*const c_char, c_int, c_int)>;
 type PtrResetConsole = Option<extern "C" fn()>;
@@ -137,7 +139,7 @@ fn with_system_state<R>(f: impl FnOnce(&mut UnixSystemRuntimeState) -> R) -> R {
 
 #[cfg(test)]
 pub(crate) fn set_read_console_callback_for_tests(
-    callback: Option<extern "C" fn(*const c_char, *mut u8, c_int, c_int) -> c_int>,
+    callback: Option<unsafe extern "C" fn(*const c_char, *mut u8, c_int, c_int) -> c_int>,
 ) {
     with_system_state(|state| {
         state.callbacks.read_console = callback;
@@ -245,7 +247,9 @@ pub fn R_ReadConsole(
     addtohistory: c_int,
 ) -> c_int {
     if let Some(f) = with_system_state(|state| state.callbacks.read_console) {
-        f(prompt, buf, len, addtohistory)
+        // SAFETY: callbacks are registered as `unsafe extern "C" fn`; the caller
+        // upholds the prompt/buffer contract of the R_ReadConsole ABI.
+        unsafe { f(prompt, buf, len, addtohistory) }
     } else {
         0
     }

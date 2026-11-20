@@ -50,7 +50,7 @@ struct tre_tag_states_t {
 }
 
 // Construct every field before publishing a child copied during tag insertion.
-unsafe fn tre_tagged_child(
+fn tre_tagged_child(
     mem: mem::tre_mem_t,
     node: *const tre_ast_node_t,
 ) -> *mut tre_ast_node_t {
@@ -105,7 +105,7 @@ fn tag_wrapper_children_initialize_all_metadata_before_expansion() {
     }
 }
 
-unsafe fn tre_add_tag_left(mem: mem::tre_mem_t, node: *mut tre_ast_node_t, tag_id: c_int) -> c_int {
+fn tre_add_tag_left(mem: mem::tre_mem_t, node: *mut tre_ast_node_t, tag_id: c_int) -> c_int {
     unsafe {
         let c = mem::tre_mem_alloc(mem, std::mem::size_of::<tre_catenation_t>())
             as *mut tre_catenation_t;
@@ -127,7 +127,7 @@ unsafe fn tre_add_tag_left(mem: mem::tre_mem_t, node: *mut tre_ast_node_t, tag_i
     }
 }
 
-unsafe fn tre_add_tag_right(
+fn tre_add_tag_right(
     mem: mem::tre_mem_t,
     node: *mut tre_ast_node_t,
     tag_id: c_int,
@@ -153,7 +153,7 @@ unsafe fn tre_add_tag_right(
     }
 }
 
-unsafe fn tre_purge_regset(regset: *mut c_int, tnfa: *mut tre_tnfa_t, tag: c_int) {
+fn tre_purge_regset(regset: *mut c_int, tnfa: *mut tre_tnfa_t, tag: c_int) {
     unsafe {
         let mut i = 0;
         while *regset.offset(i) >= 0 {
@@ -170,7 +170,7 @@ unsafe fn tre_purge_regset(regset: *mut c_int, tnfa: *mut tre_tnfa_t, tag: c_int
     }
 }
 
-unsafe fn tre_add_tags(
+fn tre_add_tags(
     mem: mem::tre_mem_t,
     stack: *mut stack::tre_stack_rec,
     tree: *mut tre_ast_node_t,
@@ -687,7 +687,7 @@ enum tre_copyast_symbol_t {
     COPY_SET_RESULT_PTR,
 }
 
-unsafe fn tre_copy_ast(
+fn tre_copy_ast(
     mem: mem::tre_mem_t,
     stack: *mut stack::tre_stack_rec,
     ast: *mut tre_ast_node_t,
@@ -860,7 +860,7 @@ unsafe fn tre_copy_ast(
     }
 }
 
-unsafe fn tre_expand_ast(
+fn tre_expand_ast(
     mem: mem::tre_mem_t,
     stack: *mut stack::tre_stack_rec,
     ast: *mut tre_ast_node_t,
@@ -1097,7 +1097,7 @@ unsafe fn tre_expand_ast(
 
 // ===== Set operations =====
 
-unsafe fn tre_set_empty(mem: mem::tre_mem_t) -> *mut tre_pos_and_tags_t {
+fn tre_set_empty(mem: mem::tre_mem_t) -> *mut tre_pos_and_tags_t {
     unsafe {
         let new_set = mem::tre_mem_calloc(mem, std::mem::size_of::<tre_pos_and_tags_t>())
             as *mut tre_pos_and_tags_t;
@@ -1111,7 +1111,7 @@ unsafe fn tre_set_empty(mem: mem::tre_mem_t) -> *mut tre_pos_and_tags_t {
     }
 }
 
-unsafe fn tre_set_one(
+fn tre_set_one(
     mem: mem::tre_mem_t,
     position: c_int,
     code_min: c_int,
@@ -1139,7 +1139,7 @@ unsafe fn tre_set_one(
     }
 }
 
-unsafe fn tre_set_union(
+fn tre_set_union(
     mem: mem::tre_mem_t,
     set1: *const tre_pos_and_tags_t,
     set2: *const tre_pos_and_tags_t,
@@ -1302,7 +1302,7 @@ unsafe fn tre_set_union(
 
 // ===== Match empty =====
 
-unsafe fn tre_match_empty(
+fn tre_match_empty(
     stack: *mut stack::tre_stack_rec,
     mut node: *mut tre_ast_node_t,
     tags: *mut c_int,
@@ -1421,7 +1421,7 @@ enum tre_nfl_stack_symbol_t {
     NFL_POST_ITERATION,
 }
 
-unsafe fn tre_compute_nfl(
+fn tre_compute_nfl(
     mem: mem::tre_mem_t,
     stack: *mut stack::tre_stack_rec,
     tree: *mut tre_ast_node_t,
@@ -1746,7 +1746,7 @@ unsafe fn tre_compute_nfl(
 
 // ===== TNFA construction =====
 
-unsafe fn tre_make_trans(
+fn tre_make_trans(
     p1: *const tre_pos_and_tags_t,
     p2: *const tre_pos_and_tags_t,
     transitions: *mut tre_tnfa_transition_t,
@@ -1918,7 +1918,7 @@ enum tre_tnfa_symbol_t {
     TNFA_RECURSE,
 }
 
-unsafe fn tre_ast_to_tnfa_iter(
+fn tre_ast_to_tnfa_iter(
     stack: *mut stack::tre_stack_rec,
     node: *mut tre_ast_node_t,
     transitions: *mut tre_tnfa_transition_t,
@@ -1992,7 +1992,7 @@ unsafe fn tre_ast_to_tnfa_iter(
     }
 }
 
-unsafe fn tre_ast_to_tnfa(
+fn tre_ast_to_tnfa(
     node: *mut tre_ast_node_t,
     transitions: *mut tre_tnfa_transition_t,
     counts: *mut c_int,
@@ -2000,48 +2000,44 @@ unsafe fn tre_ast_to_tnfa(
     storage: &mut Option<&mut super::owned_arena::OwnedArena>,
     workspace: &crate::mainutils::grep::RegexWorkspace,
 ) -> c_int {
-    unsafe {
-        let stack = if storage.is_some() {
-            stack::tre_stack_new_owned(1024, workspace)
-        } else {
-            stack::tre_stack_new(1024, 256 * 1024, 4096)
-        };
-        if stack.is_null() {
-            return REG_ESPACE as c_int;
-        }
-        let errcode = tre_ast_to_tnfa_iter(stack, node, transitions, counts, offs, storage);
-        stack::tre_stack_destroy(stack);
-        errcode
+    let stack = if storage.is_some() {
+        stack::tre_stack_new_owned(1024, workspace)
+    } else {
+        stack::tre_stack_new(1024, 256 * 1024, 4096)
+    };
+    if stack.is_null() {
+        return REG_ESPACE as c_int;
     }
+    let errcode = tre_ast_to_tnfa_iter(stack, node, transitions, counts, offs, storage);
+    stack::tre_stack_destroy(stack);
+    errcode
 }
 
 // ===== Main compile function =====
 
-pub unsafe fn tre_compile(
+pub fn tre_compile(
     preg: *mut regex_t,
     regex: *const tre_char_t,
     n: usize,
     cflags: c_int,
 ) -> c_int {
-    unsafe {
-        tre_compile_with_workspace(
-            preg,
-            regex,
-            n,
-            cflags,
-            crate::mainutils::grep::RegexWorkspace::unbounded(),
-        )
-    }
+    tre_compile_with_workspace(
+        preg,
+        regex,
+        n,
+        cflags,
+        crate::mainutils::grep::RegexWorkspace::unbounded(),
+    )
 }
 
-pub(crate) unsafe fn tre_compile_with_workspace(
+pub(crate) fn tre_compile_with_workspace(
     preg: *mut regex_t,
     regex: *const tre_char_t,
     n: usize,
     cflags: c_int,
     workspace: crate::mainutils::grep::RegexWorkspace,
 ) -> c_int {
-    unsafe { tre_compile_tables(preg, regex, n, cflags, workspace, None) }
+    tre_compile_tables(preg, regex, n, cflags, workspace, None)
 }
 
 /// Opaque runtime owner: nested legacy allocations are freed while descriptor
@@ -2059,13 +2055,11 @@ impl CompiledTre {
 
 impl Drop for CompiledTre {
     fn drop(&mut self) {
-        unsafe {
-            tre_free_tables(&mut self.preg, true);
-        }
+        tre_free_tables(&mut self.preg, true);
     }
 }
 
-pub(crate) unsafe fn tre_compile_owned(
+pub(crate) fn tre_compile_owned(
     regex: *const tre_char_t,
     n: usize,
     cflags: c_int,
@@ -2078,7 +2072,7 @@ pub(crate) unsafe fn tre_compile_owned(
         value: ptr::null_mut(),
     };
     let status =
-        unsafe { tre_compile_tables(&mut preg, regex, n, cflags, workspace, Some(&mut tables)) };
+        tre_compile_tables(&mut preg, regex, n, cflags, workspace, Some(&mut tables));
     if status == REG_OK {
         Ok(CompiledTre {
             preg,
@@ -2089,7 +2083,7 @@ pub(crate) unsafe fn tre_compile_owned(
     }
 }
 
-unsafe fn allocate_transition_table(
+fn allocate_transition_table(
     count: c_int,
     storage: &mut Option<&mut super::owned_arena::OwnedArena>,
 ) -> *mut tre_tnfa_transition_t {
@@ -2104,11 +2098,11 @@ unsafe fn allocate_transition_table(
             .allocate_exact(bytes)
             .map_or(ptr::null_mut(), |p| p.cast())
     } else {
-        unsafe { mem::xcalloc(count, std::mem::size_of::<tre_tnfa_transition_t>()).cast() }
+        mem::xcalloc(count, std::mem::size_of::<tre_tnfa_transition_t>()).cast()
     }
 }
 
-unsafe fn allocate_tnfa(
+fn allocate_tnfa(
     storage: &mut Option<&mut super::owned_arena::OwnedArena>,
 ) -> *mut tre_tnfa_t {
     if let Some(storage) = storage {
@@ -2118,11 +2112,11 @@ unsafe fn allocate_tnfa(
             .allocate_exact(std::mem::size_of::<tre_tnfa_t>())
             .map_or(ptr::null_mut(), |pointer| pointer.cast())
     } else {
-        unsafe { mem::xcalloc(1, std::mem::size_of::<tre_tnfa_t>()).cast() }
+        mem::xcalloc(1, std::mem::size_of::<tre_tnfa_t>()).cast()
     }
 }
 
-unsafe fn allocate_retained_ints(
+fn allocate_retained_ints(
     count: usize,
     zeroed: bool,
     storage: &mut Option<&mut super::owned_arena::OwnedArena>,
@@ -2138,13 +2132,13 @@ unsafe fn allocate_retained_ints(
             .allocate_exact(bytes)
             .map_or(ptr::null_mut(), |p| p.cast())
     } else if zeroed {
-        unsafe { mem::xcalloc(count, std::mem::size_of::<c_int>()).cast() }
+        mem::xcalloc(count, std::mem::size_of::<c_int>()).cast()
     } else {
-        unsafe { mem::xmalloc(bytes).cast() }
+        mem::xmalloc(bytes).cast()
     }
 }
 
-unsafe fn allocate_neg_classes(
+fn allocate_neg_classes(
     source: *const tre_ctype_t,
     storage: &mut Option<&mut super::owned_arena::OwnedArena>,
 ) -> *mut tre_ctype_t {
@@ -2169,15 +2163,17 @@ unsafe fn allocate_neg_classes(
             .allocate_exact(bytes)
             .map_or(ptr::null_mut(), |pointer| pointer.cast())
     } else {
-        unsafe { mem::xmalloc(bytes).cast() }
+        mem::xmalloc(bytes).cast()
     };
     if !result.is_null() {
+        // SAFETY: `result` has `count` writable elements and `source` has
+        // `count` readable ones.
         unsafe { ptr::copy_nonoverlapping(source, result, count) };
     }
     result
 }
 
-unsafe fn allocate_submatch_table(
+fn allocate_submatch_table(
     count: usize,
     storage: &mut Option<&mut super::owned_arena::OwnedArena>,
 ) -> *mut tre_submatch_data_t {
@@ -2192,11 +2188,11 @@ unsafe fn allocate_submatch_table(
             .allocate_exact(bytes)
             .map_or(ptr::null_mut(), |p| p.cast())
     } else {
-        unsafe { mem::xcalloc(count, std::mem::size_of::<tre_submatch_data_t>()).cast() }
+        mem::xcalloc(count, std::mem::size_of::<tre_submatch_data_t>()).cast()
     }
 }
 
-unsafe fn tre_compile_tables(
+fn tre_compile_tables(
     preg: *mut regex_t,
     regex: *const tre_char_t,
     n: usize,
@@ -2588,7 +2584,7 @@ unsafe fn tre_compile_tables(
 }
 
 #[allow(clippy::too_many_arguments)] // Legacy cleanup now carries explicit table ownership.
-unsafe fn compile_error(
+fn compile_error(
     mem: mem::tre_mem_t,
     stack: *mut stack::tre_stack_rec,
     _counts: *mut c_int,
@@ -2611,13 +2607,11 @@ unsafe fn compile_error(
     }
 }
 
-pub unsafe fn tre_free(preg: *mut regex_t) {
-    unsafe {
-        tre_free_tables(preg, false);
-    }
+pub fn tre_free(preg: *mut regex_t) {
+    tre_free_tables(preg, false);
 }
 
-unsafe fn tre_free_tables(preg: *mut regex_t, owned_tables: bool) {
+fn tre_free_tables(preg: *mut regex_t, owned_tables: bool) {
     unsafe {
         if preg.is_null() {
             return;
