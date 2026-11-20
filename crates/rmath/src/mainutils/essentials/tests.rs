@@ -25,7 +25,7 @@ use super::runtime::*;
 
 use super::shared::*;
 
-unsafe fn test_pairlist(values: &[SEXP]) -> SEXP {
+fn test_pairlist(values: &[SEXP]) -> SEXP {
     unsafe {
         values
             .iter()

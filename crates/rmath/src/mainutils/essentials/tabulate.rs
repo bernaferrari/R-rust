@@ -5,7 +5,7 @@ use crate::sexp::{
     owner::OwnerToken,
 };
 
-pub(super) unsafe fn evaluate(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub(super) fn evaluate(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let owner = OwnerToken::current().expect("active tabulate owner");
         let pin = owner.pin().expect("live tabulate owner");

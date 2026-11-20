@@ -4,7 +4,7 @@
 use super::*;
 
 /// R's `lockBinding(sym, env)` — lock a binding in an environment.
-pub unsafe fn do_lockBinding(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_lockBinding(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let sym = binding_symbol_arg(CAR(args));
         let env = environment_arg(CAR(CDR(args)));
@@ -17,8 +17,8 @@ pub unsafe fn do_lockBinding(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
 }
 
 /// R's `unlockBinding(sym, env)` — unlock a binding in an environment.
-pub unsafe fn do_unlockBinding(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_unlockBinding(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let sym = binding_symbol_arg(CAR(args));
         let env = environment_arg(CAR(CDR(args)));
         crate::sexp::envir::unlock_binding_raw(env, sym);
@@ -27,7 +27,7 @@ pub unsafe fn do_unlockBinding(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
 }
 
 /// R's `bindingIsLocked(sym, env)` — check if a binding is locked.
-pub unsafe fn do_bindingIsLocked(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_bindingIsLocked(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let sym = binding_symbol_arg(CAR(args));
         let env = environment_arg(CAR(CDR(args)));
@@ -36,7 +36,7 @@ pub unsafe fn do_bindingIsLocked(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP)
 }
 
 /// R's `bindingIsActive(sym, env)` — check if a binding is active.
-pub unsafe fn do_bindingIsActive(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_bindingIsActive(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let sym = binding_symbol_arg(CAR(args));
         let env = environment_arg(CAR(CDR(args)));
@@ -48,8 +48,8 @@ pub unsafe fn do_bindingIsActive(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP)
 }
 
 /// R's `makeActiveBinding(sym, fun, env)` — create an active binding.
-pub unsafe fn do_makeActiveBinding(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_makeActiveBinding(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let sym = binding_symbol_arg(CAR(args));
         let fun = CAR(CDR(args));
         let env = environment_arg(CAR(CDR(CDR(args))));
@@ -62,8 +62,8 @@ pub unsafe fn do_makeActiveBinding(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEX
 }
 
 /// R's `lockEnvironment(env, bindings)` — lock an environment.
-pub unsafe fn do_lockEnvironment(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_lockEnvironment(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let env = environment_arg(CAR(args));
         crate::sexp::envir::lock_environment_raw(env);
 
@@ -88,7 +88,7 @@ pub unsafe fn do_lockEnvironment(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP)
 }
 
 /// R's `environmentIsLocked(env)` — check if an environment is locked.
-pub unsafe fn do_environmentIsLocked(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_environmentIsLocked(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let env = environment_arg(CAR(args));
         Rf_ScalarLogical(crate::sexp::envir::environment_is_locked_raw(env) as c_int)
@@ -100,7 +100,7 @@ pub unsafe fn do_environmentIsLocked(_call: SEXP, _op: SEXP, args: SEXP, _rho: S
 /// named elements of a list (or pairlist) into `envir` as bindings
 /// (upstream `base::list2env` wraps `.Internal(list2env(x, envir))`;
 /// defineVar per element, last one wins). Returns the environment.
-pub unsafe fn do_list2env(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_list2env(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         // GNU user-facing list2env is a closure:
         //   list2env(x, envir = NULL, parent = parent.frame(), hash, size)
@@ -232,7 +232,7 @@ pub unsafe fn do_list2env(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
     }
 }
 
-unsafe fn environment_arg(value: SEXP) -> SEXP {
+fn environment_arg(value: SEXP) -> SEXP {
     {
         if value.is_null() || value == R_NilValue() || TYPEOF(value) != SEXPTYPE::ENVSXP {
             base_error("not an environment");
@@ -241,7 +241,7 @@ unsafe fn environment_arg(value: SEXP) -> SEXP {
     }
 }
 
-unsafe fn binding_symbol_arg(value: SEXP) -> SEXP {
+fn binding_symbol_arg(value: SEXP) -> SEXP {
     unsafe {
         if value.is_null() || value == R_NilValue() {
             base_error("invalid symbol");

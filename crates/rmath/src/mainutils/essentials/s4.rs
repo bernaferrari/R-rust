@@ -27,12 +27,12 @@ use crate::sexp::symbol::Rf_install;
 // ---------------------------------------------------------------------------
 
 /// R's `class(x)` — get S3 class vector.
-pub unsafe fn do_S3_class(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { do_class_get(_call, _op, args, _rho) }
+pub fn do_S3_class(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    { do_class_get(_call, _op, args, _rho) }
 }
 
 /// R's `isS4(x)` — check if object is S4.
-pub unsafe fn do_isS4(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_isS4(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -43,7 +43,7 @@ pub unsafe fn do_isS4(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// GNU `isNamespace(ns)` — `.Internal(isNamespaceEnv(ns))`.
-pub unsafe fn do_isNamespace(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_isNamespace(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let ns = CAR(args);
         if ns.is_null() || TYPEOF(ns) != SEXPTYPE::ENVSXP {
@@ -65,7 +65,7 @@ pub unsafe fn do_isNamespace(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
 }
 
 /// R's `is(x, class2)` — type/class check.
-pub unsafe fn do_is(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_is(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let class2_arg = CAR(CDR(args));
@@ -136,7 +136,7 @@ pub unsafe fn do_is(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
-unsafe fn list_tag_name(cell: SEXP) -> Option<String> {
+fn list_tag_name(cell: SEXP) -> Option<String> {
     unsafe {
         let tag = TAG(cell);
         if tag.is_null() || tag == R_NilValue() || TYPEOF(tag) != SEXPTYPE::SYMSXP {
@@ -158,7 +158,7 @@ unsafe fn list_tag_name(cell: SEXP) -> Option<String> {
     }
 }
 
-pub(crate) unsafe fn string_vector_values(x: SEXP) -> Vec<String> {
+pub(crate) fn string_vector_values(x: SEXP) -> Vec<String> {
     {
         if x.is_null() || x == R_NilValue() || TYPEOF(x) != SEXPTYPE::STRSXP {
             return Vec::new();
@@ -171,7 +171,7 @@ pub(crate) unsafe fn string_vector_values(x: SEXP) -> Vec<String> {
     }
 }
 
-pub(crate) unsafe fn coerce_string_values(x: SEXP) -> Vec<String> {
+pub(crate) fn coerce_string_values(x: SEXP) -> Vec<String> {
     {
         if x.is_null() || x == R_NilValue() {
             return Vec::new();
@@ -180,7 +180,7 @@ pub(crate) unsafe fn coerce_string_values(x: SEXP) -> Vec<String> {
     }
 }
 
-unsafe fn string_vector_names_or_values(x: SEXP) -> Vec<String> {
+fn string_vector_names_or_values(x: SEXP) -> Vec<String> {
     unsafe {
         if x.is_null() || x == R_NilValue() || TYPEOF(x) != SEXPTYPE::STRSXP {
             return Vec::new();
@@ -203,8 +203,8 @@ unsafe fn string_vector_names_or_values(x: SEXP) -> Vec<String> {
     }
 }
 
-unsafe fn s4_slots_from_args(args: SEXP) -> Vec<String> {
-    unsafe {
+fn s4_slots_from_args(args: SEXP) -> Vec<String> {
+    {
         let mut slots = Vec::new();
         let mut current = CDR(args);
         while !current.is_null() && current != R_NilValue() {
@@ -242,7 +242,7 @@ unsafe fn s4_slots_from_args(args: SEXP) -> Vec<String> {
         slots
     }
 }
-unsafe fn s4_slot_types_from_args(args: SEXP) -> Option<HashMap<String, String>> {
+fn s4_slot_types_from_args(args: SEXP) -> Option<HashMap<String, String>> {
     unsafe {
         let mut current = CDR(args);
         while !current.is_null() && current != R_NilValue() {
@@ -280,7 +280,7 @@ unsafe fn s4_slot_types_from_args(args: SEXP) -> Option<HashMap<String, String>>
     }
 }
 
-unsafe fn s4_prototype_for_type(type_name: &str) -> SEXP {
+fn s4_prototype_for_type(type_name: &str) -> SEXP {
     unsafe {
         match type_name {
             "integer" => Rf_allocVector3(SEXPTYPE::INTSXP, 0),
@@ -296,8 +296,8 @@ unsafe fn s4_prototype_for_type(type_name: &str) -> SEXP {
     }
 }
 
-unsafe fn s4_contains_from_args(args: SEXP) -> Vec<String> {
-    unsafe {
+fn s4_contains_from_args(args: SEXP) -> Vec<String> {
+    {
         let mut current = CDR(args);
         while !current.is_null() && current != R_NilValue() {
             if matches!(list_tag_name(current).as_deref(), Some("contains")) {
@@ -318,7 +318,7 @@ unsafe fn s4_contains_from_args(args: SEXP) -> Vec<String> {
     }
 }
 
-unsafe fn string_vector_from_values(values: &[String]) -> SEXP {
+fn string_vector_from_values(values: &[String]) -> SEXP {
     unsafe {
         let result = Rf_allocVector3(SEXPTYPE::STRSXP, values.len() as R_xlen_t);
         for (i, value) in values.iter().enumerate() {
@@ -330,8 +330,8 @@ unsafe fn string_vector_from_values(values: &[String]) -> SEXP {
     }
 }
 
-unsafe fn s4_named_arg(args: SEXP, name: &str) -> Option<SEXP> {
-    unsafe {
+fn s4_named_arg(args: SEXP, name: &str) -> Option<SEXP> {
+    {
         let mut current = CDR(args);
         while !current.is_null() && current != R_NilValue() {
             if list_tag_name(current).as_deref() == Some(name) {
@@ -343,7 +343,7 @@ unsafe fn s4_named_arg(args: SEXP, name: &str) -> Option<SEXP> {
     }
 }
 
-pub unsafe fn do_setClass(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_setClass(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         if let Some(fun) = methods_exported_closure(c"setClass") {
             return crate::eval::closure::applyClosure(call, fun, args, rho, R_NilValue(), TRUE);
@@ -377,7 +377,7 @@ pub unsafe fn do_setClass(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
     }
 }
 
-unsafe fn s4_class_generator(class_name: &str) -> SEXP {
+fn s4_class_generator(class_name: &str) -> SEXP {
     unsafe {
         let dots = crate::sexp::symbol::R_DotsSymbol();
         let formals = Rf_cons(crate::sexp::globals::R_MissingArg(), R_NilValue());
@@ -395,7 +395,7 @@ unsafe fn s4_class_generator(class_name: &str) -> SEXP {
     }
 }
 
-pub unsafe fn do_setValidity(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_setValidity(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     {
         let class_name = elt_to_string(CAR(args), 0);
         let method = CAR(CDR(args));
@@ -409,7 +409,7 @@ pub unsafe fn do_setValidity(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
 }
 
 /// R's `isVirtualClass(Class)` — check if a registered S4 class is virtual.
-pub unsafe fn do_isVirtualClass(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_isVirtualClass(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let class_name = elt_to_string(CAR(args), 0);
         let is_virtual = crate::mainutils::objects::s4_class(&class_name)
@@ -419,8 +419,8 @@ pub unsafe fn do_isVirtualClass(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) 
     }
 }
 
-unsafe fn ensure_methods_namespace() -> Option<SEXP> {
-    unsafe {
+fn ensure_methods_namespace() -> Option<SEXP> {
+    {
         if let Some(namespace) = crate::mainutils::essentials::cached_namespace_by_name("methods") {
             return Some(namespace);
         }
@@ -436,7 +436,7 @@ unsafe fn ensure_methods_namespace() -> Option<SEXP> {
     }
 }
 
-unsafe fn methods_exported_closure(name: &std::ffi::CStr) -> Option<SEXP> {
+fn methods_exported_closure(name: &std::ffi::CStr) -> Option<SEXP> {
     unsafe {
         let namespace = ensure_methods_namespace()?;
         let symbol = Rf_install(name.as_ptr());
@@ -456,12 +456,12 @@ unsafe fn methods_exported_closure(name: &std::ffi::CStr) -> Option<SEXP> {
 }
 
 /// Use the GNU `methods::new` closure once that namespace is loaded.
-unsafe fn methods_new_closure() -> Option<SEXP> {
-    unsafe { methods_exported_closure(c"new") }
+fn methods_new_closure() -> Option<SEXP> {
+    { methods_exported_closure(c"new") }
 }
 
 /// GNU `new(Class, ...)` — construct an S4 object.
-pub unsafe fn do_new(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_new(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         if let Some(fun) = methods_new_closure() {
             return crate::eval::closure::applyClosure(call, fun, args, rho, R_NilValue(), TRUE);
@@ -584,7 +584,7 @@ pub unsafe fn do_new(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     }
 }
 
-unsafe fn finish_s4_object(object: SEXP, class_name: &str) -> SEXP {
+fn finish_s4_object(object: SEXP, class_name: &str) -> SEXP {
     unsafe {
         let class_vec = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
         if !class_vec.is_null() {
@@ -605,7 +605,7 @@ unsafe fn finish_s4_object(object: SEXP, class_name: &str) -> SEXP {
 }
 
 /// GNU `validObject(object)` — run the class validity method if present.
-pub unsafe fn do_validObject(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_validObject(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     crate::mainutils::objects::with_objects_runtime(|access| {
         let domain = access.domain();
         let args = if args.is_null() {
@@ -635,7 +635,7 @@ fn valid_object_owned(
         return Ok(domain.logical(true));
     }
     if let Some(message) = access
-        .with_native(|_| Ok(unsafe { super::print::factor_validity_message(object.as_raw()) }))?
+        .with_native(|_| Ok({ super::print::factor_validity_message(object.as_raw()) }))?
     {
         return Err(SexpError::EvaluationFailed { message });
     }
@@ -682,7 +682,7 @@ fn valid_object_owned(
 /// S4 objects whose class is a basic type (`matrix`, implicit atomic, …)
 /// print via `print(object, useS4 = FALSE)`: the data part, not slots.
 /// `asS4(matrix())` has no class attribute; the implicit class is basic.
-pub unsafe fn do_show(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_show(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let object = CAR(args);
         if object.is_null() || object == R_NilValue() {
@@ -802,7 +802,7 @@ fn is_basic_show_class(name: &str) -> bool {
 
 /// GNU `data_part()`: `getDataPart(obj, TRUE)` then `UNSET_S4_OBJECT`.
 /// The data part is a base vector/closure, not an S4 object.
-unsafe fn strip_s4_data_part(value: SEXP) -> SEXP {
+fn strip_s4_data_part(value: SEXP) -> SEXP {
     unsafe {
         if value.is_null() || value == R_NilValue() {
             return value;
@@ -837,7 +837,7 @@ unsafe fn strip_s4_data_part(value: SEXP) -> SEXP {
     }
 }
 
-unsafe fn R_data_part(obj: SEXP) -> SEXP {
+fn R_data_part(obj: SEXP) -> SEXP {
     unsafe {
         if !IN_GET_DATA_PART.with(std::cell::Cell::get) {
             if let Some(fun) = methods_exported_closure(c"getDataPart") {
@@ -880,7 +880,7 @@ thread_local! {
     static IN_GET_DATA_PART: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
-unsafe fn r_data_part_fallback(obj: SEXP) -> SEXP {
+fn r_data_part_fallback(obj: SEXP) -> SEXP {
     unsafe {
         let data_sym = Rf_install(c".Data".as_ptr());
         let attr = crate::sexp::attrib_core::getAttrib(obj, data_sym);
@@ -932,7 +932,7 @@ unsafe fn r_data_part_fallback(obj: SEXP) -> SEXP {
 }
 
 /// R's `slotNames(Class)` — get the names of slots of an S4 class.
-pub unsafe fn do_slotNames(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_slotNames(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let class_arg = CAR(args);
         if class_arg.is_null() || class_arg == R_NilValue() {
@@ -980,8 +980,8 @@ pub unsafe fn do_slotNames(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
 /// (main/attrib.c). Port S4 objects store their slots as named vector
 /// elements rather than attributes, so the lookup adapts that
 /// representation while keeping upstream's exact error behavior.
-pub unsafe fn do_slot(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_slot(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let object = CAR(args);
         let name_arg = CADR(args);
         R_do_slot(object, name_arg)
@@ -990,7 +990,7 @@ pub unsafe fn do_slot(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// Look up a slot stored as a named vector element (port S4
 /// representation). Exact, non-partial name matching.
-unsafe fn s4_named_slot(obj: SEXP, name: &str) -> Option<SEXP> {
+fn s4_named_slot(obj: SEXP, name: &str) -> Option<SEXP> {
     unsafe {
         if obj.is_null() || TYPEOF(obj) != SEXPTYPE::VECSXP {
             return None;
@@ -1022,7 +1022,7 @@ unsafe fn s4_named_slot(obj: SEXP, name: &str) -> Option<SEXP> {
 /// Slot name as text: a symbol's print name, or a non-NA scalar string's
 /// first element; `None` for anything else (mirrors the R_SLOT_INIT
 /// acceptance test in upstream's R_do_slot / do_AT).
-pub(crate) unsafe fn name_of(name: SEXP) -> Option<String> {
+pub(crate) fn name_of(name: SEXP) -> Option<String> {
     unsafe {
         if name.is_null() || name == R_NilValue() {
             return None;
@@ -1059,7 +1059,7 @@ pub(crate) unsafe fn name_of(name: SEXP) -> Option<String> {
 /// The class name do_AT reports for a non-S4 object: the class
 /// attribute's first element when present, else the computed implicit
 /// class (main/attrib.c uses R_data_class for that fallback).
-pub(crate) unsafe fn first_class_display(obj: SEXP) -> String {
+pub(crate) fn first_class_display(obj: SEXP) -> String {
     unsafe {
         let klass =
             crate::sexp::attrib_core::getAttrib(obj, crate::sexp::attrib_core::R_ClassSymbol());
@@ -1103,7 +1103,7 @@ pub(crate) unsafe fn first_class_display(obj: SEXP) -> String {
 /// Raise upstream's R_do_slot miss errors: the class attribute, when
 /// present, produces "no slot of name ... for this object of class ...";
 /// otherwise the TYPEOF-based "cannot get a slot ..." message.
-unsafe fn raise_slot_miss(obj: SEXP, name: &str) -> ! {
+fn raise_slot_miss(obj: SEXP, name: &str) -> ! {
     unsafe {
         let class_string =
             crate::sexp::attrib_core::getAttrib(obj, crate::sexp::attrib_core::R_ClassSymbol());
@@ -1146,12 +1146,12 @@ unsafe fn raise_slot_miss(obj: SEXP, name: &str) -> ! {
 /// GNU `pseudo_NULL` (`attrib.c`): interned `\001NULL\001`. Attributes
 /// cannot store `R_NilValue`, so NULL slots use this sentinel. Pointer
 /// identity is enough because `Rf_install` interns.
-unsafe fn slot_pseudo_null() -> SEXP {
+fn slot_pseudo_null() -> SEXP {
     unsafe { Rf_install(c"\x01NULL\x01".as_ptr()) }
 }
 
-unsafe fn unmap_slot_pseudo_null(value: SEXP) -> SEXP {
-    unsafe {
+fn unmap_slot_pseudo_null(value: SEXP) -> SEXP {
+    {
         if !value.is_null() && value == slot_pseudo_null() {
             R_NilValue()
         } else {
@@ -1166,7 +1166,7 @@ unsafe fn unmap_slot_pseudo_null(value: SEXP) -> SEXP {
 /// slots satisfy the lookup first, then port S4 named-element slots;
 /// `.Data` resolves through the data part, `.S3Class` defaults to the
 /// computed class. Missing slots raise upstream's exact error messages.
-pub unsafe fn R_do_slot(obj: SEXP, name: SEXP) -> SEXP {
+pub fn R_do_slot(obj: SEXP, name: SEXP) -> SEXP {
     unsafe {
         // R_SLOT_INIT: symbol or non-NA scalar string, else upstream's
         // "invalid type or length for slot name".
@@ -1243,7 +1243,7 @@ pub unsafe fn R_do_slot(obj: SEXP, name: SEXP) -> SEXP {
 }
 
 /// GNU `R_has_slot` (attrib.c) — attribute presence, including NULL sentinels.
-pub unsafe fn R_has_slot(obj: SEXP, name: SEXP) -> SEXP {
+pub fn R_has_slot(obj: SEXP, name: SEXP) -> SEXP {
     unsafe {
         let name_sym = if !name.is_null() && TYPEOF(name) == SEXPTYPE::SYMSXP {
             name
@@ -1277,7 +1277,7 @@ pub unsafe fn R_has_slot(obj: SEXP, name: SEXP) -> SEXP {
 ///
 /// S4 objects (including `new("classRepresentation")`) keep slots in
 /// ATTRIB, not as VECSXP names. `NULL` is stored as GNU `pseudo_NULL`.
-pub unsafe fn R_do_slot_assign(obj: SEXP, name: SEXP, value: SEXP) -> SEXP {
+pub fn R_do_slot_assign(obj: SEXP, name: SEXP, value: SEXP) -> SEXP {
     unsafe {
         if obj.is_null() || obj == R_NilValue() {
             std::panic::panic_any(RError {
@@ -1343,8 +1343,8 @@ pub unsafe fn R_do_slot_assign(obj: SEXP, name: SEXP, value: SEXP) -> SEXP {
 }
 
 /// R's `set_slot(object, name, value)` — set the value of a slot.
-pub unsafe fn do_set_slot(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_set_slot(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         let object = CAR(args);
         let name_arg = CAR(CDR(args));
         let value = CAR(CDR(CDR(args)));
@@ -1360,7 +1360,7 @@ pub unsafe fn do_set_slot(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 }
 
 /// R's `extends(class1, class2)` — check if class1 extends class2.
-pub unsafe fn do_extends(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_extends(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let class1_arg = CAR(args);
         let class2_arg = CAR(CDR(args));
@@ -1392,7 +1392,7 @@ pub unsafe fn do_extends(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 }
 
 /// R's `isSealedClass(Class)` — check if a class is sealed.
-pub unsafe fn do_isSealedClass(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_isSealedClass(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         // Built-in types are always sealed
         Rf_ScalarLogical(TRUE)
@@ -1400,7 +1400,7 @@ pub unsafe fn do_isSealedClass(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
 }
 
 /// R's `sealClass(Class, ...)` — seal a class definition.
-pub unsafe fn do_sealClass(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_sealClass(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     {
         // No-op in simplified implementation
         R_NilValue()
@@ -1408,7 +1408,7 @@ pub unsafe fn do_sealClass(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> S
 }
 
 /// R's `representation(...)` — define class representation.
-pub unsafe fn do_representation(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_representation(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         // Collect named args as slot name = type pairs
         let n_list = Rf_allocVector3(SEXPTYPE::VECSXP, 0);
@@ -1466,23 +1466,23 @@ pub unsafe fn do_representation(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) 
 }
 
 /// R's `containsClass(class1, class2)` — check class containment.
-pub unsafe fn do_containsClass(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_containsClass(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         // Delegates to extends
         do_extends(_call, _op, args, _rho)
     }
 }
 
 /// R's `possibleExtends(class1, class2)` — check possible extensions.
-pub unsafe fn do_possibleExtends(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+pub fn do_possibleExtends(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    {
         // Simplified: delegates to extends
         do_extends(_call, _op, args, _rho)
     }
 }
 
 /// R's `setReplaceMethod(f, signature, definition)` — set replace method.
-pub unsafe fn do_setReplaceMethod(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_setReplaceMethod(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     {
         // Simplified: return the definition
         let definition = CAR(CDR(CDR(args)));
@@ -1495,7 +1495,7 @@ pub unsafe fn do_setReplaceMethod(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP
 }
 
 /// R's `getMethod(f, signature)` — get a specific S4 method.
-pub unsafe fn do_getMethod(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_getMethod(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     {
         // Simplified: return the function name or NULL
         let f_arg = CAR(args);
@@ -1507,7 +1507,7 @@ pub unsafe fn do_getMethod(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
 }
 
 /// R's `removeGeneric(f)` — remove a generic.
-pub unsafe fn do_removeGeneric(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_removeGeneric(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let _f = CAR(args);
         Rf_ScalarLogical(FALSE)
@@ -1515,7 +1515,7 @@ pub unsafe fn do_removeGeneric(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
 }
 
 /// R's `removeMethod(f, signature)` — remove a method.
-pub unsafe fn do_removeMethod(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_removeMethod(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let _f = CAR(args);
         let _sig = CAR(CDR(args));
@@ -1524,7 +1524,7 @@ pub unsafe fn do_removeMethod(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
 }
 
 /// R's `isGeneric(f)` — check if f is a generic.
-pub unsafe fn do_isGeneric(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_isGeneric(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let _f = CAR(args);
         Rf_ScalarLogical(FALSE)
@@ -1532,7 +1532,7 @@ pub unsafe fn do_isGeneric(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
 }
 
 /// R's `isMethod(f, signature)` — check if method exists.
-pub unsafe fn do_isMethod(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_isMethod(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let _f = CAR(args);
         let _sig = CAR(CDR(args));
@@ -1541,7 +1541,7 @@ pub unsafe fn do_isMethod(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 }
 
 /// R's `findMethod(f, signature)` — find S4 method.
-pub unsafe fn do_findMethod(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_findMethod(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     {
         let _f = CAR(args);
         let _sig = CAR(CDR(args));
@@ -1550,7 +1550,7 @@ pub unsafe fn do_findMethod(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 }
 
 /// R's `findMethods(f)` — find all methods for a generic.
-pub unsafe fn do_findMethods(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_findMethods(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let _f = CAR(args);
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, 0);
@@ -1563,7 +1563,7 @@ pub unsafe fn do_findMethods(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
 }
 
 /// R's `showMethods(f)` — show methods for a generic.
-pub unsafe fn do_showMethods(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_showMethods(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     {
         let _f = CAR(args);
         println!("No methods found");
@@ -1573,7 +1573,7 @@ pub unsafe fn do_showMethods(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
 }
 
 /// R's `getGenerics(where)` — get all generics.
-pub unsafe fn do_getGenerics(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_getGenerics(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let _where = CAR(args);
         Rf_allocVector3(SEXPTYPE::STRSXP, 0)
@@ -1581,7 +1581,7 @@ pub unsafe fn do_getGenerics(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
 }
 
 /// R's `getMethods(f)` — get all methods for a generic.
-pub unsafe fn do_getMethods(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_getMethods(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let _f = CAR(args);
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, 0);
@@ -1594,16 +1594,16 @@ pub unsafe fn do_getMethods(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 }
 
 /// R's `existsMethod(f, signature)` — check if method exists.
-pub unsafe fn do_existsMethod(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { s4_method_exists(args, _rho, false) }
+pub fn do_existsMethod(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    { s4_method_exists(args, _rho, false) }
 }
 
 /// R's `hasMethod(f, signature)` — check exact or inherited methods.
-pub unsafe fn do_hasMethod(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { s4_method_exists(args, _rho, true) }
+pub fn do_hasMethod(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    { s4_method_exists(args, _rho, true) }
 }
 
-unsafe fn s4_method_exists(args: SEXP, rho: SEXP, inherit: bool) -> SEXP {
+fn s4_method_exists(args: SEXP, rho: SEXP, inherit: bool) -> SEXP {
     unsafe {
         let fail = |message: &str| -> ! {
             std::panic::panic_any(RError {
@@ -1693,7 +1693,7 @@ unsafe fn s4_method_exists(args: SEXP, rho: SEXP, inherit: bool) -> SEXP {
 }
 
 /// R's `selectMethod(f, signature)` — select method for generic.
-pub unsafe fn do_selectMethod(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_selectMethod(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let fail = |message: &str| -> ! {
             std::panic::panic_any(RError {
