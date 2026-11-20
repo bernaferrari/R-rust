@@ -64,23 +64,15 @@ type pGEDevDesc = *mut c_void;
 /// Stub: returns false (no parameters handled) since the GE internals
 /// (R_DEV__, dpptr, gpptr, RGBpar3, lengthCheck, BoundsCheck, etc.)
 /// are not yet ported.
-pub(crate) unsafe fn specify_common(
-    what: *const std::os::raw::c_char,
+pub(crate) fn specify_common(
+    what: &std::ffi::CStr,
     _value: SEXP,
     _for_par: bool,
     _dd: pGEDevDesc,
 ) -> bool {
-    use std::ffi::CStr;
-
-    let what_str = unsafe {
-        if what.is_null() {
-            return false;
-        }
-
-        match CStr::from_ptr(what).to_str() {
-            Ok(s) => s,
-            Err(_) => return false,
-        }
+    let what_str = match what.to_str() {
+        Ok(s) => s,
+        Err(_) => return false,
     };
 
     /* Graphical parameters which are treated identically by

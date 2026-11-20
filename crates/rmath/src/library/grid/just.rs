@@ -49,18 +49,6 @@ pub fn convertJust(just: c_int) -> f64 {
 }
 
 /* Return the amount of justification required */
-pub unsafe fn justification(
-    width: f64,
-    height: f64,
-    hjust: f64,
-    vjust: f64,
-    hadj: *mut f64,
-    vadj: *mut f64,
-) {
-    if let Some(hadj) = unsafe { hadj.as_mut() } {
-        *hadj = -width * hjust;
-    }
-    if let Some(vadj) = unsafe { vadj.as_mut() } {
-        *vadj = -height * vjust;
-    }
+pub fn justification(width: f64, height: f64, hjust: f64, vjust: f64) -> (f64, f64) {
+    (-width * hjust, -height * vjust)
 }
