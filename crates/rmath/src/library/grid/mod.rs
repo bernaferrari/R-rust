@@ -156,6 +156,67 @@ pub(crate) fn set_string_elt(x: SEXP, index: R_xlen_t, value: SEXP) {
         .unwrap_or_else(|e| r_error(e.to_string()));
 }
 
+// ---------------------------------------------------------------------------
+// Allocation wrappers for translated code running inside the active session
+// ---------------------------------------------------------------------------
+
+/// Allocate a vector in the active session; failures raise an R error.
+#[inline]
+pub(crate) fn alloc_vector(sexptype: crate::sexp::ffi::SEXPTYPE, len: c_int) -> SEXP {
+    // SAFETY: grid entry points run inside the owning session; allocation
+    // failures raise R errors rather than producing invalid objects.
+    unsafe { crate::sexp::constructors::Rf_allocVector(sexptype, len) }
+}
+
+/// Allocate a one-element REALSXP holding `value`.
+#[inline]
+pub(crate) fn scalar_real(value: c_double) -> SEXP {
+    // SAFETY: see `alloc_vector`.
+    unsafe { crate::sexp::constructors::Rf_ScalarReal(value) }
+}
+
+/// Allocate a one-element INTSXP holding `value`.
+#[inline]
+pub(crate) fn scalar_integer(value: c_int) -> SEXP {
+    // SAFETY: see `alloc_vector`.
+    unsafe { crate::sexp::constructors::Rf_ScalarInteger(value) }
+}
+
+/// Allocate a one-element LGLSXP holding `value`.
+#[inline]
+pub(crate) fn scalar_logical(value: c_int) -> SEXP {
+    // SAFETY: see `alloc_vector`.
+    unsafe { crate::sexp::constructors::Rf_ScalarLogical(value) }
+}
+
+/// Allocate a one-element STRSXP from Rust text.
+#[inline]
+pub(crate) fn mk_string(text: &str) -> SEXP {
+    let text = std::ffi::CString::new(text)
+        .unwrap_or_else(|_| r_error("embedded NUL byte in grid string"));
+    // SAFETY: see `alloc_vector`; `text` is a live NUL-terminated buffer.
+    unsafe { crate::sexp::constructors::Rf_mkString(text.as_ptr()) }
+}
+
+/// Intern a symbol from Rust text.
+#[inline]
+pub(crate) fn install(text: &str) -> SEXP {
+    let text = std::ffi::CString::new(text)
+        .unwrap_or_else(|_| r_error("embedded NUL byte in grid symbol"));
+    // SAFETY: `text` is a live NUL-terminated buffer for the call.
+    unsafe { crate::sexp::symbol::Rf_install(text.as_ptr()) }
+}
+
+/// Protect a live object and return the RAII guard.
+#[inline]
+pub(crate) fn protect(x: SEXP) -> crate::sexp::protect::ProtectGuard<'static> {
+    // `checked` proves `x` names a live registered object before the root
+    // slot is claimed; foreign or reclaimed pointers raise an R error.
+    let _ = checked(x);
+    // SAFETY: `x` was just validated as a live registered node.
+    unsafe { crate::sexp::protect::protect(x) }
+}
+
 unsafe extern "C-unwind" fn c_pretty2(scale: SEXP, n: SEXP) -> SEXP {
     unsafe { grid::L_pretty2(scale, n) }
 }

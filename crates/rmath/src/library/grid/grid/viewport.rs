@@ -41,10 +41,8 @@ pub unsafe fn L_gridDirty() -> SEXP {
  * getViewportContext
  * ============================== */
 
-pub(crate) unsafe fn getViewportContext(vp: SEXP, vpc: *mut LViewportContext) {
-    unsafe {
-        fillViewportContextFromViewport(vp, vpc);
-    }
+pub(crate) fn getViewportContext(vp: SEXP, vpc: &mut LViewportContext) {
+    fillViewportContextFromViewport(vp, vpc);
 }
 
 /* ==============================
