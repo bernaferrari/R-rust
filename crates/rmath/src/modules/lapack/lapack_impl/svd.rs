@@ -3,7 +3,7 @@ use super::*;
 /// La_svd - real singular value decomposition.
 ///
 /// Port of: static SEXP La_svd(SEXP jobu, SEXP x, SEXP s, SEXP u, SEXP vt)
-pub unsafe fn La_svd(jobu: SEXP, x: SEXP, s: SEXP, u: SEXP, vt: SEXP) -> SEXP {
+pub fn La_svd(jobu: SEXP, x: SEXP, s: SEXP, u: SEXP, vt: SEXP) -> SEXP {
     unsafe {
         if TYPEOF(jobu) != STRSXP_C || XLENGTH(jobu) < 1 {
             crate::sexp::context::r_error("'jobu' must be a character string");
@@ -214,7 +214,7 @@ pub unsafe fn La_svd(jobu: SEXP, x: SEXP, s: SEXP, u: SEXP, vt: SEXP) -> SEXP {
 /// La_svd_cmplx - complex singular value decomposition.
 ///
 /// Port of: static SEXP La_svd_cmplx(SEXP jobu, SEXP x, SEXP s, SEXP u, SEXP v)
-pub unsafe fn La_svd_cmplx(jobu: SEXP, x: SEXP, s: SEXP, u: SEXP, v: SEXP) -> SEXP {
+pub fn La_svd_cmplx(jobu: SEXP, x: SEXP, s: SEXP, u: SEXP, v: SEXP) -> SEXP {
     unsafe {
         if TYPEOF(jobu) != STRSXP_C || XLENGTH(jobu) < 1 {
             crate::sexp::context::r_error("'jobu' must be a character string");
@@ -320,7 +320,7 @@ pub unsafe fn La_svd_cmplx(jobu: SEXP, x: SEXP, s: SEXP, u: SEXP, v: SEXP) -> SE
         let mn1 = (if n > p { n } else { p }) as usize;
         let Some(scratch) = super::workspace_size::complex_svd_scratch(
             len,
-            unsafe { *ju } == b'N',
+            *ju == b'N',
             mn0,
             mn1,
             std::mem::size_of::<LapRcomplex>(),

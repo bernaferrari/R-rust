@@ -1,7 +1,7 @@
 use super::*;
 
 /// DGECON — condition number estimate.
-pub unsafe fn dgecon_(
+pub fn dgecon_(
     norm: *const u8,
     n: *const core::ffi::c_int,
     a: *const f64,
@@ -85,7 +85,7 @@ pub unsafe fn dgecon_(
 }
 
 /// DTRCON — triangular condition number.
-pub unsafe fn dtrcon_(
+pub fn dtrcon_(
     _norm: *const u8,
     uplo: *const u8,
     diag: *const u8,
@@ -278,7 +278,7 @@ pub unsafe fn dtrcon_(
 }
 
 /// ZGECON — complex condition number estimate.
-pub unsafe fn zgecon_(
+pub fn zgecon_(
     norm: *const u8,
     n: *const core::ffi::c_int,
     a: *const Rcomplex,
@@ -364,7 +364,7 @@ pub unsafe fn zgecon_(
 }
 
 /// ZTRCON — complex triangular condition number.
-pub unsafe fn ztrcon_(
+pub fn ztrcon_(
     _norm: *const u8,
     _uplo: *const u8,
     diag: *const u8,

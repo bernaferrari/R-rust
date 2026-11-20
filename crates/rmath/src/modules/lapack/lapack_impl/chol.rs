@@ -3,7 +3,7 @@ use super::*;
 /// La_chol - real Cholesky decomposition.
 ///
 /// Port of: static SEXP La_chol(SEXP a, SEXP pivot, SEXP stol)
-pub unsafe fn La_chol(a: SEXP, pivot: SEXP, stol: SEXP) -> SEXP {
+pub fn La_chol(a: SEXP, pivot: SEXP, stol: SEXP) -> SEXP {
     unsafe {
         let piv = asLogical(pivot);
         if piv == NA_INTEGER {
@@ -165,7 +165,7 @@ pub unsafe fn La_chol(a: SEXP, pivot: SEXP, stol: SEXP) -> SEXP {
 /// La_chol2inv - real inverse from Cholesky factor.
 ///
 /// Port of: static SEXP La_chol2inv(SEXP a, SEXP size, SEXP diag_only)
-pub unsafe fn La_chol2inv(a: SEXP, size: SEXP, diag_only: SEXP) -> SEXP {
+pub fn La_chol2inv(a: SEXP, size: SEXP, diag_only: SEXP) -> SEXP {
     unsafe {
         let only_diag = if diag_only.is_null() || diag_only == R_NilValue() {
             0

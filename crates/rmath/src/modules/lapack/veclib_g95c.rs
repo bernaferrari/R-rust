@@ -79,7 +79,7 @@ unsafe extern "C" {
 ///
 /// All arguments are passed by reference (Fortran convention).
 #[cfg(target_os = "macos")]
-pub unsafe fn rcblas_cdotu_sub_(
+pub fn rcblas_cdotu_sub_(
     n: *const c_int,
     x: *const core::ffi::c_void,
     incx: *const c_int,
@@ -99,7 +99,7 @@ pub unsafe fn rcblas_cdotu_sub_(
 ///
 /// All arguments are passed by reference (Fortran convention).
 #[cfg(target_os = "macos")]
-pub unsafe fn rcblas_cdotc_sub_(
+pub fn rcblas_cdotc_sub_(
     n: *const c_int,
     x: *const core::ffi::c_void,
     incx: *const c_int,
@@ -119,7 +119,7 @@ pub unsafe fn rcblas_cdotc_sub_(
 ///
 /// All arguments are passed by reference (Fortran convention).
 #[cfg(target_os = "macos")]
-pub unsafe fn rcblas_zdotu_sub_(
+pub fn rcblas_zdotu_sub_(
     n: *const c_int,
     x: *const core::ffi::c_void,
     incx: *const c_int,
@@ -139,7 +139,7 @@ pub unsafe fn rcblas_zdotu_sub_(
 ///
 /// All arguments are passed by reference (Fortran convention).
 #[cfg(target_os = "macos")]
-pub unsafe fn rcblas_zdotc_sub_(
+pub fn rcblas_zdotc_sub_(
     n: *const c_int,
     x: *const core::ffi::c_void,
     incx: *const c_int,

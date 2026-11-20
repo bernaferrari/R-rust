@@ -1,7 +1,7 @@
 use super::*;
 
 /// DLANGE — matrix norm (Frobenius / 1-norm / inf-norm / max element).
-pub unsafe fn dlange_(
+pub fn dlange_(
     norm: *const u8,
     m: *const core::ffi::c_int,
     n: *const core::ffi::c_int,
@@ -78,7 +78,7 @@ pub unsafe fn dlange_(
 }
 
 /// ZLANGE — complex matrix norm.
-pub unsafe fn zlange_(
+pub fn zlange_(
     norm: *const u8,
     m: *const core::ffi::c_int,
     n: *const core::ffi::c_int,

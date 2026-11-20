@@ -1,7 +1,7 @@
 use super::*;
 
 /// DGESDD — SVD.
-pub unsafe fn dgesdd_(
+pub fn dgesdd_(
     jobz: *const u8,
     m: *const core::ffi::c_int,
     n: *const core::ffi::c_int,
@@ -121,7 +121,7 @@ pub unsafe fn dgesdd_(
 }
 
 /// DSYEVR — symmetric eigenvalue decomposition with range selection.
-pub unsafe fn dsyevr_(
+pub fn dsyevr_(
     jobz: *const u8,
     range: *const u8,
     uplo: *const u8,
@@ -239,7 +239,7 @@ pub unsafe fn dsyevr_(
 }
 
 /// DGEEV — general eigenvalue decomposition.
-pub unsafe fn dgeev_(
+pub fn dgeev_(
     jobvl: *const u8,
     jobvr: *const u8,
     n: *const core::ffi::c_int,
@@ -400,7 +400,7 @@ pub unsafe fn dgeev_(
 }
 
 /// ZGESDD — complex SVD.
-pub unsafe fn zgesdd_(
+pub fn zgesdd_(
     jobz: *const u8,
     m: *const core::ffi::c_int,
     n: *const core::ffi::c_int,
@@ -517,7 +517,7 @@ pub unsafe fn zgesdd_(
 }
 
 /// ZHEEV — Hermitian eigenvalue decomposition.
-pub unsafe fn zheev_(
+pub fn zheev_(
     jobz: *const u8,
     uplo: *const u8,
     n: *const core::ffi::c_int,
@@ -590,7 +590,7 @@ pub unsafe fn zheev_(
 }
 
 /// ZGEEV — complex general eigenvalue decomposition.
-pub unsafe fn zgeev_(
+pub fn zgeev_(
     jobvl: *const u8,
     jobvr: *const u8,
     n: *const core::ffi::c_int,

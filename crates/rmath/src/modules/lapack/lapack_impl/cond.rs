@@ -3,7 +3,7 @@ use super::*;
 /// La_dlange - real matrix norm.
 ///
 /// Port of: static SEXP La_dlange(SEXP a, SEXP type_)
-pub unsafe fn La_dlange(a: SEXP, type_: SEXP) -> SEXP {
+pub fn La_dlange(a: SEXP, type_: SEXP) -> SEXP {
     unsafe {
         if TYPEOF(type_) != 16 {
             Rf_error(b"'type' must be a character string\0".as_ptr() as *const c_char);
@@ -66,7 +66,7 @@ pub unsafe fn La_dlange(a: SEXP, type_: SEXP) -> SEXP {
 /// La_dgecon - real matrix condition number estimate.
 ///
 /// Port of: static SEXP La_dgecon(SEXP a, SEXP norm)
-pub unsafe fn La_dgecon(a: SEXP, norm: SEXP) -> SEXP {
+pub fn La_dgecon(a: SEXP, norm: SEXP) -> SEXP {
     unsafe {
         if TYPEOF(norm) != 16 || XLENGTH(norm) < 1 {
             Rf_error(b"'norm' must be a character string\0".as_ptr() as *const c_char);
@@ -187,7 +187,7 @@ pub unsafe fn La_dgecon(a: SEXP, norm: SEXP) -> SEXP {
 /// La_dtrcon - real triangular condition number.
 ///
 /// Port of: static SEXP La_dtrcon(SEXP a, SEXP norm)
-pub unsafe fn La_dtrcon(a: SEXP, norm: SEXP) -> SEXP {
+pub fn La_dtrcon(a: SEXP, norm: SEXP) -> SEXP {
     unsafe {
         if TYPEOF(norm) != 16 {
             Rf_error(b"'norm' must be a character string\0".as_ptr() as *const c_char);
@@ -272,7 +272,7 @@ pub unsafe fn La_dtrcon(a: SEXP, norm: SEXP) -> SEXP {
 /// La_dtrcon3 - real triangular condition number with explicit uplo.
 ///
 /// Port of: static SEXP La_dtrcon3(SEXP a, SEXP norm, SEXP uplo)
-pub unsafe fn La_dtrcon3(a: SEXP, norm: SEXP, uplo: SEXP) -> SEXP {
+pub fn La_dtrcon3(a: SEXP, norm: SEXP, uplo: SEXP) -> SEXP {
     unsafe {
         if TYPEOF(norm) != 16 {
             Rf_error(b"'norm' must be a character string\0".as_ptr() as *const c_char);
@@ -363,7 +363,7 @@ pub unsafe fn La_dtrcon3(a: SEXP, norm: SEXP, uplo: SEXP) -> SEXP {
 /// La_zlange - complex matrix norm.
 ///
 /// Port of: static SEXP La_zlange(SEXP a, SEXP type_)
-pub unsafe fn La_zlange(a: SEXP, type_: SEXP) -> SEXP {
+pub fn La_zlange(a: SEXP, type_: SEXP) -> SEXP {
     unsafe {
         if TYPEOF(type_) != 16 {
             Rf_error(b"'type' must be a character string\0".as_ptr() as *const c_char);
@@ -427,7 +427,7 @@ pub unsafe fn La_zlange(a: SEXP, type_: SEXP) -> SEXP {
 /// La_zgecon - complex matrix condition number estimate.
 ///
 /// Port of: static SEXP La_zgecon(SEXP a, SEXP norm)
-pub unsafe fn La_zgecon(a: SEXP, norm: SEXP) -> SEXP {
+pub fn La_zgecon(a: SEXP, norm: SEXP) -> SEXP {
     unsafe {
         if TYPEOF(norm) != 16 || XLENGTH(norm) < 1 {
             Rf_error(b"'norm' must be a character string\0".as_ptr() as *const c_char);
@@ -556,7 +556,7 @@ pub unsafe fn La_zgecon(a: SEXP, norm: SEXP) -> SEXP {
 /// La_ztrcon - complex triangular condition number.
 ///
 /// Port of: static SEXP La_ztrcon(SEXP a, SEXP norm)
-pub unsafe fn La_ztrcon(a: SEXP, norm: SEXP) -> SEXP {
+pub fn La_ztrcon(a: SEXP, norm: SEXP) -> SEXP {
     unsafe {
         if TYPEOF(norm) != 16 {
             Rf_error(b"'norm' must be a character string\0".as_ptr() as *const c_char);
@@ -646,7 +646,7 @@ pub unsafe fn La_ztrcon(a: SEXP, norm: SEXP) -> SEXP {
 /// La_ztrcon3 - complex triangular condition number with explicit uplo.
 ///
 /// Port of: static SEXP La_ztrcon3(SEXP a, SEXP norm, SEXP uplo)
-pub unsafe fn La_ztrcon3(a: SEXP, norm: SEXP, uplo: SEXP) -> SEXP {
+pub fn La_ztrcon3(a: SEXP, norm: SEXP, uplo: SEXP) -> SEXP {
     unsafe {
         if TYPEOF(norm) != 16 {
             Rf_error(b"'norm' must be a character string\0".as_ptr() as *const c_char);

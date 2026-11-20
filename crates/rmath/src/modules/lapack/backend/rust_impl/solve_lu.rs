@@ -1,7 +1,7 @@
 use super::*;
 
 /// DGETRF — LU factorization with partial pivoting.
-pub unsafe fn dgetrf_(
+pub fn dgetrf_(
     m: *const core::ffi::c_int,
     n: *const core::ffi::c_int,
     a: *mut f64,
@@ -70,7 +70,7 @@ pub unsafe fn dgetrf_(
 }
 
 /// DGESV — solve Ax = B via LU.
-pub unsafe fn dgesv_(
+pub fn dgesv_(
     n: *const core::ffi::c_int,
     nrhs: *const core::ffi::c_int,
     a: *mut f64,
@@ -155,7 +155,7 @@ pub unsafe fn dgesv_(
 }
 
 /// DTRTRS — triangular solve.
-pub unsafe fn dtrtrs_(
+pub fn dtrtrs_(
     uplo: *const u8,
     trans: *const u8,
     diag: *const u8,
@@ -238,7 +238,7 @@ pub unsafe fn dtrtrs_(
 // ============================================================
 
 /// ZGETRF — complex LU factorization.
-pub unsafe fn zgetrf_(
+pub fn zgetrf_(
     m: *const core::ffi::c_int,
     n: *const core::ffi::c_int,
     a: *mut Rcomplex,
@@ -304,7 +304,7 @@ pub unsafe fn zgetrf_(
 }
 
 /// ZGESV — complex linear solve.
-pub unsafe fn zgesv_(
+pub fn zgesv_(
     n: *const core::ffi::c_int,
     nrhs: *const core::ffi::c_int,
     a: *mut Rcomplex,
@@ -360,7 +360,7 @@ pub unsafe fn zgesv_(
 }
 
 /// ZTRTRS — complex triangular solve.
-pub unsafe fn ztrtrs_(
+pub fn ztrtrs_(
     uplo: *const u8,
     trans: *const u8,
     diag: *const u8,
