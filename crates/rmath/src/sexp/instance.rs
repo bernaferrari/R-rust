@@ -1015,7 +1015,7 @@ where
     // aliasing discipline is P1/P2 (see the module docs): no &mut/& of
     // the instance or a field may be held across an ambient-capable call
     // (allocation, protect, eval); Miri is the checker for that rule.
-    unsafe { f(ptr) }
+    f(ptr)
 }
 
 /// Set the current thread-local R instance for translated compatibility code.

@@ -366,7 +366,7 @@ pub unsafe fn do_untracemem(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP
 // ---------------------------------------------------------------------------
 
 pub unsafe fn do_retracemem(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+    {
         let _ = (call, op, args, rho);
         set_R_Visible(FALSE);
         R_NilValue()

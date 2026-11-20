@@ -507,7 +507,7 @@ pub unsafe fn do_lbeta(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 // A complex second argument instead fails the ordinary numeric-type check.
 // Both checks precede the empty-vector shortcut.
 unsafe fn validate_math2_inputs(a: SEXP, b: SEXP) -> Result<(), &'static str> {
-    unsafe {
+    {
         if !a.is_null() && TYPEOF(a) == SEXPTYPE::CPLXSXP {
             return Err("unimplemented complex function");
         }
@@ -620,7 +620,7 @@ unsafe fn checked_math(
                 value.typeof_(),
                 SEXPTYPE::REALSXP | SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP
             ) {
-                unsafe {
+                {
                     crate::mainutils::errors::errorcall_str(
                         call.as_raw(),
                         "non-numeric argument to mathematical function",
@@ -647,7 +647,7 @@ unsafe fn checked_math(
     active();
     match validation {
         Ok(Ok(Ok(false))) => {}
-        Ok(Ok(Ok(true))) => unsafe {
+        Ok(Ok(Ok(true))) => {
             crate::mainutils::errors::errorcall_str(
                 call.as_raw(),
                 "non-numeric argument to mathematical function",

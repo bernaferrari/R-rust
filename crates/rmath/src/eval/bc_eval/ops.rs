@@ -148,7 +148,7 @@ pub(crate) unsafe fn apply_loop_jump<T>(
     for_loops: &mut Vec<T>,
     jump: LoopJump,
 ) -> c_int {
-    unsafe {
+    {
         for_loops.truncate(jump.for_depth);
         stack.set_depth(jump.stack_depth);
         jump.target
@@ -156,7 +156,7 @@ pub(crate) unsafe fn apply_loop_jump<T>(
 }
 
 pub(crate) unsafe fn for_sequence_length(sequence: SEXP) -> Option<c_int> {
-    unsafe {
+    {
         match TYPEOF(sequence) {
             t if t == SEXPTYPE::NILSXP => Some(0),
             t if t == SEXPTYPE::LGLSXP

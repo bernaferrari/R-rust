@@ -85,7 +85,7 @@ pub(crate) unsafe fn R_findVarLocInFrame(rho: SEXP, symbol: SEXP) -> R_varloc_t 
 }
 
 unsafe fn find_binding_cell(mut cell: SEXP, symbol: SEXP) -> SEXP {
-    unsafe {
+    {
         while !cell.is_null() && cell != R_NilValue() {
             if crate::sexp::symbol::symbol_name_bytes_equal(TAG(cell), symbol) {
                 return cell;
@@ -119,7 +119,7 @@ unsafe fn current_dots(rho: SEXP) -> SEXP {
 }
 
 unsafe fn dots_len(dots: SEXP) -> c_int {
-    unsafe {
+    {
         let mut n = 0;
         let mut cell = dots;
         while !cell.is_null() && cell != R_NilValue() {
@@ -131,7 +131,7 @@ unsafe fn dots_len(dots: SEXP) -> c_int {
 }
 
 unsafe fn dots_cell_at(dots: SEXP, index: c_int) -> SEXP {
-    unsafe {
+    {
         if index <= 0 {
             dots_context_error("indexing '...' with an invalid index");
         }
@@ -414,7 +414,7 @@ unsafe fn dispatch_primitive(generic_sym: SEXP) -> SEXP {
 }
 
 unsafe fn dispatch_op_usable(op: SEXP) -> bool {
-    unsafe {
+    {
         !op.is_null()
             && op != R_UnboundValue()
             && op != R_NilValue()
@@ -1252,7 +1252,7 @@ pub(crate) fn set_R_BCIntActive_in(inst: *mut RInstance, val: c_int) {
 ///
 /// Ported from R's `markSpecialArgs()` in eval.c.
 pub unsafe fn markSpecialArgs(args: SEXP) -> SEXP {
-    unsafe {
+    {
         if args.is_null() || args == R_NilValue() {
             return args;
         }
@@ -1273,7 +1273,7 @@ pub unsafe fn markSpecialArgs(args: SEXP) -> SEXP {
 /// compiler produces compact assignment calls that need to be expanded
 /// to their full form for the interpreter.
 pub unsafe fn inflateAssignmentCall(expr: SEXP) -> SEXP {
-    unsafe {
+    {
         if expr.is_null() || expr == R_NilValue() {
             return R_NilValue();
         }
@@ -1364,7 +1364,7 @@ pub unsafe fn do_missing(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 ///
 /// This is called when a function exits (normally or via error).
 pub unsafe fn run_onexits() {
-    unsafe {
+    {
         super::context::R_run_onexits();
     }
 }

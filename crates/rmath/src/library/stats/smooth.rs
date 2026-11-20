@@ -17,7 +17,7 @@ const sm_COPY_ENDRULE: c_int = 1;
 const sm_TUKEY_ENDRULE: c_int = 2;
 
 unsafe fn med3(u: c_double, v: c_double, w: c_double) -> c_double {
-    unsafe {
+    {
         if (u <= v && v <= w) || (u >= v && v >= w) {
             return v;
         }
@@ -29,7 +29,7 @@ unsafe fn med3(u: c_double, v: c_double, w: c_double) -> c_double {
 }
 
 unsafe fn imed3(u: c_double, v: c_double, w: c_double) -> c_int {
-    unsafe {
+    {
         if (u <= v && v <= w) || (u >= v && v >= w) {
             return 0;
         }

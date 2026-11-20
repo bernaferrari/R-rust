@@ -42,7 +42,7 @@ use crate::sexp::symbol::Rf_install;
 
 /// R's `is.single(x)` — stock R exposes this but errors because single is unimplemented.
 pub unsafe fn do_is_single(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    {
         let _x = CAR(args);
         std::panic::panic_any(crate::sexp::context::RError {
             message: "type \"single\" unimplemented in R".to_string(),

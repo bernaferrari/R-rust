@@ -77,7 +77,7 @@ fn protect_raw(s: SEXP) -> ProtectGuard<'static> {
 
     with_required_current_instance(|inst| {
         // SAFETY: guard creation requires an active instance; `inst` is it.
-        let slot = unsafe { protect_raw_with_slot_in(inst, s, "protect") };
+        let slot = { protect_raw_with_slot_in(inst, s, "protect") };
         ProtectGuard {
             owner: Some(unsafe { GuardOwner::new(inst) }),
             release: GuardRelease::RootSlot(slot),

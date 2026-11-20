@@ -216,13 +216,13 @@ pub fn binary_logic_or(s1: &[c_int], s2: &[c_int]) -> Vec<c_int> {
 /// the operation code for built-in primitives.
 #[inline]
 unsafe fn primval(op: SEXP) -> c_int {
-    unsafe { crate::mainutils::relop::PRIMVAL(op) }
+    crate::mainutils::relop::PRIMVAL(op)
 }
 
 /// Check if a SEXP is of numeric type (logical, integer, real, or complex).
 #[inline]
 unsafe fn is_number(x: SEXP) -> bool {
-    unsafe {
+    {
         if x.is_null() {
             return false;
         }
@@ -237,7 +237,7 @@ unsafe fn is_number(x: SEXP) -> bool {
 /// Check if a SEXP is of raw type.
 #[inline]
 unsafe fn is_raw(x: SEXP) -> bool {
-    unsafe {
+    {
         if x.is_null() {
             return false;
         }

@@ -234,7 +234,7 @@ unsafe fn hashsrcref(e: SEXP, mut h: R_exprhash_t) -> R_exprhash_t {
 ///
 /// Functions with a score >= MIN_JIT_SCORE are compiled to bytecode.
 pub unsafe fn JIT_score(e: SEXP) -> c_int {
-    unsafe {
+    {
         if e.is_null() || TYPEOF(e) != SEXPTYPE::CLOSXP {
             return 0;
         }
@@ -267,7 +267,7 @@ fn count_calls(e: SEXP, depth: c_int) -> c_int {
     if depth > 20 {
         return 0; // prevent stack overflow
     }
-    unsafe {
+    {
         if e.is_null() || e == R_NilValue() {
             return 0;
         }

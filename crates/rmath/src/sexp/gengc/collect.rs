@@ -79,7 +79,7 @@ pub(crate) fn eval_safe_point_gc_due_in(instance: *mut instance::RInstance) -> b
 }
 
 pub(crate) fn collect_environment_binding_values(instance: *mut instance::RInstance) -> Vec<SEXP> {
-    unsafe {
+    {
         let mut values = Vec::new();
         let mut seen_envs = std::collections::HashSet::new();
         unsafe {

@@ -33,7 +33,7 @@ unsafe fn supplied_arg(args: SEXP, name: &str, position: usize) -> Option<SEXP> 
 }
 
 unsafe fn time_value(value: SEXP, default: f64) -> f64 {
-    unsafe {
+    {
         if value.is_null() || value == R_NilValue() || XLENGTH(value) == 0 {
             return default;
         }

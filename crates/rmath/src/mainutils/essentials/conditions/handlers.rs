@@ -437,7 +437,7 @@ unsafe fn install_global_handler_stack(rho: SEXP) {
 }
 
 unsafe fn pairlist_len(mut p: SEXP) -> i64 {
-    unsafe {
+    {
         let mut n = 0i64;
         while !p.is_null() && p != R_NilValue() {
             n += 1;

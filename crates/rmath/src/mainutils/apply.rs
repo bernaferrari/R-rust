@@ -97,7 +97,7 @@ unsafe fn asBool2(x: SEXP, _call: SEXP) -> bool {
 
 /// Check if type is VECSXP or EXPRSXP.
 unsafe fn isVectorList(x: SEXP) -> c_int {
-    unsafe {
+    {
         if x.is_null() || x == R_NilValue() {
             return 0;
         }
@@ -108,7 +108,7 @@ unsafe fn isVectorList(x: SEXP) -> c_int {
 
 /// Check if type is CLOSXP, BUILTINSXP, or SPECIALSXP.
 unsafe fn isFunction(x: SEXP) -> c_int {
-    unsafe {
+    {
         if x.is_null() || x == R_NilValue() {
             return 0;
         }
@@ -119,7 +119,7 @@ unsafe fn isFunction(x: SEXP) -> c_int {
 
 /// Check if type is STRSXP.
 unsafe fn isString(x: SEXP) -> c_int {
-    unsafe {
+    {
         if x.is_null() || x == R_NilValue() {
             return 0;
         }
@@ -129,7 +129,7 @@ unsafe fn isString(x: SEXP) -> c_int {
 
 /// Check if x is any atomic or generic vector type.
 unsafe fn isVector(x: SEXP) -> c_int {
-    unsafe {
+    {
         if x.is_null() || x == R_NilValue() {
             return 0;
         }
@@ -239,7 +239,7 @@ pub unsafe fn isFactor(x: SEXP) -> c_int {
 
 /// R_typeToChar: convert SEXPTYPE to its string name.
 unsafe fn R_typeToChar_local(x: SEXP) -> *const c_char {
-    unsafe {
+    {
         if x.is_null() {
             return c"NULL".as_ptr();
         }
@@ -288,7 +288,7 @@ unsafe fn LCONS(car: SEXP, cdr: SEXP) -> SEXP {
 
 /// Get the length of an SEXP as c_int (handles pairlists too).
 unsafe fn length(x: SEXP) -> c_int {
-    unsafe {
+    {
         if x.is_null() || x == R_NilValue() {
             return 0;
         }

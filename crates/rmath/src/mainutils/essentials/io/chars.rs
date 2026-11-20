@@ -33,7 +33,7 @@ pub unsafe fn do_readChar(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 }
 
 unsafe fn read_chars_from_connection(connection: c_int, nchars: i64) -> String {
-    let opened_here = unsafe {
+    let opened_here = {
         let index = crate::mainutils::connections::checked_connection_index(connection);
         let mut table = crate::mainutils::connections::connection_table();
         let Some(conn) = table[index].as_mut() else {

@@ -54,7 +54,7 @@ unsafe fn x_d_omx(x: c_double) -> c_double {
 /// Evaluate x/(1 + x).
 #[inline]
 unsafe fn x_d_opx(x: c_double) -> c_double {
-    unsafe { x / (1.0 + x) }
+    x / (1.0 + x)
 }
 
 pub unsafe fn logit_link(mu: SEXP) -> SEXP {
@@ -152,7 +152,7 @@ pub unsafe fn logit_mu_eta(eta: SEXP) -> SEXP {
 /// y * log(y/mu), returning 0 when y == 0.
 #[inline]
 unsafe fn y_log_y(y: c_double, mu: c_double) -> c_double {
-    unsafe { if y != 0.0 { y * (y / mu).ln() } else { 0.0 } }
+    if y != 0.0 { y * (y / mu).ln() } else { 0.0 }
 }
 
 pub unsafe fn binomial_dev_resids(y: SEXP, mu: SEXP, wt: SEXP) -> SEXP {

@@ -288,7 +288,7 @@ pub unsafe fn do_oldClass(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 /// Internal function to get the dispatch environment.
 pub unsafe fn do_procdest(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     // Unimplemented: requires R methods package infrastructure
-    unsafe {
+    {
         // proc.dest is used internally for debugging; simplified
         R_NilValue()
     }

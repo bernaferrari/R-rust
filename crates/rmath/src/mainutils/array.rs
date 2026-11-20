@@ -63,7 +63,7 @@ pub(crate) enum MatProductKind {
 }
 
 fn is_numeric_type(x: SEXP) -> bool {
-    unsafe {
+    {
         matches!(
             TYPEOF(x),
             tag if tag == SEXPTYPE::INTSXP.as_c_int()
@@ -123,7 +123,7 @@ unsafe fn matrix_value(x: SEXP, row: usize, col: usize, nrow: usize) -> f64 {
 }
 
 unsafe fn first_arg(args: SEXP, name: &str) -> SEXP {
-    unsafe {
+    {
         if args.is_null() || args == R_NilValue() {
             array_error(format!("{name} requires an argument"));
         }
@@ -132,7 +132,7 @@ unsafe fn first_arg(args: SEXP, name: &str) -> SEXP {
 }
 
 unsafe fn second_arg_or_first(args: SEXP, first: SEXP) -> SEXP {
-    unsafe {
+    {
         let rest = CDR(args);
         if rest.is_null() || rest == R_NilValue() {
             first

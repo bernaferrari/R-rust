@@ -32,7 +32,7 @@ pub fn R_FunTabSize() -> usize {
 /// This is the equivalent of R's `PRIMFUN()` macro.
 #[inline]
 pub unsafe fn PRIMFUN(op: SEXP) -> Option<PrimFun> {
-    unsafe { primitive::get_primfun(op) }
+    primitive::get_primfun(op)
 }
 
 /// Initialize builtin slots.

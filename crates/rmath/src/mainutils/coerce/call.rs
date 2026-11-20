@@ -524,7 +524,7 @@ pub struct SubstituteFormal {
 
 impl SubstituteFormal {
     pub fn new(name: &'static str) -> Self {
-        unsafe {
+        {
             Self {
                 name,
                 value: R_MissingArg(),

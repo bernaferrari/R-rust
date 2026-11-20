@@ -267,7 +267,7 @@ pub(crate) fn binding_exists_in_frame_raw(env: SEXP, symbol: SEXP) -> bool {
     if env.is_null() || symbol.is_null() {
         return false;
     }
-    unsafe {
+    {
         let mut frame = super::accessors::FRAME(env);
         while !frame.is_null() && frame != R_NilValue() {
             let tag = super::accessors::TAG(frame);
@@ -284,7 +284,7 @@ pub(crate) fn binding_exists_in_frame_raw(env: SEXP, symbol: SEXP) -> bool {
 }
 
 pub(crate) fn binding_exists_raw(mut env: SEXP, symbol: SEXP, inherits: bool) -> bool {
-    unsafe {
+    {
         while !env.is_null() && env != R_NilValue() {
             if binding_exists_in_frame_raw(env, symbol) {
                 return true;
@@ -1470,7 +1470,7 @@ unsafe fn propagated_missing(symbol: Sexp<'_>, rho: Sexp<'_>, depth: u32) -> boo
 
 fn frame_binding_cell(rho: Sexp<'_>, symbol: Sexp<'_>) -> Option<SEXP> {
     let frame = rho.try_frame().ok()?;
-    unsafe {
+    {
         let mut cell = frame.as_raw();
         while !cell.is_null() && cell != R_NilValue() {
             if symbol_name_bytes_equal(TAG(cell), symbol.clone().as_raw()) {
@@ -1540,7 +1540,7 @@ fn dots_len(dots: Sexp<'_>) -> i32 {
     if is_empty_dots_value(dots.clone()) {
         return 0;
     }
-    unsafe {
+    {
         let mut n = 0;
         let mut cell = dots.as_raw();
         while !cell.is_null() && cell != R_NilValue() {
@@ -2052,7 +2052,7 @@ pub unsafe fn ddfindVar(symbol: SEXP, rho: SEXP) -> SEXP {
 
 /// Convert a SEXPTYPE integer to its string representation.
 pub unsafe fn R_typeToChar(stype: c_int) -> SEXP {
-    unsafe {
+    {
         let _name = match stype {
             0 => "NULL",
             1 => "symbol",

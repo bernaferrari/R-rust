@@ -221,7 +221,7 @@ fn random3_call(
 // ---------------------------------------------------------------------------
 
 unsafe fn isVector(x: SEXP) -> bool {
-    unsafe {
+    {
         let t = TYPEOF(x);
         t == SEXPTYPE::INTSXP
             || t == SEXPTYPE::REALSXP
@@ -234,7 +234,7 @@ unsafe fn isVector(x: SEXP) -> bool {
 }
 
 unsafe fn isNumeric(x: SEXP) -> bool {
-    unsafe {
+    {
         let t = TYPEOF(x);
         t == SEXPTYPE::INTSXP || t == SEXPTYPE::REALSXP
     }
@@ -296,7 +296,7 @@ unsafe fn asLogical_local(x: SEXP) -> c_int {
 }
 
 unsafe fn isNull(x: SEXP) -> bool {
-    unsafe { x.is_null() || x == R_NilValue() }
+    x.is_null() || x == R_NilValue()
 }
 
 unsafe fn checkArity(op: SEXP, args: SEXP) {
@@ -304,7 +304,7 @@ unsafe fn checkArity(op: SEXP, args: SEXP) {
 }
 
 unsafe fn PRIMVAL_local(op: SEXP) -> c_int {
-    unsafe { crate::mainutils::relop::PRIMVAL(op) }
+    crate::mainutils::relop::PRIMVAL(op)
 }
 
 // ---------------------------------------------------------------------------
@@ -721,7 +721,7 @@ fn pmatch_one(x: &str, table: &[&str]) -> Option<usize> {
 }
 
 fn arg_is_absent(x: SEXP) -> bool {
-    x.is_null() || unsafe { x == R_NilValue() || x == R_MissingArg() }
+    x.is_null() || { x == R_NilValue() || x == R_MissingArg() }
 }
 
 /// True when the slot carries the given parameter tag. The evaluator keeps

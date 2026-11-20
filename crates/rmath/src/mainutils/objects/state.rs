@@ -529,7 +529,7 @@ fn s4_extends_registered(
 }
 
 pub(crate) unsafe fn primitive_offset(op: SEXP) -> Option<usize> {
-    unsafe {
+    {
         if op.is_null()
             || (TYPEOF(op) != SEXPTYPE::BUILTINSXP && TYPEOF(op) != SEXPTYPE::SPECIALSXP)
         {

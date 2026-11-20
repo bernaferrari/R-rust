@@ -284,7 +284,7 @@ impl UnlistValue {
             Self::NaString => "NA".to_string(),
             Self::Object(value) => elt_to_string(*value, 0),
             Self::Raw(value) => format!("{value:02x}"),
-            Self::Element { parent, index } => unsafe { elt_to_string(*parent, *index) },
+            Self::Element { parent, index } => elt_to_string(*parent, *index),
         }
     }
 

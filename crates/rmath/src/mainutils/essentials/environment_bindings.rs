@@ -233,7 +233,7 @@ pub unsafe fn do_list2env(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 }
 
 unsafe fn environment_arg(value: SEXP) -> SEXP {
-    unsafe {
+    {
         if value.is_null() || value == R_NilValue() || TYPEOF(value) != SEXPTYPE::ENVSXP {
             base_error("not an environment");
         }

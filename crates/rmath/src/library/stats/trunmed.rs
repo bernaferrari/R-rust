@@ -9,7 +9,7 @@
 /// `l` and `r` are 1-based indices.
 #[inline]
 unsafe fn swap(l: i64, r: i64, window: &mut [f64], outlist: &mut [i64], nrlist: &mut [i64]) {
-    unsafe {
+    {
         let tmp = window[l as usize];
         window[l as usize] = window[r as usize];
         window[r as usize] = tmp;
@@ -26,7 +26,7 @@ unsafe fn swap(l: i64, r: i64, window: &mut [f64], outlist: &mut [i64], nrlist: 
 /// Heap sift-up (max heap). Used only in `R_heapsort`.
 /// `l` and `r` are 1-based indices.
 unsafe fn siftup(mut l: i64, r: i64, window: &mut [f64], outlist: &mut [i64], nrlist: &mut [i64]) {
-    unsafe {
+    {
         let mut i = l;
         let nrold = nrlist[i as usize];
         let x = window[i as usize];
@@ -152,7 +152,7 @@ unsafe fn toroot(
     outlist: &mut [i64],
     nrlist: &mut [i64],
 ) {
-    unsafe {
+    {
         loop {
             let father = outvirt / 2;
             window[(outvirt + k) as usize] = window[(father + k) as usize];

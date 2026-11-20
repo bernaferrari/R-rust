@@ -127,7 +127,7 @@ fn bool_to_rflag(value: bool) -> c_int {
 
 #[inline]
 unsafe fn isNumeric(x: SEXP) -> c_int {
-    unsafe {
+    {
         let sxp_type = TYPEOF(x);
         bool_to_rflag(
             sxp_type == SEXPTYPE::INTSXP

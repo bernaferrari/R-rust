@@ -610,7 +610,7 @@ pub(super) fn pretty_axp(lo0: f64, hi0: f64) -> (f64, f64, f64) {
     let mut hi = hi0;
     let mut ndiv = 5i32;
     let high = [0.8f64, 1.7, 1.125];
-    let unit = unsafe {
+    let unit = {
         crate::appl::pretty::R_pretty(&mut lo, &mut hi, &mut ndiv, 1, 0.25, high.as_ptr(), 2, 0)
     };
     if lo * unit < lo0 - 1e-10 * unit {

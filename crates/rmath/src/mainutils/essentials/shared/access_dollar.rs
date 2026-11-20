@@ -285,7 +285,7 @@ pub unsafe fn do_at_set(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 pub(crate) unsafe fn replacement_name(arg: SEXP) -> String {
-    unsafe {
+    {
         if arg.is_null() || arg == R_NilValue() {
             String::new()
         } else if TYPEOF(arg) == SEXPTYPE::SYMSXP {

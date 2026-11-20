@@ -69,7 +69,7 @@ pub fn imax2(x: c_int, y: c_int) -> c_int {
 /// if it's not a promise or if PRVALUE returns null/nil.
 #[inline(always)]
 pub unsafe fn resolve_promise(x: SEXP) -> SEXP {
-    unsafe {
+    {
         if x.is_null() || x == R_NilValue() {
             return x;
         }
@@ -228,7 +228,7 @@ pub fn isVector(x: SEXP) -> c_int {
 /// Check if x is a pairlist (LISTSXP).
 #[inline(always)]
 pub unsafe fn isList(x: SEXP) -> c_int {
-    unsafe {
+    {
         if x.is_null() {
             return 0;
         }
@@ -239,7 +239,7 @@ pub unsafe fn isList(x: SEXP) -> c_int {
 /// Check if x is a generic list (VECSXP).
 #[inline(always)]
 pub unsafe fn isNewList(x: SEXP) -> bool {
-    unsafe {
+    {
         if x.is_null() || x == R_NilValue() {
             return false;
         }
@@ -250,7 +250,7 @@ pub unsafe fn isNewList(x: SEXP) -> bool {
 /// Check if x is a symbol (SYMSXP).
 #[inline(always)]
 pub unsafe fn isSymbol(x: SEXP) -> bool {
-    unsafe {
+    {
         if x.is_null() {
             return false;
         }

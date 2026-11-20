@@ -1060,7 +1060,7 @@ pub unsafe fn do_tilde(call: SEXP, _op: SEXP, _args: SEXP, rho: SEXP) -> SEXP {
 /// Get the name of a primitive function.
 /// For use in packages.
 pub unsafe fn getPRIMNAME(object: SEXP) -> *const c_char {
-    unsafe {
+    {
         if object.is_null() {
             return ptr::null();
         }

@@ -93,7 +93,7 @@ unsafe fn bind_element(x: SEXP, t: c_int, i: R_xlen_t) -> SEXP {
 
 /// bind.c HasNames() for a pairlist: any non-NULL cell TAG.
 unsafe fn bind_pairlist_has_tags(x: SEXP) -> bool {
-    unsafe {
+    {
         let mut cell = x;
         while !cell.is_null() && cell != R_NilValue() {
             let tag = TAG(cell);
@@ -108,7 +108,7 @@ unsafe fn bind_pairlist_has_tags(x: SEXP) -> bool {
 
 /// bind.c ListAnswer / NewExtractNames: printname of the i-th pairlist TAG.
 unsafe fn bind_pairlist_cell_name(x: SEXP, i: R_xlen_t) -> SEXP {
-    unsafe {
+    {
         let mut cell = x;
         let mut k: R_xlen_t = 0;
         while k < i && !cell.is_null() && cell != R_NilValue() {

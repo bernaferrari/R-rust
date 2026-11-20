@@ -689,7 +689,7 @@ pub unsafe extern "C-unwind" fn loess_raw(
     two_delta: *mut c_double,
     setLf: *mut c_int,
 ) {
-    unsafe {
+    {
         engine_loess_raw(
             y,
             x,
@@ -732,7 +732,7 @@ pub unsafe extern "C-unwind" fn loess_dfit(
     m: *mut c_int,
     fit: *mut c_double,
 ) {
-    unsafe {
+    {
         let _ = (sum_drop_sqr,);
         engine_loess_dfit(
             y,
@@ -838,7 +838,7 @@ pub unsafe extern "C-unwind" fn loess_ifit(
     x_evaluate: *mut c_double,
     fit: *mut c_double,
 ) {
-    unsafe {
+    {
         engine_loess_ifit(parameter, a, xi, vert, vval, m, x_evaluate, fit);
     }
 }

@@ -64,12 +64,12 @@ pub unsafe fn R_SeedsSymbol() -> SEXP {
 
 /// Get R_Visible flag.
 pub unsafe fn R_GetVisible() -> c_int {
-    unsafe { if R_Visible() != 0 { TRUE } else { FALSE } }
+    if R_Visible() != 0 { TRUE } else { FALSE }
 }
 
 /// Set R_Visible flag.
 pub unsafe fn R_SetVisible(v: c_int) {
-    unsafe {
+    {
         set_R_Visible(v);
     }
 }

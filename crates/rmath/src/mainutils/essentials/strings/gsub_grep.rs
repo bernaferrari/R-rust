@@ -386,7 +386,7 @@ pub unsafe fn do_pcre_config(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) ->
 }
 
 fn agrep_max_distance(args: SEXP, pattern_arg: SEXP) -> usize {
-    unsafe {
+    {
         let raw = arg_by_name_or_position(args, &["max.distance"], 2);
         let value = if raw.is_null() || raw == R_NilValue() {
             0.1
@@ -411,7 +411,7 @@ unsafe fn agrep_match_any(
     max_distance: usize,
     ignore_case: bool,
 ) -> Vec<R_xlen_t> {
-    unsafe {
+    {
         let n = XLENGTH(x);
         let mut matches = Vec::new();
         for i in 0..n {

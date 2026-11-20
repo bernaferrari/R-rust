@@ -3,7 +3,7 @@
 use super::*;
 
 pub(super) fn list_apply_len(x: SEXP) -> R_xlen_t {
-    unsafe {
+    {
         match TYPEOF(x) {
             t if t == SEXPTYPE::LISTSXP || t == SEXPTYPE::LANGSXP => {
                 let mut len = 0;
@@ -221,7 +221,7 @@ pub(super) fn apply_fun(call: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 pub(super) fn is_function(value: SEXP) -> bool {
-    unsafe {
+    {
         !value.is_null()
             && value != R_NilValue()
             && value != crate::sexp::globals::R_UnboundValue()

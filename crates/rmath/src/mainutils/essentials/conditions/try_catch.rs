@@ -38,7 +38,7 @@ pub(crate) unsafe fn try_catch_evaluation_context(rho: SEXP) -> crate::sexp::con
 /// `getCurrentCall()`. tryCatch fabricates `doTryCatch(...)` only when the
 /// raise is in the tryCatch frame itself (`stop("boom")`).
 pub(crate) unsafe fn caught_error_call() -> Option<crate::sexp::object::Sexp<'static>> {
-    unsafe {
+    {
         let (call, explicit, nframe) = crate::mainutils::errors::take_recorded_error_call()?;
         if call.as_raw() == R_NilValue() {
             return Some(call);

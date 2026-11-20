@@ -855,7 +855,7 @@ unsafe fn validate_weak_ref_object(w: SEXP) {
 }
 
 unsafe fn is_valid_r_finalizer(fun: SEXP) -> bool {
-    unsafe {
+    {
         if fun.is_null() || fun == R_NilValue() {
             return true;
         }
@@ -986,7 +986,7 @@ pub unsafe fn R_ExternalPtrAddr(s: SEXP) -> *mut c_void {
 ///
 /// This is the equivalent of R's `R_ExternalPtrTag()`.
 pub unsafe fn R_ExternalPtrTag(s: SEXP) -> SEXP {
-    unsafe {
+    {
         if s.is_null() {
             return R_NilValue();
         }
@@ -998,7 +998,7 @@ pub unsafe fn R_ExternalPtrTag(s: SEXP) -> SEXP {
 ///
 /// This is the equivalent of R's `R_ExternalPtrProtected()`.
 pub unsafe fn R_ExternalPtrProtected(s: SEXP) -> SEXP {
-    unsafe {
+    {
         if s.is_null() {
             return R_NilValue();
         }
@@ -1038,7 +1038,7 @@ pub unsafe fn R_SetExternalPtrAddr(s: SEXP, p: *mut c_void) {
 ///
 /// This is the equivalent of R's `R_SetExternalPtrTag()`.
 pub unsafe fn R_SetExternalPtrTag(s: SEXP, tag: SEXP) {
-    unsafe {
+    {
         if !s.is_null() {
             set_external_pointer_child(s, crate::sexp::ffi::EdgeField::ExternalTag, tag);
         }
@@ -1049,7 +1049,7 @@ pub unsafe fn R_SetExternalPtrTag(s: SEXP, tag: SEXP) {
 ///
 /// This is the equivalent of R's `R_SetExternalPtrProtected()`.
 pub unsafe fn R_SetExternalPtrProtected(s: SEXP, p: SEXP) {
-    unsafe {
+    {
         if !s.is_null() {
             set_external_pointer_child(s, crate::sexp::ffi::EdgeField::ExternalProtected, p);
         }
@@ -1412,7 +1412,7 @@ pub unsafe fn R_isResizable(x: SEXP) -> c_int {
 ///
 /// This is the equivalent of R's `R_maxLength()`.
 pub unsafe fn R_maxLength(x: SEXP) -> R_xlen_t {
-    unsafe {
+    {
         if x.is_null() {
             return 0;
         }
@@ -1449,7 +1449,7 @@ pub unsafe fn R_duplicateAsResizable(x: SEXP) -> SEXP {
 ///
 /// This is the equivalent of R's `R_signal_protect_error()`.
 pub unsafe fn R_signal_protect_error() {
-    unsafe {
+    {
         crate::mainutils::errors::errorcall(
             R_NilValue(),
             b"protect stack overflow\0".as_ptr() as *const c_char,
@@ -1458,7 +1458,7 @@ pub unsafe fn R_signal_protect_error() {
 }
 
 pub unsafe fn R_signal_unprotect_error() {
-    unsafe {
+    {
         crate::mainutils::errors::errorcall(
             R_NilValue(),
             b"unprotect stack underflow\0".as_ptr() as *const c_char,

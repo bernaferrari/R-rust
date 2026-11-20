@@ -267,7 +267,7 @@ unsafe fn ensure_get_value_named(value: SEXP) -> SEXP {
 }
 
 unsafe fn lookup_mode_argument(args: SEXP, position: usize) -> Option<String> {
-    unsafe {
+    {
         let mode = arg_by_name_or_position(args, &["mode"], position);
         if mode.is_null() || mode == R_NilValue() {
             return Some("any".to_string());

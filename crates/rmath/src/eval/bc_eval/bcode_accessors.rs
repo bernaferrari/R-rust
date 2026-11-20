@@ -68,7 +68,7 @@ pub unsafe fn BCODE_EXPR(x: SEXP) -> SEXP {
 }
 
 pub(crate) fn gnu_plain_numeric(x: SEXP) -> bool {
-    unsafe {
+    {
         let ty = TYPEOF(x);
         ty == SEXPTYPE::LGLSXP || ty == SEXPTYPE::INTSXP || ty == SEXPTYPE::REALSXP
     }

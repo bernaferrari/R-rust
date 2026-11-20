@@ -54,7 +54,7 @@ unsafe fn nlevels(f: SEXP) -> c_int {
 
 /// Check if SEXP is a vector type (atomic or list).
 unsafe fn isVector(x: SEXP) -> c_int {
-    unsafe {
+    {
         if x.is_null() {
             return 0;
         }

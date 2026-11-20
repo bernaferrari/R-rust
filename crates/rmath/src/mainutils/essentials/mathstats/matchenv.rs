@@ -187,7 +187,7 @@ pub unsafe fn do_match_arg(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
 /// `pmatch(x, table, nomatch = 0, duplicates.ok = TRUE)` for a single
 /// element: an exact match wins, otherwise a unique prefix; -1 = nomatch.
 unsafe fn match_arg_pmatch_index(needle: &str, choices: SEXP) -> i64 {
-    unsafe {
+    {
         for i in 0..XLENGTH(choices) {
             if elt_to_string(choices, i) == needle {
                 return i;

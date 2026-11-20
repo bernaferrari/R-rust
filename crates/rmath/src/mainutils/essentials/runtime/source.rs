@@ -965,7 +965,7 @@ unsafe fn eval_source_text(content: &str, env: SEXP) -> SEXP {
 
 /// R's `demo(topic, ...)` — run a demo (simplified).
 pub unsafe fn do_demo(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    {
         let topic_arg = CAR(args);
         if topic_arg.is_null() || topic_arg == R_NilValue() {
             eprintln!("demo: no topic specified");

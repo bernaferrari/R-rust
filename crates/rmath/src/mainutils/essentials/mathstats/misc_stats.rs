@@ -1185,7 +1185,7 @@ unsafe fn smirnov_alternative(arg: SEXP) -> &'static str {
 }
 
 unsafe fn smirnov_row_totals(z: SEXP) -> Vec<i32> {
-    unsafe {
+    {
         let n = XLENGTH(z) as usize;
         let mut vals = Vec::with_capacity(n);
         for i in 0..n {

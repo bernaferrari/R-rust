@@ -161,7 +161,7 @@ pub unsafe fn error(msg: &str) {
 
 pub unsafe fn R_typeToChar(s: SEXP) -> *const c_char {
     // Return the static SEXPTYPE name for this SEXP (only used in errors).
-    unsafe {
+    {
         if s.is_null() {
             return b"NULL\0".as_ptr() as *const c_char;
         }

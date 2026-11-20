@@ -45,7 +45,7 @@ pub unsafe fn do_lib_paths(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
     // Stock .libPaths is a closure (base/zdynvars.R): with `new`
     // missing it returns `.lib.loc` visibly; supplying `new` ends in
     // `<<-`, whose assignment tail is invisible.
-    let new_supplied = unsafe {
+    let new_supplied = {
         let first = if !args.is_null() && args != R_NilValue() {
             CAR(args)
         } else {

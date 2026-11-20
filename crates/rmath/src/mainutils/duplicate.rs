@@ -238,7 +238,7 @@ unsafe fn SET_DDVAL(x: SEXP, v: c_int) {
 /// Check if a type is pairlist-like.
 #[inline]
 unsafe fn isPairList(x: SEXP) -> c_int {
-    unsafe {
+    {
         if x.is_null() {
             return 0;
         }
@@ -250,7 +250,7 @@ unsafe fn isPairList(x: SEXP) -> c_int {
 /// Check if a type is a vector list (VECSXP, EXPRSXP).
 #[inline]
 unsafe fn isVectorList(x: SEXP) -> c_int {
-    unsafe {
+    {
         if x.is_null() {
             return 0;
         }

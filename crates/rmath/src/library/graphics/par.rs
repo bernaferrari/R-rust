@@ -1233,7 +1233,7 @@ fn graphics_error(message: impl Into<String>) -> ! {
 }
 
 unsafe fn layout_pop_arg(args: &mut SEXP) -> SEXP {
-    unsafe {
+    {
         if args.is_null() || *args == R_NilValue() {
             graphics_error("invalid graphics layout");
         }

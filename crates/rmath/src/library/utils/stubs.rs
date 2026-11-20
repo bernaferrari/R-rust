@@ -86,7 +86,7 @@ pub unsafe fn edit(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 // Helper: check if SEXP is a string (STRSXP)
 // ---------------------------------------------------------------------------
 unsafe fn isString(x: SEXP) -> bool {
-    unsafe { !x.is_null() && TYPEOF(x) == SEXPTYPE::STRSXP }
+    !x.is_null() && TYPEOF(x) == SEXPTYPE::STRSXP
 }
 
 // ---------------------------------------------------------------------------
@@ -308,7 +308,7 @@ pub unsafe fn dataviewer(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 // selectlist -- Select list (GUI function)
 // ---------------------------------------------------------------------------
 pub unsafe fn selectlist(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe {
+    {
         let _ = (call, op, args, env);
         // selectlist returns NULL when no GUI is available (matching R behavior)
         R_NilValue()
@@ -395,7 +395,7 @@ pub unsafe fn fileedit(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 // flushconsole -- Flush the console output
 // ---------------------------------------------------------------------------
 pub unsafe fn flushconsole() -> SEXP {
-    unsafe {
+    {
         crate::unix::system::R_FlushConsole();
         R_NilValue()
     }
@@ -405,7 +405,7 @@ pub unsafe fn flushconsole() -> SEXP {
 // processevents -- Process pending GUI events
 // ---------------------------------------------------------------------------
 pub unsafe fn processevents() -> SEXP {
-    unsafe {
+    {
         R_ProcessEvents();
         R_NilValue()
     }

@@ -6,7 +6,7 @@ use super::*;
 /// container), as opposed to a symbol/closure-call that still needs
 /// evaluation in `rho`.
 pub(super) fn is_already_a_value(expr: SEXP) -> bool {
-    unsafe {
+    {
         let t = crate::sexp::accessors::TYPEOF(expr);
         t != SEXPTYPE::SYMSXP.0
             && t != SEXPTYPE::LANGSXP.0

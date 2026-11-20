@@ -591,7 +591,7 @@ unsafe fn evalArgs<'a>(
 // ---------------------------------------------------------------------------
 
 unsafe fn isFunction(x: SEXP) -> c_int {
-    unsafe {
+    {
         if x.is_null() || x == R_NilValue() {
             return FALSE;
         }
@@ -609,7 +609,7 @@ unsafe fn isFunction(x: SEXP) -> c_int {
 // ---------------------------------------------------------------------------
 
 unsafe fn isSymbol(x: SEXP) -> c_int {
-    unsafe {
+    {
         if x.is_null() || x == R_NilValue() {
             return FALSE;
         }

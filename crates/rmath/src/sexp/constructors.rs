@@ -268,7 +268,7 @@ pub unsafe fn Rf_ScalarLogical(x: c_int) -> SEXP {
     // Pinned GNU Rinlinedfuns.h ScalarLogical shares immutable scalars and
     // normalizes every nonzero, non-NA input. Writable callers allocate a
     // logical vector or duplicate before attaching attributes or changing it.
-    unsafe {
+    {
         if x == super::ffi::NA_LOGICAL {
             super::globals::R_LogicalNA()
         } else if x != 0 {

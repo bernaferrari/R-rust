@@ -29,7 +29,7 @@ pub(crate) unsafe fn isMatrix(x: SEXP) -> bool {
 }
 
 pub(crate) unsafe fn RGB2rgb_func(r: u32, g: u32, b: u32) -> *const c_char {
-    unsafe {
+    {
         with_color_state(|state| {
             let c = &mut state.col_buf;
             c[0] = b'#';
@@ -46,7 +46,7 @@ pub(crate) unsafe fn RGB2rgb_func(r: u32, g: u32, b: u32) -> *const c_char {
 }
 
 pub(crate) unsafe fn RGBA2rgb_func(r: u32, g: u32, b: u32, a: u32) -> *const c_char {
-    unsafe {
+    {
         with_color_state(|state| {
             let c = &mut state.col_buf;
             c[0] = b'#';
@@ -65,7 +65,7 @@ pub(crate) unsafe fn RGBA2rgb_func(r: u32, g: u32, b: u32, a: u32) -> *const c_c
 }
 
 pub(crate) unsafe fn incol2name_buf_opaque(col: rcolor) -> *const c_char {
-    unsafe {
+    {
         with_color_state(|state| {
             let c = &mut state.col_buf;
             c[0] = b'#';
@@ -82,7 +82,7 @@ pub(crate) unsafe fn incol2name_buf_opaque(col: rcolor) -> *const c_char {
 }
 
 pub(crate) unsafe fn incol2name_buf_trans(col: rcolor) -> *const c_char {
-    unsafe {
+    {
         with_color_state(|state| {
             let c = &mut state.col_buf;
             c[0] = b'#';
@@ -215,7 +215,7 @@ pub(crate) unsafe fn rgb2hsv(
     s: &mut c_double,
     v: &mut c_double,
 ) {
-    unsafe {
+    {
         let mut min = r;
         let mut max = r;
         let mut r_max = true;
@@ -274,7 +274,7 @@ pub(crate) unsafe fn rgb2hsv(
 // ---------------------------------------------------------------------------
 
 pub(crate) unsafe fn gtrans(u: c_double) -> c_double {
-    unsafe {
+    {
         if u > 0.00304 {
             1.055 * u.powf(1.0 / GAMMA) - 0.055
         } else {
@@ -284,7 +284,7 @@ pub(crate) unsafe fn gtrans(u: c_double) -> c_double {
 }
 
 pub(crate) unsafe fn FixupColor(r: &mut c_int, g: &mut c_int, b: &mut c_int) -> c_int {
-    unsafe {
+    {
         let mut fix = 0;
         if *r < 0 {
             *r = 0;

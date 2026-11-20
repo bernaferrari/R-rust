@@ -159,7 +159,7 @@ unsafe fn list_tag_name(cell: SEXP) -> Option<String> {
 }
 
 pub(crate) unsafe fn string_vector_values(x: SEXP) -> Vec<String> {
-    unsafe {
+    {
         if x.is_null() || x == R_NilValue() || TYPEOF(x) != SEXPTYPE::STRSXP {
             return Vec::new();
         }
@@ -172,7 +172,7 @@ pub(crate) unsafe fn string_vector_values(x: SEXP) -> Vec<String> {
 }
 
 pub(crate) unsafe fn coerce_string_values(x: SEXP) -> Vec<String> {
-    unsafe {
+    {
         if x.is_null() || x == R_NilValue() {
             return Vec::new();
         }
@@ -396,7 +396,7 @@ unsafe fn s4_class_generator(class_name: &str) -> SEXP {
 }
 
 pub unsafe fn do_setValidity(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    {
         let class_name = elt_to_string(CAR(args), 0);
         let method = CAR(CDR(args));
         if !crate::mainutils::objects::set_s4_validity_fn(&class_name, method) {
@@ -1401,7 +1401,7 @@ pub unsafe fn do_isSealedClass(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
 
 /// R's `sealClass(Class, ...)` — seal a class definition.
 pub unsafe fn do_sealClass(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    {
         // No-op in simplified implementation
         R_NilValue()
     }
@@ -1483,7 +1483,7 @@ pub unsafe fn do_possibleExtends(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP)
 
 /// R's `setReplaceMethod(f, signature, definition)` — set replace method.
 pub unsafe fn do_setReplaceMethod(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    {
         // Simplified: return the definition
         let definition = CAR(CDR(CDR(args)));
         if !definition.is_null() && definition != R_NilValue() {
@@ -1496,7 +1496,7 @@ pub unsafe fn do_setReplaceMethod(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP
 
 /// R's `getMethod(f, signature)` — get a specific S4 method.
 pub unsafe fn do_getMethod(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    {
         // Simplified: return the function name or NULL
         let f_arg = CAR(args);
         if f_arg.is_null() || f_arg == R_NilValue() {
@@ -1542,7 +1542,7 @@ pub unsafe fn do_isMethod(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 
 /// R's `findMethod(f, signature)` — find S4 method.
 pub unsafe fn do_findMethod(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    {
         let _f = CAR(args);
         let _sig = CAR(CDR(args));
         R_NilValue()
@@ -1564,7 +1564,7 @@ pub unsafe fn do_findMethods(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
 
 /// R's `showMethods(f)` — show methods for a generic.
 pub unsafe fn do_showMethods(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    {
         let _f = CAR(args);
         println!("No methods found");
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);

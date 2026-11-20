@@ -498,7 +498,7 @@ unsafe fn complex_margin_summary(
 }
 
 pub unsafe fn margin_summary_dims(dims_arg: SEXP, dim_len: R_xlen_t, rows: bool) -> R_xlen_t {
-    unsafe {
+    {
         let default = if rows && dim_len > 0 { dim_len - 1 } else { 1 };
         if dims_arg.is_null() || dims_arg == R_NilValue() {
             return default;

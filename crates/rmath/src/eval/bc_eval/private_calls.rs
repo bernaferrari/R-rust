@@ -621,7 +621,7 @@ pub(crate) fn private_argument_tags(
 }
 
 pub(crate) unsafe fn stack_top_checked(stack: &R_bcstack_t, context: &str) -> SEXP {
-    unsafe {
+    {
         let value = stack.top();
         if value.is_null() {
             bc_error(format!("{context} bytecode stack underflow"));
@@ -631,7 +631,7 @@ pub(crate) unsafe fn stack_top_checked(stack: &R_bcstack_t, context: &str) -> SE
 }
 
 pub(crate) unsafe fn stack_at_checked(stack: &R_bcstack_t, index: usize, context: &str) -> SEXP {
-    unsafe {
+    {
         if index >= stack.depth() {
             bc_error(format!("{context} bytecode stack slot {index} is missing"));
         }

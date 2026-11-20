@@ -148,7 +148,7 @@ unsafe fn publish_error_traceback(trace: SEXP) {
             .wrap(value)
             .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
     };
-    let base = own(unsafe { crate::eval::runtime::base_env() });
+    let base = own(crate::eval::runtime::base_env());
     let namespace = own(unsafe { crate::sexp::envir::R_BaseNamespace() });
     let trace = own(trace);
     let symbol = own(unsafe { crate::sexp::symbol::Rf_install(c".Traceback".as_ptr()) });
@@ -299,7 +299,7 @@ pub unsafe fn do_traceback(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
 
 /// R_GetCurrentSrcref — get the current source reference.
 pub unsafe fn R_GetCurrentSrcref(skip: c_int) -> SEXP {
-    unsafe {
+    {
         // Simplified: no source references in Rust port yet
         globals::R_NilValue()
     }

@@ -676,7 +676,7 @@ pub(crate) unsafe fn locator_result(args: SEXP) -> SEXP {
 
 /// Positional helper over a plain argument list.
 unsafe fn arg_or_nil(args: SEXP, index: usize) -> SEXP {
-    unsafe {
+    {
         let mut cell = args;
         let mut i = 0;
         while !cell.is_null() && cell != crate::sexp::globals::R_NilValue() {

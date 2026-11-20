@@ -18,7 +18,7 @@ pub(super) unsafe fn GetOption1(sym: SEXP) -> SEXP {
 
 /// Check if an SEXP is a function (CLOSXP or BUILTINSXP).
 pub(super) unsafe fn isFunction(s: SEXP) -> c_int {
-    unsafe {
+    {
         let t = TYPEOF(s);
         (t == SEXPTYPE::CLOSXP || t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP) as c_int
     }
@@ -26,32 +26,32 @@ pub(super) unsafe fn isFunction(s: SEXP) -> c_int {
 
 /// Check if an SEXP is a language object.
 pub(super) unsafe fn isLanguage(s: SEXP) -> c_int {
-    unsafe { (TYPEOF(s) == SEXPTYPE::LANGSXP) as c_int }
+    (TYPEOF(s) == SEXPTYPE::LANGSXP) as c_int
 }
 
 /// Check if an SEXP is an expression.
 pub(super) unsafe fn isExpression(s: SEXP) -> c_int {
-    unsafe { (TYPEOF(s) == SEXPTYPE::EXPRSXP) as c_int }
+    (TYPEOF(s) == SEXPTYPE::EXPRSXP) as c_int
 }
 
 /// Check if an SEXP is a string vector.
 pub(super) unsafe fn isString(s: SEXP) -> c_int {
-    unsafe { (TYPEOF(s) == SEXPTYPE::STRSXP) as c_int }
+    (TYPEOF(s) == SEXPTYPE::STRSXP) as c_int
 }
 
 /// Check if an SEXP is a logical vector.
 pub(super) unsafe fn isLogical(s: SEXP) -> c_int {
-    unsafe { (TYPEOF(s) == SEXPTYPE::LGLSXP) as c_int }
+    (TYPEOF(s) == SEXPTYPE::LGLSXP) as c_int
 }
 
 /// Check if an SEXP is an integer vector.
 pub(super) unsafe fn isInteger(s: SEXP) -> c_int {
-    unsafe { (TYPEOF(s) == SEXPTYPE::INTSXP) as c_int }
+    (TYPEOF(s) == SEXPTYPE::INTSXP) as c_int
 }
 
 /// Check if an SEXP is a real vector.
 pub(super) unsafe fn isReal(s: SEXP) -> c_int {
-    unsafe { (TYPEOF(s) == SEXPTYPE::REALSXP) as c_int }
+    (TYPEOF(s) == SEXPTYPE::REALSXP) as c_int
 }
 
 /// Convert SEXP to logical (simplified).
@@ -71,7 +71,7 @@ pub(super) unsafe fn asLogical(s: SEXP) -> c_int {
 
 /// Check if an SEXP is NULL.
 pub(super) unsafe fn isNull(s: SEXP) -> c_int {
-    unsafe { (s.is_null() || TYPEOF(s) == SEXPTYPE::NILSXP) as c_int }
+    (s.is_null() || TYPEOF(s) == SEXPTYPE::NILSXP) as c_int
 }
 
 /// Check if a string SEXP is valid (non-NA).
@@ -146,7 +146,7 @@ pub(super) unsafe fn setAttrib_wrap(x: SEXP, which: SEXP, value: SEXP) {
 
 /// Get the number of arguments (length of pairlist).
 pub(super) unsafe fn length(x: SEXP) -> c_int {
-    unsafe {
+    {
         let mut count: c_int = 0;
         let mut p = x;
         while !p.is_null() && TYPEOF(p) == SEXPTYPE::LISTSXP {

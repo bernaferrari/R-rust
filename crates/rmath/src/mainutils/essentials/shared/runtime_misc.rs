@@ -329,7 +329,7 @@ pub(crate) fn environment_arg_or_default(
     position: usize,
     default: SEXP,
 ) -> SEXP {
-    unsafe {
+    {
         let arg = arg_by_name_or_position(args, names, position);
         if !arg.is_null() && arg != R_NilValue() && TYPEOF(arg) == SEXPTYPE::ENVSXP {
             arg

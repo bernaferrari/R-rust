@@ -125,7 +125,7 @@ unsafe fn do_paste_impl(args: SEXP, default_sep: &str, paste0: bool) -> SEXP {
 /// GNU `.Internal(cat(list(...), file, sep, fill, labels, append))`,
 /// plus the tagged-primitive form used by `.Primitive("cat")`.
 fn cat_sep_vector(sep_arg: SEXP) -> Vec<String> {
-    unsafe {
+    {
         if sep_arg.is_null() || sep_arg == R_NilValue() || XLENGTH(sep_arg) == 0 {
             return vec![" ".to_string()];
         }
@@ -323,7 +323,7 @@ fn emit_cat_output(output: &str, dest: CatDest, append: bool) {
 }
 
 fn is_internal_cat_args(args: SEXP) -> bool {
-    unsafe {
+    {
         if args.is_null() || args == R_NilValue() {
             return false;
         }
@@ -532,7 +532,7 @@ pub unsafe fn do_identity(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 }
 
 fn mode_name(x: SEXP) -> &'static str {
-    unsafe {
+    {
         if x.is_null() || x == R_NilValue() {
             return "NULL";
         }
@@ -563,7 +563,7 @@ fn mode_name(x: SEXP) -> &'static str {
 }
 
 fn storage_mode_name(x: SEXP) -> &'static str {
-    unsafe {
+    {
         if x.is_null() || x == R_NilValue() {
             return "NULL";
         }
@@ -1628,7 +1628,7 @@ impl TableUseNa {
 }
 
 fn table_use_na(args: SEXP) -> TableUseNa {
-    unsafe {
+    {
         let mut current = args;
         while !current.is_null() && current != R_NilValue() {
             if arg_tag_name(current).as_deref() == Some("useNA") {
@@ -1644,7 +1644,7 @@ fn table_use_na(args: SEXP) -> TableUseNa {
     }
 }
 fn table_exclude(args: SEXP) -> Option<Vec<String>> {
-    unsafe {
+    {
         let mut current = args;
         while !current.is_null() && current != R_NilValue() {
             if arg_tag_name(current).as_deref() == Some("exclude") {
@@ -1720,7 +1720,7 @@ unsafe fn dispatch_as(call: SEXP, op: SEXP, args: SEXP, rho: SEXP, generic: &[u8
 /// `do_asatomic`. DispatchOrEval uses PRIMNAME(op), so `do.call(as.numeric,
 /// list(x))` looks up `as.numeric.*` not the call-head spelling.
 unsafe fn as_double_generic(op: SEXP) -> &'static [u8] {
-    if unsafe { crate::eval::eval::PRIMNAME(op) } == "as.numeric" {
+    if crate::eval::eval::PRIMNAME(op) == "as.numeric" {
         b"as.numeric\0"
     } else {
         b"as.double\0"
@@ -2371,7 +2371,7 @@ unsafe fn function_as_list(fun: SEXP) -> SEXP {
 }
 
 unsafe fn pairlist_len(mut list: SEXP) -> c_int {
-    unsafe {
+    {
         let mut n = 0;
         while !list.is_null() && list != R_NilValue() {
             n += 1;

@@ -24,7 +24,7 @@ pub(crate) unsafe fn read_operand(
     code_len: c_int,
     opname: &str,
 ) -> c_int {
-    unsafe {
+    {
         if *pc >= code_len {
             bc_error(format!("{opname} bytecode operand is truncated"));
         }

@@ -191,7 +191,7 @@ unsafe fn scalar(x: SEXP) -> f64 {
     }
 }
 unsafe fn string(x: SEXP) -> String {
-    unsafe {
+    {
         if TYPEOF(x) != SEXPTYPE::STRSXP || XLENGTH(x) != 1 {
             base_error("expected a character LOESS parameter");
         }
@@ -199,7 +199,7 @@ unsafe fn string(x: SEXP) -> String {
     }
 }
 unsafe fn positional(args: SEXP) -> Vec<SEXP> {
-    unsafe {
+    {
         let mut result = vec![];
         let mut p = args;
         while !p.is_null() && p != R_NilValue() {

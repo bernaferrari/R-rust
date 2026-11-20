@@ -813,7 +813,7 @@ pub unsafe fn bind_dims(arg: SEXP, cbind: bool) -> (R_xlen_t, R_xlen_t) {
 }
 
 unsafe fn next_bind_expr(expr: SEXP) -> SEXP {
-    unsafe {
+    {
         if expr.is_null() || expr == R_NilValue() {
             R_NilValue()
         } else {
@@ -942,7 +942,7 @@ unsafe fn bind_label_expr(eval_cell: SEXP, expr_cell: SEXP) -> SEXP {
 }
 
 unsafe fn unwrap_promise_expr(mut x: SEXP) -> SEXP {
-    unsafe {
+    {
         while !x.is_null() && TYPEOF(x) == SEXPTYPE::PROMSXP {
             x = crate::sexp::accessors::PRCODE(x);
         }

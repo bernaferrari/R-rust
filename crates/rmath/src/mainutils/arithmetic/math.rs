@@ -7,13 +7,13 @@ use super::*;
 /// Read the PRIMVAL (primitive offset) from a builtin/special SEXP.
 #[inline]
 pub(crate) unsafe fn primval(op: SEXP) -> c_int {
-    unsafe { crate::mainutils::relop::PRIMVAL(op) }
+    crate::mainutils::relop::PRIMVAL(op)
 }
 
 /// Helper: check if SEXP is numeric (INTSXP, REALSXP, CPLXSXP, or LGLSXP).
 #[inline]
 pub(crate) unsafe fn is_numeric(x: SEXP) -> bool {
-    unsafe {
+    {
         let t = TYPEOF(x);
         t == SEXPTYPE::INTSXP
             || t == SEXPTYPE::REALSXP
@@ -31,7 +31,7 @@ pub(crate) unsafe fn is_complex(x: SEXP) -> bool {
 /// Helper: check if SEXP is integer or logical.
 #[inline]
 pub(crate) unsafe fn is_integer_or_logical(x: SEXP) -> bool {
-    unsafe {
+    {
         let t = TYPEOF(x);
         t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP
     }

@@ -1118,7 +1118,7 @@ pub unsafe fn SET_STRING_ELT(x: SEXP, i: R_xlen_t, val: SEXP) {
     let value = ReferenceValue::capture(&slot, val);
     let _ = unsafe { DATAPTR(slot.pointer) };
     let _ = slot.read();
-    unsafe { super::gengc::vector_write_barrier(slot.pointer, slot.index, val) };
+    super::gengc::vector_write_barrier(slot.pointer, slot.index, val);
     slot.node
         .heap_identity()
         .set_reference_elt(&slot.node, slot.index, value.capability())
@@ -1146,7 +1146,7 @@ pub unsafe fn SET_VECTOR_ELT(x: SEXP, i: R_xlen_t, val: SEXP) {
     let value = ReferenceValue::capture(&slot, val);
     let _ = unsafe { DATAPTR(slot.pointer) };
     let _ = slot.read();
-    unsafe { super::gengc::vector_write_barrier(slot.pointer, slot.index, val) };
+    super::gengc::vector_write_barrier(slot.pointer, slot.index, val);
     slot.node
         .heap_identity()
         .set_reference_elt(&slot.node, slot.index, value.capability())

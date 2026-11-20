@@ -260,7 +260,7 @@ unsafe fn sexp_to_string(value: SEXP) -> Option<String> {
 }
 
 unsafe fn is_primitive_function(value: SEXP) -> bool {
-    unsafe {
+    {
         !value.is_null()
             && (TYPEOF(value) == SEXPTYPE::BUILTINSXP || TYPEOF(value) == SEXPTYPE::SPECIALSXP)
     }
@@ -531,7 +531,7 @@ fn nearest_method(methods: Vec<TableMethod>) -> Option<TableMethod> {
                             |(derived, base)| {
                                 derived == base
                                     || base == "ANY"
-                                    || unsafe {
+                                    || {
                                         crate::mainutils::objects::s4_class_distance(derived, base)
                                             .is_some()
                                     }
@@ -1102,7 +1102,7 @@ pub unsafe fn R_missingArg(symbol: SEXP, ev: SEXP) -> SEXP {
 
 /// R_selectMethod - select a method for the given call.
 pub unsafe fn R_selectMethod(fname: SEXP, _ev: SEXP, mlist: SEXP, _evalArgs: SEXP) -> SEXP {
-    unsafe {
+    {
         if !mlist.is_null() && mlist != R_NilValue() && Rf_isFunction(mlist) != 0 {
             return mlist;
         }

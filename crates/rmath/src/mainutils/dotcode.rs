@@ -214,7 +214,7 @@ unsafe fn CSingSymbol() -> SEXP {
 
 /// Check that `s` is a length-1 character string that is not NA.
 unsafe fn isValidString(s: SEXP) -> bool {
-    unsafe { TYPEOF(s) == SEXPTYPE::STRSXP && LENGTH(s) > 0 }
+    TYPEOF(s) == SEXPTYPE::STRSXP && LENGTH(s) > 0
 }
 
 unsafe fn isValidStringF(s: SEXP) -> bool {
@@ -1292,7 +1292,7 @@ unsafe fn invoke_native_handler(
 
 /// .External / .External2 handler.
 pub unsafe fn do_External(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    let interface = if unsafe { PRIMVAL(op) } == 1 {
+    let interface = if PRIMVAL(op) == 1 {
         crate::mainutils::native_routines::NativeInterface::External2
     } else {
         crate::mainutils::native_routines::NativeInterface::External
@@ -1334,7 +1334,7 @@ mod foreign_registration_tests;
 
 pub unsafe fn do_dotCode(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     use crate::mainutils::native_routines::buffers::BufferInterface;
-    let interface = if unsafe { PRIMVAL(op) } == 0 {
+    let interface = if PRIMVAL(op) == 0 {
         BufferInterface::C
     } else {
         BufferInterface::Fortran
@@ -1778,7 +1778,7 @@ pub unsafe fn do_dotcallgr(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP 
 
 /// Find the DLL that the calling function was loaded from.
 pub unsafe fn Rf_getCallingDLL() -> SEXP {
-    unsafe {
+    {
         // Stub: return R_NilValue — namespace/DLL tracking not yet implemented
         R_NilValue()
     }

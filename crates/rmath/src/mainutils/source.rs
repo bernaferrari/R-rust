@@ -220,7 +220,7 @@ unsafe fn file_arg(args: SEXP) -> SEXP {
 }
 
 unsafe fn parse_text_arg(args: SEXP) -> SEXP {
-    unsafe {
+    {
         if args.is_null() || args == R_NilValue() {
             return R_NilValue();
         }

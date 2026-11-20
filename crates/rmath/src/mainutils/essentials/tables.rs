@@ -732,7 +732,7 @@ pub(crate) unsafe fn list_element_by_name(list: SEXP, name: &str) -> Option<SEXP
 }
 
 unsafe fn pairlist_apply_len(x: SEXP) -> R_xlen_t {
-    unsafe {
+    {
         let mut len = 0;
         let mut current = x;
         while !current.is_null() && current != R_NilValue() {
@@ -1911,7 +1911,7 @@ fn collect_default_factor_levels(x: SEXP, n: R_xlen_t) -> Vec<Option<String>> {
 }
 
 fn explicit_factor_levels_optional(levels_arg: SEXP) -> Vec<Option<String>> {
-    unsafe {
+    {
         let mut levels = Vec::new();
         let mut seen_na = false;
         for i in 0..XLENGTH(levels_arg) {
@@ -2323,7 +2323,7 @@ fn factor_element_is_na(x: SEXP, i: R_xlen_t) -> bool {
 }
 
 fn explicit_factor_levels(levels_arg: SEXP) -> Vec<String> {
-    unsafe {
+    {
         let mut levels = Vec::new();
         for i in 0..XLENGTH(levels_arg) {
             if factor_element_is_na(levels_arg, i) {

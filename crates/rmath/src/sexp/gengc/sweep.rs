@@ -30,7 +30,7 @@ pub(crate) fn update_protect_stack_in(
     instance: *mut instance::RInstance,
     old_to_new: &HashMap<usize, SEXP>,
 ) {
-    unsafe {
+    {
         update_protect_stack_refs_in(instance, |ptr| {
             let addr = ptr as usize;
             old_to_new.get(&addr).copied().unwrap_or(ptr)
@@ -42,7 +42,7 @@ pub(crate) fn update_preserve_stack_in(
     instance: *mut instance::RInstance,
     old_to_new: &HashMap<usize, SEXP>,
 ) {
-    unsafe {
+    {
         update_preserve_stack_refs_in(instance, |ptr| {
             let addr = ptr as usize;
             old_to_new.get(&addr).copied().unwrap_or(ptr)
@@ -60,7 +60,7 @@ pub(crate) fn update_remembered_set_in(
     instance: *mut instance::RInstance,
     old_to_new: &HashMap<usize, SEXP>,
 ) {
-    unsafe {
+    {
         with_gc_state_in(instance, |state| {
             state.remembered_set.remap(old_to_new);
         });
@@ -279,7 +279,7 @@ pub(crate) fn clear_swept_references_in(
     old_to_new: &HashMap<usize, SEXP>,
     old_links: &HashMap<NodeLink, NodeLink>,
 ) {
-    unsafe {
+    {
         update_instance_roots_in(instance, old_to_new);
         update_remembered_set_in(instance, old_to_new);
         update_swept_object_references_in(instance, old_links);

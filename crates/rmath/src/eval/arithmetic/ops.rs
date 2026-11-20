@@ -47,7 +47,7 @@ pub(crate) unsafe fn math1_vec(call: SEXP, sa: SEXP, f: fn(f64) -> f64) -> SEXP 
 
 /// True for logical/integer/real vectors — stock's `isNumeric` minus NULL.
 pub(crate) fn is_numeric_operand(x: SEXP) -> bool {
-    unsafe {
+    {
         let t = TYPEOF(x);
         t == SEXPTYPE::LGLSXP || t == SEXPTYPE::INTSXP || t == SEXPTYPE::REALSXP
     }

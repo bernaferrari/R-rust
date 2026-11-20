@@ -135,7 +135,7 @@ pub unsafe fn isArray(x: SEXP) -> c_int {
 
 /// isNumeric -- returns 1 if x is numeric (integer or real, not logical).
 pub unsafe fn isNumeric(x: SEXP) -> c_int {
-    unsafe {
+    {
         if x.is_null() {
             return 0;
         }
@@ -462,7 +462,7 @@ pub fn is_na_int(x: c_int) -> bool {
 /// Check if an SEXP is a scalar string (STRSXP of length 1).
 #[inline]
 pub unsafe fn is_scalar_string(x: SEXP) -> bool {
-    unsafe { !x.is_null() && TYPEOF(x) == SEXPTYPE::STRSXP && XLENGTH(x) == 1 }
+    !x.is_null() && TYPEOF(x) == SEXPTYPE::STRSXP && XLENGTH(x) == 1
 }
 
 /// Perform a scalar relational operation, returning a ScalarLogical SEXP.

@@ -180,7 +180,7 @@ unsafe fn require_reals(value: SEXP, needed: i32, name: &str) {
     if needed == 0 {
         return;
     }
-    unsafe {
+    {
         if value.is_null()
             || TYPEOF(value) != SEXPTYPE::REALSXP
             || XLENGTH(value) < i64::from(needed)
@@ -394,7 +394,7 @@ pub unsafe extern "C-unwind" fn c_setup_starma(
 }
 
 pub unsafe extern "C-unwind" fn c_free_starma(pg: SEXP) -> SEXP {
-    unsafe {
+    {
         let (_, token) = crate::sexp::memory::checked_projection(pg)
             .unwrap_or_else(|| starma_error("bad starma pointer"));
         let heap = token.heap_identity();
@@ -424,7 +424,7 @@ pub unsafe extern "C-unwind" fn c_free_starma(pg: SEXP) -> SEXP {
 }
 
 pub unsafe extern "C-unwind" fn c_starma_method(pg: SEXP, method: SEXP) -> SEXP {
-    unsafe {
+    {
         let state = starma_state(pg);
         let method = as_i32(method);
         state.state.borrow_mut().method = method;
@@ -433,7 +433,7 @@ pub unsafe extern "C-unwind" fn c_starma_method(pg: SEXP, method: SEXP) -> SEXP 
 }
 
 pub unsafe extern "C-unwind" fn c_set_trans(pg: SEXP, ptrans: SEXP) -> SEXP {
-    unsafe {
+    {
         let state = starma_state(pg);
         let trans = as_i32(ptrans);
         state.state.borrow_mut().trans = trans;

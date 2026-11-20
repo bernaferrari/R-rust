@@ -169,7 +169,7 @@ fn locale_category_from_name(name: &str) -> c_int {
 }
 
 unsafe fn locale_string_arg(locale: SEXP) -> Option<CString> {
-    unsafe {
+    {
         if locale.is_null() || locale == R_NilValue() {
             return None;
         }

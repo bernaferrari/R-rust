@@ -338,7 +338,7 @@ pub unsafe fn do_system_time(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> S
 /// The ASCII fast path retains GNU's byte-attribution attributes. Unicode
 /// character mode publishes character counts and no byte attributes.
 unsafe fn regex_coordinates(args: SEXP, pattern: &str, text: SEXP) -> (bool, bool) {
-    unsafe {
+    {
         let requested = logical_arg_by_name_or_position(args, "useBytes", 5).unwrap_or(false);
         let ascii =
             pattern.is_ascii() && (0..XLENGTH(text)).all(|i| elt_to_string(text, i).is_ascii());

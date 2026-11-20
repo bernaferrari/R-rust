@@ -27,7 +27,7 @@ use crate::sexp::symbol::Rf_install;
 
 /// R's `setOldClass(Class)` — register old-style S3 class. Simplified: returns Class.
 pub unsafe fn do_setOldClass(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    {
         let class_arg = CAR(args);
         if class_arg.is_null() || class_arg == R_NilValue() {
             return R_NilValue();
@@ -467,7 +467,7 @@ pub(crate) unsafe fn current_function_context() -> Option<*mut crate::sexp::cont
 }
 
 pub(crate) unsafe fn pairlist_len(mut list: SEXP) -> c_int {
-    unsafe {
+    {
         let mut len = 0;
         while !list.is_null() && list != R_NilValue() {
             len += 1;
@@ -478,7 +478,7 @@ pub(crate) unsafe fn pairlist_len(mut list: SEXP) -> c_int {
 }
 
 pub(crate) unsafe fn context_index_arg(args: SEXP, default: c_int) -> c_int {
-    unsafe {
+    {
         if args.is_null() || args == R_NilValue() {
             default
         } else {
@@ -1447,7 +1447,7 @@ pub(crate) fn data_frame_row_names(x: SEXP) -> Vec<String> {
 }
 
 fn vector_to_string_values(x: SEXP) -> Vec<String> {
-    unsafe {
+    {
         if x.is_null() || x == R_NilValue() {
             return Vec::new();
         }
@@ -1456,7 +1456,7 @@ fn vector_to_string_values(x: SEXP) -> Vec<String> {
 }
 
 fn string_arg_values(x: SEXP) -> Vec<String> {
-    unsafe {
+    {
         if x.is_null() || x == R_NilValue() {
             return Vec::new();
         }
@@ -2375,7 +2375,7 @@ unsafe fn effective_s3_defrho(rho: SEXP) -> SEXP {
 }
 
 pub(crate) unsafe fn is_function_value(value: SEXP) -> bool {
-    unsafe {
+    {
         !value.is_null()
             && value != R_NilValue()
             && value != crate::sexp::globals::R_UnboundValue()
@@ -2536,7 +2536,7 @@ pub unsafe fn do_setGeneric(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SE
 }
 
 unsafe fn is_function_type(value: SEXP) -> bool {
-    unsafe {
+    {
         !value.is_null()
             && value != R_NilValue()
             && value != R_UnboundValue()

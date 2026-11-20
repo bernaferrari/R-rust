@@ -451,7 +451,7 @@ fn apply_evaluated_builtin<'a>(
         evaled_args,
     ) {
         s4_result
-    } else if let Some(primfun) = unsafe { get_primfun(fun.clone().as_raw()) } {
+    } else if let Some(primfun) = { get_primfun(fun.clone().as_raw()) } {
         crate::mainutils::errors::attribute_handler_errors(call.clone().as_raw(), || unsafe {
             primfun(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
         })

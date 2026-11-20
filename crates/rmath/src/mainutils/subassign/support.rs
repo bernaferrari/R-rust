@@ -102,12 +102,12 @@ pub(crate) unsafe fn sym_UseNames() -> SEXP {
 
 #[inline]
 pub(crate) unsafe fn isNull(x: SEXP) -> bool {
-    unsafe { x.is_null() || x == R_NilValue() }
+    x.is_null() || x == R_NilValue()
 }
 
 #[inline]
 pub(crate) unsafe fn isVector(x: SEXP) -> bool {
-    unsafe {
+    {
         let t = TYPEOF(x);
         t == LGLSXP
             || t == INTSXP
@@ -122,7 +122,7 @@ pub(crate) unsafe fn isVector(x: SEXP) -> bool {
 
 #[inline]
 pub(crate) unsafe fn isVectorList(x: SEXP) -> bool {
-    unsafe {
+    {
         let t = TYPEOF(x);
         t == VECSXP || t == EXPRSXP
     }
@@ -130,7 +130,7 @@ pub(crate) unsafe fn isVectorList(x: SEXP) -> bool {
 
 #[inline]
 pub(crate) unsafe fn isPairList(x: SEXP) -> bool {
-    unsafe {
+    {
         let t = TYPEOF(x);
         // GNU Rf_isPairList: NILSXP / LISTSXP / LANGSXP / DOTSXP.
         t == LISTSXP || t == NILSXP || t == LANGSXP || t == DOTSXP

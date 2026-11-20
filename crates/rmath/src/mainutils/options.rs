@@ -225,7 +225,7 @@ unsafe fn asLogical(x: SEXP) -> c_int {
 
 /// Check if x is numeric (integer or real).
 unsafe fn isNumeric(x: SEXP) -> c_int {
-    unsafe {
+    {
         if x.is_null() {
             return 0;
         }
@@ -236,7 +236,7 @@ unsafe fn isNumeric(x: SEXP) -> c_int {
 
 /// Check if x is a pairlist.
 unsafe fn isPairList(x: SEXP) -> c_int {
-    unsafe {
+    {
         if x.is_null() {
             return 0;
         }
@@ -246,7 +246,7 @@ unsafe fn isPairList(x: SEXP) -> c_int {
 
 /// Check if x is a vector list (VECSXP or EXPRSXP).
 unsafe fn isVectorList(x: SEXP) -> c_int {
-    unsafe {
+    {
         if x.is_null() {
             return 0;
         }
@@ -257,7 +257,7 @@ unsafe fn isVectorList(x: SEXP) -> c_int {
 
 /// Check if x is a language object.
 unsafe fn isLanguage(x: SEXP) -> c_int {
-    unsafe {
+    {
         if x.is_null() {
             return 0;
         }
@@ -267,7 +267,7 @@ unsafe fn isLanguage(x: SEXP) -> c_int {
 
 /// Check if x is an expression.
 unsafe fn isExpression(x: SEXP) -> c_int {
-    unsafe {
+    {
         if x.is_null() {
             return 0;
         }
@@ -277,7 +277,7 @@ unsafe fn isExpression(x: SEXP) -> c_int {
 
 /// Check if x is a function (CLOSXP, BUILTINSXP, SPECIALSXP).
 unsafe fn isFunction(x: SEXP) -> c_int {
-    unsafe {
+    {
         if x.is_null() {
             return 0;
         }
@@ -288,7 +288,7 @@ unsafe fn isFunction(x: SEXP) -> c_int {
 
 /// Get length of a SEXP (pairlist or vector).
 unsafe fn length(x: SEXP) -> c_int {
-    unsafe {
+    {
         if x.is_null() || x == R_NilValue() {
             return 0;
         }
@@ -330,7 +330,7 @@ unsafe fn installTrChar(x: SEXP) -> SEXP {
 
 /// EnsureString -- coerce to CHARSXP (print name).
 unsafe fn EnsureString(x: SEXP) -> SEXP {
-    unsafe {
+    {
         if x.is_null() {
             return ptr::null_mut();
         }
@@ -646,7 +646,7 @@ unsafe fn refresh_options_binding(owner: OwnerToken<'_>) {
     // These identities belong to the captured owner, before pairlist callbacks.
     let base = require_options(
         factory
-            .wrap(unsafe { R_BaseEnv_in(owner.as_ptr()) })
+            .wrap(R_BaseEnv_in(owner.as_ptr()))
             .and_then(Sexp::into_owned),
     );
     let symbol = require_options(factory.wrap(options_symbol()).and_then(Sexp::into_owned));

@@ -220,7 +220,7 @@ fn is_srcref_attr_name(name: &str) -> bool {
 }
 
 unsafe fn ignore_closure_srcref(x: SEXP, flags: c_int) -> bool {
-    unsafe { flags & IDENT_USE_SRCREF == 0 && TYPEOF(x) == SEXPTYPE::CLOSXP }
+    flags & IDENT_USE_SRCREF == 0 && TYPEOF(x) == SEXPTYPE::CLOSXP
 }
 
 /// GNU can ignore source references on closures; every public vector attribute

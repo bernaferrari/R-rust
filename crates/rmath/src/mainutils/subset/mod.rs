@@ -468,7 +468,7 @@ unsafe fn list2(a: SEXP, b: SEXP) -> SEXP {
 
 /// Return the n-th CDR of x (like nthcdr in C).
 unsafe fn nthcdr(x: SEXP, mut n: c_int) -> SEXP {
-    unsafe {
+    {
         let mut result = x;
         while n > 0 && !isNull(result) {
             result = CDR(result);

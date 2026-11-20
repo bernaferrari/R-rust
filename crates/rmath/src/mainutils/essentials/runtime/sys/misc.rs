@@ -182,7 +182,7 @@ pub(crate) fn skip_olson_component(name: &str) -> bool {
 
 /// GNU `q(save="no")` / `quit` — end the script without tearing down the process.
 pub unsafe fn do_quit(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    {
         crate::sexp::globals::set_R_Visible(0);
         R_NilValue()
     }

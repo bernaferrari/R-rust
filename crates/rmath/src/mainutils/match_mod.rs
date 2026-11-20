@@ -118,7 +118,7 @@ fn isVector(x: SEXP) -> bool {
 /// isNull check.
 #[inline(always)]
 unsafe fn isNull(x: SEXP) -> bool {
-    unsafe { x.is_null() || TYPEOF(x) == SEXPTYPE::NILSXP }
+    x.is_null() || TYPEOF(x) == SEXPTYPE::NILSXP
 }
 
 /// IS_BYTES check — delegates to sexp::accessors.
@@ -237,7 +237,7 @@ unsafe fn ScalarInteger(x: c_int) -> SEXP {
 /// length of a pairlist or vector.
 #[inline(always)]
 unsafe fn length(x: SEXP) -> c_int {
-    unsafe {
+    {
         if x.is_null() {
             return 0;
         }

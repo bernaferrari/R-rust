@@ -764,7 +764,7 @@ pub(crate) fn warn(msg: &str) {
     let c_msg = std::ffi::CString::new(msg).unwrap_or_default();
     unsafe { crate::mainutils::errors::Rf_warning1(c_msg.as_ptr()) };
     let message = format!("Warning message:\n{} \n", msg);
-    unsafe {
+    {
         if crate::sexp::output::is_capturing() {
             crate::sexp::output::capture_stderr(&message);
         } else {

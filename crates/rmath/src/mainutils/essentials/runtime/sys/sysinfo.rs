@@ -110,7 +110,7 @@ pub unsafe fn do_Sys_time(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 
 /// R's `Sys.sleep(time)` — sleep for specified seconds.
 pub unsafe fn do_Sys_sleep(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    {
         let time_arg = CAR(args);
         let secs = real_or_default(time_arg, 0.0);
         if secs > 0.0 {

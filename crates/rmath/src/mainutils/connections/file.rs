@@ -1506,7 +1506,7 @@ fn compress_type(args: SEXP) -> String {
 }
 
 pub unsafe fn do_memCompress(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
+    {
         let input = bytes_of(CAR(args));
         let mut output = Vec::new();
         let kind = compress_type(args);

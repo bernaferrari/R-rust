@@ -1158,7 +1158,7 @@ pub unsafe fn R_makeCStackOverflowError(call: SEXP, usage: isize) -> SEXP {
 
 /// R_getProtectStackOverflowError — get the preserved protect stack overflow condition.
 pub unsafe fn R_getProtectStackOverflowError() -> SEXP {
-    unsafe {
+    {
         // Would return a preserved condition; for now return nil
         globals::R_NilValue()
     }
@@ -1166,7 +1166,7 @@ pub unsafe fn R_getProtectStackOverflowError() -> SEXP {
 
 /// R_getExpressionStackOverflowError — get the preserved expression stack overflow condition.
 pub unsafe fn R_getExpressionStackOverflowError() -> SEXP {
-    unsafe {
+    {
         // Would return a preserved condition; for now return nil
         globals::R_NilValue()
     }
@@ -1174,7 +1174,7 @@ pub unsafe fn R_getExpressionStackOverflowError() -> SEXP {
 
 /// R_getNodeStackOverflowError — get the preserved node stack overflow condition.
 pub unsafe fn R_getNodeStackOverflowError() -> SEXP {
-    unsafe {
+    {
         // Would return a preserved condition; for now return nil
         globals::R_NilValue()
     }

@@ -307,7 +307,7 @@ pub unsafe fn STACKVAL_TO_SEXP(val: SEXP) -> SEXP {
 ///
 /// Used in the bytecode interpreter for type checks.
 pub unsafe fn isNumericOnly(x: SEXP) -> c_int {
-    unsafe {
+    {
         let t = TYPEOF(x);
         if t == SEXPTYPE::REALSXP || t == SEXPTYPE::CPLXSXP || t == SEXPTYPE::INTSXP {
             TRUE

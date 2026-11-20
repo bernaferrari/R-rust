@@ -49,7 +49,7 @@ pub const GE_INCHES: c_int = crate::mainutils::engine::GE_INCHES;
 /// Panic with an R-style error message.
 #[inline]
 unsafe fn error(msg: &str) {
-    unsafe {
+    {
         std::panic::panic_any(crate::sexp::context::RError {
             message: msg.to_string(),
         });
@@ -68,14 +68,14 @@ unsafe fn R_BlankString() -> SEXP {
 
 #[inline]
 unsafe fn isNull(x: SEXP) -> bool {
-    unsafe { x.is_null() || x == R_NilValue() }
+    x.is_null() || x == R_NilValue()
 }
 
 /* ==================== Helper: isVector ==================== */
 
 #[inline]
 unsafe fn isVector(x: SEXP) -> bool {
-    unsafe {
+    {
         let t = TYPEOF(x);
         t == SEXPTYPE::LGLSXP
             || t == SEXPTYPE::INTSXP
@@ -137,7 +137,7 @@ pub unsafe fn initDL(dd: pGEDevDesc) {
 /// Does NOT init all state; display list, root viewport, and current gpar
 /// are initialized separately (see initDL, initVP, initGPar).
 pub unsafe fn initOtherState(dd: pGEDevDesc) {
-    unsafe {
+    {
         // Stub: since pGEDevDesc is void*, we cannot access dd->gesd.
         let _ = dd;
     }

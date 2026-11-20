@@ -30,7 +30,7 @@ pub unsafe fn do_flush(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R's `flush.console()` — flush pending console output.
 pub unsafe fn do_flush_console(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    {
         crate::unix::system::R_FlushConsole();
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
         R_NilValue()

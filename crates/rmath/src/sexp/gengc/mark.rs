@@ -99,7 +99,7 @@ pub(crate) fn drain_trace_worklist(mut pending: gc_trace::TraceWorklist) {
         // Published payloads retain their native span invariants. The bridge
         // revalidates the token, copies edges, and lends no mutable fields.
         let children =
-            trace_result(unsafe { gc_trace_bridge::snapshot_children(&node, pending.context()) });
+            trace_result(gc_trace_bridge::snapshot_children(&node, pending.context()));
         for child in children.into_edges() {
             trace_result(pending.enqueue_link(child));
         }
@@ -314,7 +314,7 @@ where
 /// No whole-instance borrow or Rust payload loan may overlap collection or
 /// callbacks. Arena lends are detected and defer the collection request.
 pub(crate) unsafe fn minor_gc_in(instance: *mut instance::RInstance) -> (usize, usize) {
-    unsafe { run_gc_cycle_in(instance, do_minor_gc_in) }
+    run_gc_cycle_in(instance, do_minor_gc_in)
 }
 
 pub(crate) fn do_minor_gc_in(instance: *mut instance::RInstance) -> (usize, usize) {
@@ -400,7 +400,7 @@ pub fn full_gc() -> (usize, usize) {
 /// No whole-instance borrow or Rust payload loan may overlap collection or
 /// callbacks. Arena lends are detected and defer the collection request.
 pub(crate) unsafe fn full_gc_in(instance: *mut instance::RInstance) -> (usize, usize) {
-    unsafe { run_gc_cycle_in(instance, do_full_mark_sweep_in) }
+    run_gc_cycle_in(instance, do_full_mark_sweep_in)
 }
 
 /// gctorture collection: full mark from all roots, but only OLD-generation

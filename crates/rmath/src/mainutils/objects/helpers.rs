@@ -20,7 +20,7 @@ use super::*;
 
 /// Check if x is a character vector (STRSXP).
 pub(crate) unsafe fn isString(x: SEXP) -> c_int {
-    unsafe {
+    {
         if x.is_null() {
             return FALSE;
         }
@@ -34,7 +34,7 @@ pub(crate) unsafe fn isString(x: SEXP) -> c_int {
 
 /// Check if x is an environment.
 unsafe fn isEnvironment(x: SEXP) -> c_int {
-    unsafe {
+    {
         if x.is_null() {
             return FALSE;
         }
@@ -48,7 +48,7 @@ unsafe fn isEnvironment(x: SEXP) -> c_int {
 
 /// Check if x is a logical vector.
 pub(crate) unsafe fn isLogical(x: SEXP) -> c_int {
-    unsafe {
+    {
         if x.is_null() {
             return FALSE;
         }
@@ -62,7 +62,7 @@ pub(crate) unsafe fn isLogical(x: SEXP) -> c_int {
 
 /// Check if x is a function (closure, builtin, or special).
 pub(crate) unsafe fn isFunction(x: SEXP) -> c_int {
-    unsafe {
+    {
         if x.is_null() {
             return FALSE;
         }
@@ -77,7 +77,7 @@ pub(crate) unsafe fn isFunction(x: SEXP) -> c_int {
 
 /// Check if x is a primitive (builtin or special).
 pub(crate) unsafe fn isPrimitive(x: SEXP) -> c_int {
-    unsafe {
+    {
         if x.is_null() {
             return FALSE;
         }
@@ -92,7 +92,7 @@ pub(crate) unsafe fn isPrimitive(x: SEXP) -> c_int {
 
 /// Check if x is a closure.
 pub(crate) unsafe fn isClosure(x: SEXP) -> c_int {
-    unsafe {
+    {
         if x.is_null() {
             return FALSE;
         }

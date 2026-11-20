@@ -636,7 +636,7 @@ pub(crate) fn atomic_unique_key(
     }
 }
 pub(crate) fn duplicated_key(x: SEXP, index: R_xlen_t, target: SEXPTYPE) -> String {
-    unsafe {
+    {
         if target == SEXPTYPE::REALSXP
             || target == SEXPTYPE::INTSXP
             || target == SEXPTYPE::LGLSXP
@@ -1123,7 +1123,7 @@ pub(crate) fn sort_logical_arg(args: SEXP, names: &[&str], position: usize) -> O
 }
 
 pub(crate) fn charsxp_is_na(value: SEXP) -> bool {
-    unsafe { value.is_null() || value == crate::sexp::globals::R_NaString() }
+    { value.is_null() || value == crate::sexp::globals::R_NaString() }
 }
 
 pub(crate) fn collate_str(a: &str, b: &str) -> std::cmp::Ordering {

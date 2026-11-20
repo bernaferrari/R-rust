@@ -230,7 +230,7 @@ pub unsafe fn errorcall(_call: SEXP, msg: &str) -> ! {
 
 /// Get R_NaString -- returns the NA string CHARSXP.
 pub fn R_NaString() -> SEXP {
-    unsafe { R_GlobalNaString() }
+    R_GlobalNaString()
 }
 
 /// Get R_BlankString -- returns the empty string CHARSXP.
@@ -342,7 +342,7 @@ pub unsafe fn CoercionWarning(warn: c_int) {
                 if call.is_null() {
                     Ok(None)
                 } else {
-                    unsafe { token.sexp(call)?.into_owned().map(Some) }
+                    { token.sexp(call)?.into_owned().map(Some) }
                 }
             })?;
             for (flag, message) in [

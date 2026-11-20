@@ -315,7 +315,7 @@ fn substitute_args(body: &str, args: &[String]) -> String {
 }
 
 fn nth_arg(args: SEXP, n: usize) -> SEXP {
-    unsafe {
+    {
         let mut cell = args;
         for _ in 0..n {
             if cell.is_null() || cell == crate::sexp::globals::R_NilValue() {

@@ -27,7 +27,7 @@ fn isMatrix(x: SEXP) -> bool {
 }
 
 fn isVector(x: SEXP) -> bool {
-    unsafe {
+    {
         let t = TYPEOF(x);
         t == SEXPTYPE::LGLSXP
             || t == SEXPTYPE::INTSXP
@@ -45,7 +45,7 @@ fn isNewList(x: SEXP) -> bool {
 }
 
 fn length_sexp(x: SEXP) -> c_int {
-    unsafe {
+    {
         let t = TYPEOF(x);
         if t == SEXPTYPE::NILSXP {
             return 0;

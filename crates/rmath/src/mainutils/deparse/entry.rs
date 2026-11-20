@@ -369,7 +369,7 @@ unsafe fn deparse_call_args(args: SEXP) -> DeparseCallArgs {
 }
 
 fn deparse_default_backtick(expr: SEXP) -> bool {
-    unsafe {
+    {
         matches!(
             TYPEOF(expr),
             t if t == SEXPTYPE::LANGSXP

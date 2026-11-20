@@ -362,7 +362,7 @@ fn symbol_chars(expr: SEXP) -> Option<String> {
 }
 
 fn collect_i_calls(expr: SEXP, out: &mut Vec<SEXP>) {
-    unsafe {
+    {
         if expr.is_null() || expr == R_NilValue() || TYPEOF(expr) != SEXPTYPE::LANGSXP {
             return;
         }
@@ -379,7 +379,7 @@ fn collect_i_calls(expr: SEXP, out: &mut Vec<SEXP>) {
 }
 
 fn collect_formula_symbols(expr: SEXP, out: &mut Vec<String>) {
-    unsafe {
+    {
         if expr.is_null() || expr == R_NilValue() || expr == crate::sexp::globals::R_MissingArg() {
             return;
         }

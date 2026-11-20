@@ -508,7 +508,7 @@ fn sample_int_shortcut_n(x: SEXP) -> Option<i64> {
 }
 
 fn is_missing_or_null(value: SEXP) -> bool {
-    unsafe {
+    {
         value.is_null() || value == R_NilValue() || value == crate::sexp::globals::R_UnboundValue()
     }
 }

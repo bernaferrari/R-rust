@@ -161,7 +161,7 @@ pub unsafe fn L_locator() -> SEXP {
  * ============================== */
 
 pub unsafe fn L_locnBounds(x: SEXP, y: SEXP, theta: SEXP) -> SEXP {
-    unsafe {
+    {
         // Full implementation requires unit conversion
         R_NilValue()
     }

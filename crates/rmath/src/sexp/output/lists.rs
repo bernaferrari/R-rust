@@ -450,7 +450,7 @@ pub(crate) fn print_list_with_path(x: Sexp<'_>, path: &str) {
 
 pub(crate) fn print_pairlist_with_path(x: Sexp<'_>, path: &str) {
     for (index, cell) in crate::sexp::object::PairlistIter::new(x.clone()).enumerate() {
-        let tag = unsafe { printable_attribute_name(cell.as_raw()) };
+        let tag = { printable_attribute_name(cell.as_raw()) };
         let tag = match tag {
             Some(name) if !name.is_empty() => list_name_tag(&name),
             _ => format!("[[{}]]", index + 1),

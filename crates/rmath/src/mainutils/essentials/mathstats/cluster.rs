@@ -932,7 +932,7 @@ pub unsafe fn do_dendrapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SE
 
 /// GNU `summary.stepfun` — print helper; return `NULL` invisibly.
 pub unsafe fn do_summary_stepfun(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    {
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
         R_NilValue()
     }

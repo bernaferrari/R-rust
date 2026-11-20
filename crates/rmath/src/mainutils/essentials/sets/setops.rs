@@ -256,7 +256,7 @@ fn multi_key_indices(
     decreasing: bool,
     na_placement: SortNaPlacement,
 ) -> Vec<R_xlen_t> {
-    unsafe {
+    {
         let n = XLENGTH(keys[0]);
         for key in keys.iter().skip(1) {
             if XLENGTH(*key) != n {
@@ -680,7 +680,7 @@ enum RankTiesMethod {
 }
 
 fn rank_ties_method(args: SEXP) -> RankTiesMethod {
-    unsafe {
+    {
         let arg = arg_by_name_or_position(args, &["ties.method"], 2);
         if arg.is_null()
             || arg == R_NilValue()
@@ -1459,7 +1459,7 @@ enum MatchKey {
 }
 
 fn match_common_type(x: SEXP, table: SEXP) -> SEXPTYPE {
-    unsafe {
+    {
         let xtype = if x.is_null() {
             SEXPTYPE::NILSXP
         } else {

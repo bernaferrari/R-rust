@@ -554,7 +554,7 @@ impl<'arena, 'session> Parser<'arena, 'session> {
         if expr == self.placeholder {
             return true;
         }
-        unsafe {
+        {
             let t = TYPEOF(expr);
             if t != SEXPTYPE::LANGSXP && t != SEXPTYPE::LISTSXP {
                 return false;

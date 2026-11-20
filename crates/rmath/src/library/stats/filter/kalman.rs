@@ -93,7 +93,7 @@ struct KalmanOut {
 /// KalmanRun variant (standardized residuals plus an n x p states matrix).
 /// Like the C original, mutates `m.a`, `m.p` and `m.pn` in place.
 unsafe fn kalman_like_pass(y: &[f64], m: &mut KalmanModel, s_up: i32, lop: bool) -> KalmanOut {
-    unsafe {
+    {
         let n = y.len();
         let p = m.a.len();
         let mut anew = vec![0.0; p];

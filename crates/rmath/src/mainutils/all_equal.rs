@@ -304,7 +304,7 @@ unsafe fn compare_formula(target: SEXP, current: SEXP) -> Result<(), String> {
 }
 
 unsafe fn formula_length(x: SEXP) -> i32 {
-    unsafe {
+    {
         let mut n = 0;
         let mut p = x;
         while !p.is_null()
@@ -541,7 +541,7 @@ fn type_name(value: i32) -> &'static str {
 }
 
 fn is_nil(value: SEXP) -> bool {
-    value.is_null() || unsafe { value == R_NilValue() }
+    value.is_null() || { value == R_NilValue() }
 }
 
 unsafe fn mismatch(message: &str) -> SEXP {

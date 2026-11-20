@@ -1834,8 +1834,8 @@ unsafe fn character_sort_key<'a>(x: SEXP, index: usize) -> CharacterSortKey<'a> 
 fn compare_character_keys(a: CharacterSortKey<'_>, b: CharacterSortKey<'_>) -> std::cmp::Ordering {
     use std::cmp::Ordering;
 
-    let nalast = unsafe { with_radix_state(|s| s.nalast) };
-    let order = unsafe { with_radix_state(|s| s.order) };
+    let nalast = { with_radix_state(|s| s.nalast) };
+    let order = { with_radix_state(|s| s.order) };
     let ord = match (a, b) {
         (CharacterSortKey::Missing, CharacterSortKey::Missing) => Ordering::Equal,
         (CharacterSortKey::Missing, CharacterSortKey::Value(_)) => {

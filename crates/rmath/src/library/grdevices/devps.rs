@@ -1212,7 +1212,7 @@ unsafe fn PostScriptLoadFontMetrics(
     _encnames: *mut CNAME,
     _reencode: c_int,
 ) -> c_int {
-    unsafe {
+    {
         // In a full implementation, this would open and parse the AFM file
         // using gzopen/gzgets. For the port we return a stub result.
         // The real implementation reads from R_HOME/library/grDevices/afm/*.gz
@@ -1232,7 +1232,7 @@ unsafe fn PostScriptStringWidth(
     face: c_int,
     _encoding: *const c_char,
 ) -> f64 {
-    unsafe {
+    {
         if metrics.is_null() {
             if (face % 5) != 0 {
                 // CID font case: assume monospaced with wcwidth
@@ -1307,7 +1307,7 @@ unsafe fn PostScriptCIDMetricInfo(c: c_int, ascent: *mut f64, descent: *mut f64,
 // =========================================================================
 
 unsafe fn makeCIDFont() -> cidfontinfo {
-    unsafe { Box::into_raw(Box::new(CIDFontInfo { name: [0; 50] })) }
+    Box::into_raw(Box::new(CIDFontInfo { name: [0; 50] }))
 }
 
 unsafe fn makeType1Font() -> type1fontinfo {
@@ -1595,7 +1595,7 @@ unsafe fn addDeviceEncoding(encoding: encodinginfo, mut devEncs: encodinglist) -
 // =========================================================================
 
 unsafe fn getFontDB(fontdbname: *const c_char) -> SEXP {
-    unsafe {
+    {
         // In a full implementation, this would:
         // 1. Find the grDevices namespace
         // 2. Look up .PSenv
@@ -1614,11 +1614,11 @@ unsafe fn fontMetricsFileName(
     _faceIndex: c_int,
     _fontdbname: *const c_char,
 ) -> *const c_char {
-    unsafe { ptr::null() }
+    ptr::null()
 }
 
 unsafe fn getFontType(_family: *const c_char, _fontdbname: *const c_char) -> *const c_char {
-    unsafe { ptr::null() }
+    ptr::null()
 }
 
 unsafe fn isType1Font(
@@ -1656,23 +1656,23 @@ unsafe fn isCIDFont(
 }
 
 unsafe fn getFontEncoding(_family: *const c_char, _fontdbname: *const c_char) -> *const c_char {
-    unsafe { ptr::null() }
+    ptr::null()
 }
 
 unsafe fn getFontName(_family: *const c_char, _fontdbname: *const c_char) -> *const c_char {
-    unsafe { ptr::null() }
+    ptr::null()
 }
 
 unsafe fn getFontCMap(_family: *const c_char, _fontdbname: *const c_char) -> *const c_char {
-    unsafe { ptr::null() }
+    ptr::null()
 }
 
 unsafe fn getCIDFontEncoding(_family: *const c_char, _fontdbname: *const c_char) -> *const c_char {
-    unsafe { ptr::null() }
+    ptr::null()
 }
 
 unsafe fn getCIDFontPDFResource(_family: *const c_char) -> *const c_char {
-    unsafe { ptr::null() }
+    ptr::null()
 }
 
 // =========================================================================

@@ -115,7 +115,7 @@ pub(crate) fn format_dispatched_show(raw: crate::sexp::ffi::SEXP) -> Option<Stri
 }
 
 pub(crate) fn format_dispatched_print(x: Sexp<'_>) -> Option<String> {
-    unsafe {
+    {
         let raw = x.as_raw();
         if crate::sexp::accessors::OBJECT(raw) == 0 {
             return None;
@@ -194,7 +194,7 @@ pub(crate) fn auto_print_method_supported(x: &Sexp<'_>) -> bool {
     {
         return false;
     }
-    if unsafe {
+    if {
         crate::mainutils::coerce::IS_S4_OBJECT(x.clone().as_raw()) != 0
             || x.typeof_() == SEXPTYPE::S4SXP
     } {

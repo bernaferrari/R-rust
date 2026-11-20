@@ -98,17 +98,17 @@ unsafe fn isValidStringF(x: SEXP) -> bool {
 
 /// Check if x is a string (STRSXP).
 unsafe fn isString(x: SEXP) -> bool {
-    unsafe { !x.is_null() && TYPEOF(x) == SEXPTYPE::STRSXP }
+    !x.is_null() && TYPEOF(x) == SEXPTYPE::STRSXP
 }
 
 /// Check if x is an environment (ENVSXP).
 unsafe fn isEnvironment(x: SEXP) -> bool {
-    unsafe { !x.is_null() && TYPEOF(x) == SEXPTYPE::ENVSXP }
+    !x.is_null() && TYPEOF(x) == SEXPTYPE::ENVSXP
 }
 
 /// Check if x is a list/vector (VECSXP).
 unsafe fn isNewList(x: SEXP) -> bool {
-    unsafe { !x.is_null() && TYPEOF(x) == SEXPTYPE::VECSXP }
+    !x.is_null() && TYPEOF(x) == SEXPTYPE::VECSXP
 }
 
 /// Get the "R_NameSymbol" — a pre-interned symbol for the "name" attribute.

@@ -257,7 +257,7 @@ pub(crate) unsafe fn equalS3Signature(
 
 /// Get the primitive (BUILTINSXP or SPECIALSXP) bound to a symbol.
 pub(crate) unsafe fn getPrimitive(symbol: SEXP) -> SEXP {
-    unsafe {
+    {
         if symbol.is_null() {
             return R_NilValue();
         }

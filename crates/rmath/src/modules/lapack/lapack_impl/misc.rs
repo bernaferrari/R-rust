@@ -132,7 +132,7 @@ pub unsafe fn det_ge_real(ain: SEXP, logarithm: SEXP) -> SEXP {
 ///
 /// Port of: SEXP mod_do_lapack(SEXP call, SEXP op, SEXP args, SEXP env)
 pub unsafe fn mod_do_lapack(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe {
+    {
         // This dispatches based on op symbol to the appropriate La_* function.
         // In R, this is done via the .Internal() mechanism.
         // For now, return nil as dispatch needs the full .Internal infrastructure.
@@ -144,7 +144,7 @@ pub unsafe fn mod_do_lapack(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP
 ///
 /// Port of: void R_init_lapack(DllInfo *dll)
 pub unsafe fn R_init_lapack(_info: *mut std::ffi::c_void) {
-    unsafe {
+    {
         // Registration would happen here in the full implementation
     }
 }

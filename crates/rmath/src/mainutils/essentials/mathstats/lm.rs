@@ -271,7 +271,7 @@ pub unsafe fn do_oneway_test(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> S
 }
 
 fn loglik_numeric(x: SEXP) -> f64 {
-    unsafe { elt_real_safe(x, 0) }
+    elt_real_safe(x, 0)
 }
 
 fn loglik_df(x: SEXP) -> f64 {

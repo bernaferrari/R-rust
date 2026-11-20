@@ -211,7 +211,7 @@ pub(super) fn evaluate(
 
 pub(super) fn lock(access: &RuntimeAccess, environment: &Sexp<'static>) -> SexpResult<()> {
     access.domain().link(environment)?;
-    access.with_native(|_| unsafe {
+    access.with_native(|_| {
         crate::sexp::envir::lock_environment_raw(environment.as_raw());
         Ok(())
     })

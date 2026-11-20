@@ -127,7 +127,7 @@ pub unsafe fn EncodeNonFiniteComplexElement(x: Rcomplex, buff: *mut c_char) -> *
 
 /// Format an integer element as a string.
 pub unsafe fn format_int_element(val: c_int) -> *const c_char {
-    unsafe {
+    {
         with_deparse_runtime(|state| {
             let buf = &mut state.int_buf;
             if val == NA_INTEGER {
@@ -142,7 +142,7 @@ pub unsafe fn format_int_element(val: c_int) -> *const c_char {
 
 /// Format a logical element as a string.
 pub unsafe fn format_logical_element(val: c_int) -> *const c_char {
-    unsafe {
+    {
         with_deparse_runtime(|state| {
             let buf = &mut state.logical_buf;
             if val == NA_INTEGER {
@@ -279,7 +279,7 @@ pub unsafe fn format_string_element(s: SEXP) -> *const c_char {
 
 /// Format a raw element as hex.
 pub unsafe fn format_raw_element(val: Rbyte) -> *const c_char {
-    unsafe {
+    {
         with_deparse_runtime(|state| {
             let buf = &mut state.raw_buf;
             r_snprintf_c(buf, b"0x%02x", &[(val as c_uint).into()]);

@@ -104,13 +104,13 @@ unsafe fn isNA_STRING(s: SEXP) -> bool {
 /// isString check -- STRSXP type.
 #[inline(always)]
 unsafe fn isString(x: SEXP) -> bool {
-    unsafe { !x.is_null() && TYPEOF(x) == SEXPTYPE::STRSXP }
+    !x.is_null() && TYPEOF(x) == SEXPTYPE::STRSXP
 }
 
 /// isNull check.
 #[inline(always)]
 unsafe fn isNull(x: SEXP) -> bool {
-    unsafe { x.is_null() || x == R_NilValue() }
+    x.is_null() || x == R_NilValue()
 }
 
 #[inline(always)]

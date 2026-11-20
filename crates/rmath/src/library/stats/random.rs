@@ -937,7 +937,7 @@ unsafe fn resultLength(lengthArgument: SEXP) -> R_xlen_t {
 // ---------------------------------------------------------------------------
 
 unsafe fn isNumeric(x: SEXP) -> bool {
-    unsafe {
+    {
         if x.is_null() {
             return false;
         }
@@ -1768,7 +1768,7 @@ pub unsafe fn r2dtable(n: SEXP, r: SEXP, c: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 unsafe fn adapter_absent(x: SEXP) -> bool {
-    unsafe { x.is_null() || x == R_NilValue() || x == R_MissingArg() }
+    x.is_null() || x == R_NilValue() || x == R_MissingArg()
 }
 
 fn missing_required(call: SEXP, name: &str) -> ! {

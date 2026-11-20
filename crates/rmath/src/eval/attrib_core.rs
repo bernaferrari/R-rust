@@ -308,7 +308,7 @@ unsafe fn update_class_object_flag(x: SEXP, which: SEXP, value: SEXP) {
 ///
 /// This is the equivalent of R's `isObject()` macro.
 pub unsafe fn isObject(x: SEXP) -> c_int {
-    unsafe {
+    {
         if x.is_null() {
             return 0;
         }

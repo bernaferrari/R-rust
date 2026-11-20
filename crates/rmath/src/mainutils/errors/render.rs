@@ -765,7 +765,7 @@ pub(super) unsafe fn vwarningcall_dflt(call: SEXP, format: *const c_char, ap: *m
     let affiliation = owner.weak_owner().expect("managed warning owner");
     // The incoming call may be rooted solely by a mutable runtime override.
     // Retain the actual value before even the first option-symbol allocation.
-    let call_owned = collection_checked(unsafe {
+    let call_owned = collection_checked({
         owner
             .sexp(if call.is_null() {
                 globals::R_NilValue()

@@ -238,7 +238,7 @@ pub(super) unsafe fn sapply_is_false(x: SEXP) -> bool {
 }
 
 pub(super) unsafe fn sapply_is_array(x: SEXP) -> bool {
-    unsafe { TYPEOF(x) == SEXPTYPE::STRSXP && XLENGTH(x) >= 1 && elt_to_string(x, 0) == "array" }
+    TYPEOF(x) == SEXPTYPE::STRSXP && XLENGTH(x) >= 1 && elt_to_string(x, 0) == "array"
 }
 
 /// R's `vapply(X, FUN, FUN.VALUE, ..., USE.NAMES = TRUE)` — apply.c's
@@ -531,7 +531,7 @@ pub unsafe fn do_vapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// types), NOT the stricter R-level is.vector. Lists and expressions are
 /// vectors here; NULL, symbols and calls are not.
 pub(super) fn is_vapply_vector(x: SEXP) -> bool {
-    unsafe {
+    {
         if x.is_null() || x == R_NilValue() {
             return false;
         }
@@ -631,7 +631,7 @@ pub(super) fn normalize_vapply_x(x: SEXP) -> SEXP {
 /// length() as vapply uses it: XLENGTH for vectors, a walk for pairlist
 /// results, 0 for NULL.
 pub(super) fn vapply_length(x: SEXP) -> R_xlen_t {
-    unsafe {
+    {
         if x.is_null() || x == R_NilValue() {
             return 0;
         }
@@ -651,7 +651,7 @@ pub(super) fn vapply_length(x: SEXP) -> R_xlen_t {
 }
 
 pub(super) fn vapply_is_nil(x: SEXP) -> bool {
-    unsafe { x.is_null() || x == R_NilValue() }
+    x.is_null() || x == R_NilValue()
 }
 
 /// Upstream type names as they appear in vapply's error messages

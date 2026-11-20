@@ -104,7 +104,7 @@ unsafe fn resolve_restart_arg(restart_arg: SEXP, require_active_object: bool) ->
 }
 
 unsafe fn restart_arg_name(restart_arg: SEXP) -> String {
-    unsafe {
+    {
         if !restart_arg.is_null()
             && restart_arg != R_NilValue()
             && TYPEOF(restart_arg) == SEXPTYPE::STRSXP

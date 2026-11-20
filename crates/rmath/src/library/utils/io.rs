@@ -1100,13 +1100,13 @@ unsafe fn isString(x: SEXP) -> bool {
 /// isNull — check if SEXP is R_NilValue
 #[inline]
 unsafe fn isNull(x: SEXP) -> bool {
-    unsafe { x.is_null() || x == R_NilValue() }
+    x.is_null() || x == R_NilValue()
 }
 
 /// isVectorList — check if SEXP is a list (VECSXP or EXPRSXP)
 #[inline]
 unsafe fn isVectorList(x: SEXP) -> bool {
-    unsafe {
+    {
         if x.is_null() {
             return false;
         }

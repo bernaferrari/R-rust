@@ -236,7 +236,7 @@ pub unsafe fn get_R_print_data() -> MutPtr<R_PrintData> {
 // ---------------------------------------------------------------------------
 
 unsafe fn isSymbol(x: SEXP) -> c_int {
-    unsafe {
+    {
         if x.is_null() {
             return 0;
         }
@@ -245,7 +245,7 @@ unsafe fn isSymbol(x: SEXP) -> c_int {
 }
 
 unsafe fn isString(x: SEXP) -> c_int {
-    unsafe {
+    {
         if x.is_null() {
             return 0;
         }
@@ -254,7 +254,7 @@ unsafe fn isString(x: SEXP) -> c_int {
 }
 
 unsafe fn Rf_isNull(x: SEXP) -> c_int {
-    unsafe {
+    {
         if x.is_null() || x == R_NilValue() {
             1
         } else {
@@ -264,7 +264,7 @@ unsafe fn Rf_isNull(x: SEXP) -> c_int {
 }
 
 unsafe fn isFunction(x: SEXP) -> c_int {
-    unsafe {
+    {
         if x.is_null() {
             return 0;
         }
@@ -1367,7 +1367,7 @@ unsafe fn PrintGenericVector(s: SEXP, data: &R_PrintData) {
 
 // Detect malformed CDR cycles without allocating or truncating valid long lists.
 unsafe fn validate_print_chain(head: SEXP) {
-    unsafe {
+    {
         let next = |cell: SEXP| {
             if cell.is_null() || cell == R_NilValue() || TYPEOF(cell) != SEXPTYPE::LISTSXP {
                 R_NilValue()
@@ -2274,7 +2274,7 @@ pub unsafe fn do_unclass(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
 // ---------------------------------------------------------------------------
 
 pub unsafe fn isEnvironment(x: SEXP) -> c_int {
-    unsafe {
+    {
         if x.is_null() {
             return 0;
         }

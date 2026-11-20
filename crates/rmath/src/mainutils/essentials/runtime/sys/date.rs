@@ -40,7 +40,7 @@ pub(crate) unsafe fn set_posixct_class(x: SEXP, tz: &str) {
 
 /// GNU `as.POSIXct(*, tz=)` stored tzone: missing/empty stays `""`.
 pub(crate) fn posixct_tz_arg(args: SEXP) -> String {
-    unsafe {
+    {
         let tz_arg = arg_by_name_or_position(args, &["tz"], 1);
         if tz_arg.is_null()
             || tz_arg == R_NilValue()

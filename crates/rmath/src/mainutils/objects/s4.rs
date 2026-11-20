@@ -165,7 +165,7 @@ pub unsafe fn R_seemsOldStyleS4Object(object: SEXP) -> c_int {
 }
 
 pub unsafe fn isS4(s: SEXP) -> c_int {
-    unsafe {
+    {
         if s.is_null() {
             return FALSE;
         }

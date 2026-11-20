@@ -157,7 +157,7 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
         return text;
     }
     // The type match below does not format S4, so dispatch show() here.
-    if unsafe {
+    if {
         crate::mainutils::coerce::IS_S4_OBJECT(x.clone().as_raw()) != 0
             || x.typeof_() == SEXPTYPE::S4SXP
     } {

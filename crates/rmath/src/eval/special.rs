@@ -222,7 +222,7 @@ fn unimplemented_special_form(name: &str) -> ! {
 }
 
 unsafe fn is_null(x: SEXP) -> bool {
-    unsafe { x.is_null() || crate::sexp::accessors::Rf_isNull(x) != 0 }
+    x.is_null() || crate::sexp::accessors::Rf_isNull(x) != 0
 }
 
 unsafe fn tag_name(cell: SEXP) -> Option<String> {

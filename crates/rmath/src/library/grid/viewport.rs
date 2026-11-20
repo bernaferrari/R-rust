@@ -76,7 +76,7 @@ unsafe fn scalar_real_or(x: SEXP, default_value: f64) -> f64 {
 // ---------------------------------------------------------------------------
 
 unsafe fn isLogical(x: SEXP) -> bool {
-    unsafe { !x.is_null() && TYPEOF(x) == SEXPTYPE::LGLSXP }
+    !x.is_null() && TYPEOF(x) == SEXPTYPE::LGLSXP
 }
 
 // ---------------------------------------------------------------------------

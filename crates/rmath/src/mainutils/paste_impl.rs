@@ -98,7 +98,7 @@ unsafe fn checkArity(op: SEXP, args: SEXP) {
 
 // error/errorcall use panic_any(RError{..}) in the full port.
 unsafe fn error(fmt: *const c_char, _a1: usize, _a2: usize, _a3: usize) {
-    unsafe {
+    {
         crate::mainutils::errors::errorcall(crate::sexp::globals::R_NilValue(), fmt);
     }
 }
@@ -313,7 +313,7 @@ unsafe fn R_strlen(s: SEXP, _type: c_int) -> c_int {
 }
 
 unsafe fn isVectorList(x: SEXP) -> c_int {
-    unsafe {
+    {
         if x.is_null() {
             return 0;
         }
@@ -352,7 +352,7 @@ unsafe fn PRIMARITY(_op: SEXP) -> c_int {
 
 /// Local stub for isNumeric (avoids cross-module dependency).
 unsafe fn isNumeric(x: SEXP) -> c_int {
-    unsafe {
+    {
         if x.is_null() {
             return 0;
         }
@@ -536,7 +536,7 @@ impl owned_paste::Native for PasteNative<'_> {
                 PrintDefaults();
             }
             original.require_active()?;
-            Ok(unsafe { PRIMVAL(op.as_raw()) == 0 })
+            Ok(PRIMVAL(op.as_raw()) == 0)
         })
     }
     fn boolean(
