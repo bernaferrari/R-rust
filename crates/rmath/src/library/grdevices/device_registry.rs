@@ -1451,7 +1451,19 @@ pub unsafe extern "C" fn NumDevices() -> c_int {
     with_registry(|registry| registry.num_devices())
 }
 
-pub unsafe extern "C" fn GEinitDisplayList(_gdd: pGEDevDesc) {}
+pub unsafe extern "C" fn GEinitDisplayList(gdd: pGEDevDesc) {
+    #[cfg(feature = "renderplot-device")]
+    with_device_mut(gdd, |device| {
+        if let Some(pdf) = &device.pdf
+            && let Ok(mut capture) = pdf.capture.try_borrow_mut()
+            && let Some(capture) = capture.as_mut()
+        {
+            capture.reset_display_list(device.displayListOn != 0);
+        }
+    });
+    #[cfg(not(feature = "renderplot-device"))]
+    let _ = gdd;
+}
 
 pub unsafe extern "C" fn GEcopyDisplayList(_devnum: c_int) {}
 

@@ -41,7 +41,7 @@ impl GraphicsTarget {
     pub(crate) fn write_pdf_page(
         &self,
         output: &mut dyn std::io::Write,
-    ) -> Option<std::io::Result<()>> {
+    ) -> Option<std::io::Result<bool>> {
         if let Backend::Pdf(capture) = &self.0 {
             return Some((|| {
                 capture
@@ -53,6 +53,18 @@ impl GraphicsTarget {
             })());
         }
         None
+    }
+
+    pub(crate) fn begin_pdf_replay_page(&self) -> std::io::Result<()> {
+        if let Backend::Pdf(capture) = &self.0 {
+            capture
+                .try_borrow_mut()
+                .map_err(|_| std::io::Error::other("PDF device is busy"))?
+                .as_mut()
+                .ok_or_else(|| std::io::Error::other("PDF device is closed"))?
+                .begin_replay_page();
+        }
+        Ok(())
     }
 
     pub(crate) fn same_device(&self, other: &Self) -> bool {

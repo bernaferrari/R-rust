@@ -1,0 +1,17 @@
+library(grid)
+pdf("source.pdf")
+grid.text("Before recording", y=.2)
+without <- recordPlot()
+dev.control(displaylist="enable")
+grid.text("With recording", y=.4)
+with <- recordPlot()
+dev.control(displaylist="inhibit")
+grid.text("After inhibit", y=.6)
+inhibited <- recordPlot()
+invisible(dev.off())
+for (case in c("without","with","inhibited")) {
+    pdf(paste0(case,".pdf"), width=8, height=5)
+    grid.text("Destination", y=.1)
+    replayPlot(get(case))
+    invisible(dev.off())
+}

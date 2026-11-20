@@ -296,12 +296,14 @@ pub(crate) unsafe fn record(_: SEXP, _: SEXP, _: SEXP, _: SEXP) -> SEXP {
         } else {
             usize::MAX
         };
+        let mut has_recorded_operations = true;
         let bytes = browser_files::generate_admitted_bytes(limit, |output| {
             if let Some(result) = target
                 .as_ref()
                 .and_then(|target| target.write_pdf_page(output))
             {
-                return result;
+                has_recorded_operations = result?;
+                return Ok(());
             }
             let screen = screen
                 .as_ref()
@@ -321,7 +323,9 @@ pub(crate) unsafe fn record(_: SEXP, _: SEXP, _: SEXP, _: SEXP) -> SEXP {
             R_ClassSymbol(),
             Rf_mkString(c"recordedplot".as_ptr()),
         );
-        snapshot_portable_state(result);
+        if has_recorded_operations {
+            snapshot_portable_state(result);
+        }
         result
     }
 }
@@ -354,6 +358,11 @@ pub(crate) unsafe fn replay(_: SEXP, _: SEXP, args: SEXP, _: SEXP) -> SEXP {
         let target_dimensions = r_graphics_engine::DrawTarget::dimensions(&target);
         let grid_state = decode_grid_state(recording, source_dimensions, target_dimensions)
             .unwrap_or_else(|e| base_error(e));
+        if !scene.operations().is_empty() {
+            target
+                .begin_pdf_replay_page()
+                .unwrap_or_else(|error| base_error(format!("cannot replay plot: {error}")));
+        }
         scene.replay_scaled(&mut target);
         if let Some(state) = state {
             restore_portable_state(state, source_dimensions, target_dimensions);

@@ -14,6 +14,7 @@ pub(super) struct PdfCapture {
     dimensions: (u32, u32),
     pages: Vec<Scene>,
     operations: Vec<DrawOperation>,
+    display_list_start: Option<usize>,
     admission: WorkspaceReservation,
     bytes: usize,
     error: Option<&'static str>,
@@ -46,6 +47,7 @@ impl PdfCapture {
             dimensions,
             pages,
             operations: Vec::new(),
+            display_list_start: None,
             admission,
             bytes,
             error: None,
@@ -69,12 +71,26 @@ impl PdfCapture {
     pub(super) fn write_current_page(
         &self,
         output: &mut dyn std::io::Write,
-    ) -> std::io::Result<()> {
+    ) -> std::io::Result<bool> {
         if let Some(error) = self.error {
             return Err(std::io::Error::other(error));
         }
-        Scene::write_operations(self.dimensions, &self.operations, output)
-            .map_err(std::io::Error::other)
+        let operations = self
+            .display_list_start
+            .and_then(|start| self.operations.get(start..))
+            .unwrap_or_default();
+        Scene::write_operations(self.dimensions, operations, output)
+            .map_err(std::io::Error::other)?;
+        Ok(!operations.is_empty())
+    }
+
+    pub(super) fn reset_display_list(&mut self, enabled: bool) {
+        self.display_list_start = enabled.then_some(self.operations.len());
+    }
+
+    pub(super) fn begin_replay_page(&mut self) {
+        self.finish_page();
+        self.reset_display_list(self.display_list_start.is_some());
     }
 
     pub(super) fn reject_raster(&mut self) {
@@ -157,6 +173,9 @@ impl DrawTarget for PdfCapture {
         } else {
             self.operations.clear();
         }
+        if let Some(start) = self.display_list_start.as_mut() {
+            *start = 0;
+        }
         self.record(0, || Ok(DrawOperation::Clear(color)));
     }
 
@@ -233,6 +252,36 @@ fn copy_slice<T: Clone>(source: &[T]) -> Result<Vec<T>, &'static str> {
 mod tests {
     use super::*;
     use crate::sexp::session::RSession;
+
+    #[test]
+    fn pdf_recording_starts_at_enable_and_resets_on_a_new_page() {
+        let mut session = RSession::new_for_gc_tests();
+        session.with_active(|| {
+            let mut capture = PdfCapture::new((432, 288)).unwrap();
+            capture.draw_path(&Path::rect(1., 2., 3., 4.));
+            let read = |capture: &PdfCapture| {
+                let mut output = Vec::new();
+                let present = capture.write_current_page(&mut output).unwrap();
+                let scene = Scene::decode(&output).unwrap();
+                assert_eq!(present, !scene.operations().is_empty());
+                scene
+            };
+            assert!(read(&capture).operations().is_empty());
+            capture.reset_display_list(true);
+            capture.draw_path(&Path::rect(5., 6., 7., 8.));
+            assert_eq!(read(&capture).operations().len(), 1);
+            capture.begin_replay_page();
+            assert!(read(&capture).operations().is_empty());
+            capture.draw_path(&Path::rect(9., 10., 11., 12.));
+            assert_eq!(read(&capture).operations().len(), 1);
+            capture.reset_display_list(false);
+            assert!(read(&capture).operations().is_empty());
+            let pdf = capture.finish().unwrap();
+            assert_eq!(pdf.pages.len(), 2);
+            assert_eq!(pdf.pages[0].operations().len(), 2);
+            assert_eq!(pdf.pages[1].operations().len(), 1);
+        });
+    }
 
     #[test]
     fn a_new_page_retains_prior_geometry_until_finish() {
