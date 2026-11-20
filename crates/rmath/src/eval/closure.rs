@@ -12,7 +12,7 @@ use std::os::raw::c_int;
 use std::ptr;
 
 use crate::sexp::accessors::{
-    BODY, CAR, CDR, CHAR, PRINTNAME, SETCAR, STRING_ELT, TAG, TYPEOF, XLENGTH,
+    BODY, CAR, CDR, CHAR, SETCAR, STRING_ELT, TAG, TYPEOF, XLENGTH,
 };
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
 use crate::sexp::globals::{R_MissingArg, R_NilValue};
@@ -315,12 +315,15 @@ unsafe fn install_frame_vars(mut vars: SEXP, rho: SEXP) {
 
 /// Create the environment for a closure application.
 ///
-unsafe fn env_on_enclos_chain(mut start: SEXP, needle: SEXP) -> bool {
-    unsafe {
+fn env_on_enclos_chain(mut start: SEXP, needle: SEXP) -> bool {
+    {
         if needle.is_null() {
             return false;
         }
-        let empty = crate::sexp::globals::R_EmptyEnv();
+        let Some(instance) = crate::sexp::instance::current_instance_ptr() else {
+            return false;
+        };
+        let empty = crate::sexp::globals::R_EmptyEnv_in(instance);
         let mut hops = 0;
         while !start.is_null() && start != crate::sexp::globals::R_NilValue() && hops < 64 {
             if start == needle {
@@ -538,20 +541,12 @@ pub unsafe fn make_applyClosure_env(call: SEXP, op: SEXP, arglist: SEXP, rho: SE
     })
 }
 
-unsafe fn formal_tag_name(formal_tag: SEXP) -> Option<String> {
-    unsafe {
+fn formal_tag_name(formal_tag: SEXP) -> Option<String> {
+    {
         if formal_tag.is_null() || TYPEOF(formal_tag) != SEXPTYPE::SYMSXP {
             return None;
         }
-        let pname = PRINTNAME(formal_tag);
-        if pname.is_null() || pname == R_NilValue() {
-            return None;
-        }
-        let chars = CHAR(pname);
-        if chars.is_null() {
-            return None;
-        }
-        Some(CStr::from_ptr(chars).to_string_lossy().into_owned())
+        crate::sexp::symbol::symbol_name_from_ptr(formal_tag)
     }
 }
 
@@ -609,7 +604,7 @@ pub(super) unsafe fn match_closure_args<'s>(
         if ftag.is_nil() || ftag.as_raw() == dots_symbol {
             continue;
         }
-        if let Some(ftag_name) = unsafe { formal_tag_name(ftag.as_raw()) } {
+        if let Some(ftag_name) = formal_tag_name(ftag.as_raw()) {
             for (index, supplied) in supplied_cells.iter().enumerate() {
                 let btag = supplied
                     .try_tag()
@@ -617,7 +612,7 @@ pub(super) unsafe fn match_closure_args<'s>(
                 if btag.is_nil() {
                     continue;
                 }
-                let Some(btag_name) = (unsafe { formal_tag_name(btag.as_raw()) }) else {
+                let Some(btag_name) = formal_tag_name(btag.as_raw()) else {
                     continue;
                 };
                 if ftag_name != btag_name {
@@ -637,9 +632,9 @@ pub(super) unsafe fn match_closure_args<'s>(
                 let value = supplied
                     .try_car()
                     .map_err(|error| sexp_err("supplied value", error))?;
-                unsafe {
-                    SETCAR(result_cells[formal_idx].as_raw(), value.as_raw());
-                }
+                crate::sexp::object::SexpMut::try_from_checked(result_cells[formal_idx].clone())
+                    .and_then(|mut cell| cell.try_set_pairlist_car(&value))
+                    .map_err(|error| sexp_err("matched value cell", error))?;
                 used[index] = 2;
                 fargused[formal_idx] = true;
             }
@@ -660,7 +655,7 @@ pub(super) unsafe fn match_closure_args<'s>(
             dots_formal_index = Some(formal_idx);
             seen_dots = true;
         } else if !seen_dots {
-            if let Some(ftag_name) = unsafe { formal_tag_name(ftag.as_raw()) } {
+            if let Some(ftag_name) = formal_tag_name(ftag.as_raw()) {
                 for (index, supplied) in supplied_cells.iter().enumerate() {
                     let btag = supplied
                         .try_tag()
@@ -668,7 +663,7 @@ pub(super) unsafe fn match_closure_args<'s>(
                     if btag.is_nil() || used[index] == 2 {
                         continue;
                     }
-                    let Some(btag_name) = (unsafe { formal_tag_name(btag.as_raw()) }) else {
+                    let Some(btag_name) = formal_tag_name(btag.as_raw()) else {
                         continue;
                     };
                     if !ftag_name.starts_with(btag_name.as_str()) {
@@ -694,8 +689,12 @@ pub(super) unsafe fn match_closure_args<'s>(
                             btag.as_raw(),
                             ftag.as_raw(),
                         );
-                        SETCAR(result_cells[formal_idx].as_raw(), value.as_raw());
                     }
+                    crate::sexp::object::SexpMut::try_from_checked(
+                        result_cells[formal_idx].clone(),
+                    )
+                    .and_then(|mut cell| cell.try_set_pairlist_car(&value))
+                    .map_err(|error| sexp_err("matched value cell", error))?;
                     used[index] = 1;
                     fargused[formal_idx] = true;
                 }
@@ -729,9 +728,9 @@ pub(super) unsafe fn match_closure_args<'s>(
             let value = supplied_cells[supplied_idx]
                 .try_car()
                 .map_err(|error| sexp_err("supplied value", error))?;
-            unsafe {
-                SETCAR(result_cells[formal_idx].as_raw(), value.as_raw());
-            }
+            crate::sexp::object::SexpMut::try_from_checked(result_cells[formal_idx].clone())
+                .and_then(|mut cell| cell.try_set_pairlist_car(&value))
+                .map_err(|error| sexp_err("matched value cell", error))?;
             used[supplied_idx] = 1;
             fargused[formal_idx] = true;
             supplied_idx += 1;
@@ -759,16 +758,16 @@ pub(super) unsafe fn match_closure_args<'s>(
             collected += 1;
         }
         if collected == 0 {
-            unsafe {
-                SETCAR(result_cells[dots_idx].as_raw(), missing.as_raw());
-            }
+            crate::sexp::object::SexpMut::try_from_checked(result_cells[dots_idx].clone())
+                .and_then(|mut cell| cell.try_set_pairlist_car(&missing))
+                .map_err(|error| sexp_err("matched value cell", error))?;
         } else {
             let dots = dots
                 .finish_as_type(SEXPTYPE::DOTSXP)
                 .map_err(|error| sexp_err("dots argument pairlist wrap", error))?;
-            unsafe {
-                SETCAR(result_cells[dots_idx].as_raw(), dots.as_raw());
-            }
+            crate::sexp::object::SexpMut::try_from_checked(result_cells[dots_idx].clone())
+                .and_then(|mut cell| cell.try_set_pairlist_car(&dots))
+                .map_err(|error| sexp_err("matched value cell", error))?;
         }
     } else {
         let mut unused = Vec::new();
@@ -788,7 +787,7 @@ pub(super) unsafe fn match_closure_args<'s>(
             let tag = supplied
                 .try_tag()
                 .map_err(|error| sexp_err("supplied tag", error))?;
-            let item = match unsafe { formal_tag_name(tag.as_raw()) } {
+            let item = match formal_tag_name(tag.as_raw()) {
                 Some(tag) => format!("{tag} = {deparsed}"),
                 None => deparsed,
             };
