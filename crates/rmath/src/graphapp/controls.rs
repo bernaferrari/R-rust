@@ -702,9 +702,14 @@ pub fn getbitmapdata(b: bitmap, data: *mut GAbyte) {
     } else {
         pixel_count * std::mem::size_of::<rgb>()
     };
-    // Raw pixel copy into the caller-provided buffer; byte_len is derived
-    // from the image dimensions recorded above.
-    unsafe { ptr::copy_nonoverlapping(pixels, data, byte_len) };
+    // Copy `byte_len` bytes into the caller-provided buffer; the length
+    // is derived from the image dimensions recorded above.
+    if let (Some(dest), Some(src)) = (
+        slice_mut(data, byte_len),
+        slice_ref(pixels, byte_len),
+    ) {
+        dest.copy_from_slice(src);
+    }
 }
 pub fn getbitmapdata2(b: bitmap, data: *mut *mut GAbyte) {
     let Some(img) = obj_ref(b).map(|b| b.img) else { return };
@@ -756,9 +761,8 @@ pub fn saveimage(img: image, filename: *const c_char) {
     if data.depth <= 8 {
         let _ = writeln!(file, "P5\n{} {}\n255", width, height);
         let pixels = image_api::getpixels(img);
-        if !pixels.is_null() {
-            // Read `width * height` bytes from the owned pixel buffer.
-            let bytes = unsafe { std::slice::from_raw_parts(pixels, (width * height) as usize) };
+        // Read `width * height` bytes from the owned pixel buffer.
+        if let Some(bytes) = slice_ref(pixels, (width * height) as usize) {
             let _ = file.write_all(bytes);
         }
         return;

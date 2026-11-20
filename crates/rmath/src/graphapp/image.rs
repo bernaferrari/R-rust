@@ -175,7 +175,12 @@ pub fn setpixels(img: image, pixels: *mut super::types::GAbyte) {
     if !data.pixels.is_null() && !pixels.is_null() {
         // Copy `byte_len` bytes from the caller's buffer into the owned
         // pixel allocation; both are at least that long by construction.
-        unsafe { ptr::copy_nonoverlapping(pixels, data.pixels, byte_len) };
+        if let (Some(dest), Some(src)) = (
+            slice_mut(data.pixels, byte_len),
+            slice_ref(pixels, byte_len),
+        ) {
+            dest.copy_from_slice(src);
+        }
     }
 }
 
@@ -199,7 +204,12 @@ pub fn setpalette(img: image, cmapsize: c_int, cmap: *mut rgb) {
         }
         // Copy `cmapsize` entries from the caller's palette into the new
         // allocation sized exactly for them.
-        unsafe { ptr::copy_nonoverlapping(cmap, replacement, cmapsize as usize) };
+        if let (Some(dest), Some(src)) = (
+            slice_mut(replacement, cmapsize as usize),
+            slice_ref(cmap, cmapsize as usize),
+        ) {
+            dest.copy_from_slice(src);
+        }
         replacement
     } else {
         ptr::null_mut()
@@ -235,16 +245,16 @@ pub fn convert32to8(img: image) -> image {
     };
 
     let len = (src.width * src.height).max(0) as usize;
-    let src_pixels = src.pixels as *const rgb;
+    // Borrow the owned source rgb buffer of `len` entries.
+    let Some(src_pixels) = slice_ref(src.pixels as *const rgb, len) else {
+        return dest;
+    };
     let mut palette: Vec<rgb> = Vec::with_capacity(256);
 
-    // Read `len` rgb entries from the owned source pixel buffer.
-    unsafe {
-        for i in 0..len {
-            let color = normalized_rgb(*src_pixels.add(i));
-            if !palette.contains(&color) && palette.len() < 256 {
-                palette.push(color);
-            }
+    for &c in src_pixels {
+        let color = normalized_rgb(c);
+        if !palette.contains(&color) && palette.len() < 256 {
+            palette.push(color);
         }
     }
     if palette.is_empty() {
@@ -253,19 +263,19 @@ pub fn convert32to8(img: image) -> image {
 
     setpalette(dest, palette.len() as c_int, palette.as_mut_ptr());
 
-    let dest_pixels = dest_data.pixels;
-    // Read the owned source buffer and write palette indices into the
-    // owned destination buffer; both hold `len` entries.
-    unsafe {
-        for i in 0..len {
-            let color = normalized_rgb(*src_pixels.add(i));
-            let index = palette
-                .iter()
-                .position(|entry| *entry == color)
-                .map(|idx| idx as GAbyte)
-                .unwrap_or_else(|| nearest_palette_index(&palette, color));
-            *dest_pixels.add(i) = index;
-        }
+    // Write palette indices into the owned destination byte buffer of
+    // `len` entries.
+    let Some(dest_pixels) = slice_mut(dest_data.pixels, len) else {
+        return dest;
+    };
+    for (i, &c) in src_pixels.iter().enumerate() {
+        let color = normalized_rgb(c);
+        let index = palette
+            .iter()
+            .position(|entry| *entry == color)
+            .map(|idx| idx as GAbyte)
+            .unwrap_or_else(|| nearest_palette_index(&palette, color));
+        dest_pixels[i] = index;
     }
 
     dest
@@ -280,25 +290,26 @@ pub fn convert8to32(img: image) -> image {
     let Some(new_data) = ptr_mut(new_img) else {
         return ptr::null_mut();
     };
-    let length = src.width * src.height;
-    let pixel8 = src.pixels;
-    let pixel32 = new_data.pixels as *mut rgb;
-    let cmap = src.cmap;
-    let cmapsize = src.cmapsize;
+    let length = (src.width * src.height).max(0) as usize;
+    let cmapsize = src.cmapsize.max(0) as usize;
 
-    // Expand each indexed source pixel into an rgb entry in the owned
-    // destination buffer; both buffers hold `length` entries.
-    unsafe {
-        for i in 0..length.max(0) as usize {
-            let value = *pixel8.add(i);
-            let col = if !cmap.is_null() && cmapsize > 0 {
-                let idx = (value as c_int).min(cmapsize - 1) as usize;
-                *cmap.add(idx)
-            } else {
-                Black
-            };
-            *pixel32.add(i) = col;
-        }
+    // Borrow the owned source index buffer, palette, and destination
+    // rgb buffer; each holds `length` or `cmapsize` entries.
+    let Some(pixel8) = slice_ref(src.pixels, length) else {
+        return new_img;
+    };
+    let palette = slice_ref(src.cmap, cmapsize).unwrap_or(&[]);
+    let Some(pixel32) = slice_mut(new_data.pixels as *mut rgb, length) else {
+        return new_img;
+    };
+
+    for (i, &value) in pixel8.iter().enumerate() {
+        let col = if palette.is_empty() {
+            Black
+        } else {
+            palette[(value as usize).min(palette.len() - 1)]
+        };
+        pixel32[i] = col;
     }
     new_img
 }
@@ -313,31 +324,31 @@ pub fn sortpalette(img: image) {
     }
 
     let cmapsize = data.cmapsize as usize;
-    let cmap = data.cmap;
-    let pixels = data.pixels;
     let len = (data.width * data.height).max(0) as usize;
 
     // Rewrite the owned palette and index buffers in place; the palette
     // has `cmapsize` entries and the index buffer has `len` bytes.
-    unsafe {
-        let mut entries: Vec<(usize, rgb)> =
-            (0..cmapsize).map(|i| (i, *cmap.add(i))).collect();
-        entries.sort_by_key(|(_, color)| palette_sort_key(*color));
+    let Some(cmap) = slice_mut(data.cmap, cmapsize) else {
+        return;
+    };
+    let Some(pixels) = slice_mut(data.pixels, len) else {
+        return;
+    };
 
-        let mut remap = vec![0u8; cmapsize];
-        for (new_index, (old_index, color)) in entries.iter().enumerate() {
-            remap[*old_index] = new_index as u8;
-            *cmap.add(new_index) = *color;
-        }
+    let mut entries: Vec<(usize, rgb)> = cmap.iter().copied().enumerate().collect();
+    entries.sort_by_key(|(_, color)| palette_sort_key(*color));
 
-        for i in 0..len {
-            let pixel = *pixels.add(i) as usize;
-            let remapped = remap
-                .get(pixel)
-                .copied()
-                .unwrap_or_else(|| remap[cmapsize - 1]);
-            *pixels.add(i) = remapped;
-        }
+    let mut remap = vec![0u8; cmapsize];
+    for (new_index, (old_index, color)) in entries.iter().enumerate() {
+        remap[*old_index] = new_index as u8;
+        cmap[new_index] = *color;
+    }
+
+    for pixel in pixels.iter_mut() {
+        *pixel = remap
+            .get(*pixel as usize)
+            .copied()
+            .unwrap_or_else(|| remap[cmapsize - 1]);
     }
 }
 
@@ -372,12 +383,20 @@ pub fn scaleimage(src: image, dr: rect, sr: rect) -> image {
     let src_width = src_data.width;
     let src_height = src_data.height;
     let src_depth = src_data.depth;
+    let src_len = (src_width * src_height).max(0) as usize;
+    let dest_len = (dr.width * dr.height) as usize;
     let src_pixels = src_data.pixels;
     let dest_pixels = ptr_ref(dest).map_or(ptr::null_mut(), |d| d.pixels);
 
     // Copy sampled entries between the owned source and destination
-    // pixel buffers; indices are clamped by `sample_coordinate`.
-    unsafe {
+    // pixel buffers; `sample_coordinate` clamps indices into range.
+    if src_depth <= 8 {
+        let (Some(src_px), Some(dest_px)) = (
+            slice_ref(src_pixels, src_len),
+            slice_mut(dest_pixels, dest_len),
+        ) else {
+            return dest;
+        };
         for y in 0..dr.height {
             let sy = sample_coordinate(
                 y,
@@ -388,14 +407,27 @@ pub fn scaleimage(src: image, dr: rect, sr: rect) -> image {
             );
             for x in 0..dr.width {
                 let sx = sample_coordinate(x, dr.width, source_rect.x, source_rect.width, src_width);
-                let src_index = (sy * src_width + sx) as usize;
-                let dest_index = (y * dr.width + x) as usize;
-                if src_depth <= 8 {
-                    *dest_pixels.add(dest_index) = *src_pixels.add(src_index);
-                } else {
-                    *(dest_pixels as *mut rgb).add(dest_index) =
-                        *(src_pixels as *const rgb).add(src_index);
-                }
+                dest_px[(y * dr.width + x) as usize] = src_px[(sy * src_width + sx) as usize];
+            }
+        }
+    } else {
+        let (Some(src_px), Some(dest_px)) = (
+            slice_ref(src_pixels as *const rgb, src_len),
+            slice_mut(dest_pixels as *mut rgb, dest_len),
+        ) else {
+            return dest;
+        };
+        for y in 0..dr.height {
+            let sy = sample_coordinate(
+                y,
+                dr.height,
+                source_rect.y,
+                source_rect.height,
+                src_height,
+            );
+            for x in 0..dr.width {
+                let sx = sample_coordinate(x, dr.width, source_rect.x, source_rect.width, src_width);
+                dest_px[(y * dr.width + x) as usize] = src_px[(sy * src_width + sx) as usize];
             }
         }
     }
@@ -412,18 +444,22 @@ pub fn get_image_pixel(img: image, x: c_int, y: c_int) -> rgb {
         return Transparent;
     }
     let index = (y * data.width + x) as usize;
+    let len = (data.width * data.height).max(0) as usize;
     if data.depth <= 8 {
         // Read one byte from the owned index buffer.
-        let value = unsafe { *data.pixels.add(index) };
-        if !data.cmap.is_null() && (value as c_int) < data.cmapsize {
-            // Read one entry from the owned palette.
-            unsafe { *data.cmap.add(value as usize) }
-        } else {
-            Black
-        }
+        let Some(pixels) = slice_ref(data.pixels, len) else {
+            return Transparent;
+        };
+        let value = pixels[index];
+        // Read one entry from the owned palette.
+        let palette = slice_ref(data.cmap, data.cmapsize.max(0) as usize).unwrap_or(&[]);
+        palette.get(value as usize).copied().unwrap_or(Black)
     } else {
         // Read one rgb entry from the owned pixel buffer.
-        let pixel = unsafe { *(data.pixels as *const rgb).add(index) };
+        let Some(pixels) = slice_ref(data.pixels as *const rgb, len) else {
+            return Transparent;
+        };
+        let pixel = pixels[index];
         if getalpha(pixel) > 0x7F {
             Transparent
         } else {
@@ -490,27 +526,27 @@ pub fn has_transparent_pixels(img: image) -> c_int {
         if data.cmap.is_null() || data.cmapsize <= 0 {
             return 0;
         }
-        let cmap = data.cmap;
-        let cmapsize = data.cmapsize;
-        let pixels = data.pixels;
         // Scan the owned index buffer and its `cmapsize`-entry palette.
-        unsafe {
-            for i in 0..len {
-                let index = (*pixels.add(i) as c_int).min(cmapsize - 1) as usize;
-                if normalized_rgb(*cmap.add(index)) == Transparent {
-                    return 1;
-                }
+        let Some(pixels) = slice_ref(data.pixels, len) else {
+            return 0;
+        };
+        let Some(cmap) = slice_ref(data.cmap, data.cmapsize as usize) else {
+            return 0;
+        };
+        for &b in pixels {
+            if normalized_rgb(cmap[(b as usize).min(cmap.len() - 1)]) == Transparent {
+                return 1;
             }
         }
         0
     } else {
-        let pixels = data.pixels as *const rgb;
         // Scan the owned 32-bit pixel buffer of `len` entries.
-        unsafe {
-            for i in 0..len {
-                if normalized_rgb(*pixels.add(i)) == Transparent {
-                    return 1;
-                }
+        let Some(pixels) = slice_ref(data.pixels as *const rgb, len) else {
+            return 0;
+        };
+        for &pixel in pixels {
+            if normalized_rgb(pixel) == Transparent {
+                return 1;
             }
         }
         0

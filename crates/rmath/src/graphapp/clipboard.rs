@@ -7,7 +7,6 @@
 use super::runtime::with_graphapp_runtime;
 use super::types::*;
 use std::os::raw::c_int;
-use std::ptr;
 
 fn set_clipboard_bytes(bytes: &[u8]) {
     with_graphapp_runtime(|runtime| {
@@ -37,11 +36,9 @@ pub fn getstringfromclipboard(str_: *mut std::os::raw::c_char, n: c_int) -> c_in
         let count = runtime.clipboard_text.len().min((n - 1) as usize);
         // Write up to `n - 1` bytes plus NUL into the caller's `n`-byte
         // buffer.
-        unsafe {
-            if count > 0 {
-                ptr::copy_nonoverlapping(runtime.clipboard_text.as_ptr(), str_ as *mut u8, count);
-            }
-            *str_.add(count) = 0;
+        if let Some(out) = slice_mut(str_ as *mut u8, n as usize) {
+            out[..count].copy_from_slice(&runtime.clipboard_text[..count]);
+            out[count] = 0;
         }
         count as c_int
     })

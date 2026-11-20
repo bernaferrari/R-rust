@@ -11,6 +11,8 @@ use std::alloc::{Layout, alloc, dealloc, realloc};
 use std::os::raw::c_long;
 use std::ptr;
 
+use super::types::{slice_mut, slice_ref};
+
 /// Header stored before each allocated block to track its size.
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -171,7 +173,13 @@ pub fn memjoin(a: *mut u8, b: *mut u8) -> *mut u8 {
         let source = if a == b { result } else { b };
         // Copy `extra` bytes of the source payload after a's grown
         // `size`-byte region; both fit by construction.
-        unsafe { ptr::copy_nonoverlapping(source, result.add(size as usize), extra as usize) };
+        let total = (size + extra).max(0) as usize;
+        if let (Some(src), Some(tail)) = (
+            slice_ref(source, extra.max(0) as usize),
+            slice_mut(result, total).and_then(|s| s.get_mut(size.max(0) as usize..)),
+        ) {
+            tail.copy_from_slice(src);
+        }
     }
     result
 }
