@@ -340,7 +340,7 @@ pub fn do_inherits(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 pub(crate) fn simple_error_condition(message: &str) -> SEXP {
-    { simple_error_condition_at(message, None) }
+     simple_error_condition_at(message, None) 
 }
 
 pub(crate) fn simple_error_condition_at(message: &str, call: Option<SEXP>) -> SEXP {
@@ -406,7 +406,7 @@ pub(crate) fn simple_warning_condition(message: &str, call: SEXP) -> SEXP {
     }
 }
 pub(crate) fn simple_condition(message: &str, classes: &[&str]) -> SEXP {
-    { simple_condition_at(message, classes, R_NilValue()) }
+     simple_condition_at(message, classes, R_NilValue()) 
 }
 
 pub(crate) fn simple_condition_at(message: &str, classes: &[&str], call: SEXP) -> SEXP {

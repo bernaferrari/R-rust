@@ -220,12 +220,12 @@ pub fn tanpi_value(x: f64) -> f64 {
 
 /// R's `expm1(x)` — accurate exp(x)-1.
 pub fn do_expm1(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    { real_math1(call, op, args, rho, f64::exp_m1) }
+     real_math1(call, op, args, rho, f64::exp_m1) 
 }
 
 /// R's `log1p(x)` — accurate log(1+x).
 pub fn do_log1p(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    { real_math1(call, op, args, rho, f64::ln_1p) }
+     real_math1(call, op, args, rho, f64::ln_1p) 
 }
 
 /// R's `acosh(x)` — inverse hyperbolic cosine.
@@ -281,17 +281,17 @@ pub fn do_atanh(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// R's `sinpi(x)` — sin(pi*x), exact at integer arguments.
 pub fn do_sinpi(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    { real_math1(call, op, args, rho, sinpi_value) }
+     real_math1(call, op, args, rho, sinpi_value) 
 }
 
 /// R's `cospi(x)` — cos(pi*x), exact at integer and half-integer arguments.
 pub fn do_cospi(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    { real_math1(call, op, args, rho, cospi_value) }
+     real_math1(call, op, args, rho, cospi_value) 
 }
 
 /// R's `tanpi(x)` — tan(pi*x).
 pub fn do_tanpi(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    { real_math1(call, op, args, rho, tanpi_value) }
+     real_math1(call, op, args, rho, tanpi_value) 
 }
 
 /// R's `sin(x)` — sine function.

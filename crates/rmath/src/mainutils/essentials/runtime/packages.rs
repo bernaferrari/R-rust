@@ -572,7 +572,7 @@ pub fn do_require_namespace(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 
 /// R's `getNamespace(name)` — return a loaded namespace, loading on demand.
 pub fn do_get_namespace(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    { do_load_namespace(_call, _op, args, rho) }
+     do_load_namespace(_call, _op, args, rho) 
 }
 
 /// R's `asNamespace(ns)` — coerce a package name or environment to a namespace.

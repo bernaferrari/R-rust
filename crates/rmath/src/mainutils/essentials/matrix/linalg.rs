@@ -503,11 +503,11 @@ pub fn do_rcond(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 pub fn do_la_dlange(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    { do_norm(call, op, args, rho) }
+     do_norm(call, op, args, rho) 
 }
 
 pub fn do_la_dgecon(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    { do_rcond(call, op, args, rho) }
+     do_rcond(call, op, args, rho) 
 }
 
 pub fn do_la_zlange(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {

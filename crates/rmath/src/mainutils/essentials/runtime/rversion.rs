@@ -81,17 +81,17 @@ fn make_r_version_list(simple_list_class: bool) -> SEXP {
 
 /// R's `version` — legacy constant alias for `R.version`.
 pub fn do_version(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    { make_r_version_list(true) }
+     make_r_version_list(true) 
 }
 
 /// R's `R.version` — returns a named list with version info.
 pub fn do_R_version(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    { make_r_version_list(true) }
+     make_r_version_list(true) 
 }
 
 /// R's `R.Version()` — returns the version info list without `simple.list` class.
 pub fn do_R_Version(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    { make_r_version_list(false) }
+     make_r_version_list(false) 
 }
 
 /// R's `args(fn)` — returns the formal arguments of a function as a pairlist.
@@ -177,12 +177,12 @@ pub fn do_formals(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R's `formals(fun) <- value` — replace formals, keep body and environment.
 pub fn do_formalsgets(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    { replace_closure_part(call, args, ClosurePart::Formals) }
+     replace_closure_part(call, args, ClosurePart::Formals) 
 }
 
 /// R's `body(fun) <- value` — replace body, keep formals and environment.
 pub fn do_bodygets(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    { replace_closure_part(call, args, ClosurePart::Body) }
+     replace_closure_part(call, args, ClosurePart::Body) 
 }
 
 enum ClosurePart {
@@ -324,5 +324,5 @@ pub fn do_body(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 /// R's `environment(fn)` — get the environment of a closure.
 /// Same as do_environment, provided as an alternative name.
 pub fn do_environment_of(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    { do_environment(_call, _op, args, _rho) }
+     do_environment(_call, _op, args, _rho) 
 }

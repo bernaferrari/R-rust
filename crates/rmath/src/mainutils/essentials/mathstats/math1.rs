@@ -439,22 +439,22 @@ fn apply_binary_scalar_fn(
 }
 
 pub fn do_lgamma(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    { apply_unary_scalar_fn(call, op, args, rho, crate::special::gamma::lgammafn) }
+     apply_unary_scalar_fn(call, op, args, rho, crate::special::gamma::lgammafn) 
 }
 
 /// R's `gamma(x)` — gamma function.
 pub fn do_gamma(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    { apply_unary_scalar_fn(call, op, args, rho, crate::special::gamma::gammafn) }
+     apply_unary_scalar_fn(call, op, args, rho, crate::special::gamma::gammafn) 
 }
 
 /// R's `digamma(x)` — digamma (psi) function.
 pub fn do_digamma(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    { apply_unary_scalar_fn(call, op, args, rho, crate::special::polygamma::digamma) }
+     apply_unary_scalar_fn(call, op, args, rho, crate::special::polygamma::digamma) 
 }
 
 /// R's `trigamma(x)` — trigamma function.
 pub fn do_trigamma(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    { apply_unary_scalar_fn(call, op, args, rho, crate::special::polygamma::trigamma) }
+     apply_unary_scalar_fn(call, op, args, rho, crate::special::polygamma::trigamma) 
 }
 
 /// R's `psigamma(x, deriv)` — polygamma function (deriv-th derivative of psi).
@@ -551,7 +551,7 @@ fn checked_math2(
     b: SEXP,
     operation: choose_checked::Operation,
 ) -> SEXP {
-    { checked_math(call, a, b, None, operation, None, None, None) }
+     checked_math(call, a, b, None, operation, None, None, None) 
 }
 fn checked_math(
     call: SEXP,

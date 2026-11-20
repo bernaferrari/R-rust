@@ -1079,7 +1079,7 @@ pub(crate) fn parse_with_srcrefs(content: &str, filename: &str) -> SEXP {
 
 fn parse_source_strings(source: &[String]) -> SEXP {
     let combined = source.join("\n");
-    { parse_source_expression_vector(&combined) }
+     parse_source_expression_vector(&combined) 
 }
 
 pub(crate) fn parse_source_expression_vector(source: &str) -> SEXP {

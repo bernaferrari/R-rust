@@ -333,12 +333,12 @@ pub fn do_screeplot_default(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SE
 
 /// GNU `plot.spec.coherency(x)` — reads `x$spec`.
 pub fn do_plot_spec_coherency(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    { spec_plot_read_spec(args, rho) }
+     spec_plot_read_spec(args, rho) 
 }
 
 /// GNU `plot.spec.phase(x)` — reads `x$spec`.
 pub fn do_plot_spec_phase(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    { spec_plot_read_spec(args, rho) }
+     spec_plot_read_spec(args, rho) 
 }
 
 pub(super) fn spec_plot_read_spec(args: SEXP, rho: SEXP) -> SEXP {

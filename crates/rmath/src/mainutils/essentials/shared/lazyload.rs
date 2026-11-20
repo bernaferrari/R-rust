@@ -354,7 +354,7 @@ pub(crate) fn eager_lazy_load_package_db(
     envir: SEXP,
     skip: &[&str],
 ) -> Result<(), String> {
-    { lazy_lazy_load_package_db(filebase, envir, skip) }
+     lazy_lazy_load_package_db(filebase, envir, skip) 
 }
 
 pub(crate) fn lazy_lazy_load_package_db(

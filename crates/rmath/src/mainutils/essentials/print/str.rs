@@ -234,7 +234,7 @@ fn str_s4_formal_class(x: SEXP) {
 }
 
 fn str_atomic_summary(x: SEXP) -> String {
-    { str_atomic_summary_opts(x, true, false) }
+     str_atomic_summary_opts(x, true, false) 
 }
 
 fn str_atomic_summary_opts(x: SEXP, give_length: bool, nested: bool) -> String {
@@ -479,7 +479,7 @@ static STR_LEVEL: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::n
 static STR_LIST_LEN: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(99);
 
 fn str_list_summary(x: SEXP) -> String {
-    { str_list_summary_indent(x, "  ..$ ") }
+     str_list_summary_indent(x, "  ..$ ") 
 }
 
 fn str_list_summary_indent(x: SEXP, child_prefix: &str) -> String {

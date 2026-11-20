@@ -254,7 +254,7 @@ fn match_arg_choices_from_formals(arg_expr: SEXP, rho: SEXP) -> SEXP {
 }
 
 fn match_arg_first(choices: SEXP) -> SEXP {
-    { match_arg_elt(choices, 0) }
+     match_arg_elt(choices, 0) 
 }
 
 fn match_arg_elt(choices: SEXP, idx: i64) -> SEXP {
@@ -644,7 +644,7 @@ pub(crate) fn search_env_from_position(pos: c_int) -> SEXP {
 }
 
 pub(crate) fn search_env_from_name(name: &str) -> SEXP {
-    for (label, env) in { search_path_entries() } {
+    for (label, env) in  search_path_entries()  {
         if label == name || (name == "base" && label == "package:base") {
             return env;
         }
@@ -655,7 +655,7 @@ pub(crate) fn search_env_from_name(name: &str) -> SEXP {
 }
 
 fn search_path_len() -> c_int {
-    { search_path_entries().len() as c_int }
+     search_path_entries().len() as c_int 
 }
 
 pub(crate) fn search_path_entries() -> Vec<(String, SEXP)> {

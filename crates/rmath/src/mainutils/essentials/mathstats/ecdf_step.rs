@@ -406,7 +406,7 @@ pub fn do_ecdf(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let xt = TYPEOF(x);
         if xt != SEXPTYPE::INTSXP && xt != SEXPTYPE::REALSXP && xt != SEXPTYPE::LGLSXP {
             crate::mainutils::errors::errorcall_str(
-                { crate::mainutils::errors::R_getCurrentCall() },
+                 crate::mainutils::errors::R_getCurrentCall() ,
                 "'x' must be numeric",
             );
         }
@@ -428,7 +428,7 @@ pub fn do_ecdf(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         }
         if vals.is_empty() {
             crate::mainutils::errors::errorcall_str(
-                { crate::mainutils::errors::R_getCurrentCall() },
+                 crate::mainutils::errors::R_getCurrentCall() ,
                 "'x' must have 1 or more non-missing values",
             );
         }

@@ -45,7 +45,7 @@ pub fn do_NCOL(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// GNU default lengths shape/flag contract with rooted copied element access.
 pub fn do_lengths(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    { super::lengths::run(call, op, args, rho) }
+     super::lengths::run(call, op, args, rho) 
 }
 
 /// R's `length(x) <- value` — resize vectors with R's missing-value fill rules.
@@ -296,22 +296,22 @@ pub fn length_replacement_size(value: SEXP) -> Option<R_xlen_t> {
 
 /// R's `colSums(x, na.rm = FALSE, dims = 1)` — column sums of a matrix or array.
 pub fn do_colSums(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    { do_array_margin_summary(args, false, false) }
+     do_array_margin_summary(args, false, false) 
 }
 
 /// R's `rowSums(x, na.rm = FALSE, dims = 1)` — row sums of a matrix or array.
 pub fn do_rowSums(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    { do_array_margin_summary(args, true, false) }
+     do_array_margin_summary(args, true, false) 
 }
 
 /// R's `colMeans(x, na.rm = FALSE, dims = 1)` — column means of a matrix or array.
 pub fn do_colMeans(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    { do_array_margin_summary(args, false, true) }
+     do_array_margin_summary(args, false, true) 
 }
 
 /// R's `rowMeans(x, na.rm = FALSE, dims = 1)` — row means of a matrix or array.
 pub fn do_rowMeans(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    { do_array_margin_summary(args, true, true) }
+     do_array_margin_summary(args, true, true) 
 }
 
 pub fn do_array_margin_summary(args: SEXP, rows: bool, mean: bool) -> SEXP {
@@ -646,12 +646,12 @@ pub fn set_margin_summary_attrs(result: SEXP, dim: SEXP, axes: &[R_xlen_t], sour
 
 /// R's `col(x)` — column indices for a matrix.
 pub fn do_col(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    { rowcol_from_matrix_arg(args, false) }
+     rowcol_from_matrix_arg(args, false) 
 }
 
 /// R's `row(x)` — row indices for a matrix.
 pub fn do_row(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    { rowcol_from_matrix_arg(args, true) }
+     rowcol_from_matrix_arg(args, true) 
 }
 
 /// `.Internal(col(dim(x)))` / `.Internal(row(dim(x)))` wrapper: the GNU
@@ -660,12 +660,12 @@ pub fn do_row(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 /// `.row`/`.col`), while the public `col(x)`/`row(x)` handlers receive the
 /// matrix-like object and read its dim attribute.
 pub fn do_col_internal(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    { rowcol_dispatch_internal_arg(args, false) }
+     rowcol_dispatch_internal_arg(args, false) 
 }
 
 /// `.Internal(row(dim(x)))` wrapper; see `do_col_internal`.
 pub fn do_row_internal(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    { rowcol_dispatch_internal_arg(args, true) }
+     rowcol_dispatch_internal_arg(args, true) 
 }
 
 fn rowcol_dispatch_internal_arg(args: SEXP, is_row: bool) -> SEXP {

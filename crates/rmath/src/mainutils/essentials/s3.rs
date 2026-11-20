@@ -1137,12 +1137,12 @@ pub fn do_complete_cases(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 
 /// R's `na.omit(x)` — returns x with rows containing any NA removed (simplified: works on vectors).
 pub fn do_na_omit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    { na_omit_atomic(args, "omit") }
+     na_omit_atomic(args, "omit") 
 }
 
 /// R's `na.exclude(x)` — like na.omit with "exclude" na.action metadata.
 pub fn do_na_exclude(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    { na_omit_atomic(args, "exclude") }
+     na_omit_atomic(args, "exclude") 
 }
 
 fn na_omit_atomic(args: SEXP, action_class: &str) -> SEXP {
@@ -1661,17 +1661,17 @@ fn do_typed_vector_constructor(args: SEXP, sexptype: SEXPTYPE) -> SEXP {
 
 /// R's `logical(length = 0)` constructor.
 pub fn do_logical_constructor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    { do_typed_vector_constructor(args, SEXPTYPE::LGLSXP) }
+     do_typed_vector_constructor(args, SEXPTYPE::LGLSXP) 
 }
 
 /// R's `integer(length = 0)` constructor.
 pub fn do_integer_constructor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    { do_typed_vector_constructor(args, SEXPTYPE::INTSXP) }
+     do_typed_vector_constructor(args, SEXPTYPE::INTSXP) 
 }
 
 /// R's `numeric(length = 0)` / `double(length = 0)` constructor.
 pub fn do_numeric_constructor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    { do_typed_vector_constructor(args, SEXPTYPE::REALSXP) }
+     do_typed_vector_constructor(args, SEXPTYPE::REALSXP) 
 }
 
 /// R's legacy `single(length = 0)` constructor.
@@ -1941,11 +1941,11 @@ fn complex_from_polar(supplied: &[Option<SEXP>; 5]) -> SEXP {
 
 /// R's `character(length = 0)` constructor.
 pub fn do_character_constructor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    { do_typed_vector_constructor(args, SEXPTYPE::STRSXP) }
+     do_typed_vector_constructor(args, SEXPTYPE::STRSXP) 
 }
 /// R's `raw(length = 0)` constructor.
 pub fn do_raw_constructor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    { do_typed_vector_constructor(args, SEXPTYPE::RAWSXP) }
+     do_typed_vector_constructor(args, SEXPTYPE::RAWSXP) 
 }
 
 /// R's `vector(mode = "logical", length = 0)` constructor.

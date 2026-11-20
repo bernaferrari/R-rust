@@ -41,12 +41,12 @@ use crate::sexp::symbol::Rf_install;
 
 /// R's `parallel::mclapply(X, FUN, ...)` — parallel lapply (simplified serial version).
 pub fn do_mclapply(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    { do_lapply(call, op, args, rho) }
+     do_lapply(call, op, args, rho) 
 }
 
 /// R's `future.apply::future_lapply(X, FUN, ...)` — future lapply (simplified serial version).
 pub fn do_future_lapply(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    { do_lapply(call, op, args, rho) }
+     do_lapply(call, op, args, rho) 
 }
 
 /// R's `doParallel::foreach(...)` — parallel foreach (simplified serial version).

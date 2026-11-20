@@ -195,7 +195,7 @@ pub(super) fn callable_arg_by_name_or_position(
     position: usize,
     rho: SEXP,
 ) -> SEXP {
-    { match_fun_arg(arg_by_name_or_position(args, names, position), rho) }
+     match_fun_arg(arg_by_name_or_position(args, names, position), rho) 
 }
 
 pub(super) fn match_fun_arg(expr: SEXP, rho: SEXP) -> SEXP {

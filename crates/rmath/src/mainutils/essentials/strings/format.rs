@@ -1676,15 +1676,15 @@ fn calendar_label_builtin(args: SEXP, kind: CalendarLabel) -> SEXP {
 
 /// R's `weekdays(x)` for Date/POSIXct values.
 pub fn do_weekdays(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    { calendar_label_builtin(args, CalendarLabel::Weekday) }
+     calendar_label_builtin(args, CalendarLabel::Weekday) 
 }
 
 /// R's `months(x)` for Date/POSIXct values.
 pub fn do_months(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    { calendar_label_builtin(args, CalendarLabel::Month) }
+     calendar_label_builtin(args, CalendarLabel::Month) 
 }
 
 /// R's `quarters(x)` for Date/POSIXct values.
 pub fn do_quarters(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    { calendar_label_builtin(args, CalendarLabel::Quarter) }
+     calendar_label_builtin(args, CalendarLabel::Quarter) 
 }

@@ -57,7 +57,7 @@ pub fn do_lm_influence(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// GNU `influence(model)` — same as `lm.influence` for lm.
 pub fn do_influence(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    { do_lm_influence(call, op, args, rho) }
+     do_lm_influence(call, op, args, rho) 
 }
 
 /// GNU `qr.influence(qr, res)` — hat and deletion sigma for intercept + `1:n`.
@@ -625,7 +625,7 @@ pub fn do_summary_lm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// GNU `summary.glm` — gaussian coefficient table from `summary.lm`.
 pub fn do_summary_glm(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    { do_summary_lm(call, op, args, rho) }
+     do_summary_lm(call, op, args, rho) 
 }
 
 /// GNU `anova(lm)` one-term table.

@@ -1138,7 +1138,7 @@ pub fn do_family(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// GNU `model.offset(x)` — `$offset` or NULL.
 pub fn do_model_offset(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    { list_named_elt(CAR(args), "offset") }
+     list_named_elt(CAR(args), "offset") 
 }
 
 /// GNU `update(object)` — re-evaluate `$call`.

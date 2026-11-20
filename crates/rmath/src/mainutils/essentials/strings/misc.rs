@@ -52,7 +52,7 @@ pub fn do_is_symbol(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R's `is.name(x)` — alias for is.symbol.
 pub fn do_is_name(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    { do_is_symbol(_call, _op, args, _rho) }
+     do_is_symbol(_call, _op, args, _rho) 
 }
 
 /// R's `is.pairlist(x)` — TRUE for LISTSXP.
