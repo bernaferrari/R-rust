@@ -267,7 +267,7 @@ pub unsafe fn L_lines(x: SEXP, y: SEXP, index: SEXP, arrow: SEXP) -> SEXP {
  * gridXspline (internal)
  * ============================== */
 
-pub(crate) unsafe fn gridXspline(
+pub(crate) fn gridXspline(
     _x: SEXP,
     _y: SEXP,
     _s: SEXP,

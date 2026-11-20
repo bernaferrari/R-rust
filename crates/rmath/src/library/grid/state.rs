@@ -48,12 +48,10 @@ pub const GE_INCHES: c_int = crate::mainutils::engine::GE_INCHES;
 
 /// Panic with an R-style error message.
 #[inline]
-unsafe fn error(msg: &str) {
-    {
-        std::panic::panic_any(crate::sexp::context::RError {
-            message: msg.to_string(),
-        });
-    }
+fn error(msg: &str) {
+    std::panic::panic_any(crate::sexp::context::RError {
+        message: msg.to_string(),
+    });
 }
 
 /* ==================== Helper: R_BlankString ==================== */
@@ -67,30 +65,28 @@ unsafe fn R_BlankString() -> SEXP {
 /* ==================== Helper: isNull ==================== */
 
 #[inline]
-unsafe fn isNull(x: SEXP) -> bool {
+fn isNull(x: SEXP) -> bool {
     x.is_null() || x == R_NilValue()
 }
 
 /* ==================== Helper: isVector ==================== */
 
 #[inline]
-unsafe fn isVector(x: SEXP) -> bool {
-    {
-        let t = TYPEOF(x);
-        t == SEXPTYPE::LGLSXP
-            || t == SEXPTYPE::INTSXP
-            || t == SEXPTYPE::REALSXP
-            || t == SEXPTYPE::CPLXSXP
-            || t == SEXPTYPE::STRSXP
-            || t == SEXPTYPE::VECSXP
-            || t == SEXPTYPE::EXPRSXP
-    }
+fn isVector(x: SEXP) -> bool {
+    let t = TYPEOF(x);
+    t == SEXPTYPE::LGLSXP
+        || t == SEXPTYPE::INTSXP
+        || t == SEXPTYPE::REALSXP
+        || t == SEXPTYPE::CPLXSXP
+        || t == SEXPTYPE::STRSXP
+        || t == SEXPTYPE::VECSXP
+        || t == SEXPTYPE::EXPRSXP
 }
 
 /* ==================== Helper: isString ==================== */
 
 #[inline]
-unsafe fn isString(x: SEXP) -> bool {
+fn isString(x: SEXP) -> bool {
     TYPEOF(x) == SEXPTYPE::STRSXP
 }
 
@@ -136,11 +132,9 @@ pub unsafe fn initDL(dd: pGEDevDesc) {
 /// Initialize some bits of the system state (called before engine redraw).
 /// Does NOT init all state; display list, root viewport, and current gpar
 /// are initialized separately (see initDL, initVP, initGPar).
-pub unsafe fn initOtherState(dd: pGEDevDesc) {
-    {
-        // Stub: since pGEDevDesc is void*, we cannot access dd->gesd.
-        let _ = dd;
-    }
+pub fn initOtherState(dd: pGEDevDesc) {
+    // Stub: since pGEDevDesc is void*, we cannot access dd->gesd.
+    let _ = dd;
 }
 
 /// Fill the grid system state with initial values.

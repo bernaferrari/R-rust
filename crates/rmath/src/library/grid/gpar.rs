@@ -367,7 +367,7 @@ pub unsafe fn gpLex2(gp: SEXP, i: c_int, gpIsScalar: *mut c_int) -> c_double {
  * resolveGPar -- partial helper
  * ============================== */
 
-pub unsafe fn resolveGPar(gp: SEXP, _byName: c_int) -> SEXP {
+pub fn resolveGPar(gp: SEXP, _byName: c_int) -> SEXP {
     gp
 }
 

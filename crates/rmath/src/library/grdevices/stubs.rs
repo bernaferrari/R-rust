@@ -65,36 +65,36 @@ fn do_bmVersion() -> SEXP {
 }
 
 /// contourLines - wrapper for do_contourLines.
-pub unsafe fn contourLines(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub fn contourLines(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     let _ = (call, op, args, env);
     do_contourLines(call, op, args, env)
 }
 
 /// getSnapshot - wrapper for do_getSnapshot.
-pub unsafe fn getSnapshot(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub fn getSnapshot(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     let _ = (call, op, args, env);
     do_getSnapshot(call, op, args, env)
 }
 
 /// playSnapshot - wrapper for do_playSnapshot.
-pub unsafe fn playSnapshot(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub fn playSnapshot(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     let _ = (call, op, args, env);
     do_playSnapshot(call, op, args, env)
 }
 
 /// getGraphicsEvent - wrapper for do_getGraphicsEvent.
-pub unsafe fn getGraphicsEvent(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub fn getGraphicsEvent(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     do_getGraphicsEvent(call, op, tail(args), env)
 }
 
 /// getGraphicsEventEnv - wrapper for do_getGraphicsEventEnv.
-pub unsafe fn getGraphicsEventEnv(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub fn getGraphicsEventEnv(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     let _ = (call, op, args, env);
     do_getGraphicsEventEnv(call, op, args, env)
 }
 
 /// setGraphicsEventEnv - wrapper for do_setGraphicsEventEnv.
-pub unsafe fn setGraphicsEventEnv(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub fn setGraphicsEventEnv(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     let _ = (call, op, args, env);
     do_setGraphicsEventEnv(call, op, args, env)
 }

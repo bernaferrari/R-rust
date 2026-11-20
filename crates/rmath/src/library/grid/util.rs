@@ -131,7 +131,7 @@ pub unsafe fn numeric(x: SEXP, index: c_int) -> c_double {
 /* ==================== Rectangle operations ==================== */
 
 /// Fill a rectangle struct with the four corners.
-pub unsafe fn rect(
+pub fn rect(
     x1: c_double,
     x2: c_double,
     x3: c_double,
@@ -140,25 +140,21 @@ pub unsafe fn rect(
     y2: c_double,
     y3: c_double,
     y4: c_double,
-    r: *mut LRect,
+    r: &mut LRect,
 ) {
-    unsafe {
-        (*r).x1 = x1;
-        (*r).x2 = x2;
-        (*r).x3 = x3;
-        (*r).x4 = x4;
-        (*r).y1 = y1;
-        (*r).y2 = y2;
-        (*r).y3 = y3;
-        (*r).y4 = y4;
-    }
+    r.x1 = x1;
+    r.x2 = x2;
+    r.x3 = x3;
+    r.x4 = x4;
+    r.y1 = y1;
+    r.y2 = y2;
+    r.y3 = y3;
+    r.y4 = y4;
 }
 
 /// Copy a rectangle struct.
-pub unsafe fn copyRect(r1: LRect, r: *mut LRect) {
-    unsafe {
-        *r = r1;
-    }
+pub fn copyRect(r1: LRect, r: &mut LRect) {
+    *r = r1;
 }
 
 /* ==================== Geometry: line/edge intersection ==================== */
@@ -339,7 +335,7 @@ pub unsafe fn textRect(
         trans(&tl, &transform, &mut ttl);
 
         rect(
-            tbl[0], tbr[0], ttr[0], ttl[0], tbl[1], tbr[1], ttr[1], ttl[1], r,
+            tbl[0], tbr[0], ttr[0], ttl[0], tbl[1], tbr[1], ttr[1], ttl[1], &mut *r,
         );
     }
 }

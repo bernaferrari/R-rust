@@ -1,6 +1,6 @@
 use super::*;
 
-pub(crate) unsafe fn gridText(
+pub(crate) fn gridText(
     _label: SEXP,
     _x: SEXP,
     _y: SEXP,
@@ -18,7 +18,7 @@ pub(crate) unsafe fn gridText(
  * L_text
  * ============================== */
 
-pub unsafe fn L_text(
+pub fn L_text(
     label: SEXP,
     x: SEXP,
     y: SEXP,
@@ -27,10 +27,8 @@ pub unsafe fn L_text(
     rot: SEXP,
     checkOverlap: SEXP,
 ) -> SEXP {
-    unsafe {
-        gridText(label, x, y, hjust, vjust, rot, checkOverlap, 0.0, true);
-        R_NilValue()
-    }
+    gridText(label, x, y, hjust, vjust, rot, checkOverlap, 0.0, true);
+    R_NilValue()
 }
 
 /* ==============================
@@ -89,7 +87,7 @@ pub(crate) unsafe fn symbolCoords(x: *const f64, y: *const f64, n: c_int, _dd: p
  * symbolNumCoords (internal helper)
  * ============================== */
 
-pub(crate) unsafe fn symbolNumCoords(pch: c_int, closed: bool) -> c_int {
+pub(crate) fn symbolNumCoords(pch: c_int, closed: bool) -> c_int {
     let mut result: c_int = 1;
     match pch {
         0 | 1 | 2 => {}
@@ -138,7 +136,7 @@ pub(crate) unsafe fn symbolNumCoords(pch: c_int, closed: bool) -> c_int {
  * gridSymbol
  * ============================== */
 
-pub unsafe fn gridSymbol(
+pub fn gridSymbol(
     _x: f64,
     _y: f64,
     _pch: c_int,
@@ -156,7 +154,7 @@ pub unsafe fn gridSymbol(
  * gridPoints (internal)
  * ============================== */
 
-pub(crate) unsafe fn gridPoints(
+pub(crate) fn gridPoints(
     _x: SEXP,
     _y: SEXP,
     _pch: SEXP,
@@ -171,8 +169,8 @@ pub(crate) unsafe fn gridPoints(
  * L_points
  * ============================== */
 
-pub unsafe fn L_points(x: SEXP, y: SEXP, pch: SEXP, size: SEXP) -> SEXP {
-    unsafe { gridPoints(x, y, pch, size, true, false) }
+pub fn L_points(x: SEXP, y: SEXP, pch: SEXP, size: SEXP) -> SEXP {
+    gridPoints(x, y, pch, size, true, false)
 }
 
 /* ==============================

@@ -767,7 +767,7 @@ fn useStart(_xxx: *const c_double, _yyy: *const c_double, _ns: c_int, _dd: pGEDe
 }
 
 /// Draw a single contour level (stub: requires GE drawing and contourLines).
-unsafe fn contour(
+fn contour(
     _x: SEXP,
     _nx: c_int,
     _y: SEXP,

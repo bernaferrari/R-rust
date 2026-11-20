@@ -1,22 +1,18 @@
 use super::*;
 
-pub unsafe fn L_initGrid(GridEvalEnv: SEXP) -> SEXP {
-    {
-        set_grid_eval_env(GridEvalEnv);
-        // GEregisterSystem(gridCallback, &mut gridRegisterIndex);
-        R_NilValue()
-    }
+pub fn L_initGrid(GridEvalEnv: SEXP) -> SEXP {
+    set_grid_eval_env(GridEvalEnv);
+    // GEregisterSystem(gridCallback, &mut gridRegisterIndex);
+    R_NilValue()
 }
 
 /* ==============================
  * L_killGrid
  * ============================== */
 
-pub unsafe fn L_killGrid() -> SEXP {
-    {
-        // GEunregisterSystem(gridRegisterIndex);
-        R_NilValue()
-    }
+pub fn L_killGrid() -> SEXP {
+    // GEunregisterSystem(gridRegisterIndex);
+    R_NilValue()
 }
 
 /* ==============================

@@ -331,7 +331,7 @@ pub unsafe fn L_polygon(x: SEXP, y: SEXP, index: SEXP) -> SEXP {
  * gridCircle (internal)
  * ============================== */
 
-pub(crate) unsafe fn gridCircle(
+pub(crate) fn gridCircle(
     _x: SEXP,
     _y: SEXP,
     _r: SEXP,
@@ -345,11 +345,9 @@ pub(crate) unsafe fn gridCircle(
  * L_circle
  * ============================== */
 
-pub unsafe fn L_circle(x: SEXP, y: SEXP, r: SEXP) -> SEXP {
-    unsafe {
-        gridCircle(x, y, r, 0.0, true);
-        R_NilValue()
-    }
+pub fn L_circle(x: SEXP, y: SEXP, r: SEXP) -> SEXP {
+    gridCircle(x, y, r, 0.0, true);
+    R_NilValue()
 }
 
 /* ==============================
@@ -364,7 +362,7 @@ pub unsafe fn L_circleBounds(x: SEXP, y: SEXP, r: SEXP, theta: SEXP) -> SEXP {
  * gridRect (internal)
  * ============================== */
 
-pub(crate) unsafe fn gridRect(
+pub(crate) fn gridRect(
     _x: SEXP,
     _y: SEXP,
     _w: SEXP,
@@ -381,11 +379,9 @@ pub(crate) unsafe fn gridRect(
  * L_rect
  * ============================== */
 
-pub unsafe fn L_rect(x: SEXP, y: SEXP, w: SEXP, h: SEXP, hjust: SEXP, vjust: SEXP) -> SEXP {
-    unsafe {
-        gridRect(x, y, w, h, hjust, vjust, 0.0, true);
-        R_NilValue()
-    }
+pub fn L_rect(x: SEXP, y: SEXP, w: SEXP, h: SEXP, hjust: SEXP, vjust: SEXP) -> SEXP {
+    gridRect(x, y, w, h, hjust, vjust, 0.0, true);
+    R_NilValue()
 }
 
 /* ==============================
