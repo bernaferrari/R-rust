@@ -29,8 +29,8 @@ pub(crate) fn signalled_condition_owned() -> Option<crate::sexp::object::Sexp<'s
 
 /// Message text of a condition object (its `message` field), mirroring
 /// `conditionMessage()`.
-pub(crate) unsafe fn condition_message_of(cond: SEXP) -> Option<String> {
-    unsafe {
+pub(crate) fn condition_message_of(cond: SEXP) -> Option<String> {
+    {
         let msg = crate::mainutils::essentials::tables::list_element_by_name(cond, "message")?;
         Some(elt_to_string(msg, 0))
     }
@@ -40,7 +40,7 @@ pub(crate) unsafe fn condition_message_of(cond: SEXP) -> Option<String> {
 /// `tryCatch` tag against these classes (upstream searches the exiting
 /// handler entries in registration order and takes the first whose
 /// class the condition inherits from).
-pub(crate) unsafe fn condition_classes(cond: SEXP) -> Vec<String> {
+pub(crate) fn condition_classes(cond: SEXP) -> Vec<String> {
     unsafe {
         let class_attr = crate::sexp::attrib_core::getAttrib(cond, Rf_install(c"class".as_ptr()));
         if class_attr.is_null()
@@ -86,7 +86,7 @@ pub(crate) fn set_condition_handler_stack(stack: SEXP) {
     });
 }
 
-pub(crate) unsafe fn condition_entry_factory<'s>() -> crate::sexp::object::SessionNodeFactory<'s> {
+pub(crate) fn condition_entry_factory<'s>() -> crate::sexp::object::SessionNodeFactory<'s> {
     crate::sexp::object::SessionNodeFactory::new(
         unsafe { crate::sexp::owner::OwnerToken::current() }
             .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
@@ -102,7 +102,7 @@ pub(crate) fn condition_entry_value<'s>(
         .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
 }
 
-pub(crate) unsafe fn calling_handler_stack_from_args(
+pub(crate) fn calling_handler_stack_from_args(
     args: SEXP,
     rho: SEXP,
     old_stack: SEXP,
@@ -148,7 +148,7 @@ pub(crate) unsafe fn calling_handler_stack_from_args(
     }
 }
 
-pub(crate) unsafe fn calling_handler_entry<'s>(
+pub(crate) fn calling_handler_entry<'s>(
     factory: &crate::sexp::object::SessionNodeFactory<'s>,
     class_name: &str,
     handler: crate::sexp::object::Sexp<'s>,
@@ -186,7 +186,7 @@ pub(crate) fn warning_handler_invoked() -> bool {
     WARNING_HANDLER_RAN.with(|c| c.get())
 }
 
-pub(crate) unsafe fn signal_calling_handlers(condition: SEXP, _rho: SEXP) {
+pub(crate) fn signal_calling_handlers(condition: SEXP, _rho: SEXP) {
     unsafe {
         WARNING_HANDLER_RAN.with(|c| c.set(false));
         let _condition = protect(condition);
@@ -204,7 +204,7 @@ pub(crate) unsafe fn signal_calling_handlers(condition: SEXP, _rho: SEXP) {
 /// `muffleWarning` restart. Internal runtime sites use this when a warning has
 /// a more specific class than `simpleWarning`; keeping the concrete condition
 /// intact is required for class-selective handlers and `inherits()` checks.
-pub(crate) unsafe fn signal_calling_warning_condition(condition: SEXP, rho: SEXP) -> bool {
+pub(crate) fn signal_calling_warning_condition(condition: SEXP, rho: SEXP) -> bool {
     unsafe {
         let scope = ScopedRestartStack::capture();
         let condition = restart_owned(condition);

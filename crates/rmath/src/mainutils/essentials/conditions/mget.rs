@@ -450,7 +450,7 @@ fn execute(
 
 /// # Safety
 /// The selected symbol and environment belong to the live current runtime.
-pub(super) unsafe fn lookup_one(
+pub(super) fn lookup_one(
     symbol: SEXP,
     environment: SEXP,
     mode: &str,
@@ -470,7 +470,7 @@ pub(super) unsafe fn lookup_one(
 
 /// # Safety
 /// Arguments belong to the live current runtime at this translated entry.
-pub(super) unsafe fn invoke(args: SEXP, rho: SEXP) -> SexpResult<Sexp<'static>> {
+pub(super) fn invoke(args: SEXP, rho: SEXP) -> SexpResult<Sexp<'static>> {
     let token = unsafe { OwnerToken::current()? };
     let owner = token.weak_owner().ok_or(SexpError::RootUnavailable)?;
     with_runtime(&owner, |access| {

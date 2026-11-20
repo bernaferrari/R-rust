@@ -2,7 +2,7 @@ use super::*;
 
 /// GNU `exists`/`ls`: `where`/`pos` may be an environment, 1-based search
 /// index, or search-path name (`"package:methods"`). `-1` means the caller env.
-unsafe fn coerce_search_envir(arg: SEXP, default: SEXP) -> SEXP {
+fn coerce_search_envir(arg: SEXP, default: SEXP) -> SEXP {
     unsafe {
         if arg.is_null() || arg == R_NilValue() {
             return default;
@@ -32,7 +32,7 @@ unsafe fn coerce_search_envir(arg: SEXP, default: SEXP) -> SEXP {
 }
 
 /// R's `exists(x, envir)` — check name exists.
-pub unsafe fn do_exists(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_exists(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let name_arg = arg_by_name_or_position(args, &["x"], 0);
         let name = elt_to_string(name_arg, 0);
@@ -76,7 +76,7 @@ pub unsafe fn do_exists(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 /// R's `find(what, mode = "any")` — locate a name on the search path.
-pub unsafe fn do_find(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_find(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let what_arg = arg_by_name_or_position(args, &["what"], 0);
         if what_arg.is_null() || what_arg == R_NilValue() || XLENGTH(what_arg) == 0 {
@@ -121,7 +121,7 @@ pub unsafe fn do_find(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
-unsafe fn find_numeric_result(matches: &[String]) -> SEXP {
+fn find_numeric_result(matches: &[String]) -> SEXP {
     unsafe {
         let result = Rf_allocVector3(SEXPTYPE::INTSXP, matches.len() as R_xlen_t);
         let names = Rf_allocVector3(SEXPTYPE::STRSXP, matches.len() as R_xlen_t);
@@ -142,7 +142,7 @@ unsafe fn find_numeric_result(matches: &[String]) -> SEXP {
     }
 }
 
-unsafe fn find_matches_mode(env: SEXP, symbol: SEXP, name: &str, want_function: bool) -> bool {
+fn find_matches_mode(env: SEXP, symbol: SEXP, name: &str, want_function: bool) -> bool {
     unsafe {
         if env.is_null() || env == R_NilValue() {
             return false;
@@ -162,7 +162,7 @@ unsafe fn find_matches_mode(env: SEXP, symbol: SEXP, name: &str, want_function: 
 }
 
 /// R's `get(x, envir)` — get value.
-pub unsafe fn do_get(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_get(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let name_arg = arg_by_name_or_position(args, &["x"], 0);
         if name_arg.is_null()
@@ -208,7 +208,7 @@ pub unsafe fn do_get(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// R's `get0(x, envir, mode = "any", inherits = TRUE, ifnotfound = NULL)`.
 /// Returns the original fallback value unchanged when no matching binding is
 /// found; function fallbacks are data here and must not be invoked.
-pub unsafe fn do_get0(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_get0(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let name_arg = arg_by_name_or_position(args, &["x"], 0);
         if name_arg.is_null()
@@ -257,7 +257,7 @@ pub unsafe fn do_get0(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// GNU GET_VALUE forces a selected promise and then raises NAMED from zero to
 /// one so later copy-on-modify operations do not mutate the binding in place.
-unsafe fn ensure_get_value_named(value: SEXP) -> SEXP {
+fn ensure_get_value_named(value: SEXP) -> SEXP {
     unsafe {
         if crate::sexp::accessors::NAMED(value) == 0 {
             crate::sexp::accessors::SET_NAMED(value, 1);
@@ -266,7 +266,7 @@ unsafe fn ensure_get_value_named(value: SEXP) -> SEXP {
     }
 }
 
-unsafe fn lookup_mode_argument(args: SEXP, position: usize) -> Option<String> {
+fn lookup_mode_argument(args: SEXP, position: usize) -> Option<String> {
     {
         let mode = arg_by_name_or_position(args, &["mode"], position);
         if mode.is_null() || mode == R_NilValue() {
@@ -276,14 +276,14 @@ unsafe fn lookup_mode_argument(args: SEXP, position: usize) -> Option<String> {
     }
 }
 
-unsafe fn lookup_get_environment(
+fn lookup_get_environment(
     args: SEXP,
     default: SEXP,
     call: SEXP,
     op: SEXP,
     allow_pos: bool,
 ) -> SEXP {
-    unsafe {
+    {
         if let Some(environment) = named_argument(args, "envir") {
             return strict_get_environment(environment);
         }
@@ -306,7 +306,7 @@ unsafe fn lookup_get_environment(
     }
 }
 
-unsafe fn strict_get_environment(environment: SEXP) -> SEXP {
+fn strict_get_environment(environment: SEXP) -> SEXP {
     unsafe {
         if environment.is_null() || environment == R_NilValue() {
             base_error("use of NULL environment is defunct");
@@ -323,7 +323,7 @@ unsafe fn strict_get_environment(environment: SEXP) -> SEXP {
     }
 }
 
-unsafe fn as_get_position_environment(call: SEXP, op: SEXP, position: SEXP, rho: SEXP) -> SEXP {
+fn as_get_position_environment(call: SEXP, op: SEXP, position: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         if position.is_null() || position == R_NilValue() {
             base_error("use of NULL environment is defunct");
@@ -339,8 +339,8 @@ unsafe fn as_get_position_environment(call: SEXP, op: SEXP, position: SEXP, rho:
     }
 }
 
-unsafe fn named_argument(args: SEXP, name: &str) -> Option<SEXP> {
-    unsafe {
+fn named_argument(args: SEXP, name: &str) -> Option<SEXP> {
+    {
         let mut cell = args;
         while !cell.is_null() && cell != R_NilValue() {
             if tag_name(cell).as_deref() == Some(name) {
@@ -352,8 +352,8 @@ unsafe fn named_argument(args: SEXP, name: &str) -> Option<SEXP> {
     }
 }
 
-unsafe fn positional_argument(args: SEXP, position: usize) -> Option<SEXP> {
-    unsafe {
+fn positional_argument(args: SEXP, position: usize) -> Option<SEXP> {
+    {
         let mut cell = args;
         let mut index = 0;
         while !cell.is_null() && cell != R_NilValue() {
@@ -369,7 +369,7 @@ unsafe fn positional_argument(args: SEXP, position: usize) -> Option<SEXP> {
     }
 }
 
-unsafe fn lookup_inherits_argument(args: SEXP, position: usize, default: bool) -> Option<bool> {
+fn lookup_inherits_argument(args: SEXP, position: usize, default: bool) -> Option<bool> {
     unsafe {
         let inherits = arg_by_name_or_position(args, &["inherits"], position);
         if inherits.is_null() || inherits == R_NilValue() {
@@ -387,15 +387,15 @@ unsafe fn lookup_inherits_argument(args: SEXP, position: usize, default: bool) -
 /// R's `mget(x, envir, mode = "any", ifnotfound, inherits = FALSE)` —
 /// look up each name of a character vector, returning a named list.
 /// Lookups force selected promises and filter by the requested GNU mode.
-pub unsafe fn do_mget(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    match unsafe { mget::invoke(args, rho) } {
+pub fn do_mget(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    match { mget::invoke(args, rho) } {
         Ok(value) => value.as_raw(),
         Err(error) => base_error(error.to_string()),
     }
 }
 
 /// R's `assign(x, value, envir)` — assign value.
-pub unsafe fn do_assign(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_assign(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let name_arg = arg_by_name_or_position(args, &["x"], 0);
         let name = elt_to_string(name_arg, 0);
@@ -414,7 +414,7 @@ pub unsafe fn do_assign(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     }
 }
 
-pub(crate) unsafe fn symbol_name(sym: SEXP) -> Option<String> {
+pub(crate) fn symbol_name(sym: SEXP) -> Option<String> {
     unsafe {
         if sym.is_null() || sym == R_NilValue() || TYPEOF(sym) != SEXPTYPE::SYMSXP {
             return None;
@@ -431,7 +431,7 @@ pub(crate) unsafe fn symbol_name(sym: SEXP) -> Option<String> {
     }
 }
 
-pub(crate) unsafe fn logical_arg(arg: SEXP, default: bool) -> bool {
+pub(crate) fn logical_arg(arg: SEXP, default: bool) -> bool {
     unsafe {
         if arg.is_null() || arg == R_NilValue() || XLENGTH(arg) < 1 {
             return default;
@@ -447,7 +447,7 @@ pub(crate) unsafe fn logical_arg(arg: SEXP, default: bool) -> bool {
 }
 
 /// R's `ls(envir)` — list objects.
-pub unsafe fn do_ls(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_ls(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let mut env = rho;
         let mut all_names = false;
@@ -497,7 +497,7 @@ pub unsafe fn do_ls(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 /// `ls.str(envir)` — list names and `str` each value without forcing symbols.
-pub unsafe fn do_ls_str(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_ls_str(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let names = do_ls(call, op, args, rho);
         let _n = protect(names);
@@ -523,7 +523,7 @@ pub unsafe fn do_ls_str(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 /// R's `rm(list, envir)` — remove objects.
-pub unsafe fn do_rm(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_rm(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         // Upstream rm is a closure: `...` dots arrive UNEVALUATED (this is
         // an unevaluated builtin) and must each be a symbol or character

@@ -1,13 +1,13 @@
 use super::*;
 
-unsafe fn current_framedepth() -> i32 {
+fn current_framedepth() -> i32 {
     unsafe { crate::eval::context::framedepth(crate::sexp::context::R_GlobalContext()) }
 }
 
 /// The native tryCatch evaluator replaces GNU's doTryCatch closure.
 /// Keep its call on the context stack while forcing the protected expression,
 /// so an inferred error call has a real caller even at top level.
-pub(crate) unsafe fn try_catch_evaluation_context(rho: SEXP) -> crate::sexp::context::ContextGuard {
+pub(crate) fn try_catch_evaluation_context(rho: SEXP) -> crate::sexp::context::ContextGuard {
     unsafe {
         let inner = crate::sexp::constructors::Rf_lang2(
             Rf_install(c"return".as_ptr()),
@@ -37,7 +37,7 @@ pub(crate) unsafe fn try_catch_evaluation_context(rho: SEXP) -> crate::sexp::con
 /// GNU `errorcall(call)` stores the applied language object; `stop()` uses
 /// `getCurrentCall()`. tryCatch fabricates `doTryCatch(...)` only when the
 /// raise is in the tryCatch frame itself (`stop("boom")`).
-pub(crate) unsafe fn caught_error_call() -> Option<crate::sexp::object::Sexp<'static>> {
+pub(crate) fn caught_error_call() -> Option<crate::sexp::object::Sexp<'static>> {
     {
         let (call, explicit, nframe) = crate::mainutils::errors::take_recorded_error_call()?;
         if call.as_raw() == R_NilValue() {
@@ -59,7 +59,7 @@ pub(crate) unsafe fn caught_error_call() -> Option<crate::sexp::object::Sexp<'st
 /// condition class may be supplied; warning conditions raised in the body
 /// unwind here through `RSignal::Warning`, error panics through the existing
 /// RSignal/RError payloads (upstream: R_TryCatch / vwarningcall).
-pub unsafe fn do_tryCatch(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_tryCatch(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let owner = crate::sexp::owner::OwnerToken::current()
             .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
@@ -128,7 +128,7 @@ pub unsafe fn do_tryCatch(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
         if expr.is_null() {
             return R_NilValue();
         }
-        crate::sexp::instance::with_required_current_instance(|inst| unsafe {
+        crate::sexp::instance::with_required_current_instance(|inst| {
             (*inst)
                 .error_state
                 .try_catch_handler_classes
