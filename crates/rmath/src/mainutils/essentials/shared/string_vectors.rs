@@ -2,7 +2,7 @@
 
 use super::*;
 
-pub(crate) unsafe fn datetime_c_value(
+pub(crate) fn datetime_c_value(
     source: SEXP,
     index: R_xlen_t,
     class: DatetimeVectorClass,
@@ -56,7 +56,7 @@ pub(crate) unsafe fn datetime_c_value(
 // Helpers
 // ---------------------------------------------------------------------------
 
-pub(crate) unsafe fn string_vector(values: &[String]) -> SEXP {
+pub(crate) fn string_vector(values: &[String]) -> SEXP {
     unsafe {
         let result = Rf_allocVector3(SEXPTYPE::STRSXP, values.len() as R_xlen_t);
         if result.is_null() {
@@ -74,7 +74,7 @@ pub(crate) unsafe fn string_vector(values: &[String]) -> SEXP {
     }
 }
 
-pub(crate) unsafe fn static_string_vector(values: &[&str]) -> SEXP {
+pub(crate) fn static_string_vector(values: &[&str]) -> SEXP {
     unsafe {
         let result = Rf_allocVector3(SEXPTYPE::STRSXP, values.len() as R_xlen_t);
         if result.is_null() {
@@ -92,7 +92,7 @@ pub(crate) unsafe fn static_string_vector(values: &[&str]) -> SEXP {
     }
 }
 
-pub(crate) unsafe fn optional_string_vector(values: &[Option<String>]) -> SEXP {
+pub(crate) fn optional_string_vector(values: &[Option<String>]) -> SEXP {
     unsafe {
         let result = Rf_allocVector3(SEXPTYPE::STRSXP, values.len() as R_xlen_t);
         if result.is_null() {
@@ -110,8 +110,8 @@ pub(crate) unsafe fn optional_string_vector(values: &[Option<String>]) -> SEXP {
     }
 }
 
-pub(crate) unsafe fn named_string_vector(values: &[String], names: &[String]) -> SEXP {
-    unsafe {
+pub(crate) fn named_string_vector(values: &[String], names: &[String]) -> SEXP {
+    {
         let result = string_vector(values);
         if result.is_null() || result == R_NilValue() {
             return result;
@@ -121,7 +121,7 @@ pub(crate) unsafe fn named_string_vector(values: &[String], names: &[String]) ->
     }
 }
 
-pub(crate) unsafe fn named_string_list(items: impl IntoIterator<Item = (String, String)>) -> SEXP {
+pub(crate) fn named_string_list(items: impl IntoIterator<Item = (String, String)>) -> SEXP {
     unsafe {
         let items = items.into_iter().collect::<Vec<_>>();
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, items.len() as R_xlen_t);

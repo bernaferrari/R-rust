@@ -26,7 +26,7 @@ pub(crate) fn base_error(message: impl Into<String>) -> ! {
     });
 }
 
-pub(crate) unsafe fn tag_name(cell: SEXP) -> Option<String> {
+pub(crate) fn tag_name(cell: SEXP) -> Option<String> {
     unsafe {
         let tag = TAG(cell);
         if tag.is_null() || tag == R_NilValue() {
@@ -154,7 +154,7 @@ pub(crate) fn integer_arg_by_name_or_position(
 }
 
 pub(crate) fn arg_by_name_or_position(args: SEXP, names: &[&str], position: usize) -> SEXP {
-    unsafe {
+    {
         let mut current = args;
         while !current.is_null() && current != R_NilValue() {
             if let Some(tag) = tag_name(current) {
@@ -267,7 +267,7 @@ pub(crate) fn grep_value_matches(
 }
 
 /// GNU grep.c: `fixed = TRUE` wins, warns, and then runs as a fixed match.
-pub(crate) unsafe fn ignore_perl_when_fixed(perl: &mut bool, fixed: bool) {
+pub(crate) fn ignore_perl_when_fixed(perl: &mut bool, fixed: bool) {
     if fixed && *perl {
         let msg = CString::new("argument 'perl = TRUE' will be ignored").unwrap_or_default();
         unsafe {
@@ -562,7 +562,7 @@ pub(crate) fn sexp_key(x: SEXP) -> String {
     }
 }
 
-pub(crate) unsafe fn factor_label_at(x: SEXP, code: i32) -> Option<String> {
+pub(crate) fn factor_label_at(x: SEXP, code: i32) -> Option<String> {
     unsafe {
         if code <= 0 {
             return None;
@@ -772,7 +772,7 @@ pub(crate) fn posix_seconds_to_iso_with_time(
     Some(out)
 }
 
-pub(crate) unsafe fn sexp_has_class(x: SEXP, class_name: &str) -> bool {
+pub(crate) fn sexp_has_class(x: SEXP, class_name: &str) -> bool {
     unsafe {
         if x.is_null() || x == R_NilValue() {
             return false;

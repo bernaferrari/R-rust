@@ -156,7 +156,7 @@ pub(crate) fn package_description_fields(
     Ok(description_fields(&content))
 }
 
-pub(crate) unsafe fn namespace_version(namespace: SEXP) -> Option<String> {
+pub(crate) fn namespace_version(namespace: SEXP) -> Option<String> {
     unsafe {
         if namespace == crate::sexp::envir::R_BaseNamespace() {
             return Some(crate::mainutils::compatibility_target::NUMERIC_VERSION.to_owned());
@@ -188,12 +188,12 @@ fn is_builtin_namespace(package: &str) -> bool {
     package == "datasets" || (cfg!(feature = "renderplot-device") && package == "grid")
 }
 
-unsafe fn check_loaded_requirement(
+fn check_loaded_requirement(
     package: &str,
     namespace: SEXP,
     requirement: &NamespaceRequirement,
 ) -> Result<(), String> {
-    unsafe {
+    {
         let version = namespace_version(namespace)
             .ok_or_else(|| format!("namespace ‘{package}’ has no version metadata"))?;
         requirement.check(package, &version, true)
@@ -224,7 +224,7 @@ fn check_source_requirement(
 }
 
 /// Check a dependency before attaching packages or running namespace code.
-pub(super) unsafe fn check_declared_dependency(
+pub(super) fn check_declared_dependency(
     package: &str,
     requirement: &NamespaceRequirement,
 ) -> Result<(), String> {
@@ -236,7 +236,7 @@ pub(super) unsafe fn check_declared_dependency(
         );
     }
     if let Some(namespace) = cached_namespace_by_name(package) {
-        return unsafe { check_loaded_requirement(package, namespace, requirement) };
+        return { check_loaded_requirement(package, namespace, requirement) };
     }
     let path = find_package_path(package);
     check_source_requirement(
@@ -246,16 +246,16 @@ pub(super) unsafe fn check_declared_dependency(
     )
 }
 
-pub(crate) unsafe fn load_package_namespace_by_name(package: &str) -> Result<SEXP, String> {
-    unsafe { load_package_namespace_checked(package, None, None) }
+pub(crate) fn load_package_namespace_by_name(package: &str) -> Result<SEXP, String> {
+    { load_package_namespace_checked(package, None, None) }
 }
 
-pub(crate) unsafe fn load_package_namespace_checked(
+pub(crate) fn load_package_namespace_checked(
     package: &str,
     libraries: Option<&[PathBuf]>,
     requirement: Option<&NamespaceRequirement>,
 ) -> Result<SEXP, String> {
-    unsafe {
+    {
         let package = package.strip_prefix("package:").unwrap_or(package);
         if package == "NA" || !valid_package_name(package) {
             return Err("invalid package name".to_string());

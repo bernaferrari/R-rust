@@ -32,7 +32,7 @@ pub(crate) struct S3MethodDirective {
     pub(super) method: Option<String>,
 }
 
-pub(crate) unsafe fn populate_package_namespace(
+pub(crate) fn populate_package_namespace(
     package: &str,
     package_dir: &Path,
     package_env: SEXP,
@@ -94,13 +94,13 @@ pub(crate) unsafe fn populate_package_namespace(
     }
 }
 
-pub(crate) unsafe fn apply_description_depends(
+pub(crate) fn apply_description_depends(
     package: &str,
     package_dir: &Path,
     package_env: SEXP,
     loading: &mut Vec<String>,
 ) -> Result<(), String> {
-    unsafe {
+    {
         for dependency in package_depends_names(package_dir)? {
             if is_builtin_package_dependency(&dependency) {
                 continue;
@@ -141,7 +141,7 @@ pub(crate) unsafe fn apply_description_depends(
 /// GNU `importFrom(methods, show)` copies the live generic. Builtin
 /// packages are not loaded from a library tree, but their namespaces
 /// are already in the session cache after `require(methods)`.
-pub(super) unsafe fn bind_cached_builtin_imports(
+pub(super) fn bind_cached_builtin_imports(
     package_env: SEXP,
     import: &NamespaceImport,
 ) -> Result<(), String> {
@@ -179,13 +179,13 @@ pub(super) unsafe fn bind_cached_builtin_imports(
     }
 }
 
-pub(crate) unsafe fn apply_namespace_imports(
+pub(crate) fn apply_namespace_imports(
     package: &str,
     package_env: SEXP,
     directives: &NamespaceDirectives,
     loading: &mut Vec<String>,
 ) -> Result<(), String> {
-    unsafe {
+    {
         for import in &directives.imports {
             let import_package = import.package();
 
@@ -231,21 +231,21 @@ pub(crate) unsafe fn apply_namespace_imports(
     }
 }
 
-pub(crate) unsafe fn import_namespace_bindings(
+pub(crate) fn import_namespace_bindings(
     package: &str,
     package_env: SEXP,
     import_dir: &Path,
     import: &NamespaceImport,
     loading: &mut Vec<String>,
 ) -> Result<(), String> {
-    unsafe {
+    {
         let (import_env, namespace) =
             load_package_namespace(import.package(), import_dir, loading)?;
         bind_namespace_imports(package, package_env, import, import_env, namespace.as_ref())
     }
 }
 
-unsafe fn bind_namespace_imports(
+fn bind_namespace_imports(
     package: &str,
     package_env: SEXP,
     import: &NamespaceImport,
@@ -294,7 +294,7 @@ unsafe fn bind_namespace_imports(
     }
 }
 
-pub(super) unsafe fn namespace_imports_env(package_env: SEXP) -> SEXP {
+pub(super) fn namespace_imports_env(package_env: SEXP) -> SEXP {
     unsafe {
         let parent = crate::sexp::accessors::ENCLOS(package_env);
         let marker = Rf_install(c".__imports__.".as_ptr());
@@ -321,23 +321,23 @@ pub(super) unsafe fn namespace_imports_env(package_env: SEXP) -> SEXP {
     }
 }
 
-pub(crate) unsafe fn make_package_attach_env(
+pub(crate) fn make_package_attach_env(
     package: &str,
     namespace: Option<&NamespaceDirectives>,
     package_env: SEXP,
 ) -> Result<SEXP, String> {
-    unsafe { make_package_attach_env_inner(package, namespace, package_env, false) }
+    { make_package_attach_env_inner(package, namespace, package_env, false) }
 }
 
-pub(crate) unsafe fn make_package_attach_env_lenient(
+pub(crate) fn make_package_attach_env_lenient(
     package: &str,
     namespace: Option<&NamespaceDirectives>,
     package_env: SEXP,
 ) -> Result<SEXP, String> {
-    unsafe { make_package_attach_env_inner(package, namespace, package_env, true) }
+    { make_package_attach_env_inner(package, namespace, package_env, true) }
 }
 
-pub(super) unsafe fn make_package_attach_env_inner(
+pub(super) fn make_package_attach_env_inner(
     package: &str,
     namespace: Option<&NamespaceDirectives>,
     package_env: SEXP,
