@@ -43,85 +43,90 @@ use super::types::*;
 /// Internal parser state. In the C Bison-generated parser this is a large
 /// stack-based LALR(1) parser. We replace it with a simple recursive-descent
 /// parser that produces the same expression tree.
-pub(crate) struct PluralParser {
-    /// Current position in the input string.
-    cp: *const c_char,
+pub(crate) struct PluralParser<'a> {
+    /// Input bytes, excluding the terminating NUL.
+    bytes: &'a [u8],
+    /// Current position in the input.
+    pos: usize,
 }
 
-impl PluralParser {
+/// Write the three child pointers of a freshly allocated `nargs`-node.
+fn set_args(node: *mut expression, args: [*mut expression; 3]) -> *mut expression {
+    match ptr_mut(node) {
+        Some(node) => {
+            node.val.args = args;
+            node as *mut expression
+        }
+        None => ptr::null_mut(),
+    }
+}
+
+impl<'a> PluralParser<'a> {
     /// Create a new parser starting at the given string position.
+    ///
+    /// Callers guarantee `cp` is a valid NUL-terminated string for the
+    /// duration of the parse.
     pub fn new(cp: *const c_char) -> Self {
-        PluralParser { cp }
+        PluralParser {
+            bytes: cstr(cp).map_or(&[], |s| s.to_bytes()),
+            pos: 0,
+        }
     }
 
     /// Peek at the current character without consuming it.
     fn peek(&self) -> c_char {
-        unsafe {
-            if self.cp.is_null() || *self.cp == 0 {
-                0
-            } else {
-                *self.cp
-            }
-        }
+        self.bytes.get(self.pos).copied().unwrap_or(0) as c_char
     }
 
     /// Consume and return the current character.
     fn next(&mut self) -> c_char {
-        unsafe {
-            let c = self.peek();
-            if c != 0 {
-                self.cp = self.cp.add(1);
-            }
-            c
+        let c = self.peek();
+        if c != 0 {
+            self.pos += 1;
         }
+        c
     }
 
     /// Skip whitespace.
     fn skip_whitespace(&mut self) {
-        unsafe {
-            while !self.cp.is_null() && *self.cp != 0 {
-                let c = *self.cp as u8;
-                if c == b' ' || c == b'\t' || c == b'\n' || c == b'\r' {
-                    self.cp = self.cp.add(1);
-                } else {
-                    break;
-                }
+        while let Some(&c) = self.bytes.get(self.pos) {
+            if matches!(c, b' ' | b'\t' | b'\n' | b'\r') {
+                self.pos += 1;
+            } else {
+                break;
             }
         }
     }
 
     /// Parse a number (unsigned integer).
     fn parse_number(&mut self) -> Option<c_ulong> {
-        unsafe {
-            let mut n: c_ulong = 0;
-            let mut found = false;
-            while !self.cp.is_null() && *self.cp != 0 {
-                let c = *self.cp as u8;
-                if c >= b'0' && c <= b'9' {
-                    n = n.wrapping_mul(10).wrapping_add((c - b'0') as c_ulong);
-                    self.cp = self.cp.add(1);
-                    found = true;
-                } else {
-                    break;
-                }
+        let mut n: c_ulong = 0;
+        let mut found = false;
+        while let Some(&c) = self.bytes.get(self.pos) {
+            if c.is_ascii_digit() {
+                n = n.wrapping_mul(10).wrapping_add((c - b'0') as c_ulong);
+                self.pos += 1;
+                found = true;
+            } else {
+                break;
             }
-            if found { Some(n) } else { None }
         }
+        if found { Some(n) } else { None }
     }
 
     /// Allocate a new expression node.
     fn alloc_expr(nargs: c_int, op: expression_operator) -> *mut expression {
-        unsafe {
-            let layout = Layout::new::<expression>();
-            let p = std::alloc::alloc(layout) as *mut expression;
-            if p.is_null() {
-                return ptr::null_mut();
-            }
-            (*p).nargs = nargs;
-            (*p).operation = op;
-            (*p).val = expression_val { num: 0 };
-            p
-        }
+        let layout = Layout::new::<expression>();
+        // Allocate one node; callers free it with `dealloc` after walking
+        // the tree.
+        let p = unsafe { std::alloc::alloc(layout) } as *mut expression;
+        let Some(node) = ptr_mut(p) else {
+            return ptr::null_mut();
+        };
+        node.nargs = nargs;
+        node.operation = op;
+        node.val = expression_val { num: 0 };
+        p
     }
 
     // ---- Recursive descent parser ----
@@ -140,321 +145,279 @@ impl PluralParser {
 
     /// Parse ternary: expr ? expr : expr (right-associative).
     fn parse_ternary(&mut self) -> *mut expression {
-        unsafe {
-            let cond = self.parse_or();
+        let cond = self.parse_or();
+        self.skip_whitespace();
+        if self.peek() == b'?' as c_char {
+            self.next();
             self.skip_whitespace();
-            if self.peek() == b'?' as c_char {
+            let then_expr = self.parse_ternary();
+            self.skip_whitespace();
+            if self.peek() == b':' as c_char {
                 self.next();
                 self.skip_whitespace();
-                let then_expr = self.parse_ternary();
-                self.skip_whitespace();
-                if self.peek() == b':' as c_char {
-                    self.next();
-                    self.skip_whitespace();
-                    let else_expr = self.parse_ternary();
-                    let node = Self::alloc_expr(3, expression_operator::qmop);
-                    if node.is_null() {
-                        return ptr::null_mut();
-                    }
-                    (*node).val.args = [cond, then_expr, else_expr];
-                    return node;
-                }
+                let else_expr = self.parse_ternary();
+                let node = Self::alloc_expr(3, expression_operator::qmop);
+                return set_args(node, [cond, then_expr, else_expr]);
             }
-            cond
         }
+        cond
     }
 
     /// Parse logical OR.
     fn parse_or(&mut self) -> *mut expression {
-        unsafe {
-            let mut left = self.parse_and();
-            loop {
-                self.skip_whitespace();
+        let mut left = self.parse_and();
+        loop {
+            self.skip_whitespace();
+            if self.peek() == b'|' as c_char {
+                self.next();
                 if self.peek() == b'|' as c_char {
                     self.next();
-                    if self.peek() == b'|' as c_char {
-                        self.next();
-                        self.skip_whitespace();
-                        let right = self.parse_and();
-                        let node = Self::alloc_expr(2, expression_operator::lor);
-                        if node.is_null() {
-                            return ptr::null_mut();
-                        }
-                        (*node).val.args = [left, right, ptr::null_mut()];
-                        left = node;
-                    } else {
-                        break;
+                    self.skip_whitespace();
+                    let right = self.parse_and();
+                    let node = Self::alloc_expr(2, expression_operator::lor);
+                    let node = set_args(node, [left, right, ptr::null_mut()]);
+                    if node.is_null() {
+                        return ptr::null_mut();
                     }
+                    left = node;
                 } else {
                     break;
                 }
+            } else {
+                break;
             }
-            left
         }
+        left
     }
 
     /// Parse logical AND.
     fn parse_and(&mut self) -> *mut expression {
-        unsafe {
-            let mut left = self.parse_equality();
-            loop {
-                self.skip_whitespace();
+        let mut left = self.parse_equality();
+        loop {
+            self.skip_whitespace();
+            if self.peek() == b'&' as c_char {
+                self.next();
                 if self.peek() == b'&' as c_char {
                     self.next();
-                    if self.peek() == b'&' as c_char {
-                        self.next();
-                        self.skip_whitespace();
-                        let right = self.parse_equality();
-                        let node = Self::alloc_expr(2, expression_operator::land);
-                        if node.is_null() {
-                            return ptr::null_mut();
-                        }
-                        (*node).val.args = [left, right, ptr::null_mut()];
-                        left = node;
-                    } else {
-                        break;
+                    self.skip_whitespace();
+                    let right = self.parse_equality();
+                    let node = Self::alloc_expr(2, expression_operator::land);
+                    let node = set_args(node, [left, right, ptr::null_mut()]);
+                    if node.is_null() {
+                        return ptr::null_mut();
                     }
+                    left = node;
                 } else {
                     break;
                 }
+            } else {
+                break;
             }
-            left
         }
+        left
     }
 
     /// Parse equality operators (== and !=).
     fn parse_equality(&mut self) -> *mut expression {
-        unsafe {
-            let mut left = self.parse_comparison();
-            loop {
-                self.skip_whitespace();
-                let c = self.peek();
-                if c == b'=' as c_char {
+        let mut left = self.parse_comparison();
+        loop {
+            self.skip_whitespace();
+            let c = self.peek();
+            if c == b'=' as c_char {
+                self.next();
+                if self.peek() == b'=' as c_char {
                     self.next();
-                    if self.peek() == b'=' as c_char {
-                        self.next();
-                        self.skip_whitespace();
-                        let right = self.parse_comparison();
-                        let node = Self::alloc_expr(2, expression_operator::equal);
-                        if node.is_null() {
-                            return ptr::null_mut();
-                        }
-                        (*node).val.args = [left, right, ptr::null_mut()];
-                        left = node;
-                    } else {
-                        break;
+                    self.skip_whitespace();
+                    let right = self.parse_comparison();
+                    let node = Self::alloc_expr(2, expression_operator::equal);
+                    let node = set_args(node, [left, right, ptr::null_mut()]);
+                    if node.is_null() {
+                        return ptr::null_mut();
                     }
-                } else if c == b'!' as c_char {
-                    self.next();
-                    if self.peek() == b'=' as c_char {
-                        self.next();
-                        self.skip_whitespace();
-                        let right = self.parse_comparison();
-                        let node = Self::alloc_expr(2, expression_operator::not_equal);
-                        if node.is_null() {
-                            return ptr::null_mut();
-                        }
-                        (*node).val.args = [left, right, ptr::null_mut()];
-                        left = node;
-                    } else {
-                        break;
-                    }
+                    left = node;
                 } else {
                     break;
                 }
+            } else if c == b'!' as c_char {
+                self.next();
+                if self.peek() == b'=' as c_char {
+                    self.next();
+                    self.skip_whitespace();
+                    let right = self.parse_comparison();
+                    let node = Self::alloc_expr(2, expression_operator::not_equal);
+                    let node = set_args(node, [left, right, ptr::null_mut()]);
+                    if node.is_null() {
+                        return ptr::null_mut();
+                    }
+                    left = node;
+                } else {
+                    break;
+                }
+            } else {
+                break;
             }
-            left
         }
+        left
     }
 
     /// Parse comparison operators (>=, <=, >, <).
     fn parse_comparison(&mut self) -> *mut expression {
-        unsafe {
-            let left = self.parse_additive();
-            self.skip_whitespace();
-            let c = self.peek();
-            if c == b'>' as c_char {
+        let left = self.parse_additive();
+        self.skip_whitespace();
+        let c = self.peek();
+        if c == b'>' as c_char {
+            self.next();
+            if self.peek() == b'=' as c_char {
                 self.next();
-                if self.peek() == b'=' as c_char {
-                    self.next();
-                    self.skip_whitespace();
-                    let right = self.parse_additive();
-                    let node = Self::alloc_expr(2, expression_operator::greater_or_equal);
-                    if node.is_null() {
-                        return ptr::null_mut();
-                    }
-                    (*node).val.args = [left, right, ptr::null_mut()];
-                    node
-                } else {
-                    self.skip_whitespace();
-                    let right = self.parse_additive();
-                    let node = Self::alloc_expr(2, expression_operator::greater_than);
-                    if node.is_null() {
-                        return ptr::null_mut();
-                    }
-                    (*node).val.args = [left, right, ptr::null_mut()];
-                    node
-                }
-            } else if c == b'<' as c_char {
-                self.next();
-                if self.peek() == b'=' as c_char {
-                    self.next();
-                    self.skip_whitespace();
-                    let right = self.parse_additive();
-                    let node = Self::alloc_expr(2, expression_operator::less_or_equal);
-                    if node.is_null() {
-                        return ptr::null_mut();
-                    }
-                    (*node).val.args = [left, right, ptr::null_mut()];
-                    node
-                } else {
-                    self.skip_whitespace();
-                    let right = self.parse_additive();
-                    let node = Self::alloc_expr(2, expression_operator::less_than);
-                    if node.is_null() {
-                        return ptr::null_mut();
-                    }
-                    (*node).val.args = [left, right, ptr::null_mut()];
-                    node
-                }
+                self.skip_whitespace();
+                let right = self.parse_additive();
+                let node = Self::alloc_expr(2, expression_operator::greater_or_equal);
+                set_args(node, [left, right, ptr::null_mut()])
             } else {
-                left
+                self.skip_whitespace();
+                let right = self.parse_additive();
+                let node = Self::alloc_expr(2, expression_operator::greater_than);
+                set_args(node, [left, right, ptr::null_mut()])
             }
+        } else if c == b'<' as c_char {
+            self.next();
+            if self.peek() == b'=' as c_char {
+                self.next();
+                self.skip_whitespace();
+                let right = self.parse_additive();
+                let node = Self::alloc_expr(2, expression_operator::less_or_equal);
+                set_args(node, [left, right, ptr::null_mut()])
+            } else {
+                self.skip_whitespace();
+                let right = self.parse_additive();
+                let node = Self::alloc_expr(2, expression_operator::less_than);
+                set_args(node, [left, right, ptr::null_mut()])
+            }
+        } else {
+            left
         }
     }
 
     /// Parse additive operators (+ and -).
     fn parse_additive(&mut self) -> *mut expression {
-        unsafe {
-            let mut left = self.parse_multiplicative();
-            loop {
+        let mut left = self.parse_multiplicative();
+        loop {
+            self.skip_whitespace();
+            let c = self.peek();
+            if c == b'+' as c_char {
+                self.next();
                 self.skip_whitespace();
-                let c = self.peek();
-                if c == b'+' as c_char {
-                    self.next();
-                    self.skip_whitespace();
-                    let right = self.parse_multiplicative();
-                    let node = Self::alloc_expr(2, expression_operator::plus);
-                    if node.is_null() {
-                        return ptr::null_mut();
-                    }
-                    (*node).val.args = [left, right, ptr::null_mut()];
-                    left = node;
-                } else if c == b'-' as c_char {
-                    self.next();
-                    self.skip_whitespace();
-                    let right = self.parse_multiplicative();
-                    let node = Self::alloc_expr(2, expression_operator::minus);
-                    if node.is_null() {
-                        return ptr::null_mut();
-                    }
-                    (*node).val.args = [left, right, ptr::null_mut()];
-                    left = node;
-                } else {
-                    break;
+                let right = self.parse_multiplicative();
+                let node = Self::alloc_expr(2, expression_operator::plus);
+                let node = set_args(node, [left, right, ptr::null_mut()]);
+                if node.is_null() {
+                    return ptr::null_mut();
                 }
+                left = node;
+            } else if c == b'-' as c_char {
+                self.next();
+                self.skip_whitespace();
+                let right = self.parse_multiplicative();
+                let node = Self::alloc_expr(2, expression_operator::minus);
+                let node = set_args(node, [left, right, ptr::null_mut()]);
+                if node.is_null() {
+                    return ptr::null_mut();
+                }
+                left = node;
+            } else {
+                break;
             }
-            left
         }
+        left
     }
 
     /// Parse multiplicative operators (*, /, %).
     fn parse_multiplicative(&mut self) -> *mut expression {
-        unsafe {
-            let mut left = self.parse_unary();
-            loop {
+        let mut left = self.parse_unary();
+        loop {
+            self.skip_whitespace();
+            let c = self.peek();
+            if c == b'*' as c_char {
+                self.next();
                 self.skip_whitespace();
-                let c = self.peek();
-                if c == b'*' as c_char {
-                    self.next();
-                    self.skip_whitespace();
-                    let right = self.parse_unary();
-                    let node = Self::alloc_expr(2, expression_operator::mult);
-                    if node.is_null() {
-                        return ptr::null_mut();
-                    }
-                    (*node).val.args = [left, right, ptr::null_mut()];
-                    left = node;
-                } else if c == b'/' as c_char {
-                    self.next();
-                    self.skip_whitespace();
-                    let right = self.parse_unary();
-                    let node = Self::alloc_expr(2, expression_operator::divide);
-                    if node.is_null() {
-                        return ptr::null_mut();
-                    }
-                    (*node).val.args = [left, right, ptr::null_mut()];
-                    left = node;
-                } else if c == b'%' as c_char {
-                    self.next();
-                    self.skip_whitespace();
-                    let right = self.parse_unary();
-                    let node = Self::alloc_expr(2, expression_operator::module);
-                    if node.is_null() {
-                        return ptr::null_mut();
-                    }
-                    (*node).val.args = [left, right, ptr::null_mut()];
-                    left = node;
-                } else {
-                    break;
+                let right = self.parse_unary();
+                let node = Self::alloc_expr(2, expression_operator::mult);
+                let node = set_args(node, [left, right, ptr::null_mut()]);
+                if node.is_null() {
+                    return ptr::null_mut();
                 }
+                left = node;
+            } else if c == b'/' as c_char {
+                self.next();
+                self.skip_whitespace();
+                let right = self.parse_unary();
+                let node = Self::alloc_expr(2, expression_operator::divide);
+                let node = set_args(node, [left, right, ptr::null_mut()]);
+                if node.is_null() {
+                    return ptr::null_mut();
+                }
+                left = node;
+            } else if c == b'%' as c_char {
+                self.next();
+                self.skip_whitespace();
+                let right = self.parse_unary();
+                let node = Self::alloc_expr(2, expression_operator::module);
+                let node = set_args(node, [left, right, ptr::null_mut()]);
+                if node.is_null() {
+                    return ptr::null_mut();
+                }
+                left = node;
+            } else {
+                break;
             }
-            left
         }
+        left
     }
 
     /// Parse unary operators (!).
     fn parse_unary(&mut self) -> *mut expression {
-        unsafe {
+        self.skip_whitespace();
+        if self.peek() == b'!' as c_char {
+            self.next();
             self.skip_whitespace();
-            if self.peek() == b'!' as c_char {
-                self.next();
-                self.skip_whitespace();
-                let operand = self.parse_unary();
-                let node = Self::alloc_expr(1, expression_operator::lnot);
-                if node.is_null() {
-                    return ptr::null_mut();
-                }
-                (*node).val.args = [operand, ptr::null_mut(), ptr::null_mut()];
-                node
-            } else {
-                self.parse_primary()
-            }
+            let operand = self.parse_unary();
+            let node = Self::alloc_expr(1, expression_operator::lnot);
+            set_args(node, [operand, ptr::null_mut(), ptr::null_mut()])
+        } else {
+            self.parse_primary()
         }
     }
 
     /// Parse primary: 'n', number, or '(' expr ')'.
     fn parse_primary(&mut self) -> *mut expression {
-        unsafe {
-            self.skip_whitespace();
-            let c = self.peek();
+        self.skip_whitespace();
+        let c = self.peek();
 
-            if c == b'n' as c_char {
-                self.next();
-                let node = Self::alloc_expr(0, expression_operator::var);
-                if !node.is_null() {
-                    (*node).val = expression_val { num: 0 };
-                }
-                node
-            } else if c == b'(' as c_char {
-                self.next();
-                self.skip_whitespace();
-                let inner = self.parse_ternary();
-                self.skip_whitespace();
-                if self.peek() == b')' as c_char {
-                    self.next();
-                }
-                inner
-            } else if c >= b'0' as c_char && c <= b'9' as c_char {
-                let n = self.parse_number().unwrap_or(0);
-                let node = Self::alloc_expr(0, expression_operator::num);
-                if !node.is_null() {
-                    (*node).val = expression_val { num: n };
-                }
-                node
-            } else {
-                ptr::null_mut()
+        if c == b'n' as c_char {
+            self.next();
+            let node = Self::alloc_expr(0, expression_operator::var);
+            if let Some(node) = ptr_mut(node) {
+                node.val = expression_val { num: 0 };
             }
+            node
+        } else if c == b'(' as c_char {
+            self.next();
+            self.skip_whitespace();
+            let inner = self.parse_ternary();
+            self.skip_whitespace();
+            if self.peek() == b')' as c_char {
+                self.next();
+            }
+            inner
+        } else if c >= b'0' as c_char && c <= b'9' as c_char {
+            let n = self.parse_number().unwrap_or(0);
+            let node = Self::alloc_expr(0, expression_operator::num);
+            if let Some(node) = ptr_mut(node) {
+                node.val = expression_val { num: n };
+            }
+            node
+        } else {
+            ptr::null_mut()
         }
     }
 }
@@ -472,25 +435,22 @@ impl PluralParser {
 /// # Safety
 /// `arg` must be a valid pointer to a `parse_args` struct.
 pub fn libintl_gettextparse(arg: *mut parse_args) -> c_int {
-    unsafe {
-        if arg.is_null() {
-            return -1;
-        }
+    let Some(args) = ptr_mut(arg) else {
+        return -1;
+    };
 
-        let cp = (*arg).cp;
-        if cp.is_null() {
-            return -1;
-        }
+    if args.cp.is_null() {
+        return -1;
+    }
 
-        let mut parser = PluralParser::new(cp);
-        let result = parser.parse();
+    let mut parser = PluralParser::new(args.cp);
+    let result = parser.parse();
 
-        if result.is_null() {
-            -1
-        } else {
-            (*arg).res = result;
-            0
-        }
+    if result.is_null() {
+        -1
+    } else {
+        args.res = result;
+        0
     }
 }
 
