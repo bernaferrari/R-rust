@@ -49,8 +49,7 @@ fn flag(value: &Sexp<'_>) -> bool {
         return false;
     }
     let name = tag.try_printname().expect("Boolean summary tag name");
-    unsafe { std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(name.as_raw())) }.to_bytes()
-        == b"na.rm"
+    name.as_string().is_some_and(|text| text == "na.rm")
 }
 impl<'s> Arguments<'s> {
     pub(super) fn new(args: &Sexp<'s>, owner: &OwnerToken<'_>) -> Self {
