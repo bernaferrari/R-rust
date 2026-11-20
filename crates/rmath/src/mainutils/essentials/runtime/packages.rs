@@ -370,7 +370,12 @@ pub unsafe fn do_load_namespace(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) 
     unsafe {
         let package_arg = arg_by_name_or_position(args, &["package", "name"], 0);
         let package = elt_to_string(package_arg, 0);
-        match load_package_namespace_by_name(&package) {
+        let requirement =
+            namespace_requirement(arg_by_name_or_position(args, &["versionCheck"], 4))
+                .unwrap_or_else(|message| package_error(message));
+        let libraries = namespace_libraries(arg_by_name_or_position(args, &["lib.loc"], 1))
+            .unwrap_or_else(|message| package_error(message));
+        match load_package_namespace_checked(&package, libraries.as_deref(), requirement.as_ref()) {
             Ok(env) => {
                 // GNU namespaces receive `.__S3MethodsTable__.` from
                 // makeNamespace before sealNamespace locks them, and
@@ -392,152 +397,163 @@ pub unsafe fn do_load_namespace(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) 
     }
 }
 
-fn installed_package_version(package: &str) -> Option<String> {
-    unsafe {
-        if let Some(namespace) = cached_namespace_by_name(package) {
-            let info = crate::sexp::envir::R_findVarInFrame(
-                namespace,
-                Rf_install(c".__NAMESPACE__.".as_ptr()),
-            );
-            if TYPEOF(info) == SEXPTYPE::ENVSXP {
-                let spec = crate::sexp::envir::R_findVarInFrame(info, Rf_install(c"spec".as_ptr()));
-                if TYPEOF(spec) == SEXPTYPE::STRSXP && XLENGTH(spec) >= 2 {
-                    let version = elt_to_string(spec, 1);
-                    if !version.is_empty() {
-                        return Some(version);
-                    }
-                }
-            }
-        }
-    }
-
-    package_description_fields(package)
-        .ok()
-        .and_then(|mut fields| fields.remove("Version"))
-        .or_else(|| {
-            is_builtin_package_dependency(package)
-                .then(|| crate::mainutils::compatibility_target::NUMERIC_VERSION.to_owned())
-        })
+pub(crate) struct NamespaceRequirement {
+    op: String,
+    version: Vec<i32>,
 }
 
-unsafe fn list_named_string(list: SEXP, name: &str) -> Option<String> {
+fn parse_version(text: &str) -> Option<Vec<i32>> {
+    text.split(['.', '-'])
+        .map(|part| {
+            if part.is_empty() || !part.bytes().all(|byte| byte.is_ascii_digit()) {
+                return None;
+            }
+            part.parse().ok()
+        })
+        .collect()
+}
+
+impl NamespaceRequirement {
+    pub(crate) fn check(&self, package: &str, found: &str, loaded: bool) -> Result<(), String> {
+        let have = parse_version(found)
+            .ok_or_else(|| format!("namespace ‘{package}’ has invalid version metadata"))?;
+        let n = have.len().max(self.version.len());
+        let order = (0..n)
+            .map(|i| {
+                have.get(i)
+                    .unwrap_or(&0)
+                    .cmp(self.version.get(i).unwrap_or(&0))
+            })
+            .find(|order| !order.is_eq())
+            .unwrap_or(std::cmp::Ordering::Equal);
+        let compatible = match self.op.as_str() {
+            ">" => order.is_gt(),
+            ">=" => order.is_ge(),
+            "<" => order.is_lt(),
+            "<=" => order.is_le(),
+            "!=" => order.is_ne(),
+            _ => order.is_eq(),
+        };
+        if compatible {
+            return Ok(());
+        }
+        let required = self
+            .version
+            .iter()
+            .map(i32::to_string)
+            .collect::<Vec<_>>()
+            .join(".");
+        let state = if loaded {
+            "already loaded"
+        } else {
+            "being loaded"
+        };
+        Err(format!(
+            "namespace ‘{package}’ {found} is {state}, but {} {required} is required",
+            self.op
+        ))
+    }
+}
+
+unsafe fn namespace_argument_string(value: SEXP) -> Option<String> {
     unsafe {
-        let value = list_named(list, name).filter(|&value| value != R_NilValue())?;
+        if TYPEOF(value) != SEXPTYPE::STRSXP
+            || XLENGTH(value) != 1
+            || STRING_ELT(value, 0) == crate::sexp::globals::R_NaString()
+        {
+            return None;
+        }
         Some(elt_to_string(value, 0))
     }
 }
 
-unsafe fn list_named_version(list: SEXP, name: &str) -> Vec<i32> {
+unsafe fn namespace_requirement(check: SEXP) -> Result<Option<NamespaceRequirement>, String> {
     unsafe {
-        let Some(value) = list_named(list, name) else {
-            return vec![0];
+        if check.is_null() || check == R_NilValue() || check == R_MissingArg() {
+            return Ok(None);
+        }
+        if TYPEOF(check) != SEXPTYPE::VECSXP {
+            return Err(
+                "'versionCheck' must be NULL or a list with components 'op' and 'version'".into(),
+            );
+        }
+        let component = |field| {
+            let names = crate::sexp::attrib_core::getAttrib(
+                check,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+            );
+            (0..XLENGTH(check))
+                .find(|&i| TYPEOF(names) == SEXPTYPE::STRSXP && elt_to_string(names, i) == field)
+                .map(|i| VECTOR_ELT(check, i))
+                .filter(|&value| value != R_NilValue())
         };
-        if TYPEOF(value) == SEXPTYPE::VECSXP && XLENGTH(value) > 0 {
-            let parts = VECTOR_ELT(value, 0);
+        let (Some(op), Some(version)) = (component("op"), component("version")) else {
+            return Ok(None);
+        };
+        let op = namespace_argument_string(op)
+            .filter(|op| matches!(op.as_str(), "==" | "!=" | "<" | "<=" | ">" | ">="))
+            .ok_or("invalid 'versionCheck' comparison")?;
+        let parts = if TYPEOF(version) == SEXPTYPE::VECSXP && XLENGTH(version) == 1 {
+            let parts = VECTOR_ELT(version, 0);
             if TYPEOF(parts) == SEXPTYPE::INTSXP {
-                return (0..XLENGTH(parts))
+                (0..XLENGTH(parts))
                     .map(|i| INTEGER_ELT(parts, i as i32))
-                    .collect();
+                    .collect()
+            } else {
+                Vec::new()
             }
+        } else {
+            namespace_argument_string(version)
+                .as_deref()
+                .and_then(parse_version)
+                .unwrap_or_default()
+        };
+        if parts.is_empty() || parts.iter().any(|part| *part < 0) {
+            return Err("invalid 'versionCheck' version".into());
         }
-        parse_version(&elt_to_string(value, 0))
+        Ok(Some(NamespaceRequirement { op, version: parts }))
     }
 }
 
-unsafe fn list_named(list: SEXP, name: &str) -> Option<SEXP> {
+unsafe fn namespace_libraries(lib_loc: SEXP) -> Result<Option<Vec<PathBuf>>, String> {
     unsafe {
-        if TYPEOF(list) != SEXPTYPE::VECSXP {
-            return None;
+        if lib_loc.is_null() || lib_loc == R_NilValue() || lib_loc == R_MissingArg() {
+            return Ok(None);
         }
-        let names =
-            crate::sexp::attrib_core::getAttrib(list, crate::sexp::attrib_core::R_NamesSymbol());
-        for i in 0..XLENGTH(list) {
-            if TYPEOF(names) == SEXPTYPE::STRSXP && elt_to_string(names, i) == name {
-                return Some(VECTOR_ELT(list, i));
-            }
+        if TYPEOF(lib_loc) != SEXPTYPE::STRSXP {
+            return Err("invalid 'lib.loc' argument".into());
         }
-        None
+        Ok(Some(
+            (0..XLENGTH(lib_loc))
+                .filter(|&i| STRING_ELT(lib_loc, i) != crate::sexp::globals::R_NaString())
+                .map(|i| PathBuf::from(elt_to_string(lib_loc, i)))
+                .collect(),
+        ))
     }
 }
 
-fn parse_version(text: &str) -> Vec<i32> {
-    text.split(|c: char| !c.is_ascii_digit())
-        .filter(|part| !part.is_empty())
-        .map(|part| part.parse().unwrap_or(0))
-        .collect()
-}
-
-fn version_cmp(have: &[i32], want: &[i32], op: &str) -> bool {
-    let n = have.len().max(want.len());
-    let mut order = std::cmp::Ordering::Equal;
-    for i in 0..n {
-        let a = have.get(i).copied().unwrap_or(0);
-        let b = want.get(i).copied().unwrap_or(0);
-        order = a.cmp(&b);
-        if order != std::cmp::Ordering::Equal {
-            break;
-        }
-    }
-    match op {
-        ">" => order.is_gt(),
-        ">=" => order.is_ge(),
-        "<" => order.is_lt(),
-        "<=" => order.is_le(),
-        "!=" => order.is_ne(),
-        _ => order.is_eq(),
-    }
-}
-
-/// R's `requireNamespace(package, quietly = FALSE)` — namespace availability probe.
+/// R's `requireNamespace(package, ..., quietly = FALSE)` — namespace availability probe.
 pub unsafe fn do_require_namespace(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let package_arg = arg_by_name_or_position(args, &["package"], 0);
-        let package = elt_to_string(package_arg, 0);
-        let quietly = arg_by_name_or_position(args, &["quietly"], 1);
+        let package = elt_to_string(arg_by_name_or_position(args, &["package"], 0), 0);
+        let quietly = arg_by_name_or_position(args, &["quietly"], usize::MAX);
         let is_quiet = !quietly.is_null()
             && quietly != R_NilValue()
-            && crate::sexp::accessors::LOGICAL_ELT(quietly, 0) == TRUE;
-        let check = arg_by_name_or_position(args, &["versionCheck"], 2);
-        if !check.is_null() && check != R_NilValue() {
-            if TYPEOF(check) != SEXPTYPE::VECSXP {
-                std::panic::panic_any(crate::sexp::context::RError {
-                    message: "invalid 'versionCheck' argument".to_string(),
-                });
-            }
-            if let Some(op) = list_named_string(check, "op")
-                && list_named(check, "version").is_some_and(|version| version != R_NilValue())
-            {
-                let want = list_named_version(check, "version");
-                let Some(have) = installed_package_version(&package) else {
-                    return Rf_ScalarLogical(FALSE);
-                };
-                if !version_cmp(&parse_version(&have), &want, &op) {
-                    if !is_quiet {
-                        let want = want
-                            .iter()
-                            .map(i32::to_string)
-                            .collect::<Vec<_>>()
-                            .join(".");
-                        let state = if cached_namespace_by_name(&package).is_some() {
-                            "is already loaded"
-                        } else {
-                            "was found"
-                        };
-                        eprintln!(
-                            "Failed with error:  ‘namespace ‘{package}’ {have} {state}, but {op} {want} is required’"
-                        );
-                    }
-                    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-                    return Rf_ScalarLogical(FALSE);
-                }
-            }
+            && crate::mainutils::coerce::asLogical(quietly) == TRUE;
+        let requirement =
+            namespace_requirement(arg_by_name_or_position(args, &["versionCheck"], usize::MAX))
+                .unwrap_or_else(|message| package_error(message));
+        let libraries = namespace_libraries(arg_by_name_or_position(args, &["lib.loc"], 1))
+            .unwrap_or_else(|message| package_error(message));
+        let result =
+            load_package_namespace_checked(&package, libraries.as_deref(), requirement.as_ref());
+        if let Err(message) = &result
+            && !is_quiet
+        {
+            eprintln!("Failed with error:  ‘{message}’");
         }
-
-        Rf_ScalarLogical(if load_package_namespace_by_name(&package).is_ok() {
-            TRUE
-        } else {
-            FALSE
-        })
+        crate::sexp::globals::set_R_Visible(FALSE);
+        Rf_ScalarLogical(if result.is_ok() { TRUE } else { FALSE })
     }
 }
 

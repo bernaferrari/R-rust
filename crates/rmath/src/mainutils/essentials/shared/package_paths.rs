@@ -95,6 +95,16 @@ fn find_browser_package(package: &str, roots: &[PathBuf]) -> Option<PathBuf> {
         .next()
 }
 
+fn find_package_in_libraries(package: &str, roots: &[PathBuf]) -> Option<PathBuf> {
+    if browser_files::enabled() {
+        return find_browser_package(package, roots);
+    }
+    roots
+        .iter()
+        .map(|library| library.join(package))
+        .find(|path| path.join("DESCRIPTION").is_file())
+}
+
 /// Try to find a package by name in this session's configured library paths.
 pub(crate) fn find_package_path(package: &str) -> String {
     crate::sexp::instance::with_required_current_instance(|inst| unsafe {
@@ -144,37 +154,98 @@ pub(crate) fn package_description_fields(
     Ok(description_fields(&content))
 }
 
+pub(crate) unsafe fn namespace_version(namespace: SEXP) -> Option<String> {
+    unsafe {
+        if namespace == crate::sexp::envir::R_BaseNamespace() {
+            return Some(crate::mainutils::compatibility_target::NUMERIC_VERSION.to_owned());
+        }
+        let _namespace = protect(namespace);
+        let metadata = crate::sexp::envir::R_findVarInFrame(
+            namespace,
+            Rf_install(c".__NAMESPACE__.".as_ptr()),
+        );
+        if TYPEOF(metadata) != SEXPTYPE::ENVSXP {
+            return None;
+        }
+        let _metadata = protect(metadata);
+        let spec = crate::sexp::envir::R_findVarInFrame(metadata, Rf_install(c"spec".as_ptr()));
+        if TYPEOF(spec) != SEXPTYPE::STRSXP || XLENGTH(spec) != 2 {
+            return None;
+        }
+        let _spec = protect(spec);
+        let version = elt_to_string(spec, 1);
+        (!version.is_empty()).then_some(version)
+    }
+}
+
 pub(crate) unsafe fn load_package_namespace_by_name(package: &str) -> Result<SEXP, String> {
+    unsafe { load_package_namespace_checked(package, None, None) }
+}
+
+pub(crate) unsafe fn load_package_namespace_checked(
+    package: &str,
+    libraries: Option<&[PathBuf]>,
+    requirement: Option<&NamespaceRequirement>,
+) -> Result<SEXP, String> {
     unsafe {
         let package = package.strip_prefix("package:").unwrap_or(package);
-        if package.is_empty() || package == "NA" {
+        if !package.starts_with(|c: char| c.is_ascii_alphabetic())
+            || !package.ends_with(|c: char| c.is_ascii_alphanumeric())
+            || !package
+                .bytes()
+                .all(|c| c.is_ascii_alphanumeric() || c == b'.')
+        {
             return Err("invalid package name".to_string());
         }
-        // GNU getNamespace("base") / asNamespace("base") is .BaseNamespaceEnv,
-        // not the search-path base environment and not library/base.
-        if package == "base" {
-            return Ok(crate::sexp::envir::R_BaseNamespace());
-        }
-        // GNU keeps loaded namespace identities when .libPaths() changes.
-        // Existing closures and imports still refer to that original graph.
         if let Some(namespace) = cached_namespace_by_name(package) {
+            if let Some(requirement) = requirement {
+                let version = namespace_version(namespace)
+                    .ok_or_else(|| format!("namespace ‘{package}’ has no version metadata"))?;
+                requirement.check(package, &version, true)?;
+            }
             return Ok(namespace);
         }
 
+        let package_path = if let Some(roots) = libraries {
+            find_package_in_libraries(package, roots)
+        } else {
+            let path = find_package_path(package);
+            (!path.is_empty()).then(|| PathBuf::from(path))
+        };
+        let builtin_grid = cfg!(feature = "renderplot-device") && package == "grid";
+        if let Some(requirement) = requirement {
+            let version = if builtin_grid
+                || package == "datasets"
+                || (package_path.is_none()
+                    && crate::library::portable_package::image(package).is_some())
+            {
+                crate::mainutils::compatibility_target::NUMERIC_VERSION.to_owned()
+            } else {
+                let directory = package_path
+                    .as_deref()
+                    .ok_or_else(|| format!("there is no package called '{package}'"))?;
+                read_package_text(&directory.join("DESCRIPTION"))
+                    .map_err(|e| format!("could not read DESCRIPTION for '{package}': {e}"))
+                    .and_then(|text| {
+                        description_fields(&text)
+                            .remove("Version")
+                            .ok_or_else(|| format!("namespace ‘{package}’ has no version metadata"))
+                    })?
+            };
+            requirement.check(package, &version, false)?;
+        }
+
         #[cfg(feature = "renderplot-device")]
-        if package == "grid" {
+        if builtin_grid {
             return Ok(crate::mainutils::portable_grid::namespace());
         }
 
-        let package_path = find_package_path(package);
         // The authenticated builtin datasets image owns the datasets
-        // namespace even when a library tree is visible: its lazydata
-        // promises are what `datasets::` must resolve (an installed
-        // source tree only carries the empty lazydata NAMESPACE).
+        // namespace even when a library tree is visible.
         if package == "datasets" {
             return crate::library::datasets::namespace().map(|namespace| namespace.as_raw());
         }
-        if package_path.is_empty() {
+        let Some(package_dir) = package_path else {
             if package == "methods" {
                 return crate::library::methods::portable::namespace()
                     .map(|namespace| namespace.as_raw());
@@ -182,14 +253,13 @@ pub(crate) unsafe fn load_package_namespace_by_name(package: &str) -> Result<SEX
             if let Some(image) = crate::library::portable_package::image(package) {
                 return image.namespace().map(|namespace| namespace.as_raw());
             }
-            return Err(format!("there is no package called '{}'", package));
-        }
-        let package_dir = Path::new(&package_path);
+            return Err(format!("there is no package called '{package}'"));
+        };
         let description = package_dir.join("DESCRIPTION");
         check_package_compilation(package, &description)?;
 
         let mut loading = vec![package.to_string()];
-        let (env, _) = load_package_namespace(package, package_dir, &mut loading)?;
+        let (env, _) = load_package_namespace(package, &package_dir, &mut loading)?;
 
         Ok(env)
     }
