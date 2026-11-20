@@ -57,9 +57,9 @@ fn with_sys_unix_state<R>(f: impl FnOnce(&mut SysUnixRuntimeState) -> R) -> R {
     with_required_current_instance(|instance| f(unsafe { &mut (*instance).sys_unix_state }))
 }
 
-unsafe fn checkArity(_op: SEXP, _args: SEXP) {}
-unsafe fn setAttrib(_x: SEXP, _what: SEXP, _val: SEXP) {}
-unsafe fn R_NamesSymbol() -> SEXP {
+fn checkArity(_op: SEXP, _args: SEXP) {}
+fn setAttrib(_x: SEXP, _what: SEXP, _val: SEXP) {}
+fn R_NamesSymbol() -> SEXP {
     ptr::null_mut()
 }
 
@@ -69,7 +69,9 @@ unsafe fn R_NamesSymbol() -> SEXP {
 
 /// Expand ~ in file paths.
 /// Handles ~, ~user, and ~user/path forms using HOME env and getpwnam.
-pub unsafe fn R_ExpandFileName(s: *const c_char) -> *const c_char {
+pub fn R_ExpandFileName(s: *const c_char) -> *const c_char {
+    // SAFETY: `s` is a NUL-terminated path per the C contract; passwd,
+    // uname and buffer copies stay inside this block.
     unsafe {
         if s.is_null() || *s == 0 {
             return s;
@@ -174,7 +176,8 @@ pub unsafe fn R_ExpandFileName(s: *const c_char) -> *const c_char {
 // ---------------------------------------------------------------------------
 
 /// .Internal(machine()) -- returns "Unix".
-pub unsafe fn do_machine(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_machine(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+    // SAFETY: raw constructor call confined to this block.
     unsafe { Rf_mkString(b"Unix\0".as_ptr() as *const c_char) }
 }
 
@@ -185,7 +188,8 @@ pub unsafe fn do_machine(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEX
 /// Get current time in seconds.
 /// On Android uses clock_gettime(CLOCK_MONOTONIC) since gettimeofday is deprecated
 /// in Bionic. On other Unix platforms uses gettimeofday for compatibility.
-unsafe fn currentTime() -> c_double {
+fn currentTime() -> c_double {
+    // SAFETY: out-pointers to libc time structs are valid stack locals.
     unsafe {
         #[cfg(target_os = "android")]
         {
@@ -210,7 +214,8 @@ unsafe fn currentTime() -> c_double {
 }
 
 /// Record the start time for proc.time().
-pub unsafe fn R_setStartTime() {
+pub fn R_setStartTime() {
+    // SAFETY: sysconf has no pointer contract.
     unsafe {
         #[cfg(not(target_arch = "wasm32"))]
         let clock_ticks = libc::sysconf(libc::_SC_CLK_TCK) as c_double;
@@ -227,7 +232,9 @@ pub unsafe fn R_setStartTime() {
 }
 
 /// Get process timing data: [user, system, elapsed, child_user, child_system].
-pub unsafe fn R_getProcTime(data: *mut c_double) {
+pub fn R_getProcTime(data: *mut c_double) {
+    // SAFETY: `data` points to five writable c_double slots per the C
+    // contract; getrusage out-pointers are valid stack locals.
     unsafe {
         let start_time = with_sys_unix_state(|state| state.start_time);
         let et = currentTime() - start_time;
@@ -271,7 +278,8 @@ pub fn R_getClockIncrement() -> c_double {
 // ---------------------------------------------------------------------------
 
 /// .Internal(sysinfo()) -- returns system information.
-pub unsafe fn do_sysinfo(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_sysinfo(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+    // SAFETY: libc/passwd reads and raw SEXP writes stay in this block.
     unsafe {
         let ans = Rf_allocVector(STRSXP_VAL, 8);
         let ansnames = Rf_allocVector(STRSXP_VAL, 8);
@@ -466,7 +474,8 @@ pub fn fpu_setup(start: c_int) {
 
 /// Open the R initialization file (.Rprofile).
 /// Checks R_PROFILE_USER env var, then ./.Rprofile, then ~/.Rprofile.
-pub unsafe fn R_OpenInitFile() -> *mut RFile {
+pub fn R_OpenInitFile() -> *mut RFile {
+    // SAFETY: instance-field reads and C-string paths stay in this block.
     unsafe {
         let load_init_file = with_required_current_instance(|instance| unsafe {
             (*instance).startup_state.load_init_file != 0
@@ -524,15 +533,13 @@ mod tests {
     #[test]
     fn test_do_machine() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            let result = do_machine(
-                ptr::null_mut(),
-                ptr::null_mut(),
-                ptr::null_mut(),
-                ptr::null_mut(),
-            );
-            assert!(!result.is_null());
-        }
+        let result = do_machine(
+            ptr::null_mut(),
+            ptr::null_mut(),
+            ptr::null_mut(),
+            ptr::null_mut(),
+        );
+        assert!(!result.is_null());
     }
 
     #[test]
@@ -582,36 +589,30 @@ mod tests {
     #[test]
     fn test_set_start_time() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            R_setStartTime();
-            with_sys_unix_state(|state| {
-                assert!(state.clk_tck > 0.0);
-                assert!(state.start_time > 0.0);
-            });
-        }
+        R_setStartTime();
+        with_sys_unix_state(|state| {
+            assert!(state.clk_tck > 0.0);
+            assert!(state.start_time > 0.0);
+        });
     }
 
     #[test]
     fn test_get_clock_increment() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            R_setStartTime();
-            let increment = R_getClockIncrement();
-            assert!(increment > 0.0);
-            assert!(increment < 1.0);
-        }
+        R_setStartTime();
+        let increment = R_getClockIncrement();
+        assert!(increment > 0.0);
+        assert!(increment < 1.0);
     }
 
     #[test]
     fn test_get_proc_time() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            R_setStartTime();
-            let mut data = [0.0f64; 5];
-            R_getProcTime(data.as_mut_ptr());
-            // Elapsed time should be non-negative
-            assert!(data[2] >= 0.0);
-        }
+        R_setStartTime();
+        let mut data = [0.0f64; 5];
+        R_getProcTime(data.as_mut_ptr());
+        // Elapsed time should be non-negative
+        assert!(data[2] >= 0.0);
     }
 
     #[test]
@@ -652,26 +653,22 @@ mod tests {
     #[test]
     fn test_fpu_setup() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            fpu_setup(1);
-            fpu_setup(0);
-        }
+        fpu_setup(1);
+        fpu_setup(0);
     }
 
     #[test]
     fn test_do_sysinfo() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            let result = do_sysinfo(
-                ptr::null_mut(),
-                ptr::null_mut(),
-                ptr::null_mut(),
-                ptr::null_mut(),
-            );
-            if !result.is_null() && result != R_NilValue() {
-                assert_eq!(TYPEOF(result), STRSXP_VAL);
-                assert_eq!(LENGTH(result), 8);
-            }
+        let result = do_sysinfo(
+            ptr::null_mut(),
+            ptr::null_mut(),
+            ptr::null_mut(),
+            ptr::null_mut(),
+        );
+        if !result.is_null() && result != R_NilValue() {
+            assert_eq!(TYPEOF(result), STRSXP_VAL);
+            assert_eq!(LENGTH(result), 8);
         }
     }
 }
