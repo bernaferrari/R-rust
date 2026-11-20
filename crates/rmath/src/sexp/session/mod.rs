@@ -201,11 +201,7 @@ fn remember_last_value(value: SEXP) {
 }
 
 fn expr_or_nil(expr: SEXP) -> SEXP {
-    if expr.is_null() {
-        R_NilValue()
-    } else {
-        expr
-    }
+    if expr.is_null() { R_NilValue() } else { expr }
 }
 
 mod guards;
