@@ -283,7 +283,7 @@ pub unsafe fn do_readLines(call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEX
     }
 }
 
-unsafe fn read_line_charsxp(bytes: &[u8], mark_utf8: bool) -> SEXP {
+fn read_line_charsxp(bytes: &[u8], mark_utf8: bool) -> SEXP {
     let encoding = if mark_utf8 {
         TextEncoding::Utf8
     } else {

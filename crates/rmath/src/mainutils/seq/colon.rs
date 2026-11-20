@@ -74,7 +74,7 @@ pub unsafe fn cross_colon(call: SEXP, s: SEXP, t: SEXP) -> SEXP {
 // seq_colon: core `:` operator implementation
 // ---------------------------------------------------------------------------
 
-pub unsafe fn seq_colon(n1: c_double, n2: c_double, call: SEXP) -> SEXP {
+pub fn seq_colon(n1: c_double, n2: c_double, call: SEXP) -> SEXP {
     unsafe {
         let r = (n2 - n1).abs();
         if r >= R_XLEN_T_MAX_DBL {
@@ -300,7 +300,7 @@ pub unsafe fn do_seq(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         // This runtime implements datetime classes natively (no R-level
         // methods), so mirror that behaviour here.
         // ------------------------------------------------------------------
-        if let Some(result) = unsafe { datetime_seq(call, from, to, by, lout, miss_from, miss_to) }
+        if let Some(result) = datetime_seq(call, from, to, by, lout, miss_from, miss_to)
         {
             return result;
         }

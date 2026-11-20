@@ -182,7 +182,7 @@ pub unsafe fn check_logical_arg(arg: SEXP, name: &str) -> c_int {
     }
 }
 
-pub unsafe fn positional_or(args: SEXP, index: usize, default: SEXP) -> SEXP {
+pub fn positional_or(args: SEXP, index: usize, default: SEXP) -> SEXP {
     {
         let mut cell = args;
         for _ in 0..index {

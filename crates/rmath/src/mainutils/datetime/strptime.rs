@@ -15,7 +15,7 @@ fn glibc_fix(tm: &mut stm, invalid: &mut bool) {
         }
         let t = now.floor() as time_t;
         let mut tm0: tz_tm = std::mem::zeroed();
-        if unsafe { R_localtime_r(&t, &mut tm0) }.is_null() {
+        if R_localtime_r(&t, &mut tm0).is_null() {
             return;
         }
         if tm.tm_year == NA_INTEGER {

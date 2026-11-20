@@ -645,7 +645,7 @@ pub unsafe fn deparse1s(call: SEXP) -> SEXP {
 /// Inspect an R object, returning a string representation.
 ///
 /// Unimplemented: requires full inspect infrastructure.
-pub unsafe fn R_inspect(s: SEXP, deep: c_int, pvec: SEXP) -> c_int {
+pub fn R_inspect(s: SEXP, deep: c_int, pvec: SEXP) -> c_int {
     let _ = (s, deep, pvec);
     0
 }
@@ -653,7 +653,7 @@ pub unsafe fn R_inspect(s: SEXP, deep: c_int, pvec: SEXP) -> c_int {
 /// R_inspect3 — inspect with additional options.
 ///
 /// Unimplemented: requires full inspect infrastructure.
-pub unsafe fn R_inspect3(
+pub fn R_inspect3(
     s: SEXP,
     deep: c_int,
     pvec: SEXP,

@@ -78,27 +78,27 @@ impl Default for LocalParseData {
 // ---------------------------------------------------------------------------
 
 #[inline]
-pub unsafe fn isNull(x: SEXP) -> bool {
+pub fn isNull(x: SEXP) -> bool {
     x.is_null() || x == R_NilValue()
 }
 
 #[inline]
-pub unsafe fn isSymbol(x: SEXP) -> bool {
+pub fn isSymbol(x: SEXP) -> bool {
     !x.is_null() && TYPEOF(x) == SEXPTYPE::SYMSXP
 }
 
 #[inline]
-pub unsafe fn isLanguage(x: SEXP) -> bool {
+pub fn isLanguage(x: SEXP) -> bool {
     !x.is_null() && TYPEOF(x) == SEXPTYPE::LANGSXP
 }
 
 #[inline]
-pub unsafe fn isList(x: SEXP) -> bool {
+pub fn isList(x: SEXP) -> bool {
     !x.is_null() && TYPEOF(x) == SEXPTYPE::LISTSXP
 }
 
 #[inline]
-pub unsafe fn isString(x: SEXP) -> bool {
+pub fn isString(x: SEXP) -> bool {
     !x.is_null() && TYPEOF(x) == SEXPTYPE::STRSXP
 }
 
@@ -191,7 +191,7 @@ pub unsafe fn isValidString(x: SEXP) -> bool {
 
 /// Get PPinfo for a builtin/special function.
 /// Returns PPinfo for PP_FUNCALL if the symbol doesn't have a known entry.
-pub unsafe fn getPPinfo(symval: SEXP) -> PPinfo {
+pub fn getPPinfo(symval: SEXP) -> PPinfo {
     {
         let t = TYPEOF(symval);
         if t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP {
@@ -303,7 +303,7 @@ pub unsafe fn streql(a: *const c_char, b: *const c_char) -> bool {
 }
 
 /// Get PRIMNAME as a C string (avoids conflict with eval/builtin.rs version).
-pub unsafe fn primname_c(op: SEXP) -> *const c_char {
+pub fn primname_c(op: SEXP) -> *const c_char {
     {
         // Use the relop.rs version which returns *const c_char
         crate::mainutils::relop::PRIMNAME(op)

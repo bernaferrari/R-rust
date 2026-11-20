@@ -7,7 +7,7 @@ use super::*;
 /// NUL-terminated string like `"Wed Jun 30 21:49:08 1993"`.
 ///
 /// This is a faithful port of the static `R_Date()` function in platform.c.
-pub unsafe fn R_Date() -> *mut c_char {
+pub fn R_Date() -> *mut c_char {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     with_required_current_instance(|instance| unsafe {
@@ -187,7 +187,7 @@ const R_CODESET_MAX: usize = 64;
 ///
 /// This is a port of `R_nativeEncoding()` from platform.c.
 /// The encoding is initialized by `R_check_locale()`.
-pub unsafe fn R_nativeEncoding() -> *const c_char {
+pub fn R_nativeEncoding() -> *const c_char {
     with_required_current_instance(|instance| unsafe {
         (*instance).startup_state.native_encoding.as_ptr()
     }) as *const c_char
@@ -198,7 +198,7 @@ pub unsafe fn R_nativeEncoding() -> *const c_char {
 /// This is a simplified port of `R_check_locale()` from platform.c.
 /// On Unix-like systems it uses `nl_langinfo(CODESET)` to detect the encoding.
 /// Since we cannot call libc, this provides a reasonable default.
-pub unsafe fn R_check_locale() {
+pub fn R_check_locale() {
     with_required_current_instance(|instance| unsafe {
         let enc = &mut (*instance).startup_state.native_encoding;
         enc.fill(0);
@@ -395,7 +395,7 @@ pub(crate) unsafe fn path_at(paths: SEXP, index: usize) -> Option<String> {
     }
 }
 
-pub(crate) unsafe fn octmode_scalar(mode: u32) -> SEXP {
+pub(crate) fn octmode_scalar(mode: u32) -> SEXP {
     unsafe {
         use crate::sexp::accessors::SET_STRING_ELT;
         use crate::sexp::constructors::{Rf_ScalarInteger, Rf_allocVector3, Rf_mkChar};

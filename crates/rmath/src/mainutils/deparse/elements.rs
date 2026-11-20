@@ -126,7 +126,7 @@ pub unsafe fn EncodeNonFiniteComplexElement(x: Rcomplex, buff: *mut c_char) -> *
 // ---------------------------------------------------------------------------
 
 /// Format an integer element as a string.
-pub unsafe fn format_int_element(val: c_int) -> *const c_char {
+pub fn format_int_element(val: c_int) -> *const c_char {
     {
         with_deparse_runtime(|state| {
             let buf = &mut state.int_buf;
@@ -141,7 +141,7 @@ pub unsafe fn format_int_element(val: c_int) -> *const c_char {
 }
 
 /// Format a logical element as a string.
-pub unsafe fn format_logical_element(val: c_int) -> *const c_char {
+pub fn format_logical_element(val: c_int) -> *const c_char {
     {
         with_deparse_runtime(|state| {
             let buf = &mut state.logical_buf;
@@ -168,7 +168,7 @@ pub unsafe fn format_logical_element(val: c_int) -> *const c_char {
 
 /// GNU default deparse: `formatReal` + `EncodeReal0` (15-digit / options digits),
 /// not `%.17g` (`digits17` / `control="all"` only).
-pub unsafe fn write_real_element(buf: &mut [c_char; 64], val: f64) {
+pub fn write_real_element(buf: &mut [c_char; 64], val: f64) {
     unsafe {
         if ISNAN(val) && (val.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN) {
             write_cstr(buf, "NA");
@@ -202,8 +202,8 @@ pub unsafe fn write_real_element(buf: &mut [c_char; 64], val: f64) {
     }
 }
 
-pub unsafe fn format_real_element(val: f64) -> *const c_char {
-    unsafe {
+pub fn format_real_element(val: f64) -> *const c_char {
+    {
         with_deparse_runtime(|state| {
             let buf = &mut state.real_buf;
             write_real_element(buf, val);
@@ -278,7 +278,7 @@ pub unsafe fn format_string_element(s: SEXP) -> *const c_char {
 }
 
 /// Format a raw element as hex.
-pub unsafe fn format_raw_element(val: Rbyte) -> *const c_char {
+pub fn format_raw_element(val: Rbyte) -> *const c_char {
     {
         with_deparse_runtime(|state| {
             let buf = &mut state.raw_buf;

@@ -644,7 +644,7 @@ pub(crate) unsafe fn grob_listing_class(x: SEXP) -> String {
     }
 }
 
-pub(crate) unsafe fn strings(values: &[String]) -> SEXP {
+pub(crate) fn strings(values: &[String]) -> SEXP {
     unsafe {
         let out = Rf_allocVector3(SEXPTYPE::STRSXP, values.len() as i64);
         let _guard = crate::sexp::protect::protect(out);
@@ -674,7 +674,7 @@ pub(crate) unsafe fn logical_flag(x: SEXP, default: bool) -> bool {
     }
 }
 
-pub(crate) unsafe fn mk_string(value: &str) -> SEXP {
+pub(crate) fn mk_string(value: &str) -> SEXP {
     unsafe {
         let text = std::ffi::CString::new(value)
             .unwrap_or_else(|_| base_error("viewport name contains an embedded nul"));

@@ -45,7 +45,7 @@ pub unsafe fn print2buff(string: *const c_char, data: *mut LocalParseData) {
 /// factory copies a bounded slice before its deferred allocation callbacks.
 pub unsafe fn writeline(data: *mut LocalParseData) {
     let data = unsafe { &mut *data };
-    if !unsafe { isNull(data.strvec) } && data.linenumber < data.maxlines {
+    if !isNull(data.strvec) && data.linenumber < data.maxlines {
         // Capture the output's owning token before allocating the character.
         let owner = unsafe { crate::sexp::owner::OwnerToken::current() }
             .unwrap_or_else(|_| buffer_error(LineBufferError::Allocation));

@@ -375,7 +375,7 @@ pub unsafe fn do_formatPOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -
                         }
                     }
                     let mut buf = [0u8; 2049];
-                    let res = unsafe {
+                    let res = {
                         R_strftime(
                             buf.as_mut_ptr(),
                             2048,

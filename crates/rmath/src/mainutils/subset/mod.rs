@@ -58,67 +58,67 @@ const R_XLEN_T_MAX: R_xlen_t = i64::MAX;
 
 /// Get the "dim" symbol (install if needed).
 #[inline]
-unsafe fn sym_Dim() -> SEXP {
+fn sym_Dim() -> SEXP {
     unsafe { Rf_install(c"dim".as_ptr()) }
 }
 
 /// Get the "names" symbol.
 #[inline]
-unsafe fn sym_Names() -> SEXP {
+fn sym_Names() -> SEXP {
     unsafe { Rf_install(c"names".as_ptr()) }
 }
 
 /// Get the "dimnames" symbol.
 #[inline]
-unsafe fn sym_DimNames() -> SEXP {
+fn sym_DimNames() -> SEXP {
     unsafe { Rf_install(c"dimnames".as_ptr()) }
 }
 
 /// Get the "class" symbol.
 #[inline]
-unsafe fn sym_Class() -> SEXP {
+fn sym_Class() -> SEXP {
     unsafe { Rf_install(c"class".as_ptr()) }
 }
 
 /// Get the "srcref" symbol.
 #[inline]
-unsafe fn sym_Srcref() -> SEXP {
+fn sym_Srcref() -> SEXP {
     unsafe { Rf_install(c"srcref".as_ptr()) }
 }
 
 /// Get the "tsp" symbol.
 #[inline]
-unsafe fn sym_Tsp() -> SEXP {
+fn sym_Tsp() -> SEXP {
     unsafe { Rf_install(c"tsp".as_ptr()) }
 }
 
 /// Get the "tzone" symbol.
 #[inline]
-unsafe fn sym_Tzone() -> SEXP {
+fn sym_Tzone() -> SEXP {
     unsafe { Rf_install(c"tzone".as_ptr()) }
 }
 
 /// Get the "drop" symbol.
 #[inline]
-unsafe fn sym_Drop() -> SEXP {
+fn sym_Drop() -> SEXP {
     unsafe { Rf_install(c"drop".as_ptr()) }
 }
 
 /// Get the "exact" symbol.
 #[inline]
-unsafe fn sym_Exact() -> SEXP {
+fn sym_Exact() -> SEXP {
     unsafe { Rf_install(c"exact".as_ptr()) }
 }
 
 /// Get the "contrasts" symbol.
 #[inline]
-unsafe fn sym_Contrasts() -> SEXP {
+fn sym_Contrasts() -> SEXP {
     unsafe { Rf_install(c"contrasts".as_ptr()) }
 }
 
 /// Get the "row.names" symbol.
 #[inline]
-unsafe fn sym_RowNames() -> SEXP {
+fn sym_RowNames() -> SEXP {
     unsafe { Rf_install(c"row.names".as_ptr()) }
 }
 
@@ -364,7 +364,7 @@ use crate::eval::attrib_core::setAttrib;
 // ---------------------------------------------------------------------------
 
 /// Report "not subsettable" error.
-unsafe fn errorcallNotSubsettable(_x: SEXP, _call: SEXP) {
+fn errorcallNotSubsettable(_x: SEXP, _call: SEXP) {
     std::panic::panic_any(RError {
         message: "object of type is not subsettable".to_string(),
     });
@@ -382,7 +382,7 @@ pub(crate) fn note_oob_subscript(one_based: i32) {
     OOB_SUBSCRIPT.with(|cell| cell.set(one_based));
 }
 /// Report out-of-bounds error (integer index). `subscript` is 0-based.
-unsafe fn errorcallOutOfBounds(_x: SEXP, subscript: c_int, _index: R_xlen_t, _call: SEXP) {
+fn errorcallOutOfBounds(_x: SEXP, subscript: c_int, _index: R_xlen_t, _call: SEXP) {
     let _ = (_x, _index, _call);
     OOB_SUBSCRIPT.with(|cell| cell.set(subscript + 1));
     std::panic::panic_any(RError {
@@ -391,7 +391,7 @@ unsafe fn errorcallOutOfBounds(_x: SEXP, subscript: c_int, _index: R_xlen_t, _ca
 }
 
 /// Report out-of-bounds error (SEXP index).
-unsafe fn errorcallOutOfBoundsSEXP(_x: SEXP, _subscript: c_int, _sindex: SEXP, _call: SEXP) {
+fn errorcallOutOfBoundsSEXP(_x: SEXP, _subscript: c_int, _sindex: SEXP, _call: SEXP) {
     let _ = (_x, _subscript, _sindex, _call);
     std::panic::panic_any(RError {
         message: "subscript out of bounds".to_string(),
@@ -399,7 +399,7 @@ unsafe fn errorcallOutOfBoundsSEXP(_x: SEXP, _subscript: c_int, _sindex: SEXP, _
 }
 
 /// Report an error with a message (like errorcall in C).
-unsafe fn errorcall(call: SEXP, msg: &str) {
+fn errorcall(call: SEXP, msg: &str) {
     let _ = call;
     std::panic::panic_any(RError {
         message: msg.to_string(),
@@ -407,7 +407,7 @@ unsafe fn errorcall(call: SEXP, msg: &str) {
 }
 
 /// Report an error (like error() in C).
-unsafe fn r_error(msg: &str) {
+fn r_error(msg: &str) {
     std::panic::panic_any(RError {
         message: msg.to_string(),
     });
@@ -467,7 +467,7 @@ unsafe fn list2(a: SEXP, b: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Return the n-th CDR of x (like nthcdr in C).
-unsafe fn nthcdr(x: SEXP, mut n: c_int) -> SEXP {
+fn nthcdr(x: SEXP, mut n: c_int) -> SEXP {
     {
         let mut result = x;
         while n > 0 && !isNull(result) {

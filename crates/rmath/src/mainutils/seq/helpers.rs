@@ -118,7 +118,7 @@ pub unsafe fn check1arg(args: SEXP, call: SEXP, name: *const c_char) {
     }
 }
 
-pub unsafe fn errorcall(call: SEXP, format: *const c_char) {
+pub fn errorcall(call: SEXP, format: *const c_char) {
     crate::mainutils::errors::errorcall(call, format);
 }
 
@@ -154,12 +154,12 @@ pub fn xlength(s: SEXP) -> R_xlen_t {
     }
 }
 
-pub unsafe fn error(msg: &str) {
+pub fn error(msg: &str) {
     let c_msg = std::ffi::CString::new(msg).unwrap_or_default();
     crate::mainutils::errors::errorcall(std::ptr::null_mut(), c_msg.as_ptr() as *const c_char);
 }
 
-pub unsafe fn R_typeToChar(s: SEXP) -> *const c_char {
+pub fn R_typeToChar(s: SEXP) -> *const c_char {
     // Return the static SEXPTYPE name for this SEXP (only used in errors).
     {
         if s.is_null() {
@@ -319,15 +319,15 @@ pub unsafe fn getAttrib(x: SEXP, what: SEXP) -> SEXP {
     unsafe { crate::eval::attrib_core::getAttrib(x, what) }
 }
 
-pub unsafe fn R_NamesSymbol() -> SEXP {
+pub fn R_NamesSymbol() -> SEXP {
     unsafe { crate::eval::attrib_core::R_NamesSymbol() }
 }
 
-pub unsafe fn R_ClassSymbol() -> SEXP {
+pub fn R_ClassSymbol() -> SEXP {
     unsafe { crate::eval::attrib_core::R_ClassSymbol() }
 }
 
-pub unsafe fn R_LevelsSymbol() -> SEXP {
+pub fn R_LevelsSymbol() -> SEXP {
     unsafe { crate::eval::attrib_core::R_LevelsSymbol() }
 }
 
@@ -351,17 +351,17 @@ pub fn isReal(x: SEXP) -> c_int {
     Rf_isReal(x)
 }
 
-pub unsafe fn ScalarReal(x: c_double) -> SEXP {
+pub fn ScalarReal(x: c_double) -> SEXP {
     unsafe { Rf_ScalarReal(x) }
 }
 
-pub unsafe fn ScalarInteger(x: c_int) -> SEXP {
+pub fn ScalarInteger(x: c_int) -> SEXP {
     unsafe { Rf_ScalarInteger(x) }
 }
 
-pub unsafe fn SET_S4_OBJECT(_x: SEXP) {}
+pub fn SET_S4_OBJECT(_x: SEXP) {}
 
-pub unsafe fn IS_S4_OBJECT(_x: SEXP) -> c_int {
+pub fn IS_S4_OBJECT(_x: SEXP) -> c_int {
     0
 }
 
@@ -369,7 +369,7 @@ pub unsafe fn Rf_install_stub(name: *const c_char) -> SEXP {
     unsafe { crate::sexp::symbol::Rf_install(name) }
 }
 
-pub unsafe fn R_DotsSymbol() -> SEXP {
+pub fn R_DotsSymbol() -> SEXP {
     unsafe { crate::sexp::symbol::R_DotsSymbol() }
 }
 
