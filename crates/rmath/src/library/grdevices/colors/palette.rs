@@ -20,7 +20,7 @@ pub(crate) const PALETTE_INIT: [rcolor; 32] = [
 ];
 
 /// Save/restore palette (NOT #[unsafe(no_mangle)] — main/colors.rs already exports it)
-pub(crate) unsafe extern "C" fn savePalette_impl(save: c_int) {
+pub(crate) extern "C" fn savePalette_impl(save: c_int) {
     {
         with_color_state(|state| {
             let ps = state.palette_size as usize;

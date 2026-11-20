@@ -1349,23 +1349,23 @@ pub unsafe extern "C-unwind" fn GEcurrentDevice() -> pGEDevDesc {
     }
 }
 
-pub unsafe extern "C" fn GEgetDevice(dev: c_int) -> pGEDevDesc {
+pub extern "C" fn GEgetDevice(dev: c_int) -> pGEDevDesc {
     with_registry(|registry| registry.device_ptr(dev + 1))
 }
 
-pub unsafe extern "C" fn curDevice() -> c_int {
+pub extern "C" fn curDevice() -> c_int {
     with_registry(|registry| registry.current_internal())
 }
 
-pub unsafe extern "C" fn nextDevice(dev: c_int) -> c_int {
+pub extern "C" fn nextDevice(dev: c_int) -> c_int {
     with_registry(|registry| registry.next_external(dev + 1) - 1)
 }
 
-pub unsafe extern "C" fn prevDevice(dev: c_int) -> c_int {
+pub extern "C" fn prevDevice(dev: c_int) -> c_int {
     with_registry(|registry| registry.prev_external(dev + 1) - 1)
 }
 
-pub unsafe extern "C" fn selectDevice(dev: c_int) -> c_int {
+pub extern "C" fn selectDevice(dev: c_int) -> c_int {
     transition(|registry| registry.select_external(dev + 1) - 1)
 }
 
@@ -1410,7 +1410,7 @@ fn remove_device(label: c_int) -> Option<RemovedDevice> {
     Some(removed)
 }
 
-pub unsafe extern "C" fn killDevice(dev: c_int) {
+pub extern "C" fn killDevice(dev: c_int) {
     remove_device(dev.saturating_add(1));
 }
 
@@ -1443,15 +1443,15 @@ pub(super) fn close_device(label: c_int) -> Result<(), String> {
     Ok(())
 }
 
-pub unsafe extern "C" fn NoDevices() -> c_int {
+pub extern "C" fn NoDevices() -> c_int {
     with_registry(|registry| registry.no_devices() as c_int)
 }
 
-pub unsafe extern "C" fn NumDevices() -> c_int {
+pub extern "C" fn NumDevices() -> c_int {
     with_registry(|registry| registry.num_devices())
 }
 
-pub unsafe extern "C" fn GEinitDisplayList(gdd: pGEDevDesc) {
+pub extern "C" fn GEinitDisplayList(gdd: pGEDevDesc) {
     #[cfg(feature = "renderplot-device")]
     with_device_mut(gdd, |device| {
         if let Some(pdf) = &device.pdf
@@ -1465,7 +1465,7 @@ pub unsafe extern "C" fn GEinitDisplayList(gdd: pGEDevDesc) {
     let _ = gdd;
 }
 
-pub unsafe extern "C" fn GEcopyDisplayList(_devnum: c_int) {}
+pub extern "C" fn GEcopyDisplayList(_devnum: c_int) {}
 
 pub unsafe extern "C" fn GECap(_gdd: pGEDevDesc) -> SEXP {
     unsafe {

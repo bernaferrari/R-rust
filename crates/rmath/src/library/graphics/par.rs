@@ -1618,7 +1618,7 @@ unsafe fn logical_scalar(value: SEXP) -> Option<bool> {
     }
 }
 
-unsafe fn all_query_names(no_readonly: bool) -> Vec<String> {
+fn all_query_names(no_readonly: bool) -> Vec<String> {
     PAR_ORDER
         .iter()
         .filter(|name| !no_readonly || !is_readonly_par(name))
@@ -1920,7 +1920,7 @@ pub unsafe fn do_layout(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 
 /// ProcessInlinePars -- handles inline par specifications in graphics functions.
 /// Stub implementation: does nothing.
-pub unsafe fn ProcessInlinePars(_s: SEXP, _dd: pGEDevDesc) {
+pub fn ProcessInlinePars(_s: SEXP, _dd: pGEDevDesc) {
     /* Stub: full implementation walks a list and calls Specify2 for each tagged pair */
 }
 
@@ -1928,7 +1928,7 @@ pub unsafe fn ProcessInlinePars(_s: SEXP, _dd: pGEDevDesc) {
 
 /// baseCallback -- event handler for the base graphics system, registered
 /// with the Graphics Engine via GEregisterSystem.
-pub unsafe extern "C" fn baseCallback(_task: c_int, _dd: pGEDevDesc, _data: SEXP) -> SEXP {
+pub extern "C" fn baseCallback(_task: c_int, _dd: pGEDevDesc, _data: SEXP) -> SEXP {
     R_NilValue()
 }
 
@@ -1962,7 +1962,7 @@ pub fn unregisterBase() {
 
 /// RunregisterBase -- R-callable wrapper for unregisterBase.
 /// Returns R_NilValue.
-pub unsafe fn RunregisterBase() -> SEXP {
+pub fn RunregisterBase() -> SEXP {
     unregisterBase();
     R_NilValue()
 }
@@ -1989,7 +1989,7 @@ pub unsafe fn dpSavedptr(dd: pGEDevDesc) -> *mut c_void {
 
 /// Rf_setBaseDevice -- mark the device as "dirty" (has received base output).
 /// Stub: does nothing.
-pub unsafe fn Rf_setBaseDevice(_val: c_int, _dd: pGEDevDesc) {
+pub fn Rf_setBaseDevice(_val: c_int, _dd: pGEDevDesc) {
     /* Stub: sets bss->baseDevice = val */
 }
 
@@ -2012,7 +2012,7 @@ pub unsafe fn currentFigureLocation(row: *mut c_int, col: *mut c_int, _dd: pGEDe
 
 /// restoredpSaved -- restore display parameters from saved state.
 /// Stub: does nothing.
-pub unsafe fn restoredpSaved(_dd: pGEDevDesc) {
+pub fn restoredpSaved(_dd: pGEDevDesc) {
     /* Stub: full implementation copies all fields from dpSaved to dp */
 }
 

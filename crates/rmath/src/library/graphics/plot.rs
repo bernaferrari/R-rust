@@ -126,40 +126,38 @@ fn bool_to_rflag(value: bool) -> c_int {
 }
 
 #[inline]
-unsafe fn isNumeric(x: SEXP) -> c_int {
-    {
-        let sxp_type = TYPEOF(x);
-        bool_to_rflag(
-            sxp_type == SEXPTYPE::INTSXP
-                || sxp_type == SEXPTYPE::REALSXP
-                || sxp_type == SEXPTYPE::CPLXSXP
-                || sxp_type == SEXPTYPE::LGLSXP,
-        )
-    }
+fn isNumeric(x: SEXP) -> c_int {
+    let sxp_type = TYPEOF(x);
+    bool_to_rflag(
+        sxp_type == SEXPTYPE::INTSXP
+            || sxp_type == SEXPTYPE::REALSXP
+            || sxp_type == SEXPTYPE::CPLXSXP
+            || sxp_type == SEXPTYPE::LGLSXP,
+    )
 }
 
 #[inline]
-unsafe fn isReal(x: SEXP) -> c_int {
+fn isReal(x: SEXP) -> c_int {
     bool_to_rflag(TYPEOF(x) == SEXPTYPE::REALSXP)
 }
 
 #[inline]
-unsafe fn isInteger(x: SEXP) -> c_int {
+fn isInteger(x: SEXP) -> c_int {
     bool_to_rflag(TYPEOF(x) == SEXPTYPE::INTSXP)
 }
 
 #[inline]
-unsafe fn isLogical(x: SEXP) -> c_int {
+fn isLogical(x: SEXP) -> c_int {
     bool_to_rflag(TYPEOF(x) == SEXPTYPE::LGLSXP)
 }
 
 #[inline]
-unsafe fn isString(x: SEXP) -> c_int {
+fn isString(x: SEXP) -> c_int {
     bool_to_rflag(TYPEOF(x) == SEXPTYPE::STRSXP)
 }
 
 #[inline]
-unsafe fn isExpression(x: SEXP) -> c_int {
+fn isExpression(x: SEXP) -> c_int {
     bool_to_rflag(TYPEOF(x) == SEXPTYPE::EXPRSXP)
 }
 
@@ -707,7 +705,7 @@ unsafe fn GetAxisLimits(
  * ComputePAdjValue -- compute perpendicular adjustment value
  * ======================================================================== */
 
-unsafe fn ComputePAdjValue(padj: c_double, side: c_int, las: c_int) -> c_double {
+fn ComputePAdjValue(padj: c_double, side: c_int, las: c_int) -> c_double {
     if R_FINITE(padj) == 0 {
         match las {
             0 => {
@@ -744,7 +742,7 @@ unsafe fn ComputePAdjValue(padj: c_double, side: c_int, las: c_int) -> c_double 
  * ComputeAdjValue -- compute adjustment value for mtext
  * ======================================================================== */
 
-unsafe fn ComputeAdjValue(adj: c_double, side: c_int, las: c_int) -> c_double {
+fn ComputeAdjValue(adj: c_double, side: c_int, las: c_int) -> c_double {
     if R_FINITE(adj) == 0 {
         match las {
             0 => {
@@ -1080,7 +1078,7 @@ unsafe fn drawLabel(
 }
 
 /* Stub for dd->dev->yCharOffset */
-unsafe fn dd_dev_yCharOffset(_dd: pGEDevDesc) -> c_double {
+fn dd_dev_yCharOffset(_dd: pGEDevDesc) -> c_double {
     0.3
 }
 

@@ -675,19 +675,17 @@ pub(crate) unsafe fn locator_result(args: SEXP) -> SEXP {
 }
 
 /// Positional helper over a plain argument list.
-unsafe fn arg_or_nil(args: SEXP, index: usize) -> SEXP {
-    {
-        let mut cell = args;
-        let mut i = 0;
-        while !cell.is_null() && cell != crate::sexp::globals::R_NilValue() {
-            if i == index {
-                return crate::sexp::accessors::CAR(cell);
-            }
-            cell = crate::sexp::accessors::CDR(cell);
-            i += 1;
+fn arg_or_nil(args: SEXP, index: usize) -> SEXP {
+    let mut cell = args;
+    let mut i = 0;
+    while !cell.is_null() && cell != crate::sexp::globals::R_NilValue() {
+        if i == index {
+            return crate::sexp::accessors::CAR(cell);
         }
-        crate::sexp::globals::R_NilValue()
+        cell = crate::sexp::accessors::CDR(cell);
+        i += 1;
     }
+    crate::sexp::globals::R_NilValue()
 }
 
 /// Build GNU's zero-click identify result: all-false `ind` with zero

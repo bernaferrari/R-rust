@@ -97,24 +97,24 @@ unsafe fn uUnit(x: SEXP) -> c_int {
 }
 
 /// isAbsolute(X) - check if unit is an absolute unit type
-unsafe fn isAbsolute(x: c_int) -> bool {
+fn isAbsolute(x: c_int) -> bool {
     x > 1000
         || (x >= L_MYLINES && x <= L_MYSTRINGHEIGHT)
         || (x < L_GROBX && x > L_NPC && x != L_NATIVE && x != L_SNPC)
 }
 
 /// isArith(X) - check if unit is an arithmetic unit type
-unsafe fn isArith(x: c_int) -> bool {
+fn isArith(x: c_int) -> bool {
     x >= L_SUM && x <= L_MAX
 }
 
 /// isStringUnit(X) - check if unit is a string-related unit type
-unsafe fn isStringUnit(x: c_int) -> bool {
+fn isStringUnit(x: c_int) -> bool {
     x >= L_STRINGWIDTH && x <= L_STRINGDESCENT
 }
 
 /// isGrobUnit(X) - check if unit is a grob-related unit type
-unsafe fn isGrobUnit(x: c_int) -> bool {
+fn isGrobUnit(x: c_int) -> bool {
     x >= L_GROBX && x <= L_GROBDESCENT
 }
 
@@ -641,7 +641,7 @@ pub unsafe fn pureNullUnit(unit: SEXP, index: c_int, _dd: pGEDevDesc) -> c_int {
  * evaluateNullUnit -- evaluate null unit value based on context
  * ============================== */
 
-unsafe fn evaluateNullUnit(
+fn evaluateNullUnit(
     value: c_double,
     thisCM: c_double,
     nullLayoutMode: c_int,
@@ -1083,7 +1083,7 @@ pub unsafe fn transformDimn(
  * transformXYFromINCHES -- convert inches to specified unit
  * ============================== */
 
-pub unsafe fn transformXYFromINCHES(
+pub fn transformXYFromINCHES(
     location: c_double,
     unit_id: c_int,
     scalemin: c_double,
@@ -1113,7 +1113,7 @@ pub unsafe fn transformXYFromINCHES(
  * transformWidthHeightFromINCHES -- convert inches to width/height unit
  * ============================== */
 
-pub unsafe fn transformWidthHeightFromINCHES(
+pub fn transformWidthHeightFromINCHES(
     value: c_double,
     unit_id: c_int,
     scalemin: c_double,
