@@ -9,7 +9,7 @@ POINTS = ((59, 183), (145, 152), (230, 167), (316, 105), (401, 90))
 AXES = ((60, 214, 400, 214), (59, 59, 59, 214))
 
 
-def inspect_page(path, expected_labels):
+def read_pdf_page(path, page=1):
     for tool in ("pdfinfo", "pdftotext", "pdftoppm"):
         if not shutil.which(tool):
             raise ValueError(f"{tool} from Poppler is required for the PDF workflow")
@@ -17,17 +17,24 @@ def inspect_page(path, expected_labels):
     page_count = int(re.search(r"^Pages:\s+(\d+)$", metadata, re.MULTILINE)[1])
     dimensions = list(map(int, re.search(
         r"^Page size:\s+(\d+) x (\d+) pts", metadata, re.MULTILINE).groups()))
-    labels = subprocess.check_output(["pdftotext", "-layout", path, "-"], text=True, timeout=30)
+    labels = subprocess.check_output(
+        ["pdftotext", "-layout", "-f", str(page), "-l", str(page), path, "-"],
+        text=True, timeout=30)
     words = " ".join(labels.split())
-    labels_found = [label for label in expected_labels if re.search(rf"\b{re.escape(label)}\b", words)]
     header, size, depth, image = subprocess.check_output(
-        ["pdftoppm", "-f", "1", "-l", "1", "-r", "72", "-singlefile", path], timeout=30
+        ["pdftoppm", "-f", str(page), "-l", str(page), "-r", "72", "-singlefile", path], timeout=30
     ).split(b"\n", 3)
     width, height = map(int, size.split())
     if header != b"P6" or depth != b"255" or len(image) != width * height * 3:
         raise ValueError("unexpected Poppler raster format")
 
-    return {"pages": page_count, "page_size_points": dimensions, "labels": labels_found}, width, image
+    return {"pages": page_count, "page_size_points": dimensions}, words, width, image
+
+
+def inspect_page(path, expected_labels):
+    metadata, words, width, image = read_pdf_page(path)
+    labels = [label for label in expected_labels if re.search(rf"\b{re.escape(label)}\b", words)]
+    return {**metadata, "labels": labels}, width, image
 
 
 def color_positions(image, width, color):

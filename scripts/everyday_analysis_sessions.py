@@ -15,6 +15,7 @@ import tempfile
 import tomllib
 
 from conformance_shards import file_digest, source_identity
+from everyday_grid import EXPECTED_FIGURES, EXPECTED_GRID, EXPECTED_SAFETY, inspect_figure as inspect_grid_figure, inspect_grid
 from everyday_pdf import EXPECTED_SCATTERPLOT, inspect_scatterplot
 from everyday_report import EXPECTED_FIGURE, FORECASTS, OUTPUTS, PHASES, inspect_figure
 
@@ -299,11 +300,42 @@ def run_repeatable_report(gnu, native, directory, env, fixture, wasm_module):
     return wasm['wasm_sha256'], expected, outcomes, evidence
 
 
+def run_grid_layout(gnu, native, directory, env, fixture, wasm_module):
+    for side, command in (('gnu', gnu), ('native', native)):
+        for script in ('plot', 'restore', 'absolute', 'recording', 'paging', 'safety'):
+            if side == 'gnu' and script == 'safety':
+                continue
+            work = directory / side / ('plot' if script == 'restore' else script)
+            work.mkdir(parents=True, exist_ok=script == 'restore')
+            subprocess.run([*command, fixture / f'{script}.R'], cwd=work, env=env,
+                           stdout=sys.stderr, check=True, timeout=300)
+    wasm_sha256 = subprocess.check_output(
+        ['node', ROOT / 'tests/browser/everyday-grid.mjs', wasm_module, fixture, directory / 'wasm'],
+        cwd=ROOT, env=env, timeout=300, text=True).strip()
+    expected = inspect_grid(directory / 'gnu')
+    if expected != EXPECTED_GRID:
+        raise ValueError(f'pinned GNU grid output differs from expected figures: {expected}')
+    outcomes, evidence = {}, {}
+    for side in ('gnu', 'native', 'wasm'):
+        files = set(EXPECTED_FIGURES)
+        if side != 'gnu':
+            outcomes[side] = inspect_grid(directory / side)
+            safety = {name: inspect_grid_figure(directory / side / name, [])[0] for name in EXPECTED_SAFETY}
+            if safety != EXPECTED_SAFETY:
+                raise ValueError(f'{side} did not preserve the destination after rejected grid replay: {safety}')
+            files.update(EXPECTED_SAFETY)
+        evidence[side] = {
+            name: {'sha256': file_digest(directory / side / name), 'bytes': (directory / side / name).stat().st_size}
+            for name in sorted(files)
+        }
+    return wasm_sha256, expected, outcomes, evidence
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('wasm_package', type=Path)
     parser.add_argument('--workflow', choices=('file-round-trip', 'fresh-session-restore', 'pure-r-package',
-                                               'base-plot-export', 'repeatable-report'),
+                                               'base-plot-export', 'grid-layout', 'repeatable-report'),
                         default='file-round-trip')
     args = parser.parse_args()
     rscript = shutil.which('Rscript')
@@ -320,17 +352,21 @@ def main():
     with tempfile.TemporaryDirectory(prefix='rport-analysis-sessions.') as scratch:
         directory = Path(scratch)
         native_runner = build_native_runner(
-            directory, env, renderplot=args.workflow in ('base-plot-export', 'repeatable-report'))
+            directory, env, renderplot=args.workflow in ('base-plot-export', 'grid-layout', 'repeatable-report'))
         gnu = [rscript, '--vanilla']
         artifacts = {}
         archive_digest = None
         pdf_evidence = None
         report_evidence = None
+        grid_evidence = None
         if args.workflow == 'base-plot-export':
             wasm_sha256, expected, outcomes, pdf_evidence = run_plot_export(
                 gnu, native_runner, directory, env, fixture, wasm_module)
         elif args.workflow == 'repeatable-report':
             wasm_sha256, expected, outcomes, report_evidence = run_repeatable_report(
+                gnu, native_runner, directory, env, fixture, wasm_module)
+        elif args.workflow == 'grid-layout':
+            wasm_sha256, expected, outcomes, grid_evidence = run_grid_layout(
                 gnu, native_runner, directory, env, fixture, wasm_module)
         elif args.workflow == 'pure-r-package':
             wasm_sha256, expected, outcomes, archive_digest = run_pure_r_package(
@@ -361,6 +397,8 @@ def main():
             report['pdf_evidence'] = pdf_evidence
         if report_evidence:
             report['report_evidence'] = report_evidence
+        if grid_evidence:
+            report['grid_evidence'] = grid_evidence
         print(json.dumps(report, indent=2))
         return int(any(outcome != expected for outcome in outcomes.values()))
 

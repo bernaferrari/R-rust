@@ -18,6 +18,7 @@ for (const [script, files] of Object.entries({
   restore: ['panels-restored.pdf'],
   absolute: ['source.pdf', 'replay.pdf'],
   recording: ['source.pdf', 'without.pdf', 'with.pdf', 'inhibited.pdf'],
+  paging: ['grob-viewport.pdf', 'unrecorded-push.pdf', 'unrecorded-page.pdf', 'late-push.pdf'],
   safety: ['safety.pdf'],
 })) {
   const folder = script === 'restore' ? 'plot' : script;

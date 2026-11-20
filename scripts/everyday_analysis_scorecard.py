@@ -9,10 +9,12 @@ from pathlib import Path
 
 if __package__:
     from .conformance_shards import file_digest, rows_from_report
+    from .everyday_grid import EXPECTED_FIGURES, EXPECTED_GRID, EXPECTED_SAFETY
     from .everyday_pdf import EXPECTED_SCATTERPLOT
     from .everyday_report import EXPECTED_FIGURE, FORECASTS, PHASES
 else:
     from conformance_shards import file_digest, rows_from_report
+    from everyday_grid import EXPECTED_FIGURES, EXPECTED_GRID, EXPECTED_SAFETY
     from everyday_pdf import EXPECTED_SCATTERPLOT
     from everyday_report import EXPECTED_FIGURE, FORECASTS, PHASES
 
@@ -76,7 +78,7 @@ def session_workflow_results(path, native_policy, wasm_digest):
     provenance = ('source_commit', 'source_sha256', 'oracle_manifest_sha256')
     if (report['schema_version'] != 1
             or workflow not in ('file-round-trip', 'fresh-session-restore', 'pure-r-package',
-                                'base-plot-export', 'repeatable-report')
+                                'base-plot-export', 'grid-layout', 'repeatable-report')
             or any(report[name] != native_policy[name] for name in provenance)
             or report['wasm_sha256'] != wasm_digest):
         raise ValueError('session report differs in workflow, source, oracle or Wasm artifact')
@@ -105,6 +107,14 @@ def session_workflow_results(path, native_policy, wasm_digest):
                 or any(expected.get(key) != value for key, value in EXPECTED_SCATTERPLOT.items())
                 or not expected.get('output')):
             raise ValueError('PDF report requires valid artifacts and the verified GNU plot')
+    elif workflow == 'grid-layout':
+        evidence = report['grid_evidence']
+        if (expected != EXPECTED_GRID or set(evidence) != {'gnu', 'native', 'wasm'}
+                or any(set(files) != (set(EXPECTED_FIGURES) if side == 'gnu'
+                                      else set(EXPECTED_FIGURES) | set(EXPECTED_SAFETY))
+                       or any(not is_sha256(file['sha256']) or file['bytes'] <= 1000 for file in files.values())
+                       for side, files in evidence.items())):
+            raise ValueError('grid report requires the verified figures and rejected-replay artifact')
     elif workflow == 'repeatable-report':
         evidence = report['report_evidence']
         if (set(evidence) != {'gnu', 'native', 'wasm'} or set(expected) != set(PHASES)
