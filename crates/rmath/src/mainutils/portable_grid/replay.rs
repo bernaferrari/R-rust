@@ -98,7 +98,7 @@ pub(crate) struct ReplayCommands {
 }
 
 impl ReplayCommands {
-    pub(crate) unsafe fn read(head: &Sexp<'static>) -> Result<Self, &'static str> {
+    pub(crate) fn read(head: &Sexp<'static>) -> Result<Self, &'static str> {
         unsafe {
             let mut steps = Vec::new();
             let mut current = head.as_raw();
@@ -129,7 +129,7 @@ impl ReplayCommands {
         }
     }
 
-    pub(crate) unsafe fn first_grid_device_command(&self) -> Option<usize> {
+    pub(crate) fn first_grid_device_command(&self) -> Option<usize> {
         // GNU's native grid page and viewport commands contain registrations
         // that must be restored after same-process serialization.
         self.steps.iter().position(|(kind, value)| {
@@ -138,22 +138,22 @@ impl ReplayCommands {
         })
     }
 
-    pub(crate) unsafe fn draw_prefix(&self, end: usize, target: &mut dyn DrawTarget, dpi: f64) {
-        unsafe { Self::draw_steps(&self.steps[..end], target, dpi) };
+    pub(crate) fn draw_prefix(&self, end: usize, target: &mut dyn DrawTarget, dpi: f64) {
+        Self::draw_steps(&self.steps[..end], target, dpi);
     }
 
-    pub(crate) unsafe fn draw(
+    pub(crate) fn draw(
         self,
         target: &mut dyn DrawTarget,
         dpi: f64,
     ) -> (GridState, CommandLog) {
         (
-            unsafe { Self::draw_steps(&self.steps, target, dpi) },
+            Self::draw_steps(&self.steps, target, dpi),
             self.log,
         )
     }
 
-    unsafe fn draw_steps(
+    fn draw_steps(
         steps: &[(Command, SEXP)],
         target: &mut dyn DrawTarget,
         dpi: f64,
