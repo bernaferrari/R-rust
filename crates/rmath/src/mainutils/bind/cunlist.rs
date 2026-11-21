@@ -21,7 +21,7 @@ use crate::sexp::protect::protect;
 // ---------------------------------------------------------------------------
 
 /// R's `c()` builtin.  Attempts method dispatch; falls back to `do_c_dflt`.
-pub unsafe fn do_c(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub fn do_c(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
 
@@ -69,7 +69,7 @@ pub unsafe fn do_c(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Default implementation of `c()` when no S3/S4 method is found.
-pub unsafe fn do_c_dflt(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub fn do_c_dflt(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let mut usenames: bool = true;
         let mut recurse: bool = false;
@@ -187,7 +187,7 @@ pub unsafe fn do_c_dflt(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// R's `unlist()` builtin.  Attempts method dispatch; falls back to default.
-pub unsafe fn do_unlist(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub fn do_unlist(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
 
@@ -207,7 +207,7 @@ pub unsafe fn do_unlist(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 }
 
 /// Default implementation of unlist().
-pub unsafe fn do_unlist_default(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub fn do_unlist_default(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         // unlist takes: (x, recursive, use.names)
         // args is a pairlist: (x, recursive, use.names)

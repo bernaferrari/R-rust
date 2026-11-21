@@ -88,7 +88,7 @@ pub fn resolve_promise(x: SEXP) -> SEXP {
 /// checkArity: verify argument count matches the expected arity for op.
 /// currently a no-op, consistent with other modules.
 #[inline(always)]
-pub unsafe fn checkArity(op: SEXP, args: SEXP) {
+pub fn checkArity(op: SEXP, args: SEXP) {
     unsafe { crate::mainutils::relop::checkArity(op, args) }
 }
 
@@ -97,7 +97,7 @@ pub unsafe fn checkArity(op: SEXP, args: SEXP) {
 ///
 /// When `keep_initial` is true, leading NULL elements are kept; otherwise they
 /// are removed too.
-pub unsafe fn R_listCompact(mut s: SEXP, keep_initial: bool) -> SEXP {
+pub fn R_listCompact(mut s: SEXP, keep_initial: bool) -> SEXP {
     unsafe {
         if !keep_initial {
             // skip initial NULL values
@@ -157,7 +157,7 @@ pub fn type2char(sexptype: c_int) -> *const c_char {
 
 /// Set the CAR of the CDR of x (i.e., SETCADR).
 #[inline(always)]
-pub unsafe fn SETCADR(x: SEXP, v: SEXP) {
+pub fn SETCADR(x: SEXP, v: SEXP) {
     unsafe {
         SETCAR(CDR(x), v);
     }
@@ -260,7 +260,7 @@ pub fn isSymbol(x: SEXP) -> bool {
 
 /// Check if x is a matrix (has a "dim" attribute of length 2).
 #[inline(always)]
-pub unsafe fn isMatrix(x: SEXP) -> bool {
+pub fn isMatrix(x: SEXP) -> bool {
     unsafe {
         if x.is_null() || x == R_NilValue() {
             return false;
@@ -273,7 +273,7 @@ pub unsafe fn isMatrix(x: SEXP) -> bool {
 
 /// Get the number of rows of a matrix.
 #[inline(always)]
-pub unsafe fn nrows(x: SEXP) -> c_int {
+pub fn nrows(x: SEXP) -> c_int {
     unsafe {
         let dim_sym = crate::eval::attrib_core::R_DimSymbol();
         let dims = getAttrib(x, dim_sym);
@@ -286,7 +286,7 @@ pub unsafe fn nrows(x: SEXP) -> c_int {
 
 /// Get the number of columns of a matrix.
 #[inline(always)]
-pub unsafe fn ncols(x: SEXP) -> c_int {
+pub fn ncols(x: SEXP) -> c_int {
     unsafe {
         let dim_sym = crate::eval::attrib_core::R_DimSymbol();
         let dims = getAttrib(x, dim_sym);
@@ -299,7 +299,7 @@ pub unsafe fn ncols(x: SEXP) -> c_int {
 
 /// Coerce x to the given type. Simplified: returns x if already correct type,
 /// otherwise allocates a new vector and copies with coercion.
-pub unsafe fn coerceVector(x: SEXP, _type: SEXPTYPE) -> SEXP {
+pub fn coerceVector(x: SEXP, _type: SEXPTYPE) -> SEXP {
     unsafe {
         let t = TYPEOF(x);
         if t == _type.0 {
@@ -518,13 +518,13 @@ pub fn checked_allocVector(mode: SEXPTYPE, n: R_xlen_t) -> SEXP {
 }
 
 #[inline(always)]
-pub unsafe fn lazy_duplicate(x: SEXP) -> SEXP {
+pub fn lazy_duplicate(x: SEXP) -> SEXP {
     unsafe { crate::mainutils::duplicate::lazy_duplicate(x) }
 }
 
 /// EnsureString: ensure x is a single string (CHARSXP).
 #[inline(always)]
-pub unsafe fn EnsureString(x: SEXP) -> SEXP {
+pub fn EnsureString(x: SEXP) -> SEXP {
     unsafe {
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
@@ -565,7 +565,7 @@ pub fn R_BlankString() -> SEXP {
 
 /// Returns 1 if `x` has a non-NULL names attribute (vectors) or any non-NULL
 /// tag (lists), 0 otherwise.
-pub unsafe fn HasNames(x: SEXP) -> c_int {
+pub fn HasNames(x: SEXP) -> c_int {
     unsafe {
         if x.is_null() || x == R_NilValue() {
             return 0;

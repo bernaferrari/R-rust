@@ -3,7 +3,7 @@ use crate::sexp::constructors::*;
 use super::*;
 
 /// Helper: create an integer vector with given values.
-unsafe fn make_int_vec(vals: &[c_int]) -> SEXP {
+fn make_int_vec(vals: &[c_int]) -> SEXP {
     unsafe {
         let v = Rf_allocVector(INTSXP_VAL, vals.len() as c_int);
         let data = INTEGER(v);
@@ -15,7 +15,7 @@ unsafe fn make_int_vec(vals: &[c_int]) -> SEXP {
 }
 
 /// Helper: create a real vector with given values.
-unsafe fn make_real_vec(vals: &[c_double]) -> SEXP {
+fn make_real_vec(vals: &[c_double]) -> SEXP {
     unsafe {
         let v = Rf_allocVector(REALSXP_VAL, vals.len() as c_int);
         let data = REAL(v);
@@ -591,7 +591,7 @@ fn root_global(name: &str, value: SEXP) {
     }
 }
 
-unsafe fn attribute_list(value: SEXP) -> SEXP {
+fn attribute_list(value: SEXP) -> SEXP {
     unsafe {
         let args = Rf_cons(value, R_NilValue());
         crate::mainutils::essentials::do_attributes(
@@ -1471,7 +1471,7 @@ fn still_lazy(value: SEXP) -> bool {
     unsafe { crate::sexp::accessors::ALTREP(value) == 1 && (*value).payload.is_empty() }
 }
 
-unsafe fn set_matrix_dim(x: SEXP, nrow: c_int, ncol: c_int) -> SEXP {
+fn set_matrix_dim(x: SEXP, nrow: c_int, ncol: c_int) -> SEXP {
     unsafe {
         let dim = Rf_allocVector(INTSXP_VAL, 2);
         *INTEGER(dim).add(0) = nrow;

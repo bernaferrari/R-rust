@@ -221,7 +221,7 @@ pub fn R_check_locale() {
 // ---------------------------------------------------------------------------
 
 /// R's `date()` — return current date as an R string.
-pub unsafe fn do_date(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_date(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::constructors::Rf_mkString;
         let date_str = R_Date();
@@ -263,7 +263,7 @@ fn show_stored_file(path: &str) {
 }
 
 /// R's `file.show()` — display file(s) to the user.
-pub unsafe fn do_fileshow(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_fileshow(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::accessors::{
             CADDDR, CADDR, CADR, CAR, CDR, INTEGER, LENGTH, STRING_ELT, TYPEOF,
@@ -378,11 +378,11 @@ pub(crate) fn platform_error(message: impl Into<String>) -> ! {
     });
 }
 
-unsafe fn is_na_charsxp(s: SEXP) -> bool {
+fn is_na_charsxp(s: SEXP) -> bool {
     unsafe { s.is_null() || (*s).sxpinfo.gp() & 1 != 0 }
 }
 
-pub(crate) unsafe fn path_at(paths: SEXP, index: usize) -> Option<String> {
+pub(crate) fn path_at(paths: SEXP, index: usize) -> Option<String> {
     unsafe {
         let elt = crate::sexp::accessors::STRING_ELT(paths, index as crate::sexp::ffi::R_xlen_t);
         if is_na_charsxp(elt) {
@@ -411,7 +411,7 @@ pub(crate) fn octmode_scalar(mode: u32) -> SEXP {
     }
 }
 
-pub(crate) unsafe fn parse_octal_mode_arg(value: SEXP) -> Option<u32> {
+pub(crate) fn parse_octal_mode_arg(value: SEXP) -> Option<u32> {
     unsafe {
         use crate::sexp::accessors::{INTEGER, LENGTH, REAL, TYPEOF};
         use crate::sexp::ffi::{NA_INTEGER, SEXPTYPE};
@@ -503,7 +503,7 @@ pub(crate) fn create_file_with_session_umask(path: &str) -> std::io::Result<()> 
     }
 }
 
-pub(crate) unsafe fn platform_tag_name(cell: SEXP) -> Option<String> {
+pub(crate) fn platform_tag_name(cell: SEXP) -> Option<String> {
     unsafe {
         let tag = crate::sexp::accessors::TAG(cell);
         if tag.is_null() || tag == crate::sexp::globals::R_NilValue() {

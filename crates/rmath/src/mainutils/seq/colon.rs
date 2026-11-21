@@ -23,7 +23,7 @@ use crate::sexp::globals::{R_MissingArg, R_NilValue};
 // cross_colon: cross product of two factors
 // ---------------------------------------------------------------------------
 
-pub unsafe fn cross_colon(call: SEXP, s: SEXP, t: SEXP) -> SEXP {
+pub fn cross_colon(call: SEXP, s: SEXP, t: SEXP) -> SEXP {
     unsafe {
         let ns = Rf_length(s);
         let nt = Rf_length(t);
@@ -147,7 +147,7 @@ pub fn seq_colon(n1: c_double, n2: c_double, call: SEXP) -> SEXP {
 // do_colon: `:` primitive
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_colon(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_colon(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let _ = rho;
         checkArity(op, args);
@@ -194,7 +194,7 @@ pub unsafe fn do_colon(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 // do_seq: seq.int() primitive
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_seq(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_seq(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let _ = rho;
         let mut ans: SEXP = R_NilValue();
@@ -598,7 +598,7 @@ pub unsafe fn do_seq(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 // do_seq_along: seq_along()
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_seq_along(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_seq_along(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
 
@@ -661,7 +661,7 @@ pub unsafe fn do_seq_along(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
 // do_seq_len: seq_len()
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_seq_len(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_seq_len(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let _ = rho;
         checkArity(op, args);

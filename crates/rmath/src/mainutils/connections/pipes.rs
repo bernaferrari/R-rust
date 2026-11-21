@@ -29,7 +29,7 @@ use crate::sexp::protect::*;
 // do_pipe — pipe(description, open = "", encoding = "")
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_pipe(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_pipe(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         if crate::mainutils::essentials::pipe_commands_disabled_by_runtime_policy() {
             std::panic::panic_any(crate::sexp::context::RError {
@@ -97,7 +97,7 @@ pub unsafe fn do_pipe(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEX
 // do_rawConnection — rawConnection(raw, open = "rb")
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_rawConnection(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_rawConnection(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let first = CAR(args);
         let (sraw, sopen) = if TYPEOF(first) == SEXPTYPE::RAWSXP {
@@ -170,7 +170,7 @@ pub unsafe fn do_rawConnection(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEX
 // do_textConnection — textConnection(object, open = "r", local = FALSE)
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_textConnection(_call: SEXP, _op: SEXP, mut args: SEXP, env: SEXP) -> SEXP {
+pub fn do_textConnection(_call: SEXP, _op: SEXP, mut args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let arg1 = CAR(args);
         args = CDR(args);
@@ -294,7 +294,7 @@ fn is_missing_conn_arg(arg: SEXP) -> bool {
     arg.is_null() || arg == R_NilValue() || arg == R_MissingArg()
 }
 
-unsafe fn text_connection_env(local_arg: SEXP, caller: SEXP) -> SEXP {
+fn text_connection_env(local_arg: SEXP, caller: SEXP) -> SEXP {
     unsafe {
         if is_missing_conn_arg(local_arg) {
             return crate::sexp::globals::R_GlobalEnv();
@@ -322,7 +322,7 @@ unsafe fn text_connection_env(local_arg: SEXP, caller: SEXP) -> SEXP {
 // do_textConnectionValue — textConnectionValue(con)
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_textConnectionValue(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_textConnectionValue(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let scon = CAR(args);
 
@@ -342,7 +342,7 @@ pub unsafe fn do_textConnectionValue(_call: SEXP, _op: SEXP, args: SEXP, _env: S
 // do_sockConnection — socketConnection()
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_sockConnection(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_sockConnection(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     r_error("socketConnection is not supported in this pure-R Android runtime")
 }
 
@@ -350,7 +350,7 @@ pub unsafe fn do_sockConnection(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP)
 // do_serverSocket — server socket support
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_serverSocket(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_serverSocket(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     r_error("serverSocket is not supported in this pure-R Android runtime")
 }
 
@@ -358,7 +358,7 @@ pub unsafe fn do_serverSocket(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -
 // do_download — legacy mainutils entry point
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_download(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_download(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     r_error("download.file is implemented through the utils internet boundary")
 }
 
@@ -366,7 +366,7 @@ pub unsafe fn do_download(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SE
 // do_getConnection — getConnection(n)
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_getConnection(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_getConnection(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let sn = CAR(args);
         let n = as_integer(sn) as usize;
@@ -393,7 +393,7 @@ pub unsafe fn do_getConnection(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -
 // do_showConnections — showConnections(all = FALSE)
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_showConnections(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_showConnections(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let _all = check_logical_arg(CAR(args), "all");
 
@@ -430,7 +430,7 @@ pub unsafe fn do_showConnections(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP)
 // do_sumConnection — summary.connection()
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_sumConnection(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_sumConnection(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let scon = CAR(args);
         let integer_index = TYPEOF(scon) == SEXPTYPE::INTSXP || TYPEOF(scon) == SEXPTYPE::REALSXP;
@@ -475,7 +475,7 @@ pub unsafe fn do_sumConnection(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -
     }
 }
 
-pub unsafe fn do_getAllConnections(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_getAllConnections(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let table = connection_table();
         let mut ids = Vec::new();
@@ -496,7 +496,7 @@ pub unsafe fn do_getAllConnections(_call: SEXP, _op: SEXP, _args: SEXP, _env: SE
 // do_sink — sink(number = NULL, close.on.exit = FALSE, type = "output", split = FALSE)
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_sink(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_sink(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let sn = CAR(args);
         args = CDR(args);
@@ -552,7 +552,7 @@ pub unsafe fn do_sink(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEX
 // do_sinkNumber — sink.number(type = "output")
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_sinkNumber(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_sinkNumber(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let errcon = check_logical_arg(CAR(args), "type");
         let sink = sink_state();
@@ -568,7 +568,7 @@ pub unsafe fn do_sinkNumber(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> S
 // do_pushBack — pushBack(data, con)
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_pushBack(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_pushBack(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let data = CAR(_args);
         let con = CAR(CDR(_args));
@@ -611,7 +611,7 @@ pub unsafe fn do_pushBack(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SE
 // do_pushBackClear — pushBackClear(con)
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_pushBackClear(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_pushBackClear(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let con = CAR(args);
         if !inherits_class(con, "connection") {
@@ -631,7 +631,7 @@ pub unsafe fn do_pushBackClear(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -
 // do_pushBackLength — pushBackLength(con)
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_pushBackLength(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_pushBackLength(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let con = CAR(args);
         if !inherits_class(con, "connection") {

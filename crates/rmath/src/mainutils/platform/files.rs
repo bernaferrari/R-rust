@@ -24,7 +24,7 @@ fn append_file(destination: &str, source: &str) -> bool {
 }
 
 /// R's `file.append(file1, file2)` — append source files in `file2` to destinations in `file1`.
-pub unsafe fn do_fileappend(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_fileappend(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::accessors::{CADR, CAR, LENGTH, LOGICAL, TYPEOF};
         use crate::sexp::constructors::Rf_allocVector3;
@@ -67,7 +67,7 @@ pub unsafe fn do_fileappend(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 }
 
 /// R's `file.create()` — create file(s).
-pub unsafe fn do_filecreate(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_filecreate(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::accessors::{CAR, LENGTH, STRING_ELT};
         use crate::sexp::constructors::Rf_allocVector3;
@@ -101,7 +101,7 @@ pub unsafe fn do_filecreate(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 }
 
 /// R's `file.remove()` — remove file(s).
-pub unsafe fn do_fileremove(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_fileremove(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::accessors::{CAR, CDR, LENGTH, STRING_ELT};
         use crate::sexp::constructors::Rf_allocVector3;
@@ -153,7 +153,7 @@ pub unsafe fn do_fileremove(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 
 /// R's `Sys.junction()` (Windows) / `file.link()` — create symbolic links.
 #[cfg(not(target_arch = "wasm32"))]
-pub unsafe fn do_filesymlink(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_filesymlink(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::accessors::{CADR, CAR, LENGTH, STRING_ELT};
         use crate::sexp::constructors::Rf_allocVector3;
@@ -193,7 +193,7 @@ pub unsafe fn do_filesymlink(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
 /// links are unsupported on this platform and return an all-FALSE
 /// logical vector of matching length (unsupported-operation path).
 #[cfg(target_arch = "wasm32")]
-pub unsafe fn do_filesymlink(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_filesymlink(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::accessors::{CAR, LENGTH};
         use crate::sexp::constructors::Rf_allocVector3;
@@ -214,7 +214,7 @@ pub unsafe fn do_filesymlink(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
 }
 
 /// R's `file.link()` — create hard links.
-pub unsafe fn do_filelink(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_filelink(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::accessors::{CADR, CAR, LENGTH, STRING_ELT};
         use crate::sexp::constructors::Rf_allocVector3;
@@ -253,7 +253,7 @@ pub unsafe fn do_filelink(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 }
 
 /// R's `file.rename()` — rename file(s).
-pub unsafe fn do_filerename(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_filerename(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::accessors::{CADR, CAR, LENGTH, STRING_ELT};
         use crate::sexp::constructors::Rf_allocVector3;
@@ -292,7 +292,7 @@ pub unsafe fn do_filerename(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 }
 
 /// R's `file.info()` — get file information (size, mtime, etc.).
-pub unsafe fn do_fileinfo(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_fileinfo(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::accessors::{
             CADR, CAR, LENGTH, SET_STRING_ELT, SET_VECTOR_ELT, STRING_ELT,
@@ -595,7 +595,7 @@ pub unsafe fn do_fileinfo(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
     }
 }
 
-pub unsafe fn do_setfiletime(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_setfiletime(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::accessors::{CAR, CDR, LENGTH, LOGICAL, REAL, STRING_ELT};
         use crate::sexp::constructors::Rf_allocVector3;
@@ -654,7 +654,7 @@ pub unsafe fn do_setfiletime(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
 }
 
 /// R's `file.size(...)` — return file sizes in bytes.
-pub unsafe fn do_filesize(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_filesize(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::accessors::{CAR, LENGTH, REAL, STRING_ELT};
         use crate::sexp::constructors::Rf_allocVector3;
@@ -693,7 +693,7 @@ pub unsafe fn do_filesize(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 }
 
 /// R's `file.mtime(...)` — return modification times as POSIXct.
-pub unsafe fn do_filemtime(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_filemtime(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::accessors::{CAR, LENGTH, REAL, SET_STRING_ELT, STRING_ELT};
         use crate::sexp::constructors::{Rf_allocVector3, Rf_mkChar};
@@ -743,7 +743,7 @@ pub unsafe fn do_filemtime(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
 }
 
 /// R's `dir.exists()` — check if directory exists.
-pub unsafe fn do_direxists(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_direxists(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::accessors::{CAR, LENGTH, STRING_ELT};
         use crate::sexp::constructors::Rf_allocVector3;
@@ -786,7 +786,7 @@ pub unsafe fn do_direxists(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
 }
 
 /// R's `list.files()` — list files in directories.
-pub unsafe fn do_listfiles(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_listfiles(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::accessors::{CAR, CDR, LENGTH, LOGICAL, SET_STRING_ELT, STRING_ELT};
         use crate::sexp::constructors::{Rf_allocVector3, Rf_mkChar};
@@ -1017,7 +1017,7 @@ pub unsafe fn do_listfiles(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
 }
 
 /// R's `list.dirs()` — list directories.
-pub unsafe fn do_listdirs(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_listdirs(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::accessors::{CAR, CDR, LENGTH, LOGICAL, SET_STRING_ELT};
         use crate::sexp::constructors::{Rf_allocVector3, Rf_mkChar};
@@ -1182,7 +1182,7 @@ pub unsafe fn do_listdirs(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 ///
 /// Uses R_HOME environment variable, or falls back to the directory
 /// containing the rmath library.
-pub unsafe fn do_Rhome(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_Rhome(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::constructors::Rf_mkString;
         use std::env;
@@ -1205,7 +1205,7 @@ fn discover_r_home() -> String {
 }
 
 /// R's `file.exists()` — check if file exists.
-pub unsafe fn do_fileexists(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_fileexists(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::accessors::{CAR, LENGTH, STRING_ELT};
         use crate::sexp::constructors::Rf_allocVector3;
@@ -1249,12 +1249,12 @@ pub unsafe fn do_fileexists(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 
 /// R's `file.choose()` — interactive file chooser.
 /// Raises the same cancellation error GNU R reports when no chooser supplies a path.
-pub unsafe fn do_filechoose(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_filechoose(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     platform_error("file choice cancelled")
 }
 
 /// R's `file.access()` — check file access permissions.
-pub unsafe fn do_fileaccess(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_fileaccess(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::accessors::{CADR, CAR, INTEGER, LENGTH, STRING_ELT};
         use crate::sexp::constructors::Rf_allocVector3;
@@ -1323,7 +1323,7 @@ pub unsafe fn do_fileaccess(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 }
 
 /// Remove literal paths from the session tree. Return GNU's aggregate status.
-unsafe fn unlink_browser_files(args: SEXP) -> SEXP {
+fn unlink_browser_files(args: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::accessors::{CADR, CAR, LENGTH};
         use crate::sexp::constructors::Rf_ScalarInteger;
@@ -1340,7 +1340,7 @@ unsafe fn unlink_browser_files(args: SEXP) -> SEXP {
 }
 
 /// R's `unlink()` — remove files or directories.
-pub unsafe fn do_unlink(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_unlink(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::accessors::{CADDR, CADR, CAR, LENGTH, LOGICAL, STRING_ELT};
         use crate::sexp::constructors::Rf_ScalarInteger;
@@ -1384,7 +1384,7 @@ pub unsafe fn do_unlink(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
 }
 
 /// R's `Sys.getlocale()` — get locale category.
-pub unsafe fn do_getlocale(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_getlocale(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::accessors::{CAR, INTEGER};
         use crate::sexp::constructors::Rf_mkString;
@@ -1424,7 +1424,7 @@ pub unsafe fn do_getlocale(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
 }
 
 /// R's `Sys.setlocale()` — set locale.
-pub unsafe fn do_setlocale(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_setlocale(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::accessors::{CADR, CAR, CHAR, INTEGER, STRING_ELT};
         use crate::sexp::constructors::Rf_mkString;
@@ -1510,7 +1510,7 @@ pub unsafe fn do_setlocale(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
 }
 
 /// R's `Sys.localeconv()` — locale conventions.
-pub unsafe fn do_localeconv(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_localeconv(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::accessors::SET_STRING_ELT;
         use crate::sexp::constructors::{Rf_allocVector3, Rf_mkChar};

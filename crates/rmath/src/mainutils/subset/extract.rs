@@ -9,7 +9,7 @@ use super::*;
 /// This allocates the result and transfers elements from `x` to `result`
 /// according to integer or real subscripts in `indx`.
 #[allow(clippy::absurd_extreme_comparisons)]
-pub unsafe fn ExtractSubset(x: SEXP, indx: SEXP, call: SEXP) -> SEXP {
+pub fn ExtractSubset(x: SEXP, indx: SEXP, call: SEXP) -> SEXP {
     unsafe {
         if isNull(x) {
             return x;
@@ -166,7 +166,7 @@ pub unsafe fn ExtractSubset(x: SEXP, indx: SEXP, call: SEXP) -> SEXP {
 
 /// Subset a vector by a single index. Handles special matrix subscripting
 /// when the index has the same number of columns as the dimension of x.
-pub(crate) unsafe fn VectorSubset(x: SEXP, s: SEXP, call: SEXP) -> SEXP {
+pub(crate) fn VectorSubset(x: SEXP, s: SEXP, call: SEXP) -> SEXP {
     unsafe {
         // If s is R_MissingArg, duplicate x
         // R_MissingArg has mark bit set; we check via a special approach
@@ -267,7 +267,7 @@ pub(crate) unsafe fn VectorSubset(x: SEXP, s: SEXP, call: SEXP) -> SEXP {
 
 /// Subset a matrix by row and column indices.
 #[allow(clippy::absurd_extreme_comparisons)]
-pub(crate) unsafe fn MatrixSubset(x: SEXP, s: SEXP, call: SEXP, drop: c_int) -> SEXP {
+pub(crate) fn MatrixSubset(x: SEXP, s: SEXP, call: SEXP, drop: c_int) -> SEXP {
     unsafe {
         let nr = nrows(x);
         let nc = ncols(x);
@@ -486,7 +486,7 @@ pub(crate) unsafe fn findASubIndex(
 // ---------------------------------------------------------------------------
 
 /// Subset an array (N dimensions) by per-dimension indices.
-pub(crate) unsafe fn ArraySubset(x: SEXP, s: SEXP, call: SEXP, drop: c_int) -> SEXP {
+pub(crate) fn ArraySubset(x: SEXP, s: SEXP, call: SEXP, drop: c_int) -> SEXP {
     unsafe {
         let mode = TYPEOF(x);
         let xdims = getAttrib(x, sym_Dim());
@@ -703,7 +703,7 @@ pub(crate) unsafe fn ArraySubset(x: SEXP, s: SEXP, call: SEXP, drop: c_int) -> S
 
 /// Fast-path extraction of a scalar integer or real index from SEXP.
 /// Returns the 1-based index, or -1 for NA / non-scalar / attributed values.
-pub(crate) unsafe fn scalarIndex(s: SEXP) -> R_xlen_t {
+pub(crate) fn scalarIndex(s: SEXP) -> R_xlen_t {
     unsafe {
         if isNull(s) {
             return -1;
@@ -735,7 +735,7 @@ pub(crate) unsafe fn scalarIndex(s: SEXP) -> R_xlen_t {
 
 /// Search for `arg_sym` in the argument list `args`. If found, remove it
 /// from the list and return its value. Otherwise return R_NilValue.
-pub(crate) unsafe fn ExtractArg(mut args: SEXP, arg_sym: SEXP) -> SEXP {
+pub(crate) fn ExtractArg(mut args: SEXP, arg_sym: SEXP) -> SEXP {
     unsafe {
         let mut prev_arg = args;
         let mut arg = args;
@@ -779,7 +779,7 @@ pub(crate) unsafe fn ExtractDropArg(el: SEXP, drop: *mut c_int) {
 // ---------------------------------------------------------------------------
 
 /// Extract the `exact` argument. Returns 0 (not exact), 1 (exact), or -1 (NA).
-pub(crate) unsafe fn ExtractExactArg(args: SEXP) -> c_int {
+pub(crate) fn ExtractExactArg(args: SEXP) -> c_int {
     unsafe {
         let argval = ExtractArg(args, sym_Exact());
         if isNull(argval) {

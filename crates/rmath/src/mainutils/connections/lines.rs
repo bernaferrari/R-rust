@@ -30,7 +30,7 @@ use crate::sexp::protect::*;
 // do_readLines — readLines(con, n = -1, ok = TRUE, warn = TRUE, encoding = "", skipNul = FALSE)
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_readLines(call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_readLines(call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let scon = CAR(args);
         let mut n_val = -1;
@@ -303,7 +303,7 @@ fn read_line_charsxp(bytes: &[u8], mark_utf8: bool) -> SEXP {
 // do_writeLines — writeLines(text, con, sep = "\n", useBytes = FALSE)
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_writeLines(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_writeLines(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let text = CAR(args);
         args = CDR(args);
@@ -505,7 +505,7 @@ pub unsafe fn do_writeLines(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) 
     }
 }
 
-unsafe fn auto_open_connection(con: SEXP, mode: &str, guard: &ConnectionCleanup) {
+fn auto_open_connection(con: SEXP, mode: &str, guard: &ConnectionCleanup) {
     unsafe {
         let mode = Rf_mkString(CString::new(mode).unwrap_or_default().as_ptr());
         let _mode_root = protect(mode);
@@ -602,7 +602,7 @@ mod cleanup_identity_tests {
         RSession, Sexp,
         object::{PairlistBuilder, SessionNodeFactory},
     };
-    unsafe fn file<'s>(f: &SessionNodeFactory<'s>, name: &str, mode: &str) -> Sexp<'s> {
+    fn file<'s>(f: &SessionNodeFactory<'s>, name: &str, mode: &str) -> Sexp<'s> {
         let mut args = PairlistBuilder::from_factory(f.clone());
         for value in [f.strings(&[name]).unwrap(), f.strings(&[mode]).unwrap()] {
             args.push(value, None).unwrap();

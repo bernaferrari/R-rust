@@ -2,7 +2,7 @@
 use super::*;
 
 /// R's `path.expand()` — expand file paths (~ and environment variables).
-pub unsafe fn do_pathexpand(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_pathexpand(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::accessors::{CAR, LENGTH, STRING_ELT};
         use crate::sexp::constructors::{Rf_allocVector3, Rf_mkChar};
@@ -50,7 +50,7 @@ pub unsafe fn do_pathexpand(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 }
 
 /// R's `capabilities()` — query platform capabilities.
-pub unsafe fn do_capabilities(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_capabilities(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::accessors::SET_STRING_ELT;
         use crate::sexp::constructors::{Rf_allocVector3, Rf_mkChar};
@@ -184,12 +184,12 @@ pub(crate) fn process_id() -> u32 {
 }
 
 /// R's `Sys.getpid()` — get process ID.
-pub unsafe fn do_sysgetpid(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_sysgetpid(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     unsafe { crate::sexp::constructors::Rf_ScalarInteger(process_id() as c_int) }
 }
 
 /// R's `dir.create()` — create a directory, optionally making its parents.
-pub unsafe fn do_dircreate(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_dircreate(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         use crate::mainutils::coerce::{asInteger, asLogical};
         use crate::sexp::accessors::{CADR, CAR, CDDR, CDR, LENGTH, STRING_ELT};
@@ -241,15 +241,15 @@ pub unsafe fn do_dircreate(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
 }
 
 /// File copies use the same staged publication for a target file and a tree.
-pub unsafe fn do_filecopy(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_filecopy(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe { copy_paths(args, true) }
 }
 
-pub unsafe fn do_filecopy_files(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_filecopy_files(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe { copy_paths(args, false) }
 }
 
-unsafe fn copy_paths(args: SEXP, into_directory: bool) -> SEXP {
+fn copy_paths(args: SEXP, into_directory: bool) -> SEXP {
     unsafe {
         use crate::mainutils::{browser_files, coerce::asLogical};
         use crate::sexp::accessors::{CAR, CDR, LENGTH};
@@ -342,7 +342,7 @@ pub fn locale_is_utf8() -> bool {
 }
 
 /// R's `l10n_info()` — localization information.
-pub unsafe fn do_l10n_info(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_l10n_info(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::accessors::{SET_STRING_ELT, SET_VECTOR_ELT};
         use crate::sexp::constructors::{Rf_ScalarLogical, Rf_allocVector3, Rf_mkChar};
@@ -376,7 +376,7 @@ pub unsafe fn do_l10n_info(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> S
     }
 }
 
-unsafe fn chmod_browser(paths: SEXP, mode: u32) -> SEXP {
+fn chmod_browser(paths: SEXP, mode: u32) -> SEXP {
     unsafe {
         use crate::sexp::accessors::{LENGTH, LOGICAL};
         use crate::sexp::constructors::Rf_allocVector3;
@@ -395,7 +395,7 @@ unsafe fn chmod_browser(paths: SEXP, mode: u32) -> SEXP {
 
 /// R's `Sys.chmod()` — change file permissions.
 #[cfg(not(target_arch = "wasm32"))]
-pub unsafe fn do_syschmod(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_syschmod(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::accessors::{CAR, CDR, LENGTH, LOGICAL};
         use crate::sexp::constructors::Rf_allocVector3;
@@ -452,7 +452,7 @@ pub unsafe fn do_syschmod(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEX
 
 /// Web sessions update the permissions of their own stored files.
 #[cfg(target_arch = "wasm32")]
-pub unsafe fn do_syschmod(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_syschmod(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::accessors::{CADR, CAR};
         let mode = parse_octal_mode_arg(CADR(args)).unwrap_or(0o777);
@@ -461,7 +461,7 @@ pub unsafe fn do_syschmod(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEX
 }
 
 /// R's `Sys.umask()` — set file creation mask.
-pub unsafe fn do_sysumask(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_sysumask(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::accessors::{CAR, CDR};
         use crate::sexp::globals::R_NilValue;
@@ -493,7 +493,7 @@ pub unsafe fn do_sysumask(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEX
 }
 
 /// R's `Sys.readlink()` -- read symbolic link target.
-pub unsafe fn do_readlink(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_readlink(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::accessors::{CAR, LENGTH, SET_STRING_ELT, STRING_ELT};
         use crate::sexp::constructors::{Rf_allocVector3, Rf_mkChar};
@@ -544,7 +544,7 @@ pub unsafe fn do_readlink(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEX
 }
 
 /// R's `Cstack_info()` — C stack usage information.
-pub unsafe fn do_Cstack_info(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_Cstack_info(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::accessors::{INTEGER, SET_STRING_ELT};
         use crate::sexp::constructors::{Rf_allocVector3, Rf_mkChar};
@@ -571,7 +571,7 @@ pub unsafe fn do_Cstack_info(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) ->
 }
 
 /// R's `extSoftVersion()` — external software version information.
-pub unsafe fn do_eSoftVersion(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_eSoftVersion(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::accessors::SET_STRING_ELT;
         use crate::sexp::constructors::{Rf_allocVector3, Rf_mkChar};
@@ -621,7 +621,7 @@ pub unsafe fn do_eSoftVersion(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -
 
 /// R's `Sys.junction()` — create NTFS junction (Windows only).
 /// On non-Windows, returns FALSE.
-pub unsafe fn do_mkjunction(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_mkjunction(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::constructors::Rf_ScalarLogical;
         use crate::sexp::ffi::FALSE;

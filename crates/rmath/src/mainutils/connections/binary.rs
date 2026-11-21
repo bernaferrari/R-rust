@@ -261,7 +261,7 @@ impl ByteOrder {
     }
 }
 
-pub unsafe fn binary_kind_from_what(what: SEXP) -> BinaryKind {
+pub fn binary_kind_from_what(what: SEXP) -> BinaryKind {
     unsafe {
         if what.is_null() || what == R_NilValue() {
             r_error("invalid 'what' argument");
@@ -291,7 +291,7 @@ pub unsafe fn binary_kind_from_what(what: SEXP) -> BinaryKind {
     }
 }
 
-pub unsafe fn byte_order_from_arg(arg: SEXP, name: &str) -> ByteOrder {
+pub fn byte_order_from_arg(arg: SEXP, name: &str) -> ByteOrder {
     unsafe {
         if arg.is_null() || arg == R_NilValue() || arg == R_MissingArg() {
             return ByteOrder::native();
@@ -316,7 +316,7 @@ pub unsafe fn byte_order_from_arg(arg: SEXP, name: &str) -> ByteOrder {
     }
 }
 
-pub unsafe fn binary_count(arg: SEXP) -> usize {
+pub fn binary_count(arg: SEXP) -> usize {
     unsafe {
         let n = as_integer(arg);
         if n < 0 || n == NA_INTEGER {
@@ -326,7 +326,7 @@ pub unsafe fn binary_count(arg: SEXP) -> usize {
     }
 }
 
-pub unsafe fn logical_arg_or(arg: SEXP, name: &str, default: c_int) -> c_int {
+pub fn logical_arg_or(arg: SEXP, name: &str, default: c_int) -> c_int {
     unsafe {
         if arg.is_null() || arg == R_NilValue() || arg == R_MissingArg() {
             default
@@ -336,7 +336,7 @@ pub unsafe fn logical_arg_or(arg: SEXP, name: &str, default: c_int) -> c_int {
     }
 }
 
-pub unsafe fn connection_rw_mode(arg: SEXP) -> c_int {
+pub fn connection_rw_mode(arg: SEXP) -> c_int {
     unsafe {
         if arg.is_null() || arg == R_NilValue() || arg == R_MissingArg() {
             return 0;
@@ -355,7 +355,7 @@ pub unsafe fn connection_rw_mode(arg: SEXP) -> c_int {
     }
 }
 
-pub unsafe fn binary_size(arg: SEXP, kind: BinaryKind) -> usize {
+pub fn binary_size(arg: SEXP, kind: BinaryKind) -> usize {
     unsafe {
         let default = match kind {
             BinaryKind::Raw | BinaryKind::Character => 1,
@@ -381,7 +381,7 @@ pub unsafe fn binary_size(arg: SEXP, kind: BinaryKind) -> usize {
     }
 }
 
-pub unsafe fn raw_bytes_from_vector(raw: SEXP) -> Vec<u8> {
+pub fn raw_bytes_from_vector(raw: SEXP) -> Vec<u8> {
     unsafe {
         let len = LENGTH(raw) as usize;
         if len == 0 {
@@ -668,7 +668,7 @@ pub fn decode_binary_result(
     }
 }
 
-pub unsafe fn encode_binary_object(object: SEXP, size_arg: SEXP, order: ByteOrder) -> Vec<u8> {
+pub fn encode_binary_object(object: SEXP, size_arg: SEXP, order: ByteOrder) -> Vec<u8> {
     unsafe { encode_binary_object_admitted(object, size_arg, order, |_| {}) }
 }
 
@@ -699,7 +699,7 @@ fn binary_write_size(size: c_int, kind: BinaryKind) -> usize {
     size as usize
 }
 
-unsafe fn encode_binary_object_admitted(
+fn encode_binary_object_admitted(
     object: SEXP,
     size_arg: SEXP,
     order: ByteOrder,
@@ -711,7 +711,7 @@ unsafe fn encode_binary_object_admitted(
     }
 }
 
-unsafe fn encode_binary_object_selected_size(
+fn encode_binary_object_selected_size(
     object: SEXP,
     size_arg: c_int,
     order: ByteOrder,
@@ -854,7 +854,7 @@ unsafe fn encode_binary_object_selected_size(
     }
 }
 
-pub unsafe fn write_binary_sink(con: SEXP, bytes: &[u8]) -> SEXP {
+pub fn write_binary_sink(con: SEXP, bytes: &[u8]) -> SEXP {
     unsafe {
         if TYPEOF(con) == SEXPTYPE::RAWSXP {
             return alloc_raw_result(bytes);
@@ -881,7 +881,7 @@ pub unsafe fn write_binary_sink(con: SEXP, bytes: &[u8]) -> SEXP {
 // do_readBin — readBin(con, what, n, size = NA, signed = TRUE, endian/swap)
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_readBin(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_readBin(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let owner = crate::sexp::owner::OwnerToken::current()
             .unwrap_or_else(|error| r_error(&error.to_string()));
@@ -899,7 +899,7 @@ pub unsafe fn do_readBin(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
 // do_writeBin — writeBin(object, con, size = NA, endian/swap, useBytes = FALSE)
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_writeBin(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_writeBin(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let owner = crate::sexp::owner::OwnerToken::current()
             .unwrap_or_else(|error| r_error(&error.to_string()));

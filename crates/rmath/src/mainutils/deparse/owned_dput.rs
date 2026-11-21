@@ -11,7 +11,7 @@ fn required<T>(value: SexpResult<T>) -> T {
     value.unwrap_or_else(|error| r_error(error.to_string()))
 }
 
-pub(super) unsafe fn do_dput(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub(super) fn do_dput(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let owner = required(OwnerToken::current());
         let pin = required(owner.pin());

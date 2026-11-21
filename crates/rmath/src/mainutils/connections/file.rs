@@ -34,7 +34,7 @@ pub use anonymous::AnonymousFile;
 
 mod constructor;
 
-pub unsafe fn do_file(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_file(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     use crate::sexp::owner::{OwnerToken, with_runtime};
     let owner = unsafe { OwnerToken::current() }.unwrap_or_else(|e| r_error(&e.to_string()));
     let _pin = owner.pin().unwrap_or_else(|e| r_error(&e.to_string()));
@@ -498,7 +498,7 @@ pub fn flush_xz_conn(conn: &mut RConn) -> io::Result<()> {
 // do_url — url(description, open = "", mode = "r", blocking = TRUE, encoding = "", method = "default", headers = NULL)
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_url(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_url(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let empty = Rf_mkString(c"".as_ptr());
         let native = Rf_mkString(c"native.enc".as_ptr());
@@ -582,7 +582,7 @@ pub unsafe fn do_url(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 // do_fifo — fifo(description, open, mode)
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_fifo(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_fifo(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let scmd = CAR(args);
         args = CDR(args);
@@ -617,7 +617,7 @@ pub unsafe fn do_fifo(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEX
 // do_gzfile — gzfile(description, open = "", compression = 6)
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_gzfile(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_gzfile(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let scmd = CAR(args);
         args = CDR(args);
@@ -689,7 +689,7 @@ fn construct_browser_gzfile(description: &str, mode: &str, open_now: bool) -> SE
     .unwrap_or_else(|error| r_error(&error.to_string()))
 }
 
-pub unsafe fn do_gzcon(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_gzcon(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let scon = CAR(args);
         if scon.is_null() || scon == R_NilValue() {
@@ -731,7 +731,7 @@ pub unsafe fn do_gzcon(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 // do_bzfile — bzfile(description, open, compression)
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_bzfile(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_bzfile(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let original = args;
         let scmd = CAR(args);
@@ -774,7 +774,7 @@ pub unsafe fn do_bzfile(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
 // do_xzfile — xzfile(description, open, compression)
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_xzfile(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_xzfile(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let original = args;
         let scmd = CAR(args);
@@ -817,7 +817,7 @@ pub unsafe fn do_xzfile(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
 // ---------------------------------------------------------------------------
 
 #[allow(clippy::assigning_clones)]
-pub unsafe fn do_open(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_open(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let scon = CAR(args);
         args = CDR(args);
@@ -937,7 +937,7 @@ pub unsafe fn do_open(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEX
 // do_close — close(con)
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_close(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_close(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let scon = CAR(args);
 
@@ -1080,7 +1080,7 @@ pub fn close_connection_inner(conn: &mut RConn) {
 // do_isopen — isOpen(con, rw = "")
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_isopen(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_isopen(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let scon = arg_by_name_or_position(args, 0, &["con"], R_NilValue());
         let rw = connection_rw_mode(arg_by_name_or_position(args, 1, &["rw"], R_NilValue()));
@@ -1116,7 +1116,7 @@ pub unsafe fn do_isopen(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
 // do_isincomplete — isIncomplete(con)
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_isincomplete(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_isincomplete(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let scon = CAR(args);
 
@@ -1139,7 +1139,7 @@ pub unsafe fn do_isincomplete(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) ->
 // do_isseekable — isSeekable(con)
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_isseekable(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_isseekable(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let scon = CAR(args);
 
@@ -1163,7 +1163,7 @@ pub unsafe fn do_isseekable(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> S
 // ---------------------------------------------------------------------------
 
 /// base::stdin() — standard input connection number (upstream: 0).
-pub unsafe fn do_stdin(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_stdin(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let ans = Rf_ScalarInteger(0);
         let _g = protect(ans);
@@ -1173,7 +1173,7 @@ pub unsafe fn do_stdin(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP 
 }
 
 /// base::stdout() — standard output connection number (upstream: 1).
-pub unsafe fn do_stdout(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_stdout(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let ans = Rf_ScalarInteger(1);
         let _g = protect(ans);
@@ -1183,7 +1183,7 @@ pub unsafe fn do_stdout(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP
 }
 
 /// base::stderr() — standard error connection number (upstream: 2).
-pub unsafe fn do_stderr(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_stderr(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let ans = Rf_ScalarInteger(2);
         let _g = protect(ans);
@@ -1192,14 +1192,14 @@ pub unsafe fn do_stderr(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP
     }
 }
 
-pub unsafe fn do_isatty(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_isatty(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe { Rf_ScalarLogical(0) }
 }
 // ---------------------------------------------------------------------------
 // do_seek — seek(con, where = NA, origin = "start", rw = "")
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_seek(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_seek(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let owner = crate::sexp::owner::OwnerToken::current()
             .unwrap_or_else(|error| r_error(&error.to_string()));
@@ -1412,7 +1412,7 @@ pub unsafe fn do_seek(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 // do_flush — flush(con)
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_flush(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_flush(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let scon = CAR(args);
 
@@ -1450,11 +1450,11 @@ pub unsafe fn do_flush(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 // do_readTable / do_writeTable
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_readTable(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_readTable(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     R_NilValue()
 }
 
-pub unsafe fn do_writeTable(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_writeTable(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     R_NilValue()
 }
 
@@ -1505,7 +1505,7 @@ fn compress_type(args: SEXP) -> String {
     }
 }
 
-pub unsafe fn do_memCompress(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_memCompress(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     {
         let input = bytes_of(CAR(args));
         let mut output = Vec::new();
@@ -1533,7 +1533,7 @@ pub unsafe fn do_memCompress(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> 
     }
 }
 
-pub unsafe fn do_memDecompress(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_memDecompress(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let input = bytes_of(CAR(args));
         let kind = compress_type(args);

@@ -24,7 +24,7 @@ use crate::sexp::globals::{R_MissingArg, R_NilValue};
 // None otherwise so the plain numeric path runs.
 // ---------------------------------------------------------------------------
 
-pub unsafe fn first_str_elt(x: SEXP) -> Option<String> {
+pub fn first_str_elt(x: SEXP) -> Option<String> {
     unsafe {
         if x.is_null() || x == R_NilValue() || TYPEOF(x) != STRSXP_VAL || LENGTH(x) == 0 {
             return None;
@@ -41,7 +41,7 @@ pub unsafe fn first_str_elt(x: SEXP) -> Option<String> {
     }
 }
 
-pub unsafe fn datetime_class_of(x: SEXP) -> Option<DatetimeKind> {
+pub fn datetime_class_of(x: SEXP) -> Option<DatetimeKind> {
     unsafe {
         if crate::mainutils::essentials::sexp_has_class(x, "POSIXct")
             || crate::mainutils::essentials::sexp_has_class(x, "POSIXlt")
@@ -56,7 +56,7 @@ pub unsafe fn datetime_class_of(x: SEXP) -> Option<DatetimeKind> {
     }
 }
 
-unsafe fn posix_time_length(x: SEXP) -> R_xlen_t {
+fn posix_time_length(x: SEXP) -> R_xlen_t {
     unsafe {
         if crate::mainutils::essentials::sexp_has_class(x, "POSIXlt")
             && TYPEOF(x) == VECSXP_VAL
@@ -71,7 +71,7 @@ unsafe fn posix_time_length(x: SEXP) -> R_xlen_t {
     }
 }
 
-unsafe fn posix_as_seconds(call: SEXP, x: SEXP) -> c_double {
+fn posix_as_seconds(call: SEXP, x: SEXP) -> c_double {
     unsafe {
         if crate::mainutils::essentials::sexp_has_class(x, "POSIXlt") {
             let ct = crate::mainutils::essentials::do_as_POSIXct(
@@ -108,7 +108,7 @@ pub fn pmatch_one(x: &str, table: &[&str]) -> Option<usize> {
 /// as.integer() on a character multiplier: parse as a double and truncate
 /// toward zero (as.integer("1.5") == 1L).  Non-numeric or out-of-range
 /// strings give NA with stock's coercion warning.
-pub unsafe fn as_integer_multiplier(call: SEXP, s: &str) -> Option<i64> {
+pub fn as_integer_multiplier(call: SEXP, s: &str) -> Option<i64> {
     unsafe {
         let warn = |msg: &str| {
             let c_msg = std::ffi::CString::new(msg).unwrap_or_default();
@@ -201,7 +201,7 @@ pub fn calendar_count(call: SEXP, from: i64, to: i64, by: i64) -> i64 {
     }
 }
 
-pub unsafe fn attach_datetime_class(ans: SEXP, kind: DatetimeKind, tz_source: SEXP) -> SEXP {
+pub fn attach_datetime_class(ans: SEXP, kind: DatetimeKind, tz_source: SEXP) -> SEXP {
     unsafe {
         match kind {
             DatetimeKind::Date => {
@@ -311,7 +311,7 @@ pub fn calendar_seq(
     }
 }
 
-pub unsafe fn datetime_seq(
+pub fn datetime_seq(
     call: SEXP,
     from: SEXP,
     to: SEXP,

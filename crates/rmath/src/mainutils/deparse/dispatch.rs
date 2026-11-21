@@ -83,7 +83,7 @@ pub unsafe fn deparse_s4_object(s: SEXP, d: *mut LocalParseData) -> bool {
 }
 
 /// GNU `asS3(s)` for deparse: drop the S4 bit and restore `.S3Class`.
-unsafe fn s4_as_s3_view(s: SEXP) -> Option<SEXP> {
+fn s4_as_s3_view(s: SEXP) -> Option<SEXP> {
     unsafe {
         let view = crate::mainutils::duplicate::duplicate(s);
         if view.is_null() {
@@ -104,7 +104,7 @@ unsafe fn s4_as_s3_view(s: SEXP) -> Option<SEXP> {
     }
 }
 
-unsafe fn s4_deparse_slot_value(s: SEXP, slot_name: &str) -> Option<SEXP> {
+fn s4_deparse_slot_value(s: SEXP, slot_name: &str) -> Option<SEXP> {
     unsafe {
         let Ok(cname) = std::ffi::CString::new(slot_name) else {
             return None;
@@ -160,7 +160,7 @@ unsafe fn s4_deparse_slot_value(s: SEXP, slot_name: &str) -> Option<SEXP> {
     }
 }
 
-pub unsafe fn s4_class_name(s: SEXP) -> Option<String> {
+pub fn s4_class_name(s: SEXP) -> Option<String> {
     unsafe {
         string_attribute_values(s, b"class\0")
             .into_iter()
@@ -171,7 +171,7 @@ pub unsafe fn s4_class_name(s: SEXP) -> Option<String> {
 
 /// Slot names from the object when the class is not in the local setClass table
 /// (methods package classes such as classGeneratorFunction).
-unsafe fn s4_instance_slot_names(s: SEXP) -> Vec<String> {
+fn s4_instance_slot_names(s: SEXP) -> Vec<String> {
     unsafe {
         let mut slots = Vec::new();
         if TYPEOF(s) == SEXPTYPE::CLOSXP {
@@ -197,7 +197,7 @@ unsafe fn s4_instance_slot_names(s: SEXP) -> Vec<String> {
     }
 }
 
-pub unsafe fn string_attribute_values(s: SEXP, attribute: &'static [u8]) -> Vec<String> {
+pub fn string_attribute_values(s: SEXP, attribute: &'static [u8]) -> Vec<String> {
     unsafe {
         let sym = Rf_install(attribute.as_ptr() as *const c_char);
         let value = getAttrib(s, sym);
@@ -227,7 +227,7 @@ pub unsafe fn string_attribute_values(s: SEXP, attribute: &'static [u8]) -> Vec<
     }
 }
 
-pub unsafe fn s4_slot_value(s: SEXP, slot_name: &str, position: usize) -> Option<SEXP> {
+pub fn s4_slot_value(s: SEXP, slot_name: &str, position: usize) -> Option<SEXP> {
     unsafe {
         if TYPEOF(s) != SEXPTYPE::VECSXP {
             return None;

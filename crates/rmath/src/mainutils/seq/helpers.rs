@@ -76,7 +76,7 @@ pub unsafe fn DispatchOrEval(
     }
 }
 
-pub unsafe fn checkArity(op: SEXP, args: SEXP) {
+pub fn checkArity(op: SEXP, args: SEXP) {
     unsafe { crate::mainutils::relop::checkArity(op, args) }
 }
 
@@ -183,7 +183,7 @@ pub fn R_typeToChar(s: SEXP) -> *const c_char {
     }
 }
 
-pub unsafe fn coerceVector(s: SEXP, t: c_int) -> SEXP {
+pub fn coerceVector(s: SEXP, t: c_int) -> SEXP {
     unsafe { crate::mainutils::coerce::coerceVector(s, t) }
 }
 
@@ -201,12 +201,12 @@ pub unsafe fn UNIMPLEMENTED_TYPE(routine: *const c_char, s: SEXP) -> ! {
     }
 }
 
-pub unsafe fn R_PreserveObject(x: SEXP) {
+pub fn R_PreserveObject(x: SEXP) {
     unsafe { crate::sexp::protect::R_PreserveObject(x) }
 }
 
 /// Build a tagged pairlist of formal symbols for matchArgs_NR.
-pub unsafe fn allocFormalsList5(a1: SEXP, a2: SEXP, a3: SEXP, a4: SEXP, a5: SEXP) -> SEXP {
+pub fn allocFormalsList5(a1: SEXP, a2: SEXP, a3: SEXP, a4: SEXP, a5: SEXP) -> SEXP {
     unsafe {
         let c5 = crate::sexp::constructors::Rf_cons(a5, crate::sexp::globals::R_NilValue());
         SETTAG(c5, a5);
@@ -224,7 +224,7 @@ pub unsafe fn allocFormalsList5(a1: SEXP, a2: SEXP, a3: SEXP, a4: SEXP, a5: SEXP
 
 /// Build a tagged pairlist of formal symbols for matchArgs_NR.
 #[allow(clippy::too_many_arguments)]
-pub unsafe fn allocFormalsList6(
+pub fn allocFormalsList6(
     a1: SEXP,
     a2: SEXP,
     a3: SEXP,
@@ -249,7 +249,7 @@ pub unsafe fn allocFormalsList6(
     }
 }
 
-pub unsafe fn matchArgs_NR(formals: SEXP, args: SEXP, call: SEXP) -> SEXP {
+pub fn matchArgs_NR(formals: SEXP, args: SEXP, call: SEXP) -> SEXP {
     unsafe { crate::mainutils::match_mod::matchArgs_RC(formals, args, call) }
 }
 pub unsafe fn inherits(s: SEXP, what: *const c_char) -> c_int {
@@ -258,15 +258,15 @@ pub unsafe fn inherits(s: SEXP, what: *const c_char) -> c_int {
 
 // Use the runtime's scalar conversion for strings, complex values and empty
 // vectors too; a numeric-only shim silently treated other types as zero.
-pub unsafe fn asReal(x: SEXP) -> c_double {
+pub fn asReal(x: SEXP) -> c_double {
     unsafe { crate::mainutils::coerce::asReal(x) }
 }
 
-pub unsafe fn asInteger(x: SEXP) -> c_int {
+pub fn asInteger(x: SEXP) -> c_int {
     unsafe { crate::mainutils::coerce::asInteger(x) }
 }
 
-pub unsafe fn asLogical(x: SEXP) -> c_int {
+pub fn asLogical(x: SEXP) -> c_int {
     unsafe {
         if x.is_null() {
             return NA_LOGICAL;
@@ -291,31 +291,31 @@ pub unsafe fn asLogical(x: SEXP) -> c_int {
     }
 }
 
-pub unsafe fn xlengthgets(x: SEXP, len: R_xlen_t) -> SEXP {
+pub fn xlengthgets(x: SEXP, len: R_xlen_t) -> SEXP {
     unsafe { crate::mainutils::builtin::xlengthgets(x, len) }
 }
 
-pub unsafe fn shallow_duplicate(x: SEXP) -> SEXP {
+pub fn shallow_duplicate(x: SEXP) -> SEXP {
     unsafe { crate::mainutils::duplicate::shallow_duplicate(x) }
 }
 
-pub unsafe fn lazy_duplicate(x: SEXP) -> SEXP {
+pub fn lazy_duplicate(x: SEXP) -> SEXP {
     unsafe { crate::mainutils::duplicate::lazy_duplicate(x) }
 }
 
-pub unsafe fn Rf_duplicate(x: SEXP) -> SEXP {
+pub fn Rf_duplicate(x: SEXP) -> SEXP {
     unsafe { crate::mainutils::duplicate::Rf_duplicate(x) }
 }
 
-pub unsafe fn Rf_shallow_duplicate(x: SEXP) -> SEXP {
+pub fn Rf_shallow_duplicate(x: SEXP) -> SEXP {
     unsafe { crate::mainutils::duplicate::shallow_duplicate(x) }
 }
 
-pub unsafe fn setAttrib(x: SEXP, what: SEXP, val: SEXP) {
+pub fn setAttrib(x: SEXP, what: SEXP, val: SEXP) {
     unsafe { crate::eval::attrib_core::setAttrib(x, what, val) }
 }
 
-pub unsafe fn getAttrib(x: SEXP, what: SEXP) -> SEXP {
+pub fn getAttrib(x: SEXP, what: SEXP) -> SEXP {
     unsafe { crate::eval::attrib_core::getAttrib(x, what) }
 }
 
@@ -331,11 +331,11 @@ pub fn R_LevelsSymbol() -> SEXP {
     unsafe { crate::eval::attrib_core::R_LevelsSymbol() }
 }
 
-pub unsafe fn isObject(x: SEXP) -> c_int {
+pub fn isObject(x: SEXP) -> c_int {
     unsafe { crate::eval::attrib_core::isObject(x) }
 }
 
-pub unsafe fn asBool2(x: SEXP, call: SEXP) -> c_int {
+pub fn asBool2(x: SEXP, call: SEXP) -> c_int {
     unsafe { crate::mainutils::coerce::asRbool(x, call) }
 }
 

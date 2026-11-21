@@ -167,7 +167,7 @@ fn is_gnu_reserved_name(bytes: &[u8]) -> bool {
 }
 
 /// Check if a symbol is a user-defined binary operator (%...%).
-pub unsafe fn isUserBinop(sym: SEXP) -> bool {
+pub fn isUserBinop(sym: SEXP) -> bool {
     unsafe {
         if !isSymbol(sym) {
             return false;
@@ -185,7 +185,7 @@ pub unsafe fn isUserBinop(sym: SEXP) -> bool {
 }
 
 /// Check if a string is a valid string (non-null, non-NA).
-pub unsafe fn isValidString(x: SEXP) -> bool {
+pub fn isValidString(x: SEXP) -> bool {
     unsafe { isString(x) && LENGTH(x) >= 1 && !STRING_ELT(x, 0).is_null() }
 }
 
@@ -209,7 +209,7 @@ pub fn getPPinfo(symval: SEXP) -> PPinfo {
     }
 }
 
-pub unsafe fn getPPinfo_for_symbol(sym: SEXP) -> Option<PPinfo> {
+pub fn getPPinfo_for_symbol(sym: SEXP) -> Option<PPinfo> {
     unsafe {
         if !isSymbol(sym) {
             return None;
@@ -234,7 +234,7 @@ pub unsafe fn getPPinfo_for_symbol(sym: SEXP) -> Option<PPinfo> {
 /// code value-first, then fall back to the funtab entry found by the
 /// call-head name, mirroring the name-based PPinfo fallback in deparse2buff
 /// (the port's symbol value slots stay unbound unless InitNames ran).
-pub unsafe fn subset_primval(op: SEXP, symval: SEXP) -> c_int {
+pub fn subset_primval(op: SEXP, symval: SEXP) -> c_int {
     unsafe {
         let t = TYPEOF(symval);
         if t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP {
@@ -262,7 +262,7 @@ pub unsafe fn subset_primval(op: SEXP, symval: SEXP) -> c_int {
 }
 
 /// Get PPinfo for an argument to needsparens (takes kind/prec/rightassoc directly).
-pub unsafe fn get_arg_ppinfo(arg: SEXP) -> Option<PPinfo> {
+pub fn get_arg_ppinfo(arg: SEXP) -> Option<PPinfo> {
     unsafe {
         if TYPEOF(arg) != SEXPTYPE::LANGSXP {
             return None;
@@ -283,7 +283,7 @@ pub unsafe fn get_arg_ppinfo(arg: SEXP) -> Option<PPinfo> {
 pub const S4_OBJECT_MASK: u16 = 1 << 4;
 
 /// Check if an SEXP has the S4 object bit set.
-pub unsafe fn IS_S4_OBJECT(x: SEXP) -> c_int {
+pub fn IS_S4_OBJECT(x: SEXP) -> c_int {
     unsafe {
         if x.is_null() {
             return 0;
@@ -311,12 +311,12 @@ pub fn primname_c(op: SEXP) -> *const c_char {
 }
 
 /// Extract integer from SEXP — delegates to canonical `coerce::asInteger`.
-pub unsafe fn Rf_asInteger(x: SEXP) -> c_int {
+pub fn Rf_asInteger(x: SEXP) -> c_int {
     unsafe { crate::mainutils::coerce::asInteger(x) }
 }
 
 /// Extract logical from SEXP — delegates to canonical `coerce::asLogical`.
-pub unsafe fn Rf_asLogical(x: SEXP) -> c_int {
+pub fn Rf_asLogical(x: SEXP) -> c_int {
     unsafe { crate::mainutils::coerce::asLogical(x) }
 }
 
