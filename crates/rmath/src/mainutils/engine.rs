@@ -29,14 +29,13 @@ use crate::mainutils::graphics_ffi::{
     rmath_ge_text_with_encoding, rmath_ge_to_device_height, rmath_ge_to_device_width,
     rmath_ge_to_device_x, rmath_ge_to_device_y,
 };
-use crate::sexp::accessors::{
-    CHAR, INTEGER, LENGTH, LOGICAL, REAL, STRING_ELT, TYPEOF, VECTOR_ELT,
-};
+use crate::sexp::accessors::{CHAR, LENGTH, TYPEOF, VECTOR_ELT};
 use crate::sexp::attrib_core::{R_NamesSymbol, getAttrib};
 use crate::sexp::constructors::Rf_mkString;
 use crate::sexp::ffi::{NA_INTEGER, NA_LOGICAL, R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::instance::with_required_current_instance;
+use crate::sexp::object::Sexp;
 
 #[inline]
 fn ge_dev(dd: *mut c_void) -> pGEDevDesc {
@@ -422,6 +421,14 @@ fn ge_eval_with_rho(e: SEXP, rho: SEXP) -> SEXP {
     unsafe { crate::eval::eval::Rf_eval(e, rho) }
 }
 
+fn checked_sexp(x: SEXP) -> Sexp<'static> {
+    crate::mainutils::essentials::owner_sexp(crate::mainutils::essentials::active_owner(), x)
+}
+
+fn checked_error(error: crate::sexp::object::SexpError) -> ! {
+    crate::sexp::context::r_error(error.to_string())
+}
+
 #[inline]
 fn nil_value() -> SEXP {
     R_NilValue()
@@ -554,8 +561,11 @@ fn sexp_string_at(value: SEXP, ind: c_int) -> Option<String> {
         return None;
     }
     let idx = wrap_index(len, ind) as R_xlen_t;
-    let cstr = unsafe { CStr::from_ptr(CHAR(STRING_ELT(value, idx))) };
-    Some(cstr.to_string_lossy().to_ascii_lowercase())
+    checked_sexp(value)
+        .try_string_value_elt(idx)
+        .ok()
+        .flatten()
+        .map(|text| text.to_ascii_lowercase())
 }
 
 fn sexp_int_at(value: SEXP, ind: c_int) -> Option<c_int> {
@@ -563,18 +573,19 @@ fn sexp_int_at(value: SEXP, ind: c_int) -> Option<c_int> {
     if value.is_null() || len == 0 {
         return None;
     }
-    let idx = wrap_index(len, ind);
+    let idx = wrap_index(len, ind) as R_xlen_t;
+    let owned = checked_sexp(value);
     match TYPEOF(value) {
         t if t == SEXPTYPE::INTSXP.as_c_int() => {
-            let x = unsafe { *INTEGER(value).add(idx) };
+            let x = owned.try_integer_elt(idx).unwrap_or(NA_INTEGER);
             if x == NA_INTEGER { None } else { Some(x) }
         }
         t if t == SEXPTYPE::LGLSXP.as_c_int() => {
-            let x = unsafe { *LOGICAL(value).add(idx) };
+            let x = owned.try_logical_elt(idx).unwrap_or(NA_LOGICAL);
             if x == NA_LOGICAL { None } else { Some(x) }
         }
         t if t == SEXPTYPE::REALSXP.as_c_int() => {
-            let x = unsafe { *REAL(value).add(idx) };
+            let x = owned.try_real_elt(idx).unwrap_or(f64::NAN);
             if x.is_finite() {
                 Some(x as c_int)
             } else {
@@ -585,73 +596,75 @@ fn sexp_int_at(value: SEXP, ind: c_int) -> Option<c_int> {
     }
 }
 
-unsafe fn named_component(object: SEXP, name: &str) -> SEXP {
-    unsafe {
-        if object.is_null() || object == R_NilValue() {
-            return R_NilValue();
-        }
-        let names = getAttrib(object, R_NamesSymbol());
-        if names.is_null() || names == R_NilValue() || TYPEOF(names) != SEXPTYPE::STRSXP.as_c_int()
-        {
-            return R_NilValue();
-        }
-        let n = LENGTH(object).min(LENGTH(names));
-        for i in 0..n {
-            let charsxp = STRING_ELT(names, i as R_xlen_t);
-            if charsxp.is_null() {
-                continue;
-            }
-            let candidate = CStr::from_ptr(CHAR(charsxp)).to_string_lossy();
-            if candidate == name {
+fn named_component(object: SEXP, name: &str) -> SEXP {
+    if object.is_null() || object == R_NilValue() {
+        return R_NilValue();
+    }
+    let names = getAttrib(object, R_NamesSymbol());
+    if names.is_null() || names == R_NilValue() || TYPEOF(names) != SEXPTYPE::STRSXP.as_c_int() {
+        return R_NilValue();
+    }
+    let owned_names = checked_sexp(names);
+    let n = LENGTH(object).min(LENGTH(names));
+    for i in 0..n {
+        match owned_names.try_string_value_elt(i as R_xlen_t) {
+            Ok(Some(candidate)) if candidate == name => {
                 return VECTOR_ELT(object, i as R_xlen_t);
             }
+            _ => continue,
         }
-        R_NilValue()
     }
+    R_NilValue()
 }
 
 unsafe fn named_string_ptr(object: SEXP, name: &str) -> *const c_char {
-    unsafe {
-        let value = named_component(object, name);
-        if value.is_null() || value == R_NilValue() || TYPEOF(value) != SEXPTYPE::STRSXP.as_c_int()
-        {
-            return ptr::null();
+    let value = named_component(object, name);
+    if value.is_null() || value == R_NilValue() || TYPEOF(value) != SEXPTYPE::STRSXP.as_c_int() {
+        return ptr::null();
+    }
+    match checked_sexp(value).try_string_elt(0) {
+        Ok(chars) => {
+            if chars.as_raw().is_null() {
+                ptr::null()
+            } else {
+                // SAFETY: `chars` is a live CHARSXP element of the live `value`
+                // string vector; its sealed byte payload stays valid while the
+                // caller's borrowed pointer is in use.
+                unsafe { CHAR(chars.as_raw()) }
+            }
         }
-        let charsxp = STRING_ELT(value, 0);
-        if charsxp.is_null() {
-            ptr::null()
-        } else {
-            CHAR(charsxp)
-        }
+        Err(_) => ptr::null(),
     }
 }
 
-unsafe fn named_real_scalar(object: SEXP, name: &str) -> c_double {
-    unsafe {
-        let value = named_component(object, name);
-        if value.is_null() || value == R_NilValue() || LENGTH(value) == 0 {
-            return 0.0;
+fn named_real_scalar(object: SEXP, name: &str) -> c_double {
+    let value = named_component(object, name);
+    if value.is_null() || value == R_NilValue() || LENGTH(value) == 0 {
+        return 0.0;
+    }
+    let owned = checked_sexp(value);
+    match TYPEOF(value) {
+        t if t == SEXPTYPE::REALSXP.as_c_int() => owned.try_real_elt(0).unwrap_or(0.0),
+        t if t == SEXPTYPE::INTSXP.as_c_int() => {
+            owned.try_integer_elt(0).unwrap_or(0) as c_double
         }
-        match TYPEOF(value) {
-            t if t == SEXPTYPE::REALSXP.as_c_int() => *REAL(value),
-            t if t == SEXPTYPE::INTSXP.as_c_int() => *INTEGER(value) as c_double,
-            _ => 0.0,
-        }
+        _ => 0.0,
     }
 }
 
-unsafe fn named_int_scalar(object: SEXP, name: &str) -> c_int {
-    unsafe {
-        let value = named_component(object, name);
-        if value.is_null() || value == R_NilValue() || LENGTH(value) == 0 {
-            return 0;
+fn named_int_scalar(object: SEXP, name: &str) -> c_int {
+    let value = named_component(object, name);
+    if value.is_null() || value == R_NilValue() || LENGTH(value) == 0 {
+        return 0;
+    }
+    let owned = checked_sexp(value);
+    match TYPEOF(value) {
+        t if t == SEXPTYPE::INTSXP.as_c_int() => owned.try_integer_elt(0).unwrap_or(0),
+        t if t == SEXPTYPE::LGLSXP.as_c_int() => owned.try_logical_elt(0).unwrap_or(0),
+        t if t == SEXPTYPE::REALSXP.as_c_int() => {
+            owned.try_real_elt(0).unwrap_or(0.0) as c_int
         }
-        match TYPEOF(value) {
-            t if t == SEXPTYPE::INTSXP.as_c_int() => *INTEGER(value),
-            t if t == SEXPTYPE::LGLSXP.as_c_int() => *LOGICAL(value),
-            t if t == SEXPTYPE::REALSXP.as_c_int() => *REAL(value) as c_int,
-            _ => 0,
-        }
+        _ => 0,
     }
 }
 
@@ -724,7 +737,7 @@ pub fn R_GE_getVersion() -> c_int {
 }
 
 /// Check that the given version matches the current engine version; panic on mismatch.
-pub unsafe fn R_GE_checkVersionOrDie(version: c_int) {
+pub fn R_GE_checkVersionOrDie(version: c_int) {
     if version != R_GE_version {
         let message = CString::new(format!(
             "graphics engine version mismatch: runtime has {R_GE_version}, device requested {version}"
@@ -969,20 +982,20 @@ pub fn toDeviceHeight(value: c_double, from: c_int, dd: *mut c_void) -> c_double
 /// Real line codes at or above 2^31 do not fit in a C `int`. engine.c
 /// rejects them before the cast (the same guard as line join and line type).
 fn reject_real_line_code_past_int(value: SEXP, ind: c_int, what: &str) {
-    unsafe {
-        if value.is_null() || TYPEOF(value) != SEXPTYPE::REALSXP.as_c_int() {
-            return;
-        }
-        let len = LENGTH(value);
-        if len == 0 {
-            return;
-        }
-        let rcode = *REAL(value).add(wrap_index(len, ind));
-        if rcode >= (c_int::MAX as f64) + 1.0 {
-            let msg = CString::new(format!("invalid {what}"))
-                .expect("line-parameter error contains no NUL");
-            Rf_error(msg.as_ptr());
-        }
+    if value.is_null() || TYPEOF(value) != SEXPTYPE::REALSXP.as_c_int() {
+        return;
+    }
+    let len = LENGTH(value);
+    if len == 0 {
+        return;
+    }
+    let rcode = checked_sexp(value)
+        .try_real_elt(wrap_index(len, ind) as R_xlen_t)
+        .unwrap_or(0.0);
+    if rcode >= (c_int::MAX as f64) + 1.0 {
+        let msg = CString::new(format!("invalid {what}"))
+            .expect("line-parameter error contains no NUL");
+        Rf_error(msg.as_ptr());
     }
 }
 
@@ -1635,16 +1648,18 @@ pub fn GEonExit() {
 // ---------------------------------------------------------------------------
 
 /// Convert a single-character string SEXP to a pch integer code.
+///
+/// `unsafe fn` retained for external callers that pass raw engine SEXPs;
+/// the body itself is fully checked.
 pub unsafe fn GEstring_to_pch(pch: SEXP) -> c_int {
-    let ch = unsafe {
-        if pch.is_null() || TYPEOF(pch) != SEXPTYPE::STRSXP.as_c_int() || LENGTH(pch) == 0 {
-            return NA_INTEGER;
-        }
-        CStr::from_ptr(CHAR(STRING_ELT(pch, 0)))
-            .to_string_lossy()
-            .chars()
-            .next()
-    };
+    if pch.is_null() || TYPEOF(pch) != SEXPTYPE::STRSXP.as_c_int() || LENGTH(pch) == 0 {
+        return NA_INTEGER;
+    }
+    let ch = checked_sexp(pch)
+        .try_string_value_elt(0)
+        .ok()
+        .map(|value| value.unwrap_or_else(|| "NA".to_string()))
+        .and_then(|text| text.chars().next());
     ch.map_or(NA_INTEGER, |c| c as c_int)
 }
 
@@ -1809,59 +1824,74 @@ pub fn GEFillStroke(path: SEXP, rule: c_int, gc: *const c_void, dd: *mut c_void)
 // ---------------------------------------------------------------------------
 
 /// Get the glyphs component from a glyphInfo SEXP.
+///
+/// `unsafe fn` retained for external callers that pass raw engine SEXPs;
+/// the body itself is fully checked.
 pub unsafe fn R_GE_glyphInfoGlyphs(glyphInfo: SEXP) -> SEXP {
-    unsafe { named_component(glyphInfo, "glyphs") }
+    named_component(glyphInfo, "glyphs")
 }
 
 /// Get the fonts component from a glyphInfo SEXP.
+///
+/// `unsafe fn` retained for external callers that pass raw engine SEXPs.
 pub unsafe fn R_GE_glyphInfoFonts(glyphInfo: SEXP) -> SEXP {
-    unsafe { named_component(glyphInfo, "fonts") }
+    named_component(glyphInfo, "fonts")
 }
 
 /// Get the glyph IDs from a glyphs SEXP.
+///
+/// `unsafe fn` retained for external callers that pass raw engine SEXPs.
 pub unsafe fn R_GE_glyphID(glyphs: SEXP) -> SEXP {
-    unsafe { named_component(glyphs, "id") }
+    named_component(glyphs, "id")
 }
 
 /// Get the glyph X positions from a glyphs SEXP.
-pub unsafe fn R_GE_glyphX(glyphs: SEXP) -> SEXP {
-    unsafe { named_component(glyphs, "x") }
+pub fn R_GE_glyphX(glyphs: SEXP) -> SEXP {
+    named_component(glyphs, "x")
 }
 
 /// Get the glyph Y positions from a glyphs SEXP.
-pub unsafe fn R_GE_glyphY(glyphs: SEXP) -> SEXP {
-    unsafe { named_component(glyphs, "y") }
+pub fn R_GE_glyphY(glyphs: SEXP) -> SEXP {
+    named_component(glyphs, "y")
 }
 
 /// Get the glyph font indices from a glyphs SEXP.
+///
+/// `unsafe fn` retained for external callers that pass raw engine SEXPs.
 pub unsafe fn R_GE_glyphFont(glyphs: SEXP) -> SEXP {
-    unsafe { named_component(glyphs, "font") }
+    named_component(glyphs, "font")
 }
 
 /// Get the glyph sizes from a glyphs SEXP.
+///
+/// `unsafe fn` retained for external callers that pass raw engine SEXPs.
 pub unsafe fn R_GE_glyphSize(glyphs: SEXP) -> SEXP {
-    unsafe { named_component(glyphs, "size") }
+    named_component(glyphs, "size")
 }
 
 /// Get the glyph colours from a glyphs SEXP.
+///
+/// `unsafe fn` retained for external callers that pass raw engine SEXPs.
 pub unsafe fn R_GE_glyphColour(glyphs: SEXP) -> SEXP {
-    unsafe { named_component(glyphs, "colour") }
+    named_component(glyphs, "colour")
 }
 
 /// Get the glyph rotations from a glyphs SEXP.
+///
+/// `unsafe fn` retained for external callers that pass raw engine SEXPs.
 pub unsafe fn R_GE_glyphRotation(glyphs: SEXP) -> SEXP {
-    unsafe { named_component(glyphs, "rotation") }
+    named_component(glyphs, "rotation")
 }
 
 /// Check whether a glyphs SEXP has rotation information.
+///
+/// `unsafe fn` retained for external callers that pass raw engine SEXPs.
 pub unsafe fn R_GE_hasGlyphRotation(glyphs: SEXP) -> c_int {
-    unsafe {
-        let rotation = named_component(glyphs, "rotation");
-        if rotation.is_null() || rotation == R_NilValue() {
-            0
-        } else {
-            1
-        }
+    let rotation = named_component(glyphs, "rotation");
+    if rotation.is_null() || rotation == R_NilValue() {
+        0
+    } else {
+        1
     }
 }
 
@@ -1870,48 +1900,58 @@ pub unsafe fn R_GE_hasGlyphRotation(glyphs: SEXP) -> c_int {
 // ---------------------------------------------------------------------------
 
 /// Get the font file path from a glyphFont SEXP.
+///
+/// Returns a borrowed pointer into the live glyphFont CHARSXP element; the
+/// caller must keep the SEXP rooted while using it.
 pub unsafe fn R_GE_glyphFontFile(glyphFont: SEXP) -> *const c_char {
     unsafe { named_string_ptr(glyphFont, "file") }
 }
 
 /// Get the font index from a glyphFont SEXP.
-pub unsafe fn R_GE_glyphFontIndex(glyphFont: SEXP) -> c_int {
-    unsafe { named_int_scalar(glyphFont, "index") }
+pub fn R_GE_glyphFontIndex(glyphFont: SEXP) -> c_int {
+    named_int_scalar(glyphFont, "index")
 }
 
 /// Get the font family name from a glyphFont SEXP.
+///
+/// Returns a borrowed pointer into the live glyphFont CHARSXP element; the
+/// caller must keep the SEXP rooted while using it.
 pub unsafe fn R_GE_glyphFontFamily(glyphFont: SEXP) -> *const c_char {
     unsafe { named_string_ptr(glyphFont, "family") }
 }
 
 /// Get the font weight from a glyphFont SEXP.
-pub unsafe fn R_GE_glyphFontWeight(glyphFont: SEXP) -> c_double {
-    unsafe { named_real_scalar(glyphFont, "weight") }
+pub fn R_GE_glyphFontWeight(glyphFont: SEXP) -> c_double {
+    named_real_scalar(glyphFont, "weight")
 }
 
 /// Get the font style from a glyphFont SEXP.
-pub unsafe fn R_GE_glyphFontStyle(glyphFont: SEXP) -> c_int {
-    unsafe { named_int_scalar(glyphFont, "style") }
+pub fn R_GE_glyphFontStyle(glyphFont: SEXP) -> c_int {
+    named_int_scalar(glyphFont, "style")
 }
 
 /// Get the font PostScript name from a glyphFont SEXP.
+///
+/// Returns a borrowed pointer into the live glyphFont CHARSXP element; the
+/// caller must keep the SEXP rooted while using it.
 pub unsafe fn R_GE_glyphFontPSname(glyphFont: SEXP) -> *const c_char {
     unsafe { named_string_ptr(glyphFont, "psname") }
 }
 
 /// Get the number of font variation axes from a glyphFont SEXP.
-pub unsafe fn R_GE_glyphFontNumVar(glyphFont: SEXP) -> c_int {
-    unsafe {
-        let vars = named_component(glyphFont, "variations");
-        if vars.is_null() || vars == R_NilValue() {
-            0
-        } else {
-            LENGTH(vars)
-        }
+pub fn R_GE_glyphFontNumVar(glyphFont: SEXP) -> c_int {
+    let vars = named_component(glyphFont, "variations");
+    if vars.is_null() || vars == R_NilValue() {
+        0
+    } else {
+        LENGTH(vars)
     }
 }
 
 /// Get the axis name for a font variation axis.
+///
+/// Returns a borrowed pointer into a live CHARSXP element; the caller must
+/// keep the parent glyphFont rooted while using it.
 pub unsafe fn R_GE_glyphFontVarAxis(glyphFont: SEXP, index: c_int) -> *const c_char {
     unsafe {
         let vars = named_component(glyphFont, "variations");
@@ -1923,17 +1963,18 @@ pub unsafe fn R_GE_glyphFontVarAxis(glyphFont: SEXP, index: c_int) -> *const c_c
 }
 
 /// Get the axis value for a font variation axis.
-pub unsafe fn R_GE_glyphFontVarValue(glyphFont: SEXP, index: c_int) -> c_double {
-    unsafe {
-        let vars = named_component(glyphFont, "variations");
-        if vars.is_null() || vars == R_NilValue() || index < 0 || index >= LENGTH(vars) {
-            return 0.0;
-        }
-        named_real_scalar(VECTOR_ELT(vars, index as R_xlen_t), "value")
+pub fn R_GE_glyphFontVarValue(glyphFont: SEXP, index: c_int) -> c_double {
+    let vars = named_component(glyphFont, "variations");
+    if vars.is_null() || vars == R_NilValue() || index < 0 || index >= LENGTH(vars) {
+        return 0.0;
     }
+    named_real_scalar(VECTOR_ELT(vars, index as R_xlen_t), "value")
 }
 
 /// Get the formatted value for a font variation axis.
+///
+/// Returns a borrowed pointer into a live CHARSXP element; the caller must
+/// keep the parent glyphFont rooted while using it.
 pub unsafe fn R_GE_glyphFontVarFormatted(glyphFont: SEXP, index: c_int) -> *const c_char {
     unsafe {
         let vars = named_component(glyphFont, "variations");
@@ -2012,7 +2053,7 @@ pub(crate) fn compute_closed_spline(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sexp::accessors::{REAL, SET_STRING_ELT, SET_VECTOR_ELT};
+    use crate::sexp::accessors::{INTEGER, REAL, SET_STRING_ELT, SET_VECTOR_ELT};
     use crate::sexp::attrib_core::setAttrib;
 
     unsafe fn named_list(items: &[(&str, SEXP)]) -> SEXP {
@@ -2034,7 +2075,7 @@ mod tests {
     use crate::sexp::ffi::{R_xlen_t, SEXPTYPE};
     use crate::sexp::session::RSession;
     fn make_string_vector(values: &[&str]) -> SEXP {
-        let v = unsafe { Rf_allocVector(SEXPTYPE::STRSXP, values.len() as c_int) };
+        let v = Rf_allocVector(SEXPTYPE::STRSXP, values.len() as c_int);
         for (i, value) in values.iter().enumerate() {
             let c = std::ffi::CString::new(*value).expect("test string contains no NUL");
             unsafe {
@@ -2055,16 +2096,14 @@ mod tests {
     #[test]
     fn test_R_GE_checkVersionOrDie_matching() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            // Should not panic when version matches
-            R_GE_checkVersionOrDie(R_GE_version);
-        }
+        // Should not panic when version matches
+        R_GE_checkVersionOrDie(R_GE_version);
     }
 
     #[test]
     fn test_R_GE_checkVersionOrDie_mismatch_errors() {
         let _session = crate::sexp::session::RSession::new();
-        let payload = std::panic::catch_unwind(|| unsafe {
+        let payload = std::panic::catch_unwind(|| {
             R_GE_checkVersionOrDie(R_GE_version + 1);
         })
         .expect_err("mismatched graphics engine version should error");
@@ -2348,7 +2387,7 @@ mod tests {
     }
 
     unsafe extern "C" fn create_event_value(_event: c_int, _dev: *mut c_void, _data: SEXP) -> SEXP {
-        let value = unsafe { Rf_ScalarInteger(47) };
+        let value = Rf_ScalarInteger(47);
         EVENT_VALUE.with(|slot| slot.set(value));
         value
     }
@@ -2694,10 +2733,8 @@ mod tests {
     #[test]
     fn test_GE_LTYpar_numeric_mapping() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            let numeric = Rf_ScalarInteger(2);
-            assert_eq!(GE_LTYpar(numeric, 0), LTY_DASHED as c_uint);
-        }
+        let numeric = Rf_ScalarInteger(2);
+        assert_eq!(GE_LTYpar(numeric, 0), LTY_DASHED as c_uint);
     }
 
     #[test]
