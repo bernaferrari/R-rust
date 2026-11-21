@@ -1,14 +1,15 @@
 //! R-facing adapters for the owned, pointer-free LOESS numerical engine.
-use crate::eval::attrib_core::{R_ClassSymbol, R_DimSymbol, R_NamesSymbol, getAttrib, setAttrib};
+use crate::eval::attrib_core::setAttrib;
+use crate::sexp::attrib_core::{R_ClassSymbol, R_DimSymbol, R_NamesSymbol};
 use crate::library::stats::loess::{Config, Execution, Model};
 use crate::mainutils::essentials::{base_error, elt_to_string};
 use crate::sexp::{
     accessors::*,
     constructors::*,
-    ffi::{NA_INTEGER, NA_REAL, SEXP, SEXPTYPE},
+    context::r_error,
+    ffi::{NA_INTEGER, NA_REAL, R_xlen_t, SEXP, SEXPTYPE},
     globals::R_NilValue,
     protect::{ProtectGuard, protect},
-    symbol::Rf_install,
 };
 use std::collections::HashSet;
 
@@ -20,76 +21,196 @@ fn check_execution() -> Result<(), String> {
     }
 }
 
-pub(crate) unsafe fn do_loess(_: SEXP, _: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        crate::mainutils::base_wrappers::apply("loess", include_str!("loess.R"), args, rho, false)
-    }
+// ---------------------------------------------------------------------------
+// Checked-access boundary helpers
+//
+// The LOESS adapters below run inside evaluated R calls, so every raw SEXP
+// they handle is live under the active runtime. The few operations that still
+// need unsafe are kept here as small audited boundaries so the adapters can
+// stay on checked element access.
+// ---------------------------------------------------------------------------
+
+/// Checked node factory bound to the active runtime session.
+fn node_factory() -> crate::sexp::object::SessionNodeFactory<'static> {
+    crate::sexp::object::SessionNodeFactory::new(
+        // SAFETY: LOESS helpers only run inside evaluated R calls.
+        unsafe { crate::sexp::owner::OwnerToken::current() }
+            .unwrap_or_else(|error| r_error(error.to_string())),
+    )
 }
-pub(crate) unsafe fn do_control(_: SEXP, _: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        crate::mainutils::base_wrappers::apply(
-            "loess.control",
-            r#"function(surface=c('interpolate','direct'), statistics=c('approximate','exact','none'), trace.hat=c('exact','approximate'), cell=0.2,iterations=4L,iterTrace=FALSE,...) {
-        stopifnot(length(iterations)==1L, !is.na(iterations), iterations>0L)
-        list(surface=match.arg(surface,c("interpolate","direct")),statistics=match.arg(statistics,c("approximate","exact","none")),trace.hat=match.arg(trace.hat,c("exact","approximate")),cell=cell,iterations=iterations,iterTrace=iterTrace)
-    }"#,
-            args,
-            rho,
-            false,
-        )
-    }
+
+fn wrapped(x: SEXP) -> crate::sexp::object::Sexp<'static> {
+    node_factory()
+        .wrap(x)
+        .unwrap_or_else(|error| r_error(error.to_string()))
 }
-pub(crate) unsafe fn do_predict(_: SEXP, _: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+
+fn mutable_vector(x: SEXP) -> crate::sexp::object::SexpMut<'static> {
+    node_factory()
+        .wrap(x)
+        .and_then(crate::sexp::object::SexpMut::try_from_checked)
+        .unwrap_or_else(|error| r_error(error.to_string()))
+}
+
+/// Checked element of a generic vector; matches `VECTOR_ELT` on live input.
+fn vector_element(x: SEXP, i: R_xlen_t) -> SEXP {
+    wrapped(x)
+        .try_vector_elt(i)
+        .map(|element| element.as_raw())
+        .unwrap_or_else(|error| r_error(error.to_string()))
+}
+
+/// Checked attribute lookup on a live object.
+fn attribute(x: SEXP, symbol: SEXP) -> SEXP {
+    crate::sexp::attrib_core::getAttrib(x, symbol)
+}
+
+/// Audited boundary: named-attribute write on a live object.
+fn set_attribute(x: SEXP, symbol: SEXP, value: SEXP) {
+    // SAFETY: setAttrib mutates one named slot of a live object.
+    unsafe { setAttrib(x, symbol, value) }
+}
+
+/// Audited boundary: evaluate a live expression in a live environment.
+fn eval_sexp(expr: SEXP, env: SEXP) -> SEXP {
+    // SAFETY: evaluates under the same ambient contract as the evaluator.
+    unsafe { crate::eval::eval::Rf_eval(expr, env) }
+}
+
+/// Audited boundary: bind one symbol in a live environment.
+fn define_var(symbol: SEXP, value: SEXP, env: SEXP) {
+    // SAFETY: defineVar binds a value under the active runtime.
+    unsafe { crate::sexp::envir::defineVar(symbol, value, env) }
+}
+
+/// Audited boundary: evaluate a base wrapper function on live arguments.
+fn apply_base(name: &'static str, source: &str, args: SEXP, env: SEXP, full: bool) -> SEXP {
+    // SAFETY: apply builds and evaluates the wrapper under the active runtime.
+    unsafe { crate::mainutils::base_wrappers::apply(name, source, args, env, full) }
+}
+
+/// Audited boundary: read a live symbol's print name as Rust text.
+fn symbol_name(symbol: SEXP) -> String {
+    // SAFETY: PRINTNAME of a live SYMSXP yields a live CHARSXP whose CHAR data
+    // is NUL-terminated and immutable for the duration of the copy.
     unsafe {
-        crate::mainutils::base_wrappers::apply(
-            "predict",
-            "function(object,...) UseMethod('predict')",
-            args,
-            rho,
-            false,
-        )
+        std::ffi::CStr::from_ptr(CHAR(PRINTNAME(symbol)))
+            .to_string_lossy()
+            .into_owned()
     }
 }
 
-pub(crate) unsafe fn do_predict_lm(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        use crate::sexp::accessors::{CAR, CDR, TAG};
-        use crate::sexp::constructors::Rf_cons;
-        use crate::sexp::globals::R_NilValue;
-        use crate::sexp::protect::protect;
-        let mut ev = R_NilValue();
-        let mut tail = R_NilValue();
-        let mut cell = args;
-        while !cell.is_null() && cell != R_NilValue() {
-            let val = crate::eval::eval::Rf_eval(CAR(cell), rho);
-            let node = Rf_cons(val, R_NilValue());
-            let _n = protect(node);
-            crate::sexp::accessors::SETTAG(node, TAG(cell));
-            if ev.is_null() || ev == R_NilValue() {
-                ev = node;
-                tail = node;
-            } else {
-                crate::sexp::accessors::SETCDR(tail, node);
-                tail = node;
-            }
-            cell = CDR(cell);
-        }
-        crate::mainutils::essentials::do_predict_lm(call, op, ev, rho)
+/// Checked CHARSXP from Rust text; matches `Rf_mkChar` on the session heap.
+fn mk_char(text: &str) -> SEXP {
+    node_factory()
+        .character(text)
+        .map(|chars| chars.as_raw())
+        .unwrap_or_else(|error| r_error(error.to_string()))
+}
+
+/// Checked STRSXP(1) scalar; matches `Rf_mkString` on the session heap.
+fn mk_string(text: &str) -> SEXP {
+    node_factory()
+        .strings(&[text])
+        .map(|vector| vector.as_raw())
+        .unwrap_or_else(|error| r_error(error.to_string()))
+}
+
+/// Checked vector allocation; matches `Rf_allocVector3` on the session heap.
+fn alloc_vector(kind: SEXPTYPE, length: R_xlen_t) -> SEXP {
+    node_factory()
+        .allocate(|arena| Some(arena.alloc_vector(kind, length)))
+        .map(|vector| vector.as_raw())
+        .unwrap_or_else(|error| r_error(error.to_string()))
+}
+
+/// Checked REALSXP built from Rust values on the session heap.
+fn numbers(values: &[f64]) -> SEXP {
+    let mut vector = mutable_vector(alloc_vector(SEXPTYPE::REALSXP, values.len() as R_xlen_t));
+    for (i, value) in values.iter().enumerate() {
+        vector
+            .try_set_real_elt(i as R_xlen_t, *value)
+            .unwrap_or_else(|error| r_error(error.to_string()));
     }
+    vector.freeze().as_raw()
+}
+
+/// Checked INTSXP built from Rust values on the session heap.
+fn integers(values: &[i32]) -> SEXP {
+    let mut vector = mutable_vector(alloc_vector(SEXPTYPE::INTSXP, values.len() as R_xlen_t));
+    for (i, value) in values.iter().enumerate() {
+        vector
+            .try_set_integer_elt(i as R_xlen_t, *value)
+            .unwrap_or_else(|error| r_error(error.to_string()));
+    }
+    vector.freeze().as_raw()
+}
+
+/// Checked `names<-` on a freshly allocated vector.
+fn set_names(x: SEXP, names: SEXP) {
+    set_attribute(x, R_NamesSymbol(), names);
+}
+
+pub(crate) unsafe fn do_loess(_: SEXP, _: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    apply_base("loess", include_str!("loess.R"), args, rho, false)
+}
+pub(crate) unsafe fn do_control(_: SEXP, _: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    apply_base(
+        "loess.control",
+        r#"function(surface=c('interpolate','direct'), statistics=c('approximate','exact','none'), trace.hat=c('exact','approximate'), cell=0.2,iterations=4L,iterTrace=FALSE,...) {
+        stopifnot(length(iterations)==1L, !is.na(iterations), iterations>0L)
+        list(surface=match.arg(surface,c("interpolate","direct")),statistics=match.arg(statistics,c("approximate","exact","none")),trace.hat=match.arg(trace.hat,c("exact","approximate")),cell=cell,iterations=iterations,iterTrace=iterTrace)
+    }"#,
+        args,
+        rho,
+        false,
+    )
+}
+pub(crate) unsafe fn do_predict(_: SEXP, _: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    apply_base(
+        "predict",
+        "function(object,...) UseMethod('predict')",
+        args,
+        rho,
+        false,
+    )
+}
+
+pub(crate) unsafe fn do_predict_lm(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    use crate::sexp::accessors::{CAR, CDR, TAG};
+    use crate::sexp::constructors::Rf_cons;
+    use crate::sexp::globals::R_NilValue;
+    use crate::sexp::protect::protect;
+    let mut ev = R_NilValue();
+    let mut tail = R_NilValue();
+    let mut cell = args;
+    while !cell.is_null() && cell != R_NilValue() {
+        let val = eval_sexp(CAR(cell), rho);
+        let node = Rf_cons(val, R_NilValue());
+        let _n = protect(node);
+        crate::sexp::accessors::SETTAG(node, TAG(cell));
+        if ev.is_null() || ev == R_NilValue() {
+            ev = node;
+            tail = node;
+        } else {
+            crate::sexp::accessors::SETCDR(tail, node);
+            tail = node;
+        }
+        cell = CDR(cell);
+    }
+    crate::mainutils::essentials::do_predict_lm(call, op, ev, rho)
 }
 pub(crate) unsafe fn do_predict_loess(_: SEXP, _: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        crate::mainutils::base_wrappers::apply(
-            "predict.loess",
-            r#"function(object,newdata=NULL,se=FALSE,na.action=na.pass,...) {
+    apply_base(
+        "predict.loess",
+        r#"function(object,newdata=NULL,se=FALSE,na.action=na.pass,...) {
                 if (!inherits(object, "loess")) stop('first argument must be a "loess" object')
                 .rport_loess_predict(object,newdata,se)
             }"#,
-            args,
-            rho,
-            false,
-        )
-    }
+        args,
+        rho,
+        false,
+    )
 }
 
 struct ListBuilder {
@@ -103,249 +224,241 @@ impl ListBuilder {
             roots: vec![],
         }
     }
-    unsafe fn push(&mut self, key: &'static str, value: SEXP) {
+    fn push(&mut self, key: &'static str, value: SEXP) {
         self.roots.push(protect(value));
         self.fields.push((key, value));
     }
-    unsafe fn finish(self) -> SEXP {
-        unsafe {
-            let result = Rf_allocVector3(SEXPTYPE::VECSXP, self.fields.len() as i64);
-            let _root = protect(result);
-            let names = Rf_allocVector3(SEXPTYPE::STRSXP, self.fields.len() as i64);
-            let _names = protect(names);
-            for (i, (key, value)) in self.fields.iter().enumerate() {
-                SET_VECTOR_ELT(result, i as i64, *value);
-                SET_STRING_ELT(
-                    names,
-                    i as i64,
-                    Rf_mkChar(std::ffi::CString::new(*key).unwrap().as_ptr()),
-                );
-            }
-            setAttrib(result, R_NamesSymbol(), names);
-            result
+    fn finish(self) -> SEXP {
+        let result = alloc_vector(SEXPTYPE::VECSXP, self.fields.len() as R_xlen_t);
+        let _root = protect(result);
+        let names = alloc_vector(SEXPTYPE::STRSXP, self.fields.len() as R_xlen_t);
+        let _names = protect(names);
+        let mut result_mut = mutable_vector(result);
+        let mut names_mut = mutable_vector(names);
+        for (i, (key, value)) in self.fields.iter().enumerate() {
+            result_mut
+                .try_set_vector_elt(i as R_xlen_t, wrapped(*value))
+                .unwrap_or_else(|error| r_error(error.to_string()));
+            names_mut
+                .try_set_string_elt(i as R_xlen_t, wrapped(mk_char(key)))
+                .unwrap_or_else(|error| r_error(error.to_string()));
         }
-    }
-}
-macro_rules! rlist {($($key:literal => $value:expr),* $(,)?)=>{{let mut list=ListBuilder::new();$(list.push($key,$value);)*list.finish()}};}
-unsafe fn numbers(values: &[f64]) -> SEXP {
-    unsafe {
-        let x = Rf_allocVector3(SEXPTYPE::REALSXP, values.len() as i64);
-        for (i, v) in values.iter().enumerate() {
-            *REAL(x).add(i) = *v;
-        }
-        x
-    }
-}
-unsafe fn numeric(x: SEXP) -> Vec<f64> {
-    unsafe {
-        if x == R_NilValue() {
-            return vec![];
-        }
-        if !matches!(
-            SEXPTYPE(TYPEOF(x)),
-            SEXPTYPE::REALSXP | SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP
-        ) {
-            base_error("LOESS predictors, responses and weights must be numeric");
-        }
-        (0..XLENGTH(x))
-            .map(|i| match SEXPTYPE(TYPEOF(x)) {
-                SEXPTYPE::REALSXP => *REAL(x).add(i as usize),
-                SEXPTYPE::INTSXP => {
-                    let v = *INTEGER(x).add(i as usize);
-                    if v == i32::MIN { f64::NAN } else { v as f64 }
-                }
-                _ => {
-                    let v = *LOGICAL(x).add(i as usize);
-                    if v == i32::MIN { f64::NAN } else { v as f64 }
-                }
-            })
-            .collect()
-    }
-}
-unsafe fn field(x: SEXP, name: &str) -> SEXP {
-    unsafe {
-        if TYPEOF(x) != SEXPTYPE::VECSXP {
-            return R_NilValue();
-        }
-        let names = getAttrib(x, R_NamesSymbol());
-        if TYPEOF(names) != SEXPTYPE::STRSXP || XLENGTH(names) != XLENGTH(x) {
-            return R_NilValue();
-        }
-        for i in 0..XLENGTH(x) {
-            if elt_to_string(names, i) == name {
-                return VECTOR_ELT(x, i);
-            }
-        }
-        R_NilValue()
-    }
-}
-unsafe fn scalar(x: SEXP) -> f64 {
-    unsafe {
-        let v = numeric(x);
-        if v.len() != 1 {
-            base_error("expected a scalar LOESS parameter");
-        }
-        v[0]
-    }
-}
-fn string(x: SEXP) -> String {
-    {
-        if TYPEOF(x) != SEXPTYPE::STRSXP || XLENGTH(x) != 1 {
-            base_error("expected a character LOESS parameter");
-        }
-        elt_to_string(x, 0)
-    }
-}
-fn positional(args: SEXP) -> Vec<SEXP> {
-    {
-        let mut result = vec![];
-        let mut p = args;
-        while !p.is_null() && p != R_NilValue() {
-            result.push(CAR(p));
-            p = CDR(p);
-        }
+        set_names(result, names);
         result
     }
 }
-unsafe fn predictors(expr: SEXP, out: &mut Vec<SEXP>) {
-    unsafe {
-        if TYPEOF(expr) == SEXPTYPE::LANGSXP && TYPEOF(CAR(expr)) == SEXPTYPE::SYMSXP {
-            let name = std::ffi::CStr::from_ptr(CHAR(PRINTNAME(CAR(expr)))).to_string_lossy();
-            if name == "+" {
-                predictors(CADR(expr), out);
-                if CDR(CDR(expr)) != R_NilValue() {
-                    predictors(CAR(CDR(CDR(expr))), out);
-                }
-                return;
-            }
-            if matches!(name.as_ref(), "*" | ":" | "-" | "|") {
-                base_error("LOESS formula requires additive numeric predictors");
-            }
-        }
-        out.push(expr);
+macro_rules! rlist {($($key:literal => $value:expr),* $(,)?)=>{{let mut list=ListBuilder::new();$(list.push($key,$value);)*list.finish()}};}
+
+fn numeric(x: SEXP) -> Vec<f64> {
+    if x == R_NilValue() {
+        return vec![];
     }
-}
-unsafe fn data_environment(data: SEXP, parent: SEXP) -> SEXP {
-    unsafe {
-        if TYPEOF(data) == SEXPTYPE::ENVSXP {
-            return data;
-        }
-        if data != R_NilValue() && TYPEOF(data) != SEXPTYPE::VECSXP {
-            base_error("'data' must be a data frame, list or environment");
-        }
-        let env = crate::sexp::memory_ext::NewEnvironment(R_NilValue(), parent, R_NilValue());
-        let _env = protect(env);
-        let names = getAttrib(data, R_NamesSymbol());
-        if data != R_NilValue() {
-            if TYPEOF(names) != SEXPTYPE::STRSXP || XLENGTH(names) != XLENGTH(data) {
-                base_error("LOESS data columns must be named");
-            }
-            for i in 0..XLENGTH(data) {
-                let name = std::ffi::CString::new(elt_to_string(names, i)).unwrap();
-                crate::sexp::envir::defineVar(Rf_install(name.as_ptr()), VECTOR_ELT(data, i), env);
-            }
-        }
-        env
+    if !matches!(
+        SEXPTYPE(TYPEOF(x)),
+        SEXPTYPE::REALSXP | SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP
+    ) {
+        base_error("LOESS predictors, responses and weights must be numeric");
     }
+    let sexp = wrapped(x);
+    (0..XLENGTH(x))
+        .map(|i| match SEXPTYPE(TYPEOF(x)) {
+            SEXPTYPE::REALSXP => sexp
+                .try_real_elt(i)
+                .unwrap_or_else(|error| r_error(error.to_string())),
+            SEXPTYPE::INTSXP => {
+                let v = sexp
+                    .try_integer_elt(i)
+                    .unwrap_or_else(|error| r_error(error.to_string()));
+                if v == i32::MIN { f64::NAN } else { v as f64 }
+            }
+            _ => {
+                let v = sexp
+                    .try_logical_elt(i)
+                    .unwrap_or_else(|error| r_error(error.to_string()));
+                if v == i32::MIN { f64::NAN } else { v as f64 }
+            }
+        })
+        .collect()
 }
-unsafe fn predictor_columns(expressions: &[SEXP], env: SEXP) -> Vec<Vec<f64>> {
-    unsafe { predictor_data(expressions, env).0 }
+
+fn field(x: SEXP, name: &str) -> SEXP {
+    if TYPEOF(x) != SEXPTYPE::VECSXP {
+        return R_NilValue();
+    }
+    let names = attribute(x, R_NamesSymbol());
+    if TYPEOF(names) != SEXPTYPE::STRSXP || XLENGTH(names) != XLENGTH(x) {
+        return R_NilValue();
+    }
+    for i in 0..XLENGTH(x) {
+        if elt_to_string(names, i) == name {
+            return vector_element(x, i);
+        }
+    }
+    R_NilValue()
+}
+
+fn scalar(x: SEXP) -> f64 {
+    let v = numeric(x);
+    if v.len() != 1 {
+        base_error("expected a scalar LOESS parameter");
+    }
+    v[0]
+}
+fn string(x: SEXP) -> String {
+    if TYPEOF(x) != SEXPTYPE::STRSXP || XLENGTH(x) != 1 {
+        base_error("expected a character LOESS parameter");
+    }
+    elt_to_string(x, 0)
+}
+fn positional(args: SEXP) -> Vec<SEXP> {
+    let mut result = vec![];
+    let mut p = args;
+    while !p.is_null() && p != R_NilValue() {
+        result.push(CAR(p));
+        p = CDR(p);
+    }
+    result
+}
+fn predictors(expr: SEXP, out: &mut Vec<SEXP>) {
+    if TYPEOF(expr) == SEXPTYPE::LANGSXP && TYPEOF(CAR(expr)) == SEXPTYPE::SYMSXP {
+        let name = symbol_name(CAR(expr));
+        if name == "+" {
+            predictors(CADR(expr), out);
+            if CDR(CDR(expr)) != R_NilValue() {
+                predictors(CAR(CDR(CDR(expr))), out);
+            }
+            return;
+        }
+        if matches!(name.as_ref(), "*" | ":" | "-" | "|") {
+            base_error("LOESS formula requires additive numeric predictors");
+        }
+    }
+    out.push(expr);
+}
+fn data_environment(data: SEXP, parent: SEXP) -> SEXP {
+    if TYPEOF(data) == SEXPTYPE::ENVSXP {
+        return data;
+    }
+    if data != R_NilValue() && TYPEOF(data) != SEXPTYPE::VECSXP {
+        base_error("'data' must be a data frame, list or environment");
+    }
+    let env = crate::sexp::memory_ext::NewEnvironment(R_NilValue(), parent, R_NilValue());
+    let _env = protect(env);
+    let names = attribute(data, R_NamesSymbol());
+    if data != R_NilValue() {
+        if TYPEOF(names) != SEXPTYPE::STRSXP || XLENGTH(names) != XLENGTH(data) {
+            base_error("LOESS data columns must be named");
+        }
+        for i in 0..XLENGTH(data) {
+            define_var(
+                crate::sexp::symbol::install_str(&elt_to_string(names, i)),
+                vector_element(data, i),
+                env,
+            );
+        }
+    }
+    env
+}
+fn predictor_columns(expressions: &[SEXP], env: SEXP) -> Vec<Vec<f64>> {
+    predictor_data(expressions, env).0
 }
 
 /// Match the column labels produced by GNU's as.matrix(model.frame(...)).
-unsafe fn predictor_data(expressions: &[SEXP], env: SEXP) -> (Vec<Vec<f64>>, Vec<String>) {
-    unsafe {
-        let mut columns = vec![];
-        let mut names = vec![];
-        for expr in expressions {
-            let value = crate::eval::eval::Rf_eval(*expr, env);
-            let _value = protect(value);
-            let values = numeric(value);
-            let label = crate::mainutils::deparse::deparse1line(*expr, false);
-            let label = elt_to_string(label, 0);
-            let dim = getAttrib(value, R_DimSymbol());
-            if dim == R_NilValue() {
-                columns.push(values);
-                names.push(label);
-                continue;
-            }
-            if TYPEOF(dim) != SEXPTYPE::INTSXP
-                || XLENGTH(dim) != 2
-                || *INTEGER(dim) < 0
-                || *INTEGER(dim).add(1) < 1
-            {
-                base_error("invalid LOESS predictor matrix");
-            }
-            let n = *INTEGER(dim) as usize;
-            let d = *INTEGER(dim).add(1) as usize;
-            if n.checked_mul(d) != Some(values.len()) {
-                base_error("invalid LOESS predictor dimensions");
-            }
-            let dimnames = getAttrib(value, crate::sexp::attrib_core::R_DimNamesSymbol());
-            let colnames = if TYPEOF(dimnames) == SEXPTYPE::VECSXP && XLENGTH(dimnames) == 2 {
-                VECTOR_ELT(dimnames, 1)
-            } else {
-                R_NilValue()
-            };
-            for j in 0..d {
-                columns.push(values[j * n..(j + 1) * n].to_vec());
-                names.push(if d == 1 {
-                    label.clone()
-                } else {
-                    let column =
-                        if TYPEOF(colnames) == SEXPTYPE::STRSXP && XLENGTH(colnames) == d as i64 {
-                            elt_to_string(colnames, j as i64)
-                        } else {
-                            (j + 1).to_string()
-                        };
-                    format!("{label}.{column}")
-                });
-            }
+fn predictor_data(expressions: &[SEXP], env: SEXP) -> (Vec<Vec<f64>>, Vec<String>) {
+    let mut columns = vec![];
+    let mut names = vec![];
+    for expr in expressions {
+        let value = eval_sexp(*expr, env);
+        let _value = protect(value);
+        let values = numeric(value);
+        let label = crate::mainutils::deparse::deparse1line(*expr, false);
+        let label = elt_to_string(label, 0);
+        let dim = attribute(value, R_DimSymbol());
+        if dim == R_NilValue() {
+            columns.push(values);
+            names.push(label);
+            continue;
         }
-        (columns, names)
+        if TYPEOF(dim) != SEXPTYPE::INTSXP || XLENGTH(dim) != 2 {
+            base_error("invalid LOESS predictor matrix");
+        }
+        let dims = wrapped(dim);
+        let dim0 = dims
+            .try_integer_elt(0)
+            .unwrap_or_else(|error| r_error(error.to_string()));
+        let dim1 = dims
+            .try_integer_elt(1)
+            .unwrap_or_else(|error| r_error(error.to_string()));
+        if dim0 < 0 || dim1 < 1 {
+            base_error("invalid LOESS predictor matrix");
+        }
+        let n = dim0 as usize;
+        let d = dim1 as usize;
+        if n.checked_mul(d) != Some(values.len()) {
+            base_error("invalid LOESS predictor dimensions");
+        }
+        let dimnames = attribute(value, crate::sexp::attrib_core::R_DimNamesSymbol());
+        let colnames = if TYPEOF(dimnames) == SEXPTYPE::VECSXP && XLENGTH(dimnames) == 2 {
+            vector_element(dimnames, 1)
+        } else {
+            R_NilValue()
+        };
+        for j in 0..d {
+            columns.push(values[j * n..(j + 1) * n].to_vec());
+            names.push(if d == 1 {
+                label.clone()
+            } else {
+                let column =
+                    if TYPEOF(colnames) == SEXPTYPE::STRSXP && XLENGTH(colnames) == d as i64 {
+                        elt_to_string(colnames, j as i64)
+                    } else {
+                        (j + 1).to_string()
+                    };
+                format!("{label}.{column}")
+            });
+        }
     }
+    (columns, names)
 }
 
 /// GNU interprets these arguments as subscripts into a named predictor vector,
 /// then matches the selected names back to the original names. Use the same R
 /// operations so logical recycling, numeric exclusion, missing indices and
 /// character selection retain their ordinary subscript semantics.
-unsafe fn selected_flags(selection: SEXP, names: &[String], rho: SEXP) -> Vec<bool> {
-    unsafe {
-        let labels = Rf_allocVector3(SEXPTYPE::STRSXP, names.len() as i64);
-        let _labels = protect(labels);
-        for (i, name) in names.iter().enumerate() {
-            let name = std::ffi::CString::new(name.as_str()).unwrap();
-            SET_STRING_ELT(labels, i as i64, Rf_mkChar(name.as_ptr()));
-        }
-        let tail = Rf_cons(selection, R_NilValue());
-        let _tail = protect(tail);
-        let args = Rf_cons(labels, tail);
-        let _args = protect(args);
-        let normalized = crate::mainutils::base_wrappers::apply(
-            ".rport_loess_predictor_flags",
-            "function(nmx, selected) { names(nmx) <- nmx; match(nmx, nmx[selected], 0L) > 0L }",
-            args,
-            rho,
-            true,
-        );
-        let _normalized = protect(normalized);
-        flags(normalized, names.len())
+fn selected_flags(selection: SEXP, names: &[String], rho: SEXP) -> Vec<bool> {
+    let labels = alloc_vector(SEXPTYPE::STRSXP, names.len() as R_xlen_t);
+    let _labels = protect(labels);
+    let mut labels_mut = mutable_vector(labels);
+    for (i, name) in names.iter().enumerate() {
+        labels_mut
+            .try_set_string_elt(i as R_xlen_t, wrapped(mk_char(name)))
+            .unwrap_or_else(|error| r_error(error.to_string()));
     }
+    let tail = Rf_cons(selection, R_NilValue());
+    let _tail = protect(tail);
+    let args = Rf_cons(labels, tail);
+    let _args = protect(args);
+    let normalized = apply_base(
+        ".rport_loess_predictor_flags",
+        "function(nmx, selected) { names(nmx) <- nmx; match(nmx, nmx[selected], 0L) > 0L }",
+        args,
+        rho,
+        true,
+    );
+    let _normalized = protect(normalized);
+    flags(normalized, names.len())
 }
 
-unsafe fn flags(x: SEXP, d: usize) -> Vec<bool> {
-    unsafe {
-        let v = numeric(x);
-        if v.iter().any(|x| !x.is_finite()) || (v.len() != 1 && v.len() != d) {
-            base_error("wrong length for LOESS predictor flags");
-        }
-        v.iter().cycle().take(d).map(|x| *x != 0.).collect()
+fn flags(x: SEXP, d: usize) -> Vec<bool> {
+    let v = numeric(x);
+    if v.iter().any(|x| !x.is_finite()) || (v.len() != 1 && v.len() != d) {
+        base_error("wrong length for LOESS predictor flags");
     }
+    v.iter().cycle().take(d).map(|x| *x != 0.).collect()
 }
 
 pub(crate) unsafe fn do_fit(_: SEXP, _: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+    {
         let a = positional(args);
         if a.len() != 15 {
             base_error("invalid LOESS internal arguments");
@@ -354,13 +467,16 @@ pub(crate) unsafe fn do_fit(_: SEXP, _: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         if TYPEOF(formula) != SEXPTYPE::LANGSXP || Rf_length(formula) != 3 {
             base_error("invalid LOESS formula");
         }
-        let parent = getAttrib(formula, Rf_install(c".Environment".as_ptr()));
+        let parent = attribute(
+            formula,
+            crate::sexp::symbol::install_str(".Environment"),
+        );
         let parent = if parent == R_NilValue() { rho } else { parent };
         let env = data_environment(a[1], parent);
         let _env = protect(env);
         let mut expressions = vec![];
         predictors(CAR(CDR(CDR(formula))), &mut expressions);
-        let eval = |expr| crate::eval::eval::Rf_eval(expr, env);
+        let eval = |expr| eval_sexp(expr, env);
         let y_value = eval(CADR(formula));
         let _y_value = protect(y_value);
         let y = numeric(y_value);
@@ -481,9 +597,7 @@ pub(crate) unsafe fn do_fit(_: SEXP, _: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             })
             .collect();
         let na_name = if TYPEOF(a[14]) == SEXPTYPE::SYMSXP {
-            std::ffi::CStr::from_ptr(CHAR(PRINTNAME(a[14])))
-                .to_string_lossy()
-                .into_owned()
+            symbol_name(a[14])
         } else {
             String::new()
         };
@@ -527,10 +641,12 @@ pub(crate) unsafe fn do_fit(_: SEXP, _: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             };
         }
         let frame = if scalar(a[12]) != 0. {
-            let frame = Rf_allocVector3(SEXPTYPE::VECSXP, (expressions.len() + 1) as i64);
+            let frame = alloc_vector(SEXPTYPE::VECSXP, (expressions.len() + 1) as R_xlen_t);
             let _frame = protect(frame);
-            let names = Rf_allocVector3(SEXPTYPE::STRSXP, (expressions.len() + 1) as i64);
+            let names = alloc_vector(SEXPTYPE::STRSXP, (expressions.len() + 1) as R_xlen_t);
             let _names = protect(names);
+            let mut frame_mut = mutable_vector(frame);
+            let mut names_mut = mutable_vector(names);
             for (j, expr) in std::iter::once(&CADR(formula))
                 .chain(expressions.iter())
                 .enumerate()
@@ -538,9 +654,12 @@ pub(crate) unsafe fn do_fit(_: SEXP, _: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 let value = eval(*expr);
                 let _value = protect(value);
                 // Preserve matrix-valued predictors in the model frame.
-                let dim = getAttrib(value, R_DimSymbol());
+                let dim = attribute(value, R_DimSymbol());
                 let nc = if TYPEOF(dim) == SEXPTYPE::INTSXP && XLENGTH(dim) == 2 {
-                    *INTEGER(dim).add(1) as usize
+                    wrapped(dim)
+                        .try_integer_elt(1)
+                        .unwrap_or_else(|error| r_error(error.to_string()))
+                        as usize
                 } else {
                     1
                 };
@@ -557,21 +676,28 @@ pub(crate) unsafe fn do_fit(_: SEXP, _: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 );
                 let _filtered = protect(filtered);
                 if dim != R_NilValue() {
-                    let dims = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
-                    *INTEGER(dims) = complete.len() as i32;
-                    *INTEGER(dims).add(1) = nc as i32;
-                    setAttrib(filtered, R_DimSymbol(), dims);
+                    let dims = integers(&[complete.len() as i32, nc as i32]);
+                    set_attribute(filtered, R_DimSymbol(), dims);
                 }
-                SET_VECTOR_ELT(frame, j as i64, filtered);
+                frame_mut
+                    .try_set_vector_elt(j as R_xlen_t, wrapped(filtered))
+                    .unwrap_or_else(|error| r_error(error.to_string()));
                 let label = crate::mainutils::deparse::deparse1line(*expr, false);
-                SET_STRING_ELT(names, j as i64, STRING_ELT(label, 0));
+                names_mut
+                    .try_set_string_elt(
+                        j as R_xlen_t,
+                        wrapped(STRING_ELT(label, 0)),
+                    )
+                    .unwrap_or_else(|error| r_error(error.to_string()));
             }
-            setAttrib(frame, R_NamesSymbol(), names);
-            setAttrib(frame, R_ClassSymbol(), Rf_mkString(c"data.frame".as_ptr()));
-            let rows = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
-            *INTEGER(rows) = i32::MIN;
-            *INTEGER(rows).add(1) = -(complete.len() as i32);
-            setAttrib(frame, Rf_install(c"row.names".as_ptr()), rows);
+            set_names(frame, names);
+            set_attribute(frame, R_ClassSymbol(), mk_string("data.frame"));
+            let rows = integers(&[i32::MIN, -(complete.len() as i32)]);
+            set_attribute(
+                frame,
+                crate::sexp::symbol::install_str("row.names"),
+                rows,
+            );
             frame
         } else {
             R_NilValue()
@@ -583,7 +709,7 @@ pub(crate) unsafe fn do_fit(_: SEXP, _: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     }
 }
 
-unsafe fn model_to_r(
+fn model_to_r(
     m: &Model,
     x: &[Vec<f64>],
     formula: SEXP,
@@ -592,7 +718,7 @@ unsafe fn model_to_r(
     frame: SEXP,
     na_action: SEXP,
 ) -> SEXP {
-    unsafe {
+    {
         let n = m.y.len();
         let d = m.divisor.len();
         let matrix = numbers(
@@ -601,11 +727,9 @@ unsafe fn model_to_r(
                 .collect::<Vec<_>>(),
         );
         let _matrix = protect(matrix);
-        let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
-        *INTEGER(dim) = n as i32;
-        *INTEGER(dim).add(1) = d as i32;
-        setAttrib(matrix, R_DimSymbol(), dim);
-        let pars = rlist!("span"=>Rf_ScalarReal(m.config.span),"degree"=>Rf_ScalarInteger(m.config.degree as i32),"normalize"=>Rf_ScalarLogical(i32::from(m.config.normalize)),"parametric"=>numbers(&m.config.parametric.iter().map(|x|f64::from(*x)).collect::<Vec<_>>()),"drop.square"=>numbers(&m.config.drop_square.iter().map(|x|f64::from(*x)).collect::<Vec<_>>()),"surface"=>Rf_mkString(if m.config.interpolate{c"interpolate"}else{c"direct"}.as_ptr()),"cell"=>Rf_ScalarReal(m.config.cell),"family"=>Rf_mkString(if m.config.iterations>1{c"symmetric"}else{c"gaussian"}.as_ptr()),"iterations"=>Rf_ScalarInteger(m.config.iterations as i32));
+        let dim = integers(&[n as i32, d as i32]);
+        set_attribute(matrix, R_DimSymbol(), dim);
+        let pars = rlist!("span"=>Rf_ScalarReal(m.config.span),"degree"=>Rf_ScalarInteger(m.config.degree as i32),"normalize"=>Rf_ScalarLogical(i32::from(m.config.normalize)),"parametric"=>numbers(&m.config.parametric.iter().map(|x|f64::from(*x)).collect::<Vec<_>>()),"drop.square"=>numbers(&m.config.drop_square.iter().map(|x|f64::from(*x)).collect::<Vec<_>>()),"surface"=>mk_string(if m.config.interpolate{"interpolate"}else{"direct"}),"cell"=>Rf_ScalarReal(m.config.cell),"family"=>mk_string(if m.config.iterations>1{"symmetric"}else{"gaussian"}),"iterations"=>Rf_ScalarInteger(m.config.iterations as i32));
         let _pars = protect(pars);
         let mut result_builder = ListBuilder::new();
         result_builder.push("n", Rf_ScalarInteger(n as i32));
@@ -671,13 +795,13 @@ unsafe fn model_to_r(
             result
         };
         let _result = protect(result);
-        setAttrib(result, R_ClassSymbol(), Rf_mkString(c"loess".as_ptr()));
+        set_attribute(result, R_ClassSymbol(), mk_string("loess"));
         result
     }
 }
 
 pub(crate) unsafe fn do_predict_core(_: SEXP, _: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+    {
         let a = positional(args);
         if a.len() != 3 {
             base_error("invalid LOESS prediction arguments");
@@ -700,19 +824,24 @@ pub(crate) unsafe fn do_predict_core(_: SEXP, _: SEXP, args: SEXP, rho: SEXP) ->
         let y = numeric(field(obj, "y"));
         let weights = numeric(field(obj, "weights"));
         let matrix = field(obj, "x");
-        let dim = getAttrib(matrix, R_DimSymbol());
-        if TYPEOF(dim) != SEXPTYPE::INTSXP
-            || XLENGTH(dim) != 2
-            || *INTEGER(dim) < 1
-            || *INTEGER(dim).add(1) < 1
-            || *INTEGER(dim).add(1) > 4
-        {
+        let dim = attribute(matrix, R_DimSymbol());
+        if TYPEOF(dim) != SEXPTYPE::INTSXP || XLENGTH(dim) != 2 {
             base_error("invalid LOESS model matrix");
         }
-        let d = *INTEGER(dim).add(1) as usize;
+        let dims = wrapped(dim);
+        let dim0 = dims
+            .try_integer_elt(0)
+            .unwrap_or_else(|error| r_error(error.to_string()));
+        let dim1 = dims
+            .try_integer_elt(1)
+            .unwrap_or_else(|error| r_error(error.to_string()));
+        if dim0 < 1 || !(1..=4).contains(&dim1) {
+            base_error("invalid LOESS model matrix");
+        }
+        let d = dim1 as usize;
         let n = y.len();
         let values = numeric(matrix);
-        if n == 0 || *INTEGER(dim) as usize != n || values.len() != n * d || weights.len() != n {
+        if n == 0 || dim0 as usize != n || values.len() != n * d || weights.len() != n {
             base_error("invalid LOESS model dimensions");
         }
         let original: Vec<Vec<_>> = (0..n)
@@ -766,15 +895,21 @@ pub(crate) unsafe fn do_predict_core(_: SEXP, _: SEXP, args: SEXP, rho: SEXP) ->
             if d == 1 {
                 v.into_iter().map(|x| vec![x]).collect()
             } else {
-                let dim = getAttrib(a[1], R_DimSymbol());
-                if TYPEOF(dim) != SEXPTYPE::INTSXP
-                    || XLENGTH(dim) != 2
-                    || *INTEGER(dim) < 0
-                    || *INTEGER(dim).add(1) as usize != d
-                {
+                let dim = attribute(a[1], R_DimSymbol());
+                if TYPEOF(dim) != SEXPTYPE::INTSXP || XLENGTH(dim) != 2 {
                     base_error("newdata must have the same predictor columns");
                 }
-                let nr = *INTEGER(dim) as usize;
+                let dims = wrapped(dim);
+                let dim0 = dims
+                    .try_integer_elt(0)
+                    .unwrap_or_else(|error| r_error(error.to_string()));
+                let dim1 = dims
+                    .try_integer_elt(1)
+                    .unwrap_or_else(|error| r_error(error.to_string()));
+                if dim0 < 0 || dim1 as usize != d {
+                    base_error("newdata must have the same predictor columns");
+                }
+                let nr = dim0 as usize;
                 if nr.checked_mul(d) != Some(v.len()) {
                     base_error("invalid newdata matrix dimensions");
                 }
@@ -820,14 +955,14 @@ pub(crate) unsafe fn do_predict_core(_: SEXP, _: SEXP, args: SEXP, rho: SEXP) ->
     }
 }
 
-unsafe fn omission_action(
+fn omission_action(
     data: SEXP,
     response: SEXP,
     selected: &[usize],
     complete: &[usize],
     action_name: &str,
 ) -> SEXP {
-    unsafe {
+    {
         if complete.len() == selected.len() || action_name == "na.fail" {
             return R_NilValue();
         }
@@ -841,70 +976,77 @@ unsafe fn omission_action(
         if dropped.is_empty() {
             return R_NilValue();
         }
-        let action = Rf_allocVector3(SEXPTYPE::INTSXP, dropped.len() as i64);
+        let action = alloc_vector(SEXPTYPE::INTSXP, dropped.len() as R_xlen_t);
         let _action = protect(action);
-        let names = Rf_allocVector3(SEXPTYPE::STRSXP, dropped.len() as i64);
+        let names = alloc_vector(SEXPTYPE::STRSXP, dropped.len() as R_xlen_t);
         let _names = protect(names);
+        let mut action_mut = mutable_vector(action);
+        let mut names_mut = mutable_vector(names);
         for (out, (position, original)) in dropped.iter().enumerate() {
-            *INTEGER(action).add(out) = (*position + 1) as i32;
+            action_mut
+                .try_set_integer_elt(out as R_xlen_t, (*position + 1) as i32)
+                .unwrap_or_else(|error| r_error(error.to_string()));
             let label = row_label(data, response, *original);
-            let label = std::ffi::CString::new(label).unwrap_or_default();
-            SET_STRING_ELT(names, out as i64, Rf_mkChar(label.as_ptr()));
+            names_mut
+                .try_set_string_elt(out as R_xlen_t, wrapped(mk_char(&label)))
+                .unwrap_or_else(|error| r_error(error.to_string()));
         }
-        setAttrib(action, R_NamesSymbol(), names);
+        set_names(action, names);
         let class_name = if action_name == "na.exclude" {
             "exclude"
         } else {
             "omit"
         };
-        let class = Rf_mkString(
-            std::ffi::CString::new(class_name)
-                .unwrap_or_default()
-                .as_ptr(),
-        );
-        setAttrib(action, R_ClassSymbol(), class);
+        set_attribute(action, R_ClassSymbol(), mk_string(class_name));
         action
     }
 }
 
-unsafe fn row_label(data: SEXP, response: SEXP, index: usize) -> String {
-    unsafe {
-        let row_names = getAttrib(data, crate::eval::attrib_core::R_RowNamesSymbol());
+fn row_label(data: SEXP, response: SEXP, index: usize) -> String {
+    {
+        let row_names = attribute(data, crate::sexp::attrib_core::R_RowNamesSymbol());
         if TYPEOF(row_names) == SEXPTYPE::STRSXP && index < XLENGTH(row_names) as usize {
             return elt_to_string(row_names, index as i64);
         }
-        let names = getAttrib(response, R_NamesSymbol());
+        let names = attribute(response, R_NamesSymbol());
         if TYPEOF(names) == SEXPTYPE::STRSXP && index < XLENGTH(names) as usize {
             return elt_to_string(names, index as i64);
         }
-        if TYPEOF(row_names) == SEXPTYPE::INTSXP && XLENGTH(row_names) == 2 {
-            let first = *INTEGER(row_names);
-            let second = *INTEGER(row_names).add(1);
-            if first == i32::MIN && second < 0 {
-                return (index + 1).to_string();
+        if TYPEOF(row_names) == SEXPTYPE::INTSXP {
+            let rows = wrapped(row_names);
+            if XLENGTH(row_names) == 2 {
+                let first = rows
+                    .try_integer_elt(0)
+                    .unwrap_or_else(|error| r_error(error.to_string()));
+                let second = rows
+                    .try_integer_elt(1)
+                    .unwrap_or_else(|error| r_error(error.to_string()));
+                if first == i32::MIN && second < 0 {
+                    return (index + 1).to_string();
+                }
             }
-        }
-        if TYPEOF(row_names) == SEXPTYPE::INTSXP && index < XLENGTH(row_names) as usize {
-            let value = *INTEGER(row_names).add(index);
-            if value != NA_INTEGER {
-                return value.to_string();
+            if index < XLENGTH(row_names) as usize {
+                let value = rows
+                    .try_integer_elt(index as R_xlen_t)
+                    .unwrap_or_else(|error| r_error(error.to_string()));
+                if value != NA_INTEGER {
+                    return value.to_string();
+                }
             }
         }
         (index + 1).to_string()
     }
 }
 
-unsafe fn is_exclude_action(action: SEXP) -> bool {
-    unsafe {
-        let class = getAttrib(action, R_ClassSymbol());
-        TYPEOF(class) == SEXPTYPE::STRSXP
-            && XLENGTH(class) > 0
-            && elt_to_string(class, 0) == "exclude"
-    }
+fn is_exclude_action(action: SEXP) -> bool {
+    let class = attribute(action, R_ClassSymbol());
+    TYPEOF(class) == SEXPTYPE::STRSXP
+        && XLENGTH(class) > 0
+        && elt_to_string(class, 0) == "exclude"
 }
 
-unsafe fn restore_excluded_fit(fit: &[f64], action: SEXP) -> SEXP {
-    unsafe {
+fn restore_excluded_fit(fit: &[f64], action: SEXP) -> SEXP {
+    {
         if TYPEOF(action) != SEXPTYPE::INTSXP {
             base_error("invalid LOESS omission metadata");
         }
@@ -919,22 +1061,30 @@ unsafe fn restore_excluded_fit(fit: &[f64], action: SEXP) -> SEXP {
             .filter(|length| i64::try_from(*length).is_ok())
             .unwrap_or_else(|| base_error("invalid LOESS omission metadata"));
         let mut seen = HashSet::with_capacity(omitted);
+        let action_sexp = wrapped(action);
         for i in 0..omitted_i64 {
-            let position = *INTEGER(action).add(i as usize);
+            let position = action_sexp
+                .try_integer_elt(i)
+                .unwrap_or_else(|error| r_error(error.to_string()));
             if position <= 0 || position as usize > total || !seen.insert(position as usize) {
                 base_error("invalid LOESS omission metadata");
             }
         }
-        let restored = Rf_allocVector3(SEXPTYPE::REALSXP, total as i64);
+        let restored = alloc_vector(SEXPTYPE::REALSXP, total as R_xlen_t);
         let _restored = protect(restored);
+        let mut restored_mut = mutable_vector(restored);
         for i in 0..total {
-            *REAL(restored).add(i) = NA_REAL;
+            restored_mut
+                .try_set_real_elt(i as R_xlen_t, NA_REAL)
+                .unwrap_or_else(|error| r_error(error.to_string()));
         }
         let mut source = 0usize;
         for position in 1..=total {
             let excluded = seen.contains(&position);
             if !excluded {
-                *REAL(restored).add(position - 1) = fit[source];
+                restored_mut
+                    .try_set_real_elt((position - 1) as R_xlen_t, fit[source])
+                    .unwrap_or_else(|error| r_error(error.to_string()));
                 source += 1;
             }
         }
@@ -944,7 +1094,7 @@ unsafe fn restore_excluded_fit(fit: &[f64], action: SEXP) -> SEXP {
 
 /// GNU `loess.smooth(x, y, span, degree, evaluation)` — interpolate on a grid.
 pub unsafe fn do_loess_smooth(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    {
         let x = CAR(args);
         let y = CAR(CDR(args));
         if x.is_null() || x == R_NilValue() || y.is_null() || y == R_NilValue() {
@@ -961,18 +1111,26 @@ pub unsafe fn do_loess_smooth(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
         while !cell.is_null() && cell != R_NilValue() {
             let tag = TAG(cell);
             let name = if !tag.is_null() && tag != R_NilValue() {
-                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
-                    .to_string_lossy()
-                    .into_owned()
+                symbol_name(tag)
             } else {
                 String::new()
             };
             let v = CAR(cell);
+            let first_real = |v: SEXP| {
+                wrapped(v)
+                    .try_real_elt(0)
+                    .unwrap_or_else(|error| r_error(error.to_string()))
+            };
+            let first_int = |v: SEXP| {
+                wrapped(v)
+                    .try_integer_elt(0)
+                    .unwrap_or_else(|error| r_error(error.to_string()))
+            };
             if name == "span" {
                 let s = if TYPEOF(v) == SEXPTYPE::REALSXP {
-                    *REAL(v)
+                    first_real(v)
                 } else if TYPEOF(v) == SEXPTYPE::INTSXP {
-                    *INTEGER(v) as f64
+                    first_int(v) as f64
                 } else {
                     span
                 };
@@ -981,18 +1139,18 @@ pub unsafe fn do_loess_smooth(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
                 }
             } else if name == "degree" {
                 let d = if TYPEOF(v) == SEXPTYPE::INTSXP {
-                    *INTEGER(v) as usize
+                    first_int(v) as usize
                 } else {
-                    *REAL(v) as usize
+                    first_real(v) as usize
                 };
                 if d <= 2 {
                     degree = d;
                 }
             } else if name == "evaluation" {
                 let e = if TYPEOF(v) == SEXPTYPE::INTSXP {
-                    *INTEGER(v) as usize
+                    first_int(v) as usize
                 } else {
-                    *REAL(v) as usize
+                    first_real(v) as usize
                 };
                 if e >= 2 {
                     evaluation = e;
@@ -1000,18 +1158,30 @@ pub unsafe fn do_loess_smooth(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
             }
             cell = CDR(cell);
         }
+        let x_sexp = wrapped(x);
+        let y_sexp = wrapped(y);
         let mut xs = Vec::with_capacity(n);
         let mut ys = Vec::with_capacity(n);
         for i in 0..n {
             let xv = if TYPEOF(x) == SEXPTYPE::REALSXP {
-                *REAL(x).add(i)
+                x_sexp
+                    .try_real_elt(i as R_xlen_t)
+                    .unwrap_or_else(|error| r_error(error.to_string()))
             } else {
-                *INTEGER(x).add(i) as f64
+                x_sexp
+                    .try_integer_elt(i as R_xlen_t)
+                    .unwrap_or_else(|error| r_error(error.to_string()))
+                    as f64
             };
             let yv = if TYPEOF(y) == SEXPTYPE::REALSXP {
-                *REAL(y).add(i)
+                y_sexp
+                    .try_real_elt(i as R_xlen_t)
+                    .unwrap_or_else(|error| r_error(error.to_string()))
             } else {
-                *INTEGER(y).add(i) as f64
+                y_sexp
+                    .try_integer_elt(i as R_xlen_t)
+                    .unwrap_or_else(|error| r_error(error.to_string()))
+                    as f64
             };
             if xv.is_finite() && yv.is_finite() {
                 xs.push(xv);
@@ -1066,18 +1236,23 @@ pub unsafe fn do_loess_smooth(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
             Ok((fit, _)) => fit,
             Err(_) => return R_NilValue(),
         };
-        let xout = Rf_allocVector3(SEXPTYPE::REALSXP, evaluation as i64);
+        let xout = numbers(&grid);
         let _xo = protect(xout);
-        let yout = Rf_allocVector3(SEXPTYPE::REALSXP, evaluation as i64);
+        let yout = numbers(
+            &(0..evaluation)
+                .map(|i| pred.get(i).copied().unwrap_or(f64::NAN))
+                .collect::<Vec<_>>(),
+        );
         let _yo = protect(yout);
-        for i in 0..evaluation {
-            *REAL(xout).add(i) = grid[i];
-            *REAL(yout).add(i) = pred.get(i).copied().unwrap_or(f64::NAN);
-        }
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        let result = alloc_vector(SEXPTYPE::VECSXP, 2);
         let _r = protect(result);
-        SET_VECTOR_ELT(result, 0, xout);
-        SET_VECTOR_ELT(result, 1, yout);
+        let mut result_mut = mutable_vector(result);
+        result_mut
+            .try_set_vector_elt(0, wrapped(xout))
+            .unwrap_or_else(|error| r_error(error.to_string()));
+        result_mut
+            .try_set_vector_elt(1, wrapped(yout))
+            .unwrap_or_else(|error| r_error(error.to_string()));
         crate::mainutils::essentials::set_string_names(result, &["x".to_string(), "y".to_string()]);
         result
     }
