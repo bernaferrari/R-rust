@@ -21,8 +21,93 @@ use crate::sexp::ffi::{
     FALSE, ISNAN, NA_INTEGER, NA_REAL, R_NA_BIT_PATTERN, R_xlen_t, SEXP, SEXPTYPE, TRUE,
 };
 use crate::sexp::globals::R_NilValue;
+use crate::sexp::object::SexpMut;
 use crate::sexp::protect::protect;
 use crate::sexp::symbol::Rf_install;
+
+/// Checked `SET_STRING_ELT` — stores an interned CHARSXP through `SexpMut`.
+fn put_string_elt(target: SEXP, i: R_xlen_t, charsxp: SEXP) {
+    let owner = active_owner();
+    if let (Ok(mut target), Ok(charsxp)) = (
+        owner.sexp(target).and_then(SexpMut::try_from_checked),
+        owner.sexp(charsxp),
+    ) {
+        let _ = target.try_set_string_elt(i, charsxp);
+    }
+}
+
+/// Checked `SET_STRING_ELT` from a C string — interns via `Rf_mkChar` (FFI).
+///
+/// SAFETY: `Rf_mkChar` is an FFI constructor; the caller must be inside an
+/// owner-active context (all callers are evaluator builtins).
+fn put_string_elt_text(target: SEXP, i: R_xlen_t, text: &CStr) {
+    let charsxp = unsafe { Rf_mkChar(text.as_ptr()) };
+    put_string_elt(target, i, charsxp);
+}
+
+/// Checked `SET_VECTOR_ELT` — stores an element through `SexpMut`.
+fn put_vector_elt(target: SEXP, i: R_xlen_t, value: SEXP) {
+    let owner = active_owner();
+    if let (Ok(mut target), Ok(value)) = (
+        owner.sexp(target).and_then(SexpMut::try_from_checked),
+        owner.sexp(value),
+    ) {
+        let _ = target.try_set_vector_elt(i, value);
+    }
+}
+
+/// Checked `STRING_ELT` — copies the i-th CHARSXP of a STRSXP.
+fn string_elt_checked(x: SEXP, i: R_xlen_t) -> SEXP {
+    let owner = active_owner();
+    owner_sexp(owner, x)
+        .try_string_elt(i)
+        .map(|elt| elt.as_raw())
+        .unwrap_or(std::ptr::null_mut())
+}
+
+/// Checked `VECTOR_ELT` — copies the i-th element of a VECSXP/EXPRSXP.
+fn vector_elt_checked(x: SEXP, i: R_xlen_t) -> SEXP {
+    let owner = active_owner();
+    owner_sexp(owner, x)
+        .try_vector_elt(i)
+        .map(|elt| elt.as_raw())
+        .unwrap_or(std::ptr::null_mut())
+}
+
+/// Checked integer/logical element read through the owner-scoped handle.
+fn int_elt(x: SEXP, i: R_xlen_t) -> c_int {
+    let owner = active_owner();
+    integer_like_elt(&owner_sexp(owner, x), i)
+}
+
+/// Checked real element read through the owner-scoped handle.
+fn real_elt(x: SEXP, i: R_xlen_t) -> f64 {
+    let owner = active_owner();
+    owner_sexp(owner, x)
+        .try_real_elt(i)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+}
+
+/// Checked `Rf_ScalarInteger`-style element write for INTSXP/LGLSXP targets.
+fn put_int_elt(target: SEXP, i: R_xlen_t, value: c_int) {
+    let owner = active_owner();
+    if let Ok(mut target) = owner.sexp(target).and_then(SexpMut::try_from_checked) {
+        let written = if unsafe { TYPEOF(target.as_raw()) } == SEXPTYPE::LGLSXP {
+            target.try_set_logical_elt(i, value)
+        } else {
+            target.try_set_integer_elt(i, value)
+        };
+        let _ = written;
+    }
+}
+
+/// Checked REALSXP element write.
+fn put_real_elt(target: SEXP, i: R_xlen_t, value: f64) {
+    let owner = active_owner();
+    if let Ok(mut target) = owner.sexp(target).and_then(SexpMut::try_from_checked) {
+        let _ = target.try_set_real_elt(i, value);
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Complete base R functions — table operations, factors, aggregation
@@ -55,13 +140,29 @@ pub fn do_prop_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 && TYPEOF(dim) == SEXPTYPE::INTSXP
                 && LENGTH(dim) == 2
             {
-                let nrow = *INTEGER(dim) as R_xlen_t;
-                let ncol = *INTEGER(dim).add(1) as R_xlen_t;
+                let owner = active_owner();
+                let dim_owned = owner_sexp(owner, dim);
+                let nrow = dim_owned
+                    .try_integer_elt(0)
+                    .unwrap_or_else(|error| {
+                        crate::sexp::context::r_error(error.to_string())
+                    }) as R_xlen_t;
+                let ncol = dim_owned
+                    .try_integer_elt(1)
+                    .unwrap_or_else(|error| {
+                        crate::sexp::context::r_error(error.to_string())
+                    }) as R_xlen_t;
                 let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
                 if result.is_null() {
                     return R_NilValue();
                 }
                 let _p = protect(result);
+                let mut result_mut = owner
+                    .sexp(result)
+                    .and_then(SexpMut::try_from_checked)
+                    .unwrap_or_else(|error| {
+                        crate::sexp::context::r_error(error.to_string())
+                    });
                 for col in 0..ncol {
                     for row in 0..nrow {
                         let index = row + col * nrow;
@@ -74,11 +175,16 @@ pub fn do_prop_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                                 .map(|r| numeric_value_at(x, t, r + col * nrow))
                                 .sum::<f64>()
                         };
-                        *REAL(result).add(index as usize) = if denom == 0.0 {
+                        let value = if denom == 0.0 {
                             numeric_value_at(x, t, index)
                         } else {
                             numeric_value_at(x, t, index) / denom
                         };
+                        result_mut
+                            .try_set_real_elt(index, value)
+                            .unwrap_or_else(|error| {
+                                crate::sexp::context::r_error(error.to_string())
+                            });
                     }
                 }
                 set_two_dim_attr(result, nrow, ncol);
@@ -98,9 +204,14 @@ pub fn do_prop_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             return R_NilValue();
         }
         let _p = protect(result);
-        let dst = REAL(result);
+        let owner = active_owner();
+        let mut dst = owner
+            .sexp(result)
+            .and_then(SexpMut::try_from_checked)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
         for i in 0..n {
-            *dst.add(i as usize) = numeric_value_at(x, t, i) / total;
+            dst.try_set_real_elt(i, numeric_value_at(x, t, i) / total)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
         }
         let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
         if !dim.is_null()
@@ -108,10 +219,19 @@ pub fn do_prop_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             && TYPEOF(dim) == SEXPTYPE::INTSXP
             && LENGTH(dim) == 2
         {
+            let dim_owned = owner_sexp(owner, dim);
             set_two_dim_attr(
                 result,
-                *INTEGER(dim) as R_xlen_t,
-                *INTEGER(dim).add(1) as R_xlen_t,
+                dim_owned
+                    .try_integer_elt(0)
+                    .unwrap_or_else(|error| {
+                        crate::sexp::context::r_error(error.to_string())
+                    }) as R_xlen_t,
+                dim_owned
+                    .try_integer_elt(1)
+                    .unwrap_or_else(|error| {
+                        crate::sexp::context::r_error(error.to_string())
+                    }) as R_xlen_t,
             );
         }
         result
@@ -119,16 +239,20 @@ pub fn do_prop_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 fn numeric_value_at(x: SEXP, t: c_int, index: R_xlen_t) -> f64 {
-    unsafe {
+    {
+        let owner = active_owner();
+        let x_owned = owner_sexp(owner, x);
         if t == SEXPTYPE::INTSXP {
-            let value = *INTEGER(x).add(index as usize);
+            let value = integer_like_elt(&x_owned, index);
             if value == NA_INTEGER {
                 NA_REAL
             } else {
                 value as f64
             }
         } else {
-            *REAL(x).add(index as usize)
+            x_owned
+                .try_real_elt(index)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
         }
     }
 }
@@ -152,8 +276,16 @@ pub fn do_addmargins(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         {
             return x;
         }
-        let nrow = *INTEGER(dim) as R_xlen_t;
-        let ncol = *INTEGER(dim).add(1) as R_xlen_t;
+        let owner = active_owner();
+        let dim_owned = owner_sexp(owner, dim);
+        let nrow = dim_owned
+            .try_integer_elt(0)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+            as R_xlen_t;
+        let ncol = dim_owned
+            .try_integer_elt(1)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+            as R_xlen_t;
         if nrow < 0 || ncol < 0 {
             return x;
         }
@@ -162,50 +294,52 @@ pub fn do_addmargins(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let out_ncol = ncol + 1;
         let result = Rf_allocVector3(SEXPTYPE::REALSXP, out_nrow * out_ncol);
         let _result_guard = protect(result);
-        let out = REAL(result);
+        let mut out = owner
+            .sexp(result)
+            .and_then(SexpMut::try_from_checked)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        let out_get = |out: &SexpMut<'_>, i: R_xlen_t| -> f64 {
+            out.try_real_elt(i)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+        };
+        let out_put = |out: &mut SexpMut<'_>, i: R_xlen_t, value: f64| {
+            out.try_set_real_elt(i, value)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        };
         for i in 0..out_nrow * out_ncol {
-            *out.add(i as usize) = 0.0;
+            out_put(&mut out, i, 0.0);
         }
 
         for col in 0..ncol {
             for row in 0..nrow {
                 let src_index = row + col * nrow;
-                let value = if t == SEXPTYPE::INTSXP {
-                    let value = *INTEGER(x).add(src_index as usize);
-                    if value == NA_INTEGER {
-                        NA_REAL
-                    } else {
-                        value as f64
-                    }
-                } else {
-                    *REAL(x).add(src_index as usize)
-                };
+                let value = numeric_value_at(x, t, src_index);
                 let dst_index = row + col * out_nrow;
-                *out.add(dst_index as usize) = value;
+                out_put(&mut out, dst_index, value);
             }
         }
 
         for row in 0..nrow {
             let mut sum = 0.0;
             for col in 0..ncol {
-                sum += *out.add((row + col * out_nrow) as usize);
+                sum += out_get(&out, row + col * out_nrow);
             }
-            *out.add((row + ncol * out_nrow) as usize) = sum;
+            out_put(&mut out, row + ncol * out_nrow, sum);
         }
 
         for col in 0..ncol {
             let mut sum = 0.0;
             for row in 0..nrow {
-                sum += *out.add((row + col * out_nrow) as usize);
+                sum += out_get(&out, row + col * out_nrow);
             }
-            *out.add((nrow + col * out_nrow) as usize) = sum;
+            out_put(&mut out, nrow + col * out_nrow, sum);
         }
 
         let mut total = 0.0;
         for row in 0..nrow {
-            total += *out.add((row + ncol * out_nrow) as usize);
+            total += out_get(&out, row + ncol * out_nrow);
         }
-        *out.add((nrow + ncol * out_nrow) as usize) = total;
+        out_put(&mut out, nrow + ncol * out_nrow, total);
 
         set_two_dim_attr(result, out_nrow, out_ncol);
         result
@@ -254,9 +388,12 @@ pub fn do_write_ftable(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             && TYPEOF(file) == SEXPTYPE::STRSXP
             && XLENGTH(file) >= 1
         {
-            let path = CStr::from_ptr(CHAR(STRING_ELT(file, 0)))
-                .to_string_lossy()
-                .into_owned();
+            let owner = active_owner();
+            let path = owner_sexp(owner, file)
+                .try_string_value_elt(0)
+                .ok()
+                .flatten()
+                .unwrap_or_default();
             if !path.is_empty() {
                 let n = XLENGTH(x) as usize;
                 let mut parts = Vec::with_capacity(n);
@@ -281,9 +418,12 @@ pub fn do_read_ftable(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if file.is_null() || file == R_NilValue() || TYPEOF(file) != SEXPTYPE::STRSXP {
             return R_NilValue();
         }
-        let path = CStr::from_ptr(CHAR(STRING_ELT(file, 0)))
-            .to_string_lossy()
-            .into_owned();
+        let owner = active_owner();
+        let path = owner_sexp(owner, file)
+            .try_string_value_elt(0)
+            .ok()
+            .flatten()
+            .unwrap_or_default();
         let Ok(text) = std::fs::read_to_string(&path) else {
             return R_NilValue();
         };
@@ -293,8 +433,14 @@ pub fn do_read_ftable(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             .collect();
         let result = Rf_allocVector3(SEXPTYPE::REALSXP, vals.len() as i64);
         let _r = protect(result);
+        let mut result_mut = owner
+            .sexp(result)
+            .and_then(SexpMut::try_from_checked)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
         for (i, v) in vals.iter().enumerate() {
-            *REAL(result).add(i) = *v;
+            result_mut
+                .try_set_real_elt(i as R_xlen_t, *v)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
         }
         crate::sexp::attrib_core::setAttrib(
             result,
@@ -315,7 +461,10 @@ fn ftable_one_dim_table(x: SEXP) -> Option<SEXP> {
         {
             return None;
         }
-        let n = *INTEGER(dim);
+        let owner = active_owner();
+        let n = owner_sexp(owner, dim)
+            .try_integer_elt(0)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
         if n < 0 || XLENGTH(x) != n as R_xlen_t {
             return None;
         }
@@ -326,8 +475,10 @@ fn ftable_one_dim_table(x: SEXP) -> Option<SEXP> {
             if out.is_null() {
                 return Some(out);
             }
-            for i in 0..n as usize {
-                *INTEGER(out).add(i) = 1;
+            if let Ok(mut out_mut) = owner.sexp(out).and_then(SexpMut::try_from_checked) {
+                for i in 0..n as usize {
+                    let _ = out_mut.try_set_integer_elt(i as R_xlen_t, 1);
+                }
             }
             out
         } else if value_type == SEXPTYPE::REALSXP {
@@ -335,8 +486,10 @@ fn ftable_one_dim_table(x: SEXP) -> Option<SEXP> {
             if out.is_null() {
                 return Some(out);
             }
-            for i in 0..n as usize {
-                *REAL(out).add(i) = 1.0;
+            if let Ok(mut out_mut) = owner.sexp(out).and_then(SexpMut::try_from_checked) {
+                for i in 0..n as usize {
+                    let _ = out_mut.try_set_real_elt(i as R_xlen_t, 1.0);
+                }
             }
             out
         } else {
@@ -347,8 +500,10 @@ fn ftable_one_dim_table(x: SEXP) -> Option<SEXP> {
         let out_dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
         if !out_dim.is_null() {
             let _dim_guard = protect(out_dim);
-            *INTEGER(out_dim) = 1;
-            *INTEGER(out_dim).add(1) = n;
+            if let Ok(mut dim_mut) = owner.sexp(out_dim).and_then(SexpMut::try_from_checked) {
+                let _ = dim_mut.try_set_integer_elt(0, 1);
+                let _ = dim_mut.try_set_integer_elt(1, n);
+            }
             crate::sexp::attrib_core::setAttrib(
                 result,
                 crate::sexp::attrib_core::R_DimSymbol(),
@@ -359,7 +514,13 @@ fn ftable_one_dim_table(x: SEXP) -> Option<SEXP> {
         let class = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
         if !class.is_null() {
             let _class_guard = protect(class);
-            SET_STRING_ELT(class, 0, Rf_mkChar(c"ftable".as_ptr()));
+            let charsxp = Rf_mkChar(c"ftable".as_ptr());
+            if let (Ok(mut class_mut), Ok(charsxp)) = (
+                owner.sexp(class).and_then(SexpMut::try_from_checked),
+                owner.sexp(charsxp),
+            ) {
+                let _ = class_mut.try_set_string_elt(0, charsxp);
+            }
             crate::sexp::attrib_core::setAttrib(
                 result,
                 crate::sexp::attrib_core::R_ClassSymbol(),
@@ -376,16 +537,34 @@ fn ftable_one_dim_table(x: SEXP) -> Option<SEXP> {
             let labels = Rf_allocVector3(SEXPTYPE::STRSXP, n as R_xlen_t);
             if !labels.is_null() {
                 let _labels_guard = protect(labels);
-                for i in 0..n {
-                    let label = CString::new((i + 1).to_string()).unwrap_or_default();
-                    SET_STRING_ELT(labels, i as R_xlen_t, Rf_mkChar(label.as_ptr()));
+                if let Ok(mut labels_mut) =
+                    owner.sexp(labels).and_then(SexpMut::try_from_checked)
+                {
+                    for i in 0..n {
+                        let label = CString::new((i + 1).to_string()).unwrap_or_default();
+                        let charsxp = Rf_mkChar(label.as_ptr());
+                        if let Ok(charsxp) = owner.sexp(charsxp) {
+                            let _ = labels_mut.try_set_string_elt(i as R_xlen_t, charsxp);
+                        }
+                    }
                 }
-                SET_VECTOR_ELT(col_vars, 0, labels);
+                if let (Ok(mut col_mut), Ok(labels_owned)) = (
+                    owner.sexp(col_vars).and_then(SexpMut::try_from_checked),
+                    owner.sexp(labels),
+                ) {
+                    let _ = col_mut.try_set_vector_elt(0, labels_owned);
+                }
             }
             let names = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
             if !names.is_null() {
                 let _names_guard = protect(names);
-                SET_STRING_ELT(names, 0, Rf_mkChar(c"x".as_ptr()));
+                let charsxp = Rf_mkChar(c"x".as_ptr());
+                if let (Ok(mut names_mut), Ok(charsxp)) = (
+                    owner.sexp(names).and_then(SexpMut::try_from_checked),
+                    owner.sexp(charsxp),
+                ) {
+                    let _ = names_mut.try_set_string_elt(0, charsxp);
+                }
                 crate::sexp::attrib_core::setAttrib(
                     col_vars,
                     crate::sexp::attrib_core::R_NamesSymbol(),
@@ -485,7 +664,7 @@ fn xtabs_two_way_data_frame(formula: SEXP, data: SEXP) -> Option<SEXP> {
         }
         let _result_guard = protect(result);
         for i in 0..(nrow * ncol) as usize {
-            *INTEGER(result).add(i) = 0;
+            put_int_elt(result, i as R_xlen_t, 0);
         }
 
         let row_index: BTreeMap<String, R_xlen_t> = row_labels
@@ -504,8 +683,8 @@ fn xtabs_two_way_data_frame(formula: SEXP, data: SEXP) -> Option<SEXP> {
             }
             let row = row_index.get(&elt_to_string(rows, i)).copied()?;
             let col = col_index.get(&elt_to_string(cols, i)).copied()?;
-            let offset = (row + col * nrow) as usize;
-            *INTEGER(result).add(offset) += 1;
+            let offset = row + col * nrow;
+            put_int_elt(result, offset, int_elt(result, offset) + 1);
         }
 
         set_xtabs_two_dim_metadata(
@@ -567,9 +746,9 @@ fn xtabs_one_sided_vector(formula: SEXP, data: SEXP, rho: SEXP) -> Option<SEXP> 
         }
         let _labels_guard = protect(labels);
         for (i, (label, count)) in counts.into_iter().enumerate() {
-            *INTEGER(result).add(i) = count;
+            put_int_elt(result, i as R_xlen_t, count);
             let c_label = CString::new(label).unwrap_or_default();
-            SET_STRING_ELT(labels, i as R_xlen_t, Rf_mkChar(c_label.as_ptr()));
+            put_string_elt_text(labels, i as R_xlen_t, &c_label);
         }
         crate::sexp::attrib_core::setAttrib(
             result,
@@ -580,7 +759,7 @@ fn xtabs_one_sided_vector(formula: SEXP, data: SEXP, rho: SEXP) -> Option<SEXP> 
         let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 1);
         if !dim.is_null() {
             let _dim_guard = protect(dim);
-            *INTEGER(dim) = n as c_int;
+            put_int_elt(dim, 0, n as c_int);
             crate::sexp::attrib_core::setAttrib(
                 result,
                 crate::sexp::attrib_core::R_DimSymbol(),
@@ -591,13 +770,13 @@ fn xtabs_one_sided_vector(formula: SEXP, data: SEXP, rho: SEXP) -> Option<SEXP> 
         let dimnames = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
         if !dimnames.is_null() {
             let _dimnames_guard = protect(dimnames);
-            SET_VECTOR_ELT(dimnames, 0, labels);
+            put_vector_elt(dimnames, 0, labels);
             let dimnames_names = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
             if !dimnames_names.is_null() {
                 let _names_guard = protect(dimnames_names);
                 let title = deparse_one_line(rhs);
                 let c_title = CString::new(title).unwrap_or_default();
-                SET_STRING_ELT(dimnames_names, 0, Rf_mkChar(c_title.as_ptr()));
+                put_string_elt_text(dimnames_names, 0, &c_title);
                 crate::sexp::attrib_core::setAttrib(
                     dimnames,
                     crate::sexp::attrib_core::R_NamesSymbol(),
@@ -614,8 +793,8 @@ fn xtabs_one_sided_vector(formula: SEXP, data: SEXP, rho: SEXP) -> Option<SEXP> 
         let class = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
         if !class.is_null() {
             let _class_guard = protect(class);
-            SET_STRING_ELT(class, 0, Rf_mkChar(c"xtabs".as_ptr()));
-            SET_STRING_ELT(class, 1, Rf_mkChar(c"table".as_ptr()));
+            put_string_elt_text(class, 0, c"xtabs");
+            put_string_elt_text(class, 1, c"table");
             crate::sexp::attrib_core::setAttrib(
                 result,
                 crate::sexp::attrib_core::R_ClassSymbol(),
@@ -652,8 +831,8 @@ fn set_xtabs_two_dim_metadata(
         let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
         if !dim.is_null() {
             let _dim_guard = protect(dim);
-            *INTEGER(dim) = nrow as c_int;
-            *INTEGER(dim).add(1) = ncol as c_int;
+            put_int_elt(dim, 0, nrow as c_int);
+            put_int_elt(dim, 1, ncol as c_int);
             crate::sexp::attrib_core::setAttrib(
                 result,
                 crate::sexp::attrib_core::R_DimSymbol(),
@@ -668,15 +847,15 @@ fn set_xtabs_two_dim_metadata(
         let dimnames = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
         if !dimnames.is_null() {
             let _dimnames_guard = protect(dimnames);
-            SET_VECTOR_ELT(dimnames, 0, row_dimnames);
-            SET_VECTOR_ELT(dimnames, 1, col_dimnames);
+            put_vector_elt(dimnames, 0, row_dimnames);
+            put_vector_elt(dimnames, 1, col_dimnames);
             let names = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
             if !names.is_null() {
                 let _names_guard = protect(names);
                 let c_row_name = CString::new(row_name).unwrap_or_default();
                 let c_col_name = CString::new(col_name).unwrap_or_default();
-                SET_STRING_ELT(names, 0, Rf_mkChar(c_row_name.as_ptr()));
-                SET_STRING_ELT(names, 1, Rf_mkChar(c_col_name.as_ptr()));
+                put_string_elt_text(names, 0, &c_row_name);
+                put_string_elt_text(names, 1, &c_col_name);
                 crate::sexp::attrib_core::setAttrib(
                     dimnames,
                     crate::sexp::attrib_core::R_NamesSymbol(),
@@ -693,8 +872,8 @@ fn set_xtabs_two_dim_metadata(
         let class = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
         if !class.is_null() {
             let _class_guard = protect(class);
-            SET_STRING_ELT(class, 0, Rf_mkChar(c"xtabs".as_ptr()));
-            SET_STRING_ELT(class, 1, Rf_mkChar(c"table".as_ptr()));
+            put_string_elt_text(class, 0, c"xtabs");
+            put_string_elt_text(class, 1, c"table");
             crate::sexp::attrib_core::setAttrib(
                 result,
                 crate::sexp::attrib_core::R_ClassSymbol(),
@@ -724,7 +903,7 @@ pub(crate) fn list_element_by_name(list: SEXP, name: &str) -> Option<SEXP> {
         }
         for i in 0..XLENGTH(list) {
             if string_at_or_empty(names, i) == name {
-                return Some(VECTOR_ELT(list, i));
+                return Some(vector_elt_checked(list, i));
             }
         }
         None
@@ -788,12 +967,12 @@ pub fn do_aggregate_df(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let x = CAR(args);
         let by = CAR(CDR(args));
         let xv = if TYPEOF(x) == SEXPTYPE::VECSXP && XLENGTH(x) > 0 {
-            VECTOR_ELT(x, 0)
+            vector_elt_checked(x, 0)
         } else {
             x
         };
         let gv = if TYPEOF(by) == SEXPTYPE::VECSXP && XLENGTH(by) > 0 {
-            VECTOR_ELT(by, 0)
+            vector_elt_checked(by, 0)
         } else {
             by
         };
@@ -815,13 +994,13 @@ pub fn do_aggregate_df(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let ycol = Rf_allocVector3(SEXPTYPE::REALSXP, sums.len() as i64);
         let _y = protect(ycol);
         for (i, (k, s)) in keys.iter().zip(sums.iter()).enumerate() {
-            *REAL(gcol).add(i) = *k;
-            *REAL(ycol).add(i) = *s;
+            put_real_elt(gcol, i as R_xlen_t, *k);
+            put_real_elt(ycol, i as R_xlen_t, *s);
         }
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
         let _r = protect(result);
-        SET_VECTOR_ELT(result, 0, gcol);
-        SET_VECTOR_ELT(result, 1, ycol);
+        put_vector_elt(result, 0, gcol);
+        put_vector_elt(result, 1, ycol);
         crate::mainutils::essentials::set_string_names(result, &["x".to_string(), "y".to_string()]);
         result
     }
@@ -936,7 +1115,7 @@ fn aggregate_numeric_by_groups(x: SEXP, by: SEXP, fun: SEXP, call: SEXP) -> Opti
         }
         let mut group_columns = Vec::with_capacity(XLENGTH(by) as usize);
         for i in 0..XLENGTH(by) {
-            let group = VECTOR_ELT(by, i);
+            let group = vector_elt_checked(by, i);
             if group.is_null() || group == R_NilValue() || XLENGTH(group) != row_count {
                 return None;
             }
@@ -1002,7 +1181,7 @@ fn aggregate_numeric_by_groups(x: SEXP, by: SEXP, fun: SEXP, call: SEXP) -> Opti
             if let Some(levels) = &group.levels {
                 set_factor_attrs(group_col, levels);
             }
-            SET_VECTOR_ELT(result, j as R_xlen_t, group_col);
+            put_vector_elt(result, j as R_xlen_t, group_col);
             group_result_cols.push(group_col);
         }
 
@@ -1013,25 +1192,21 @@ fn aggregate_numeric_by_groups(x: SEXP, by: SEXP, fun: SEXP, call: SEXP) -> Opti
                 return Some(R_NilValue());
             }
             let _value_guard = protect(value_col);
-            SET_VECTOR_ELT(result, group_count + j as R_xlen_t, value_col);
+            put_vector_elt(result, group_count + j as R_xlen_t, value_col);
             value_cols.push(value_col);
         }
 
         for (i, (_order_key, (labels, states))) in groups.into_iter().enumerate() {
             for (j, value) in labels.into_iter().enumerate() {
                 if let Some(code) = value.factor_code {
-                    *INTEGER(group_result_cols[j]).add(i) = code;
+                    put_int_elt(group_result_cols[j], i as R_xlen_t, code);
                 } else {
                     let value_c = CString::new(value.label).unwrap_or_default();
-                    SET_STRING_ELT(
-                        group_result_cols[j],
-                        i as R_xlen_t,
-                        Rf_mkChar(value_c.as_ptr()),
-                    );
+                    put_string_elt_text(group_result_cols[j], i as R_xlen_t, &value_c);
                 }
             }
             for (value_col, state) in value_cols.iter().zip(states.into_iter()) {
-                *REAL(*value_col).add(i) = state.summarize(summary);
+                put_real_elt(*value_col, i as R_xlen_t, state.summarize(summary));
             }
         }
 
@@ -1080,7 +1255,7 @@ fn aggregate_input_columns(x: SEXP) -> Option<Vec<AggregateInputColumn>> {
                 );
                 let mut columns = Vec::with_capacity(XLENGTH(x) as usize);
                 for i in 0..XLENGTH(x) {
-                    let column = VECTOR_ELT(x, i);
+                    let column = vector_elt_checked(x, i);
                     if column.is_null() || column == R_NilValue() {
                         return None;
                     }
@@ -1159,7 +1334,7 @@ pub(crate) fn set_factor_attrs(column: SEXP, levels: &[String]) {
         let _levels_guard = protect(levels_sexp);
         for (i, level) in levels.iter().enumerate() {
             let level_c = CString::new(level.as_str()).unwrap_or_default();
-            SET_STRING_ELT(levels_sexp, i as R_xlen_t, Rf_mkChar(level_c.as_ptr()));
+            put_string_elt_text(levels_sexp, i as R_xlen_t, &level_c);
         }
         crate::sexp::attrib_core::setAttrib(
             column,
@@ -1172,7 +1347,7 @@ pub(crate) fn set_factor_attrs(column: SEXP, levels: &[String]) {
             return;
         }
         let _class_guard = protect(class);
-        SET_STRING_ELT(class, 0, Rf_mkChar(c"factor".as_ptr()));
+        put_string_elt_text(class, 0, c"factor");
         crate::sexp::attrib_core::setAttrib(
             column,
             crate::sexp::attrib_core::R_ClassSymbol(),
@@ -1183,11 +1358,11 @@ pub(crate) fn set_factor_attrs(column: SEXP, levels: &[String]) {
 }
 
 fn aggregate_column_value(column: &AggregateInputColumn, i: R_xlen_t) -> f64 {
-    unsafe {
+    {
         if column.data_type == SEXPTYPE::REALSXP {
-            *REAL(column.data).add(i as usize)
+            real_elt(column.data, i)
         } else {
-            let value = *INTEGER(column.data).add(i as usize);
+            let value = int_elt(column.data, i);
             if value == NA_INTEGER {
                 NA_REAL
             } else {
@@ -1296,21 +1471,25 @@ fn aggregate_group_value(
     group: &AggregateByColumn,
     i: R_xlen_t,
 ) -> Option<AggregateGroupValue> {
-    unsafe {
+    {
         if group.data_type == SEXPTYPE::STRSXP {
-            let elt = STRING_ELT(group.data, i);
-            if elt.is_null() || elt == crate::sexp::globals::R_NaString() {
-                None
-            } else {
-                let label = CStr::from_ptr(CHAR(elt)).to_string_lossy().into_owned();
-                Some(AggregateGroupValue {
-                    order_key: label.clone(),
-                    label,
-                    factor_code: None,
-                })
-            }
+            let owner = active_owner();
+            let data_owned = owner_sexp(owner, group.data);
+            let label = match data_owned
+                .try_string_value_elt(i)
+                .unwrap_or_else(|error| {
+                    crate::sexp::context::r_error(error.to_string())
+                }) {
+                Some(label) => label,
+                None => return None,
+            };
+            Some(AggregateGroupValue {
+                order_key: label.clone(),
+                label,
+                factor_code: None,
+            })
         } else if group.data_type == SEXPTYPE::INTSXP {
-            let value = *INTEGER(group.data).add(i as usize);
+            let value = int_elt(group.data, i);
             if value == NA_INTEGER {
                 None
             } else if let Some(levels) = &group.levels {
@@ -1405,9 +1584,9 @@ pub fn do_ave(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             let _sub = protect(sub);
             for (dst, &src) in idxs.iter().enumerate() {
                 if t == SEXPTYPE::INTSXP {
-                    *INTEGER(sub).add(dst) = *INTEGER(x).add(src as usize);
+                    put_int_elt(sub, dst as R_xlen_t, int_elt(x, src));
                 } else {
-                    *REAL(sub).add(dst) = *REAL(x).add(src as usize);
+                    put_real_elt(sub, dst as R_xlen_t, real_elt(x, src));
                 }
             }
             let call_sexp = Rf_cons(fun, Rf_cons(sub, R_NilValue()));
@@ -1421,7 +1600,7 @@ pub fn do_ave(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 let promoted = Rf_allocVector3(SEXPTYPE::REALSXP, n);
                 let _prom = protect(promoted);
                 for i in 0..n {
-                    *REAL(promoted).add(i as usize) = *INTEGER(result).add(i as usize) as f64;
+                    put_real_elt(promoted, i, int_elt(result, i) as f64);
                 }
                 result = promoted;
                 result_real = true;
@@ -1430,21 +1609,21 @@ pub fn do_ave(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 if !result_real {
                     let vn = XLENGTH(val).max(1);
                     let v = if TYPEOF(val) == SEXPTYPE::INTSXP {
-                        *INTEGER(val).add((k as i64 % vn) as usize)
+                        int_elt(val, k as i64 % vn)
                     } else {
                         NA_INTEGER
                     };
-                    *INTEGER(result).add(src as usize) = v;
+                    put_int_elt(result, src, v);
                 } else {
                     let vn = XLENGTH(val).max(1);
                     let v = if TYPEOF(val) == SEXPTYPE::REALSXP {
-                        *REAL(val).add((k as i64 % vn) as usize)
+                        real_elt(val, k as i64 % vn)
                     } else if TYPEOF(val) == SEXPTYPE::INTSXP {
-                        *INTEGER(val).add((k as i64 % vn) as usize) as f64
+                        int_elt(val, k as i64 % vn) as f64
                     } else {
                         NA_REAL
                     };
-                    *REAL(result).add(src as usize) = v;
+                    put_real_elt(result, src, v);
                 }
             }
         }
@@ -1554,12 +1733,13 @@ fn interaction_factor(inputs: &[SEXP], sep: &str) -> SEXP {
                 }
                 parts.push(value.unwrap_or_default());
             }
-            *INTEGER(result).add(row as usize) = if has_na {
+            let code = if has_na {
                 NA_INTEGER
             } else {
                 let label = parts.join(sep);
                 *level_positions.get(&label).unwrap_or(&NA_INTEGER)
             };
+            put_int_elt(result, row, code);
         }
         set_factor_attrs(result, &levels);
         result
@@ -1600,17 +1780,23 @@ fn interaction_cartesian_levels(levels: &[Vec<String>], sep: &str) -> Vec<String
 }
 
 fn interaction_value_at(arg: SEXP, i: R_xlen_t) -> Option<String> {
-    unsafe {
+    {
         let arg_type = TYPEOF(arg);
+        let owner = active_owner();
+        let arg_owned = owner_sexp(owner, arg);
         if arg_type == SEXPTYPE::STRSXP {
-            let elt = STRING_ELT(arg, i);
-            if elt.is_null() || elt == crate::sexp::globals::R_NaString() {
+            let elt = arg_owned
+                .try_string_elt(i)
+                .unwrap_or_else(|error| {
+                    crate::sexp::context::r_error(error.to_string())
+                });
+            if elt.is_na_string() {
                 None
             } else {
-                Some(CStr::from_ptr(CHAR(elt)).to_string_lossy().into_owned())
+                Some(charsxp_utf8_lossy(&elt).unwrap_or_default())
             }
         } else if arg_type == SEXPTYPE::INTSXP || arg_type == SEXPTYPE::LGLSXP {
-            let value = *INTEGER(arg).add(i as usize);
+            let value = integer_like_elt(&arg_owned, i);
             if value == NA_INTEGER {
                 None
             } else if let Some(label) = factor_label_at(arg, value) {
@@ -1619,7 +1805,11 @@ fn interaction_value_at(arg: SEXP, i: R_xlen_t) -> Option<String> {
                 Some(value.to_string())
             }
         } else if arg_type == SEXPTYPE::REALSXP {
-            let value = *REAL(arg).add(i as usize);
+            let value = arg_owned
+                .try_real_elt(i)
+                .unwrap_or_else(|error| {
+                    crate::sexp::context::r_error(error.to_string())
+                });
             if value.to_bits() == R_NA_BIT_PATTERN || value.is_nan() {
                 None
             } else {
@@ -1661,13 +1851,13 @@ fn relevel_impl(args: SEXP) -> SEXP {
         }
         let ref_type = TYPEOF(ref_arg);
         let ref_pos = if ref_type == SEXPTYPE::INTSXP {
-            let value = *INTEGER(ref_arg);
+            let value = int_elt(ref_arg, 0);
             if value == NA_INTEGER || value < 1 || value as usize > levels.len() {
                 base_error("'ref' must be an existing level");
             }
             (value - 1) as usize
         } else if ref_type == SEXPTYPE::REALSXP {
-            let value = *REAL(ref_arg);
+            let value = real_elt(ref_arg, 0);
             if value.to_bits() == R_NA_BIT_PATTERN
                 || value.is_nan()
                 || value < 1.0
@@ -1705,8 +1895,8 @@ fn relevel_impl(args: SEXP) -> SEXP {
         }
         let _result_guard = protect(result);
         for i in 0..XLENGTH(x) {
-            let code = *INTEGER(x).add(i as usize);
-            *INTEGER(result).add(i as usize) = if code == NA_INTEGER || code <= 0 {
+            let code = int_elt(x, i);
+            let new_code = if code == NA_INTEGER || code <= 0 {
                 NA_INTEGER
             } else {
                 let old_label = levels.get((code - 1) as usize);
@@ -1715,6 +1905,7 @@ fn relevel_impl(args: SEXP) -> SEXP {
                     .copied()
                     .unwrap_or(NA_INTEGER)
             };
+            put_int_elt(result, i, new_code);
         }
         set_factor_attrs(result, &new_levels);
         let names =
@@ -1738,11 +1929,11 @@ pub fn do_droplevels(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let out = crate::mainutils::duplicate::Rf_duplicate(x);
             let _g = protect(out);
             for i in 0..XLENGTH(out) {
-                let col = VECTOR_ELT(out, i);
+                let col = vector_elt_checked(out, i);
                 if inherits_class(col, "factor") {
                     let args = Rf_cons(col, R_NilValue());
                     let _a = protect(args);
-                    SET_VECTOR_ELT(out, i, do_droplevels(_call, _op, args, _rho));
+                    put_vector_elt(out, i, do_droplevels(_call, _op, args, _rho));
                 }
             }
             return out;
@@ -1752,7 +1943,7 @@ pub fn do_droplevels(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         };
         let mut used = BTreeSet::new();
         for i in 0..XLENGTH(x) {
-            let code = *INTEGER(x).add(i as usize);
+            let code = int_elt(x, i);
             if code != NA_INTEGER && code > 0 {
                 let old_index = (code - 1) as usize;
                 if old_index < levels.len() {
@@ -1775,8 +1966,8 @@ pub fn do_droplevels(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         }
         let _result_guard = protect(result);
         for i in 0..XLENGTH(x) {
-            let code = *INTEGER(x).add(i as usize);
-            *INTEGER(result).add(i as usize) = if code == NA_INTEGER || code <= 0 {
+            let code = int_elt(x, i);
+            let new_code = if code == NA_INTEGER || code <= 0 {
                 NA_INTEGER
             } else {
                 old_to_new
@@ -1784,6 +1975,7 @@ pub fn do_droplevels(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     .copied()
                     .unwrap_or(NA_INTEGER)
             };
+            put_int_elt(result, i, new_code);
         }
         set_factor_attrs(result, &new_levels);
         if inherits_class(x, "ordered") {
@@ -1841,7 +2033,6 @@ pub fn do_factor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             return R_NilValue();
         }
         let _p = protect(result);
-        let dst = INTEGER(result);
         for i in 0..n {
             let code = if factor_element_is_na(x, i) {
                 levels
@@ -1857,7 +2048,7 @@ pub fn do_factor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     .map(|idx| idx as i32 + 1)
                     .unwrap_or(NA_INTEGER)
             };
-            *dst.add(i as usize) = code;
+            put_int_elt(result, i, code);
         }
         set_factor_attrs_with_optional_levels(result, &levels);
         let names =
@@ -1959,13 +2150,13 @@ fn apply_factor_exclude(levels: &mut Vec<Option<String>>, args: SEXP) {
                 }
             } else if TYPEOF(exclude) == SEXPTYPE::LGLSXP || TYPEOF(exclude) == SEXPTYPE::INTSXP {
                 for i in 0..XLENGTH(exclude) {
-                    if *INTEGER(exclude).add(i as usize) == NA_INTEGER {
+                    if int_elt(exclude, i) == NA_INTEGER {
                         drop_na = true;
                     }
                 }
             } else if TYPEOF(exclude) == SEXPTYPE::REALSXP {
                 for i in 0..XLENGTH(exclude) {
-                    let v = *REAL(exclude).add(i as usize);
+                    let v = real_elt(exclude, i);
                     if v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN || v.is_nan() {
                         drop_na = true;
                     }
@@ -2047,7 +2238,7 @@ fn ordered_from_factor(x: SEXP, levels: &[String]) -> SEXP {
     unsafe {
         let mut used = BTreeSet::new();
         for i in 0..XLENGTH(x) {
-            let code = *INTEGER(x).add(i as usize);
+            let code = int_elt(x, i);
             if code != NA_INTEGER && code > 0 {
                 let old_index = (code - 1) as usize;
                 if old_index < levels.len() {
@@ -2070,8 +2261,8 @@ fn ordered_from_factor(x: SEXP, levels: &[String]) -> SEXP {
         }
         let _result_guard = protect(result);
         for i in 0..XLENGTH(x) {
-            let code = *INTEGER(x).add(i as usize);
-            *INTEGER(result).add(i as usize) = if code == NA_INTEGER || code <= 0 {
+            let code = int_elt(x, i);
+            let new_code = if code == NA_INTEGER || code <= 0 {
                 NA_INTEGER
             } else {
                 old_to_new
@@ -2079,6 +2270,7 @@ fn ordered_from_factor(x: SEXP, levels: &[String]) -> SEXP {
                     .copied()
                     .unwrap_or(NA_INTEGER)
             };
+            put_int_elt(result, i, new_code);
         }
         set_factor_attrs(result, &new_levels);
         set_ordered_factor_class(result);
@@ -2152,7 +2344,7 @@ pub fn do_gl(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             } else {
                 ((i / k) % n + 1) as i32
             };
-            *INTEGER(result).add(i as usize) = code;
+            put_int_elt(result, i, code);
         }
         set_factor_attrs(result, &levels);
         if ordered {
@@ -2167,9 +2359,9 @@ fn gl_nonnegative_count(arg: SEXP, error_message: &str) -> R_xlen_t {
         let value = if arg.is_null() || arg == R_NilValue() || XLENGTH(arg) == 0 {
             NA_REAL
         } else if TYPEOF(arg) == SEXPTYPE::REALSXP {
-            *REAL(arg)
+            real_elt(arg, 0)
         } else if TYPEOF(arg) == SEXPTYPE::INTSXP || TYPEOF(arg) == SEXPTYPE::LGLSXP {
-            let raw = *INTEGER(arg);
+            let raw = int_elt(arg, 0);
             if raw == NA_INTEGER {
                 NA_REAL
             } else {
@@ -2194,8 +2386,8 @@ fn set_ordered_factor_class(x: SEXP) {
             return;
         }
         let _class_guard = protect(class);
-        SET_STRING_ELT(class, 0, Rf_mkChar(c"ordered".as_ptr()));
-        SET_STRING_ELT(class, 1, Rf_mkChar(c"factor".as_ptr()));
+        put_string_elt_text(class, 0, c"ordered");
+        put_string_elt_text(class, 1, c"factor");
         crate::sexp::attrib_core::setAttrib(x, crate::sexp::attrib_core::R_ClassSymbol(), class);
     }
 }
@@ -2236,10 +2428,10 @@ pub fn do_addNA(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         }
         let _result_guard = protect(result);
         for i in 0..n {
-            *INTEGER(result).add(i as usize) = if factor_element_is_na(x, i) {
+            let code = if factor_element_is_na(x, i) {
                 missing_code
             } else if is_factor {
-                *INTEGER(x).add(i as usize)
+                int_elt(x, i)
             } else {
                 let value = elt_to_string(x, i);
                 levels
@@ -2248,6 +2440,7 @@ pub fn do_addNA(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     .map(|idx| idx as i32 + 1)
                     .unwrap_or(NA_INTEGER)
             };
+            put_int_elt(result, i, code);
         }
         set_factor_attrs_with_optional_levels(result, &levels);
         let names =
@@ -2277,7 +2470,7 @@ fn set_factor_attrs_with_optional_levels(column: SEXP, levels: &[Option<String>]
             } else {
                 crate::sexp::globals::R_NaString()
             };
-            SET_STRING_ELT(levels_sexp, i as R_xlen_t, charsxp);
+            put_string_elt(levels_sexp, i as R_xlen_t, charsxp);
         }
         crate::sexp::attrib_core::setAttrib(
             column,
@@ -2290,7 +2483,7 @@ fn set_factor_attrs_with_optional_levels(column: SEXP, levels: &[Option<String>]
             return;
         }
         let _class_guard = protect(class);
-        SET_STRING_ELT(class, 0, Rf_mkChar(c"factor".as_ptr()));
+        put_string_elt_text(class, 0, c"factor");
         crate::sexp::attrib_core::setAttrib(
             column,
             crate::sexp::attrib_core::R_ClassSymbol(),
@@ -2307,13 +2500,13 @@ fn factor_element_is_na(x: SEXP, i: R_xlen_t) -> bool {
             is_string_na(x, i)
         } else if ty == SEXPTYPE::INTSXP {
             let n = XLENGTH(x);
-            n != 0 && *INTEGER(x).add((i % n) as usize) == NA_INTEGER
+            n != 0 && int_elt(x, i % n) == NA_INTEGER
         } else if ty == SEXPTYPE::REALSXP {
             let n = XLENGTH(x);
             if n == 0 {
                 false
             } else {
-                let value = *REAL(x).add((i % n) as usize);
+                let value = real_elt(x, i % n);
                 value.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN || value.is_nan()
             }
         } else {
@@ -2349,12 +2542,16 @@ pub fn do_is_factor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let class = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"class".as_ptr()));
         if !class.is_null() && TYPEOF(class) == SEXPTYPE::STRSXP {
             let n = XLENGTH(class);
+            let owner = active_owner();
+            let class_owned = owner_sexp(owner, class);
             for i in 0..n {
-                let charsxp = STRING_ELT(class, i);
-                if !charsxp.is_null() {
-                    let s = CHAR(charsxp);
-                    if !s.is_null() {
-                        let cls = std::ffi::CStr::from_ptr(s).to_str().unwrap_or("");
+                let charsxp = class_owned
+                    .try_string_elt(i)
+                    .unwrap_or_else(|error| {
+                        crate::sexp::context::r_error(error.to_string())
+                    });
+                if !charsxp.as_raw().is_null() {
+                    if let Ok(cls) = charsxp.try_as_string() {
                         if cls == "factor" {
                             return Rf_ScalarLogical(TRUE);
                         }
@@ -2376,12 +2573,16 @@ pub fn do_is_ordered(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let class = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"class".as_ptr()));
         if !class.is_null() && TYPEOF(class) == SEXPTYPE::STRSXP {
             let n = XLENGTH(class);
+            let owner = active_owner();
+            let class_owned = owner_sexp(owner, class);
             for i in 0..n {
-                let charsxp = STRING_ELT(class, i);
-                if !charsxp.is_null() {
-                    let s = CHAR(charsxp);
-                    if !s.is_null() {
-                        let cls = std::ffi::CStr::from_ptr(s).to_str().unwrap_or("");
+                let charsxp = class_owned
+                    .try_string_elt(i)
+                    .unwrap_or_else(|error| {
+                        crate::sexp::context::r_error(error.to_string())
+                    });
+                if !charsxp.as_raw().is_null() {
+                    if let Ok(cls) = charsxp.try_as_string() {
                         if cls == "ordered" {
                             return Rf_ScalarLogical(TRUE);
                         }
@@ -2483,7 +2684,7 @@ fn replace_factor_levels(x: SEXP, value: SEXP) -> SEXP {
 
         for i in 0..XLENGTH(x) {
             let old_code = if TYPEOF(x) == SEXPTYPE::INTSXP {
-                INTEGER_ELT(x, i as c_int)
+                int_elt(x, i)
             } else {
                 NA_INTEGER
             };
@@ -2498,7 +2699,7 @@ fn replace_factor_levels(x: SEXP, value: SEXP) -> SEXP {
                     .map(|idx| idx as c_int + 1)
                     .unwrap_or(NA_INTEGER)
             };
-            *INTEGER(result).add(i as usize) = new_code;
+            put_int_elt(result, i, new_code);
         }
 
         crate::sexp::accessors::SET_ATTRIB(result, ATTRIB(x));
@@ -2526,7 +2727,7 @@ fn factor_levels_from_named_list(value: SEXP, old_levels: &[String]) -> Vec<Opti
                 continue;
             }
             let group_name = elt_to_string(names, group_idx);
-            let members = VECTOR_ELT(value, group_idx);
+            let members = vector_elt_checked(value, group_idx);
             for member_idx in 0..XLENGTH(members) {
                 let old_name = elt_to_string(members, member_idx);
                 if let Some(pos) = match_string(old_levels, &old_name)
