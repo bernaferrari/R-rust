@@ -50,7 +50,15 @@ struct tre_tag_states_t {
 }
 
 // Construct every field before publishing a child copied during tag insertion.
-fn tre_tagged_child(mem: mem::tre_mem_t, node: *const tre_ast_node_t) -> *mut tre_ast_node_t {
+/// # Safety
+///
+/// Every raw-pointer argument must point to a live, properly initialized TRE object (or a buffer
+/// sized per the accompanying length/count arguments) valid for the reads and writes performed
+/// here; null is accepted only where the original C TRE API accepts it.
+unsafe fn tre_tagged_child(
+    mem: mem::tre_mem_t,
+    node: *const tre_ast_node_t,
+) -> *mut tre_ast_node_t {
     unsafe {
         let child =
             mem::tre_mem_alloc(mem, std::mem::size_of::<tre_ast_node_t>()) as *mut tre_ast_node_t;
@@ -102,7 +110,12 @@ fn tag_wrapper_children_initialize_all_metadata_before_expansion() {
     }
 }
 
-fn tre_add_tag_left(mem: mem::tre_mem_t, node: *mut tre_ast_node_t, tag_id: c_int) -> c_int {
+/// # Safety
+///
+/// Every raw-pointer argument must point to a live, properly initialized TRE object (or a buffer
+/// sized per the accompanying length/count arguments) valid for the reads and writes performed
+/// here; null is accepted only where the original C TRE API accepts it.
+unsafe fn tre_add_tag_left(mem: mem::tre_mem_t, node: *mut tre_ast_node_t, tag_id: c_int) -> c_int {
     unsafe {
         let c = mem::tre_mem_alloc(mem, std::mem::size_of::<tre_catenation_t>())
             as *mut tre_catenation_t;
@@ -124,7 +137,16 @@ fn tre_add_tag_left(mem: mem::tre_mem_t, node: *mut tre_ast_node_t, tag_id: c_in
     }
 }
 
-fn tre_add_tag_right(mem: mem::tre_mem_t, node: *mut tre_ast_node_t, tag_id: c_int) -> c_int {
+/// # Safety
+///
+/// Every raw-pointer argument must point to a live, properly initialized TRE object (or a buffer
+/// sized per the accompanying length/count arguments) valid for the reads and writes performed
+/// here; null is accepted only where the original C TRE API accepts it.
+unsafe fn tre_add_tag_right(
+    mem: mem::tre_mem_t,
+    node: *mut tre_ast_node_t,
+    tag_id: c_int,
+) -> c_int {
     unsafe {
         let c = mem::tre_mem_alloc(mem, std::mem::size_of::<tre_catenation_t>())
             as *mut tre_catenation_t;
@@ -146,7 +168,12 @@ fn tre_add_tag_right(mem: mem::tre_mem_t, node: *mut tre_ast_node_t, tag_id: c_i
     }
 }
 
-fn tre_purge_regset(regset: *mut c_int, tnfa: *mut tre_tnfa_t, tag: c_int) {
+/// # Safety
+///
+/// Every raw-pointer argument must point to a live, properly initialized TRE object (or a buffer
+/// sized per the accompanying length/count arguments) valid for the reads and writes performed
+/// here; null is accepted only where the original C TRE API accepts it.
+unsafe fn tre_purge_regset(regset: *mut c_int, tnfa: *mut tre_tnfa_t, tag: c_int) {
     unsafe {
         let mut i = 0;
         while *regset.offset(i) >= 0 {
@@ -163,7 +190,12 @@ fn tre_purge_regset(regset: *mut c_int, tnfa: *mut tre_tnfa_t, tag: c_int) {
     }
 }
 
-fn tre_add_tags(
+/// # Safety
+///
+/// Every raw-pointer argument must point to a live, properly initialized TRE object (or a buffer
+/// sized per the accompanying length/count arguments) valid for the reads and writes performed
+/// here; null is accepted only where the original C TRE API accepts it.
+unsafe fn tre_add_tags(
     mem: mem::tre_mem_t,
     stack: *mut stack::tre_stack_rec,
     tree: *mut tre_ast_node_t,
@@ -680,7 +712,12 @@ enum tre_copyast_symbol_t {
     COPY_SET_RESULT_PTR,
 }
 
-fn tre_copy_ast(
+/// # Safety
+///
+/// Every raw-pointer argument must point to a live, properly initialized TRE object (or a buffer
+/// sized per the accompanying length/count arguments) valid for the reads and writes performed
+/// here; null is accepted only where the original C TRE API accepts it.
+unsafe fn tre_copy_ast(
     mem: mem::tre_mem_t,
     stack: *mut stack::tre_stack_rec,
     ast: *mut tre_ast_node_t,
@@ -853,7 +890,12 @@ fn tre_copy_ast(
     }
 }
 
-fn tre_expand_ast(
+/// # Safety
+///
+/// Every raw-pointer argument must point to a live, properly initialized TRE object (or a buffer
+/// sized per the accompanying length/count arguments) valid for the reads and writes performed
+/// here; null is accepted only where the original C TRE API accepts it.
+unsafe fn tre_expand_ast(
     mem: mem::tre_mem_t,
     stack: *mut stack::tre_stack_rec,
     ast: *mut tre_ast_node_t,
@@ -1090,7 +1132,12 @@ fn tre_expand_ast(
 
 // ===== Set operations =====
 
-fn tre_set_empty(mem: mem::tre_mem_t) -> *mut tre_pos_and_tags_t {
+/// # Safety
+///
+/// Every raw-pointer argument must point to a live, properly initialized TRE object (or a buffer
+/// sized per the accompanying length/count arguments) valid for the reads and writes performed
+/// here; null is accepted only where the original C TRE API accepts it.
+unsafe fn tre_set_empty(mem: mem::tre_mem_t) -> *mut tre_pos_and_tags_t {
     unsafe {
         let new_set = mem::tre_mem_calloc(mem, std::mem::size_of::<tre_pos_and_tags_t>())
             as *mut tre_pos_and_tags_t;
@@ -1104,7 +1151,12 @@ fn tre_set_empty(mem: mem::tre_mem_t) -> *mut tre_pos_and_tags_t {
     }
 }
 
-fn tre_set_one(
+/// # Safety
+///
+/// Every raw-pointer argument must point to a live, properly initialized TRE object (or a buffer
+/// sized per the accompanying length/count arguments) valid for the reads and writes performed
+/// here; null is accepted only where the original C TRE API accepts it.
+unsafe fn tre_set_one(
     mem: mem::tre_mem_t,
     position: c_int,
     code_min: c_int,
@@ -1132,7 +1184,12 @@ fn tre_set_one(
     }
 }
 
-fn tre_set_union(
+/// # Safety
+///
+/// Every raw-pointer argument must point to a live, properly initialized TRE object (or a buffer
+/// sized per the accompanying length/count arguments) valid for the reads and writes performed
+/// here; null is accepted only where the original C TRE API accepts it.
+unsafe fn tre_set_union(
     mem: mem::tre_mem_t,
     set1: *const tre_pos_and_tags_t,
     set2: *const tre_pos_and_tags_t,
@@ -1295,7 +1352,12 @@ fn tre_set_union(
 
 // ===== Match empty =====
 
-fn tre_match_empty(
+/// # Safety
+///
+/// Every raw-pointer argument must point to a live, properly initialized TRE object (or a buffer
+/// sized per the accompanying length/count arguments) valid for the reads and writes performed
+/// here; null is accepted only where the original C TRE API accepts it.
+unsafe fn tre_match_empty(
     stack: *mut stack::tre_stack_rec,
     mut node: *mut tre_ast_node_t,
     tags: *mut c_int,
@@ -1414,7 +1476,12 @@ enum tre_nfl_stack_symbol_t {
     NFL_POST_ITERATION,
 }
 
-fn tre_compute_nfl(
+/// # Safety
+///
+/// Every raw-pointer argument must point to a live, properly initialized TRE object (or a buffer
+/// sized per the accompanying length/count arguments) valid for the reads and writes performed
+/// here; null is accepted only where the original C TRE API accepts it.
+unsafe fn tre_compute_nfl(
     mem: mem::tre_mem_t,
     stack: *mut stack::tre_stack_rec,
     tree: *mut tre_ast_node_t,
@@ -1739,7 +1806,12 @@ fn tre_compute_nfl(
 
 // ===== TNFA construction =====
 
-fn tre_make_trans(
+/// # Safety
+///
+/// Every raw-pointer argument must point to a live, properly initialized TRE object (or a buffer
+/// sized per the accompanying length/count arguments) valid for the reads and writes performed
+/// here; null is accepted only where the original C TRE API accepts it.
+unsafe fn tre_make_trans(
     p1: *const tre_pos_and_tags_t,
     p2: *const tre_pos_and_tags_t,
     transitions: *mut tre_tnfa_transition_t,
@@ -1911,7 +1983,12 @@ enum tre_tnfa_symbol_t {
     TNFA_RECURSE,
 }
 
-fn tre_ast_to_tnfa_iter(
+/// # Safety
+///
+/// Every raw-pointer argument must point to a live, properly initialized TRE object (or a buffer
+/// sized per the accompanying length/count arguments) valid for the reads and writes performed
+/// here; null is accepted only where the original C TRE API accepts it.
+unsafe fn tre_ast_to_tnfa_iter(
     stack: *mut stack::tre_stack_rec,
     node: *mut tre_ast_node_t,
     transitions: *mut tre_tnfa_transition_t,
@@ -1985,7 +2062,12 @@ fn tre_ast_to_tnfa_iter(
     }
 }
 
-fn tre_ast_to_tnfa(
+/// # Safety
+///
+/// Every raw-pointer argument must point to a live, properly initialized TRE object (or a buffer
+/// sized per the accompanying length/count arguments) valid for the reads and writes performed
+/// here; null is accepted only where the original C TRE API accepts it.
+unsafe fn tre_ast_to_tnfa(
     node: *mut tre_ast_node_t,
     transitions: *mut tre_tnfa_transition_t,
     counts: *mut c_int,
@@ -2001,31 +2083,52 @@ fn tre_ast_to_tnfa(
     if stack.is_null() {
         return REG_ESPACE as c_int;
     }
-    let errcode = tre_ast_to_tnfa_iter(stack, node, transitions, counts, offs, storage);
-    stack::tre_stack_destroy(stack);
+    // SAFETY: pointers are live TRE objects forwarded under the enclosing function's `# Safety` contract.
+    let errcode = unsafe { tre_ast_to_tnfa_iter(stack, node, transitions, counts, offs, storage) };
+    // SAFETY: pointers are live TRE objects forwarded under the enclosing function's `# Safety` contract.
+    unsafe { stack::tre_stack_destroy(stack) };
     errcode
 }
 
 // ===== Main compile function =====
 
-pub fn tre_compile(preg: *mut regex_t, regex: *const tre_char_t, n: usize, cflags: c_int) -> c_int {
-    tre_compile_with_workspace(
-        preg,
-        regex,
-        n,
-        cflags,
-        crate::mainutils::grep::RegexWorkspace::unbounded(),
-    )
+/// # Safety
+///
+/// Every raw-pointer argument must point to a live, properly initialized TRE object (or a buffer
+/// sized per the accompanying length/count arguments) valid for the reads and writes performed
+/// here; null is accepted only where the original C TRE API accepts it.
+pub unsafe fn tre_compile(
+    preg: *mut regex_t,
+    regex: *const tre_char_t,
+    n: usize,
+    cflags: c_int,
+) -> c_int {
+    // SAFETY: pointers are live TRE objects forwarded under the enclosing function's `# Safety` contract.
+    unsafe {
+        tre_compile_with_workspace(
+            preg,
+            regex,
+            n,
+            cflags,
+            crate::mainutils::grep::RegexWorkspace::unbounded(),
+        )
+    }
 }
 
-pub(crate) fn tre_compile_with_workspace(
+/// # Safety
+///
+/// Every raw-pointer argument must point to a live, properly initialized TRE object (or a buffer
+/// sized per the accompanying length/count arguments) valid for the reads and writes performed
+/// here; null is accepted only where the original C TRE API accepts it.
+pub(crate) unsafe fn tre_compile_with_workspace(
     preg: *mut regex_t,
     regex: *const tre_char_t,
     n: usize,
     cflags: c_int,
     workspace: crate::mainutils::grep::RegexWorkspace,
 ) -> c_int {
-    tre_compile_tables(preg, regex, n, cflags, workspace, None)
+    // SAFETY: pointers are live TRE objects forwarded under the enclosing function's `# Safety` contract.
+    unsafe { tre_compile_tables(preg, regex, n, cflags, workspace, None) }
 }
 
 /// Opaque runtime owner: nested legacy allocations are freed while descriptor
@@ -2043,13 +2146,15 @@ impl CompiledTre {
 
 impl Drop for CompiledTre {
     fn drop(&mut self) {
-        tre_free_tables(&mut self.preg, true);
+        // SAFETY: `self.preg` was initialized by a successful owned compile and
+        // is freed exactly once, here.
+        unsafe { tre_free_tables(&mut self.preg, true) };
     }
 }
 
-pub(crate) fn tre_compile_owned(
-    regex: *const tre_char_t,
-    n: usize,
+/// Compile `regex` into tables owned by the returned `CompiledTre`.
+pub(crate) fn tre_compile_owned_slice(
+    regex: &[tre_char_t],
     cflags: c_int,
     workspace: crate::mainutils::grep::RegexWorkspace,
 ) -> Result<CompiledTre, c_int> {
@@ -2059,7 +2164,18 @@ pub(crate) fn tre_compile_owned(
         re_nsub: 0,
         value: ptr::null_mut(),
     };
-    let status = tre_compile_tables(&mut preg, regex, n, cflags, workspace, Some(&mut tables));
+    // SAFETY: `preg` is a local writable `regex_t` and `regex` is a live slice
+    // of exactly `regex.len()` code points.
+    let status = unsafe {
+        tre_compile_tables(
+            &mut preg,
+            regex.as_ptr(),
+            regex.len(),
+            cflags,
+            workspace,
+            Some(&mut tables),
+        )
+    };
     if status == REG_OK {
         Ok(CompiledTre {
             preg,
@@ -2068,6 +2184,27 @@ pub(crate) fn tre_compile_owned(
     } else {
         Err(status)
     }
+}
+
+/// Raw-pointer form kept for the `mainutils::grep` caller.
+///
+/// SOUNDNESS GAP (tracked): this safe signature still trusts `regex` to be
+/// valid for `n` reads. Callers should migrate to [`tre_compile_owned_slice`],
+/// after which this shim should be deleted.
+pub(crate) fn tre_compile_owned(
+    regex: *const tre_char_t,
+    n: usize,
+    cflags: c_int,
+    workspace: crate::mainutils::grep::RegexWorkspace,
+) -> Result<CompiledTre, c_int> {
+    let regex = if n == 0 {
+        &[][..]
+    } else {
+        // SAFETY: not guaranteed by the type system -- see the doc comment;
+        // the sole caller passes a live `Vec` buffer pointer and its length.
+        unsafe { std::slice::from_raw_parts(regex, n) }
+    };
+    tre_compile_owned_slice(regex, cflags, workspace)
 }
 
 fn allocate_transition_table(
@@ -2123,7 +2260,12 @@ fn allocate_retained_ints(
     }
 }
 
-fn allocate_neg_classes(
+/// # Safety
+///
+/// Every raw-pointer argument must point to a live, properly initialized TRE object (or a buffer
+/// sized per the accompanying length/count arguments) valid for the reads and writes performed
+/// here; null is accepted only where the original C TRE API accepts it.
+unsafe fn allocate_neg_classes(
     source: *const tre_ctype_t,
     storage: &mut Option<&mut super::owned_arena::OwnedArena>,
 ) -> *mut tre_ctype_t {
@@ -2180,7 +2322,12 @@ fn allocate_submatch_table(
     }
 }
 
-fn tre_compile_tables(
+/// # Safety
+///
+/// Every raw-pointer argument must point to a live, properly initialized TRE object (or a buffer
+/// sized per the accompanying length/count arguments) valid for the reads and writes performed
+/// here; null is accepted only where the original C TRE API accepts it.
+unsafe fn tre_compile_tables(
     preg: *mut regex_t,
     regex: *const tre_char_t,
     n: usize,
@@ -2572,7 +2719,12 @@ fn tre_compile_tables(
 }
 
 #[allow(clippy::too_many_arguments)] // Legacy cleanup now carries explicit table ownership.
-fn compile_error(
+/// # Safety
+///
+/// Every raw-pointer argument must point to a live, properly initialized TRE object (or a buffer
+/// sized per the accompanying length/count arguments) valid for the reads and writes performed
+/// here; null is accepted only where the original C TRE API accepts it.
+unsafe fn compile_error(
     mem: mem::tre_mem_t,
     stack: *mut stack::tre_stack_rec,
     _counts: *mut c_int,
@@ -2595,11 +2747,20 @@ fn compile_error(
     }
 }
 
-pub fn tre_free(preg: *mut regex_t) {
-    tre_free_tables(preg, false);
+/// # Safety
+///
+/// `preg` must point to a `regex_t` initialized by a successful TRE compile, not freed before.
+pub unsafe fn tre_free(preg: *mut regex_t) {
+    // SAFETY: pointers are live TRE objects forwarded under the enclosing function's `# Safety` contract.
+    unsafe { tre_free_tables(preg, false) };
 }
 
-fn tre_free_tables(preg: *mut regex_t, owned_tables: bool) {
+/// # Safety
+///
+/// Every raw-pointer argument must point to a live, properly initialized TRE object (or a buffer
+/// sized per the accompanying length/count arguments) valid for the reads and writes performed
+/// here; null is accepted only where the original C TRE API accepts it.
+unsafe fn tre_free_tables(preg: *mut regex_t, owned_tables: bool) {
     unsafe {
         if preg.is_null() {
             return;

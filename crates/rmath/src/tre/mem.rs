@@ -22,7 +22,10 @@ fn alloc(layout: Layout) -> *mut u8 {
     pointer
 }
 
-fn dealloc(pointer: *mut u8, layout: Layout) {
+/// # Safety
+///
+/// `pointer` must have been allocated by the global allocator with `layout` and not be used afterwards.
+unsafe fn dealloc(pointer: *mut u8, layout: Layout) {
     #[cfg(test)]
     fault::deallocated(pointer);
     unsafe { std::alloc::dealloc(pointer, layout) };
@@ -68,7 +71,10 @@ pub fn tre_mem_new() -> tre_mem_t {
     }
 }
 
-pub fn tre_mem_destroy(mem: tre_mem_t) {
+/// # Safety
+///
+/// `mem` must be null or a live arena from `tre_mem_new` that is not used afterwards.
+pub unsafe fn tre_mem_destroy(mem: tre_mem_t) {
     // SAFETY: `mem` is a live tre_mem_new allocation or null.
     unsafe {
         if !mem.is_null() {
@@ -78,7 +84,12 @@ pub fn tre_mem_destroy(mem: tre_mem_t) {
     }
 }
 
-pub fn tre_mem_alloc(mem: tre_mem_t, size: usize) -> *mut c_void {
+/// # Safety
+///
+/// Every raw-pointer argument must point to a live, properly initialized TRE object (or a buffer
+/// sized per the accompanying length/count arguments) valid for the reads and writes performed
+/// here; null is accepted only where the original C TRE API accepts it.
+pub unsafe fn tre_mem_alloc(mem: tre_mem_t, size: usize) -> *mut c_void {
     // SAFETY: `mem` is a live tre_mem_t arena per the allocator contract.
     unsafe {
         if mem.is_null() || (*mem).failed != 0 {
@@ -95,8 +106,15 @@ pub fn tre_mem_alloc(mem: tre_mem_t, size: usize) -> *mut c_void {
 }
 
 /// Fresh safe-owned cells are initialized to zero before any pointer publication.
-pub fn tre_mem_calloc(mem: tre_mem_t, size: usize) -> *mut c_void {
-    tre_mem_alloc(mem, size)
+///
+/// # Safety
+///
+/// Every raw-pointer argument must point to a live, properly initialized TRE object (or a buffer
+/// sized per the accompanying length/count arguments) valid for the reads and writes performed
+/// here; null is accepted only where the original C TRE API accepts it.
+pub unsafe fn tre_mem_calloc(mem: tre_mem_t, size: usize) -> *mut c_void {
+    // SAFETY: pointers are live TRE objects forwarded under the enclosing function's `# Safety` contract.
+    unsafe { tre_mem_alloc(mem, size) }
 }
 
 /* Simple xmalloc/xrealloc/xfree replacements using std::alloc.
@@ -155,7 +173,10 @@ pub fn xcalloc(nmemb: usize, size: usize) -> *mut c_void {
     }
 }
 
-pub fn xrealloc(ptr: *mut c_void, new_size: usize) -> *mut c_void {
+/// # Safety
+///
+/// `ptr` must be null or a live allocation returned by `xmalloc`/`xcalloc`/`xrealloc`; on success it must not be used afterwards.
+pub unsafe fn xrealloc(ptr: *mut c_void, new_size: usize) -> *mut c_void {
     // SAFETY: `ptr` is a live xmalloc allocation or null per the realloc
     // contract.
     unsafe {
@@ -192,7 +213,10 @@ pub fn xrealloc(ptr: *mut c_void, new_size: usize) -> *mut c_void {
     }
 }
 
-pub fn xfree(ptr: *mut c_void) {
+/// # Safety
+///
+/// `ptr` must be null or a live allocation returned by `xmalloc`/`xcalloc`/`xrealloc` that is not used afterwards.
+pub unsafe fn xfree(ptr: *mut c_void) {
     // SAFETY: `ptr` is a live xmalloc allocation or null.
     unsafe {
         if !ptr.is_null() {

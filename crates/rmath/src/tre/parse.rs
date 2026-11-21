@@ -127,7 +127,12 @@ pub(crate) fn tre_isctype(c: tre_cint_t, class: tre_ctype_t) -> bool {
     CharacterClassId::from_raw(class).is_some_and(|id| id.matches(c))
 }
 
-pub(crate) fn tre_neg_char_classes_match(
+/// # Safety
+///
+/// Every raw-pointer argument must point to a live, properly initialized TRE object (or a buffer
+/// sized per the accompanying length/count arguments) valid for the reads and writes performed
+/// here; null is accepted only where the original C TRE API accepts it.
+pub(crate) unsafe fn tre_neg_char_classes_match(
     classes: *const tre_ctype_t,
     wc: tre_cint_t,
     icase: c_int,
@@ -277,7 +282,12 @@ fn tre_expand_macro(regex: &[tre_char_t], regex_end: usize, buf: &mut [tre_char_
 
 const MAX_NEG_CLASSES: usize = 64;
 
-fn tre_new_item(
+/// # Safety
+///
+/// Every raw-pointer argument must point to a live, properly initialized TRE object (or a buffer
+/// sized per the accompanying length/count arguments) valid for the reads and writes performed
+/// here; null is accepted only where the original C TRE API accepts it.
+unsafe fn tre_new_item(
     mem: mem::tre_mem_t,
     min: c_int,
     max: c_int,
@@ -311,7 +321,12 @@ fn tre_new_item(
     }
 }
 
-fn tre_expand_ctype(
+/// # Safety
+///
+/// Every raw-pointer argument must point to a live, properly initialized TRE object (or a buffer
+/// sized per the accompanying length/count arguments) valid for the reads and writes performed
+/// here; null is accepted only where the original C TRE API accepts it.
+unsafe fn tre_expand_ctype(
     mem: mem::tre_mem_t,
     class: tre_ctype_t,
     items: &mut *mut *mut tre_ast_node_t,
@@ -334,12 +349,14 @@ fn tre_expand_ctype(
             }
             max = c as c_int;
         } else if min >= 0 {
-            status = tre_new_item(mem, min, max, i, max_i, items);
+            // SAFETY: pointers are live TRE objects forwarded under the enclosing function's `# Safety` contract.
+            status = unsafe { tre_new_item(mem, min, max, i, max_i, items) };
             min = -1;
         }
     }
     if min >= 0 && status == REG_OK {
-        status = tre_new_item(mem, min, max, i, max_i, items);
+        // SAFETY: pointers are live TRE objects forwarded under the enclosing function's `# Safety` contract.
+        status = unsafe { tre_new_item(mem, min, max, i, max_i, items) };
     }
     status
 }
@@ -986,7 +1003,12 @@ enum tre_parse_re_stack_symbol_t {
     PARSE_RESTORE_CFLAGS,
 }
 
-pub fn tre_parse(ctx: *mut tre_parse_ctx_t) -> c_int {
+/// # Safety
+///
+/// Every raw-pointer argument must point to a live, properly initialized TRE object (or a buffer
+/// sized per the accompanying length/count arguments) valid for the reads and writes performed
+/// here; null is accepted only where the original C TRE API accepts it.
+pub unsafe fn tre_parse(ctx: *mut tre_parse_ctx_t) -> c_int {
     unsafe {
         let ctx = &mut *ctx;
         let mut result: *mut tre_ast_node_t = ptr::null_mut();

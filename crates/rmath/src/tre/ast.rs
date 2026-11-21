@@ -481,7 +481,12 @@ pub fn tre_tag_order(tag_directions: &[c_int], t1: &[c_int], t2: &[c_int]) -> c_
 
 use super::mem;
 
-pub fn tre_ast_new_node(
+/// # Safety
+///
+/// Every raw-pointer argument must point to a live, properly initialized TRE object (or a buffer
+/// sized per the accompanying length/count arguments) valid for the reads and writes performed
+/// here; null is accepted only where the original C TRE API accepts it.
+pub unsafe fn tre_ast_new_node(
     mem: mem::tre_mem_t,
     type_: tre_ast_type_t,
     size: usize,
@@ -505,7 +510,12 @@ pub fn tre_ast_new_node(
     }
 }
 
-pub fn tre_ast_new_literal(
+/// # Safety
+///
+/// Every raw-pointer argument must point to a live, properly initialized TRE object (or a buffer
+/// sized per the accompanying length/count arguments) valid for the reads and writes performed
+/// here; null is accepted only where the original C TRE API accepts it.
+pub unsafe fn tre_ast_new_literal(
     mem: mem::tre_mem_t,
     code_min: c_int,
     code_max: c_int,
@@ -532,7 +542,12 @@ pub fn tre_ast_new_literal(
     }
 }
 
-pub fn tre_ast_new_iter(
+/// # Safety
+///
+/// Every raw-pointer argument must point to a live, properly initialized TRE object (or a buffer
+/// sized per the accompanying length/count arguments) valid for the reads and writes performed
+/// here; null is accepted only where the original C TRE API accepts it.
+pub unsafe fn tre_ast_new_iter(
     mem: mem::tre_mem_t,
     arg: *mut tre_ast_node_t,
     min: c_int,
@@ -561,7 +576,12 @@ pub fn tre_ast_new_iter(
     }
 }
 
-pub fn tre_ast_new_union(
+/// # Safety
+///
+/// Every raw-pointer argument must point to a live, properly initialized TRE object (or a buffer
+/// sized per the accompanying length/count arguments) valid for the reads and writes performed
+/// here; null is accepted only where the original C TRE API accepts it.
+pub unsafe fn tre_ast_new_union(
     mem: mem::tre_mem_t,
     left: *mut tre_ast_node_t,
     right: *mut tre_ast_node_t,
@@ -593,7 +613,12 @@ pub fn tre_ast_new_union(
     }
 }
 
-pub fn tre_ast_new_catenation(
+/// # Safety
+///
+/// Every raw-pointer argument must point to a live, properly initialized TRE object (or a buffer
+/// sized per the accompanying length/count arguments) valid for the reads and writes performed
+/// here; null is accepted only where the original C TRE API accepts it.
+pub unsafe fn tre_ast_new_catenation(
     mem: mem::tre_mem_t,
     left: *mut tre_ast_node_t,
     right: *mut tre_ast_node_t,

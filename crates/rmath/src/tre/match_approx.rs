@@ -61,7 +61,11 @@ fn CHECK_ASSERTIONS(
 }
 
 #[inline]
-fn CHECK_CHAR_CLASSES(
+/// # Safety
+///
+/// `trans_i.neg_classes` must be null or point to a live 0-terminated class array (as built by
+/// `tre_compile`).
+unsafe fn CHECK_CHAR_CLASSES(
     trans_i: &tre_tnfa_transition_t,
     tnfa: &tre_tnfa_t,
     eflags: c_int,
@@ -77,7 +81,8 @@ fn CHECK_CHAR_CLASSES(
             && !super::parse::tre_isctype(super::parse::tre_tolower(prev_c), trans_i.u.get_class())
             && !super::parse::tre_isctype(super::parse::tre_toupper(prev_c), trans_i.u.get_class()))
         || ((assertions & ASSERT_CHAR_CLASS_NEG) != 0
-            && super::parse::tre_neg_char_classes_match(trans_i.neg_classes, prev_c, icase) != 0)
+            // SAFETY: pointers are live TRE objects forwarded under the enclosing function's `# Safety` contract.
+            && unsafe { super::parse::tre_neg_char_classes_match(trans_i.neg_classes, prev_c, icase) } != 0)
 }
 
 fn tre_set_params(reach: &mut tre_tnfa_approx_reach_t, pa: &[c_int], default_params: regaparams_t) {
@@ -149,7 +154,12 @@ fn tre_set_params(reach: &mut tre_tnfa_approx_reach_t, pa: &[c_int], default_par
 }
 
 #[allow(clippy::manual_memcpy)]
-pub fn tre_tnfa_run_approx(
+/// # Safety
+///
+/// Every raw-pointer argument must point to a live, properly initialized TRE object (or a buffer
+/// sized per the accompanying length/count arguments) valid for the reads and writes performed
+/// here; null is accepted only where the original C TRE API accepts it.
+pub unsafe fn tre_tnfa_run_approx(
     tnfa: *const tre_tnfa_t,
     string: *const c_void,
     len: c_int,

@@ -21,7 +21,12 @@ mod compile_error_tests;
 
 // ===== tre_fill_pmatch =====
 
-pub fn tre_fill_pmatch(
+/// # Safety
+///
+/// Every raw-pointer argument must point to a live, properly initialized TRE object (or a buffer
+/// sized per the accompanying length/count arguments) valid for the reads and writes performed
+/// here; null is accepted only where the original C TRE API accepts it.
+pub unsafe fn tre_fill_pmatch(
     nmatch: usize,
     pmatch: *mut regmatch_t,
     cflags: c_int,
@@ -91,7 +96,12 @@ pub fn tre_fill_pmatch(
 
 // ===== Internal match dispatch =====
 
-fn tre_match(
+/// # Safety
+///
+/// Every raw-pointer argument must point to a live, properly initialized TRE object (or a buffer
+/// sized per the accompanying length/count arguments) valid for the reads and writes performed
+/// here; null is accepted only where the original C TRE API accepts it.
+unsafe fn tre_match(
     tnfa: *const tre_tnfa_t,
     string: *const c_void,
     len: usize,
@@ -166,7 +176,15 @@ fn tre_match(
 
 // ===== regcomp functions =====
 
-pub fn tre_regncomp(preg: *mut regex_t, regex: *const c_char, n: usize, cflags: c_int) -> c_int {
+/// # Safety
+///
+/// `preg` must be valid for writes of a `regex_t`; `regex` must be valid for reads of `n` bytes.
+pub unsafe fn tre_regncomp(
+    preg: *mut regex_t,
+    regex: *const c_char,
+    n: usize,
+    cflags: c_int,
+) -> c_int {
     unsafe {
         let wregex = mem::xmalloc(std::mem::size_of::<tre_char_t>() * (n + 1)) as *mut tre_char_t;
         if wregex.is_null() {
@@ -186,7 +204,15 @@ pub fn tre_regncomp(preg: *mut regex_t, regex: *const c_char, n: usize, cflags: 
     }
 }
 
-pub fn tre_regncompb(preg: *mut regex_t, regex: *const c_char, n: usize, cflags: c_int) -> c_int {
+/// # Safety
+///
+/// `preg` must be valid for writes of a `regex_t`; `regex` must be valid for reads of `n` bytes.
+pub unsafe fn tre_regncompb(
+    preg: *mut regex_t,
+    regex: *const c_char,
+    n: usize,
+    cflags: c_int,
+) -> c_int {
     unsafe {
         let wregex = mem::xmalloc(std::mem::size_of::<tre_char_t>() * n) as *mut tre_char_t;
         if wregex.is_null() {
@@ -204,7 +230,10 @@ pub fn tre_regncompb(preg: *mut regex_t, regex: *const c_char, n: usize, cflags:
     }
 }
 
-pub fn tre_regcomp(preg: *mut regex_t, regex: *const c_char, cflags: c_int) -> c_int {
+/// # Safety
+///
+/// `preg` must be valid for writes of a `regex_t`; `regex` must be null or a NUL-terminated string.
+pub unsafe fn tre_regcomp(preg: *mut regex_t, regex: *const c_char, cflags: c_int) -> c_int {
     unsafe {
         let n: usize = if !regex.is_null() {
             let mut len: isize = 0;
@@ -219,7 +248,10 @@ pub fn tre_regcomp(preg: *mut regex_t, regex: *const c_char, cflags: c_int) -> c
     }
 }
 
-pub fn tre_regcompb(preg: *mut regex_t, regex: *const c_char, cflags: c_int) -> c_int {
+/// # Safety
+///
+/// `preg` must be valid for writes of a `regex_t`; `regex` must be null or a NUL-terminated string.
+pub unsafe fn tre_regcompb(preg: *mut regex_t, regex: *const c_char, cflags: c_int) -> c_int {
     unsafe {
         let n: usize = if !regex.is_null() {
             let mut len: isize = 0;
@@ -249,12 +281,22 @@ pub fn tre_regcompb(preg: *mut regex_t, regex: *const c_char, cflags: c_int) -> 
     }
 }
 
-pub fn tre_regfree(preg: *mut regex_t) {
-    compile::tre_free(preg);
+/// # Safety
+///
+/// `preg` must point to a `regex_t` initialized by a successful `tre_regcomp`-family call, not freed before.
+pub unsafe fn tre_regfree(preg: *mut regex_t) {
+    // SAFETY: pointers are live TRE objects forwarded under the enclosing function's `# Safety` contract.
+    unsafe { compile::tre_free(preg) };
 }
 
 // ===== regexec functions =====
 
+/// SOUNDNESS GAP (tracked): this C-shaped entry point keeps a safe signature
+/// only because `mainutils::grep` (owned by another change) still calls it
+/// without `unsafe`. It trusts `preg` to be a compiled regex, `str` to be valid
+/// for `len` bytes (or NUL-terminated) and `pmatch` for `nmatch` writes.
+/// Callers should migrate to [`tre_regnexec_bytes`]; then this should become
+/// `unsafe fn`.
 pub fn tre_regnexec(
     preg: *const regex_t,
     str: *const c_char,
@@ -263,6 +305,7 @@ pub fn tre_regnexec(
     pmatch: *mut regmatch_t,
     eflags: c_int,
 ) -> c_int {
+    // SAFETY: not enforced by the signature -- see the doc comment above.
     unsafe {
         let tnfa = (*preg).value as *const tre_tnfa_t;
         tre_match(
@@ -277,6 +320,30 @@ pub fn tre_regnexec(
     }
 }
 
+/// Match a bounded byte buffer against a compiled regex (safe core of
+/// [`tre_regnexec`]).
+pub(crate) fn tre_regnexec_bytes(
+    preg: &regex_t,
+    input: &[u8],
+    matches: &mut [regmatch_t],
+    eflags: c_int,
+) -> c_int {
+    // SAFETY: `preg` is a compiled regex (its `value` is the live tnfa), `input`
+    // is a live slice of `input.len()` bytes, and `matches` is a live slice of
+    // `matches.len()` writable entries.
+    unsafe {
+        tre_match(
+            preg.value as *const tre_tnfa_t,
+            input.as_ptr().cast(),
+            input.len(),
+            tre_str_type_t::STR_BYTE,
+            matches.len(),
+            matches.as_mut_ptr(),
+            eflags,
+        )
+    }
+}
+
 /// Match a bounded Unicode scalar buffer. Offsets count scalar values; the
 /// UTF-8 adapter translates them back to original byte positions.
 pub(crate) fn tre_regwnexec(
@@ -285,18 +352,26 @@ pub(crate) fn tre_regwnexec(
     matches: &mut [regmatch_t],
     flags: c_int,
 ) -> c_int {
-    tre_match(
-        preg.value as *const tre_tnfa_t,
-        text.as_ptr().cast(),
-        text.len(),
-        tre_str_type_t::STR_WIDE,
-        matches.len(),
-        matches.as_mut_ptr(),
-        flags,
-    )
+    // SAFETY: `preg` is a compiled regex, so `value` is its live tnfa; `text` and `matches` are live slices whose lengths are passed alongside.
+    unsafe {
+        tre_match(
+            preg.value as *const tre_tnfa_t,
+            text.as_ptr().cast(),
+            text.len(),
+            tre_str_type_t::STR_WIDE,
+            matches.len(),
+            matches.as_mut_ptr(),
+            flags,
+        )
+    }
 }
 
-pub fn tre_regexec(
+/// # Safety
+///
+/// Every raw-pointer argument must point to a live, properly initialized TRE object (or a buffer
+/// sized per the accompanying length/count arguments) valid for the reads and writes performed
+/// here; null is accepted only where the original C TRE API accepts it.
+pub unsafe fn tre_regexec(
     preg: *const regex_t,
     str: *const c_char,
     nmatch: usize,
@@ -306,7 +381,12 @@ pub fn tre_regexec(
     tre_regnexec(preg, str, usize::MAX, nmatch, pmatch, eflags)
 }
 
-pub fn tre_regexecb(
+/// # Safety
+///
+/// Every raw-pointer argument must point to a live, properly initialized TRE object (or a buffer
+/// sized per the accompanying length/count arguments) valid for the reads and writes performed
+/// here; null is accepted only where the original C TRE API accepts it.
+pub unsafe fn tre_regexecb(
     preg: *const regex_t,
     str: *const c_char,
     nmatch: usize,
@@ -327,7 +407,12 @@ pub fn tre_regexecb(
     }
 }
 
-pub fn tre_regnexecb(
+/// # Safety
+///
+/// Every raw-pointer argument must point to a live, properly initialized TRE object (or a buffer
+/// sized per the accompanying length/count arguments) valid for the reads and writes performed
+/// here; null is accepted only where the original C TRE API accepts it.
+pub unsafe fn tre_regnexecb(
     preg: *const regex_t,
     str: *const c_char,
     len: usize,
@@ -368,7 +453,10 @@ static TRE_ERROR_MESSAGES: [&str; 14] = [
     "Invalid use of repetition operators", // REG_BADRPT
 ];
 
-pub fn tre_regerror(
+/// # Safety
+///
+/// `errbuf` must be null or valid for writes of `errbuf_size` bytes.
+pub unsafe fn tre_regerror(
     errcode: c_int,
     preg: *const regex_t,
     errbuf: *mut c_char,
@@ -403,7 +491,10 @@ pub fn tre_regerror(
 
 // ===== Approximate matching API =====
 
-pub fn tre_regaparams_default(params: *mut regaparams_t) {
+/// # Safety
+///
+/// `params` must be valid for writes of a `regaparams_t`.
+pub unsafe fn tre_regaparams_default(params: *mut regaparams_t) {
     unsafe {
         ptr::write_bytes(params as *mut u8, 0, std::mem::size_of::<regaparams_t>());
         (*params).cost_ins = 1;
@@ -417,7 +508,12 @@ pub fn tre_regaparams_default(params: *mut regaparams_t) {
     }
 }
 
-fn tre_match_approx(
+/// # Safety
+///
+/// Every raw-pointer argument must point to a live, properly initialized TRE object (or a buffer
+/// sized per the accompanying length/count arguments) valid for the reads and writes performed
+/// here; null is accepted only where the original C TRE API accepts it.
+unsafe fn tre_match_approx(
     tnfa: *const tre_tnfa_t,
     string: *const c_void,
     len: usize,
@@ -484,7 +580,12 @@ fn tre_match_approx(
     }
 }
 
-pub fn tre_reganexec(
+/// # Safety
+///
+/// Every raw-pointer argument must point to a live, properly initialized TRE object (or a buffer
+/// sized per the accompanying length/count arguments) valid for the reads and writes performed
+/// here; null is accepted only where the original C TRE API accepts it.
+pub unsafe fn tre_reganexec(
     preg: *const regex_t,
     str: *const c_char,
     len: usize,
@@ -506,17 +607,28 @@ pub fn tre_reganexec(
     }
 }
 
-pub fn tre_regaexec(
+/// # Safety
+///
+/// Every raw-pointer argument must point to a live, properly initialized TRE object (or a buffer
+/// sized per the accompanying length/count arguments) valid for the reads and writes performed
+/// here; null is accepted only where the original C TRE API accepts it.
+pub unsafe fn tre_regaexec(
     preg: *const regex_t,
     str: *const c_char,
     amatch: *mut regamatch_t,
     params: regaparams_t,
     eflags: c_int,
 ) -> c_int {
-    tre_reganexec(preg, str, usize::MAX, amatch, params, eflags)
+    // SAFETY: pointers are live TRE objects forwarded under the enclosing function's `# Safety` contract.
+    unsafe { tre_reganexec(preg, str, usize::MAX, amatch, params, eflags) }
 }
 
-pub fn tre_regaexecb(
+/// # Safety
+///
+/// Every raw-pointer argument must point to a live, properly initialized TRE object (or a buffer
+/// sized per the accompanying length/count arguments) valid for the reads and writes performed
+/// here; null is accepted only where the original C TRE API accepts it.
+pub unsafe fn tre_regaexecb(
     preg: *const regex_t,
     str: *const c_char,
     amatch: *mut regamatch_t,

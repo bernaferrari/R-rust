@@ -109,7 +109,10 @@ pub(crate) fn tre_stack_new_owned(size: c_int, workspace: &RegexWorkspace) -> tr
     }
 }
 
-pub fn tre_stack_destroy(s: tre_stack_t) {
+/// # Safety
+///
+/// `s` must be null or a live stack from `tre_stack_new` that is not used afterwards.
+pub unsafe fn tre_stack_destroy(s: tre_stack_t) {
     // SAFETY: `s` is a live tre_stack_new allocation or null.
     unsafe {
         if s.is_null() {
@@ -125,7 +128,12 @@ pub fn tre_stack_destroy(s: tre_stack_t) {
     }
 }
 
-pub fn tre_stack_num_objects(s: tre_stack_t) -> c_int {
+/// # Safety
+///
+/// Every raw-pointer argument must point to a live, properly initialized TRE object (or a buffer
+/// sized per the accompanying length/count arguments) valid for the reads and writes performed
+/// here; null is accepted only where the original C TRE API accepts it.
+pub unsafe fn tre_stack_num_objects(s: tre_stack_t) -> c_int {
     // SAFETY: `s` is a live stack or null.
     unsafe {
         if s.is_null() {
@@ -135,7 +143,12 @@ pub fn tre_stack_num_objects(s: tre_stack_t) -> c_int {
     }
 }
 
-fn tre_stack_push(s: tre_stack_t, value: tre_stack_item) -> c_int {
+/// # Safety
+///
+/// Every raw-pointer argument must point to a live, properly initialized TRE object (or a buffer
+/// sized per the accompanying length/count arguments) valid for the reads and writes performed
+/// here; null is accepted only where the original C TRE API accepts it.
+unsafe fn tre_stack_push(s: tre_stack_t, value: tre_stack_item) -> c_int {
     // SAFETY: `s` is a live stack with capacity bookkeeping in `rec`.
     unsafe {
         let stack = &mut *s;
@@ -181,20 +194,39 @@ fn tre_stack_push(s: tre_stack_t, value: tre_stack_item) -> c_int {
     }
 }
 
-pub fn tre_stack_push_voidptr(s: tre_stack_t, value: *mut c_void) -> c_int {
-    tre_stack_push(
-        s,
-        tre_stack_item {
-            voidptr_value: value,
-        },
-    )
+/// # Safety
+///
+/// Every raw-pointer argument must point to a live, properly initialized TRE object (or a buffer
+/// sized per the accompanying length/count arguments) valid for the reads and writes performed
+/// here; null is accepted only where the original C TRE API accepts it.
+pub unsafe fn tre_stack_push_voidptr(s: tre_stack_t, value: *mut c_void) -> c_int {
+    // SAFETY: pointers are live TRE objects forwarded under the enclosing function's `# Safety` contract.
+    unsafe {
+        tre_stack_push(
+            s,
+            tre_stack_item {
+                voidptr_value: value,
+            },
+        )
+    }
 }
 
-pub fn tre_stack_push_int(s: tre_stack_t, value: c_int) -> c_int {
-    tre_stack_push(s, tre_stack_item { int_value: value })
+/// # Safety
+///
+/// Every raw-pointer argument must point to a live, properly initialized TRE object (or a buffer
+/// sized per the accompanying length/count arguments) valid for the reads and writes performed
+/// here; null is accepted only where the original C TRE API accepts it.
+pub unsafe fn tre_stack_push_int(s: tre_stack_t, value: c_int) -> c_int {
+    // SAFETY: pointers are live TRE objects forwarded under the enclosing function's `# Safety` contract.
+    unsafe { tre_stack_push(s, tre_stack_item { int_value: value }) }
 }
 
-fn tre_stack_pop(s: tre_stack_t) -> tre_stack_item {
+/// # Safety
+///
+/// Every raw-pointer argument must point to a live, properly initialized TRE object (or a buffer
+/// sized per the accompanying length/count arguments) valid for the reads and writes performed
+/// here; null is accepted only where the original C TRE API accepts it.
+unsafe fn tre_stack_pop(s: tre_stack_t) -> tre_stack_item {
     // SAFETY: `s` is a live stack with a nonzero object count.
     unsafe {
         let stack = &mut *s;
@@ -208,12 +240,22 @@ fn tre_stack_pop(s: tre_stack_t) -> tre_stack_item {
     }
 }
 
-pub fn tre_stack_pop_voidptr(s: tre_stack_t) -> *mut c_void {
+/// # Safety
+///
+/// Every raw-pointer argument must point to a live, properly initialized TRE object (or a buffer
+/// sized per the accompanying length/count arguments) valid for the reads and writes performed
+/// here; null is accepted only where the original C TRE API accepts it.
+pub unsafe fn tre_stack_pop_voidptr(s: tre_stack_t) -> *mut c_void {
     // SAFETY: the stack contract stores a voidptr item for this pop.
     unsafe { tre_stack_pop(s).voidptr_value }
 }
 
-pub fn tre_stack_pop_int(s: tre_stack_t) -> c_int {
+/// # Safety
+///
+/// Every raw-pointer argument must point to a live, properly initialized TRE object (or a buffer
+/// sized per the accompanying length/count arguments) valid for the reads and writes performed
+/// here; null is accepted only where the original C TRE API accepts it.
+pub unsafe fn tre_stack_pop_int(s: tre_stack_t) -> c_int {
     // SAFETY: the stack contract stores an int item for this pop.
     unsafe { tre_stack_pop(s).int_value }
 }
