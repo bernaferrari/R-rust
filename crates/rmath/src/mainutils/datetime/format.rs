@@ -104,7 +104,7 @@ mod tests {
 /// GNU-style matching: exact names, unique prefixes, then positionals.
 /// Bind `args` to `names` through GNU `matchArgs` (exact, partial, positional).
 pub(crate) fn match_named_then_positional(call: SEXP, args: SEXP, formals: &[&str]) -> Vec<SEXP> {
-    unsafe { crate::mainutils::match_mod::match_formal_slots(call, args, formals) }
+    crate::mainutils::match_mod::match_formal_slots(call, args, formals)
 }
 
 // ---------------------------------------------------------------------------

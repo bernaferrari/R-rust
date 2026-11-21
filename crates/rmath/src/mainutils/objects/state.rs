@@ -94,7 +94,7 @@ fn UNSET_S4_OBJECT(x: SEXP) {
 
 /// Get or install the ".__S3MethodsTable__." symbol.
 pub(crate) fn S3MethodsTable_symbol() -> SEXP {
-    unsafe { Rf_install(b".__S3MethodsTable__.\x00".as_ptr() as *const c_char) }
+    crate::sexp::symbol::install_str(".__S3MethodsTable__.")
 }
 
 pub(crate) fn error(msg: &str) -> ! {

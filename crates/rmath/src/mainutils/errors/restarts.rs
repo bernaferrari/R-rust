@@ -192,14 +192,14 @@ pub fn do_getRestart(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             CAR(list)
         } else if i == 1 {
             // Return abort restart
-            let name = Rf_mkString(b"abort\x00".as_ptr() as *const c_char);
+            let name = crate::sexp::constructors::mk_string_str("abort");
             let entry = Rf_allocVector(SEXPTYPE::VECSXP, 2);
             SET_VECTOR_ELT(entry, 0, name);
             SET_VECTOR_ELT(entry, 1, globals::R_NilValue());
             setAttrib_wrap(
                 entry,
                 R_ClassSymbol(),
-                Rf_mkString(b"restart\x00".as_ptr() as *const c_char),
+                crate::sexp::constructors::mk_string_str("restart"),
             );
             entry
         } else {
@@ -278,10 +278,10 @@ unsafe fn R_InsertRestartHandlers(cptr: *mut crate::sexp::context::RCNTXT, cname
 fn addInternalRestart(cptr: *mut crate::sexp::context::RCNTXT, cname: &CStr) {
     unsafe {
         let cname_str = cname.to_bytes();
-        let name = Rf_mkString(
+        let name = crate::sexp::constructors::mk_string_bytes(
             std::ffi::CString::new(cname_str)
                 .unwrap_or_default()
-                .as_ptr(),
+                .to_bytes(),
         );
         let _name_guard = protect(name);
         let entry = Rf_allocVector3(SEXPTYPE::VECSXP, 2);

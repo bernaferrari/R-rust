@@ -33,7 +33,7 @@ unsafe fn setAttrib(x: SEXP, what: SEXP, val: SEXP) {
 }
 
 unsafe fn R_NamesSymbol() -> SEXP {
-    unsafe { crate::eval::attrib_core::R_NamesSymbol() }
+    crate::eval::attrib_core::R_NamesSymbol()
 }
 
 // ---------------------------------------------------------------------------

@@ -1947,7 +1947,7 @@ pub fn do_Rprof_wasm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// Implement the `Rprofmem()` function for memory profiling.
 #[cfg(not(target_arch = "wasm32"))]
-pub unsafe fn do_Rprofmem(_call: SEXP, _op: SEXP, mut args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_Rprofmem(_call: SEXP, _op: SEXP, mut args: SEXP, _rho: SEXP) -> SEXP {
     crate::sexp::owner::OwnerToken::with_current(|owner| {
         let _pin = owner
             .pin()

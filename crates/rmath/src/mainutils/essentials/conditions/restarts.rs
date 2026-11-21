@@ -220,7 +220,7 @@ pub(crate) fn call_function_with_args(
     args: SEXP,
     rho: SEXP,
 ) -> crate::sexp::object::Sexp<'static> {
-    unsafe {
+    {
         let handler = restart_owned(handler);
         let rho = restart_owned(rho);
         let mut cursor = restart_owned(args);

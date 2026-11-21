@@ -351,7 +351,9 @@ mod tests {
             let object = factory.strings(&["validity argument"]).unwrap();
             let class = factory.strings(&["OwnedValidityCall"]).unwrap();
             setAttrib(object.as_raw(), R_ClassSymbol(), class.as_raw());
-            let symbol = factory.wrap(crate::sexp::symbol::install_str("object")).unwrap();
+            let symbol = factory
+                .wrap(crate::sexp::symbol::install_str("object"))
+                .unwrap();
             let formals = factory
                 .pairlist_cell(&factory.missing(), &factory.nil(), &symbol)
                 .unwrap();
@@ -645,7 +647,7 @@ mod tests {
         unsafe {
             let s = crate::sexp::constructors::mk_string_str("hello");
             assert_eq!(isValidString(s), TRUE);
-            let empty = Rf_mkString(b"\x00".as_ptr() as *const c_char);
+            let empty = crate::sexp::constructors::mk_string_str("");
             assert_eq!(isValidString(empty), FALSE);
             assert_eq!(isValidString(ptr::null_mut()), FALSE);
         }
@@ -805,11 +807,11 @@ mod tests {
         assert_eq!(isMethodsDispatchOn(), FALSE);
     }
 
-    unsafe fn standard_generic_a(_arg: SEXP, _env: SEXP, _fdef: SEXP) -> SEXP {
+    fn standard_generic_a(_arg: SEXP, _env: SEXP, _fdef: SEXP) -> SEXP {
         R_NilValue()
     }
 
-    unsafe fn standard_generic_b(_arg: SEXP, _env: SEXP, _fdef: SEXP) -> SEXP {
+    fn standard_generic_b(_arg: SEXP, _env: SEXP, _fdef: SEXP) -> SEXP {
         R_NilValue()
     }
 
@@ -980,7 +982,7 @@ mod tests {
         let _session = crate::sexp::session::RSession::new();
         unsafe {
             let generic = crate::sexp::constructors::mk_string_str("print");
-            let group = Rf_mkString(b"\x00".as_ptr() as *const c_char);
+            let group = crate::sexp::constructors::mk_string_str("");
             let klass = crate::sexp::constructors::mk_string_str("foo");
             let method = crate::sexp::constructors::mk_string_str("print.foo");
             let callenv = R_GlobalEnv();
@@ -1313,8 +1315,14 @@ mod tests {
             let rooted = session.sexp(result).unwrap();
             let result = rooted.as_raw();
             assert_eq!(IS_S4_OBJECT(result), TRUE);
-            assert_eq!(asReal(R_do_slot(result, crate::sexp::symbol::install_str("x"))), 1.0);
-            assert_eq!(asReal(R_do_slot(result, crate::sexp::symbol::install_str("y"))), 2.0);
+            assert_eq!(
+                asReal(R_do_slot(result, crate::sexp::symbol::install_str("x"))),
+                1.0
+            );
+            assert_eq!(
+                asReal(R_do_slot(result, crate::sexp::symbol::install_str("y"))),
+                2.0
+            );
         }
     }
 
@@ -1362,7 +1370,13 @@ mod tests {
             let methods = crate::sexp::constructors::mk_string_str("plus-methods");
 
             let name = crate::sexp::constructors::mk_string_str("+");
-            R_set_prim_method(name, op, crate::sexp::constructors::mk_string_str("set"), generic, methods);
+            R_set_prim_method(
+                name,
+                op,
+                crate::sexp::constructors::mk_string_str("set"),
+                generic,
+                methods,
+            );
 
             assert_eq!(R_primitive_generic(op), generic);
             assert_eq!(R_primitive_methods(op), methods);

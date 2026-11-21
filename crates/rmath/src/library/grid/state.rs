@@ -91,19 +91,15 @@ fn isString(x: SEXP) -> bool {
 /* ==================== Helper: findVar ==================== */
 
 /// Raw environment-frame lookup bridge.
-///
-/// # Safety
-/// `sym` and `rho` must be live objects lent by translated grid code; the
-/// frame lookup may allocate in the owning session.
 #[inline]
-unsafe fn findVar(sym: SEXP, rho: SEXP) -> SEXP {
+fn findVar(sym: SEXP, rho: SEXP) -> SEXP {
     crate::sexp::envir::R_findVarInFrame(rho, sym)
 }
 
 /* ==================== Helper: lang1 ==================== */
 
 #[inline]
-unsafe fn lang1(_sym: SEXP) -> SEXP {
+fn lang1(_sym: SEXP) -> SEXP {
     // Stub: create a one-element call
     crate::sexp::memory_ext::allocLang(1)
 }
@@ -230,17 +226,14 @@ pub fn L_setGridState(elementIndex: SEXP, value: SEXP) -> SEXP {
 fn deglobaliseState(state: SEXP) {
     let index = integer_elt(vector_elt(state, GSS_GLOBALINDEX as R_xlen_t), 0);
     let sym = install(".GRID.STATE");
-    // SAFETY: `sym` is a live interned symbol; `grid_eval_env` is the shared
-    // grid environment.
-    let globalstate = unsafe { findVar(sym, grid_eval_env()) };
+    let globalstate = findVar(sym, grid_eval_env());
     set_vector_elt(globalstate, index as R_xlen_t, R_NilValue());
 }
 
 /// Find an empty slot in the global state list.
 fn findStateSlot() -> c_int {
     let sym = install(".GRID.STATE");
-    // SAFETY: `sym` is a live interned symbol in the shared grid environment.
-    let globalstate = unsafe { findVar(sym, grid_eval_env()) };
+    let globalstate = findVar(sym, grid_eval_env());
     let len = LENGTH(globalstate) as i32;
     for i in 0..len {
         if isNull(vector_elt(globalstate, i as R_xlen_t)) {
@@ -255,8 +248,7 @@ fn findStateSlot() -> c_int {
 fn globaliseState(state: SEXP) {
     let index = findStateSlot();
     let sym = install(".GRID.STATE");
-    // SAFETY: `sym` is a live interned symbol in the shared grid environment.
-    let globalstate = unsafe { findVar(sym, grid_eval_env()) };
+    let globalstate = findVar(sym, grid_eval_env());
     let _globalstate_guard = protect(globalstate);
     let indexsxp = alloc_vector(SEXPTYPE::INTSXP, 1);
     let _index_guard = protect(indexsxp);

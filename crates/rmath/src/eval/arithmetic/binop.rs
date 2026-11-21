@@ -93,72 +93,72 @@ pub fn real_binary(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
         };
         let Ok(value) = Sexp::with_registered_raw(result_raw, |result| {
             let result = result.clone();
-        let _result_guard = protect(result_raw);
-        // SAFETY: result is freshly allocated; no payload reference was lent.
-        let mut result_mut = SexpMut::from_owned(result);
-        warn_if_non_multiple_recycling(a.clone().len(), b.clone().len());
-        let mut integer_overflow = false;
+            let _result_guard = protect(result_raw);
+            // SAFETY: result is freshly allocated; no payload reference was lent.
+            let mut result_mut = SexpMut::from_owned(result);
+            warn_if_non_multiple_recycling(a.clone().len(), b.clone().len());
+            let mut integer_overflow = false;
 
-        for i in 0..n {
-            poll_vector_cancellation(i);
-            let x = a.clone().real_at(i);
-            let y = b.clone().real_at(i);
-            let x_na = x.to_bits() == R_NA_BIT_PATTERN;
-            let y_na = y.to_bits() == R_NA_BIT_PATTERN;
+            for i in 0..n {
+                poll_vector_cancellation(i);
+                let x = a.clone().real_at(i);
+                let y = b.clone().real_at(i);
+                let x_na = x.to_bits() == R_NA_BIT_PATTERN;
+                let y_na = y.to_bits() == R_NA_BIT_PATTERN;
 
-            if op == "^" && ((!y_na && y == 0.0) || (!x_na && x == 1.0)) {
-                result_mut.set_real_elt(i, 1.0);
-                continue;
-            }
+                if op == "^" && ((!y_na && y == 0.0) || (!x_na && x == 1.0)) {
+                    result_mut.set_real_elt(i, 1.0);
+                    continue;
+                }
 
-            // GNU R's myfmod checks a zero divisor before doing NA propagation,
-            // so NA %% +/-0 is an ordinary NaN. Keep the integer-only path's
-            // existing NA result unchanged.
-            if use_real && op == "%%" && y == 0.0 {
-                result_mut.set_real_elt(i, f64::NAN);
-                continue;
-            }
+                // GNU R's myfmod checks a zero divisor before doing NA propagation,
+                // so NA %% +/-0 is an ordinary NaN. Keep the integer-only path's
+                // existing NA result unchanged.
+                if use_real && op == "%%" && y == 0.0 {
+                    result_mut.set_real_elt(i, f64::NAN);
+                    continue;
+                }
 
-            // Real arithmetic must execute the operation: IEEE arithmetic quiets
-            // signaling NA payloads, while R_pow preserves cases such as 0^NA.
-            // Integer-only division/power instead return the original NA_REAL.
-            // Keep remainder and floor-division NA handling unchanged.
-            let preserve_na = !real_operands || matches!(op, "%%" | "%/%");
-            if preserve_na && (x_na || y_na) {
+                // Real arithmetic must execute the operation: IEEE arithmetic quiets
+                // signaling NA payloads, while R_pow preserves cases such as 0^NA.
+                // Integer-only division/power instead return the original NA_REAL.
+                // Keep remainder and floor-division NA handling unchanged.
+                let preserve_na = !real_operands || matches!(op, "%%" | "%/%");
+                if preserve_na && (x_na || y_na) {
+                    if use_real {
+                        result_mut.set_real_elt(i, NA_REAL);
+                    } else {
+                        result_mut.set_integer_elt(i, NA_INTEGER);
+                    }
+                    continue;
+                }
+
+                let val = binary_arithmetic_value(op, x, y);
+
                 if use_real {
-                    result_mut.set_real_elt(i, NA_REAL);
+                    result_mut.set_real_elt(i, val);
                 } else {
-                    result_mut.set_integer_elt(i, NA_INTEGER);
-                }
-                continue;
-            }
-
-            let val = binary_arithmetic_value(op, x, y);
-
-            if use_real {
-                result_mut.set_real_elt(i, val);
-            } else {
-                // Integer path: check for overflow
-                if val.is_finite()
-                    && val == val.floor()
-                    && val >= i32::MIN as f64
-                    && val <= i32::MAX as f64
-                {
-                    let ival = val as i32;
-                    result_mut.set_integer_elt(i, ival);
-                } else {
-                    integer_overflow |= integer_overflow_can_warn;
-                    result_mut.set_integer_elt(i, NA_INTEGER);
+                    // Integer path: check for overflow
+                    if val.is_finite()
+                        && val == val.floor()
+                        && val >= i32::MIN as f64
+                        && val <= i32::MAX as f64
+                    {
+                        let ival = val as i32;
+                        result_mut.set_integer_elt(i, ival);
+                    } else {
+                        integer_overflow |= integer_overflow_can_warn;
+                        result_mut.set_integer_elt(i, NA_INTEGER);
+                    }
                 }
             }
-        }
 
-        if integer_overflow {
-            warn_simple("NAs produced by integer overflow");
-        }
-        let _ = result_mut.freeze();
-        propagate_arithmetic_attributes(result_raw, sa, sb, n);
-        result_raw
+            if integer_overflow {
+                warn_simple("NAs produced by integer overflow");
+            }
+            let _ = result_mut.freeze();
+            propagate_arithmetic_attributes(result_raw, sa, sb, n);
+            result_raw
         }) else {
             return R_NilValue();
         };
@@ -217,60 +217,60 @@ pub(crate) fn binary_compare(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
         let result_raw = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
         let Ok(value) = Sexp::with_registered_raw(result_raw, |result| {
             let result = result.clone();
-        let _result_guard = protect(result_raw);
-        // SAFETY: result is freshly allocated; no payload reference was lent.
-        let mut result_mut = SexpMut::from_owned(result);
-        warn_if_non_multiple_recycling(a.clone().len(), b.clone().len());
+            let _result_guard = protect(result_raw);
+            // SAFETY: result is freshly allocated; no payload reference was lent.
+            let mut result_mut = SexpMut::from_owned(result);
+            warn_if_non_multiple_recycling(a.clone().len(), b.clone().len());
 
-        let use_real = a.clone().needs_real_with(b.clone());
+            let use_real = a.clone().needs_real_with(b.clone());
 
-        for i in 0..n {
-            poll_vector_cancellation(i);
-            let (missing, cmp): (bool, bool) = if use_real {
-                let x = a.clone().real_at(i);
-                let y = b.clone().real_at(i);
-                // GNU relop ISNAN: NA and NaN both yield NA_LOGICAL.
-                let missing = x.is_nan() || y.is_nan();
-                let c = match op {
-                    "<" => x < y,
-                    ">" => x > y,
-                    "<=" => x <= y,
-                    ">=" => x >= y,
-                    "==" => x == y,
-                    "!=" => x != y,
-                    _ => false,
+            for i in 0..n {
+                poll_vector_cancellation(i);
+                let (missing, cmp): (bool, bool) = if use_real {
+                    let x = a.clone().real_at(i);
+                    let y = b.clone().real_at(i);
+                    // GNU relop ISNAN: NA and NaN both yield NA_LOGICAL.
+                    let missing = x.is_nan() || y.is_nan();
+                    let c = match op {
+                        "<" => x < y,
+                        ">" => x > y,
+                        "<=" => x <= y,
+                        ">=" => x >= y,
+                        "==" => x == y,
+                        "!=" => x != y,
+                        _ => false,
+                    };
+                    (missing, c)
+                } else {
+                    let x = a.clone().int_at(i);
+                    let y = b.clone().int_at(i);
+                    let missing = x == NA_INTEGER || y == NA_INTEGER;
+                    let c = match op {
+                        "<" => x < y,
+                        ">" => x > y,
+                        "<=" => x <= y,
+                        ">=" => x >= y,
+                        "==" => x == y,
+                        "!=" => x != y,
+                        _ => false,
+                    };
+                    (missing, c)
                 };
-                (missing, c)
-            } else {
-                let x = a.clone().int_at(i);
-                let y = b.clone().int_at(i);
-                let missing = x == NA_INTEGER || y == NA_INTEGER;
-                let c = match op {
-                    "<" => x < y,
-                    ">" => x > y,
-                    "<=" => x <= y,
-                    ">=" => x >= y,
-                    "==" => x == y,
-                    "!=" => x != y,
-                    _ => false,
+
+                let value = if missing {
+                    NA_LOGICAL
+                } else if cmp {
+                    TRUE
+                } else {
+                    FALSE
                 };
-                (missing, c)
-            };
 
-            let value = if missing {
-                NA_LOGICAL
-            } else if cmp {
-                TRUE
-            } else {
-                FALSE
-            };
+                result_mut.set_logical_elt(i, value);
+            }
 
-            result_mut.set_logical_elt(i, value);
-        }
-
-        let _ = result_mut.freeze();
-        propagate_binary_vector_attributes(result_raw, sa, sb, n);
-        result_raw
+            let _ = result_mut.freeze();
+            propagate_binary_vector_attributes(result_raw, sa, sb, n);
+            result_raw
         }) else {
             return R_NilValue();
         };
@@ -341,15 +341,13 @@ pub(crate) fn copy_dims_if_present(result: SEXP, source: SEXP, result_len: R_xle
 /// when lengths tie, the left operand overwrites matching right attributes.
 /// Comparisons use the separate shape-only path below (GNU arithmetic.c).
 pub(crate) fn propagate_arithmetic_attributes(result: SEXP, a: SEXP, b: SEXP, n: R_xlen_t) {
-    unsafe {
-        if XLENGTH(b) == n {
-            crate::mainutils::array::copyMostAttrib(b, result);
-        }
-        if XLENGTH(a) == n {
-            crate::mainutils::array::copyMostAttrib(a, result);
-        }
-        propagate_binary_vector_attributes(result, a, b, n);
+    if XLENGTH(b) == n {
+        crate::mainutils::array::copyMostAttrib(b, result);
     }
+    if XLENGTH(a) == n {
+        crate::mainutils::array::copyMostAttrib(a, result);
+    }
+    propagate_binary_vector_attributes(result, a, b, n);
 }
 
 pub(super) fn propagate_binary_vector_attributes(
@@ -411,44 +409,52 @@ pub(crate) fn propagate_plain_names(result: SEXP, a: SEXP, b: SEXP, result_len: 
 }
 
 pub(crate) fn set_single_string_class(result: SEXP, class_name: &str) {
-        let class = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
-        if class.is_null() {
-            return;
-        }
-        let _class_guard = protect(class);
-        let cstr = CString::new(class_name).unwrap_or_default();
-    SET_STRING_ELT(class, 0, crate::sexp::constructors::mk_char_bytes(cstr.to_bytes()));
-        setAttrib(result, crate::sexp::symbol::install_str("class"), class);
+    let class = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+    if class.is_null() {
+        return;
+    }
+    let _class_guard = protect(class);
+    let cstr = CString::new(class_name).unwrap_or_default();
+    SET_STRING_ELT(
+        class,
+        0,
+        crate::sexp::constructors::mk_char_bytes(cstr.to_bytes()),
+    );
+    setAttrib(result, crate::sexp::symbol::install_str("class"), class);
 }
 
 pub(crate) fn set_string_attribute(result: SEXP, name: &str, value: &str) {
-        let attr = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
-        if attr.is_null() {
-            return;
-        }
-        let _attr_guard = protect(attr);
-        let cvalue = CString::new(value).unwrap_or_default();
-    SET_STRING_ELT(attr, 0, crate::sexp::constructors::mk_char_bytes(cvalue.to_bytes()));
-        setAttrib(result, crate::sexp::symbol::install_str(name), attr);
+    let attr = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+    if attr.is_null() {
+        return;
+    }
+    let _attr_guard = protect(attr);
+    let cvalue = CString::new(value).unwrap_or_default();
+    SET_STRING_ELT(
+        attr,
+        0,
+        crate::sexp::constructors::mk_char_bytes(cvalue.to_bytes()),
+    );
+    setAttrib(result, crate::sexp::symbol::install_str(name), attr);
 }
 
 pub(crate) fn set_posixct_attributes_from(result: SEXP, source: SEXP) {
-        let class = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
-        if !class.is_null() {
-            let _class_guard = protect(class);
+    let class = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
+    if !class.is_null() {
+        let _class_guard = protect(class);
         SET_STRING_ELT(class, 0, crate::sexp::constructors::mk_char_str("POSIXct"));
         SET_STRING_ELT(class, 1, crate::sexp::constructors::mk_char_str("POSIXt"));
-            setAttrib(result, crate::sexp::symbol::install_str("class"), class);
-        }
+        setAttrib(result, crate::sexp::symbol::install_str("class"), class);
+    }
 
-        let tzone = getAttrib(source, crate::sexp::symbol::install_str("tzone"));
-        if !tzone.is_null() && tzone != R_NilValue() {
-            setAttrib(
-                result,
-                crate::sexp::symbol::install_str("tzone"),
-                crate::mainutils::duplicate::duplicate(tzone),
-            );
-        }
+    let tzone = getAttrib(source, crate::sexp::symbol::install_str("tzone"));
+    if !tzone.is_null() && tzone != R_NilValue() {
+        setAttrib(
+            result,
+            crate::sexp::symbol::install_str("tzone"),
+            crate::mainutils::duplicate::duplicate(tzone),
+        );
+    }
 }
 
 pub(crate) fn first_summary_data_arg(args: SEXP) -> SEXP {

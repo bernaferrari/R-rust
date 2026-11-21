@@ -252,7 +252,7 @@ fn packed_color(value: c_uint) -> [u8; 4] {
     ]
 }
 
-unsafe fn arg(args: SEXP, name: &str) -> SEXP {
+fn arg(args: SEXP, name: &str) -> SEXP {
     arg_by_name_or_position(args, &[name], usize::MAX)
 }
 

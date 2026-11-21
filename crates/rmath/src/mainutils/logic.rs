@@ -414,7 +414,7 @@ unsafe fn lunary(arg: SEXP) -> SEXP {
     }
 }
 
-unsafe fn copy_logic_shape(src: SEXP, dst: SEXP) {
+fn copy_logic_shape(src: SEXP, dst: SEXP) {
     let dim = crate::sexp::attrib_core::getAttrib(src, crate::sexp::attrib_core::R_DimSymbol());
     if !dim.is_null() && dim != R_NilValue() {
         crate::sexp::attrib_core::setAttrib(dst, crate::sexp::attrib_core::R_DimSymbol(), dim);
@@ -590,10 +590,8 @@ pub unsafe fn do_logic(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         }
 
         let is_frame = |s: SEXP| {
-            let class = crate::sexp::attrib_core::getAttrib(
-                s,
-                crate::sexp::symbol::install_str("class"),
-            );
+            let class =
+                crate::sexp::attrib_core::getAttrib(s, crate::sexp::symbol::install_str("class"));
             if class.is_null()
                 || class == R_NilValue()
                 || TYPEOF(class) != SEXPTYPE::STRSXP

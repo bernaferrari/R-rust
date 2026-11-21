@@ -753,7 +753,7 @@ fn set_product_dimnames(result: SEXP, kind: MatProductKind, x: SEXP, y: SEXP) {
     }
 }
 
-pub(crate) unsafe fn do_matprod_kind(kind: MatProductKind, args: SEXP, name: &str) -> SEXP {
+pub(crate) fn do_matprod_kind(kind: MatProductKind, args: SEXP, name: &str) -> SEXP {
     {
         let x = first_arg(args, name);
         let y = second_arg_or_first(args, x);
@@ -956,7 +956,7 @@ fn set_dim_attr(x: SEXP, dims: SEXP) -> SEXP {
 ///
 /// Ported from R's `GetRowNames` in array.c.
 /// Returns `VECTOR_ELT(dimnames, 0)` if dimnames is a VECSXP, else R_NilValue.
-pub unsafe fn GetRowNames(dimnames: SEXP) -> SEXP {
+pub fn GetRowNames(dimnames: SEXP) -> SEXP {
     if dimnames.is_null() || dimnames == R_NilValue() || TYPEOF(dimnames) != SEXPTYPE::VECSXP {
         return R_NilValue();
     }
@@ -971,7 +971,7 @@ pub unsafe fn GetRowNames(dimnames: SEXP) -> SEXP {
 ///
 /// Ported from R's `GetColNames` in array.c.
 /// Returns `VECTOR_ELT(dimnames, 1)` if dimnames is a VECSXP, else R_NilValue.
-pub unsafe fn GetColNames(dimnames: SEXP) -> SEXP {
+pub fn GetColNames(dimnames: SEXP) -> SEXP {
     if dimnames.is_null() || dimnames == R_NilValue() || TYPEOF(dimnames) != SEXPTYPE::VECSXP {
         return R_NilValue();
     }
@@ -990,7 +990,7 @@ pub unsafe fn GetColNames(dimnames: SEXP) -> SEXP {
 ///
 /// Ported from R's `do_matrix` in array.c (line 82).
 /// Creates a matrix from the given data, dimensions, and byrow flag.
-pub unsafe fn do_matrix(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub fn do_matrix(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     if args.is_null() || args == R_NilValue() {
         array_error("matrix() requires arguments");
     }
@@ -1004,7 +1004,7 @@ pub unsafe fn do_matrix(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 /// Allocate a 2-dimensional array (matrix) of the given type and dimensions.
 ///
 /// Ported from R's `allocMatrix` in array.c (line 221).
-pub unsafe fn allocMatrix(mode: c_int, nrow: c_int, ncol: c_int) -> SEXP {
+pub fn allocMatrix(mode: c_int, nrow: c_int, ncol: c_int) -> SEXP {
     {
         if nrow < 0 || ncol < 0 {
             array_error("negative extents are not allowed");
@@ -1032,22 +1032,20 @@ pub unsafe fn allocMatrix(mode: c_int, nrow: c_int, ncol: c_int) -> SEXP {
 ///
 /// Ported from R's `alloc3DArray` in array.c (line 255).
 pub unsafe fn alloc3DArray(mode: c_int, nrow: c_int, ncol: c_int, nface: c_int) -> SEXP {
-    unsafe {
-        if nrow < 0 || ncol < 0 || nface < 0 {
-            array_error("negative extents are not allowed");
-        }
-        let dims = Rf_allocVector3(SEXPTYPE::INTSXP, 3);
-        if dims.is_null() {
-            return R_NilValue();
-        }
-        {
-            let mut dims_mut = mutable_vector(dims);
-            checked(dims_mut.try_set_integer_elt(0, nrow));
-            checked(dims_mut.try_set_integer_elt(1, ncol));
-            checked(dims_mut.try_set_integer_elt(2, nface));
-        }
-        allocArray(mode, dims)
+    if nrow < 0 || ncol < 0 || nface < 0 {
+        array_error("negative extents are not allowed");
     }
+    let dims = Rf_allocVector3(SEXPTYPE::INTSXP, 3);
+    if dims.is_null() {
+        return R_NilValue();
+    }
+    {
+        let mut dims_mut = mutable_vector(dims);
+        checked(dims_mut.try_set_integer_elt(0, nrow));
+        checked(dims_mut.try_set_integer_elt(1, ncol));
+        checked(dims_mut.try_set_integer_elt(2, nface));
+    }
+    allocArray(mode, dims)
 }
 
 // ---------------------------------------------------------------------------
@@ -1057,7 +1055,7 @@ pub unsafe fn alloc3DArray(mode: c_int, nrow: c_int, ncol: c_int, nface: c_int) 
 /// Allocate a general array with dimensions given by the integer vector `dims`.
 ///
 /// Ported from R's `allocArray` in array.c (line 281).
-pub unsafe fn allocArray(mode: c_int, dims: SEXP) -> SEXP {
+pub fn allocArray(mode: c_int, dims: SEXP) -> SEXP {
     {
         if !valid_array_storage_type(mode) {
             array_error("invalid array storage mode");
@@ -1083,7 +1081,7 @@ pub unsafe fn allocArray(mode: c_int, dims: SEXP) -> SEXP {
 /// Ported from R's `DropDims` in array.c (line 313).
 /// Note: this function mutates `x` in place; duplication should occur before
 /// calling it.
-pub(crate) unsafe fn DropDims(x: SEXP) -> SEXP {
+pub(crate) fn DropDims(x: SEXP) -> SEXP {
     if x.is_null() || x == R_NilValue() {
         return R_NilValue();
     }
@@ -1102,7 +1100,7 @@ pub(crate) unsafe fn DropDims(x: SEXP) -> SEXP {
 /// `.Internal(drop(x))` -- drop redundant dimensions from an array/matrix.
 ///
 /// Ported from R's `do_drop` in array.c (line 430).
-pub unsafe fn do_drop(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub fn do_drop(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     if args.is_null() || args == R_NilValue() {
         array_error("drop() requires an argument");
     }
@@ -1120,7 +1118,7 @@ pub unsafe fn do_drop(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 /// **CONFLICT**: This symbol is also defined as `#[unsafe(no_mangle)]` in inspect.rs.
 /// Using `pub(crate) unsafe fn` here (no `#[unsafe(no_mangle)]`) to avoid duplicate
 /// symbol errors at link time.
-pub(crate) unsafe fn do_length(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub(crate) fn do_length(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     if args.is_null() || args == R_NilValue() {
         array_error("length() requires an argument");
     }
@@ -1152,7 +1150,7 @@ pub(crate) fn dispatch_xlength(x: SEXP, _call: SEXP, _rho: SEXP) -> usize {
 /// `lengths(x, use.names)` -- return a vector of the lengths of elements.
 ///
 /// Ported from R's `do_lengths` in array.c (line 536).
-pub unsafe fn do_lengths(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub fn do_lengths(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     crate::mainutils::essentials::do_lengths(call, op, args, env)
 }
 
@@ -1164,7 +1162,7 @@ pub unsafe fn do_lengths(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 ///
 /// Ported from R's `do_rowscols` in array.c (line 597).
 /// PRIMVAL(op) == 1 for row(), == 2 for col().
-pub unsafe fn do_rowscols(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub fn do_rowscols(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     {
         match primitive_name(op).as_deref() {
             Some("col") => crate::mainutils::essentials::do_col(call, op, args, env),
@@ -1225,7 +1223,7 @@ pub unsafe fn do_matprod(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 /// `t(x)` -- transpose a matrix.
 ///
 /// Ported from R's `do_transpose` in array.c (line 1569).
-pub unsafe fn do_transpose(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub fn do_transpose(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     crate::mainutils::essentials::do_transpose(call, op, args, env)
 }
 
@@ -1237,112 +1235,110 @@ pub unsafe fn do_transpose(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP 
 ///
 /// Ported from R's `do_aperm` in array.c (line 1704).
 pub unsafe fn do_aperm(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe {
-        let x = first_arg(args, "aperm()");
-        let source_dim = getAttrib(x, R_DimSymbol());
-        let dims = array_dimensions(x, "aperm()");
-        let ndim = dims.len();
-        let total = XLENGTH(x) as usize;
+    let x = first_arg(args, "aperm()");
+    let source_dim = getAttrib(x, R_DimSymbol());
+    let dims = array_dimensions(x, "aperm()");
+    let ndim = dims.len();
+    let total = XLENGTH(x) as usize;
 
-        let rest = CDR(args);
-        let perm_arg = if rest.is_null() || rest == R_NilValue() {
+    let rest = CDR(args);
+    let perm_arg = if rest.is_null() || rest == R_NilValue() {
+        R_NilValue()
+    } else {
+        CAR(rest)
+    };
+    let resize_arg = if rest.is_null() || rest == R_NilValue() {
+        R_NilValue()
+    } else {
+        let tail = CDR(rest);
+        if tail.is_null() || tail == R_NilValue() {
             R_NilValue()
         } else {
-            CAR(rest)
-        };
-        let resize_arg = if rest.is_null() || rest == R_NilValue() {
-            R_NilValue()
-        } else {
-            let tail = CDR(rest);
-            if tail.is_null() || tail == R_NilValue() {
-                R_NilValue()
-            } else {
-                CAR(tail)
-            }
-        };
-
-        let perm = parse_aperm_perm(perm_arg, x, ndim);
-        let resize = parse_resize_arg(resize_arg);
-
-        // Short-circuit identity permutation (PR#19069): when resizing and the
-        // permutation is the identity, return the original array unchanged.
-        let is_identity = perm.iter().enumerate().all(|(i, &axis)| axis == i);
-        // GNU builds a fresh result carrying only `dim`/`dimnames`; the
-        // identity permutation must also drop tsp/class/names (FIXME in
-        // array.c: other attributes are documented but NOT copied).
-        if is_identity {
-            let copy = crate::mainutils::duplicate::duplicate(x);
-            return keep_only_dim_attributes(copy);
+            CAR(tail)
         }
+    };
 
-        // Special case for 2D arrays (PR#19133): the only non-identity
-        // permutation of two dims is the transpose, so delegate to `t()`.
-        if ndim == 2 {
-            let transposed = do_transpose(call, op, args, env);
-            if resize {
-                // c69642: aperm preserves names(dim). The 2D fast path used
-                // to return t()'s fresh dim vector with those names dropped.
-                let nmdm = getAttrib(source_dim, R_NamesSymbol());
-                if !nmdm.is_null()
-                    && nmdm != R_NilValue()
-                    && TYPEOF(nmdm) == SEXPTYPE::STRSXP
-                    && XLENGTH(nmdm) >= 2
-                {
-                    let dimsr = getAttrib(transposed, R_DimSymbol());
-                    let nm_dr = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
-                    let _nm = protect(nm_dr);
-                    SET_STRING_ELT(nm_dr, 0, STRING_ELT(nmdm, 1));
-                    SET_STRING_ELT(nm_dr, 1, STRING_ELT(nmdm, 0));
-                    setAttrib(dimsr, R_NamesSymbol(), nm_dr);
-                }
-                return keep_only_dim_attributes(transposed);
+    let perm = parse_aperm_perm(perm_arg, x, ndim);
+    let resize = parse_resize_arg(resize_arg);
+
+    // Short-circuit identity permutation (PR#19069): when resizing and the
+    // permutation is the identity, return the original array unchanged.
+    let is_identity = perm.iter().enumerate().all(|(i, &axis)| axis == i);
+    // GNU builds a fresh result carrying only `dim`/`dimnames`; the
+    // identity permutation must also drop tsp/class/names (FIXME in
+    // array.c: other attributes are documented but NOT copied).
+    if is_identity {
+        let copy = crate::mainutils::duplicate::duplicate(x);
+        return keep_only_dim_attributes(copy);
+    }
+
+    // Special case for 2D arrays (PR#19133): the only non-identity
+    // permutation of two dims is the transpose, so delegate to `t()`.
+    if ndim == 2 {
+        let transposed = do_transpose(call, op, args, env);
+        if resize {
+            // c69642: aperm preserves names(dim). The 2D fast path used
+            // to return t()'s fresh dim vector with those names dropped.
+            let nmdm = getAttrib(source_dim, R_NamesSymbol());
+            if !nmdm.is_null()
+                && nmdm != R_NilValue()
+                && TYPEOF(nmdm) == SEXPTYPE::STRSXP
+                && XLENGTH(nmdm) >= 2
+            {
+                let dimsr = getAttrib(transposed, R_DimSymbol());
+                let nm_dr = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
+                let _nm = protect(nm_dr);
+                SET_STRING_ELT(nm_dr, 0, STRING_ELT(nmdm, 1));
+                SET_STRING_ELT(nm_dr, 1, STRING_ELT(nmdm, 0));
+                setAttrib(dimsr, R_NamesSymbol(), nm_dr);
             }
-            setAttrib(transposed, R_DimSymbol(), source_dim);
-            setAttrib(transposed, R_DimNamesSymbol(), R_NilValue());
             return keep_only_dim_attributes(transposed);
         }
-
-        let permuted_dims: Vec<_> = perm.iter().map(|axis| dims[*axis]).collect();
-
-        let result = Rf_allocVector3(TYPEOF(x), total as R_xlen_t);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _result_guard = protect(result);
-
-        let input_strides = column_major_strides(&dims);
-        for output_index in 0..total {
-            let output_coords = unravel_column_major(output_index, &permuted_dims);
-            let mut input_coords = vec![0usize; ndim];
-            for (output_axis, input_axis) in perm.iter().enumerate() {
-                input_coords[*input_axis] = output_coords[output_axis];
-            }
-            let input_index = ravel_column_major(&input_coords, &input_strides);
-            copy_vector_element(result, output_index, x, input_index);
-        }
-
-        if resize {
-            let dim = Rf_allocVector3(SEXPTYPE::INTSXP, ndim as R_xlen_t);
-            if !dim.is_null() {
-                let _dim_guard = protect(dim);
-                {
-                    let mut dim_mut = mutable_vector(dim);
-                    for (index, value) in permuted_dims.iter().enumerate() {
-                        checked(dim_mut.try_set_integer_elt(index as R_xlen_t, *value as c_int));
-                    }
-                }
-                set_dim_names_from_axes(dim, source_dim, &perm);
-                setAttrib(result, R_DimSymbol(), dim);
-            }
-            set_dimnames_from_axes(result, x, &perm);
-        } else {
-            setAttrib(result, R_DimSymbol(), source_dim);
-        }
-
-        // GNU do_aperm does not copy other attributes (see the FIXME in
-        // array.c): only dim/dimnames survive.
-        result
+        setAttrib(transposed, R_DimSymbol(), source_dim);
+        setAttrib(transposed, R_DimNamesSymbol(), R_NilValue());
+        return keep_only_dim_attributes(transposed);
     }
+
+    let permuted_dims: Vec<_> = perm.iter().map(|axis| dims[*axis]).collect();
+
+    let result = Rf_allocVector3(TYPEOF(x), total as R_xlen_t);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _result_guard = protect(result);
+
+    let input_strides = column_major_strides(&dims);
+    for output_index in 0..total {
+        let output_coords = unravel_column_major(output_index, &permuted_dims);
+        let mut input_coords = vec![0usize; ndim];
+        for (output_axis, input_axis) in perm.iter().enumerate() {
+            input_coords[*input_axis] = output_coords[output_axis];
+        }
+        let input_index = ravel_column_major(&input_coords, &input_strides);
+        copy_vector_element(result, output_index, x, input_index);
+    }
+
+    if resize {
+        let dim = Rf_allocVector3(SEXPTYPE::INTSXP, ndim as R_xlen_t);
+        if !dim.is_null() {
+            let _dim_guard = protect(dim);
+            {
+                let mut dim_mut = mutable_vector(dim);
+                for (index, value) in permuted_dims.iter().enumerate() {
+                    checked(dim_mut.try_set_integer_elt(index as R_xlen_t, *value as c_int));
+                }
+            }
+            set_dim_names_from_axes(dim, source_dim, &perm);
+            setAttrib(result, R_DimSymbol(), dim);
+        }
+        set_dimnames_from_axes(result, x, &perm);
+    } else {
+        setAttrib(result, R_DimSymbol(), source_dim);
+    }
+
+    // GNU do_aperm does not copy other attributes (see the FIXME in
+    // array.c): only dim/dimnames survive.
+    result
 }
 
 /// GNU `do_aperm` returns a fresh object with only `dim` and `dimnames`
@@ -1367,7 +1363,7 @@ fn keep_only_dim_attributes(r: SEXP) -> SEXP {
 ///
 /// Ported from R's `copyMostAttrib` in attrib.c (line 301). Used by
 /// `do_aperm` (and `do_transpose` in essentials) as documented since 2006.
-pub(crate) unsafe fn copyMostAttrib(src: SEXP, dest: SEXP) {
+pub(crate) fn copyMostAttrib(src: SEXP, dest: SEXP) {
     if dest.is_null() || dest == R_NilValue() {
         array_error("attempt to set an attribute on NULL");
     }
@@ -1399,7 +1395,7 @@ pub(crate) unsafe fn copyMostAttrib(src: SEXP, dest: SEXP) {
 ///
 /// Ported from R's `do_colsum` in array.c (line 1894).
 /// PRIMVAL(op): 0 = colSums, 1 = colMeans, 2 = rowSums, 3 = rowMeans.
-pub unsafe fn do_colsum(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub fn do_colsum(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     {
         match primitive_name(op).as_deref() {
             Some("rowSums") => crate::mainutils::essentials::do_rowSums(call, op, args, env),
@@ -1418,7 +1414,7 @@ pub unsafe fn do_colsum(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 /// `array(data, dim, dimnames)` -- create a multi-dimensional array.
 ///
 /// Ported from R's `do_array` in array.c (line 2145).
-pub unsafe fn do_array(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub fn do_array(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     if args.is_null() || args == R_NilValue() {
         array_error("array() requires arguments");
     }
@@ -1432,7 +1428,7 @@ pub unsafe fn do_array(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 /// `diag(x, nrow, ncol)` -- extract or construct a diagonal matrix.
 ///
 /// Ported from R's `do_diag` in array.c (line 2259).
-pub unsafe fn do_diag(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub fn do_diag(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     crate::mainutils::essentials::do_diag(call, op, args, env)
 }
 
@@ -1443,7 +1439,7 @@ pub unsafe fn do_diag(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 /// `backsolve(r, b, k, upper.tri, transpose)` -- solve triangular systems.
 ///
 /// Ported from R's `do_backsolve` in array.c (line 2357).
-pub unsafe fn do_backsolve(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_backsolve(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     {
         let matched = match_primitive_args(
             args,
@@ -1611,7 +1607,7 @@ pub unsafe fn do_maxcol(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
 /// used when the port's builtin stands alone, and GNU's `.Internal(asplit(x,
 /// da, dc, dna, dnc, d1, d2, drop))` reached from the staged base `array.R`
 /// wrapper after the aperm shuffle (array.c `do_asplit`).
-pub unsafe fn do_asplit(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_asplit(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     {
         if Rf_length(_args) >= 8 {
             return do_asplit_internal(_args);
@@ -1797,8 +1793,10 @@ mod tests {
 
     unsafe fn string_elt_str(vector: SEXP, index: R_xlen_t) -> String {
         unsafe {
-            String::from_utf8_lossy(&crate::sexp::accessors::char_cstr_bytes(STRING_ELT(vector, index)))
-                .into_owned()
+            String::from_utf8_lossy(&crate::sexp::accessors::char_cstr_bytes(STRING_ELT(
+                vector, index,
+            )))
+            .into_owned()
         }
     }
 
@@ -2466,7 +2464,10 @@ mod tests {
             let matrix = real_matrix(&[1.0, 3.0, 2.0, 3.0, 2.0, 1.0], 2, 3);
             let first_args = Rf_cons(
                 matrix,
-                Rf_cons(crate::sexp::constructors::mk_string_str("first"), R_NilValue()),
+                Rf_cons(
+                    crate::sexp::constructors::mk_string_str("first"),
+                    R_NilValue(),
+                ),
             );
             let first = do_maxcol(
                 ptr::null_mut(),
@@ -2477,7 +2478,13 @@ mod tests {
             assert_eq!(*INTEGER(first), 2);
             assert_eq!(*INTEGER(first).add(1), 1);
 
-            let last_args = Rf_cons(matrix, Rf_cons(crate::sexp::constructors::mk_string_str("last"), R_NilValue()));
+            let last_args = Rf_cons(
+                matrix,
+                Rf_cons(
+                    crate::sexp::constructors::mk_string_str("last"),
+                    R_NilValue(),
+                ),
+            );
             let last = do_maxcol(ptr::null_mut(), ptr::null_mut(), last_args, ptr::null_mut());
             assert_eq!(*INTEGER(last), 3);
             assert_eq!(*INTEGER(last).add(1), 2);

@@ -111,273 +111,270 @@ fn drop_data_frame_columns(frame: SEXP, index: SEXP) -> SEXP {
 }
 
 fn data_frame_assign_cells(frame: SEXP, subs: SEXP, value: SEXP) -> Option<SEXP> {
-    unsafe {
-        let ncol = XLENGTH(frame);
-        if ncol == 0 || value.is_null() || value == R_NilValue() {
-            return None;
-        }
-        let nrows = {
-            let col0 = VECTOR_ELT(frame, 0);
-            if col0.is_null() { 0 } else { XLENGTH(col0) }
-        };
-        let mut frame = frame;
-        let mut nrows = nrows;
-        let row_index = CAR(subs);
-        let mut max_row = nrows;
-        if TYPEOF(row_index) == SEXPTYPE::INTSXP || TYPEOF(row_index) == SEXPTYPE::REALSXP {
-            for i in 0..XLENGTH(row_index) {
-                let v = crate::mainutils::essentials::elt_real_safe(row_index, i);
-                if v.is_finite() && v as i64 > max_row {
-                    max_row = v as i64;
-                }
+    let ncol = XLENGTH(frame);
+    if ncol == 0 || value.is_null() || value == R_NilValue() {
+        return None;
+    }
+    let nrows = {
+        let col0 = VECTOR_ELT(frame, 0);
+        if col0.is_null() { 0 } else { XLENGTH(col0) }
+    };
+    let mut frame = frame;
+    let mut nrows = nrows;
+    let row_index = CAR(subs);
+    let mut max_row = nrows;
+    if TYPEOF(row_index) == SEXPTYPE::INTSXP || TYPEOF(row_index) == SEXPTYPE::REALSXP {
+        for i in 0..XLENGTH(row_index) {
+            let v = crate::mainutils::essentials::elt_real_safe(row_index, i);
+            if v.is_finite() && v as i64 > max_row {
+                max_row = v as i64;
             }
         }
-        let col_index = CADR(subs);
-        if TYPEOF(col_index) == SEXPTYPE::STRSXP
-            || TYPEOF(col_index) == SEXPTYPE::INTSXP
-            || TYPEOF(col_index) == SEXPTYPE::REALSXP
-            || max_row > nrows
-        {
-            frame = crate::mainutils::duplicate::shallow_duplicate(frame);
-            if max_row > nrows {
-                for j in 0..XLENGTH(frame) {
-                    let grown = lengthen_with_na(VECTOR_ELT(frame, j), max_row);
-                    SET_VECTOR_ELT(frame, j, grown);
-                }
-                let rn = crate::sexp::constructors::Rf_allocVector(SEXPTYPE::INTSXP, 2);
-                crate::sexp::accessors::SET_INTEGER_ELT(rn, 0, NA_INTEGER);
-                crate::sexp::accessors::SET_INTEGER_ELT(rn, 1, -max_row as c_int);
-                crate::sexp::attrib_core::setAttrib(
-                    frame,
-                    crate::sexp::attrib_core::R_RowNamesSymbol(),
-                    rn,
-                );
-                nrows = max_row;
+    }
+    let col_index = CADR(subs);
+    if TYPEOF(col_index) == SEXPTYPE::STRSXP
+        || TYPEOF(col_index) == SEXPTYPE::INTSXP
+        || TYPEOF(col_index) == SEXPTYPE::REALSXP
+        || max_row > nrows
+    {
+        frame = crate::mainutils::duplicate::shallow_duplicate(frame);
+        if max_row > nrows {
+            for j in 0..XLENGTH(frame) {
+                let grown = lengthen_with_na(VECTOR_ELT(frame, j), max_row);
+                SET_VECTOR_ELT(frame, j, grown);
             }
-            if TYPEOF(col_index) == SEXPTYPE::STRSXP {
-                let mut names = crate::sexp::attrib_core::getAttrib(
-                    frame,
-                    crate::sexp::attrib_core::R_NamesSymbol(),
-                );
-                for i in 0..XLENGTH(col_index) {
-                    let want = elt_to_string(col_index, i);
-                    let mut found = false;
-                    if !names.is_null() && TYPEOF(names) == SEXPTYPE::STRSXP {
-                        for j in 0..XLENGTH(names) {
-                            if elt_to_string(names, j) == want {
-                                found = true;
-                                break;
-                            }
-                        }
-                    }
-                    if found {
-                        continue;
-                    }
-                    let src = if TYPEOF(value) == SEXPTYPE::VECSXP && XLENGTH(value) > i {
-                        VECTOR_ELT(value, i)
-                    } else {
-                        value
-                    };
-                    let ty = if TYPEOF(src) == SEXPTYPE::INTSXP {
-                        SEXPTYPE::INTSXP
-                    } else if TYPEOF(src) == SEXPTYPE::STRSXP {
-                        SEXPTYPE::STRSXP
-                    } else if TYPEOF(src) == SEXPTYPE::LGLSXP {
-                        SEXPTYPE::LGLSXP
-                    } else {
-                        SEXPTYPE::REALSXP
-                    };
-                    let col =
-                        lengthen_with_na(crate::sexp::constructors::Rf_allocVector(ty, 0), nrows);
-                    let wider = crate::sexp::constructors::Rf_allocVector(
-                        SEXPTYPE::VECSXP,
-                        (XLENGTH(frame) + 1) as i32,
-                    );
-                    for j in 0..XLENGTH(frame) {
-                        SET_VECTOR_ELT(wider, j, VECTOR_ELT(frame, j));
-                    }
-                    SET_VECTOR_ELT(wider, XLENGTH(frame), col);
-                    let new_names = crate::sexp::constructors::Rf_allocVector(
-                        SEXPTYPE::STRSXP,
-                        XLENGTH(wider) as i32,
-                    );
-                    for j in 0..XLENGTH(names) {
-                        crate::sexp::accessors::SET_STRING_ELT(
-                            new_names,
-                            j,
-                            crate::sexp::accessors::STRING_ELT(names, j),
-                        );
-                    }
-                    crate::sexp::accessors::SET_STRING_ELT(
-                        new_names,
-                        XLENGTH(frame),
-                        crate::sexp::constructors::Rf_mkChar(
-                            std::ffi::CString::new(want).unwrap_or_default().as_ptr(),
-                        ),
-                    );
-                    crate::sexp::attrib_core::setAttrib(
-                        wider,
-                        crate::sexp::attrib_core::R_NamesSymbol(),
-                        new_names,
-                    );
-                    let klass = crate::sexp::constructors::mk_string_str("data.frame");
-                    crate::sexp::attrib_core::setAttrib(
-                        wider,
-                        crate::sexp::attrib_core::R_ClassSymbol(),
-                        klass,
-                    );
-                    let rn = crate::sexp::attrib_core::getAttrib(
-                        frame,
-                        crate::sexp::attrib_core::R_RowNamesSymbol(),
-                    );
-                    if !rn.is_null() && rn != R_NilValue() {
-                        crate::sexp::attrib_core::setAttrib(
-                            wider,
-                            crate::sexp::attrib_core::R_RowNamesSymbol(),
-                            rn,
-                        );
-                    }
-                    frame = wider;
-                    names = new_names;
-                }
-            }
-            if TYPEOF(col_index) == SEXPTYPE::INTSXP || TYPEOF(col_index) == SEXPTYPE::REALSXP {
-                let mut max_col = XLENGTH(frame);
-                for i in 0..XLENGTH(col_index) {
-                    let v = crate::mainutils::essentials::elt_real_safe(col_index, i);
-                    if v.is_finite() && v as i64 > max_col {
-                        max_col = v as i64;
-                    }
-                }
-                let vnames = crate::sexp::attrib_core::getAttrib(
-                    value,
-                    crate::sexp::attrib_core::R_NamesSymbol(),
-                );
-                let mut added = 0i64;
-                while XLENGTH(frame) < max_col {
-                    let src = if TYPEOF(value) == SEXPTYPE::VECSXP && added < XLENGTH(value) {
-                        VECTOR_ELT(value, added)
-                    } else {
-                        value
-                    };
-                    let col = lengthen_with_na(
-                        crate::sexp::constructors::Rf_allocVector(SEXPTYPE::REALSXP, 0),
-                        nrows,
-                    );
-                    let wider = crate::sexp::constructors::Rf_allocVector(
-                        SEXPTYPE::VECSXP,
-                        (XLENGTH(frame) + 1) as i32,
-                    );
-                    for j in 0..XLENGTH(frame) {
-                        SET_VECTOR_ELT(wider, j, VECTOR_ELT(frame, j));
-                    }
-                    SET_VECTOR_ELT(wider, XLENGTH(frame), col);
-                    let old = crate::sexp::attrib_core::getAttrib(
-                        frame,
-                        crate::sexp::attrib_core::R_NamesSymbol(),
-                    );
-                    let new_names = crate::sexp::constructors::Rf_allocVector(
-                        SEXPTYPE::STRSXP,
-                        XLENGTH(wider) as i32,
-                    );
-                    for j in 0..XLENGTH(old) {
-                        crate::sexp::accessors::SET_STRING_ELT(
-                            new_names,
-                            j,
-                            crate::sexp::accessors::STRING_ELT(old, j),
-                        );
-                    }
-                    let label = if !vnames.is_null()
-                        && TYPEOF(vnames) == SEXPTYPE::STRSXP
-                        && added < XLENGTH(vnames)
-                    {
-                        crate::sexp::accessors::STRING_ELT(vnames, added)
-                    } else {
-                        let label_s = format!("V{}", XLENGTH(frame) + 1);
-                        crate::sexp::constructors::Rf_mkChar(
-                            std::ffi::CString::new(label_s).unwrap().as_ptr(),
-                        )
-                    };
-                    crate::sexp::accessors::SET_STRING_ELT(new_names, XLENGTH(frame), label);
-                    crate::sexp::attrib_core::setAttrib(
-                        wider,
-                        crate::sexp::attrib_core::R_NamesSymbol(),
-                        new_names,
-                    );
-                    let klass = crate::sexp::constructors::mk_string_str("data.frame");
-                    crate::sexp::attrib_core::setAttrib(
-                        wider,
-                        crate::sexp::attrib_core::R_ClassSymbol(),
-                        klass,
-                    );
-                    let rn = crate::sexp::attrib_core::getAttrib(
-                        frame,
-                        crate::sexp::attrib_core::R_RowNamesSymbol(),
-                    );
-                    if !rn.is_null() && rn != R_NilValue() {
-                        crate::sexp::attrib_core::setAttrib(
-                            wider,
-                            crate::sexp::attrib_core::R_RowNamesSymbol(),
-                            rn,
-                        );
-                    }
-                    frame = wider;
-                    added += 1;
-                }
-            }
-        }
-        let rows = if TYPEOF(row_index) == SEXPTYPE::STRSXP {
-            let rn = crate::sexp::attrib_core::getAttrib(
+            let rn = crate::sexp::constructors::Rf_allocVector(SEXPTYPE::INTSXP, 2);
+            crate::sexp::accessors::SET_INTEGER_ELT(rn, 0, NA_INTEGER);
+            crate::sexp::accessors::SET_INTEGER_ELT(rn, 1, -max_row as c_int);
+            crate::sexp::attrib_core::setAttrib(
                 frame,
                 crate::sexp::attrib_core::R_RowNamesSymbol(),
+                rn,
             );
-            let mut out = Vec::new();
-            for i in 0..XLENGTH(row_index) {
-                let want = elt_to_string(row_index, i);
-                let mut found = None;
-                if !rn.is_null() && TYPEOF(rn) == SEXPTYPE::STRSXP {
-                    for j in 0..XLENGTH(rn) {
-                        if elt_to_string(rn, j) == want {
-                            found = Some(j);
+            nrows = max_row;
+        }
+        if TYPEOF(col_index) == SEXPTYPE::STRSXP {
+            let mut names = crate::sexp::attrib_core::getAttrib(
+                frame,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+            );
+            for i in 0..XLENGTH(col_index) {
+                let want = elt_to_string(col_index, i);
+                let mut found = false;
+                if !names.is_null() && TYPEOF(names) == SEXPTYPE::STRSXP {
+                    for j in 0..XLENGTH(names) {
+                        if elt_to_string(names, j) == want {
+                            found = true;
                             break;
                         }
                     }
                 }
-                found?;
-                out.push(found.unwrap());
+                if found {
+                    continue;
+                }
+                let src = if TYPEOF(value) == SEXPTYPE::VECSXP && XLENGTH(value) > i {
+                    VECTOR_ELT(value, i)
+                } else {
+                    value
+                };
+                let ty = if TYPEOF(src) == SEXPTYPE::INTSXP {
+                    SEXPTYPE::INTSXP
+                } else if TYPEOF(src) == SEXPTYPE::STRSXP {
+                    SEXPTYPE::STRSXP
+                } else if TYPEOF(src) == SEXPTYPE::LGLSXP {
+                    SEXPTYPE::LGLSXP
+                } else {
+                    SEXPTYPE::REALSXP
+                };
+                let col = lengthen_with_na(crate::sexp::constructors::Rf_allocVector(ty, 0), nrows);
+                let wider = crate::sexp::constructors::Rf_allocVector(
+                    SEXPTYPE::VECSXP,
+                    (XLENGTH(frame) + 1) as i32,
+                );
+                for j in 0..XLENGTH(frame) {
+                    SET_VECTOR_ELT(wider, j, VECTOR_ELT(frame, j));
+                }
+                SET_VECTOR_ELT(wider, XLENGTH(frame), col);
+                let new_names = crate::sexp::constructors::Rf_allocVector(
+                    SEXPTYPE::STRSXP,
+                    XLENGTH(wider) as i32,
+                );
+                for j in 0..XLENGTH(names) {
+                    crate::sexp::accessors::SET_STRING_ELT(
+                        new_names,
+                        j,
+                        crate::sexp::accessors::STRING_ELT(names, j),
+                    );
+                }
+                crate::sexp::accessors::SET_STRING_ELT(
+                    new_names,
+                    XLENGTH(frame),
+                    crate::sexp::constructors::mk_char_bytes(
+                        std::ffi::CString::new(want).unwrap_or_default().to_bytes(),
+                    ),
+                );
+                crate::sexp::attrib_core::setAttrib(
+                    wider,
+                    crate::sexp::attrib_core::R_NamesSymbol(),
+                    new_names,
+                );
+                let klass = crate::sexp::constructors::mk_string_str("data.frame");
+                crate::sexp::attrib_core::setAttrib(
+                    wider,
+                    crate::sexp::attrib_core::R_ClassSymbol(),
+                    klass,
+                );
+                let rn = crate::sexp::attrib_core::getAttrib(
+                    frame,
+                    crate::sexp::attrib_core::R_RowNamesSymbol(),
+                );
+                if !rn.is_null() && rn != R_NilValue() {
+                    crate::sexp::attrib_core::setAttrib(
+                        wider,
+                        crate::sexp::attrib_core::R_RowNamesSymbol(),
+                        rn,
+                    );
+                }
+                frame = wider;
+                names = new_names;
             }
-            out
-        } else {
-            subscript_positions(row_index, nrows)?
-        };
-        let cols = column_positions(frame, CADR(subs))?;
-        if cols.is_empty() || rows.is_empty() {
-            return Some(frame);
         }
-        let ylen = XLENGTH(value).max(1);
-        for (cpos, &col_i) in cols.iter().enumerate() {
-            let col = VECTOR_ELT(frame, col_i);
-            if col.is_null() {
-                continue;
+        if TYPEOF(col_index) == SEXPTYPE::INTSXP || TYPEOF(col_index) == SEXPTYPE::REALSXP {
+            let mut max_col = XLENGTH(frame);
+            for i in 0..XLENGTH(col_index) {
+                let v = crate::mainutils::essentials::elt_real_safe(col_index, i);
+                if v.is_finite() && v as i64 > max_col {
+                    max_col = v as i64;
+                }
             }
-            let src = if TYPEOF(value) == SEXPTYPE::VECSXP && XLENGTH(value) == cols.len() as i64 {
-                VECTOR_ELT(value, cpos as i64)
-            } else {
-                value
-            };
-            if rows.len() as i64 == nrows
-                && rows.iter().enumerate().all(|(i, r)| *r == i as i64)
-                && XLENGTH(src) == nrows
-                && TYPEOF(src) != TYPEOF(col)
-            {
-                SET_VECTOR_ELT(frame, col_i, crate::mainutils::duplicate::Rf_duplicate(src));
-                continue;
+            let vnames = crate::sexp::attrib_core::getAttrib(
+                value,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+            );
+            let mut added = 0i64;
+            while XLENGTH(frame) < max_col {
+                let src = if TYPEOF(value) == SEXPTYPE::VECSXP && added < XLENGTH(value) {
+                    VECTOR_ELT(value, added)
+                } else {
+                    value
+                };
+                let col = lengthen_with_na(
+                    crate::sexp::constructors::Rf_allocVector(SEXPTYPE::REALSXP, 0),
+                    nrows,
+                );
+                let wider = crate::sexp::constructors::Rf_allocVector(
+                    SEXPTYPE::VECSXP,
+                    (XLENGTH(frame) + 1) as i32,
+                );
+                for j in 0..XLENGTH(frame) {
+                    SET_VECTOR_ELT(wider, j, VECTOR_ELT(frame, j));
+                }
+                SET_VECTOR_ELT(wider, XLENGTH(frame), col);
+                let old = crate::sexp::attrib_core::getAttrib(
+                    frame,
+                    crate::sexp::attrib_core::R_NamesSymbol(),
+                );
+                let new_names = crate::sexp::constructors::Rf_allocVector(
+                    SEXPTYPE::STRSXP,
+                    XLENGTH(wider) as i32,
+                );
+                for j in 0..XLENGTH(old) {
+                    crate::sexp::accessors::SET_STRING_ELT(
+                        new_names,
+                        j,
+                        crate::sexp::accessors::STRING_ELT(old, j),
+                    );
+                }
+                let label = if !vnames.is_null()
+                    && TYPEOF(vnames) == SEXPTYPE::STRSXP
+                    && added < XLENGTH(vnames)
+                {
+                    crate::sexp::accessors::STRING_ELT(vnames, added)
+                } else {
+                    let label_s = format!("V{}", XLENGTH(frame) + 1);
+                    crate::sexp::constructors::mk_char_bytes(
+                        std::ffi::CString::new(label_s).unwrap().to_bytes(),
+                    )
+                };
+                crate::sexp::accessors::SET_STRING_ELT(new_names, XLENGTH(frame), label);
+                crate::sexp::attrib_core::setAttrib(
+                    wider,
+                    crate::sexp::attrib_core::R_NamesSymbol(),
+                    new_names,
+                );
+                let klass = crate::sexp::constructors::mk_string_str("data.frame");
+                crate::sexp::attrib_core::setAttrib(
+                    wider,
+                    crate::sexp::attrib_core::R_ClassSymbol(),
+                    klass,
+                );
+                let rn = crate::sexp::attrib_core::getAttrib(
+                    frame,
+                    crate::sexp::attrib_core::R_RowNamesSymbol(),
+                );
+                if !rn.is_null() && rn != R_NilValue() {
+                    crate::sexp::attrib_core::setAttrib(
+                        wider,
+                        crate::sexp::attrib_core::R_RowNamesSymbol(),
+                        rn,
+                    );
+                }
+                frame = wider;
+                added += 1;
             }
-            let updated = assign_column_rows(col, &rows, src, XLENGTH(src).max(1));
-            SET_VECTOR_ELT(frame, col_i, updated);
         }
-        Some(frame)
     }
+    let rows = if TYPEOF(row_index) == SEXPTYPE::STRSXP {
+        let rn = crate::sexp::attrib_core::getAttrib(
+            frame,
+            crate::sexp::attrib_core::R_RowNamesSymbol(),
+        );
+        let mut out = Vec::new();
+        for i in 0..XLENGTH(row_index) {
+            let want = elt_to_string(row_index, i);
+            let mut found = None;
+            if !rn.is_null() && TYPEOF(rn) == SEXPTYPE::STRSXP {
+                for j in 0..XLENGTH(rn) {
+                    if elt_to_string(rn, j) == want {
+                        found = Some(j);
+                        break;
+                    }
+                }
+            }
+            found?;
+            out.push(found.unwrap());
+        }
+        out
+    } else {
+        subscript_positions(row_index, nrows)?
+    };
+    let cols = column_positions(frame, CADR(subs))?;
+    if cols.is_empty() || rows.is_empty() {
+        return Some(frame);
+    }
+    let ylen = XLENGTH(value).max(1);
+    for (cpos, &col_i) in cols.iter().enumerate() {
+        let col = VECTOR_ELT(frame, col_i);
+        if col.is_null() {
+            continue;
+        }
+        let src = if TYPEOF(value) == SEXPTYPE::VECSXP && XLENGTH(value) == cols.len() as i64 {
+            VECTOR_ELT(value, cpos as i64)
+        } else {
+            value
+        };
+        if rows.len() as i64 == nrows
+            && rows.iter().enumerate().all(|(i, r)| *r == i as i64)
+            && XLENGTH(src) == nrows
+            && TYPEOF(src) != TYPEOF(col)
+        {
+            SET_VECTOR_ELT(frame, col_i, crate::mainutils::duplicate::Rf_duplicate(src));
+            continue;
+        }
+        let updated = assign_column_rows(col, &rows, src, XLENGTH(src).max(1));
+        SET_VECTOR_ELT(frame, col_i, updated);
+    }
+    Some(frame)
 }
 fn lengthen_with_na(col: SEXP, n: i64) -> SEXP {
     if col.is_null() || n <= XLENGTH(col) {

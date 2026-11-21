@@ -97,16 +97,14 @@ pub unsafe fn do_levelsgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP
 
 /// Get or set the tsp (time series parameters) attribute.
 pub unsafe fn do_tsp(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe {
-        let _ = (call, op, env);
+    let _ = (call, op, env);
 
-        if Rf_length(args) == 1 {
-            let x = CAR(args);
-            return crate::eval::attrib_core::getAttrib(x, crate::eval::attrib_core::R_TspSymbol());
-        }
-
-        error("wrong number of arguments");
+    if Rf_length(args) == 1 {
+        let x = CAR(args);
+        return crate::eval::attrib_core::getAttrib(x, crate::eval::attrib_core::R_TspSymbol());
     }
+
+    error("wrong number of arguments");
 }
 
 // ---------------------------------------------------------------------------
@@ -133,18 +131,16 @@ pub unsafe fn do_tspgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 
 /// Get or set the comment attribute.
 pub unsafe fn do_comment(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe {
-        let _ = (call, op, env);
+    let _ = (call, op, env);
 
-        let comment_sym = crate::sexp::symbol::install_str("comment");
+    let comment_sym = crate::sexp::symbol::install_str("comment");
 
-        if Rf_length(args) == 1 {
-            let x = CAR(args);
-            return crate::eval::attrib_core::getAttrib(x, comment_sym);
-        }
-
-        error("wrong number of arguments");
+    if Rf_length(args) == 1 {
+        let x = CAR(args);
+        return crate::eval::attrib_core::getAttrib(x, comment_sym);
     }
+
+    error("wrong number of arguments");
 }
 
 // ---------------------------------------------------------------------------
@@ -172,23 +168,21 @@ pub unsafe fn do_commentgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEX
 
 /// Get or set a single attribute.
 pub unsafe fn do_attr(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe {
-        let _ = (call, op, env);
+    let _ = (call, op, env);
 
-        let nargs = Rf_length(args);
-        if nargs < 2 {
-            error("either 2 or 3 arguments are required");
-        }
-
-        let x = CAR(args);
-        let which = CADR(args);
-
-        if nargs == 2 {
-            return crate::eval::attrib_core::getAttrib(x, which);
-        }
-
+    let nargs = Rf_length(args);
+    if nargs < 2 {
         error("either 2 or 3 arguments are required");
     }
+
+    let x = CAR(args);
+    let which = CADR(args);
+
+    if nargs == 2 {
+        return crate::eval::attrib_core::getAttrib(x, which);
+    }
+
+    error("either 2 or 3 arguments are required");
 }
 
 // ---------------------------------------------------------------------------
@@ -213,9 +207,7 @@ pub unsafe fn do_attrgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                 crate::sexp::accessors::STRING_ELT(which, 0),
             ))
             .into_owned();
-            crate::sexp::symbol::Rf_install(
-                std::ffi::CString::new(text).unwrap_or_default().as_ptr(),
-            )
+            crate::sexp::symbol::install_cstr(&std::ffi::CString::new(text).unwrap_or_default())
         } else {
             which
         };
@@ -231,7 +223,7 @@ pub unsafe fn do_attrgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Set all attributes of an object (internal).
-pub unsafe fn do_attributesgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub fn do_attributesgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     let _ = (call, op, env);
     if Rf_length(args) < 2 {
         error("wrong number of arguments");
@@ -244,7 +236,7 @@ pub unsafe fn do_attributesgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> 
 // ---------------------------------------------------------------------------
 
 /// Set the class attribute (internal).
-pub unsafe fn do_classgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub fn do_classgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     let _ = (call, op, env);
     if Rf_length(args) < 2 {
         error("wrong number of arguments");
@@ -292,7 +284,7 @@ pub unsafe fn do_namesgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP 
 // ---------------------------------------------------------------------------
 
 /// Check if an object has an explicit class attribute.
-pub unsafe fn do_isobject(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub fn do_isobject(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     let _ = (call, op, env);
     if Rf_length(args) < 1 {
         error("wrong number of arguments");

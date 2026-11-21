@@ -230,16 +230,14 @@ pub(crate) fn private_target_call_owned(
                         })?;
                 access.require_active()?;
                 if function.is_closure() {
-                    let result = unsafe {
-                        super::super::closure::applyClosure(
-                            call.as_raw(),
-                            function.as_raw(),
-                            execution_arguments.as_raw(),
-                            environment.as_raw(),
-                            domain.nil().as_raw(),
-                            0,
-                        )
-                    };
+                    let result = super::super::closure::applyClosure(
+                        call.as_raw(),
+                        function.as_raw(),
+                        execution_arguments.as_raw(),
+                        environment.as_raw(),
+                        domain.nil().as_raw(),
+                        0,
+                    );
                     owner.sexp(result)?.into_owned()
                 } else {
                     let apply = if function.typeof_() == SEXPTYPE::SPECIALSXP {

@@ -568,7 +568,7 @@ pub fn do_kappa(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// GNU `forwardsolve(l, x)` — `backsolve(..., upper.tri=FALSE)`.
 pub fn do_forwardsolve(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+    {
         let l = CAR(args);
         let x = CAR(CDR(args));
         let ut = Rf_ScalarLogical(FALSE);
@@ -627,7 +627,7 @@ fn thin_svd_factor(src: SEXP, rows: i32, cols: i32, is_cmplx: bool) -> SEXP {
 }
 
 pub fn do_svd(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+    {
         let x = coerce_numeric_matrix(CAR(args));
 
         let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());

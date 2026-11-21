@@ -202,15 +202,13 @@ fn hashexpr(e: SEXP) -> R_exprhash_t {
 }
 
 fn hashfun(f: SEXP) -> R_exprhash_t {
-    unsafe {
-        let body = BODY(f);
-        let mut h = hashexpr(body);
-        if getAttrib(body, R_SrcRefSymbol()) == R_NilValue() {
-            let srcref = getAttrib(f, R_SrcRefSymbol());
-            h = hashsrcref(srcref, h);
-        }
-        h
+    let body = BODY(f);
+    let mut h = hashexpr(body);
+    if getAttrib(body, R_SrcRefSymbol()) == R_NilValue() {
+        let srcref = getAttrib(f, R_SrcRefSymbol());
+        h = hashsrcref(srcref, h);
     }
+    h
 }
 
 fn hashsrcref(e: SEXP, mut h: R_exprhash_t) -> R_exprhash_t {

@@ -7,7 +7,7 @@ pub(crate) fn load_package_namespace(
     package_dir: &Path,
     loading: &mut Vec<String>,
 ) -> Result<(SEXP, Option<NamespaceDirectives>), String> {
-    unsafe {
+    {
         if package == "compiler" {
             let env = crate::eval::compiler::namespace();
             return Ok((env, None));

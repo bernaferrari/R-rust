@@ -29,42 +29,42 @@ pub(crate) fn as_character_real(
     value: f64,
     outdec: &str,
 ) -> String {
-    unsafe {
-        let scalar = Rf_ScalarReal(value);
-        let _s = protect(scalar);
-        // GNU: if(getOption("OutDec") != OutDec) options(OutDec = OutDec)
-        // for the duration (restored on exit).
-        let outdec_sym = crate::sexp::symbol::install_str("OutDec");
-        let old_outdec = crate::mainutils::options::GetOption1(outdec_sym);
-        let _od = protect(old_outdec);
-        let old_text = if !old_outdec.is_null() && old_outdec != R_NilValue() {
-            charsxp_text(STRING_ELT(old_outdec, 0), "OutDec")
-        } else {
-            ".".to_string()
-        };
-        let changed = old_text != outdec;
-        if changed {
-            let nv = Rf_mkString(CString::new(outdec).unwrap_or_default().as_ptr());
-            let _n = protect(nv);
-            crate::mainutils::options::SetOptionByName("OutDec", nv);
-        }
-        let ch = crate::mainutils::essentials::do_as_character(
-            call,
-            op,
-            Rf_cons(scalar, R_NilValue()),
-            env,
+    let scalar = Rf_ScalarReal(value);
+    let _s = protect(scalar);
+    // GNU: if(getOption("OutDec") != OutDec) options(OutDec = OutDec)
+    // for the duration (restored on exit).
+    let outdec_sym = crate::sexp::symbol::install_str("OutDec");
+    let old_outdec = crate::mainutils::options::GetOption1(outdec_sym);
+    let _od = protect(old_outdec);
+    let old_text = if !old_outdec.is_null() && old_outdec != R_NilValue() {
+        charsxp_text(STRING_ELT(old_outdec, 0), "OutDec")
+    } else {
+        ".".to_string()
+    };
+    let changed = old_text != outdec;
+    if changed {
+        let nv = crate::sexp::constructors::mk_string_bytes(
+            CString::new(outdec).unwrap_or_default().to_bytes(),
         );
-        let _c = protect(ch);
-        if changed {
-            let nv = Rf_mkString(CString::new(old_text.as_str()).unwrap_or_default().as_ptr());
-            let _n2 = protect(nv);
-            crate::mainutils::options::SetOptionByName("OutDec", nv);
-        }
-        if TYPEOF(ch) == SEXPTYPE::STRSXP && XLENGTH(ch) > 0 {
-            charsxp_text(STRING_ELT(ch, 0), "as.character")
-        } else {
-            String::new()
-        }
+        let _n = protect(nv);
+        crate::mainutils::options::SetOptionByName("OutDec", nv);
+    }
+    let ch =
+        crate::mainutils::essentials::do_as_character(call, op, Rf_cons(scalar, R_NilValue()), env);
+    let _c = protect(ch);
+    if changed {
+        let nv = crate::sexp::constructors::mk_string_bytes(
+            CString::new(old_text.as_str())
+                .unwrap_or_default()
+                .to_bytes(),
+        );
+        let _n2 = protect(nv);
+        crate::mainutils::options::SetOptionByName("OutDec", nv);
+    }
+    if TYPEOF(ch) == SEXPTYPE::STRSXP && XLENGTH(ch) > 0 {
+        charsxp_text(STRING_ELT(ch, 0), "as.character")
+    } else {
+        String::new()
     }
 }
 
@@ -197,7 +197,11 @@ pub fn do_D2POSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
             );
             *INTEGER(VECTOR_ELT(ans, 10)).add(iu) = 0;
         }
-        let tzone = Rf_mkString(CString::new(tz_name.as_str()).unwrap_or_default().as_ptr());
+        let tzone = crate::sexp::constructors::mk_string_bytes(
+            CString::new(tz_name.as_str())
+                .unwrap_or_default()
+                .to_bytes(),
+        );
         let _tz = protect(tzone);
         finish_posixlt(ans, ansnames, tzone);
         let names = getAttrib(x, R_NamesSymbol());
@@ -584,7 +588,9 @@ pub fn do_balancePOSIXlt(call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
                 SET_STRING_ELT(
                     VECTOR_ELT(ans, 9),
                     i as R_xlen_t,
-                    Rf_mkChar(CString::new(out_zone).unwrap_or_default().as_ptr()),
+                    crate::sexp::constructors::mk_char_bytes(
+                        CString::new(out_zone).unwrap_or_default().to_bytes(),
+                    ),
                 );
             }
             if nn >= 11 {

@@ -228,29 +228,25 @@ unsafe fn compare(
 
 /// GNU `all.equal.language`: compare deparsed source.
 unsafe fn compare_language(target: SEXP, current: SEXP) -> Result<(), String> {
-    unsafe {
-        let ttxt = deparse_joined(target);
-        let ctxt = deparse_joined(current);
-        if ttxt == ctxt {
-            Ok(())
-        } else {
-            Err("target, current do not match when deparsed".into())
-        }
+    let ttxt = deparse_joined(target);
+    let ctxt = deparse_joined(current);
+    if ttxt == ctxt {
+        Ok(())
+    } else {
+        Err("target, current do not match when deparsed".into())
     }
 }
 unsafe fn compare_condition(target: SEXP, current: SEXP) -> Result<(), String> {
-    unsafe {
-        let tm = condition_message(target);
-        let cm = condition_message(current);
-        if tm == cm {
-            Ok(())
-        } else {
-            Err(format!("target, current differ in message: {tm} vs {cm}"))
-        }
+    let tm = condition_message(target);
+    let cm = condition_message(current);
+    if tm == cm {
+        Ok(())
+    } else {
+        Err(format!("target, current differ in message: {tm} vs {cm}"))
     }
 }
 
-unsafe fn condition_message(value: SEXP) -> String {
+fn condition_message(value: SEXP) -> String {
     if TYPEOF(value) != SEXPTYPE::VECSXP || LENGTH(value) < 1 {
         return String::new();
     }
@@ -315,7 +311,7 @@ fn formula_length(x: SEXP) -> i32 {
     }
 }
 
-unsafe fn deparse_joined(x: SEXP) -> String {
+fn deparse_joined(x: SEXP) -> String {
     let dumped =
         crate::mainutils::deparse::deparse1(x, false, crate::mainutils::deparse::DEFAULTDEPARSE);
     let _dumped = crate::sexp::protect::protect(dumped);
@@ -499,7 +495,7 @@ unsafe fn scalar_logical(value: SEXP) -> Option<bool> {
     unsafe { scalar_number(value).map(|number| number != FALSE as f64) }
 }
 
-unsafe fn strings_equal(left: SEXP, right: SEXP) -> bool {
+fn strings_equal(left: SEXP, right: SEXP) -> bool {
     if left == right {
         return true;
     }
@@ -537,7 +533,7 @@ fn is_nil(value: SEXP) -> bool {
     value.is_null() || { value == R_NilValue() }
 }
 
-unsafe fn mismatch(message: &str) -> SEXP {
+fn mismatch(message: &str) -> SEXP {
     let text = CString::new(message).unwrap_or_else(|_| CString::new("objects differ").unwrap());
     crate::sexp::constructors::mk_string_bytes(text.to_bytes())
 }

@@ -65,7 +65,7 @@ pub fn do_sessionInfo(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
 
 /// GNU `.POSIXct(xx, tz = NULL, cl = c("POSIXct", "POSIXt"))`.
 pub fn do_dot_POSIXct(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+    {
         let xx = CAR(args);
         if xx.is_null() || xx == R_NilValue() {
             return R_NilValue();

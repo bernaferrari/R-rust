@@ -120,9 +120,7 @@ pub unsafe fn do_sample(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 unsafe fn sample_int_wrapper_call(first_arg: &str) -> SEXP {
     unsafe {
         let sym = |name: &str| {
-            crate::sexp::symbol::Rf_install(
-                std::ffi::CString::new(name).unwrap_or_default().as_ptr(),
-            )
+            crate::sexp::symbol::install_cstr(&std::ffi::CString::new(name).unwrap_or_default())
         };
         let first = if first_arg == "length(x)" {
             crate::sexp::constructors::Rf_lang2(sym("length"), sym("x"))
@@ -207,7 +205,7 @@ unsafe fn tag_name(tag: SEXP) -> Option<String> {
 /// the draws with GetRNGstate/PutRNGstate like stock do_sample (random.c) so
 /// `.Random.seed` reflects consumed draws and a manually assigned seed is
 /// honored.
-pub(crate) unsafe fn sampled_indices(
+pub(crate) fn sampled_indices(
     n: R_xlen_t,
     size: R_xlen_t,
     replace: bool,
@@ -430,7 +428,7 @@ unsafe fn sample_vector_by_indices(x: SEXP, indices: &[usize]) -> SEXP {
     }
 }
 
-unsafe fn set_sampled_names(result: SEXP, source: SEXP, indices: &[usize]) {
+fn set_sampled_names(result: SEXP, source: SEXP, indices: &[usize]) {
     let names =
         crate::sexp::attrib_core::getAttrib(source, crate::sexp::attrib_core::R_NamesSymbol());
     if names.is_null()

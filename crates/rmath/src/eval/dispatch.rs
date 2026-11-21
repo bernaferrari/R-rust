@@ -735,7 +735,7 @@ fn R_data_class(obj: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 fn R_BlankScalarString_val() -> SEXP {
-    unsafe { Rf_mkString(b"\x00".as_ptr() as *const c_char) }
+    crate::sexp::constructors::mk_string_str("")
 }
 
 // ---------------------------------------------------------------------------

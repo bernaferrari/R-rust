@@ -175,41 +175,41 @@ pub fn do_dots_length(_call: SEXP, _op: SEXP, _args: SEXP, rho: SEXP) -> SEXP {
 }
 
 pub fn do_dots_names(_call: SEXP, _op: SEXP, _args: SEXP, rho: SEXP) -> SEXP {
-        let dots = current_dots(rho);
-        let len = dots_len(dots);
-        if len == 0 {
-            return R_NilValue();
-        }
-        let names = Rf_allocVector3(SEXPTYPE::STRSXP, len as R_xlen_t);
-        let _names_guard = protect(names);
+    let dots = current_dots(rho);
+    let len = dots_len(dots);
+    if len == 0 {
+        return R_NilValue();
+    }
+    let names = Rf_allocVector3(SEXPTYPE::STRSXP, len as R_xlen_t);
+    let _names_guard = protect(names);
     let blank = crate::sexp::constructors::mk_char_str("");
 
-        let mut any_tag = false;
-        let mut cell = dots;
-        while !cell.is_null() && cell != R_NilValue() {
-            let tag = TAG(cell);
-            if !tag.is_null() && tag != R_NilValue() {
-                any_tag = true;
-            }
-            cell = CDR(cell);
+    let mut any_tag = false;
+    let mut cell = dots;
+    while !cell.is_null() && cell != R_NilValue() {
+        let tag = TAG(cell);
+        if !tag.is_null() && tag != R_NilValue() {
+            any_tag = true;
         }
-        if !any_tag {
-            return R_NilValue();
-        }
-        let mut i: R_xlen_t = 0;
-        cell = dots;
-        while !cell.is_null() && cell != R_NilValue() {
-            let tag = TAG(cell);
-            let name = if tag.is_null() || tag == R_NilValue() {
-                blank
-            } else {
-                PRINTNAME(tag)
-            };
-            SET_STRING_ELT(names, i, name);
-            i += 1;
-            cell = CDR(cell);
-        }
-        names
+        cell = CDR(cell);
+    }
+    if !any_tag {
+        return R_NilValue();
+    }
+    let mut i: R_xlen_t = 0;
+    cell = dots;
+    while !cell.is_null() && cell != R_NilValue() {
+        let tag = TAG(cell);
+        let name = if tag.is_null() || tag == R_NilValue() {
+            blank
+        } else {
+            PRINTNAME(tag)
+        };
+        SET_STRING_ELT(names, i, name);
+        i += 1;
+        cell = CDR(cell);
+    }
+    names
 }
 
 pub fn do_dots_elt(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
@@ -1305,7 +1305,7 @@ pub fn R_findBCInterpreterExpression() -> SEXP {
 /// Ported from R's `do_missing()` in eval.c. Checks whether a formal
 /// argument is missing.
 // no_mangle removed (duplicate)
-pub unsafe fn do_missing(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_missing(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     let sym = CAR(args);
     if TYPEOF(sym) != SEXPTYPE::SYMSXP {
         // Evaluate and check

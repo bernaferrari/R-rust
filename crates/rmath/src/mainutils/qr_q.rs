@@ -50,7 +50,7 @@ unsafe fn match_args(args: SEXP) -> [Option<SEXP>; 3] {
     }
     out
 }
-unsafe fn is_qr(x: SEXP) -> bool {
+fn is_qr(x: SEXP) -> bool {
     let c = getAttrib(x, R_ClassSymbol());
     if c == R_NilValue() || TYPEOF(c) != STRSXP_C {
         return false;

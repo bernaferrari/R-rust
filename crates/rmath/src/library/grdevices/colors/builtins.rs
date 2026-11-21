@@ -480,25 +480,15 @@ pub fn do_RGB2hsv(rgb: SEXP) -> SEXP {
         }
         let n = INTEGER_ELT(dd, 1) as usize;
 
-        // SAFETY: allocation runs on the R session thread that owns `rgb`.
-        let ans = unsafe { allocMatrix(SEXPTYPE::REALSXP.into(), 3, n as c_int) };
+        let ans = allocMatrix(SEXPTYPE::REALSXP.into(), 3, n as c_int);
         guards.push(protect(ans));
         let dmns = Rf_allocVector(SEXPTYPE::VECSXP, 2);
         guards.push(protect(dmns));
         let names = Rf_allocVector(SEXPTYPE::STRSXP, 3);
         guards.push(protect(names));
-        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-        SET_STRING_ELT(names, 0, unsafe {
-            mk_char_ptr(b"h\0".as_ptr() as *const c_char)
-        });
-        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-        SET_STRING_ELT(names, 1, unsafe {
-            mk_char_ptr(b"s\0".as_ptr() as *const c_char)
-        });
-        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-        SET_STRING_ELT(names, 2, unsafe {
-            mk_char_ptr(b"v\0".as_ptr() as *const c_char)
-        });
+        SET_STRING_ELT(names, 0, crate::sexp::constructors::mk_char_str("h"));
+        SET_STRING_ELT(names, 1, crate::sexp::constructors::mk_char_str("s"));
+        SET_STRING_ELT(names, 2, crate::sexp::constructors::mk_char_str("v"));
         SET_VECTOR_ELT(dmns, 0, names);
 
         if Rf_isNull(getAttrib(rgb, R_DimNamesSymbol())) == 0 {
@@ -555,30 +545,17 @@ pub fn do_col2rgb(colors: SEXP, alpha: SEXP) -> SEXP {
         guards.push(protect(colors));
 
         let n = LENGTH(colors) as usize;
-        // SAFETY: allocation runs on the R session thread that owns `colors`.
-        let ans = unsafe { allocMatrix(SEXPTYPE::INTSXP.into(), 3 + alph, n as c_int) };
+        let ans = allocMatrix(SEXPTYPE::INTSXP.into(), 3 + alph, n as c_int);
         guards.push(protect(ans));
         let dmns = Rf_allocVector(SEXPTYPE::VECSXP, 2);
         guards.push(protect(dmns));
         let names = Rf_allocVector(SEXPTYPE::STRSXP, 3 + alph);
         guards.push(protect(names));
-        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-        SET_STRING_ELT(names, 0, unsafe {
-            mk_char_ptr(b"red\0".as_ptr() as *const c_char)
-        });
-        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-        SET_STRING_ELT(names, 1, unsafe {
-            mk_char_ptr(b"green\0".as_ptr() as *const c_char)
-        });
-        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-        SET_STRING_ELT(names, 2, unsafe {
-            mk_char_ptr(b"blue\0".as_ptr() as *const c_char)
-        });
+        SET_STRING_ELT(names, 0, crate::sexp::constructors::mk_char_str("red"));
+        SET_STRING_ELT(names, 1, crate::sexp::constructors::mk_char_str("green"));
+        SET_STRING_ELT(names, 2, crate::sexp::constructors::mk_char_str("blue"));
         if alph != 0 {
-            // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-            SET_STRING_ELT(names, 3, unsafe {
-                mk_char_ptr(b"alpha\0".as_ptr() as *const c_char)
-            });
+            SET_STRING_ELT(names, 3, crate::sexp::constructors::mk_char_str("alpha"));
         }
         SET_VECTOR_ELT(dmns, 0, names);
 

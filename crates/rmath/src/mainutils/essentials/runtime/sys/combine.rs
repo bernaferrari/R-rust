@@ -424,24 +424,22 @@ pub fn do_diff_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// GNU `.Date(xx, cl = "Date")` — `class<-`(xx, cl).
 pub fn do_dot_Date(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let xx = CAR(args);
-        if xx.is_null() || xx == R_NilValue() {
-            return R_NilValue();
-        }
-        let cl_arg = CADR(args);
-        let cl = if cl_arg.is_null()
-            || cl_arg == R_NilValue()
-            || cl_arg == crate::sexp::globals::R_MissingArg()
-        {
-            mk_string_cstr(c"Date")
-        } else {
-            cl_arg
-        };
-        let pair = Rf_cons(cl, R_NilValue());
-        let _p = protect(pair);
-        let call_args = Rf_cons(xx, pair);
-        let _a = protect(call_args);
-        crate::mainutils::attrib::do_classgets(_call, _op, call_args, rho)
+    let xx = CAR(args);
+    if xx.is_null() || xx == R_NilValue() {
+        return R_NilValue();
     }
+    let cl_arg = CADR(args);
+    let cl = if cl_arg.is_null()
+        || cl_arg == R_NilValue()
+        || cl_arg == crate::sexp::globals::R_MissingArg()
+    {
+        mk_string_cstr(c"Date")
+    } else {
+        cl_arg
+    };
+    let pair = Rf_cons(cl, R_NilValue());
+    let _p = protect(pair);
+    let call_args = Rf_cons(xx, pair);
+    let _a = protect(call_args);
+    crate::mainutils::attrib::do_classgets(_call, _op, call_args, rho)
 }

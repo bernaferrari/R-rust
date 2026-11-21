@@ -552,7 +552,9 @@ mod tests {
     fn test_parse_vector_uses_rust_parser() {
         let _session = crate::sexp::session::RSession::new();
         unsafe {
-            let text = Rf_mkString(CString::new("1 + 2").unwrap().as_ptr());
+            let text = crate::sexp::constructors::mk_string_bytes(
+                CString::new("1 + 2").unwrap().to_bytes(),
+            );
             let _text_guard = protect(text);
             let mut status: c_int = 0;
             let result = R_ParseVector(text, 1, &mut status, ptr::null_mut());

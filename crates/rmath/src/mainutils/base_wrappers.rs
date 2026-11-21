@@ -14,11 +14,11 @@ pub(crate) unsafe fn apply(
     rho: SEXP,
     evaluated: bool,
 ) -> SEXP {
-    unsafe { apply_in_environment(name, source, args, rho, evaluated, R_BaseEnv()) }
+    apply_in_environment(name, source, args, rho, evaluated, R_BaseEnv())
 }
 
 /// Compile a wrapper in its owning namespace, preserving lexical helper lookup.
-pub(crate) unsafe fn apply_in_environment(
+pub(crate) fn apply_in_environment(
     name: &'static str,
     source: &str,
     args: SEXP,

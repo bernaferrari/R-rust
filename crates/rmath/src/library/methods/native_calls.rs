@@ -129,7 +129,7 @@ unsafe extern "C-unwind" fn c_r_get_class_from_cache(class: SEXP, table: SEXP) -
 }
 
 unsafe extern "C-unwind" fn c_r_quick_method_check(args: SEXP, mlist: SEXP, fdef: SEXP) -> SEXP {
-    unsafe { super::methods_list_dispatch::R_quick_method_check(args, mlist, fdef) }
+    super::methods_list_dispatch::R_quick_method_check(args, mlist, fdef)
 }
 
 unsafe extern "C-unwind" fn c_r_next_method_call(matched_call: SEXP, ev: SEXP) -> SEXP {

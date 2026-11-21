@@ -109,7 +109,7 @@ fn user_per_inch(c: &Coordinates, vertical: bool) -> f64 {
 
 /// GNU `C_erase` — fill the whole device (NDC 0..1) with `col`. The default
 /// `R_TRANWHITE` fill is transparent, so nothing is drawn.
-unsafe fn erase(args: SEXP) -> SEXP {
+fn erase(args: SEXP) -> SEXP {
     let fill = colors(arg(args, "col"), transparent()).remove(0);
     if fill.a != 0 {
         let target = &mut renderer();
@@ -127,7 +127,7 @@ unsafe fn erase(args: SEXP) -> SEXP {
 /// carries a single implicit fill rule, so the winding/even-odd distinction
 /// of `rule` is decoded (and honored where subpaths are disjoint) but not
 /// re-expressed for overlapping holes.
-unsafe fn path(args: SEXP) -> SEXP {
+fn path(args: SEXP) -> SEXP {
     let c = current();
     let b = bindings(args, &["x", "y", "nper", "rule", "col", "border"]);
     let x = values(b[0]);
@@ -179,7 +179,7 @@ unsafe fn path(args: SEXP) -> SEXP {
 
 /// GNU `C_symbols` — circles, squares, rectangles, stars, thermometers and
 /// boxplots, with GNU's inches/NDC size conversions.
-unsafe fn symbols(args: SEXP) -> SEXP {
+fn symbols(args: SEXP) -> SEXP {
     let c = current();
     let b = bindings(args, &["x", "y", "type", "data", "inches", "bg", "fg"]);
     let x = values(b[0]);
@@ -666,14 +666,14 @@ unsafe fn xspline(args: SEXP) -> SEXP {
 /// fails on the first click: NA vectors and a zero count. The result
 /// builder (shared with the device-less profile) lives in the graphics
 /// registry module.
-unsafe fn locator(args: SEXP) -> SEXP {
+fn locator(args: SEXP) -> SEXP {
     let _ = current();
     crate::library::graphics::locator_result(args)
 }
 
 /// GNU `C_identify` — zero clicks identifies nothing: all-false `ind` with
 /// zero `pos`/`order` (the R wrapper reduces this to integer(0)).
-unsafe fn identify(args: SEXP) -> SEXP {
+fn identify(args: SEXP) -> SEXP {
     let _ = current();
     crate::library::graphics::identify_result(args)
 }
@@ -751,7 +751,7 @@ impl Dendrogram {
         }
     }
 
-    unsafe fn draw_label(
+    fn draw_label(
         &self,
         labels: &[Option<String>],
         leaf: usize,
@@ -847,7 +847,7 @@ unsafe fn dend(args: SEXP) -> SEXP {
 
 /// GNU `C_dendwindow` — install the dendrogram's user window, leaving room
 /// for the deepest leaf label.
-unsafe fn dendwindow(args: SEXP) -> SEXP {
+fn dendwindow(args: SEXP) -> SEXP {
     let c = current();
     let b = bindings(args, &["n", "merge", "height", "hang", "labels"]);
     let n = asInteger(b[0]);
@@ -1137,7 +1137,7 @@ pub(crate) unsafe fn persp_render(input: &PerspInput) {
 
 /// GNU `PerspBox`: draw the box edges of the faces facing (front=1) or
 /// facing away from (front=0) the viewer, each edge only once.
-unsafe fn persp_box(
+fn persp_box(
     target: &mut dyn r_graphics_engine::DrawTarget,
     c: Coordinates,
     input: &PerspInput,
@@ -1257,7 +1257,7 @@ unsafe fn persp_axes(
     }
 }
 
-unsafe fn persp_axis(
+fn persp_axis(
     target: &mut dyn r_graphics_engine::DrawTarget,
     c: Coordinates,
     input: &PerspInput,
@@ -1381,13 +1381,7 @@ unsafe fn persp_axis(
 
 /// The drawing half of GNU `C_filledcontour`: colored cell bands between
 /// consecutive contour levels (GNU forces clipping to the plot region).
-pub(crate) unsafe fn filledcontour_render(
-    x: &[f64],
-    y: &[f64],
-    z: &[f64],
-    levels: &[f64],
-    col: SEXP,
-) {
+pub(crate) fn filledcontour_render(x: &[f64], y: &[f64], z: &[f64], levels: &[f64], col: SEXP) {
     if !renderplot_backend_active() {
         return;
     }

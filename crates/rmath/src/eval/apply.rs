@@ -23,16 +23,14 @@ pub(crate) fn apply_closure_safe<'a>(
     rho: Sexp<'a>,
 ) -> Result<Sexp<'a>, String> {
     let frame = PrimitiveCall::new(fun, call, args, rho)?;
-    let raw_result = unsafe {
-        super::closure::applyClosure(
-            frame.call.as_raw(),
-            frame.fun.as_raw(),
-            frame.args.as_raw(),
-            frame.rho.as_raw(),
-            frame.factory.nil().as_raw(),
-            TRUE,
-        )
-    };
+    let raw_result = super::closure::applyClosure(
+        frame.call.as_raw(),
+        frame.fun.as_raw(),
+        frame.args.as_raw(),
+        frame.rho.as_raw(),
+        frame.factory.nil().as_raw(),
+        TRUE,
+    );
     frame
         .factory
         .wrap(raw_result)

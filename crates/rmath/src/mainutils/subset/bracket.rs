@@ -629,20 +629,18 @@ pub fn do_subset_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         /// `[.factor` / `[.POSIXct` / `[.AsIs` restore class plus levels/tzone;
         /// `copyMostAttrib` is that transfer (names/dim/dimnames already set).
         fn subset_frame_column(col: SEXP, sr: SEXP, call: SEXP) -> SEXP {
-            unsafe {
-                let result = if isMatrix(col) {
-                    let jcell = Rf_cons(R_MissingArg(), R_NilValue());
-                    let _j_guard = protect(jcell);
-                    let icell = Rf_cons(sr, jcell);
-                    let _i_guard = protect(icell);
-                    MatrixSubset(col, icell, call, 0)
-                } else {
-                    VectorSubset(col, sr, call)
-                };
-                let _result_guard = protect(result);
-                crate::mainutils::array::copyMostAttrib(col, result);
-                result
-            }
+            let result = if isMatrix(col) {
+                let jcell = Rf_cons(R_MissingArg(), R_NilValue());
+                let _j_guard = protect(jcell);
+                let icell = Rf_cons(sr, jcell);
+                let _i_guard = protect(icell);
+                MatrixSubset(col, icell, call, 0)
+            } else {
+                VectorSubset(col, sr, call)
+            };
+            let _result_guard = protect(result);
+            crate::mainutils::array::copyMostAttrib(col, result);
+            result
         }
 
         /// Subset a data.frame's row.names for `df[i, ]`, handling the compact

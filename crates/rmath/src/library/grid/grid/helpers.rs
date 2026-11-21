@@ -4,7 +4,7 @@ pub(crate) unsafe fn GEcurrentDevice() -> pGEDevDesc {
     unsafe { crate::library::grdevices::device_registry::GEcurrentDevice() as pGEDevDesc }
 }
 
-pub(crate) unsafe fn lang4(symbol: SEXP, arg1: SEXP, arg2: SEXP, arg3: SEXP) -> SEXP {
+pub(crate) fn lang4(symbol: SEXP, arg1: SEXP, arg2: SEXP, arg3: SEXP) -> SEXP {
     let tail = Rf_cons(arg3, R_NilValue());
     let tail = Rf_cons(arg2, tail);
     let tail = Rf_cons(arg1, tail);
@@ -15,7 +15,7 @@ pub(crate) unsafe fn lang4(symbol: SEXP, arg1: SEXP, arg2: SEXP, arg3: SEXP) -> 
     call
 }
 
-pub(crate) unsafe fn SET_TAG(x: SEXP, y: SEXP) {
+pub(crate) fn SET_TAG(x: SEXP, y: SEXP) {
     SETTAG(x, y);
 }
 

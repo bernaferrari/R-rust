@@ -415,7 +415,7 @@ pub(crate) fn childList(children: SEXP) -> SEXP {
 
 pub(crate) fn pathMatch(path: SEXP, pathsofar: SEXP, strict: SEXP) -> bool {
     {
-        let fcall = unsafe { lang4(install("pathMatch"), path, pathsofar, strict) };
+        let fcall = lang4(install("pathMatch"), path, pathsofar, strict);
         let _fcall_guard = protect(fcall);
         let result = Rf_eval_with_gd(fcall, grid_eval_env(), ptr::null_mut());
         let _result_guard = protect(result);
@@ -719,20 +719,18 @@ pub fn L_unsetviewport(n: SEXP) -> SEXP {
             let false0 = alloc_vector(SEXPTYPE::LGLSXP, 1);
             let _false_guard = protect(false0);
             set_logical_elt(false0, 0, 0);
-            let fcall = unsafe {
-                lang4(
-                    install("remove"),
-                    vector_elt(gvp, VP_NAME as R_xlen_t),
-                    vector_elt(newvp, PVP_CHILDREN as R_xlen_t),
-                    false0,
-                )
-            };
+            let fcall = lang4(
+                install("remove"),
+                vector_elt(gvp, VP_NAME as R_xlen_t),
+                vector_elt(newvp, PVP_CHILDREN as R_xlen_t),
+                false0,
+            );
             let _fcall_guard = protect(fcall);
             let mut t = fcall;
             t = CDR(CDR(t));
-            unsafe { SET_TAG(t, install("envir")) };
+            SET_TAG(t, install("envir"));
             t = CDR(t);
-            unsafe { SET_TAG(t, install("inherits")) };
+            SET_TAG(t, install("inherits"));
             Rf_eval_with_gd(fcall, grid_eval_env(), dd);
         }
 

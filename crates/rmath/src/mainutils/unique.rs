@@ -781,7 +781,7 @@ fn all_safe(args: Sexp<'_>) -> Result<SEXP, String> {
 /// Test-only in this port: the registered `unique` builtin dispatches to
 /// `crate::mainutils::essentials::do_unique`; this raw pairlist wrapper is
 /// exercised by the unit tests below.
-pub unsafe fn do_unique(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_unique(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     let args_s =
         wrap_current(args).unwrap_or_else(|err| -> Sexp<'_> { unique_error(err.to_string()) });
     let x = args_s
@@ -797,7 +797,7 @@ pub unsafe fn do_unique(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
 /// Test-only in this port: the registered `duplicated` builtin dispatches to
 /// `crate::mainutils::essentials::do_duplicated`; this raw pairlist wrapper
 /// is exercised by the unit tests below.
-pub unsafe fn do_duplicated(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_duplicated(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     let args_s =
         wrap_current(args).unwrap_or_else(|err| -> Sexp<'_> { unique_error(err.to_string()) });
     let x = args_s
@@ -811,7 +811,7 @@ pub unsafe fn do_duplicated(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> S
 ///
 /// `.Internal(any(..., na.rm = FALSE))`
 /// PRIMVAL(op) == 2 in the C source.
-pub unsafe fn do_any(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_any(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     let args_s =
         wrap_current(args).unwrap_or_else(|err| -> Sexp<'_> { unique_error(err.to_string()) });
     any_safe(args_s).unwrap_or_else(|message| -> SEXP { unique_error(message) })
@@ -821,7 +821,7 @@ pub unsafe fn do_any(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 ///
 /// `.Internal(all(..., na.rm = FALSE))`
 /// PRIMVAL(op) == 1 in the C source.
-pub unsafe fn do_all(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_all(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     let args_s =
         wrap_current(args).unwrap_or_else(|err| -> Sexp<'_> { unique_error(err.to_string()) });
     all_safe(args_s).unwrap_or_else(|message| -> SEXP { unique_error(message) })

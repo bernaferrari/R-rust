@@ -75,7 +75,7 @@ unsafe fn has_qr_class(value: SEXP) -> bool {
     }
 }
 
-unsafe fn copy_dimname_prefix(value: SEXP, count: usize) -> SEXP {
+fn copy_dimname_prefix(value: SEXP, count: usize) -> SEXP {
     if value == R_NilValue() {
         return value;
     }

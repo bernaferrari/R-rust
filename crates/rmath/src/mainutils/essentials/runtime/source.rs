@@ -964,7 +964,7 @@ pub fn do_demo(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// GNU `example(topic)` — `substitute(topic)` unless `character.only`.
 pub fn do_example(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+    {
         if let Some((topic, source)) = portable_example_source(args) {
             let result = run_portable_example(&source, &topic, args, rho);
             crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);

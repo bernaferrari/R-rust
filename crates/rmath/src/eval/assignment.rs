@@ -250,16 +250,14 @@ fn apply_custom_replacement(
         let call = allocator.call(setter, &source_arguments)?;
         access.with_native(|owner| {
             let result = if function.is_closure() {
-                let result = unsafe {
-                    crate::eval::closure::applyClosure(
-                        call.as_raw(),
-                        function.as_raw(),
-                        arguments.as_raw(),
-                        environment.as_raw(),
-                        domain.nil().as_raw(),
-                        0,
-                    )
-                };
+                let result = crate::eval::closure::applyClosure(
+                    call.as_raw(),
+                    function.as_raw(),
+                    arguments.as_raw(),
+                    environment.as_raw(),
+                    domain.nil().as_raw(),
+                    0,
+                );
                 owner.sexp(result)?.into_owned()?
             } else {
                 let apply = if function.typeof_() == SEXPTYPE::SPECIALSXP {

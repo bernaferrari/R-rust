@@ -82,7 +82,7 @@ unsafe fn round_tripped_in_session(recording: SEXP) -> bool {
 /// Keep GNU replay for its display-list format while admitting the owned scene
 /// codec before GNU's restoration wrapper indexes it as a list. Install only
 /// in the real grDevices namespace, with that namespace as lexical enclosure.
-pub(crate) unsafe fn install_namespace_replay(namespace: SEXP) {
+pub(crate) fn install_namespace_replay(namespace: SEXP) {
     let result = (|| {
         use crate::sexp::{
             object::SexpError,
@@ -119,7 +119,7 @@ pub(crate) unsafe fn install_namespace_replay(namespace: SEXP) {
     result.unwrap_or_else(|error: crate::sexp::object::SexpError| base_error(error.to_string()));
 }
 
-unsafe fn recording_state_symbol() -> SEXP {
+fn recording_state_symbol() -> SEXP {
     crate::sexp::symbol::install_str("rport.graphics.state")
 }
 

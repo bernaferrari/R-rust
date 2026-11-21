@@ -257,7 +257,7 @@ pub fn do_usemethod(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// R's `missing(x)` — check if argument was missing in call.
 pub fn do_missing(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe { crate::eval::missing::do_missing(call, op, args, rho) }
+    crate::eval::missing::do_missing(call, op, args, rho)
 }
 
 /// R's `parent.frame(n)` — get enclosing environment.

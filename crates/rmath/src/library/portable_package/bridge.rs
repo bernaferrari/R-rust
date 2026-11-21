@@ -312,11 +312,7 @@ pub(super) fn finalize(
     #[cfg(feature = "renderplot-device")]
     if image.name == "grDevices" {
         access.with_native(|_| {
-            // SAFETY: `namespace` is a linked, live ENVSXP owned by this
-            // runtime for this strictly-local replay install.
-            unsafe {
-                crate::mainutils::graphics_recording::install_namespace_replay(namespace.as_raw());
-            }
+            crate::mainutils::graphics_recording::install_namespace_replay(namespace.as_raw());
             Ok(())
         })?;
     }

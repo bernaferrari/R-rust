@@ -24,7 +24,6 @@ use crate::sexp::globals::R_NilValue;
 use crate::sexp::instance;
 use crate::sexp::memory::with_arena;
 use crate::sexp::protect::protect;
-use crate::sexp::symbol::Rf_install;
 
 // ---------------------------------------------------------------------------
 // PPkind constants (from Defn.h)
@@ -506,7 +505,9 @@ pub fn installDDVAL(n: c_int) -> SEXP {
             let mut symbols = Vec::with_capacity(N_DDVAL_SYMBOLS);
             for i in 0..N_DDVAL_SYMBOLS {
                 let name = format!("..{}", i);
-                let sym = Rf_install(std::ffi::CString::new(name).unwrap_or_default().as_ptr());
+                let sym = crate::sexp::symbol::install_cstr(
+                    &std::ffi::CString::new(name).unwrap_or_default(),
+                );
                 symbols.push(sym);
             }
             let sym = symbols[n as usize];
@@ -519,7 +520,7 @@ pub fn installDDVAL(n: c_int) -> SEXP {
         }
 
         let name = format!("..{}", n);
-        Rf_install(std::ffi::CString::new(name).unwrap_or_default().as_ptr())
+        crate::sexp::symbol::install_cstr(&std::ffi::CString::new(name).unwrap_or_default())
     }
 }
 

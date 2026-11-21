@@ -603,7 +603,7 @@ pub(crate) fn coerceVector(x: SEXP, type_: c_int) -> SEXP {
 
 /// getAttrib: get an attribute from an object.
 pub(crate) fn getAttrib(x: SEXP, what: SEXP) -> SEXP {
-    unsafe { crate::eval::attrib_core::getAttrib(x, what) }
+    crate::eval::attrib_core::getAttrib(x, what)
 }
 
 /// setAttrib: set an attribute on an object.
@@ -627,38 +627,36 @@ pub(crate) fn shallow_duplicate(x: SEXP) -> SEXP {
 /// handled separately by EnlargeVector). Also copies the OBJECT flag
 /// and S4 object bit.
 pub(crate) fn copyMostAttrib(src: SEXP, dest: SEXP) {
-    unsafe {
-        use crate::eval::attrib_core::{R_DimNamesSymbol, R_DimSymbol, R_NamesSymbol};
-        if isNull(src) || isNull(dest) {
-            return;
+    use crate::eval::attrib_core::{R_DimNamesSymbol, R_DimSymbol, R_NamesSymbol};
+    if isNull(src) || isNull(dest) {
+        return;
+    }
+    let src_attr = ATTRIB(src);
+    if isNull(src_attr) {
+        return;
+    }
+    // Copy every attribute except dim, dimnames and names: those are
+    // handled separately (EnlargeVector already fixed up `names`, and
+    // grown vectors lose their shape). Overwriting the whole attribute
+    // list here would clobber the enlarged names attribute.
+    let mut attr = src_attr;
+    while !isNull(attr) {
+        let tag = TAG(attr);
+        if tag != R_NamesSymbol() && tag != R_DimSymbol() && tag != R_DimNamesSymbol() {
+            // GNU copyMostAttrib uses installAttrib: this is an
+            // internal metadata transfer, not a user `attr<-` call.
+            // In particular, a temporary `[<-` result may have grown
+            // while retaining its old `tsp`; class methods validate and
+            // reject that resize after NextMethod returns.
+            crate::sexp::attrib_core::installAttrib(dest, tag, CAR(attr));
         }
-        let src_attr = ATTRIB(src);
-        if isNull(src_attr) {
-            return;
-        }
-        // Copy every attribute except dim, dimnames and names: those are
-        // handled separately (EnlargeVector already fixed up `names`, and
-        // grown vectors lose their shape). Overwriting the whole attribute
-        // list here would clobber the enlarged names attribute.
-        let mut attr = src_attr;
-        while !isNull(attr) {
-            let tag = TAG(attr);
-            if tag != R_NamesSymbol() && tag != R_DimSymbol() && tag != R_DimNamesSymbol() {
-                // GNU copyMostAttrib uses installAttrib: this is an
-                // internal metadata transfer, not a user `attr<-` call.
-                // In particular, a temporary `[<-` result may have grown
-                // while retaining its old `tsp`; class methods validate and
-                // reject that resize after NextMethod returns.
-                crate::sexp::attrib_core::installAttrib(dest, tag, CAR(attr));
-            }
-            attr = CDR(attr);
-        }
-        SET_OBJECT(dest, OBJECT(src));
-        if IS_S4_OBJECT(src) != 0 {
-            SET_S4_OBJECT(dest);
-        } else {
-            UNSET_S4_OBJECT(dest);
-        }
+        attr = CDR(attr);
+    }
+    SET_OBJECT(dest, OBJECT(src));
+    if IS_S4_OBJECT(src) != 0 {
+        SET_S4_OBJECT(dest);
+    } else {
+        UNSET_S4_OBJECT(dest);
     }
 }
 

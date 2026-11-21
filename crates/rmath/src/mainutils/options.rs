@@ -23,7 +23,6 @@ use crate::sexp::memory_ext::allocLang;
 use crate::sexp::object::{PairlistBuilder, SessionNodeFactory, Sexp, SexpMut, SexpResult};
 use crate::sexp::owner::OwnerToken;
 use crate::sexp::protect::protect;
-use crate::sexp::symbol::Rf_install;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum OptionsInitialization {
@@ -292,9 +291,7 @@ fn installTrChar(x: SEXP) -> SEXP {
     if x.is_null() {
         return ptr::null_mut();
     }
-    // SAFETY: a live CHARSXP exposes NUL-terminated CHAR data; Rf_install
-    // interns a copy under the active runtime.
-    unsafe { Rf_install(CHAR(x)) }
+    crate::sexp::symbol::install_charsxp(x)
 }
 
 /// EnsureString -- coerce to CHARSXP (print name).

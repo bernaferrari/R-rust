@@ -56,7 +56,7 @@ const NILSXP_VAL: SEXPTYPE = SEXPTYPE::NILSXP;
 // ---------------------------------------------------------------------------
 
 /// Check arity -- no-op since the R-level wrapper handles this.
-unsafe fn checkArity(op: SEXP, args: SEXP) {
+fn checkArity(op: SEXP, args: SEXP) {
     crate::mainutils::relop::checkArity(op, args)
 }
 
@@ -145,14 +145,14 @@ fn isVector(x: SEXP) -> c_int {
 }
 
 /// MARK_NOT_MUTABLE: set the namedness to NAMEDMAX (2) to prevent modification.
-unsafe fn MARK_NOT_MUTABLE(x: SEXP) {
+fn MARK_NOT_MUTABLE(x: SEXP) {
     if !x.is_null() {
         SET_NAMED(x, 2);
     }
 }
 
 /// INCREMENT_NAMED: increase namedness level by 1, capped at 2.
-unsafe fn INCREMENT_NAMED(x: SEXP) {
+fn INCREMENT_NAMED(x: SEXP) {
     if !x.is_null() {
         let n = NAMED(x);
         if n < 2 {
@@ -271,7 +271,7 @@ fn R_typeToChar_local(x: SEXP) -> *const c_char {
 }
 
 /// LCONS: create a cons cell with LANGSXP type (LCONS in R's C API).
-unsafe fn LCONS(car: SEXP, cdr: SEXP) -> SEXP {
+fn LCONS(car: SEXP, cdr: SEXP) -> SEXP {
     let cell = Rf_cons(car, cdr);
     if !cell.is_null() {
         crate::sexp::accessors::SET_TYPEOF(cell, SEXPTYPE::LANGSXP.as_c_int());
@@ -305,7 +305,7 @@ fn length(x: SEXP) -> c_int {
 ///
 /// Takes a LANGSXP expression `e`, forces the first `n` promises in its
 /// argument list, then evaluates the function call.
-unsafe fn force_and_call(e: SEXP, n: c_int, rho: SEXP) -> SEXP {
+fn force_and_call(e: SEXP, n: c_int, rho: SEXP) -> SEXP {
     if e.is_null() || TYPEOF(e) != SEXPTYPE::LANGSXP {
         return Rf_eval(e, rho);
     }
@@ -345,7 +345,7 @@ macro_rules! r_error {
     }};
 }
 
-unsafe fn coerceVector(x: SEXP, type_: c_int) -> SEXP {
+fn coerceVector(x: SEXP, type_: c_int) -> SEXP {
     crate::mainutils::coerce::coerceVector(x, type_)
 }
 

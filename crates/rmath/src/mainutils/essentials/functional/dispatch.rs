@@ -43,7 +43,7 @@ pub(super) fn apply_unary_value(fun: SEXP, value: SEXP, rho: SEXP) -> SEXP {
 /// formal as missing; a forced promise whose value is that sentinel is
 /// the empty symbol, matching `vapply(formals(f), FUN, ...)`.
 pub(super) fn apply_fun_to_element(fun: SEXP, elem: SEXP, extra_args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+    {
         let elem_promise = crate::sexp::memory_ext::mkPROMSXP(elem, rho);
         if !elem_promise.is_null() {
             crate::sexp::accessors::SET_PRVALUE(elem_promise, elem);

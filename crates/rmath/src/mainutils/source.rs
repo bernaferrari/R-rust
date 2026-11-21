@@ -21,16 +21,17 @@ use crate::sexp::protect::protect;
 /// This is the equivalent of R's `do_parse()` from source.c.
 ///
 /// .Internal( parse(file, n, text, prompt, srcfile, encoding) )
-unsafe fn keep_source_enabled(args: SEXP) -> bool {
-        let mut p = args;
-        while !p.is_null() && p != R_NilValue() {
-            if crate::mainutils::essentials::tag_name(p).as_deref() == Some("keep.source") {
-                return crate::mainutils::coerce::asLogical(CAR(p)) == 1;
-            }
-            p = CDR(p);
+fn keep_source_enabled(args: SEXP) -> bool {
+    let mut p = args;
+    while !p.is_null() && p != R_NilValue() {
+        if crate::mainutils::essentials::tag_name(p).as_deref() == Some("keep.source") {
+            return crate::mainutils::coerce::asLogical(CAR(p)) == 1;
         }
-    let opt = crate::mainutils::options::GetOption1(crate::sexp::symbol::install_str("keep.source"));
-        !opt.is_null() && crate::mainutils::coerce::asLogical(opt) == 1
+        p = CDR(p);
+    }
+    let opt =
+        crate::mainutils::options::GetOption1(crate::sexp::symbol::install_str("keep.source"));
+    !opt.is_null() && crate::mainutils::coerce::asLogical(opt) == 1
 }
 
 pub unsafe fn do_parse(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
@@ -100,7 +101,8 @@ pub unsafe fn do_parse(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
             if elt == R_NaString() {
                 parse_failure("invalid 'text' argument");
             }
-            let source = String::from_utf8_lossy(&crate::sexp::accessors::char_cstr_bytes(elt)).into_owned();
+            let source =
+                String::from_utf8_lossy(&crate::sexp::accessors::char_cstr_bytes(elt)).into_owned();
             if !combined.is_empty() {
                 combined.push('\n');
             }
@@ -148,17 +150,17 @@ unsafe fn parse_content_to_exprs(content: &str) -> SEXP {
 
 // Local element-to-string (mirrors essentials' helper without
 // reaching into its private `shared` module).
-unsafe fn local_elt_to_string(x: SEXP, i: R_xlen_t) -> String {
-        if x.is_null() || x == R_NilValue() {
-            return String::new();
-        }
-        if TYPEOF(x) != SEXPTYPE::STRSXP {
-            return String::new();
-        }
-        let elt = STRING_ELT(x, i);
-        if elt.is_null() {
-            return String::new();
-        }
+fn local_elt_to_string(x: SEXP, i: R_xlen_t) -> String {
+    if x.is_null() || x == R_NilValue() {
+        return String::new();
+    }
+    if TYPEOF(x) != SEXPTYPE::STRSXP {
+        return String::new();
+    }
+    let elt = STRING_ELT(x, i);
+    if elt.is_null() {
+        return String::new();
+    }
     String::from_utf8_lossy(&crate::sexp::accessors::char_cstr_bytes(elt)).into_owned()
 }
 
@@ -520,7 +522,9 @@ mod tests {
             assert_eq!(TYPEOF(context), SEXPTYPE::STRSXP);
             assert_eq!(XLENGTH(context), 1);
             assert_eq!(
-                std::str::from_utf8(&crate::sexp::accessors::char_cstr_bytes(STRING_ELT(context, 0))),
+                std::str::from_utf8(&crate::sexp::accessors::char_cstr_bytes(STRING_ELT(
+                    context, 0
+                ))),
                 Ok("1 +")
             );
         }

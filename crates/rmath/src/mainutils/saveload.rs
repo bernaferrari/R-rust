@@ -646,11 +646,11 @@ unsafe fn save_arguments(args: SEXP) -> ([Option<SEXP>; 9], Vec<String>) {
     (options, names)
 }
 
-unsafe fn eval_save_argument(arg: Option<SEXP>, rho: SEXP) -> SEXP {
+fn eval_save_argument(arg: Option<SEXP>, rho: SEXP) -> SEXP {
     arg.map_or_else(R_NilValue, |expr| crate::eval::eval::Rf_eval(expr, rho))
 }
 
-unsafe fn names_from_save_list(list: SEXP) -> Vec<String> {
+fn names_from_save_list(list: SEXP) -> Vec<String> {
     if list == R_NilValue() {
         return Vec::new();
     }
@@ -716,7 +716,7 @@ fn legacy_length(reader: &mut Cursor<&[u8]>) -> io::Result<c_int> {
     Ok(value)
 }
 
-unsafe fn workspace_version(version: SEXP) -> c_int {
+fn workspace_version(version: SEXP) -> c_int {
     if version.is_null() || version == R_NilValue() {
         return defaultSaveVersion();
     }
@@ -727,7 +727,7 @@ unsafe fn workspace_version(version: SEXP) -> c_int {
     version
 }
 
-unsafe fn workspace_flag(value: SEXP, default: bool) -> bool {
+fn workspace_flag(value: SEXP, default: bool) -> bool {
     if value.is_null() || value == R_NilValue() {
         return default;
     }
@@ -739,32 +739,28 @@ unsafe fn workspace_flag(value: SEXP, default: bool) -> bool {
 }
 
 unsafe fn workspace_codec(value: SEXP, ascii: bool) -> Option<&'static str> {
-    unsafe {
-        if value.is_null() {
-            return (!ascii).then_some("gzip");
-        }
-        match SEXPTYPE::from(TYPEOF(value)) {
-            SEXPTYPE::LGLSXP if XLENGTH(value) == 1 => {
-                workspace_flag(value, !ascii).then_some("gzip")
+    if value.is_null() {
+        return (!ascii).then_some("gzip");
+    }
+    match SEXPTYPE::from(TYPEOF(value)) {
+        SEXPTYPE::LGLSXP if XLENGTH(value) == 1 => workspace_flag(value, !ascii).then_some("gzip"),
+        SEXPTYPE::STRSXP if XLENGTH(value) == 1 => {
+            let name = STRING_ELT(value, 0);
+            if name == R_NaString() {
+                error("missing value where TRUE/FALSE needed");
             }
-            SEXPTYPE::STRSXP if XLENGTH(value) == 1 => {
-                let name = STRING_ELT(value, 0);
-                if name == R_NaString() {
-                    error("missing value where TRUE/FALSE needed");
-                }
-                match &crate::sexp::accessors::char_cstr_bytes(name)[..] {
-                    b"gzip" => Some("gzip"),
-                    b"bzip2" => Some("bzip2"),
-                    b"xz" => Some("xz"),
-                    b"no compression" => None,
-                    codec => error(&format!(
-                        "'compress = \"{}\"' is invalid",
-                        String::from_utf8_lossy(codec)
-                    )),
-                }
+            match &crate::sexp::accessors::char_cstr_bytes(name)[..] {
+                b"gzip" => Some("gzip"),
+                b"bzip2" => Some("bzip2"),
+                b"xz" => Some("xz"),
+                b"no compression" => None,
+                codec => error(&format!(
+                    "'compress = \"{}\"' is invalid",
+                    String::from_utf8_lossy(codec)
+                )),
             }
-            _ => error("'compress' must be logical or character"),
         }
+        _ => error("'compress' must be logical or character"),
     }
 }
 

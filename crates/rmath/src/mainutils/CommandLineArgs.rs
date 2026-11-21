@@ -257,11 +257,7 @@ fn set_no_renviron(value: bool) {
 
 /// .Internal handler: returns a STRSXP character vector of the stored
 /// command-line arguments.
-///
-/// # Safety
-/// - `call`, `op`, `args`, `env` are SEXP pointers following R's calling
-///   convention. Only `args` is checked for arity.
-pub unsafe fn do_commandArgs(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub fn do_commandArgs(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     let _ = call;
     let _ = op;
     let _ = args;

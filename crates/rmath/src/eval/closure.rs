@@ -70,7 +70,7 @@ pub fn create_env_safe<'a>(bindings: Sexp<'a>, parent: Sexp<'a>) -> Result<Sexp<
 /// - arglist: the evaluated or promised argument list
 /// - rho: the calling environment
 /// - suppliedenv: the environment of the caller (for sys.call/sys.parent)
-pub unsafe fn applyClosure(
+pub fn applyClosure(
     call: SEXP,
     op: SEXP,
     arglist: SEXP,

@@ -27,27 +27,27 @@ use crate::sexp::symbol::Rf_install;
 // ---------------------------------------------------------------------------
 
 /// Get the "class" symbol.
-pub unsafe fn R_ClassSymbol() -> SEXP {
+pub fn R_ClassSymbol() -> SEXP {
     crate::sexp::symbol::install_str("class")
 }
 
 /// Get the "names" symbol.
-pub unsafe fn R_NamesSymbol() -> SEXP {
+pub fn R_NamesSymbol() -> SEXP {
     crate::sexp::symbol::install_str("names")
 }
 
 /// Get the "dim" symbol.
-pub unsafe fn R_DimSymbol() -> SEXP {
+pub fn R_DimSymbol() -> SEXP {
     crate::sexp::symbol::install_str("dim")
 }
 
 /// Get the "dimnames" symbol.
-pub unsafe fn R_DimNamesSymbol() -> SEXP {
+pub fn R_DimNamesSymbol() -> SEXP {
     crate::sexp::symbol::install_str("dimnames")
 }
 
 /// Get the "levels" symbol.
-pub unsafe fn R_LevelsSymbol() -> SEXP {
+pub fn R_LevelsSymbol() -> SEXP {
     crate::sexp::symbol::install_str("levels")
 }
 
@@ -57,7 +57,7 @@ pub fn R_UseNamesSymbol() -> SEXP {
 }
 
 /// Get the "tsp" symbol.
-pub unsafe fn R_TspSymbol() -> SEXP {
+pub fn R_TspSymbol() -> SEXP {
     crate::sexp::symbol::install_str("tsp")
 }
 
@@ -89,7 +89,7 @@ pub fn R_EnvironmentSymbol() -> SEXP {
 ///
 /// This is the equivalent of R's `getAttrib()` from attrib.c.
 /// Searches the attribute pairlist for a matching symbol.
-pub unsafe fn getAttrib(x: SEXP, which: SEXP) -> SEXP {
+pub fn getAttrib(x: SEXP, which: SEXP) -> SEXP {
     crate::sexp::attrib_core::getAttrib(x, which)
 }
 
@@ -131,101 +131,99 @@ pub(crate) fn pairlist_to_names(value: SEXP) -> SEXP {
 ///
 /// This is the equivalent of R's `setAttrib()` from attrib.c.
 pub unsafe fn setAttrib(x: SEXP, which: SEXP, value: SEXP) {
-    unsafe {
-        if x.is_null() || which.is_null() {
-            return;
-        }
-        if crate::sexp::attrib_core::try_set_pairlist_names(x, which, value)
-            || crate::sexp::attrib_core::try_set_atomic_names(x, which, value)
-        {
-            return;
-        }
-        let t = TYPEOF(x);
-        if t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP {
-            let kind = if t == SEXPTYPE::BUILTINSXP {
-                "builtin"
-            } else {
-                "special"
-            };
-            std::panic::panic_any(crate::sexp::context::RError {
-                message: format!("cannot set an attribute on a '{kind}'"),
-            });
-        }
-        if which == crate::sexp::attrib_core::R_TspSymbol() {
-            crate::sexp::attrib_core::setAttrib(x, which, value);
-            return;
-        }
-
-        let value = if which == R_ClassSymbol() {
-            crate::sexp::attrib_core::classgets_normalize(x, value)
-        } else if which == R_NamesSymbol() && TYPEOF(value) == SEXPTYPE::LISTSXP {
-            pairlist_to_names(value)
+    if x.is_null() || which.is_null() {
+        return;
+    }
+    if crate::sexp::attrib_core::try_set_pairlist_names(x, which, value)
+        || crate::sexp::attrib_core::try_set_atomic_names(x, which, value)
+    {
+        return;
+    }
+    let t = TYPEOF(x);
+    if t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP {
+        let kind = if t == SEXPTYPE::BUILTINSXP {
+            "builtin"
         } else {
-            value
+            "special"
         };
+        std::panic::panic_any(crate::sexp::context::RError {
+            message: format!("cannot set an attribute on a '{kind}'"),
+        });
+    }
+    if which == crate::sexp::attrib_core::R_TspSymbol() {
+        crate::sexp::attrib_core::setAttrib(x, which, value);
+        return;
+    }
 
-        // GNU namesgets: pairlist/language names are cell tags, not a
-        // stored `names` attribute. `quote(f(x=1))[-1]` copies VECSXP
-        // names back through setAttrib; without tags, `names()` is NULL
-        // and callGeneric's `lapply(names(call[-1]), as.name)` panics.
-        // GNU removeAttrib(names) on a pairlist/language also walks
-        // cells and SET_TAG(t, R_NilValue) (`names(e) <- NULL` → `f(1)`).
-        let xtype = TYPEOF(x);
-        if which == R_NamesSymbol() && (xtype == SEXPTYPE::LISTSXP || xtype == SEXPTYPE::LANGSXP) {
-            namesgets_pairlist(x, value);
-            return;
-        }
+    let value = if which == R_ClassSymbol() {
+        crate::sexp::attrib_core::classgets_normalize(x, value)
+    } else if which == R_NamesSymbol() && TYPEOF(value) == SEXPTYPE::LISTSXP {
+        pairlist_to_names(value)
+    } else {
+        value
+    };
 
-        let attrib = ATTRIB(x);
+    // GNU namesgets: pairlist/language names are cell tags, not a
+    // stored `names` attribute. `quote(f(x=1))[-1]` copies VECSXP
+    // names back through setAttrib; without tags, `names()` is NULL
+    // and callGeneric's `lapply(names(call[-1]), as.name)` panics.
+    // GNU removeAttrib(names) on a pairlist/language also walks
+    // cells and SET_TAG(t, R_NilValue) (`names(e) <- NULL` → `f(1)`).
+    let xtype = TYPEOF(x);
+    if which == R_NamesSymbol() && (xtype == SEXPTYPE::LISTSXP || xtype == SEXPTYPE::LANGSXP) {
+        namesgets_pairlist(x, value);
+        return;
+    }
 
-        // Search for existing attribute
-        let mut previous = R_NilValue();
-        let mut current = attrib;
-        while !current.is_null() && current != R_NilValue() {
-            if TAG(current) == which {
-                if value.is_null() || value == R_NilValue() {
-                    let next = CDR(current);
-                    if previous.is_null() || previous == R_NilValue() {
-                        SET_ATTRIB(x, next);
-                    } else {
-                        SETCDR(previous, next);
-                    }
-                    update_class_object_flag(x, which, R_NilValue());
-                    return;
+    let attrib = ATTRIB(x);
+
+    // Search for existing attribute
+    let mut previous = R_NilValue();
+    let mut current = attrib;
+    while !current.is_null() && current != R_NilValue() {
+        if TAG(current) == which {
+            if value.is_null() || value == R_NilValue() {
+                let next = CDR(current);
+                if previous.is_null() || previous == R_NilValue() {
+                    SET_ATTRIB(x, next);
+                } else {
+                    SETCDR(previous, next);
                 }
-                // Found — replace value
-                SETCAR(current, value);
-                // Update OBJECT flag for "class" attribute
-                update_class_object_flag(x, which, value);
+                update_class_object_flag(x, which, R_NilValue());
                 return;
             }
-            previous = current;
-            current = CDR(current);
-        }
-
-        if value.is_null() || value == R_NilValue() {
+            // Found — replace value
+            SETCAR(current, value);
+            // Update OBJECT flag for "class" attribute
+            update_class_object_flag(x, which, value);
             return;
         }
-
-        // Not found — append the new attribute. GNU R preserves attribute
-        // assignment order: replacing an existing value leaves it in place,
-        // while a new name is linked after the current tail.
-        let _x_guard = crate::sexp::protect::protect(x);
-        let _which_guard = crate::sexp::protect::protect(which);
-        let _value_guard = crate::sexp::protect::protect(value);
-        let new_attr = Rf_cons(value, R_NilValue());
-        if !new_attr.is_null() {
-            crate::sexp::accessors::SETTAG(new_attr, which);
-            if attrib.is_null() || attrib == R_NilValue() {
-                SET_ATTRIB(x, new_attr);
-            } else {
-                SETCDR(previous, new_attr);
-            }
-        }
-
-        // Set OBJECT flag if setting "class" to non-nil
-        update_class_object_flag(x, which, value);
+        previous = current;
+        current = CDR(current);
     }
+
+    if value.is_null() || value == R_NilValue() {
+        return;
+    }
+
+    // Not found — append the new attribute. GNU R preserves attribute
+    // assignment order: replacing an existing value leaves it in place,
+    // while a new name is linked after the current tail.
+    let _x_guard = crate::sexp::protect::protect(x);
+    let _which_guard = crate::sexp::protect::protect(which);
+    let _value_guard = crate::sexp::protect::protect(value);
+    let new_attr = Rf_cons(value, R_NilValue());
+    if !new_attr.is_null() {
+        crate::sexp::accessors::SETTAG(new_attr, which);
+        if attrib.is_null() || attrib == R_NilValue() {
+            SET_ATTRIB(x, new_attr);
+        } else {
+            SETCDR(previous, new_attr);
+        }
+    }
+
+    // Set OBJECT flag if setting "class" to non-nil
+    update_class_object_flag(x, which, value);
 }
 
 /// GNU `namesgets` / `removeAttrib(names)` for LISTSXP/LANGSXP.
@@ -358,19 +356,19 @@ pub fn R_classgets(x: SEXP, klass: SEXP) -> SEXP {
 /// GNU `lang2str`: implicit class of a language object is the syntactic
 /// head (`if`, `while`, `for`, `=`, `<-`, `(`, `{`) or `"call"`.
 pub fn language_implicit_class_chars(obj: SEXP) -> SEXP {
-        let symb = CAR(obj);
-        if TYPEOF(symb) == SEXPTYPE::SYMSXP {
-            let pn = PRINTNAME(symb);
-            if !pn.is_null() {
-                let name = crate::sexp::accessors::charsxp_as_utf8(pn);
-                if matches!(
-                    name.as_slice(),
-                    b"if" | b"while" | b"for" | b"=" | b"<-" | b"(" | b"{"
-                ) {
-                    return pn;
-                }
+    let symb = CAR(obj);
+    if TYPEOF(symb) == SEXPTYPE::SYMSXP {
+        let pn = PRINTNAME(symb);
+        if !pn.is_null() {
+            let name = crate::sexp::accessors::charsxp_as_utf8(pn);
+            if matches!(
+                name.as_slice(),
+                b"if" | b"while" | b"for" | b"=" | b"<-" | b"(" | b"{"
+            ) {
+                return pn;
             }
         }
+    }
     crate::sexp::constructors::mk_char_str("call")
 }
 
@@ -378,80 +376,79 @@ pub fn language_implicit_class_chars(obj: SEXP) -> SEXP {
 ///
 /// This is the equivalent of R's `R_data_class()`.
 pub unsafe fn R_data_class(x: SEXP) -> SEXP {
-    unsafe {
-        let class_val = getAttrib(x, R_ClassSymbol());
-        if class_val.is_null() || class_val == R_NilValue() || TYPEOF(class_val) != SEXPTYPE::STRSXP
-        {
-            let dim = getAttrib(x, R_DimSymbol());
-            if !dim.is_null() && dim != R_NilValue() && TYPEOF(dim) == SEXPTYPE::INTSXP {
-                let nd = XLENGTH(dim);
-                if nd == 2 {
-                    let result = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
-                    let _result_guard = protect(result);
-                    SET_STRING_ELT(result, 0, crate::sexp::constructors::mk_char_str("matrix"));
-                    SET_STRING_ELT(result, 1, crate::sexp::constructors::mk_char_str("array"));
-                    return result;
-                }
-                if nd > 0 {
-                    return crate::sexp::constructors::mk_string_str("array");
-                }
+    let class_val = getAttrib(x, R_ClassSymbol());
+    if class_val.is_null() || class_val == R_NilValue() || TYPEOF(class_val) != SEXPTYPE::STRSXP {
+        let dim = getAttrib(x, R_DimSymbol());
+        if !dim.is_null() && dim != R_NilValue() && TYPEOF(dim) == SEXPTYPE::INTSXP {
+            let nd = XLENGTH(dim);
+            if nd == 2 {
+                let result = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
+                let _result_guard = protect(result);
+                SET_STRING_ELT(result, 0, crate::sexp::constructors::mk_char_str("matrix"));
+                SET_STRING_ELT(result, 1, crate::sexp::constructors::mk_char_str("array"));
+                return result;
             }
-
-            if TYPEOF(x) == SEXPTYPE::LANGSXP {
-                return Rf_ScalarString(language_implicit_class_chars(x));
+            if nd > 0 {
+                return crate::sexp::constructors::mk_string_str("array");
             }
-            if TYPEOF(x) == SEXPTYPE::EXPRSXP {
-                return crate::sexp::constructors::mk_string_str("expression");
-            }
-            if TYPEOF(x) == SEXPTYPE::SYMSXP {
-                return crate::sexp::constructors::mk_string_str("name");
-            }
-            if TYPEOF(x) == SEXPTYPE::CLOSXP
-                || TYPEOF(x) == SEXPTYPE::SPECIALSXP
-                || TYPEOF(x) == SEXPTYPE::BUILTINSXP
-            {
-                return crate::sexp::constructors::mk_string_str("function");
-            }
-            if TYPEOF(x) == SEXPTYPE::LISTSXP {
-                return crate::sexp::constructors::mk_string_str("pairlist");
-            }
-            if TYPEOF(x) == SEXPTYPE::ENVSXP {
-                return crate::sexp::constructors::mk_string_str("environment");
-            }
-            if TYPEOF(x) == SEXPTYPE::DOTSXP {
-                return crate::sexp::constructors::mk_string_str("...");
-            }
-
-            // GNU type2str fallback for remaining SEXPTYPEs.
-            let t = TYPEOF(x);
-            let name = match t {
-                0 => "NULL",
-                10 => "logical",
-                13 => "integer",
-                14 => "numeric",
-                15 => "complex",
-                16 => "character",
-                19 => "list",
-                22 => "externalptr",
-                23 => "weakref",
-                24 => "raw",
-                25 => {
-                    if crate::mainutils::coerce::IS_S4_OBJECT(x) != 0 {
-                        "S4"
-                    } else {
-                        "object"
-                    }
-                }
-                _ => "unknown",
-            };
-
-            return Rf_mkString(std::ffi::CString::new(name).unwrap_or_default().as_ptr());
         }
-        // GNU returns the attribute SEXP; callers may `x[] <-` it
-        // (.traceClassName). Mark shared so subassign duplicates.
-        SET_NAMED(class_val, 2);
-        class_val
+
+        if TYPEOF(x) == SEXPTYPE::LANGSXP {
+            return Rf_ScalarString(language_implicit_class_chars(x));
+        }
+        if TYPEOF(x) == SEXPTYPE::EXPRSXP {
+            return crate::sexp::constructors::mk_string_str("expression");
+        }
+        if TYPEOF(x) == SEXPTYPE::SYMSXP {
+            return crate::sexp::constructors::mk_string_str("name");
+        }
+        if TYPEOF(x) == SEXPTYPE::CLOSXP
+            || TYPEOF(x) == SEXPTYPE::SPECIALSXP
+            || TYPEOF(x) == SEXPTYPE::BUILTINSXP
+        {
+            return crate::sexp::constructors::mk_string_str("function");
+        }
+        if TYPEOF(x) == SEXPTYPE::LISTSXP {
+            return crate::sexp::constructors::mk_string_str("pairlist");
+        }
+        if TYPEOF(x) == SEXPTYPE::ENVSXP {
+            return crate::sexp::constructors::mk_string_str("environment");
+        }
+        if TYPEOF(x) == SEXPTYPE::DOTSXP {
+            return crate::sexp::constructors::mk_string_str("...");
+        }
+
+        // GNU type2str fallback for remaining SEXPTYPEs.
+        let t = TYPEOF(x);
+        let name = match t {
+            0 => "NULL",
+            10 => "logical",
+            13 => "integer",
+            14 => "numeric",
+            15 => "complex",
+            16 => "character",
+            19 => "list",
+            22 => "externalptr",
+            23 => "weakref",
+            24 => "raw",
+            25 => {
+                if crate::mainutils::coerce::IS_S4_OBJECT(x) != 0 {
+                    "S4"
+                } else {
+                    "object"
+                }
+            }
+            _ => "unknown",
+        };
+
+        return crate::sexp::constructors::mk_string_bytes(
+            std::ffi::CString::new(name).unwrap_or_default().to_bytes(),
+        );
     }
+    // GNU returns the attribute SEXP; callers may `x[] <-` it
+    // (.traceClassName). Mark shared so subassign duplicates.
+    SET_NAMED(class_val, 2);
+    class_val
 }
 
 // ---------------------------------------------------------------------------
@@ -480,7 +477,7 @@ pub fn R_length_gets(x: SEXP) -> c_int {
 
 /// FFI-compatible version of getAttrib.
 pub fn Rf_getAttrib(x: SEXP, which: SEXP) -> SEXP {
-    unsafe { getAttrib(x, which) }
+    getAttrib(x, which)
 }
 
 /// FFI-compatible version of setAttrib.

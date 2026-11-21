@@ -70,7 +70,7 @@ pub fn do_Rprof(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// `error(_("memory profiling is not available on this system"))` fallback).
 #[cfg(not(target_arch = "wasm32"))]
 pub fn do_Rprofmem(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+    {
         let result = crate::eval::profiling::do_Rprofmem(call, op, args, rho);
         crate::sexp::globals::set_R_Visible(FALSE);
         result
@@ -265,7 +265,7 @@ pub fn do_gc_time(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R's `gcinfo(on)` — set session-local GC reporting verbosity.
 pub fn do_gcinfo(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+    {
         if args.is_null() || args == R_NilValue() || CAR(args) == R_MissingArg() {
             base_error("argument \"verbose\" is missing, with no default");
         }
@@ -277,7 +277,7 @@ pub fn do_gcinfo(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// R's `gctorture(on = TRUE)` — set session-local GC torture mode.
 pub fn do_gctorture(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+    {
         let on = if args.is_null() || args == R_NilValue() || CAR(args) == R_MissingArg() {
             Rf_ScalarLogical(TRUE)
         } else {
@@ -293,7 +293,7 @@ pub fn do_gctorture(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// R's `gctorture2(step, wait = 0, inhibit_release = FALSE)` session state.
 pub fn do_gctorture2(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+    {
         if args.is_null() || args == R_NilValue() || CAR(args) == R_MissingArg() {
             base_error("argument \"step\" is missing, with no default");
         }

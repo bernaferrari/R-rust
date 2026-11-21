@@ -680,10 +680,7 @@ fn unused_arg_item(car: SEXP, tag: SEXP) -> String {
 /// matchArgs_RC — wrapper around matchArgs_NR that enables reference counting.
 ///
 /// Use this if the result might escape into R.
-/// # Safety
-/// No obligations beyond live SEXP arguments; the signature stays `unsafe`
-/// for existing library callers.
-pub unsafe fn matchArgs_RC(formals: SEXP, supplied: SEXP, call: SEXP) -> SEXP {
+pub fn matchArgs_RC(formals: SEXP, supplied: SEXP, call: SEXP) -> SEXP {
     let args = matchArgs_NR_local(formals, supplied, call);
     // In full R, this would enable reference counting on the arglist.
     // just return the result as-is.
@@ -691,10 +688,7 @@ pub unsafe fn matchArgs_RC(formals: SEXP, supplied: SEXP, call: SEXP) -> SEXP {
 }
 
 /// Bind evaluated `args` to `names` via GNU `matchArgs` (exact, partial, positional).
-/// # Safety
-/// No obligations beyond live SEXP arguments; the signature stays `unsafe`
-/// for existing library callers.
-pub unsafe fn match_formal_slots(call: SEXP, args: SEXP, names: &[&str]) -> Vec<SEXP> {
+pub fn match_formal_slots(call: SEXP, args: SEXP, names: &[&str]) -> Vec<SEXP> {
     let mut formals = R_NilValue();
     for name in names.iter().rev() {
         let sym = crate::sexp::symbol::install_str(name);

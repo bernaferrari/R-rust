@@ -129,7 +129,7 @@ use crate::sexp::protect::protect;
 
 /// checkArity — stub, no-op.
 #[inline(always)]
-unsafe fn checkArity(op: SEXP, args: SEXP) {
+fn checkArity(op: SEXP, args: SEXP) {
     crate::mainutils::relop::checkArity(op, args)
 }
 
@@ -318,23 +318,21 @@ pub unsafe fn do_unsetenv(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP
 }
 
 /// interactive() — check if R is in interactive mode.
-pub unsafe fn do_interactive(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_interactive(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     Rf_ScalarLogical(if R_Interactive() { TRUE } else { FALSE })
 }
 
 /// tempdir() — return the temporary directory path.
 pub unsafe fn do_tempdir(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
-        checkArity(_op, args);
-        let _check = CAR(args);
-        let temp_dir = std::env::temp_dir();
-        let temp_str = temp_dir.to_string_lossy().to_string();
-        Rf_mkString(
-            std::ffi::CString::new(temp_str)
-                .unwrap_or_default()
-                .as_ptr(),
-        )
-    }
+    checkArity(_op, args);
+    let _check = CAR(args);
+    let temp_dir = std::env::temp_dir();
+    let temp_str = temp_dir.to_string_lossy().to_string();
+    crate::sexp::constructors::mk_string_bytes(
+        std::ffi::CString::new(temp_str)
+            .unwrap_or_default()
+            .to_bytes(),
+    )
 }
 
 /// tempfile() — generate temporary file names.
@@ -432,10 +430,10 @@ pub(crate) unsafe fn do_sysinfo_mainutils(_call: SEXP, _op: SEXP, _args: SEXP, _
 
         // nodename
         let hn = get_hostname();
-        let nodename = Rf_mkString(
+        let nodename = crate::sexp::constructors::mk_string_bytes(
             std::ffi::CString::new(hn.as_str())
                 .unwrap_or_default()
-                .as_ptr(),
+                .to_bytes(),
         );
         SET_VECTOR_ELT(ans, 3, nodename);
 

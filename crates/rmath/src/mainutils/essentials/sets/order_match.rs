@@ -128,7 +128,7 @@ pub fn do_findInterval(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R's `cut(x, breaks)` — cut a numeric vector into interval factor codes.
 pub fn do_cut(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
+    {
         let x = arg_by_name_or_position(args, &["x"], 0);
         let breaks_arg = arg_by_name_or_position(args, &["breaks"], 1);
         if x.is_null() || x == R_NilValue() {

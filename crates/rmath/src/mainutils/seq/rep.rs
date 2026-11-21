@@ -805,18 +805,12 @@ pub fn do_rep_len(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         // For objects that aren't factors, try dispatching to rep()
         if isObject(s) != 0 && inherits(s, b"factor\0".as_ptr() as *const c_char) == 0 {
             let rep_call = Rf_shallow_duplicate(call);
-            SETCAR(
-                rep_call,
-                Rf_install_stub(b"rep\0".as_ptr() as *const c_char),
-            );
+            SETCAR(rep_call, crate::sexp::symbol::install_str("rep"));
             SETTAG(
                 CDDR(rep_call),
-                Rf_install_stub(b"length.out\0".as_ptr() as *const c_char),
+                crate::sexp::symbol::install_str("length.out"),
             );
-            SETTAG(
-                CDR(args),
-                Rf_install_stub(b"length.out\0".as_ptr() as *const c_char),
-            );
+            SETTAG(CDR(args), crate::sexp::symbol::install_str("length.out"));
             if DispatchOrEval(
                 rep_call,
                 op,
@@ -926,10 +920,10 @@ pub fn do_rep(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
         // Argument matching for rep(x, times, length.out, each, ...)
         let formals = allocFormalsList5(
-            Rf_install_stub(b"x\0".as_ptr() as *const c_char),
-            Rf_install_stub(b"times\0".as_ptr() as *const c_char),
-            Rf_install_stub(b"length.out\0".as_ptr() as *const c_char),
-            Rf_install_stub(b"each\0".as_ptr() as *const c_char),
+            crate::sexp::symbol::install_str("x"),
+            crate::sexp::symbol::install_str("times"),
+            crate::sexp::symbol::install_str("length.out"),
+            crate::sexp::symbol::install_str("each"),
             R_DotsSymbol(),
         );
         let args = matchArgs_NR(formals, args, call);
@@ -1106,15 +1100,11 @@ pub fn do_rep(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             if !klass.is_null() && klass != R_NilValue() {
                 setAttrib(out, R_ClassSymbol(), klass);
             }
-            let tzone = getAttrib(x, Rf_install_stub(b"tzone\0".as_ptr() as *const c_char));
+            let tzone = getAttrib(x, crate::sexp::symbol::install_str("tzone"));
             if !tzone.is_null() && tzone != R_NilValue() {
-                setAttrib(
-                    out,
-                    Rf_install_stub(b"tzone\0".as_ptr() as *const c_char),
-                    tzone,
-                );
+                setAttrib(out, crate::sexp::symbol::install_str("tzone"), tzone);
             }
-            let bal = getAttrib(x, Rf_install_stub(b"balanced\0".as_ptr() as *const c_char));
+            let bal = getAttrib(x, crate::sexp::symbol::install_str("balanced"));
             if !bal.is_null()
                 && bal != R_NilValue()
                 && TYPEOF(bal) == LGLSXP_VAL
@@ -1123,13 +1113,13 @@ pub fn do_rep(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             {
                 setAttrib(
                     out,
-                    Rf_install_stub(b"balanced\0".as_ptr() as *const c_char),
+                    crate::sexp::symbol::install_str("balanced"),
                     Rf_ScalarLogical(TRUE),
                 );
             } else {
                 setAttrib(
                     out,
-                    Rf_install_stub(b"balanced\0".as_ptr() as *const c_char),
+                    crate::sexp::symbol::install_str("balanced"),
                     Rf_ScalarLogical(NA_INTEGER),
                 );
             }

@@ -27,15 +27,15 @@ const STRSXP_VAL: c_int = 16;
 // Local helpers and entry points
 // ---------------------------------------------------------------------------
 
-unsafe fn checkArity(op: SEXP, args: SEXP) {
+fn checkArity(op: SEXP, args: SEXP) {
     crate::mainutils::relop::checkArity(op, args)
 }
 
-unsafe fn asLogical(x: SEXP) -> c_int {
+fn asLogical(x: SEXP) -> c_int {
     crate::mainutils::coerce::asLogical(x)
 }
 
-unsafe fn asInteger(x: SEXP) -> c_int {
+fn asInteger(x: SEXP) -> c_int {
     crate::mainutils::coerce::asInteger(x)
 }
 
@@ -184,8 +184,11 @@ mod tests {
     fn make_sym(name: &str) -> SEXP {
         use crate::mainutils::dstruct::mkSYMSXP;
         use crate::sexp::constructors::Rf_mkChar;
-        let charsxp =
-            unsafe { Rf_mkChar(std::ffi::CString::new(name).unwrap_or_default().as_ptr()) };
+        let charsxp = unsafe {
+            crate::sexp::constructors::mk_char_bytes(
+                std::ffi::CString::new(name).unwrap_or_default().to_bytes(),
+            )
+        };
         unsafe { mkSYMSXP(charsxp, R_NilValue()) }
     }
 

@@ -889,9 +889,13 @@ pub unsafe fn CHAR(x: SEXP) -> *const c_char {
 /// Where `CHAR` would return null (an unregistered pointer) this raises an R
 /// error instead of handing a null pointer to `CStr::from_ptr`.
 pub(crate) fn char_cstr_bytes(x: SEXP) -> Vec<u8> {
-    let Some(read) = header_read(x, "unowned header read") else {
-        super::context::r_error("CHAR requires a character scalar");
-    };
+    char_cstr_bytes_opt(x)
+        .unwrap_or_else(|| super::context::r_error("CHAR requires a character scalar"))
+}
+
+/// [`char_cstr_bytes`] that returns `None` exactly where `CHAR` returns null.
+pub(crate) fn char_cstr_bytes_opt(x: SEXP) -> Option<Vec<u8>> {
+    let read = header_read(x, "unowned header read")?;
     if read.snapshot.sxpinfo.type_of() != SEXPTYPE::CHARSXP {
         super::context::r_error("CHAR requires a character scalar");
     }
@@ -899,7 +903,9 @@ pub(crate) fn char_cstr_bytes(x: SEXP) -> Vec<u8> {
         super::context::r_error("invalid character shape");
     }
     let lease = match &read.origin {
-        HeaderOrigin::Singleton(singleton) if singleton.is_na_string() => return b"NA".to_vec(),
+        HeaderOrigin::Singleton(singleton) if singleton.is_na_string() => {
+            return Some(b"NA".to_vec());
+        }
         HeaderOrigin::Singleton(singleton) => singleton.payload_lease(),
         HeaderOrigin::Managed { node, .. } => node.heap_identity().payload_lease(node),
     }
@@ -922,7 +928,7 @@ pub(crate) fn char_cstr_bytes(x: SEXP) -> Vec<u8> {
             None => super::context::r_error("character payload must be sealed with a trailing NUL"),
         }
     }
-    bytes
+    Some(bytes)
 }
 
 // ---------------------------------------------------------------------------

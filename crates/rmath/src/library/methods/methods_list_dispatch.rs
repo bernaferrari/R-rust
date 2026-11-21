@@ -126,13 +126,10 @@ fn condition_inherits_error(condition: SEXP) -> bool {
         if condition.is_null() || condition == R_NilValue() {
             return false;
         }
-        // SAFETY: `condition` is a live SEXP under the runtime lock.
-        let class = unsafe {
-            crate::eval::attrib_core::getAttrib(
-                condition,
-                crate::eval::attrib_core::R_ClassSymbol(),
-            )
-        };
+        let class = crate::eval::attrib_core::getAttrib(
+            condition,
+            crate::eval::attrib_core::R_ClassSymbol(),
+        );
         if class.is_null() || class == R_NilValue() || TYPEOF(class) != SEXPTYPE::STRSXP {
             return false;
         }
@@ -255,23 +252,18 @@ fn inherits_internal_dispatch_method(value: SEXP) -> bool {
 }
 
 fn primitive_from_generic_frame(ev: SEXP) -> Option<SEXP> {
-    unsafe {
-        let generic_sym = crate::sexp::symbol::install_str(".Generic");
-        let generic = crate::sexp::envir::R_findVarInFrame(ev, generic_sym);
-        if generic == R_UnboundValue() {
-            r_error(
-                "internal error in 'callNextMethod': '.Generic' was not assigned in the frame of the method call",
-            );
-        }
-        let generic_name = sexp_to_string(generic)?;
-        let generic_sym = crate::sexp::symbol::Rf_install(
-            CString::new(generic_name.as_str())
-                .unwrap_or_default()
-                .as_ptr(),
+    let generic_sym = crate::sexp::symbol::install_str(".Generic");
+    let generic = crate::sexp::envir::R_findVarInFrame(ev, generic_sym);
+    if generic == R_UnboundValue() {
+        r_error(
+            "internal error in 'callNextMethod': '.Generic' was not assigned in the frame of the method call",
         );
-        let primitive = INTERNAL(generic_sym);
-        (!primitive.is_null() && primitive != R_NilValue()).then_some(primitive)
     }
+    let generic_name = sexp_to_string(generic)?;
+    let generic_sym =
+        crate::sexp::symbol::install_cstr(&CString::new(generic_name.as_str()).unwrap_or_default());
+    let primitive = INTERNAL(generic_sym);
+    (!primitive.is_null() && primitive != R_NilValue()).then_some(primitive)
 }
 
 /// R_initMethodDispatch - initialize method dispatch.
@@ -537,7 +529,11 @@ fn string_vector(values: &[String]) -> SEXP {
         let _guard = protect(result);
         for (i, value) in values.iter().enumerate() {
             let c = CString::new(value.as_str()).unwrap_or_default();
-            SET_STRING_ELT(result, i as R_xlen_t, crate::sexp::constructors::mk_char_bytes(c.to_bytes()));
+            SET_STRING_ELT(
+                result,
+                i as R_xlen_t,
+                crate::sexp::constructors::mk_char_bytes(c.to_bytes()),
+            );
         }
         result
     }
@@ -545,65 +541,63 @@ fn string_vector(values: &[String]) -> SEXP {
 
 /// GNU `do_inherited_table`: eval `.InheritForDispatch(classes, fdef, mtable)`.
 fn do_inherited_table(classes: SEXP, fdef: SEXP, mtable: SEXP, ev: SEXP) -> SEXP {
-        let Some(ns) = crate::mainutils::essentials::cached_namespace_by_name("methods") else {
-            r_error("methods namespace is not loaded");
-        };
+    let Some(ns) = crate::mainutils::essentials::cached_namespace_by_name("methods") else {
+        r_error("methods namespace is not loaded");
+    };
     let symbol = crate::sexp::symbol::install_str(".InheritForDispatch");
-        let mut fun = crate::sexp::envir::R_findVarInFrame(ns, symbol);
-        if fun.is_null() || fun == R_UnboundValue() {
-            r_error("'.InheritForDispatch' is not in the methods namespace");
-        }
-        if TYPEOF(fun) == SEXPTYPE::PROMSXP {
-            fun = crate::sexp::envir::forcePromise(fun);
-        }
-        let call = Rf_lang4(fun, classes, fdef, mtable);
-        let _call_guard = protect(call);
-        crate::eval::eval::Rf_eval(call, ev)
+    let mut fun = crate::sexp::envir::R_findVarInFrame(ns, symbol);
+    if fun.is_null() || fun == R_UnboundValue() {
+        r_error("'.InheritForDispatch' is not in the methods namespace");
+    }
+    if TYPEOF(fun) == SEXPTYPE::PROMSXP {
+        fun = crate::sexp::envir::forcePromise(fun);
+    }
+    let call = Rf_lang4(fun, classes, fdef, mtable);
+    let _call_guard = protect(call);
+    crate::eval::eval::Rf_eval(call, ev)
 }
 
 fn recover_s4_generic(fdef: SEXP, fname: SEXP) -> SEXP {
-        if crate::mainutils::coerce::IS_S4_OBJECT(fdef) != FALSE {
-            return fdef;
-        }
-        // A closure whose environment already carries '.AllMTable' is a
-        // table-initialized generic (GNU R_dispatchGeneric dispatches on it
-        // directly); only bare closures need getGeneric() recovery.
-        if TYPEOF(fdef) == SEXPTYPE::CLOSXP {
-            let f_env = CLOENV(fdef);
-            if TYPEOF(f_env) == SEXPTYPE::ENVSXP {
-                let mtable = crate::sexp::envir::R_findVarInFrame(
-                    f_env,
+    if crate::mainutils::coerce::IS_S4_OBJECT(fdef) != FALSE {
+        return fdef;
+    }
+    // A closure whose environment already carries '.AllMTable' is a
+    // table-initialized generic (GNU R_dispatchGeneric dispatches on it
+    // directly); only bare closures need getGeneric() recovery.
+    if TYPEOF(fdef) == SEXPTYPE::CLOSXP {
+        let f_env = CLOENV(fdef);
+        if TYPEOF(f_env) == SEXPTYPE::ENVSXP {
+            let mtable = crate::sexp::envir::R_findVarInFrame(
+                f_env,
                 crate::sexp::symbol::install_str(".AllMTable"),
-                );
-                if mtable != R_UnboundValue() {
-                    return fdef;
-                }
+            );
+            if mtable != R_UnboundValue() {
+                return fdef;
             }
         }
-        let Some(ns) = crate::mainutils::essentials::cached_namespace_by_name("methods") else {
-            return fdef;
-        };
-        let mut get_generic = crate::sexp::envir::R_findVarInFrame(
-            ns,
-        crate::sexp::symbol::install_str("getGeneric"),
-        );
-        if TYPEOF(get_generic) == SEXPTYPE::PROMSXP {
-            get_generic = crate::sexp::envir::forcePromise(get_generic);
-        }
-        if get_generic == R_UnboundValue() || Rf_isFunction(get_generic) == 0 {
-            return fdef;
-        }
-        let gg_call = Rf_lang2(get_generic, fname);
-        let _gg_guard = protect(gg_call);
-        let recovered = crate::eval::eval::Rf_eval(gg_call, ns);
-        if recovered.is_null()
-            || recovered == R_NilValue()
-            || crate::mainutils::coerce::IS_S4_OBJECT(recovered) == FALSE
-        {
-            fdef
-        } else {
-            recovered
-        }
+    }
+    let Some(ns) = crate::mainutils::essentials::cached_namespace_by_name("methods") else {
+        return fdef;
+    };
+    let mut get_generic =
+        crate::sexp::envir::R_findVarInFrame(ns, crate::sexp::symbol::install_str("getGeneric"));
+    if TYPEOF(get_generic) == SEXPTYPE::PROMSXP {
+        get_generic = crate::sexp::envir::forcePromise(get_generic);
+    }
+    if get_generic == R_UnboundValue() || Rf_isFunction(get_generic) == 0 {
+        return fdef;
+    }
+    let gg_call = Rf_lang2(get_generic, fname);
+    let _gg_guard = protect(gg_call);
+    let recovered = crate::eval::eval::Rf_eval(gg_call, ns);
+    if recovered.is_null()
+        || recovered == R_NilValue()
+        || crate::mainutils::coerce::IS_S4_OBJECT(recovered) == FALSE
+    {
+        fdef
+    } else {
+        recovered
+    }
 }
 
 fn apply_table_method(method: SEXP, ev: SEXP) -> SEXP {
@@ -626,179 +620,171 @@ fn install_method_context(
     targets: &[String],
     selected: &TableMethod,
 ) {
-        let generic = CString::new(generic_name).unwrap_or_default();
+    let generic = CString::new(generic_name).unwrap_or_default();
     let generic_value = crate::sexp::constructors::mk_string_bytes(generic.to_bytes());
-        let _generic_guard = protect(generic_value);
-        let target_value = string_vector(targets);
-        let _target_guard = protect(target_value);
-        let defined_value = string_vector(&selected.signature);
-        let _defined_guard = protect(defined_value);
-        let candidates = table_methods(table, targets);
-        let next = nearest_method(
-            candidates
-                .into_iter()
-                .filter(|candidate| {
-                    candidate.signature != selected.signature
-                        && candidate.distances.iter().zip(&selected.distances).all(
-                            |(candidate_distance, selected_distance)| {
-                                candidate_distance >= selected_distance
-                            },
-                        )
-                })
-                .collect(),
-        )
-        .map_or(R_NilValue(), |candidate| candidate.method);
+    let _generic_guard = protect(generic_value);
+    let target_value = string_vector(targets);
+    let _target_guard = protect(target_value);
+    let defined_value = string_vector(&selected.signature);
+    let _defined_guard = protect(defined_value);
+    let candidates = table_methods(table, targets);
+    let next = nearest_method(
+        candidates
+            .into_iter()
+            .filter(|candidate| {
+                candidate.signature != selected.signature
+                    && candidate.distances.iter().zip(&selected.distances).all(
+                        |(candidate_distance, selected_distance)| {
+                            candidate_distance >= selected_distance
+                        },
+                    )
+            })
+            .collect(),
+    )
+    .map_or(R_NilValue(), |candidate| candidate.method);
 
-        crate::sexp::envir::defineVar(
+    crate::sexp::envir::defineVar(
         crate::sexp::symbol::install_str(".Generic"),
-            generic_value,
-            ev,
-        );
-        crate::sexp::envir::defineVar(
-        crate::sexp::symbol::install_str(".Methods"),
-            table,
-            ev,
-        );
-        crate::sexp::envir::defineVar(
+        generic_value,
+        ev,
+    );
+    crate::sexp::envir::defineVar(crate::sexp::symbol::install_str(".Methods"), table, ev);
+    crate::sexp::envir::defineVar(
         crate::sexp::symbol::install_str(".target"),
-            target_value,
-            ev,
-        );
-        crate::sexp::envir::defineVar(
+        target_value,
+        ev,
+    );
+    crate::sexp::envir::defineVar(
         crate::sexp::symbol::install_str(".defined"),
-            defined_value,
-            ev,
-        );
-        crate::sexp::envir::defineVar(
+        defined_value,
+        ev,
+    );
+    crate::sexp::envir::defineVar(
         crate::sexp::symbol::install_str(".Method"),
-            selected.method,
-            ev,
-        );
-        crate::sexp::envir::defineVar(
-        crate::sexp::symbol::install_str(".nextMethod"),
-            next,
-            ev,
-        );
+        selected.method,
+        ev,
+    );
+    crate::sexp::envir::defineVar(crate::sexp::symbol::install_str(".nextMethod"), next, ev);
 }
 
 /// R_dispatchGeneric - table-based method dispatch.
-pub unsafe fn R_dispatchGeneric(fname: SEXP, ev: SEXP, fdef: SEXP) -> SEXP {
-        let name = sexp_to_string(fname).unwrap_or_else(|| "<unknown>".to_string());
-        // GNU methods_list_dispatch.c rebinds fdef = R_primitive_generic(fdef)
-        // for SPECIALSXP/BUILTINSXP before table lookup or inherited search.
+pub fn R_dispatchGeneric(fname: SEXP, ev: SEXP, fdef: SEXP) -> SEXP {
+    let name = sexp_to_string(fname).unwrap_or_else(|| "<unknown>".to_string());
+    // GNU methods_list_dispatch.c rebinds fdef = R_primitive_generic(fdef)
+    // for SPECIALSXP/BUILTINSXP before table lookup or inherited search.
 
-        // GNU methods_list_dispatch.c rebinds fdef = R_primitive_generic(fdef)
-        // for SPECIALSXP/BUILTINSXP before table lookup or inherited search.
-        let mut fdef = fdef;
-        if TYPEOF(fdef) == SEXPTYPE::SPECIALSXP || TYPEOF(fdef) == SEXPTYPE::BUILTINSXP {
-            let generic = crate::mainutils::objects::R_primitive_generic(fdef);
-            if generic.is_null() || TYPEOF(generic) != SEXPTYPE::CLOSXP {
-                r_error(format!("failed to get the generic for primitive '{name}'"));
-            }
-            fdef = generic;
+    // GNU methods_list_dispatch.c rebinds fdef = R_primitive_generic(fdef)
+    // for SPECIALSXP/BUILTINSXP before table lookup or inherited search.
+    let mut fdef = fdef;
+    if TYPEOF(fdef) == SEXPTYPE::SPECIALSXP || TYPEOF(fdef) == SEXPTYPE::BUILTINSXP {
+        let generic = crate::mainutils::objects::R_primitive_generic(fdef);
+        if generic.is_null() || TYPEOF(generic) != SEXPTYPE::CLOSXP {
+            r_error(format!("failed to get the generic for primitive '{name}'"));
         }
-        fdef = recover_s4_generic(fdef, fname);
-        if TYPEOF(fdef) != SEXPTYPE::CLOSXP {
-            r_error(format!(
-                "expected a generic function or a primitive for dispatch for '{name}'"
-            ));
-        }
-        let f_env = CLOENV(fdef);
-        if f_env.is_null() || f_env == R_NilValue() || TYPEOF(f_env) != SEXPTYPE::ENVSXP {
-            r_error(format!(
-                "generic '{name}' has no valid dispatch environment"
-            ));
-        }
+        fdef = generic;
+    }
+    fdef = recover_s4_generic(fdef, fname);
+    if TYPEOF(fdef) != SEXPTYPE::CLOSXP {
+        r_error(format!(
+            "expected a generic function or a primitive for dispatch for '{name}'"
+        ));
+    }
+    let f_env = CLOENV(fdef);
+    if f_env.is_null() || f_env == R_NilValue() || TYPEOF(f_env) != SEXPTYPE::ENVSXP {
+        r_error(format!(
+            "generic '{name}' has no valid dispatch environment"
+        ));
+    }
 
     let all_mtable = crate::sexp::symbol::install_str(".AllMTable");
     let sig_args = crate::sexp::symbol::install_str(".SigArgs");
     let sig_length = crate::sexp::symbol::install_str(".SigLength");
-        let mtable = crate::sexp::envir::R_findVarInFrame(f_env, all_mtable);
-        let sigargs = crate::sexp::envir::R_findVarInFrame(f_env, sig_args);
-        let nsig_value = crate::sexp::envir::R_findVarInFrame(f_env, sig_length);
-        if mtable == R_UnboundValue()
-            || TYPEOF(mtable) != SEXPTYPE::ENVSXP
-            || sigargs == R_UnboundValue()
-            || TYPEOF(sigargs) != SEXPTYPE::VECSXP
-        {
-            r_error("generic has not been initialized for table dispatch");
+    let mtable = crate::sexp::envir::R_findVarInFrame(f_env, all_mtable);
+    let sigargs = crate::sexp::envir::R_findVarInFrame(f_env, sig_args);
+    let nsig_value = crate::sexp::envir::R_findVarInFrame(f_env, sig_length);
+    if mtable == R_UnboundValue()
+        || TYPEOF(mtable) != SEXPTYPE::ENVSXP
+        || sigargs == R_UnboundValue()
+        || TYPEOF(sigargs) != SEXPTYPE::VECSXP
+    {
+        r_error("generic has not been initialized for table dispatch");
+    }
+    let Some(nsig) = scalar_signature_length(nsig_value) else {
+        r_error("generic has invalid '.SigLength' for table dispatch");
+    };
+    if nsig < 0 || nsig as usize > LENGTH(sigargs) as usize {
+        r_error("'.SigArgs' is shorter than '.SigLength' says it should be");
+    }
+    let mut classes = Vec::with_capacity(nsig as usize);
+    for i in 0..nsig {
+        let arg_sym = VECTOR_ELT(sigargs, i as R_xlen_t);
+        if arg_sym.is_null() || TYPEOF(arg_sym) != SEXPTYPE::SYMSXP {
+            return R_NilValue();
         }
-        let Some(nsig) = scalar_signature_length(nsig_value) else {
-            r_error("generic has invalid '.SigLength' for table dispatch");
-        };
-        if nsig < 0 || nsig as usize > LENGTH(sigargs) as usize {
-            r_error("'.SigArgs' is shorter than '.SigLength' says it should be");
-        }
-        let mut classes = Vec::with_capacity(nsig as usize);
-        for i in 0..nsig {
-            let arg_sym = VECTOR_ELT(sigargs, i as R_xlen_t);
-            if arg_sym.is_null() || TYPEOF(arg_sym) != SEXPTYPE::SYMSXP {
+        if is_missing_arg(arg_sym, ev) {
+            classes.push("missing".to_string());
+        } else {
+            let forced = eval_dispatch_arg(fname, ev, arg_sym);
+            if forced.is_null() {
                 return R_NilValue();
             }
-            if is_missing_arg(arg_sym, ev) {
-                classes.push("missing".to_string());
-            } else {
-                let forced = eval_dispatch_arg(fname, ev, arg_sym);
-                if forced.is_null() {
-                    return R_NilValue();
-                }
-                let Some(class) = first_data_class_name(forced) else {
-                    return R_NilValue();
-                };
-                classes.push(class);
-            }
+            let Some(class) = first_data_class_name(forced) else {
+                return R_NilValue();
+            };
+            classes.push(class);
         }
-        // GNU: findVarInFrame(.AllMTable, label); on miss, do_inherited_table
-        // (.InheritForDispatch) so Logic-group methods apply to `&` / `|`.
-        let label = classes.join("#");
-        let mut method = R_UnboundValue();
-        let mut exact = false;
+    }
+    // GNU: findVarInFrame(.AllMTable, label); on miss, do_inherited_table
+    // (.InheritForDispatch) so Logic-group methods apply to `&` / `|`.
+    let label = classes.join("#");
+    let mut method = R_UnboundValue();
+    let mut exact = false;
 
-        if let Ok(clabel) = CString::new(label.as_str()) {
+    if let Ok(clabel) = CString::new(label.as_str()) {
         let symbol = crate::sexp::symbol::install_cstr(&clabel);
-            method = crate::sexp::envir::R_findVarInFrame(mtable, symbol);
-            if method != R_UnboundValue() && method != R_NilValue() {
-                exact = true;
-            }
+        method = crate::sexp::envir::R_findVarInFrame(mtable, symbol);
+        if method != R_UnboundValue() && method != R_NilValue() {
+            exact = true;
         }
-        // GNU: S4 generics created from S3 generics still find S3 methods
-        // (AIC.pfit after stats4::setGeneric("AIC")). Exact table hits win;
-        // inherited ANY does not beat generic.class.
-        if !exact {
-            if let Some(s3_method) = try_s3_method_for_generic(&name, fname, ev, sigargs) {
-                // GNU applies the table's S3 default through R_execMethod,
-                // which matches the method's formals against the generic's
-                // evaluation environment. The old objects::usemethod call
-                // reused the ambient (standardGeneric) context, so its
-                // promargs belonged to `standardGeneric(f)` and the method
-                // received the generic-name string as its first argument.
-                install_method_context(
-                    ev,
-                    &name,
-                    mtable,
-                    &classes,
-                    &TableMethod {
-                        signature: classes.clone(),
-                        method: s3_method,
-                        distances: vec![0; classes.len().max(1)],
-                    },
-                );
-                return apply_table_method(s3_method, ev);
-            }
-            let class_vec = string_vector(&classes);
-            let _class_guard = protect(class_vec);
-            method = do_inherited_table(class_vec, fdef, mtable, ev);
+    }
+    // GNU: S4 generics created from S3 generics still find S3 methods
+    // (AIC.pfit after stats4::setGeneric("AIC")). Exact table hits win;
+    // inherited ANY does not beat generic.class.
+    if !exact {
+        if let Some(s3_method) = try_s3_method_for_generic(&name, fname, ev, sigargs) {
+            // GNU applies the table's S3 default through R_execMethod,
+            // which matches the method's formals against the generic's
+            // evaluation environment. The old objects::usemethod call
+            // reused the ambient (standardGeneric) context, so its
+            // promargs belonged to `standardGeneric(f)` and the method
+            // received the generic-name string as its first argument.
+            install_method_context(
+                ev,
+                &name,
+                mtable,
+                &classes,
+                &TableMethod {
+                    signature: classes.clone(),
+                    method: s3_method,
+                    distances: vec![0; classes.len().max(1)],
+                },
+            );
+            return apply_table_method(s3_method, ev);
         }
-        if method.is_null() || method == R_UnboundValue() || method == R_NilValue() {
-            no_inherited_method_error(&name, sigargs, &classes);
-        }
-        let selected = TableMethod {
-            signature: classes.clone(),
-            method,
-            distances: vec![0; classes.len()],
-        };
-        install_method_context(ev, &name, mtable, &classes, &selected);
-        apply_table_method(method, ev)
+        let class_vec = string_vector(&classes);
+        let _class_guard = protect(class_vec);
+        method = do_inherited_table(class_vec, fdef, mtable, ev);
+    }
+    if method.is_null() || method == R_UnboundValue() || method == R_NilValue() {
+        no_inherited_method_error(&name, sigargs, &classes);
+    }
+    let selected = TableMethod {
+        signature: classes.clone(),
+        method,
+        distances: vec![0; classes.len()],
+    };
+    install_method_context(ev, &name, mtable, &classes, &selected);
+    apply_table_method(method, ev)
 }
 
 fn try_s3_method_for_generic(name: &str, fname: SEXP, ev: SEXP, sigargs: SEXP) -> Option<SEXP> {
@@ -819,10 +805,8 @@ fn try_s3_method_for_generic(name: &str, fname: SEXP, ev: SEXP, sigargs: SEXP) -
         if obj.is_null() || crate::mainutils::coerce::IS_S4_OBJECT(obj) != FALSE {
             return None;
         }
-        // SAFETY: `obj` is a live SEXP under the runtime lock.
-        let class = unsafe {
-            crate::eval::attrib_core::getAttrib(obj, crate::eval::attrib_core::R_ClassSymbol())
-        };
+        let class =
+            crate::eval::attrib_core::getAttrib(obj, crate::eval::attrib_core::R_ClassSymbol());
         if class.is_null() || class == R_NilValue() {
             return None;
         }
@@ -838,7 +822,7 @@ fn try_s3_method_for_generic(name: &str, fname: SEXP, ev: SEXP, sigargs: SEXP) -
 }
 
 /// R_quick_method_check - quick check if a method exists in the methods list.
-pub unsafe fn R_quick_method_check(args: SEXP, mlist: SEXP, _fdef: SEXP) -> SEXP {
+pub fn R_quick_method_check(args: SEXP, mlist: SEXP, _fdef: SEXP) -> SEXP {
     if mlist.is_null() || mlist == R_NilValue() {
         return R_NilValue();
     }
@@ -862,63 +846,63 @@ pub unsafe fn R_quick_method_check(args: SEXP, mlist: SEXP, _fdef: SEXP) -> SEXP
     R_NilValue()
 }
 
-pub unsafe fn R_quick_dispatch(args: SEXP, generic_env: SEXP, _fdef: SEXP) -> SEXP {
-        let mut generic_env = generic_env;
-        if TYPEOF(generic_env) == SEXPTYPE::CLOSXP {
-            generic_env = CLOENV(generic_env);
-        }
-        if generic_env.is_null()
-            || generic_env == R_NilValue()
-            || TYPEOF(generic_env) != SEXPTYPE::ENVSXP
-        {
-            return R_NilValue();
-        }
+pub fn R_quick_dispatch(args: SEXP, generic_env: SEXP, _fdef: SEXP) -> SEXP {
+    let mut generic_env = generic_env;
+    if TYPEOF(generic_env) == SEXPTYPE::CLOSXP {
+        generic_env = CLOENV(generic_env);
+    }
+    if generic_env.is_null()
+        || generic_env == R_NilValue()
+        || TYPEOF(generic_env) != SEXPTYPE::ENVSXP
+    {
+        return R_NilValue();
+    }
     let all_mtable = crate::sexp::symbol::install_str(".AllMTable");
     let sig_length = crate::sexp::symbol::install_str(".SigLength");
-        let mtable = crate::sexp::envir::R_findVarInFrame(generic_env, all_mtable);
-        if mtable == R_UnboundValue() || TYPEOF(mtable) != SEXPTYPE::ENVSXP {
-            return R_NilValue();
-        }
-        let nsig_value = crate::sexp::envir::R_findVarInFrame(generic_env, sig_length);
-        let Some(nsig) = scalar_signature_length(nsig_value) else {
-            return R_NilValue();
-        };
-        if nsig < 0 {
-            return R_NilValue();
-        }
+    let mtable = crate::sexp::envir::R_findVarInFrame(generic_env, all_mtable);
+    if mtable == R_UnboundValue() || TYPEOF(mtable) != SEXPTYPE::ENVSXP {
+        return R_NilValue();
+    }
+    let nsig_value = crate::sexp::envir::R_findVarInFrame(generic_env, sig_length);
+    let Some(nsig) = scalar_signature_length(nsig_value) else {
+        return R_NilValue();
+    };
+    if nsig < 0 {
+        return R_NilValue();
+    }
 
-        let mut classes = Vec::with_capacity(nsig as usize);
-        let mut current = args;
-        while !current.is_null() && current != R_NilValue() && classes.len() < nsig as usize {
-            let mut object = CAR(current);
-            if TYPEOF(object) == SEXPTYPE::PROMSXP {
-                object = crate::eval::eval::Rf_eval(object, crate::sexp::globals::R_BaseEnv());
-            }
-            let class = if object == R_MissingArg() {
-                "missing".to_string()
-            } else {
-                let Some(class) = first_data_class_name(object) else {
-                    return R_NilValue();
-                };
-                class
-            };
-            classes.push(class);
-            current = CDR(current);
+    let mut classes = Vec::with_capacity(nsig as usize);
+    let mut current = args;
+    while !current.is_null() && current != R_NilValue() && classes.len() < nsig as usize {
+        let mut object = CAR(current);
+        if TYPEOF(object) == SEXPTYPE::PROMSXP {
+            object = crate::eval::eval::Rf_eval(object, crate::sexp::globals::R_BaseEnv());
         }
-        while classes.len() < nsig as usize {
-            classes.push("missing".to_string());
-        }
-        let label = classes.join("#");
-        let Ok(label) = CString::new(label) else {
-            return R_NilValue();
-        };
-    let symbol = crate::sexp::symbol::install_cstr(&label);
-        let value = crate::sexp::envir::R_findVarInFrame(mtable, symbol);
-        if value == R_UnboundValue() {
-            R_NilValue()
+        let class = if object == R_MissingArg() {
+            "missing".to_string()
         } else {
-            value
-        }
+            let Some(class) = first_data_class_name(object) else {
+                return R_NilValue();
+            };
+            class
+        };
+        classes.push(class);
+        current = CDR(current);
+    }
+    while classes.len() < nsig as usize {
+        classes.push("missing".to_string());
+    }
+    let label = classes.join("#");
+    let Ok(label) = CString::new(label) else {
+        return R_NilValue();
+    };
+    let symbol = crate::sexp::symbol::install_cstr(&label);
+    let value = crate::sexp::envir::R_findVarInFrame(mtable, symbol);
+    if value == R_UnboundValue() {
+        R_NilValue()
+    } else {
+        value
+    }
 }
 
 /// GNU `IS_GENERIC`: CLOSXP with a non-NULL `generic` attribute/slot.
@@ -935,81 +919,81 @@ fn is_generic_function(value: SEXP) -> bool {
 /// GNU `get_generic` walks `R_ParentEnv` from `env` and accepts only
 /// genericFunction objects, then falls back to `SYMVALUE`.
 pub fn R_getGeneric(name: SEXP, mustFind: SEXP, env: SEXP, _package: SEXP) -> SEXP {
-        let Some(name_string) = sexp_to_string(name) else {
-            r_error("The argument \"f\" to getGeneric must be a single string or symbol");
-        };
-        if env.is_null() || env == R_NilValue() || TYPEOF(env) != SEXPTYPE::ENVSXP {
-            if crate::mainutils::coerce::asLogical(mustFind) != 0 {
-                r_error(format!(
-                    "no generic function definition found for '{}'",
-                    name_string
-                ));
-            }
-            return R_NilValue();
-        }
-        let cname = CString::new(name_string.as_str()).unwrap_or_default();
-    let symbol = crate::sexp::symbol::install_cstr(&cname);
-        let mut rho = env;
-        while !rho.is_null() && rho != R_NilValue() && TYPEOF(rho) == SEXPTYPE::ENVSXP {
-            let mut value = crate::sexp::envir::R_findVarInFrame(rho, symbol);
-            if value != crate::sexp::globals::R_UnboundValue() {
-                if TYPEOF(value) == SEXPTYPE::PROMSXP {
-                    value = crate::sexp::envir::forcePromise(value);
-                }
-                if is_generic_function(value) {
-                    return value;
-                }
-            }
-            let parent = crate::sexp::accessors::ENCLOS(rho);
-            if parent.is_null() || parent == rho || parent == crate::sexp::globals::R_EmptyEnv() {
-                break;
-            }
-            rho = parent;
-        }
-        let value = crate::sexp::accessors::SYMVALUE(symbol);
-        if !value.is_null()
-            && value != crate::sexp::globals::R_UnboundValue()
-            && is_generic_function(value)
-        {
-            return value;
-        }
+    let Some(name_string) = sexp_to_string(name) else {
+        r_error("The argument \"f\" to getGeneric must be a single string or symbol");
+    };
+    if env.is_null() || env == R_NilValue() || TYPEOF(env) != SEXPTYPE::ENVSXP {
         if crate::mainutils::coerce::asLogical(mustFind) != 0 {
             r_error(format!(
-                "no generic function definition found for '{}' in the supplied environment",
+                "no generic function definition found for '{}'",
                 name_string
             ));
         }
-        R_NilValue()
+        return R_NilValue();
+    }
+    let cname = CString::new(name_string.as_str()).unwrap_or_default();
+    let symbol = crate::sexp::symbol::install_cstr(&cname);
+    let mut rho = env;
+    while !rho.is_null() && rho != R_NilValue() && TYPEOF(rho) == SEXPTYPE::ENVSXP {
+        let mut value = crate::sexp::envir::R_findVarInFrame(rho, symbol);
+        if value != crate::sexp::globals::R_UnboundValue() {
+            if TYPEOF(value) == SEXPTYPE::PROMSXP {
+                value = crate::sexp::envir::forcePromise(value);
+            }
+            if is_generic_function(value) {
+                return value;
+            }
+        }
+        let parent = crate::sexp::accessors::ENCLOS(rho);
+        if parent.is_null() || parent == rho || parent == crate::sexp::globals::R_EmptyEnv() {
+            break;
+        }
+        rho = parent;
+    }
+    let value = crate::sexp::accessors::SYMVALUE(symbol);
+    if !value.is_null()
+        && value != crate::sexp::globals::R_UnboundValue()
+        && is_generic_function(value)
+    {
+        return value;
+    }
+    if crate::mainutils::coerce::asLogical(mustFind) != 0 {
+        r_error(format!(
+            "no generic function definition found for '{}' in the supplied environment",
+            name_string
+        ));
+    }
+    R_NilValue()
 }
 
 /// Like R_getGeneric but walks the whole enclosing-environment chain, so a
 /// generic defined in the global environment is found from any caller.
 pub fn R_getGenericByName(name: SEXP, mustFind: SEXP, env: SEXP, _package: SEXP) -> SEXP {
-        let Some(name_string) = sexp_to_string(name) else {
-            r_error("The argument \"f\" to getGeneric must be a single string or symbol");
-        };
-        if env.is_null() || env == R_NilValue() || TYPEOF(env) != SEXPTYPE::ENVSXP {
-            if crate::mainutils::coerce::asLogical(mustFind) != 0 {
-                r_error(format!(
-                    "no generic function definition found for '{}'",
-                    name_string
-                ));
-            }
-            return R_NilValue();
+    let Some(name_string) = sexp_to_string(name) else {
+        r_error("The argument \"f\" to getGeneric must be a single string or symbol");
+    };
+    if env.is_null() || env == R_NilValue() || TYPEOF(env) != SEXPTYPE::ENVSXP {
+        if crate::mainutils::coerce::asLogical(mustFind) != 0 {
+            r_error(format!(
+                "no generic function definition found for '{}'",
+                name_string
+            ));
         }
-        let cname = CString::new(name_string.as_str()).unwrap_or_default();
+        return R_NilValue();
+    }
+    let cname = CString::new(name_string.as_str()).unwrap_or_default();
     let symbol = crate::sexp::symbol::install_cstr(&cname);
-        let value = crate::sexp::envir::R_findVar(symbol, env);
-        if value == crate::sexp::globals::R_UnboundValue() || value == R_NilValue() {
-            if crate::mainutils::coerce::asLogical(mustFind) != 0 {
-                r_error(format!(
-                    "no generic function definition found for '{}'",
-                    name_string
-                ));
-            }
-            return R_NilValue();
+    let value = crate::sexp::envir::R_findVar(symbol, env);
+    if value == crate::sexp::globals::R_UnboundValue() || value == R_NilValue() {
+        if crate::mainutils::coerce::asLogical(mustFind) != 0 {
+            r_error(format!(
+                "no generic function definition found for '{}'",
+                name_string
+            ));
         }
-        value
+        return R_NilValue();
+    }
+    value
 }
 
 /// GNU `is_missing_arg`: MISSING bit on the frame cell, not the bound value.
@@ -1095,67 +1079,64 @@ fn select_method_from_list(
     eval_args: bool,
     first_try: bool,
 ) -> SEXP {
-    unsafe {
-        if mlist.is_null() || mlist == R_NilValue() {
+    if mlist.is_null() || mlist == R_NilValue() {
+        return R_NilValue();
+    }
+    if Rf_isFunction(mlist) != 0 {
+        return mlist;
+    }
+    let arg_slot = named_slot(mlist, "argument");
+    let Some(arg_name) = sexp_to_string(arg_slot) else {
+        let name = sexp_to_string(fname).unwrap_or_else(|| "<unknown>".to_string());
+        r_error(format!(
+            "object used as methods list for function '{}' has no 'argument' slot",
+            name
+        ));
+    };
+    if ev.is_null() || ev == R_NilValue() || TYPEOF(ev) != SEXPTYPE::ENVSXP {
+        let name = sexp_to_string(fname).unwrap_or_else(|| "<unknown>".to_string());
+        r_error(format!(
+            "the 'environment' argument for dispatch for function '{}' must be an R environment",
+            name
+        ));
+    }
+    let arg_symbol =
+        crate::sexp::symbol::install_cstr(&CString::new(arg_name.as_str()).unwrap_or_default());
+    let class = if is_missing_arg(arg_symbol, ev) {
+        "missing".to_string()
+    } else if eval_args {
+        let forced = eval_dispatch_arg(fname, ev, arg_symbol);
+        let Some(class) = first_data_class_name(forced) else {
             return R_NilValue();
-        }
-        if Rf_isFunction(mlist) != 0 {
-            return mlist;
-        }
-        let arg_slot = named_slot(mlist, "argument");
-        let Some(arg_name) = sexp_to_string(arg_slot) else {
-            let name = sexp_to_string(fname).unwrap_or_else(|| "<unknown>".to_string());
-            r_error(format!(
-                "object used as methods list for function '{}' has no 'argument' slot",
-                name
-            ));
         };
-        if ev.is_null() || ev == R_NilValue() || TYPEOF(ev) != SEXPTYPE::ENVSXP {
-            let name = sexp_to_string(fname).unwrap_or_else(|| "<unknown>".to_string());
-            r_error(format!(
-                "the 'environment' argument for dispatch for function '{}' must be an R environment",
-                name
-            ));
-        }
-        let arg_symbol = crate::sexp::symbol::Rf_install(
-            CString::new(arg_name.as_str()).unwrap_or_default().as_ptr(),
-        );
-        let class = if is_missing_arg(arg_symbol, ev) {
-            "missing".to_string()
-        } else if eval_args {
-            let forced = eval_dispatch_arg(fname, ev, arg_symbol);
-            let Some(class) = first_data_class_name(forced) else {
-                return R_NilValue();
-            };
-            class
-        } else {
-            let arg_value = crate::sexp::envir::R_findVarInFrame(ev, arg_symbol);
-            let Some(class) = sexp_to_string(arg_value) else {
-                return R_NilValue();
-            };
-            class
+        class
+    } else {
+        let arg_value = crate::sexp::envir::R_findVarInFrame(ev, arg_symbol);
+        let Some(class) = sexp_to_string(arg_value) else {
+            return R_NilValue();
         };
+        class
+    };
 
-        let methods = all_methods_slot(mlist);
-        if methods.is_null() || methods == R_NilValue() {
+    let methods = all_methods_slot(mlist);
+    if methods.is_null() || methods == R_NilValue() {
+        return R_NilValue();
+    }
+    let method = named_element(methods, &class);
+    if method.is_null() || method == R_NilValue() {
+        if first_try {
             return R_NilValue();
         }
-        let method = named_element(methods, &class);
-        if method.is_null() || method == R_NilValue() {
-            if first_try {
-                return R_NilValue();
-            }
-            let name = sexp_to_string(fname).unwrap_or_else(|| "<unknown>".to_string());
-            r_error(format!(
-                "no matching method for function '{}' with class \"{}\"",
-                name, class
-            ));
-        }
-        if Rf_isFunction(method) != 0 {
-            method
-        } else {
-            select_method_from_list(fname, ev, method, eval_args, first_try)
-        }
+        let name = sexp_to_string(fname).unwrap_or_else(|| "<unknown>".to_string());
+        r_error(format!(
+            "no matching method for function '{}' with class \"{}\"",
+            name, class
+        ));
+    }
+    if Rf_isFunction(method) != 0 {
+        method
+    } else {
+        select_method_from_list(fname, ev, method, eval_args, first_try)
     }
 }
 
@@ -1276,25 +1257,25 @@ pub fn R_nextMethodCall(matched_call: SEXP, ev: SEXP) -> SEXP {
 }
 
 /// Evaluator entry point for the R-level `callNextMethod` special form.
-pub unsafe fn do_callNextMethod(call: SEXP, _op: SEXP, _args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_callNextMethod(call: SEXP, _op: SEXP, _args: SEXP, rho: SEXP) -> SEXP {
     R_nextMethodCall(call, rho)
 }
 
 fn methods_call_next_method_closure() -> Option<SEXP> {
-        let namespace = crate::mainutils::essentials::cached_namespace_by_name("methods")?;
+    let namespace = crate::mainutils::essentials::cached_namespace_by_name("methods")?;
     let symbol = crate::sexp::symbol::install_str("callNextMethod");
-        let mut value = crate::sexp::envir::R_findVarInFrame(namespace, symbol);
-        if value.is_null() || value == R_UnboundValue() {
-            return None;
-        }
-        if TYPEOF(value) == SEXPTYPE::PROMSXP {
-            value = crate::sexp::envir::forcePromise(value);
-        }
-        if TYPEOF(value) == SEXPTYPE::CLOSXP {
-            Some(value)
-        } else {
-            None
-        }
+    let mut value = crate::sexp::envir::R_findVarInFrame(namespace, symbol);
+    if value.is_null() || value == R_UnboundValue() {
+        return None;
+    }
+    if TYPEOF(value) == SEXPTYPE::PROMSXP {
+        value = crate::sexp::envir::forcePromise(value);
+    }
+    if TYPEOF(value) == SEXPTYPE::CLOSXP {
+        Some(value)
+    } else {
+        None
+    }
 }
 
 pub(crate) struct MethodsDispatchState {
@@ -1405,7 +1386,11 @@ mod tests {
             for (i, (name, value)) in entries.iter().enumerate() {
                 SET_VECTOR_ELT(out, i as R_xlen_t, *value);
                 let cname = CString::new(*name).unwrap_or_default();
-                SET_STRING_ELT(names, i as R_xlen_t, crate::sexp::constructors::mk_char_bytes(cname.to_bytes()));
+                SET_STRING_ELT(
+                    names,
+                    i as R_xlen_t,
+                    crate::sexp::constructors::mk_char_bytes(cname.to_bytes()),
+                );
             }
             crate::eval::attrib_core::setAttrib(
                 out,
@@ -1422,9 +1407,8 @@ mod tests {
 
     unsafe fn methods_list_for_argument(argument: &str, all_methods: SEXP) -> SEXP {
         unsafe {
-            let arg = crate::sexp::symbol::Rf_install(
-                CString::new(argument).unwrap_or_default().as_ptr(),
-            );
+            let arg =
+                crate::sexp::symbol::install_cstr(&CString::new(argument).unwrap_or_default());
             named_list(&[("argument", arg), ("allMethods", all_methods)])
         }
     }
@@ -1448,9 +1432,8 @@ mod tests {
             let out = Rf_allocVector(SEXPTYPE::VECSXP, names.len() as c_int);
             let _out_guard = protect(out);
             for (i, name) in names.iter().enumerate() {
-                let sym = crate::sexp::symbol::Rf_install(
-                    CString::new(*name).unwrap_or_default().as_ptr(),
-                );
+                let sym =
+                    crate::sexp::symbol::install_cstr(&CString::new(*name).unwrap_or_default());
                 SET_VECTOR_ELT(out, i as R_xlen_t, sym);
             }
             out
@@ -1463,9 +1446,8 @@ mod tests {
             let _formals_guard = protect(formals);
             let mut cell = formals;
             for name in names {
-                let sym = crate::sexp::symbol::Rf_install(
-                    CString::new(*name).unwrap_or_default().as_ptr(),
-                );
+                let sym =
+                    crate::sexp::symbol::install_cstr(&CString::new(*name).unwrap_or_default());
                 SETTAG(cell, sym);
                 SETCAR(cell, R_MissingArg());
                 cell = CDR(cell);
@@ -1480,15 +1462,13 @@ mod tests {
             let _call_guard = protect(call);
             SETCAR(
                 call,
-                crate::sexp::symbol::Rf_install(CString::new(head).unwrap_or_default().as_ptr()),
+                crate::sexp::symbol::install_cstr(&CString::new(head).unwrap_or_default()),
             );
             let mut cell = CDR(call);
             for (name, value) in args {
                 SETTAG(
                     cell,
-                    crate::sexp::symbol::Rf_install(
-                        CString::new(*name).unwrap_or_default().as_ptr(),
-                    ),
+                    crate::sexp::symbol::install_cstr(&CString::new(*name).unwrap_or_default()),
                 );
                 SETCAR(cell, *value);
                 cell = CDR(cell);
@@ -1846,43 +1826,41 @@ pub fn R_identC(e1: SEXP, e2: SEXP) -> SEXP {
 
 /// R_getClassFromCache — look up a class definition in `.classTable`.
 pub fn R_getClassFromCache(class: SEXP, table: SEXP) -> SEXP {
-    unsafe {
-        if TYPEOF(class) == SEXPTYPE::STRSXP {
-            if LENGTH(class) == 0 {
-                return R_NilValue();
-            }
-            if table == R_NilValue() {
-                r_error("use of NULL environment is defunct");
-            }
-            if table.is_null() || TYPEOF(table) != SEXPTYPE::ENVSXP {
-                return R_NilValue();
-            }
-            let elt = STRING_ELT(class, 0);
-            if elt.is_null() {
-                return R_NilValue();
-            }
-            let symbol = crate::sexp::symbol::Rf_install(CHAR(elt));
-            let value = crate::sexp::envir::R_findVarInFrame(table, symbol);
-            if value == R_UnboundValue() {
-                return R_NilValue();
-            }
-            let package_sym = crate::sexp::symbol::install_str("package");
-            let package = crate::sexp::attrib_core::getAttrib(class, package_sym);
-            if TYPEOF(package) == SEXPTYPE::STRSXP && LENGTH(package) >= 1 {
-                let def_pkg = crate::sexp::attrib_core::getAttrib(value, package_sym);
-                if TYPEOF(def_pkg) == SEXPTYPE::STRSXP
-                    && LENGTH(def_pkg) == 1
-                    && !charsxp_same(STRING_ELT(def_pkg, 0), STRING_ELT(package, 0))
-                {
-                    return R_NilValue();
-                }
-            }
-            value
-        } else if TYPEOF(class) == SEXPTYPE::S4SXP || TYPEOF(class) == SEXPTYPE::OBJSXP {
-            class
-        } else {
-            r_error("class should be either a character-string name or a class definition")
+    if TYPEOF(class) == SEXPTYPE::STRSXP {
+        if LENGTH(class) == 0 {
+            return R_NilValue();
         }
+        if table == R_NilValue() {
+            r_error("use of NULL environment is defunct");
+        }
+        if table.is_null() || TYPEOF(table) != SEXPTYPE::ENVSXP {
+            return R_NilValue();
+        }
+        let elt = STRING_ELT(class, 0);
+        if elt.is_null() {
+            return R_NilValue();
+        }
+        let symbol = crate::sexp::symbol::install_charsxp(elt);
+        let value = crate::sexp::envir::R_findVarInFrame(table, symbol);
+        if value == R_UnboundValue() {
+            return R_NilValue();
+        }
+        let package_sym = crate::sexp::symbol::install_str("package");
+        let package = crate::sexp::attrib_core::getAttrib(class, package_sym);
+        if TYPEOF(package) == SEXPTYPE::STRSXP && LENGTH(package) >= 1 {
+            let def_pkg = crate::sexp::attrib_core::getAttrib(value, package_sym);
+            if TYPEOF(def_pkg) == SEXPTYPE::STRSXP
+                && LENGTH(def_pkg) == 1
+                && !charsxp_same(STRING_ELT(def_pkg, 0), STRING_ELT(package, 0))
+            {
+                return R_NilValue();
+            }
+        }
+        value
+    } else if TYPEOF(class) == SEXPTYPE::S4SXP || TYPEOF(class) == SEXPTYPE::OBJSXP {
+        class
+    } else {
+        r_error("class should be either a character-string name or a class definition")
     }
 }
 

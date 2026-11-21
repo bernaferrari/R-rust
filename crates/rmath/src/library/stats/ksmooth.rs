@@ -439,7 +439,7 @@ mod tests {
                 let tagged = Rf_cons(xp, R_NilValue());
                 SETTAG(
                     tagged,
-                    Rf_install(CString::new("x.points").unwrap().as_ptr()),
+                    crate::sexp::symbol::install_cstr(&CString::new("x.points").unwrap()),
                 );
                 let args = Rf_cons(x, Rf_cons(y, tagged));
                 let ans = do_ksmooth(

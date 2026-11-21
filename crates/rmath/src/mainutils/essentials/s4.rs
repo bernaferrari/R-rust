@@ -320,7 +320,7 @@ fn s4_named_arg(args: SEXP, name: &str) -> Option<SEXP> {
 }
 
 pub fn do_setClass(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+    {
         if let Some(fun) = methods_exported_closure(c"setClass") {
             return crate::eval::closure::applyClosure(call, fun, args, rho, R_NilValue(), TRUE);
         }
@@ -431,7 +431,7 @@ fn methods_new_closure() -> Option<SEXP> {
 
 /// GNU `new(Class, ...)` — construct an S4 object.
 pub fn do_new(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
+    {
         if let Some(fun) = methods_new_closure() {
             return crate::eval::closure::applyClosure(call, fun, args, rho, R_NilValue(), TRUE);
         }

@@ -1510,7 +1510,7 @@ pub fn do_gc(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
 /// gcinfo() implementation (stub).
 ///
 /// This is the equivalent of R's `do_gcinfo()`.
-pub unsafe fn do_gcinfo(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_gcinfo(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     let old = Rf_ScalarLogical(with_memory_state(|state| state.gc_reporting));
     let i = crate::mainutils::coerce::asLogical(CAR(args));
     if i != crate::sexp::ffi::NA_LOGICAL {
@@ -1519,7 +1519,7 @@ pub unsafe fn do_gcinfo(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     old
 }
 
-pub unsafe fn do_gctorture(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_gctorture(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     let old = Rf_ScalarLogical(if with_memory_state(|state| state.gc_force_gap) > 0 {
         crate::sexp::ffi::TRUE
     } else {
@@ -1530,7 +1530,7 @@ pub unsafe fn do_gctorture(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
     old
 }
 
-pub unsafe fn do_gctorture2(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_gctorture2(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     let old = Rf_ScalarInteger(with_memory_state(|state| state.gc_force_gap));
     let gap = crate::mainutils::coerce::asInteger(CAR(args));
     let wait = crate::mainutils::coerce::asInteger(CADR(args));

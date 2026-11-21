@@ -15,7 +15,7 @@ fn try_methods_bind(
     generic: &std::ffi::CStr,
     deparse_level: i32,
 ) -> Option<SEXP> {
-    unsafe {
+    {
         let mut any_s4 = false;
         let mut a = args;
         while !a.is_null() && a != R_NilValue() {

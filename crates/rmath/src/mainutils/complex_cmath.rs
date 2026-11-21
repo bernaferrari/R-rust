@@ -639,7 +639,7 @@ pub unsafe fn complex_binary(code: c_int, s1: SEXP, s2: SEXP) -> SEXP {
 ///
 /// Ported from lines 245-356 of complex.c.
 pub unsafe fn do_cmathfuns(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe fn keep_shape(y: SEXP, x: SEXP) -> SEXP {
+    fn keep_shape(y: SEXP, x: SEXP) -> SEXP {
         let _g = protect(y);
         crate::mainutils::coerce::SHALLOW_DUPLICATE_ATTRIB(y, x);
         y

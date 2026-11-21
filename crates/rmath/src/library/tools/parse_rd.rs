@@ -366,23 +366,21 @@ fn collect_macro_frame(mut cell: SEXP, out: &mut Vec<(String, String)>) {
 }
 
 fn macro_environment(defined: &[(String, String)], parent: SEXP) -> SEXP {
-    unsafe {
-        let parent = if TYPEOF(parent) == SEXPTYPE::ENVSXP {
-            parent
-        } else {
-            crate::sexp::globals::R_BaseEnv()
-        };
-        let env = crate::sexp::envir::R_NewHashedEnv(parent, 0);
-        let _guard = protect(env);
-        for (name, body) in defined {
-            let key = std::ffi::CString::new(format!("\\{name}")).unwrap_or_default();
-            let sym = crate::sexp::symbol::install_cstr(&key);
-            let c_body = std::ffi::CString::new(body.as_str()).unwrap_or_default();
-            let value = crate::sexp::constructors::mk_string_bytes(c_body.to_bytes());
-            crate::sexp::envir::defineVar(sym, value, env);
-        }
-        env
+    let parent = if TYPEOF(parent) == SEXPTYPE::ENVSXP {
+        parent
+    } else {
+        crate::sexp::globals::R_BaseEnv()
+    };
+    let env = crate::sexp::envir::R_NewHashedEnv(parent, 0);
+    let _guard = protect(env);
+    for (name, body) in defined {
+        let key = std::ffi::CString::new(format!("\\{name}")).unwrap_or_default();
+        let sym = crate::sexp::symbol::install_cstr(&key);
+        let c_body = std::ffi::CString::new(body.as_str()).unwrap_or_default();
+        let value = crate::sexp::constructors::mk_string_bytes(c_body.to_bytes());
+        crate::sexp::envir::defineVar(sym, value, env);
     }
+    env
 }
 
 fn rd_text(text: &str, macro_env: SEXP) -> SEXP {

@@ -1045,7 +1045,7 @@ pub fn do_wrap_meta(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 /// The port has no sorted-metadata ALTREP class, so the ALTREP sortedness
 /// consult stays UNKNOWN_SORTEDNESS for every type and only GNU's
 /// increasing-integer scan can confirm sortedness.
-pub unsafe fn do_sorted_fpass(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_sorted_fpass(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     const SORTED_DECR_NA_1ST: c_int = -2;
     const SORTED_DECR: c_int = -1;
     const SORTED_INCR: c_int = 1;

@@ -278,7 +278,7 @@ pub(crate) fn lookup(name: &str) -> Option<crate::mainutils::native_routines::Na
     }
 }
 
-pub unsafe fn install_call_symbols(env: SEXP) {
+pub fn install_call_symbols(env: SEXP) {
     let cname = std::ffi::CString::new("C_pretty2").unwrap_or_default();
     crate::sexp::envir::defineVar(
         crate::sexp::symbol::install_cstr(&cname),

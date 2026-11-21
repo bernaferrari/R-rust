@@ -33,7 +33,9 @@ pub fn do_as_POSIXlt(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                     setAttrib(
                         out,
                         crate::sexp::symbol::install_str("tzone"),
-                        Rf_mkString(CString::new(tz).unwrap_or_default().as_ptr()),
+                        crate::sexp::constructors::mk_string_bytes(
+                            CString::new(tz).unwrap_or_default().to_bytes(),
+                        ),
                     );
                     return out;
                 }
@@ -63,7 +65,9 @@ pub fn do_as_POSIXlt(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             } else {
                 tz_s.clone()
             };
-            let tz_arg = Rf_mkString(CString::new(tz_use.as_str()).unwrap_or_default().as_ptr());
+            let tz_arg = crate::sexp::constructors::mk_string_bytes(
+                CString::new(tz_use.as_str()).unwrap_or_default().to_bytes(),
+            );
             let _ta = protect(tz_arg);
             return do_D2POSIXlt(call, op, Rf_cons(x, Rf_cons(tz_arg, R_NilValue())), env);
         }
@@ -124,7 +128,9 @@ pub fn do_as_POSIXlt(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             ];
             let mut last = R_NilValue();
             for fmt in try_fmts {
-                let fmt_s = Rf_mkString(CString::new(*fmt).unwrap_or_default().as_ptr());
+                let fmt_s = crate::sexp::constructors::mk_string_bytes(
+                    CString::new(*fmt).unwrap_or_default().to_bytes(),
+                );
                 let _fmt = protect(fmt_s);
                 last = do_strptime(
                     call,
@@ -138,7 +144,9 @@ pub fn do_as_POSIXlt(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                         setAttrib(
                             last,
                             crate::sexp::symbol::install_str("tzone"),
-                            Rf_mkString(CString::new(tz_s.as_str()).unwrap_or_default().as_ptr()),
+                            crate::sexp::constructors::mk_string_bytes(
+                                CString::new(tz_s.as_str()).unwrap_or_default().to_bytes(),
+                            ),
                         );
                     }
                     return last;
@@ -164,7 +172,9 @@ pub fn do_as_POSIXlt(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             );
         };
         let _text = protect(text);
-        let fmt_s = Rf_mkString(CString::new(fmt).unwrap_or_default().as_ptr());
+        let fmt_s = crate::sexp::constructors::mk_string_bytes(
+            CString::new(fmt).unwrap_or_default().to_bytes(),
+        );
         let _fmt = protect(fmt_s);
         do_strptime(
             call,

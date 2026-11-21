@@ -705,18 +705,18 @@ pub(crate) fn lookup_call(name: &str) -> Option<crate::mainutils::native_routine
 }
 
 pub fn install_stats_call_symbols(env: SEXP) {
-        for name in RAND_CALL_NAMES
-            .iter()
-            .copied()
-            .chain(super::distn::DISTN_CALL_NAMES.iter().copied())
-        {
-            let cname = std::ffi::CString::new(name).unwrap_or_default();
-            crate::sexp::envir::defineVar(
+    for name in RAND_CALL_NAMES
+        .iter()
+        .copied()
+        .chain(super::distn::DISTN_CALL_NAMES.iter().copied())
+    {
+        let cname = std::ffi::CString::new(name).unwrap_or_default();
+        crate::sexp::envir::defineVar(
             crate::sexp::symbol::install_cstr(&cname),
             crate::sexp::constructors::mk_string_bytes(cname.to_bytes()),
-                env,
-            );
-        }
+            env,
+        );
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1381,9 +1381,7 @@ fn missing_required(call: SEXP, name: &str) -> ! {
 
 /// Bind `args` to `names` through GNU `matchArgs` (exact, partial, positional).
 fn match_formals(call: SEXP, args: SEXP, names: &[&str]) -> Vec<SEXP> {
-    // SAFETY: the raw ABI caller retains the active runtime; the matcher only
-    // inspects the argument list and returns borrowed slots.
-    unsafe { crate::mainutils::match_mod::match_formal_slots(call, args, names) }
+    crate::mainutils::match_mod::match_formal_slots(call, args, names)
 }
 
 fn require_slot(call: SEXP, slot: SEXP, name: &str) -> SEXP {

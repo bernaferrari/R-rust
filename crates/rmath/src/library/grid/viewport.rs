@@ -101,7 +101,7 @@ fn ScalarReal(x: f64) -> SEXP {
     scalar_real(x)
 }
 
-unsafe fn lang1(fn_: SEXP) -> SEXP {
+fn lang1(fn_: SEXP) -> SEXP {
     let call = Rf_cons(fn_, R_NilValue());
     if !call.is_null() {
         crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
@@ -506,9 +506,7 @@ pub unsafe fn initVP(dd: *const u8) {
     let vpfnname = install("grid.top.level.vp");
     let _vpfnname_guard = protect(vpfnname);
     let vpfn_env = grid_eval_env();
-    // SAFETY: `vpfnname` is a live interned symbol in the grid eval env;
-    // `lang1` conses a live one-arg call.
-    let vpfn = unsafe { lang1(findFun(vpfnname, vpfn_env)) };
+    let vpfn = lang1(findFun(vpfnname, vpfn_env));
     let _vpfn_guard = protect(vpfn);
     let vp = Rf_eval(vpfn, R_GlobalEnv());
     let _vp_guard = protect(vp);

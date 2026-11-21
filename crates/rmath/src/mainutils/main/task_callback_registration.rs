@@ -336,7 +336,7 @@ pub(crate) unsafe extern "C-unwind" fn names() -> SEXP {
 /// Ordinary promises preserve base lookup/locking semantics while retaining
 /// only one authenticated loader and three small expressions before first use.
 /// No string lookup or foreign loader can obtain this private typed routine.
-pub(crate) unsafe fn install(base_env: SEXP) {
+pub(crate) fn install(base_env: SEXP) {
     use crate::mainutils::{
         native_routines::{CallRoutine, NativeRoutine},
         native_symbols,

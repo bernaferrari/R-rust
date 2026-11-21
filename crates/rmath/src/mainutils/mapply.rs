@@ -116,7 +116,7 @@ unsafe fn varying_length(v: SEXP, rho: SEXP) -> R_xlen_t {
 /// Vector and pairlist inputs reuse the shared extractor (which boxes atomic
 /// elements); a non-vector object is the whole argument (scalar semantics).
 /// Classed objects go through `[[` so S4 methods fire (GNU `dots[[j]][[i]]`).
-unsafe fn varying_element(v: SEXP, idx: R_xlen_t, rho: SEXP) -> SEXP {
+fn varying_element(v: SEXP, idx: R_xlen_t, rho: SEXP) -> SEXP {
     if OBJECT(v) != 0 && !rho.is_null() && rho != R_NilValue() {
         let i = Rf_ScalarInteger((idx + 1) as i32);
         let _i = protect(i);

@@ -207,11 +207,11 @@ pub fn do_seq(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
         // Argument matching for seq.int(from, to, by, length.out, along.with, ...)
         let formals = allocFormalsList6(
-            Rf_install_stub(b"from\0".as_ptr() as *const c_char),
-            Rf_install_stub(b"to\0".as_ptr() as *const c_char),
-            Rf_install_stub(b"by\0".as_ptr() as *const c_char),
-            Rf_install_stub(b"length.out\0".as_ptr() as *const c_char),
-            Rf_install_stub(b"along.with\0".as_ptr() as *const c_char),
+            crate::sexp::symbol::install_str("from"),
+            crate::sexp::symbol::install_str("to"),
+            crate::sexp::symbol::install_str("by"),
+            crate::sexp::symbol::install_str("length.out"),
+            crate::sexp::symbol::install_str("along.with"),
             R_DotsSymbol(),
         );
         let matched_args = matchArgs_NR(formals, args, call);

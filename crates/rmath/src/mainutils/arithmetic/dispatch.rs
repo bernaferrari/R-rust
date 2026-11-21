@@ -560,7 +560,7 @@ pub(crate) fn coerce_logical_to_int<'s>(
     if input.typeof_() != SEXPTYPE::LGLSXP {
         return Ok(input);
     }
-    if !crate::sexp::altrep::is_altrep(&input) && unsafe { no_references(input.as_raw()) } {
+    if !crate::sexp::altrep::is_altrep(&input) && no_references(input.as_raw()) {
         let allocation = input.allocation()?;
         allocation
             .heap_identity()

@@ -112,7 +112,7 @@ fn isNewList(x: SEXP) -> bool {
 }
 
 /// Get the "R_NameSymbol" — a pre-interned symbol for the "name" attribute.
-unsafe fn R_NameSymbol() -> SEXP {
+fn R_NameSymbol() -> SEXP {
     crate::sexp::symbol::install_str("name")
 }
 
@@ -176,7 +176,7 @@ pub unsafe fn do_attach(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
                     let sym_name = if !names.is_null() && isString(names) && LENGTH(names) > i {
                         let ns = STRING_ELT(names, i as R_xlen_t);
                         if !ns.is_null() && ns != R_NilValue() {
-                            crate::sexp::symbol::Rf_install(CHAR(ns))
+                            crate::sexp::symbol::install_charsxp(ns)
                         } else {
                             continue;
                         }
@@ -407,70 +407,68 @@ unsafe fn string_elt(x: SEXP, i: R_xlen_t) -> String {
 /// Returns a STRSXP with the names of all environments on the search path,
 /// from .GlobalEnv to package:base.
 pub unsafe fn do_search(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
-        use crate::eval::attrib_core::getAttrib;
-        use crate::sexp::constructors::Rf_allocVector;
+    use crate::eval::attrib_core::getAttrib;
+    use crate::sexp::constructors::Rf_allocVector;
 
-        let global_env = R_GlobalEnv();
-        let base_env = R_BaseEnv();
+    let global_env = R_GlobalEnv();
+    let base_env = R_BaseEnv();
 
-        if global_env.is_null() || base_env.is_null() {
-            return Rf_allocVector(SEXPTYPE::STRSXP, 0);
-        }
+    if global_env.is_null() || base_env.is_null() {
+        return Rf_allocVector(SEXPTYPE::STRSXP, 0);
+    }
 
-        // Count environments in search path
-        let mut n: c_int = 2; // .GlobalEnv + package:base
-        let mut t = ENCLOS(global_env);
-        while !t.is_null() && t != base_env {
-            n += 1;
-            t = ENCLOS(t);
-        }
+    // Count environments in search path
+    let mut n: c_int = 2; // .GlobalEnv + package:base
+    let mut t = ENCLOS(global_env);
+    while !t.is_null() && t != base_env {
+        n += 1;
+        t = ENCLOS(t);
+    }
 
-        let ans = Rf_allocVector(SEXPTYPE::STRSXP, n);
-        if ans.is_null() {
-            error("could not allocate search result");
-        }
-        let _ans_guard = protect(ans);
+    let ans = Rf_allocVector(SEXPTYPE::STRSXP, n);
+    if ans.is_null() {
+        error("could not allocate search result");
+    }
+    let _ans_guard = protect(ans);
 
-        // First element is always ".GlobalEnv"
-        SET_STRING_ELT(ans, 0, crate::sexp::constructors::mk_char_str(".GlobalEnv"));
+    // First element is always ".GlobalEnv"
+    SET_STRING_ELT(ans, 0, crate::sexp::constructors::mk_char_str(".GlobalEnv"));
 
-        // Last element is always "package:base"
-        SET_STRING_ELT(
-            ans,
-            (n - 1) as R_xlen_t,
-            crate::sexp::constructors::mk_char_str("package:base"),
-        );
+    // Last element is always "package:base"
+    SET_STRING_ELT(
+        ans,
+        (n - 1) as R_xlen_t,
+        crate::sexp::constructors::mk_char_str("package:base"),
+    );
 
-        // Fill in middle elements
-        let mut i: c_int = 1;
-        let mut t = ENCLOS(global_env);
-        while !t.is_null() && t != base_env {
-            let name = getAttrib(t, R_NameSymbol());
-            if !isString(name) || LENGTH(name) < 1 {
+    // Fill in middle elements
+    let mut i: c_int = 1;
+    let mut t = ENCLOS(global_env);
+    while !t.is_null() && t != base_env {
+        let name = getAttrib(t, R_NameSymbol());
+        if !isString(name) || LENGTH(name) < 1 {
+            SET_STRING_ELT(
+                ans,
+                i as R_xlen_t,
+                crate::sexp::constructors::mk_char_str("(unknown)"),
+            );
+        } else {
+            let name_elt = STRING_ELT(name, 0);
+            if !name_elt.is_null() && name_elt != R_NilValue() {
+                SET_STRING_ELT(ans, i as R_xlen_t, name_elt);
+            } else {
                 SET_STRING_ELT(
                     ans,
                     i as R_xlen_t,
                     crate::sexp::constructors::mk_char_str("(unknown)"),
                 );
-            } else {
-                let name_elt = STRING_ELT(name, 0);
-                if !name_elt.is_null() && name_elt != R_NilValue() {
-                    SET_STRING_ELT(ans, i as R_xlen_t, name_elt);
-                } else {
-                    SET_STRING_ELT(
-                        ans,
-                        i as R_xlen_t,
-                        crate::sexp::constructors::mk_char_str("(unknown)"),
-                    );
-                }
             }
-            i += 1;
-            t = ENCLOS(t);
         }
-
-        ans
+        i += 1;
+        t = ENCLOS(t);
     }
+
+    ans
 }
 
 // ---------------------------------------------------------------------------

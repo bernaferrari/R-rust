@@ -66,14 +66,13 @@ fn dispatch_special_by_name(name: &str, call: SEXP, op: SEXP, args: SEXP, rho: S
     unsafe {
         crate::sexp::owner::OwnerToken::with_current(|token_owner| {
             let factory = crate::sexp::object::SessionNodeFactory::new(token_owner);
-        match name {
-            "{" => do_begin_with_call(call, CDR(call), rho),
-            "(" => {
-                // `(` is an evaluated builtin. evalList splices `...`
-                // before the arity check, so `(...)` is the first dotted
-                // value and `(a, b)` is an error.
-                let evaled =
-                    super::dispatch::evalList(
+            match name {
+                "{" => do_begin_with_call(call, CDR(call), rho),
+                "(" => {
+                    // `(` is an evaluated builtin. evalList splices `...`
+                    // before the arity check, so `(...)` is the first dotted
+                    // value and `(a, b)` is an error.
+                    let evaled = super::dispatch::evalList(
                         factory.wrap(CDR(call)).unwrap_or_else(|error| {
                             crate::sexp::context::r_error(error.to_string())
                         }),
@@ -85,82 +84,83 @@ fn dispatch_special_by_name(name: &str, call: SEXP, op: SEXP, args: SEXP, rho: S
                         })),
                         -1,
                     );
-                let n = crate::sexp::constructors::Rf_length(evaled.as_raw());
-                if n != 1 {
-                    let noun = if n == 1 { "argument" } else { "arguments" };
-                    std::panic::panic_any(crate::sexp::context::RError {
-                        message: format!("{n} {noun} passed to '(' which requires 1"),
-                    });
+                    let n = crate::sexp::constructors::Rf_length(evaled.as_raw());
+                    if n != 1 {
+                        let noun = if n == 1 { "argument" } else { "arguments" };
+                        std::panic::panic_any(crate::sexp::context::RError {
+                            message: format!("{n} {noun} passed to '(' which requires 1"),
+                        });
+                    }
+                    do_paren_builtin(call, op, evaled.as_raw(), rho)
                 }
-                do_paren_builtin(call, op, evaled.as_raw(), rho)
-            }
-            "if" => do_if(CDR(call), rho),
-            "while" => do_while(CDR(call), rho),
-            "for" => do_for(CDR(call), rho),
-            "repeat" => do_repeat(CDR(call), rho),
-            "break" => do_break(rho),
-            "next" => do_next(rho),
-            "function" => do_function(call, CDR(call), rho),
-            "return" => do_return(CDR(call), rho),
-            "switch" => crate::mainutils::builtin::do_switch(call, op, args, rho),
-            "call" => crate::mainutils::coerce::do_call(call, op, args, rho),
-            "quote" => crate::mainutils::essentials::do_quote(call, op, args, rho),
-            ".Internal" => crate::mainutils::names::do_internal(call, op, args, rho),
-            ".Primitive" => crate::mainutils::names::do_primitive(call, op, args, rho),
-            "expression" => do_expression(CDR(call)),
-            "substitute" => crate::mainutils::coerce::do_substitute(call, op, args, rho),
-            "invisible" => do_invisible(CDR(call), rho),
-            "Exec" | "Tailcall" => crate::eval::jit::do_tailcall(call, op, args, rho),
-            "on.exit" => do_on_exit_from_args(CDR(call), rho),
-            "=" | "<-" | "<<-" => super::assignment::do_set(call, op, CDR(call), rho),
-            ":" => {
-                let left = Rf_eval(CAR(args), rho);
-                let _left = protect(left);
-                let right = Rf_eval(CADR(args), rho);
-                let _right = protect(right);
-                let evaluated = Rf_cons(left, Rf_cons(right, R_NilValue()));
-                let _evaluated = protect(evaluated);
-                crate::mainutils::seq::do_colon(call, op, evaluated, rho)
-            }
-            "~" => crate::mainutils::names::do_tilde(call, op, args, rho),
-            "&&" | "||" => crate::mainutils::logic::do_logic2(call, op, args, rho),
-            "$" => crate::mainutils::subset::do_subset3(call, op, args, rho),
+                "if" => do_if(CDR(call), rho),
+                "while" => do_while(CDR(call), rho),
+                "for" => do_for(CDR(call), rho),
+                "repeat" => do_repeat(CDR(call), rho),
+                "break" => do_break(rho),
+                "next" => do_next(rho),
+                "function" => do_function(call, CDR(call), rho),
+                "return" => do_return(CDR(call), rho),
+                "switch" => crate::mainutils::builtin::do_switch(call, op, args, rho),
+                "call" => crate::mainutils::coerce::do_call(call, op, args, rho),
+                "quote" => crate::mainutils::essentials::do_quote(call, op, args, rho),
+                ".Internal" => crate::mainutils::names::do_internal(call, op, args, rho),
+                ".Primitive" => crate::mainutils::names::do_primitive(call, op, args, rho),
+                "expression" => do_expression(CDR(call)),
+                "substitute" => crate::mainutils::coerce::do_substitute(call, op, args, rho),
+                "invisible" => do_invisible(CDR(call), rho),
+                "Exec" | "Tailcall" => crate::eval::jit::do_tailcall(call, op, args, rho),
+                "on.exit" => do_on_exit_from_args(CDR(call), rho),
+                "=" | "<-" | "<<-" => super::assignment::do_set(call, op, CDR(call), rho),
+                ":" => {
+                    let left = Rf_eval(CAR(args), rho);
+                    let _left = protect(left);
+                    let right = Rf_eval(CADR(args), rho);
+                    let _right = protect(right);
+                    let evaluated = Rf_cons(left, Rf_cons(right, R_NilValue()));
+                    let _evaluated = protect(evaluated);
+                    crate::mainutils::seq::do_colon(call, op, evaluated, rho)
+                }
+                "~" => crate::mainutils::names::do_tilde(call, op, args, rho),
+                "&&" | "||" => crate::mainutils::logic::do_logic2(call, op, args, rho),
+                "$" => crate::mainutils::subset::do_subset3(call, op, args, rho),
 
-            "[" => crate::mainutils::subset::do_subset(call, op, args, rho),
-            "[[" => crate::mainutils::subset::do_subset2(call, op, args, rho),
-            "[<-" => crate::mainutils::subset::do_subassign(call, op, args, rho),
-            "[[<-" => crate::mainutils::subset::do_subassign2(call, op, args, rho),
-            "@" => crate::mainutils::essentials::do_at(call, op, args, rho),
-            "@<-" => crate::mainutils::essentials::do_at_set(call, op, args, rho),
-            "$<-" => crate::mainutils::essentials::do_dollar_set(call, op, args, rho),
-            "UseMethod" => crate::mainutils::essentials::do_usemethod(call, op, args, rho),
+                "[" => crate::mainutils::subset::do_subset(call, op, args, rho),
+                "[[" => crate::mainutils::subset::do_subset2(call, op, args, rho),
+                "[<-" => crate::mainutils::subset::do_subassign(call, op, args, rho),
+                "[[<-" => crate::mainutils::subset::do_subassign2(call, op, args, rho),
+                "@" => crate::mainutils::essentials::do_at(call, op, args, rho),
+                "@<-" => crate::mainutils::essentials::do_at_set(call, op, args, rho),
+                "$<-" => crate::mainutils::essentials::do_dollar_set(call, op, args, rho),
+                "UseMethod" => crate::mainutils::essentials::do_usemethod(call, op, args, rho),
 
-            _ => {
-                if let Some(builtin) = super::builtin::unevaluated_builtin_handler(name) {
-                    return (builtin.handler)(call, op, args, rho);
+                _ => {
+                    if let Some(builtin) = super::builtin::unevaluated_builtin_handler(name) {
+                        return (builtin.handler)(call, op, args, rho);
+                    }
+                    // CALLSPECIAL / a mis-kinded primitive may mint SPECIALSXP
+                    // for names that are evaluated builtins (GNU round is
+                    // BUILTINSXP). Eval args and run the builtin handler.
+                    if let Some(handler) = super::builtin::evaluated_builtin_handler(name) {
+                        let evaled = super::dispatch::evalList(
+                            factory.wrap(args).unwrap_or_else(|error| {
+                                crate::sexp::context::r_error(error.to_string())
+                            }),
+                            factory.wrap(rho).unwrap_or_else(|error| {
+                                crate::sexp::context::r_error(error.to_string())
+                            }),
+                            Some(factory.wrap(call).unwrap_or_else(|error| {
+                                crate::sexp::context::r_error(error.to_string())
+                            })),
+                            -1,
+                        );
+                        return handler(call, op, evaled.as_raw(), rho);
+                    }
+                    unimplemented_special_form(name)
                 }
-                // CALLSPECIAL / a mis-kinded primitive may mint SPECIALSXP
-                // for names that are evaluated builtins (GNU round is
-                // BUILTINSXP). Eval args and run the builtin handler.
-                if let Some(handler) = super::builtin::evaluated_builtin_handler(name) {
-                    let evaled = super::dispatch::evalList(
-                        factory.wrap(args).unwrap_or_else(|error| {
-                            crate::sexp::context::r_error(error.to_string())
-                        }),
-                        factory.wrap(rho).unwrap_or_else(|error| {
-                            crate::sexp::context::r_error(error.to_string())
-                        }),
-                        Some(factory.wrap(call).unwrap_or_else(|error| {
-                            crate::sexp::context::r_error(error.to_string())
-                        })),
-                        -1,
-                    );
-                    return handler(call, op, evaled.as_raw(), rho);
-                }
-                unimplemented_special_form(name)
             }
-        }
-        }).unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+        })
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
     }
 }
 
@@ -190,7 +190,9 @@ fn do_expression(args: SEXP) -> SEXP {
             SET_STRING_ELT(
                 names,
                 i,
-                Rf_mkChar(std::ffi::CString::new(name).unwrap_or_default().as_ptr()),
+                crate::sexp::constructors::mk_char_bytes(
+                    std::ffi::CString::new(name).unwrap_or_default().to_bytes(),
+                ),
             );
             i += 1;
             current = CDR(current);

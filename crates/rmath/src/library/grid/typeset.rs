@@ -120,11 +120,9 @@ fn renderGlyphs(runs: SEXP, glyphInfo: SEXP, x: SEXP, y: SEXP, draw: bool) {
         None
     };
 
-    // SAFETY: glyph-info accessors are raw engine SEXP bridges; `glyphInfo`
-    // is the checked object passed down from `L_glyph`.
-    let glyphs = unsafe { ge::R_GE_glyphInfoGlyphs(glyphInfo) };
-    let fonts = unsafe { ge::R_GE_glyphInfoFonts(glyphInfo) };
-    let glyph_id = unsafe { ge::R_GE_glyphID(glyphs) };
+    let glyphs = ge::R_GE_glyphInfoGlyphs(glyphInfo);
+    let fonts = ge::R_GE_glyphInfoFonts(glyphInfo);
+    let glyph_id = ge::R_GE_glyphID(glyphs);
     // SAFETY: `GEGlyph` below needs the raw glyph-id buffer; the pointer is
     // lent only for that engine call.
     let id = unsafe { INTEGER(glyph_id) };
@@ -157,11 +155,9 @@ fn renderGlyphs(runs: SEXP, glyphInfo: SEXP, x: SEXP, y: SEXP, draw: bool) {
         gy[i as usize] = unsafe { ge::toDeviceY(yy, GE_INCHES, dd) };
     }
 
-    // SAFETY: remaining per-glyph vectors are raw engine SEXP bridges over the
-    // live `glyphs` list returned above.
-    let glyph_font = unsafe { ge::R_GE_glyphFont(glyphs) };
-    let glyph_size = unsafe { ge::R_GE_glyphSize(glyphs) };
-    let glyph_colour = unsafe { ge::R_GE_glyphColour(glyphs) };
+    let glyph_font = ge::R_GE_glyphFont(glyphs);
+    let glyph_size = ge::R_GE_glyphSize(glyphs);
+    let glyph_colour = ge::R_GE_glyphColour(glyphs);
 
     let mut offset: c_int = 0;
     for i in 0..nruns {
@@ -171,12 +167,9 @@ fn renderGlyphs(runs: SEXP, glyphInfo: SEXP, x: SEXP, y: SEXP, draw: bool) {
             (integer_elt(glyph_font, offset as R_xlen_t) - 1) as R_xlen_t,
         );
         let size = real_elt(glyph_size, offset as R_xlen_t);
-        let glyph_rotation = if unsafe { ge::R_GE_hasGlyphRotation(glyphs) } != 0 {
+        let glyph_rotation = if ge::R_GE_hasGlyphRotation(glyphs) != 0 {
             // SAFETY: presence was just confirmed by the flag above.
-            real_elt(
-                unsafe { ge::R_GE_glyphRotation(glyphs) },
-                offset as R_xlen_t,
-            )
+            real_elt(ge::R_GE_glyphRotation(glyphs), offset as R_xlen_t)
         } else {
             0.0
         };

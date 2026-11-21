@@ -31,28 +31,26 @@ use super::*;
 /// Port of `getNames()` -- retrieves names attribute from a vector,
 /// deferring to getAttrib if a 'dim' attribute is present.
 pub(crate) fn getNames(x: SEXP) -> SEXP {
-    unsafe {
-        use crate::eval::attrib_core::R_DimSymbol;
+    use crate::eval::attrib_core::R_DimSymbol;
 
-        let mut attr = ATTRIB(x);
-        while !isNull(attr) {
-            if TAG(attr) == R_DimSymbol() {
-                return getAttrib(x, crate::eval::attrib_core::R_NamesSymbol());
-            }
-            attr = CDR(attr);
+    let mut attr = ATTRIB(x);
+    while !isNull(attr) {
+        if TAG(attr) == R_DimSymbol() {
+            return getAttrib(x, crate::eval::attrib_core::R_NamesSymbol());
         }
-
-        // Don't use getAttrib since that would mark as immutable
-        attr = ATTRIB(x);
-        while !isNull(attr) {
-            if TAG(attr) == crate::eval::attrib_core::R_NamesSymbol() {
-                return CAR(attr);
-            }
-            attr = CDR(attr);
-        }
-
-        R_NilValue()
+        attr = CDR(attr);
     }
+
+    // Don't use getAttrib since that would mark as immutable
+    attr = ATTRIB(x);
+    while !isNull(attr) {
+        if TAG(attr) == crate::eval::attrib_core::R_NamesSymbol() {
+            return CAR(attr);
+        }
+        attr = CDR(attr);
+    }
+
+    R_NilValue()
 }
 
 /// Port of `EnlargeVector()` -- changes vector length to newlen,
@@ -472,12 +470,17 @@ pub(crate) fn VectorAssign(call: SEXP, rho: SEXP, x: SEXP, s: SEXP, y: SEXP) -> 
             && XLENGTH(s) == 1
         {
             if isNull(y) {
-                let name = String::from_utf8_lossy(&crate::sexp::accessors::char_cstr_bytes(STRING_ELT(s, 0))).into_owned();
+                let name = String::from_utf8_lossy(&crate::sexp::accessors::char_cstr_bytes(
+                    STRING_ELT(s, 0),
+                ))
+                .into_owned();
                 let names = getAttrib(x, crate::eval::attrib_core::R_NamesSymbol());
                 if !isNull(names) && TYPEOF(names) == STRSXP {
                     for i in 0..XLENGTH(names) {
-                        let col =
-                            String::from_utf8_lossy(&crate::sexp::accessors::char_cstr_bytes(STRING_ELT(names, i))).into_owned();
+                        let col = String::from_utf8_lossy(
+                            &crate::sexp::accessors::char_cstr_bytes(STRING_ELT(names, i)),
+                        )
+                        .into_owned();
                         if col == name {
                             let which = Rf_ScalarInteger((i + 1) as i32);
                             let _w = protect(which);

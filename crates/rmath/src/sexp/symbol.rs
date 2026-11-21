@@ -60,6 +60,15 @@ pub(crate) fn install_cstr(name: &std::ffi::CStr) -> SEXP {
     }
 }
 
+/// Safe spelling of `Rf_install(CHAR(x))`: null where `CHAR` would return
+/// null or the name is not UTF-8, like `Rf_install`.
+pub(crate) fn install_charsxp(x: SEXP) -> SEXP {
+    match super::accessors::char_cstr_bytes_opt(x).and_then(|bytes| String::from_utf8(bytes).ok()) {
+        Some(name) => install_str(&name),
+        None => ptr::null_mut(),
+    }
+}
+
 /// Intern `name` in `inst`'s symbol table, returning the existing SYMSXP
 /// when the name was already installed.
 ///

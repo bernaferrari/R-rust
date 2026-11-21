@@ -10,7 +10,6 @@
 //! has no filename — upstream GetSrcLoc on an unnamed srcfile).
 
 use crate::sexp::accessors::*;
-use crate::sexp::constructors::Rf_mkString;
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
 
 /// Char offset -> (1-based line, 1-based byte column). Lexer spans index
@@ -83,63 +82,57 @@ pub(crate) fn srcref_lloc(src: &str, start: usize, end: usize) -> [i32; 8] {
 /// with a `lines` binding so `as.character.srcref` can recover text
 /// (GNU `srcfilecopy()`, used by `source(textConnection, keep.source)`).
 unsafe fn make_srcfile(filename: &str, copy: bool, src: &str) -> SEXP {
-    unsafe {
-        let env = crate::sexp::memory_ext::NewEnvironment(
-            std::ptr::null_mut(),
-            crate::sexp::globals::R_EmptyEnv(),
-            std::ptr::null_mut(),
-        );
-        let _g = crate::sexp::protect::protect(env);
-        let fname = Rf_mkString(
-            std::ffi::CString::new(filename)
-                .unwrap_or_default()
-                .as_ptr(),
-        );
-        let _fg = crate::sexp::protect::protect(fname);
-        crate::sexp::envir::defineVar(crate::sexp::symbol::install_str("filename"), fname, env);
-        if copy {
-            let lines = source_lines(src);
-            let line_vec =
-                crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::STRSXP, lines.len() as i64);
-            let _lg = crate::sexp::protect::protect(line_vec);
-            for (i, line) in lines.iter().enumerate() {
-                let c = std::ffi::CString::new(*line).unwrap_or_default();
-                SET_STRING_ELT(
-                    line_vec,
-                    i as i64,
-                    crate::sexp::constructors::mk_char_bytes(c.to_bytes()),
-                );
-            }
-            crate::sexp::envir::defineVar(crate::sexp::symbol::install_str("lines"), line_vec, env);
-            let copy_class = crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::STRSXP, 2);
-            let _ccg = crate::sexp::protect::protect(copy_class);
+    let env = crate::sexp::memory_ext::NewEnvironment(
+        std::ptr::null_mut(),
+        crate::sexp::globals::R_EmptyEnv(),
+        std::ptr::null_mut(),
+    );
+    let _g = crate::sexp::protect::protect(env);
+    let fname = crate::sexp::constructors::mk_string_bytes(
+        std::ffi::CString::new(filename)
+            .unwrap_or_default()
+            .to_bytes(),
+    );
+    let _fg = crate::sexp::protect::protect(fname);
+    crate::sexp::envir::defineVar(crate::sexp::symbol::install_str("filename"), fname, env);
+    if copy {
+        let lines = source_lines(src);
+        let line_vec =
+            crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::STRSXP, lines.len() as i64);
+        let _lg = crate::sexp::protect::protect(line_vec);
+        for (i, line) in lines.iter().enumerate() {
+            let c = std::ffi::CString::new(*line).unwrap_or_default();
             SET_STRING_ELT(
-                copy_class,
-                0,
-                crate::sexp::constructors::mk_char_str("srcfilecopy"),
-            );
-            SET_STRING_ELT(
-                copy_class,
-                1,
-                crate::sexp::constructors::mk_char_str("srcfile"),
-            );
-            crate::sexp::attrib_core::setAttrib(
-                env,
-                crate::sexp::attrib_core::R_ClassSymbol(),
-                copy_class,
-            );
-        } else {
-            let class = crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::STRSXP, 1);
-            let _cg = crate::sexp::protect::protect(class);
-            SET_STRING_ELT(class, 0, crate::sexp::constructors::mk_char_str("srcfile"));
-            crate::sexp::attrib_core::setAttrib(
-                env,
-                crate::sexp::attrib_core::R_ClassSymbol(),
-                class,
+                line_vec,
+                i as i64,
+                crate::sexp::constructors::mk_char_bytes(c.to_bytes()),
             );
         }
-        env
+        crate::sexp::envir::defineVar(crate::sexp::symbol::install_str("lines"), line_vec, env);
+        let copy_class = crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::STRSXP, 2);
+        let _ccg = crate::sexp::protect::protect(copy_class);
+        SET_STRING_ELT(
+            copy_class,
+            0,
+            crate::sexp::constructors::mk_char_str("srcfilecopy"),
+        );
+        SET_STRING_ELT(
+            copy_class,
+            1,
+            crate::sexp::constructors::mk_char_str("srcfile"),
+        );
+        crate::sexp::attrib_core::setAttrib(
+            env,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            copy_class,
+        );
+    } else {
+        let class = crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+        let _cg = crate::sexp::protect::protect(class);
+        SET_STRING_ELT(class, 0, crate::sexp::constructors::mk_char_str("srcfile"));
+        crate::sexp::attrib_core::setAttrib(env, crate::sexp::attrib_core::R_ClassSymbol(), class);
     }
+    env
 }
 
 /// GNU 8-integer `srcref`: line/byte/column/parse. Bytes are 1-based
@@ -218,7 +211,7 @@ pub(crate) unsafe fn attach_srcrefs_with_spans(
     }
 }
 
-unsafe fn bind_srcfile_to_srcref_int(sr: SEXP, srcfile: SEXP) {
+fn bind_srcfile_to_srcref_int(sr: SEXP, srcfile: SEXP) {
     if sr.is_null() || sr == crate::sexp::globals::R_NilValue() || TYPEOF(sr) != SEXPTYPE::INTSXP {
         return;
     }
@@ -509,7 +502,7 @@ unsafe fn recurse_remove_source(part: SEXP) -> SEXP {
     }
 }
 
-unsafe fn clear_source_attrs(x: SEXP) {
+fn clear_source_attrs(x: SEXP) {
     let nil = crate::sexp::globals::R_NilValue();
     crate::sexp::attrib_core::setAttrib(x, crate::sexp::symbol::install_str("srcref"), nil);
     crate::sexp::attrib_core::setAttrib(x, crate::sexp::symbol::install_str("wholeSrcref"), nil);

@@ -70,7 +70,7 @@ fn getCharCE(s: SEXP) -> c_int {
     crate::sexp::accessors::getCharCE(s)
 }
 
-unsafe fn coerceVector(s: SEXP, t: c_int) -> SEXP {
+fn coerceVector(s: SEXP, t: c_int) -> SEXP {
     crate::mainutils::coerce::coerceVector(s, t)
 }
 

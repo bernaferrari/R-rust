@@ -20,7 +20,7 @@ fn err(s: &str) -> ! {
     std::panic::panic_any(crate::sexp::context::RError { message: s.into() })
 }
 
-unsafe fn is_qr(x: SEXP) -> bool {
+fn is_qr(x: SEXP) -> bool {
     let c = getAttrib(x, R_ClassSymbol());
     if c == R_NilValue() || TYPEOF(c) != STRSXP_C {
         return false;
@@ -33,7 +33,7 @@ unsafe fn is_qr(x: SEXP) -> bool {
     false
 }
 
-unsafe fn field(x: SEXP, name: &[u8]) -> SEXP {
+fn field(x: SEXP, name: &[u8]) -> SEXP {
     let names = getAttrib(x, R_NamesSymbol());
     if TYPEOF(names) == STRSXP_C && XLENGTH(names) == XLENGTH(x) {
         for i in 0..XLENGTH(names) {

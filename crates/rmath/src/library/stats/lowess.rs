@@ -354,9 +354,7 @@ pub fn do_lowess(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         formals = cell;
     }
     let _formals = protect(formals);
-    // SAFETY: `formals` is a live protected pairlist and `args`/`call` are
-    // the live builtin arguments; matchArgs_RC only reads them.
-    let matched = unsafe { crate::mainutils::match_mod::matchArgs_RC(formals, args, call) };
+    let matched = crate::mainutils::match_mod::matchArgs_RC(formals, args, call);
     let _matched = protect(matched);
     let mut slots = [R_MissingArg(); 5];
     let mut cell = matched;

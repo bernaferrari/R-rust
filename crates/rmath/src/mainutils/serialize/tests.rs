@@ -43,7 +43,9 @@ fn make_string_vector(value: &str) -> SEXP {
         SET_STRING_ELT(
             vec,
             0,
-            Rf_mkChar(CString::new(value).unwrap_or_default().as_ptr()),
+            crate::sexp::constructors::mk_char_bytes(
+                CString::new(value).unwrap_or_default().to_bytes(),
+            ),
         );
     }
     vec

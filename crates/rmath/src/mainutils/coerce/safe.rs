@@ -545,41 +545,39 @@ pub fn do_asvector(call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 /// Note: canonical version lives in inspect.rs; this is kept as
 /// coerce_typeof for internal use.
 pub fn coerce_typeof(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if TYPEOF(x) == SEXPTYPE::OBJSXP && IS_S4_OBJECT(x) == 0 {
-            return mk_string("object");
-        }
-        let type_name = match SEXPTYPE(TYPEOF(x)) {
-            SEXPTYPE::NILSXP => "NULL",
-            SEXPTYPE::SYMSXP => "symbol",
-            SEXPTYPE::LISTSXP => "pairlist",
-            SEXPTYPE::CLOSXP => "closure",
-            SEXPTYPE::ENVSXP => "environment",
-            SEXPTYPE::PROMSXP => "promise",
-            SEXPTYPE::LANGSXP => "language",
-            SEXPTYPE::SPECIALSXP => "special",
-            SEXPTYPE::BUILTINSXP => "builtin",
-            SEXPTYPE::CHARSXP => "character",
-            SEXPTYPE::LGLSXP => "logical",
-            SEXPTYPE::INTSXP => "integer",
-            SEXPTYPE::REALSXP => "double",
-            SEXPTYPE::CPLXSXP => "complex",
-            SEXPTYPE::STRSXP => "character",
-            SEXPTYPE::DOTSXP => "...",
-            SEXPTYPE::ANYSXP => "any",
-            SEXPTYPE::VECSXP => "list",
-            SEXPTYPE::EXPRSXP => "expression",
-            SEXPTYPE::RAWSXP => "raw",
-            SEXPTYPE::OBJSXP => "object",
-            _ => "unknown",
-        };
-        Rf_mkString(
-            std::ffi::CString::new(type_name)
-                .unwrap_or_default()
-                .as_ptr(),
-        )
+    let x = CAR(args);
+    if TYPEOF(x) == SEXPTYPE::OBJSXP && IS_S4_OBJECT(x) == 0 {
+        return mk_string("object");
     }
+    let type_name = match SEXPTYPE(TYPEOF(x)) {
+        SEXPTYPE::NILSXP => "NULL",
+        SEXPTYPE::SYMSXP => "symbol",
+        SEXPTYPE::LISTSXP => "pairlist",
+        SEXPTYPE::CLOSXP => "closure",
+        SEXPTYPE::ENVSXP => "environment",
+        SEXPTYPE::PROMSXP => "promise",
+        SEXPTYPE::LANGSXP => "language",
+        SEXPTYPE::SPECIALSXP => "special",
+        SEXPTYPE::BUILTINSXP => "builtin",
+        SEXPTYPE::CHARSXP => "character",
+        SEXPTYPE::LGLSXP => "logical",
+        SEXPTYPE::INTSXP => "integer",
+        SEXPTYPE::REALSXP => "double",
+        SEXPTYPE::CPLXSXP => "complex",
+        SEXPTYPE::STRSXP => "character",
+        SEXPTYPE::DOTSXP => "...",
+        SEXPTYPE::ANYSXP => "any",
+        SEXPTYPE::VECSXP => "list",
+        SEXPTYPE::EXPRSXP => "expression",
+        SEXPTYPE::RAWSXP => "raw",
+        SEXPTYPE::OBJSXP => "object",
+        _ => "unknown",
+    };
+    crate::sexp::constructors::mk_string_bytes(
+        std::ffi::CString::new(type_name)
+            .unwrap_or_default()
+            .to_bytes(),
+    )
 }
 
 /// Check if a single element is NA — matches C's LIST_VEC_NA macro.

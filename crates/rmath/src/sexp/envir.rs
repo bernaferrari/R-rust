@@ -412,19 +412,17 @@ fn call_active_binding(env: SEXP, fun: SEXP, value: Option<SEXP>) -> Sexp<'stati
             .require_active()
             .unwrap_or_else(|error| binding_error(error.to_string()));
         crate::sexp::accessors::SET_TYPEOF(call.as_raw(), SEXPTYPE::LANGSXP.as_c_int());
-        let result = unsafe {
-            if fun.is_closure() {
-                crate::eval::closure::applyClosure(
-                    call.as_raw(),
-                    fun.as_raw(),
-                    args.as_raw(),
-                    env.as_raw(),
-                    nil.as_raw(),
-                    1,
-                )
-            } else {
-                crate::eval::eval::Rf_eval(call.as_raw(), env.as_raw())
-            }
+        let result = if fun.is_closure() {
+            crate::eval::closure::applyClosure(
+                call.as_raw(),
+                fun.as_raw(),
+                args.as_raw(),
+                env.as_raw(),
+                nil.as_raw(),
+                1,
+            )
+        } else {
+            crate::eval::eval::Rf_eval(call.as_raw(), env.as_raw())
         };
         owner
             .require_active()
@@ -1070,7 +1068,7 @@ pub(crate) fn publish_workspace_bindings(
             String::from_utf8_lossy(&crate::sexp::accessors::char_cstr_bytes(PRINTNAME(
                 symbol.as_raw(),
             )))
-                .into_owned()
+            .into_owned()
         };
         let raw = symbol.as_raw();
         if binding_is_locked_raw(target.as_raw(), raw) {
@@ -1968,7 +1966,7 @@ pub fn Rf_createEnv(frame: SEXP, enclos: SEXP) -> SEXP {
 }
 
 /// Create a new hashed environment.
-pub(crate) unsafe fn R_NewHashedEnv(enclos: SEXP, size: c_int) -> SEXP {
+pub(crate) fn R_NewHashedEnv(enclos: SEXP, size: c_int) -> SEXP {
     {
         let environment = NewEnvironment(ptr::null_mut(), enclos, ptr::null_mut());
         super::env_hash::promote_to_hash_table(environment);
@@ -2500,18 +2498,18 @@ mod tests {
                     let Ok(value) = Sexp::with_registered_raw(value, |sexp_val| {
                         let sexp_val = sexp_val.clone();
 
-            assert!(define_var_safe(
-                sexp_sym.clone(),
-                sexp_val,
-                sexp_env.clone()
-            ));
+                        assert!(define_var_safe(
+                            sexp_sym.clone(),
+                            sexp_val,
+                            sexp_env.clone()
+                        ));
 
-            let result = find_var_in_frame_safe(sexp_env, sexp_sym);
-            assert!(result.is_some());
-            let Some(ref r) = result else {
-                return;
-            };
-            assert_eq!(r.clone().as_raw(), value);
+                        let result = find_var_in_frame_safe(sexp_env, sexp_sym);
+                        assert!(result.is_some());
+                        let Some(ref r) = result else {
+                            return;
+                        };
+                        assert_eq!(r.clone().as_raw(), value);
                     }) else {
                         return;
                     };
@@ -2566,8 +2564,8 @@ mod tests {
                 let Ok(value) = Sexp::with_registered_raw(sym, |sexp_sym| {
                     let sexp_sym = sexp_sym.clone();
 
-            // Upstream semantics: unbound-in-frame is not missing.
-            assert!(!is_missing_safe(sexp_sym, sexp_env));
+                    // Upstream semantics: unbound-in-frame is not missing.
+                    assert!(!is_missing_safe(sexp_sym, sexp_env));
                 }) else {
                     return;
                 };
@@ -2591,17 +2589,17 @@ mod tests {
                 let Ok(value) = Sexp::with_registered_raw(sym, |sexp_sym| {
                     let sexp_sym = sexp_sym.clone();
 
-            assert!(!exists_var_in_frame_safe(
-                sexp_env.clone(),
-                sexp_sym.clone()
-            ));
+                    assert!(!exists_var_in_frame_safe(
+                        sexp_env.clone(),
+                        sexp_sym.clone()
+                    ));
 
-            let value = Rf_ScalarInteger(10);
+                    let value = Rf_ScalarInteger(10);
                     let Ok(value) = Sexp::with_registered_raw(value, |sexp_val| {
                         let sexp_val = sexp_val.clone();
-            define_var_safe(sexp_sym.clone(), sexp_val, sexp_env.clone());
+                        define_var_safe(sexp_sym.clone(), sexp_val, sexp_env.clone());
 
-            assert!(exists_var_in_frame_safe(sexp_env, sexp_sym));
+                        assert!(exists_var_in_frame_safe(sexp_env, sexp_sym));
                     }) else {
                         return;
                     };

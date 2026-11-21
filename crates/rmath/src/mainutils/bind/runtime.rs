@@ -257,14 +257,12 @@ pub fn isSymbol(x: SEXP) -> bool {
 /// Check if x is a matrix (has a "dim" attribute of length 2).
 #[inline(always)]
 pub fn isMatrix(x: SEXP) -> bool {
-    unsafe {
-        if x.is_null() || x == R_NilValue() {
-            return false;
-        }
-        let dim_sym = crate::eval::attrib_core::R_DimSymbol();
-        let dims = getAttrib(x, dim_sym);
-        length(dims) == 2
+    if x.is_null() || x == R_NilValue() {
+        return false;
     }
+    let dim_sym = crate::eval::attrib_core::R_DimSymbol();
+    let dims = getAttrib(x, dim_sym);
+    length(dims) == 2
 }
 
 /// Get the number of rows of a matrix.
@@ -560,34 +558,32 @@ pub fn R_BlankString() -> SEXP {
 /// Returns 1 if `x` has a non-NULL names attribute (vectors) or any non-NULL
 /// tag (lists), 0 otherwise.
 pub fn HasNames(x: SEXP) -> c_int {
-    unsafe {
-        if x.is_null() || x == R_NilValue() {
-            return 0;
+    if x.is_null() || x == R_NilValue() {
+        return 0;
+    }
+    if isVector(x) != 0 {
+        let names_sym = crate::eval::attrib_core::R_NamesSymbol();
+        if Rf_isNull(getAttrib(x, names_sym)) == 0 {
+            return 1;
         }
-        if isVector(x) != 0 {
-            let names_sym = crate::eval::attrib_core::R_NamesSymbol();
-            if Rf_isNull(getAttrib(x, names_sym)) == 0 {
-                return 1;
-            }
-            let dim = getAttrib(x, crate::eval::attrib_core::R_DimSymbol());
-            if TYPEOF(dim) == SEXPTYPE::INTSXP && XLENGTH(dim) == 1 {
-                let dn = getAttrib(x, crate::eval::attrib_core::R_DimNamesSymbol());
-                if TYPEOF(dn) == SEXPTYPE::VECSXP && XLENGTH(dn) >= 1 {
-                    let first = VECTOR_ELT(dn, 0);
-                    if !first.is_null() && first != R_NilValue() {
-                        return 1;
-                    }
-                }
-            }
-        } else if isList(x) != 0 {
-            let mut current = x;
-            while !current.is_null() && current != R_NilValue() {
-                if Rf_isNull(TAG(current)) == 0 {
+        let dim = getAttrib(x, crate::eval::attrib_core::R_DimSymbol());
+        if TYPEOF(dim) == SEXPTYPE::INTSXP && XLENGTH(dim) == 1 {
+            let dn = getAttrib(x, crate::eval::attrib_core::R_DimNamesSymbol());
+            if TYPEOF(dn) == SEXPTYPE::VECSXP && XLENGTH(dn) >= 1 {
+                let first = VECTOR_ELT(dn, 0);
+                if !first.is_null() && first != R_NilValue() {
                     return 1;
                 }
-                current = CDR(current);
             }
         }
-        0
+    } else if isList(x) != 0 {
+        let mut current = x;
+        while !current.is_null() && current != R_NilValue() {
+            if Rf_isNull(TAG(current)) == 0 {
+                return 1;
+            }
+            current = CDR(current);
+        }
     }
+    0
 }

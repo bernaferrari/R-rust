@@ -236,7 +236,7 @@ pub fn allocFormalsList6(a1: SEXP, a2: SEXP, a3: SEXP, a4: SEXP, a5: SEXP, a6: S
 }
 
 pub fn matchArgs_NR(formals: SEXP, args: SEXP, call: SEXP) -> SEXP {
-    unsafe { crate::mainutils::match_mod::matchArgs_RC(formals, args, call) }
+    crate::mainutils::match_mod::matchArgs_RC(formals, args, call)
 }
 /// # Safety
 ///
@@ -309,19 +309,19 @@ pub fn setAttrib(x: SEXP, what: SEXP, val: SEXP) {
 }
 
 pub fn getAttrib(x: SEXP, what: SEXP) -> SEXP {
-    unsafe { crate::eval::attrib_core::getAttrib(x, what) }
+    crate::eval::attrib_core::getAttrib(x, what)
 }
 
 pub fn R_NamesSymbol() -> SEXP {
-    unsafe { crate::eval::attrib_core::R_NamesSymbol() }
+    crate::eval::attrib_core::R_NamesSymbol()
 }
 
 pub fn R_ClassSymbol() -> SEXP {
-    unsafe { crate::eval::attrib_core::R_ClassSymbol() }
+    crate::eval::attrib_core::R_ClassSymbol()
 }
 
 pub fn R_LevelsSymbol() -> SEXP {
-    unsafe { crate::eval::attrib_core::R_LevelsSymbol() }
+    crate::eval::attrib_core::R_LevelsSymbol()
 }
 
 pub fn isObject(x: SEXP) -> c_int {

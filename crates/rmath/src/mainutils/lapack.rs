@@ -16,7 +16,7 @@ use crate::sexp::instance::with_required_current_instance;
 // checkArity
 // ---------------------------------------------------------------------------
 
-unsafe fn checkArity(op: SEXP, args: SEXP) {
+fn checkArity(op: SEXP, args: SEXP) {
     crate::mainutils::relop::checkArity(op, args)
 }
 
@@ -70,12 +70,12 @@ pub fn do_lapack(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// GNU `La_library()`: path of the loaded LAPACK. The port's linear algebra
 /// is faer; no external LAPACK library is loaded, so this reports "".
-pub unsafe fn do_La_library(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_La_library(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     crate::sexp::constructors::mk_string_str("")
 }
 
 /// GNU `La_version()`: Netlib ilaver string of the pinned oracle's LAPACK.
-pub unsafe fn do_La_version(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_La_version(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     crate::sexp::constructors::mk_string_str("3.12.1")
 }
 

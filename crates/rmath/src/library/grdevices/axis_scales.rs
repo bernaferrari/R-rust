@@ -30,9 +30,7 @@ pub fn R_CreateAtVector(axp: SEXP, usr: SEXP, nint: SEXP, is_log: SEXP) -> SEXP 
         }
         let axp = [REAL_ELT(axp, 0), REAL_ELT(axp, 1), REAL_ELT(axp, 2)];
         let usr = [REAL_ELT(usr, 0), REAL_ELT(usr, 1)];
-        // SAFETY: kept unsafe for the grid caller's boundary block; inputs
-        // are local scalars and the result is a fresh allocated vector.
-        unsafe { create_at_vector_raw(axp, usr, nint, logflag) }
+        create_at_vector_raw(axp, usr, nint, logflag)
     }
 }
 
@@ -60,10 +58,8 @@ pub fn R_GAxisPars(usr: SEXP, is_log: SEXP, nintLog: SEXP) -> SEXP {
 
         let names = Rf_allocVector(SEXPTYPE::STRSXP, 2);
         let _names_guard = protect(names);
-        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-        SET_STRING_ELT(names, 0, unsafe { mk_char_ptr(c"axp".as_ptr()) });
-        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-        SET_STRING_ELT(names, 1, unsafe { mk_char_ptr(c"n".as_ptr()) });
+        SET_STRING_ELT(names, 0, crate::sexp::constructors::mk_char_str("axp"));
+        SET_STRING_ELT(names, 1, crate::sexp::constructors::mk_char_str("n"));
         crate::attrib_core::setAttrib(ans, crate::attrib_core::R_NamesSymbol(), names);
         ans
     }
@@ -88,7 +84,7 @@ fn real_vector(values: &[f64]) -> SEXP {
 
 /// Kept `unsafe` because the grid caller invokes it inside an unsafe
 /// boundary block; the body itself is now fully checked.
-pub(crate) unsafe fn create_at_vector_raw(
+pub(crate) fn create_at_vector_raw(
     axp: [f64; 3],
     usr: [f64; 2],
     nint: c_int,

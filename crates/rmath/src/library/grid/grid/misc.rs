@@ -149,16 +149,12 @@ pub fn L_pretty2(scale: SEXP, n_: SEXP) -> SEXP {
             max = temp;
         }
 
-        // SAFETY: raw axis-scale construction bridge; all inputs are local
-        // scalars produced above.
-        unsafe {
-            crate::library::grdevices::axis_scales::create_at_vector_raw(
-                [min, max, n as f64],
-                [min, max],
-                n,
-                false,
-            )
-        }
+        crate::library::grdevices::axis_scales::create_at_vector_raw(
+            [min, max, n as f64],
+            [min, max],
+            n,
+            false,
+        )
     }
 }
 

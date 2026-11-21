@@ -336,7 +336,7 @@ pub unsafe fn strtoraw(nptr: *const c_char, endptr: *mut *mut c_char) -> std::os
 /// The registered builtin lives in `essentials`; keep this legacy module entry
 /// delegated to the same implementation so future callers do not observe a
 /// null-pointer placeholder.
-pub unsafe fn do_scan(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_scan(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     crate::mainutils::essentials::do_scan(call, op, args, rho)
 }
 

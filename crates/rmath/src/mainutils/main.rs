@@ -458,16 +458,14 @@ fn run_task_callback(
     let call = allocator.call(&callback.fun, &syntax)?;
     access.with_native(|owner| {
         let result = if callback.fun.is_closure() {
-            let result = unsafe {
-                crate::eval::closure::applyClosure(
-                    call.as_raw(),
-                    callback.fun.as_raw(),
-                    execution.as_raw(),
-                    environment.as_raw(),
-                    domain.nil().as_raw(),
-                    0,
-                )
-            };
+            let result = crate::eval::closure::applyClosure(
+                call.as_raw(),
+                callback.fun.as_raw(),
+                execution.as_raw(),
+                environment.as_raw(),
+                domain.nil().as_raw(),
+                0,
+            );
             owner.sexp(result)?.into_owned()?
         } else {
             let result = if let Some(environment) = &special_environment {
@@ -898,10 +896,7 @@ mod tests {
             let mut formals = R_NilValue();
             for name in ["data", "visible", "succeeded", "value", "expr"] {
                 let cell = Rf_cons(crate::sexp::globals::R_MissingArg(), formals);
-                crate::sexp::accessors::SETTAG(
-                    cell,
-                    crate::sexp::symbol::install_str(name),
-                );
+                crate::sexp::accessors::SETTAG(cell, crate::sexp::symbol::install_str(name));
                 formals = cell;
             }
             crate::mainutils::dstruct::mkCLOSXP(

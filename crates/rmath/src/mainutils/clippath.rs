@@ -15,7 +15,7 @@ use crate::sexp::globals::R_NilValue;
 // ---------------------------------------------------------------------------
 
 unsafe fn getAttrib(x: SEXP, what: SEXP) -> SEXP {
-    unsafe { crate::eval::attrib_core::getAttrib(x, what) }
+    crate::eval::attrib_core::getAttrib(x, what)
 }
 
 unsafe fn install(name: *const c_char) -> SEXP {
@@ -33,7 +33,7 @@ pub unsafe fn R_GE_clipPathFillRule(path: SEXP) -> c_int {
         if path.is_null() {
             return 0;
         }
-        let rule = getAttrib(path, install(b"rule\0".as_ptr() as *const c_char));
+        let rule = getAttrib(path, crate::sexp::symbol::install_str("rule"));
         if rule.is_null()
             || rule == R_NilValue()
             || TYPEOF(rule) != SEXPTYPE::INTSXP
@@ -73,7 +73,7 @@ mod tests {
             let path = Rf_allocVector3(SEXPTYPE::VECSXP, 0);
             crate::sexp::attrib_core::setAttrib(
                 path,
-                install(c"rule".as_ptr()),
+                crate::sexp::symbol::install_str("rule"),
                 Rf_ScalarInteger(1),
             );
             assert_eq!(R_GE_clipPathFillRule(path), 1);

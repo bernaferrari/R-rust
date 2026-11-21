@@ -223,11 +223,12 @@ pub fn R_check_locale() {
 /// R's `date()` — return current date as an R string.
 pub fn do_date(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        use crate::sexp::constructors::Rf_mkString;
         let date_str = R_Date();
         let s = CStr::from_ptr(date_str);
         let formatted = s.to_str().unwrap_or("").trim_end();
-        Rf_mkString(CString::new(formatted).unwrap_or_default().as_ptr())
+        crate::sexp::constructors::mk_string_bytes(
+            CString::new(formatted).unwrap_or_default().to_bytes(),
+        )
     }
 }
 

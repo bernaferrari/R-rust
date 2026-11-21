@@ -430,16 +430,14 @@ pub(crate) fn draw_commands(
 macro_rules! wrapper {
     ($name:ident, $public:literal, $file:literal) => {
         pub fn $name(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-            unsafe {
-                crate::mainutils::base_wrappers::apply_in_environment(
-                    $public,
-                    include_str!($file),
-                    args,
-                    rho,
-                    false,
-                    namespace(),
-                )
-            }
+            crate::mainutils::base_wrappers::apply_in_environment(
+                $public,
+                include_str!($file),
+                args,
+                rho,
+                false,
+                namespace(),
+            )
         }
     };
 }

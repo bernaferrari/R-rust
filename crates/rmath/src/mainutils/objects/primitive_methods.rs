@@ -167,7 +167,7 @@ pub fn R_set_prim_method(
                 crate::sexp::symbol::install_str("internal"),
             );
             let mut name = if TYPEOF(internal) == SEXPTYPE::STRSXP && XLENGTH(internal) > 0 {
-                crate::sexp::symbol::Rf_install(CHAR(STRING_ELT(internal, 0)))
+                crate::sexp::symbol::install_charsxp(STRING_ELT(internal, 0))
             } else {
                 R_NilValue()
             };
@@ -176,7 +176,7 @@ pub fn R_set_prim_method(
             // still names the .Internal primitive.
             if name.is_null() || name == R_NilValue() {
                 if TYPEOF(fname) == SEXPTYPE::STRSXP && XLENGTH(fname) > 0 {
-                    name = crate::sexp::symbol::Rf_install(CHAR(STRING_ELT(fname, 0)));
+                    name = crate::sexp::symbol::install_charsxp(STRING_ELT(fname, 0));
                 } else if TYPEOF(fname) == SEXPTYPE::SYMSXP {
                     name = fname;
                 }

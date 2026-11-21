@@ -35,7 +35,7 @@ unsafe fn dispatchMethod(
         let generic_str = crate::sexp::constructors::mk_string_bytes(generic.to_bytes());
         let _generic_str_guard = protect(generic_str);
 
-        let blank_str = Rf_mkString(b"\x00".as_ptr() as *const c_char);
+        let blank_str = crate::sexp::constructors::mk_string_str("");
         let _blank_str_guard = protect(blank_str);
 
         let method_name = PRINTNAME(method);

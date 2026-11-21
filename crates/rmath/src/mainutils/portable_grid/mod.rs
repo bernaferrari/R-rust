@@ -45,8 +45,7 @@ fn node_factory() -> crate::sexp::object::SessionNodeFactory<'static> {
 
 /// Audited boundary: read-only named-attribute traversal of a live object.
 fn attribute(x: SEXP, symbol: SEXP) -> SEXP {
-    // SAFETY: getAttrib walks the attribute pairlist without mutation.
-    unsafe { getAttrib(x, symbol) }
+    getAttrib(x, symbol)
 }
 
 /// Audited boundary: named-attribute write on a live object.
@@ -57,14 +56,12 @@ fn set_attribute(x: SEXP, symbol: SEXP, value: SEXP) {
 
 /// Audited boundary: the names symbol is a process-global singleton.
 fn names_symbol() -> SEXP {
-    // SAFETY: returns the shared R_NamesSymbol singleton.
-    unsafe { R_NamesSymbol() }
+    R_NamesSymbol()
 }
 
 /// Audited boundary: the class symbol is a process-global singleton.
 fn class_symbol() -> SEXP {
-    // SAFETY: returns the shared R_ClassSymbol singleton.
-    unsafe { R_ClassSymbol() }
+    R_ClassSymbol()
 }
 
 /// Audited boundary: read-only class check on a live object.

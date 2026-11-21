@@ -175,11 +175,9 @@ pub fn do_filesymlink(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 *pa.add(i) = crate::sexp::ffi::NA_INTEGER;
             } else {
                 let fc_bytes = crate::sexp::accessors::char_cstr_bytes(f);
-                let fc = std::str::from_utf8(&fc_bytes)
-                    .unwrap_or("");
+                let fc = std::str::from_utf8(&fc_bytes).unwrap_or("");
                 let tc_bytes = crate::sexp::accessors::char_cstr_bytes(t);
-                let tc = std::str::from_utf8(&tc_bytes)
-                    .unwrap_or("");
+                let tc = std::str::from_utf8(&tc_bytes).unwrap_or("");
                 *pa.add(i) = if symlink(fc, tc).is_ok() { TRUE } else { FALSE };
             }
         }
@@ -236,11 +234,9 @@ pub fn do_filelink(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 *pa.add(i) = crate::sexp::ffi::NA_INTEGER;
             } else {
                 let fc_bytes = crate::sexp::accessors::char_cstr_bytes(f);
-                let fc = std::str::from_utf8(&fc_bytes)
-                    .unwrap_or("");
+                let fc = std::str::from_utf8(&fc_bytes).unwrap_or("");
                 let tc_bytes = crate::sexp::accessors::char_cstr_bytes(t);
-                let tc = std::str::from_utf8(&tc_bytes)
-                    .unwrap_or("");
+                let tc = std::str::from_utf8(&tc_bytes).unwrap_or("");
                 *pa.add(i) = if hard_link(fc, tc).is_ok() {
                     TRUE
                 } else {
@@ -275,11 +271,9 @@ pub fn do_filerename(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 *pa.add(i) = crate::sexp::ffi::NA_INTEGER;
             } else {
                 let fc_bytes = crate::sexp::accessors::char_cstr_bytes(f);
-                let fc = std::str::from_utf8(&fc_bytes)
-                    .unwrap_or("");
+                let fc = std::str::from_utf8(&fc_bytes).unwrap_or("");
                 let tc_bytes = crate::sexp::accessors::char_cstr_bytes(t);
-                let tc = std::str::from_utf8(&tc_bytes)
-                    .unwrap_or("");
+                let tc = std::str::from_utf8(&tc_bytes).unwrap_or("");
                 *pa.add(i) = if fs::rename(fc, tc).is_ok() {
                     TRUE
                 } else {
@@ -343,7 +337,11 @@ pub fn do_fileinfo(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         guards.push(protect(mode_col));
         let mode_class = Rf_allocVector3(SEXPTYPE::STRSXP.as_c_int(), 1);
         guards.push(protect(mode_class));
-        SET_STRING_ELT(mode_class, 0, crate::sexp::constructors::mk_char_str("octmode"));
+        SET_STRING_ELT(
+            mode_class,
+            0,
+            crate::sexp::constructors::mk_char_str("octmode"),
+        );
         crate::eval::attrib_core::setAttrib(
             mode_col,
             crate::eval::attrib_core::R_ClassSymbol(),
@@ -537,8 +535,16 @@ pub fn do_fileinfo(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         for col in [mtime_col, ctime_col, atime_col] {
             let posix_class = Rf_allocVector3(SEXPTYPE::STRSXP.as_c_int(), 2);
             guards.push(protect(posix_class));
-            SET_STRING_ELT(posix_class, 0, crate::sexp::constructors::mk_char_str("POSIXct"));
-            SET_STRING_ELT(posix_class, 1, crate::sexp::constructors::mk_char_str("POSIXt"));
+            SET_STRING_ELT(
+                posix_class,
+                0,
+                crate::sexp::constructors::mk_char_str("POSIXct"),
+            );
+            SET_STRING_ELT(
+                posix_class,
+                1,
+                crate::sexp::constructors::mk_char_str("POSIXt"),
+            );
             crate::eval::attrib_core::setAttrib(
                 col,
                 crate::eval::attrib_core::R_ClassSymbol(),
@@ -588,7 +594,11 @@ pub fn do_fileinfo(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
         let class = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
         guards.push(protect(class));
-        SET_STRING_ELT(class, 0, crate::sexp::constructors::mk_char_str("data.frame"));
+        SET_STRING_ELT(
+            class,
+            0,
+            crate::sexp::constructors::mk_char_str("data.frame"),
+        );
         crate::eval::attrib_core::setAttrib(ans, crate::eval::attrib_core::R_ClassSymbol(), class);
 
         ans
@@ -618,8 +628,7 @@ pub fn do_setfiletime(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 false
             } else {
                 let path_bytes = crate::sexp::accessors::char_cstr_bytes(elt);
-                let path = std::str::from_utf8(&path_bytes)
-                    .unwrap_or("");
+                let path = std::str::from_utf8(&path_bytes).unwrap_or("");
                 if crate::mainutils::browser_files::contains_current(path)
                     || crate::mainutils::browser_files::enabled()
                 {
@@ -675,8 +684,7 @@ pub fn do_filesize(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 crate::sexp::ffi::NA_REAL
             } else {
                 let path_bytes = crate::sexp::accessors::char_cstr_bytes(elt);
-                let path = std::str::from_utf8(&path_bytes)
-                    .unwrap_or("");
+                let path = std::str::from_utf8(&path_bytes).unwrap_or("");
                 if let Some(info) = crate::mainutils::browser_files::info_current(path) {
                     info.size as f64
                 } else if crate::mainutils::browser_files::enabled() {
@@ -714,8 +722,7 @@ pub fn do_filemtime(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 crate::sexp::ffi::NA_REAL
             } else {
                 let path_bytes = crate::sexp::accessors::char_cstr_bytes(elt);
-                let path = std::str::from_utf8(&path_bytes)
-                    .unwrap_or("");
+                let path = std::str::from_utf8(&path_bytes).unwrap_or("");
                 if let Some(info) = crate::mainutils::browser_files::info_current(path) {
                     info.mtime
                 } else if crate::mainutils::browser_files::enabled() {
@@ -787,394 +794,392 @@ pub fn do_direxists(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R's `list.files()` — list files in directories.
 pub fn do_listfiles(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        use crate::sexp::accessors::{CAR, CDR, LENGTH, LOGICAL, SET_STRING_ELT, STRING_ELT};
-        use crate::sexp::constructors::{Rf_allocVector3, Rf_mkChar};
-        use crate::sexp::ffi::SEXPTYPE;
-        use crate::sexp::globals::R_NilValue;
+    use crate::sexp::accessors::{CAR, CDR, LENGTH, LOGICAL, SET_STRING_ELT, STRING_ELT};
+    use crate::sexp::constructors::Rf_allocVector3;
+    use crate::sexp::ffi::SEXPTYPE;
+    use crate::sexp::globals::R_NilValue;
 
-        fn logical_arg(value: SEXP, default: bool) -> bool {
-            unsafe {
-                if value.is_null() || value == R_NilValue() || LENGTH(value) == 0 {
-                    return default;
-                }
-                let v = *LOGICAL(value);
-                v != 0 && v != crate::sexp::ffi::NA_INTEGER
+    fn logical_arg(value: SEXP, default: bool) -> bool {
+        unsafe {
+            if value.is_null() || value == R_NilValue() || LENGTH(value) == 0 {
+                return default;
             }
+            let v = *LOGICAL(value);
+            v != 0 && v != crate::sexp::ffi::NA_INTEGER
         }
+    }
 
-        fn push_dir_dots(base: &str, full_names: bool, entries: &mut Vec<String>) {
-            if full_names {
-                entries.push(format!("{}/.", base.trim_end_matches('/')));
-                entries.push(format!("{}/..", base.trim_end_matches('/')));
-            } else {
-                entries.push(".".to_string());
-                entries.push("..".to_string());
-            }
+    fn push_dir_dots(base: &str, full_names: bool, entries: &mut Vec<String>) {
+        if full_names {
+            entries.push(format!("{}/.", base.trim_end_matches('/')));
+            entries.push(format!("{}/..", base.trim_end_matches('/')));
+        } else {
+            entries.push(".".to_string());
+            entries.push("..".to_string());
         }
+    }
 
-        #[derive(Clone, Copy)]
-        struct ListFilesOptions<'a> {
-            pattern: Option<&'a str>,
-            all_files: bool,
-            full_names: bool,
-            recursive: bool,
-            ignore_case: bool,
-            include_dirs: bool,
+    #[derive(Clone, Copy)]
+    struct ListFilesOptions<'a> {
+        pattern: Option<&'a str>,
+        all_files: bool,
+        full_names: bool,
+        recursive: bool,
+        ignore_case: bool,
+        include_dirs: bool,
+    }
+
+    fn pattern_matches(name: &str, options: ListFilesOptions<'_>) -> bool {
+        options.pattern.is_none_or(|pattern| {
+            crate::mainutils::grep::ere_is_match(pattern, name, options.ignore_case)
+        })
+    }
+
+    fn collect_browser_list_files(
+        path: &str,
+        options: ListFilesOptions<'_>,
+        omit_dotdot: bool,
+        entries: &mut Vec<String>,
+    ) {
+        let Some(children) = crate::mainutils::browser_files::entries_current(path) else {
+            return;
+        };
+        if options.all_files && !omit_dotdot && !options.recursive && options.pattern.is_none() {
+            push_dir_dots(path, options.full_names, entries);
         }
-
-        fn pattern_matches(name: &str, options: ListFilesOptions<'_>) -> bool {
-            options.pattern.is_none_or(|pattern| {
-                crate::mainutils::grep::ere_is_match(pattern, name, options.ignore_case)
-            })
-        }
-
-        fn collect_browser_list_files(
-            path: &str,
-            options: ListFilesOptions<'_>,
-            omit_dotdot: bool,
-            entries: &mut Vec<String>,
-        ) {
-            let Some(children) = crate::mainutils::browser_files::entries_current(path) else {
-                return;
-            };
-            if options.all_files && !omit_dotdot && !options.recursive && options.pattern.is_none()
+        for (name, is_dir) in children {
+            if (!options.recursive && name.contains('/'))
+                || (!options.all_files && name.split('/').any(|part| part.starts_with('.')))
+                || (options.recursive && is_dir && !options.include_dirs)
+                || !pattern_matches(name.rsplit('/').next().unwrap_or(&name), options)
             {
-                push_dir_dots(path, options.full_names, entries);
+                continue;
             }
-            for (name, is_dir) in children {
-                if (!options.recursive && name.contains('/'))
-                    || (!options.all_files && name.split('/').any(|part| part.starts_with('.')))
-                    || (options.recursive && is_dir && !options.include_dirs)
-                    || !pattern_matches(name.rsplit('/').next().unwrap_or(&name), options)
-                {
-                    continue;
-                }
-                entries.push(if options.full_names {
-                    format!("{}/{name}", path.trim_end_matches('/'))
-                } else {
-                    name
-                });
-            }
+            entries.push(if options.full_names {
+                format!("{}/{name}", path.trim_end_matches('/'))
+            } else {
+                name
+            });
         }
+    }
 
-        fn collect_list_files(
-            base: &std::path::Path,
-            relative: &std::path::Path,
-            options: ListFilesOptions<'_>,
-            entries: &mut Vec<String>,
-        ) {
-            let current = base.join(relative);
-            let Ok(read_dir) = std::fs::read_dir(&current) else {
-                return;
-            };
-            let mut children = Vec::new();
-            for entry in read_dir.flatten() {
-                children.push(entry);
+    fn collect_list_files(
+        base: &std::path::Path,
+        relative: &std::path::Path,
+        options: ListFilesOptions<'_>,
+        entries: &mut Vec<String>,
+    ) {
+        let current = base.join(relative);
+        let Ok(read_dir) = std::fs::read_dir(&current) else {
+            return;
+        };
+        let mut children = Vec::new();
+        for entry in read_dir.flatten() {
+            children.push(entry);
+        }
+        children.sort_by_key(|a| a.file_name());
+
+        for entry in children {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if !options.all_files && name.starts_with('.') {
+                continue;
             }
-            children.sort_by_key(|a| a.file_name());
 
-            for entry in children {
-                let name = entry.file_name().to_string_lossy().to_string();
-                if !options.all_files && name.starts_with('.') {
-                    continue;
-                }
+            let child_rel = relative.join(&name);
+            let is_dir = entry.file_type().map(|kind| kind.is_dir()).unwrap_or(false);
+            let display = child_rel.to_string_lossy().replace('\\', "/");
+            let returned = if options.full_names {
+                base.join(&child_rel).to_string_lossy().to_string()
+            } else {
+                display.clone()
+            };
 
-                let child_rel = relative.join(&name);
-                let is_dir = entry.file_type().map(|kind| kind.is_dir()).unwrap_or(false);
-                let display = child_rel.to_string_lossy().replace('\\', "/");
-                let returned = if options.full_names {
-                    base.join(&child_rel).to_string_lossy().to_string()
-                } else {
-                    display.clone()
-                };
-
-                if options.recursive {
-                    if is_dir {
-                        if options.include_dirs && pattern_matches(&display, options) {
-                            entries.push(returned);
-                        }
-                        collect_list_files(base, &child_rel, options, entries);
-                    } else if pattern_matches(&display, options) {
+            if options.recursive {
+                if is_dir {
+                    if options.include_dirs && pattern_matches(&display, options) {
                         entries.push(returned);
                     }
-                } else if pattern_matches(&name, options) {
+                    collect_list_files(base, &child_rel, options, entries);
+                } else if pattern_matches(&display, options) {
                     entries.push(returned);
                 }
+            } else if pattern_matches(&name, options) {
+                entries.push(returned);
             }
         }
-
-        let mut paths = R_NilValue();
-        let mut pattern = R_NilValue();
-        let mut all_files = R_NilValue();
-        let mut full_names = R_NilValue();
-        let mut recursive = R_NilValue();
-        let mut ignore_case = R_NilValue();
-        let mut include_dirs = R_NilValue();
-        let mut no_dotdot = R_NilValue();
-        let mut positional = 0;
-        let mut current = args;
-        while !current.is_null() && current != R_NilValue() {
-            let value = CAR(current);
-            match platform_tag_name(current).as_deref() {
-                Some("path") => paths = value,
-                Some("pattern") => pattern = value,
-                Some("all.files") => all_files = value,
-                Some("full.names") => full_names = value,
-                Some("recursive") => recursive = value,
-                Some("ignore.case") => ignore_case = value,
-                Some("include.dirs") => include_dirs = value,
-                Some("no..") => no_dotdot = value,
-                Some(_) => {}
-                None => {
-                    match positional {
-                        0 => paths = value,
-                        1 => pattern = value,
-                        2 => all_files = value,
-                        3 => full_names = value,
-                        4 => recursive = value,
-                        5 => ignore_case = value,
-                        6 => include_dirs = value,
-                        7 => no_dotdot = value,
-                        _ => {}
-                    }
-                    positional += 1;
-                }
-            }
-            current = CDR(current);
-        }
-
-        let pattern_string = if pattern.is_null() || pattern == R_NilValue() || LENGTH(pattern) == 0
-        {
-            None
-        } else {
-            let elt = STRING_ELT(pattern, 0);
-            if elt.is_null() || elt == R_NilValue() || elt == crate::sexp::globals::R_NaString() {
-                Some(String::new())
-            } else {
-                Some(
-                    std::str::from_utf8(&crate::sexp::accessors::char_cstr_bytes(elt))
-                        .unwrap_or("")
-                        .to_string(),
-                )
-            }
-        };
-        let options = ListFilesOptions {
-            pattern: pattern_string.as_deref(),
-            all_files: logical_arg(all_files, false),
-            full_names: logical_arg(full_names, false),
-            recursive: logical_arg(recursive, false),
-            ignore_case: logical_arg(ignore_case, false),
-            include_dirs: logical_arg(include_dirs, false),
-        };
-        let omit_dotdot = logical_arg(no_dotdot, false);
-
-        let mut entries: Vec<String> = Vec::new();
-        let browser_store = crate::mainutils::browser_files::enabled();
-        let mut visit_path = |path: String| {
-            if browser_store {
-                collect_browser_list_files(&path, options, omit_dotdot, &mut entries);
-                return;
-            }
-            if options.all_files && !omit_dotdot && !options.recursive && pattern_string.is_none() {
-                push_dir_dots(&path, options.full_names, &mut entries);
-            }
-            collect_list_files(
-                std::path::Path::new(&path),
-                std::path::Path::new(""),
-                options,
-                &mut entries,
-            );
-        };
-
-        if paths.is_null() || paths == R_NilValue() {
-            visit_path(".".to_string());
-        } else if LENGTH(paths) == 0 {
-        } else {
-            for i in 0..LENGTH(paths) as usize {
-                if let Some(path) = path_at(paths, i) {
-                    visit_path(path);
-                }
-            }
-        }
-
-        entries.sort();
-        let ans = Rf_allocVector3(
-            SEXPTYPE::STRSXP.as_c_int(),
-            entries.len() as crate::sexp::ffi::R_xlen_t,
-        );
-        let _ans_guard = protect(ans);
-        for (i, name) in entries.iter().enumerate() {
-            SET_STRING_ELT(
-                ans,
-                i as crate::sexp::ffi::R_xlen_t,
-                Rf_mkChar(CString::new(name.as_str()).unwrap_or_default().as_ptr()),
-            );
-        }
-        ans
     }
+
+    let mut paths = R_NilValue();
+    let mut pattern = R_NilValue();
+    let mut all_files = R_NilValue();
+    let mut full_names = R_NilValue();
+    let mut recursive = R_NilValue();
+    let mut ignore_case = R_NilValue();
+    let mut include_dirs = R_NilValue();
+    let mut no_dotdot = R_NilValue();
+    let mut positional = 0;
+    let mut current = args;
+    while !current.is_null() && current != R_NilValue() {
+        let value = CAR(current);
+        match platform_tag_name(current).as_deref() {
+            Some("path") => paths = value,
+            Some("pattern") => pattern = value,
+            Some("all.files") => all_files = value,
+            Some("full.names") => full_names = value,
+            Some("recursive") => recursive = value,
+            Some("ignore.case") => ignore_case = value,
+            Some("include.dirs") => include_dirs = value,
+            Some("no..") => no_dotdot = value,
+            Some(_) => {}
+            None => {
+                match positional {
+                    0 => paths = value,
+                    1 => pattern = value,
+                    2 => all_files = value,
+                    3 => full_names = value,
+                    4 => recursive = value,
+                    5 => ignore_case = value,
+                    6 => include_dirs = value,
+                    7 => no_dotdot = value,
+                    _ => {}
+                }
+                positional += 1;
+            }
+        }
+        current = CDR(current);
+    }
+
+    let pattern_string = if pattern.is_null() || pattern == R_NilValue() || LENGTH(pattern) == 0 {
+        None
+    } else {
+        let elt = STRING_ELT(pattern, 0);
+        if elt.is_null() || elt == R_NilValue() || elt == crate::sexp::globals::R_NaString() {
+            Some(String::new())
+        } else {
+            Some(
+                std::str::from_utf8(&crate::sexp::accessors::char_cstr_bytes(elt))
+                    .unwrap_or("")
+                    .to_string(),
+            )
+        }
+    };
+    let options = ListFilesOptions {
+        pattern: pattern_string.as_deref(),
+        all_files: logical_arg(all_files, false),
+        full_names: logical_arg(full_names, false),
+        recursive: logical_arg(recursive, false),
+        ignore_case: logical_arg(ignore_case, false),
+        include_dirs: logical_arg(include_dirs, false),
+    };
+    let omit_dotdot = logical_arg(no_dotdot, false);
+
+    let mut entries: Vec<String> = Vec::new();
+    let browser_store = crate::mainutils::browser_files::enabled();
+    let mut visit_path = |path: String| {
+        if browser_store {
+            collect_browser_list_files(&path, options, omit_dotdot, &mut entries);
+            return;
+        }
+        if options.all_files && !omit_dotdot && !options.recursive && pattern_string.is_none() {
+            push_dir_dots(&path, options.full_names, &mut entries);
+        }
+        collect_list_files(
+            std::path::Path::new(&path),
+            std::path::Path::new(""),
+            options,
+            &mut entries,
+        );
+    };
+
+    if paths.is_null() || paths == R_NilValue() {
+        visit_path(".".to_string());
+    } else if LENGTH(paths) == 0 {
+    } else {
+        for i in 0..LENGTH(paths) as usize {
+            if let Some(path) = path_at(paths, i) {
+                visit_path(path);
+            }
+        }
+    }
+
+    entries.sort();
+    let ans = Rf_allocVector3(
+        SEXPTYPE::STRSXP.as_c_int(),
+        entries.len() as crate::sexp::ffi::R_xlen_t,
+    );
+    let _ans_guard = protect(ans);
+    for (i, name) in entries.iter().enumerate() {
+        SET_STRING_ELT(
+            ans,
+            i as crate::sexp::ffi::R_xlen_t,
+            crate::sexp::constructors::mk_char_bytes(
+                CString::new(name.as_str()).unwrap_or_default().to_bytes(),
+            ),
+        );
+    }
+    ans
 }
 
 /// R's `list.dirs()` — list directories.
 pub fn do_listdirs(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        use crate::sexp::accessors::{CAR, CDR, LENGTH, LOGICAL, SET_STRING_ELT};
-        use crate::sexp::constructors::{Rf_allocVector3, Rf_mkChar};
-        use crate::sexp::ffi::SEXPTYPE;
-        use crate::sexp::globals::R_NilValue;
+    use crate::sexp::accessors::{CAR, CDR, LENGTH, LOGICAL, SET_STRING_ELT};
+    use crate::sexp::constructors::Rf_allocVector3;
+    use crate::sexp::ffi::SEXPTYPE;
+    use crate::sexp::globals::R_NilValue;
 
-        fn logical_arg(value: SEXP, default: bool) -> bool {
-            unsafe {
-                if value.is_null() || value == R_NilValue() || LENGTH(value) == 0 {
-                    return default;
-                }
-                let v = *LOGICAL(value);
-                v != 0 && v != crate::sexp::ffi::NA_INTEGER
+    fn logical_arg(value: SEXP, default: bool) -> bool {
+        unsafe {
+            if value.is_null() || value == R_NilValue() || LENGTH(value) == 0 {
+                return default;
             }
+            let v = *LOGICAL(value);
+            v != 0 && v != crate::sexp::ffi::NA_INTEGER
+        }
+    }
+
+    fn collect_dirs(
+        base: &std::path::Path,
+        relative: &std::path::Path,
+        full_names: bool,
+        recursive: bool,
+        include_self: bool,
+        out: &mut Vec<String>,
+    ) {
+        if include_self {
+            out.push(if full_names {
+                base.join(relative).to_string_lossy().to_string()
+            } else {
+                relative.to_string_lossy().to_string()
+            });
         }
 
-        fn collect_dirs(
-            base: &std::path::Path,
-            relative: &std::path::Path,
-            full_names: bool,
-            recursive: bool,
-            include_self: bool,
-            out: &mut Vec<String>,
-        ) {
-            if include_self {
+        let current = base.join(relative);
+        let Ok(read_dir) = std::fs::read_dir(&current) else {
+            return;
+        };
+        let mut children = Vec::new();
+        for entry in read_dir.flatten() {
+            if entry.file_type().map(|kind| kind.is_dir()).unwrap_or(false) {
+                children.push(entry.file_name().to_string_lossy().to_string());
+            }
+        }
+        children.sort();
+
+        for child in children {
+            let child_rel = relative.join(&child);
+            if recursive {
+                collect_dirs(base, &child_rel, full_names, true, true, out);
+            } else {
                 out.push(if full_names {
-                    base.join(relative).to_string_lossy().to_string()
+                    base.join(&child_rel).to_string_lossy().to_string()
                 } else {
-                    relative.to_string_lossy().to_string()
+                    child_rel.to_string_lossy().to_string()
                 });
             }
+        }
+    }
 
-            let current = base.join(relative);
-            let Ok(read_dir) = std::fs::read_dir(&current) else {
+    let mut paths = R_NilValue();
+    let mut full_names = R_NilValue();
+    let mut recursive = R_NilValue();
+    let mut positional = 0;
+    let mut current = args;
+    while !current.is_null() && current != R_NilValue() {
+        let value = CAR(current);
+        match platform_tag_name(current).as_deref() {
+            Some("path") => paths = value,
+            Some("full.names") => full_names = value,
+            Some("recursive") => recursive = value,
+            Some(_) => {}
+            None => {
+                match positional {
+                    0 => paths = value,
+                    1 => full_names = value,
+                    2 => recursive = value,
+                    _ => {}
+                }
+                positional += 1;
+            }
+        }
+        current = CDR(current);
+    }
+
+    let do_full = logical_arg(full_names, true);
+    let do_recursive = logical_arg(recursive, true);
+    let mut entries: Vec<String> = Vec::new();
+
+    if crate::mainutils::browser_files::enabled() {
+        let mut visit = |path: &str| {
+            let Some(children) = crate::mainutils::browser_files::entries_current(path) else {
                 return;
             };
-            let mut children = Vec::new();
-            for entry in read_dir.flatten() {
-                if entry.file_type().map(|kind| kind.is_dir()).unwrap_or(false) {
-                    children.push(entry.file_name().to_string_lossy().to_string());
-                }
-            }
-            children.sort();
-
-            for child in children {
-                let child_rel = relative.join(&child);
-                if recursive {
-                    collect_dirs(base, &child_rel, full_names, true, true, out);
+            if do_recursive {
+                entries.push(if do_full {
+                    path.to_owned()
                 } else {
-                    out.push(if full_names {
-                        base.join(&child_rel).to_string_lossy().to_string()
+                    String::new()
+                });
+            }
+            entries.extend(children.into_iter().filter_map(|(name, directory)| {
+                (directory && (do_recursive || !name.contains('/'))).then(|| {
+                    if do_full {
+                        format!("{}/{name}", path.trim_end_matches('/'))
                     } else {
-                        child_rel.to_string_lossy().to_string()
-                    });
-                }
-            }
-        }
-
-        let mut paths = R_NilValue();
-        let mut full_names = R_NilValue();
-        let mut recursive = R_NilValue();
-        let mut positional = 0;
-        let mut current = args;
-        while !current.is_null() && current != R_NilValue() {
-            let value = CAR(current);
-            match platform_tag_name(current).as_deref() {
-                Some("path") => paths = value,
-                Some("full.names") => full_names = value,
-                Some("recursive") => recursive = value,
-                Some(_) => {}
-                None => {
-                    match positional {
-                        0 => paths = value,
-                        1 => full_names = value,
-                        2 => recursive = value,
-                        _ => {}
+                        name
                     }
-                    positional += 1;
-                }
-            }
-            current = CDR(current);
-        }
-
-        let do_full = logical_arg(full_names, true);
-        let do_recursive = logical_arg(recursive, true);
-        let mut entries: Vec<String> = Vec::new();
-
-        if crate::mainutils::browser_files::enabled() {
-            let mut visit = |path: &str| {
-                let Some(children) = crate::mainutils::browser_files::entries_current(path) else {
-                    return;
-                };
-                if do_recursive {
-                    entries.push(if do_full {
-                        path.to_owned()
-                    } else {
-                        String::new()
-                    });
-                }
-                entries.extend(children.into_iter().filter_map(|(name, directory)| {
-                    (directory && (do_recursive || !name.contains('/'))).then(|| {
-                        if do_full {
-                            format!("{}/{name}", path.trim_end_matches('/'))
-                        } else {
-                            name
-                        }
-                    })
-                }));
-            };
-            if paths.is_null() || paths == R_NilValue() {
-                visit(".");
-            } else {
-                for i in 0..LENGTH(paths) as usize {
-                    if let Some(path) = path_at(paths, i) {
-                        visit(&path);
-                    }
-                }
-            }
-            entries.sort();
+                })
+            }));
+        };
+        if paths.is_null() || paths == R_NilValue() {
+            visit(".");
         } else {
-            if paths.is_null() || paths == R_NilValue() || LENGTH(paths) == 0 {
-                collect_dirs(
-                    std::path::Path::new("."),
-                    std::path::Path::new(""),
-                    do_full,
-                    do_recursive,
-                    do_recursive,
-                    &mut entries,
-                );
-            } else {
-                for i in 0..LENGTH(paths) as usize {
-                    if let Some(path) = path_at(paths, i) {
-                        collect_dirs(
-                            std::path::Path::new(&path),
-                            std::path::Path::new(""),
-                            do_full,
-                            do_recursive,
-                            do_recursive,
-                            &mut entries,
-                        );
-                    }
+            for i in 0..LENGTH(paths) as usize {
+                if let Some(path) = path_at(paths, i) {
+                    visit(&path);
                 }
             }
         }
-        let ans = Rf_allocVector3(
-            SEXPTYPE::STRSXP.as_c_int(),
-            entries.len() as crate::sexp::ffi::R_xlen_t,
-        );
-        let _ans_guard = protect(ans);
-        for (i, name) in entries.iter().enumerate() {
-            SET_STRING_ELT(
-                ans,
-                i as crate::sexp::ffi::R_xlen_t,
-                Rf_mkChar(CString::new(name.as_str()).unwrap_or_default().as_ptr()),
+        entries.sort();
+    } else {
+        if paths.is_null() || paths == R_NilValue() || LENGTH(paths) == 0 {
+            collect_dirs(
+                std::path::Path::new("."),
+                std::path::Path::new(""),
+                do_full,
+                do_recursive,
+                do_recursive,
+                &mut entries,
             );
+        } else {
+            for i in 0..LENGTH(paths) as usize {
+                if let Some(path) = path_at(paths, i) {
+                    collect_dirs(
+                        std::path::Path::new(&path),
+                        std::path::Path::new(""),
+                        do_full,
+                        do_recursive,
+                        do_recursive,
+                        &mut entries,
+                    );
+                }
+            }
         }
-        ans
     }
+    let ans = Rf_allocVector3(
+        SEXPTYPE::STRSXP.as_c_int(),
+        entries.len() as crate::sexp::ffi::R_xlen_t,
+    );
+    let _ans_guard = protect(ans);
+    for (i, name) in entries.iter().enumerate() {
+        SET_STRING_ELT(
+            ans,
+            i as crate::sexp::ffi::R_xlen_t,
+            crate::sexp::constructors::mk_char_bytes(
+                CString::new(name.as_str()).unwrap_or_default().to_bytes(),
+            ),
+        );
+    }
+    ans
 }
 
 /// R's `R.home` — return R home directory.
@@ -1182,13 +1187,10 @@ pub fn do_listdirs(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 /// Uses R_HOME environment variable, or falls back to the directory
 /// containing the rmath library.
 pub fn do_Rhome(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        use crate::sexp::constructors::Rf_mkString;
-        use std::env;
+    use std::env;
 
-        let home = env::var("R_HOME").unwrap_or_else(|_| discover_r_home());
-        Rf_mkString(CString::new(home).unwrap_or_default().as_ptr())
-    }
+    let home = env::var("R_HOME").unwrap_or_else(|_| discover_r_home());
+    crate::sexp::constructors::mk_string_bytes(CString::new(home).unwrap_or_default().to_bytes())
 }
 
 fn discover_r_home() -> String {
@@ -1384,7 +1386,6 @@ pub fn do_unlink(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 pub fn do_getlocale(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::accessors::{CAR, INTEGER};
-        use crate::sexp::constructors::Rf_mkString;
         use crate::sexp::globals::R_NilValue;
 
         let category = CAR(args);
@@ -1416,7 +1417,7 @@ pub fn do_getlocale(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             _ => String::new(),
         };
 
-        Rf_mkString(CString::new(val).unwrap_or_default().as_ptr())
+        crate::sexp::constructors::mk_string_bytes(CString::new(val).unwrap_or_default().to_bytes())
     }
 }
 
@@ -1424,7 +1425,6 @@ pub fn do_getlocale(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 pub fn do_setlocale(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::accessors::{CADR, CAR, INTEGER, STRING_ELT};
-        use crate::sexp::constructors::Rf_mkString;
         use crate::sexp::globals::R_NilValue;
         use std::ffi::CStr;
 
@@ -1449,7 +1449,9 @@ pub fn do_setlocale(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let loc_str = if !locale.is_null() && locale != R_NilValue() {
             let elt = STRING_ELT(locale, 0);
             if !elt.is_null() && elt != R_NilValue() {
-                std::str::from_utf8(&crate::sexp::accessors::char_cstr_bytes(elt)).unwrap_or("").to_string()
+                std::str::from_utf8(&crate::sexp::accessors::char_cstr_bytes(elt))
+                    .unwrap_or("")
+                    .to_string()
             } else {
                 String::new()
             }
@@ -1497,10 +1499,10 @@ pub fn do_setlocale(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             crate::sexp::constructors::mk_string_str("")
         } else {
             let s = CStr::from_ptr(result);
-            Rf_mkString(
+            crate::sexp::constructors::mk_string_bytes(
                 CString::new(s.to_str().unwrap_or(""))
                     .unwrap_or_default()
-                    .as_ptr(),
+                    .to_bytes(),
             )
         }
     }
@@ -1510,7 +1512,7 @@ pub fn do_setlocale(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 pub fn do_localeconv(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::accessors::SET_STRING_ELT;
-        use crate::sexp::constructors::{Rf_allocVector3, Rf_mkChar};
+        use crate::sexp::constructors::Rf_allocVector3;
         use crate::sexp::ffi::SEXPTYPE;
 
         #[cfg(not(target_arch = "wasm32"))]
@@ -1557,17 +1559,19 @@ pub fn do_localeconv(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
             SET_STRING_ELT(
                 names,
                 i as crate::sexp::ffi::R_xlen_t,
-                Rf_mkChar(CString::new(*name).unwrap_or_default().as_ptr()),
+                crate::sexp::constructors::mk_char_bytes(
+                    CString::new(*name).unwrap_or_default().to_bytes(),
+                ),
             );
             if !val.is_null() {
                 let s = CStr::from_ptr(*val);
                 SET_STRING_ELT(
                     ans,
                     i as crate::sexp::ffi::R_xlen_t,
-                    Rf_mkChar(
+                    crate::sexp::constructors::mk_char_bytes(
                         CString::new(s.to_str().unwrap_or(""))
                             .unwrap_or_default()
-                            .as_ptr(),
+                            .to_bytes(),
                     ),
                 );
             } else {

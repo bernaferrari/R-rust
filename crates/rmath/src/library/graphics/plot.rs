@@ -326,7 +326,7 @@ fn FixupPch(pch: SEXP, dflt: c_int) -> SEXP {
 
 /* GEstring_to_pch delegate */
 fn GEstring_to_pch(s: SEXP) -> c_int {
-    unsafe { crate::mainutils::engine::GEstring_to_pch(s) }
+    crate::mainutils::engine::GEstring_to_pch(s)
 }
 
 /* GE_LTYpar delegate */

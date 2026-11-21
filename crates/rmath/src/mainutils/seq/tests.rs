@@ -539,7 +539,7 @@ fn test_check1arg_partial_match_warning() {
         // must be collected (default warn = 0).
         let args = Rf_cons(Rf_ScalarInteger(3), R_NilValue());
         let _args_guard = crate::sexp::protect::protect(args);
-        SETTAG(args, Rf_install_stub(b"l\0".as_ptr() as *const c_char));
+        SETTAG(args, crate::sexp::symbol::install_str("l"));
         check1arg(
             args,
             ptr::null_mut(),
@@ -551,10 +551,7 @@ fn test_check1arg_partial_match_warning() {
         assert_eq!(msg.trim(), "partial argument match of 'l' to 'length.out'");
 
         // Full tag: no additional warning, no error.
-        SETTAG(
-            args,
-            Rf_install_stub(b"length.out\0".as_ptr() as *const c_char),
-        );
+        SETTAG(args, crate::sexp::symbol::install_str("length.out"));
         check1arg(
             args,
             ptr::null_mut(),
@@ -564,7 +561,7 @@ fn test_check1arg_partial_match_warning() {
 
         // Non-matching tag errors (upstream: supplied argument name
         // '%s' does not match '%s').
-        SETTAG(args, Rf_install_stub(b"bogus\0".as_ptr() as *const c_char));
+        SETTAG(args, crate::sexp::symbol::install_str("bogus"));
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
             check1arg(
                 args,

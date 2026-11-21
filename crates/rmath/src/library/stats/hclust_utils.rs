@@ -30,7 +30,7 @@ pub fn cutree(merge: SEXP, which: SEXP) -> SEXP {
     let mut m_nr = vec![0i32; (n + 1) as usize];
     let mut z = vec![0i32; (n + 1) as usize];
 
-    let ans = unsafe { allocMatrix(SEXPTYPE::INTSXP.into(), n, which_len) };
+    let ans = allocMatrix(SEXPTYPE::INTSXP.into(), n, which_len);
     let _ans_guard = protect_sexp(ans);
     let i_ans = unsafe { slice::from_raw_parts_mut(INTEGER(ans), (n * which_len) as usize) };
 

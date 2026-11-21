@@ -555,9 +555,7 @@ pub fn do_newenv(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             }
         }
         if hash != 0 {
-            // SAFETY: creates an environment under the active runtime on live
-            // parent and size inputs.
-            unsafe { crate::sexp::envir::R_NewHashedEnv(parent, size) }
+            crate::sexp::envir::R_NewHashedEnv(parent, size)
         } else {
             // SAFETY: creates an environment under the active runtime on a
             // live parent.

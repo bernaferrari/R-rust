@@ -2094,7 +2094,7 @@ pub fn GEonExit() {
 ///
 /// `unsafe fn` retained for external callers that pass raw engine SEXPs;
 /// the body itself is fully checked.
-pub unsafe fn GEstring_to_pch(pch: SEXP) -> c_int {
+pub fn GEstring_to_pch(pch: SEXP) -> c_int {
     if pch.is_null() || TYPEOF(pch) != SEXPTYPE::STRSXP.as_c_int() || LENGTH(pch) == 0 {
         return NA_INTEGER;
     }
@@ -2148,8 +2148,8 @@ pub fn GE_LTYget(lty: c_uint) -> SEXP {
     };
     if let Some(name) = named {
         return crate::sexp::constructors::mk_string_bytes(
-                CString::new(name)
-                    .expect("lty name contains no NUL")
+            CString::new(name)
+                .expect("lty name contains no NUL")
                 .to_bytes(),
         );
     }
@@ -2333,21 +2333,21 @@ pub unsafe fn GEFillStroke(path: SEXP, rule: c_int, gc: *const c_void, dd: *mut 
 ///
 /// `unsafe fn` retained for external callers that pass raw engine SEXPs;
 /// the body itself is fully checked.
-pub unsafe fn R_GE_glyphInfoGlyphs(glyphInfo: SEXP) -> SEXP {
+pub fn R_GE_glyphInfoGlyphs(glyphInfo: SEXP) -> SEXP {
     named_component(glyphInfo, "glyphs")
 }
 
 /// Get the fonts component from a glyphInfo SEXP.
 ///
 /// `unsafe fn` retained for external callers that pass raw engine SEXPs.
-pub unsafe fn R_GE_glyphInfoFonts(glyphInfo: SEXP) -> SEXP {
+pub fn R_GE_glyphInfoFonts(glyphInfo: SEXP) -> SEXP {
     named_component(glyphInfo, "fonts")
 }
 
 /// Get the glyph IDs from a glyphs SEXP.
 ///
 /// `unsafe fn` retained for external callers that pass raw engine SEXPs.
-pub unsafe fn R_GE_glyphID(glyphs: SEXP) -> SEXP {
+pub fn R_GE_glyphID(glyphs: SEXP) -> SEXP {
     named_component(glyphs, "id")
 }
 
@@ -2364,35 +2364,35 @@ pub fn R_GE_glyphY(glyphs: SEXP) -> SEXP {
 /// Get the glyph font indices from a glyphs SEXP.
 ///
 /// `unsafe fn` retained for external callers that pass raw engine SEXPs.
-pub unsafe fn R_GE_glyphFont(glyphs: SEXP) -> SEXP {
+pub fn R_GE_glyphFont(glyphs: SEXP) -> SEXP {
     named_component(glyphs, "font")
 }
 
 /// Get the glyph sizes from a glyphs SEXP.
 ///
 /// `unsafe fn` retained for external callers that pass raw engine SEXPs.
-pub unsafe fn R_GE_glyphSize(glyphs: SEXP) -> SEXP {
+pub fn R_GE_glyphSize(glyphs: SEXP) -> SEXP {
     named_component(glyphs, "size")
 }
 
 /// Get the glyph colours from a glyphs SEXP.
 ///
 /// `unsafe fn` retained for external callers that pass raw engine SEXPs.
-pub unsafe fn R_GE_glyphColour(glyphs: SEXP) -> SEXP {
+pub fn R_GE_glyphColour(glyphs: SEXP) -> SEXP {
     named_component(glyphs, "colour")
 }
 
 /// Get the glyph rotations from a glyphs SEXP.
 ///
 /// `unsafe fn` retained for external callers that pass raw engine SEXPs.
-pub unsafe fn R_GE_glyphRotation(glyphs: SEXP) -> SEXP {
+pub fn R_GE_glyphRotation(glyphs: SEXP) -> SEXP {
     named_component(glyphs, "rotation")
 }
 
 /// Check whether a glyphs SEXP has rotation information.
 ///
 /// `unsafe fn` retained for external callers that pass raw engine SEXPs.
-pub unsafe fn R_GE_hasGlyphRotation(glyphs: SEXP) -> c_int {
+pub fn R_GE_hasGlyphRotation(glyphs: SEXP) -> c_int {
     let rotation = named_component(glyphs, "rotation");
     if rotation.is_null() || rotation == R_NilValue() {
         0
@@ -2577,7 +2577,11 @@ mod tests {
             for (i, (name, value)) in items.iter().enumerate() {
                 SET_VECTOR_ELT(list, i as R_xlen_t, *value);
                 let c_name = CString::new(*name).expect("test name contains no NUL");
-                SET_STRING_ELT(names, i as R_xlen_t, crate::sexp::constructors::mk_char_bytes(c_name.to_bytes()));
+                SET_STRING_ELT(
+                    names,
+                    i as R_xlen_t,
+                    crate::sexp::constructors::mk_char_bytes(c_name.to_bytes()),
+                );
             }
             setAttrib(list, R_NamesSymbol(), names);
             list
@@ -2592,7 +2596,11 @@ mod tests {
         for (i, value) in values.iter().enumerate() {
             let c = std::ffi::CString::new(*value).expect("test string contains no NUL");
             unsafe {
-                crate::sexp::accessors::SET_STRING_ELT(v, i as R_xlen_t, crate::sexp::constructors::mk_char_bytes(c.to_bytes()));
+                crate::sexp::accessors::SET_STRING_ELT(
+                    v,
+                    i as R_xlen_t,
+                    crate::sexp::constructors::mk_char_bytes(c.to_bytes()),
+                );
             }
         }
         v
@@ -3307,8 +3315,7 @@ mod tests {
         unsafe {
             let out = GE_LTYget(LTY_LONGDASH as c_uint);
             let name_bytes = crate::sexp::accessors::char_cstr_bytes(STRING_ELT(out, 0));
-            let name = std::str::from_utf8(&name_bytes)
-                .expect("valid UTF-8");
+            let name = std::str::from_utf8(&name_bytes).expect("valid UTF-8");
             assert_eq!(name, "longdash");
         }
     }
@@ -3595,10 +3602,11 @@ mod tests {
             assert_eq!(GE_LENDpar(lend, 0), GE_SQUARE_CAP);
             assert_eq!(GE_LJOINpar(ljoin, 0), GE_BEVEL_JOIN);
 
-            let lend_name_bytes = crate::sexp::accessors::char_cstr_bytes(STRING_ELT(GE_LENDget(GE_BUTT_CAP), 0));
-            let lend_name = std::str::from_utf8(&lend_name_bytes)
-                    .expect("valid UTF-8");
-            let ljoin_name_bytes = crate::sexp::accessors::char_cstr_bytes(STRING_ELT(GE_LJOINget(GE_MITRE_JOIN), 0));
+            let lend_name_bytes =
+                crate::sexp::accessors::char_cstr_bytes(STRING_ELT(GE_LENDget(GE_BUTT_CAP), 0));
+            let lend_name = std::str::from_utf8(&lend_name_bytes).expect("valid UTF-8");
+            let ljoin_name_bytes =
+                crate::sexp::accessors::char_cstr_bytes(STRING_ELT(GE_LJOINget(GE_MITRE_JOIN), 0));
             let ljoin_name = std::str::from_utf8(&ljoin_name_bytes).expect("valid UTF-8");
             assert_eq!(lend_name, "butt");
             assert_eq!(ljoin_name, "mitre");

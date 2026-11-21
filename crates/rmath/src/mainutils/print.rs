@@ -423,8 +423,7 @@ fn GetArrayDimnames(x: SEXP) -> SEXP {
 
 /// allocArray (delegate to array.rs).
 fn allocArray(mode: c_int, dims: SEXP) -> SEXP {
-    // SAFETY: `dims` is a live, protected integer dimension vector.
-    unsafe { crate::mainutils::array::allocArray(mode, dims) }
+    crate::mainutils::array::allocArray(mode, dims)
 }
 
 /// Use the shared GNU scalar coercion, including string and complex admission.

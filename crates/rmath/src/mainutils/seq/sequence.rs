@@ -32,10 +32,10 @@ pub fn do_sequence(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         // coercion here rather than exposing the raw internal signature.
         // Match user args by tag/position so named calls like by= bind correctly.
         let formals = allocFormalsList5(
-            Rf_install_stub(b"nvec\0".as_ptr() as *const c_char),
-            Rf_install_stub(b"from\0".as_ptr() as *const c_char),
-            Rf_install_stub(b"by\0".as_ptr() as *const c_char),
-            Rf_install_stub(b"recycle\0".as_ptr() as *const c_char),
+            crate::sexp::symbol::install_str("nvec"),
+            crate::sexp::symbol::install_str("from"),
+            crate::sexp::symbol::install_str("by"),
+            crate::sexp::symbol::install_str("recycle"),
             R_DotsSymbol(),
         );
         let matched = matchArgs_NR(formals, args, call);

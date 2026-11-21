@@ -670,7 +670,7 @@ unsafe fn curlCommon(hnd: *mut CURL, redirect: c_int, verify: c_int) {
 
         // User agent: use HTTPUserAgent option or default to libcurl version
         let mut default_agent: c_int = 1;
-        let sua = GetOption1(install(b"HTTPUserAgent\0".as_ptr() as *const c_char));
+        let sua = GetOption1(crate::sexp::symbol::install_str("HTTPUserAgent"));
         if TYPEOF(sua) == SEXPTYPE::STRSXP && LENGTH(sua) == 1 {
             let p = translateChar(STRING_ELT(sua, 0));
             if !p.is_null()
@@ -701,7 +701,7 @@ unsafe fn curlCommon(hnd: *mut CURL, redirect: c_int, verify: c_int) {
         }
 
         // Timeout from option
-        let timeout0 = asInteger(GetOption1(install(b"timeout\0".as_ptr() as *const c_char)));
+        let timeout0 = asInteger(GetOption1(crate::sexp::symbol::install_str("timeout")));
         let timeout: c_long = if timeout0 == NA_INTEGER {
             0
         } else {
@@ -716,8 +716,8 @@ unsafe fn curlCommon(hnd: *mut CURL, redirect: c_int, verify: c_int) {
             curl_easy_setopt(hnd, CURLOPT_MAXREDIRS, 20);
         }
 
-        let verbosity = asInteger(GetOption1(install(
-            b"internet.info\0".as_ptr() as *const c_char
+        let verbosity = asInteger(GetOption1(crate::sexp::symbol::install_str(
+            "internet.info",
         )));
         if verbosity < 2 {
             curl_easy_setopt(hnd, CURLOPT_VERBOSE, 1);
@@ -727,7 +727,7 @@ unsafe fn curlCommon(hnd: *mut CURL, redirect: c_int, verify: c_int) {
         curl_easy_setopt(hnd, CURLOPT_COOKIEFILE, b"\0".as_ptr());
 
         // netrc file
-        let snetrc = GetOption1(install(b"netrc\0".as_ptr() as *const c_char));
+        let snetrc = GetOption1(crate::sexp::symbol::install_str("netrc"));
         if TYPEOF(snetrc) == SEXPTYPE::STRSXP && LENGTH(snetrc) == 1 {
             let p = translateCharFP(STRING_ELT(snetrc, 0));
             curl_easy_setopt(hnd, CURLOPT_NETRC, CURL_NETRC_OPTIONAL);
@@ -1102,12 +1102,12 @@ pub(crate) fn in_do_curlVersion(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> 
 
         // ssl_version attribute
         if !d.is_null() && !(*d).ssl_version.is_null() {
-            let sSSLVersion = install(b"ssl_version\0".as_ptr() as *const c_char);
+            let sSSLVersion = crate::sexp::symbol::install_str("ssl_version");
             let value = Rf_mkString((*d).ssl_version);
             let _value_guard = protect(value);
             setAttrib(ans, sSSLVersion, value);
         } else if !d.is_null() {
-            let sSSLVersion = install(b"ssl_version\0".as_ptr() as *const c_char);
+            let sSSLVersion = crate::sexp::symbol::install_str("ssl_version");
             let value = crate::sexp::constructors::mk_string_str("none");
             let _value_guard = protect(value);
             setAttrib(ans, sSSLVersion, value);
@@ -1115,12 +1115,12 @@ pub(crate) fn in_do_curlVersion(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> 
 
         // libssh_version attribute
         if !d.is_null() && (*d).age >= 3 && !(*d).libssh_version.is_null() {
-            let sLibSSHVersion = install(b"libssh_version\0".as_ptr() as *const c_char);
+            let sLibSSHVersion = crate::sexp::symbol::install_str("libssh_version");
             let value = Rf_mkString((*d).libssh_version);
             let _value_guard = protect(value);
             setAttrib(ans, sLibSSHVersion, value);
         } else {
-            let sLibSSHVersion = install(b"libssh_version\0".as_ptr() as *const c_char);
+            let sLibSSHVersion = crate::sexp::symbol::install_str("libssh_version");
             let value = crate::sexp::constructors::mk_string_str("");
             let _value_guard = protect(value);
             setAttrib(ans, sLibSSHVersion, value);
@@ -1141,7 +1141,7 @@ pub(crate) fn in_do_curlVersion(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> 
                 SET_STRING_ELT(protocols, i as R_xlen_t, Rf_mkChar(*p));
                 p = p.add(1);
             }
-            let sProtocols = install(b"protocols\0".as_ptr() as *const c_char);
+            let sProtocols = crate::sexp::symbol::install_str("protocols");
             setAttrib(ans, sProtocols, protocols);
         }
 
@@ -1255,7 +1255,7 @@ pub(crate) fn in_do_curlGetHeaders(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) 
             SET_STRING_ELT(ans, i as R_xlen_t, Rf_mkChar(header_ptr(i as usize)));
         }
 
-        let sStatus = install(b"status\0".as_ptr() as *const c_char);
+        let sStatus = crate::sexp::symbol::install_str("status");
         let status = Rf_ScalarInteger(http_code as c_int);
         let _status_guard = protect(status);
         setAttrib(ans, sStatus, status);
@@ -1563,7 +1563,7 @@ pub(crate) fn in_do_curlDownload(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) ->
         let ans = Rf_ScalarInteger(0);
         if nurls > 1 {
             let _ans_guard = protect(ans);
-            let sretvals = install(b"retvals\0".as_ptr() as *const c_char);
+            let sretvals = crate::sexp::symbol::install_str("retvals");
             let retval = Rf_allocVector(SEXPTYPE::INTSXP, nurls);
             let _retval_guard = protect(retval);
             for i in 0..nurls {
@@ -1687,7 +1687,9 @@ mod tests {
             let owner = session.owner_token().expect("live session owner");
             let values = [
                 session
-                    .sexp(unsafe { crate::sexp::constructors::mk_string_str("https://unused.invalid") })
+                    .sexp(unsafe {
+                        crate::sexp::constructors::mk_string_str("https://unused.invalid")
+                    })
                     .expect("owned URL"),
                 session
                     .sexp(unsafe { Rf_ScalarLogical(0) })

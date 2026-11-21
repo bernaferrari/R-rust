@@ -629,7 +629,7 @@ pub unsafe fn do_chartr(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
 
 /// Safe version of toupper using `Sexp<'a>`.
 pub unsafe fn toupper_safe(x: Sexp<'_>) -> Result<SEXP, String> {
-    unsafe { case_transform_safe(x, true) }.map_err(|e| e.to_string())
+    case_transform_safe(x, true).map_err(|e| e.to_string())
 }
 
 /// Convert characters in a character vector to uppercase.
@@ -646,7 +646,7 @@ pub unsafe fn do_toupper(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
 
 /// Safe version of tolower using `Sexp<'a>`.
 pub unsafe fn tolower_safe(x: Sexp<'_>) -> Result<SEXP, String> {
-    unsafe { case_transform_safe(x, false) }.map_err(|e| e.to_string())
+    case_transform_safe(x, false).map_err(|e| e.to_string())
 }
 
 /// Convert characters in a character vector to lowercase.
@@ -658,7 +658,7 @@ pub unsafe fn do_tolower(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
 }
 
 /// Shared safe implementation for toupper and tolower.
-unsafe fn case_transform_safe(
+fn case_transform_safe(
     x: Sexp<'_>,
     upper: bool,
 ) -> Result<SEXP, crate::sexp::diagnostic::EvaluationError> {
@@ -696,7 +696,7 @@ pub(crate) unsafe fn case_entry(args: SEXP, upper: bool) -> SEXP {
             .try_pairlist_arg(0)
             .and_then(Sexp::into_owned)
             .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
-        match unsafe { case_transform_safe(x, upper) } {
+        match case_transform_safe(x, upper) {
             Ok(value) => value,
             Err(crate::sexp::diagnostic::EvaluationError::Diagnostic(diagnostic)) => {
                 crate::mainutils::errors::raise_owned_diagnostic(&owner, diagnostic)
@@ -720,7 +720,7 @@ pub enum NcharType {
 }
 
 /// Safe version of nchar using `Sexp<'a>`.
-pub unsafe fn nchar_safe(
+pub fn nchar_safe(
     x: Sexp<'_>,
     type_: NcharType,
     allow_na: bool,
@@ -766,90 +766,88 @@ pub unsafe fn nchar_safe(
 /// Supports type = "bytes", "chars", "width".
 pub unsafe fn do_nchar(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        unsafe {
-            match OwnerToken::with_current(|owner| {
-                let _pin = match owner.pin() {
-                    Ok(pin) => pin,
-                    Err(_) => return crate::sexp::globals::R_NilValue(),
-                };
-                let args_s = match owner.sexp(args) {
-                    Ok(value) => value,
-                    Err(_) => return crate::sexp::globals::R_NilValue(),
-                };
-
-                let x_arg = match args_s.clone().try_pairlist_arg(0).clone() {
-                    Ok(s) => s,
-                    Err(_) => return crate::sexp::globals::R_NilValue(),
-                };
-
-                let stype = match args_s.clone().try_pairlist_arg(1).clone() {
-                    Ok(s) => s,
-                    Err(_) => return crate::sexp::globals::R_NilValue(),
-                };
-
-                if stype.clone().typeof_() != SEXPTYPE::STRSXP || stype.clone().len() != 1 {
-                    return crate::sexp::globals::R_NilValue();
-                }
-                let type_char = match stype.try_string_elt(0) {
-                    Ok(s) => s,
-                    Err(_) => return crate::sexp::globals::R_NilValue(),
-                };
-                let type_str = match type_char.try_as_string() {
-                    Ok(s) => s,
-                    Err(_) => return crate::sexp::globals::R_NilValue(),
-                };
-                let type_str_trimmed = type_str.trim();
-
-                let type_code: NcharType = if type_str_trimmed.starts_with("bytes") {
-                    NcharType::Bytes
-                } else if type_str_trimmed.starts_with("chars") {
-                    NcharType::Chars
-                } else if type_str_trimmed.starts_with("width") {
-                    NcharType::Width
-                } else {
-                    return crate::sexp::globals::R_NilValue();
-                };
-
-                let allow_na_arg = match args_s.clone().try_pairlist_arg(2).clone() {
-                    Ok(s) => s,
-                    Err(_) => return crate::sexp::globals::R_NilValue(),
-                };
-                let allow_na_val = as_logical(&allow_na_arg);
-                let allow_na = if allow_na_val == crate::sexp::ffi::NA_LOGICAL {
-                    false
-                } else {
-                    allow_na_val != 0
-                };
-
-                // Parse keepNA (fourth arg, optional)
-                let nargs = XLENGTH(args);
-                let keep_na: bool;
-                if nargs >= 4 {
-                    let keep_na_arg = match args_s.try_pairlist_arg(3) {
-                        Ok(s) => s,
-                        Err(_) => return crate::sexp::globals::R_NilValue(),
-                    };
-                    let keep_na_val = as_logical(&keep_na_arg);
-                    if keep_na_val == crate::sexp::ffi::NA_LOGICAL {
-                        keep_na = type_code != NcharType::Width;
-                    } else {
-                        keep_na = keep_na_val != 0;
-                    }
-                } else {
-                    keep_na = type_code != NcharType::Width;
-                }
-
-                if owner.require_active().is_err() {
-                    return crate::sexp::globals::R_NilValue();
-                }
-                match nchar_safe(x_arg, type_code, allow_na, keep_na) {
-                    Ok(result) => result,
-                    Err(_) => crate::sexp::globals::R_NilValue(),
-                }
-            }) {
+        match OwnerToken::with_current(|owner| {
+            let _pin = match owner.pin() {
+                Ok(pin) => pin,
+                Err(_) => return crate::sexp::globals::R_NilValue(),
+            };
+            let args_s = match owner.sexp(args) {
                 Ok(value) => value,
                 Err(_) => return crate::sexp::globals::R_NilValue(),
+            };
+
+            let x_arg = match args_s.clone().try_pairlist_arg(0).clone() {
+                Ok(s) => s,
+                Err(_) => return crate::sexp::globals::R_NilValue(),
+            };
+
+            let stype = match args_s.clone().try_pairlist_arg(1).clone() {
+                Ok(s) => s,
+                Err(_) => return crate::sexp::globals::R_NilValue(),
+            };
+
+            if stype.clone().typeof_() != SEXPTYPE::STRSXP || stype.clone().len() != 1 {
+                return crate::sexp::globals::R_NilValue();
             }
+            let type_char = match stype.try_string_elt(0) {
+                Ok(s) => s,
+                Err(_) => return crate::sexp::globals::R_NilValue(),
+            };
+            let type_str = match type_char.try_as_string() {
+                Ok(s) => s,
+                Err(_) => return crate::sexp::globals::R_NilValue(),
+            };
+            let type_str_trimmed = type_str.trim();
+
+            let type_code: NcharType = if type_str_trimmed.starts_with("bytes") {
+                NcharType::Bytes
+            } else if type_str_trimmed.starts_with("chars") {
+                NcharType::Chars
+            } else if type_str_trimmed.starts_with("width") {
+                NcharType::Width
+            } else {
+                return crate::sexp::globals::R_NilValue();
+            };
+
+            let allow_na_arg = match args_s.clone().try_pairlist_arg(2).clone() {
+                Ok(s) => s,
+                Err(_) => return crate::sexp::globals::R_NilValue(),
+            };
+            let allow_na_val = as_logical(&allow_na_arg);
+            let allow_na = if allow_na_val == crate::sexp::ffi::NA_LOGICAL {
+                false
+            } else {
+                allow_na_val != 0
+            };
+
+            // Parse keepNA (fourth arg, optional)
+            let nargs = XLENGTH(args);
+            let keep_na: bool;
+            if nargs >= 4 {
+                let keep_na_arg = match args_s.try_pairlist_arg(3) {
+                    Ok(s) => s,
+                    Err(_) => return crate::sexp::globals::R_NilValue(),
+                };
+                let keep_na_val = as_logical(&keep_na_arg);
+                if keep_na_val == crate::sexp::ffi::NA_LOGICAL {
+                    keep_na = type_code != NcharType::Width;
+                } else {
+                    keep_na = keep_na_val != 0;
+                }
+            } else {
+                keep_na = type_code != NcharType::Width;
+            }
+
+            if owner.require_active().is_err() {
+                return crate::sexp::globals::R_NilValue();
+            }
+            match nchar_safe(x_arg, type_code, allow_na, keep_na) {
+                Ok(result) => result,
+                Err(_) => crate::sexp::globals::R_NilValue(),
+            }
+        }) {
+            Ok(value) => value,
+            Err(_) => return crate::sexp::globals::R_NilValue(),
         }
     }))
     .unwrap_or_else(|_| crate::sexp::globals::R_NilValue())

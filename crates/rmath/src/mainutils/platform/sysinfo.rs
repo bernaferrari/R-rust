@@ -5,7 +5,7 @@ use super::*;
 pub fn do_pathexpand(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::accessors::{CAR, LENGTH, STRING_ELT};
-        use crate::sexp::constructors::{Rf_allocVector3, Rf_mkChar};
+        use crate::sexp::constructors::Rf_allocVector3;
         use crate::sexp::ffi::SEXPTYPE;
 
         let s = CAR(args);
@@ -41,7 +41,9 @@ pub fn do_pathexpand(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 crate::sexp::accessors::SET_STRING_ELT(
                     ans,
                     i as crate::sexp::ffi::R_xlen_t,
-                    Rf_mkChar(CString::new(expanded).unwrap_or_default().as_ptr()),
+                    crate::sexp::constructors::mk_char_bytes(
+                        CString::new(expanded).unwrap_or_default().to_bytes(),
+                    ),
                 );
             }
         }
@@ -53,7 +55,7 @@ pub fn do_pathexpand(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 pub fn do_capabilities(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::accessors::SET_STRING_ELT;
-        use crate::sexp::constructors::{Rf_allocVector3, Rf_mkChar};
+        use crate::sexp::constructors::Rf_allocVector3;
         use crate::sexp::ffi::{FALSE, SEXPTYPE, TRUE};
 
         let names = [
@@ -109,7 +111,9 @@ pub fn do_capabilities(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP 
             SET_STRING_ELT(
                 cn,
                 i as crate::sexp::ffi::R_xlen_t,
-                Rf_mkChar(CString::new(*name).unwrap_or_default().as_ptr()),
+                crate::sexp::constructors::mk_char_bytes(
+                    CString::new(*name).unwrap_or_default().to_bytes(),
+                ),
             );
         }
 
@@ -157,7 +161,9 @@ pub fn do_capabilities(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP 
             SET_STRING_ELT(
                 out_names,
                 i,
-                Rf_mkChar(CString::new(wanted).unwrap_or_default().as_ptr()),
+                crate::sexp::constructors::mk_char_bytes(
+                    CString::new(wanted).unwrap_or_default().to_bytes(),
+                ),
             );
         }
         crate::eval::attrib_core::setAttrib(
@@ -491,7 +497,7 @@ pub fn do_sysumask(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 pub fn do_readlink(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::accessors::{CAR, LENGTH, SET_STRING_ELT, STRING_ELT};
-        use crate::sexp::constructors::{Rf_allocVector3, Rf_mkChar};
+        use crate::sexp::constructors::Rf_allocVector3;
         use crate::sexp::ffi::SEXPTYPE;
         use crate::sexp::globals::R_NilValue;
 
@@ -516,10 +522,10 @@ pub fn do_readlink(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
                         SET_STRING_ELT(
                             ans,
                             i as crate::sexp::ffi::R_xlen_t,
-                            Rf_mkChar(
+                            crate::sexp::constructors::mk_char_bytes(
                                 CString::new(target.to_str().unwrap_or(""))
                                     .unwrap_or_default()
-                                    .as_ptr(),
+                                    .to_bytes(),
                             ),
                         );
                     }
@@ -569,7 +575,7 @@ pub fn do_Cstack_info(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
 pub fn do_eSoftVersion(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::accessors::SET_STRING_ELT;
-        use crate::sexp::constructors::{Rf_allocVector3, Rf_mkChar};
+        use crate::sexp::constructors::Rf_allocVector3;
         use crate::sexp::ffi::SEXPTYPE;
 
         let blas = "";
@@ -600,12 +606,16 @@ pub fn do_eSoftVersion(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP 
             SET_STRING_ELT(
                 ans,
                 i as crate::sexp::ffi::R_xlen_t,
-                Rf_mkChar(CString::new(*val).unwrap_or_default().as_ptr()),
+                crate::sexp::constructors::mk_char_bytes(
+                    CString::new(*val).unwrap_or_default().to_bytes(),
+                ),
             );
             SET_STRING_ELT(
                 cn,
                 i as crate::sexp::ffi::R_xlen_t,
-                Rf_mkChar(CString::new(*name).unwrap_or_default().as_ptr()),
+                crate::sexp::constructors::mk_char_bytes(
+                    CString::new(*name).unwrap_or_default().to_bytes(),
+                ),
             );
         }
 

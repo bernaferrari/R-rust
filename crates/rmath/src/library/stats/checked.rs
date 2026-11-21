@@ -133,9 +133,7 @@ pub(crate) fn rprintf(text: &str) {
 
 /// Allocate an `nrow x ncol` matrix (GNU `allocMatrix`).
 pub(crate) fn alloc_matrix(mode: c_int, nrow: c_int, ncol: c_int) -> SEXP {
-    // SAFETY: allocMatrix only validates its extents and allocates a fresh
-    // vector with a `dim` attribute; it has no caller-side preconditions.
-    unsafe { crate::mainutils::array::allocMatrix(mode, nrow, ncol) }
+    crate::mainutils::array::allocMatrix(mode, nrow, ncol)
 }
 
 /// Bind `symbol` to `value` in `rho`'s frame (GNU `defineVar`).

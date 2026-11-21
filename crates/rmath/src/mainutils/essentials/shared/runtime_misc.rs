@@ -1207,7 +1207,7 @@ pub(crate) fn charsxp_cstring(x: SEXP) -> std::ffi::CString {
 /// validates them and allocates through the checked vector constructor.
 pub(crate) fn alloc_matrix(mode: c_int, nrow: c_int, ncol: c_int) -> SEXP {
     // SAFETY: integer-only arguments; allocMatrix validates extents and mode.
-    unsafe { crate::mainutils::array::allocMatrix(mode, nrow, ncol) }
+    crate::mainutils::array::allocMatrix(mode, nrow, ncol)
 }
 
 /// Build a closure over live `formals`, `body` and `env` (`mkCLOSXP`).
@@ -1222,7 +1222,7 @@ pub(crate) fn copy_most_attrib(src: SEXP, dest: SEXP) {
     // SAFETY: both arguments are live SEXPs; the copy only walks `src`'s
     // attribute pairlist and installs attributes on `dest` through the
     // checked attribute API.
-    unsafe { crate::mainutils::array::copyMostAttrib(src, dest) }
+    crate::mainutils::array::copyMostAttrib(src, dest)
 }
 
 /// `isFactor(x)` on a live SEXP.
@@ -1296,7 +1296,7 @@ pub(crate) fn check1arg_cstr(args: SEXP, call: SEXP, name: &std::ffi::CStr) {
 pub(crate) fn new_hashed_env(enclos: SEXP, size: c_int) -> SEXP {
     // SAFETY: `enclos` is a live environment; R_NewHashedEnv only allocates a
     // fresh environment and promotes it to a hashed frame.
-    unsafe { crate::sexp::envir::R_NewHashedEnv(enclos, size) }
+    crate::sexp::envir::R_NewHashedEnv(enclos, size)
 }
 
 /// Lossy text of `type2char(t)`, or `None` when it has no name.
@@ -1334,7 +1334,7 @@ pub(crate) fn complex_unary(
 pub(crate) fn match_formals(call: SEXP, args: SEXP, names: &[&str]) -> Vec<SEXP> {
     // SAFETY: `call` and `args` are live SEXPs supplied by the dispatcher;
     // matching only reads them and allocates the formals pairlist.
-    unsafe { crate::mainutils::match_mod::match_formal_slots(call, args, names) }
+    crate::mainutils::match_mod::match_formal_slots(call, args, names)
 }
 
 /// Primitive binding for `name` (`make_primitive_binding`).

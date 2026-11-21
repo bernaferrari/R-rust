@@ -156,7 +156,7 @@ unsafe fn field_is_foldable(field_name: &str, fold_excludes: SEXP) -> bool {
 // ---------------------------------------------------------------------------
 
 /// Allocate a STRSXP vector of length `nrow * ncol`, all elements set to NA.
-unsafe fn alloc_matrix_na(nrow: c_int, ncol: c_int) -> SEXP {
+fn alloc_matrix_na(nrow: c_int, ncol: c_int) -> SEXP {
     let len = (nrow as i64) * (ncol as i64);
     let mat = Rf_allocVector(SEXPTYPE::STRSXP, len as c_int);
     if mat.is_null() {
@@ -170,7 +170,7 @@ unsafe fn alloc_matrix_na(nrow: c_int, ncol: c_int) -> SEXP {
 }
 
 /// Transfer all STRING_ELT values from source to destination.
-unsafe fn transfer_vector(dest: SEXP, src: SEXP) {
+fn transfer_vector(dest: SEXP, src: SEXP) {
     let n = LENGTH(src);
     for i in 0..n as isize {
         SET_STRING_ELT(dest, i as R_xlen_t, STRING_ELT(src, i as R_xlen_t));
@@ -179,7 +179,7 @@ unsafe fn transfer_vector(dest: SEXP, src: SEXP) {
 
 /// Copy a STRSXP matrix by rows (transpose: src is row-major by record,
 /// dest is column-major by field).
-unsafe fn copy_matrix_byrow(dest: SEXP, src: SEXP, src_nrow: c_int, src_ncol: c_int) {
+fn copy_matrix_byrow(dest: SEXP, src: SEXP, src_nrow: c_int, src_ncol: c_int) {
     for r in 0..src_nrow {
         for c in 0..src_ncol {
             let src_idx = (c * src_nrow + r) as R_xlen_t;
@@ -653,10 +653,10 @@ mod tests {
         std::fs::write(&path, content).unwrap();
 
         unsafe {
-            let file = Rf_mkString(
+            let file = crate::sexp::constructors::mk_string_bytes(
                 CString::new(path.to_str().unwrap())
                     .unwrap_or_default()
-                    .as_ptr(),
+                    .to_bytes(),
             );
             let fields = Rf_allocVector(SEXPTYPE::STRSXP, 0); // dynamic mode
             let args = {

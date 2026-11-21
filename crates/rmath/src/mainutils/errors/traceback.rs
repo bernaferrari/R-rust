@@ -303,7 +303,7 @@ pub fn R_GetCurrentSrcref(skip: c_int) -> SEXP {
 
 /// R_GetSrcFilename — get source filename from a srcref.
 pub fn R_GetSrcFilename(_srcref: SEXP) -> SEXP {
-    unsafe { Rf_mkString(b"\x00".as_ptr() as *const c_char) }
+    crate::sexp::constructors::mk_string_str("")
 }
 
 #[cfg(test)]

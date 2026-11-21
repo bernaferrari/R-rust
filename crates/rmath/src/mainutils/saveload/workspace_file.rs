@@ -11,7 +11,7 @@ pub(super) unsafe fn save(
     envir: SEXP,
     options: SaveOptions,
 ) {
-    let path = unsafe { workspace_path(file, "'file' must be a non-empty character string") };
+    let path = workspace_path(file, "'file' must be a non-empty character string");
     if TYPEOF(envir) != SEXPTYPE::ENVSXP {
         crate::sexp::context::r_error("invalid 'envir' argument");
     }
@@ -65,7 +65,7 @@ pub(super) struct SaveOptions {
 }
 
 pub(super) unsafe fn load(owner: OwnerToken<'_>, file: SEXP, envir: SEXP) -> SEXP {
-    let path = unsafe { workspace_path(file, "bad 'file' argument") };
+    let path = workspace_path(file, "bad 'file' argument");
     if envir == R_NilValue() {
         crate::sexp::context::r_error("use of NULL environment is defunct");
     }
@@ -156,7 +156,7 @@ fn fail<T>(error: impl std::fmt::Display) -> T {
     crate::sexp::context::r_error(error.to_string())
 }
 
-unsafe fn workspace_path(file: SEXP, diagnostic: &str) -> String {
+fn workspace_path(file: SEXP, diagnostic: &str) -> String {
     if file.is_null() || TYPEOF(file) != SEXPTYPE::STRSXP || XLENGTH(file) != 1 {
         crate::sexp::context::r_error(diagnostic);
     }

@@ -6,13 +6,13 @@ use super::*;
 
 /// Read the PRIMVAL (primitive offset) from a builtin/special SEXP.
 #[inline]
-pub(crate) unsafe fn primval(op: SEXP) -> c_int {
+pub(crate) fn primval(op: SEXP) -> c_int {
     crate::mainutils::relop::PRIMVAL(op)
 }
 
 /// Helper: check if SEXP is numeric (INTSXP, REALSXP, CPLXSXP, or LGLSXP).
 #[inline]
-pub(crate) unsafe fn is_numeric(x: SEXP) -> bool {
+pub(crate) fn is_numeric(x: SEXP) -> bool {
     {
         let t = TYPEOF(x);
         t == SEXPTYPE::INTSXP
@@ -24,13 +24,13 @@ pub(crate) unsafe fn is_numeric(x: SEXP) -> bool {
 
 /// Helper: check if SEXP is complex.
 #[inline]
-pub(crate) unsafe fn is_complex(x: SEXP) -> bool {
+pub(crate) fn is_complex(x: SEXP) -> bool {
     TYPEOF(x) == SEXPTYPE::CPLXSXP
 }
 
 /// Helper: check if SEXP is integer or logical.
 #[inline]
-pub(crate) unsafe fn is_integer_or_logical(x: SEXP) -> bool {
+pub(crate) fn is_integer_or_logical(x: SEXP) -> bool {
     {
         let t = TYPEOF(x);
         t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP
@@ -39,7 +39,7 @@ pub(crate) unsafe fn is_integer_or_logical(x: SEXP) -> bool {
 
 /// Helper: NO_REFERENCES check (NAMED == 0).
 #[inline]
-pub(crate) unsafe fn no_references(x: SEXP) -> bool {
+pub(crate) fn no_references(x: SEXP) -> bool {
     NAMED(x) == 0
 }
 

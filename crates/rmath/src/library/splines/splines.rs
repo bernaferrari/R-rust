@@ -407,7 +407,7 @@ pub(crate) fn lookup(name: &str) -> Option<crate::mainutils::native_routines::Na
     }
 }
 
-pub unsafe fn install_splines_call_symbols(env: SEXP) {
+pub fn install_splines_call_symbols(env: SEXP) {
     for name in SPLINE_CALL_NAMES {
         let cname = std::ffi::CString::new(*name).unwrap_or_default();
         crate::sexp::envir::defineVar(

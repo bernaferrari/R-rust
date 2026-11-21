@@ -312,30 +312,30 @@ pub(crate) fn set_posixlt_balanced(ans: SEXP) {
 }
 
 fn posixlt_tzone_sexp(tz: &str, is_utc: bool) -> SEXP {
-    unsafe {
-        if is_utc {
-            let name = if tz.is_empty() { "UTC" } else { tz };
-            Rf_mkString(CString::new(name).unwrap_or_default().as_ptr())
+    if is_utc {
+        let name = if tz.is_empty() { "UTC" } else { tz };
+        crate::sexp::constructors::mk_string_bytes(
+            CString::new(name).unwrap_or_default().to_bytes(),
+        )
+    } else {
+        let label = if tz.is_empty() {
+            crate::tzone::timezone_override()
+                .or_else(|| std::env::var("TZ").ok())
+                .unwrap_or_default()
         } else {
-            let label = if tz.is_empty() {
-                crate::tzone::timezone_override()
-                    .or_else(|| std::env::var("TZ").ok())
-                    .unwrap_or_default()
-            } else {
-                tz.to_string()
-            };
+            tz.to_string()
+        };
 
-            let tzone = Rf_allocVector3(SEXPTYPE::STRSXP, 3);
-            for (j, s) in [label, tzname_str(0), tzname_str(1)].iter().enumerate() {
-                let cs = CString::new(s.as_str()).unwrap_or_default();
-                SET_STRING_ELT(
-                    tzone,
-                    j as R_xlen_t,
-                    crate::sexp::constructors::mk_char_bytes(cs.to_bytes()),
-                );
-            }
-            tzone
+        let tzone = Rf_allocVector3(SEXPTYPE::STRSXP, 3);
+        for (j, s) in [label, tzname_str(0), tzname_str(1)].iter().enumerate() {
+            let cs = CString::new(s.as_str()).unwrap_or_default();
+            SET_STRING_ELT(
+                tzone,
+                j as R_xlen_t,
+                crate::sexp::constructors::mk_char_bytes(cs.to_bytes()),
+            );
         }
+        tzone
     }
 }
 
@@ -422,7 +422,9 @@ pub fn convert_posixct_to_posixlt(x: SEXP, tz: &str) -> SEXP {
             SET_STRING_ELT(
                 VECTOR_ELT(ans, 9),
                 i,
-                Rf_mkChar(CString::new(zone).unwrap_or_default().as_ptr()),
+                crate::sexp::constructors::mk_char_bytes(
+                    CString::new(zone).unwrap_or_default().to_bytes(),
+                ),
             );
             *INTEGER(VECTOR_ELT(ans, 10)).add(i as usize) = gmtoff;
         }

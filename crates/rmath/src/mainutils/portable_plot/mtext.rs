@@ -57,7 +57,7 @@ fn numbers(value: &Sexp<'_>, owner: OwnerToken) -> Vec<f64> {
     result
 }
 
-unsafe fn color_values(value: &Sexp<'_>, owner: OwnerToken) -> Vec<Color> {
+fn color_values(value: &Sexp<'_>, owner: OwnerToken) -> Vec<Color> {
     let fallback = par_color("col", Color::BLACK);
     if value.is_nil() {
         return vec![fallback];

@@ -176,12 +176,12 @@ fn new_compiler_environment() -> SEXP {
                     crate::sexp::accessors::SET_STRING_ELT(
                         spec,
                         1,
-                        crate::sexp::constructors::Rf_mkChar(
+                        crate::sexp::constructors::mk_char_bytes(
                             std::ffi::CString::new(
                                 crate::mainutils::compatibility_target::NUMERIC_VERSION,
                             )
                             .unwrap_or_default()
-                            .as_ptr(),
+                            .to_bytes(),
                         ),
                     );
                 }

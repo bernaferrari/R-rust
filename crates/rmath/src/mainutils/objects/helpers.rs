@@ -301,7 +301,7 @@ fn ensure_s4_extends_table_in(
         return Ok(existing);
     }
     let table = access.with_native(|owner| {
-        let raw = unsafe { crate::sexp::envir::R_NewHashedEnv(R_NilValue(), 0) };
+        let raw = crate::sexp::envir::R_NewHashedEnv(R_NilValue(), 0);
         owner.sexp(raw)?.into_owned()
     })?;
     {
@@ -367,154 +367,161 @@ fn S4_extends_in(
     klass_owner: crate::sexp::object::Sexp<'static>,
     use_tab: bool,
 ) -> SEXP {
-        let klass = klass_owner.as_raw();
-        if isMethodsDispatchOn() == FALSE {
-            return klass;
-        }
-        if klass.is_null() || TYPEOF(klass) != SEXPTYPE::STRSXP || XLENGTH(klass) < 1 {
-            return klass;
-        }
-        let class_chars = STRING_ELT(klass, 0);
-        if class_chars.is_null() {
-            return klass;
-        }
-        let class = char_lossy(class_chars);
-        if class.is_empty() {
-            return klass;
-        }
-        if use_tab {
-            let table_owner = ensure_s4_extends_table();
-            let table = table_owner.as_raw();
-            let Ok(cname) = std::ffi::CString::new(class.as_str()) else {
-                return klass;
-            };
-        let cached = crate::sexp::envir::R_findVarInFrame(table, crate::sexp::symbol::install_cstr(&cname));
-            if !cached.is_null() && cached != R_UnboundValue() && cached != R_NilValue() {
-                return cached;
-            }
-        }
-        let Some(ns) = crate::mainutils::essentials::cached_namespace_by_name("methods") else {
+    let klass = klass_owner.as_raw();
+    if isMethodsDispatchOn() == FALSE {
+        return klass;
+    }
+    if klass.is_null() || TYPEOF(klass) != SEXPTYPE::STRSXP || XLENGTH(klass) < 1 {
+        return klass;
+    }
+    let class_chars = STRING_ELT(klass, 0);
+    if class_chars.is_null() {
+        return klass;
+    }
+    let class = char_lossy(class_chars);
+    if class.is_empty() {
+        return klass;
+    }
+    if use_tab {
+        let table_owner = ensure_s4_extends_table();
+        let table = table_owner.as_raw();
+        let Ok(cname) = std::ffi::CString::new(class.as_str()) else {
             return klass;
         };
-        let _namespace_owner = require_objects(access.domain().wrap(ns));
-        let mut fun = crate::sexp::envir::R_findVarInFrame(
-            ns,
-            crate::sexp::symbol::install_str(".extendsForS3"),
-        );
+        let cached =
+            crate::sexp::envir::R_findVarInFrame(table, crate::sexp::symbol::install_cstr(&cname));
+        if !cached.is_null() && cached != R_UnboundValue() && cached != R_NilValue() {
+            return cached;
+        }
+    }
+    let Some(ns) = crate::mainutils::essentials::cached_namespace_by_name("methods") else {
+        return klass;
+    };
+    let _namespace_owner = require_objects(access.domain().wrap(ns));
+    let mut fun =
+        crate::sexp::envir::R_findVarInFrame(ns, crate::sexp::symbol::install_str(".extendsForS3"));
+    require_objects(access.require_active());
+    if fun.is_null() || fun == R_UnboundValue() {
+        return S4_extends_from_contains(klass, &class);
+    }
+    let _promise_owner = require_objects(access.domain().wrap(fun));
+    if TYPEOF(fun) == SEXPTYPE::PROMSXP {
+        fun = crate::sexp::envir::forcePromise(fun);
         require_objects(access.require_active());
-        if fun.is_null() || fun == R_UnboundValue() {
-            return S4_extends_from_contains(klass, &class);
+    }
+    if TYPEOF(fun) != SEXPTYPE::CLOSXP {
+        return S4_extends_from_contains(klass, &class);
+    }
+    let _function_owner = require_objects(access.domain().wrap(fun));
+    let call = Rf_lang2(fun, klass);
+    let _call = protect(call);
+    let evaled = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| Rf_eval(call, ns)));
+    require_objects(access.require_active());
+    match evaled {
+        Ok(val) if !val.is_null() && val != R_NilValue() && TYPEOF(val) == SEXPTYPE::STRSXP => {
+            let _value_owner = require_objects(access.domain().wrap(val));
+            cache_class(&class, val);
+            val
         }
-        let _promise_owner = require_objects(access.domain().wrap(fun));
-        if TYPEOF(fun) == SEXPTYPE::PROMSXP {
-            fun = crate::sexp::envir::forcePromise(fun);
-            require_objects(access.require_active());
+        Err(payload)
+            if !payload.is::<crate::sexp::context::RError>()
+                && !matches!(
+                    payload.downcast_ref::<crate::sexp::context::RSignal>(),
+                    Some(crate::sexp::context::RSignal::Error { .. })
+                ) =>
+        {
+            std::panic::resume_unwind(payload)
         }
-        if TYPEOF(fun) != SEXPTYPE::CLOSXP {
-            return S4_extends_from_contains(klass, &class);
-        }
-        let _function_owner = require_objects(access.domain().wrap(fun));
-        let call = Rf_lang2(fun, klass);
-        let _call = protect(call);
-        let evaled = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| Rf_eval(call, ns)));
-        require_objects(access.require_active());
-        match evaled {
-            Ok(val) if !val.is_null() && val != R_NilValue() && TYPEOF(val) == SEXPTYPE::STRSXP => {
-                let _value_owner = require_objects(access.domain().wrap(val));
-                cache_class(&class, val);
-                val
-            }
-            Err(payload)
-                if !payload.is::<crate::sexp::context::RError>()
-                    && !matches!(
-                        payload.downcast_ref::<crate::sexp::context::RSignal>(),
-                        Some(crate::sexp::context::RSignal::Error { .. })
-                    ) =>
-            {
-                std::panic::resume_unwind(payload)
-            }
-            _ => S4_extends_from_contains(klass, &class),
-        }
+        _ => S4_extends_from_contains(klass, &class),
+    }
 }
 
 fn S4_extends_from_contains(klass: SEXP, class: &str) -> SEXP {
-        sync_s4_class_graph_from_gnu(class);
-        let Some(def) = s4_class(class) else {
-            return klass;
-        };
-        if def.contains.is_empty() {
-            return klass;
+    sync_s4_class_graph_from_gnu(class);
+    let Some(def) = s4_class(class) else {
+        return klass;
+    };
+    if def.contains.is_empty() {
+        return klass;
+    }
+    let mut names = Vec::with_capacity(def.contains.len() + 1);
+    names.push(class.to_string());
+    for parent in &def.contains {
+        if parent != class && !names.iter().any(|n| n == parent) {
+            names.push(parent.clone());
         }
-        let mut names = Vec::with_capacity(def.contains.len() + 1);
-        names.push(class.to_string());
-        for parent in &def.contains {
-            if parent != class && !names.iter().any(|n| n == parent) {
-                names.push(parent.clone());
-            }
-        }
-        let out = Rf_allocVector(SEXPTYPE::STRSXP, names.len() as c_int);
-        let _out = protect(out);
-        for (i, name) in names.iter().enumerate() {
-            let cstr = std::ffi::CString::new(name.as_str()).unwrap_or_default();
-        SET_STRING_ELT(out, i as R_xlen_t, crate::sexp::constructors::mk_char_bytes(cstr.to_bytes()));
-        }
-        cache_class(class, out);
-        out
+    }
+    let out = Rf_allocVector(SEXPTYPE::STRSXP, names.len() as c_int);
+    let _out = protect(out);
+    for (i, name) in names.iter().enumerate() {
+        let cstr = std::ffi::CString::new(name.as_str()).unwrap_or_default();
+        SET_STRING_ELT(
+            out,
+            i as R_xlen_t,
+            crate::sexp::constructors::mk_char_bytes(cstr.to_bytes()),
+        );
+    }
+    cache_class(class, out);
+    out
 }
 
 /// GNU `Type2DefaultClass` implicit S3 classes for unclassed objects.
 fn implicit_s3_class(x: SEXP) -> SEXP {
-        let dim = getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
-        let nd = if dim.is_null() || dim == R_NilValue() {
-            0
-        } else {
-            XLENGTH(dim)
-        };
-        let t = TYPEOF(x);
-        let (type_name, extra_numeric) = if t == SEXPTYPE::REALSXP {
-            (c"double", true)
-        } else if t == SEXPTYPE::INTSXP {
-            (c"integer", true)
-        } else if t == SEXPTYPE::LGLSXP {
-            (c"logical", false)
-        } else if t == SEXPTYPE::CPLXSXP {
-            (c"complex", false)
-        } else if t == SEXPTYPE::STRSXP {
-            (c"character", false)
-        } else if t == SEXPTYPE::RAWSXP {
-            (c"raw", false)
-        } else if t == SEXPTYPE::VECSXP {
-            (c"list", false)
-        } else if t == SEXPTYPE::EXPRSXP {
-            (c"expression", false)
-        } else if t == SEXPTYPE::CLOSXP || t == SEXPTYPE::SPECIALSXP || t == SEXPTYPE::BUILTINSXP {
-            (c"function", false)
-        } else if t == SEXPTYPE::SYMSXP {
-            (c"name", false)
-        } else if t == SEXPTYPE::LANGSXP {
-            return Rf_ScalarString(crate::eval::attrib_core::language_implicit_class_chars(x));
-        } else if t == SEXPTYPE::NILSXP {
-            (c"NULL", false)
-        } else {
-            return R_data_class(x);
-        };
-        let mut names: Vec<&std::ffi::CStr> = Vec::new();
+    let dim = getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+    let nd = if dim.is_null() || dim == R_NilValue() {
+        0
+    } else {
+        XLENGTH(dim)
+    };
+    let t = TYPEOF(x);
+    let (type_name, extra_numeric) = if t == SEXPTYPE::REALSXP {
+        (c"double", true)
+    } else if t == SEXPTYPE::INTSXP {
+        (c"integer", true)
+    } else if t == SEXPTYPE::LGLSXP {
+        (c"logical", false)
+    } else if t == SEXPTYPE::CPLXSXP {
+        (c"complex", false)
+    } else if t == SEXPTYPE::STRSXP {
+        (c"character", false)
+    } else if t == SEXPTYPE::RAWSXP {
+        (c"raw", false)
+    } else if t == SEXPTYPE::VECSXP {
+        (c"list", false)
+    } else if t == SEXPTYPE::EXPRSXP {
+        (c"expression", false)
+    } else if t == SEXPTYPE::CLOSXP || t == SEXPTYPE::SPECIALSXP || t == SEXPTYPE::BUILTINSXP {
+        (c"function", false)
+    } else if t == SEXPTYPE::SYMSXP {
+        (c"name", false)
+    } else if t == SEXPTYPE::LANGSXP {
+        return Rf_ScalarString(crate::eval::attrib_core::language_implicit_class_chars(x));
+    } else if t == SEXPTYPE::NILSXP {
+        (c"NULL", false)
+    } else {
+        return R_data_class(x);
+    };
+    let mut names: Vec<&std::ffi::CStr> = Vec::new();
 
-        if nd == 2 {
-            names.push(c"matrix");
-            names.push(c"array");
-        } else if nd > 0 {
-            names.push(c"array");
-        }
-        names.push(type_name);
-        if extra_numeric {
-            names.push(c"numeric");
-        }
-        let result = Rf_allocVector3(SEXPTYPE::STRSXP, names.len() as i64);
-        for (i, name) in names.iter().enumerate() {
-        SET_STRING_ELT(result, i as i64, crate::sexp::constructors::mk_char_bytes(name.to_bytes()));
-        }
-        result
+    if nd == 2 {
+        names.push(c"matrix");
+        names.push(c"array");
+    } else if nd > 0 {
+        names.push(c"array");
+    }
+    names.push(type_name);
+    if extra_numeric {
+        names.push(c"numeric");
+    }
+    let result = Rf_allocVector3(SEXPTYPE::STRSXP, names.len() as i64);
+    for (i, name) in names.iter().enumerate() {
+        SET_STRING_ELT(
+            result,
+            i as i64,
+            crate::sexp::constructors::mk_char_bytes(name.to_bytes()),
+        );
+    }
+    result
 }
 
 // ---------------------------------------------------------------------------
@@ -611,7 +618,7 @@ pub(crate) fn listAppend(t: SEXP, s: SEXP) -> SEXP {
 
 /// Get R_BlankScalarString (a blank character scalar).
 pub(crate) fn R_BlankScalarString_placeholder() -> SEXP {
-    unsafe { Rf_mkString(b"\x00".as_ptr() as *const c_char) }
+    crate::sexp::constructors::mk_string_str("")
 }
 
 // ---------------------------------------------------------------------------
