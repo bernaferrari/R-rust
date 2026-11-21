@@ -1,6 +1,7 @@
 //! Essentials domain module `s4` — extracted verbatim from essentials.rs.
 
 use super::*;
+use crate::sexp::object::SexpMut;
 use std::collections::HashMap;
 use std::ffi::CString;
 
@@ -99,20 +100,16 @@ pub fn do_is(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             && TYPEOF(class_val) == SEXPTYPE::STRSXP
         {
             let n = LENGTH(class_val);
+            let class_val_owned = owner_sexp(active_owner(), class_val);
             for i in 0..n {
-                let charsxp = crate::sexp::accessors::STRING_ELT(class_val, i as R_xlen_t);
-                if !charsxp.is_null() {
-                    let s = crate::sexp::accessors::CHAR(charsxp);
-                    if !s.is_null() {
-                        let c = std::ffi::CStr::from_ptr(s).to_str().unwrap_or("");
-                        if c == class2 {
-                            return Rf_ScalarLogical(TRUE);
-                        }
-                        if crate::mainutils::objects::isS4(x) == TRUE
-                            && crate::mainutils::objects::s4_class_extends(c, &class2)
-                        {
-                            return Rf_ScalarLogical(TRUE);
-                        }
+                if let Ok(Some(text)) = class_val_owned.try_string_value_elt(i as R_xlen_t) {
+                    if text == class2 {
+                        return Rf_ScalarLogical(TRUE);
+                    }
+                    if crate::mainutils::objects::isS4(x) == TRUE
+                        && crate::mainutils::objects::s4_class_extends(&text, &class2)
+                    {
+                        return Rf_ScalarLogical(TRUE);
                     }
                 }
             }
@@ -321,10 +318,16 @@ fn s4_contains_from_args(args: SEXP) -> Vec<String> {
 fn string_vector_from_values(values: &[String]) -> SEXP {
     unsafe {
         let result = Rf_allocVector3(SEXPTYPE::STRSXP, values.len() as R_xlen_t);
-        for (i, value) in values.iter().enumerate() {
-            let cstr = CString::new(value.as_str()).unwrap_or_default();
-            let charsxp = Rf_mkChar(cstr.as_ptr());
-            SET_STRING_ELT(result, i as R_xlen_t, charsxp);
+        let owner = active_owner();
+        if let Ok(mut result_mut) =
+            owner.sexp(result).and_then(SexpMut::try_from_checked)
+        {
+            for (i, value) in values.iter().enumerate() {
+                let cstr = CString::new(value.as_str()).unwrap_or_default();
+                if let Ok(charsxp) = owner.sexp(Rf_mkChar(cstr.as_ptr())) {
+                    let _ = result_mut.try_set_string_elt(i as R_xlen_t, charsxp);
+                }
+            }
         }
         result
     }
@@ -569,12 +572,21 @@ pub fn do_new(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let _p = protect(result);
         let names = Rf_allocVector3(SEXPTYPE::STRSXP, n);
         let _np = protect(names);
-        for (i, (name, val)) in slots.iter().enumerate() {
-            crate::sexp::accessors::SET_VECTOR_ELT(result, i as R_xlen_t, *val);
-            let cstr = CString::new(name.as_str()).unwrap_or_default();
-            let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
-            if !charsxp.is_null() {
-                SET_STRING_ELT(names, i as R_xlen_t, charsxp);
+        let owner = active_owner();
+        if let (Ok(mut result_mut), Ok(mut names_mut)) = (
+            owner.sexp(result).and_then(SexpMut::try_from_checked),
+            owner.sexp(names).and_then(SexpMut::try_from_checked),
+        ) {
+            for (i, (name, val)) in slots.iter().enumerate() {
+                if let Ok(val_owned) = owner.sexp(*val) {
+                    let _ = result_mut.try_set_vector_elt(i as R_xlen_t, val_owned);
+                }
+                let cstr = CString::new(name.as_str()).unwrap_or_default();
+                if let Ok(charsxp) =
+                    owner.sexp(crate::sexp::constructors::Rf_mkChar(cstr.as_ptr()))
+                {
+                    let _ = names_mut.try_set_string_elt(i as R_xlen_t, charsxp);
+                }
             }
         }
         crate::sexp::attrib_core::setAttrib(result, Rf_install(c"names".as_ptr()), names);
@@ -591,8 +603,12 @@ fn finish_s4_object(object: SEXP, class_name: &str) -> SEXP {
             let _class_guard = protect(class_vec);
             let cstr = CString::new(class_name).unwrap_or_default();
             let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
-            if !charsxp.is_null() {
-                SET_STRING_ELT(class_vec, 0, charsxp);
+            let owner = active_owner();
+            if let (Ok(mut class_mut), Ok(charsxp)) = (
+                owner.sexp(class_vec).and_then(SexpMut::try_from_checked),
+                owner.sexp(charsxp),
+            ) {
+                let _ = class_mut.try_set_string_elt(0, charsxp);
             }
             crate::sexp::attrib_core::setAttrib(
                 object,
@@ -697,22 +713,11 @@ pub fn do_show(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             && TYPEOF(class_val) == SEXPTYPE::STRSXP
             && XLENGTH(class_val) > 0
         {
-            let charsxp = crate::sexp::accessors::STRING_ELT(class_val, 0);
-            if !charsxp.is_null() {
-                let s = crate::sexp::accessors::CHAR(charsxp);
-                if !s.is_null() {
-                    Some(
-                        std::ffi::CStr::from_ptr(s)
-                            .to_str()
-                            .unwrap_or("unknown")
-                            .to_string(),
-                    )
-                } else {
-                    None
-                }
-            } else {
-                None
-            }
+            owner_sexp(active_owner(), class_val)
+                .try_string_value_elt(0)
+                .ok()
+                .flatten()
+                .or_else(|| Some("unknown".to_string()))
         } else {
             None
         };
@@ -739,23 +744,23 @@ pub fn do_show(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let n = XLENGTH(object);
             let names_sym = Rf_install(c"names".as_ptr());
             let names_val = crate::sexp::attrib_core::getAttrib(object, names_sym);
+            let owner = active_owner();
+            let object_owned = owner_sexp(owner, object);
+            let names_owned = owner_sexp(owner, names_val);
             for i in 0..n {
-                let slot_val = crate::sexp::accessors::VECTOR_ELT(object, i);
+                let slot_val = object_owned
+                    .try_vector_elt(i)
+                    .map(|elt| elt.as_raw())
+                    .unwrap_or_else(|error| {
+                        crate::sexp::context::r_error(error.to_string())
+                    });
                 let slot_name = if !names_val.is_null() && names_val != R_NilValue() {
-                    let ns = crate::sexp::accessors::STRING_ELT(names_val, i);
-                    if !ns.is_null() {
-                        let s = crate::sexp::accessors::CHAR(ns);
-                        if !s.is_null() {
-                            std::ffi::CStr::from_ptr(s)
-                                .to_str()
-                                .unwrap_or("")
-                                .to_string()
-                        } else {
-                            format!("Slot{}", i + 1)
-                        }
-                    } else {
-                        format!("Slot{}", i + 1)
-                    }
+                    names_owned
+                        .try_string_value_elt(i)
+                        .ok()
+                        .flatten()
+                        .filter(|text| !text.is_empty())
+                        .unwrap_or_else(|| format!("Slot{}", i + 1))
                 } else {
                     format!("Slot{}", i + 1)
                 };
@@ -1001,18 +1006,17 @@ fn s4_named_slot(obj: SEXP, name: &str) -> Option<SEXP> {
             return None;
         }
         let n = LENGTH(names);
+        let owner = active_owner();
+        let names_owned = owner_sexp(owner, names);
+        let obj_owned = owner_sexp(owner, obj);
         for i in 0..n {
-            let s = STRING_ELT(names, i as R_xlen_t);
-            if s.is_null() || s == crate::sexp::globals::R_NaString() {
-                continue;
-            }
-            let cs = CHAR(s);
-            if cs.is_null() {
-                continue;
-            }
-            let current = std::ffi::CStr::from_ptr(cs);
-            if current.to_bytes() == name.as_bytes() {
-                return Some(VECTOR_ELT(obj, i as R_xlen_t));
+            if let Ok(Some(current)) = names_owned.try_string_value_elt(i as R_xlen_t)
+                && current.as_bytes() == name.as_bytes()
+            {
+                return obj_owned
+                    .try_vector_elt(i as R_xlen_t)
+                    .map(|elt| elt.as_raw())
+                    .ok();
             }
         }
         None
@@ -1038,19 +1042,12 @@ pub(crate) fn name_of(name: SEXP) -> Option<String> {
                     .into_owned(),
             );
         }
-        if TYPEOF(name) == SEXPTYPE::STRSXP
-            && LENGTH(name) == 1
-            && STRING_ELT(name, 0) != crate::sexp::globals::R_NaString()
-        {
-            let chars = crate::sexp::accessors::translateChar(STRING_ELT(name, 0));
-            if chars.is_null() {
-                return Some(String::new());
+        if TYPEOF(name) == SEXPTYPE::STRSXP && LENGTH(name) == 1 {
+            if let Ok(Some(text)) =
+                owner_sexp(active_owner(), name).try_string_value_elt(0)
+            {
+                return Some(text);
             }
-            return Some(
-                std::ffi::CStr::from_ptr(chars)
-                    .to_string_lossy()
-                    .into_owned(),
-            );
         }
         None
     }
@@ -1068,14 +1065,10 @@ pub(crate) fn first_class_display(obj: SEXP) -> String {
             && TYPEOF(klass) == SEXPTYPE::STRSXP
             && LENGTH(klass) > 0
         {
-            let cs = STRING_ELT(klass, 0);
-            if !cs.is_null() {
-                let chars = crate::sexp::accessors::translateChar(cs);
-                if !chars.is_null() {
-                    return std::ffi::CStr::from_ptr(chars)
-                        .to_string_lossy()
-                        .into_owned();
-                }
+            if let Ok(Some(text)) =
+                owner_sexp(active_owner(), klass).try_string_value_elt(0)
+            {
+                return text;
             }
             return String::new();
         }
@@ -1112,18 +1105,11 @@ fn raise_slot_miss(obj: SEXP, name: &str) -> ! {
             && TYPEOF(class_string) == SEXPTYPE::STRSXP
             && LENGTH(class_string) > 0;
         let msg = if has_class {
-            let cs = STRING_ELT(class_string, 0);
-            let class_str = if cs.is_null() {
-                String::new()
-            } else {
-                let chars = crate::sexp::accessors::translateChar(cs);
-                if chars.is_null() {
-                    String::new()
-                } else {
-                    std::ffi::CStr::from_ptr(chars)
-                        .to_string_lossy()
-                        .into_owned()
-                }
+            let class_str = match owner_sexp(active_owner(), class_string)
+                .try_string_value_elt(0)
+            {
+                Ok(Some(text)) => text,
+                _ => String::new(),
             };
             format!(
                 "no slot of name \"{}\" for this object of class \"{}\"",
@@ -1179,19 +1165,12 @@ pub fn R_do_slot(obj: SEXP, name: SEXP) -> SEXP {
                     .to_string_lossy()
                     .into_owned()
             }
-        } else if !name.is_null()
-            && TYPEOF(name) == SEXPTYPE::STRSXP
-            && LENGTH(name) == 1
-            && STRING_ELT(name, 0) != crate::sexp::globals::R_NaString()
-        {
-            let chars = crate::sexp::accessors::translateChar(STRING_ELT(name, 0));
-            if chars.is_null() {
-                String::new()
-            } else {
-                std::ffi::CStr::from_ptr(chars)
-                    .to_string_lossy()
-                    .into_owned()
-            }
+        } else if !name.is_null() && TYPEOF(name) == SEXPTYPE::STRSXP && LENGTH(name) == 1 {
+            owner_sexp(active_owner(), name)
+                .try_string_value_elt(0)
+                .ok()
+                .flatten()
+                .unwrap_or_default()
         } else {
             let msg = "invalid type or length for slot name".to_string();
             std::panic::panic_any(RError { message: msg });
@@ -1248,7 +1227,12 @@ pub fn R_has_slot(obj: SEXP, name: SEXP) -> SEXP {
         let name_sym = if !name.is_null() && TYPEOF(name) == SEXPTYPE::SYMSXP {
             name
         } else if !name.is_null() && TYPEOF(name) == SEXPTYPE::STRSXP && LENGTH(name) == 1 {
-            let chars = STRING_ELT(name, 0);
+            let chars = owner_sexp(active_owner(), name)
+                .try_string_elt(0)
+                .map(|elt| elt.as_raw())
+                .unwrap_or_else(|error| {
+                    crate::sexp::context::r_error(error.to_string())
+                });
             if chars.is_null() {
                 std::panic::panic_any(RError {
                     message: "invalid type or length for slot name".to_string(),
@@ -1287,7 +1271,12 @@ pub fn R_do_slot_assign(obj: SEXP, name: SEXP, value: SEXP) -> SEXP {
         let name_sym = if !name.is_null() && TYPEOF(name) == SEXPTYPE::SYMSXP {
             name
         } else if !name.is_null() && TYPEOF(name) == SEXPTYPE::STRSXP && LENGTH(name) == 1 {
-            let chars = STRING_ELT(name, 0);
+            let chars = owner_sexp(active_owner(), name)
+                .try_string_elt(0)
+                .map(|elt| elt.as_raw())
+                .unwrap_or_else(|error| {
+                    crate::sexp::context::r_error(error.to_string())
+                });
             if chars.is_null() {
                 std::panic::panic_any(RError {
                     message: "invalid type or length for slot name".to_string(),
@@ -1433,6 +1422,15 @@ pub fn do_representation(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         let rp = protect(result);
         let names = Rf_allocVector3(SEXPTYPE::STRSXP, count);
         let np = protect(names);
+        let owner = active_owner();
+        let mut result_mut = owner
+            .sexp(result)
+            .and_then(SexpMut::try_from_checked)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        let mut names_mut = owner
+            .sexp(names)
+            .and_then(SexpMut::try_from_checked)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
         let mut idx: R_xlen_t = 0;
         current = args;
         while !current.is_null() && current != R_NilValue() {
@@ -1451,11 +1449,16 @@ pub fn do_representation(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
             } else {
                 format!("slot{}", idx + 1)
             };
-            crate::sexp::accessors::SET_VECTOR_ELT(result, idx, arg);
+            let arg_owned = owner
+                .sexp(arg)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            result_mut
+                .try_set_vector_elt(idx, arg_owned)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
             let cstr = CString::new(slot_name.as_str()).unwrap_or_default();
             let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
-            if !charsxp.is_null() {
-                crate::sexp::accessors::SET_STRING_ELT(names, idx as R_xlen_t, charsxp);
+            if let Ok(charsxp) = owner.sexp(charsxp) {
+                let _ = names_mut.try_set_string_elt(idx as R_xlen_t, charsxp);
             }
             idx += 1;
             current = CDR(current);
@@ -1626,7 +1629,13 @@ fn s4_method_exists(args: SEXP, rho: SEXP, inherit: bool) -> SEXP {
         } else if !inherit && TYPEOF(f) == SEXPTYPE::SYMSXP {
             crate::sexp::envir::R_findVar(f, env)
         } else if TYPEOF(f) == SEXPTYPE::STRSXP && LENGTH(f) == 1 {
-            crate::sexp::envir::R_findVar(Rf_install(CHAR(STRING_ELT(f, 0))), env)
+            let chars = owner_sexp(active_owner(), f)
+                .try_string_elt(0)
+                .map(|elt| elt.as_raw())
+                .unwrap_or_else(|error| {
+                    crate::sexp::context::r_error(error.to_string())
+                });
+            crate::sexp::envir::R_findVar(Rf_install(CHAR(chars)), env)
         } else {
             fail("invalid generic function specification")
         };
@@ -1665,10 +1674,19 @@ fn s4_method_exists(args: SEXP, rho: SEXP, inherit: bool) -> SEXP {
             if TYPEOF(names) == SEXPTYPE::STRSXP && LENGTH(names) == targets.len() as i32 {
                 let mut reordered = vec!["ANY".to_string(); n];
                 let mut seen = vec![false; n];
+                let sigargs_owned = owner_sexp(active_owner(), sigargs);
                 for (i, value) in targets.into_iter().enumerate() {
                     let name = elt_to_string(names, i as R_xlen_t);
                     let index = (0..n)
-                        .find(|j| elt_to_string(VECTOR_ELT(sigargs, *j as R_xlen_t), 0) == name)
+                        .find(|j| {
+                            let elt = sigargs_owned
+                                .try_vector_elt(*j as R_xlen_t)
+                                .map(|elt| elt.as_raw())
+                                .unwrap_or_else(|error| {
+                                    crate::sexp::context::r_error(error.to_string())
+                                });
+                            elt_to_string(elt, 0) == name
+                        })
                         .unwrap_or_else(|| {
                             fail("named signature does not match generic arguments")
                         });
@@ -1710,7 +1728,13 @@ pub fn do_selectMethod(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         } else if TYPEOF(f) == SEXPTYPE::CLOSXP {
             f
         } else if TYPEOF(f) == SEXPTYPE::STRSXP && LENGTH(f) == 1 {
-            crate::sexp::envir::findFun(Rf_install(CHAR(STRING_ELT(f, 0))), rho)
+            let chars = owner_sexp(active_owner(), f)
+                .try_string_elt(0)
+                .map(|elt| elt.as_raw())
+                .unwrap_or_else(|error| {
+                    crate::sexp::context::r_error(error.to_string())
+                });
+            crate::sexp::envir::findFun(Rf_install(CHAR(chars)), rho)
         } else {
             fail("invalid generic function specification")
         };
@@ -1742,8 +1766,13 @@ pub fn do_selectMethod(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             {
                 fail("invalid useInherited argument")
             }
+            let inherited_owned = owner_sexp(active_owner(), inherited);
             for (i, value) in inherit.iter_mut().enumerate() {
-                let logical = LOGICAL_ELT(inherited, (i % LENGTH(inherited) as usize) as i32);
+                let logical = inherited_owned
+                    .try_logical_elt((i % LENGTH(inherited) as usize) as R_xlen_t)
+                    .unwrap_or_else(|error| {
+                        crate::sexp::context::r_error(error.to_string())
+                    });
                 if logical == i32::MIN {
                     fail("invalid useInherited argument")
                 }
