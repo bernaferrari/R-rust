@@ -48,6 +48,17 @@ pub(crate) use task_callback_registration::install as install_task_callback_symb
 // Global symbols (initialized lazily)
 // ---------------------------------------------------------------------------
 
+
+#[inline]
+fn with_eval_state<F, R>(f: F) -> R
+where
+    F: FnOnce(&mut crate::sexp::instance::EvalControlState) -> R,
+{
+    // SAFETY: `with_required_current_instance` lends the live instance for
+    // the duration of the closure; no other borrow escapes.
+    with_required_current_instance(|inst| unsafe { f(&mut (*inst).eval_state) })
+}
+
 /// Get the .Last.value symbol.
 pub fn R_LastvalueSymbol() -> SEXP {
     unsafe { Rf_install(c".Last.value".as_ptr()) }
@@ -76,43 +87,43 @@ pub fn R_SetVisible(v: c_int) {
 
 /// Get R_Interactive flag.
 pub fn R_Interactive() -> c_int {
-    with_required_current_instance(|inst| unsafe { (*inst).eval_state.interactive })
+    with_eval_state(|state| state.interactive)
 }
 
 /// Set R_Interactive flag.
 pub fn R_SetInteractive(v: c_int) {
-    with_required_current_instance(|inst| unsafe { (*inst).eval_state.interactive = v });
+    with_eval_state(|state| state.interactive = v);
 }
 
 /// Get R_Quiet flag.
 pub fn R_Quiet() -> c_int {
-    with_required_current_instance(|inst| unsafe { (*inst).eval_state.quiet })
+    with_eval_state(|state| state.quiet)
 }
 
 /// Set R_Quiet flag.
 pub fn R_SetQuiet(v: c_int) {
-    with_required_current_instance(|inst| unsafe { (*inst).eval_state.quiet = v });
+    with_eval_state(|state| state.quiet = v);
 }
 
 /// Get R_NoEcho flag.
 pub fn R_NoEcho() -> c_int {
-    with_required_current_instance(|inst| unsafe { (*inst).eval_state.no_echo })
+    with_eval_state(|state| state.no_echo)
 }
 
 /// Get R_Verbose flag.
 pub fn R_Verbose() -> c_int {
-    with_required_current_instance(|inst| unsafe { (*inst).eval_state.verbose })
+    with_eval_state(|state| state.verbose)
 }
 
 // ---------------------------------------------------------------------------
 /// Get evaluation depth.
 pub fn R_GetEvalDepth() -> c_int {
-    with_required_current_instance(|inst| unsafe { (*inst).eval_state.eval_depth })
+    with_eval_state(|state| state.eval_depth)
 }
 
 /// Set evaluation depth.
 pub fn R_SetEvalDepth(v: c_int) {
-    with_required_current_instance(|inst| unsafe { (*inst).eval_state.eval_depth = v });
+    with_eval_state(|state| state.eval_depth = v);
 }
 
 // ---------------------------------------------------------------------------
@@ -123,18 +134,18 @@ pub unsafe fn R_PPStackTop() -> c_int {
 
 /// Set protection stack top.
 pub fn R_SetPPStackTop(v: c_int) {
-    with_required_current_instance(|inst| unsafe { (*inst).eval_state.pp_stack_top = v });
+    with_eval_state(|state| state.pp_stack_top = v);
 }
 
 // ---------------------------------------------------------------------------
 /// Get warnings collection flag.
 pub fn R_GetCollectWarnings() -> c_int {
-    with_required_current_instance(|inst| unsafe { (*inst).eval_state.collect_warnings })
+    with_eval_state(|state| state.collect_warnings)
 }
 
 /// Set warnings collection flag.
 pub fn R_SetCollectWarnings(v: c_int) {
-    with_required_current_instance(|inst| unsafe { (*inst).eval_state.collect_warnings = v });
+    with_eval_state(|state| state.collect_warnings = v);
 }
 
 // ---------------------------------------------------------------------------
