@@ -9,27 +9,29 @@ use std::os::raw::{c_char, c_double, c_int};
 use crate::main::memory_main::{R_ExternalPtrAddr, R_MakeExternalPtr};
 use crate::mainutils::engine::{GEStrHeight, GEStrWidth, fromDeviceHeight, fromDeviceWidth};
 use crate::mainutils::errors::Rf_error;
-use crate::sexp::accessors::{
-    CHAR, INTEGER, LENGTH, LOGICAL, REAL, SET_VECTOR_ELT, STRING_ELT, TYPEOF, VECTOR_ELT, XLENGTH,
-};
-use crate::sexp::constructors::{Rf_allocVector, Rf_mkString};
+use crate::sexp::accessors::{LENGTH, TYPEOF, XLENGTH};
 use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
-use crate::sexp::protect::protect;
 
 use super::matrix::{identity, location, multiply, rotation, trans, translation};
 use super::types::*;
+use super::{
+    alloc_vector, char_ptr, get_attrib, integer_elt, protect, real_elt, set_vector_elt,
+    string_elt, string_value_elt, vector_elt,
+};
 
 /* ==================== GE expression metric stubs ==================== */
 
-unsafe fn GEExpressionWidth(_expr: SEXP, _gc: pGEcontext, _dd: pGEDevDesc) -> c_double {
+fn GEExpressionWidth(_expr: SEXP, _gc: pGEcontext, _dd: pGEDevDesc) -> c_double {
+    // SAFETY: static NUL-terminated literal.
     unsafe {
         Rf_error(b"grid expression widths are not supported\0".as_ptr() as *const c_char);
     }
     unreachable!()
 }
 
-unsafe fn GEExpressionHeight(_expr: SEXP, _gc: pGEcontext, _dd: pGEDevDesc) -> c_double {
+fn GEExpressionHeight(_expr: SEXP, _gc: pGEcontext, _dd: pGEDevDesc) -> c_double {
+    // SAFETY: static NUL-terminated literal.
     unsafe {
         Rf_error(b"grid expression heights are not supported\0".as_ptr() as *const c_char);
     }
@@ -64,22 +66,22 @@ fn fmin2(x: f64, y: f64) -> f64 {
 
 /// Get the list element named str, or return R_NilValue.
 /// Copied from the Writing R Extensions manual (which copied it from nls).
-pub unsafe fn getListElement(list: SEXP, str: *mut c_char) -> SEXP {
+pub fn getListElement(list: SEXP, str: *const c_char) -> SEXP {
     let mut elmt: SEXP = R_NilValue();
     if str.is_null() {
         return elmt;
     }
-    let names = unsafe { crate::attrib_core::getAttrib(list, crate::attrib_core::R_NamesSymbol()) };
+    let names = get_attrib(list, unsafe { crate::attrib_core::R_NamesSymbol() });
     if names.is_null() {
         return elmt;
     }
     let len = LENGTH(list) as i32;
+    // SAFETY: `str` is a borrowed NUL-terminated name supplied by the caller.
     let target_str = unsafe { CStr::from_ptr(str) }.to_str().unwrap_or("");
     for i in 0..len {
-        let name_cstr = unsafe { CHAR(STRING_ELT(names, i as R_xlen_t)) };
-        let name_str = unsafe { CStr::from_ptr(name_cstr) }.to_str().unwrap_or("");
+        let name_str = string_value_elt(names, i as R_xlen_t).unwrap_or_default();
         if name_str == target_str {
-            elmt = unsafe { VECTOR_ELT(list, i as R_xlen_t) };
+            elmt = vector_elt(list, i as R_xlen_t);
             break;
         }
     }
@@ -87,23 +89,21 @@ pub unsafe fn getListElement(list: SEXP, str: *mut c_char) -> SEXP {
 }
 
 /// Set the list element named str to value.
-pub unsafe fn setListElement(list: SEXP, str: *mut c_char, value: SEXP) {
+pub fn setListElement(list: SEXP, str: *const c_char, value: SEXP) {
     if str.is_null() {
         return;
     }
-    let names = unsafe { crate::attrib_core::getAttrib(list, crate::attrib_core::R_NamesSymbol()) };
+    let names = get_attrib(list, unsafe { crate::attrib_core::R_NamesSymbol() });
     if names.is_null() {
         return;
     }
     let len = LENGTH(list) as i32;
+    // SAFETY: `str` is a borrowed NUL-terminated name supplied by the caller.
     let target_str = unsafe { CStr::from_ptr(str) }.to_str().unwrap_or("");
     for i in 0..len {
-        let name_cstr = unsafe { CHAR(STRING_ELT(names, i as R_xlen_t)) };
-        let name_str = unsafe { CStr::from_ptr(name_cstr) }.to_str().unwrap_or("");
+        let name_str = string_value_elt(names, i as R_xlen_t).unwrap_or_default();
         if name_str == target_str {
-            unsafe {
-                SET_VECTOR_ELT(list, i as R_xlen_t, value);
-            }
+            set_vector_elt(list, i as R_xlen_t, value);
             break;
         }
     }
@@ -114,16 +114,16 @@ pub unsafe fn setListElement(list: SEXP, str: *mut c_char, value: SEXP) {
 /// Extract a numeric value from either a REALSXP or INTSXP.
 /// Returns NA_REAL if index is negative or out of bounds.
 #[inline]
-pub unsafe fn numeric(x: SEXP, index: c_int) -> c_double {
+pub fn numeric(x: SEXP, index: c_int) -> c_double {
     use crate::sexp::ffi::NA_REAL;
     if index < 0 {
         return NA_REAL;
     }
     let idx = index as R_xlen_t;
     if TYPEOF(x) == SEXPTYPE::REALSXP && XLENGTH(x) > idx {
-        return unsafe { *REAL(x).add(index as usize) };
+        return real_elt(x, idx);
     } else if TYPEOF(x) == SEXPTYPE::INTSXP && XLENGTH(x) > idx {
-        return unsafe { *INTEGER(x).add(index as usize) as c_double };
+        return integer_elt(x, idx) as c_double;
     }
     NA_REAL
 }
@@ -230,7 +230,7 @@ pub fn intersect(r1: LRect, r2: LRect) -> c_int {
 
 /// Calculate the bounding rectangle for a string.
 /// x and y are assumed to be in INCHES.
-pub unsafe fn textRect(
+pub fn textRect(
     x: c_double,
     y: c_double,
     text: SEXP,
@@ -240,7 +240,7 @@ pub unsafe fn textRect(
     yadj: c_double,
     rot: c_double,
     dd: pGEDevDesc,
-    r: *mut LRect,
+    r: &mut LRect,
 ) {
     use crate::sexp::ffi::NA_REAL;
 
@@ -257,29 +257,38 @@ pub unsafe fn textRect(
     let mut thisJustification: LTransform = [[0.0; 3]; 3];
     let mut tempTransform: LTransform = [[0.0; 3]; 3];
     let mut transform: LTransform = [[0.0; 3]; 3];
-    unsafe {
+    {
         let mut w: f64;
         let mut h: f64;
 
         let text_len = XLENGTH(text) as i32;
         let idx = ((i % text_len) + text_len) % text_len;
         if TYPEOF(text) == SEXPTYPE::EXPRSXP {
-            let expr = VECTOR_ELT(text, idx as R_xlen_t);
-            w = fromDeviceWidth(GEExpressionWidth(expr, gc, dd), 1, dd as *mut c_void);
-            h = fromDeviceHeight(GEExpressionHeight(expr, gc, dd), 1, dd as *mut c_void);
+            let expr = vector_elt(text, idx as R_xlen_t);
+            // SAFETY: `gc`/`dd` are engine-owned device pointers lent by the
+            // grid entry point.
+            unsafe {
+                w = fromDeviceWidth(GEExpressionWidth(expr, gc, dd), 1, dd as *mut c_void);
+                h = fromDeviceHeight(GEExpressionHeight(expr, gc, dd), 1, dd as *mut c_void);
+            }
         } else {
-            let string = CHAR(STRING_ELT(text, idx as R_xlen_t));
+            let string = char_ptr(string_elt(text, idx as R_xlen_t));
             let enc = CE_SYMBOL;
-            w = fromDeviceWidth(
-                GEStrWidth(string, enc, gc as *const c_void, dd as *mut c_void),
-                1,
-                dd as *mut c_void,
-            );
-            h = fromDeviceHeight(
-                GEStrHeight(string, enc, gc as *const c_void, dd as *mut c_void),
-                1,
-                dd as *mut c_void,
-            );
+            // SAFETY: `string` points into a live CHARSXP just validated by
+            // `string_elt`; `gc`/`dd` are engine-owned device pointers lent by
+            // the grid entry point.
+            unsafe {
+                w = fromDeviceWidth(
+                    GEStrWidth(string, enc, gc as *const c_void, dd as *mut c_void),
+                    1,
+                    dd as *mut c_void,
+                );
+                h = fromDeviceHeight(
+                    GEStrHeight(string, enc, gc as *const c_void, dd as *mut c_void),
+                    1,
+                    dd as *mut c_void,
+                );
+            }
         }
 
         if !w.is_finite() || !h.is_finite() {
@@ -290,7 +299,10 @@ pub unsafe fn textRect(
                 h = 0.0;
             }
             let msg = b"Unable to calculate text width/height (using zero)\0";
-            crate::main::errors::Rf_warning1(msg.as_ptr() as *const c_char);
+            // SAFETY: static NUL-terminated literal.
+            unsafe {
+                crate::main::errors::Rf_warning1(msg.as_ptr() as *const c_char);
+            }
         }
 
         if w >= 0.0 {
@@ -335,7 +347,7 @@ pub unsafe fn textRect(
         trans(&tl, &transform, &mut ttl);
 
         rect(
-            tbl[0], tbr[0], ttr[0], ttl[0], tbl[1], tbr[1], ttr[1], ttl[1], &mut *r,
+            tbl[0], tbr[0], ttr[0], ttl[0], tbl[1], tbr[1], ttr[1], ttl[1], r,
         );
     }
 }
@@ -344,20 +356,22 @@ pub unsafe fn textRect(
 
 /// Create a persistent external pointer wrapping an SEXP.
 /// The SEXP is stored in a VECSXP of length one, then wrapped in an external pointer.
-pub unsafe fn L_CreateSEXPPtr(s: SEXP) -> SEXP {
-    let data = unsafe { Rf_allocVector(SEXPTYPE::VECSXP, 1) };
-    let _guard = unsafe { protect(data) };
-    unsafe {
-        SET_VECTOR_ELT(data, 0, s);
-        R_MakeExternalPtr(data as *mut std::ffi::c_void, R_NilValue(), data)
-    }
+pub fn L_CreateSEXPPtr(s: SEXP) -> SEXP {
+    let data = alloc_vector(SEXPTYPE::VECSXP, 1);
+    let _guard = protect(data);
+    set_vector_elt(data, 0, s);
+    // SAFETY: `data` is a live, protected VECSXP owned by this session; it
+    // outlives the external pointer by virtue of the `prot` field.
+    unsafe { R_MakeExternalPtr(data as *mut std::ffi::c_void, R_NilValue(), data) }
 }
 
 /// Get the SEXP stored in an external pointer created by L_CreateSEXPPtr.
-pub unsafe fn L_GetSEXPPtr(sp: SEXP) -> SEXP {
+pub fn L_GetSEXPPtr(sp: SEXP) -> SEXP {
+    // SAFETY: `sp` is a live EXTPTRSXP created by `L_CreateSEXPPtr`.
     let data = unsafe { R_ExternalPtrAddr(sp) as SEXP };
     if data.is_null() {
         let msg = b"grid grob object is empty\0";
+        // SAFETY: static NUL-terminated literals.
         unsafe {
             crate::main::errors::Rf_error1(
                 b"%s\0".as_ptr() as *const c_char,
@@ -366,14 +380,16 @@ pub unsafe fn L_GetSEXPPtr(sp: SEXP) -> SEXP {
         }
         unreachable!()
     }
-    unsafe { VECTOR_ELT(data, 0) }
+    vector_elt(data, 0)
 }
 
 /// Set the SEXP stored in an external pointer created by L_CreateSEXPPtr.
-pub unsafe fn L_SetSEXPPtr(sp: SEXP, s: SEXP) -> SEXP {
+pub fn L_SetSEXPPtr(sp: SEXP, s: SEXP) -> SEXP {
+    // SAFETY: `sp` is a live EXTPTRSXP created by `L_CreateSEXPPtr`.
     let data = unsafe { R_ExternalPtrAddr(sp) as SEXP };
     if data.is_null() {
         let msg = b"grid grob object is empty\0";
+        // SAFETY: static NUL-terminated literals.
         unsafe {
             crate::main::errors::Rf_error1(
                 b"%s\0".as_ptr() as *const c_char,
@@ -382,8 +398,6 @@ pub unsafe fn L_SetSEXPPtr(sp: SEXP, s: SEXP) -> SEXP {
         }
         unreachable!()
     }
-    unsafe {
-        SET_VECTOR_ELT(data, 0, s);
-        R_NilValue()
-    }
+    set_vector_elt(data, 0, s);
+    R_NilValue()
 }

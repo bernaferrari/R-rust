@@ -62,8 +62,8 @@ impl Drop for GridPathGuard {
 }
 
 /// getListElement — get a named element from a list
-unsafe fn getListElement(list: SEXP, str: *const std::os::raw::c_char) -> SEXP {
-    unsafe { super::util::getListElement(list, str as *mut std::os::raw::c_char) }
+fn getListElement(list: SEXP, str: *const std::os::raw::c_char) -> SEXP {
+    super::util::getListElement(list, str)
 }
 
 /// Rf_inherits — check if object inherits from a class
@@ -147,12 +147,10 @@ pub unsafe fn L_fill(path: SEXP, rule: SEXP) -> SEXP {
             )
         } != 0
     {
-        let pattern_ref = unsafe {
-            getListElement(
-                resolved_fill,
-                b"index\0".as_ptr() as *const std::os::raw::c_char,
-            )
-        };
+        let pattern_ref = getListElement(
+            resolved_fill,
+            b"index\0".as_ptr() as *const std::os::raw::c_char,
+        );
         unsafe {
             rmath_grid_release_pattern(
                 dd as crate::mainutils::graphics_ffi::pGEDevDesc,
@@ -191,12 +189,10 @@ pub unsafe fn L_fillStroke(path: SEXP, rule: SEXP) -> SEXP {
             )
         } != 0
     {
-        let pattern_ref = unsafe {
-            getListElement(
-                resolved_fill,
-                b"index\0".as_ptr() as *const std::os::raw::c_char,
-            )
-        };
+        let pattern_ref = getListElement(
+            resolved_fill,
+            b"index\0".as_ptr() as *const std::os::raw::c_char,
+        );
         unsafe {
             rmath_grid_release_pattern(
                 dd as crate::mainutils::graphics_ffi::pGEDevDesc,
