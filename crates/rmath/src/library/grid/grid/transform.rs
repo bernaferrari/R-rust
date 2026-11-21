@@ -229,7 +229,7 @@ pub unsafe fn L_devLoc(x: SEXP, y: SEXP, device: SEXP) -> SEXP {
         let _currentgp_guard = protect(currentgp);
         set_gp_fill_string(currentgp, c"black".as_ptr());
 
-        let (vpWidthCM, vpHeightCM, mut transform, _) = getViewportTransform(currentvp, dd);
+        let (vpWidthCM, vpHeightCM, transform, _) = getViewportTransform(currentvp, dd);
         let mut vpc = LViewportContext::default();
         getViewportContext(currentvp, &mut vpc);
 
@@ -248,21 +248,16 @@ pub unsafe fn L_devLoc(x: SEXP, y: SEXP, device: SEXP) -> SEXP {
             TYPEOF(device) == SEXPTYPE::LGLSXP && LENGTH(device) > 0 && *LOGICAL(device) != 0;
 
         for i in 0..maxn {
-            let mut xx: c_double = NA_REAL;
-            let mut yy: c_double = NA_REAL;
-            transformLocn(
-                x,
+            let mut xx: c_double;
+            let mut yy: c_double;
+            (xx, yy) = transformLocn(x,
                 y,
                 i,
                 vpc,
                 gc,
                 vpWidthCM,
                 vpHeightCM,
-                dd,
-                &mut transform,
-                &mut xx,
-                &mut yy,
-            );
+                dd, &transform);
             if as_device {
                 xx = toDeviceX(xx, GE_INCHES, dd);
                 yy = toDeviceY(yy, GE_INCHES, dd);
@@ -308,10 +303,9 @@ pub unsafe fn L_devDim(x: SEXP, y: SEXP, device: SEXP) -> SEXP {
             TYPEOF(device) == SEXPTYPE::LGLSXP && LENGTH(device) > 0 && *LOGICAL(device) != 0;
 
         for i in 0..maxn {
-            let mut xx: c_double = NA_REAL;
-            let mut yy: c_double = NA_REAL;
-            transformDimn(
-                x,
+            let mut xx: c_double;
+            let mut yy: c_double;
+            (xx, yy) = transformDimn(x,
                 y,
                 i,
                 vpc,
@@ -319,10 +313,7 @@ pub unsafe fn L_devDim(x: SEXP, y: SEXP, device: SEXP) -> SEXP {
                 vpWidthCM,
                 vpHeightCM,
                 dd,
-                rotationAngle,
-                &mut xx,
-                &mut yy,
-            );
+                rotationAngle);
             if as_device {
                 xx = toDeviceWidth(xx, GE_INCHES, dd);
                 yy = toDeviceHeight(yy, GE_INCHES, dd);

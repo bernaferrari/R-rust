@@ -62,10 +62,10 @@ pub unsafe fn L_currentViewport() -> SEXP {
 
 pub unsafe fn doSetViewport(vp: SEXP, topLevelVP: c_int, pushing: c_int, dd: pGEDevDesc) -> SEXP {
     unsafe {
-        let mut xx1: c_double = 0.0;
-        let mut yy1: c_double = 0.0;
-        let mut xx2: c_double = 0.0;
-        let mut yy2: c_double = 0.0;
+        let mut xx1: c_double;
+        let mut yy1: c_double;
+        let mut xx2: c_double;
+        let mut yy2: c_double;
 
         let (devWidthCM, devHeightCM) = getDeviceSize(dd);
 
@@ -170,35 +170,25 @@ pub unsafe fn doSetViewport(vp: SEXP, topLevelVP: c_int, pushing: c_int, dd: pGE
                     let _y2_guard = protect(y2);
                     let mut vpc = LViewportContext::default();
                     getViewportContext(vp, &mut vpc);
-                    let mut gc_buf: [u8; 256] = [0; 256];
+                    let gc_buf: [u8; 256] = [0; 256];
                     let gc = gc_buf.as_ptr() as pGEcontext;
                     gcontextFromViewport(vp, gc, dd);
-                    transformLocn(
-                        x1,
+                    (xx1, yy1) = transformLocn(x1,
                         y1,
                         0,
                         vpc,
                         gc,
                         vpWidthCM,
                         vpHeightCM,
-                        dd,
-                        &mut transform,
-                        &mut xx1,
-                        &mut yy1,
-                    );
-                    transformLocn(
-                        x2,
+                        dd, &transform);
+                    (xx2, yy2) = transformLocn(x2,
                         y2,
                         0,
                         vpc,
                         gc,
                         vpWidthCM,
                         vpHeightCM,
-                        dd,
-                        &mut transform,
-                        &mut xx2,
-                        &mut yy2,
-                    );
+                        dd, &transform);
                     xx1 = toDeviceX(xx1, GE_INCHES, dd);
                     yy1 = toDeviceY(yy1, GE_INCHES, dd);
                     xx2 = toDeviceX(xx2, GE_INCHES, dd);

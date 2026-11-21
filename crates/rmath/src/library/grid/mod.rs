@@ -198,6 +198,15 @@ pub(crate) fn mk_string(text: &str) -> SEXP {
     unsafe { crate::sexp::constructors::Rf_mkString(text.as_ptr()) }
 }
 
+/// Allocate a CHARSXP from Rust text.
+#[inline]
+pub(crate) fn mk_char(text: &str) -> SEXP {
+    let text = std::ffi::CString::new(text)
+        .unwrap_or_else(|_| r_error("embedded NUL byte in grid string"));
+    // SAFETY: see `alloc_vector`; `text` is a live NUL-terminated buffer.
+    unsafe { crate::sexp::constructors::Rf_mkChar(text.as_ptr()) }
+}
+
 /// Intern a symbol from Rust text.
 #[inline]
 pub(crate) fn install(text: &str) -> SEXP {
@@ -215,6 +224,45 @@ pub(crate) fn protect(x: SEXP) -> crate::sexp::protect::ProtectGuard<'static> {
     let _ = checked(x);
     // SAFETY: `x` was just validated as a live registered node.
     unsafe { crate::sexp::protect::protect(x) }
+}
+
+// ---------------------------------------------------------------------------
+// Bridge calls whose raw-pointer contracts are discharged locally
+// ---------------------------------------------------------------------------
+
+/// `getAttrib` on a checked, live object and symbol.
+#[inline]
+pub(crate) fn get_attrib(x: SEXP, which: SEXP) -> SEXP {
+    let _ = checked(x);
+    let _ = checked(which);
+    // SAFETY: both operands were just validated as live registered objects.
+    unsafe { crate::attrib_core::getAttrib(x, which) }
+}
+
+/// `Rf_inherits` on a checked, live object.
+#[inline]
+pub(crate) fn inherits(x: SEXP, name: &std::ffi::CStr) -> bool {
+    let _ = checked(x);
+    // SAFETY: `x` was just validated as a live registered object.
+    let result = unsafe { crate::mainutils::objects::inherits2(x, name.as_ptr()) };
+    result != 0
+}
+
+/// `R_classgets` on checked, live objects.
+#[inline]
+pub(crate) fn class_gets(x: SEXP, class: SEXP) -> SEXP {
+    let _ = checked(x);
+    let _ = checked(class);
+    // SAFETY: both operands were just validated as live registered objects.
+    unsafe { crate::attrib_core::R_classgets(x, class) }
+}
+
+/// `Rf_duplicate` on a checked, live object.
+#[inline]
+pub(crate) fn duplicate(x: SEXP) -> SEXP {
+    let _ = checked(x);
+    // SAFETY: `x` was just validated as a live registered object.
+    unsafe { crate::main::duplicate::Rf_duplicate(x) }
 }
 
 unsafe extern "C-unwind" fn c_pretty2(scale: SEXP, n: SEXP) -> SEXP {

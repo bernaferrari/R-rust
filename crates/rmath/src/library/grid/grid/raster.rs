@@ -17,7 +17,7 @@ pub unsafe fn L_raster(
         let _currentgp_guard = protect(currentgp);
         set_gp_fill_string(currentgp, c"transparent".as_ptr());
 
-        let (vpWidthCM, vpHeightCM, mut transform, rotationAngle) =
+        let (vpWidthCM, vpHeightCM, transform, rotationAngle) =
             getViewportTransform(currentvp, dd);
         let mut vpc = LViewportContext::default();
         getViewportContext(currentvp, &mut vpc);
@@ -34,7 +34,7 @@ pub unsafe fn L_raster(
             Rf_error(c"Empty raster".as_ptr());
         }
 
-        let mut image_owned: Vec<c_uint> = Vec::new();
+        let mut image_owned: Vec<c_uint>;
         let image: *mut c_uint = if Rf_inherits(raster, c"nativeRaster".as_ptr()) != 0
             && TYPEOF(raster) == SEXPTYPE::INTSXP
         {
@@ -71,21 +71,16 @@ pub unsafe fn L_raster(
                 gc_cache,
             );
 
-            let mut xx: c_double = 0.0;
-            let mut yy: c_double = 0.0;
-            transformLocn(
-                x,
+            let mut xx: c_double;
+            let mut yy: c_double;
+            (xx, yy) = transformLocn(x,
                 y,
                 i as c_int,
                 vpc,
                 gc,
                 vpWidthCM,
                 vpHeightCM,
-                dd,
-                &mut transform,
-                &mut xx,
-                &mut yy,
-            );
+                dd, &transform);
             let mut ww = transformWidthtoINCHES(w, i as c_int, vpc, gc, vpWidthCM, vpHeightCM, dd);
             let mut hh = transformHeighttoINCHES(h, i as c_int, vpc, gc, vpWidthCM, vpHeightCM, dd);
             let hjust_i = if TYPEOF(hjust) == SEXPTYPE::REALSXP && LENGTH(hjust) > 0 {
@@ -132,10 +127,7 @@ pub unsafe fn L_raster(
                 let _xadj_guard = protect(xadjInches);
                 let yadjInches = unit(yadj, L_INCHES);
                 let _yadj_guard = protect(yadjInches);
-                let mut dw: c_double = 0.0;
-                let mut dh: c_double = 0.0;
-                transformDimn(
-                    xadjInches,
+                                                let (dw, dh) = transformDimn(xadjInches,
                     yadjInches,
                     0,
                     vpc,
@@ -143,10 +135,7 @@ pub unsafe fn L_raster(
                     vpWidthCM,
                     vpHeightCM,
                     dd,
-                    rotationAngle,
-                    &mut dw,
-                    &mut dh,
-                );
+                    rotationAngle);
                 let mut xbl = xx + dw;
                 let mut ybl = yy + dh;
                 xbl = toDeviceX(xbl, GE_INCHES, dd);

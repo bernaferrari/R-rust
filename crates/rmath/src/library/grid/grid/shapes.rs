@@ -1,6 +1,6 @@
 use super::*;
 
-pub(crate) unsafe fn getArrowN(
+pub(crate) fn getArrowN(
     x1: SEXP,
     x2: SEXP,
     xnm1: SEXP,
@@ -10,7 +10,7 @@ pub(crate) unsafe fn getArrowN(
     ynm1: SEXP,
     yn: SEXP,
 ) -> c_int {
-    unsafe {
+    {
         let mut maxn = 0;
         let ny1 = if isNull(y1) { 0 } else { unitLength(y1) };
         let nx2 = unitLength(x2);
@@ -53,7 +53,7 @@ pub unsafe fn L_arrows(
             set_gp_fill_string(currentgp, c"transparent".as_ptr());
         }
 
-        let (vpWidthCM, vpHeightCM, mut transform, _) = getViewportTransform(currentvp, dd);
+        let (vpWidthCM, vpHeightCM, transform, _) = getViewportTransform(currentvp, dd);
         let mut vpc = LViewportContext::default();
         getViewportContext(currentvp, &mut vpc);
 
@@ -99,35 +99,23 @@ pub unsafe fn L_arrows(
                         yy1 = *REAL(devloc).add(1);
                     }
                 } else {
-                    transformLocn(
-                        x1,
+                    (xx1, yy1) = transformLocn(x1,
                         y1,
                         i,
                         vpc,
                         gc,
                         vpWidthCM,
                         vpHeightCM,
-                        dd,
-                        &mut transform,
-                        &mut xx1,
-                        &mut yy1,
-                    );
+                        dd, &transform);
                 }
-                let mut xx2: c_double = NA_REAL;
-                let mut yy2: c_double = NA_REAL;
-                transformLocn(
-                    x2,
+                                                let (xx2, yy2) = transformLocn(x2,
                     y2,
                     i,
                     vpc,
                     gc,
                     vpWidthCM,
                     vpHeightCM,
-                    dd,
-                    &mut transform,
-                    &mut xx2,
-                    &mut yy2,
-                );
+                    dd, &transform);
 
                 let mut vertx = [0.0; 3];
                 let mut verty = [0.0; 3];
@@ -165,36 +153,24 @@ pub unsafe fn L_arrows(
                         yynm1 = *REAL(devloc).add(1);
                     }
                 } else {
-                    transformLocn(
-                        xnm1,
+                    (xxnm1, yynm1) = transformLocn(xnm1,
                         ynm1,
                         i,
                         vpc,
                         gc,
                         vpWidthCM,
                         vpHeightCM,
-                        dd,
-                        &mut transform,
-                        &mut xxnm1,
-                        &mut yynm1,
-                    );
+                        dd, &transform);
                 }
 
-                let mut xxn: c_double = NA_REAL;
-                let mut yyn: c_double = NA_REAL;
-                transformLocn(
-                    xn,
+                                                let (xxn, yyn) = transformLocn(xn,
                     yn,
                     i,
                     vpc,
                     gc,
                     vpWidthCM,
                     vpHeightCM,
-                    dd,
-                    &mut transform,
-                    &mut xxn,
-                    &mut yyn,
-                );
+                    dd, &transform);
 
                 let mut vertx = [0.0; 3];
                 let mut verty = [0.0; 3];
@@ -246,7 +222,7 @@ pub unsafe fn L_polygon(x: SEXP, y: SEXP, index: SEXP) -> SEXP {
             set_gp_fill_string(currentgp, c"black".as_ptr());
         }
 
-        let (vpWidthCM, vpHeightCM, mut transform, _) = getViewportTransform(currentvp, dd);
+        let (vpWidthCM, vpHeightCM, transform, _) = getViewportTransform(currentvp, dd);
         let mut vpc = LViewportContext::default();
         getViewportContext(currentvp, &mut vpc);
 
@@ -276,19 +252,14 @@ pub unsafe fn L_polygon(x: SEXP, y: SEXP, index: SEXP) -> SEXP {
             for j in 0..nx as usize {
                 let idx = *INTEGER(indices).add(j);
                 if idx > 0 {
-                    transformLocn(
-                        x,
+                    (xx[j], yy[j]) = transformLocn(x,
                         y,
                         idx - 1,
                         vpc,
                         gc,
                         vpWidthCM,
                         vpHeightCM,
-                        dd,
-                        &mut transform,
-                        &mut xx[j],
-                        &mut yy[j],
-                    );
+                        dd, &transform);
                     xx[j] = toDeviceX(xx[j], GE_INCHES, dd);
                     yy[j] = toDeviceY(yy[j], GE_INCHES, dd);
                 }
@@ -418,7 +389,7 @@ pub unsafe fn L_path(x: SEXP, y: SEXP, index: SEXP, rule: SEXP) -> SEXP {
             set_gp_fill_string(currentgp, c"black".as_ptr());
         }
 
-        let (vpWidthCM, vpHeightCM, mut transform, _) = getViewportTransform(currentvp, dd);
+        let (vpWidthCM, vpHeightCM, transform, _) = getViewportTransform(currentvp, dd);
         let mut vpc = LViewportContext::default();
         getViewportContext(currentvp, &mut vpc);
 
@@ -455,19 +426,14 @@ pub unsafe fn L_path(x: SEXP, y: SEXP, index: SEXP, rule: SEXP) -> SEXP {
             for i in 0..npoly as usize {
                 let indices = INTEGER(VECTOR_ELT(poly_ind, i as R_xlen_t));
                 for j in 0..nper[i] as usize {
-                    transformLocn(
-                        x,
+                    (xx[k], yy[k]) = transformLocn(x,
                         y,
                         *indices.add(j) - 1,
                         vpc,
                         gc,
                         vpWidthCM,
                         vpHeightCM,
-                        dd,
-                        &mut transform,
-                        &mut xx[k],
-                        &mut yy[k],
-                    );
+                        dd, &transform);
                     xx[k] = toDeviceX(xx[k], GE_INCHES, dd);
                     yy[k] = toDeviceY(yy[k], GE_INCHES, dd);
                     if !xx[k].is_finite() || !yy[k].is_finite() {
