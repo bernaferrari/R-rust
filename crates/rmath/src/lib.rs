@@ -35,7 +35,6 @@
 #![allow(clippy::ptr_cast_constness)]
 #![allow(clippy::ref_as_ptr)]
 #![allow(clippy::borrow_as_ptr)]
-#![allow(clippy::not_unsafe_ptr_arg_deref)]
 #![allow(clippy::ptr_eq)]
 // Math code style: single-char variables, precise constants, float comparisons
 #![allow(clippy::many_single_char_names)]
