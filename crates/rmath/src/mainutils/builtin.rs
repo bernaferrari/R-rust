@@ -576,7 +576,7 @@ pub unsafe fn do_newenv(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         } else {
             // SAFETY: creates an environment under the active runtime on a
             // live parent.
-            unsafe { crate::sexp::envir::Rf_createEnv(R_NilValue(), parent) }
+            crate::sexp::envir::Rf_createEnv(R_NilValue(), parent)
         }
     }
 }

@@ -576,7 +576,7 @@ pub fn do_mode(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if !x.is_null() && x != R_NilValue() && TYPEOF(x) == SEXPTYPE::LANGSXP {
             // SAFETY: `x` is a live LANGSXP SEXP rooted by the caller's
             // argument graph; the returned CHARSXP shares that root.
-            let chars = unsafe { crate::eval::attrib_core::language_implicit_class_chars(x) };
+            let chars = crate::eval::attrib_core::language_implicit_class_chars(x);
             let head = chars_text(chars).unwrap_or_default();
             let name = if head == "(" { "(" } else { "call" };
             let cstr = std::ffi::CString::new(name).unwrap_or_default();
@@ -2480,7 +2480,7 @@ fn function_as_list(fun: SEXP) -> SEXP {
         let formals = crate::sexp::accessors::FORMALS(fun);
         // SAFETY: `fun` is a live CLOSXP rooted by the caller's argument
         // graph; its BODY cell shares that root.
-        let body = unsafe { crate::eval::jit::R_BytecodeExpr(crate::sexp::accessors::BODY(fun)) };
+        let body = crate::eval::jit::R_BytecodeExpr(crate::sexp::accessors::BODY(fun));
         let n = pairlist_len(formals) as R_xlen_t;
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, n + 1);
         let _result = protect(result);

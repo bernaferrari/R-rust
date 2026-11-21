@@ -74,15 +74,15 @@ call_trampoline_raw!(c_call_dqagi, (args) => super::integrate::call_dqagi(args))
 call_trampoline_raw!(c_modelframe, (call, op, args, env) => super::filter::modelframe(call, op, args, env));
 call_trampoline_raw!(c_modelmatrix, (call, op, args, env) => super::filter::modelmatrix(call, op, args, env));
 call_trampoline_raw!(c_cdqrls, (x, y, tol, chk) => super::lm::Cdqrls(x, y, tol, chk));
-call_trampoline_raw!(c_compcases, (args) => super::complete_cases::compcases(args));
+call_trampoline!(c_compcases, (args) => super::complete_cases::compcases(args));
 call_trampoline_raw!(c_influence, (mqr, e, stol) => super::influence::influence(mqr, e, stol));
 call_trampoline_raw!(c_cov, (x, y, na_method, kendall) => super::correlation::cov(x, y, na_method, kendall));
 call_trampoline_raw!(c_cor, (x, y, na_method, kendall) => super::correlation::cor(x, y, na_method, kendall));
 call_trampoline_raw!(c_chisq_sim, (sr, sc, b, e) => super::chisqsim::chisq_sim(sr, sc, b, e));
 call_trampoline_raw!(c_nextn, (n, f) => super::fourier::nextn(n, f));
 call_trampoline_raw!(c_cdist, (x, method, attrs, p) => super::distance::Cdist(x, method, attrs, p));
-call_trampoline_raw!(c_do_d, (args) => super::deriv::do_d(args));
-call_trampoline_raw!(c_deriv, (args) => super::deriv::do_deriv(args));
+call_trampoline!(c_do_d, (args) => super::deriv::do_d(args));
+call_trampoline!(c_deriv, (args) => super::deriv::do_deriv(args));
 call_trampoline_raw!(c_fft, (z, inverse) => super::fourier::fft(z, inverse));
 call_trampoline_raw!(c_mvfft, (z, inverse) => super::fourier::mvfft(z, inverse));
 call_trampoline_raw!(c_approx_test, (x, y, method, f, na_rm) => super::approx::ApproxTest(x, y, method, f, na_rm));
@@ -265,7 +265,7 @@ call_trampoline_raw!(c_pp_sum, (u, l) => super::ppsum::pp_sum(u, l));
 
 call_trampoline_raw!(c_armatoma, (ar, ma, lag_max) => super::filter::ARMAtoMA(ar, ma, lag_max));
 
-call_trampoline_raw!(c_burg, (x, order) => super::burg::Burg(x, order));
+call_trampoline!(c_burg, (x, order) => super::burg::Burg(x, order));
 
 call_trampoline_raw!(c_loglin, (dtab, conf, table, start, nmar, eps, iter) => super::loglin::LogLin(dtab, conf, table, start, nmar, eps, iter));
 
