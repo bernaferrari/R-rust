@@ -1443,7 +1443,7 @@ mod tests {
                 na_width: 2,
                 na_width_noquote: 2,
             };
-            let old = unsafe { format_set_R_print(p) };
+            let old = format_set_R_print(p);
             RPrintGuard {
                 _session: session,
                 old,
@@ -1453,9 +1453,7 @@ mod tests {
 
     impl Drop for RPrintGuard {
         fn drop(&mut self) {
-            unsafe {
-                format_set_R_print(self.old);
-            }
+            format_set_R_print(self.old);
         }
     }
 

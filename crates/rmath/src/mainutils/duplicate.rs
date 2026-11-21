@@ -2312,7 +2312,7 @@ mod tests {
             (*owner).memory_state.gc_force_gap = 1;
             (*owner).memory_state.gc_force_wait = 1;
         });
-        let copy = factory.wrap(unsafe { duplicate(source.as_raw()) }).unwrap();
+        let copy = factory.wrap(duplicate(source.as_raw())).unwrap();
         assert!(seen.get() > 0);
         assert_eq!(
             factory.link(&copy.try_formals().unwrap()).unwrap(),

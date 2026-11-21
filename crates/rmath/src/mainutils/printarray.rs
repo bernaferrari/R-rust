@@ -1829,9 +1829,7 @@ mod tests {
 
     #[test]
     fn test_print_array_null() {
-        unsafe {
-            printArray(ptr::null_mut(), ptr::null_mut(), 0, 0, ptr::null_mut());
-        }
+        printArray(ptr::null_mut(), ptr::null_mut(), 0, 0, ptr::null_mut());
     }
 
     #[test]

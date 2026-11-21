@@ -1246,9 +1246,7 @@ mod tests {
 
     #[test]
     fn test_print_vector_null() {
-        unsafe {
-            printVector(ptr::null_mut(), 0, 0);
-        }
+        printVector(ptr::null_mut(), 0, 0);
     }
 
     #[test]
@@ -1414,9 +1412,7 @@ mod tests {
 
     #[test]
     fn test_print_named_vector_null() {
-        unsafe {
-            printNamedVector(ptr::null_mut(), ptr::null_mut(), 0, ptr::null());
-        }
+        printNamedVector(ptr::null_mut(), ptr::null_mut(), 0, ptr::null());
     }
 
     #[test]

@@ -1327,7 +1327,7 @@ pub(crate) fn native_convert(args: SEXP, vertical: bool) -> SEXP {
             }
             Ok(())
         };
-        let raw = unsafe { crate::mainutils::duplicate::Rf_duplicate(x.as_raw()) };
+        let raw = crate::mainutils::duplicate::Rf_duplicate(x.as_raw());
         check_state()?;
         let result = owner.sexp(raw)?;
         if result.typeof_() != SEXPTYPE::REALSXP || result.len() != length || x.len() != length {
