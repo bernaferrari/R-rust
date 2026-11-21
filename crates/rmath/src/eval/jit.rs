@@ -489,15 +489,13 @@ fn checkCompilerOptions(jitEnabled: c_int) {
 /// Negative and NA-coerced values are queries, matching GNU R's internal
 /// `do_enablejit`; nonnegative values are stored without clamping.
 pub unsafe fn compiler_enable_jit(level: SEXP) -> c_int {
-    unsafe {
-        let old = get_R_jit_enabled();
-        let new = crate::mainutils::coerce::asInteger(level);
-        if new >= 0 {
-            checkCompilerOptions(new);
-            set_R_jit_enabled(new);
-        }
-        old
+    let old = get_R_jit_enabled();
+    let new = crate::mainutils::coerce::asInteger(level);
+    if new >= 0 {
+        checkCompilerOptions(new);
+        set_R_jit_enabled(new);
     }
+    old
 }
 
 /// Initialize JIT from environment variables.
@@ -774,7 +772,7 @@ unsafe fn tailcall_promise_args<'s>(
                 .try_prcode()
                 .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
         }
-        if expression.as_raw() == unsafe { crate::sexp::symbol::R_DotsSymbol() } {
+        if expression.as_raw() == crate::sexp::symbol::R_DotsSymbol() {
             let dots = super::dispatch::argument_value(factory, unsafe {
                 crate::sexp::envir::R_findVarInFrame(rho.as_raw(), expression.as_raw())
             });

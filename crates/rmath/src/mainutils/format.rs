@@ -561,7 +561,7 @@ pub(crate) fn integer_field_width(n: R_xlen_t, mut elt: impl FnMut(R_xlen_t) -> 
     };
 
     if xmin < 0 {
-        let l = IndexWidth(-xmin)  + 1; // +1 for sign
+        let l = IndexWidth(-xmin) + 1; // +1 for sign
         if l > fieldwidth {
             fieldwidth = l;
         }
@@ -648,7 +648,7 @@ impl IntExtrema {
         };
         // `xmin` excludes NA_INTEGER, so `-xmin` fits in `c_int`.
         if self.any && self.xmin < 0 {
-            let l = IndexWidth(-self.xmin)  + 1;
+            let l = IndexWidth(-self.xmin) + 1;
             if l > fieldwidth {
                 fieldwidth = l;
             }
@@ -756,7 +756,7 @@ fn int_run_width(origin: i128, step: i128, n: R_xlen_t) -> c_int {
     if n <= 1_000_000 {
         return integer_field_width(n, |i| (origin + (i as i128) * step) as i32);
     }
-    let numeric = IndexWidth(c_int::MAX)  + 1;
+    let numeric = IndexWidth(c_int::MAX) + 1;
     current_R_print().na_width.max(numeric)
 }
 

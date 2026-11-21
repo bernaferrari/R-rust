@@ -124,7 +124,7 @@ pub unsafe fn do_compile(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
 }
 /// GNU `.Internal(bcVersion())` — current bytecode format, `R_bcVersion`.
 pub unsafe fn do_bcversion(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { crate::sexp::constructors::Rf_ScalarInteger(12) }
+    crate::sexp::constructors::Rf_ScalarInteger(12)
 }
 
 /// on every closure invocation.
@@ -224,23 +224,21 @@ pub(crate) unsafe fn namespace() -> SEXP {
 
 /// GNU `.Internal(growconst(constBuf))`: double a VECSXP constant pool.
 pub unsafe fn do_growconst(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let const_buf = CAR(args);
-        if TYPEOF(const_buf) != SEXPTYPE::VECSXP {
-            compiler_error("constant buffer must be a generic vector");
-        }
-        let n = crate::sexp::accessors::XLENGTH(const_buf);
-        let ans = crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::VECSXP, n.saturating_mul(2));
-        let _guard = protect(ans);
-        for i in 0..n {
-            crate::sexp::accessors::SET_VECTOR_ELT(
-                ans,
-                i,
-                crate::sexp::accessors::VECTOR_ELT(const_buf, i),
-            );
-        }
-        ans
+    let const_buf = CAR(args);
+    if TYPEOF(const_buf) != SEXPTYPE::VECSXP {
+        compiler_error("constant buffer must be a generic vector");
     }
+    let n = crate::sexp::accessors::XLENGTH(const_buf);
+    let ans = crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::VECSXP, n.saturating_mul(2));
+    let _guard = protect(ans);
+    for i in 0..n {
+        crate::sexp::accessors::SET_VECTOR_ELT(
+            ans,
+            i,
+            crate::sexp::accessors::VECTOR_ELT(const_buf, i),
+        );
+    }
+    ans
 }
 
 /// GNU `.Internal(putconst(constBuf, constCount, x))`.
@@ -269,27 +267,25 @@ pub unsafe fn do_putconst(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 
 /// GNU `.Internal(getconst(constBuf, n))`: the first `n` pool entries.
 pub unsafe fn do_getconst(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let const_buf = CAR(args);
-        if TYPEOF(const_buf) != SEXPTYPE::VECSXP {
-            compiler_error("constant buffer must be a generic vector");
-        }
-        let n = crate::main::coerce::asInteger(CAR(CDR(args)));
-        let len = crate::sexp::accessors::XLENGTH(const_buf);
-        if n < 0 || n as i64 > len {
-            compiler_error("bad constant count");
-        }
-        let ans = crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::VECSXP, n as i64);
-        let _guard = protect(ans);
-        for i in 0..n {
-            crate::sexp::accessors::SET_VECTOR_ELT(
-                ans,
-                i as i64,
-                crate::sexp::accessors::VECTOR_ELT(const_buf, i as i64),
-            );
-        }
-        ans
+    let const_buf = CAR(args);
+    if TYPEOF(const_buf) != SEXPTYPE::VECSXP {
+        compiler_error("constant buffer must be a generic vector");
     }
+    let n = crate::main::coerce::asInteger(CAR(CDR(args)));
+    let len = crate::sexp::accessors::XLENGTH(const_buf);
+    if n < 0 || n as i64 > len {
+        compiler_error("bad constant count");
+    }
+    let ans = crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::VECSXP, n as i64);
+    let _guard = protect(ans);
+    for i in 0..n {
+        crate::sexp::accessors::SET_VECTOR_ELT(
+            ans,
+            i as i64,
+            crate::sexp::accessors::VECTOR_ELT(const_buf, i as i64),
+        );
+    }
+    ans
 }
 
 #[cfg(test)]

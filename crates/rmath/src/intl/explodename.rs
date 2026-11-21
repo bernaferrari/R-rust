@@ -141,10 +141,8 @@ pub fn _nl_explode_name(
             // Normalize the codeset if non-empty.
             if cp != start && buf[start] != 0 {
                 let codeset_len = cp - start;
-                let norm = _nl_normalize_codeset(
-                    buf[start..].as_ptr() as *const c_char,
-                    codeset_len,
-                );
+                let norm =
+                    _nl_normalize_codeset(buf[start..].as_ptr() as *const c_char, codeset_len);
                 if norm.is_null() {
                     return -1;
                 }

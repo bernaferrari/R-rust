@@ -132,25 +132,22 @@ fn permutation_error(message: &str) -> ! {
 }
 
 unsafe fn scores(x: SEXP) -> Vec<usize> {
-    unsafe {
-        if x.is_null() || TYPEOF(x) != SEXPTYPE::INTSXP {
-            permutation_error("permutation scores must be integer");
-        }
-        let n = i32::try_from(XLENGTH(x))
-            .unwrap_or_else(|_| permutation_error("invalid permutation scores"));
-        let mut scores = Vec::new();
-        scores
-            .try_reserve_exact(n as usize)
-            .unwrap_or_else(|_| permutation_error("cannot allocate permutation score workspace"));
-        for i in 0..n {
-            scores.push(
-                usize::try_from(INTEGER_ELT(x, i)).unwrap_or_else(|_| {
-                    permutation_error("permutation scores must be nonnegative")
-                }),
-            );
-        }
-        scores
+    if x.is_null() || TYPEOF(x) != SEXPTYPE::INTSXP {
+        permutation_error("permutation scores must be integer");
     }
+    let n = i32::try_from(XLENGTH(x))
+        .unwrap_or_else(|_| permutation_error("invalid permutation scores"));
+    let mut scores = Vec::new();
+    scores
+        .try_reserve_exact(n as usize)
+        .unwrap_or_else(|_| permutation_error("cannot allocate permutation score workspace"));
+    for i in 0..n {
+        scores.push(
+            usize::try_from(INTEGER_ELT(x, i))
+                .unwrap_or_else(|_| permutation_error("permutation scores must be nonnegative")),
+        );
+    }
+    scores
 }
 
 unsafe fn publish(values: Vec<f64>) -> SEXP {

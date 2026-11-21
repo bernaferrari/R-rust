@@ -239,18 +239,16 @@ pub fn deparse1WithCutoff(
 /// This is the equivalent of R's `do_deparse()` from deparse.c.
 /// It converts an R expression to a character vector representation.
 pub fn do_deparse(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let _ = (call, op, rho);
-        let parsed = deparse_call_args(args);
-        deparse1WithCutoff(
-            parsed.expr,
-            false,
-            parsed.cutoff,
-            parsed.backtick,
-            parsed.opts,
-            parsed.nlines,
-        )
-    }
+    let _ = (call, op, rho);
+    let parsed = deparse_call_args(args);
+    deparse1WithCutoff(
+        parsed.expr,
+        false,
+        parsed.cutoff,
+        parsed.backtick,
+        parsed.opts,
+        parsed.nlines,
+    )
 }
 
 struct DeparseCallArgs {
@@ -388,7 +386,7 @@ fn deparse_default_backtick(expr: SEXP) -> bool {
 /// Writes a deparsed representation of an R object to a file or connection.
 /// Port of `do_dput` in deparse.c.
 pub fn do_dput(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe { super::owned_dput::do_dput(call, op, args, rho) }
+    super::owned_dput::do_dput(call, op, args, rho)
 }
 
 /// Implementation of R's `dump()` function.
@@ -494,16 +492,14 @@ pub fn deparse1(call: SEXP, abbrev: bool, opts: c_int) -> SEXP {
 /// deparses calls/expressions with backtick=TRUE and names with
 /// backtick=FALSE, while str.default's deParse always uses the default.
 pub fn deparse_symbolic(call: SEXP, backtick: bool) -> SEXP {
-    unsafe {
-        deparse1WithCutoff(
-            call,
-            false,
-            DEFAULT_CUTOFF,
-            backtick,
-            DEFAULT_USER_DEPARSE,
-            0,
-        )
-    }
+    deparse1WithCutoff(
+        call,
+        false,
+        DEFAULT_CUTOFF,
+        backtick,
+        DEFAULT_USER_DEPARSE,
+        0,
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -562,10 +558,8 @@ pub fn deparse1m(call: SEXP, abbrev: bool, opts: c_int) -> SEXP {
 ///
 /// Used in print.c for PrintLanguage, PrintClosure, PrintExpression.
 pub fn deparse1w(call: SEXP, abbrev: bool, opts: c_int) -> SEXP {
-    unsafe {
-        // Use DEFAULT_CUTOFF since R_print.cutoff is not yet available as a global
-        deparse1WithCutoff(call, abbrev, DEFAULT_CUTOFF, true, opts, -1)
-    }
+    // Use DEFAULT_CUTOFF since R_print.cutoff is not yet available as a global
+    deparse1WithCutoff(call, abbrev, DEFAULT_CUTOFF, true, opts, -1)
 }
 
 // ---------------------------------------------------------------------------
@@ -635,7 +629,7 @@ pub fn deparse1line(call: SEXP, abbrev: bool) -> SEXP {
 ///
 /// Used in errors.c for warningcall_dflt() and PrintWarnings().
 pub fn deparse1s(call: SEXP) -> SEXP {
-    unsafe { deparse1WithCutoff(call, false, DEFAULT_CUTOFF, true, DEFAULTDEPARSE, 1) }
+    deparse1WithCutoff(call, false, DEFAULT_CUTOFF, true, DEFAULTDEPARSE, 1)
 }
 
 // ---------------------------------------------------------------------------
@@ -675,21 +669,14 @@ pub fn R_inspect3(
 ///
 /// Port of `con_cleanup` in deparse.c:378.
 pub unsafe fn con_cleanup(data: *mut std::ffi::c_void) {
-    unsafe {
-        if data.is_null() {
-            return;
-        }
-        let scon = data as SEXP;
-        if scon.is_null() {
-            return;
-        }
-        crate::mainutils::connections::do_close(
-            scon,
-            std::ptr::null_mut(),
-            scon,
-            std::ptr::null_mut(),
-        );
+    if data.is_null() {
+        return;
     }
+    let scon = data as SEXP;
+    if scon.is_null() {
+        return;
+    }
+    crate::mainutils::connections::do_close(scon, std::ptr::null_mut(), scon, std::ptr::null_mut());
 }
 
 // ---------------------------------------------------------------------------

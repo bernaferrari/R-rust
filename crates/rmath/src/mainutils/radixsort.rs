@@ -1475,66 +1475,62 @@ pub unsafe fn do_radixsort(_call: SEXP, _op: SEXP, mut args: SEXP, _rho: SEXP) -
 
 /// Local `asLogical` helper for do_radixsort.
 unsafe fn asLogical_local(x: SEXP) -> c_int {
-    unsafe {
-        if Rf_isNull(x) != 0 {
-            return NA_LOGICAL;
-        }
-        let len = LENGTH(x);
-        if len == 0 {
-            return NA_LOGICAL;
-        }
-        let t = TYPEOF(x);
-        if t == SEXPTYPE::LGLSXP {
-            LOGICAL_ELT(x, 0)
-        } else if t == SEXPTYPE::INTSXP {
-            let v = INTEGER_ELT(x, 0);
-            if v == NA_INTEGER {
-                NA_LOGICAL
-            } else if v != 0 {
-                1
-            } else {
-                0
-            }
-        } else if t == SEXPTYPE::REALSXP {
-            let v = REAL_ELT(x, 0);
-            if v.is_nan() {
-                NA_LOGICAL
-            } else if v != 0.0 {
-                1
-            } else {
-                0
-            }
-        } else {
+    if Rf_isNull(x) != 0 {
+        return NA_LOGICAL;
+    }
+    let len = LENGTH(x);
+    if len == 0 {
+        return NA_LOGICAL;
+    }
+    let t = TYPEOF(x);
+    if t == SEXPTYPE::LGLSXP {
+        LOGICAL_ELT(x, 0)
+    } else if t == SEXPTYPE::INTSXP {
+        let v = INTEGER_ELT(x, 0);
+        if v == NA_INTEGER {
             NA_LOGICAL
+        } else if v != 0 {
+            1
+        } else {
+            0
         }
+    } else if t == SEXPTYPE::REALSXP {
+        let v = REAL_ELT(x, 0);
+        if v.is_nan() {
+            NA_LOGICAL
+        } else if v != 0.0 {
+            1
+        } else {
+            0
+        }
+    } else {
+        NA_LOGICAL
     }
 }
 
 /// Local `asInteger` helper for do_sorted_fpass (GNU `asInteger` coercion
 /// of a length-one logical/integer/double scalar, NA preserved).
 unsafe fn asInteger_scan(x: SEXP) -> c_int {
-    unsafe {
-        if Rf_isNull(x) != 0 {
-            return NA_INTEGER;
-        }
-        if LENGTH(x) == 0 {
-            return NA_INTEGER;
-        }
-        let t = TYPEOF(x);
-        if t == SEXPTYPE::LGLSXP {
-            LOGICAL_ELT(x, 0)
-        } else if t == SEXPTYPE::INTSXP {
-            INTEGER_ELT(x, 0)
-        } else if t == SEXPTYPE::REALSXP {
-            let v = REAL_ELT(x, 0);
-            if v.is_nan() || v > c_int::MAX as f64 || v < c_int::MIN as f64 {
-                NA_INTEGER
-            } else {
-                v as c_int
-            }
-        } else {
+    if Rf_isNull(x) != 0 {
+        return NA_INTEGER;
+    }
+    if LENGTH(x) == 0 {
+        return NA_INTEGER;
+    }
+    let t = TYPEOF(x);
+    if t == SEXPTYPE::LGLSXP {
+        LOGICAL_ELT(x, 0)
+    } else if t == SEXPTYPE::INTSXP {
+        INTEGER_ELT(x, 0)
+    } else if t == SEXPTYPE::REALSXP {
+        let v = REAL_ELT(x, 0);
+        if v.is_nan() || v > c_int::MAX as f64 || v < c_int::MIN as f64 {
             NA_INTEGER
+        } else {
+            v as c_int
         }
+    } else {
+        NA_INTEGER
     }
 }
 

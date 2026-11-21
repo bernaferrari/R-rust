@@ -4,125 +4,111 @@ use super::*;
 
 /// R's `is.language(x)` — TRUE for LANGSXP, SYMSXP, or EXPRSXP.
 pub fn do_is_language(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return Rf_ScalarLogical(FALSE);
-        }
-        let t = TYPEOF(x);
-        Rf_ScalarLogical(
-            if t == SEXPTYPE::LANGSXP || t == SEXPTYPE::SYMSXP || t == SEXPTYPE::EXPRSXP {
-                TRUE
-            } else {
-                FALSE
-            },
-        )
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return Rf_ScalarLogical(FALSE);
     }
+    let t = TYPEOF(x);
+    Rf_ScalarLogical(
+        if t == SEXPTYPE::LANGSXP || t == SEXPTYPE::SYMSXP || t == SEXPTYPE::EXPRSXP {
+            TRUE
+        } else {
+            FALSE
+        },
+    )
 }
 
 /// R's `is.call(x)` — TRUE for LANGSXP.
 pub fn do_is_call(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return Rf_ScalarLogical(FALSE);
-        }
-        Rf_ScalarLogical(if TYPEOF(x) == SEXPTYPE::LANGSXP {
-            TRUE
-        } else {
-            FALSE
-        })
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return Rf_ScalarLogical(FALSE);
     }
+    Rf_ScalarLogical(if TYPEOF(x) == SEXPTYPE::LANGSXP {
+        TRUE
+    } else {
+        FALSE
+    })
 }
 
 /// R's `is.symbol(x)` — TRUE for SYMSXP.
 pub fn do_is_symbol(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return Rf_ScalarLogical(FALSE);
-        }
-        Rf_ScalarLogical(if TYPEOF(x) == SEXPTYPE::SYMSXP {
-            TRUE
-        } else {
-            FALSE
-        })
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return Rf_ScalarLogical(FALSE);
     }
+    Rf_ScalarLogical(if TYPEOF(x) == SEXPTYPE::SYMSXP {
+        TRUE
+    } else {
+        FALSE
+    })
 }
 
 /// R's `is.name(x)` — alias for is.symbol.
 pub fn do_is_name(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-     do_is_symbol(_call, _op, args, _rho) 
+    do_is_symbol(_call, _op, args, _rho)
 }
 
 /// R's `is.pairlist(x)` — TRUE for LISTSXP.
 pub fn do_is_pairlist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return Rf_ScalarLogical(TRUE);
-        }
-        Rf_ScalarLogical(if TYPEOF(x) == SEXPTYPE::LISTSXP {
-            TRUE
-        } else {
-            FALSE
-        })
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return Rf_ScalarLogical(TRUE);
     }
+    Rf_ScalarLogical(if TYPEOF(x) == SEXPTYPE::LISTSXP {
+        TRUE
+    } else {
+        FALSE
+    })
 }
 
 /// R's `is.function(x)` — TRUE for CLOSXP, BUILTINSXP, or SPECIALSXP.
 pub fn do_is_function(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return Rf_ScalarLogical(FALSE);
-        }
-        let t = TYPEOF(x);
-        Rf_ScalarLogical(
-            if t == SEXPTYPE::CLOSXP || t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP {
-                TRUE
-            } else {
-                FALSE
-            },
-        )
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return Rf_ScalarLogical(FALSE);
     }
+    let t = TYPEOF(x);
+    Rf_ScalarLogical(
+        if t == SEXPTYPE::CLOSXP || t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP {
+            TRUE
+        } else {
+            FALSE
+        },
+    )
 }
 
 /// R's `is.expression(x)` — TRUE for EXPRSXP.
 pub fn do_is_expression(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return Rf_ScalarLogical(FALSE);
-        }
-        Rf_ScalarLogical(if TYPEOF(x) == SEXPTYPE::EXPRSXP {
-            TRUE
-        } else {
-            FALSE
-        })
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return Rf_ScalarLogical(FALSE);
     }
+    Rf_ScalarLogical(if TYPEOF(x) == SEXPTYPE::EXPRSXP {
+        TRUE
+    } else {
+        FALSE
+    })
 }
 
 /// R's `is.environment(x)` — TRUE for ENVSXP and S4 environment subclasses.
 pub fn do_is_environment(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return Rf_ScalarLogical(FALSE);
-        }
-        if TYPEOF(x) == SEXPTYPE::ENVSXP {
-            return Rf_ScalarLogical(TRUE);
-        }
-        if crate::mainutils::coerce::IS_S4_OBJECT(x) != 0 && TYPEOF(x) == SEXPTYPE::OBJSXP {
-            let data = crate::mainutils::subassign::R_getS4DataSlot(x, SEXPTYPE::ENVSXP.as_c_int());
-            return Rf_ScalarLogical(if TYPEOF(data) == SEXPTYPE::ENVSXP {
-                TRUE
-            } else {
-                FALSE
-            });
-        }
-        Rf_ScalarLogical(FALSE)
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return Rf_ScalarLogical(FALSE);
     }
+    if TYPEOF(x) == SEXPTYPE::ENVSXP {
+        return Rf_ScalarLogical(TRUE);
+    }
+    if crate::mainutils::coerce::IS_S4_OBJECT(x) != 0 && TYPEOF(x) == SEXPTYPE::OBJSXP {
+        let data = crate::mainutils::subassign::R_getS4DataSlot(x, SEXPTYPE::ENVSXP.as_c_int());
+        return Rf_ScalarLogical(if TYPEOF(data) == SEXPTYPE::ENVSXP {
+            TRUE
+        } else {
+            FALSE
+        });
+    }
+    Rf_ScalarLogical(FALSE)
 }
 
 // ---------------------------------------------------------------------------
@@ -172,7 +158,7 @@ pub fn do_noquote(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R's `deparse(x)` — convert an object or expression to source-like text.
 pub fn do_deparse(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { crate::mainutils::deparse::do_deparse(_call, _op, args, _rho) }
+    crate::mainutils::deparse::do_deparse(_call, _op, args, _rho)
 }
 
 // ---------------------------------------------------------------------------
@@ -415,9 +401,7 @@ pub fn do_strtoi(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R's `strtrim(x, width)` — truncate strings to a maximum width.
 pub fn do_strtrim(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    {
-        super::vector_text_entry::evaluate(args, rho, super::vector_text_owned::Operation::Trim)
-    }
+    super::vector_text_entry::evaluate(args, rho, super::vector_text_owned::Operation::Trim)
 }
 
 // ---------------------------------------------------------------------------

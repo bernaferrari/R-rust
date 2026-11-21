@@ -35,25 +35,19 @@ fn ARGUSED(x: SEXP) -> c_int {
 /// SET_ARGUSED(x, v) == SETLEVELS(x, v).
 #[inline(always)]
 unsafe fn SET_ARGUSED(x: SEXP, v: c_int) {
-    unsafe {
-        SETLEVELS(x, v);
-    }
+    SETLEVELS(x, v);
 }
 
 /// SET_TAG equivalent (R macro). Uses existing SETTAG.
 #[inline(always)]
 unsafe fn SET_TAG(x: SEXP, y: SEXP) {
-    unsafe {
-        SETTAG(x, y);
-    }
+    SETTAG(x, y);
 }
 
 /// SET_TYPEOF equivalent (R macro).
 #[inline(always)]
 unsafe fn SET_TYPEOF(x: SEXP, v: SEXPTYPE) {
-    unsafe {
-        crate::sexp::accessors::SET_TYPEOF(x, v.as_c_int());
-    }
+    crate::sexp::accessors::SET_TYPEOF(x, v.as_c_int());
 }
 
 /// SET_MISSING equivalent (R macro). Sets gp[2] bit.
@@ -91,7 +85,7 @@ unsafe fn streql(s1: *const c_char, s2: *const c_char) -> c_int {
 
 #[inline(always)]
 fn NA_STRING() -> SEXP {
-     crate::mainutils::relop::NA_STRING() 
+    crate::mainutils::relop::NA_STRING()
 }
 
 #[inline(always)]
@@ -231,7 +225,7 @@ fn isObject(x: SEXP) -> bool {
 /// ScalarInteger — allocate a scalar integer.
 #[inline(always)]
 unsafe fn ScalarInteger(x: c_int) -> SEXP {
-    unsafe { Rf_ScalarInteger(x) }
+    Rf_ScalarInteger(x)
 }
 
 /// length of a pairlist or vector.
@@ -474,25 +468,23 @@ pub unsafe fn NonNullStringMatch(s: SEXP, t: SEXP) -> c_int {
 /// - STRSXP of length 1: returns STRING_ELT(x, 0)
 /// - Otherwise: error
 unsafe fn charFromSexp(s: SEXP) -> SEXP {
-    unsafe {
-        let t = TYPEOF(s);
-        if t == SEXPTYPE::SYMSXP {
-            PRINTNAME(s)
-        } else if t == SEXPTYPE::CHARSXP {
-            s
-        } else if t == SEXPTYPE::STRSXP {
-            if LENGTH(s) == 1 {
-                STRING_ELT(s, 0)
-            } else {
-                std::panic::panic_any(RError {
-                    message: "invalid partial string match".to_string(),
-                });
-            }
+    let t = TYPEOF(s);
+    if t == SEXPTYPE::SYMSXP {
+        PRINTNAME(s)
+    } else if t == SEXPTYPE::CHARSXP {
+        s
+    } else if t == SEXPTYPE::STRSXP {
+        if LENGTH(s) == 1 {
+            STRING_ELT(s, 0)
         } else {
             std::panic::panic_any(RError {
                 message: "invalid partial string match".to_string(),
             });
         }
+    } else {
+        std::panic::panic_any(RError {
+            message: "invalid partial string match".to_string(),
+        });
     }
 }
 

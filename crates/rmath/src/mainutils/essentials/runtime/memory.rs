@@ -270,7 +270,7 @@ pub fn do_gc(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R's `gc.time()` — current GC timing counters.
 pub fn do_gc_time(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { Rf_allocVector3(SEXPTYPE::REALSXP, 5) }
+    Rf_allocVector3(SEXPTYPE::REALSXP, 5)
 }
 
 /// R's `gcinfo(on)` — set session-local GC reporting verbosity.
@@ -329,16 +329,14 @@ pub fn do_gctorture2(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// R's `memory.size(max)` — current or peak arena memory in MB.
 pub fn do_memory_size(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let max = crate::mainutils::coerce::asLogical(CAR(args));
-        let snapshot = runtime_memory_snapshot();
-        let bytes = if max == TRUE {
-            snapshot.peak_bytes
-        } else {
-            snapshot.current_bytes
-        };
-        Rf_ScalarReal(bytes_to_mb(bytes))
-    }
+    let max = crate::mainutils::coerce::asLogical(CAR(args));
+    let snapshot = runtime_memory_snapshot();
+    let bytes = if max == TRUE {
+        snapshot.peak_bytes
+    } else {
+        snapshot.current_bytes
+    };
+    Rf_ScalarReal(bytes_to_mb(bytes))
 }
 
 /// R's `memory.profile()` — session-local object counts by SEXPTYPE class.

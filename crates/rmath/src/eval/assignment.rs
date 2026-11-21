@@ -6,8 +6,8 @@
 
 use crate::sexp::accessors::ENCLOS;
 use crate::sexp::accessors::{
-    CADDR, CADR, CAR, CDDR, CDR, INTEGER_ELT, LOGICAL_ELT, NAMED, REAL_ELT,
-    SETTAG, STRING_ELT, TAG, TYPEOF, XLENGTH,
+    CADDR, CADR, CAR, CDDR, CDR, INTEGER_ELT, LOGICAL_ELT, NAMED, REAL_ELT, SETTAG, STRING_ELT,
+    TAG, TYPEOF, XLENGTH,
 };
 
 use crate::sexp::envir::Environment;
@@ -146,7 +146,7 @@ fn apply_custom_replacement(
     with_runtime(&owner, |access| {
         let function = access.with_native(|owner| {
             let function = if setter.is_symbol() {
-                unsafe { crate::sexp::envir::find_fun_result(setter.clone(), environment.clone()) }
+                crate::sexp::envir::find_fun_result(setter.clone(), environment.clone())
                     .map_err(|message| SexpError::EvaluationFailed { message })?
             } else {
                 let result = unsafe { Rf_eval(setter.as_raw(), environment.as_raw()) };
@@ -234,12 +234,12 @@ fn apply_custom_replacement(
             source_arguments = allocator.pairlist_cell(expression, &source_arguments, tag)?;
         }
         access.require_active()?;
-        unsafe {
-            crate::sexp::accessors::SET_NAMED(object.as_raw(), 2);
-            // The assignment still owns and returns the original RHS after
-            // the setter returns; its formal must not mutate that value.
-            crate::sexp::accessors::SET_NAMED(rhs.as_raw(), 2);
-        }
+
+        crate::sexp::accessors::SET_NAMED(object.as_raw(), 2);
+        // The assignment still owns and returns the original RHS after
+        // the setter returns; its formal must not mutate that value.
+        crate::sexp::accessors::SET_NAMED(rhs.as_raw(), 2);
+
         let target =
             allocator.evaluated_promise_with_expression(&temporary, environment, object)?;
         // GNU's replacement call substitutes an unnamed *tmp* argument,
@@ -359,8 +359,8 @@ unsafe fn bind_assignment(sym: SEXP, value: SEXP, primval: i32, rho: SEXP) {
     };
 
     if primval == 2 {
-        unsafe { env.set(sym, value) };
-    } else if let Err(err) = unsafe { env.define(sym, value) } {
+        env.set(sym, value);
+    } else if let Err(err) = env.define(sym, value) {
         error(&format!("failed to assign binding: {err}"));
     }
 }
@@ -828,10 +828,8 @@ fn try_simple_vector_subassign(target: SEXP, subs: SEXP, value: SEXP) -> Option<
 
         // SAFETY: the translated caller retains the active runtime.
         let owner = unsafe { crate::sexp::owner::OwnerToken::current() }.ok()?;
-        let mut target_mut = crate::sexp::object::SexpMut::try_from_checked(
-            owner.sexp(target).ok()?,
-        )
-        .ok()?;
+        let mut target_mut =
+            crate::sexp::object::SexpMut::try_from_checked(owner.sexp(target).ok()?).ok()?;
 
         match TYPEOF(target) {
             t if t == SEXPTYPE::REALSXP => {
@@ -967,25 +965,23 @@ fn replace_tmp_call(
 
 /// Convert `f` or `pkg::f` / `pkg:::f` to the assignment function head.
 unsafe fn replacement_fun_head(fun: SEXP) -> SEXP {
-    unsafe {
-        if TYPEOF(fun) == SEXPTYPE::SYMSXP {
-            return get_assign_fcn_sym(fun);
-        }
-        if TYPEOF(fun) == SEXPTYPE::LANGSXP {
-            let op = CAR(fun);
-            let op_name = symbol_name(op);
-            if matches!(op_name.as_deref(), Some("::") | Some(":::"))
-                && TYPEOF(CADDR(fun)) == SEXPTYPE::SYMSXP
-            {
-                let assign = get_assign_fcn_sym(CADDR(fun));
-                if assign != R_NilValue() {
-                    let call = crate::sexp::constructors::Rf_lang3(op, CADR(fun), assign);
-                    return call;
-                }
+    if TYPEOF(fun) == SEXPTYPE::SYMSXP {
+        return get_assign_fcn_sym(fun);
+    }
+    if TYPEOF(fun) == SEXPTYPE::LANGSXP {
+        let op = CAR(fun);
+        let op_name = symbol_name(op);
+        if matches!(op_name.as_deref(), Some("::") | Some(":::"))
+            && TYPEOF(CADDR(fun)) == SEXPTYPE::SYMSXP
+        {
+            let assign = get_assign_fcn_sym(CADDR(fun));
+            if assign != R_NilValue() {
+                let call = crate::sexp::constructors::Rf_lang3(op, CADR(fun), assign);
+                return call;
             }
         }
-        R_NilValue()
     }
+    R_NilValue()
 }
 
 /// Convert a function symbol to its assignment variant: `[` -> `[<-`, `$` -> `$<-`.
@@ -1063,7 +1059,7 @@ fn restore_tmp_read(
     symbol: &Sexp<'static>,
 ) -> crate::sexp::object::SexpResult<Sexp<'static>> {
     authority.require_active()?;
-    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         crate::sexp::envir::find_var_in_frame_result(environment.clone(), symbol.clone())
     }));
     pin.require_live()?;

@@ -11,12 +11,10 @@ use super::*;
 /// Check if s is a list whose first element is a curly brace ({).
 /// Used for correct if-then-else formatting.
 pub fn curlyahead(s: SEXP) -> bool {
-    unsafe {
-        if (isList(s) || isLanguage(s)) && isSymbol(CAR(s)) {
-            CAR(s) == R_BraceSymbol()
-        } else {
-            false
-        }
+    if (isList(s) || isLanguage(s)) && isSymbol(CAR(s)) {
+        CAR(s) == R_BraceSymbol()
+    } else {
+        false
     }
 }
 
@@ -37,89 +35,86 @@ pub fn needsparens(
     left: c_int,
     deepLeft: c_int,
 ) -> bool {
-    unsafe {
-        if let Some(mut arginfo) = get_arg_ppinfo(arg) {
-            // Not all binary ops are binary!
-            match arginfo.kind {
-                PP_BINARY | PP_BINARY2 => {
-                    let nargs = Rf_length(CDR(arg));
-                    match nargs {
-                        1 => {
-                            // binary +/- precedence upgraded as unary
-                            if arginfo.prec == PREC_SUM {
-                                arginfo.prec = PREC_SIGN;
-                            }
-                            arginfo.kind = PP_UNARY;
+    if let Some(mut arginfo) = get_arg_ppinfo(arg) {
+        // Not all binary ops are binary!
+        match arginfo.kind {
+            PP_BINARY | PP_BINARY2 => {
+                let nargs = Rf_length(CDR(arg));
+                match nargs {
+                    1 => {
+                        // binary +/- precedence upgraded as unary
+                        if arginfo.prec == PREC_SUM {
+                            arginfo.prec = PREC_SIGN;
                         }
-                        2 => {}
-                        _ => return false,
+                        arginfo.kind = PP_UNARY;
                     }
+                    2 => {}
+                    _ => return false,
                 }
-                _ => {} // intentionally unhandled: SEXPTYPE not relevant for deparse precedence
             }
-
-            match arginfo.kind {
-                PP_SUBSET => {
-                    match mainop_kind {
-                        PP_DOLLAR | PP_SUBSET => {
-                            if mainop_prec > arginfo.prec {
-                                return false;
-                            }
-                            // else fall through
-                        }
-                        _ => {} // intentionally unhandled: unknown precedence level for deparse
-                    }
-                    // fall through
-                }
-                PP_BINARY | PP_BINARY2 => {
-                    if mainop_prec == PREC_COMPARE && arginfo.prec == PREC_COMPARE {
-                        return true; // a < b < c is not legal syntax
-                    }
-                    // fall through
-                }
-                PP_ASSIGN | PP_ASSIGN2 | PP_DOLLAR => {}
-                _ => {} // intentionally unhandled: unknown PP pattern for deparse
-            }
-
-            match arginfo.kind {
-                PP_BINARY | PP_BINARY2 | PP_ASSIGN | PP_ASSIGN2 | PP_DOLLAR => {
-                    if mainop_prec > arginfo.prec
-                        || (mainop_prec == arginfo.prec && left == mainop_rightassoc)
-                    {
-                        return true;
-                    }
-                }
-                PP_UNARY => {
-                    return (left != 0 && mainop_prec > arginfo.prec)
-                        || (deepLeft != 0 && deepLeft > arginfo.prec);
-                }
-                PP_FOR | PP_IF | PP_WHILE | PP_REPEAT => {
-                    return left != 0 || deepLeft != 0;
-                }
-                PP_SUBSET => {
-                    if mainop_kind != PP_DOLLAR
-                        && mainop_kind != PP_SUBSET
-                        && (mainop_prec > arginfo.prec
-                            || (mainop_prec == arginfo.prec && left == mainop_rightassoc))
-                    {
-                        return true;
-                    }
-                }
-                _ => return false,
-            }
-        } else if TYPEOF(arg) == SEXPTYPE::CPLXSXP && XLENGTH(arg) == 1 {
-            // A scalar complex literal prints as a sum (e.g. 2+3i).
-            return mainop_prec > PREC_SUM
-                || (mainop_prec == PREC_SUM && left == mainop_rightassoc);
-        } else if isLanguage(arg)
-            && isUserBinop(CAR(arg))
-            && (mainop_prec > PREC_PERCENT
-                || (mainop_prec == PREC_PERCENT && left == mainop_rightassoc))
-        {
-            return true;
+            _ => {} // intentionally unhandled: SEXPTYPE not relevant for deparse precedence
         }
-        false
+
+        match arginfo.kind {
+            PP_SUBSET => {
+                match mainop_kind {
+                    PP_DOLLAR | PP_SUBSET => {
+                        if mainop_prec > arginfo.prec {
+                            return false;
+                        }
+                        // else fall through
+                    }
+                    _ => {} // intentionally unhandled: unknown precedence level for deparse
+                }
+                // fall through
+            }
+            PP_BINARY | PP_BINARY2 => {
+                if mainop_prec == PREC_COMPARE && arginfo.prec == PREC_COMPARE {
+                    return true; // a < b < c is not legal syntax
+                }
+                // fall through
+            }
+            PP_ASSIGN | PP_ASSIGN2 | PP_DOLLAR => {}
+            _ => {} // intentionally unhandled: unknown PP pattern for deparse
+        }
+
+        match arginfo.kind {
+            PP_BINARY | PP_BINARY2 | PP_ASSIGN | PP_ASSIGN2 | PP_DOLLAR => {
+                if mainop_prec > arginfo.prec
+                    || (mainop_prec == arginfo.prec && left == mainop_rightassoc)
+                {
+                    return true;
+                }
+            }
+            PP_UNARY => {
+                return (left != 0 && mainop_prec > arginfo.prec)
+                    || (deepLeft != 0 && deepLeft > arginfo.prec);
+            }
+            PP_FOR | PP_IF | PP_WHILE | PP_REPEAT => {
+                return left != 0 || deepLeft != 0;
+            }
+            PP_SUBSET => {
+                if mainop_kind != PP_DOLLAR
+                    && mainop_kind != PP_SUBSET
+                    && (mainop_prec > arginfo.prec
+                        || (mainop_prec == arginfo.prec && left == mainop_rightassoc))
+                {
+                    return true;
+                }
+            }
+            _ => return false,
+        }
+    } else if TYPEOF(arg) == SEXPTYPE::CPLXSXP && XLENGTH(arg) == 1 {
+        // A scalar complex literal prints as a sum (e.g. 2+3i).
+        return mainop_prec > PREC_SUM || (mainop_prec == PREC_SUM && left == mainop_rightassoc);
+    } else if isLanguage(arg)
+        && isUserBinop(CAR(arg))
+        && (mainop_prec > PREC_PERCENT
+            || (mainop_prec == PREC_PERCENT && left == mainop_rightassoc))
+    {
+        return true;
     }
+    false
 }
 
 // ---------------------------------------------------------------------------
@@ -170,41 +165,39 @@ pub fn usable_nice_names(x: SEXP, isAtomic: bool) -> bool {
 /// Check if a function caller needs to be parenthesized.
 /// For example: `(f+g)(z)` needs parens, but `x$f(z)` does not.
 pub fn parenthesizeCaller(s: SEXP) -> bool {
-    unsafe {
-        if TYPEOF(s) != SEXPTYPE::LANGSXP {
-            return false;
-        }
-        let op = CAR(s);
-        if isSymbol(op) {
-            if isUserBinop(op) {
-                return true;
-            } // %foo%
-            let sym = SYMVALUE(op);
-            let t = TYPEOF(sym);
-            let pp = if t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP {
-                Some(getPPinfo(sym))
-            } else {
-                // This port dispatches language specials by name rather
-                // than binding them into the symbol table, so `function`
-                // (and friends) are unbound here even though stock R
-                // resolves them to SPECIALSXPs. The funtab carries the
-                // same PPINFO trunk uses — look it up by name.
-                getPPinfo_for_symbol(op)
-            };
-            match pp {
-                Some(pp) => {
-                    !(pp.prec >= PREC_SUBSET
-                        || pp.kind == PP_FUNCALL
-                        || pp.kind == PP_PAREN
-                        || pp.kind == PP_CURLY)
-                }
-                None => false, // regular function call
-            }
-        } else if TYPEOF(op) == SEXPTYPE::CLOSXP {
+    if TYPEOF(s) != SEXPTYPE::LANGSXP {
+        return false;
+    }
+    let op = CAR(s);
+    if isSymbol(op) {
+        if isUserBinop(op) {
             return true;
+        } // %foo%
+        let sym = SYMVALUE(op);
+        let t = TYPEOF(sym);
+        let pp = if t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP {
+            Some(getPPinfo(sym))
         } else {
-            return true; // something strange, like (1)(x)
+            // This port dispatches language specials by name rather
+            // than binding them into the symbol table, so `function`
+            // (and friends) are unbound here even though stock R
+            // resolves them to SPECIALSXPs. The funtab carries the
+            // same PPINFO trunk uses — look it up by name.
+            getPPinfo_for_symbol(op)
+        };
+        match pp {
+            Some(pp) => {
+                !(pp.prec >= PREC_SUBSET
+                    || pp.kind == PP_FUNCALL
+                    || pp.kind == PP_PAREN
+                    || pp.kind == PP_CURLY)
+            }
+            None => false, // regular function call
         }
+    } else if TYPEOF(op) == SEXPTYPE::CLOSXP {
+        return true;
+    } else {
+        return true; // something strange, like (1)(x)
     }
 }
 

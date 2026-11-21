@@ -122,18 +122,16 @@ fn prho(n: c_int, is: c_double, pv: &mut c_double, ifault: &mut c_int, lower_tai
 }
 
 pub unsafe fn pRho(q: SEXP, sn: SEXP, lower: SEXP) -> SEXP {
-    unsafe {
-        let s = asReal(q);
-        let mut p: c_double = 0.0;
-        let n = asInteger(sn);
-        let ltail = asInteger(lower);
-        let mut ifault: c_int = 0;
-        prho(n, s, &mut p, &mut ifault, ltail);
-        if ifault != 0 {
-            eprintln!("invalid sample size 'n' in C routine prho(n,s,*)");
-        }
-        Rf_ScalarReal(p)
+    let s = asReal(q);
+    let mut p: c_double = 0.0;
+    let n = asInteger(sn);
+    let ltail = asInteger(lower);
+    let mut ifault: c_int = 0;
+    prho(n, s, &mut p, &mut ifault, ltail);
+    if ifault != 0 {
+        eprintln!("invalid sample size 'n' in C routine prho(n,s,*)");
     }
+    Rf_ScalarReal(p)
 }
 
 pub unsafe extern "C-unwind" fn c_pRho(q: SEXP, sn: SEXP, lower: SEXP) -> SEXP {

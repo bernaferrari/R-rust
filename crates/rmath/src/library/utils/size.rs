@@ -71,19 +71,19 @@ impl SizeSexp {
     }
 
     fn string_elt(self, index: R_xlen_t) -> SEXP {
-        unsafe { STRING_ELT(self.0, index) }
+        STRING_ELT(self.0, index)
     }
 
     fn vector_elt(self, index: R_xlen_t) -> SEXP {
-        unsafe { VECTOR_ELT(self.0, index) }
+        VECTOR_ELT(self.0, index)
     }
 
     fn external_ptr_tag(self) -> SEXP {
-        unsafe { crate::main::memory_main::R_ExternalPtrTag(self.0) }
+        crate::main::memory_main::R_ExternalPtrTag(self.0)
     }
 
     fn external_ptr_protected(self) -> SEXP {
-        unsafe { crate::main::memory_main::R_ExternalPtrProtected(self.0) }
+        crate::main::memory_main::R_ExternalPtrProtected(self.0)
     }
 }
 
@@ -211,5 +211,5 @@ fn objectsize(raw: SEXP) -> R_size_t {
 }
 
 pub fn objectSize(x: SEXP) -> SEXP {
-    unsafe { Rf_ScalarReal(objectsize(x) as f64) }
+    Rf_ScalarReal(objectsize(x) as f64)
 }

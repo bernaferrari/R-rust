@@ -20,7 +20,10 @@ pub(crate) fn format_expression_vector(
             .native(|_| {
                 execution
                     .domain
-                    .wrap(unsafe { crate::mainutils::deparse::deparse1line(expr.as_raw(), false) })
+                    .wrap(crate::mainutils::deparse::deparse1line(
+                        expr.as_raw(),
+                        false,
+                    ))
             })?
             .map_err(|e| sexp_err("deparsed expression", e))?;
         parts.push(

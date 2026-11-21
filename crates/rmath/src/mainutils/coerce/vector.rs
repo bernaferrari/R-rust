@@ -603,35 +603,33 @@ pub fn coerceToString(v: SEXP) -> SEXP {
 
 /// Coerce a vector to expression type.
 pub fn coerceToExpression(v: SEXP) -> SEXP {
-    unsafe {
-        if !isVectorAtomic(v) {
-            let ans = Rf_allocVector3(SEXPTYPE::EXPRSXP, 1);
-            let _ans_guard = protect(ans);
-            SET_VECTOR_ELT(ans, 0, v);
-            return ans;
-        }
-
-        let n = xlength(v);
-        let ans = Rf_allocVector3(SEXPTYPE::EXPRSXP, n);
+    if !isVectorAtomic(v) {
+        let ans = Rf_allocVector3(SEXPTYPE::EXPRSXP, 1);
         let _ans_guard = protect(ans);
-
-        let vtype = TYPEOF(v);
-        for i in 0..n {
-            let ii = i as c_int;
-            let elt = match vtype {
-                t if t == SEXPTYPE::LGLSXP => Rf_ScalarLogical(LOGICAL_ELT(v, ii)),
-                t if t == SEXPTYPE::INTSXP => Rf_ScalarInteger(INTEGER_ELT(v, ii)),
-                t if t == SEXPTYPE::REALSXP => Rf_ScalarReal(REAL_ELT(v, ii)),
-                t if t == SEXPTYPE::CPLXSXP => Rf_ScalarComplex(COMPLEX_ELT(v, ii)),
-                t if t == SEXPTYPE::STRSXP => Rf_ScalarString(STRING_ELT(v, i)),
-                t if t == SEXPTYPE::RAWSXP => Rf_ScalarRaw(RAW_ELT(v, ii)),
-                _ => R_NilValue(),
-            };
-            SET_VECTOR_ELT(ans, i, elt);
-        }
-
-        ans
+        SET_VECTOR_ELT(ans, 0, v);
+        return ans;
     }
+
+    let n = xlength(v);
+    let ans = Rf_allocVector3(SEXPTYPE::EXPRSXP, n);
+    let _ans_guard = protect(ans);
+
+    let vtype = TYPEOF(v);
+    for i in 0..n {
+        let ii = i as c_int;
+        let elt = match vtype {
+            t if t == SEXPTYPE::LGLSXP => Rf_ScalarLogical(LOGICAL_ELT(v, ii)),
+            t if t == SEXPTYPE::INTSXP => Rf_ScalarInteger(INTEGER_ELT(v, ii)),
+            t if t == SEXPTYPE::REALSXP => Rf_ScalarReal(REAL_ELT(v, ii)),
+            t if t == SEXPTYPE::CPLXSXP => Rf_ScalarComplex(COMPLEX_ELT(v, ii)),
+            t if t == SEXPTYPE::STRSXP => Rf_ScalarString(STRING_ELT(v, i)),
+            t if t == SEXPTYPE::RAWSXP => Rf_ScalarRaw(RAW_ELT(v, ii)),
+            _ => R_NilValue(),
+        };
+        SET_VECTOR_ELT(ans, i, elt);
+    }
+
+    ans
 }
 
 /// Coerce a vector to generic vector (list) type.
@@ -734,7 +732,7 @@ impl super::pairlist::Native for PairlistNative {
         target: SEXPTYPE,
     ) -> crate::sexp::SexpResult<super::pairlist::Scalar> {
         use super::pairlist::Scalar;
-        access.with_native(|_|  {
+        access.with_native(|_| {
             Ok(match target {
                 SEXPTYPE::LGLSXP => Scalar::Logical(asLogical(value.as_raw())),
                 SEXPTYPE::INTSXP => Scalar::Integer(asInteger(value.as_raw())),
@@ -756,7 +754,7 @@ impl super::pairlist::Native for PairlistNative {
         access: &crate::sexp::owner::RuntimeAccess,
         value: &Sexp<'static>,
     ) -> crate::sexp::SexpResult<Sexp<'static>> {
-        access.with_native(|owner| unsafe {
+        access.with_native(|owner| {
             owner
                 .sexp(crate::mainutils::deparse::deparse1line(
                     value.as_raw(),
@@ -795,16 +793,14 @@ fn checked_pairlist(value: SEXP, target: SEXPTYPE) -> SEXP {
 
 /// Coerce a pairlist (LISTSXP/LANGSXP) to the given type.
 pub fn coercePairList(v: SEXP, type_: SEXPTYPE) -> SEXP {
-    unsafe {
-        if type_ == SEXPTYPE::EXPRSXP {
-            let rval = Rf_allocVector3(SEXPTYPE::EXPRSXP, 1);
-            let _rval_guard = protect(rval);
-            SET_VECTOR_ELT(rval, 0, v);
-            return rval;
-        }
-
-        checked_pairlist(v, type_)
+    if type_ == SEXPTYPE::EXPRSXP {
+        let rval = Rf_allocVector3(SEXPTYPE::EXPRSXP, 1);
+        let _rval_guard = protect(rval);
+        SET_VECTOR_ELT(rval, 0, v);
+        return rval;
     }
+
+    checked_pairlist(v, type_)
 }
 
 /// Coerce a vector list (VECSXP/EXPRSXP) to the given type.
@@ -1042,18 +1038,16 @@ pub fn CreateTag(x: SEXP) -> SEXP {
 /// Convert an SEXP to a function (closure).
 /// This matches R's asFunction() from coerce.c.
 pub fn asFunction(x: SEXP) -> SEXP {
-    unsafe {
-        if isFunction(x) {
-            return x;
-        }
-        let f = allocSExp(SEXPTYPE::CLOSXP);
-        let _f_guard = protect(f);
-        SET_CLOENV(f, R_GlobalEnv());
-        // For simplicity, create a closure with empty formals and body = x
-        SET_FORMALS(f, R_NilValue());
-        SET_BODY(f, x);
-        f
+    if isFunction(x) {
+        return x;
     }
+    let f = allocSExp(SEXPTYPE::CLOSXP);
+    let _f_guard = protect(f);
+    SET_CLOENV(f, R_GlobalEnv());
+    // For simplicity, create a closure with empty formals and body = x
+    SET_FORMALS(f, R_NilValue());
+    SET_BODY(f, x);
+    f
 }
 
 /// Common coercion helper for as.vector / typed coercion dispatch.
@@ -1124,73 +1118,71 @@ pub fn ascommon(call: SEXP, u: SEXP, type_: c_int) -> SEXP {
 /// R's `coerceVector()` from coerce.c. It dispatches to the appropriate
 /// type-specific coercion function based on the source and target types.
 pub fn coerceVector(v: SEXP, type_: c_int) -> SEXP {
-    unsafe {
-        if v.is_null() {
-            return ptr::null_mut();
-        }
-        let target = SEXPTYPE(type_);
-
-        // If already the right type, return as-is
-        if TYPEOF(v) == type_ {
-            return v;
-        }
-
-        let _v_guard = protect(v);
-
-        let ans = match TYPEOF(v) {
-            t if t == SEXPTYPE::SYMSXP => coerceSymbol(v, target),
-            t if t == SEXPTYPE::NILSXP => {
-                // GNU coercePairList represents NULL as one expression cell,
-                // while its atomic/list conversions have no elements.
-                if target == SEXPTYPE::EXPRSXP {
-                    coercePairList(v, target)
-                } else {
-                    Rf_allocVector3(target, 0)
-                }
-            }
-            t if t == SEXPTYPE::LISTSXP => {
-                if type_ == SEXPTYPE::LISTSXP {
-                    v // already pairlist
-                } else {
-                    coercePairList(v, target)
-                }
-            }
-            // Calls have linked cells, never an atomic vector length field.
-            // Reuse the counted pairlist path, including element deparsing.
-            t if t == SEXPTYPE::LANGSXP => coercePairList(v, target),
-            t if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP => coerceVectorList(v, target),
-            t if t == SEXPTYPE::ENVSXP => {
-                error("environments cannot be coerced to other types");
-            }
-            // Atomic vector types
-            t if t == SEXPTYPE::LGLSXP
-                || t == SEXPTYPE::INTSXP
-                || t == SEXPTYPE::REALSXP
-                || t == SEXPTYPE::CPLXSXP
-                || t == SEXPTYPE::STRSXP
-                || t == SEXPTYPE::RAWSXP =>
-            {
-                match type_ {
-                    t if t == SEXPTYPE::SYMSXP => coerceToSymbol(v),
-                    t if t == SEXPTYPE::LGLSXP => coerceToLogical(v),
-                    t if t == SEXPTYPE::INTSXP => coerceToInteger(v),
-                    t if t == SEXPTYPE::REALSXP => coerceToReal(v),
-                    t if t == SEXPTYPE::CPLXSXP => coerceToComplex(v),
-                    t if t == SEXPTYPE::RAWSXP => coerceToRaw(v),
-                    t if t == SEXPTYPE::STRSXP => coerceToString(v),
-                    t if t == SEXPTYPE::EXPRSXP => coerceToExpression(v),
-                    t if t == SEXPTYPE::VECSXP => coerceToVectorList(v),
-                    t if t == SEXPTYPE::LISTSXP => coerceToPairList(v),
-                    _ => {
-                        error("cannot coerce type to vector of type");
-                    }
-                }
-            }
-            _ => {
-                error("cannot coerce type to vector of type");
-            }
-        };
-
-        ans
+    if v.is_null() {
+        return ptr::null_mut();
     }
+    let target = SEXPTYPE(type_);
+
+    // If already the right type, return as-is
+    if TYPEOF(v) == type_ {
+        return v;
+    }
+
+    let _v_guard = protect(v);
+
+    let ans = match TYPEOF(v) {
+        t if t == SEXPTYPE::SYMSXP => coerceSymbol(v, target),
+        t if t == SEXPTYPE::NILSXP => {
+            // GNU coercePairList represents NULL as one expression cell,
+            // while its atomic/list conversions have no elements.
+            if target == SEXPTYPE::EXPRSXP {
+                coercePairList(v, target)
+            } else {
+                Rf_allocVector3(target, 0)
+            }
+        }
+        t if t == SEXPTYPE::LISTSXP => {
+            if type_ == SEXPTYPE::LISTSXP {
+                v // already pairlist
+            } else {
+                coercePairList(v, target)
+            }
+        }
+        // Calls have linked cells, never an atomic vector length field.
+        // Reuse the counted pairlist path, including element deparsing.
+        t if t == SEXPTYPE::LANGSXP => coercePairList(v, target),
+        t if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP => coerceVectorList(v, target),
+        t if t == SEXPTYPE::ENVSXP => {
+            error("environments cannot be coerced to other types");
+        }
+        // Atomic vector types
+        t if t == SEXPTYPE::LGLSXP
+            || t == SEXPTYPE::INTSXP
+            || t == SEXPTYPE::REALSXP
+            || t == SEXPTYPE::CPLXSXP
+            || t == SEXPTYPE::STRSXP
+            || t == SEXPTYPE::RAWSXP =>
+        {
+            match type_ {
+                t if t == SEXPTYPE::SYMSXP => coerceToSymbol(v),
+                t if t == SEXPTYPE::LGLSXP => coerceToLogical(v),
+                t if t == SEXPTYPE::INTSXP => coerceToInteger(v),
+                t if t == SEXPTYPE::REALSXP => coerceToReal(v),
+                t if t == SEXPTYPE::CPLXSXP => coerceToComplex(v),
+                t if t == SEXPTYPE::RAWSXP => coerceToRaw(v),
+                t if t == SEXPTYPE::STRSXP => coerceToString(v),
+                t if t == SEXPTYPE::EXPRSXP => coerceToExpression(v),
+                t if t == SEXPTYPE::VECSXP => coerceToVectorList(v),
+                t if t == SEXPTYPE::LISTSXP => coerceToPairList(v),
+                _ => {
+                    error("cannot coerce type to vector of type");
+                }
+            }
+        }
+        _ => {
+            error("cannot coerce type to vector of type");
+        }
+    };
+
+    ans
 }

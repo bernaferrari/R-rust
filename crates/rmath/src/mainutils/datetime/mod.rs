@@ -114,25 +114,25 @@ fn vector_element(x: SEXP, i: R_xlen_t) -> SEXP {
 /// Audited boundary: read-only named-attribute traversal of a live object.
 fn attribute(x: SEXP, symbol: SEXP) -> SEXP {
     // SAFETY: getAttrib walks the attribute pairlist without mutation.
-    unsafe { crate::sexp::attrib_core::getAttrib(x, symbol) }
+    crate::sexp::attrib_core::getAttrib(x, symbol)
 }
 
 /// Audited boundary: named-attribute write on a live object.
 fn set_attribute(x: SEXP, symbol: SEXP, value: SEXP) {
     // SAFETY: setAttrib mutates one named slot of a live object.
-    unsafe { crate::sexp::attrib_core::setAttrib(x, symbol, value) }
+    crate::sexp::attrib_core::setAttrib(x, symbol, value)
 }
 
 /// Audited boundary: the names symbol is a process-global singleton.
 fn names_symbol() -> SEXP {
     // SAFETY: returns the shared R_NamesSymbol singleton.
-    unsafe { crate::sexp::attrib_core::R_NamesSymbol() }
+    crate::sexp::attrib_core::R_NamesSymbol()
 }
 
 /// Audited boundary: the class symbol is a process-global singleton.
 fn class_symbol() -> SEXP {
     // SAFETY: returns the shared R_ClassSymbol singleton.
-    unsafe { crate::sexp::attrib_core::R_ClassSymbol() }
+    crate::sexp::attrib_core::R_ClassSymbol()
 }
 
 /// Audited boundary: symbol interning under the active runtime.

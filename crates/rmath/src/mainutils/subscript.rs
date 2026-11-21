@@ -107,12 +107,12 @@ pub fn ECALL_OutOfBounds(x: SEXP, subscript: c_int, index: R_xlen_t, _call: SEXP
         subscript,
         index
     );
-     error(&msg);
+    error(&msg);
 }
 
 /// Report a missing subscript error.
 pub fn ECALL_MissingSubs(_call: SEXP) {
-     error("subscript is missing");
+    error("subscript is missing");
 }
 
 /// Report an out-of-bounds error for character subscripts.
@@ -123,7 +123,7 @@ pub fn ECALL_OutOfBoundsCHAR(x: SEXP, subscript: c_int, sindex: SEXP, _call: SEX
         subscript,
         subscript_index_name(sindex)
     );
-     error(&msg);
+    error(&msg);
 }
 
 // ---------------------------------------------------------------------------
@@ -1675,7 +1675,7 @@ mod tests {
     fn test_ecall_missing_subs_reports_context() {
         let _session = crate::sexp::session::RSession::new();
         let msg = panic_message(|| {
-             ECALL_MissingSubs(ptr::null_mut());
+            ECALL_MissingSubs(ptr::null_mut());
         });
         assert_eq!(msg, "subscript is missing");
     }

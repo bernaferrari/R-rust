@@ -1128,7 +1128,7 @@ fn one_string(x: SEXP, indx: R_xlen_t) -> SEXP {
     if !element_in_range(x, indx) {
         return ptr::null_mut();
     }
-    unsafe { STRING_ELT(x, indx) }
+    STRING_ELT(x, indx)
 }
 
 /// Encode a single element of an R vector for printing (R_xlen_t index).

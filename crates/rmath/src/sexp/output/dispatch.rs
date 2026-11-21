@@ -140,40 +140,37 @@ pub(crate) fn format_dispatched_print(x: Sexp<'_>) -> Option<String> {
 
 /// Execute the method into the caller's capture, keeping stream order intact.
 pub(crate) fn dispatch_print_method(x: Sexp<'_>) -> Option<()> {
-    unsafe {
-        let raw = x.as_raw();
-        if crate::sexp::accessors::OBJECT(raw) == 0 {
-            return None;
-        }
-        let klass =
-            crate::sexp::attrib_core::getAttrib(raw, crate::sexp::attrib_core::R_ClassSymbol());
-        let env = crate::sexp::globals::R_GlobalEnv();
-        let method = crate::mainutils::objects::lookup_s3_method_for_classes(
-            "print", klass, env, env, env, false,
-        )?;
-        let method_ty = TYPEOF(method.method);
-        if method_ty != SEXPTYPE::CLOSXP
-            && method_ty != SEXPTYPE::BUILTINSXP
-            && method_ty != SEXPTYPE::SPECIALSXP
-        {
-            return None;
-        }
-        let extras = print_dispatch_extras();
-        let extras = if extras.is_null() {
-            R_NilValue()
-        } else {
-            extras
-        };
-        let args = crate::sexp::constructors::Rf_cons(raw, extras);
-        let _args = crate::sexp::protect::protect(args);
-        let print_sym = crate::sexp::symbol::install_str("print");
-        let call = crate::sexp::constructors::Rf_cons(print_sym, args);
-        if !call.is_null() {
-            crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
-        }
-        let _call = crate::sexp::protect::protect(call);
-        crate::mainutils::essentials::apply_s3_closure_method("print", call, args, env).map(|_| ())
+    let raw = x.as_raw();
+    if crate::sexp::accessors::OBJECT(raw) == 0 {
+        return None;
     }
+    let klass = crate::sexp::attrib_core::getAttrib(raw, crate::sexp::attrib_core::R_ClassSymbol());
+    let env = crate::sexp::globals::R_GlobalEnv();
+    let method = crate::mainutils::objects::lookup_s3_method_for_classes(
+        "print", klass, env, env, env, false,
+    )?;
+    let method_ty = TYPEOF(method.method);
+    if method_ty != SEXPTYPE::CLOSXP
+        && method_ty != SEXPTYPE::BUILTINSXP
+        && method_ty != SEXPTYPE::SPECIALSXP
+    {
+        return None;
+    }
+    let extras = print_dispatch_extras();
+    let extras = if extras.is_null() {
+        R_NilValue()
+    } else {
+        extras
+    };
+    let args = crate::sexp::constructors::Rf_cons(raw, extras);
+    let _args = crate::sexp::protect::protect(args);
+    let print_sym = crate::sexp::symbol::install_str("print");
+    let call = crate::sexp::constructors::Rf_cons(print_sym, args);
+    if !call.is_null() {
+        crate::sexp::accessors::SET_TYPEOF(call, SEXPTYPE::LANGSXP.as_c_int());
+    }
+    let _call = crate::sexp::protect::protect(call);
+    crate::mainutils::essentials::apply_s3_closure_method("print", call, args, env).map(|_| ())
 }
 
 /// GNU `PrintValue` dispatches `print` when a class is set. try-error,
@@ -262,12 +259,11 @@ pub fn print_value(x: Sexp<'_>) {
                 {
                     // GNU PrintClosure appends the environment line after
                     // the source text as well (print.c:189-198).
-                    unsafe {
-                        crate::mainutils::essentials::print::append_closure_environment(
-                            x.clone().as_raw(),
-                            &mut source,
-                        )
-                    };
+
+                    crate::mainutils::essentials::print::append_closure_environment(
+                        x.clone().as_raw(),
+                        &mut source,
+                    );
                     emit(&source);
                     return;
                 }
@@ -281,9 +277,8 @@ pub fn print_value(x: Sexp<'_>) {
             print_with_printable_attributes(&base, x);
             if let Some(raw) = closure_raw {
                 let mut tail = String::new();
-                unsafe {
-                    crate::mainutils::essentials::print::append_closure_environment(raw, &mut tail)
-                };
+
+                crate::mainutils::essentials::print::append_closure_environment(raw, &mut tail);
                 emit(&tail);
             }
         }
@@ -420,8 +415,7 @@ pub fn print_value(x: Sexp<'_>) {
         }
         SEXPTYPE::VECSXP => {
             if has_class(x.clone(), "summary.warnings") {
-                let text =
-                    unsafe { crate::mainutils::essentials::format_summary_warnings(x.as_raw()) };
+                let text = crate::mainutils::essentials::format_summary_warnings(x.as_raw());
 
                 emit(&text);
                 return;
@@ -435,19 +429,18 @@ pub fn print_value(x: Sexp<'_>) {
             // `(dd <- data.frame(...))` must use print.data.frame, not the
             // internal formatter (which panics on POSIXt columns).
             if has_class(x.clone(), "data.frame") {
-                unsafe {
-                    let args = crate::sexp::constructors::Rf_cons(
-                        x.clone().as_raw(),
-                        crate::sexp::globals::R_NilValue(),
-                    );
-                    let _g = crate::sexp::protect::protect(args);
-                    crate::mainutils::essentials::do_print_data_frame(
-                        std::ptr::null_mut(),
-                        std::ptr::null_mut(),
-                        args,
-                        crate::sexp::globals::R_GlobalEnv(),
-                    );
-                }
+                let args = crate::sexp::constructors::Rf_cons(
+                    x.clone().as_raw(),
+                    crate::sexp::globals::R_NilValue(),
+                );
+                let _g = crate::sexp::protect::protect(args);
+                crate::mainutils::essentials::do_print_data_frame(
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    args,
+                    crate::sexp::globals::R_GlobalEnv(),
+                );
+
                 return;
             }
             print_list_with_path(x, "");
@@ -460,8 +453,7 @@ pub fn print_value(x: Sexp<'_>) {
             // derivatives printed .grad/.hessian lines unwrapped).
             let opts = crate::mainutils::deparse::DEFAULTDEPARSE
                 & !crate::mainutils::deparse::SHOWATTRIBUTES;
-            let text =
-                unsafe { crate::mainutils::deparse::deparse1w(x.clone().as_raw(), false, opts) };
+            let text = crate::mainutils::deparse::deparse1w(x.clone().as_raw(), false, opts);
             let _text_guard = crate::sexp::protect::protect(text);
             let mut joined = String::new();
             for i in 0..XLENGTH(text) {

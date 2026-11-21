@@ -127,9 +127,8 @@ fn set_binding_values(
         let len = libc_strlen(domainname) + 1;
         // Allocate binding + flexible array domainname at the end.
         let struct_size = std::mem::size_of::<binding>();
-        let layout =
-            Layout::from_size_align(struct_size + len, std::mem::align_of::<binding>())
-                .unwrap_or_else(|_| Layout::new::<u8>());
+        let layout = Layout::from_size_align(struct_size + len, std::mem::align_of::<binding>())
+            .unwrap_or_else(|_| Layout::new::<u8>());
         // Allocate `struct_size + len` bytes: the binding plus its name.
         let new_binding = unsafe { std::alloc::alloc(layout) } as *mut binding;
 
@@ -217,8 +216,7 @@ fn set_binding_values(
             } else {
                 let mut cur = head;
                 while let Some(c) = ptr_mut(cur) {
-                    let next_name =
-                        ptr_ref(c.next).map_or(ptr::null(), |n| n.domainname.as_ptr());
+                    let next_name = ptr_ref(c.next).map_or(ptr::null(), |n| n.domainname.as_ptr());
                     if next_name.is_null() || libc_strcmp(domainname, next_name) <= 0 {
                         break;
                     }
@@ -248,10 +246,7 @@ fn set_binding_values(
 /// rather than in the system locale data base.
 ///
 /// Returns the current dirname for the domain (may be the newly set value).
-pub fn libintl_bindtextdomain(
-    domainname: *const c_char,
-    dirname: *const c_char,
-) -> *mut c_char {
+pub fn libintl_bindtextdomain(domainname: *const c_char, dirname: *const c_char) -> *mut c_char {
     let mut dirname_mut: *const c_char = dirname;
     set_binding_values(domainname, &mut dirname_mut, ptr::null_mut());
     dirname_mut as *mut c_char

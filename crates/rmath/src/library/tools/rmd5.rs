@@ -120,9 +120,7 @@ pub fn Rmd5(files: SEXP) -> SEXP {
 
 #[inline]
 fn SET_STRING_ELT(x: SEXP, i: R_xlen_t, val: SEXP) {
-    unsafe {
-        crate::sexp::accessors::SET_STRING_ELT(x, i, val);
-    }
+    crate::sexp::accessors::SET_STRING_ELT(x, i, val);
 }
 
 fn hex_encode_lower(bytes: &[u8; 16]) -> [u8; 33] {

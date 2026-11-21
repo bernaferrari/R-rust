@@ -26,7 +26,7 @@ fn nil_value() -> SEXP {
 }
 
 fn scalar_logical(value: c_int) -> SEXP {
-    unsafe { Rf_ScalarLogical(value) }
+    Rf_ScalarLogical(value)
 }
 
 fn r_error(message: impl Into<String>) -> ! {
@@ -266,9 +266,7 @@ fn is_primitive_function(value: SEXP) -> bool {
 }
 
 fn inherits_internal_dispatch_method(value: SEXP) -> bool {
-    unsafe {
-        crate::mainutils::objects::inherits2(value, c"internalDispatchMethod".as_ptr()) != FALSE
-    }
+    crate::mainutils::objects::inherits2(value, c"internalDispatchMethod".as_ptr()) != FALSE
 }
 
 fn primitive_from_generic_frame(ev: SEXP) -> Option<SEXP> {
@@ -295,21 +293,20 @@ fn primitive_from_generic_frame(ev: SEXP) -> Option<SEXP> {
 /// Called from the methods package on load.
 pub fn R_initMethodDispatch(envir: SEXP) -> SEXP {
     let table_dispatch_on = with_methods_dispatch_state(|state| state.table_dispatch_on);
-    unsafe {
-        let standard_generic = if table_dispatch_on != 0 {
-            Some(R_dispatchGeneric as unsafe fn(SEXP, SEXP, SEXP) -> SEXP)
-        } else {
-            Some(R_standardGeneric as unsafe fn(SEXP, SEXP, SEXP) -> SEXP)
-        };
-        let quick_check = if table_dispatch_on != 0 {
-            Some(R_quick_dispatch as unsafe fn(SEXP, SEXP, SEXP) -> SEXP)
-        } else {
-            Some(R_quick_method_check as unsafe fn(SEXP, SEXP, SEXP) -> SEXP)
-        };
-        crate::mainutils::objects::R_set_standardGeneric_ptr(standard_generic, envir);
-        crate::mainutils::objects::R_set_quick_method_check(quick_check);
-        if envir.is_null() { R_NilValue() } else { envir }
-    }
+
+    let standard_generic = if table_dispatch_on != 0 {
+        Some(R_dispatchGeneric as unsafe fn(SEXP, SEXP, SEXP) -> SEXP)
+    } else {
+        Some(R_standardGeneric as unsafe fn(SEXP, SEXP, SEXP) -> SEXP)
+    };
+    let quick_check = if table_dispatch_on != 0 {
+        Some(R_quick_dispatch as unsafe fn(SEXP, SEXP, SEXP) -> SEXP)
+    } else {
+        Some(R_quick_method_check as unsafe fn(SEXP, SEXP, SEXP) -> SEXP)
+    };
+    crate::mainutils::objects::R_set_standardGeneric_ptr(standard_generic, envir);
+    crate::mainutils::objects::R_set_quick_method_check(quick_check);
+    if envir.is_null() { R_NilValue() } else { envir }
 }
 
 /// True when the full methods-package dispatch pointer has been installed
@@ -317,7 +314,7 @@ pub fn R_initMethodDispatch(envir: SEXP) -> SEXP {
 /// instead of the bare dispatchNonGeneric fallback.
 pub fn standard_generic_ptr_installed() -> bool {
     // SAFETY: reads the session-local dispatch pointer; no SEXP deref.
-    let ptr = unsafe { crate::mainutils::objects::R_get_standardGeneric_ptr() };
+    let ptr = crate::mainutils::objects::R_get_standardGeneric_ptr();
     ptr.is_some_and(|f| {
         !std::ptr::fn_addr_eq(
             f,
@@ -330,7 +327,7 @@ pub fn standard_generic_ptr_installed() -> bool {
 /// implementation once installed, else the bare non-generic fallback.
 pub fn standard_generic_dispatch() -> unsafe fn(SEXP, SEXP, SEXP) -> SEXP {
     // SAFETY: reads the session-local dispatch pointer; no SEXP deref.
-    let ptr = unsafe { crate::mainutils::objects::R_get_standardGeneric_ptr() };
+    let ptr = crate::mainutils::objects::R_get_standardGeneric_ptr();
     match ptr {
         Some(f)
             if !std::ptr::fn_addr_eq(
@@ -345,10 +342,10 @@ pub fn standard_generic_dispatch() -> unsafe fn(SEXP, SEXP, SEXP) -> SEXP {
             // Initialize on first use so table/S4 dispatch is available even
             // when nothing called R_initMethodDispatch explicitly. Table
             // dispatch is the default for setGeneric/setMethod flows.
-            unsafe {
-                with_methods_dispatch_state(|state| state.table_dispatch_on = 1);
-                R_initMethodDispatch(crate::sexp::globals::R_GlobalEnv());
-            }
+
+            with_methods_dispatch_state(|state| state.table_dispatch_on = 1);
+            R_initMethodDispatch(crate::sexp::globals::R_GlobalEnv());
+
             R_dispatchGeneric as unsafe fn(SEXP, SEXP, SEXP) -> SEXP
         }
     }
@@ -412,26 +409,22 @@ pub unsafe fn R_standardGeneric(fname: SEXP, ev: SEXP, fdef: SEXP) -> SEXP {
 // Match exact/ANY table signatures without generating 2^arity combinations.
 // Class inheritance remains the responsibility of the full methods selector.
 fn for_each_env_binding(env: SEXP, mut visit: impl FnMut(SEXP, SEXP)) {
-    unsafe {
-        let mut walk = |mut frame: SEXP| {
-            while !frame.is_null() && frame != R_NilValue() {
-                let symbol = TAG(frame);
-                let value = CAR(frame);
-                if !symbol.is_null()
-                    && TYPEOF(symbol) == SEXPTYPE::SYMSXP
-                    && value != R_UnboundValue()
-                {
-                    visit(symbol, value);
-                }
-                frame = CDR(frame);
+    let mut walk = |mut frame: SEXP| {
+        while !frame.is_null() && frame != R_NilValue() {
+            let symbol = TAG(frame);
+            let value = CAR(frame);
+            if !symbol.is_null() && TYPEOF(symbol) == SEXPTYPE::SYMSXP && value != R_UnboundValue()
+            {
+                visit(symbol, value);
             }
-        };
-        walk(FRAME(env));
-        let hashtab = HASHTAB(env);
-        if !hashtab.is_null() && hashtab != R_NilValue() && TYPEOF(hashtab) == SEXPTYPE::VECSXP {
-            for i in 0..XLENGTH(hashtab) {
-                walk(VECTOR_ELT(hashtab, i));
-            }
+            frame = CDR(frame);
+        }
+    };
+    walk(FRAME(env));
+    let hashtab = HASHTAB(env);
+    if !hashtab.is_null() && hashtab != R_NilValue() && TYPEOF(hashtab) == SEXPTYPE::VECSXP {
+        for i in 0..XLENGTH(hashtab) {
+            walk(VECTOR_ELT(hashtab, i));
         }
     }
 }
@@ -832,12 +825,7 @@ pub unsafe fn R_dispatchGeneric(fname: SEXP, ev: SEXP, fdef: SEXP) -> SEXP {
     }
 }
 
-fn try_s3_method_for_generic(
-    name: &str,
-    fname: SEXP,
-    ev: SEXP,
-    sigargs: SEXP,
-) -> Option<SEXP> {
+fn try_s3_method_for_generic(name: &str, fname: SEXP, ev: SEXP, sigargs: SEXP) -> Option<SEXP> {
     unsafe {
         if LENGTH(sigargs) < 1 {
             return None;
@@ -1101,10 +1089,9 @@ pub fn R_selectMethod(fname: SEXP, _ev: SEXP, mlist: SEXP, _evalArgs: SEXP) -> S
             return mlist;
         }
     }
-    unsafe {
-        let eval_args = crate::mainutils::coerce::asLogical(_evalArgs) != 0;
-        select_method_from_list(fname, _ev, mlist, eval_args, true)
-    }
+
+    let eval_args = crate::mainutils::coerce::asLogical(_evalArgs) != 0;
+    select_method_from_list(fname, _ev, mlist, eval_args, true)
 }
 
 /// Look up explicit target classes without evaluating or manufacturing arguments.
@@ -1208,7 +1195,7 @@ pub fn R_M_setPrimitiveMethods(
     fundef: SEXP,
     mlist: SEXP,
 ) -> SEXP {
-    unsafe { crate::mainutils::objects::R_set_prim_method(fname, op, code_vec, fundef, mlist) }
+    crate::mainutils::objects::R_set_prim_method(fname, op, code_vec, fundef, mlist)
 }
 
 /// R_nextMethodCall - implement .nextMethod() (callNextMethod).
@@ -1369,21 +1356,19 @@ pub extern "C" fn R_clear_method_selection() -> SEXP {
 }
 
 pub extern "C" fn R_set_method_dispatch(onOff: SEXP) -> SEXP {
-    unsafe {
-        let prev = with_methods_dispatch_state(|state| state.table_dispatch_on);
-        let value = if TYPEOF(onOff) == SEXPTYPE::LGLSXP && LENGTH(onOff) >= 1 {
-            LOGICAL_ELT(onOff, 0)
-        } else {
-            0 // NA_LOGICAL treated as "return previous"
-        };
-        if value != std::os::raw::c_int::MIN {
-            // NA_LOGICAL == INT_MIN
-            with_methods_dispatch_state(|state| {
-                state.table_dispatch_on = if value != 0 { 1 } else { 0 }
-            });
-        }
-        scalar_logical(prev)
+    let prev = with_methods_dispatch_state(|state| state.table_dispatch_on);
+    let value = if TYPEOF(onOff) == SEXPTYPE::LGLSXP && LENGTH(onOff) >= 1 {
+        LOGICAL_ELT(onOff, 0)
+    } else {
+        0 // NA_LOGICAL treated as "return previous"
+    };
+    if value != std::os::raw::c_int::MIN {
+        // NA_LOGICAL == INT_MIN
+        with_methods_dispatch_state(|state| {
+            state.table_dispatch_on = if value != 0 { 1 } else { 0 }
+        });
     }
+    scalar_logical(prev)
 }
 
 /// R_methodsPackageMetaName - construct a meta-data object name.
@@ -1982,16 +1967,14 @@ fn charsxp_same(a: SEXP, b: SEXP) -> bool {
 
 /// asChar - local helper to coerce to a single CHARSXP.
 fn asChar(x: SEXP) -> SEXP {
-    unsafe {
-        if TYPEOF(x) == SEXPTYPE::STRSXP && LENGTH(x) >= 1 {
-            STRING_ELT(x, 0)
-        } else if TYPEOF(x) == SEXPTYPE::SYMSXP {
-            PRINTNAME(x)
-        } else if TYPEOF(x) == SEXPTYPE::CHARSXP {
-            x
-        } else {
-            nil_value()
-        }
+    if TYPEOF(x) == SEXPTYPE::STRSXP && LENGTH(x) >= 1 {
+        STRING_ELT(x, 0)
+    } else if TYPEOF(x) == SEXPTYPE::SYMSXP {
+        PRINTNAME(x)
+    } else if TYPEOF(x) == SEXPTYPE::CHARSXP {
+        x
+    } else {
+        nil_value()
     }
 }
 

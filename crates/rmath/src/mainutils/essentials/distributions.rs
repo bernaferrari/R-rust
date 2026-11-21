@@ -282,7 +282,7 @@ fn dpq_copy_attrib(owner: OwnerToken<'_>, dst: &Sexp<'_>, src: &Sexp<'_>) {
             let pointer = value.as_ref().map_or(std::ptr::null_mut(), Sexp::as_raw);
             // SAFETY: current cell, next cell, tag and value stay rooted
             // through setter reentry, as do the source and destination.
-            unsafe { crate::sexp::attrib_core::setAttrib(dst.as_raw(), tag.as_raw(), pointer) };
+            crate::sexp::attrib_core::setAttrib(dst.as_raw(), tag.as_raw(), pointer);
         }
         attr = next;
     }
@@ -318,7 +318,7 @@ fn dpq_evaluate(
     };
     // SAFETY: preserve the translated allocator's admission and retry behavior
     // with all operands rooted and no loan across allocation.
-    let result = unsafe { Rf_allocVector3(SEXPTYPE::REALSXP, n) };
+    let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
     checked_dpq(owner.require_active());
     if result.is_null() {
         return R_NilValue();
@@ -375,7 +375,7 @@ fn dpq_evaluate(
     if produced_nan {
         // SAFETY: the result and all arguments remain rooted through warning
         // dispatch, and the warning format is static.
-        unsafe { crate::mainutils::errors::Rf_warningcall1(call, c"NaNs produced".as_ptr()) };
+        crate::mainutils::errors::Rf_warningcall1(call, c"NaNs produced".as_ptr());
         checked_dpq(owner.require_active());
     }
     if let Some(Some(source)) = sources.iter().find(|source| length(source) == n) {
@@ -575,17 +575,15 @@ pub fn do_qexp(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 /// supplying both warns when they agree (`|rate*scale - 1| < 1e-15`) and
 /// stops otherwise.
 fn gamma_rate_scale_conflict(slots: &[SEXP], filled: &[bool]) {
-    unsafe {
-        if dpq_supplied(slots, filled, 2) && dpq_supplied(slots, filled, 3) {
-            let rate = real_or_default(slots[2], 1.0);
-            let scale = real_or_default(slots[3], 1.0);
-            if (rate * scale - 1.0).abs() < 1e-15 {
-                crate::mainutils::errors::Rf_warning1(
-                    c"specify 'rate' or 'scale' but not both".as_ptr(),
-                );
-            } else {
-                base_error("specify 'rate' or 'scale' but not both");
-            }
+    if dpq_supplied(slots, filled, 2) && dpq_supplied(slots, filled, 3) {
+        let rate = real_or_default(slots[2], 1.0);
+        let scale = real_or_default(slots[3], 1.0);
+        if (rate * scale - 1.0).abs() < 1e-15 {
+            crate::mainutils::errors::Rf_warning1(
+                c"specify 'rate' or 'scale' but not both".as_ptr(),
+            );
+        } else {
+            base_error("specify 'rate' or 'scale' but not both");
         }
     }
 }
@@ -1346,72 +1344,70 @@ pub fn do_qtukey(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R's `dmultinom(x, prob, log=FALSE)` — multinomial probability.
 pub fn do_dmultinom(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let (m, _filled) = dist_match(args, &["x", "prob", "log"]);
-        let x_arg = m[0];
-        let prob_arg = m[1];
+    let (m, _filled) = dist_match(args, &["x", "prob", "log"]);
+    let x_arg = m[0];
+    let prob_arg = m[1];
 
-        if x_arg.is_null() || prob_arg.is_null() {
-            return R_NilValue();
-        }
+    if x_arg.is_null() || prob_arg.is_null() {
+        return R_NilValue();
+    }
 
-        let nx = if x_arg == R_NilValue() {
-            0
-        } else {
-            XLENGTH(x_arg)
-        };
-        let np = if prob_arg == R_NilValue() {
-            0
-        } else {
-            XLENGTH(prob_arg)
-        };
-        if nx != np {
-            base_error("x[] and prob[] must be equal length vectors.");
-        }
-        let give_log = logical_arg(m[2], false);
+    let nx = if x_arg == R_NilValue() {
+        0
+    } else {
+        XLENGTH(x_arg)
+    };
+    let np = if prob_arg == R_NilValue() {
+        0
+    } else {
+        XLENGTH(prob_arg)
+    };
+    if nx != np {
+        base_error("x[] and prob[] must be equal length vectors.");
+    }
+    let give_log = logical_arg(m[2], false);
 
-        // Collect x values
-        let mut xv: Vec<f64> = Vec::with_capacity(nx as usize);
-        for i in 0..nx {
-            xv.push(elt_real_safe(x_arg, i));
-        }
+    // Collect x values
+    let mut xv: Vec<f64> = Vec::with_capacity(nx as usize);
+    for i in 0..nx {
+        xv.push(elt_real_safe(x_arg, i));
+    }
 
-        // Collect and validate prob values
-        let mut pv: Vec<f64> = Vec::with_capacity(np as usize);
-        let mut prob_sum = 0.0;
-        for i in 0..np {
-            let p = elt_real_safe(prob_arg, i);
-            if !p.is_finite() || p < 0.0 {
-                base_error("probabilities must be finite, non-negative and not all 0");
-            }
-            prob_sum += p;
-            pv.push(p);
-        }
-        if prob_sum <= 0.0 {
+    // Collect and validate prob values
+    let mut pv: Vec<f64> = Vec::with_capacity(np as usize);
+    let mut prob_sum = 0.0;
+    for i in 0..np {
+        let p = elt_real_safe(prob_arg, i);
+        if !p.is_finite() || p < 0.0 {
             base_error("probabilities must be finite, non-negative and not all 0");
         }
-        for p in &mut pv {
-            *p /= prob_sum;
-        }
-
-        // dmultinom: log-probability of multinomial outcome
-        // Uses lgammafn(x+1) for log-factorial terms
-        let k = xv.len().min(pv.len());
-        let n_total: f64 = xv.iter().sum();
-
-        let mut log_prob = crate::special::gamma::lgammafn(n_total + 1.0);
-        for i in 0..k {
-            log_prob -= crate::special::gamma::lgammafn(xv[i] + 1.0);
-            if pv[i] > 0.0 {
-                log_prob += xv[i] * pv[i].ln();
-            } else if xv[i] > 0.0 {
-                log_prob = f64::NEG_INFINITY;
-            }
-        }
-
-        let result = if give_log { log_prob } else { log_prob.exp() };
-        Rf_ScalarReal(result)
+        prob_sum += p;
+        pv.push(p);
     }
+    if prob_sum <= 0.0 {
+        base_error("probabilities must be finite, non-negative and not all 0");
+    }
+    for p in &mut pv {
+        *p /= prob_sum;
+    }
+
+    // dmultinom: log-probability of multinomial outcome
+    // Uses lgammafn(x+1) for log-factorial terms
+    let k = xv.len().min(pv.len());
+    let n_total: f64 = xv.iter().sum();
+
+    let mut log_prob = crate::special::gamma::lgammafn(n_total + 1.0);
+    for i in 0..k {
+        log_prob -= crate::special::gamma::lgammafn(xv[i] + 1.0);
+        if pv[i] > 0.0 {
+            log_prob += xv[i] * pv[i].ln();
+        } else if xv[i] > 0.0 {
+            log_prob = f64::NEG_INFINITY;
+        }
+    }
+
+    let result = if give_log { log_prob } else { log_prob.exp() };
+    Rf_ScalarReal(result)
 }
 
 #[cfg(test)]

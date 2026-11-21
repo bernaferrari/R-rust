@@ -206,17 +206,15 @@ pub(crate) unsafe fn for_sequence_element(sequence: SEXP, index: c_int) -> SEXP 
 // ---------------------------------------------------------------------------
 
 pub(crate) unsafe fn gnu_is_number(value: SEXP) -> bool {
-    unsafe {
-        if value.is_null() {
-            return false;
+    if value.is_null() {
+        return false;
+    }
+    match TYPEOF(value) {
+        t if t == SEXPTYPE::INTSXP => {
+            crate::mainutils::objects::inherits2(value, c"factor".as_ptr()) == 0
         }
-        match TYPEOF(value) {
-            t if t == SEXPTYPE::INTSXP => {
-                crate::mainutils::objects::inherits2(value, c"factor".as_ptr()) == 0
-            }
-            t if t == SEXPTYPE::LGLSXP || t == SEXPTYPE::REALSXP || t == SEXPTYPE::CPLXSXP => true,
-            _ => false,
-        }
+        t if t == SEXPTYPE::LGLSXP || t == SEXPTYPE::REALSXP || t == SEXPTYPE::CPLXSXP => true,
+        _ => false,
     }
 }
 
@@ -238,20 +236,18 @@ pub(crate) unsafe fn fixup_scalar_logical(value: SEXP, call: SEXP, arg: &str, op
 
 /// Evaluate a value as a boolean condition for branching.
 pub(crate) unsafe fn eval_bc_condition(val: SEXP) -> bool {
-    unsafe {
-        let length = if val.is_null() { 0 } else { LENGTH(val) };
-        if length == 0 {
-            bc_error("argument is of length zero");
-        }
-        if length > 1 {
-            bc_error("the condition has length > 1");
-        }
-        let condition = crate::mainutils::coerce::asLogical(val);
-        if condition == NA_LOGICAL {
-            bc_error("missing value where TRUE/FALSE needed");
-        }
-        condition != FALSE
+    let length = if val.is_null() { 0 } else { LENGTH(val) };
+    if length == 0 {
+        bc_error("argument is of length zero");
     }
+    if length > 1 {
+        bc_error("the condition has length > 1");
+    }
+    let condition = crate::mainutils::coerce::asLogical(val);
+    if condition == NA_LOGICAL {
+        bc_error("missing value where TRUE/FALSE needed");
+    }
+    condition != FALSE
 }
 
 /// GNU ISNULL..ISNUMERIC match eval.c DO_ISTEST/DO_ISTYPE.
@@ -364,27 +360,23 @@ pub(crate) unsafe fn eval_gnu_dollargets(
 /// GNU INCREMENT_LINKS for NAMED-tracking values: raise NAMED toward the
 /// maximum so in-place modification of the protected value duplicates.
 pub(crate) unsafe fn increment_named_link(value: SEXP) {
-    unsafe {
-        if value.is_null() || value == R_NilValue() {
-            return;
-        }
-        let current = crate::sexp::accessors::NAMED(value);
-        if current < 2 {
-            crate::sexp::accessors::SET_NAMED(value, current + 1);
-        }
+    if value.is_null() || value == R_NilValue() {
+        return;
+    }
+    let current = crate::sexp::accessors::NAMED(value);
+    if current < 2 {
+        crate::sexp::accessors::SET_NAMED(value, current + 1);
     }
 }
 
 /// GNU DECREMENT_LINKS: release one link taken by INCREMENT_LINKS.
 pub(crate) unsafe fn decrement_named_link(value: SEXP) {
-    unsafe {
-        if value.is_null() || value == R_NilValue() {
-            return;
-        }
-        let current = crate::sexp::accessors::NAMED(value);
-        if current > 0 {
-            crate::sexp::accessors::SET_NAMED(value, current - 1);
-        }
+    if value.is_null() || value == R_NilValue() {
+        return;
+    }
+    let current = crate::sexp::accessors::NAMED(value);
+    if current > 0 {
+        crate::sexp::accessors::SET_NAMED(value, current - 1);
     }
 }
 

@@ -32,11 +32,11 @@ unsafe fn checkArity(op: SEXP, args: SEXP) {
 }
 
 unsafe fn asLogical(x: SEXP) -> c_int {
-    unsafe { crate::mainutils::coerce::asLogical(x) }
+    crate::mainutils::coerce::asLogical(x)
 }
 
 unsafe fn asInteger(x: SEXP) -> c_int {
-    unsafe { crate::mainutils::coerce::asInteger(x) }
+    crate::mainutils::coerce::asInteger(x)
 }
 
 // ---------------------------------------------------------------------------

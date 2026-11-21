@@ -47,26 +47,24 @@ unsafe fn get_list_element(list: SEXP, name: &[u8]) -> SEXP {
 }
 
 unsafe fn knot_count(x: SEXP) -> R_xlen_t {
-    unsafe {
-        if XLENGTH(x) > 0 {
-            match SEXPTYPE::from(TYPEOF(x)) {
-                SEXPTYPE::INTSXP => {
-                    let n = INTEGER_ELT(x, 0);
-                    if n >= 0 {
-                        return n as R_xlen_t;
-                    }
+    if XLENGTH(x) > 0 {
+        match SEXPTYPE::from(TYPEOF(x)) {
+            SEXPTYPE::INTSXP => {
+                let n = INTEGER_ELT(x, 0);
+                if n >= 0 {
+                    return n as R_xlen_t;
                 }
-                SEXPTYPE::REALSXP => {
-                    let n = REAL_ELT(x, 0);
-                    if (0.0..=(1_i64 << 52) as f64).contains(&n) && n.fract() == 0.0 {
-                        return n as R_xlen_t;
-                    }
-                }
-                _ => (),
             }
+            SEXPTYPE::REALSXP => {
+                let n = REAL_ELT(x, 0);
+                if (0.0..=(1_i64 << 52) as f64).contains(&n) && n.fract() == 0.0 {
+                    return n as R_xlen_t;
+                }
+            }
+            _ => (),
         }
-        r_error("invalid spline knot count")
     }
+    r_error("invalid spline knot count")
 }
 
 fn materialize_real(value: &Sexp<'_>) {

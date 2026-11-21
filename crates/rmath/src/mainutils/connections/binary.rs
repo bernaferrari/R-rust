@@ -95,7 +95,7 @@ fn filename_read_parameters(
     for value in values {
         access.domain().link(value)?;
     }
-    access.with_native(|_| unsafe {
+    access.with_native(|_| {
         let [what, count, size, signed, endian] = values;
         let kind = binary_kind_from_what(what.as_raw());
         Ok(FilenameReadParameters {
@@ -143,7 +143,7 @@ fn filename_encode_staged(
     for value in values {
         access.domain().link(value)?;
     }
-    access.with_native(|_| unsafe {
+    access.with_native(|_| {
         let [object, size, endian, use_bytes] = values;
         let order = byte_order_from_arg(endian.as_raw(), "endian");
         if Rf_isVectorAtomic(object.as_raw()) == 0 {
@@ -262,7 +262,7 @@ impl ByteOrder {
 }
 
 pub fn binary_kind_from_what(what: SEXP) -> BinaryKind {
-    unsafe {
+    {
         if what.is_null() || what == R_NilValue() {
             r_error("invalid 'what' argument");
         }
@@ -292,7 +292,7 @@ pub fn binary_kind_from_what(what: SEXP) -> BinaryKind {
 }
 
 pub fn byte_order_from_arg(arg: SEXP, name: &str) -> ByteOrder {
-    unsafe {
+    {
         if arg.is_null() || arg == R_NilValue() || arg == R_MissingArg() {
             return ByteOrder::native();
         }
@@ -317,7 +317,7 @@ pub fn byte_order_from_arg(arg: SEXP, name: &str) -> ByteOrder {
 }
 
 pub fn binary_count(arg: SEXP) -> usize {
-    unsafe {
+    {
         let n = as_integer(arg);
         if n < 0 || n == NA_INTEGER {
             r_error("invalid 'n' argument");
@@ -327,7 +327,7 @@ pub fn binary_count(arg: SEXP) -> usize {
 }
 
 pub fn logical_arg_or(arg: SEXP, name: &str, default: c_int) -> c_int {
-    unsafe {
+    {
         if arg.is_null() || arg == R_NilValue() || arg == R_MissingArg() {
             default
         } else {
@@ -337,7 +337,7 @@ pub fn logical_arg_or(arg: SEXP, name: &str, default: c_int) -> c_int {
 }
 
 pub fn connection_rw_mode(arg: SEXP) -> c_int {
-    unsafe {
+    {
         if arg.is_null() || arg == R_NilValue() || arg == R_MissingArg() {
             return 0;
         }
@@ -356,7 +356,7 @@ pub fn connection_rw_mode(arg: SEXP) -> c_int {
 }
 
 pub fn binary_size(arg: SEXP, kind: BinaryKind) -> usize {
-    unsafe {
+    {
         let default = match kind {
             BinaryKind::Raw | BinaryKind::Character => 1,
             BinaryKind::Integer | BinaryKind::Logical => 4,
@@ -408,7 +408,7 @@ fn binary_connection_index(
     writing: bool,
 ) -> crate::sexp::object::SexpResult<ConnectionToken> {
     access.domain().link(con)?;
-    access.with_native(|_| unsafe {
+    access.with_native(|_| {
         if !inherits_class(con.as_raw(), "connection") {
             r_error("'con' is not a connection");
         }
@@ -669,7 +669,7 @@ pub fn decode_binary_result(
 }
 
 pub fn encode_binary_object(object: SEXP, size_arg: SEXP, order: ByteOrder) -> Vec<u8> {
-    unsafe { encode_binary_object_admitted(object, size_arg, order, |_| {}) }
+    encode_binary_object_admitted(object, size_arg, order, |_| {})
 }
 
 fn binary_write_size(size: c_int, kind: BinaryKind) -> usize {
@@ -705,7 +705,7 @@ fn encode_binary_object_admitted(
     order: ByteOrder,
     admit: impl FnMut(usize),
 ) -> Vec<u8> {
-    unsafe {
+    {
         let size = crate::mainutils::coerce::asInteger(size_arg);
         encode_binary_object_selected_size(object, size, order, admit)
     }

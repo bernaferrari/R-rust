@@ -190,7 +190,7 @@ fn try_summary_method_arguments<'s>(
     }
     let na_rm_value = match na_rm_value {
         Some(value) => value,
-        None => factory.wrap(unsafe { crate::mainutils::relop::R_FalseValue() })?,
+        None => factory.wrap(crate::mainutils::relop::R_FalseValue())?,
     };
     let default_tag = factory.wrap(unsafe { Rf_install(b"na.rm\0".as_ptr() as *const c_char) })?;
     builder.push(na_rm_value, Some(default_tag))?;
@@ -206,9 +206,8 @@ fn summary_method_allocation_error(error: crate::sexp::object::SexpError) -> ! {
         // Match Rf_cons/Rf_allocVector's canonical bounded-allocation error.
         // With unlimited budgets this returns null, so preserve the checked
         // constructor's more specific error below.
-        unsafe {
-            crate::sexp::constructors::require_allocation(std::ptr::null_mut());
-        }
+
+        crate::sexp::constructors::require_allocation(std::ptr::null_mut());
     }
     crate::sexp::context::r_error(error.to_string())
 }
@@ -336,7 +335,7 @@ pub fn evalList<'a>(el: Sexp<'a>, rho: Sexp<'a>, call: Option<Sexp<'a>>, nargs: 
         let expr = current
             .try_car()
             .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        if expr.as_raw() == unsafe { R_DotsSymbol() } {
+        if expr.as_raw() == R_DotsSymbol() {
             // Lookup may force active bindings; acquire its root before any
             // later promise evaluation or list-cell allocation.
             let h = factory
@@ -433,26 +432,22 @@ impl Drop for NamedArguments<'_> {
 /// GNU `INCREMENT_LINKS`: a later argument can still see this value as shared.
 /// 3 is sticky so a value that was already `NAMEDMAX` is not unshared later.
 unsafe fn bump_named_link(val: SEXP) {
-    unsafe {
-        if val.is_null() {
-            return;
-        }
-        let n = crate::sexp::accessors::NAMED(val);
-        if n < 3 {
-            crate::sexp::accessors::SET_NAMED(val, n + 1);
-        }
+    if val.is_null() {
+        return;
+    }
+    let n = crate::sexp::accessors::NAMED(val);
+    if n < 3 {
+        crate::sexp::accessors::SET_NAMED(val, n + 1);
     }
 }
 
 unsafe fn drop_named_link(val: SEXP) {
-    unsafe {
-        if val.is_null() {
-            return;
-        }
-        let n = crate::sexp::accessors::NAMED(val);
-        if n > 0 && n < 3 {
-            crate::sexp::accessors::SET_NAMED(val, n - 1);
-        }
+    if val.is_null() {
+        return;
+    }
+    let n = crate::sexp::accessors::NAMED(val);
+    if n > 0 && n < 3 {
+        crate::sexp::accessors::SET_NAMED(val, n - 1);
     }
 }
 
@@ -478,7 +473,7 @@ pub(crate) unsafe fn promiseArgs<'s>(
         .and_then(|_| factory.link(&rho))
         .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
     let missing = factory.missing();
-    let dots_symbol = unsafe { R_DotsSymbol() };
+    let dots_symbol = R_DotsSymbol();
     let mut result = PairlistBuilder::from_factory(factory.clone());
     let mut remaining = arguments;
     while !remaining.is_nil() {
@@ -688,23 +683,21 @@ unsafe fn R_mkString(s: *const c_char) -> SEXP {
 // ---------------------------------------------------------------------------
 
 unsafe fn stringSuffix(klass: SEXP, pos: c_int) -> SEXP {
-    unsafe {
-        if klass.is_null() || pos < 0 {
-            return R_NilValue();
-        }
-        let n = LENGTH(klass);
-        if pos >= n {
-            return R_NilValue();
-        }
-        let len = n - pos;
-        let ans = Rf_allocVector(SEXPTYPE::STRSXP, len);
-        let _ans_guard = protect(ans);
-        for i in 0..len {
-            let src = STRING_ELT(klass, (pos + i) as R_xlen_t);
-            SET_STRING_ELT(ans, i as R_xlen_t, src);
-        }
-        ans
+    if klass.is_null() || pos < 0 {
+        return R_NilValue();
     }
+    let n = LENGTH(klass);
+    if pos >= n {
+        return R_NilValue();
+    }
+    let len = n - pos;
+    let ans = Rf_allocVector(SEXPTYPE::STRSXP, len);
+    let _ans_guard = protect(ans);
+    for i in 0..len {
+        let src = STRING_ELT(klass, (pos + i) as R_xlen_t);
+        SET_STRING_ELT(ans, i as R_xlen_t, src);
+    }
+    ans
 }
 
 // ---------------------------------------------------------------------------
@@ -1400,7 +1393,7 @@ pub fn evalListKeepMissing<'a>(el: Sexp<'a>, rho: Sexp<'a>) -> Sexp<'a> {
         let expr = remaining
             .try_car()
             .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        if expr.as_raw() == unsafe { R_DotsSymbol() } {
+        if expr.as_raw() == R_DotsSymbol() {
             let mut dots = factory
                 .wrap(unsafe { R_findVarInFrame(rho.as_raw(), expr.as_raw()) })
                 .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
@@ -1838,10 +1831,7 @@ mod owned_argument_tests {
             (*instance).memory_state.gc_force_gap = 0;
         });
         assert!(notifications.get() >= 8);
-        assert_eq!(
-            crate::sexp::accessors::NAMED(first_code),
-            original_named
-        );
+        assert_eq!(crate::sexp::accessors::NAMED(first_code), original_named);
         drop(first_expression);
         drop(call);
         drop(dots_source);
@@ -2086,10 +2076,7 @@ mod owned_argument_tests {
             evalListKeepMissing(args, session.global_env().unwrap())
         }));
         assert!(error.is_err());
-        assert_eq!(
-            crate::sexp::accessors::NAMED(first.as_raw()),
-            before_named
-        );
+        assert_eq!(crate::sexp::accessors::NAMED(first.as_raw()), before_named);
         assert_eq!(crate::sexp::protect::R_ProtectCount(), before_roots);
     }
 
@@ -2174,10 +2161,7 @@ mod owned_argument_tests {
             evalList(args, session.global_env().unwrap(), Some(call), -1)
         }));
         assert!(error.is_err());
-        assert_eq!(
-            crate::sexp::accessors::NAMED(first.as_raw()),
-            before_named
-        );
+        assert_eq!(crate::sexp::accessors::NAMED(first.as_raw()), before_named);
         assert_eq!(crate::sexp::protect::R_ProtectCount(), before_roots);
     }
 }

@@ -77,25 +77,23 @@ pub fn storage_mode_target(value: SEXP, allow_numeric: bool) -> Result<c_int, St
 /// The raw stored `row.names` attribute, including the compact
 /// `c(NA, -n)` automatic form, without materializing it.
 pub fn row_names_stored(x: SEXP) -> SEXP {
-    unsafe {
-        if x.is_null() || x == R_NilValue() {
-            return R_NilValue();
-        }
-        let which = crate::sexp::attrib_core::R_RowNamesSymbol();
-        let mut current = crate::sexp::accessors::ATTRIB(x);
-        while !current.is_null() && current != R_NilValue() {
-            if crate::sexp::accessors::TAG(current) == which {
-                return crate::sexp::accessors::CAR(current);
-            }
-            current = crate::sexp::accessors::CDR(current);
-        }
-        R_NilValue()
+    if x.is_null() || x == R_NilValue() {
+        return R_NilValue();
     }
+    let which = crate::sexp::attrib_core::R_RowNamesSymbol();
+    let mut current = crate::sexp::accessors::ATTRIB(x);
+    while !current.is_null() && current != R_NilValue() {
+        if crate::sexp::accessors::TAG(current) == which {
+            return crate::sexp::accessors::CAR(current);
+        }
+        current = crate::sexp::accessors::CDR(current);
+    }
+    R_NilValue()
 }
 
 /// Stored `row.names`, including the compact `c(NA, -n)` form.
 pub fn do_row_names_stored(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-     row_names_stored(CAR(args)) 
+    row_names_stored(CAR(args))
 }
 pub fn do_rownames(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
@@ -317,47 +315,43 @@ pub fn do_dimnames_set(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// GNU `dimnames.data.frame`: `list(row.names(x), names(x))`.
 pub(crate) fn dimnames_data_frame(x: SEXP) -> SEXP {
-    unsafe {
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
-        let _g = protect(result);
-        let rn = string_vector(&data_frame_row_names(x));
-        SET_VECTOR_ELT(result, 0, rn);
-        let cn = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
-        SET_VECTOR_ELT(result, 1, if cn.is_null() { R_NilValue() } else { cn });
-        result
-    }
+    let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+    let _g = protect(result);
+    let rn = string_vector(&data_frame_row_names(x));
+    SET_VECTOR_ELT(result, 0, rn);
+    let cn = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
+    SET_VECTOR_ELT(result, 1, if cn.is_null() { R_NilValue() } else { cn });
+    result
 }
 
 /// GNU `dimnames<-.data.frame`: row.names and names, not array dimnames.
 fn dimnames_gets_data_frame(x: SEXP, value: SEXP) {
-    unsafe {
-        if value.is_null() || value == R_NilValue() || TYPEOF(value) != SEXPTYPE::VECSXP {
-            std::panic::panic_any(RError {
-                message: "invalid 'dimnames' given for data frame".to_string(),
-            });
-        }
-        if XLENGTH(value) != 2 {
-            std::panic::panic_any(RError {
-                message: "invalid 'dimnames' given for data frame".to_string(),
-            });
-        }
-        let rn = VECTOR_ELT(value, 0);
-        let cn = VECTOR_ELT(value, 1);
-        if !cn.is_null() && cn != R_NilValue() {
-            crate::sexp::attrib_core::setAttrib(x, crate::sexp::attrib_core::R_NamesSymbol(), cn);
-        }
-        if !rn.is_null() && rn != R_NilValue() {
-            let rn_chr = if TYPEOF(rn) == SEXPTYPE::STRSXP {
-                rn
-            } else {
-                crate::mainutils::coerce::coerceVector(rn, SEXPTYPE::STRSXP.into())
-            };
-            crate::sexp::attrib_core::setAttrib(
-                x,
-                crate::sexp::attrib_core::R_RowNamesSymbol(),
-                rn_chr,
-            );
-        }
+    if value.is_null() || value == R_NilValue() || TYPEOF(value) != SEXPTYPE::VECSXP {
+        std::panic::panic_any(RError {
+            message: "invalid 'dimnames' given for data frame".to_string(),
+        });
+    }
+    if XLENGTH(value) != 2 {
+        std::panic::panic_any(RError {
+            message: "invalid 'dimnames' given for data frame".to_string(),
+        });
+    }
+    let rn = VECTOR_ELT(value, 0);
+    let cn = VECTOR_ELT(value, 1);
+    if !cn.is_null() && cn != R_NilValue() {
+        crate::sexp::attrib_core::setAttrib(x, crate::sexp::attrib_core::R_NamesSymbol(), cn);
+    }
+    if !rn.is_null() && rn != R_NilValue() {
+        let rn_chr = if TYPEOF(rn) == SEXPTYPE::STRSXP {
+            rn
+        } else {
+            crate::mainutils::coerce::coerceVector(rn, SEXPTYPE::STRSXP.into())
+        };
+        crate::sexp::attrib_core::setAttrib(
+            x,
+            crate::sexp::attrib_core::R_RowNamesSymbol(),
+            rn_chr,
+        );
     }
 }
 
@@ -478,12 +472,12 @@ pub(super) fn set_array_dimnames(x: SEXP, value: SEXP) {
 
 /// R's `rownames(x) <- value` — set matrix row names through dimnames[[1]].
 pub fn do_rownames_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-     set_matrix_dimname(args, 0) 
+    set_matrix_dimname(args, 0)
 }
 
 /// R's `colnames(x) <- value` — set matrix column names through dimnames[[2]].
 pub fn do_colnames_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-     set_matrix_dimname(args, 1) 
+    set_matrix_dimname(args, 1)
 }
 
 pub fn set_matrix_dimname(args: SEXP, axis: i64) -> SEXP {
@@ -527,7 +521,7 @@ pub fn do_class_get(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R's `.class2(x)` — GNU `R_data_class2`, including S4 extends.
 pub fn do_class2(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { crate::mainutils::objects::R_data_class2(CAR(args)) }
+    crate::mainutils::objects::R_data_class2(CAR(args))
 }
 
 pub fn do_class_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
@@ -670,13 +664,11 @@ pub fn do_class_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R's `oldClass(x)` — direct S3 class attribute without implicit defaults.
 pub fn do_oldClass(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return R_NilValue();
-        }
-        crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_ClassSymbol())
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return R_NilValue();
     }
+    crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_ClassSymbol())
 }
 
 /// R's `oldClass(x) <- value` — set or remove the direct S3 class attribute.
@@ -951,13 +943,11 @@ pub fn do_attributes_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 
 /// R's `comment(x)` — get the comment attribute.
 pub fn do_comment(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return R_NilValue();
-        }
-        crate::sexp::attrib_core::getAttrib(x, comment_symbol())
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return R_NilValue();
     }
+    crate::sexp::attrib_core::getAttrib(x, comment_symbol())
 }
 
 /// R's `comment(x) <- value` — set the comment attribute.

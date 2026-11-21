@@ -35,7 +35,7 @@ use crate::sexp::memory::with_arena;
 use crate::sexp::protect::protect;
 
 unsafe fn coerceVector(x: SEXP, type_: c_int) -> SEXP {
-    unsafe { crate::main::coerce::coerceVector(x, type_) }
+    crate::main::coerce::coerceVector(x, type_)
 }
 
 unsafe fn duplicate(x: SEXP) -> SEXP {
@@ -549,12 +549,11 @@ fn nextn0(mut n: c_int, f: &[c_int]) -> c_int {
         n += 1;
     }
     if n >= c_int::MAX {
-        unsafe {
-            crate::main::errors::Rf_warning(
-                b"nextn() found no solution < INT_MAX (the maximal integer)\0".as_ptr()
-                    as *const core::ffi::c_char,
-            );
-        }
+        crate::main::errors::Rf_warning(
+            b"nextn() found no solution < INT_MAX (the maximal integer)\0".as_ptr()
+                as *const core::ffi::c_char,
+        );
+
         return NA_INTEGER;
     }
     n
@@ -571,12 +570,10 @@ fn nextn0_64(mut n: u64, f: &[c_int]) -> u64 {
         n += 1;
     }
     if n >= u64::MAX {
-        unsafe {
-            crate::main::errors::Rf_warning(
-                b"nextn<64>() found no solution < UINT64_MAX\0".as_ptr()
-                    as *const core::ffi::c_char,
-            );
-        }
+        crate::main::errors::Rf_warning(
+            b"nextn<64>() found no solution < UINT64_MAX\0".as_ptr() as *const core::ffi::c_char
+        );
+
         return 0;
     }
     n

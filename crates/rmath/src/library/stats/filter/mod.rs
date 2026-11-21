@@ -33,15 +33,15 @@ use crate::sexp::protect::*;
 // Shared helpers used across the child modules.
 
 unsafe fn coerceVector(x: SEXP, type_: c_int) -> SEXP {
-    unsafe { crate::main::coerce::coerceVector(x, type_) }
+    crate::main::coerce::coerceVector(x, type_)
 }
 
 unsafe fn asInteger(x: SEXP) -> c_int {
-    unsafe { crate::main::coerce::asInteger(x) }
+    crate::main::coerce::asInteger(x)
 }
 
 unsafe fn asLogical(x: SEXP) -> c_int {
-    unsafe { crate::main::coerce::asLogical(x) }
+    crate::main::coerce::asLogical(x)
 }
 
 unsafe fn asBool(x: SEXP) -> bool {

@@ -35,7 +35,7 @@ use crate::sexp::protect::protect;
 use crate::sexp::symbol::Rf_install;
 
 fn asInteger(x: SEXP) -> c_int {
-    unsafe { crate::main::coerce::asInteger(x) }
+    crate::main::coerce::asInteger(x)
 }
 
 const HT_TYPE_IDENTICAL: c_int = 1;
@@ -50,13 +50,11 @@ const HASH_SLOT_COUNT: c_int = 3;
 const HASH_IDENTICAL_FLAGS: c_int = 0;
 
 fn checkArgCountPop(args: SEXP, n: c_int) -> SEXP {
-    unsafe {
-        let args = CDR(args);
-        if LENGTH(args) != n {
-            Rf_error(b"wrong argument count\0".as_ptr() as *const core::ffi::c_char);
-        }
-        args
+    let args = CDR(args);
+    if LENGTH(args) != n {
+        Rf_error(b"wrong argument count\0".as_ptr() as *const core::ffi::c_char);
     }
+    args
 }
 
 fn HT_TypeFromString(x: SEXP) -> c_int {
@@ -85,10 +83,8 @@ fn nil_value() -> SEXP {
 }
 
 fn hash_error(message: &'static [u8]) -> ! {
-    unsafe {
-        Rf_error(message.as_ptr() as *const core::ffi::c_char);
-        panic!("Rf_error returned unexpectedly")
-    }
+    Rf_error(message.as_ptr() as *const core::ffi::c_char);
+    panic!("Rf_error returned unexpectedly")
 }
 
 fn R_mkhashtab(hash_type: c_int, _k: c_int) -> SEXP {
@@ -119,30 +115,28 @@ fn is_hash_payload(x: SEXP) -> bool {
 }
 
 fn R_asHashtable(x: SEXP) -> R_hashtab_type {
-    unsafe {
-        if is_hash_payload(x) {
-            return x;
-        }
-        if !x.is_null() && TYPEOF(x) == SEXPTYPE::VECSXP && XLENGTH(x) == 1 {
-            let payload = VECTOR_ELT(x, 0);
-            if is_hash_payload(payload) {
-                return payload;
-            }
-        }
-        hash_error(b"invalid hash table object\0");
+    if is_hash_payload(x) {
+        return x;
     }
+    if !x.is_null() && TYPEOF(x) == SEXPTYPE::VECSXP && XLENGTH(x) == 1 {
+        let payload = VECTOR_ELT(x, 0);
+        if is_hash_payload(payload) {
+            return payload;
+        }
+    }
+    hash_error(b"invalid hash table object\0");
 }
 
 fn hash_type(h: R_hashtab_type) -> c_int {
-    unsafe { asInteger(VECTOR_ELT(h, HASH_TYPE_SLOT)) }
+    asInteger(VECTOR_ELT(h, HASH_TYPE_SLOT))
 }
 
 fn hash_keys(h: R_hashtab_type) -> SEXP {
-    unsafe { VECTOR_ELT(h, HASH_KEYS_SLOT) }
+    VECTOR_ELT(h, HASH_KEYS_SLOT)
 }
 
 fn hash_values(h: R_hashtab_type) -> SEXP {
-    unsafe { VECTOR_ELT(h, HASH_VALUES_SLOT) }
+    VECTOR_ELT(h, HASH_VALUES_SLOT)
 }
 
 fn keys_match(hash_type: c_int, stored: SEXP, key: SEXP) -> bool {
@@ -156,91 +150,79 @@ fn keys_match(hash_type: c_int, stored: SEXP, key: SEXP) -> bool {
 }
 
 fn hash_index(h: R_hashtab_type, key: SEXP) -> Option<R_xlen_t> {
-    unsafe {
-        let keys = hash_keys(h);
-        let hash_type = hash_type(h);
-        for i in 0..XLENGTH(keys) {
-            if keys_match(hash_type, VECTOR_ELT(keys, i), key) {
-                return Some(i);
-            }
+    let keys = hash_keys(h);
+    let hash_type = hash_type(h);
+    for i in 0..XLENGTH(keys) {
+        if keys_match(hash_type, VECTOR_ELT(keys, i), key) {
+            return Some(i);
         }
-        None
     }
+    None
 }
 
 fn grow_vec_with_replacement(values: SEXP, index: Option<R_xlen_t>, value: SEXP) -> SEXP {
-    unsafe {
-        if let Some(index) = index {
-            let result = Rf_allocVector(SEXPTYPE::VECSXP, XLENGTH(values) as c_int);
-            for i in 0..XLENGTH(values) {
-                SET_VECTOR_ELT(
-                    result,
-                    i,
-                    if i == index {
-                        value
-                    } else {
-                        VECTOR_ELT(values, i)
-                    },
-                );
-            }
-            return result;
+    if let Some(index) = index {
+        let result = Rf_allocVector(SEXPTYPE::VECSXP, XLENGTH(values) as c_int);
+        for i in 0..XLENGTH(values) {
+            SET_VECTOR_ELT(
+                result,
+                i,
+                if i == index {
+                    value
+                } else {
+                    VECTOR_ELT(values, i)
+                },
+            );
         }
-
-        let len = XLENGTH(values);
-        let result = Rf_allocVector(SEXPTYPE::VECSXP, (len + 1) as c_int);
-        for i in 0..len {
-            SET_VECTOR_ELT(result, i, VECTOR_ELT(values, i));
-        }
-        SET_VECTOR_ELT(result, len, value);
-        result
+        return result;
     }
+
+    let len = XLENGTH(values);
+    let result = Rf_allocVector(SEXPTYPE::VECSXP, (len + 1) as c_int);
+    for i in 0..len {
+        SET_VECTOR_ELT(result, i, VECTOR_ELT(values, i));
+    }
+    SET_VECTOR_ELT(result, len, value);
+    result
 }
 
 fn remove_vec_index(values: SEXP, index: R_xlen_t) -> SEXP {
-    unsafe {
-        let len = XLENGTH(values);
-        let result = Rf_allocVector(SEXPTYPE::VECSXP, (len - 1) as c_int);
-        let mut out = 0;
-        for i in 0..len {
-            if i != index {
-                SET_VECTOR_ELT(result, out, VECTOR_ELT(values, i));
-                out += 1;
-            }
+    let len = XLENGTH(values);
+    let result = Rf_allocVector(SEXPTYPE::VECSXP, (len - 1) as c_int);
+    let mut out = 0;
+    for i in 0..len {
+        if i != index {
+            SET_VECTOR_ELT(result, out, VECTOR_ELT(values, i));
+            out += 1;
         }
-        result
     }
+    result
 }
 
 fn R_gethash(h: R_hashtab_type, key: SEXP, nomatch: SEXP) -> SEXP {
-    unsafe {
-        hash_index(h, key)
-            .map(|index| VECTOR_ELT(hash_values(h), index))
-            .unwrap_or(nomatch)
-    }
+    hash_index(h, key)
+        .map(|index| VECTOR_ELT(hash_values(h), index))
+        .unwrap_or(nomatch)
 }
 
 fn R_sethash(h: R_hashtab_type, key: SEXP, value: SEXP) -> SEXP {
-    unsafe {
-        let index = hash_index(h, key);
-        let keys = grow_vec_with_replacement(hash_keys(h), index, key);
-        let values = grow_vec_with_replacement(hash_values(h), index, value);
-        SET_VECTOR_ELT(h, HASH_KEYS_SLOT, keys);
-        SET_VECTOR_ELT(h, HASH_VALUES_SLOT, values);
-        value
-    }
+    let index = hash_index(h, key);
+    let keys = grow_vec_with_replacement(hash_keys(h), index, key);
+    let values = grow_vec_with_replacement(hash_values(h), index, value);
+    SET_VECTOR_ELT(h, HASH_KEYS_SLOT, keys);
+    SET_VECTOR_ELT(h, HASH_VALUES_SLOT, values);
+    value
 }
 
 fn R_remhash(h: R_hashtab_type, key: SEXP) -> c_int {
-    unsafe {
-        let Some(index) = hash_index(h, key) else {
-            return 0;
-        };
-        let keys = remove_vec_index(hash_keys(h), index);
-        let values = remove_vec_index(hash_values(h), index);
-        SET_VECTOR_ELT(h, HASH_KEYS_SLOT, keys);
-        SET_VECTOR_ELT(h, HASH_VALUES_SLOT, values);
-        1
-    }
+    let Some(index) = hash_index(h, key) else {
+        return 0;
+    };
+    let keys = remove_vec_index(hash_keys(h), index);
+    let values = remove_vec_index(hash_values(h), index);
+    SET_VECTOR_ELT(h, HASH_KEYS_SLOT, keys);
+    SET_VECTOR_ELT(h, HASH_VALUES_SLOT, values);
+    1
 }
 
 fn R_numhash(h: R_hashtab_type) -> c_int {
@@ -282,22 +264,18 @@ fn R_maphash(h: R_hashtab_type, fun: SEXP) -> SEXP {
 }
 
 fn R_clrhash(h: R_hashtab_type) {
-    unsafe {
-        SET_VECTOR_ELT(h, HASH_KEYS_SLOT, Rf_allocVector(SEXPTYPE::VECSXP, 0));
-        SET_VECTOR_ELT(h, HASH_VALUES_SLOT, Rf_allocVector(SEXPTYPE::VECSXP, 0));
-    }
+    SET_VECTOR_ELT(h, HASH_KEYS_SLOT, Rf_allocVector(SEXPTYPE::VECSXP, 0));
+    SET_VECTOR_ELT(h, HASH_VALUES_SLOT, Rf_allocVector(SEXPTYPE::VECSXP, 0));
 }
 
 fn R_isHashtable(x: SEXP) -> c_int {
-    unsafe {
-        if is_hash_payload(x) {
-            return TRUE;
-        }
-        if !x.is_null() && TYPEOF(x) == SEXPTYPE::VECSXP && XLENGTH(x) == 1 {
-            return is_hash_payload(VECTOR_ELT(x, 0)) as c_int;
-        }
-        FALSE
+    if is_hash_payload(x) {
+        return TRUE;
     }
+    if !x.is_null() && TYPEOF(x) == SEXPTYPE::VECSXP && XLENGTH(x) == 1 {
+        return is_hash_payload(VECTOR_ELT(x, 0)) as c_int;
+    }
+    FALSE
 }
 
 pub fn hashtab_Ext(args: SEXP) -> SEXP {
@@ -334,20 +312,16 @@ pub fn sethash_Ext(args: SEXP) -> SEXP {
 }
 
 pub fn remhash_Ext(args: SEXP) -> SEXP {
-    unsafe {
-        let args = checkArgCountPop(args, 2);
-        let h = R_asHashtable(CAR(args));
-        let key = CADR(args);
-        Rf_ScalarLogical(R_remhash(h, key))
-    }
+    let args = checkArgCountPop(args, 2);
+    let h = R_asHashtable(CAR(args));
+    let key = CADR(args);
+    Rf_ScalarLogical(R_remhash(h, key))
 }
 
 pub fn numhash_Ext(args: SEXP) -> SEXP {
-    unsafe {
-        let args = checkArgCountPop(args, 1);
-        let h = R_asHashtable(CAR(args));
-        Rf_ScalarInteger(R_numhash(h))
-    }
+    let args = checkArgCountPop(args, 1);
+    let h = R_asHashtable(CAR(args));
+    Rf_ScalarInteger(R_numhash(h))
 }
 
 pub fn typhash_Ext(args: SEXP) -> SEXP {
@@ -380,10 +354,8 @@ pub fn clrhash_Ext(args: SEXP) -> SEXP {
 }
 
 pub fn ishashtab_Ext(args: SEXP) -> SEXP {
-    unsafe {
-        let args = checkArgCountPop(args, 1);
-        Rf_ScalarLogical(R_isHashtable(CAR(args)))
-    }
+    let args = checkArgCountPop(args, 1);
+    Rf_ScalarLogical(R_isHashtable(CAR(args)))
 }
 
 #[cfg(test)]

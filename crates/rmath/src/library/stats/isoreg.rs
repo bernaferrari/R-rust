@@ -41,10 +41,8 @@ use crate::sexp::protect::protect;
 const R_PosInf: c_double = f64::INFINITY;
 
 unsafe fn error(msg: &str) {
-    unsafe {
-        let c_msg = std::ffi::CString::new(msg).unwrap_or_default();
-        Rf_error(c_msg.as_ptr());
-    }
+    let c_msg = std::ffi::CString::new(msg).unwrap_or_default();
+    Rf_error(c_msg.as_ptr());
 }
 
 /// Create a named list (simplified mkNamed for known patterns)

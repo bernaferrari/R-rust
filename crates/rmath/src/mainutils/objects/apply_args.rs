@@ -134,13 +134,7 @@ pub(crate) fn GetObject(cptr: *mut RCNTXT) -> SEXP {
 
 /// Apply a method (SPECIALSXP, BUILTINSXP, or CLOSXP) with given arguments.
 /// Note: This is a simplified version. Full implementation requires eval infrastructure.
-pub(crate) fn applyMethod(
-    call: SEXP,
-    op: SEXP,
-    args: SEXP,
-    rho: SEXP,
-    newvars: SEXP,
-) -> SEXP {
+pub(crate) fn applyMethod(call: SEXP, op: SEXP, args: SEXP, rho: SEXP, newvars: SEXP) -> SEXP {
     unsafe {
         if op.is_null() || op == R_NilValue() {
             return R_NilValue();
@@ -356,30 +350,28 @@ pub(crate) fn patchArgsByActuals(formals: SEXP, supplied: SEXP, cloenv: SEXP) ->
 /// Destructive matching of arguments: named elements of newargs replace
 /// matching elements in oldargs; the two resulting lists are appended.
 pub(crate) fn newintoold(new: SEXP, old: SEXP) -> SEXP {
-    unsafe {
-        if new.is_null() || new == R_NilValue() {
-            return R_NilValue();
-        }
-        let rest = CDR(new);
-        let result_rest = newintoold(rest, old);
-        SETCDR(new, result_rest);
-
-        let mut old_iter = old;
-        while !old_iter.is_null() && old_iter != R_NilValue() {
-            let old_tag = TAG(old_iter);
-            if !old_tag.is_null() && old_tag != R_NilValue() && old_tag == TAG(new) {
-                SETCAR(old_iter, CAR(new));
-                return CDR(new);
-            }
-            old_iter = CDR(old_iter);
-        }
-        new
+    if new.is_null() || new == R_NilValue() {
+        return R_NilValue();
     }
+    let rest = CDR(new);
+    let result_rest = newintoold(rest, old);
+    SETCDR(new, result_rest);
+
+    let mut old_iter = old;
+    while !old_iter.is_null() && old_iter != R_NilValue() {
+        let old_tag = TAG(old_iter);
+        if !old_tag.is_null() && old_tag != R_NilValue() && old_tag == TAG(new) {
+            SETCAR(old_iter, CAR(new));
+            return CDR(new);
+        }
+        old_iter = CDR(old_iter);
+    }
+    new
 }
 
 /// Match method arguments: merge old and new argument lists.
 pub(crate) fn matchmethargs(oldargs: SEXP, newargs: SEXP) -> SEXP {
-     {
+    {
         let merged = newintoold(newargs, oldargs);
         listAppend(oldargs, merged)
     }
@@ -393,38 +385,36 @@ pub(crate) fn matchmethargs(oldargs: SEXP, newargs: SEXP) -> SEXP {
 /// For now we only worry about tagged args, appending them if they
 /// are not already there.
 pub(crate) fn fixcall(call: SEXP, args: SEXP) -> SEXP {
-    unsafe {
-        if call.is_null() || args.is_null() {
-            return call;
-        }
-        let mut t = args;
-        while !t.is_null() && t != R_NilValue() {
-            let t_tag = TAG(t);
-            if !t_tag.is_null() && t_tag != R_NilValue() {
-                let mut found: c_int = FALSE;
-                let mut s = call;
-                while !s.is_null() && s != R_NilValue() {
-                    let cdr_s = CDR(s);
-                    if cdr_s.is_null() || cdr_s == R_NilValue() {
-                        break;
-                    }
-                    if TAG(cdr_s) == t_tag {
-                        found = TRUE;
-                        break;
-                    }
-                    s = cdr_s;
-                }
-                if found == FALSE {
-                    let new_elem = allocList(1);
-                    SETTAG(new_elem, t_tag);
-                    SETCAR(new_elem, CAR(t)); // lazy_duplicate would be ideal
-                    SETCDR(s, new_elem);
-                }
-            }
-            t = CDR(t);
-        }
-        call
+    if call.is_null() || args.is_null() {
+        return call;
     }
+    let mut t = args;
+    while !t.is_null() && t != R_NilValue() {
+        let t_tag = TAG(t);
+        if !t_tag.is_null() && t_tag != R_NilValue() {
+            let mut found: c_int = FALSE;
+            let mut s = call;
+            while !s.is_null() && s != R_NilValue() {
+                let cdr_s = CDR(s);
+                if cdr_s.is_null() || cdr_s == R_NilValue() {
+                    break;
+                }
+                if TAG(cdr_s) == t_tag {
+                    found = TRUE;
+                    break;
+                }
+                s = cdr_s;
+            }
+            if found == FALSE {
+                let new_elem = allocList(1);
+                SETTAG(new_elem, t_tag);
+                SETCAR(new_elem, CAR(t)); // lazy_duplicate would be ideal
+                SETCDR(s, new_elem);
+            }
+        }
+        t = CDR(t);
+    }
+    call
 }
 
 // ---------------------------------------------------------------------------
@@ -495,7 +485,7 @@ pub fn isBasicClass(_ss: *const c_char) -> c_int {
 
 pub fn R_has_methods_attached() -> c_int {
     // Unimplemented: requires R methods package infrastructure
-     {
+    {
         if isMethodsDispatchOn() == FALSE {
             return FALSE;
         }
@@ -510,11 +500,9 @@ pub fn R_has_methods_attached() -> c_int {
 
 /// Prepend a named variable to the S3 dispatch variable list.
 pub(crate) fn addS3Var(vars: SEXP, name: SEXP, value: SEXP) -> SEXP {
-    unsafe {
-        let res = Rf_cons(value, vars);
-        SETTAG(res, name);
-        res
-    }
+    let res = Rf_cons(value, vars);
+    SETTAG(res, name);
+    res
 }
 
 /// Create the full list of S3 dispatch variables:
@@ -527,7 +515,7 @@ pub fn createS3Vars(
     dotGenericCallEnv: SEXP,
     dotGenericDefEnv: SEXP,
 ) -> SEXP {
-     {
+    {
         let mut v = R_NilValue();
         v = addS3Var(v, sym(".GenericDefEnv"), dotGenericDefEnv);
         v = addS3Var(v, sym(".GenericCallEnv"), dotGenericCallEnv);

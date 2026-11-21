@@ -27,18 +27,16 @@ use crate::sexp::ffi::*;
 use crate::sexp::protect::*;
 
 unsafe fn coerceVector(x: SEXP, type_: SEXPTYPE) -> SEXP {
-    unsafe { crate::main::coerce::coerceVector(x, type_.into()) }
+    crate::main::coerce::coerceVector(x, type_.into())
 }
 
 unsafe fn asReal(x: SEXP) -> c_double {
-    unsafe { crate::main::coerce::asReal(x) }
+    crate::main::coerce::asReal(x)
 }
 
 unsafe fn asBool(x: SEXP) -> bool {
-    unsafe {
-        let v = crate::main::coerce::asLogical(x);
-        v != 0 && v != NA_INTEGER
-    }
+    let v = crate::main::coerce::asLogical(x);
+    v != 0 && v != NA_INTEGER
 }
 
 unsafe fn shallow_duplicate(x: SEXP) -> SEXP {

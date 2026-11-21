@@ -212,17 +212,15 @@ pub(crate) unsafe fn sampled_indices(
     replace: bool,
     prob_arg: SEXP,
 ) -> Vec<usize> {
-    unsafe {
-        crate::mainutils::random::GetRNGstate();
-        let indices = if is_present(prob_arg) {
-            let weights = parse_probability_weights(prob_arg, n, size, replace);
-            weighted_sample_indices(&weights, size, replace)
-        } else {
-            sample_indices(n, size, replace)
-        };
-        crate::mainutils::random::PutRNGstate();
-        indices
-    }
+    crate::mainutils::random::GetRNGstate();
+    let indices = if is_present(prob_arg) {
+        let weights = parse_probability_weights(prob_arg, n, size, replace);
+        weighted_sample_indices(&weights, size, replace)
+    } else {
+        sample_indices(n, size, replace)
+    };
+    crate::mainutils::random::PutRNGstate();
+    indices
 }
 
 pub(crate) unsafe fn sample_int_values(
@@ -432,34 +430,32 @@ unsafe fn sample_vector_by_indices(x: SEXP, indices: &[usize]) -> SEXP {
 }
 
 unsafe fn set_sampled_names(result: SEXP, source: SEXP, indices: &[usize]) {
-    unsafe {
-        let names =
-            crate::sexp::attrib_core::getAttrib(source, crate::sexp::attrib_core::R_NamesSymbol());
-        if names.is_null()
-            || names == R_NilValue()
-            || TYPEOF(names) != SEXPTYPE::STRSXP
-            || XLENGTH(names) < XLENGTH(source)
-        {
-            return;
-        }
-        let result_names = Rf_allocVector3(SEXPTYPE::STRSXP, indices.len() as R_xlen_t);
-        if result_names.is_null() {
-            return;
-        }
-        let _names_guard = protect(result_names);
-        for (out_idx, source_idx) in indices.iter().copied().enumerate() {
-            SET_STRING_ELT(
-                result_names,
-                out_idx as R_xlen_t,
-                STRING_ELT(names, source_idx as R_xlen_t),
-            );
-        }
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            crate::sexp::attrib_core::R_NamesSymbol(),
+    let names =
+        crate::sexp::attrib_core::getAttrib(source, crate::sexp::attrib_core::R_NamesSymbol());
+    if names.is_null()
+        || names == R_NilValue()
+        || TYPEOF(names) != SEXPTYPE::STRSXP
+        || XLENGTH(names) < XLENGTH(source)
+    {
+        return;
+    }
+    let result_names = Rf_allocVector3(SEXPTYPE::STRSXP, indices.len() as R_xlen_t);
+    if result_names.is_null() {
+        return;
+    }
+    let _names_guard = protect(result_names);
+    for (out_idx, source_idx) in indices.iter().copied().enumerate() {
+        SET_STRING_ELT(
             result_names,
+            out_idx as R_xlen_t,
+            STRING_ELT(names, source_idx as R_xlen_t),
         );
     }
+    crate::sexp::attrib_core::setAttrib(
+        result,
+        crate::sexp::attrib_core::R_NamesSymbol(),
+        result_names,
+    );
 }
 
 fn parse_replace(arg: SEXP) -> bool {

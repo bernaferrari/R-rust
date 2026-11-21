@@ -107,16 +107,14 @@ pub fn do_format_Date(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// GNU `as.character.Date` is `as.character(as.POSIXlt(x))` — no names.
 pub fn do_as_character_Date(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let out = do_format_Date(call, op, args, rho);
-        let _o = protect(out);
-        crate::sexp::attrib_core::setAttrib(
-            out,
-            crate::sexp::attrib_core::R_NamesSymbol(),
-            R_NilValue(),
-        );
-        out
-    }
+    let out = do_format_Date(call, op, args, rho);
+    let _o = protect(out);
+    crate::sexp::attrib_core::setAttrib(
+        out,
+        crate::sexp::attrib_core::R_NamesSymbol(),
+        R_NilValue(),
+    );
+    out
 }
 
 pub(crate) fn date_level_string(days: f64) -> String {

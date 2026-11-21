@@ -1631,7 +1631,7 @@ pub unsafe fn do_arima0(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// GNU `arima0.diag(...)` — `.Defunct()`.
 pub unsafe fn do_arima0_diag(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     crate::mainutils::errors::errorcall_str(
-        unsafe { crate::mainutils::errors::R_getCurrentCall() },
+        crate::mainutils::errors::R_getCurrentCall(),
         "'arima0.diag' is defunct.\nSee help(\"Defunct\")",
     );
 }
@@ -1639,7 +1639,7 @@ pub unsafe fn do_arima0_diag(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) ->
 /// GNU `plclust(...)` — `.Defunct("plot")`.
 pub unsafe fn do_plclust(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     crate::mainutils::errors::errorcall_str(
-        unsafe { crate::mainutils::errors::R_getCurrentCall() },
+        crate::mainutils::errors::R_getCurrentCall(),
         "'plclust' is defunct.\nUse 'plot' instead.\nSee help(\"Defunct\")",
     );
 }

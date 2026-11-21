@@ -19,7 +19,7 @@ use crate::sexp::protect::protect;
 
 /// GNU `asInteger`: doubles such as `max(n, 512)` are valid bin counts.
 unsafe fn as_integer(s: SEXP) -> c_int {
-    unsafe { crate::mainutils::coerce::asInteger(s) }
+    crate::mainutils::coerce::asInteger(s)
 }
 
 // ---------------------------------------------------------------------------

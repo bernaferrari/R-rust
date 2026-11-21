@@ -80,7 +80,7 @@ fn allocate_vector<'a>(
 ) -> Option<SexpMut<'a>> {
     checked(owner.require_active());
     // SAFETY: the owner is active, and no Rust payload loan crosses allocation.
-    let raw = unsafe { Rf_allocVector3(kind, len) };
+    let raw = Rf_allocVector3(kind, len);
     checked(owner.require_active());
     (!raw.is_null()).then(|| checked(SexpMut::try_from_checked(checked(owner.sexp(raw)))))
 }
@@ -93,7 +93,7 @@ pub unsafe fn coerce_to_complex(x: SEXP) -> SEXP {
     let n = XLENGTH(x);
     if n == 0 {
         // SAFETY: the translated caller retains the active runtime.
-        let raw = unsafe { Rf_allocVector3(SEXPTYPE::CPLXSXP, 0) };
+        let raw = Rf_allocVector3(SEXPTYPE::CPLXSXP, 0);
         return if raw.is_null() { R_NilValue() } else { raw };
     }
     // SAFETY: the translated caller retains the active runtime.
@@ -121,7 +121,7 @@ pub unsafe fn complex_binary(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
     let nb = XLENGTH(sb);
     if na == 0 || nb == 0 {
         // SAFETY: the translated caller retains the active runtime.
-        return unsafe { Rf_allocVector3(SEXPTYPE::CPLXSXP, 0) };
+        return Rf_allocVector3(SEXPTYPE::CPLXSXP, 0);
     }
     if TYPEOF(sa) != SEXPTYPE::CPLXSXP && TYPEOF(sb) != SEXPTYPE::CPLXSXP {
         // SAFETY: the translated caller retains both original arguments.

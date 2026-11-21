@@ -16,25 +16,25 @@ use crate::sexp::globals::R_NilValue;
 use super::matrix::{identity, location, multiply, rotation, trans, translation};
 use super::types::*;
 use super::{
-    alloc_vector, char_ptr, get_attrib, integer_elt, protect, real_elt, set_vector_elt,
-    string_elt, string_value_elt, vector_elt,
+    alloc_vector, char_ptr, get_attrib, integer_elt, protect, real_elt, set_vector_elt, string_elt,
+    string_value_elt, vector_elt,
 };
 
 /* ==================== GE expression metric stubs ==================== */
 
 fn GEExpressionWidth(_expr: SEXP, _gc: pGEcontext, _dd: pGEDevDesc) -> c_double {
     // SAFETY: static NUL-terminated literal.
-    unsafe {
-        Rf_error(b"grid expression widths are not supported\0".as_ptr() as *const c_char);
-    }
+
+    Rf_error(b"grid expression widths are not supported\0".as_ptr() as *const c_char);
+
     unreachable!()
 }
 
 fn GEExpressionHeight(_expr: SEXP, _gc: pGEcontext, _dd: pGEDevDesc) -> c_double {
     // SAFETY: static NUL-terminated literal.
-    unsafe {
-        Rf_error(b"grid expression heights are not supported\0".as_ptr() as *const c_char);
-    }
+
+    Rf_error(b"grid expression heights are not supported\0".as_ptr() as *const c_char);
+
     unreachable!()
 }
 
@@ -71,7 +71,7 @@ pub fn getListElement(list: SEXP, str: *const c_char) -> SEXP {
     if str.is_null() {
         return elmt;
     }
-    let names = get_attrib(list, unsafe { crate::attrib_core::R_NamesSymbol() });
+    let names = get_attrib(list, crate::attrib_core::R_NamesSymbol());
     if names.is_null() {
         return elmt;
     }
@@ -93,7 +93,7 @@ pub fn setListElement(list: SEXP, str: *const c_char, value: SEXP) {
     if str.is_null() {
         return;
     }
-    let names = get_attrib(list, unsafe { crate::attrib_core::R_NamesSymbol() });
+    let names = get_attrib(list, crate::attrib_core::R_NamesSymbol());
     if names.is_null() {
         return;
     }
@@ -267,28 +267,26 @@ pub fn textRect(
             let expr = vector_elt(text, idx as R_xlen_t);
             // SAFETY: `gc`/`dd` are engine-owned device pointers lent by the
             // grid entry point.
-            unsafe {
-                w = fromDeviceWidth(GEExpressionWidth(expr, gc, dd), 1, dd as *mut c_void);
-                h = fromDeviceHeight(GEExpressionHeight(expr, gc, dd), 1, dd as *mut c_void);
-            }
+
+            w = fromDeviceWidth(GEExpressionWidth(expr, gc, dd), 1, dd as *mut c_void);
+            h = fromDeviceHeight(GEExpressionHeight(expr, gc, dd), 1, dd as *mut c_void);
         } else {
             let string = char_ptr(string_elt(text, idx as R_xlen_t));
             let enc = CE_SYMBOL;
             // SAFETY: `string` points into a live CHARSXP just validated by
             // `string_elt`; `gc`/`dd` are engine-owned device pointers lent by
             // the grid entry point.
-            unsafe {
-                w = fromDeviceWidth(
-                    GEStrWidth(string, enc, gc as *const c_void, dd as *mut c_void),
-                    1,
-                    dd as *mut c_void,
-                );
-                h = fromDeviceHeight(
-                    GEStrHeight(string, enc, gc as *const c_void, dd as *mut c_void),
-                    1,
-                    dd as *mut c_void,
-                );
-            }
+
+            w = fromDeviceWidth(
+                GEStrWidth(string, enc, gc as *const c_void, dd as *mut c_void),
+                1,
+                dd as *mut c_void,
+            );
+            h = fromDeviceHeight(
+                GEStrHeight(string, enc, gc as *const c_void, dd as *mut c_void),
+                1,
+                dd as *mut c_void,
+            );
         }
 
         if !w.is_finite() || !h.is_finite() {
@@ -300,9 +298,8 @@ pub fn textRect(
             }
             let msg = b"Unable to calculate text width/height (using zero)\0";
             // SAFETY: static NUL-terminated literal.
-            unsafe {
-                crate::main::errors::Rf_warning1(msg.as_ptr() as *const c_char);
-            }
+
+            crate::main::errors::Rf_warning1(msg.as_ptr() as *const c_char);
         }
 
         if w >= 0.0 {
@@ -372,12 +369,12 @@ pub fn L_GetSEXPPtr(sp: SEXP) -> SEXP {
     if data.is_null() {
         let msg = b"grid grob object is empty\0";
         // SAFETY: static NUL-terminated literals.
-        unsafe {
-            crate::main::errors::Rf_error1(
-                b"%s\0".as_ptr() as *const c_char,
-                msg.as_ptr() as *const c_char,
-            );
-        }
+
+        crate::main::errors::Rf_error1(
+            b"%s\0".as_ptr() as *const c_char,
+            msg.as_ptr() as *const c_char,
+        );
+
         unreachable!()
     }
     vector_elt(data, 0)
@@ -390,12 +387,12 @@ pub fn L_SetSEXPPtr(sp: SEXP, s: SEXP) -> SEXP {
     if data.is_null() {
         let msg = b"grid grob object is empty\0";
         // SAFETY: static NUL-terminated literals.
-        unsafe {
-            crate::main::errors::Rf_error1(
-                b"%s\0".as_ptr() as *const c_char,
-                msg.as_ptr() as *const c_char,
-            );
-        }
+
+        crate::main::errors::Rf_error1(
+            b"%s\0".as_ptr() as *const c_char,
+            msg.as_ptr() as *const c_char,
+        );
+
         unreachable!()
     }
     set_vector_elt(data, 0, s);

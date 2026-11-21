@@ -332,21 +332,19 @@ fn nth_arg(args: SEXP, n: usize) -> SEXP {
 }
 
 fn macros_from_env(env: SEXP) -> Vec<(String, String)> {
-    unsafe {
-        if env.is_null() || TYPEOF(env) != SEXPTYPE::ENVSXP {
-            return Vec::new();
-        }
-        let mut out = Vec::new();
-        collect_macro_frame(crate::sexp::accessors::FRAME(env), &mut out);
-        let hash = crate::sexp::accessors::HASHTAB(env);
-        if TYPEOF(hash) == SEXPTYPE::VECSXP {
-            let n = crate::sexp::accessors::XLENGTH(hash);
-            for i in 0..n {
-                collect_macro_frame(crate::sexp::accessors::VECTOR_ELT(hash, i), &mut out);
-            }
-        }
-        out
+    if env.is_null() || TYPEOF(env) != SEXPTYPE::ENVSXP {
+        return Vec::new();
     }
+    let mut out = Vec::new();
+    collect_macro_frame(crate::sexp::accessors::FRAME(env), &mut out);
+    let hash = crate::sexp::accessors::HASHTAB(env);
+    if TYPEOF(hash) == SEXPTYPE::VECSXP {
+        let n = crate::sexp::accessors::XLENGTH(hash);
+        for i in 0..n {
+            collect_macro_frame(crate::sexp::accessors::VECTOR_ELT(hash, i), &mut out);
+        }
+    }
+    out
 }
 
 fn collect_macro_frame(mut cell: SEXP, out: &mut Vec<(String, String)>) {

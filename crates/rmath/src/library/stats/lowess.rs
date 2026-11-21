@@ -886,9 +886,8 @@ pub unsafe fn do_supsmu(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             let message = std::ffi::CString::new(text).unwrap();
             access
                 .with_native(|_| {
-                    unsafe {
-                        crate::mainutils::errors::Rf_warning1(message.as_ptr());
-                    }
+                    crate::mainutils::errors::Rf_warning1(message.as_ptr());
+
                     Ok(())
                 })
                 .map_err(|e| e.to_string())?;
@@ -912,11 +911,10 @@ pub unsafe fn do_supsmu(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
                         (value, tail.iter().all(u8::is_ascii_whitespace))
                     };
                     if !complete {
-                        unsafe {
-                            crate::mainutils::errors::Rf_warning1(
-                                c"NAs introduced by coercion".as_ptr(),
-                            );
-                        }
+                        crate::mainutils::errors::Rf_warning1(
+                            c"NAs introduced by coercion".as_ptr(),
+                        );
+
                         Ok(f64::NAN)
                     } else {
                         Ok(value)
@@ -1006,13 +1004,12 @@ pub unsafe fn do_supsmu(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             .map_err(|e| e.to_string())?;
         access
             .with_native(|_| {
-                unsafe {
-                    crate::sexp::attrib_core::setAttrib(
-                        result.as_raw(),
-                        crate::sexp::attrib_core::R_NamesSymbol(),
-                        names.as_raw(),
-                    );
-                }
+                crate::sexp::attrib_core::setAttrib(
+                    result.as_raw(),
+                    crate::sexp::attrib_core::R_NamesSymbol(),
+                    names.as_raw(),
+                );
+
                 Ok(())
             })
             .map_err(|e| e.to_string())?;

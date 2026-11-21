@@ -149,7 +149,7 @@ impl RSession {
             unsafe { RInstance::initialize_base_bindings_via(instance) };
             // GNU main.c seals base after its source/system initialization,
             // before loading default packages. Both environments share bindings.
-            session.with_active(|| unsafe {
+            session.with_active(|| {
                 let owner = session.owner_token().expect("active base bootstrap");
                 let namespace = owner
                     .sexp(crate::sexp::envir::R_BaseNamespace())
@@ -613,7 +613,7 @@ impl RSession {
             crate::sexp::output::capture_stderr("\n");
         }
         if crate::mainutils::errors::collect_warnings() > 0 {
-            unsafe {
+            {
                 crate::mainutils::errors::print_warnings_at_statement_boundary();
             }
         }
@@ -677,9 +677,9 @@ impl RSession {
             let _guard = self.activate();
             let factory = SessionNodeFactory::new(self.owner_token().expect("active session"));
             let keep_source = unsafe {
-                let opt = crate::mainutils::options::GetOption1(
-                    crate::sexp::symbol::install_str("keep.source"),
-                );
+                let opt = crate::mainutils::options::GetOption1(crate::sexp::symbol::install_str(
+                    "keep.source",
+                ));
                 !opt.is_null() && crate::mainutils::coerce::asLogical(opt) == crate::sexp::ffi::TRUE
             };
             let spans = unsafe {
@@ -845,7 +845,7 @@ impl RSession {
                 // output like Rscript's stderr. The final statement defers to
                 // result assembly, which prints the auto-rendered value first.
                 if index != last_index && crate::mainutils::errors::collect_warnings() > 0 {
-                    if let Err(error) = _toplevel_no_guard.run_checked(|| unsafe {
+                    if let Err(error) = _toplevel_no_guard.run_checked(|| {
                         crate::mainutils::errors::print_warnings_at_statement_boundary();
                     }) {
                         result = Err(error);

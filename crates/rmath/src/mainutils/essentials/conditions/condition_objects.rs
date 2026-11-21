@@ -57,7 +57,7 @@ pub fn do_conditionCall(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 
 /// R's `simpleError(message, call)` — create a simple error condition.
 pub fn do_simpleError(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-     simple_constructor(args, &["simpleError", "error", "condition"]) 
+    simple_constructor(args, &["simpleError", "error", "condition"])
 }
 
 /// Own selections before coercion, dispatch, or a constructor can reenter R.
@@ -89,7 +89,7 @@ fn simple_constructor(args: SEXP, classes: &[&str]) -> SEXP {
                 tail.try_car()?.into_owned()?
             };
             let base = access.with_native(|original| {
-                let value = unsafe { crate::sexp::globals::R_BaseEnv() };
+                let value = crate::sexp::globals::R_BaseEnv();
                 original.require_active()?;
                 original.sexp(value)?.into_owned()
             })?;
@@ -110,12 +110,12 @@ fn simple_constructor(args: SEXP, classes: &[&str]) -> SEXP {
                 original.sexp(value)?.into_owned()
             })?;
             let names = access.with_native(|original| {
-                let value = unsafe { crate::sexp::attrib_core::R_NamesSymbol() };
+                let value = crate::sexp::attrib_core::R_NamesSymbol();
                 original.require_active()?;
                 original.sexp(value)?.into_owned()
             })?;
             let class = access.with_native(|original| {
-                let value = unsafe { crate::sexp::attrib_core::R_ClassSymbol() };
+                let value = crate::sexp::attrib_core::R_ClassSymbol();
                 original.require_active()?;
                 original.sexp(value)?.into_owned()
             })?;
@@ -137,13 +137,13 @@ fn simple_constructor(args: SEXP, classes: &[&str]) -> SEXP {
 /// value is the message). zeallot's error paths build their conditions
 /// through this.
 pub fn do_errorCondition(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-     error_or_warning_condition(args, "error") 
+    error_or_warning_condition(args, "error")
 }
 
 /// R's `warningCondition(message, ..., class = NULL, call = NULL)` —
 /// see [`do_errorCondition`].
 pub fn do_warningCondition(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-     error_or_warning_condition(args, "warning") 
+    error_or_warning_condition(args, "warning")
 }
 
 fn error_or_warning_condition(args: SEXP, kind: &str) -> SEXP {
@@ -215,9 +215,7 @@ fn error_or_warning_condition(args: SEXP, kind: &str) -> SEXP {
         if !names.is_null() {
             let mut fields: Vec<&str> = vec!["message", "call"];
             fields.extend(extras.iter().map(|(name, _)| name.as_str()));
-            if let Ok(mut names_mut) =
-                owner.sexp(names).and_then(SexpMut::try_from_checked)
-            {
+            if let Ok(mut names_mut) = owner.sexp(names).and_then(SexpMut::try_from_checked) {
                 for (i, n) in fields.iter().enumerate() {
                     let cstr = CString::new(*n).unwrap_or_default();
                     let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
@@ -239,16 +237,13 @@ fn error_or_warning_condition(args: SEXP, kind: &str) -> SEXP {
         };
         let class = Rf_allocVector3(SEXPTYPE::STRSXP, extra_classes as i64 + 2);
         if !class.is_null() {
-            if let Ok(mut class_mut) =
-                owner.sexp(class).and_then(SexpMut::try_from_checked)
-            {
+            if let Ok(mut class_mut) = owner.sexp(class).and_then(SexpMut::try_from_checked) {
                 let class_arg_owned = owner_sexp(owner, class_arg);
                 let mut slot = 0usize;
                 for i in 0..extra_classes as isize {
                     if let Ok(src) = class_arg_owned.try_string_elt(i as i64) {
                         if !src.as_raw().is_null() {
-                            let _ =
-                                class_mut.try_set_string_elt(slot as R_xlen_t, src);
+                            let _ = class_mut.try_set_string_elt(slot as R_xlen_t, src);
                             slot += 1;
                         }
                     }
@@ -270,9 +265,9 @@ fn error_or_warning_condition(args: SEXP, kind: &str) -> SEXP {
 
 /// R's `simpleWarning(message, call)` — create a simple warning condition.
 pub fn do_simpleWarning(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-     simple_constructor(args, &["simpleWarning", "warning", "condition"]) 
+    simple_constructor(args, &["simpleWarning", "warning", "condition"])
 }
 
 pub(super) fn native_simple_condition(args: SEXP) -> SEXP {
-     simple_constructor(args, &["simpleCondition", "condition"]) 
+    simple_constructor(args, &["simpleCondition", "condition"])
 }

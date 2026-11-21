@@ -11,11 +11,9 @@ use crate::sexp::protect::protect;
 
 fn partrans(p: usize, raw: &[f64], new: &mut [f64]) {
     if p > 100 {
-        unsafe {
-            crate::main::errors::Rf_error(
-                b"can only transform 100 pars in arima0\0".as_ptr() as *const std::os::raw::c_char
-            );
-        }
+        crate::main::errors::Rf_error(
+            b"can only transform 100 pars in arima0\0".as_ptr() as *const std::os::raw::c_char
+        );
     }
     let mut work = [0.0f64; 100];
     for j in 0..p {
@@ -35,11 +33,9 @@ fn partrans(p: usize, raw: &[f64], new: &mut [f64]) {
 
 fn invpartrans(p: usize, phi: &[f64], new: &mut [f64]) {
     if p > 100 {
-        unsafe {
-            crate::main::errors::Rf_error(
-                b"can only transform 100 pars in arima0\0".as_ptr() as *const std::os::raw::c_char
-            );
-        }
+        crate::main::errors::Rf_error(
+            b"can only transform 100 pars in arima0\0".as_ptr() as *const std::os::raw::c_char
+        );
     }
     let mut work = [0.0f64; 100];
     for j in 0..p {

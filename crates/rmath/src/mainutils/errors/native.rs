@@ -35,7 +35,9 @@ pub(super) fn error_buffer_entry(op: SEXP, args: SEXP, write: bool) -> SEXP {
         &weak,
         |access| -> SexpResult<Sexp<'static>> {
             access.with_native(|original| {
-                 { super::checkArity(op.as_raw(), args.as_raw()) };
+                {
+                    super::checkArity(op.as_raw(), args.as_raw())
+                };
                 original.require_active()
             })?;
             if write {
@@ -74,7 +76,7 @@ pub(crate) fn raise_owned_diagnostic(
         |access| -> SexpResult<()> {
             let _message = diagnostic.message(access)?;
             let (call, names, class) = access.with_native(|original| {
-                let call =  { super::R_getCurrentCall() };
+                let call = { super::R_getCurrentCall() };
                 let call = if call.is_null() {
                     access.domain().nil()
                 } else {
@@ -91,7 +93,7 @@ pub(crate) fn raise_owned_diagnostic(
             })?;
             let condition = diagnostic.condition(access, &call, &names, &class)?;
             access.with_native(|original| {
-                 {
+                {
                     super::conditions::signal_simple_error(
                         access,
                         &diagnostic,
@@ -166,7 +168,7 @@ fn handler_entry(
 ) -> Sexp<'static> {
     let entry = checked(factory.allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::VECSXP, 5))));
     let mut entry = checked(SexpMut::try_from_checked(entry));
-    let parent = checked(factory.wrap(unsafe { crate::sexp::globals::R_GlobalEnv() }));
+    let parent = checked(factory.wrap(crate::sexp::globals::R_GlobalEnv()));
     for (index, value) in [class, &parent, handler, target, result]
         .into_iter()
         .enumerate()
@@ -174,9 +176,9 @@ fn handler_entry(
         checked(entry.try_set_vector_elt(index as i64, value.clone()));
     }
     let entry = owned(entry.freeze());
-    unsafe {
-        crate::sexp::accessors::SETLEVELS(entry.as_raw(), i32::from(calling));
-    }
+
+    crate::sexp::accessors::SETLEVELS(entry.as_raw(), i32::from(calling));
+
     entry
 }
 
@@ -192,17 +194,15 @@ impl ExitingScope {
             factory.allocate(|arena| Some(arena.alloc_node(SEXPTYPE::ENVSXP))),
         ));
         let nil = factory.nil();
-        let context = unsafe {
-            context::begin_context_guard(
-                context::ctxt_flags::CTXT_CCODE,
-                nil.as_raw(),
-                target.as_raw(),
-                nil.as_raw(),
-                None,
-                nil.as_raw(),
-                nil.as_raw(),
-            )
-        };
+        let context = context::begin_context_guard(
+            context::ctxt_flags::CTXT_CCODE,
+            nil.as_raw(),
+            target.as_raw(),
+            nil.as_raw(),
+            None,
+            nil.as_raw(),
+            nil.as_raw(),
+        );
         let result =
             owned(checked(factory.allocate(|arena| {
                 Some(arena.alloc_vector(SEXPTYPE::VECSXP, 3))
@@ -303,16 +303,15 @@ pub fn try_catch_owned(
                     if !catches_error || message.is_none() {
                         resume_unwind(payload);
                     }
-                    unsafe {
-                        context::own_control_value(super::conditions::make_condition(
-                            factory.nil().as_raw(),
-                            "simpleError",
-                            "",
-                            0,
-                            message.unwrap(),
-                            "error",
-                        ))
-                    }
+
+                    context::own_control_value(super::conditions::make_condition(
+                        factory.nil().as_raw(),
+                        "simpleError",
+                        "",
+                        0,
+                        message.unwrap(),
+                        "error",
+                    ))
                 }
             }
         };
@@ -350,7 +349,7 @@ pub(crate) fn catch_native(
     let classes = if classes.is_null() {
         owned(checked(factory.strings(&[])))
     } else {
-        unsafe { context::own_control_value(classes) }
+        context::own_control_value(classes)
     };
     try_catch_owned(
         || unsafe { context::own_control_value(body(bdata)) },
@@ -404,7 +403,7 @@ pub(super) fn dispatch_calling_handler(handler: SEXP, condition: SEXP) -> bool {
     {
         context::r_error("native condition handler is no longer active");
     }
-    let condition = unsafe { context::own_control_value(condition) };
+    let condition = context::own_control_value(condition);
     // Native adapters require the data to outlive this dynamic frame. The
     // authenticated resource is inert once its owning scope is dropped.
     unsafe {
@@ -689,11 +688,7 @@ mod tests {
         }
         unreachable!("typed native error must exit")
     }
-    fn check_typed_condition(
-        condition: SEXP,
-        data: *mut c_void,
-        event: &'static str,
-    ) -> SEXP {
+    fn check_typed_condition(condition: SEXP, data: *mut c_void, event: &'static str) -> SEXP {
         let condition = unsafe { context::own_control_value(condition) };
         unsafe { &*data.cast::<TypedTrace>() }.trace.collect(event);
         for (index, expected) in [

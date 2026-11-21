@@ -471,12 +471,12 @@ pub unsafe fn GConvertYUnits(
 
 /// xDevtoNDC -- convert x from device coordinates to NDC.
 pub unsafe fn xDevtoNDC(x: c_double, dd: pGEDevDesc) -> c_double {
-    unsafe { engine::fromDeviceX(x, 1, dd) }
+    engine::fromDeviceX(x, 1, dd)
 }
 
 /// yDevtoNDC -- convert y from device coordinates to NDC.
 pub unsafe fn yDevtoNDC(y: c_double, dd: pGEDevDesc) -> c_double {
-    unsafe { engine::fromDeviceY(y, 1, dd) }
+    engine::fromDeviceY(y, 1, dd)
 }
 
 /// xDevtoNFC -- convert x from device coordinates to NFC.
@@ -769,12 +769,7 @@ pub unsafe fn GLine(
 
 /// GLocator -- read the current pen position interactively.
 /// Stub: returns 0 (FALSE).
-pub fn GLocator(
-    x: &mut c_double,
-    y: &mut c_double,
-    _coords: c_int,
-    _dd: pGEDevDesc,
-) -> Rboolean {
+pub fn GLocator(x: &mut c_double, y: &mut c_double, _coords: c_int, _dd: pGEDevDesc) -> Rboolean {
     *x = 0.0;
     *y = 0.0;
     0
@@ -797,12 +792,10 @@ pub fn GMetricInfo(
 
 /// GMode -- set graphics mode (0=off, 1=on, 2=input on).
 pub unsafe fn GMode(mode: c_int, dd: pGEDevDesc) {
-    unsafe {
-        if dd.is_null() {
-            return;
-        }
-        engine::GEMode(mode, dd);
+    if dd.is_null() {
+        return;
     }
+    engine::GEMode(mode, dd);
 }
 
 /// GClipPolygon -- clip a polygon to the current clip region.
@@ -952,14 +945,12 @@ pub unsafe fn GStrWidth(
     units: GUnit,
     dd: pGEDevDesc,
 ) -> c_double {
-    unsafe {
-        let width = engine::GEStrWidth(str, enc, std::ptr::null(), dd);
-        match units {
-            DEVICE => width,
-            NDC => engine::fromDeviceWidth(width, 1, dd),
-            INCHES => engine::fromDeviceWidth(width, 2, dd),
-            _ => width,
-        }
+    let width = engine::GEStrWidth(str, enc, std::ptr::null(), dd);
+    match units {
+        DEVICE => width,
+        NDC => engine::fromDeviceWidth(width, 1, dd),
+        INCHES => engine::fromDeviceWidth(width, 2, dd),
+        _ => width,
     }
 }
 
@@ -971,14 +962,12 @@ pub unsafe fn GStrHeight(
     units: GUnit,
     dd: pGEDevDesc,
 ) -> c_double {
-    unsafe {
-        let height = engine::GEStrHeight(str, enc, std::ptr::null(), dd);
-        match units {
-            DEVICE => height,
-            NDC => engine::fromDeviceHeight(height, 1, dd),
-            INCHES => engine::fromDeviceHeight(height, 2, dd),
-            _ => height,
-        }
+    let height = engine::GEStrHeight(str, enc, std::ptr::null(), dd);
+    match units {
+        DEVICE => height,
+        NDC => engine::fromDeviceHeight(height, 1, dd),
+        INCHES => engine::fromDeviceHeight(height, 2, dd),
+        _ => height,
     }
 }
 

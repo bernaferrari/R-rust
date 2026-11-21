@@ -106,7 +106,7 @@ impl Drop for StarmaPublication {
 }
 
 unsafe fn alloc_result(kind: SEXPTYPE, length: i64) -> SEXP {
-    let result = unsafe { Rf_allocVector3(kind, length) };
+    let result = Rf_allocVector3(kind, length);
     if result.is_null() {
         starma_error("could not allocate starma result");
     }
@@ -114,7 +114,7 @@ unsafe fn alloc_result(kind: SEXPTYPE, length: i64) -> SEXP {
 }
 
 unsafe fn scalar_result(value: f64) -> SEXP {
-    let result = unsafe { Rf_ScalarReal(value) };
+    let result = Rf_ScalarReal(value);
     if result.is_null() {
         starma_error("could not allocate starma result");
     }

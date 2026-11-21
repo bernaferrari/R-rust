@@ -10,9 +10,7 @@ fn promise(session: &RSession, allocating: bool) -> Sexp<'static> {
             .unwrap();
         let env = factory.wrap(crate::sexp::globals::R_GlobalEnv()).unwrap();
         let code = if allocating {
-            let name = factory
-                .wrap(crate::sexp::symbol::install_str("c"))
-                .unwrap();
+            let name = factory.wrap(crate::sexp::symbol::install_str("c")).unwrap();
             let args = factory
                 .pairlist_cell(&value, &factory.nil(), &factory.nil())
                 .unwrap();

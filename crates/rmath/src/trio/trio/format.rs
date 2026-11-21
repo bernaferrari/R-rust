@@ -54,8 +54,7 @@ fn trio_format_process<W: Write>(
         if flags & FLAGS_PRECISION != 0 {
             precision = parameters[i].precision;
             if flags & FLAGS_PRECISION_PARAMETER != 0 {
-                precision =
-                    parameters[precision as usize].signed_value() as c_int;
+                precision = parameters[precision as usize].signed_value() as c_int;
                 if precision < 0 {
                     precision = NO_PRECISION;
                 }
@@ -78,11 +77,7 @@ fn trio_format_process<W: Write>(
                         w -= 1;
                     }
                 }
-                trio_write_string_character(
-                    out,
-                    parameters[i].unsigned_value() as u8,
-                    flags,
-                );
+                trio_write_string_character(out, parameters[i].unsigned_value() as u8, flags);
                 if flags & FLAGS_LEFTADJUST != 0 {
                     let mut w = width;
                     while w > 1 {
@@ -112,13 +107,7 @@ fn trio_format_process<W: Write>(
                 );
             }
             FORMAT_STRING => {
-                trio_write_string(
-                    out,
-                    parameters[i].string_bytes(),
-                    flags,
-                    width,
-                    precision,
-                );
+                trio_write_string(out, parameters[i].string_bytes(), flags, width, precision);
             }
             FORMAT_POINTER => {
                 let ptr = parameters[i].raw_pointer();

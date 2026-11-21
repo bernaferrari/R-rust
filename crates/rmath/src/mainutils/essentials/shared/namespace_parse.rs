@@ -557,16 +557,13 @@ pub(crate) fn namespace_export_environment(package_env: SEXP) -> Option<SEXP> {
 }
 
 pub(crate) fn frame_binding_names(env: SEXP, include_hidden: bool) -> Vec<String> {
-     collect_frame_binding_names(env, include_hidden, false) 
+    collect_frame_binding_names(env, include_hidden, false)
 }
 
 /// Public environment-name enumeration must report every bound name when
 /// `all.names=TRUE`, including names that look like namespace metadata.
-pub(crate) fn frame_binding_names_for_listing(
-    env: SEXP,
-    include_hidden: bool,
-) -> Vec<String> {
-     collect_frame_binding_names(env, include_hidden, true) 
+pub(crate) fn frame_binding_names_for_listing(env: SEXP, include_hidden: bool) -> Vec<String> {
+    collect_frame_binding_names(env, include_hidden, true)
 }
 
 fn collect_frame_binding_names(
@@ -574,29 +571,27 @@ fn collect_frame_binding_names(
     include_hidden: bool,
     include_namespace_metadata: bool,
 ) -> Vec<String> {
-    unsafe {
-        let mut names = Vec::new();
-        collect_binding_names(
-            FRAME(env),
-            include_hidden,
-            include_namespace_metadata,
-            &mut names,
-        );
-        let hashtab = HASHTAB(env);
-        if !hashtab.is_null() && hashtab != R_NilValue() && TYPEOF(hashtab) == SEXPTYPE::VECSXP {
-            for i in 0..XLENGTH(hashtab) {
-                collect_binding_names(
-                    VECTOR_ELT(hashtab, i),
-                    include_hidden,
-                    include_namespace_metadata,
-                    &mut names,
-                );
-            }
+    let mut names = Vec::new();
+    collect_binding_names(
+        FRAME(env),
+        include_hidden,
+        include_namespace_metadata,
+        &mut names,
+    );
+    let hashtab = HASHTAB(env);
+    if !hashtab.is_null() && hashtab != R_NilValue() && TYPEOF(hashtab) == SEXPTYPE::VECSXP {
+        for i in 0..XLENGTH(hashtab) {
+            collect_binding_names(
+                VECTOR_ELT(hashtab, i),
+                include_hidden,
+                include_namespace_metadata,
+                &mut names,
+            );
         }
-        names.sort();
-        names.dedup();
-        names
     }
+    names.sort();
+    names.dedup();
+    names
 }
 
 pub(super) fn collect_binding_names(

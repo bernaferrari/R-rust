@@ -130,125 +130,117 @@ pub fn do_monthplot(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// GNU `monthplot.default(x)` — `range(x)` becomes `ylim`.
 pub fn do_monthplot_default(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        let n = if x.is_null() || x == R_NilValue() {
-            0
-        } else {
-            XLENGTH(x)
-        };
-        let mut lo = f64::INFINITY;
-        let mut hi = f64::NEG_INFINITY;
-        let mut any = false;
-        for i in 0..n {
-            let v = elt_real_safe(x, i);
-            if v.is_finite() {
-                any = true;
-                if v < lo {
-                    lo = v;
-                }
-                if v > hi {
-                    hi = v;
-                }
+    let x = CAR(args);
+    let n = if x.is_null() || x == R_NilValue() {
+        0
+    } else {
+        XLENGTH(x)
+    };
+    let mut lo = f64::INFINITY;
+    let mut hi = f64::NEG_INFINITY;
+    let mut any = false;
+    for i in 0..n {
+        let v = elt_real_safe(x, i);
+        if v.is_finite() {
+            any = true;
+            if v < lo {
+                lo = v;
+            }
+            if v > hi {
+                hi = v;
             }
         }
-        if !any || !lo.is_finite() || !hi.is_finite() {
-            crate::mainutils::errors::errorcall_str(
-                crate::mainutils::errors::R_getCurrentCall(),
-                "invalid 'ylim' value",
-            );
-        }
-        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-        R_NilValue()
     }
+    if !any || !lo.is_finite() || !hi.is_finite() {
+        crate::mainutils::errors::errorcall_str(
+            crate::mainutils::errors::R_getCurrentCall(),
+            "invalid 'ylim' value",
+        );
+    }
+    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+    R_NilValue()
 }
 
 /// GNU `scatter.smooth(x, y)` — `seq(min(x), max(x), length.out=)`.
 pub fn do_scatter_smooth(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        let n = if x.is_null() || x == R_NilValue() {
-            0
-        } else {
-            XLENGTH(x)
-        };
-        let mut lo = f64::INFINITY;
-        let mut hi = f64::NEG_INFINITY;
-        let mut any = false;
-        for i in 0..n {
-            let v = elt_real_safe(x, i);
-            if v.is_finite() {
-                any = true;
-                if v < lo {
-                    lo = v;
-                }
-                if v > hi {
-                    hi = v;
-                }
+    let x = CAR(args);
+    let n = if x.is_null() || x == R_NilValue() {
+        0
+    } else {
+        XLENGTH(x)
+    };
+    let mut lo = f64::INFINITY;
+    let mut hi = f64::NEG_INFINITY;
+    let mut any = false;
+    for i in 0..n {
+        let v = elt_real_safe(x, i);
+        if v.is_finite() {
+            any = true;
+            if v < lo {
+                lo = v;
+            }
+            if v > hi {
+                hi = v;
             }
         }
-        if !any || !lo.is_finite() || !hi.is_finite() {
-            crate::mainutils::errors::errorcall_str(
-                crate::mainutils::errors::R_getCurrentCall(),
-                "'from' must be a finite number",
-            );
-        }
-        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-        R_NilValue()
     }
+    if !any || !lo.is_finite() || !hi.is_finite() {
+        crate::mainutils::errors::errorcall_str(
+            crate::mainutils::errors::R_getCurrentCall(),
+            "'from' must be a finite number",
+        );
+    }
+    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+    R_NilValue()
 }
 
 /// GNU `interaction.plot(x.factor, trace.factor, response)` — invisible.
 pub fn do_interaction_plot(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        let rest = CDR(args);
-        let trace = if rest.is_null() || rest == R_NilValue() {
-            R_NilValue()
-        } else {
-            CAR(rest)
-        };
-        let resp = if rest.is_null() || rest == R_NilValue() {
-            R_NilValue()
-        } else {
-            let r2 = CDR(rest);
-            if r2.is_null() || r2 == R_NilValue() {
-                R_NilValue()
-            } else {
-                CAR(r2)
-            }
-        };
-        if x.is_null()
-            || x == R_NilValue()
-            || XLENGTH(x) == 0
-            || resp.is_null()
-            || resp == R_NilValue()
-            || XLENGTH(resp) == 0
-        {
-            crate::mainutils::errors::errorcall_str(
-                crate::mainutils::errors::R_getCurrentCall(),
-                "invalid 'ylim' value",
-            );
-        }
-        let _ = trace;
-        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+    let x = CAR(args);
+    let rest = CDR(args);
+    let trace = if rest.is_null() || rest == R_NilValue() {
         R_NilValue()
+    } else {
+        CAR(rest)
+    };
+    let resp = if rest.is_null() || rest == R_NilValue() {
+        R_NilValue()
+    } else {
+        let r2 = CDR(rest);
+        if r2.is_null() || r2 == R_NilValue() {
+            R_NilValue()
+        } else {
+            CAR(r2)
+        }
+    };
+    if x.is_null()
+        || x == R_NilValue()
+        || XLENGTH(x) == 0
+        || resp.is_null()
+        || resp == R_NilValue()
+        || XLENGTH(resp) == 0
+    {
+        crate::mainutils::errors::errorcall_str(
+            crate::mainutils::errors::R_getCurrentCall(),
+            "invalid 'ylim' value",
+        );
     }
+    let _ = trace;
+    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+    R_NilValue()
 }
 
 /// GNU `lag.plot(x)` — `as.ts(as.matrix(x))` then plot.
 pub fn do_lag_plot(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() || XLENGTH(x) == 0 {
-            crate::mainutils::errors::errorcall_str(
-                crate::mainutils::errors::R_getCurrentCall(),
-                "invalid 'xlim' value",
-            );
-        }
-        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-        R_NilValue()
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() || XLENGTH(x) == 0 {
+        crate::mainutils::errors::errorcall_str(
+            crate::mainutils::errors::R_getCurrentCall(),
+            "invalid 'xlim' value",
+        );
     }
+    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+    R_NilValue()
 }
 
 /// GNU `eff.aovlist(aovlist)` — `$qr` on each stratum.
@@ -304,16 +296,14 @@ pub fn do_screeplot(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// GNU `biplot.default(x, y, ...)` — requires `y`.
 pub fn do_biplot_default(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let y = CAR(CDR(args));
-        if y.is_null() || y == R_NilValue() || y == crate::sexp::globals::R_MissingArg() {
-            crate::mainutils::errors::errorcall_str(
-                crate::mainutils::errors::R_getCurrentCall(),
-                "argument \"y\" is missing, with no default",
-            );
-        }
-        R_NilValue()
+    let y = CAR(CDR(args));
+    if y.is_null() || y == R_NilValue() || y == crate::sexp::globals::R_MissingArg() {
+        crate::mainutils::errors::errorcall_str(
+            crate::mainutils::errors::R_getCurrentCall(),
+            "argument \"y\" is missing, with no default",
+        );
     }
+    R_NilValue()
 }
 
 /// GNU `screeplot.default(x)` — reads `x$sdev`.
@@ -333,12 +323,12 @@ pub fn do_screeplot_default(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SE
 
 /// GNU `plot.spec.coherency(x)` — reads `x$spec`.
 pub fn do_plot_spec_coherency(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-     spec_plot_read_spec(args, rho) 
+    spec_plot_read_spec(args, rho)
 }
 
 /// GNU `plot.spec.phase(x)` — reads `x$spec`.
 pub fn do_plot_spec_phase(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-     spec_plot_read_spec(args, rho) 
+    spec_plot_read_spec(args, rho)
 }
 
 pub(super) fn spec_plot_read_spec(args: SEXP, rho: SEXP) -> SEXP {
@@ -361,7 +351,9 @@ pub fn do_plot_default(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let _ = (call, op, rho);
         // GNU plot.default establishes the plot frame via plot.new() first.
         crate::library::graphics::graphics::set_plot_new_state();
-        { record_plot_window(args) };
+        {
+            record_plot_window(args)
+        };
         crate::sexp::globals::R_NilValue()
     }
 }
@@ -941,7 +933,7 @@ pub fn do_abline(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 pub(super) fn no_device_require_plot_frame() {
     if !crate::library::graphics::graphics::plot_new_called() {
         crate::mainutils::errors::errorcall_str(
-            unsafe { crate::mainutils::errors::R_getCurrentCall() },
+            crate::mainutils::errors::R_getCurrentCall(),
             "plot.new has not been called yet",
         );
     }

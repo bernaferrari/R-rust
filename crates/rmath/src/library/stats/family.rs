@@ -31,7 +31,7 @@ const MTHRESH: c_double = -30.0;
 const INVEPS: c_double = 1.0 / f64::EPSILON;
 
 unsafe fn coerceVector(x: SEXP, type_: SEXPTYPE) -> SEXP {
-    unsafe { crate::main::coerce::coerceVector(x, type_.into()) }
+    crate::main::coerce::coerceVector(x, type_.into())
 }
 
 unsafe fn shallow_duplicate(x: SEXP) -> SEXP {
@@ -41,14 +41,12 @@ unsafe fn shallow_duplicate(x: SEXP) -> SEXP {
 /// Evaluate x/(1 - x). x must be in the range (0, 1).
 #[inline]
 unsafe fn x_d_omx(x: c_double) -> c_double {
-    unsafe {
-        if x < 0.0 || x > 1.0 {
-            crate::main::errors::Rf_error(
-                b"Value out of range (0, 1)\0".as_ptr() as *const core::ffi::c_char
-            );
-        }
-        x / (1.0 - x)
+    if x < 0.0 || x > 1.0 {
+        crate::main::errors::Rf_error(
+            b"Value out of range (0, 1)\0".as_ptr() as *const core::ffi::c_char
+        );
     }
+    x / (1.0 - x)
 }
 
 /// Evaluate x/(1 + x).

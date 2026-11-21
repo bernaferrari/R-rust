@@ -59,7 +59,7 @@ pub fn flush_parsed_expr_warnings(index: usize) {
     });
     for message in msgs {
         if let Ok(c) = CString::new(message) {
-            unsafe { crate::main::errors::Rf_warning(c.as_ptr()) };
+            crate::main::errors::Rf_warning(c.as_ptr());
         }
     }
 }
@@ -69,7 +69,7 @@ pub fn flush_literal_warnings() {
     let msgs = take_pending_literal_warnings();
     for message in msgs {
         if let Ok(c) = CString::new(message) {
-            unsafe { crate::main::errors::Rf_warning(c.as_ptr()) };
+            crate::main::errors::Rf_warning(c.as_ptr());
         }
     }
 }

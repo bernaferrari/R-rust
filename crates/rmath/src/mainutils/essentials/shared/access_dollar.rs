@@ -42,11 +42,7 @@ pub(crate) fn posixct_tzone_string(source: SEXP) -> String {
     }
 }
 
-pub(crate) fn set_datetime_class_from(
-    result: SEXP,
-    source: SEXP,
-    class: DatetimeVectorClass,
-) {
+pub(crate) fn set_datetime_class_from(result: SEXP, source: SEXP, class: DatetimeVectorClass) {
     {
         match class {
             DatetimeVectorClass::Date => set_single_class(result, "Date"),
@@ -58,13 +54,11 @@ pub(crate) fn set_datetime_class_from(
 }
 
 pub(crate) fn integer_or_logical_elt(value: SEXP, index: c_int) -> c_int {
-    unsafe {
-        match TYPEOF(value) {
-            t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => {
-                integer_like_elt(&owner_sexp(active_owner(), value), index as R_xlen_t)
-            }
-            _ => NA_INTEGER,
+    match TYPEOF(value) {
+        t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => {
+            integer_like_elt(&owner_sexp(active_owner(), value), index as R_xlen_t)
         }
+        _ => NA_INTEGER,
     }
 }
 
@@ -147,9 +141,7 @@ pub fn do_xtfrm(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 for i in 0..n {
                     let value = x_owned
                         .try_string_value_elt(i)
-                        .unwrap_or_else(|error| {
-                            crate::sexp::context::r_error(error.to_string())
-                        });
+                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
                     values.push(value);
                 }
 
@@ -298,20 +290,17 @@ pub(crate) fn replacement_name(arg: SEXP) -> String {
 }
 
 pub(super) fn is_data_frame_object(x: SEXP) -> bool {
-    unsafe {
-        let cls = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_ClassSymbol());
-        if cls.is_null() || cls == R_NilValue() || TYPEOF(cls) != crate::sexp::ffi::SEXPTYPE::STRSXP
-        {
-            return false;
-        }
-        let cls_owned = owner_sexp(active_owner(), cls);
-        (0..XLENGTH(cls)).any(|i| {
-            matches!(
-                cls_owned.try_string_value_elt(i),
-                Ok(Some(ref text)) if text == "data.frame"
-            )
-        })
+    let cls = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_ClassSymbol());
+    if cls.is_null() || cls == R_NilValue() || TYPEOF(cls) != crate::sexp::ffi::SEXPTYPE::STRSXP {
+        return false;
     }
+    let cls_owned = owner_sexp(active_owner(), cls);
+    (0..XLENGTH(cls)).any(|i| {
+        matches!(
+            cls_owned.try_string_value_elt(i),
+            Ok(Some(ref text)) if text == "data.frame"
+        )
+    })
 }
 
 pub(super) fn frame_row_count(df: SEXP) -> i64 {
@@ -334,13 +323,15 @@ pub(super) fn frame_row_count(df: SEXP) -> i64 {
             && rn != R_NilValue()
             && TYPEOF(rn) == crate::sexp::ffi::SEXPTYPE::INTSXP
             && XLENGTH(rn) == 2
-            && rn_owned.try_integer_elt(1).unwrap_or_else(|error| {
-                crate::sexp::context::r_error(error.to_string())
-            }) < 0
+            && rn_owned
+                .try_integer_elt(1)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+                < 0
         {
-            -(rn_owned.try_integer_elt(1).unwrap_or_else(|error| {
-                crate::sexp::context::r_error(error.to_string())
-            }) as i64)
+            -(rn_owned
+                .try_integer_elt(1)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+                as i64)
         } else if !rn.is_null() && rn != R_NilValue() && XLENGTH(rn) > 0 {
             XLENGTH(rn)
         } else if XLENGTH(df) > 0 {
@@ -348,9 +339,7 @@ pub(super) fn frame_row_count(df: SEXP) -> i64 {
             let first = owner_sexp(owner, df)
                 .try_vector_elt(0)
                 .map(|elt| elt.as_raw())
-                .unwrap_or_else(|error| {
-                    crate::sexp::context::r_error(error.to_string())
-                });
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
             XLENGTH(first)
         } else {
             0
@@ -360,47 +349,37 @@ pub(super) fn frame_row_count(df: SEXP) -> i64 {
 
 /// Copy element `from` of `src` to element `to` of `dst` for any vector type.
 pub(super) fn copy_vector_element(src: SEXP, from: i64, dst: SEXP, to: i64) {
-    unsafe {
-        let owner = active_owner();
-        let src_owned = owner_sexp(owner, src);
-        let mut dst_mut = owner
-            .sexp(dst)
-            .and_then(SexpMut::try_from_checked)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        fn fail<T>(error: crate::sexp::object::SexpError) -> T {
-            crate::sexp::context::r_error(error.to_string())
+    let owner = active_owner();
+    let src_owned = owner_sexp(owner, src);
+    let mut dst_mut = owner
+        .sexp(dst)
+        .and_then(SexpMut::try_from_checked)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    fn fail<T>(error: crate::sexp::object::SexpError) -> T {
+        crate::sexp::context::r_error(error.to_string())
+    }
+    match TYPEOF(src) {
+        t if t == crate::sexp::ffi::SEXPTYPE::INTSXP => {
+            let v = src_owned.try_integer_elt(from).unwrap_or_else(fail);
+            dst_mut.try_set_integer_elt(to, v).unwrap_or_else(fail);
         }
-        match TYPEOF(src) {
-            t if t == crate::sexp::ffi::SEXPTYPE::INTSXP => {
-                let v = src_owned.try_integer_elt(from).unwrap_or_else(fail);
-                dst_mut
-                    .try_set_integer_elt(to, v)
-                    .unwrap_or_else(fail);
-            }
-            t if t == crate::sexp::ffi::SEXPTYPE::REALSXP => {
-                let v = src_owned.try_real_elt(from).unwrap_or_else(fail);
-                dst_mut.try_set_real_elt(to, v).unwrap_or_else(fail);
-            }
-            t if t == crate::sexp::ffi::SEXPTYPE::LGLSXP => {
-                let v = src_owned.try_logical_elt(from).unwrap_or_else(fail);
-                dst_mut
-                    .try_set_logical_elt(to, v)
-                    .unwrap_or_else(fail);
-            }
-            t if t == crate::sexp::ffi::SEXPTYPE::STRSXP => {
-                let elt = src_owned.try_string_elt(from).unwrap_or_else(fail);
-                dst_mut
-                    .try_set_string_elt(to, elt)
-                    .unwrap_or_else(fail);
-            }
-            t if t == crate::sexp::ffi::SEXPTYPE::VECSXP => {
-                let elt = src_owned.try_vector_elt(from).unwrap_or_else(fail);
-                dst_mut
-                    .try_set_vector_elt(to, elt)
-                    .unwrap_or_else(fail);
-            }
-            _ => {}
+        t if t == crate::sexp::ffi::SEXPTYPE::REALSXP => {
+            let v = src_owned.try_real_elt(from).unwrap_or_else(fail);
+            dst_mut.try_set_real_elt(to, v).unwrap_or_else(fail);
         }
+        t if t == crate::sexp::ffi::SEXPTYPE::LGLSXP => {
+            let v = src_owned.try_logical_elt(from).unwrap_or_else(fail);
+            dst_mut.try_set_logical_elt(to, v).unwrap_or_else(fail);
+        }
+        t if t == crate::sexp::ffi::SEXPTYPE::STRSXP => {
+            let elt = src_owned.try_string_elt(from).unwrap_or_else(fail);
+            dst_mut.try_set_string_elt(to, elt).unwrap_or_else(fail);
+        }
+        t if t == crate::sexp::ffi::SEXPTYPE::VECSXP => {
+            let elt = src_owned.try_vector_elt(from).unwrap_or_else(fail);
+            dst_mut.try_set_vector_elt(to, elt).unwrap_or_else(fail);
+        }
+        _ => {}
     }
 }
 
@@ -582,20 +561,14 @@ pub fn do_dollar_set(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     let old_n = crate::mainutils::subassign::posixlt_obs_length(object);
                     let value_owned = owner
                         .sexp(value)
-                        .unwrap_or_else(|error| {
-                            crate::sexp::context::r_error(error.to_string())
-                        });
+                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
                     let mut object_mut = owner
                         .sexp(object)
                         .and_then(SexpMut::try_from_checked)
-                        .unwrap_or_else(|error| {
-                            crate::sexp::context::r_error(error.to_string())
-                        });
+                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
                     object_mut
                         .try_set_vector_elt(i, value_owned)
-                        .unwrap_or_else(|error| {
-                            crate::sexp::context::r_error(error.to_string())
-                        });
+                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
                     crate::mainutils::subassign::mark_posixlt_dollar_balanced(object, value, old_n);
                     return object;
                 }
@@ -622,9 +595,9 @@ pub fn do_dollar_set(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     && TYPEOF(names) == SEXPTYPE::STRSXP
                     && i < XLENGTH(names)
                 {
-                    names_owned.try_string_elt(i).unwrap_or_else(|error| {
-                        crate::sexp::context::r_error(error.to_string())
-                    })
+                    names_owned
+                        .try_string_elt(i)
+                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
                 } else {
                     blank_owned.clone()
                 };
@@ -643,9 +616,7 @@ pub fn do_dollar_set(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             owner.sexp(out).and_then(SexpMut::try_from_checked),
             owner.sexp(out_names).and_then(SexpMut::try_from_checked),
             owner.sexp(value),
-            owner.sexp(Rf_mkChar(
-                CString::new(field).unwrap_or_default().as_ptr(),
-            )),
+            owner.sexp(Rf_mkChar(CString::new(field).unwrap_or_default().as_ptr())),
         ) {
             let _ = out_mut.try_set_vector_elt(n, value_owned);
             let _ = out_names_mut.try_set_string_elt(n, field_chars);
@@ -678,13 +649,15 @@ pub fn do_dollar_set(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 0
             } else if TYPEOF(rownames) == SEXPTYPE::INTSXP
                 && XLENGTH(rownames) == 2
-                && rownames_owned.try_integer_elt(0).unwrap_or_else(|error| {
-                    crate::sexp::context::r_error(error.to_string())
-                }) == NA_INTEGER
+                && rownames_owned
+                    .try_integer_elt(0)
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+                    == NA_INTEGER
             {
-                -(rownames_owned.try_integer_elt(1).unwrap_or_else(|error| {
-                    crate::sexp::context::r_error(error.to_string())
-                }) as R_xlen_t)
+                -(rownames_owned
+                    .try_integer_elt(1)
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+                    as R_xlen_t)
             } else {
                 XLENGTH(rownames)
             };
@@ -702,9 +675,7 @@ pub fn do_dollar_set(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             {
                 owner_sexp(owner, dim)
                     .try_integer_elt(0)
-                    .unwrap_or_else(|error| {
-                        crate::sexp::context::r_error(error.to_string())
-                    })
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
                     .max(0) as R_xlen_t
             } else if t == SEXPTYPE::LISTSXP || t == SEXPTYPE::LANGSXP {
                 let mut len: R_xlen_t = 0;

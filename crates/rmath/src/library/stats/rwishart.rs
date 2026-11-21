@@ -39,10 +39,8 @@ use crate::sexp::protect::protect;
 // ---------------------------------------------------------------------------
 
 unsafe fn isMatrix(x: SEXP) -> bool {
-    unsafe {
-        let dn = getAttrib(x, R_DimSymbol());
-        !dn.is_null() && LENGTH(dn) >= 2
-    }
+    let dn = getAttrib(x, R_DimSymbol());
+    !dn.is_null() && LENGTH(dn) >= 2
 }
 
 unsafe fn isReal(x: SEXP) -> bool {
@@ -67,7 +65,7 @@ unsafe fn alloc3DArray(sexptype: c_int, nrow: c_int, ncol: c_int, ndepth: c_int)
 
 unsafe fn error(msg: &str) {
     let c_msg = std::ffi::CString::new(msg).unwrap_or_default();
-    unsafe { Rf_error(c_msg.as_ptr()) };
+    Rf_error(c_msg.as_ptr());
 }
 
 // ---------------------------------------------------------------------------

@@ -351,7 +351,7 @@ pub fn R_InitFileOutPStream(
     phook: Option<unsafe extern "C" fn(SEXP, SEXP) -> SEXP>,
     pdata: SEXP,
 ) {
-     {
+    {
         R_InitOutPStream(
             stream,
             fp,
@@ -372,7 +372,7 @@ pub fn R_InitFileInPStream(
     phook: Option<unsafe extern "C" fn(SEXP, SEXP) -> SEXP>,
     pdata: SEXP,
 ) {
-     {
+    {
         R_InitInPStream(
             stream,
             fp,
@@ -393,7 +393,7 @@ pub fn R_InitConnOutPStream(
     phook: Option<unsafe extern "C" fn(SEXP, SEXP) -> SEXP>,
     pdata: SEXP,
 ) {
-     {
+    {
         R_InitOutPStream(
             stream,
             con,
@@ -414,7 +414,7 @@ pub fn R_InitConnInPStream(
     phook: Option<unsafe extern "C" fn(SEXP, SEXP) -> SEXP>,
     pdata: SEXP,
 ) {
-     {
+    {
         R_InitInPStream(
             stream,
             con,
@@ -433,14 +433,8 @@ pub fn R_InitConnInPStream(
 
 /// Serialize an R object to a raw vector (when icon is R_NilValue).
 /// This is the main entry point for `serialize()` in R.
-pub fn R_serialize(
-    object: SEXP,
-    icon: SEXP,
-    ascii: SEXP,
-    Sversion: SEXP,
-    fun: SEXP,
-) -> SEXP {
-     R_serialize_with_xdr(object, icon, ascii, R_NilValue(), Sversion, fun)
+pub fn R_serialize(object: SEXP, icon: SEXP, ascii: SEXP, Sversion: SEXP, fun: SEXP) -> SEXP {
+    R_serialize_with_xdr(object, icon, ascii, R_NilValue(), Sversion, fun)
 }
 
 pub fn R_serialize_with_xdr(
@@ -510,9 +504,9 @@ pub(crate) fn serialize_workspace_snapshot(
         (3, false) => b"RDX3\n",
         (2, true) => b"RDA2\n",
         (3, true) => b"RDA3\n",
-        _ =>  { error(&format!("version {version} not supported")) },
+        _ => error(&format!("version {version} not supported")),
     };
-     {
+    {
         let format = if ascii {
             SnapshotFormat::Ascii { hex: false }
         } else {
@@ -536,53 +530,51 @@ fn serialize_snapshot(
     format: SnapshotFormat,
     prefix: &[u8],
 ) -> SerializedBytes {
-    unsafe {
-        let _object_guard = protect(object);
-        let _hook_guard = protect(hook);
-        // Build the header
-        let mut writer = BinaryWriter::admitted(owner);
-        writer.strict_workspace = !prefix.is_empty();
-        writer.write_bytes(prefix);
-        writer.set_persist_hook(hook);
-        writer.write_byte(match format {
-            SnapshotFormat::Ascii { .. } => b'A',
-            SnapshotFormat::Xdr => b'X',
-            SnapshotFormat::Native => b'B',
-        });
-        writer.write_byte(b'\n');
-        writer.set_ascii_body(matches!(format, SnapshotFormat::Ascii { .. }));
-        writer.set_ascii_hex(matches!(format, SnapshotFormat::Ascii { hex: true }));
-        writer.set_xdr_body(matches!(format, SnapshotFormat::Xdr));
-        writer.version = version;
+    let _object_guard = protect(object);
+    let _hook_guard = protect(hook);
+    // Build the header
+    let mut writer = BinaryWriter::admitted(owner);
+    writer.strict_workspace = !prefix.is_empty();
+    writer.write_bytes(prefix);
+    writer.set_persist_hook(hook);
+    writer.write_byte(match format {
+        SnapshotFormat::Ascii { .. } => b'A',
+        SnapshotFormat::Xdr => b'X',
+        SnapshotFormat::Native => b'B',
+    });
+    writer.write_byte(b'\n');
+    writer.set_ascii_body(matches!(format, SnapshotFormat::Ascii { .. }));
+    writer.set_ascii_hex(matches!(format, SnapshotFormat::Ascii { hex: true }));
+    writer.set_xdr_body(matches!(format, SnapshotFormat::Xdr));
+    writer.version = version;
 
-        // Version info
-        writer.write_i32(version); // version
-        writer.write_i32(R_VERSION); // writer version
-        writer.write_i32(if version == 2 {
-            R_VERSION_230
-        } else {
-            R_VERSION_350
-        });
-        if version == 3 {
-            // GNU R_Serialize writes the native encoding name; the runtime
-            // is UTF-8-native like Unix GNU R.
-            const NATIVE_ENCODING: &[u8] = b"UTF-8";
-            writer.write_i32(NATIVE_ENCODING.len() as c_int);
-            writer.write_string_bytes(
-                NATIVE_ENCODING.as_ptr() as *const c_char,
-                NATIVE_ENCODING.len() as c_int,
-            );
-        }
-
-        // Serialize the object
-        let mut ref_table = WriteHashTable::for_owner(owner);
-        WriteItemInternal(object, &mut ref_table, &mut writer);
-
-        owner
-            .require_active()
-            .unwrap_or_else(|e| error(&e.to_string()));
-        writer.into_output()
+    // Version info
+    writer.write_i32(version); // version
+    writer.write_i32(R_VERSION); // writer version
+    writer.write_i32(if version == 2 {
+        R_VERSION_230
+    } else {
+        R_VERSION_350
+    });
+    if version == 3 {
+        // GNU R_Serialize writes the native encoding name; the runtime
+        // is UTF-8-native like Unix GNU R.
+        const NATIVE_ENCODING: &[u8] = b"UTF-8";
+        writer.write_i32(NATIVE_ENCODING.len() as c_int);
+        writer.write_string_bytes(
+            NATIVE_ENCODING.as_ptr() as *const c_char,
+            NATIVE_ENCODING.len() as c_int,
+        );
     }
+
+    // Serialize the object
+    let mut ref_table = WriteHashTable::for_owner(owner);
+    WriteItemInternal(object, &mut ref_table, &mut writer);
+
+    owner
+        .require_active()
+        .unwrap_or_else(|e| error(&e.to_string()));
+    writer.into_output()
 }
 
 /// Unserialize an R object from a raw vector.
@@ -964,7 +956,7 @@ fn persist_restore_inner(
 }
 
 fn persist_hook_is_r_function(hook: SEXP) -> bool {
-     {
+    {
         !hook.is_null()
             && hook != R_NilValue()
             && (TYPEOF(hook) == SEXPTYPE::CLOSXP
@@ -1058,7 +1050,7 @@ fn unserialize_owned_input(
     hook_data: SEXP,
     lazy_restore: Option<LazyLoadRestore>,
 ) -> SEXP {
-     {
+    {
         let _pin = owner.pin().unwrap_or_else(|e| error(&e.to_string()));
         owner
             .require_active()
@@ -1111,7 +1103,7 @@ pub(crate) fn unserialize_native_snapshot(
     };
     // SAFETY: the native slice is immutable and its caller owns its complete
     // backing across callbacks. The original hook graph is owned above.
-    let result =  { unserialize_owned_input(owner, data, None, hook_data, lazy_restore) };
+    let result = { unserialize_owned_input(owner, data, None, hook_data, lazy_restore) };
     owner.require_active()?;
     owner.sexp(result)?.into_owned()
 }
@@ -1137,7 +1129,7 @@ pub(crate) fn decode_workspace_snapshot(
     let mut reader = BinaryReader::new(body);
     // SAFETY: the caller keeps the complete, admitted body alive through
     // decoding; no R payload loan is live.
-    let decoded =  { decode_stream_object(owner, &mut reader) };
+    let decoded = { decode_stream_object(owner, &mut reader) };
     owner.require_active()?;
     let trailing = &body[reader.pos..];
     if !(trailing.is_empty() || ascii && trailing.iter().all(u8::is_ascii_whitespace)) {
@@ -1153,7 +1145,7 @@ fn decode_stream_object(
     owner: &crate::sexp::owner::OwnerToken<'_>,
     reader: &mut BinaryReader<'_>,
 ) -> SEXP {
-     {
+    {
         // Read format header: two bytes (`A\n`, `B\n`, or `X\n`).
         let mut fmt1 = reader.read_byte().unwrap_or(0);
         let mut fmt2 = reader.read_byte().unwrap_or(0);
@@ -1293,7 +1285,7 @@ fn configure_conn_hooks(
     reader: &mut BinaryReader<'_>,
     hook: SEXP,
 ) {
-     {
+    {
         if !hook.is_null() && hook != R_NilValue() && TYPEOF(hook) == SEXPTYPE::ENVSXP {
             let data = owner
                 .sexp(hook)
@@ -1311,7 +1303,7 @@ fn configure_conn_hooks(
 // ---------------------------------------------------------------------------
 
 pub fn R_serializeb(object: SEXP, icon: SEXP, xdr: SEXP, Sversion: SEXP, fun: SEXP) -> SEXP {
-     R_serialize_with_xdr(object, icon, R_NilValue(), xdr, Sversion, fun)
+    R_serialize_with_xdr(object, icon, R_NilValue(), xdr, Sversion, fun)
 }
 
 // ---------------------------------------------------------------------------
@@ -1483,7 +1475,7 @@ pub fn do_unserializeFromConn(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SE
 // ---------------------------------------------------------------------------
 
 pub fn do_lazyLoadDBflush(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-     {
+    {
         let _ = (call, op, env);
         let file = require_arg(args, 0);
         let _ = sexp_to_path(file);
@@ -1627,7 +1619,7 @@ pub fn do_lazyLoadDBfetch(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 }
 
 pub fn do_getVarsFromFrame(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-     {
+    {
         let _ = (call, op, env);
         let vars = require_arg(args, 0);
         let env = require_arg(args, 1);
@@ -1637,7 +1629,7 @@ pub fn do_getVarsFromFrame(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP 
 }
 
 pub fn do_lazyLoadDBinsertValue(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-     {
+    {
         let _ = (call, op, env);
         let value = require_arg(args, 0);
         let file = require_arg(args, 1);

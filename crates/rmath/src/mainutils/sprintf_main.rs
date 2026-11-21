@@ -71,20 +71,18 @@ fn getCharCE(s: SEXP) -> c_int {
 }
 
 unsafe fn coerceVector(s: SEXP, t: c_int) -> SEXP {
-    unsafe { crate::mainutils::coerce::coerceVector(s, t) }
+    crate::mainutils::coerce::coerceVector(s, t)
 }
 
 unsafe fn warning(fmt: *const c_char, _a1: usize, _a2: usize) {
-    unsafe {
-        crate::mainutils::errors::warningcall(crate::sexp::globals::R_NilValue(), fmt);
-    }
+    crate::mainutils::errors::warningcall(crate::sexp::globals::R_NilValue(), fmt);
 }
 
 fn isNA_STRING(s: SEXP) -> bool {
     if s.is_null() {
         return false;
     }
-     s == crate::mainutils::relop::NA_STRING() 
+    s == crate::mainutils::relop::NA_STRING()
 }
 
 // ---------------------------------------------------------------------------

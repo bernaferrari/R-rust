@@ -98,27 +98,25 @@ pub fn checkArity(op: SEXP, args: SEXP) {
 /// When `keep_initial` is true, leading NULL elements are kept; otherwise they
 /// are removed too.
 pub fn R_listCompact(mut s: SEXP, keep_initial: bool) -> SEXP {
-    unsafe {
-        if !keep_initial {
-            // skip initial NULL values
-            while !s.is_null() && s != R_NilValue() && CAR(s) == R_NilValue() {
-                s = CDR(s);
-            }
-        }
-
-        let val = s;
-        let mut prev = s;
-        while !s.is_null() && s != R_NilValue() {
+    if !keep_initial {
+        // skip initial NULL values
+        while !s.is_null() && s != R_NilValue() && CAR(s) == R_NilValue() {
             s = CDR(s);
-            if !s.is_null() && s != R_NilValue() && CAR(s) == R_NilValue() {
-                // skip it
-                SETCDR(prev, CDR(s));
-            } else {
-                prev = s;
-            }
         }
-        val
     }
+
+    let val = s;
+    let mut prev = s;
+    while !s.is_null() && s != R_NilValue() {
+        s = CDR(s);
+        if !s.is_null() && s != R_NilValue() && CAR(s) == R_NilValue() {
+            // skip it
+            SETCDR(prev, CDR(s));
+        } else {
+            prev = s;
+        }
+    }
+    val
 }
 
 // ---------------------------------------------------------------------------
@@ -158,9 +156,7 @@ pub fn type2char(sexptype: c_int) -> *const c_char {
 /// Set the CAR of the CDR of x (i.e., SETCADR).
 #[inline(always)]
 pub fn SETCADR(x: SEXP, v: SEXP) {
-    unsafe {
-        SETCAR(CDR(x), v);
-    }
+    SETCAR(CDR(x), v);
 }
 
 /// Get the extended length of an SEXP (same as XLENGTH for non-pairlist).
@@ -508,7 +504,7 @@ pub fn allocMatrix(mode: SEXPTYPE, nrow: c_int, ncol: c_int) -> SEXP {
 /// failure instead of returning a null SEXP that callers would dereference.
 #[inline]
 pub fn checked_allocVector(mode: SEXPTYPE, n: R_xlen_t) -> SEXP {
-    let ans = unsafe { Rf_allocVector3(mode.0, n) };
+    let ans = Rf_allocVector3(mode.0, n);
     if ans.is_null() {
         std::panic::panic_any(crate::sexp::context::RError {
             message: format!("cannot allocate vector of size {}", n),
@@ -525,19 +521,17 @@ pub fn lazy_duplicate(x: SEXP) -> SEXP {
 /// EnsureString: ensure x is a single string (CHARSXP).
 #[inline(always)]
 pub fn EnsureString(x: SEXP) -> SEXP {
-    unsafe {
-        if x.is_null() || x == R_NilValue() {
-            return R_NilValue();
-        }
-        let t = TYPEOF(x);
-        if t == CHARSXP_I {
-            return x;
-        }
-        if t == STRSXP_I && xlength(x) > 0 {
-            return STRING_ELT(x, 0);
-        }
-        R_NilValue()
+    if x.is_null() || x == R_NilValue() {
+        return R_NilValue();
     }
+    let t = TYPEOF(x);
+    if t == CHARSXP_I {
+        return x;
+    }
+    if t == STRSXP_I && xlength(x) > 0 {
+        return STRING_ELT(x, 0);
+    }
+    R_NilValue()
 }
 
 /// R_BlankString: return a blank CHARSXP.

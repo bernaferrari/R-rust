@@ -41,7 +41,7 @@ fn isNumeric(owner: crate::sexp::owner::OwnerToken<'_>, x: SEXP) -> bool {
     let numeric = t == SEXPTYPE::REALSXP
         || t == SEXPTYPE::LGLSXP
         || (t == SEXPTYPE::INTSXP
-            && unsafe { crate::mainutils::objects::inherits2(x, c"factor".as_ptr()) } == 0);
+            && crate::mainutils::objects::inherits2(x, c"factor".as_ptr()) == 0);
     owner
         .require_active()
         .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
@@ -58,7 +58,7 @@ fn as_integer(owner: crate::sexp::owner::OwnerToken<'_>, value: SEXP) -> c_int {
         .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
     // SAFETY: the owner is active; integer coercion may evaluate providers
     // and condition handlers under the live runtime.
-    let value = unsafe { crate::main::coerce::asInteger(value) };
+    let value = crate::main::coerce::asInteger(value);
     owner
         .require_active()
         .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
@@ -114,21 +114,21 @@ fn copy_math_attributes(owner: crate::sexp::owner::OwnerToken<'_>, to: SEXP, fro
     // SAFETY: the owner is active; the checked attribute root keeps the source
     // graph live across duplication and protection.
     let copied = unsafe { crate::main::duplicate::shallow_duplicate(attributes.as_raw()) };
-    let _copied = unsafe { protect(copied) };
+    let _copied = protect(copied);
     owner
         .require_active()
         .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
     // SAFETY: both checked objects remain rooted while their headers are
     // rewritten to mirror GNU's attribute copy.
-    unsafe {
-        SET_ATTRIB(target.as_raw(), copied);
-        SET_OBJECT(target.as_raw(), OBJECT(source.as_raw()));
-        if crate::mainutils::coerce::IS_S4_OBJECT(source.as_raw()) != 0 {
-            SET_S4_OBJECT(target.as_raw());
-        } else {
-            UNSET_S4_OBJECT(target.as_raw());
-        }
+
+    SET_ATTRIB(target.as_raw(), copied);
+    SET_OBJECT(target.as_raw(), OBJECT(source.as_raw()));
+    if crate::mainutils::coerce::IS_S4_OBJECT(source.as_raw()) != 0 {
+        SET_S4_OBJECT(target.as_raw());
+    } else {
+        UNSET_S4_OBJECT(target.as_raw());
     }
+
     owner
         .require_active()
         .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
@@ -151,9 +151,8 @@ fn finish_math_attributes(
 /// produced a NaN. eprintln is not a warning condition (`assertWarning`).
 fn nans_produced() {
     // SAFETY: the caller dispatches the warning under an active owner.
-    unsafe {
-        crate::mainutils::errors::Rf_warning1(c"NaNs produced".as_ptr());
-    }
+
+    crate::mainutils::errors::Rf_warning1(c"NaNs produced".as_ptr());
 }
 
 // ---------------------------------------------------------------------------
@@ -179,7 +178,7 @@ fn math_recycle<const N: usize, const F: usize>(
         // predicate also checks the original owner across class lookup.
         if !isNumeric(owner, operand.as_raw()) {
             // SAFETY: the owner is active; error dispatch may longjmp.
-            unsafe { Rf_error(c"Non-numeric argument to mathematical function".as_ptr()) };
+            Rf_error(c"Non-numeric argument to mathematical function".as_ptr());
             unreachable!("Rf_error does not return");
         }
     }
@@ -195,7 +194,7 @@ fn math_recycle<const N: usize, const F: usize>(
         checked(owner.require_active());
         // SAFETY: the owner is active. Keep the legacy allocator's typed
         // resource error and GC retry semantics before wrapping the result.
-        let raw = unsafe { Rf_allocVector3(SEXPTYPE::REALSXP, n) };
+        let raw = Rf_allocVector3(SEXPTYPE::REALSXP, n);
         checked(owner.require_active());
         checked(owner.sexp(raw))
     };
@@ -210,9 +209,7 @@ fn math_recycle<const N: usize, const F: usize>(
     let inputs = source.map(|operand| {
         checked(owner.require_active());
         // SAFETY: the checked operand roots its graph across coercion.
-        let raw = unsafe {
-            crate::main::coerce::coerceVector(operand.as_raw(), SEXPTYPE::REALSXP.as_c_int())
-        };
+        let raw = crate::main::coerce::coerceVector(operand.as_raw(), SEXPTYPE::REALSXP.as_c_int());
         checked(owner.require_active());
         checked(owner.sexp(raw))
     });

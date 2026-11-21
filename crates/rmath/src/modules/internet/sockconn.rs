@@ -252,11 +252,7 @@ fn init_con(new: Rconnection, description: *const c_char, enc: c_int, mode: *con
 
 /// dummy_vfprintf - stub vfprintf for connections that don't support it.
 /// Matches C: int dummy_vfprintf(Rconnection con, const char *format, va_list ap)
-extern "C" fn dummy_vfprintf(
-    _con: Rconnection,
-    _format: *const c_char,
-    _ap: *mut c_void,
-) -> c_int {
+extern "C" fn dummy_vfprintf(_con: Rconnection, _format: *const c_char, _ap: *mut c_void) -> c_int {
     -1
 }
 

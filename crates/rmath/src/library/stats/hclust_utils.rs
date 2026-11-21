@@ -12,13 +12,13 @@ use crate::sexp::ffi::{SEXP, SEXPTYPE};
 use crate::sexp::protect::protect as protect_sexp;
 
 pub unsafe fn cutree(merge: SEXP, which: SEXP) -> SEXP {
-    let merge = unsafe { coerceVector(merge, SEXPTYPE::INTSXP.as_c_int()) };
-    let _merge_guard = unsafe { protect_sexp(merge) };
+    let merge = coerceVector(merge, SEXPTYPE::INTSXP.as_c_int());
+    let _merge_guard = protect_sexp(merge);
     let i_merge_len = LENGTH(merge);
     let i_merge = unsafe { slice::from_raw_parts(INTEGER(merge), i_merge_len as usize) };
 
-    let which = unsafe { coerceVector(which, SEXPTYPE::INTSXP.as_c_int()) };
-    let _which_guard = unsafe { protect_sexp(which) };
+    let which = coerceVector(which, SEXPTYPE::INTSXP.as_c_int());
+    let _which_guard = protect_sexp(which);
     let which_len = LENGTH(which);
     let i_which = unsafe { slice::from_raw_parts(INTEGER(which), which_len as usize) };
 
@@ -30,7 +30,7 @@ pub unsafe fn cutree(merge: SEXP, which: SEXP) -> SEXP {
     let mut z = vec![0i32; (n + 1) as usize];
 
     let ans = unsafe { allocMatrix(SEXPTYPE::INTSXP.into(), n, which_len) };
-    let _ans_guard = unsafe { protect_sexp(ans) };
+    let _ans_guard = protect_sexp(ans);
     let i_ans = unsafe { slice::from_raw_parts_mut(INTEGER(ans), (n * which_len) as usize) };
 
     let mut k: c_int = 1;

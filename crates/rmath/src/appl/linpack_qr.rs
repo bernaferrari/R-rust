@@ -208,7 +208,10 @@ fn dqrdc2_impl(
                 } else {
                     nrmxl
                 };
-                dscal(1.0 / signed_norm, &mut x[l + l * ldx..l + l * ldx + (n - l)]);
+                dscal(
+                    1.0 / signed_norm,
+                    &mut x[l + l * ldx..l + l * ldx + (n - l)],
+                );
                 x[l + l * ldx] = 1.0 + x[l + l * ldx];
 
                 // Apply transformation to remaining columns
@@ -232,7 +235,8 @@ fn dqrdc2_impl(
                             if tt.abs() >= 1e-6 {
                                 qraux[j] *= tt.sqrt();
                             } else {
-                                qraux[j] = dnrm2(&x[l + 1 + j * ldx..l + 1 + j * ldx + (n - l - 1)]);
+                                qraux[j] =
+                                    dnrm2(&x[l + 1 + j * ldx..l + 1 + j * ldx + (n - l - 1)]);
                                 work[j] = qraux[j];
                             }
                         }
@@ -388,8 +392,8 @@ fn dqrsl_impl(
             }
             let temp = x[j + j * ldx];
             x[j + j * ldx] = qraux[j];
-            let t = -ddot(&x[j + j * ldx..j + j * ldx + (n - j)], &qy[j..j + (n - j)])
-                / x[j + j * ldx];
+            let t =
+                -ddot(&x[j + j * ldx..j + j * ldx + (n - j)], &qy[j..j + (n - j)]) / x[j + j * ldx];
             daxpy(
                 t,
                 &x[j + j * ldx..j + j * ldx + (n - j)],

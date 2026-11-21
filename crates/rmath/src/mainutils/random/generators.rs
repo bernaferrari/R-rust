@@ -1,7 +1,7 @@
 #![allow(unreachable_code)]
 #![allow(non_snake_case, non_upper_case_globals, dead_code, unused_variables)]
 use super::*;
-use crate::sexp::object::{Sexp, SexpMut, SexpResult, SessionNodeFactory};
+use crate::sexp::object::{SessionNodeFactory, Sexp, SexpMut, SexpResult};
 
 fn checked<T>(result: SexpResult<T>) -> T {
     result.unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
@@ -331,25 +331,19 @@ fn PRIMVAL_local(op: SEXP) -> c_int {
 /// truncated through `c_int`, matching the original `Rf_allocVector` call.
 fn alloc_real_vector(n: R_xlen_t) -> Sexp<'static> {
     let len = R_xlen_t::from(n as c_int);
-    checked(sexp_factory().allocate(|arena| {
-        Some(arena.alloc_vector(SEXPTYPE::REALSXP, len))
-    }))
+    checked(sexp_factory().allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::REALSXP, len))))
 }
 
 /// Allocate an owned INTSXP handle at this audited boundary. The length is
 /// truncated through `c_int`, matching the original `Rf_allocVector` call.
 fn alloc_int_vector(n: R_xlen_t) -> Sexp<'static> {
     let len = R_xlen_t::from(n as c_int);
-    checked(sexp_factory().allocate(|arena| {
-        Some(arena.alloc_vector(SEXPTYPE::INTSXP, len))
-    }))
+    checked(sexp_factory().allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::INTSXP, len))))
 }
 
 /// Coerce to a checked REALSXP handle at this audited boundary.
 fn coerce_real(x: SEXP) -> Sexp<'static> {
-    checked(sexp_factory().wrap(unsafe {
-        coerceVector(x, SEXPTYPE::REALSXP.as_c_int())
-    }))
+    checked(sexp_factory().wrap(coerceVector(x, SEXPTYPE::REALSXP.as_c_int())))
 }
 
 /// R's .Internal interface for 1-parameter distributions:
@@ -689,14 +683,12 @@ fn kind_string(arg: SEXP) -> String {
 }
 
 fn kind_error(msg: &str) -> ! {
-    unsafe {
-        let call = crate::mainutils::errors::R_getCurrentCall();
-        let nil = R_NilValue();
-        if !call.is_null() && call != nil {
-            crate::mainutils::errors::errorcall_str(call, msg);
-        }
-        crate::mainutils::errors::errorcall_str(nil, msg);
+    let call = crate::mainutils::errors::R_getCurrentCall();
+    let nil = R_NilValue();
+    if !call.is_null() && call != nil {
+        crate::mainutils::errors::errorcall_str(call, msg);
     }
+    crate::mainutils::errors::errorcall_str(nil, msg);
 }
 
 /// `kind = NULL` absent | code 0..=7 | -1 for "default".
@@ -1147,10 +1139,7 @@ pub fn do_sample(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     if replace != 0 || kk < 2 {
         for i in 0..kk {
             checked(
-                y_mut.try_set_integer_elt(
-                    R_xlen_t::from(i),
-                    r_R_unif_index(n as f64) as i32 + 1,
-                ),
+                y_mut.try_set_integer_elt(R_xlen_t::from(i), r_R_unif_index(n as f64) as i32 + 1),
             );
         }
     } else {

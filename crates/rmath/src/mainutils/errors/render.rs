@@ -15,21 +15,21 @@ use super::*;
 /// Get the current call from the context stack.
 /// In C this walks R_GlobalContext; here we use the thread-local context.
 pub(super) fn getCurrentCall() -> SEXP {
-     current_call(false)
+    current_call(false)
 }
 
 /// Public stop/warning stand in for GNU closures. Their caller excludes the
 /// bytecode expression marker, but includes native tryCatch's synthetic call.
 /// Implicit errors retain that marker through getCurrentCall().
 pub(crate) fn condition_caller_call() -> SEXP {
-     current_call(true)
+    current_call(true)
 }
 
 fn current_call(skip_expression_contexts: bool) -> SEXP {
     unsafe {
         // A context counts as carrying a call only when it holds a real
         fn usable_call(call: SEXP) -> SEXP {
-             {
+            {
                 if call.is_null()
                     || call == globals::R_NilValue()
                     || TYPEOF(call) == SEXPTYPE::NILSXP
@@ -78,7 +78,7 @@ fn current_call(skip_expression_contexts: bool) -> SEXP {
 /// top frame). Used by interpreter raise sites to attribute errors to the
 /// enclosing R call, like upstream `R_MissingArgError`/`error()`.
 pub fn R_getCurrentCall() -> SEXP {
-     getCurrentCall()
+    getCurrentCall()
 }
 
 /// findCall: find the function context's call for error reporting.
@@ -424,15 +424,13 @@ pub(super) fn findSimpleErrorHandler() -> SEXP {
 }
 
 pub(super) fn gotoExitingHandler(cond: SEXP, call: SEXP, entry: SEXP) {
-    unsafe {
-        let rho = ENTRY_TARGET_ENVIR(entry);
-        let result = ENTRY_RETURN_RESULT(entry);
-        SET_VECTOR_ELT(result, 0, cond);
-        SET_VECTOR_ELT(result, 1, call);
-        SET_VECTOR_ELT(result, 2, ENTRY_HANDLER(entry));
-        let transfer = crate::sexp::context::exiting_handler_transfer(rho, result);
-        std::panic::panic_any(crate::sexp::context::RSignal::ExitingHandler(transfer));
-    }
+    let rho = ENTRY_TARGET_ENVIR(entry);
+    let result = ENTRY_RETURN_RESULT(entry);
+    SET_VECTOR_ELT(result, 0, cond);
+    SET_VECTOR_ELT(result, 1, call);
+    SET_VECTOR_ELT(result, 2, ENTRY_HANDLER(entry));
+    let transfer = crate::sexp::context::exiting_handler_transfer(rho, result);
+    std::panic::panic_any(crate::sexp::context::RSignal::ExitingHandler(transfer));
 }
 
 pub(super) fn vsignalError(call: SEXP, format: *const c_char) {
@@ -518,18 +516,16 @@ pub(crate) fn implicit_errorcall(call: SEXP, format: *const c_char) {
 }
 
 fn raise_error(call: SEXP, format: *const c_char, explicit: bool) {
-    unsafe {
-        let _call = protect(if call.is_null() {
-            globals::R_NilValue()
-        } else {
-            call
-        });
-        vsignalError(call, format);
-        // A calling handler can raise a replacement error. Record only after
-        // it returns, so the original applied call cannot override that error.
-        record_error_call(call, explicit);
-        verrorcall_dflt(call, format, ptr::null_mut());
-    }
+    let _call = protect(if call.is_null() {
+        globals::R_NilValue()
+    } else {
+        call
+    });
+    vsignalError(call, format);
+    // A calling handler can raise a replacement error. Record only after
+    // it returns, so the original applied call cannot override that error.
+    record_error_call(call, explicit);
+    verrorcall_dflt(call, format, ptr::null_mut());
 }
 
 pub(crate) fn implicit_errorcall_str(call: SEXP, message: &str) -> ! {
@@ -558,7 +554,7 @@ pub fn errorcall_str(call: SEXP, message: &str) -> ! {
 /// condition first (`.signalCondition`); the handler search already
 /// happened at signal time, so the default error must not repeat it.
 pub fn dflt_stop_str(call: SEXP, message: &str) -> ! {
-     {
+    {
         let c_msg = std::ffi::CString::new(message).unwrap_or_default();
         verrorcall_dflt(call, c_msg.as_ptr(), ptr::null_mut());
         unreachable!("verrorcall_dflt panics with RError");
@@ -680,7 +676,7 @@ pub fn errorcall_cpy(call: SEXP, format: *const c_char) {
 /// The format string should be a pre-formatted message.
 /// It does not return — it panics with an RError payload.
 pub fn Rf_error(format: *const c_char) {
-     {
+    {
         let call = getCurrentCall();
         // Rf_error in C is variadic: void error(const char *format, ...)
         // In Rust, callers should pass pre-formatted strings.
@@ -954,7 +950,7 @@ fn collect_warning_owned(call: SEXP, message: &str) {
             collection_checked(domain.wrap(call))
         };
         if unsafe { (*pointer).error_state.collect_warnings } == 0 {
-             {
+            {
                 setup_warnings();
             }
         }
@@ -988,7 +984,7 @@ fn collect_warning_owned(call: SEXP, message: &str) {
         let mut text = message.to_owned();
         if r_show_warn_calls() && !call.is_nil() {
             let trace = collection_checked(
-                access.with_native(|_| Ok( R_ConciseTraceback(call.as_raw(), 0))),
+                access.with_native(|_| Ok(R_ConciseTraceback(call.as_raw(), 0))),
             );
             if !trace.is_empty() && text.len() + trace.len() + 8 < BUFSIZE {
                 text.push_str("\nCalls: ");
@@ -1070,7 +1066,7 @@ pub(super) fn effective_warning_call(call: SEXP) -> SEXP {
 /// This is the equivalent of R's `warningcall()`.
 /// Unlike errors, warnings do not terminate execution.
 pub fn warningcall(call: SEXP, format: *const c_char) {
-     {
+    {
         vsignalWarning(effective_warning_call(call), format);
     }
 }
@@ -1155,7 +1151,7 @@ pub(super) fn vsignalWarning(call: SEXP, format: *const c_char) {
 
 /// Issue an immediate warning (bypass collection).
 pub fn warningcall_immediate(call: SEXP, format: *const c_char) {
-     {
+    {
         let prev = immediate_warning();
         set_immediate_warning(true);
         vwarningcall_dflt(call, format, ptr::null_mut());
@@ -1165,7 +1161,7 @@ pub fn warningcall_immediate(call: SEXP, format: *const c_char) {
 
 /// Issue a warning (without call).
 pub fn Rf_warning(format: *const c_char) {
-     {
+    {
         let call = getCurrentCall();
         warningcall(call, format);
     }
@@ -1173,7 +1169,7 @@ pub fn Rf_warning(format: *const c_char) {
 
 /// Issue an immediate warning (without call).
 pub fn Rf_warning_immediate(format: *const c_char) {
-     {
+    {
         let call = getCurrentCall();
         warningcall_immediate(call, format);
     }
@@ -1196,7 +1192,7 @@ pub fn Rf_warningcall1(call: SEXP, msg: *const c_char) {
 /// Issue a formatted warning without call (Rust helper).
 /// Equivalent to C's `warning("%s", msg)`.
 pub fn Rf_warning1(msg: *const c_char) {
-     {
+    {
         let call = getCurrentCall();
         Rf_warningcall1(call, msg);
     }
@@ -1265,7 +1261,7 @@ pub fn Rf_message(format: *const c_char) {
 /// Issue a message with call.
 /// Ported from R's message handling in errors.c.
 pub fn messagecall(call: SEXP, format: *const c_char) {
-     {
+    {
         // In C, message() doesn't use the call for display,
         // but it's passed for consistency
         let _ = call; // suppress unused warning
@@ -1299,26 +1295,24 @@ pub fn Rf_message_append(format: *const c_char, append: c_int) {
 /// do_message — R's message() builtin.
 /// Ported from errors.c.
 pub fn do_message(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        checkArity(op, args);
+    checkArity(op, args);
 
-        let mut c_call: SEXP = ptr::null_mut();
-        if asLogical(CAR(args)) != 0 {
-            c_call = findCall();
-        }
-        let mut args = CDR(args);
-
-        let append = asLogical(CAR(args));
-        args = CDR(args);
-
-        if isNull(CAR(args)) == 0 {
-            SETCAR(args, coerceVector(CAR(args), SEXPTYPE::STRSXP.as_c_int()));
-            if isValidString(CAR(args)) != 0 {
-                let msg = translateChar(STRING_ELT(CAR(args), 0));
-                Rf_message_append(msg, append);
-            }
-        }
-
-        globals::R_NilValue()
+    let mut c_call: SEXP = ptr::null_mut();
+    if asLogical(CAR(args)) != 0 {
+        c_call = findCall();
     }
+    let mut args = CDR(args);
+
+    let append = asLogical(CAR(args));
+    args = CDR(args);
+
+    if isNull(CAR(args)) == 0 {
+        SETCAR(args, coerceVector(CAR(args), SEXPTYPE::STRSXP.as_c_int()));
+        if isValidString(CAR(args)) != 0 {
+            let msg = translateChar(STRING_ELT(CAR(args), 0));
+            Rf_message_append(msg, append);
+        }
+    }
+
+    globals::R_NilValue()
 }

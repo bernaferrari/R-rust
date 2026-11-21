@@ -10,9 +10,7 @@ use super::*;
 ///
 /// GNU default `type="chars"` counts Unicode code points, not bytes.
 pub fn do_nchar(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    {
-        super::vector_text_entry::evaluate(args, rho, super::vector_text_owned::Operation::Count)
-    }
+    super::vector_text_entry::evaluate(args, rho, super::vector_text_owned::Operation::Count)
 }
 
 fn file_ext_of(path: &str) -> String {
@@ -89,18 +87,14 @@ pub(crate) fn unicode_display_width(ch: char) -> usize {
 // ---------------------------------------------------------------------------
 
 pub fn do_substr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-     substring_entry(args, _rho, super::substring_owned::Operation::Extract) 
+    substring_entry(args, _rho, super::substring_owned::Operation::Extract)
 }
 
 pub fn do_substrgets(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-     substring_entry(args, _rho, super::substring_owned::Operation::Replace) 
+    substring_entry(args, _rho, super::substring_owned::Operation::Replace)
 }
 
-fn substring_entry(
-    args: SEXP,
-    rho: SEXP,
-    operation: super::substring_owned::Operation,
-) -> SEXP {
+fn substring_entry(args: SEXP, rho: SEXP, operation: super::substring_owned::Operation) -> SEXP {
     use crate::sexp::{
         object::Sexp,
         owner::{OwnerToken, with_runtime},
@@ -144,9 +138,7 @@ fn substring_entry(
                                 )
                             }
                         } else {
-                            unsafe {
-                                crate::main::coerce::coerceVector(value.as_raw(), kind.as_c_int())
-                            }
+                            crate::main::coerce::coerceVector(value.as_raw(), kind.as_c_int())
                         };
                         original.sexp(raw)?.into_owned()
                     })
@@ -166,9 +158,7 @@ fn substring_entry(
 
 /// GNU `strrep(x, times)` — recycle `x` and `times` to a common length.
 pub fn do_strrep(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    {
-        super::vector_text_entry::evaluate(args, rho, super::vector_text_owned::Operation::Repeat)
-    }
+    super::vector_text_entry::evaluate(args, rho, super::vector_text_owned::Operation::Repeat)
 }
 
 /// R's `substring(text, first, last=NULL)` — base::substring is an R
@@ -176,7 +166,7 @@ pub fn do_strrep(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// length max(len(text), len(first), len(last)) first (character.R);
 /// zero-length text stays zero-length.
 pub fn do_substring(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-     substring_entry(args, _rho, super::substring_owned::Operation::Recycle) 
+    substring_entry(args, _rho, super::substring_owned::Operation::Recycle)
 }
 
 // ---------------------------------------------------------------------------
@@ -185,12 +175,12 @@ pub fn do_substring(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R's `tolower(x)`.
 pub fn do_tolower(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-     do_case_convert(args, true) 
+    do_case_convert(args, true)
 }
 
 /// R's `toupper(x)`.
 pub fn do_toupper(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-     do_case_convert(args, false) 
+    do_case_convert(args, false)
 }
 
 /// GNU `casefold(x, upper=FALSE)`.

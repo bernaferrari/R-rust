@@ -1,7 +1,6 @@
 use super::*;
 use crate::library::grid::{
-    alloc_vector, logical_elt, protect, real_elt, set_logical_elt, set_real_elt,
-    set_vector_elt,
+    alloc_vector, logical_elt, protect, real_elt, set_logical_elt, set_real_elt, set_vector_elt,
 };
 
 pub(crate) fn gridText(
@@ -180,7 +179,7 @@ pub fn L_points(x: SEXP, y: SEXP, pch: SEXP, size: SEXP) -> SEXP {
 pub fn L_pointsPoints(x: SEXP, y: SEXP, pch: SEXP, size: SEXP, closed: SEXP) -> SEXP {
     // SAFETY: `closed` is a live object lent by the R caller; `asBool` is the
     // coercion bridge.
-    gridPoints(x, y, pch, size, false, unsafe { asBool(closed) } != 0)
+    gridPoints(x, y, pch, size, false, asBool(closed) != 0)
 }
 
 /* ==============================

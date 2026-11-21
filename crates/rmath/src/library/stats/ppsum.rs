@@ -14,7 +14,7 @@ use crate::sexp::protect::protect;
 // `crate::main::coerce::coerceVector` still takes `c_int`; keep that conversion
 // local so the rest of this file uses `SEXPTYPE` directly.
 unsafe fn coerceVector(x: SEXP, sexptype: SEXPTYPE) -> SEXP {
-    unsafe { crate::main::coerce::coerceVector(x, sexptype.into()) }
+    crate::main::coerce::coerceVector(x, sexptype.into())
 }
 
 pub(crate) fn r_pp_sum(u: &[c_double], l: c_int) -> c_double {
@@ -45,9 +45,8 @@ fn integrate_values(x: &[c_double], xi: &[c_double], lag: usize, y: &mut [c_doub
 }
 
 fn error(msg: &'static [u8]) -> ! {
-    unsafe {
-        Rf_error(msg.as_ptr() as *const _);
-    }
+    Rf_error(msg.as_ptr() as *const _);
+
     unreachable!("Rf_error returned");
 }
 

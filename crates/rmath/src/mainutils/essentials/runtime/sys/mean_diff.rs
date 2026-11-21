@@ -37,14 +37,12 @@ pub fn do_mean_POSIXct(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// GNU `mean.POSIXlt(x)`.
 pub fn do_mean_POSIXlt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        let ct = do_as_POSIXct(call, op, Rf_cons(x, R_NilValue()), rho);
-        let _ct = protect(ct);
-        let m = do_mean_POSIXct(call, op, Rf_cons(ct, R_NilValue()), rho);
-        let _m = protect(m);
-        crate::mainutils::datetime::do_as_POSIXlt(call, op, Rf_cons(m, R_NilValue()), rho)
-    }
+    let x = CAR(args);
+    let ct = do_as_POSIXct(call, op, Rf_cons(x, R_NilValue()), rho);
+    let _ct = protect(ct);
+    let m = do_mean_POSIXct(call, op, Rf_cons(ct, R_NilValue()), rho);
+    let _m = protect(m);
+    crate::mainutils::datetime::do_as_POSIXlt(call, op, Rf_cons(m, R_NilValue()), rho)
 }
 
 /// GNU `diff.POSIXt(x)`.

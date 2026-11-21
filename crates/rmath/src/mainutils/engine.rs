@@ -730,7 +730,7 @@ pub unsafe fn R_GE_checkVersionOrDie(version: c_int) {
             "graphics engine version mismatch: runtime has {R_GE_version}, device requested {version}"
         ))
         .expect("static graphics version error contains no NUL");
-        unsafe { Rf_error(message.as_ptr()) };
+        Rf_error(message.as_ptr());
     }
 }
 
@@ -1142,13 +1142,7 @@ pub unsafe fn GEPolygon(
 // ---------------------------------------------------------------------------
 
 /// Draw a circle on the device, with clipping.
-pub fn GECircle(
-    x: c_double,
-    y: c_double,
-    radius: c_double,
-    gc: *const c_void,
-    dd: *mut c_void,
-) {
+pub fn GECircle(x: c_double, y: c_double, radius: c_double, gc: *const c_void, dd: *mut c_void) {
     if dd.is_null() {
         return;
     }
@@ -1380,9 +1374,8 @@ pub unsafe fn GEPretty(lo: *mut c_double, up: *mut c_double, ndiv: *mut c_int) {
             ndiv_value
         ))
         .expect("GEPretty message contains no NUL");
-        unsafe {
-            Rf_error(msg.as_ptr());
-        }
+
+        Rf_error(msg.as_ptr());
     }
     if !lo_value.is_finite() || !up_value.is_finite() {
         let msg = CString::new(format!(
@@ -1390,9 +1383,8 @@ pub unsafe fn GEPretty(lo: *mut c_double, up: *mut c_double, ndiv: *mut c_int) {
             lo_value, up_value, ndiv_value
         ))
         .expect("GEPretty message contains no NUL");
-        unsafe {
-            Rf_error(msg.as_ptr());
-        }
+
+        Rf_error(msg.as_ptr());
     }
     let mut ns = lo_value;
     let mut nu = up_value;
@@ -1440,12 +1432,7 @@ pub fn GEMetricInfo(
 // ---------------------------------------------------------------------------
 
 /// Get the width of a string in device coordinates.
-pub fn GEStrWidth(
-    str: *const c_char,
-    enc: c_int,
-    gc: *const c_void,
-    dd: *mut c_void,
-) -> c_double {
+pub fn GEStrWidth(str: *const c_char, enc: c_int, gc: *const c_void, dd: *mut c_void) -> c_double {
     if dd.is_null() {
         return 0.0;
     }
@@ -1461,12 +1448,7 @@ pub fn GEStrWidth(
 // ---------------------------------------------------------------------------
 
 /// Get the height of a string in device coordinates.
-pub fn GEStrHeight(
-    str: *const c_char,
-    enc: c_int,
-    gc: *const c_void,
-    dd: *mut c_void,
-) -> c_double {
+pub fn GEStrHeight(str: *const c_char, enc: c_int, gc: *const c_void, dd: *mut c_void) -> c_double {
     if dd.is_null() {
         return 0.0;
     }
@@ -2146,11 +2128,7 @@ mod tests {
         std::ptr::null_mut()
     }
 
-    extern "C" fn count_graphics_callback(
-        _event: c_int,
-        _dev: *mut c_void,
-        _data: SEXP,
-    ) -> SEXP {
+    extern "C" fn count_graphics_callback(_event: c_int, _dev: *mut c_void, _data: SEXP) -> SEXP {
         FOLLOWING_CALLBACKS.with(|count| count.set(count.get() + 1));
         std::ptr::null_mut()
     }
@@ -2187,11 +2165,7 @@ mod tests {
         });
     }
 
-    extern "C" fn drop_graphics_owner(
-        _event: c_int,
-        _dev: *mut c_void,
-        _data: SEXP,
-    ) -> SEXP {
+    extern "C" fn drop_graphics_owner(_event: c_int, _dev: *mut c_void, _data: SEXP) -> SEXP {
         EVENT_OWNER.with(|slot| drop(slot.borrow_mut().take()));
         std::ptr::null_mut()
     }

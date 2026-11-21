@@ -204,10 +204,8 @@ const NA_STRING: SEXP = 1 as SEXP; /* placeholder; real NA_STRING is a special C
 
 #[inline(always)]
 unsafe fn TypeCheck(s: SEXP, stype: c_int) {
-    unsafe {
-        if TYPEOF(s) != stype {
-            Rf_error(b"invalid type passed to graphics function\0".as_ptr() as *const c_char);
-        }
+    if TYPEOF(s) != stype {
+        Rf_error(b"invalid type passed to graphics function\0".as_ptr() as *const c_char);
     }
 }
 
@@ -335,7 +333,7 @@ unsafe fn GEstring_to_pch(s: SEXP) -> c_int {
 
 /* GE_LTYpar delegate */
 unsafe fn GE_LTYpar(lty: SEXP, i: c_int) -> c_int {
-    unsafe { crate::mainutils::engine::GE_LTYpar(lty, i) as c_int }
+    crate::mainutils::engine::GE_LTYpar(lty, i) as c_int
 }
 
 /* ========================================================================

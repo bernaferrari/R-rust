@@ -18,11 +18,11 @@ use crate::{mainutils::colors::RGBpar3, mainutils::engine as ge};
 
 use super::grid::getDevice;
 use super::state::{gridStateElement, setGridStateElement};
-use super::{
-    alloc_vector, char_ptr, integer_elt, mk_string, protect, real_elt, scalar_integer,
-    scalar_real, set_vector_elt, string_elt, vector_elt,
-};
 use super::types::{GSS_GPAR, GSS_GPSAVED};
+use super::{
+    alloc_vector, char_ptr, integer_elt, mk_string, protect, real_elt, scalar_integer, scalar_real,
+    set_vector_elt, string_elt, vector_elt,
+};
 
 // GP_* constants from types.rs
 pub const GP_FILL: c_int = 0;
@@ -127,7 +127,7 @@ pub fn gpLineType(gp: SEXP, i: c_int) -> c_int {
     let linetype = gpLineTypeSXP(gp);
     // SAFETY: `linetype` is a live checked gpar element and `i` is the
     // caller's recycle index, as in the original C.
-    unsafe { ge::GE_LTYpar(linetype, i) as c_int }
+    ge::GE_LTYpar(linetype, i) as c_int
 }
 
 pub fn gpLineWidthSXP(gp: SEXP) -> SEXP {
@@ -188,7 +188,7 @@ pub fn gpLineEnd(gp: SEXP, i: c_int) -> c_int {
     let lineend = gpLineEndSXP(gp);
     // SAFETY: `lineend` is a live checked gpar element and `i` is the
     // caller's recycle index, as in the original C.
-    unsafe { ge::GE_LENDpar(lineend, i) }
+    ge::GE_LENDpar(lineend, i)
 }
 
 pub fn gpLineJoinSXP(gp: SEXP) -> SEXP {
@@ -199,7 +199,7 @@ pub fn gpLineJoin(gp: SEXP, i: c_int) -> c_int {
     let linejoin = gpLineJoinSXP(gp);
     // SAFETY: `linejoin` is a live checked gpar element and `i` is the
     // caller's recycle index, as in the original C.
-    unsafe { ge::GE_LJOINpar(linejoin, i) }
+    ge::GE_LJOINpar(linejoin, i)
 }
 
 pub fn gpLineMitreSXP(gp: SEXP) -> SEXP {
@@ -458,21 +458,13 @@ pub fn initGPar(dd: pGEDevDesc) {
     set_vector_elt(gp, GP_FONT as R_xlen_t, scalar_integer(1));
 
     // GP_FONTFAMILY (9): "" (default)
-    set_vector_elt(
-        gp,
-        GP_FONTFAMILY as R_xlen_t,
-        mk_string(""),
-    );
+    set_vector_elt(gp, GP_FONTFAMILY as R_xlen_t, mk_string(""));
 
     // GP_ALPHA (10): 1.0 (fully opaque)
     set_vector_elt(gp, GP_ALPHA as R_xlen_t, scalar_real(1.0));
 
     // GP_LINEEND (11): round cap
-    set_vector_elt(
-        gp,
-        GP_LINEEND as R_xlen_t,
-        scalar_integer(ge::GE_ROUND_CAP),
-    );
+    set_vector_elt(gp, GP_LINEEND as R_xlen_t, scalar_integer(ge::GE_ROUND_CAP));
 
     // GP_LINEJOIN (12): round join
     set_vector_elt(
@@ -607,13 +599,7 @@ mod tests {
             let _gp_guard = protect(gp);
             let mut flags = [c_int::MIN; GP_FONTFACE as usize + 1];
 
-            initGContext(
-                gp,
-                ptr::null(),
-                ptr::null_mut(),
-                &mut flags,
-                ptr::null(),
-            );
+            initGContext(gp, ptr::null(), ptr::null_mut(), &mut flags, ptr::null());
 
             assert_eq!(flags[GP_COL as usize], 1);
             assert_eq!(flags[GP_LWD as usize], 1);
@@ -621,14 +607,7 @@ mod tests {
             assert_eq!(flags[GP_LINEJOIN as usize], 0);
 
             flags.fill(c_int::MIN);
-            updateGContext(
-                gp,
-                0,
-                ptr::null(),
-                ptr::null_mut(),
-                &mut flags,
-                ptr::null(),
-            );
+            updateGContext(gp, 0, ptr::null(), ptr::null_mut(), &mut flags, ptr::null());
             assert_eq!(flags[GP_COL as usize], 1);
             assert_eq!(flags[GP_LWD as usize], 1);
             assert_eq!(flags[GP_FONTFAMILY as usize], 0);

@@ -107,11 +107,7 @@ mod tests {
 
 /// GNU-style matching: exact names, unique prefixes, then positionals.
 /// Bind `args` to `names` through GNU `matchArgs` (exact, partial, positional).
-pub(crate) fn match_named_then_positional(
-    call: SEXP,
-    args: SEXP,
-    formals: &[&str],
-) -> Vec<SEXP> {
+pub(crate) fn match_named_then_positional(call: SEXP, args: SEXP, formals: &[&str]) -> Vec<SEXP> {
     unsafe { crate::mainutils::match_mod::match_formal_slots(call, args, formals) }
 }
 
@@ -119,13 +115,7 @@ pub(crate) fn match_named_then_positional(
 // do_formatPOSIXlt -- .Internal(format.POSIXlt(x, format, usetz, ...))
 // ---------------------------------------------------------------------------
 
-fn posixlt_usetz_zone(
-    x: SEXP,
-    tzone: SEXP,
-    i: usize,
-    isdst: c_int,
-    nn: c_int,
-) -> Option<String> {
+fn posixlt_usetz_zone(x: SEXP, tzone: SEXP, i: usize, isdst: c_int, nn: c_int) -> Option<String> {
     unsafe {
         let charsxp_str = |s: SEXP, idx: R_xlen_t| -> Option<String> {
             if s.is_null() || TYPEOF(s) != SEXPTYPE::STRSXP || XLENGTH(s) <= 0 {

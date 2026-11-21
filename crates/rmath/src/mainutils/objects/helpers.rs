@@ -126,15 +126,15 @@ pub(crate) fn isValidString(x: SEXP) -> c_int {
 }
 
 pub(crate) fn asRbool(x: SEXP, call: SEXP) -> c_int {
-     crate::mainutils::coerce::asRbool(x, call)
+    crate::mainutils::coerce::asRbool(x, call)
 }
 
 pub(crate) fn asLogical(x: SEXP) -> c_int {
-     crate::mainutils::coerce::asLogical(x)
+    crate::mainutils::coerce::asLogical(x)
 }
 
 pub(crate) fn asInteger(x: SEXP) -> c_int {
-     crate::mainutils::coerce::asInteger(x)
+    crate::mainutils::coerce::asInteger(x)
 }
 
 /// isNull check.
@@ -144,15 +144,13 @@ pub(crate) fn isNull(x: SEXP) -> c_int {
 
 /// asChar: coerce to a single character string.
 pub(crate) fn asChar(x: SEXP) -> SEXP {
-    unsafe {
-        if isString(x) != FALSE {
-            return STRING_ELT(x, 0);
-        }
-        if TYPEOF(x) == SEXPTYPE::SYMSXP {
-            return PRINTNAME(x);
-        }
-        R_NilValue()
+    if isString(x) != FALSE {
+        return STRING_ELT(x, 0);
     }
+    if TYPEOF(x) == SEXPTYPE::SYMSXP {
+        return PRINTNAME(x);
+    }
+    R_NilValue()
 }
 
 /// Get the length of an object.
@@ -252,23 +250,21 @@ pub(crate) fn stringPositionTr(klass: SEXP, what: *const c_char) -> c_int {
 
 /// Return a new character vector consisting of elements klass[pos..].
 pub(crate) fn stringSuffix(klass: SEXP, pos: c_int) -> SEXP {
-    unsafe {
-        if klass.is_null() || pos < 0 {
-            return R_NilValue();
-        }
-        let n = LENGTH(klass);
-        if pos >= n {
-            return R_NilValue();
-        }
-        let len = n - pos;
-        let ans = Rf_allocVector(SEXPTYPE::STRSXP, len);
-        let _ans_guard = protect(ans);
-        for i in 0..len {
-            let src = STRING_ELT(klass, (pos + i) as R_xlen_t);
-            SET_STRING_ELT(ans, i as R_xlen_t, src);
-        }
-        ans
+    if klass.is_null() || pos < 0 {
+        return R_NilValue();
     }
+    let n = LENGTH(klass);
+    if pos >= n {
+        return R_NilValue();
+    }
+    let len = n - pos;
+    let ans = Rf_allocVector(SEXPTYPE::STRSXP, len);
+    let _ans_guard = protect(ans);
+    for i in 0..len {
+        let src = STRING_ELT(klass, (pos + i) as R_xlen_t);
+        SET_STRING_ELT(ans, i as R_xlen_t, src);
+    }
+    ans
 }
 
 // ---------------------------------------------------------------------------
@@ -309,16 +305,14 @@ fn ensure_s4_extends_table() -> crate::sexp::object::Sexp<'static> {
 fn ensure_s4_extends_table_in(
     access: &crate::sexp::owner::RuntimeAccess,
 ) -> crate::sexp::object::SexpResult<crate::sexp::object::Sexp<'static>> {
-    if let Some(existing) =
-         { objects_state_in(access, |state| state.s4_extends_table.owned()) }?
-    {
+    if let Some(existing) = { objects_state_in(access, |state| state.s4_extends_table.owned()) }? {
         return Ok(existing);
     }
     let table = access.with_native(|owner| {
         let raw = unsafe { crate::sexp::envir::R_NewHashedEnv(R_NilValue(), 0) };
         owner.sexp(raw)?.into_owned()
     })?;
-     {
+    {
         objects_state_in(access, |state| {
             if state.s4_extends_table.is_null() {
                 state.s4_extends_table = crate::sexp::instance::RuntimeValue::from_owned(table);
@@ -372,7 +366,7 @@ fn S4_extends(klass: SEXP, use_tab: bool) -> SEXP {
         } else {
             domain.wrap(klass)?
         };
-        let result =  { S4_extends_in(access, klass, use_tab) };
+        let result = { S4_extends_in(access, klass, use_tab) };
         access.require_active()?;
         Ok(result)
     })
@@ -580,7 +574,7 @@ pub(crate) fn topenv(what: SEXP, env: SEXP) -> SEXP {
 
 /// R's `topenv(envir, matchThisEnv)` — `.Internal(topenv(...))` / primitive.
 pub fn do_topenv(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-     {
+    {
         let mut envir = if args.is_null() || args == R_NilValue() || CAR(args) == R_MissingArg() {
             rho
         } else {
@@ -612,22 +606,20 @@ pub fn do_topenv(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// Append list `s` to the end of list `t`. Returns t (modified in place).
 pub(crate) fn listAppend(t: SEXP, s: SEXP) -> SEXP {
-    unsafe {
-        if t.is_null() || t == R_NilValue() {
-            return s;
-        }
-        if s.is_null() || s == R_NilValue() {
+    if t.is_null() || t == R_NilValue() {
+        return s;
+    }
+    if s.is_null() || s == R_NilValue() {
+        return t;
+    }
+    let mut current = t;
+    loop {
+        let cdr = CDR(current);
+        if cdr.is_null() || cdr == R_NilValue() {
+            SETCDR(current, s);
             return t;
         }
-        let mut current = t;
-        loop {
-            let cdr = CDR(current);
-            if cdr.is_null() || cdr == R_NilValue() {
-                SETCDR(current, s);
-                return t;
-            }
-            current = cdr;
-        }
+        current = cdr;
     }
 }
 

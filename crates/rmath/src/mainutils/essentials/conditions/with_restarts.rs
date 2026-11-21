@@ -175,20 +175,18 @@ fn restart_stack_from_args(
 }
 
 fn deparse_assert_expr(expr: SEXP) -> String {
-    unsafe {
-        let dcall = crate::mainutils::deparse::deparse1s(expr);
-        if !dcall.is_null() && dcall != R_NilValue() {
-            let owner = active_owner();
-            if let Some(text) = owner_sexp(owner, dcall)
-                .try_string_elt(0)
-                .ok()
-                .and_then(|elt| charsxp_utf8_lossy(&elt))
-            {
-                return text;
-            }
+    let dcall = crate::mainutils::deparse::deparse1s(expr);
+    if !dcall.is_null() && dcall != R_NilValue() {
+        let owner = active_owner();
+        if let Some(text) = owner_sexp(owner, dcall)
+            .try_string_elt(0)
+            .ok()
+            .and_then(|elt| charsxp_utf8_lossy(&elt))
+        {
+            return text;
         }
-        "expr".to_string()
     }
+    "expr".to_string()
 }
 
 /// GNU `tools::assertError(expr)` — require `expr` to signal an error.

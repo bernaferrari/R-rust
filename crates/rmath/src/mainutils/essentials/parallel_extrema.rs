@@ -304,33 +304,31 @@ fn read(input: &Input<'_>, index: i64) -> f64 {
     }
 }
 fn shape(f: &SessionNodeFactory<'_>, input: &Sexp<'_>, result: &Sexp<'_>, check: impl Fn()) {
-    unsafe {
-        use crate::sexp::attrib_core::{
-            R_DimNamesSymbol, R_DimSymbol, R_NamesSymbol, getAttrib, setAttrib,
-        };
-        let names = f
-            .wrap(getAttrib(input.as_raw(), R_NamesSymbol()))
-            .expect("root parallel names");
+    use crate::sexp::attrib_core::{
+        R_DimNamesSymbol, R_DimSymbol, R_NamesSymbol, getAttrib, setAttrib,
+    };
+    let names = f
+        .wrap(getAttrib(input.as_raw(), R_NamesSymbol()))
+        .expect("root parallel names");
+    check();
+    let dims = f
+        .wrap(getAttrib(input.as_raw(), R_DimSymbol()))
+        .expect("root parallel dimensions");
+    check();
+    let dimnames = f
+        .wrap(getAttrib(input.as_raw(), R_DimNamesSymbol()))
+        .expect("root parallel dimnames");
+    check();
+    if !names.is_nil() && names.len() == result.len() {
+        setAttrib(result.as_raw(), R_NamesSymbol(), names.as_raw());
         check();
-        let dims = f
-            .wrap(getAttrib(input.as_raw(), R_DimSymbol()))
-            .expect("root parallel dimensions");
+    }
+    if !dims.is_nil() {
+        setAttrib(result.as_raw(), R_DimSymbol(), dims.as_raw());
         check();
-        let dimnames = f
-            .wrap(getAttrib(input.as_raw(), R_DimNamesSymbol()))
-            .expect("root parallel dimnames");
-        check();
-        if !names.is_nil() && names.len() == result.len() {
-            setAttrib(result.as_raw(), R_NamesSymbol(), names.as_raw());
+        if !dimnames.is_nil() {
+            setAttrib(result.as_raw(), R_DimNamesSymbol(), dimnames.as_raw());
             check();
-        }
-        if !dims.is_nil() {
-            setAttrib(result.as_raw(), R_DimSymbol(), dims.as_raw());
-            check();
-            if !dimnames.is_nil() {
-                setAttrib(result.as_raw(), R_DimNamesSymbol(), dimnames.as_raw());
-                check();
-            }
         }
     }
 }

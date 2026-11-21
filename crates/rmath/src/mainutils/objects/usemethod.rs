@@ -462,7 +462,7 @@ pub(crate) fn lookup_s3_method_for_class(
     callrho: SEXP,
     defrho: SEXP,
 ) -> Option<S3MethodMatch> {
-     {
+    {
         let method_symbol = s3_method_symbol(generic, class)?;
         let method = lookup_s3_method_symbol(method_symbol, rho, callrho, defrho);
         if isFunction(method) != FALSE {

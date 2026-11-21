@@ -42,17 +42,17 @@ use crate::sexp::symbol::Rf_install;
 
 /// R's `emptyenv()` — returns the empty environment (root of environment chain).
 pub fn do_emptyenv(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { crate::sexp::globals::R_EmptyEnv() }
+    crate::sexp::globals::R_EmptyEnv()
 }
 
 /// R's `baseenv()` — returns the base environment.
 pub fn do_baseenv(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { crate::sexp::globals::R_BaseEnv() }
+    crate::sexp::globals::R_BaseEnv()
 }
 
 /// R's `globalenv()` — returns the global environment.
 pub fn do_globalenv(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { crate::sexp::globals::R_GlobalEnv() }
+    crate::sexp::globals::R_GlobalEnv()
 }
 
 /// R's `new.env(hash, parent, size)` — create a new environment.
@@ -64,41 +64,39 @@ pub fn do_globalenv(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
 /// therefore nests `new.env()` children under the namespace, matching
 /// GNU R (aaa.R's `capsule` must enclose under namespace:R6).
 pub fn do_new_env(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let parent_arg = arg_by_name_or_position(args, &["parent"], 1);
-        let missing =
-            parent_arg.is_null() || parent_arg == R_NilValue() || parent_arg == R_MissingArg();
-        let parent = if missing {
-            // GNU `parent = parent.frame()`: for a builtin, the caller frame.
-            if _rho.is_null() || _rho == R_NilValue() {
-                crate::sexp::globals::R_GlobalEnv()
-            } else {
-                _rho
-            }
-        } else if TYPEOF(parent_arg) == SEXPTYPE::ENVSXP {
-            parent_arg
-        } else {
+    let parent_arg = arg_by_name_or_position(args, &["parent"], 1);
+    let missing =
+        parent_arg.is_null() || parent_arg == R_NilValue() || parent_arg == R_MissingArg();
+    let parent = if missing {
+        // GNU `parent = parent.frame()`: for a builtin, the caller frame.
+        if _rho.is_null() || _rho == R_NilValue() {
             crate::sexp::globals::R_GlobalEnv()
-        };
-        let hash_arg = arg_by_name_or_position(args, &["hash"], 0);
-        let size_arg = arg_by_name_or_position(args, &["size"], 2);
-        let hash = hash_arg.is_null()
-            || hash_arg == R_NilValue()
-            || hash_arg == R_MissingArg()
-            || crate::sexp::accessors::LOGICAL_ELT(hash_arg, 0) != 0;
-        let size = if size_arg.is_null() || size_arg == R_NilValue() || size_arg == R_MissingArg() {
-            29
-        } else if TYPEOF(size_arg) == SEXPTYPE::REALSXP {
-            crate::sexp::accessors::REAL_ELT(size_arg, 0) as i32
         } else {
-            crate::sexp::accessors::INTEGER_ELT(size_arg, 0)
-        };
-        let env = crate::sexp::memory_ext::NewEnvironment(R_NilValue(), parent, R_NilValue());
-        if hash {
-            crate::sexp::env_hash::mark_hashed(env, size);
+            _rho
         }
-        env
+    } else if TYPEOF(parent_arg) == SEXPTYPE::ENVSXP {
+        parent_arg
+    } else {
+        crate::sexp::globals::R_GlobalEnv()
+    };
+    let hash_arg = arg_by_name_or_position(args, &["hash"], 0);
+    let size_arg = arg_by_name_or_position(args, &["size"], 2);
+    let hash = hash_arg.is_null()
+        || hash_arg == R_NilValue()
+        || hash_arg == R_MissingArg()
+        || crate::sexp::accessors::LOGICAL_ELT(hash_arg, 0) != 0;
+    let size = if size_arg.is_null() || size_arg == R_NilValue() || size_arg == R_MissingArg() {
+        29
+    } else if TYPEOF(size_arg) == SEXPTYPE::REALSXP {
+        crate::sexp::accessors::REAL_ELT(size_arg, 0) as i32
+    } else {
+        crate::sexp::accessors::INTEGER_ELT(size_arg, 0)
+    };
+    let env = crate::sexp::memory_ext::NewEnvironment(R_NilValue(), parent, R_NilValue());
+    if hash {
+        crate::sexp::env_hash::mark_hashed(env, size);
     }
+    env
 }
 
 /// R's `environment(fun)` — get the environment associated with a closure.
@@ -106,25 +104,20 @@ pub fn do_new_env(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 /// rely on `environment()` inside `local({...})` blocks to capture the
 /// fresh child env).
 pub fn do_environment(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let fn_arg = CAR(args);
-        if fn_arg.is_null() || fn_arg == R_NilValue() {
-            // GNU do_envir: environment() with NULL is the current sysparent.
-            return if _rho.is_null() { R_NilValue() } else { _rho };
-        }
-        let t = TYPEOF(fn_arg);
-        if t == SEXPTYPE::CLOSXP {
-            let env = crate::sexp::accessors::CLOENV(fn_arg);
-            if env.is_null() { R_NilValue() } else { env }
-        } else if t == SEXPTYPE::ENVSXP {
-            fn_arg
-        } else {
-            // GNU: formulas and other objects store the env as `.Environment`.
-            crate::sexp::attrib_core::getAttrib(
-                fn_arg,
-                crate::sexp::attrib_core::R_EnvironmentSymbol(),
-            )
-        }
+    let fn_arg = CAR(args);
+    if fn_arg.is_null() || fn_arg == R_NilValue() {
+        // GNU do_envir: environment() with NULL is the current sysparent.
+        return if _rho.is_null() { R_NilValue() } else { _rho };
+    }
+    let t = TYPEOF(fn_arg);
+    if t == SEXPTYPE::CLOSXP {
+        let env = crate::sexp::accessors::CLOENV(fn_arg);
+        if env.is_null() { R_NilValue() } else { env }
+    } else if t == SEXPTYPE::ENVSXP {
+        fn_arg
+    } else {
+        // GNU: formulas and other objects store the env as `.Environment`.
+        crate::sexp::attrib_core::getAttrib(fn_arg, crate::sexp::attrib_core::R_EnvironmentSymbol())
     }
 }
 
@@ -136,12 +129,12 @@ pub fn do_environment(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R's `parent.env(env)` — returns the parent environment.
 pub fn do_parent_env(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-     parent_env::dispatch(args, false) 
+    parent_env::dispatch(args, false)
 }
 
 /// GNU replacement returns the original operand, including S4 environment data.
 pub fn do_set_parent_env(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-     parent_env::dispatch(args, true) 
+    parent_env::dispatch(args, true)
 }
 
 mod parent_env;
@@ -218,29 +211,27 @@ pub(crate) fn namespace_spec(env: SEXP) -> Option<SEXP> {
 
 /// R's `environmentName(env)` — returns the name of an environment.
 pub fn do_environment_name(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-     do_env_name(_call, _op, args, _rho) 
+    do_env_name(_call, _op, args, _rho)
 }
 
 /// R-like `is_empty(env)` — check if environment is empty (simplified).
 pub fn do_is_empty(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let env = CAR(args);
-        if env.is_null() || env == R_NilValue() {
+    let env = CAR(args);
+    if env.is_null() || env == R_NilValue() {
+        return Rf_ScalarLogical(TRUE);
+    }
+    let t = TYPEOF(env);
+    if t == SEXPTYPE::ENVSXP {
+        // Check frame - if it's NULL/NILSXP, env is empty
+        let frame = crate::sexp::accessors::FRAME(env);
+        if frame.is_null() || frame == R_NilValue() {
             return Rf_ScalarLogical(TRUE);
         }
-        let t = TYPEOF(env);
-        if t == SEXPTYPE::ENVSXP {
-            // Check frame - if it's NULL/NILSXP, env is empty
-            let frame = crate::sexp::accessors::FRAME(env);
-            if frame.is_null() || frame == R_NilValue() {
-                return Rf_ScalarLogical(TRUE);
-            }
-            return Rf_ScalarLogical(FALSE);
-        }
-        // For vectors, check length
-        let n = XLENGTH(env);
-        Rf_ScalarLogical(if n == 0 { TRUE } else { FALSE })
+        return Rf_ScalarLogical(FALSE);
     }
+    // For vectors, check length
+    let n = XLENGTH(env);
+    Rf_ScalarLogical(if n == 0 { TRUE } else { FALSE })
 }
 
 /// GNU `.Internal(env.profile(env))`.

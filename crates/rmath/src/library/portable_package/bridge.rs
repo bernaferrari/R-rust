@@ -14,7 +14,7 @@ pub(super) fn base() -> SexpResult<Sexp<'static>> {
 }
 
 pub(super) fn base_namespace(access: &RuntimeAccess) -> SexpResult<Sexp<'static>> {
-    access.with_native(|owner| unsafe {
+    access.with_native(|owner| {
         owner
             .sexp(crate::sexp::envir::R_BaseNamespace())?
             .into_owned()
@@ -74,7 +74,7 @@ pub(super) fn set_attribute(
     access.domain().link(value)?;
     access.domain().link(attribute)?;
     let name = symbol(access, name)?;
-    access.with_native(|_| unsafe {
+    access.with_native(|_| {
         crate::sexp::attrib_core::setAttrib(value.as_raw(), name.as_raw(), attribute.as_raw());
         Ok(())
     })
@@ -116,7 +116,7 @@ pub(super) fn decode(
     access.domain().link(raw)?;
     access.domain().link(hook)?;
     // SAFETY: both graphs own their exact leases throughout decoder callbacks.
-    access.with_native(|owner| unsafe {
+    access.with_native(|owner| {
         owner
             .sexp(crate::mainutils::serialize::R_unserialize(
                 raw.as_raw(),
@@ -159,7 +159,7 @@ pub(super) fn restore_methods_metadata(
         return Ok(());
     };
     let name_symbol = symbol(access, "className")?;
-    access.with_native(|owner| unsafe {
+    access.with_native(|owner| {
         let name = owner
             .sexp(crate::sexp::attrib_core::getAttrib(
                 value.as_raw(),
@@ -263,13 +263,13 @@ pub(super) fn install_imports(
     for import in &directives.imports {
         let (crate::mainutils::essentials::NamespaceImport::All { package }
         | crate::mainutils::essentials::NamespaceImport::From { package, .. }) = import;
-        access.with_native(|owner| unsafe {
+        access.with_native(|owner| {
             let value = crate::mainutils::essentials::load_package_namespace_by_name(package)
                 .map_err(|message| crate::sexp::SexpError::EvaluationFailed { message })?;
             owner.sexp(value)?.into_owned()
         })?;
     }
-    access.with_native(|_| unsafe {
+    access.with_native(|_| {
         crate::mainutils::essentials::apply_namespace_imports(
             image.name,
             namespace.as_raw(),
@@ -287,14 +287,14 @@ pub(super) fn finalize(
 ) -> SexpResult<()> {
     access.domain().link(namespace)?;
     if image.name == "methods" {
-        return access.with_native(|_| unsafe {
+        return access.with_native(|_| {
             crate::mainutils::essentials::finalize_methods_namespace(namespace.as_raw());
             Ok(())
         });
     }
     let directives =
         crate::mainutils::essentials::parse_namespace_directives(image.namespace_source);
-    access.with_native(|_| unsafe {
+    access.with_native(|_| {
         crate::mainutils::essentials::register_namespace_s3_methods(
             image.name,
             namespace.as_raw(),
@@ -327,7 +327,7 @@ pub(super) fn finalize(
 
 pub(super) fn attach(access: &RuntimeAccess, environment: &Sexp<'static>) -> SexpResult<()> {
     access.domain().link(environment)?;
-    access.with_native(|_| unsafe {
+    access.with_native(|_| {
         crate::mainutils::essentials::attach_package_env(environment.as_raw());
         Ok(())
     })

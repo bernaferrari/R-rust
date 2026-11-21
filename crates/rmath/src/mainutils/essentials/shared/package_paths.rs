@@ -236,7 +236,7 @@ pub(super) fn check_declared_dependency(
         );
     }
     if let Some(namespace) = cached_namespace_by_name(package) {
-        return  check_loaded_requirement(package, namespace, requirement) ;
+        return check_loaded_requirement(package, namespace, requirement);
     }
     let path = find_package_path(package);
     check_source_requirement(
@@ -247,7 +247,7 @@ pub(super) fn check_declared_dependency(
 }
 
 pub(crate) fn load_package_namespace_by_name(package: &str) -> Result<SEXP, String> {
-     load_package_namespace_checked(package, None, None) 
+    load_package_namespace_checked(package, None, None)
 }
 
 pub(crate) fn load_package_namespace_checked(

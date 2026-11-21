@@ -1047,7 +1047,7 @@ unsafe fn pathcmp(encpath: *const c_char, comparison: &str) -> c_int {
         c_strcmp(
             p1,
             CStr::from_bytes_with_nul(comparison.as_bytes())
-                .unwrap_or_else(|_| unsafe { CStr::from_ptr(b"\0".as_ptr() as *const c_char) })
+                .unwrap_or_else(|_| CStr::from_ptr(b"\0".as_ptr() as *const c_char))
                 .as_ptr(),
         )
     }
@@ -2316,9 +2316,8 @@ pub unsafe extern "C-unwind" fn PDF(args: SEXP) -> SEXP {
                 r_error("the PDF device requires a literal file name");
             }
             Some(
-                super::pdf_output::PdfOutput::new(&path).unwrap_or_else(|error| {
-                    r_error(format!("cannot open PDF '{path}': {error}"))
-                }),
+                super::pdf_output::PdfOutput::new(&path)
+                    .unwrap_or_else(|error| r_error(format!("cannot open PDF '{path}': {error}"))),
             )
         };
         super::device_registry::open_pdf(output, width, height, dimensions, compress);

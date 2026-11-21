@@ -104,16 +104,15 @@ fn fit_loess_model(
             for message in execution.take_warnings() {
                 let mut bytes = message.into_bytes();
                 bytes.push(0);
-                unsafe {
-                    // GNU's .C pushes no warning-visible context, so
-                    // warning() inside the routine attributes to the
-                    // calling closure (findCall = simpleLoess(...)),
-                    // not the .C(...) expression.
-                    crate::mainutils::errors::warningcall(
-                        crate::mainutils::errors::findCall(),
-                        bytes.as_ptr() as *const core::ffi::c_char,
-                    );
-                }
+
+                // GNU's .C pushes no warning-visible context, so
+                // warning() inside the routine attributes to the
+                // calling closure (findCall = simpleLoess(...)),
+                // not the .C(...) expression.
+                crate::mainutils::errors::warningcall(
+                    crate::mainutils::errors::findCall(),
+                    bytes.as_ptr() as *const core::ffi::c_char,
+                );
             }
             Ok(model)
         }
@@ -249,10 +248,9 @@ fn engine_loess_se(
 fn fail_loess(message: &str) -> ! {
     let mut bytes = message.as_bytes().to_vec();
     bytes.push(0);
-    unsafe {
-        crate::main::errors::Rf_error(bytes.as_ptr() as *const c_char);
-        unreachable!();
-    }
+
+    crate::main::errors::Rf_error(bytes.as_ptr() as *const c_char);
+    unreachable!();
 }
 
 fn engine_loess_raw(

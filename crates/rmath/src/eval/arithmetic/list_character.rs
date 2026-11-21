@@ -15,11 +15,11 @@ fn capture_shape<'a>(owner: OwnerToken<'a>, value: &Sexp<'a>) -> Result<Shape<'a
     let factory = owner.node_factory();
     let get = |symbol: SEXP| -> Result<Sexp<'a>, String> {
         owner.require_active().map_err(|error| error.to_string())?;
-        let attribute = unsafe { getAttrib(value.as_raw(), symbol) };
+        let attribute = getAttrib(value.as_raw(), symbol);
         owner.require_active().map_err(|error| error.to_string())?;
         factory.wrap(attribute).map_err(|error| error.to_string())
     };
-    let (names, dims, dimnames) = unsafe { (R_NamesSymbol(), R_DimSymbol(), R_DimNamesSymbol()) };
+    let (names, dims, dimnames) = (R_NamesSymbol(), R_DimSymbol(), R_DimNamesSymbol());
     Ok(Shape {
         len: value.len(),
         names: get(names)?,
@@ -46,7 +46,7 @@ fn list_to_character<'a>(
         } else {
             // Deparsing may allocate or invoke a callback. Retain the actual
             // list element and validate the original owner before wrapping it.
-            let raw = unsafe { crate::mainutils::deparse::deparse1line(item.as_raw(), false) };
+            let raw = crate::mainutils::deparse::deparse1line(item.as_raw(), false);
             owner.require_active().map_err(|error| error.to_string())?;
             if raw.is_null() {
                 factory
@@ -144,9 +144,9 @@ fn attributes<'a>(
     };
     let mut chain = factory.nil();
     for (symbol, value) in [
-        (unsafe { R_NamesSymbol() }, names),
-        (unsafe { R_DimNamesSymbol() }, dimnames),
-        (unsafe { R_DimSymbol() }, dims),
+        (R_NamesSymbol(), names),
+        (R_DimNamesSymbol(), dimnames),
+        (R_DimSymbol(), dims),
     ] {
         if let Some(value) = value.filter(|value| !value.is_nil()) {
             owner.require_active().map_err(|error| error.to_string())?;
@@ -244,8 +244,8 @@ pub(super) unsafe fn compare(op: &str, left: SEXP, right: SEXP) -> Result<SEXP, 
             let equal = unsafe { crate::mainutils::relop::Seql(ac.as_raw(), bc.as_raw()) } != 0;
             if equal == (op == "==") { TRUE } else { FALSE }
         } else {
-            let a_bytes = unsafe { crate::sexp::accessors::charsxp_as_utf8(ac.as_raw()) };
-            let b_bytes = unsafe { crate::sexp::accessors::charsxp_as_utf8(bc.as_raw()) };
+            let a_bytes = crate::sexp::accessors::charsxp_as_utf8(ac.as_raw());
+            let b_bytes = crate::sexp::accessors::charsxp_as_utf8(bc.as_raw());
             let a_text = String::from_utf8_lossy(&a_bytes);
             let b_text = String::from_utf8_lossy(&b_bytes);
             if compare_strings(op, &a_text, &b_text) {

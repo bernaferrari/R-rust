@@ -593,9 +593,7 @@ impl GuardOwner {
     /// act on the current session: the ambient entry supplies the live
     /// pinned instance, so no unsafe contract is left for the caller.
     pub(crate) fn current() -> Self {
-        crate::sexp::instance::with_required_current_instance(|inst| unsafe {
-            Self::new(inst)
-        })
+        crate::sexp::instance::with_required_current_instance(|inst| unsafe { Self::new(inst) })
     }
 
     /// Capture a guard owner from an already-managed weak owner.
@@ -682,7 +680,9 @@ impl GuardOwner {
     }
 
     /// Snapshot this owner's legacy leases for a relocating update pass.
-    pub(crate) fn legacy_updates_snapshot(&self) -> Option<RootSnapshot<(SequenceLease, RootValue)>> {
+    pub(crate) fn legacy_updates_snapshot(
+        &self,
+    ) -> Option<RootSnapshot<(SequenceLease, RootValue)>> {
         self.with_pinned(|inst| unsafe { (*inst).legacy_protect.updates_snapshot() })
     }
 
@@ -764,10 +764,7 @@ impl GuardOwner {
     }
 
     /// Push `s` onto this owner's preserve stack, returning its lease.
-    pub(crate) fn try_preserve(
-        &self,
-        s: SEXP,
-    ) -> Result<Option<SequenceLease>, ProtectError> {
+    pub(crate) fn try_preserve(&self, s: SEXP) -> Result<Option<SequenceLease>, ProtectError> {
         let value = self.root_value(s)?;
         self.with_pinned(|inst| unsafe { (*inst).preserve_stack.try_push(value).map(Some) })
             .unwrap_or(Err(ProtectError::OwnerUnavailable))
@@ -794,7 +791,9 @@ impl GuardOwner {
     }
 
     /// Snapshot this owner's preserve leases for a relocating update pass.
-    pub(crate) fn preserve_updates_snapshot(&self) -> Option<RootSnapshot<(SequenceLease, RootValue)>> {
+    pub(crate) fn preserve_updates_snapshot(
+        &self,
+    ) -> Option<RootSnapshot<(SequenceLease, RootValue)>> {
         self.with_pinned(|inst| unsafe { (*inst).preserve_stack.updates_snapshot() })
     }
 

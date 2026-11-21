@@ -2,21 +2,18 @@ use super::*;
 
 /// R's `Sys.Date()` — current date as REALSXP (days since epoch).
 pub fn do_Sys_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let now = crate::mainutils::times::currentTime();
-        let seconds = now.floor() as i64;
-        let mut local = crate::tzone::stm::default();
-        let days =
-            if !now.is_finite() || crate::tzone::R_localtime_r(&seconds, &mut local).is_null() {
-                crate::sexp::ffi::NA_REAL
-            } else {
-                (seconds + local.tm_gmtoff).div_euclid(86_400) as f64
-            };
-        let result = Rf_ScalarReal(days);
-        let _result = protect(result);
-        set_single_class(result, "Date");
-        result
-    }
+    let now = crate::mainutils::times::currentTime();
+    let seconds = now.floor() as i64;
+    let mut local = crate::tzone::stm::default();
+    let days = if !now.is_finite() || crate::tzone::R_localtime_r(&seconds, &mut local).is_null() {
+        crate::sexp::ffi::NA_REAL
+    } else {
+        (seconds + local.tm_gmtoff).div_euclid(86_400) as f64
+    };
+    let result = Rf_ScalarReal(days);
+    let _result = protect(result);
+    set_single_class(result, "Date");
+    result
 }
 
 /// R's `Sys.timezone()` — current timezone (simplified).

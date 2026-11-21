@@ -31,13 +31,7 @@ impl Predicate {
 
 /// Root and pin the original invocation before dispatch or ALTREP callbacks.
 /// No payload span or runtime borrow is held while a provider executes.
-pub(super) fn evaluate(
-    call: SEXP,
-    op: SEXP,
-    args: SEXP,
-    rho: SEXP,
-    kind: Predicate,
-) -> SEXP {
+pub(super) fn evaluate(call: SEXP, op: SEXP, args: SEXP, rho: SEXP, kind: Predicate) -> SEXP {
     unsafe {
         let owner = OwnerToken::current().expect("active predicate owner");
         let pin = owner.pin().expect("live predicate owner");
@@ -158,41 +152,37 @@ fn snapshot_shape<'s>(
     input: &Sexp<'_>,
     check: impl Fn(),
 ) -> (Sexp<'s>, Sexp<'s>) {
-    unsafe {
-        use crate::sexp::attrib_core::{R_DimNamesSymbol, R_DimSymbol, R_NamesSymbol, getAttrib};
-        let dims = factory
-            .wrap(getAttrib(input.as_raw(), R_DimSymbol()))
-            .expect("root predicate dimensions");
+    use crate::sexp::attrib_core::{R_DimNamesSymbol, R_DimSymbol, R_NamesSymbol, getAttrib};
+    let dims = factory
+        .wrap(getAttrib(input.as_raw(), R_DimSymbol()))
+        .expect("root predicate dimensions");
+    check();
+    let symbol = if dims.is_nil() {
+        R_NamesSymbol()
+    } else {
+        R_DimNamesSymbol()
+    };
+    let names = factory
+        .wrap(getAttrib(input.as_raw(), symbol))
+        .expect("root predicate names");
+    check();
+    (dims, names)
+}
+
+fn apply_shape(output: &Sexp<'_>, dims: &Sexp<'_>, names: &Sexp<'_>, check: impl Fn()) {
+    use crate::sexp::attrib_core::{R_DimNamesSymbol, R_DimSymbol, R_NamesSymbol, setAttrib};
+    if !dims.is_nil() {
+        setAttrib(output.as_raw(), R_DimSymbol(), dims.as_raw());
         check();
+    }
+    if !names.is_nil() {
         let symbol = if dims.is_nil() {
             R_NamesSymbol()
         } else {
             R_DimNamesSymbol()
         };
-        let names = factory
-            .wrap(getAttrib(input.as_raw(), symbol))
-            .expect("root predicate names");
+        setAttrib(output.as_raw(), symbol, names.as_raw());
         check();
-        (dims, names)
-    }
-}
-
-fn apply_shape(output: &Sexp<'_>, dims: &Sexp<'_>, names: &Sexp<'_>, check: impl Fn()) {
-    unsafe {
-        use crate::sexp::attrib_core::{R_DimNamesSymbol, R_DimSymbol, R_NamesSymbol, setAttrib};
-        if !dims.is_nil() {
-            setAttrib(output.as_raw(), R_DimSymbol(), dims.as_raw());
-            check();
-        }
-        if !names.is_nil() {
-            let symbol = if dims.is_nil() {
-                R_NamesSymbol()
-            } else {
-                R_DimNamesSymbol()
-            };
-            setAttrib(output.as_raw(), symbol, names.as_raw());
-            check();
-        }
     }
 }
 

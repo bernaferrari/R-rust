@@ -393,9 +393,7 @@ fn wide_string(codepoints: *const c_int, count: Option<c_int>) -> Vec<char> {
             let mut chars = Vec::new();
             let mut idx = 0usize;
             loop {
-                let value = ptr_ref(codepoints.wrapping_add(idx))
-                    .copied()
-                    .unwrap_or(0);
+                let value = ptr_ref(codepoints.wrapping_add(idx)).copied().unwrap_or(0);
                 if value == 0 {
                     break;
                 }

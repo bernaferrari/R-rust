@@ -56,7 +56,7 @@ unsafe fn run_owned_derivative(
                 // GNU deriv.c raises these with error(), which verror()
                 // attributes to getCurrentCall(): the enclosing closure
                 // (D/deriv), never the .External builtin call.
-                unsafe {
+                {
                     crate::mainutils::errors::errorcall_str(
                         crate::mainutils::errors::condition_caller_call(),
                         &error.to_string(),
@@ -232,7 +232,7 @@ fn derivative_string_element(
     index: R_xlen_t,
 ) -> crate::sexp::object::SexpResult<crate::sexp::object::Sexp<'static>> {
     access.domain().link(value)?;
-    access.with_native(|owner| unsafe {
+    access.with_native(|owner| {
         let value = STRING_ELT(value.as_raw(), index);
         owner.require_active()?;
         owner.sexp(value)?.into_owned()

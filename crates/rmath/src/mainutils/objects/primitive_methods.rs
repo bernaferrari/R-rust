@@ -57,12 +57,7 @@ impl Drop for PrimitiveStatusGuard {
 // ---------------------------------------------------------------------------
 
 /// Set or query the primitive method table for a given operation.
-pub fn do_set_prim_method(
-    op: SEXP,
-    code_string: *const c_char,
-    fundef: SEXP,
-    mlist: SEXP,
-) -> SEXP {
+pub fn do_set_prim_method(op: SEXP, code_string: *const c_char, fundef: SEXP, mlist: SEXP) -> SEXP {
     unsafe {
         if code_string.is_null() {
             error(
@@ -211,7 +206,7 @@ pub fn R_set_prim_method(
 
 /// R_primitive_methods -- get the methods list for a primitive.
 pub fn R_primitive_methods(op: SEXP) -> SEXP {
-     {
+    {
         let Some(offset) = primitive_offset(op) else {
             return R_NilValue();
         };
@@ -221,14 +216,14 @@ pub fn R_primitive_methods(op: SEXP) -> SEXP {
                 .get(offset)
                 .and_then(RuntimeValue::owned)
                 .map(|value| value.as_raw())
-                .unwrap_or_else(||  { R_NilValue() })
+                .unwrap_or_else(|| R_NilValue())
         })
     }
 }
 
 /// R_primitive_generic -- get the generic function for a primitive.
 pub fn R_primitive_generic(op: SEXP) -> SEXP {
-     {
+    {
         let Some(offset) = primitive_offset(op) else {
             return R_NilValue();
         };
@@ -238,14 +233,14 @@ pub fn R_primitive_generic(op: SEXP) -> SEXP {
                 .get(offset)
                 .and_then(RuntimeValue::owned)
                 .map(|value| value.as_raw())
-                .unwrap_or_else(||  { R_NilValue() })
+                .unwrap_or_else(|| R_NilValue())
         })
     }
 }
 
 /// R_has_methods -- check whether methods might exist for this op.
 pub fn R_has_methods(_op: SEXP) -> c_int {
-     {
+    {
         let ptr = R_get_standardGeneric_ptr();
         if ptr.is_none() {
             return FALSE;
@@ -276,7 +271,7 @@ pub fn R_has_methods(_op: SEXP) -> c_int {
 pub fn R_deferred_default_method() -> SEXP {
     with_objects_runtime(|access| {
         if let Some(marker) =
-             { objects_state_in(access, |state| state.deferred_default_object.owned()) }?
+            { objects_state_in(access, |state| state.deferred_default_object.owned()) }?
         {
             return Ok(marker.as_raw());
         }
@@ -284,7 +279,7 @@ pub fn R_deferred_default_method() -> SEXP {
             let raw = unsafe { Rf_install(c"__Deferred_Default_Marker__".as_ptr()) };
             owner.sexp(raw)?.into_owned()
         })?;
-        let marker =  {
+        let marker = {
             objects_state_in(access, |state| {
                 if state.deferred_default_object.is_null() {
                     state.deferred_default_object = RuntimeValue::from_owned(marker);
@@ -318,7 +313,7 @@ pub fn R_possible_dispatch(
     promisedArgs: c_int,
 ) -> SEXP {
     with_objects_runtime(|access| {
-        let result =  { possible_dispatch_in(access, call, op, args, rho, promisedArgs) };
+        let result = { possible_dispatch_in(access, call, op, args, rho, promisedArgs) };
         access.require_active()?;
         Ok(result)
     })

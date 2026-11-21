@@ -489,10 +489,7 @@ fn R_isatty(_fd: c_int) -> c_int {
 fn R_isWriteableDir(_path: *const c_char) -> c_int {
     0
 }
-fn R_fopen(
-    _path: *const c_char,
-    _mode: *const c_char,
-) -> *mut crate::mainutils::rfile::RFile {
+fn R_fopen(_path: *const c_char, _mode: *const c_char) -> *mut crate::mainutils::rfile::RFile {
     ptr::null_mut()
 }
 fn R_setStartTime() {}

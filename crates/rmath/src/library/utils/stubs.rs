@@ -41,12 +41,12 @@ fn nil_value() -> SEXP {
 
 fn warn_message(message: impl AsRef<str>) {
     let msg = CString::new(message.as_ref()).unwrap_or_default();
-    unsafe { Rf_warning(msg.as_ptr()) };
+    Rf_warning(msg.as_ptr());
 }
 
 fn error_message(message: impl AsRef<str>) {
     let msg = CString::new(message.as_ref()).unwrap_or_default();
-    unsafe { Rf_error(msg.as_ptr()) };
+    Rf_error(msg.as_ptr());
 }
 
 fn do_Rprof(_args: SEXP) -> SEXP {
@@ -284,24 +284,20 @@ pub fn addhistory(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 // dataentry -- Data editor (GUI function)
 // ---------------------------------------------------------------------------
 pub fn dataentry(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe {
-        let _ = (call, op, args, env);
-        let msg = c"data entry editor is not available";
-        Rf_warning(msg.as_ptr());
-        R_NilValue()
-    }
+    let _ = (call, op, args, env);
+    let msg = c"data entry editor is not available";
+    Rf_warning(msg.as_ptr());
+    R_NilValue()
 }
 
 // ---------------------------------------------------------------------------
 // dataviewer -- Data viewer (GUI function)
 // ---------------------------------------------------------------------------
 pub fn dataviewer(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe {
-        let _ = (call, op, args, env);
-        let msg = c"data viewer is not available";
-        Rf_warning(msg.as_ptr());
-        R_NilValue()
-    }
+    let _ = (call, op, args, env);
+    let msg = c"data viewer is not available";
+    Rf_warning(msg.as_ptr());
+    R_NilValue()
 }
 
 // ---------------------------------------------------------------------------

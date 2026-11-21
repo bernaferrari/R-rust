@@ -75,19 +75,17 @@ unsafe fn has_qr_class(value: SEXP) -> bool {
 }
 
 unsafe fn copy_dimname_prefix(value: SEXP, count: usize) -> SEXP {
-    unsafe {
-        if value == R_NilValue() {
-            return value;
-        }
-        if TYPEOF(value) != STRSXP_C || XLENGTH(value) < count as R_xlen_t {
-            return R_NilValue();
-        }
-        let result = Rf_allocVector(STRSXP_C, count as c_int);
-        for i in 0..count {
-            SET_STRING_ELT(result, i as R_xlen_t, STRING_ELT(value, i as R_xlen_t));
-        }
-        result
+    if value == R_NilValue() {
+        return value;
     }
+    if TYPEOF(value) != STRSXP_C || XLENGTH(value) < count as R_xlen_t {
+        return R_NilValue();
+    }
+    let result = Rf_allocVector(STRSXP_C, count as c_int);
+    for i in 0..count {
+        SET_STRING_ELT(result, i as R_xlen_t, STRING_ELT(value, i as R_xlen_t));
+    }
+    result
 }
 
 /// Extract the upper-triangular R factor from a validated `qr` object.

@@ -185,12 +185,12 @@ pub(crate) fn private_target_call_owned(
                 )?;
             }
             access.require_active()?;
-            unsafe {
-                if let Some(rhs) = rhs {
-                    crate::sexp::accessors::SET_NAMED(rhs.as_raw(), 2);
-                }
-                crate::sexp::accessors::SET_NAMED(object.as_raw(), 2);
+
+            if let Some(rhs) = rhs {
+                crate::sexp::accessors::SET_NAMED(rhs.as_raw(), 2);
             }
+            crate::sexp::accessors::SET_NAMED(object.as_raw(), 2);
+
             let syntax_arguments = allocator.pairlist_cell(&temporary, &tail, &domain.nil())?;
             let call = allocator.call(setter, &syntax_arguments)?;
             if setter.typeof_() == SEXPTYPE::LANGSXP {
@@ -225,13 +225,12 @@ pub(crate) fn private_target_call_owned(
                 allocator.evaluated_promise_with_expression(&temporary, environment, object)?;
             let execution_arguments = allocator.pairlist_cell(&target, &tail, &domain.nil())?;
             access.with_native(|owner| {
-                let function = unsafe {
+                let function =
                     crate::sexp::envir::find_fun_result(setter.clone(), environment.clone())
-                }
-                .map_err(|message| SexpError::EvaluationFailed { message })?
-                .ok_or_else(|| SexpError::EvaluationFailed {
-                    message: "could not find replacement function".into(),
-                })?;
+                        .map_err(|message| SexpError::EvaluationFailed { message })?
+                        .ok_or_else(|| SexpError::EvaluationFailed {
+                            message: "could not find replacement function".into(),
+                        })?;
                 access.require_active()?;
                 if function.is_closure() {
                     let result = unsafe {
@@ -306,9 +305,9 @@ pub(crate) fn private_replacement_path_owned(
                     .into_owned()
             })?;
             access.require_active()?;
-            unsafe {
-                crate::sexp::accessors::SET_NAMED(object.as_raw(), 2);
-            }
+
+            crate::sexp::accessors::SET_NAMED(object.as_raw(), 2);
+
             let (getter, outer_setter, modified_expression) = if field.is_nil() {
                 (None, None, None)
             } else {
@@ -417,11 +416,9 @@ pub(crate) fn is_replacement_function_head(value: &Sexp<'static>) -> bool {
         return false;
     }
     {
-        let Some(operator) =
-            crate::eval::bc_compile::symbol_name_from_sexp(crate::sexp::accessors::CAR(
-                value.as_raw(),
-            ))
-        else {
+        let Some(operator) = crate::eval::bc_compile::symbol_name_from_sexp(
+            crate::sexp::accessors::CAR(value.as_raw()),
+        ) else {
             return false;
         };
         if !matches!(operator.as_str(), "::" | ":::") {
@@ -520,9 +517,9 @@ pub(crate) fn private_replacement_chain_owned(
                     .into_owned()
             })?;
             access.require_active()?;
-            unsafe {
-                crate::sexp::accessors::SET_NAMED(object.as_raw(), 2);
-            }
+
+            crate::sexp::accessors::SET_NAMED(object.as_raw(), 2);
+
             let modified_expression = access.with_native(|owner| {
                 owner
                     .sexp(unsafe { crate::sexp::symbol::Rf_install(c"*vtmp*".as_ptr()) })?
@@ -549,9 +546,9 @@ pub(crate) fn private_replacement_chain_owned(
                     Err(jump) => return Ok(Err(jump)),
                 };
                 access.require_active()?;
-                unsafe {
-                    crate::sexp::accessors::SET_NAMED(child.as_raw(), 2);
-                }
+
+                crate::sexp::accessors::SET_NAMED(child.as_raw(), 2);
+
                 targets.push(child);
             }
             let mut changed = rhs.clone();

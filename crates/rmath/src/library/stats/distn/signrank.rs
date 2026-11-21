@@ -153,9 +153,9 @@ pub(super) fn evaluate(sa: SEXP, sb: SEXP, sI: SEXP, sJ: SEXP, kind: Kind) -> SE
     let n = if na == 0 || nb == 0 { 0 } else { na.max(nb) };
     // SAFETY: the owner is active. The legacy allocator keeps its typed
     // resource error and GC retry semantics before the result is rooted.
-    let result = unsafe { Rf_allocVector3(SEXPTYPE::REALSXP, n) };
+    let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
     active(owner);
-    let _result = unsafe { protect(result) };
+    let _result = protect(result);
     active(owner);
     if n == 0 {
         if na == 0 {
@@ -164,13 +164,13 @@ pub(super) fn evaluate(sa: SEXP, sb: SEXP, sI: SEXP, sJ: SEXP, kind: Kind) -> SE
         return result;
     }
     // SAFETY: numeric inputs were validated; coercion may run providers.
-    let sa = unsafe { crate::main::coerce::coerceVector(sa, SEXPTYPE::REALSXP.as_c_int()) };
+    let sa = crate::main::coerce::coerceVector(sa, SEXPTYPE::REALSXP.as_c_int());
     active(owner);
-    let _sa = unsafe { protect(sa) };
+    let _sa = protect(sa);
     active(owner);
-    let sb = unsafe { crate::main::coerce::coerceVector(sb, SEXPTYPE::REALSXP.as_c_int()) };
+    let sb = crate::main::coerce::coerceVector(sb, SEXPTYPE::REALSXP.as_c_int());
     active(owner);
-    let _sb = unsafe { protect(sb) };
+    let _sb = protect(sb);
     active(owner);
     let inputs = [(sa, na), (sb, nb)];
     prepare_inputs(owner, &inputs);

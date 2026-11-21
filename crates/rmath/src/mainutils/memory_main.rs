@@ -243,14 +243,14 @@ fn collect_user_gc(full: bool) -> crate::sexp::object::SexpResult<()> {
 /// This is the equivalent of R's `R_gc()`.
 pub fn R_gc() {
     if let Err(failure) = collect_user_gc(true) {
-         error(&failure.to_string());
+        error(&failure.to_string());
     }
 }
 
 /// Trigger a lightweight garbage collection in the exact original runtime.
 pub fn R_gc_lite() {
     if let Err(failure) = collect_user_gc(false) {
-         error(&failure.to_string());
+        error(&failure.to_string());
     }
 }
 /// GC torture settings.
@@ -554,15 +554,11 @@ pub(crate) fn Rf_isObject_memory(s: SEXP) -> c_int {
 // ---------------------------------------------------------------------------
 
 pub(crate) unsafe fn R_PreserveObject_memory(s: SEXP) {
-    unsafe {
-        crate::sexp::protect::R_PreserveObject(s);
-    }
+    crate::sexp::protect::R_PreserveObject(s);
 }
 
 pub(crate) unsafe fn R_ReleaseObject_memory(s: SEXP) {
-    unsafe {
-        crate::sexp::protect::R_ReleaseObject(s);
-    }
+    crate::sexp::protect::R_ReleaseObject(s);
 }
 
 // ---------------------------------------------------------------------------
@@ -1125,13 +1121,13 @@ pub(crate) unsafe fn R_ReadConsole_memory(
     len: c_int,
     addtohistory: c_int,
 ) -> c_int {
-    unsafe { crate::unix::system::R_ReadConsole(prompt, buf as *mut u8, len, addtohistory) }
+    crate::unix::system::R_ReadConsole(prompt, buf as *mut u8, len, addtohistory)
 }
 
 /// Write to the active console callback.
 /// Duplicate — no #[unsafe(no_mangle)] (already in unix/system.rs).
 pub(crate) unsafe fn R_WriteConsole_memory(buf: *const c_char, len: c_int) {
-    unsafe { crate::unix::system::R_WriteConsole(buf, len) }
+    crate::unix::system::R_WriteConsole(buf, len)
 }
 
 // ---------------------------------------------------------------------------
@@ -1141,21 +1137,19 @@ pub(crate) unsafe fn R_WriteConsole_memory(buf: *const c_char, len: c_int) {
 ///
 /// This is the equivalent of R's `readline()` function.
 pub unsafe fn readline(prompt: *const c_char) -> *mut c_char {
-    unsafe {
-        let mut buffer = vec![0u8; 8192];
-        let ok = crate::unix::system::R_ReadConsole(prompt, buffer.as_mut_ptr(), 8192, 1);
-        if ok == 0 {
-            return ptr::null_mut();
-        }
-        let nul = buffer
-            .iter()
-            .position(|&byte| byte == 0)
-            .unwrap_or(buffer.len());
-        let line = std::ffi::CString::new(&buffer[..nul]).unwrap_or_default();
-        // strdup equivalent: hand out the NUL-terminated heap buffer itself
-        // (nothing in this port frees the readline result, so ownership just leaks)
-        line.into_raw()
+    let mut buffer = vec![0u8; 8192];
+    let ok = crate::unix::system::R_ReadConsole(prompt, buffer.as_mut_ptr(), 8192, 1);
+    if ok == 0 {
+        return ptr::null_mut();
     }
+    let nul = buffer
+        .iter()
+        .position(|&byte| byte == 0)
+        .unwrap_or(buffer.len());
+    let line = std::ffi::CString::new(&buffer[..nul]).unwrap_or_default();
+    // strdup equivalent: hand out the NUL-terminated heap buffer itself
+    // (nothing in this port frees the readline result, so ownership just leaks)
+    line.into_raw()
 }
 
 // ---------------------------------------------------------------------------
@@ -1272,24 +1266,22 @@ pub unsafe fn R_FreeStringBufferL(buf: *mut R_StringBuffer) {
 /// Multi-set representation: `CONS(store, npreserved)` with `TAG() == initialSize`.
 /// `store` is a VECSXP or R_NilValue. `npreserved` is an INTSXP of length 1.
 pub unsafe fn R_NewPreciousMSet(initialSize: c_int) -> SEXP {
-    unsafe {
-        let npreserved = Rf_allocVector3(SEXPTYPE::INTSXP, 1);
-        if npreserved.is_null() {
-            error("could not allocate precious mset");
-        }
-        crate::sexp::accessors::SET_INTEGER_ELT(npreserved, 0, 0);
-
-        let mset = Rf_cons(R_NilValue(), npreserved);
-        if mset.is_null() {
-            error("could not allocate precious mset");
-        }
-
-        let size = if initialSize < 0 { 0 } else { initialSize };
-        let isize = Rf_ScalarInteger(size);
-        crate::sexp::accessors::SETTAG(mset, isize);
-
-        mset
+    let npreserved = Rf_allocVector3(SEXPTYPE::INTSXP, 1);
+    if npreserved.is_null() {
+        error("could not allocate precious mset");
     }
+    crate::sexp::accessors::SET_INTEGER_ELT(npreserved, 0, 0);
+
+    let mset = Rf_cons(R_NilValue(), npreserved);
+    if mset.is_null() {
+        error("could not allocate precious mset");
+    }
+
+    let size = if initialSize < 0 { 0 } else { initialSize };
+    let isize = Rf_ScalarInteger(size);
+    crate::sexp::accessors::SETTAG(mset, isize);
+
+    mset
 }
 
 /// Add an object to a multi-set.
@@ -1420,7 +1412,7 @@ pub fn R_maxLength(x: SEXP) -> R_xlen_t {
 ///
 /// This is the equivalent of R's `R_allocResizableVector()`.
 pub unsafe fn R_allocResizableVector(type_: SEXPTYPE, maxlen: R_xlen_t) -> SEXP {
-    unsafe { Rf_allocVector3(type_.0, maxlen) }
+    Rf_allocVector3(type_.0, maxlen)
 }
 
 /// Duplicate a vector and make it resizable.
@@ -1516,44 +1508,38 @@ pub unsafe fn do_memoryprofile(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) 
 ///
 /// This is the equivalent of R's `do_gc()`.
 pub unsafe fn do_gc(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { crate::mainutils::essentials::do_gc(_call, _op, _args, _rho) }
+    crate::mainutils::essentials::do_gc(_call, _op, _args, _rho)
 }
 
 /// gcinfo() implementation (stub).
 ///
 /// This is the equivalent of R's `do_gcinfo()`.
 pub unsafe fn do_gcinfo(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let old = Rf_ScalarLogical(with_memory_state(|state| state.gc_reporting));
-        let i = crate::mainutils::coerce::asLogical(CAR(args));
-        if i != crate::sexp::ffi::NA_LOGICAL {
-            with_memory_state(|state| state.gc_reporting = i);
-        }
-        old
+    let old = Rf_ScalarLogical(with_memory_state(|state| state.gc_reporting));
+    let i = crate::mainutils::coerce::asLogical(CAR(args));
+    if i != crate::sexp::ffi::NA_LOGICAL {
+        with_memory_state(|state| state.gc_reporting = i);
     }
+    old
 }
 
 pub unsafe fn do_gctorture(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let old = Rf_ScalarLogical(if with_memory_state(|state| state.gc_force_gap) > 0 {
-            crate::sexp::ffi::TRUE
-        } else {
-            crate::sexp::ffi::FALSE
-        });
-        let gap = crate::mainutils::coerce::asLogical(CAR(args));
-        R_gc_torture(if gap != 0 { 1 } else { 0 }, 0, 0);
-        old
-    }
+    let old = Rf_ScalarLogical(if with_memory_state(|state| state.gc_force_gap) > 0 {
+        crate::sexp::ffi::TRUE
+    } else {
+        crate::sexp::ffi::FALSE
+    });
+    let gap = crate::mainutils::coerce::asLogical(CAR(args));
+    R_gc_torture(if gap != 0 { 1 } else { 0 }, 0, 0);
+    old
 }
 
 pub unsafe fn do_gctorture2(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let old = Rf_ScalarInteger(with_memory_state(|state| state.gc_force_gap));
-        let gap = crate::mainutils::coerce::asInteger(CAR(args));
-        let wait = crate::mainutils::coerce::asInteger(CADR(args));
-        R_gc_torture(gap, wait, 0);
-        old
-    }
+    let old = Rf_ScalarInteger(with_memory_state(|state| state.gc_force_gap));
+    let gap = crate::mainutils::coerce::asInteger(CAR(args));
+    let wait = crate::mainutils::coerce::asInteger(CADR(args));
+    R_gc_torture(gap, wait, 0);
+    old
 }
 
 /// maxVSize() implementation.
@@ -1612,23 +1598,21 @@ pub unsafe fn do_maxNSize(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 ///
 /// This is the equivalent of R's `do_regFinaliz()`.
 pub unsafe fn do_regFinaliz(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let obj = CAR(args);
-        let fun = CADR(args);
-        let onexit = crate::mainutils::coerce::asLogical(CADDR(args));
-        let t = TYPEOF(obj);
-        if t != SEXPTYPE::ENVSXP && t != SEXPTYPE::EXTPTRSXP {
-            error("first argument must be environment or external pointer");
-        }
-        if TYPEOF(fun) != SEXPTYPE::CLOSXP {
-            error("second argument must be a function");
-        }
-        if onexit == crate::sexp::ffi::NA_LOGICAL {
-            error("third argument must be 'TRUE' or 'FALSE'");
-        }
-        R_RegisterFinalizerEx(obj, fun, onexit);
-        R_NilValue()
+    let obj = CAR(args);
+    let fun = CADR(args);
+    let onexit = crate::mainutils::coerce::asLogical(CADDR(args));
+    let t = TYPEOF(obj);
+    if t != SEXPTYPE::ENVSXP && t != SEXPTYPE::EXTPTRSXP {
+        error("first argument must be environment or external pointer");
     }
+    if TYPEOF(fun) != SEXPTYPE::CLOSXP {
+        error("second argument must be a function");
+    }
+    if onexit == crate::sexp::ffi::NA_LOGICAL {
+        error("third argument must be 'TRUE' or 'FALSE'");
+    }
+    R_RegisterFinalizerEx(obj, fun, onexit);
+    R_NilValue()
 }
 
 // ---------------------------------------------------------------------------
@@ -2296,7 +2280,7 @@ mod owned_gc_operation_tests {
             assert_eq!(unsafe { (*instance).memory_state.in_gc }, 1);
             std::panic::panic_any(73_u32);
         }));
-        let outcome = catch_unwind(AssertUnwindSafe(||  R_gc()));
+        let outcome = catch_unwind(AssertUnwindSafe(|| R_gc()));
         assert_eq!(*outcome.unwrap_err().downcast::<u32>().unwrap(), 73);
         assert_eq!(unsafe { (*instance).memory_state.in_gc }, 0);
         assert_eq!(unsafe { (*instance).memory_state.gc_count }, 1);
@@ -2315,7 +2299,7 @@ mod owned_gc_operation_tests {
             R_gc();
             assert_eq!((*instance).memory_state.in_gc, 1);
         }));
-         R_gc();
+        R_gc();
         assert_eq!(calls.get(), 1);
         assert_eq!(unsafe { (*instance).memory_state.in_gc }, 0);
         assert_eq!(unsafe { (*instance).memory_state.gc_count }, 2);

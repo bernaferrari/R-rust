@@ -9,7 +9,7 @@ pub fn do_density(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let xt = TYPEOF(x);
         if xt != SEXPTYPE::INTSXP && xt != SEXPTYPE::REALSXP && xt != SEXPTYPE::LGLSXP {
             crate::mainutils::errors::errorcall_str(
-                 crate::mainutils::errors::R_getCurrentCall() ,
+                crate::mainutils::errors::R_getCurrentCall(),
                 "argument 'x' must be numeric",
             );
         }
@@ -31,7 +31,7 @@ pub fn do_density(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         }
         if xs.len() < 2 {
             crate::mainutils::errors::errorcall_str(
-                 crate::mainutils::errors::R_getCurrentCall() ,
+                crate::mainutils::errors::R_getCurrentCall(),
                 "need at least 2 points to select a bandwidth automatically",
             );
         }
@@ -178,13 +178,13 @@ pub fn do_cancor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         };
         if nrx != nry {
             crate::mainutils::errors::errorcall_str(
-                 crate::mainutils::errors::R_getCurrentCall() ,
+                crate::mainutils::errors::R_getCurrentCall(),
                 "unequal number of rows in 'cancor'",
             );
         }
         if nrx == 0 || ncx == 0 || ncy == 0 {
             crate::mainutils::errors::errorcall_str(
-                 crate::mainutils::errors::R_getCurrentCall() ,
+                crate::mainutils::errors::R_getCurrentCall(),
                 "dimension 0 in 'x' or 'y'",
             );
         }
@@ -423,7 +423,7 @@ pub fn do_prcomp(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         };
         if nr < 2 || nc < 1 {
             crate::mainutils::errors::errorcall_str(
-                 crate::mainutils::errors::R_getCurrentCall() ,
+                crate::mainutils::errors::R_getCurrentCall(),
                 "cannot rescale a constant/zero column to unit variance",
             );
         }
@@ -508,7 +508,7 @@ pub fn do_princomp(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         };
         if nr <= nc {
             crate::mainutils::errors::errorcall_str(
-                 crate::mainutils::errors::R_getCurrentCall() ,
+                crate::mainutils::errors::R_getCurrentCall(),
                 "'princomp' can only be used with more units than variables",
             );
         }

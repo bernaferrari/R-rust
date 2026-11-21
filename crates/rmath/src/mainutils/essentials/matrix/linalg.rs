@@ -90,36 +90,32 @@ pub fn do_det(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// GNU `.Internal(La_svd(jobu, x, s, u, vt))`.
 pub fn do_la_svd(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let jobu = CAR(args);
-        let rest = CDR(args);
-        let x = coerce_numeric_matrix(CAR(rest));
-        let rest = CDR(rest);
-        let s = CAR(rest);
-        let rest = CDR(rest);
-        let u = CAR(rest);
-        let vt = CAR(CDR(rest));
-        crate::modules::lapack::lapack_impl::La_svd(jobu, x, s, u, vt)
-    }
+    let jobu = CAR(args);
+    let rest = CDR(args);
+    let x = coerce_numeric_matrix(CAR(rest));
+    let rest = CDR(rest);
+    let s = CAR(rest);
+    let rest = CDR(rest);
+    let u = CAR(rest);
+    let vt = CAR(CDR(rest));
+    crate::modules::lapack::lapack_impl::La_svd(jobu, x, s, u, vt)
 }
 
 /// GNU `.Internal(La_svd_cmplx(jobu, x, s, u, vt))`.
 pub fn do_la_svd_cmplx(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let jobu = CAR(args);
-        let rest = CDR(args);
-        let x = CAR(rest);
-        let rest = CDR(rest);
-        let s = CAR(rest);
-        let rest = CDR(rest);
-        let u = CAR(rest);
-        let vt = CAR(CDR(rest));
-        crate::modules::lapack::lapack_impl::La_svd_cmplx(jobu, x, s, u, vt)
-    }
+    let jobu = CAR(args);
+    let rest = CDR(args);
+    let x = CAR(rest);
+    let rest = CDR(rest);
+    let s = CAR(rest);
+    let rest = CDR(rest);
+    let u = CAR(rest);
+    let vt = CAR(CDR(rest));
+    crate::modules::lapack::lapack_impl::La_svd_cmplx(jobu, x, s, u, vt)
 }
 
 pub fn do_det_ge_real(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { crate::modules::lapack::lapack_impl::det_ge_real(CAR(args), CADR(args)) }
+    crate::modules::lapack::lapack_impl::det_ge_real(CAR(args), CADR(args))
 }
 
 /// Solve through the selected LAPACK adapter using R's column-major layout.
@@ -503,47 +499,35 @@ pub fn do_rcond(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 pub fn do_la_dlange(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-     do_norm(call, op, args, rho) 
+    do_norm(call, op, args, rho)
 }
 
 pub fn do_la_dgecon(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-     do_rcond(call, op, args, rho) 
+    do_rcond(call, op, args, rho)
 }
 
 pub fn do_la_zlange(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { crate::modules::lapack::lapack_impl::La_zlange(CAR(args), CAR(CDR(args))) }
+    crate::modules::lapack::lapack_impl::La_zlange(CAR(args), CAR(CDR(args)))
 }
 
 pub fn do_la_zgecon(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { crate::modules::lapack::lapack_impl::La_zgecon(CAR(args), CAR(CDR(args))) }
+    crate::modules::lapack::lapack_impl::La_zgecon(CAR(args), CAR(CDR(args)))
 }
 
 pub fn do_la_dtrcon(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { crate::modules::lapack::lapack_impl::La_dtrcon(CAR(args), CAR(CDR(args))) }
+    crate::modules::lapack::lapack_impl::La_dtrcon(CAR(args), CAR(CDR(args)))
 }
 
 pub fn do_la_dtrcon3(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        crate::modules::lapack::lapack_impl::La_dtrcon3(
-            CAR(args),
-            CAR(CDR(args)),
-            CAR(CDR(CDR(args))),
-        )
-    }
+    crate::modules::lapack::lapack_impl::La_dtrcon3(CAR(args), CAR(CDR(args)), CAR(CDR(CDR(args))))
 }
 
 pub fn do_la_ztrcon(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { crate::modules::lapack::lapack_impl::La_ztrcon(CAR(args), CAR(CDR(args))) }
+    crate::modules::lapack::lapack_impl::La_ztrcon(CAR(args), CAR(CDR(args)))
 }
 
 pub fn do_la_ztrcon3(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        crate::modules::lapack::lapack_impl::La_ztrcon3(
-            CAR(args),
-            CAR(CDR(args)),
-            CAR(CDR(CDR(args))),
-        )
-    }
+    crate::modules::lapack::lapack_impl::La_ztrcon3(CAR(args), CAR(CDR(args)), CAR(CDR(CDR(args))))
 }
 
 /// GNU `kappa` — `1/rcond`, or `smax/smin` when `exact=TRUE`.
@@ -622,14 +606,12 @@ pub fn do_forwardsolve(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 fn coerce_numeric_matrix(x: SEXP) -> SEXP {
-    unsafe {
-        if TYPEOF(x) == SEXPTYPE::INTSXP || TYPEOF(x) == SEXPTYPE::LGLSXP {
-            let coerced = crate::mainutils::coerce::coerceVector(x, SEXPTYPE::REALSXP.as_c_int());
-            let _c = protect(coerced);
-            coerced
-        } else {
-            x
-        }
+    if TYPEOF(x) == SEXPTYPE::INTSXP || TYPEOF(x) == SEXPTYPE::LGLSXP {
+        let coerced = crate::mainutils::coerce::coerceVector(x, SEXPTYPE::REALSXP.as_c_int());
+        let _c = protect(coerced);
+        coerced
+    } else {
+        x
     }
 }
 

@@ -79,19 +79,19 @@ fn read_real(owner: OwnerToken<'_>, value: &Sexp<'_>, index: R_xlen_t) -> c_doub
 }
 fn real_parameter(owner: OwnerToken<'_>, raw: SEXP) -> c_double {
     active(owner);
-    let value = unsafe { asReal(raw) };
+    let value = asReal(raw);
     active(owner);
     value
 }
 fn integer_parameter(owner: OwnerToken<'_>, raw: SEXP) -> c_int {
     active(owner);
-    let value = unsafe { asInteger(raw) };
+    let value = asInteger(raw);
     active(owner);
     value
 }
 fn logical_parameter(owner: OwnerToken<'_>, raw: SEXP) -> c_int {
     active(owner);
-    let value = unsafe { asLogical(raw) };
+    let value = asLogical(raw);
     active(owner);
     value
 }
@@ -189,7 +189,7 @@ pub unsafe fn ApproxTest(x: SEXP, y: SEXP, method: SEXP, f: SEXP, na_rm: SEXP) -
     prepare_real(owner, &y);
     paired(&x, &y);
     if let Err(message) = R_approxtest(&x, &y, method, f, na_rm, owner) {
-        unsafe { crate::main::errors::Rf_error(message.as_ptr()) };
+        crate::main::errors::Rf_error(message.as_ptr());
     }
     active(owner);
     R_NilValue()
@@ -209,12 +209,12 @@ pub unsafe fn Approx(
     let x = x_input(owner, x);
     let y = real_input(owner, y);
     paired(&x, &y);
-    let xout = unsafe { coerceVector(v, SEXPTYPE::REALSXP.as_c_int()) };
+    let xout = coerceVector(v, SEXPTYPE::REALSXP.as_c_int());
     active(owner);
-    let _xout_guard = unsafe { protect_sexp(xout) };
+    let _xout_guard = protect_sexp(xout);
     let xout = real_input(owner, xout);
-    let yout = unsafe { Rf_allocVector3(SEXPTYPE::REALSXP, xout.len()) };
-    let _yout_guard = unsafe { protect_sexp(yout) };
+    let yout = Rf_allocVector3(SEXPTYPE::REALSXP, xout.len());
+    let _yout_guard = protect_sexp(yout);
     let mut output = SexpMut::try_from_checked(real_input(owner, yout))
         .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
     let kind = integer_parameter(owner, method);

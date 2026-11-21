@@ -29,12 +29,10 @@ use crate::attrib_core::{R_DimNamesSymbol, R_NamesSymbol, getAttrib, setAttrib};
 // ---------------------------------------------------------------------------
 
 unsafe fn SETCADR(x: SEXP, y: SEXP) {
-    unsafe {
-        if !x.is_null() {
-            let cdr = CDR(x);
-            if !cdr.is_null() {
-                SETCAR(cdr, y);
-            }
+    if !x.is_null() {
+        let cdr = CDR(x);
+        if !cdr.is_null() {
+            SETCAR(cdr, y);
         }
     }
 }
@@ -295,7 +293,7 @@ unsafe extern "C-unwind" fn fmingr(
 // ---------------------------------------------------------------------------
 
 unsafe fn as_real(x: SEXP) -> c_double {
-    unsafe { crate::mainutils::coerce::asReal(x) }
+    crate::mainutils::coerce::asReal(x)
 }
 
 // ---------------------------------------------------------------------------
@@ -303,7 +301,7 @@ unsafe fn as_real(x: SEXP) -> c_double {
 // ---------------------------------------------------------------------------
 
 unsafe fn as_integer(x: SEXP) -> c_int {
-    unsafe { crate::mainutils::coerce::asInteger(x) }
+    crate::mainutils::coerce::asInteger(x)
 }
 
 // ---------------------------------------------------------------------------
@@ -311,13 +309,11 @@ unsafe fn as_integer(x: SEXP) -> c_int {
 // ---------------------------------------------------------------------------
 
 unsafe fn is_function(x: SEXP) -> bool {
-    unsafe {
-        if x.is_null() {
-            return false;
-        }
-        let t = TYPEOF(x);
-        t == SEXPTYPE::CLOSXP || t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP
+    if x.is_null() {
+        return false;
     }
+    let t = TYPEOF(x);
+    t == SEXPTYPE::CLOSXP || t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP
 }
 
 // ---------------------------------------------------------------------------
@@ -325,12 +321,10 @@ unsafe fn is_function(x: SEXP) -> bool {
 // ---------------------------------------------------------------------------
 
 unsafe fn is_string(x: SEXP) -> bool {
-    unsafe {
-        if x.is_null() {
-            return false;
-        }
-        TYPEOF(x) == SEXPTYPE::STRSXP
+    if x.is_null() {
+        return false;
     }
+    TYPEOF(x) == SEXPTYPE::STRSXP
 }
 
 // ---------------------------------------------------------------------------
@@ -342,7 +336,7 @@ unsafe fn eval(call: SEXP, rho: SEXP) -> SEXP {
 }
 
 unsafe fn coerceVector(x: SEXP, type_: c_int) -> SEXP {
-    unsafe { crate::main::coerce::coerceVector(x, type_) }
+    crate::main::coerce::coerceVector(x, type_)
 }
 
 unsafe fn duplicate(x: SEXP) -> SEXP {
@@ -892,7 +886,7 @@ pub unsafe fn optim(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 // Read task as bytes
                 let task_len = task.iter().position(|&c| c == 0).unwrap_or(60);
                 let task_bytes: &[u8] =
-                    unsafe { std::slice::from_raw_parts(task.as_ptr() as *const u8, task_len) };
+                    std::slice::from_raw_parts(task.as_ptr() as *const u8, task_len);
                 let copy_msg = |lmsg: &mut [u8; 60]| {
                     for j in 0..task_len.min(60) {
                         lmsg[j] = task_bytes[j];

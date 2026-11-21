@@ -75,14 +75,7 @@ fn posixlt_convert_tz(value: SEXP, value_tz: &str, x_tz: &str) -> SEXP {
     }
 }
 
-fn subassign_posixlt_time(
-    x: SEXP,
-    i: SEXP,
-    value: SEXP,
-    call: SEXP,
-    op: SEXP,
-    env: SEXP,
-) -> SEXP {
+fn subassign_posixlt_time(x: SEXP, i: SEXP, value: SEXP, call: SEXP, op: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let ncomp = XLENGTH(x);
         let mut n: R_xlen_t = 0;

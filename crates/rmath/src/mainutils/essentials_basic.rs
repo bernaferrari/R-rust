@@ -977,30 +977,21 @@ pub unsafe fn do_ifelse(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 }
 
 unsafe fn ifelse_copy_shape(src: SEXP, dst: SEXP) {
-    unsafe {
-        let names =
-            crate::sexp::attrib_core::getAttrib(src, crate::sexp::attrib_core::R_NamesSymbol());
-        if !names.is_null() && names != R_NilValue() {
+    let names = crate::sexp::attrib_core::getAttrib(src, crate::sexp::attrib_core::R_NamesSymbol());
+    if !names.is_null() && names != R_NilValue() {
+        crate::sexp::attrib_core::setAttrib(dst, crate::sexp::attrib_core::R_NamesSymbol(), names);
+    }
+    let dim = crate::sexp::attrib_core::getAttrib(src, crate::sexp::attrib_core::R_DimSymbol());
+    if !dim.is_null() && dim != R_NilValue() {
+        crate::sexp::attrib_core::setAttrib(dst, crate::sexp::attrib_core::R_DimSymbol(), dim);
+        let dn =
+            crate::sexp::attrib_core::getAttrib(src, crate::sexp::attrib_core::R_DimNamesSymbol());
+        if !dn.is_null() && dn != R_NilValue() {
             crate::sexp::attrib_core::setAttrib(
                 dst,
-                crate::sexp::attrib_core::R_NamesSymbol(),
-                names,
-            );
-        }
-        let dim = crate::sexp::attrib_core::getAttrib(src, crate::sexp::attrib_core::R_DimSymbol());
-        if !dim.is_null() && dim != R_NilValue() {
-            crate::sexp::attrib_core::setAttrib(dst, crate::sexp::attrib_core::R_DimSymbol(), dim);
-            let dn = crate::sexp::attrib_core::getAttrib(
-                src,
                 crate::sexp::attrib_core::R_DimNamesSymbol(),
+                dn,
             );
-            if !dn.is_null() && dn != R_NilValue() {
-                crate::sexp::attrib_core::setAttrib(
-                    dst,
-                    crate::sexp::attrib_core::R_DimNamesSymbol(),
-                    dn,
-                );
-            }
         }
     }
 }
@@ -1670,24 +1661,20 @@ fn table_exclude(args: SEXP) -> Option<Vec<String>> {
 }
 
 fn factor_levels(x: SEXP) -> Option<SEXP> {
-    unsafe {
-        let class =
-            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_ClassSymbol());
-        if class.is_null() || class == R_NilValue() || TYPEOF(class) != SEXPTYPE::STRSXP {
-            return None;
-        }
-        let is_factor = (0..XLENGTH(class))
-            .any(|i| crate::mainutils::essentials::elt_to_string(class, i) == "factor");
-        if !is_factor {
-            return None;
-        }
-        let levels =
-            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_LevelsSymbol());
-        if levels.is_null() || levels == R_NilValue() || TYPEOF(levels) != SEXPTYPE::STRSXP {
-            None
-        } else {
-            Some(levels)
-        }
+    let class = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_ClassSymbol());
+    if class.is_null() || class == R_NilValue() || TYPEOF(class) != SEXPTYPE::STRSXP {
+        return None;
+    }
+    let is_factor = (0..XLENGTH(class))
+        .any(|i| crate::mainutils::essentials::elt_to_string(class, i) == "factor");
+    if !is_factor {
+        return None;
+    }
+    let levels = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_LevelsSymbol());
+    if levels.is_null() || levels == R_NilValue() || TYPEOF(levels) != SEXPTYPE::STRSXP {
+        None
+    } else {
+        Some(levels)
     }
 }
 
@@ -1950,23 +1937,21 @@ pub unsafe fn do_as_pairlist(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
 
 /// R's `pairlist(...)` — build a LISTSXP preserving argument tags.
 pub unsafe fn do_pairlist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let n = pairlist_len(args);
-        let result = Rf_allocList(n);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _result_guard = protect(result);
-        let mut src = args;
-        let mut dst = result;
-        while !src.is_null() && src != R_NilValue() && !dst.is_null() && dst != R_NilValue() {
-            SETCAR(dst, CAR(src));
-            SETTAG(dst, TAG(src));
-            src = CDR(src);
-            dst = CDR(dst);
-        }
-        result
+    let n = pairlist_len(args);
+    let result = Rf_allocList(n);
+    if result.is_null() {
+        return R_NilValue();
     }
+    let _result_guard = protect(result);
+    let mut src = args;
+    let mut dst = result;
+    while !src.is_null() && src != R_NilValue() && !dst.is_null() && dst != R_NilValue() {
+        SETCAR(dst, CAR(src));
+        SETTAG(dst, TAG(src));
+        src = CDR(src);
+        dst = CDR(dst);
+    }
+    result
 }
 
 /// R's `as.vector(x, mode)` — GNU coerce.c `do_asvector`.
@@ -2060,47 +2045,43 @@ pub unsafe fn do_as_vector(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
 /// - errors with the allocVector message for anything else
 ///   (`as.symbol(NULL)`, `as.symbol(list("x"))`).
 pub unsafe fn do_as_symbol(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        let t = TYPEOF(x);
+    let x = CAR(args);
+    let t = TYPEOF(x);
 
-        if t == SEXPTYPE::SYMSXP {
-            return x;
-        }
-
-        let chars = match t {
-            t if t == SEXPTYPE::CHARSXP => {
-                return crate::mainutils::subset::installTrChar(x);
-            }
-            t if t == SEXPTYPE::STRSXP => x,
-            t if t == SEXPTYPE::LGLSXP
-                || t == SEXPTYPE::INTSXP
-                || t == SEXPTYPE::REALSXP
-                || t == SEXPTYPE::CPLXSXP
-                || t == SEXPTYPE::RAWSXP =>
-            {
-                crate::mainutils::coerce::coerceVector(x, SEXPTYPE::STRSXP.as_c_int())
-            }
-            _ => {
-                let message = format!(
-                    "invalid type/length (symbol/{}) in vector allocation",
-                    LENGTH(x)
-                );
-                crate::mainutils::errors::Rf_error(
-                    CString::new(message).unwrap_or_default().as_ptr(),
-                );
-                unreachable!()
-            }
-        };
-        let _chars_guard = protect(chars);
-
-        if chars.is_null() || chars == R_NilValue() || XLENGTH(chars) == 0 {
-            crate::mainutils::errors::Rf_error(
-                c"invalid data of mode 'character' (too short)".as_ptr(),
-            );
-        }
-        crate::mainutils::subset::installTrChar(STRING_ELT(chars, 0))
+    if t == SEXPTYPE::SYMSXP {
+        return x;
     }
+
+    let chars = match t {
+        t if t == SEXPTYPE::CHARSXP => {
+            return crate::mainutils::subset::installTrChar(x);
+        }
+        t if t == SEXPTYPE::STRSXP => x,
+        t if t == SEXPTYPE::LGLSXP
+            || t == SEXPTYPE::INTSXP
+            || t == SEXPTYPE::REALSXP
+            || t == SEXPTYPE::CPLXSXP
+            || t == SEXPTYPE::RAWSXP =>
+        {
+            crate::mainutils::coerce::coerceVector(x, SEXPTYPE::STRSXP.as_c_int())
+        }
+        _ => {
+            let message = format!(
+                "invalid type/length (symbol/{}) in vector allocation",
+                LENGTH(x)
+            );
+            crate::mainutils::errors::Rf_error(CString::new(message).unwrap_or_default().as_ptr());
+            unreachable!()
+        }
+    };
+    let _chars_guard = protect(chars);
+
+    if chars.is_null() || chars == R_NilValue() || XLENGTH(chars) == 0 {
+        crate::mainutils::errors::Rf_error(
+            c"invalid data of mode 'character' (too short)".as_ptr(),
+        );
+    }
+    crate::mainutils::subset::installTrChar(STRING_ELT(chars, 0))
 }
 
 unsafe fn duplicate_without_attributes(x: SEXP) -> SEXP {

@@ -299,51 +299,48 @@ enum TableColClass {
 }
 
 fn parse_table_col_classes(arg: SEXP, col_names: &[String]) -> Vec<TableColClass> {
-    unsafe {
-        let ncols = col_names.len();
-        let mut declared: Vec<Option<TableColClass>> = vec![None; ncols];
-        if !arg.is_null() && arg != R_NilValue() && TYPEOF(arg) == SEXPTYPE::STRSXP {
-            let n = XLENGTH(arg) as usize;
-            let names =
-                crate::sexp::attrib_core::getAttrib(arg, crate::sexp::attrib_core::R_NamesSymbol());
-            let named = !names.is_null()
-                && names != R_NilValue()
-                && TYPEOF(names) == SEXPTYPE::STRSXP
-                && XLENGTH(names) == n as i64;
-            if named {
-                let mut missing = false;
-                for src in 0..n {
-                    if is_string_na(arg, src as R_xlen_t) {
-                        continue;
-                    }
-                    let nm = elt_to_string(names, src as R_xlen_t);
-                    if let Some(j) = col_names.iter().position(|c| c == &nm) {
-                        declared[j] =
-                            Some(table_col_class_name(&elt_to_string(arg, src as R_xlen_t)));
-                    } else {
-                        missing = true;
-                    }
+    let ncols = col_names.len();
+    let mut declared: Vec<Option<TableColClass>> = vec![None; ncols];
+    if !arg.is_null() && arg != R_NilValue() && TYPEOF(arg) == SEXPTYPE::STRSXP {
+        let n = XLENGTH(arg) as usize;
+        let names =
+            crate::sexp::attrib_core::getAttrib(arg, crate::sexp::attrib_core::R_NamesSymbol());
+        let named = !names.is_null()
+            && names != R_NilValue()
+            && TYPEOF(names) == SEXPTYPE::STRSXP
+            && XLENGTH(names) == n as i64;
+        if named {
+            let mut missing = false;
+            for src in 0..n {
+                if is_string_na(arg, src as R_xlen_t) {
+                    continue;
                 }
-                if missing {
-                    let msg = std::ffi::CString::new("not all columns named in 'colClasses' exist")
-                        .unwrap_or_default();
-                    crate::mainutils::errors::Rf_warning(msg.as_ptr());
-                }
-            } else if n > 0 {
-                for j in 0..ncols {
-                    let src = j % n;
-                    if is_string_na(arg, src as R_xlen_t) {
-                        continue;
-                    }
+                let nm = elt_to_string(names, src as R_xlen_t);
+                if let Some(j) = col_names.iter().position(|c| c == &nm) {
                     declared[j] = Some(table_col_class_name(&elt_to_string(arg, src as R_xlen_t)));
+                } else {
+                    missing = true;
                 }
             }
+            if missing {
+                let msg = std::ffi::CString::new("not all columns named in 'colClasses' exist")
+                    .unwrap_or_default();
+                crate::mainutils::errors::Rf_warning(msg.as_ptr());
+            }
+        } else if n > 0 {
+            for j in 0..ncols {
+                let src = j % n;
+                if is_string_na(arg, src as R_xlen_t) {
+                    continue;
+                }
+                declared[j] = Some(table_col_class_name(&elt_to_string(arg, src as R_xlen_t)));
+            }
         }
-        declared
-            .into_iter()
-            .map(|d| d.unwrap_or(TableColClass::Infer))
-            .collect()
     }
+    declared
+        .into_iter()
+        .map(|d| d.unwrap_or(TableColClass::Infer))
+        .collect()
 }
 
 fn table_col_class_name(name: &str) -> TableColClass {

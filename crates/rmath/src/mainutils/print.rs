@@ -315,7 +315,7 @@ fn IS_S4_OBJECT(x: SEXP) -> c_int {
 }
 
 unsafe fn isMethodsDispatchOn() -> c_int {
-    unsafe { crate::mainutils::objects::isMethodsDispatchOn() }
+    crate::mainutils::objects::isMethodsDispatchOn()
 }
 
 fn isByteCode(_x: SEXP) -> c_int {
@@ -364,7 +364,7 @@ unsafe fn isValidName(s: *const c_char) -> bool {
 
 /// NA_STRING accessor.
 fn NA_STRING_local() -> SEXP {
-     crate::mainutils::relop::NA_STRING() 
+    crate::mainutils::relop::NA_STRING()
 }
 
 /// Get matrix dimnames (delegate to printvector).
@@ -392,12 +392,10 @@ unsafe fn allocArray(mode: c_int, dims: SEXP) -> SEXP {
 
 /// Use the shared GNU scalar coercion, including string and complex admission.
 unsafe fn asInteger(x: SEXP) -> c_int {
-    unsafe {
-        if x.is_null() {
-            NA_INTEGER
-        } else {
-            crate::mainutils::coerce::asInteger(x)
-        }
+    if x.is_null() {
+        NA_INTEGER
+    } else {
+        crate::mainutils::coerce::asInteger(x)
     }
 }
 

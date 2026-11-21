@@ -169,13 +169,11 @@ fn isBlankString(s: *const core::ffi::c_char) -> c_int {
 
 /// Check if SEXP has a dim attribute (is an array)
 fn isArray(x: SEXP) -> c_int {
-    unsafe {
-        let dim = attrib_core::getAttrib(x, attrib_core::R_DimSymbol());
-        if dim.is_null() || dim == R_NilValue() {
-            0
-        } else {
-            1
-        }
+    let dim = attrib_core::getAttrib(x, attrib_core::R_DimSymbol());
+    if dim.is_null() || dim == R_NilValue() {
+        0
+    } else {
+        1
     }
 }
 
@@ -1002,12 +1000,7 @@ fn scanchar(inQuote: bool, d: &mut LocalData) -> c_int {
 }
 
 /* ruleout_types — determine possible types for a string */
-fn ruleout_types(
-    s: *const c_char,
-    typeInfo: &mut Typecvt_Info,
-    data: &LocalData,
-    exact: c_int,
-) {
+fn ruleout_types(s: *const c_char, typeInfo: &mut Typecvt_Info, data: &LocalData, exact: c_int) {
     unsafe {
         if s.is_null() {
             return;
@@ -1074,7 +1067,7 @@ fn isna(x: SEXP, indx: R_xlen_t) -> bool {
 
 /* NA_STRING — get the NA string sentinel */
 fn NA_STRING() -> SEXP {
-    unsafe { crate::main::relop::NA_STRING() }
+    crate::main::relop::NA_STRING()
 }
 
 /* ========== Local helper functions ========== */
@@ -1147,9 +1140,7 @@ fn inherits(x: SEXP, _what: *const c_char) -> bool {
 /// SET_TYPEOF — set the type of a SEXP
 #[inline]
 fn SET_TYPEOF(x: SEXP, v: SEXPTYPE) {
-    unsafe {
-        crate::sexp::accessors::SET_TYPEOF(x, v.as_c_int());
-    }
+    crate::sexp::accessors::SET_TYPEOF(x, v.as_c_int());
 }
 
 /// strchr helper for quoteset
@@ -1860,10 +1851,8 @@ pub fn typeconvert(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
  * Always returns 0 (no selection).
  */
 pub fn menu(choices: SEXP) -> SEXP {
-    unsafe {
-        let _ = choices;
-        Rf_ScalarInteger(0)
-    }
+    let _ = choices;
+    Rf_ScalarInteger(0)
 }
 
 /*

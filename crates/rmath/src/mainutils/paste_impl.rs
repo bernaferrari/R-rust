@@ -108,23 +108,23 @@ fn errorcall(_call: SEXP, fmt: *const c_char, _a1: usize, _a2: usize, _a3: usize
 }
 
 unsafe fn asLogical(x: SEXP) -> c_int {
-    unsafe { crate::mainutils::coerce::asLogical(x) }
+    crate::mainutils::coerce::asLogical(x)
 }
 
 unsafe fn asInteger(x: SEXP) -> c_int {
-    unsafe { crate::mainutils::coerce::asInteger(x) }
+    crate::mainutils::coerce::asInteger(x)
 }
 
 unsafe fn asReal(x: SEXP) -> c_double {
-    unsafe { crate::mainutils::coerce::asReal(x) }
+    crate::mainutils::coerce::asReal(x)
 }
 
 unsafe fn asBool2(x: SEXP, call: SEXP) -> bool {
-    unsafe { crate::mainutils::coerce::asRbool(x, call) != 0 }
+    crate::mainutils::coerce::asRbool(x, call) != 0
 }
 
 unsafe fn coerceVector(s: SEXP, t: c_int) -> SEXP {
-    unsafe { crate::mainutils::coerce::coerceVector(s, t) }
+    crate::mainutils::coerce::coerceVector(s, t)
 }
 
 unsafe fn translateChar(s: SEXP) -> *const c_char {
@@ -343,7 +343,7 @@ unsafe fn R_AsCharacterSymbol() -> SEXP {
 }
 
 fn NA_STRING() -> SEXP {
-     crate::mainutils::relop::NA_STRING() 
+    crate::mainutils::relop::NA_STRING()
 }
 
 fn PRIMARITY(_op: SEXP) -> c_int {

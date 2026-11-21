@@ -115,11 +115,9 @@ pub(crate) fn parse_posixct_comparison_seconds(text: &str) -> Option<f64> {
 }
 
 pub(crate) unsafe fn is_numeric_version(x: SEXP) -> bool {
-    unsafe {
-        crate::mainutils::essentials::sexp_has_class(x, "numeric_version")
-            || crate::mainutils::essentials::sexp_has_class(x, "package_version")
-            || crate::mainutils::essentials::sexp_has_class(x, "R_system_version")
-    }
+    crate::mainutils::essentials::sexp_has_class(x, "numeric_version")
+        || crate::mainutils::essentials::sexp_has_class(x, "package_version")
+        || crate::mainutils::essentials::sexp_has_class(x, "R_system_version")
 }
 
 pub(crate) unsafe fn version_components(x: SEXP) -> Option<Vec<i32>> {
@@ -207,19 +205,17 @@ pub(crate) unsafe fn date_binary_comparison(op: &str, a: SEXP, b: SEXP) -> Optio
     }
 }
 pub(crate) unsafe fn posixlt_as_posixct_operand(call: SEXP, x: SEXP) -> SEXP {
-    unsafe {
-        if crate::mainutils::essentials::sexp_has_class(x, "POSIXlt") {
-            let ct = crate::mainutils::essentials::do_as_POSIXct(
-                call,
-                R_NilValue(),
-                Rf_cons(x, R_NilValue()),
-                R_NilValue(),
-            );
-            let _ct = protect(ct);
-            ct
-        } else {
-            x
-        }
+    if crate::mainutils::essentials::sexp_has_class(x, "POSIXlt") {
+        let ct = crate::mainutils::essentials::do_as_POSIXct(
+            call,
+            R_NilValue(),
+            Rf_cons(x, R_NilValue()),
+            R_NilValue(),
+        );
+        let _ct = protect(ct);
+        ct
+    } else {
+        x
     }
 }
 

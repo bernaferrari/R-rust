@@ -416,7 +416,7 @@ pub fn do_substitute(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 pub fn match_substitute_args(args: SEXP) -> (SEXP, SEXP) {
-     {
+    {
         let mut formals = [SubstituteFormal::new("expr"), SubstituteFormal::new("env")];
         let mut actuals = Vec::new();
         let mut current = args;
@@ -589,7 +589,7 @@ pub fn deparse_substitute_arg(value: SEXP) -> String {
 }
 
 pub fn unused_substitute_arg(tag: SEXP, value: SEXP) -> ! {
-     {
+    {
         let deparsed = deparse_substitute_arg(value);
         let arg = match symbol_name(tag) {
             Some(name) if !name.is_empty() => format!("{name} = {deparsed}"),

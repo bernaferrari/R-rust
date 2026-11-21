@@ -20,16 +20,14 @@ pub fn src2buff1(_srcref: SEXP, _d: *mut LocalParseData) {
 
 /// Deparse source element k to buffer if possible. Returns false on failure.
 pub unsafe fn src2buff(sv: SEXP, k: c_int, d: *mut LocalParseData) -> bool {
-    unsafe {
-        if !sv.is_null() && TYPEOF(sv) == SEXPTYPE::VECSXP && LENGTH(sv) > k {
-            let t = VECTOR_ELT(sv, k as R_xlen_t);
-            if !isNull(t) {
-                src2buff1(t, d);
-                return true;
-            }
+    if !sv.is_null() && TYPEOF(sv) == SEXPTYPE::VECSXP && LENGTH(sv) > k {
+        let t = VECTOR_ELT(sv, k as R_xlen_t);
+        if !isNull(t) {
+            src2buff1(t, d);
+            return true;
         }
-        false
     }
+    false
 }
 
 // ---------------------------------------------------------------------------

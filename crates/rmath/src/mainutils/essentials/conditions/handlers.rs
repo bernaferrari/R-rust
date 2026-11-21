@@ -143,49 +143,47 @@ fn attribs_equal_ignore_source(mut a: SEXP, mut b: SEXP) -> bool {
 
 /// GNU `globalCallingHandlers(...)` — register/inspect/clear global calling handlers.
 pub fn do_globalCallingHandlers(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        if args.is_null() || args == R_NilValue() {
-            crate::sexp::globals::set_R_Visible(TRUE);
-            return global_handlers_list();
-        }
+    if args.is_null() || args == R_NilValue() {
+        crate::sexp::globals::set_R_Visible(TRUE);
+        return global_handlers_list();
+    }
 
-        let first = CAR(args);
-        let rest = CDR(args);
-        let single = rest.is_null() || rest == R_NilValue();
+    let first = CAR(args);
+    let rest = CDR(args);
+    let single = rest.is_null() || rest == R_NilValue();
 
-        if single && (first.is_null() || first == R_NilValue()) {
-            refuse_if_local_handlers();
-            let old = global_handlers_list();
-            let _old = protect(old);
-            set_global_handlers_list(empty_named_list());
-            install_global_handler_stack(rho);
-
-            crate::sexp::globals::set_R_Visible(FALSE);
-            return old;
-        }
-
-        let incoming = if single
-            && TYPEOF(first) == SEXPTYPE::VECSXP
-            && (TAG(args).is_null() || TAG(args) == R_NilValue())
-        {
-            first
-        } else {
-            named_list_from_dots(args)
-        };
-        let _incoming = protect(incoming);
-        validate_named_handlers(incoming);
+    if single && (first.is_null() || first == R_NilValue()) {
         refuse_if_local_handlers();
-
-        let combined = prepend_handlers(incoming, global_handlers_list());
-        let _combined = protect(combined);
-        let combined = drop_duplicate_class_handlers(combined);
-        let _dedup = protect(combined);
-        set_global_handlers_list(combined);
+        let old = global_handlers_list();
+        let _old = protect(old);
+        set_global_handlers_list(empty_named_list());
         install_global_handler_stack(rho);
 
         crate::sexp::globals::set_R_Visible(FALSE);
-        R_NilValue()
+        return old;
     }
+
+    let incoming = if single
+        && TYPEOF(first) == SEXPTYPE::VECSXP
+        && (TAG(args).is_null() || TAG(args) == R_NilValue())
+    {
+        first
+    } else {
+        named_list_from_dots(args)
+    };
+    let _incoming = protect(incoming);
+    validate_named_handlers(incoming);
+    refuse_if_local_handlers();
+
+    let combined = prepend_handlers(incoming, global_handlers_list());
+    let _combined = protect(combined);
+    let combined = drop_duplicate_class_handlers(combined);
+    let _dedup = protect(combined);
+    set_global_handlers_list(combined);
+    install_global_handler_stack(rho);
+
+    crate::sexp::globals::set_R_Visible(FALSE);
+    R_NilValue()
 }
 
 fn global_handlers_list() -> SEXP {
@@ -207,7 +205,7 @@ fn set_global_handlers_list(list: SEXP) {
 }
 
 fn empty_named_list() -> SEXP {
-    unsafe { Rf_allocVector3(SEXPTYPE::VECSXP, 0) }
+    Rf_allocVector3(SEXPTYPE::VECSXP, 0)
 }
 
 fn named_list_from_dots(mut args: SEXP) -> SEXP {
@@ -238,7 +236,8 @@ fn named_list_from_dots(mut args: SEXP) -> SEXP {
                 .try_set_vector_elt(i, value)
                 .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
             let tag = TAG(args);
-            let charsxp = if tag.is_null() || tag == R_NilValue() || TYPEOF(tag) != SEXPTYPE::SYMSXP {
+            let charsxp = if tag.is_null() || tag == R_NilValue() || TYPEOF(tag) != SEXPTYPE::SYMSXP
+            {
                 owner
                     .sexp(Rf_mkChar(c"".as_ptr()))
                     .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
@@ -259,126 +258,112 @@ fn named_list_from_dots(mut args: SEXP) -> SEXP {
 }
 
 fn validate_named_handlers(list: SEXP) {
-    unsafe {
-        let n = XLENGTH(list);
-        let names =
-            crate::sexp::attrib_core::getAttrib(list, crate::sexp::attrib_core::R_NamesSymbol());
-        if n > 0 && (names.is_null() || names == R_NilValue() || TYPEOF(names) != SEXPTYPE::STRSXP)
+    let n = XLENGTH(list);
+    let names =
+        crate::sexp::attrib_core::getAttrib(list, crate::sexp::attrib_core::R_NamesSymbol());
+    if n > 0 && (names.is_null() || names == R_NilValue() || TYPEOF(names) != SEXPTYPE::STRSXP) {
+        std::panic::panic_any(crate::sexp::context::RError {
+            message: "condition handlers must be specified with a condition class".to_string(),
+        });
+    }
+    let owner = active_owner();
+    let names_owned = owner_sexp(owner, names);
+    let list_owned = owner_sexp(owner, list);
+    for i in 0..n {
+        if names.is_null()
+            || names == R_NilValue()
+            || names_owned
+                .try_string_elt(i)
+                .map(|elt| {
+                    elt.as_raw().is_null()
+                        || elt
+                            .header()
+                            .char_bytes()
+                            .map(|bytes| bytes.is_empty())
+                            .unwrap_or(true)
+                })
+                .unwrap_or(true)
         {
             std::panic::panic_any(crate::sexp::context::RError {
                 message: "condition handlers must be specified with a condition class".to_string(),
             });
         }
-        let owner = active_owner();
-        let names_owned = owner_sexp(owner, names);
-        let list_owned = owner_sexp(owner, list);
-        for i in 0..n {
-            if names.is_null()
-                || names == R_NilValue()
-                || names_owned
-                    .try_string_elt(i)
-                    .map(|elt| {
-                        elt.as_raw().is_null()
-                            || elt
-                                .header()
-                                .char_bytes()
-                                .map(|bytes| bytes.is_empty())
-                                .unwrap_or(true)
-                    })
-                    .unwrap_or(true)
-            {
-                std::panic::panic_any(crate::sexp::context::RError {
-                    message: "condition handlers must be specified with a condition class"
-                        .to_string(),
-                });
-            }
-            let elt = list_owned
-                .try_vector_elt(i)
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-            if !crate::mainutils::essentials::is_function_value(elt.as_raw()) {
-                std::panic::panic_any(crate::sexp::context::RError {
-                    message: "condition handlers must be functions".to_string(),
-                });
-            }
+        let elt = list_owned
+            .try_vector_elt(i)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        if !crate::mainutils::essentials::is_function_value(elt.as_raw()) {
+            std::panic::panic_any(crate::sexp::context::RError {
+                message: "condition handlers must be functions".to_string(),
+            });
         }
     }
 }
 
 fn prepend_handlers(new: SEXP, old: SEXP) -> SEXP {
-    unsafe {
-        let nn = XLENGTH(new);
-        let no = if old.is_null() || old == R_NilValue() {
-            0
-        } else {
-            XLENGTH(old)
-        };
-        let out = Rf_allocVector3(SEXPTYPE::VECSXP, nn + no);
-        let _out = protect(out);
-        let names = Rf_allocVector3(SEXPTYPE::STRSXP, nn + no);
-        let _names = protect(names);
-        let new_names =
-            crate::sexp::attrib_core::getAttrib(new, crate::sexp::attrib_core::R_NamesSymbol());
-        let old_names = if old.is_null() || old == R_NilValue() {
-            R_NilValue()
-        } else {
-            crate::sexp::attrib_core::getAttrib(old, crate::sexp::attrib_core::R_NamesSymbol())
-        };
-        let owner = active_owner();
-        let new_owned = owner_sexp(owner, new);
-        let new_names_owned = owner_sexp(owner, new_names);
-        let mut out_mut = owner
-            .sexp(out)
-            .and_then(SexpMut::try_from_checked)
+    let nn = XLENGTH(new);
+    let no = if old.is_null() || old == R_NilValue() {
+        0
+    } else {
+        XLENGTH(old)
+    };
+    let out = Rf_allocVector3(SEXPTYPE::VECSXP, nn + no);
+    let _out = protect(out);
+    let names = Rf_allocVector3(SEXPTYPE::STRSXP, nn + no);
+    let _names = protect(names);
+    let new_names =
+        crate::sexp::attrib_core::getAttrib(new, crate::sexp::attrib_core::R_NamesSymbol());
+    let old_names = if old.is_null() || old == R_NilValue() {
+        R_NilValue()
+    } else {
+        crate::sexp::attrib_core::getAttrib(old, crate::sexp::attrib_core::R_NamesSymbol())
+    };
+    let owner = active_owner();
+    let new_owned = owner_sexp(owner, new);
+    let new_names_owned = owner_sexp(owner, new_names);
+    let mut out_mut = owner
+        .sexp(out)
+        .and_then(SexpMut::try_from_checked)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    let mut names_mut = owner
+        .sexp(names)
+        .and_then(SexpMut::try_from_checked)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    for i in 0..nn {
+        let elt = new_owned
+            .try_vector_elt(i)
             .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        let mut names_mut = owner
-            .sexp(names)
-            .and_then(SexpMut::try_from_checked)
+        out_mut
+            .try_set_vector_elt(i, elt)
             .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        for i in 0..nn {
-            let elt = new_owned
-                .try_vector_elt(i)
+        if !new_names.is_null() && new_names != R_NilValue() {
+            let name = new_names_owned
+                .try_string_elt(i)
                 .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-            out_mut
-                .try_set_vector_elt(i, elt)
+            names_mut
+                .try_set_string_elt(i, name)
                 .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-            if !new_names.is_null() && new_names != R_NilValue() {
-                let name = new_names_owned
-                    .try_string_elt(i)
-                    .unwrap_or_else(|error| {
-                        crate::sexp::context::r_error(error.to_string())
-                    });
-                names_mut
-                    .try_set_string_elt(i, name)
-                    .unwrap_or_else(|error| {
-                        crate::sexp::context::r_error(error.to_string())
-                    });
-            }
         }
-        let old_owned = owner_sexp(owner, old);
-        let old_names_owned = owner_sexp(owner, old_names);
-        for i in 0..no {
-            let elt = old_owned
-                .try_vector_elt(i)
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-            out_mut
-                .try_set_vector_elt(nn + i, elt)
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-            if !old_names.is_null() && old_names != R_NilValue() {
-                let name = old_names_owned
-                    .try_string_elt(i)
-                    .unwrap_or_else(|error| {
-                        crate::sexp::context::r_error(error.to_string())
-                    });
-                names_mut
-                    .try_set_string_elt(nn + i, name)
-                    .unwrap_or_else(|error| {
-                        crate::sexp::context::r_error(error.to_string())
-                    });
-            }
-        }
-        crate::sexp::attrib_core::setAttrib(out, crate::sexp::attrib_core::R_NamesSymbol(), names);
-        out
     }
+    let old_owned = owner_sexp(owner, old);
+    let old_names_owned = owner_sexp(owner, old_names);
+    for i in 0..no {
+        let elt = old_owned
+            .try_vector_elt(i)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        out_mut
+            .try_set_vector_elt(nn + i, elt)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        if !old_names.is_null() && old_names != R_NilValue() {
+            let name = old_names_owned
+                .try_string_elt(i)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            names_mut
+                .try_set_string_elt(nn + i, name)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        }
+    }
+    crate::sexp::attrib_core::setAttrib(out, crate::sexp::attrib_core::R_NamesSymbol(), names);
+    out
 }
 
 fn drop_duplicate_class_handlers(list: SEXP) -> SEXP {
@@ -404,30 +389,22 @@ fn drop_duplicate_class_handlers(list: SEXP) -> SEXP {
                 }
                 let name_i = names_owned
                     .try_string_elt(i)
-                    .unwrap_or_else(|error| {
-                        crate::sexp::context::r_error(error.to_string())
-                    })
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
                     .as_raw();
                 let name_j = names_owned
                     .try_string_elt(j)
-                    .unwrap_or_else(|error| {
-                        crate::sexp::context::r_error(error.to_string())
-                    })
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
                     .as_raw();
                 if !chars_equal(name_i, name_j) {
                     continue;
                 }
                 let handler_i = list_owned
                     .try_vector_elt(i)
-                    .unwrap_or_else(|error| {
-                        crate::sexp::context::r_error(error.to_string())
-                    })
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
                     .as_raw();
                 let handler_j = list_owned
                     .try_vector_elt(j)
-                    .unwrap_or_else(|error| {
-                        crate::sexp::context::r_error(error.to_string())
-                    })
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
                     .as_raw();
                 if handlers_structurally_equal(handler_i, handler_j) {
                     keep[j as usize] = false;
@@ -472,24 +449,16 @@ fn drop_duplicate_class_handlers(list: SEXP) -> SEXP {
             if keep[i as usize] {
                 let elt = list_owned
                     .try_vector_elt(i)
-                    .unwrap_or_else(|error| {
-                        crate::sexp::context::r_error(error.to_string())
-                    });
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
                 out_mut
                     .try_set_vector_elt(k, elt)
-                    .unwrap_or_else(|error| {
-                        crate::sexp::context::r_error(error.to_string())
-                    });
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
                 let name = names_owned
                     .try_string_elt(i)
-                    .unwrap_or_else(|error| {
-                        crate::sexp::context::r_error(error.to_string())
-                    });
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
                 out_names_mut
                     .try_set_string_elt(k, name)
-                    .unwrap_or_else(|error| {
-                        crate::sexp::context::r_error(error.to_string())
-                    });
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
                 k += 1;
             }
         }
@@ -508,9 +477,8 @@ fn chars_equal(a: SEXP, b: SEXP) -> bool {
             return a == b;
         }
         let owner = active_owner();
-        let bytes = |value: SEXP| -> Option<Vec<u8>> {
-            owner_sexp(owner, value).header().char_bytes()
-        };
+        let bytes =
+            |value: SEXP| -> Option<Vec<u8>> { owner_sexp(owner, value).header().char_bytes() };
         match (bytes(a), bytes(b)) {
             (Some(ca), Some(cb)) => ca == cb,
             // Original compared raw CHAR pointers: both missing counts equal.
@@ -537,33 +505,31 @@ fn refuse_if_local_handlers() {
 }
 
 fn install_global_handler_stack(rho: SEXP) {
-    unsafe {
-        let factory = condition_entry_factory();
-        let rho = condition_entry_value(&factory, rho);
-        let gh = condition_entry_value(&factory, global_handlers_list());
-        let n = if gh.is_nil() { 0 } else { gh.len() };
-        let names = if n == 0 {
-            factory.nil()
-        } else {
-            condition_entry_value(
-                &factory,
-                crate::sexp::attrib_core::getAttrib(
-                    gh.as_raw(),
-                    crate::sexp::attrib_core::R_NamesSymbol(),
-                ),
-            )
-        };
-        let mut stack = factory.nil();
-        for i in (0..n).rev() {
-            let class_name = elt_to_string(names.as_raw(), i);
-            let handler = condition_entry_value(&factory, VECTOR_ELT(gh.as_raw(), i));
-            let entry = calling_handler_entry(&factory, &class_name, handler, &rho);
-            stack = factory
-                .pairlist_cell(&entry, &stack, &factory.nil())
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        }
-        set_condition_handler_stack(stack.as_raw());
+    let factory = condition_entry_factory();
+    let rho = condition_entry_value(&factory, rho);
+    let gh = condition_entry_value(&factory, global_handlers_list());
+    let n = if gh.is_nil() { 0 } else { gh.len() };
+    let names = if n == 0 {
+        factory.nil()
+    } else {
+        condition_entry_value(
+            &factory,
+            crate::sexp::attrib_core::getAttrib(
+                gh.as_raw(),
+                crate::sexp::attrib_core::R_NamesSymbol(),
+            ),
+        )
+    };
+    let mut stack = factory.nil();
+    for i in (0..n).rev() {
+        let class_name = elt_to_string(names.as_raw(), i);
+        let handler = condition_entry_value(&factory, VECTOR_ELT(gh.as_raw(), i));
+        let entry = calling_handler_entry(&factory, &class_name, handler, &rho);
+        stack = factory
+            .pairlist_cell(&entry, &stack, &factory.nil())
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
     }
+    set_condition_handler_stack(stack.as_raw());
 }
 
 fn pairlist_len(mut p: SEXP) -> i64 {
@@ -579,31 +545,29 @@ fn pairlist_len(mut p: SEXP) -> i64 {
 
 /// GNU `simpleCondition(message, call = NULL)`.
 pub fn do_simpleCondition(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-     super::condition_objects::native_simple_condition(args) 
+    super::condition_objects::native_simple_condition(args)
 }
 
 /// GNU `signalCondition(cond)` — invoke matching calling handlers.
 pub fn do_signalCondition_r(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let mut cond = if args.is_null() || args == R_NilValue() {
-            R_NilValue()
-        } else {
-            CAR(args)
-        };
-        if cond.is_null()
-            || cond == R_NilValue()
-            || crate::mainutils::objects::inherits2(cond, c"condition".as_ptr()) == 0
-        {
-            let msg = elt_to_string(cond, 0);
-            cond = simple_condition(&msg, &["simpleCondition", "condition"]);
-        }
-        let _cond = protect(cond);
-        signal_calling_handlers(cond, rho);
-        // GNU's .signalCondition primitive returns a visible NULL regardless
-        // of a returning calling handler's own visibility.
-        crate::sexp::globals::set_R_Visible(TRUE);
+    let mut cond = if args.is_null() || args == R_NilValue() {
         R_NilValue()
+    } else {
+        CAR(args)
+    };
+    if cond.is_null()
+        || cond == R_NilValue()
+        || crate::mainutils::objects::inherits2(cond, c"condition".as_ptr()) == 0
+    {
+        let msg = elt_to_string(cond, 0);
+        cond = simple_condition(&msg, &["simpleCondition", "condition"]);
     }
+    let _cond = protect(cond);
+    signal_calling_handlers(cond, rho);
+    // GNU's .signalCondition primitive returns a visible NULL regardless
+    // of a returning calling handler's own visibility.
+    crate::sexp::globals::set_R_Visible(TRUE);
+    R_NilValue()
 }
 
 // ---------------------------------------------------------------------------

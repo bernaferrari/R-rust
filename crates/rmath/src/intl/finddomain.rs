@@ -48,8 +48,9 @@ fn _nl_make_l10nflist(
 
     // Allocate mode: create a new entry and prepend it.
     // Allocate a zeroed `loaded_l10nfile`.
-    let new_entry = unsafe { std::alloc::alloc_zeroed(std::alloc::Layout::new::<loaded_l10nfile>()) }
-        as *mut loaded_l10nfile;
+    let new_entry =
+        unsafe { std::alloc::alloc_zeroed(std::alloc::Layout::new::<loaded_l10nfile>()) }
+            as *mut loaded_l10nfile;
     if new_entry.is_null() {
         return ptr::null_mut();
     }

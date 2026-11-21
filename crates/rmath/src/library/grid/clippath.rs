@@ -74,9 +74,9 @@ pub fn resolveClipPath(path: SEXP, dd: pGEDevDesc) -> SEXP {
     let resolve_fn = unsafe { findFun(resolve_sym, env) };
     let _resolve_fn_guard = protect(resolve_fn);
     // SAFETY: both arguments are live objects lent for the call.
-    let r_fcall = unsafe { Rf_lang2(resolve_fn, path) };
+    let r_fcall = Rf_lang2(resolve_fn, path);
     let _r_fcall_guard = protect(r_fcall);
     // SAFETY: R-eval bridge — `r_fcall` is protected above, `env` and `dd`
     // are the live evaluation context and device.
-    unsafe { ge::Rf_eval_with_gd(r_fcall, env, dd) }
+    ge::Rf_eval_with_gd(r_fcall, env, dd)
 }

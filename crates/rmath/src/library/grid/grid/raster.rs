@@ -1,7 +1,7 @@
 use super::*;
 use crate::library::grid::{
-    alloc_vector, checked, duplicate, get_attrib, inherits, integer_elt,
-    logical_elt, protect, real_elt,
+    alloc_vector, checked, duplicate, get_attrib, inherits, integer_elt, logical_elt, protect,
+    real_elt,
 };
 
 pub fn L_raster(
@@ -22,8 +22,7 @@ pub fn L_raster(
         let _currentgp_guard = protect(currentgp);
         set_gp_fill_string(currentgp, "transparent");
 
-        let (vpWidthCM, vpHeightCM, transform, rotationAngle) =
-            getViewportTransform(currentvp, dd);
+        let (vpWidthCM, vpHeightCM, transform, rotationAngle) = getViewportTransform(currentvp, dd);
         let mut vpc = LViewportContext::default();
         getViewportContext(currentvp, &mut vpc);
 
@@ -37,32 +36,29 @@ pub fn L_raster(
         let n = LENGTH(raster);
         if n <= 0 {
             // SAFETY: longjmp-style error bridge; does not return.
-            unsafe { Rf_error(c"Empty raster".as_ptr()) };
+            Rf_error(c"Empty raster".as_ptr());
         }
 
         let mut image_owned: Vec<c_uint>;
         let image: *mut c_uint = if inherits(raster, c"nativeRaster")
             && TYPEOF(raster) == SEXPTYPE::INTSXP
         {
-            checked(raster)
-                .data_ptr()
-                .unwrap_or(std::ptr::null_mut()) as *mut c_uint
+            checked(raster).data_ptr().unwrap_or(std::ptr::null_mut()) as *mut c_uint
         } else {
             image_owned = vec![0; n as usize];
             for i in 0..n as usize {
                 // SAFETY: `raster` is a live object; `RGBpar3` is the engine
                 // colour parser bridge over its element data.
-                image_owned[i] = unsafe {
-                    RGBpar3(raster as *mut c_void, i as c_int, R_TRANWHITE as c_uint)
-                };
+                image_owned[i] =
+                    unsafe { RGBpar3(raster as *mut c_void, i as c_int, R_TRANWHITE as c_uint) };
             }
             image_owned.as_mut_ptr()
         };
 
-        let dim = get_attrib(raster, unsafe { R_DimSymbol() });
+        let dim = get_attrib(raster, R_DimSymbol());
         if TYPEOF(dim) != SEXPTYPE::INTSXP || LENGTH(dim) < 2 {
             // SAFETY: longjmp-style error bridge; does not return.
-            unsafe { Rf_error(c"invalid raster dimensions".as_ptr()) };
+            Rf_error(c"invalid raster dimensions".as_ptr());
         }
 
         let mut maxn = unitLength(x);
@@ -74,27 +70,15 @@ pub fn L_raster(
         let interp_len = LENGTH(interpolate).max(1) as usize;
 
         // SAFETY: `dd` is the live device returned above.
-        unsafe { GEMode(1, dd) };
+        GEMode(1, dd);
         for i in 0..maxn as usize {
-            updateGContext(
-                currentgp,
-                i as c_int,
-                gc,
-                dd,
-                &mut gp_is_scalar,
-                gc_cache,
-            );
+            updateGContext(currentgp, i as c_int, gc, dd, &mut gp_is_scalar, gc_cache);
 
             let mut xx: c_double;
             let mut yy: c_double;
-            (xx, yy) = transformLocn(x,
-                y,
-                i as c_int,
-                vpc,
-                gc,
-                vpWidthCM,
-                vpHeightCM,
-                dd, &transform);
+            (xx, yy) = transformLocn(
+                x, y, i as c_int, vpc, gc, vpWidthCM, vpHeightCM, dd, &transform,
+            );
             let mut ww = transformWidthtoINCHES(w, i as c_int, vpc, gc, vpWidthCM, vpHeightCM, dd);
             let mut hh = transformHeighttoINCHES(h, i as c_int, vpc, gc, vpWidthCM, vpHeightCM, dd);
             let hjust_i = if TYPEOF(hjust) == SEXPTYPE::REALSXP && LENGTH(hjust) > 0 {
@@ -120,26 +104,25 @@ pub fn L_raster(
                 // engine bridges. `image` is either a live INTSXP data buffer
                 // or a Rust Vec with `n` elements whose lifetime covers the
                 // call.
-                unsafe {
-                    xx = toDeviceX(xx, GE_INCHES, dd);
-                    yy = toDeviceY(yy, GE_INCHES, dd);
-                    ww = toDeviceWidth(ww, GE_INCHES, dd);
-                    hh = toDeviceHeight(hh, GE_INCHES, dd);
-                    if xx.is_finite() && yy.is_finite() && ww.is_finite() && hh.is_finite() {
-                        GERaster(
-                            image,
-                            integer_elt(dim, 1),
-                            integer_elt(dim, 0),
-                            xx,
-                            yy,
-                            ww,
-                            hh,
-                            rotationAngle,
-                            interp_i,
-                            gc,
-                            dd,
-                        );
-                    }
+
+                xx = toDeviceX(xx, GE_INCHES, dd);
+                yy = toDeviceY(yy, GE_INCHES, dd);
+                ww = toDeviceWidth(ww, GE_INCHES, dd);
+                hh = toDeviceHeight(hh, GE_INCHES, dd);
+                if xx.is_finite() && yy.is_finite() && ww.is_finite() && hh.is_finite() {
+                    GERaster(
+                        image,
+                        integer_elt(dim, 1),
+                        integer_elt(dim, 0),
+                        xx,
+                        yy,
+                        ww,
+                        hh,
+                        rotationAngle,
+                        interp_i,
+                        gc,
+                        dd,
+                    );
                 }
             } else {
                 let (xadj, yadj) = justification(ww, hh, hjust_i, vjust_i);
@@ -147,7 +130,8 @@ pub fn L_raster(
                 let _xadj_guard = protect(xadjInches);
                 let yadjInches = unit(yadj, L_INCHES);
                 let _yadj_guard = protect(yadjInches);
-                                                let (dw, dh) = transformDimn(xadjInches,
+                let (dw, dh) = transformDimn(
+                    xadjInches,
                     yadjInches,
                     0,
                     vpc,
@@ -155,37 +139,37 @@ pub fn L_raster(
                     vpWidthCM,
                     vpHeightCM,
                     dd,
-                    rotationAngle);
+                    rotationAngle,
+                );
                 let mut xbl = xx + dw;
                 let mut ybl = yy + dh;
                 // SAFETY: `dd` is the live device; `toDevice*`/`GERaster`
                 // are engine bridges over the live `image` buffer.
-                unsafe {
-                    xbl = toDeviceX(xbl, GE_INCHES, dd);
-                    ybl = toDeviceY(ybl, GE_INCHES, dd);
-                    ww = toDeviceWidth(ww, GE_INCHES, dd);
-                    hh = toDeviceHeight(hh, GE_INCHES, dd);
-                    if xbl.is_finite() && ybl.is_finite() && ww.is_finite() && hh.is_finite() {
-                        GERaster(
-                            image,
-                            integer_elt(dim, 1),
-                            integer_elt(dim, 0),
-                            xbl,
-                            ybl,
-                            ww,
-                            hh,
-                            rotationAngle,
-                            interp_i,
-                            gc,
-                            dd,
-                        );
-                    }
+
+                xbl = toDeviceX(xbl, GE_INCHES, dd);
+                ybl = toDeviceY(ybl, GE_INCHES, dd);
+                ww = toDeviceWidth(ww, GE_INCHES, dd);
+                hh = toDeviceHeight(hh, GE_INCHES, dd);
+                if xbl.is_finite() && ybl.is_finite() && ww.is_finite() && hh.is_finite() {
+                    GERaster(
+                        image,
+                        integer_elt(dim, 1),
+                        integer_elt(dim, 0),
+                        xbl,
+                        ybl,
+                        ww,
+                        hh,
+                        rotationAngle,
+                        interp_i,
+                        gc,
+                        dd,
+                    );
                 }
             }
         }
         // SAFETY: `dd` is the live device; engine mode teardown mirrors
         // the `GEMode(1, dd)` above.
-        unsafe { GEMode(0, dd) };
+        GEMode(0, dd);
         R_NilValue()
     }
 }

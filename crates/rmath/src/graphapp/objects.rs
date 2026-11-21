@@ -139,7 +139,9 @@ pub fn decrease_refcount(obj: object) {
 
     // Add to deletion list
     let new_node = memory::memalloc_bytes(std::mem::size_of::<DelNode>()) as *mut DelNode;
-    let Some(node) = ptr_mut(new_node) else { return };
+    let Some(node) = ptr_mut(new_node) else {
+        return;
+    };
     node.obj = obj;
     node.next = new_node;
     node.prev = new_node;
@@ -248,8 +250,7 @@ fn free_private(obj: object) {
 
 fn free_object(obj: object) {
     free_private(obj);
-    let Some((drawstate, text, call)) = obj_ref(obj).map(|o| (o.drawstate, o.text, o.call))
-    else {
+    let Some((drawstate, text, call)) = obj_ref(obj).map(|o| (o.drawstate, o.text, o.call)) else {
         return;
     };
     if !drawstate.is_null() {
@@ -436,7 +437,9 @@ fn find_valid_sibling(obj: object, next_dir: bool) -> object {
     let first = obj;
     let mut o = obj;
     loop {
-        let Some(o_ref) = obj_ref(o) else { return first };
+        let Some(o_ref) = obj_ref(o) else {
+            return first;
+        };
         if (o_ref.kind & ControlObject) != 0
             && (o_ref.state & GA_Enabled) != 0
             && (o_ref.state & GA_Visible) != 0

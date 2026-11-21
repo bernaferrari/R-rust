@@ -295,35 +295,33 @@ fn pbirthday_k2(n: i64, classes: f64) -> f64 {
 
 /// GNU `qbirthday(prob=0.5, classes=365, coincident=2)` — smallest n.
 pub fn do_qbirthday(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let p_arg = CAR(args);
-        let p = if p_arg.is_null() || p_arg == R_NilValue() || p_arg == R_MissingArg() {
-            0.5
-        } else {
-            elt_real_safe(p_arg, 0)
-        };
-        let classes_cell = CDR(args);
-        let classes = if classes_cell.is_null()
-            || classes_cell == R_NilValue()
-            || CAR(classes_cell) == R_MissingArg()
-        {
-            365.0
-        } else {
-            elt_real_safe(CAR(classes_cell), 0)
-        };
-        if p <= 0.0 {
-            return Rf_ScalarInteger(1);
-        }
-        let max_n = classes.ceil() as i64 + 1;
-        if p >= 1.0 {
-            return Rf_ScalarInteger(max_n as i32);
-        }
-        let mut n = 1i64;
-        while n < max_n && pbirthday_k2(n, classes) < p {
-            n += 1;
-        }
-        Rf_ScalarInteger(n as i32)
+    let p_arg = CAR(args);
+    let p = if p_arg.is_null() || p_arg == R_NilValue() || p_arg == R_MissingArg() {
+        0.5
+    } else {
+        elt_real_safe(p_arg, 0)
+    };
+    let classes_cell = CDR(args);
+    let classes = if classes_cell.is_null()
+        || classes_cell == R_NilValue()
+        || CAR(classes_cell) == R_MissingArg()
+    {
+        365.0
+    } else {
+        elt_real_safe(CAR(classes_cell), 0)
+    };
+    if p <= 0.0 {
+        return Rf_ScalarInteger(1);
     }
+    let max_n = classes.ceil() as i64 + 1;
+    if p >= 1.0 {
+        return Rf_ScalarInteger(max_n as i32);
+    }
+    let mut n = 1i64;
+    while n < max_n && pbirthday_k2(n, classes) < p {
+        n += 1;
+    }
+    Rf_ScalarInteger(n as i32)
 }
 
 /// GNU `lsfit(x, y)` — intercept + slope for a single predictor.
@@ -445,18 +443,16 @@ pub fn do_ppr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// GNU `ls.diag(ls.out)` — leverages from `$hat` or intercept + `X`.
 pub fn do_ls_diag(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let obj = CAR(args);
-        let h = list_named_elt(obj, "hat");
-        if h == R_NilValue() {
-            return R_NilValue();
-        }
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
-        let _r = protect(result);
-        SET_VECTOR_ELT(result, 0, h);
-        crate::mainutils::essentials::set_string_names(result, &["hat".to_string()]);
-        result
+    let obj = CAR(args);
+    let h = list_named_elt(obj, "hat");
+    if h == R_NilValue() {
+        return R_NilValue();
     }
+    let result = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
+    let _r = protect(result);
+    SET_VECTOR_ELT(result, 0, h);
+    crate::mainutils::essentials::set_string_names(result, &["hat".to_string()]);
+    result
 }
 
 /// GNU `ls.print(ls.out, print.it=FALSE)` — coefficient estimates.
@@ -496,23 +492,21 @@ pub fn do_ls_print(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// GNU `weighted.mean(x, w)` — `sum(x*w)/sum(w)`.
 pub fn do_weighted_mean(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        let w = CAR(CDR(args));
-        let n = XLENGTH(x).min(XLENGTH(w)) as usize;
-        if n == 0 {
-            return Rf_ScalarReal(f64::NAN);
-        }
-        let mut num = 0.0;
-        let mut den = 0.0;
-        for i in 0..n {
-            let xi = elt_real_safe(x, i as i64);
-            let wi = elt_real_safe(w, i as i64);
-            num += xi * wi;
-            den += wi;
-        }
-        Rf_ScalarReal(if den != 0.0 { num / den } else { f64::NAN })
+    let x = CAR(args);
+    let w = CAR(CDR(args));
+    let n = XLENGTH(x).min(XLENGTH(w)) as usize;
+    if n == 0 {
+        return Rf_ScalarReal(f64::NAN);
     }
+    let mut num = 0.0;
+    let mut den = 0.0;
+    for i in 0..n {
+        let xi = elt_real_safe(x, i as i64);
+        let wi = elt_real_safe(w, i as i64);
+        num += xi * wi;
+        den += wi;
+    }
+    Rf_ScalarReal(if den != 0.0 { num / den } else { f64::NAN })
 }
 
 /// GNU `poly(x, 1, simple=TRUE)` — centered unit-norm linear term.
@@ -871,22 +865,20 @@ fn pkolmogorov_two_limit(x: f64) -> f64 {
 
 /// GNU `psmirnov(q, sizes, exact=FALSE)` — two-sided Kolmogorov limit.
 pub fn do_psmirnov(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let q = elt_real_safe(CAR(args), 0);
-        let sizes = CAR(CDR(args));
-        let n1 = elt_real_safe(sizes, 0);
-        let n2 = if XLENGTH(sizes) > 1 {
-            elt_real_safe(sizes, 1)
-        } else {
-            n1
-        };
-        let n = if n1 + n2 > 0.0 {
-            n1 * n2 / (n1 + n2)
-        } else {
-            0.0
-        };
-        Rf_ScalarReal(pkolmogorov_two_limit(n.sqrt() * q))
-    }
+    let q = elt_real_safe(CAR(args), 0);
+    let sizes = CAR(CDR(args));
+    let n1 = elt_real_safe(sizes, 0);
+    let n2 = if XLENGTH(sizes) > 1 {
+        elt_real_safe(sizes, 1)
+    } else {
+        n1
+    };
+    let n = if n1 + n2 > 0.0 {
+        n1 * n2 / (n1 + n2)
+    } else {
+        0.0
+    };
+    Rf_ScalarReal(pkolmogorov_two_limit(n.sqrt() * q))
 }
 
 fn smirnov_hit(q: f64, r: f64, s: f64, two: bool) -> bool {
@@ -1005,30 +997,28 @@ pub unsafe extern "C-unwind" fn c_psmirnov_exact(
 
 /// GNU `qsmirnov(p, sizes, exact=FALSE)` — smallest D with psmirnov >= p.
 pub fn do_qsmirnov(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let p = elt_real_safe(CAR(args), 0);
-        let sizes = CAR(CDR(args));
-        let n1 = elt_real_safe(sizes, 0);
-        let n2 = if XLENGTH(sizes) > 1 {
-            elt_real_safe(sizes, 1)
-        } else {
-            n1
-        };
-        if n1 <= 0.0 || n2 <= 0.0 || !(0.0..=1.0).contains(&p) {
-            return Rf_ScalarReal(f64::NAN);
-        }
-        let n = n1 * n2 / (n1 + n2);
-        let steps = n1.max(n2) as i32;
-        let mut q = 1.0;
-        for k in 0..=steps {
-            let cand = k as f64 / steps as f64;
-            if pkolmogorov_two_limit(n.sqrt() * cand) >= p {
-                q = cand;
-                break;
-            }
-        }
-        Rf_ScalarReal(q)
+    let p = elt_real_safe(CAR(args), 0);
+    let sizes = CAR(CDR(args));
+    let n1 = elt_real_safe(sizes, 0);
+    let n2 = if XLENGTH(sizes) > 1 {
+        elt_real_safe(sizes, 1)
+    } else {
+        n1
+    };
+    if n1 <= 0.0 || n2 <= 0.0 || !(0.0..=1.0).contains(&p) {
+        return Rf_ScalarReal(f64::NAN);
     }
+    let n = n1 * n2 / (n1 + n2);
+    let steps = n1.max(n2) as i32;
+    let mut q = 1.0;
+    for k in 0..=steps {
+        let cand = k as f64 / steps as f64;
+        if pkolmogorov_two_limit(n.sqrt() * cand) >= p {
+            q = cand;
+            break;
+        }
+    }
+    Rf_ScalarReal(q)
 }
 
 /// GNU `rsmirnov(n, sizes, z=NULL, alternative=...)` via `C_Smirnov_sim`.

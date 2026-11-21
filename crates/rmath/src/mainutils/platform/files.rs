@@ -1324,19 +1324,17 @@ pub fn do_fileaccess(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// Remove literal paths from the session tree. Return GNU's aggregate status.
 fn unlink_browser_files(args: SEXP) -> SEXP {
-    unsafe {
-        use crate::sexp::accessors::{CADR, CAR, LENGTH};
-        use crate::sexp::constructors::Rf_ScalarInteger;
-        let paths = CAR(args);
-        let recursive = crate::mainutils::coerce::asLogical(CADR(args)) == 1;
-        let mut success = true;
-        for i in 0..LENGTH(paths) as usize {
-            if let Some(path) = path_at(paths, i) {
-                success &= crate::mainutils::browser_files::unlink_current(&path, recursive);
-            }
+    use crate::sexp::accessors::{CADR, CAR, LENGTH};
+    use crate::sexp::constructors::Rf_ScalarInteger;
+    let paths = CAR(args);
+    let recursive = crate::mainutils::coerce::asLogical(CADR(args)) == 1;
+    let mut success = true;
+    for i in 0..LENGTH(paths) as usize {
+        if let Some(path) = path_at(paths, i) {
+            success &= crate::mainutils::browser_files::unlink_current(&path, recursive);
         }
-        Rf_ScalarInteger(i32::from(!success))
     }
+    Rf_ScalarInteger(i32::from(!success))
 }
 
 /// R's `unlink()` — remove files or directories.

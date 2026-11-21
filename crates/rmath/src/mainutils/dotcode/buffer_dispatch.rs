@@ -99,7 +99,7 @@ impl Operands {
                 }
                 "NAOK" => {
                     let flag = access.with_native(|_| {
-                        Ok(unsafe { crate::mainutils::coerce::asLogical(argument.value.as_raw()) })
+                        Ok(crate::mainutils::coerce::asLogical(argument.value.as_raw()))
                     })?;
                     access.require_active()?;
                     if flag == NA_INTEGER {
@@ -387,13 +387,7 @@ fn publish(
                 // SAFETY: fresh arena node, exclusively owned here.
                 let output = arena.alloc_vector_sexp(SEXPTYPE::STRSXP, data.len() as R_xlen_t)?;
                 for (i, charsxp) in elements.into_iter().enumerate() {
-                    unsafe {
-                        crate::sexp::accessors::SET_STRING_ELT(
-                            output.as_raw(),
-                            i as R_xlen_t,
-                            charsxp,
-                        )
-                    };
+                    crate::sexp::accessors::SET_STRING_ELT(output.as_raw(), i as R_xlen_t, charsxp);
                 }
                 Some(output.as_raw())
             })?

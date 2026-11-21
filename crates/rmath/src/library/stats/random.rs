@@ -165,7 +165,7 @@ call_trampoline!(c_zeroin2, (call, op, args, env) => super::zeroin::zeroin2(call
 call_trampoline!(c_do_fmin, (call, op, args, env) => super::zeroin::do_fmin(call, op, args, env));
 
 pub(super) fn reject_var_on_factor(x: SEXP) {
-    unsafe {
+    {
         if !x.is_null()
             && x != R_NilValue()
             && crate::mainutils::objects::inherits2(x, c"factor".as_ptr()) != 0
@@ -978,7 +978,7 @@ fn random_n<const K: usize>(
     if n == 0 {
         // SAFETY: the owner is active; a zero-length result skips coercion
         // and sampling entirely, matching the legacy dispatch order.
-        return unsafe {
+        return {
             let x = Rf_allocVector3(type_, 0);
             let _x_guard = protect(x);
             x
@@ -1001,16 +1001,17 @@ fn random_n<const K: usize>(
             x
         };
         // SAFETY: the warning is dispatched under the active runtime.
-        unsafe { crate::mainutils::errors::Rf_warning1(c"NAs produced".as_ptr()) };
+        {
+            crate::mainutils::errors::Rf_warning1(c"NAs produced".as_ptr())
+        };
         return x;
     }
 
     // SAFETY: the owner is active. The legacy allocator/coercion keep their
     // typed resource error and GC retry semantics; every result is protected
     // inside the same block before it can be collected.
-    let (coerced, _arg_guards) = unsafe {
-        let coerced: [SEXP; K] =
-            sargs.map(|s| coerceVector(s, SEXPTYPE::REALSXP.as_c_int()));
+    let (coerced, _arg_guards) = {
+        let coerced: [SEXP; K] = sargs.map(|s| coerceVector(s, SEXPTYPE::REALSXP.as_c_int()));
         let guards = coerced.map(|s| protect(s));
         (coerced, guards)
     };
@@ -1020,7 +1021,7 @@ fn random_n<const K: usize>(
     // SAFETY: RNG state is process-global behind the interpreter lock; the
     // loan covers the whole sampling region including any overflow result
     // allocation, so the state is released exactly once per dispatch.
-    unsafe {
+    {
         GetRNGstate();
         let mut naflag = false;
         if type_ == SEXPTYPE::INTSXP {
@@ -1056,12 +1057,11 @@ fn random_n<const K: usize>(
             if overflow {
                 let xr = Rf_allocVector3(SEXPTYPE::REALSXP, n);
                 let _xr_guard = protect(xr);
-                let mut real_out =
-                    checked(SexpMut::try_from_checked(checked(owner.sexp(xr))));
+                let mut real_out = checked(SexpMut::try_from_checked(checked(owner.sexp(xr))));
                 for i in 0..i0 {
-                    let value = output
-                        .integer_elt(i)
-                        .unwrap_or_else(|| crate::mainutils::essentials::base_error("integer result read failed"));
+                    let value = output.integer_elt(i).unwrap_or_else(|| {
+                        crate::mainutils::essentials::base_error("integer result read failed")
+                    });
                     checked(real_out.try_set_real_elt(i, value as c_double));
                 }
                 checked(real_out.try_set_real_elt(i0, overflow_rx));
@@ -1124,27 +1124,57 @@ fn random_n<const K: usize>(
 // ---------------------------------------------------------------------------
 
 pub fn do_rchisq(sn: SEXP, sa: SEXP) -> SEXP {
-    random_n(sn, [sa], |v| crate::nmath::dist::chisq::rchisq_inner(v[0]), SEXPTYPE::REALSXP)
+    random_n(
+        sn,
+        [sa],
+        |v| crate::nmath::dist::chisq::rchisq_inner(v[0]),
+        SEXPTYPE::REALSXP,
+    )
 }
 
 pub fn do_rexp(sn: SEXP, sa: SEXP) -> SEXP {
-    random_n(sn, [sa], |v| crate::nmath::dist::exponential::rexp_inner(v[0]), SEXPTYPE::REALSXP)
+    random_n(
+        sn,
+        [sa],
+        |v| crate::nmath::dist::exponential::rexp_inner(v[0]),
+        SEXPTYPE::REALSXP,
+    )
 }
 
 pub fn do_rgeom(sn: SEXP, sa: SEXP) -> SEXP {
-    random_n(sn, [sa], |v| crate::nmath::dist::geometric::rgeom_inner(v[0]), SEXPTYPE::INTSXP)
+    random_n(
+        sn,
+        [sa],
+        |v| crate::nmath::dist::geometric::rgeom_inner(v[0]),
+        SEXPTYPE::INTSXP,
+    )
 }
 
 pub fn do_rpois(sn: SEXP, sa: SEXP) -> SEXP {
-    random_n(sn, [sa], |v| crate::nmath::dist::poisson::rpois_inner(v[0]), SEXPTYPE::INTSXP)
+    random_n(
+        sn,
+        [sa],
+        |v| crate::nmath::dist::poisson::rpois_inner(v[0]),
+        SEXPTYPE::INTSXP,
+    )
 }
 
 pub fn do_rt(sn: SEXP, sa: SEXP) -> SEXP {
-    random_n(sn, [sa], |v| crate::nmath::dist::t_dist::rt_inner(v[0]), SEXPTYPE::REALSXP)
+    random_n(
+        sn,
+        [sa],
+        |v| crate::nmath::dist::t_dist::rt_inner(v[0]),
+        SEXPTYPE::REALSXP,
+    )
 }
 
 pub fn do_rsignrank(sn: SEXP, sa: SEXP) -> SEXP {
-    random_n(sn, [sa], |v| crate::nmath::dist::signrank::rsignrank_inner(v[0]), SEXPTYPE::INTSXP)
+    random_n(
+        sn,
+        [sa],
+        |v| crate::nmath::dist::signrank::rsignrank_inner(v[0]),
+        SEXPTYPE::INTSXP,
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -1152,59 +1182,129 @@ pub fn do_rsignrank(sn: SEXP, sa: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 pub fn do_rbeta(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
-    random_n(sn, [sa, sb], |v| crate::nmath::dist::beta::rbeta_inner(v[0], v[1]), SEXPTYPE::REALSXP)
+    random_n(
+        sn,
+        [sa, sb],
+        |v| crate::nmath::dist::beta::rbeta_inner(v[0], v[1]),
+        SEXPTYPE::REALSXP,
+    )
 }
 
 pub fn do_rbinom(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
-    random_n(sn, [sa, sb], |v| crate::nmath::dist::binomial::rbinom_inner(v[0], v[1]), SEXPTYPE::INTSXP)
+    random_n(
+        sn,
+        [sa, sb],
+        |v| crate::nmath::dist::binomial::rbinom_inner(v[0], v[1]),
+        SEXPTYPE::INTSXP,
+    )
 }
 
 pub fn do_rcauchy(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
-    random_n(sn, [sa, sb], |v| crate::nmath::dist::cauchy::rcauchy_inner(v[0], v[1]), SEXPTYPE::REALSXP)
+    random_n(
+        sn,
+        [sa, sb],
+        |v| crate::nmath::dist::cauchy::rcauchy_inner(v[0], v[1]),
+        SEXPTYPE::REALSXP,
+    )
 }
 
 pub fn do_rf(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
-    random_n(sn, [sa, sb], |v| crate::nmath::dist::f_dist::rf_inner(v[0], v[1]), SEXPTYPE::REALSXP)
+    random_n(
+        sn,
+        [sa, sb],
+        |v| crate::nmath::dist::f_dist::rf_inner(v[0], v[1]),
+        SEXPTYPE::REALSXP,
+    )
 }
 
 pub fn do_rgamma(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
-    random_n(sn, [sa, sb], |v| crate::nmath::dist::gamma::rgamma_inner(v[0], v[1]), SEXPTYPE::REALSXP)
+    random_n(
+        sn,
+        [sa, sb],
+        |v| crate::nmath::dist::gamma::rgamma_inner(v[0], v[1]),
+        SEXPTYPE::REALSXP,
+    )
 }
 
 pub fn do_rlnorm(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
-    random_n(sn, [sa, sb], |v| crate::nmath::dist::lnorm::rlnorm_inner(v[0], v[1]), SEXPTYPE::REALSXP)
+    random_n(
+        sn,
+        [sa, sb],
+        |v| crate::nmath::dist::lnorm::rlnorm_inner(v[0], v[1]),
+        SEXPTYPE::REALSXP,
+    )
 }
 
 pub fn do_rlogis(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
-    random_n(sn, [sa, sb], |v| crate::nmath::dist::logistic::rlogis_inner(v[0], v[1]), SEXPTYPE::REALSXP)
+    random_n(
+        sn,
+        [sa, sb],
+        |v| crate::nmath::dist::logistic::rlogis_inner(v[0], v[1]),
+        SEXPTYPE::REALSXP,
+    )
 }
 
 pub fn do_rnbinom(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
-    random_n(sn, [sa, sb], |v| crate::nmath::dist::nbinom::rnbinom_inner(v[0], v[1]), SEXPTYPE::INTSXP)
+    random_n(
+        sn,
+        [sa, sb],
+        |v| crate::nmath::dist::nbinom::rnbinom_inner(v[0], v[1]),
+        SEXPTYPE::INTSXP,
+    )
 }
 
 pub fn do_rnorm(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
-    random_n(sn, [sa, sb], |v| crate::nmath::dist::normal::rnorm_inner(v[0], v[1]), SEXPTYPE::REALSXP)
+    random_n(
+        sn,
+        [sa, sb],
+        |v| crate::nmath::dist::normal::rnorm_inner(v[0], v[1]),
+        SEXPTYPE::REALSXP,
+    )
 }
 
 pub fn do_runif(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
-    random_n(sn, [sa, sb], |v| crate::nmath::dist::uniform::runif_inner(v[0], v[1]), SEXPTYPE::REALSXP)
+    random_n(
+        sn,
+        [sa, sb],
+        |v| crate::nmath::dist::uniform::runif_inner(v[0], v[1]),
+        SEXPTYPE::REALSXP,
+    )
 }
 
 pub fn do_rweibull(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
-    random_n(sn, [sa, sb], |v| crate::nmath::dist::weibull::rweibull_inner(v[0], v[1]), SEXPTYPE::REALSXP)
+    random_n(
+        sn,
+        [sa, sb],
+        |v| crate::nmath::dist::weibull::rweibull_inner(v[0], v[1]),
+        SEXPTYPE::REALSXP,
+    )
 }
 
 pub fn do_rwilcox(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
-    random_n(sn, [sa, sb], |v| crate::nmath::dist::wilcox::rwilcox_inner(v[0], v[1]), SEXPTYPE::INTSXP)
+    random_n(
+        sn,
+        [sa, sb],
+        |v| crate::nmath::dist::wilcox::rwilcox_inner(v[0], v[1]),
+        SEXPTYPE::INTSXP,
+    )
 }
 
 pub fn do_rnchisq(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
-    random_n(sn, [sa, sb], |v| crate::nmath::dist::nchisq::rnchisq_inner(v[0], v[1]), SEXPTYPE::REALSXP)
+    random_n(
+        sn,
+        [sa, sb],
+        |v| crate::nmath::dist::nchisq::rnchisq_inner(v[0], v[1]),
+        SEXPTYPE::REALSXP,
+    )
 }
 
 pub fn do_rnbinom_mu(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
-    random_n(sn, [sa, sb], |v| crate::nmath::dist::nbinom::rnbinom_mu_inner(v[0], v[1]), SEXPTYPE::INTSXP)
+    random_n(
+        sn,
+        [sa, sb],
+        |v| crate::nmath::dist::nbinom::rnbinom_mu_inner(v[0], v[1]),
+        SEXPTYPE::INTSXP,
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -1212,7 +1312,12 @@ pub fn do_rnbinom_mu(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 pub fn do_rhyper(sn: SEXP, sa: SEXP, sb: SEXP, sc: SEXP) -> SEXP {
-    random_n(sn, [sa, sb, sc], |v| crate::nmath::dist::hypergeometric::rhyper_inner(v[0], v[1], v[2]), SEXPTYPE::INTSXP)
+    random_n(
+        sn,
+        [sa, sb, sc],
+        |v| crate::nmath::dist::hypergeometric::rhyper_inner(v[0], v[1], v[2]),
+        SEXPTYPE::INTSXP,
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -1224,13 +1329,13 @@ fn fixup_prob(p: &mut [c_double]) {
     let mut npos = 0;
     for value in p.iter() {
         if !R_FINITE(*value) {
-            unsafe {
+            {
                 Rf_error(b"NA in probability vector\0".as_ptr() as *const _);
             }
             return;
         }
         if *value < 0.0 {
-            unsafe {
+            {
                 Rf_error(b"negative probability\0".as_ptr() as *const _);
             }
             return;
@@ -1241,7 +1346,7 @@ fn fixup_prob(p: &mut [c_double]) {
         }
     }
     if npos == 0 {
-        unsafe {
+        {
             Rf_error(b"no positive probabilities\0".as_ptr() as *const _);
         }
         return;
@@ -1399,7 +1504,7 @@ unsafe fn with_default(
     default: c_double,
     guards: &mut Vec<crate::sexp::protect::ProtectGuard>,
 ) -> SEXP {
-    unsafe {
+    {
         if adapter_absent(x) {
             let s = Rf_ScalarReal(default);
             guards.push(protect(s));

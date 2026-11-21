@@ -128,34 +128,28 @@ pub(super) fn evaluate(call: SEXP, op: SEXP, args: SEXP, rho: SEXP, minimum: boo
     }
 }
 
-fn is_data_frame(
-    factory: &SessionNodeFactory<'_>,
-    input: &Sexp<'_>,
-    check: impl Fn(),
-) -> bool {
-    unsafe {
-        let class = factory
-            .wrap(crate::sexp::attrib_core::getAttrib(
-                input.as_raw(),
-                crate::sexp::attrib_core::R_ClassSymbol(),
-            ))
-            .expect("root extrema class");
-        check();
-        if class.typeof_() != SEXPTYPE::STRSXP {
-            return false;
-        }
-        for i in 0..class.len() {
-            let name = class
-                .try_string_elt(i)
-                .and_then(|x| x.try_as_string())
-                .expect("read extrema class");
-            check();
-            if name == "data.frame" {
-                return true;
-            }
-        }
-        false
+fn is_data_frame(factory: &SessionNodeFactory<'_>, input: &Sexp<'_>, check: impl Fn()) -> bool {
+    let class = factory
+        .wrap(crate::sexp::attrib_core::getAttrib(
+            input.as_raw(),
+            crate::sexp::attrib_core::R_ClassSymbol(),
+        ))
+        .expect("root extrema class");
+    check();
+    if class.typeof_() != SEXPTYPE::STRSXP {
+        return false;
     }
+    for i in 0..class.len() {
+        let name = class
+            .try_string_elt(i)
+            .and_then(|x| x.try_as_string())
+            .expect("read extrema class");
+        check();
+        if name == "data.frame" {
+            return true;
+        }
+    }
+    false
 }
 
 fn index_result<'s>(factory: &SessionNodeFactory<'s>, index: Option<i64>) -> Sexp<'s> {

@@ -13,13 +13,15 @@ pub fn L_clip(x: SEXP, y: SEXP, w: SEXP, h: SEXP, hjust: SEXP, vjust: SEXP) -> S
 
         // SAFETY: `currentvp`/`dd` keep their raw device-state contracts.
         let (vpWidthCM, vpHeightCM, transform, rotationAngle) =
-            unsafe { getViewportTransform(currentvp, dd) };
+            { getViewportTransform(currentvp, dd) };
 
         let mut vpc = LViewportContext::default();
         getViewportContext(currentvp, &mut vpc);
 
         // SAFETY: `dd` is the live device returned above.
-        unsafe { GEMode(1, dd) };
+        {
+            GEMode(1, dd)
+        };
 
         /*
          * Only set ONE clip rectangle (i.e., NOT vectorised)
@@ -30,14 +32,7 @@ pub fn L_clip(x: SEXP, y: SEXP, w: SEXP, h: SEXP, hjust: SEXP, vjust: SEXP) -> S
 
         let mut xx: c_double;
         let mut yy: c_double;
-        (xx, yy) = transformLocn(x,
-            y,
-            0,
-            vpc,
-            gc,
-            vpWidthCM,
-            vpHeightCM,
-            dd, &transform);
+        (xx, yy) = transformLocn(x, y, 0, vpc, gc, vpWidthCM, vpHeightCM, dd, &transform);
         let ww = transformWidthtoINCHES(w, 0, vpc, gc, vpWidthCM, vpHeightCM, dd);
         let hh = transformHeighttoINCHES(h, 0, vpc, gc, vpWidthCM, vpHeightCM, dd);
 
@@ -63,7 +58,7 @@ pub fn L_clip(x: SEXP, y: SEXP, w: SEXP, h: SEXP, hjust: SEXP, vjust: SEXP) -> S
              */
             // SAFETY: `dd` is the live device; `toDevice*` are engine
             // coordinate bridges over the device state.
-            let (ww_dev, hh_dev) = unsafe {
+            let (ww_dev, hh_dev) = {
                 xx = toDeviceX(xx, GE_INCHES, dd);
                 yy = toDeviceY(yy, GE_INCHES, dd);
                 let ww_dev = toDeviceWidth(ww, GE_INCHES, dd);
@@ -75,7 +70,6 @@ pub fn L_clip(x: SEXP, y: SEXP, w: SEXP, h: SEXP, hjust: SEXP, vjust: SEXP) -> S
             };
 
             if xx.is_finite() && yy.is_finite() && ww_dev.is_finite() && hh_dev.is_finite() {
-
                 /*
                  * ALSO set the current clip region for the current viewport so that,
                  * if a viewport is pushed within the current viewport, when that
@@ -92,12 +86,16 @@ pub fn L_clip(x: SEXP, y: SEXP, w: SEXP, h: SEXP, hjust: SEXP, vjust: SEXP) -> S
             }
         } else {
             // SAFETY: static format string, no arguments.
-            unsafe { Rf_warning(c"unable to clip to rotated rectangle".as_ptr()) };
+            {
+                Rf_warning(c"unable to clip to rotated rectangle".as_ptr())
+            };
         }
 
         // SAFETY: `dd` is the live device; engine mode teardown mirrors
         // the `GEMode(1, dd)` above.
-        unsafe { GEMode(0, dd) };
+        {
+            GEMode(0, dd)
+        };
         R_NilValue()
     }
 }
@@ -120,7 +118,7 @@ pub fn L_pretty2(scale: SEXP, n_: SEXP) -> SEXP {
         let mut min = numeric(scale, 0);
         let mut max = numeric(scale, 1);
         // SAFETY: `n_` is a live object lent by the R caller.
-        let mut n = unsafe { crate::main::coerce::asInteger(n_) };
+        let mut n = { crate::main::coerce::asInteger(n_) };
         let mut temp: f64;
 
         let swap = min > max;
@@ -141,12 +139,14 @@ pub fn L_pretty2(scale: SEXP, n_: SEXP) -> SEXP {
 
         // SAFETY: raw axis-scale construction bridge; all inputs are local
         // scalars produced above.
-        unsafe { crate::library::grdevices::axis_scales::create_at_vector_raw(
-            [min, max, n as f64],
-            [min, max],
-            n,
-            false,
-        ) }
+        unsafe {
+            crate::library::grdevices::axis_scales::create_at_vector_raw(
+                [min, max, n as f64],
+                [min, max],
+                n,
+                false,
+            )
+        }
     }
 }
 
@@ -214,10 +214,11 @@ pub fn L_stringMetric(label: SEXP) -> SEXP {
                 let ce = getCharCE(string_elt(label, i));
                 // SAFETY: `s` is the NUL-terminated CHAR payload of a live
                 // string element; `dd` is the live device.
-                unsafe { GEStrMetric(
-                    s,
-                    ce,
-                    gc.as_ptr() as pGEcontext,
+                {
+                    GEStrMetric(
+                        s,
+                        ce,
+                        gc.as_ptr() as pGEcontext,
                         &mut ascent,
                         &mut descent,
                         &mut width,

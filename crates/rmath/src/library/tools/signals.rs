@@ -256,7 +256,7 @@ pub fn ps_sigs(signo: SEXP) -> SEXP {
         }
         _ => NA_INTEGER,
     };
-    unsafe { Rf_ScalarInteger(res) }
+    Rf_ScalarInteger(res)
 }
 
 // ---------------------------------------------------------------------------

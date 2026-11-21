@@ -233,13 +233,11 @@ pub unsafe fn do_attrgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 
 /// Set all attributes of an object (internal).
 pub unsafe fn do_attributesgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe {
-        let _ = (call, op, env);
-        if Rf_length(args) < 2 {
-            error("wrong number of arguments");
-        }
-        CAR(args)
+    let _ = (call, op, env);
+    if Rf_length(args) < 2 {
+        error("wrong number of arguments");
     }
+    CAR(args)
 }
 
 // ---------------------------------------------------------------------------
@@ -298,14 +296,12 @@ pub unsafe fn do_namesgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP 
 
 /// Check if an object has an explicit class attribute.
 pub unsafe fn do_isobject(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe {
-        let _ = (call, op, env);
-        if Rf_length(args) < 1 {
-            error("wrong number of arguments");
-        }
-        let x = CAR(args);
-        Rf_ScalarLogical(crate::eval::attrib_core::isObject(x))
+    let _ = (call, op, env);
+    if Rf_length(args) < 1 {
+        error("wrong number of arguments");
     }
+    let x = CAR(args);
+    Rf_ScalarLogical(crate::eval::attrib_core::isObject(x))
 }
 
 // ---------------------------------------------------------------------------

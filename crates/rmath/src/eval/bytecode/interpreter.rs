@@ -480,7 +480,7 @@ pub(crate) fn eval_bytecode_loop(
             // Instruction words are an owned copy and every execution value
             // is rooted. No arena/payload loan survives the prior instruction.
             execution
-                .native(|owner| { crate::eval::profiling::sample_at_safe_point(owner) })?
+                .native(|owner| crate::eval::profiling::sample_at_safe_point(owner))?
                 .map_err(|e| e.to_string())?;
         }
         sampling_ticks = (sampling_ticks + 1) & 63;

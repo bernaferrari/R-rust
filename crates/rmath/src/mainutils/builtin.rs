@@ -39,7 +39,7 @@ fn errorcall(_call: SEXP, msg: &str) {
 
 unsafe fn warningcall(call: SEXP, msg: &str) {
     let c = std::ffi::CString::new(msg).unwrap_or_default();
-    unsafe { crate::mainutils::errors::warningcall(call, c.as_ptr()) };
+    crate::mainutils::errors::warningcall(call, c.as_ptr());
 }
 
 fn isNull(x: SEXP) -> bool {
@@ -57,35 +57,29 @@ unsafe fn installTrChar(x: SEXP) -> SEXP {
 }
 
 unsafe fn first_string_char(x: SEXP) -> SEXP {
-    unsafe {
-        if TYPEOF(x) == SEXPTYPE::CHARSXP {
-            x
-        } else {
-            STRING_ELT(x, 0)
-        }
+    if TYPEOF(x) == SEXPTYPE::CHARSXP {
+        x
+    } else {
+        STRING_ELT(x, 0)
     }
 }
 
 unsafe fn listAppend(s: SEXP, t: SEXP) -> SEXP {
-    unsafe {
-        if isNull(s) {
-            return t;
-        }
-        let mut r = s;
-        while !isNull(CDR(r)) {
-            r = CDR(r);
-        }
-        SETCDR(r, t);
-        s
+    if isNull(s) {
+        return t;
     }
+    let mut r = s;
+    while !isNull(CDR(r)) {
+        r = CDR(r);
+    }
+    SETCDR(r, t);
+    s
 }
 
 unsafe fn RAISE_NAMED(x: SEXP, v: c_int) {
-    unsafe {
-        let n = crate::sexp::accessors::NAMED(x);
-        if n < v {
-            crate::sexp::accessors::SET_NAMED(x, v);
-        }
+    let n = crate::sexp::accessors::NAMED(x);
+    if n < v {
+        crate::sexp::accessors::SET_NAMED(x, v);
     }
 }
 

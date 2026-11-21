@@ -5,14 +5,13 @@ pub(super) fn selected_source(content: &str) -> Result<String, String> {
     let owner = unsafe { OwnerToken::current() }.map_err(|error| error.to_string())?;
     let _pin = owner.pin().map_err(|error| error.to_string())?;
     let factory = owner.node_factory();
-    let environment = unsafe {
-        factory.wrap(crate::sexp::memory_ext::NewEnvironment(
+    let environment = factory
+        .wrap(crate::sexp::memory_ext::NewEnvironment(
             crate::sexp::globals::R_NilValue(),
             crate::sexp::envir::R_BaseNamespace(),
             crate::sexp::globals::R_NilValue(),
         ))
-    }
-    .map_err(|error| error.to_string())?;
+        .map_err(|error| error.to_string())?;
     let source = format!(
         r#"
         .calls <- character()

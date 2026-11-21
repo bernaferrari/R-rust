@@ -16,15 +16,7 @@ fn iso_arg_num(x: SEXP, default: f64) -> f64 {
     }
 }
 
-fn iso_posixct(
-    year: f64,
-    month: f64,
-    day: f64,
-    hour: f64,
-    min: f64,
-    sec: f64,
-    tz: &str,
-) -> SEXP {
+fn iso_posixct(year: f64, month: f64, day: f64, hour: f64, min: f64, sec: f64, tz: &str) -> SEXP {
     unsafe {
         if !(1.0..=12.0).contains(&month) {
             let na = Rf_allocVector3(SEXPTYPE::REALSXP, 1);

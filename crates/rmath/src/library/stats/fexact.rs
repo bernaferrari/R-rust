@@ -46,13 +46,11 @@ fn with_fexact_state<R>(f: impl FnOnce(&mut FexactState) -> R) -> R {
 }
 
 unsafe fn prterr(icode: c_int, mes: &str) {
-    unsafe {
-        let msg = format!("FEXACT error {}.\n{}", icode, mes);
-        crate::mainutils::errors::implicit_errorcall_str(
-            crate::mainutils::errors::R_getCurrentCall(),
-            &msg,
-        );
-    }
+    let msg = format!("FEXACT error {}.\n{}", icode, mes);
+    crate::mainutils::errors::implicit_errorcall_str(
+        crate::mainutils::errors::R_getCurrentCall(),
+        &msg,
+    );
 }
 
 unsafe fn iwork(iwkmax: c_int, iwkpt: &mut c_int, number: c_int, itype: c_int) -> c_int {
@@ -2096,7 +2094,7 @@ pub unsafe fn Fexact(x: SEXP, pars: SEXP, work: SEXP, smult: SEXP) -> SEXP {
         let nr = crate::main::util_main::nrows(x as *const std::ffi::c_void);
         let nc = crate::main::util_main::ncols(x as *const std::ffi::c_void);
         fn asInteger_local(s: SEXP) -> c_int {
-            unsafe { crate::main::coerce::asInteger(s) }
+            crate::main::coerce::asInteger(s)
         }
 
         let ws = asInteger_local(work);

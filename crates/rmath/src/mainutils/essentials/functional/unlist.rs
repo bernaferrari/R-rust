@@ -291,18 +291,13 @@ impl UnlistValue {
     fn as_sexp(&self) -> SEXP {
         match self {
             Self::Object(value) => *value,
-            Self::Element { parent, index } => { unlist_scalar_element(*parent, *index) },
+            Self::Element { parent, index } => unlist_scalar_element(*parent, *index),
             _ => R_NilValue(),
         }
     }
 }
 
-pub(super) fn unlist_empty_result(
-    x: SEXP,
-    recursive: bool,
-    use_names: bool,
-    call: SEXP,
-) -> SEXP {
+pub(super) fn unlist_empty_result(x: SEXP, recursive: bool, use_names: bool, call: SEXP) -> SEXP {
     unsafe {
         let mut data = crate::mainutils::bind::BindData {
             ans_flags: 0,

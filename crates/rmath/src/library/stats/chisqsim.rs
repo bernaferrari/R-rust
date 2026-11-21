@@ -34,10 +34,8 @@ fn chisqsim(
             i += 1;
         }
 
-        unsafe {
-            // RNG state is process-global behind the interpreter lock.
-            GetRNGstate();
-        }
+        // RNG state is process-global behind the interpreter lock.
+        GetRNGstate();
 
         let mut iter: c_int = 0;
         while iter < B {
@@ -63,10 +61,8 @@ fn chisqsim(
             iter += 1;
         }
 
-        unsafe {
-            // RNG state is process-global behind the interpreter lock.
-            PutRNGstate();
-        }
+        // RNG state is process-global behind the interpreter lock.
+        PutRNGstate();
     }
 }
 
@@ -92,10 +88,8 @@ fn fisher_sim(
             i += 1;
         }
 
-        unsafe {
-            // RNG state is process-global behind the interpreter lock.
-            GetRNGstate();
-        }
+        // RNG state is process-global behind the interpreter lock.
+        GetRNGstate();
 
         let mut iter: c_int = 0;
         while iter < B {
@@ -119,10 +113,8 @@ fn fisher_sim(
             iter += 1;
         }
 
-        unsafe {
-            // RNG state is process-global behind the interpreter lock.
-            PutRNGstate();
-        }
+        // RNG state is process-global behind the interpreter lock.
+        PutRNGstate();
     }
 }
 

@@ -75,26 +75,24 @@ pub(super) fn apply_fun_to_element(fun: SEXP, elem: SEXP, extra_args: SEXP, rho:
 }
 
 pub(super) fn simplify_scalar_list(list: SEXP) -> SEXP {
-    unsafe {
-        if list.is_null() || TYPEOF(list) != SEXPTYPE::VECSXP {
-            return list;
-        }
-        let n = XLENGTH(list);
-        if n == 0 {
-            return list;
-        }
-        let first = VECTOR_ELT(list, 0);
-        if first.is_null()
-            || !matches!(
-                SEXPTYPE(TYPEOF(first)),
-                SEXPTYPE::REALSXP | SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP | SEXPTYPE::STRSXP
-            )
-            || XLENGTH(first) != 1
-        {
-            return list;
-        }
-        simplify_scalar_list_as(list, SEXPTYPE(TYPEOF(first)))
+    if list.is_null() || TYPEOF(list) != SEXPTYPE::VECSXP {
+        return list;
     }
+    let n = XLENGTH(list);
+    if n == 0 {
+        return list;
+    }
+    let first = VECTOR_ELT(list, 0);
+    if first.is_null()
+        || !matches!(
+            SEXPTYPE(TYPEOF(first)),
+            SEXPTYPE::REALSXP | SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP | SEXPTYPE::STRSXP
+        )
+        || XLENGTH(first) != 1
+    {
+        return list;
+    }
+    simplify_scalar_list_as(list, SEXPTYPE(TYPEOF(first)))
 }
 
 pub(super) fn simplify_scalar_list_as(list: SEXP, elem_type: SEXPTYPE) -> SEXP {

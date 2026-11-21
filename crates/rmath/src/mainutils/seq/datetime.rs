@@ -42,48 +42,42 @@ pub fn first_str_elt(x: SEXP) -> Option<String> {
 }
 
 pub fn datetime_class_of(x: SEXP) -> Option<DatetimeKind> {
-    unsafe {
-        if crate::mainutils::essentials::sexp_has_class(x, "POSIXct")
-            || crate::mainutils::essentials::sexp_has_class(x, "POSIXlt")
-            || crate::mainutils::essentials::sexp_has_class(x, "POSIXt")
-        {
-            Some(DatetimeKind::Posixct)
-        } else if crate::mainutils::essentials::sexp_has_class(x, "Date") {
-            Some(DatetimeKind::Date)
-        } else {
-            None
-        }
+    if crate::mainutils::essentials::sexp_has_class(x, "POSIXct")
+        || crate::mainutils::essentials::sexp_has_class(x, "POSIXlt")
+        || crate::mainutils::essentials::sexp_has_class(x, "POSIXt")
+    {
+        Some(DatetimeKind::Posixct)
+    } else if crate::mainutils::essentials::sexp_has_class(x, "Date") {
+        Some(DatetimeKind::Date)
+    } else {
+        None
     }
 }
 
 fn posix_time_length(x: SEXP) -> R_xlen_t {
-    unsafe {
-        if crate::mainutils::essentials::sexp_has_class(x, "POSIXlt")
-            && TYPEOF(x) == VECSXP_VAL
-            && XLENGTH(x) > 0
-        {
-            let sec = VECTOR_ELT(x, 0);
-            if !sec.is_null() && sec != R_NilValue() {
-                return XLENGTH(sec);
-            }
+    if crate::mainutils::essentials::sexp_has_class(x, "POSIXlt")
+        && TYPEOF(x) == VECSXP_VAL
+        && XLENGTH(x) > 0
+    {
+        let sec = VECTOR_ELT(x, 0);
+        if !sec.is_null() && sec != R_NilValue() {
+            return XLENGTH(sec);
         }
-        XLENGTH(x)
     }
+    XLENGTH(x)
 }
 
 fn posix_as_seconds(call: SEXP, x: SEXP) -> c_double {
-    unsafe {
-        if crate::mainutils::essentials::sexp_has_class(x, "POSIXlt") {
-            let ct = crate::mainutils::essentials::do_as_POSIXct(
-                call,
-                std::ptr::null_mut(),
-                Rf_cons(x, R_NilValue()),
-                std::ptr::null_mut(),
-            );
-            return asReal(ct);
-        }
-        asReal(x)
+    if crate::mainutils::essentials::sexp_has_class(x, "POSIXlt") {
+        let ct = crate::mainutils::essentials::do_as_POSIXct(
+            call,
+            std::ptr::null_mut(),
+            Rf_cons(x, R_NilValue()),
+            std::ptr::null_mut(),
+        );
+        return asReal(ct);
     }
+    asReal(x)
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -202,18 +196,16 @@ pub fn calendar_count(call: SEXP, from: i64, to: i64, by: i64) -> i64 {
 }
 
 pub fn attach_datetime_class(ans: SEXP, kind: DatetimeKind, tz_source: SEXP) -> SEXP {
-    unsafe {
-        match kind {
-            DatetimeKind::Date => {
-                crate::mainutils::essentials::set_single_class(ans, "Date");
-            }
-            DatetimeKind::Posixct => {
-                let tz = crate::mainutils::essentials::posixct_tzone_string(tz_source);
-                crate::mainutils::essentials::set_posixct_class(ans, &tz);
-            }
+    match kind {
+        DatetimeKind::Date => {
+            crate::mainutils::essentials::set_single_class(ans, "Date");
         }
-        ans
+        DatetimeKind::Posixct => {
+            let tz = crate::mainutils::essentials::posixct_tzone_string(tz_source);
+            crate::mainutils::essentials::set_posixct_class(ans, &tz);
+        }
     }
+    ans
 }
 
 /// Calendar stepping for by = "months"/"quarters"/"years"/"DSTdays"

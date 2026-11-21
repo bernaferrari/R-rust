@@ -96,15 +96,15 @@ unsafe extern "C-unwind" fn c_r_missing_arg(symbol: SEXP, ev: SEXP) -> SEXP {
 }
 
 unsafe extern "C-unwind" fn c_r_get_slot(obj: SEXP, name: SEXP) -> SEXP {
-    unsafe { crate::mainutils::essentials::R_do_slot(obj, name) }
+    crate::mainutils::essentials::R_do_slot(obj, name)
 }
 
 unsafe extern "C-unwind" fn c_r_set_slot(obj: SEXP, name: SEXP, value: SEXP) -> SEXP {
-    unsafe { crate::mainutils::essentials::R_do_slot_assign(obj, name, value) }
+    crate::mainutils::essentials::R_do_slot_assign(obj, name, value)
 }
 
 unsafe extern "C-unwind" fn c_r_has_slot(obj: SEXP, name: SEXP) -> SEXP {
-    unsafe { crate::mainutils::essentials::R_has_slot(obj, name) }
+    crate::mainutils::essentials::R_has_slot(obj, name)
 }
 
 unsafe extern "C-unwind" fn c_r_init_method_dispatch(envir: SEXP) -> SEXP {

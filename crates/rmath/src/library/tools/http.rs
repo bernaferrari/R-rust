@@ -143,9 +143,7 @@ pub fn remove_dot_segments_wrapper(x: SEXP) -> SEXP {
 
 #[inline]
 fn SET_STRING_ELT(x: SEXP, i: R_xlen_t, val: SEXP) {
-    unsafe {
-        crate::sexp::accessors::SET_STRING_ELT(x, i, val);
-    }
+    crate::sexp::accessors::SET_STRING_ELT(x, i, val);
 }
 
 fn pop_last_segment(output: &mut Vec<u8>) {

@@ -315,19 +315,15 @@ unsafe fn ge_max_line_width(
 
 #[inline]
 unsafe fn warning_message(message: String) {
-    unsafe {
-        let msg = cstring_message(message);
-        Rf_warning(msg.as_ptr());
-    }
+    let msg = cstring_message(message);
+    Rf_warning(msg.as_ptr());
 }
 
 #[inline]
 unsafe fn error_message(message: String) -> ! {
-    unsafe {
-        let msg = cstring_message(message);
-        Rf_error(msg.as_ptr());
-        unreachable!("Rf_error does not return");
-    }
+    let msg = cstring_message(message);
+    Rf_error(msg.as_ptr());
+    unreachable!("Rf_error does not return");
 }
 
 #[inline]

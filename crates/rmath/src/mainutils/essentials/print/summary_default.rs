@@ -17,35 +17,31 @@ pub(crate) fn quantile_type7(sorted: &[f64], prob: f64) -> f64 {
 }
 
 fn named_summary_result(ty: SEXPTYPE, names: &[&str]) -> SEXP {
-    unsafe {
-        let result = Rf_allocVector3(ty, names.len() as R_xlen_t);
-        if !result.is_null() {
-            let _result_guard = protect(result);
-            let owned_names = names
-                .iter()
-                .map(|name| (*name).to_string())
-                .collect::<Vec<_>>();
-            set_string_names(result, &owned_names);
-            set_summary_default_class(result);
-        }
-        result
+    let result = Rf_allocVector3(ty, names.len() as R_xlen_t);
+    if !result.is_null() {
+        let _result_guard = protect(result);
+        let owned_names = names
+            .iter()
+            .map(|name| (*name).to_string())
+            .collect::<Vec<_>>();
+        set_string_names(result, &owned_names);
+        set_summary_default_class(result);
     }
+    result
 }
 
 pub(crate) fn summary_tagged_int(args: SEXP, name: &str, default: i32) -> i32 {
-    unsafe {
-        let mut cell = CDR(args);
-        while !cell.is_null() && cell != R_NilValue() {
-            if tag_name(cell).as_deref() == Some(name) {
-                let v = crate::main::coerce::asInteger(CAR(cell));
-                if v != NA_INTEGER {
-                    return v;
-                }
+    let mut cell = CDR(args);
+    while !cell.is_null() && cell != R_NilValue() {
+        if tag_name(cell).as_deref() == Some(name) {
+            let v = crate::main::coerce::asInteger(CAR(cell));
+            if v != NA_INTEGER {
+                return v;
             }
-            cell = CDR(cell);
         }
-        default
+        cell = CDR(cell);
     }
+    default
 }
 
 pub(crate) fn summary_factor_result(x: SEXP, levels: Vec<String>, maxsum: i32) -> SEXP {

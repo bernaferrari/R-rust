@@ -51,14 +51,12 @@ pub(crate) unsafe extern "C" fn inRGBpar3_dispatch(
 }
 
 pub fn initPalette() {
-    unsafe {
-        crate::main::colors::Rg_set_col_ptrs(
-            Some(inRGBpar3_dispatch),
-            Some(incol2name),
-            Some(inR_GE_str2col),
-            Some(savePalette_impl),
-        );
-    }
+    crate::main::colors::Rg_set_col_ptrs(
+        Some(inRGBpar3_dispatch),
+        Some(incol2name),
+        Some(inR_GE_str2col),
+        Some(savePalette_impl),
+    );
 }
 
 pub unsafe fn do_palette(val: SEXP) -> SEXP {

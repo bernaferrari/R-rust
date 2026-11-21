@@ -16,7 +16,7 @@ pub fn CallHook(x: SEXP, fun: SEXP) -> SEXP {
 }
 
 pub fn checkNotPromise(val: SEXP) -> SEXP {
-     {
+    {
         if TYPEOF(val) == SEXPTYPE::PROMSXP {
             error("cannot return a promise (PROMSXP) object");
         }
@@ -180,7 +180,7 @@ pub fn R_lazyLoadDBinsertValue(
     compsxp: SEXP,
     hook: SEXP,
 ) -> SEXP {
-     {
+    {
         let mut data = R_serialize(value, R_NilValue(), ascii, R_NilValue(), hook);
         let compress = asInteger(compsxp);
         if compress == 3 {

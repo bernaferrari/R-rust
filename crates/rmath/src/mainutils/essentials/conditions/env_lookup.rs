@@ -4,38 +4,35 @@ use crate::sexp::object::SexpMut;
 /// GNU `exists`/`ls`: `where`/`pos` may be an environment, 1-based search
 /// index, or search-path name (`"package:methods"`). `-1` means the caller env.
 fn coerce_search_envir(arg: SEXP, default: SEXP) -> SEXP {
-    unsafe {
-        if arg.is_null() || arg == R_NilValue() {
+    if arg.is_null() || arg == R_NilValue() {
+        return default;
+    }
+    if TYPEOF(arg) == SEXPTYPE::ENVSXP {
+        return arg;
+    }
+    if TYPEOF(arg) == SEXPTYPE::INTSXP || TYPEOF(arg) == SEXPTYPE::REALSXP {
+        if XLENGTH(arg) < 1 {
             return default;
         }
-        if TYPEOF(arg) == SEXPTYPE::ENVSXP {
-            return arg;
+        let owner = active_owner();
+        let arg_owned = owner_sexp(owner, arg);
+        let pos = if TYPEOF(arg) == SEXPTYPE::INTSXP {
+            integer_like_elt(&arg_owned, 0)
+        } else {
+            arg_owned
+                .try_real_elt(0)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+                as c_int
+        };
+        if pos == -1 {
+            return default;
         }
-        if TYPEOF(arg) == SEXPTYPE::INTSXP || TYPEOF(arg) == SEXPTYPE::REALSXP {
-            if XLENGTH(arg) < 1 {
-                return default;
-            }
-            let owner = active_owner();
-            let arg_owned = owner_sexp(owner, arg);
-            let pos = if TYPEOF(arg) == SEXPTYPE::INTSXP {
-                integer_like_elt(&arg_owned, 0)
-            } else {
-                arg_owned
-                    .try_real_elt(0)
-                    .unwrap_or_else(|error| {
-                        crate::sexp::context::r_error(error.to_string())
-                    }) as c_int
-            };
-            if pos == -1 {
-                return default;
-            }
-            return super::mathstats::search_env_from_position(pos);
-        }
-        if TYPEOF(arg) == SEXPTYPE::STRSXP && XLENGTH(arg) > 0 {
-            return super::mathstats::search_env_from_name(&elt_to_string(arg, 0));
-        }
-        default
+        return super::mathstats::search_env_from_position(pos);
     }
+    if TYPEOF(arg) == SEXPTYPE::STRSXP && XLENGTH(arg) > 0 {
+        return super::mathstats::search_env_from_name(&elt_to_string(arg, 0));
+    }
+    default
 }
 
 /// R's `exists(x, envir)` — check name exists.
@@ -287,12 +284,10 @@ pub fn do_get0(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// GNU GET_VALUE forces a selected promise and then raises NAMED from zero to
 /// one so later copy-on-modify operations do not mutate the binding in place.
 fn ensure_get_value_named(value: SEXP) -> SEXP {
-    unsafe {
-        if crate::sexp::accessors::NAMED(value) == 0 {
-            crate::sexp::accessors::SET_NAMED(value, 1);
-        }
-        value
+    if crate::sexp::accessors::NAMED(value) == 0 {
+        crate::sexp::accessors::SET_NAMED(value, 1);
     }
+    value
 }
 
 fn lookup_mode_argument(args: SEXP, position: usize) -> Option<String> {
@@ -336,36 +331,32 @@ fn lookup_get_environment(
 }
 
 fn strict_get_environment(environment: SEXP) -> SEXP {
-    unsafe {
-        if environment.is_null() || environment == R_NilValue() {
-            base_error("use of NULL environment is defunct");
-        }
-        let environment = if crate::mainutils::coerce::IS_S4_OBJECT(environment) != FALSE {
-            crate::mainutils::subassign::R_getS4DataSlot(environment, SEXPTYPE::ANYSXP.as_c_int())
-        } else {
-            environment
-        };
-        if TYPEOF(environment) != SEXPTYPE::ENVSXP {
-            base_error("invalid 'envir' argument");
-        }
-        environment
+    if environment.is_null() || environment == R_NilValue() {
+        base_error("use of NULL environment is defunct");
     }
+    let environment = if crate::mainutils::coerce::IS_S4_OBJECT(environment) != FALSE {
+        crate::mainutils::subassign::R_getS4DataSlot(environment, SEXPTYPE::ANYSXP.as_c_int())
+    } else {
+        environment
+    };
+    if TYPEOF(environment) != SEXPTYPE::ENVSXP {
+        base_error("invalid 'envir' argument");
+    }
+    environment
 }
 
 fn as_get_position_environment(call: SEXP, op: SEXP, position: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        if position.is_null() || position == R_NilValue() {
-            base_error("use of NULL environment is defunct");
-        }
-        let conversion_args = Rf_cons(position, R_NilValue());
-        let _args_root = crate::sexp::protect::protect(conversion_args);
-        let environment =
-            crate::mainutils::essentials::do_as_environment(call, op, conversion_args, rho);
-        if environment.is_null() || TYPEOF(environment) != SEXPTYPE::ENVSXP {
-            base_error("invalid 'envir' argument");
-        }
-        environment
+    if position.is_null() || position == R_NilValue() {
+        base_error("use of NULL environment is defunct");
     }
+    let conversion_args = Rf_cons(position, R_NilValue());
+    let _args_root = crate::sexp::protect::protect(conversion_args);
+    let environment =
+        crate::mainutils::essentials::do_as_environment(call, op, conversion_args, rho);
+    if environment.is_null() || TYPEOF(environment) != SEXPTYPE::ENVSXP {
+        base_error("invalid 'envir' argument");
+    }
+    environment
 }
 
 fn named_argument(args: SEXP, name: &str) -> Option<SEXP> {
@@ -399,17 +390,15 @@ fn positional_argument(args: SEXP, position: usize) -> Option<SEXP> {
 }
 
 fn lookup_inherits_argument(args: SEXP, position: usize, default: bool) -> Option<bool> {
-    unsafe {
-        let inherits = arg_by_name_or_position(args, &["inherits"], position);
-        if inherits.is_null() || inherits == R_NilValue() {
-            return Some(default);
-        }
-        let value = crate::mainutils::coerce::asLogical(inherits);
-        if value == crate::sexp::ffi::NA_LOGICAL {
-            None
-        } else {
-            Some(value != FALSE)
-        }
+    let inherits = arg_by_name_or_position(args, &["inherits"], position);
+    if inherits.is_null() || inherits == R_NilValue() {
+        return Some(default);
+    }
+    let value = crate::mainutils::coerce::asLogical(inherits);
+    if value == crate::sexp::ffi::NA_LOGICAL {
+        None
+    } else {
+        Some(value != FALSE)
     }
 }
 
@@ -444,37 +433,30 @@ pub fn do_assign(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 pub(crate) fn symbol_name(sym: SEXP) -> Option<String> {
-    unsafe {
-        if sym.is_null() || sym == R_NilValue() || TYPEOF(sym) != SEXPTYPE::SYMSXP {
-            return None;
-        }
-        let printname = PRINTNAME(sym);
-        if printname.is_null() || printname == R_NilValue() {
-            return None;
-        }
-        let owner = active_owner();
-        charsxp_utf8_lossy(&owner_sexp(owner, printname))
+    if sym.is_null() || sym == R_NilValue() || TYPEOF(sym) != SEXPTYPE::SYMSXP {
+        return None;
     }
+    let printname = PRINTNAME(sym);
+    if printname.is_null() || printname == R_NilValue() {
+        return None;
+    }
+    let owner = active_owner();
+    charsxp_utf8_lossy(&owner_sexp(owner, printname))
 }
 
 pub(crate) fn logical_arg(arg: SEXP, default: bool) -> bool {
-    unsafe {
-        if arg.is_null() || arg == R_NilValue() || XLENGTH(arg) < 1 {
-            return default;
-        }
-        let owner = active_owner();
-        let arg_owned = owner_sexp(owner, arg);
-        if TYPEOF(arg) == SEXPTYPE::LGLSXP {
-            return arg_owned
-                .try_logical_elt(0)
-                .unwrap_or(FALSE)
-                != FALSE;
-        }
-        if TYPEOF(arg) == SEXPTYPE::INTSXP {
-            return arg_owned.try_integer_elt(0).unwrap_or(0) != 0;
-        }
-        default
+    if arg.is_null() || arg == R_NilValue() || XLENGTH(arg) < 1 {
+        return default;
     }
+    let owner = active_owner();
+    let arg_owned = owner_sexp(owner, arg);
+    if TYPEOF(arg) == SEXPTYPE::LGLSXP {
+        return arg_owned.try_logical_elt(0).unwrap_or(FALSE) != FALSE;
+    }
+    if TYPEOF(arg) == SEXPTYPE::INTSXP {
+        return arg_owned.try_integer_elt(0).unwrap_or(0) != 0;
+    }
+    default
 }
 
 /// R's `ls(envir)` — list objects.
@@ -592,20 +574,19 @@ pub fn do_rm(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                         let pn = PRINTNAME(expr);
                         if !pn.is_null() && pn != R_NilValue() {
                             let owner = active_owner();
-                            if let Some(text) =
-                                charsxp_utf8_lossy(&owner_sexp(owner, pn))
-                            {
+                            if let Some(text) = charsxp_utf8_lossy(&owner_sexp(owner, pn)) {
                                 names.push(text);
                             }
                         }
                     }
                     t if t == SEXPTYPE::STRSXP && XLENGTH(expr) > 0 => {
                         let owner = active_owner();
-                        let pn = owner_sexp(owner, expr)
-                            .try_string_elt(0)
-                            .unwrap_or_else(|error| {
-                                crate::sexp::context::r_error(error.to_string())
-                            });
+                        let pn =
+                            owner_sexp(owner, expr)
+                                .try_string_elt(0)
+                                .unwrap_or_else(|error| {
+                                    crate::sexp::context::r_error(error.to_string())
+                                });
                         if !pn.as_raw().is_null() && !pn.is_na_string() {
                             if let Some(text) = charsxp_utf8_lossy(&pn) {
                                 names.push(text);
@@ -618,11 +599,12 @@ pub fn do_rm(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                         let val = crate::eval::eval::Rf_eval(expr, rho);
                         if !val.is_null() && TYPEOF(val) == SEXPTYPE::STRSXP && XLENGTH(val) == 1 {
                             let owner = active_owner();
-                            let pn = owner_sexp(owner, val)
-                                .try_string_elt(0)
-                                .unwrap_or_else(|error| {
-                                    crate::sexp::context::r_error(error.to_string())
-                                });
+                            let pn =
+                                owner_sexp(owner, val)
+                                    .try_string_elt(0)
+                                    .unwrap_or_else(|error| {
+                                        crate::sexp::context::r_error(error.to_string())
+                                    });
                             if !pn.as_raw().is_null() && !pn.is_na_string() {
                                 if let Some(text) = charsxp_utf8_lossy(&pn) {
                                     names.push(text);
@@ -643,8 +625,7 @@ pub fn do_rm(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             } else {
                 let name = {
                     let owner = active_owner();
-                    charsxp_utf8_lossy(&owner_sexp(owner, PRINTNAME(tag)))
-                        .unwrap_or_default()
+                    charsxp_utf8_lossy(&owner_sexp(owner, PRINTNAME(tag))).unwrap_or_default()
                 };
                 match name.as_str() {
                     "list" => list_arg = crate::eval::eval::Rf_eval(expr, rho),
@@ -678,10 +659,7 @@ pub fn do_rm(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 && XLENGTH(pos_val) > 0
                 && {
                     let owner = active_owner();
-                    owner_sexp(owner, pos_val)
-                        .try_integer_elt(0)
-                        .unwrap_or(0)
-                        == -1
+                    owner_sexp(owner, pos_val).try_integer_elt(0).unwrap_or(0) == -1
                 }
             {
                 crate::sexp::globals::R_GlobalEnv()

@@ -749,19 +749,17 @@ fn eval_owned(
                     let mut cell = frame.clone();
                     while !cell.is_nil() {
                         let value = cell.try_car()?;
-                        unsafe { SET_NAMED(value.as_raw(), 2) };
+                        SET_NAMED(value.as_raw(), 2);
                         cell = cell.try_cdr()?;
                     }
                 }
                 env = access.with_native(|owner| {
                     owner
-                        .sexp(unsafe {
-                            crate::sexp::memory_ext::NewEnvironment(
-                                frame.as_raw(),
-                                encl.as_raw(),
-                                domain.nil().as_raw(),
-                            )
-                        })?
+                        .sexp(crate::sexp::memory_ext::NewEnvironment(
+                            frame.as_raw(),
+                            encl.as_raw(),
+                            domain.nil().as_raw(),
+                        ))?
                         .into_owned()
                 })?;
             }
@@ -771,9 +769,8 @@ fn eval_owned(
                         message: "numeric 'envir' arg not of length one".into(),
                     });
                 }
-                let frame = access.with_native(|_| {
-                    Ok(unsafe { crate::mainutils::coerce::asInteger(env.as_raw()) })
-                })?;
+                let frame = access
+                    .with_native(|_| Ok(crate::mainutils::coerce::asInteger(env.as_raw())))?;
                 if frame == NA_INTEGER {
                     return Err(invalid_eval_environment(env.typeof_()));
                 }
@@ -796,18 +793,16 @@ fn eval_owned(
     );
     let _context = if evalable {
         Some(access.with_native(|_| {
-            Ok(unsafe {
-                crate::sexp::context::begin_context_guard(
-                    crate::sexp::context::ctxt_flags::CTXT_FUNCTION
-                        | crate::sexp::context::ctxt_flags::CTXT_RETURN,
-                    caller_call.as_raw(),
-                    env.as_raw(),
-                    rho.as_raw(),
-                    None,
-                    op.as_raw(),
-                    args.as_raw(),
-                )
-            })
+            Ok(crate::sexp::context::begin_context_guard(
+                crate::sexp::context::ctxt_flags::CTXT_FUNCTION
+                    | crate::sexp::context::ctxt_flags::CTXT_RETURN,
+                caller_call.as_raw(),
+                env.as_raw(),
+                rho.as_raw(),
+                None,
+                op.as_raw(),
+                args.as_raw(),
+            ))
         })?)
     } else {
         None
@@ -927,7 +922,7 @@ impl Drop for EvalSrcrefGuard {
 
 /// R's `substitute(expr, env)` — substitute symbols in expression.
 pub fn do_substitute(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { crate::mainutils::coerce::do_substitute(_call, _op, args, _rho) }
+    crate::mainutils::coerce::do_substitute(_call, _op, args, _rho)
 }
 
 /// R's `quote(expr)` — return expression unevaluated.
@@ -1079,7 +1074,7 @@ pub(crate) fn parse_with_srcrefs(content: &str, filename: &str) -> SEXP {
 
 fn parse_source_strings(source: &[String]) -> SEXP {
     let combined = source.join("\n");
-     parse_source_expression_vector(&combined) 
+    parse_source_expression_vector(&combined)
 }
 
 pub(crate) fn parse_source_expression_vector(source: &str) -> SEXP {

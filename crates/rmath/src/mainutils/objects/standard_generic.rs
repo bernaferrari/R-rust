@@ -36,12 +36,10 @@ pub fn isMethodsDispatchOn() -> c_int {
 
 /// do_S4on -- primitive for .isMethodsDispatchOn()
 pub fn do_S4on(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
-        if args.is_null() || args == R_NilValue() || length(args) == 0 {
-            return Rf_ScalarLogical(isMethodsDispatchOn());
-        }
-        Rf_ScalarLogical(isMethodsDispatchOn())
+    if args.is_null() || args == R_NilValue() || length(args) == 0 {
+        return Rf_ScalarLogical(isMethodsDispatchOn());
     }
+    Rf_ScalarLogical(isMethodsDispatchOn())
 }
 
 /// dispatchNonGeneric -- dispatch the non-generic definition of a function.

@@ -253,12 +253,7 @@ pub fn do_subset(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 /// `ans` is the evaluated argument list with `x` first; a tagged `drop`
 /// argument is honored (it matches the `[.factor` formal whose default is
 /// `drop = FALSE`).
-pub fn subset_default_after_failed_dispatch(
-    call: SEXP,
-    op: SEXP,
-    ans: SEXP,
-    env: SEXP,
-) -> SEXP {
+pub fn subset_default_after_failed_dispatch(call: SEXP, op: SEXP, ans: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let orig = CAR(ans);
         let is_factor = has_class_factor(orig);
@@ -550,7 +545,7 @@ pub fn do_subset_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         /// Whether to take the `[.data.frame` emulation path: a data.frame with
         /// exactly two `[` subscripts (`df[i, j]`).
         fn data_frame_subset_2(x: SEXP, nsubs: c_int) -> bool {
-            unsafe { nsubs == 2 && is_data_frame(x) && TYPEOF(x) == SEXPTYPE::VECSXP }
+            nsubs == 2 && is_data_frame(x) && TYPEOF(x) == SEXPTYPE::VECSXP
         }
 
         /// GNU `.row_names_info(x, 2L)`: compact `c(NA, ±n)` stores nrow in

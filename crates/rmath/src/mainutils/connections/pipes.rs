@@ -30,68 +30,66 @@ use crate::sexp::protect::*;
 // ---------------------------------------------------------------------------
 
 pub fn do_pipe(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
-        if crate::mainutils::essentials::pipe_commands_disabled_by_runtime_policy() {
-            std::panic::panic_any(crate::sexp::context::RError {
-                message: "pipe() is disabled by the session capability policy".to_string(),
-            });
-        }
-
-        let scmd = CAR(args);
-        args = CDR(args);
-        let sopen = CAR(args);
-        args = CDR(args);
-        let _enc = CAR(args);
-
-        let description = check_string_arg(scmd, "description");
-        let open = check_string_arg(sopen, "open");
-        let open_mode = if open.is_empty() {
-            "r".to_string()
-        } else {
-            open
-        };
-
-        let ncon = next_connection();
-        let mut conn = RConn::new("pipe", &description, &open_mode, ConnKind::Pipe);
-        conn.canseek = false;
-        conn.text = !open_mode.contains('b');
-
-        // Open immediately if open mode is non-empty
-        if !open_mode.is_empty() {
-            let is_read = open_mode.starts_with('r');
-            let mut cmd = Command::new("sh");
-            cmd.arg("-c").arg(&description);
-
-            if is_read {
-                cmd.stdout(Stdio::piped());
-                cmd.stderr(Stdio::null());
-            } else {
-                cmd.stdin(Stdio::piped());
-                cmd.stderr(Stdio::null());
-            }
-
-            match cmd.spawn() {
-                Ok(child) => {
-                    conn.child = Some(child);
-                    conn.isopen = true;
-                    conn.canread = is_read;
-                    conn.canwrite = !is_read;
-                }
-                Err(e) => {
-                    r_error(&format!("cannot open pipe '{}': {}", description, e));
-                }
-            }
-        }
-
-        let mut table = connection_table();
-        table[ncon] = Some(Box::new(conn));
-        drop(table);
-
-        let ans = Rf_ScalarInteger(ncon as c_int);
-        let _ans_guard = protect(ans);
-        set_connection_class(ans, "pipe");
-        ans
+    if crate::mainutils::essentials::pipe_commands_disabled_by_runtime_policy() {
+        std::panic::panic_any(crate::sexp::context::RError {
+            message: "pipe() is disabled by the session capability policy".to_string(),
+        });
     }
+
+    let scmd = CAR(args);
+    args = CDR(args);
+    let sopen = CAR(args);
+    args = CDR(args);
+    let _enc = CAR(args);
+
+    let description = check_string_arg(scmd, "description");
+    let open = check_string_arg(sopen, "open");
+    let open_mode = if open.is_empty() {
+        "r".to_string()
+    } else {
+        open
+    };
+
+    let ncon = next_connection();
+    let mut conn = RConn::new("pipe", &description, &open_mode, ConnKind::Pipe);
+    conn.canseek = false;
+    conn.text = !open_mode.contains('b');
+
+    // Open immediately if open mode is non-empty
+    if !open_mode.is_empty() {
+        let is_read = open_mode.starts_with('r');
+        let mut cmd = Command::new("sh");
+        cmd.arg("-c").arg(&description);
+
+        if is_read {
+            cmd.stdout(Stdio::piped());
+            cmd.stderr(Stdio::null());
+        } else {
+            cmd.stdin(Stdio::piped());
+            cmd.stderr(Stdio::null());
+        }
+
+        match cmd.spawn() {
+            Ok(child) => {
+                conn.child = Some(child);
+                conn.isopen = true;
+                conn.canread = is_read;
+                conn.canwrite = !is_read;
+            }
+            Err(e) => {
+                r_error(&format!("cannot open pipe '{}': {}", description, e));
+            }
+        }
+    }
+
+    let mut table = connection_table();
+    table[ncon] = Some(Box::new(conn));
+    drop(table);
+
+    let ans = Rf_ScalarInteger(ncon as c_int);
+    let _ans_guard = protect(ans);
+    set_connection_class(ans, "pipe");
+    ans
 }
 // ---------------------------------------------------------------------------
 // do_rawConnection — rawConnection(raw, open = "rb")
@@ -295,27 +293,25 @@ fn is_missing_conn_arg(arg: SEXP) -> bool {
 }
 
 fn text_connection_env(local_arg: SEXP, caller: SEXP) -> SEXP {
-    unsafe {
-        if is_missing_conn_arg(local_arg) {
+    if is_missing_conn_arg(local_arg) {
+        return crate::sexp::globals::R_GlobalEnv();
+    }
+    if TYPEOF(local_arg) == SEXPTYPE::ENVSXP {
+        return local_arg;
+    }
+    if TYPEOF(local_arg) == SEXPTYPE::LGLSXP {
+        let v = as_logical(local_arg);
+        if v == crate::sexp::ffi::TRUE {
+            if !caller.is_null() && TYPEOF(caller) == SEXPTYPE::ENVSXP {
+                return caller;
+            }
             return crate::sexp::globals::R_GlobalEnv();
         }
-        if TYPEOF(local_arg) == SEXPTYPE::ENVSXP {
-            return local_arg;
+        if v == crate::sexp::ffi::FALSE {
+            return crate::sexp::globals::R_GlobalEnv();
         }
-        if TYPEOF(local_arg) == SEXPTYPE::LGLSXP {
-            let v = as_logical(local_arg);
-            if v == crate::sexp::ffi::TRUE {
-                if !caller.is_null() && TYPEOF(caller) == SEXPTYPE::ENVSXP {
-                    return caller;
-                }
-                return crate::sexp::globals::R_GlobalEnv();
-            }
-            if v == crate::sexp::ffi::FALSE {
-                return crate::sexp::globals::R_GlobalEnv();
-            }
-        }
-        r_error("invalid 'local' argument");
     }
+    r_error("invalid 'local' argument");
 }
 
 // ---------------------------------------------------------------------------
@@ -367,26 +363,24 @@ pub fn do_download(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 pub fn do_getConnection(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
-        let sn = CAR(args);
-        let n = as_integer(sn) as usize;
+    let sn = CAR(args);
+    let n = as_integer(sn) as usize;
 
-        init_connections_table();
-        let table = connection_table();
+    init_connections_table();
+    let table = connection_table();
 
-        if n >= table.len() || table[n].is_none() {
-            r_error("invalid connection");
-        }
-
-        let class_name = table[n]
-            .as_ref()
-            .map(|conn| conn.class.clone())
-            .unwrap_or_else(|| "connection".to_string());
-        drop(table);
-        let ans = Rf_ScalarInteger(n as c_int);
-        set_connection_class(ans, &class_name);
-        ans
+    if n >= table.len() || table[n].is_none() {
+        r_error("invalid connection");
     }
+
+    let class_name = table[n]
+        .as_ref()
+        .map(|conn| conn.class.clone())
+        .unwrap_or_else(|| "connection".to_string());
+    drop(table);
+    let ans = Rf_ScalarInteger(n as c_int);
+    set_connection_class(ans, &class_name);
+    ans
 }
 
 // ---------------------------------------------------------------------------
@@ -497,55 +491,53 @@ pub fn do_getAllConnections(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> 
 // ---------------------------------------------------------------------------
 
 pub fn do_sink(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
-        let sn = CAR(args);
-        args = CDR(args);
-        let close_on_exit = check_logical_arg(CAR(args), "closeOnExit");
-        args = CDR(args);
-        let errcon = check_logical_arg(CAR(args), "type");
-        args = CDR(args);
-        let tee = check_logical_arg(CAR(args), "split");
+    let sn = CAR(args);
+    args = CDR(args);
+    let close_on_exit = check_logical_arg(CAR(args), "closeOnExit");
+    args = CDR(args);
+    let errcon = check_logical_arg(CAR(args), "type");
+    args = CDR(args);
+    let tee = check_logical_arg(CAR(args), "split");
 
-        let icon = as_integer(sn);
+    let icon = as_integer(sn);
 
-        let mut sink = sink_state();
+    let mut sink = sink_state();
 
-        if errcon == 0 {
-            // Output sink
-            if icon >= 0 {
-                if sink.sink_number >= 20 {
-                    r_error("sink stack is full");
-                }
-                sink.sink_number += 1;
-                if sink.sink_cons.len() <= sink.sink_number {
-                    sink.sink_cons.push(icon);
-                    sink.sink_close.push(close_on_exit != 0);
-                    sink.sink_split.push(tee != 0);
-                } else {
-                    let idx = sink.sink_number;
-                    sink.sink_cons[idx] = icon;
-                    sink.sink_close[idx] = close_on_exit != 0;
-                    sink.sink_split[idx] = tee != 0;
-                }
-                sink.output_con = icon;
-            } else {
-                // Close sink: revert to stdout
-                if sink.sink_number > 0 {
-                    sink.sink_number -= 1;
-                }
-                sink.output_con = sink.sink_cons[sink.sink_number];
+    if errcon == 0 {
+        // Output sink
+        if icon >= 0 {
+            if sink.sink_number >= 20 {
+                r_error("sink stack is full");
             }
+            sink.sink_number += 1;
+            if sink.sink_cons.len() <= sink.sink_number {
+                sink.sink_cons.push(icon);
+                sink.sink_close.push(close_on_exit != 0);
+                sink.sink_split.push(tee != 0);
+            } else {
+                let idx = sink.sink_number;
+                sink.sink_cons[idx] = icon;
+                sink.sink_close[idx] = close_on_exit != 0;
+                sink.sink_split[idx] = tee != 0;
+            }
+            sink.output_con = icon;
         } else {
-            // Error/message sink
-            if icon < 0 || icon == 2 {
-                sink.error_con = 2;
-            } else {
-                sink.error_con = icon;
+            // Close sink: revert to stdout
+            if sink.sink_number > 0 {
+                sink.sink_number -= 1;
             }
+            sink.output_con = sink.sink_cons[sink.sink_number];
         }
-
-        R_NilValue()
+    } else {
+        // Error/message sink
+        if icon < 0 || icon == 2 {
+            sink.error_con = 2;
+        } else {
+            sink.error_con = icon;
+        }
     }
+
+    R_NilValue()
 }
 
 // ---------------------------------------------------------------------------
@@ -553,14 +545,12 @@ pub fn do_sink(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 pub fn do_sinkNumber(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
-        let errcon = check_logical_arg(CAR(args), "type");
-        let sink = sink_state();
-        if errcon != 0 {
-            Rf_ScalarInteger(sink.error_con)
-        } else {
-            Rf_ScalarInteger(sink.sink_number as c_int)
-        }
+    let errcon = check_logical_arg(CAR(args), "type");
+    let sink = sink_state();
+    if errcon != 0 {
+        Rf_ScalarInteger(sink.error_con)
+    } else {
+        Rf_ScalarInteger(sink.sink_number as c_int)
     }
 }
 
@@ -569,42 +559,40 @@ pub fn do_sinkNumber(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 pub fn do_pushBack(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
-        let data = CAR(_args);
-        let con = CAR(CDR(_args));
-        let mut new_line = true;
-        let mut cell = CDR(CDR(_args));
-        while !cell.is_null() && cell != R_NilValue() {
-            let tag = crate::sexp::accessors::TAG(cell);
-            let name = if tag.is_null() {
-                None
-            } else {
-                crate::sexp::symbol::symbol_name_from_ptr(tag)
-            };
-            if name.as_deref().unwrap_or("").is_empty() || name.as_deref() == Some("newLine") {
-                new_line = check_logical_arg(CAR(cell), "newLine") != 0;
-                break;
-            }
-            cell = CDR(cell);
+    let data = CAR(_args);
+    let con = CAR(CDR(_args));
+    let mut new_line = true;
+    let mut cell = CDR(CDR(_args));
+    while !cell.is_null() && cell != R_NilValue() {
+        let tag = crate::sexp::accessors::TAG(cell);
+        let name = if tag.is_null() {
+            None
+        } else {
+            crate::sexp::symbol::symbol_name_from_ptr(tag)
+        };
+        if name.as_deref().unwrap_or("").is_empty() || name.as_deref() == Some("newLine") {
+            new_line = check_logical_arg(CAR(cell), "newLine") != 0;
+            break;
         }
-
-        if TYPEOF(data) != SEXPTYPE::STRSXP {
-            r_error("'data' must be a character vector");
-        }
-        if !inherits_class(con, "connection") {
-            r_error("'con' is not a connection");
-        }
-        let i = as_integer(con);
-        let len = LENGTH(data);
-        for idx in (0..len).rev() {
-            let mut line = string_elt(data, idx as R_xlen_t).into_bytes();
-            if new_line {
-                line.push(b'\n');
-            }
-            connection_pushback(i, &line);
-        }
-        R_NilValue()
+        cell = CDR(cell);
     }
+
+    if TYPEOF(data) != SEXPTYPE::STRSXP {
+        r_error("'data' must be a character vector");
+    }
+    if !inherits_class(con, "connection") {
+        r_error("'con' is not a connection");
+    }
+    let i = as_integer(con);
+    let len = LENGTH(data);
+    for idx in (0..len).rev() {
+        let mut line = string_elt(data, idx as R_xlen_t).into_bytes();
+        if new_line {
+            line.push(b'\n');
+        }
+        connection_pushback(i, &line);
+    }
+    R_NilValue()
 }
 
 // ---------------------------------------------------------------------------
@@ -612,19 +600,17 @@ pub fn do_pushBack(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 pub fn do_pushBackClear(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
-        let con = CAR(args);
-        if !inherits_class(con, "connection") {
-            r_error("'con' is not a connection");
-        }
-        let i = as_integer(con) as usize;
-        let mut table = connection_table();
-        let Some(conn) = table[i].as_mut() else {
-            r_error("invalid connection");
-        };
-        conn.pushback.clear();
-        R_NilValue()
+    let con = CAR(args);
+    if !inherits_class(con, "connection") {
+        r_error("'con' is not a connection");
     }
+    let i = as_integer(con) as usize;
+    let mut table = connection_table();
+    let Some(conn) = table[i].as_mut() else {
+        r_error("invalid connection");
+    };
+    conn.pushback.clear();
+    R_NilValue()
 }
 
 // ---------------------------------------------------------------------------
@@ -632,16 +618,14 @@ pub fn do_pushBackClear(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
 // ---------------------------------------------------------------------------
 
 pub fn do_pushBackLength(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
-        let con = CAR(args);
-        if !inherits_class(con, "connection") {
-            r_error("'con' is not a connection");
-        }
-        let i = as_integer(con) as usize;
-        let table = connection_table();
-        let Some(conn) = table[i].as_ref() else {
-            r_error("invalid connection");
-        };
-        Rf_ScalarInteger(conn.pushback.len() as c_int)
+    let con = CAR(args);
+    if !inherits_class(con, "connection") {
+        r_error("'con' is not a connection");
     }
+    let i = as_integer(con) as usize;
+    let table = connection_table();
+    let Some(conn) = table[i].as_ref() else {
+        r_error("invalid connection");
+    };
+    Rf_ScalarInteger(conn.pushback.len() as c_int)
 }

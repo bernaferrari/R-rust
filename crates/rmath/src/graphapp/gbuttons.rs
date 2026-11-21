@@ -138,8 +138,7 @@ pub fn getseltext(c: textbox, text: *mut c_char) {
         return;
     };
     if count > 0
-        && let Some(src) = slice_ref(source as *const u8, len)
-            .and_then(|s| s.get(start..end))
+        && let Some(src) = slice_ref(source as *const u8, len).and_then(|s| s.get(start..end))
     {
         out[..count].copy_from_slice(src);
     }

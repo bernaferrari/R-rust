@@ -114,7 +114,7 @@ unsafe fn allocMatrix(sexptype: c_int, nrow: c_int, ncol: c_int) -> SEXP {
 }
 
 unsafe fn influence_error(message: &'static [u8]) -> ! {
-    unsafe { Rf_error(message.as_ptr() as *const std::os::raw::c_char) };
+    Rf_error(message.as_ptr() as *const std::os::raw::c_char);
     unreachable!("Rf_error must not return")
 }
 

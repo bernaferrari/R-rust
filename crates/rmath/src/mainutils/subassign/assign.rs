@@ -28,21 +28,19 @@ use crate::mainutils::essentials::{elt_real_safe, elt_to_string};
 // ---------------------------------------------------------------------------
 // Exported functions
 fn value_deletes_columns(value: SEXP) -> bool {
-    unsafe {
-        if value.is_null() || value == R_NilValue() {
-            return true;
-        }
-        if TYPEOF(value) != SEXPTYPE::VECSXP || XLENGTH(value) == 0 {
+    if value.is_null() || value == R_NilValue() {
+        return true;
+    }
+    if TYPEOF(value) != SEXPTYPE::VECSXP || XLENGTH(value) == 0 {
+        return false;
+    }
+    for i in 0..XLENGTH(value) {
+        let elt = VECTOR_ELT(value, i);
+        if !(elt.is_null() || elt == R_NilValue()) {
             return false;
         }
-        for i in 0..XLENGTH(value) {
-            let elt = VECTOR_ELT(value, i);
-            if !(elt.is_null() || elt == R_NilValue()) {
-                return false;
-            }
-        }
-        true
     }
+    true
 }
 
 fn drop_data_frame_columns(frame: SEXP, index: SEXP) -> SEXP {
@@ -382,55 +380,53 @@ fn data_frame_assign_cells(frame: SEXP, subs: SEXP, value: SEXP) -> Option<SEXP>
     }
 }
 fn lengthen_with_na(col: SEXP, n: i64) -> SEXP {
-    unsafe {
-        if col.is_null() || n <= XLENGTH(col) {
-            return col;
-        }
-        let ty = TYPEOF(col);
-        let out = crate::sexp::constructors::Rf_allocVector(
-            if ty == SEXPTYPE::INTSXP {
-                SEXPTYPE::INTSXP
-            } else if ty == SEXPTYPE::LGLSXP {
-                SEXPTYPE::LGLSXP
-            } else if ty == SEXPTYPE::STRSXP {
-                SEXPTYPE::STRSXP
-            } else {
-                SEXPTYPE::REALSXP
-            },
-            n as i32,
-        );
-        for i in 0..XLENGTH(col) {
-            if ty == SEXPTYPE::INTSXP || ty == SEXPTYPE::LGLSXP {
-                crate::sexp::accessors::SET_INTEGER_ELT(
-                    out,
-                    i as i32,
-                    crate::sexp::accessors::INTEGER_ELT(col, i as i32),
-                );
-            } else if ty == SEXPTYPE::STRSXP {
-                crate::sexp::accessors::SET_STRING_ELT(
-                    out,
-                    i,
-                    crate::sexp::accessors::STRING_ELT(col, i),
-                );
-            } else {
-                crate::sexp::accessors::SET_REAL_ELT(
-                    out,
-                    i as i32,
-                    crate::sexp::accessors::REAL_ELT(col, i as i32),
-                );
-            }
-        }
-        for i in XLENGTH(col)..n {
-            if ty == SEXPTYPE::INTSXP || ty == SEXPTYPE::LGLSXP {
-                crate::sexp::accessors::SET_INTEGER_ELT(out, i as i32, NA_INTEGER);
-            } else if ty == SEXPTYPE::STRSXP {
-                crate::sexp::accessors::SET_STRING_ELT(out, i, crate::sexp::globals::R_NaString());
-            } else {
-                crate::sexp::accessors::SET_REAL_ELT(out, i as i32, crate::sexp::ffi::NA_REAL);
-            }
-        }
-        out
+    if col.is_null() || n <= XLENGTH(col) {
+        return col;
     }
+    let ty = TYPEOF(col);
+    let out = crate::sexp::constructors::Rf_allocVector(
+        if ty == SEXPTYPE::INTSXP {
+            SEXPTYPE::INTSXP
+        } else if ty == SEXPTYPE::LGLSXP {
+            SEXPTYPE::LGLSXP
+        } else if ty == SEXPTYPE::STRSXP {
+            SEXPTYPE::STRSXP
+        } else {
+            SEXPTYPE::REALSXP
+        },
+        n as i32,
+    );
+    for i in 0..XLENGTH(col) {
+        if ty == SEXPTYPE::INTSXP || ty == SEXPTYPE::LGLSXP {
+            crate::sexp::accessors::SET_INTEGER_ELT(
+                out,
+                i as i32,
+                crate::sexp::accessors::INTEGER_ELT(col, i as i32),
+            );
+        } else if ty == SEXPTYPE::STRSXP {
+            crate::sexp::accessors::SET_STRING_ELT(
+                out,
+                i,
+                crate::sexp::accessors::STRING_ELT(col, i),
+            );
+        } else {
+            crate::sexp::accessors::SET_REAL_ELT(
+                out,
+                i as i32,
+                crate::sexp::accessors::REAL_ELT(col, i as i32),
+            );
+        }
+    }
+    for i in XLENGTH(col)..n {
+        if ty == SEXPTYPE::INTSXP || ty == SEXPTYPE::LGLSXP {
+            crate::sexp::accessors::SET_INTEGER_ELT(out, i as i32, NA_INTEGER);
+        } else if ty == SEXPTYPE::STRSXP {
+            crate::sexp::accessors::SET_STRING_ELT(out, i, crate::sexp::globals::R_NaString());
+        } else {
+            crate::sexp::accessors::SET_REAL_ELT(out, i as i32, crate::sexp::ffi::NA_REAL);
+        }
+    }
+    out
 }
 
 fn data_frame_assign_matrix(frame: SEXP, index: SEXP, value: SEXP) -> Option<SEXP> {
@@ -457,78 +453,68 @@ fn data_frame_assign_matrix(frame: SEXP, index: SEXP, value: SEXP) -> Option<SEX
 }
 
 fn subscript_positions(index: SEXP, n: i64) -> Option<Vec<i64>> {
-    unsafe {
-        if index.is_null() || index == R_NilValue() || index == crate::sexp::globals::R_MissingArg()
-        {
-            return Some((0..n).collect());
+    if index.is_null() || index == R_NilValue() || index == crate::sexp::globals::R_MissingArg() {
+        return Some((0..n).collect());
+    }
+    let mut out = Vec::new();
+    if TYPEOF(index) == SEXPTYPE::INTSXP || TYPEOF(index) == SEXPTYPE::REALSXP {
+        for i in 0..XLENGTH(index) {
+            let v = crate::mainutils::essentials::elt_real_safe(index, i);
+            if v.is_nan() {
+                continue;
+            }
+            let pos = v as i64;
+            if pos >= 1 && pos <= n {
+                out.push(pos - 1);
+            }
         }
-        let mut out = Vec::new();
-        if TYPEOF(index) == SEXPTYPE::INTSXP || TYPEOF(index) == SEXPTYPE::REALSXP {
-            for i in 0..XLENGTH(index) {
-                let v = crate::mainutils::essentials::elt_real_safe(index, i);
-                if v.is_nan() {
-                    continue;
-                }
-                let pos = v as i64;
-                if pos >= 1 && pos <= n {
-                    out.push(pos - 1);
+        Some(out)
+    } else if TYPEOF(index) == SEXPTYPE::LGLSXP {
+        if XLENGTH(index) == 1
+            && crate::sexp::accessors::LOGICAL_ELT(index, 0) == crate::sexp::ffi::TRUE
+        {
+            Some((0..n).collect())
+        } else {
+            let mut out = Vec::new();
+            for i in 0..n {
+                let bit =
+                    crate::sexp::accessors::LOGICAL_ELT(index, (i % XLENGTH(index).max(1)) as i32);
+                if bit == crate::sexp::ffi::TRUE {
+                    out.push(i);
                 }
             }
             Some(out)
-        } else if TYPEOF(index) == SEXPTYPE::LGLSXP {
-            if XLENGTH(index) == 1
-                && crate::sexp::accessors::LOGICAL_ELT(index, 0) == crate::sexp::ffi::TRUE
-            {
-                Some((0..n).collect())
-            } else {
-                let mut out = Vec::new();
-                for i in 0..n {
-                    let bit = crate::sexp::accessors::LOGICAL_ELT(
-                        index,
-                        (i % XLENGTH(index).max(1)) as i32,
-                    );
-                    if bit == crate::sexp::ffi::TRUE {
-                        out.push(i);
-                    }
-                }
-                Some(out)
-            }
-        } else {
-            None
         }
+    } else {
+        None
     }
 }
 
 fn column_positions(frame: SEXP, index: SEXP) -> Option<Vec<i64>> {
-    unsafe {
-        if index.is_null() || index == R_NilValue() || index == crate::sexp::globals::R_MissingArg()
-        {
-            return Some((0..XLENGTH(frame)).collect());
-        }
-        if TYPEOF(index) == SEXPTYPE::STRSXP {
-            let names = crate::sexp::attrib_core::getAttrib(
-                frame,
-                crate::sexp::attrib_core::R_NamesSymbol(),
-            );
-            let mut out = Vec::new();
-            for i in 0..XLENGTH(index) {
-                let want = elt_to_string(index, i);
-                let mut found = None;
-                if !names.is_null() && TYPEOF(names) == SEXPTYPE::STRSXP {
-                    for j in 0..XLENGTH(names) {
-                        if elt_to_string(names, j) == want {
-                            found = Some(j);
-                            break;
-                        }
+    if index.is_null() || index == R_NilValue() || index == crate::sexp::globals::R_MissingArg() {
+        return Some((0..XLENGTH(frame)).collect());
+    }
+    if TYPEOF(index) == SEXPTYPE::STRSXP {
+        let names =
+            crate::sexp::attrib_core::getAttrib(frame, crate::sexp::attrib_core::R_NamesSymbol());
+        let mut out = Vec::new();
+        for i in 0..XLENGTH(index) {
+            let want = elt_to_string(index, i);
+            let mut found = None;
+            if !names.is_null() && TYPEOF(names) == SEXPTYPE::STRSXP {
+                for j in 0..XLENGTH(names) {
+                    if elt_to_string(names, j) == want {
+                        found = Some(j);
+                        break;
                     }
                 }
-                found?;
-                out.push(found.unwrap());
             }
-            return Some(out);
+            found?;
+            out.push(found.unwrap());
         }
-        subscript_positions(index, XLENGTH(frame))
+        return Some(out);
     }
+    subscript_positions(index, XLENGTH(frame))
 }
 
 fn assign_column_rows(col: SEXP, rows: &[i64], value: SEXP, value_len: i64) -> SEXP {

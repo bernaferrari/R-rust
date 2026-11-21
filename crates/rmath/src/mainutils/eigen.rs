@@ -12,10 +12,7 @@ use crate::sexp::globals::R_NilValue;
 use crate::sexp::protect::protect;
 
 fn eigen_error(message: &str) -> ! {
-    crate::mainutils::errors::errorcall_str(
-        unsafe { crate::mainutils::errors::R_getCurrentCall() },
-        message,
-    )
+    crate::mainutils::errors::errorcall_str(crate::mainutils::errors::R_getCurrentCall(), message)
 }
 
 unsafe fn is_symmetric_real(x: SEXP, n: usize) -> bool {

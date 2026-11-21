@@ -36,14 +36,14 @@ fn active(owner: OwnerToken<'_>) {
 unsafe fn distribution(input: SEXP, sm: SEXP, sn: SEXP, quantile: bool) -> SEXP {
     let owner = unsafe { OwnerToken::current() }
         .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
-    let m = unsafe { crate::main::coerce::asInteger(sm) };
+    let m = crate::main::coerce::asInteger(sm);
     active(owner);
-    let n = unsafe { crate::main::coerce::asInteger(sn) };
+    let n = crate::main::coerce::asInteger(sn);
     active(owner);
     memo::Dimensions::new(m, n).unwrap_or_else(|e| crate::mainutils::essentials::base_error(e));
-    let input = unsafe { crate::main::coerce::coerceVector(input, SEXPTYPE::REALSXP.as_c_int()) };
+    let input = crate::main::coerce::coerceVector(input, SEXPTYPE::REALSXP.as_c_int());
     active(owner);
-    let _input = unsafe { crate::sexp::protect::protect(input) };
+    let _input = crate::sexp::protect::protect(input);
     let input = owner
         .sexp(input)
         .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
@@ -51,8 +51,8 @@ unsafe fn distribution(input: SEXP, sm: SEXP, sn: SEXP, quantile: bool) -> SEXP 
         .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
     active(owner);
     let len = input.len();
-    let output = unsafe { crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::REALSXP, len) };
-    let _output = unsafe { crate::sexp::protect::protect(output) };
+    let output = crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::REALSXP, len);
+    let _output = crate::sexp::protect::protect(output);
     let mut result = crate::sexp::SexpMut::try_from_checked(
         owner
             .sexp(output)

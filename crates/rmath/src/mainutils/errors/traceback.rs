@@ -149,7 +149,7 @@ fn publish_error_traceback(trace: SEXP) {
             .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
     };
     let base = own(crate::eval::runtime::base_env());
-    let namespace = own(unsafe { crate::sexp::envir::R_BaseNamespace() });
+    let namespace = own(crate::sexp::envir::R_BaseNamespace());
     let trace = own(trace);
     let symbol = own(unsafe { crate::sexp::symbol::Rf_install(c".Traceback".as_ptr()) });
     let existing_binding = || {
@@ -169,7 +169,7 @@ fn publish_error_traceback(trace: SEXP) {
     if let Some(frame) =
         existing_binding().unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
     {
-        unsafe { crate::sexp::accessors::SETCAR(frame.as_raw(), trace.as_raw()) };
+        crate::sexp::accessors::SETCAR(frame.as_raw(), trace.as_raw());
         return;
     }
     let previous = base
@@ -185,18 +185,17 @@ fn publish_error_traceback(trace: SEXP) {
     if let Some(frame) =
         existing_binding().unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
     {
-        unsafe { crate::sexp::accessors::SETCAR(frame.as_raw(), trace.as_raw()) };
+        crate::sexp::accessors::SETCAR(frame.as_raw(), trace.as_raw());
         return;
     }
     // No callback can occur between this refreshed edge and peer publication.
     let current = base
         .try_frame()
         .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-    unsafe {
-        crate::sexp::accessors::SETCDR(cell.as_raw(), current.as_raw());
-        crate::sexp::accessors::SET_FRAME(base.as_raw(), cell.as_raw());
-        crate::sexp::accessors::SET_FRAME(namespace.as_raw(), cell.as_raw());
-    }
+
+    crate::sexp::accessors::SETCDR(cell.as_raw(), current.as_raw());
+    crate::sexp::accessors::SET_FRAME(base.as_raw(), cell.as_raw());
+    crate::sexp::accessors::SET_FRAME(namespace.as_raw(), cell.as_raw());
 }
 
 pub fn save_error_traceback() {
@@ -283,7 +282,7 @@ pub fn R_ConciseTraceback(call: SEXP, skip: c_int) -> String {
 
 /// do_traceback — traceback().
 pub fn do_traceback(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-     {
+    {
         checkArity(op, args);
         let skip = crate::mainutils::coerce::asInteger(CAR(args));
         if skip == crate::sexp::ffi::NA_INTEGER || skip < 0 {

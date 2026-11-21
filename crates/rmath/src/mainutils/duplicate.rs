@@ -184,10 +184,8 @@ unsafe fn SET_RTRACE(x: SEXP, v: c_int) {
 /// Set NAMED to maximum (2).
 #[inline]
 unsafe fn ENSURE_NAMEDMAX(x: SEXP) {
-    unsafe {
-        if NAMED(x) < 2 {
-            SET_NAMED(x, 2);
-        }
+    if NAMED(x) < 2 {
+        SET_NAMED(x, 2);
     }
 }
 
@@ -261,45 +259,41 @@ fn isVectorList(x: SEXP) -> c_int {
 
 /// Get nrows from dim attribute.
 unsafe fn nrows(x: SEXP) -> c_int {
-    unsafe {
-        if x.is_null() {
-            return 0;
-        }
-        let dim = ATTRIB(x);
-        if dim.is_null() || dim == R_NilValue() {
-            return 0;
-        }
-        // dim should be an integer vector; first element is nrows
-        if TYPEOF(dim) != SEXPTYPE::INTSXP {
-            return 0;
-        }
-        let len = LENGTH(dim);
-        if len < 2 {
-            return if len == 1 { INTEGER_ELT(dim, 0) } else { 0 };
-        }
-        INTEGER_ELT(dim, 0)
+    if x.is_null() {
+        return 0;
     }
+    let dim = ATTRIB(x);
+    if dim.is_null() || dim == R_NilValue() {
+        return 0;
+    }
+    // dim should be an integer vector; first element is nrows
+    if TYPEOF(dim) != SEXPTYPE::INTSXP {
+        return 0;
+    }
+    let len = LENGTH(dim);
+    if len < 2 {
+        return if len == 1 { INTEGER_ELT(dim, 0) } else { 0 };
+    }
+    INTEGER_ELT(dim, 0)
 }
 
 /// Get ncols from dim attribute.
 unsafe fn ncols(x: SEXP) -> c_int {
-    unsafe {
-        if x.is_null() {
-            return 0;
-        }
-        let dim = ATTRIB(x);
-        if dim.is_null() || dim == R_NilValue() {
-            return 0;
-        }
-        if TYPEOF(dim) != SEXPTYPE::INTSXP {
-            return 0;
-        }
-        let len = LENGTH(dim);
-        if len < 2 {
-            return 0;
-        }
-        INTEGER_ELT(dim, 1)
+    if x.is_null() {
+        return 0;
     }
+    let dim = ATTRIB(x);
+    if dim.is_null() || dim == R_NilValue() {
+        return 0;
+    }
+    if TYPEOF(dim) != SEXPTYPE::INTSXP {
+        return 0;
+    }
+    let len = LENGTH(dim);
+    if len < 2 {
+        return 0;
+    }
+    INTEGER_ELT(dim, 1)
 }
 
 // ---------------------------------------------------------------------------
@@ -1451,7 +1445,7 @@ fn publish_attributes(
     access: &crate::sexp::owner::RuntimeAccess,
 ) -> SexpResult<()> {
     access.with_native(|_| {
-        unsafe { SET_ATTRIB(parent.as_raw(), child.as_raw()) };
+        SET_ATTRIB(parent.as_raw(), child.as_raw());
         Ok(())
     })
 }
@@ -1466,7 +1460,7 @@ impl<'source> VectorContinuation<'source> {
         if let Some(result) = result {
             match std::mem::replace(&mut self.pending, VectorPending::None) {
                 VectorPending::Value(index) => access.with_native(|_| {
-                    unsafe { SET_VECTOR_ELT(self.copy.as_raw(), index as _, result.as_raw()) };
+                    SET_VECTOR_ELT(self.copy.as_raw(), index as _, result.as_raw());
                     Ok(())
                 })?,
                 VectorPending::Attributes => publish_attributes(&self.copy, &result, access)?,
@@ -1522,7 +1516,7 @@ impl<'source> PairlistContinuation<'source> {
                         )?;
                         if let Some(previous) = &self.tail {
                             access.with_native(|_| {
-                                unsafe { SETCDR(previous.as_raw(), cell.as_raw()) };
+                                SETCDR(previous.as_raw(), cell.as_raw());
                                 Ok(())
                             })?;
                         } else {
@@ -1968,31 +1962,29 @@ pub unsafe fn xcopyStringWithRecycle(
     n: R_xlen_t,
     nsrc: R_xlen_t,
 ) {
-    unsafe {
-        if dst.is_null() || src.is_null() || n == 0 {
-            return;
-        }
-        if nsrc >= n {
-            for i in 0..n {
-                SET_STRING_ELT(dst, dstart + i, STRING_ELT(src, i));
-            }
-            return;
-        }
-        if nsrc == 1 {
-            let val = STRING_ELT(src, 0);
-            for i in 0..n {
-                SET_STRING_ELT(dst, dstart + i, val);
-            }
-            return;
-        }
-        let mut sidx: R_xlen_t = 0;
+    if dst.is_null() || src.is_null() || n == 0 {
+        return;
+    }
+    if nsrc >= n {
         for i in 0..n {
-            if sidx == nsrc {
-                sidx = 0;
-            }
-            SET_STRING_ELT(dst, dstart + i, STRING_ELT(src, sidx));
-            sidx += 1;
+            SET_STRING_ELT(dst, dstart + i, STRING_ELT(src, i));
         }
+        return;
+    }
+    if nsrc == 1 {
+        let val = STRING_ELT(src, 0);
+        for i in 0..n {
+            SET_STRING_ELT(dst, dstart + i, val);
+        }
+        return;
+    }
+    let mut sidx: R_xlen_t = 0;
+    for i in 0..n {
+        if sidx == nsrc {
+            sidx = 0;
+        }
+        SET_STRING_ELT(dst, dstart + i, STRING_ELT(src, sidx));
+        sidx += 1;
     }
 }
 
@@ -2129,11 +2121,9 @@ pub unsafe fn xfillStringMatrixWithRecycle(
     cols: R_xlen_t,
     nsrc: R_xlen_t,
 ) {
-    unsafe {
-        fill_matrix_iterate(dstart, drows, srows, cols, nsrc, |didx, sidx| {
-            SET_STRING_ELT(dst, didx, STRING_ELT(src, sidx));
-        });
-    }
+    fill_matrix_iterate(dstart, drows, srows, cols, nsrc, |didx, sidx| {
+        SET_STRING_ELT(dst, didx, STRING_ELT(src, sidx));
+    });
 }
 
 /// Fill generic vector matrix with recycling.
@@ -2146,11 +2136,9 @@ pub unsafe fn xfillVectorMatrixWithRecycle(
     cols: R_xlen_t,
     nsrc: R_xlen_t,
 ) {
-    unsafe {
-        fill_matrix_iterate(dstart, drows, srows, cols, nsrc, |didx, sidx| {
-            SET_VECTOR_ELT(dst, didx, VECTOR_ELT(src, sidx));
-        });
-    }
+    fill_matrix_iterate(dstart, drows, srows, cols, nsrc, |didx, sidx| {
+        SET_VECTOR_ELT(dst, didx, VECTOR_ELT(src, sidx));
+    });
 }
 
 // ---------------------------------------------------------------------------

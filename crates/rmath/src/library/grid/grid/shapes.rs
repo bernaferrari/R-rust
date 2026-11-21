@@ -1,7 +1,5 @@
 use super::*;
-use crate::library::grid::{
-    duplicate, integer_elt, logical_elt, protect, real_elt, vector_elt,
-};
+use crate::library::grid::{duplicate, integer_elt, logical_elt, protect, real_elt, vector_elt};
 
 pub(crate) fn getArrowN(
     x1: SEXP,
@@ -73,7 +71,7 @@ pub fn L_arrows(
         initGContext(currentgp, gc, dd, &mut gp_is_scalar, gc_cache);
 
         // SAFETY: `dd` is the live device returned above.
-        unsafe { GEMode(1, dd) };
+        GEMode(1, dd);
         for i in 0..maxn {
             let mut first = true;
             let mut last = true;
@@ -104,23 +102,11 @@ pub fn L_arrows(
                         yy1 = real_elt(devloc, 1);
                     }
                 } else {
-                    (xx1, yy1) = transformLocn(x1,
-                        y1,
-                        i,
-                        vpc,
-                        gc,
-                        vpWidthCM,
-                        vpHeightCM,
-                        dd, &transform);
+                    (xx1, yy1) =
+                        transformLocn(x1, y1, i, vpc, gc, vpWidthCM, vpHeightCM, dd, &transform);
                 }
-                                                let (xx2, yy2) = transformLocn(x2,
-                    y2,
-                    i,
-                    vpc,
-                    gc,
-                    vpWidthCM,
-                    vpHeightCM,
-                    dd, &transform);
+                let (xx2, yy2) =
+                    transformLocn(x2, y2, i, vpc, gc, vpWidthCM, vpHeightCM, dd, &transform);
 
                 let mut vertx = [0.0; 3];
                 let mut verty = [0.0; 3];
@@ -128,20 +114,8 @@ pub fn L_arrows(
                 // and `dd` keep their engine/device contracts.
                 unsafe {
                     calcArrow(
-                        xx1,
-                        yy1,
-                        xx2,
-                        yy2,
-                        angle,
-                        length,
-                        i,
-                        vpc,
-                        vpWidthCM,
-                        vpHeightCM,
-                        &mut vertx,
-                        &mut verty,
-                        gc,
-                        dd,
+                        xx1, yy1, xx2, yy2, angle, length, i, vpc, vpWidthCM, vpHeightCM,
+                        &mut vertx, &mut verty, gc, dd,
                     );
                     if toDeviceX(xx2, GE_INCHES, dd).is_finite()
                         && toDeviceY(yy2, GE_INCHES, dd).is_finite()
@@ -162,24 +136,13 @@ pub fn L_arrows(
                         yynm1 = real_elt(devloc, 1);
                     }
                 } else {
-                    (xxnm1, yynm1) = transformLocn(xnm1,
-                        ynm1,
-                        i,
-                        vpc,
-                        gc,
-                        vpWidthCM,
-                        vpHeightCM,
-                        dd, &transform);
+                    (xxnm1, yynm1) = transformLocn(
+                        xnm1, ynm1, i, vpc, gc, vpWidthCM, vpHeightCM, dd, &transform,
+                    );
                 }
 
-                                                let (xxn, yyn) = transformLocn(xn,
-                    yn,
-                    i,
-                    vpc,
-                    gc,
-                    vpWidthCM,
-                    vpHeightCM,
-                    dd, &transform);
+                let (xxn, yyn) =
+                    transformLocn(xn, yn, i, vpc, gc, vpWidthCM, vpHeightCM, dd, &transform);
 
                 let mut vertx = [0.0; 3];
                 let mut verty = [0.0; 3];
@@ -187,20 +150,8 @@ pub fn L_arrows(
                 // and `dd` keep their engine/device contracts.
                 unsafe {
                     calcArrow(
-                        xxn,
-                        yyn,
-                        xxnm1,
-                        yynm1,
-                        angle,
-                        length,
-                        i,
-                        vpc,
-                        vpWidthCM,
-                        vpHeightCM,
-                        &mut vertx,
-                        &mut verty,
-                        gc,
-                        dd,
+                        xxn, yyn, xxnm1, yynm1, angle, length, i, vpc, vpWidthCM, vpHeightCM,
+                        &mut vertx, &mut verty, gc, dd,
                     );
                     if toDeviceX(xxnm1, GE_INCHES, dd).is_finite()
                         && toDeviceY(yynm1, GE_INCHES, dd).is_finite()
@@ -214,7 +165,7 @@ pub fn L_arrows(
         }
         // SAFETY: `dd` is the live device; engine mode teardown mirrors
         // the `GEMode(1, dd)` above.
-        unsafe { GEMode(0, dd) };
+        GEMode(0, dd);
         R_NilValue()
     }
 }
@@ -250,7 +201,7 @@ pub fn L_polygon(x: SEXP, y: SEXP, index: SEXP) -> SEXP {
         initGContext(currentgp, gc, dd, &mut gp_is_scalar, gc_cache);
 
         // SAFETY: `dd` is the live device returned above.
-        unsafe { GEMode(1, dd) };
+        GEMode(1, dd);
         let np = LENGTH(index);
         for i in 0..np {
             let indices = vector_elt(index, i as R_xlen_t);
@@ -269,20 +220,22 @@ pub fn L_polygon(x: SEXP, y: SEXP, index: SEXP) -> SEXP {
             for j in 0..nx as usize {
                 let idx = integer_elt(indices, j as R_xlen_t);
                 if idx > 0 {
-                    (xx[j], yy[j]) = transformLocn(x,
+                    (xx[j], yy[j]) = transformLocn(
+                        x,
                         y,
                         idx - 1,
                         vpc,
                         gc,
                         vpWidthCM,
                         vpHeightCM,
-                        dd, &transform);
+                        dd,
+                        &transform,
+                    );
                     // SAFETY: `dd` is the live device; `toDevice*` are
                     // engine coordinate bridges over the device state.
-                    unsafe {
-                        xx[j] = toDeviceX(xx[j], GE_INCHES, dd);
-                        yy[j] = toDeviceY(yy[j], GE_INCHES, dd);
-                    }
+
+                    xx[j] = toDeviceX(xx[j], GE_INCHES, dd);
+                    yy[j] = toDeviceY(yy[j], GE_INCHES, dd);
                 }
 
                 let current_finite = xx[j].is_finite() && yy[j].is_finite();
@@ -324,7 +277,7 @@ pub fn L_polygon(x: SEXP, y: SEXP, index: SEXP) -> SEXP {
         }
         // SAFETY: `dd` is the live device; engine mode teardown mirrors
         // the `GEMode(1, dd)` above.
-        unsafe { GEMode(0, dd) };
+        GEMode(0, dd);
         R_NilValue()
     }
 }
@@ -333,13 +286,7 @@ pub fn L_polygon(x: SEXP, y: SEXP, index: SEXP) -> SEXP {
  * gridCircle (internal)
  * ============================== */
 
-pub(crate) fn gridCircle(
-    _x: SEXP,
-    _y: SEXP,
-    _r: SEXP,
-    _theta: c_double,
-    _draw: bool,
-) -> SEXP {
+pub(crate) fn gridCircle(_x: SEXP, _y: SEXP, _r: SEXP, _theta: c_double, _draw: bool) -> SEXP {
     R_NilValue()
 }
 
@@ -433,7 +380,7 @@ pub fn L_path(x: SEXP, y: SEXP, index: SEXP, rule: SEXP) -> SEXP {
         initGContext(currentgp, gc, dd, &mut gp_is_scalar, gc_cache);
 
         // SAFETY: `dd` is the live device returned above.
-        unsafe { GEMode(1, dd) };
+        GEMode(1, dd);
 
         for h in 0..LENGTH(index) {
             let poly_ind = vector_elt(index, h as R_xlen_t);
@@ -459,23 +406,26 @@ pub fn L_path(x: SEXP, y: SEXP, index: SEXP, rule: SEXP) -> SEXP {
             for i in 0..npoly as usize {
                 let indices = vector_elt(poly_ind, i as R_xlen_t);
                 for j in 0..nper[i] as usize {
-                    (xx[k], yy[k]) = transformLocn(x,
+                    (xx[k], yy[k]) = transformLocn(
+                        x,
                         y,
                         integer_elt(indices, j as R_xlen_t) - 1,
                         vpc,
                         gc,
                         vpWidthCM,
                         vpHeightCM,
-                        dd, &transform);
+                        dd,
+                        &transform,
+                    );
                     // SAFETY: `dd` is the live device; `toDevice*` are
                     // engine coordinate bridges over the device state.
-                    unsafe {
-                        xx[k] = toDeviceX(xx[k], GE_INCHES, dd);
-                        yy[k] = toDeviceY(yy[k], GE_INCHES, dd);
-                    }
+
+                    xx[k] = toDeviceX(xx[k], GE_INCHES, dd);
+                    yy[k] = toDeviceY(yy[k], GE_INCHES, dd);
+
                     if !xx[k].is_finite() || !yy[k].is_finite() {
                         // SAFETY: static format string, no arguments.
-                        unsafe { Rf_error(c"non-finite x or y in graphics path".as_ptr()) };
+                        Rf_error(c"non-finite x or y in graphics path".as_ptr());
                     }
                     k += 1;
                 }
@@ -500,7 +450,7 @@ pub fn L_path(x: SEXP, y: SEXP, index: SEXP, rule: SEXP) -> SEXP {
 
         // SAFETY: `dd` is the live device; engine mode teardown mirrors
         // the `GEMode(1, dd)` above.
-        unsafe { GEMode(0, dd) };
+        GEMode(0, dd);
         R_NilValue()
     }
 }

@@ -2,40 +2,38 @@ use super::*;
 
 /// R's `Sys.info()` — named character vector with host/user information.
 pub fn do_Sys_info(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let host = sys_info_host_fields();
-        let user = sys_info_user();
-        let values = vec![
-            host.sysname,
-            host.release,
-            host.version,
-            host.nodename,
-            host.machine,
-            user.clone(),
-            user.clone(),
-            user,
-        ];
-        let names = vec![
-            "sysname".to_string(),
-            "release".to_string(),
-            "version".to_string(),
-            "nodename".to_string(),
-            "machine".to_string(),
-            "login".to_string(),
-            "user".to_string(),
-            "effective_user".to_string(),
-        ];
-        let result = string_vector(&values);
-        let _result_guard = protect(result);
-        let name_vec = string_vector(&names);
-        let _name_guard = protect(name_vec);
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            crate::sexp::attrib_core::R_NamesSymbol(),
-            name_vec,
-        );
-        result
-    }
+    let host = sys_info_host_fields();
+    let user = sys_info_user();
+    let values = vec![
+        host.sysname,
+        host.release,
+        host.version,
+        host.nodename,
+        host.machine,
+        user.clone(),
+        user.clone(),
+        user,
+    ];
+    let names = vec![
+        "sysname".to_string(),
+        "release".to_string(),
+        "version".to_string(),
+        "nodename".to_string(),
+        "machine".to_string(),
+        "login".to_string(),
+        "user".to_string(),
+        "effective_user".to_string(),
+    ];
+    let result = string_vector(&values);
+    let _result_guard = protect(result);
+    let name_vec = string_vector(&names);
+    let _name_guard = protect(name_vec);
+    crate::sexp::attrib_core::setAttrib(
+        result,
+        crate::sexp::attrib_core::R_NamesSymbol(),
+        name_vec,
+    );
+    result
 }
 
 struct SysInfoHostFields {

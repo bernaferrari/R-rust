@@ -249,7 +249,13 @@ pub fn unhighlight(c: control) {
     }
 }
 pub fn ishighlighted(c: control) -> c_int {
-    obj_ref(c).map_or(0, |c| if (c.state & GA_Highlighted) != 0 { 1 } else { 0 })
+    obj_ref(c).map_or(0, |c| {
+        if (c.state & GA_Highlighted) != 0 {
+            1
+        } else {
+            0
+        }
+    })
 }
 pub fn flashcontrol(c: control) {
     let Some(state) = obj_ref(c).map(|obj| obj.state) else {
@@ -687,7 +693,9 @@ pub fn setbitmapdata(b: bitmap, data: *mut GAbyte) {
     set_bitmap_pixels(b, data)
 }
 pub fn getbitmapdata(b: bitmap, data: *mut GAbyte) {
-    let Some(img) = obj_ref(b).map(|b| b.img) else { return };
+    let Some(img) = obj_ref(b).map(|b| b.img) else {
+        return;
+    };
     if img.is_null() || data.is_null() {
         return;
     }
@@ -707,15 +715,14 @@ pub fn getbitmapdata(b: bitmap, data: *mut GAbyte) {
     };
     // Copy `byte_len` bytes into the caller-provided buffer; the length
     // is derived from the image dimensions recorded above.
-    if let (Some(dest), Some(src)) = (
-        slice_mut(data, byte_len),
-        slice_ref(pixels, byte_len),
-    ) {
+    if let (Some(dest), Some(src)) = (slice_mut(data, byte_len), slice_ref(pixels, byte_len)) {
         dest.copy_from_slice(src);
     }
 }
 pub fn getbitmapdata2(b: bitmap, data: *mut *mut GAbyte) {
-    let Some(img) = obj_ref(b).map(|b| b.img) else { return };
+    let Some(img) = obj_ref(b).map(|b| b.img) else {
+        return;
+    };
     let Some(data) = ptr_mut(data) else { return };
     if img.is_null() {
         return;

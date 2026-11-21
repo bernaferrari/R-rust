@@ -13,7 +13,7 @@ pub(super) fn prepare(
         Some(x) => x,
         None => root(crate::sexp::globals::R_False())?,
     };
-    let base = root(unsafe { crate::sexp::globals::R_BaseEnv() })?;
+    let base = root(crate::sexp::globals::R_BaseEnv())?;
     let function = |name: &std::ffi::CStr| -> SexpResult<Sexp<'static>> {
         owner.require_active()?;
         let symbol = root(unsafe { crate::sexp::symbol::Rf_install(name.as_ptr()) })?;
@@ -29,19 +29,16 @@ pub(super) fn prepare(
     // cap, and preserve the canonical resource-limit RError payload.
     let language2 = |function: &Sexp<'_>, argument: &Sexp<'_>| -> SexpResult<Sexp<'static>> {
         owner.require_active()?;
-        let raw =
-            unsafe { crate::sexp::constructors::Rf_lang2(function.as_raw(), argument.as_raw()) };
+        let raw = crate::sexp::constructors::Rf_lang2(function.as_raw(), argument.as_raw());
         owner.require_active()?;
         root(raw)
     };
     let quoted = language2(&quote, &input)?;
     let logical = language2(&logical, &quoted)?;
-    let raw = unsafe { crate::sexp::constructors::Rf_ScalarReal(1.0) };
+    let raw = crate::sexp::constructors::Rf_ScalarReal(1.0);
     owner.require_active()?;
     let one = root(raw)?;
-    let raw = unsafe {
-        crate::sexp::constructors::Rf_lang3(plus.as_raw(), one.as_raw(), logical.as_raw())
-    };
+    let raw = crate::sexp::constructors::Rf_lang3(plus.as_raw(), one.as_raw(), logical.as_raw());
     owner.require_active()?;
     let expression = root(raw)?;
     let raw = unsafe { crate::eval::eval::Rf_eval(expression.as_raw(), environment.as_raw()) };

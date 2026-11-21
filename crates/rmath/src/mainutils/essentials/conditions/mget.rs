@@ -189,7 +189,7 @@ impl Mode {
 fn force(value: Sexp<'static>, access: &RuntimeAccess) -> SexpResult<Sexp<'static>> {
     callback(access, || {
         access.with_native(|_| {
-            unsafe { crate::sexp::envir::force_promise_result(value) }
+            crate::sexp::envir::force_promise_result(value)
                 .map_err(failure)?
                 .ok_or_else(|| failure("value not found"))?
                 .into_owned()
@@ -217,15 +217,10 @@ fn lookup(
         }
         let selected = callback(access, || {
             access.with_native(|_| {
-                unsafe {
-                    crate::sexp::envir::find_var_in_frame_result(
-                        environment.clone(),
-                        symbol.clone(),
-                    )
-                }
-                .map_err(failure)?
-                .map(Sexp::into_owned)
-                .transpose()
+                crate::sexp::envir::find_var_in_frame_result(environment.clone(), symbol.clone())
+                    .map_err(failure)?
+                    .map(Sexp::into_owned)
+                    .transpose()
             })
         })?;
         if let Some(value) = selected {
@@ -237,7 +232,7 @@ fn lookup(
                 return Ok(Some(value));
             }
         } else if mode.kind == SEXPTYPE::CLOSXP
-            && access.with_native(|_| unsafe {
+            && access.with_native(|_| {
                 Ok(environment.as_raw() == crate::sexp::globals::R_BaseEnv()
                     || environment.as_raw() == crate::sexp::envir::R_BaseNamespace())
             })?
@@ -245,7 +240,7 @@ fn lookup(
             // Existing primitive descriptors are visible only when the real
             // base frame is admitted by this lookup's inheritance policy.
             let primitive = callback(access, || {
-                access.with_native(|owner| unsafe {
+                access.with_native(|owner| {
                     crate::sexp::envir::find_fun_result(symbol.clone(), environment.clone())
                         .map_err(failure)?
                         .map(|value| owner.sexp(value.as_raw())?.into_owned())
@@ -338,7 +333,7 @@ fn execute(
         }
         Some(value) => {
             let list = callback(access, || {
-                access.with_native(|token| unsafe {
+                access.with_native(|token| {
                     token
                         .sexp(crate::mainutils::coerce::coerceVector(
                             value.as_raw(),
@@ -359,8 +354,7 @@ fn execute(
     }
     let inherits = if let Some(value) = inherits {
         let flag = callback(access, || {
-            access
-                .with_native(|_| Ok(unsafe { crate::mainutils::coerce::asLogical(value.as_raw()) }))
+            access.with_native(|_| Ok(crate::mainutils::coerce::asLogical(value.as_raw())))
         })?;
         if flag == NA_INTEGER {
             return Err(failure("invalid 'inherits' argument"));

@@ -37,7 +37,7 @@ use crate::sexp::accessors::{
 use crate::sexp::constructors::{Rf_ScalarLogical, Rf_allocVector, Rf_length};
 use crate::sexp::ffi::{ISNAN, NA_INTEGER, NA_LOGICAL, R_xlen_t, Rbyte, Rcomplex, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
-use crate::sexp::object::{Sexp, SexpMut, SexpResult, SessionNodeFactory};
+use crate::sexp::object::{SessionNodeFactory, Sexp, SexpMut, SexpResult};
 use crate::sexp::owner::{OwnerToken, StoredOwner};
 use crate::sexp::protect::protect;
 
@@ -76,9 +76,8 @@ pub fn error_stub(format: *const c_char) {
 pub fn warningcall_stub(call: SEXP, format: *const c_char) {
     // SAFETY: delegates to the raw warningcall boundary; `call` and `format`
     // carry the same contract the unsafe callee already requires.
-    unsafe {
-        crate::mainutils::errors::warningcall(call, format);
-    }
+
+    crate::mainutils::errors::warningcall(call, format);
 }
 
 /// GNU `Seql`: pointer equality, else UTF-8 translation (memory.c).
@@ -121,9 +120,8 @@ pub fn isTs(x: SEXP) -> c_int {
         return 0;
     }
     // SAFETY: raw attribute lookup on a live SEXP, as before.
-    let tsp = unsafe {
-        crate::eval::attrib_core::getAttrib(x, crate::eval::attrib_core::R_TspSymbol())
-    };
+    let tsp =
+        unsafe { crate::eval::attrib_core::getAttrib(x, crate::eval::attrib_core::R_TspSymbol()) };
     (tsp != R_NilValue()) as c_int
 }
 
@@ -133,9 +131,8 @@ pub fn isArray(x: SEXP) -> c_int {
         return 0;
     }
     // SAFETY: raw attribute lookup on a live SEXP, as before.
-    let dim = unsafe {
-        crate::eval::attrib_core::getAttrib(x, crate::eval::attrib_core::R_DimSymbol())
-    };
+    let dim =
+        unsafe { crate::eval::attrib_core::getAttrib(x, crate::eval::attrib_core::R_DimSymbol()) };
     (dim != R_NilValue()) as c_int
 }
 
@@ -157,10 +154,9 @@ pub fn isNumeric(x: SEXP) -> c_int {
 /// deparse1line_ex -- deparses an expression to a single-line string.
 pub fn deparse1line_ex(x: SEXP, abbreviate: c_int, opts: c_int) -> SEXP {
     // SAFETY: delegates to the raw deparse boundary with the same arguments.
-    unsafe {
-        // deparse1line_ex is the "exact" variant that doesn't abbreviate
-        crate::mainutils::deparse::deparse1line(x, abbreviate != 0)
-    }
+
+    // deparse1line_ex is the "exact" variant that doesn't abbreviate
+    crate::mainutils::deparse::deparse1line(x, abbreviate != 0)
 }
 
 /// Check that the number of arguments matches the builtin's expected arity.
@@ -380,14 +376,14 @@ fn seql_chars(x: &Sexp<'_>, y: &Sexp<'_>) -> c_int {
 /// Thin safe wrapper over the raw `charsxp_as_utf8` translation.
 fn charsxp_utf8(x: &Sexp<'_>) -> Vec<u8> {
     // SAFETY: the handle names a live CHARSXP retained by its root lease.
-    unsafe { crate::sexp::accessors::charsxp_as_utf8(x.as_raw()) }
+    crate::sexp::accessors::charsxp_as_utf8(x.as_raw())
 }
 
 /// Coerce a checked vector to INTSXP, preserving the handle's session.
 fn coerce_to_int<'a>(x: &Sexp<'a>) -> SexpResult<Sexp<'a>> {
     // SAFETY: `coerceVector` returns a fresh session-heap vector here, which
     // the factory wrap re-admits as a checked handle.
-    let raw = unsafe { coerceVector(x.as_raw(), SEXPTYPE::INTSXP.into()) };
+    let raw = coerceVector(x.as_raw(), SEXPTYPE::INTSXP.into());
     vector_factory(x)?.wrap(raw)
 }
 
@@ -1114,11 +1110,13 @@ fn ordered_operand_code(
 ) -> SexpResult<OrderedOperand> {
     if has_class(value, "ordered")? {
         let code = value.try_integer_elt(index)?;
-        Ok(if code == NA_INTEGER || code <= 0 || code as usize > levels.len() {
-            OrderedOperand::Missing
-        } else {
-            OrderedOperand::Code(code)
-        })
+        Ok(
+            if code == NA_INTEGER || code <= 0 || code as usize > levels.len() {
+                OrderedOperand::Missing
+            } else {
+                OrderedOperand::Code(code)
+            },
+        )
     } else if value.typeof_() == SEXPTYPE::STRSXP {
         let charsxp = value.try_string_elt(index)?;
         let Some(label) = charsxp_to_string(&charsxp) else {
@@ -1141,10 +1139,9 @@ fn factor_levels_match(value: &Sexp<'_>, expected: &[String]) -> SexpResult<bool
 fn factor_levels(value: &Sexp<'_>) -> SexpResult<Option<Vec<String>>> {
     // SAFETY: `R_LevelsSymbol` returns the static levels symbol on the
     // interpreter thread where factor comparisons run.
-    let levels = getAttrib(
-        value.as_raw(),
-        unsafe { crate::eval::attrib_core::R_LevelsSymbol() },
-    );
+    let levels = getAttrib(value.as_raw(), unsafe {
+        crate::eval::attrib_core::R_LevelsSymbol()
+    });
     if levels.is_null() || levels == R_NilValue() {
         return Ok(None);
     }
@@ -1352,10 +1349,7 @@ fn string_relop<'a>(code: c_int, s1: &Sexp<'a>, s2: &Sexp<'a>) -> SexpResult<Sex
         let c1 = s1.try_string_elt(i1)?;
         let c2 = s2.try_string_elt(i2)?;
 
-        if c1.as_raw().is_null()
-            || c2.as_raw().is_null()
-            || c1.is_na_string()
-            || c2.is_na_string()
+        if c1.as_raw().is_null() || c2.as_raw().is_null() || c1.is_na_string() || c2.is_na_string()
         {
             return ans.try_set_logical_elt(i, NA_LOGICAL);
         }
@@ -1783,13 +1777,17 @@ mod tests {
             *INTEGER(s2).add(1) = 4;
             *INTEGER(s2).add(2) = 3;
 
-            let ans = numeric_relop(EQOP, &checked(s1), &checked(s2)).unwrap().as_raw();
+            let ans = numeric_relop(EQOP, &checked(s1), &checked(s2))
+                .unwrap()
+                .as_raw();
             assert!(!ans.is_null());
             assert_eq!(*LOGICAL(ans).add(0), 1); // 1 == 1
             assert_eq!(*LOGICAL(ans).add(1), 0); // 2 != 4
             assert_eq!(*LOGICAL(ans).add(2), 1); // 3 == 3
 
-            let ans_lt = numeric_relop(LTOP, &checked(s1), &checked(s2)).unwrap().as_raw();
+            let ans_lt = numeric_relop(LTOP, &checked(s1), &checked(s2))
+                .unwrap()
+                .as_raw();
             assert_eq!(*LOGICAL(ans_lt).add(0), 0); // 1 < 1 => FALSE
             assert_eq!(*LOGICAL(ans_lt).add(1), 1); // 2 < 4 => TRUE
             assert_eq!(*LOGICAL(ans_lt).add(2), 0); // 3 < 3 => FALSE
@@ -1810,7 +1808,9 @@ mod tests {
             *INTEGER(s2).add(1) = 2;
             *INTEGER(s2).add(2) = NA_INTEGER;
 
-            let ans = numeric_relop(EQOP, &checked(s1), &checked(s2)).unwrap().as_raw();
+            let ans = numeric_relop(EQOP, &checked(s1), &checked(s2))
+                .unwrap()
+                .as_raw();
             assert_eq!(*LOGICAL(ans).add(0), 1); // 1 == 1
             assert_eq!(*LOGICAL(ans).add(1), NA_LOGICAL); // NA == 2
             assert_eq!(*LOGICAL(ans).add(2), NA_LOGICAL); // 3 == NA
@@ -1829,7 +1829,9 @@ mod tests {
             *INTEGER(s2).add(1) = 5;
             *INTEGER(s2).add(2) = 7;
 
-            let ans = numeric_relop(EQOP, &checked(s1), &checked(s2)).unwrap().as_raw();
+            let ans = numeric_relop(EQOP, &checked(s1), &checked(s2))
+                .unwrap()
+                .as_raw();
             assert_eq!(*LOGICAL(ans).add(0), 0); // 5 == 3 => FALSE
             assert_eq!(*LOGICAL(ans).add(1), 1); // 5 == 5 => TRUE
             assert_eq!(*LOGICAL(ans).add(2), 0); // 5 == 7 => FALSE
@@ -1848,7 +1850,9 @@ mod tests {
             *REAL(s2).add(0) = 1.5;
             *REAL(s2).add(1) = 3.5;
 
-            let ans = numeric_relop(NEOP, &checked(s1), &checked(s2)).unwrap().as_raw();
+            let ans = numeric_relop(NEOP, &checked(s1), &checked(s2))
+                .unwrap()
+                .as_raw();
             assert_eq!(*LOGICAL(ans).add(0), 0); // 1.5 != 1.5 => FALSE
             assert_eq!(*LOGICAL(ans).add(1), 1); // 2.5 != 3.5 => TRUE
         }
@@ -1866,7 +1870,9 @@ mod tests {
             *REAL(s2).add(0) = 1.0;
             *REAL(s2).add(1) = f64::NAN;
 
-            let ans = numeric_relop(EQOP, &checked(s1), &checked(s2)).unwrap().as_raw();
+            let ans = numeric_relop(EQOP, &checked(s1), &checked(s2))
+                .unwrap()
+                .as_raw();
             assert_eq!(*LOGICAL(ans).add(0), NA_LOGICAL); // NaN == 1.0
             assert_eq!(*LOGICAL(ans).add(1), NA_LOGICAL); // 1.0 == NaN
         }
@@ -1886,12 +1892,16 @@ mod tests {
             *RAW(s2).add(1) = 25;
             *RAW(s2).add(2) = 30;
 
-            let ans = raw_relop(EQOP, &checked(s1), &checked(s2)).unwrap().as_raw();
+            let ans = raw_relop(EQOP, &checked(s1), &checked(s2))
+                .unwrap()
+                .as_raw();
             assert_eq!(*LOGICAL(ans).add(0), 1);
             assert_eq!(*LOGICAL(ans).add(1), 0);
             assert_eq!(*LOGICAL(ans).add(2), 1);
 
-            let ans_lt = raw_relop(LTOP, &checked(s1), &checked(s2)).unwrap().as_raw();
+            let ans_lt = raw_relop(LTOP, &checked(s1), &checked(s2))
+                .unwrap()
+                .as_raw();
             assert_eq!(*LOGICAL(ans_lt).add(0), 0);
             assert_eq!(*LOGICAL(ans_lt).add(1), 1);
             assert_eq!(*LOGICAL(ans_lt).add(2), 0);
@@ -1951,7 +1961,12 @@ mod tests {
             *LOGICAL(logical) = 1;
 
             let err = std::panic::catch_unwind(|| {
-                let _ = bitwise_op(&checked(integer), &checked(logical), |x, y| x & y, b"bitwAnd\0");
+                let _ = bitwise_op(
+                    &checked(integer),
+                    &checked(logical),
+                    |x, y| x & y,
+                    b"bitwAnd\0",
+                );
             })
             .expect_err("mismatched bitwise operands should raise an RError");
             let message = err

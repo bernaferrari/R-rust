@@ -81,7 +81,7 @@ pub(crate) fn format_real_value(v: f64) -> String {
 /// `scientific()` from GNU format.c: (neg, kpower, nsig) for a finite
 /// non-zero double, with `nsig = min(R_print.digits, #{significant digits})`.
 pub(crate) fn scientific_parts(v: f64) -> (i32, i32, i32) {
-    let digits = unsafe { crate::mainutils::format::format_get_R_print().digits };
+    let digits = crate::mainutils::format::format_get_R_print().digits;
     let neg = if v < 0.0 { 1 } else { 0 };
     // Rust's `{:e}` with no precision is the shortest round-trip form, so its
     // mantissa digit count is the #{significant digits} GNU computes.
@@ -106,7 +106,7 @@ pub(crate) fn real_format_widths(v: f64) -> (i32, i32, i32) {
     let sleft = neg + if left <= 0 { 1 } else { left };
     let right = nsig - left;
     let mut rgt = right.max(0);
-    let digits = unsafe { crate::mainutils::format::format_get_R_print().digits };
+    let digits = crate::mainutils::format::format_get_R_print().digits;
     if digits == 0 {
         rgt = 0;
     }

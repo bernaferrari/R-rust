@@ -303,10 +303,7 @@ fn logical_arg_true(arg: SEXP, default: bool) -> bool {
     }
     let a = wrapped(arg);
     if TYPEOF(arg) == SEXPTYPE::LGLSXP && XLENGTH(arg) > 0 {
-        return a
-            .try_logical_elt(0)
-            .map(|v| v == TRUE)
-            .unwrap_or(default);
+        return a.try_logical_elt(0).map(|v| v == TRUE).unwrap_or(default);
     }
     if TYPEOF(arg) == SEXPTYPE::INTSXP && XLENGTH(arg) > 0 {
         return a
@@ -318,26 +315,24 @@ fn logical_arg_true(arg: SEXP, default: bool) -> bool {
 }
 
 fn recycle_posixlt_year_names(ans: SEXP, src: SEXP, n: R_xlen_t) {
-    unsafe {
-        if n <= 0 || XLENGTH(src) < 6 || XLENGTH(ans) < 6 {
-            return;
-        }
-        let year_src = VECTOR_ELT(src, 5);
-        let nm = getAttrib(year_src, R_NamesSymbol());
-        if nm.is_null() || nm == R_NilValue() || TYPEOF(nm) != SEXPTYPE::STRSXP {
-            return;
-        }
-        let ni = XLENGTH(nm);
-        if ni <= 0 {
-            return;
-        }
-        let out_nm = Rf_allocVector3(SEXPTYPE::STRSXP, n);
-        let _g = protect(out_nm);
-        for i in 0..n {
-            SET_STRING_ELT(out_nm, i, STRING_ELT(nm, i % ni));
-        }
-        setAttrib(VECTOR_ELT(ans, 5), R_NamesSymbol(), out_nm);
+    if n <= 0 || XLENGTH(src) < 6 || XLENGTH(ans) < 6 {
+        return;
     }
+    let year_src = VECTOR_ELT(src, 5);
+    let nm = getAttrib(year_src, R_NamesSymbol());
+    if nm.is_null() || nm == R_NilValue() || TYPEOF(nm) != SEXPTYPE::STRSXP {
+        return;
+    }
+    let ni = XLENGTH(nm);
+    if ni <= 0 {
+        return;
+    }
+    let out_nm = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+    let _g = protect(out_nm);
+    for i in 0..n {
+        SET_STRING_ELT(out_nm, i, STRING_ELT(nm, i % ni));
+    }
+    setAttrib(VECTOR_ELT(ans, 5), R_NamesSymbol(), out_nm);
 }
 
 fn recycle_vector_mod(src: SEXP, n: R_xlen_t) -> SEXP {

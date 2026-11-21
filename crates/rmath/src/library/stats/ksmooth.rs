@@ -42,10 +42,8 @@ use crate::sexp::protect::protect;
 // ---------------------------------------------------------------------------
 
 unsafe fn error(msg: &str) {
-    unsafe {
-        let c_msg = CString::new(msg).unwrap_or_default();
-        Rf_error(c_msg.as_ptr());
-    }
+    let c_msg = CString::new(msg).unwrap_or_default();
+    Rf_error(c_msg.as_ptr());
 }
 
 unsafe fn mkChar(s: &str) -> SEXP {

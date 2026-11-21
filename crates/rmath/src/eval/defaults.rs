@@ -84,14 +84,14 @@ pub unsafe fn do_logic(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// Defined in subset.c.
 // no_mangle removed (duplicate)
 pub unsafe fn do_subset_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe { crate::mainutils::subset::do_subset_dflt(call, op, args, rho) }
+    crate::mainutils::subset::do_subset_dflt(call, op, args, rho)
 }
 
 /// `do_subassign_dflt(call, op, args, rho)` - `[<-` default method.
 ///
 /// Defined in subassign.c.
 pub unsafe fn do_subassign_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe { crate::mainutils::subassign::do_subassign_dflt(call, op, args, rho) }
+    crate::mainutils::subassign::do_subassign_dflt(call, op, args, rho)
 }
 
 /// `do_c_dflt(call, op, args, rho)` - c() default method.
@@ -99,7 +99,7 @@ pub unsafe fn do_subassign_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> 
 /// Defined in coerce.c.
 // no_mangle removed (duplicate)
 pub unsafe fn do_c_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe { crate::mainutils::bind::do_c_dflt(call, op, args, rho) }
+    crate::mainutils::bind::do_c_dflt(call, op, args, rho)
 }
 
 /// `do_subset2_dflt(call, op, args, rho)` - `[[` default method.
@@ -107,7 +107,7 @@ pub unsafe fn do_c_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// Defined in subset.c.
 // no_mangle removed (duplicate)
 pub unsafe fn do_subset2_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe { crate::mainutils::subset::do_subset2_dflt(call, op, args, rho) }
+    crate::mainutils::subset::do_subset2_dflt(call, op, args, rho)
 }
 
 /// `do_subassign2_dflt(call, op, args, rho)` - `[[<-` default method.
@@ -115,7 +115,7 @@ pub unsafe fn do_subset2_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SE
 /// Defined in subassign.c.
 // no_mangle removed (duplicate)
 pub unsafe fn do_subassign2_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe { crate::mainutils::subassign::do_subassign2_dflt(call, op, args, rho) }
+    crate::mainutils::subassign::do_subassign2_dflt(call, op, args, rho)
 }
 
 // ---------------------------------------------------------------------------

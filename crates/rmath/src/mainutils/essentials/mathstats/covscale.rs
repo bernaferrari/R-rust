@@ -4,55 +4,53 @@ use super::*;
 
 /// R's `cov(x, y)` — covariance between two numeric vectors.
 pub fn do_cov(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        let y_cdr = CDR(args);
-        let y = if y_cdr.is_null() || y_cdr == R_NilValue() {
-            R_NilValue()
-        } else {
-            CAR(y_cdr)
-        };
+    let x = CAR(args);
+    let y_cdr = CDR(args);
+    let y = if y_cdr.is_null() || y_cdr == R_NilValue() {
+        R_NilValue()
+    } else {
+        CAR(y_cdr)
+    };
 
-        if x.is_null() || x == R_NilValue() {
-            return Rf_ScalarReal(NA_REAL);
-        }
-
-        let x_data = get_numeric_data(x);
-        let y_data = if y.is_null() || y == R_NilValue() {
-            x_data.clone()
-        } else {
-            get_numeric_data(y)
-        };
-
-        let n = x_data.len().min(y_data.len());
-        if n == 0 {
-            return Rf_ScalarReal(NA_REAL);
-        }
-
-        let mut sum_x = 0.0_f64;
-        let mut sum_y = 0.0_f64;
-        let mut count = 0_i64;
-        for i in 0..n {
-            if !x_data[i].is_nan() && !y_data[i].is_nan() {
-                sum_x += x_data[i];
-                sum_y += y_data[i];
-                count += 1;
-            }
-        }
-        if count < 2 {
-            return Rf_ScalarReal(NA_REAL);
-        }
-        let mean_x = sum_x / count as f64;
-        let mean_y = sum_y / count as f64;
-
-        let mut cov = 0.0_f64;
-        for i in 0..n {
-            if !x_data[i].is_nan() && !y_data[i].is_nan() {
-                cov += (x_data[i] - mean_x) * (y_data[i] - mean_y);
-            }
-        }
-        Rf_ScalarReal(cov / (count as f64 - 1.0))
+    if x.is_null() || x == R_NilValue() {
+        return Rf_ScalarReal(NA_REAL);
     }
+
+    let x_data = get_numeric_data(x);
+    let y_data = if y.is_null() || y == R_NilValue() {
+        x_data.clone()
+    } else {
+        get_numeric_data(y)
+    };
+
+    let n = x_data.len().min(y_data.len());
+    if n == 0 {
+        return Rf_ScalarReal(NA_REAL);
+    }
+
+    let mut sum_x = 0.0_f64;
+    let mut sum_y = 0.0_f64;
+    let mut count = 0_i64;
+    for i in 0..n {
+        if !x_data[i].is_nan() && !y_data[i].is_nan() {
+            sum_x += x_data[i];
+            sum_y += y_data[i];
+            count += 1;
+        }
+    }
+    if count < 2 {
+        return Rf_ScalarReal(NA_REAL);
+    }
+    let mean_x = sum_x / count as f64;
+    let mean_y = sum_y / count as f64;
+
+    let mut cov = 0.0_f64;
+    for i in 0..n {
+        if !x_data[i].is_nan() && !y_data[i].is_nan() {
+            cov += (x_data[i] - mean_x) * (y_data[i] - mean_y);
+        }
+    }
+    Rf_ScalarReal(cov / (count as f64 - 1.0))
 }
 
 /// R's `cor(x, y)` — Pearson correlation between two numeric vectors.
@@ -631,7 +629,7 @@ pub fn do_rle(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         );
         if has_dim || !(atomic || TYPEOF(x) == SEXPTYPE::VECSXP) {
             crate::mainutils::errors::errorcall_str(
-                 crate::mainutils::errors::R_getCurrentCall() ,
+                crate::mainutils::errors::R_getCurrentCall(),
                 "'x' must be a vector of an atomic type",
             );
         }
@@ -855,7 +853,7 @@ pub fn do_rowsum(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         }
         if xt != SEXPTYPE::INTSXP && xt != SEXPTYPE::REALSXP && xt != SEXPTYPE::LGLSXP {
             crate::mainutils::errors::errorcall_str(
-                 crate::mainutils::errors::R_getCurrentCall() ,
+                crate::mainutils::errors::R_getCurrentCall(),
                 "'x' must be numeric",
             );
         }
@@ -871,7 +869,7 @@ pub fn do_rowsum(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         };
         if XLENGTH(group) != nr {
             crate::mainutils::errors::errorcall_str(
-                 crate::mainutils::errors::R_getCurrentCall() ,
+                crate::mainutils::errors::R_getCurrentCall(),
                 "incorrect length for 'group'",
             );
         }
@@ -1020,7 +1018,7 @@ pub fn do_jitter(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let xt = TYPEOF(x);
         if xt != SEXPTYPE::INTSXP && xt != SEXPTYPE::REALSXP && xt != SEXPTYPE::LGLSXP {
             crate::mainutils::errors::errorcall_str(
-                 crate::mainutils::errors::R_getCurrentCall() ,
+                crate::mainutils::errors::R_getCurrentCall(),
                 "'x' must be numeric",
             );
         }
@@ -1146,7 +1144,7 @@ pub fn do_margin_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let xt = TYPEOF(x);
         if xt != SEXPTYPE::INTSXP && xt != SEXPTYPE::REALSXP && xt != SEXPTYPE::LGLSXP {
             crate::mainutils::errors::errorcall_str(
-                 crate::mainutils::errors::R_getCurrentCall() ,
+                crate::mainutils::errors::R_getCurrentCall(),
                 "'x' is not an array",
             );
         }
@@ -1241,7 +1239,7 @@ pub fn do_mad(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let xt = TYPEOF(x);
         if xt != SEXPTYPE::INTSXP && xt != SEXPTYPE::REALSXP && xt != SEXPTYPE::LGLSXP {
             crate::mainutils::errors::errorcall_str(
-                 crate::mainutils::errors::R_getCurrentCall() ,
+                crate::mainutils::errors::R_getCurrentCall(),
                 "'x' must be numeric",
             );
         }

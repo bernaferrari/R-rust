@@ -254,24 +254,22 @@ fn match_arg_choices_from_formals(arg_expr: SEXP, rho: SEXP) -> SEXP {
 }
 
 fn match_arg_first(choices: SEXP) -> SEXP {
-     match_arg_elt(choices, 0) 
+    match_arg_elt(choices, 0)
 }
 
 fn match_arg_elt(choices: SEXP, idx: i64) -> SEXP {
-    unsafe {
-        if choices.is_null()
-            || choices == R_NilValue()
-            || TYPEOF(choices) != SEXPTYPE::STRSXP
-            || idx < 0
-            || idx >= XLENGTH(choices)
-        {
-            return R_NilValue();
-        }
-        let out = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
-        let _g = protect(out);
-        SET_STRING_ELT(out, 0, STRING_ELT(choices, idx));
-        out
+    if choices.is_null()
+        || choices == R_NilValue()
+        || TYPEOF(choices) != SEXPTYPE::STRSXP
+        || idx < 0
+        || idx >= XLENGTH(choices)
+    {
+        return R_NilValue();
     }
+    let out = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+    let _g = protect(out);
+    SET_STRING_ELT(out, 0, STRING_ELT(choices, idx));
+    out
 }
 
 /// R's `char.expand(input, target)` — expand abbreviations.
@@ -644,7 +642,7 @@ pub(crate) fn search_env_from_position(pos: c_int) -> SEXP {
 }
 
 pub(crate) fn search_env_from_name(name: &str) -> SEXP {
-    for (label, env) in  search_path_entries()  {
+    for (label, env) in search_path_entries() {
         if label == name || (name == "base" && label == "package:base") {
             return env;
         }
@@ -655,26 +653,24 @@ pub(crate) fn search_env_from_name(name: &str) -> SEXP {
 }
 
 fn search_path_len() -> c_int {
-     search_path_entries().len() as c_int 
+    search_path_entries().len() as c_int
 }
 
 pub(crate) fn search_path_entries() -> Vec<(String, SEXP)> {
-    unsafe {
-        let global = crate::sexp::globals::R_GlobalEnv();
-        let base = crate::sexp::globals::R_BaseEnv();
-        if global.is_null() || base.is_null() {
-            return Vec::new();
-        }
-
-        let mut entries = vec![(".GlobalEnv".to_string(), global)];
-        let mut env = crate::sexp::accessors::ENCLOS(global);
-        while !env.is_null() && env != base {
-            entries.push((search_env_label(env), env));
-            env = crate::sexp::accessors::ENCLOS(env);
-        }
-        entries.push(("package:base".to_string(), base));
-        entries
+    let global = crate::sexp::globals::R_GlobalEnv();
+    let base = crate::sexp::globals::R_BaseEnv();
+    if global.is_null() || base.is_null() {
+        return Vec::new();
     }
+
+    let mut entries = vec![(".GlobalEnv".to_string(), global)];
+    let mut env = crate::sexp::accessors::ENCLOS(global);
+    while !env.is_null() && env != base {
+        entries.push((search_env_label(env), env));
+        env = crate::sexp::accessors::ENCLOS(env);
+    }
+    entries.push(("package:base".to_string(), base));
+    entries
 }
 
 fn search_env_label(env: SEXP) -> String {

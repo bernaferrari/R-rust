@@ -353,18 +353,16 @@ unsafe fn translateChar(x: SEXP) -> *const c_char {
 
 /// asChar -- get the first string element as a CHARSXP.
 unsafe fn asChar(x: SEXP) -> SEXP {
-    unsafe {
-        if x.is_null() {
-            return ptr::null_mut();
-        }
-        if TYPEOF(x) == SEXPTYPE::STRSXP && LENGTH(x) >= 1 {
-            return STRING_ELT(x, 0);
-        }
-        if TYPEOF(x) == SEXPTYPE::CHARSXP {
-            return x;
-        }
-        ptr::null_mut()
+    if x.is_null() {
+        return ptr::null_mut();
     }
+    if TYPEOF(x) == SEXPTYPE::STRSXP && LENGTH(x) >= 1 {
+        return STRING_ELT(x, 0);
+    }
+    if TYPEOF(x) == SEXPTYPE::CHARSXP {
+        return x;
+    }
+    ptr::null_mut()
 }
 
 /// String comparison (like streql in R).
@@ -890,9 +888,9 @@ fn set_option_names<'s>(
     attributes.push(names, Some(tag))?;
     let attributes = attributes.finish()?;
     factory.require_active()?;
-    unsafe {
-        SET_ATTRIB(value.as_raw(), attributes.as_raw());
-    }
+
+    SET_ATTRIB(value.as_raw(), attributes.as_raw());
+
     Ok(())
 }
 

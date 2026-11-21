@@ -294,9 +294,8 @@ pub fn _nl_make_l10nflist(
     let extra_successors = (dirlist_count << pop(mask)) + if dirlist_count > 1 { 1 } else { 0 };
     let entry_size = std::mem::size_of::<loaded_l10nfile>()
         + (extra_successors.saturating_sub(1) * std::mem::size_of::<*mut loaded_l10nfile>());
-    let entry_layout =
-        Layout::from_size_align(entry_size, std::mem::align_of::<loaded_l10nfile>())
-            .unwrap_or(Layout::new::<loaded_l10nfile>());
+    let entry_layout = Layout::from_size_align(entry_size, std::mem::align_of::<loaded_l10nfile>())
+        .unwrap_or(Layout::new::<loaded_l10nfile>());
     // Allocate a zeroed entry including the flexible successor space.
     retval = unsafe { alloc::alloc_zeroed(entry_layout) } as *mut loaded_l10nfile;
     if retval.is_null() {

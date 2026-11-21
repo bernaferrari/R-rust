@@ -219,7 +219,7 @@ pub fn InitBConOutPStream(
     phook: Option<unsafe extern "C" fn(SEXP, SEXP) -> SEXP>,
     pdata: SEXP,
 ) {
-     {
+    {
         if !bbs.is_null() {
             R_InitOutPStream(
                 stream,
@@ -318,7 +318,7 @@ pub extern "C" fn InBytesFile(stream: R_inpstream_t, buf: *mut c_void, length: c
 }
 
 pub fn InInit(stream: R_inpstream_t, buf: *mut c_void, length: c_int) {
-     {
+    {
         if !stream.is_null() && !buf.is_null() && length > 0 {
             InBytesFile(stream, buf, length);
         }

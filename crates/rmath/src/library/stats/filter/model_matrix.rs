@@ -1269,12 +1269,10 @@ unsafe fn find_data_column(data: SEXP, label: &str) -> Option<SEXP> {
 }
 
 unsafe fn is_factor_column(colx: SEXP) -> bool {
-    unsafe {
-        !colx.is_null()
-            && colx != R_NilValue()
-            && (crate::mainutils::objects::inherits2(colx, c"factor".as_ptr()) != 0
-                || crate::mainutils::objects::inherits2(colx, c"ordered".as_ptr()) != 0)
-    }
+    !colx.is_null()
+        && colx != R_NilValue()
+        && (crate::mainutils::objects::inherits2(colx, c"factor".as_ptr()) != 0
+            || crate::mainutils::objects::inherits2(colx, c"ordered".as_ptr()) != 0)
 }
 
 fn interaction_column_names(data: SEXP, lab: &str, full_flags: &[bool]) -> Vec<String> {

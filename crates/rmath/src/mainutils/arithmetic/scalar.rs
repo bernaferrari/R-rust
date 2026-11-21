@@ -110,11 +110,10 @@ pub fn myfmod(x1: f64, x2: f64) -> f64 {
         // ("In 1e+300 %% 1.1 : probable complete loss of accuracy in
         // modulus"); Rf_warning1 looks up getCurrentCall() like C's
         // Rf_warning().
-        unsafe {
-            crate::mainutils::errors::Rf_warning1(
-                c"probable complete loss of accuracy in modulus".as_ptr(),
-            );
-        }
+
+        crate::mainutils::errors::Rf_warning1(
+            c"probable complete loss of accuracy in modulus".as_ptr(),
+        );
     }
     let tmp = x1 - libm::floor(q) * x2;
     tmp - libm::floor(tmp / x2) * x2

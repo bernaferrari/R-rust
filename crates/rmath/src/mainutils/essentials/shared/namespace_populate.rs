@@ -326,7 +326,7 @@ pub(crate) fn make_package_attach_env(
     namespace: Option<&NamespaceDirectives>,
     package_env: SEXP,
 ) -> Result<SEXP, String> {
-     make_package_attach_env_inner(package, namespace, package_env, false) 
+    make_package_attach_env_inner(package, namespace, package_env, false)
 }
 
 pub(crate) fn make_package_attach_env_lenient(
@@ -334,7 +334,7 @@ pub(crate) fn make_package_attach_env_lenient(
     namespace: Option<&NamespaceDirectives>,
     package_env: SEXP,
 ) -> Result<SEXP, String> {
-     make_package_attach_env_inner(package, namespace, package_env, true) 
+    make_package_attach_env_inner(package, namespace, package_env, true)
 }
 
 pub(super) fn make_package_attach_env_inner(

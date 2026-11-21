@@ -71,7 +71,7 @@ pub(crate) fn install(name: &std::ffi::CStr) -> SEXP {
 pub(crate) fn alloc_vector<T: Into<SEXPTYPE>>(kind: T, length: R_xlen_t) -> SEXP {
     // SAFETY: callers rely on `Rf_allocVector3`'s allocation-denial error and
     // GC retry; the ambient session contract is unchanged.
-    unsafe { Rf_allocVector3(kind, length) }
+    Rf_allocVector3(kind, length)
 }
 
 /// Walk a pairlist with checked `CDR` steps, matching `Rf_length`.
@@ -316,10 +316,8 @@ pub(crate) fn MAYBE_REFERENCED(x: SEXP) -> bool {
 /// Mark an object as not mutable (NAMEDMAX).
 #[inline]
 pub(crate) fn MARK_NOT_MUTABLE(x: SEXP) {
-    unsafe {
-        if !x.is_null() {
-            crate::sexp::accessors::SET_NAMED(x, 2);
-        }
+    if !x.is_null() {
+        crate::sexp::accessors::SET_NAMED(x, 2);
     }
 }
 
@@ -329,10 +327,9 @@ pub(crate) fn SETTER_CLEAR_NAMED(x: SEXP) {
     if crate::sexp::globals::immutable_singleton_projection(x).is_some() {
         return;
     }
-    unsafe {
-        if !x.is_null() {
-            crate::sexp::accessors::SET_NAMED(x, 0);
-        }
+
+    if !x.is_null() {
+        crate::sexp::accessors::SET_NAMED(x, 0);
     }
 }
 
@@ -410,9 +407,8 @@ pub(crate) fn SETCADR(x: SEXP, v: SEXP) {
     if crate::sexp::globals::immutable_singleton_projection(x).is_some() {
         return;
     }
-    unsafe {
-        SETCAR(CDR(x), v);
-    }
+
+    SETCAR(CDR(x), v);
 }
 
 /// SET_TYPEOF: set the type of an SEXP.
@@ -421,9 +417,8 @@ pub(crate) fn SET_TYPEOF(x: SEXP, v: c_int) {
     if crate::sexp::globals::immutable_singleton_projection(x).is_some() {
         return;
     }
-    unsafe {
-        crate::sexp::accessors::SET_TYPEOF(x, SEXPTYPE(v).as_c_int());
-    }
+
+    crate::sexp::accessors::SET_TYPEOF(x, SEXPTYPE(v).as_c_int());
 }
 
 /// Set the standard vector length (not marking as immutable).
@@ -442,10 +437,8 @@ pub(crate) fn SET_STDVEC_LENGTH(x: SEXP, v: R_xlen_t) {
 /// ENSURE_NAMEDMAX: set NAMED to NAMEDMAX.
 #[inline]
 pub(crate) fn ENSURE_NAMEDMAX(x: SEXP) {
-    unsafe {
-        if !x.is_null() {
-            crate::sexp::accessors::SET_NAMED(x, 2);
-        }
+    if !x.is_null() {
+        crate::sexp::accessors::SET_NAMED(x, 2);
     }
 }
 
@@ -514,10 +507,15 @@ pub(crate) fn PairToVectorList(x: SEXP) -> SEXP {
     };
     let factory = factory();
     let len = pairlist_length(owned(x));
-    let ans = factory.wrap(alloc_vector(VECSXP, len as R_xlen_t)).unwrap_or_else(|e| fail(e));
+    let ans = factory
+        .wrap(alloc_vector(VECSXP, len as R_xlen_t))
+        .unwrap_or_else(|e| fail(e));
     let mut ans = crate::sexp::object::SexpMut::try_from_checked(ans).unwrap_or_else(|e| fail(e));
-    let names = factory.wrap(alloc_vector(STRSXP, len as R_xlen_t)).unwrap_or_else(|e| fail(e));
-    let mut names = crate::sexp::object::SexpMut::try_from_checked(names).unwrap_or_else(|e| fail(e));
+    let names = factory
+        .wrap(alloc_vector(STRSXP, len as R_xlen_t))
+        .unwrap_or_else(|e| fail(e));
+    let mut names =
+        crate::sexp::object::SexpMut::try_from_checked(names).unwrap_or_else(|e| fail(e));
     let blank = factory.character("").unwrap_or_else(|e| fail(e));
     let mut src = owned(x);
     let mut i: R_xlen_t = 0;
@@ -529,13 +527,19 @@ pub(crate) fn PairToVectorList(x: SEXP) -> SEXP {
         if !tag.is_nil() && tag.typeof_() == SEXPTYPE::SYMSXP {
             let printname = tag.try_printname().unwrap_or_else(|e| fail(e));
             if !printname.is_nil() {
-                names.try_set_string_elt(i, printname).unwrap_or_else(|e| fail(e));
+                names
+                    .try_set_string_elt(i, printname)
+                    .unwrap_or_else(|e| fail(e));
                 any_name = true;
             } else {
-                names.try_set_string_elt(i, blank.clone()).unwrap_or_else(|e| fail(e));
+                names
+                    .try_set_string_elt(i, blank.clone())
+                    .unwrap_or_else(|e| fail(e));
             }
         } else {
-            names.try_set_string_elt(i, blank.clone()).unwrap_or_else(|e| fail(e));
+            names
+                .try_set_string_elt(i, blank.clone())
+                .unwrap_or_else(|e| fail(e));
         }
         src = src.try_cdr().unwrap_or_else(|e| fail(e));
         i += 1;
@@ -581,7 +585,9 @@ pub fn VectorToPairList(x: SEXP) -> SEXP {
                         let mut cell_mut =
                             crate::sexp::object::SexpMut::try_from_checked(cell.clone())
                                 .unwrap_or_else(|e| fail(e));
-                        cell_mut.try_set_pairlist_tag(&symbol).unwrap_or_else(|e| fail(e));
+                        cell_mut
+                            .try_set_pairlist_tag(&symbol)
+                            .unwrap_or_else(|e| fail(e));
                         cell = cell_mut.freeze();
                     }
                 }
@@ -594,7 +600,7 @@ pub fn VectorToPairList(x: SEXP) -> SEXP {
 
 /// coerceVector: coerce a vector to a different type.
 pub(crate) fn coerceVector(x: SEXP, type_: c_int) -> SEXP {
-     crate::mainutils::coerce::coerceVector(x, type_)
+    crate::mainutils::coerce::coerceVector(x, type_)
 }
 
 /// getAttrib: get an attribute from an object.
@@ -662,56 +668,50 @@ pub(crate) fn copyMostAttrib(src: SEXP, dest: SEXP) {
 
 /// listAppend: append pairlist s to pairlist t.
 pub(crate) fn listAppend(t: SEXP, s: SEXP) -> SEXP {
-    unsafe {
-        if isNull(t) {
-            return s;
-        }
-        if isNull(s) {
-            return t;
-        }
-        let mut p = t;
-        while !isNull(CDR(p)) {
-            p = CDR(p);
-        }
-        owned_mut(p)
-            .try_set_pairlist_cdr(&owned(s))
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        t
+    if isNull(t) {
+        return s;
     }
+    if isNull(s) {
+        return t;
+    }
+    let mut p = t;
+    while !isNull(CDR(p)) {
+        p = CDR(p);
+    }
+    owned_mut(p)
+        .try_set_pairlist_cdr(&owned(s))
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    t
 }
 
 /// asInteger: coerce to integer.
 pub(crate) fn asInteger(x: SEXP) -> c_int {
-     crate::mainutils::coerce::asInteger(x)
+    crate::mainutils::coerce::asInteger(x)
 }
 
 /// nrows: get number of rows of a matrix.
 pub(crate) fn nrows(x: SEXP) -> c_int {
-    unsafe {
-        let dim = getAttrib(x, sym_Dim());
-        if isNull(dim) {
-            return 0;
-        }
-        owned(dim)
-            .try_integer_elt(0)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+    let dim = getAttrib(x, sym_Dim());
+    if isNull(dim) {
+        return 0;
     }
+    owned(dim)
+        .try_integer_elt(0)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
 }
 
 /// ncols: get number of columns of a matrix.
 pub(crate) fn ncols(x: SEXP) -> c_int {
-    unsafe {
-        let dim = getAttrib(x, sym_Dim());
-        if isNull(dim) {
-            return 0;
-        }
-        if LENGTH(dim) < 2 {
-            return 1;
-        }
-        owned(dim)
-            .try_integer_elt(1)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+    let dim = getAttrib(x, sym_Dim());
+    if isNull(dim) {
+        return 0;
     }
+    if LENGTH(dim) < 2 {
+        return 1;
+    }
+    owned(dim)
+        .try_integer_elt(1)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
 }
 
 /// installTrChar: install a symbol from a CHARSXP.
@@ -753,7 +753,8 @@ pub(crate) fn ScalarString(x: SEXP) -> SEXP {
         .wrap(alloc_vector(STRSXP, 1))
         .unwrap_or_else(|e| fail(e));
     let mut s = crate::sexp::object::SexpMut::try_from_checked(s).unwrap_or_else(|e| fail(e));
-    s.try_set_string_elt(0, owned(x)).unwrap_or_else(|e| fail(e));
+    s.try_set_string_elt(0, owned(x))
+        .unwrap_or_else(|e| fail(e));
     s.freeze().as_raw()
 }
 

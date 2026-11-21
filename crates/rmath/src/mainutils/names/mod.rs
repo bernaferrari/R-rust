@@ -15,8 +15,8 @@ use crate::eval::attrib_core::setAttrib;
 use crate::mainutils::dstruct::mkPRIMSXP;
 use crate::mainutils::duplicate::duplicate;
 use crate::sexp::accessors::{
-    CAR, CDR, CHAR, LENGTH, OBJECT, PRIMOFFSET, PRINTNAME, SET_ATTRIB, SET_INTERNAL,
-    SET_PRINTNAME, SET_SYMVALUE, TYPEOF,
+    CAR, CDR, CHAR, LENGTH, OBJECT, PRIMOFFSET, PRINTNAME, SET_ATTRIB, SET_INTERNAL, SET_PRINTNAME,
+    SET_SYMVALUE, TYPEOF,
 };
 use crate::sexp::constructors::Rf_mkString;
 use crate::sexp::context::RError;
@@ -912,21 +912,17 @@ fn internal_builtin_handler(name: &str) -> Option<InternalBuiltinHandler> {
 /// GNU `do_mkunbound` (envir.c): `.Internal(mkUnbound(name))` sets the
 /// symbol's value cell to R_UnboundValue.
 pub fn do_mkunbound(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let sym = CAR(args);
-        if !sym.is_null() && TYPEOF(sym) == SEXPTYPE::SYMSXP {
-            crate::sexp::accessors::SET_SYMVALUE(sym, crate::sexp::globals::R_UnboundValue());
-        }
-        R_NilValue()
+    let sym = CAR(args);
+    if !sym.is_null() && TYPEOF(sym) == SEXPTYPE::SYMSXP {
+        crate::sexp::accessors::SET_SYMVALUE(sym, crate::sexp::globals::R_UnboundValue());
     }
+    R_NilValue()
 }
 pub fn do_add_task_callback(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let fun = CAR(args);
-        let data = crate::sexp::accessors::CADR(args);
-        let id = crate::mainutils::main::Rf_addTaskCallback(fun, data);
-        crate::sexp::constructors::Rf_ScalarInteger(id)
-    }
+    let fun = CAR(args);
+    let data = crate::sexp::accessors::CADR(args);
+    let id = crate::mainutils::main::Rf_addTaskCallback(fun, data);
+    crate::sexp::constructors::Rf_ScalarInteger(id)
 }
 pub fn do_remove_task_callback(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
@@ -944,7 +940,7 @@ pub fn do_refcnt(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         CAR(args)
     };
     // SAFETY: audited boundary — scalar allocation under the active runtime.
-    unsafe { crate::sexp::constructors::Rf_ScalarInteger(crate::sexp::accessors::NAMED(x)) }
+    crate::sexp::constructors::Rf_ScalarInteger(crate::sexp::accessors::NAMED(x))
 }
 
 /// `.Internal(address(x))` — external pointer whose address is `x`.
@@ -1030,9 +1026,8 @@ fn string_vector_from_bytes(values: &[Vec<u8>]) -> SEXP {
         unsafe { crate::sexp::owner::OwnerToken::current() }
             .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
     );
-    let result = factory.allocate(|arena| {
-        Some(arena.alloc_vector(SEXPTYPE::STRSXP, values.len() as R_xlen_t))
-    });
+    let result = factory
+        .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::STRSXP, values.len() as R_xlen_t)));
     let Ok(result) = result else {
         return R_NilValue();
     };
@@ -1042,8 +1037,7 @@ fn string_vector_from_bytes(values: &[Vec<u8>]) -> SEXP {
     for (i, value) in values.iter().enumerate() {
         // CString::new rejected interior NUL bytes, yielding an empty string.
         let bytes: &[u8] = if value.contains(&0) { &[] } else { value };
-        if let Ok(chars) =
-            factory.allocate(|arena| Some(arena.alloc_charsxp(bytes)))
+        if let Ok(chars) = factory.allocate(|arena| Some(arena.alloc_charsxp(bytes)))
             && result.try_set_string_elt(i as R_xlen_t, chars).is_ok()
         {}
     }

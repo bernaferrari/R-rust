@@ -34,36 +34,32 @@ pub(crate) fn package_name_binding(env: SEXP) -> Option<String> {
 }
 
 pub(crate) fn package_attached(package: &str) -> bool {
-    unsafe {
-        let mut env = crate::sexp::accessors::ENCLOS(crate::sexp::globals::R_GlobalEnv());
-        let base = crate::sexp::globals::R_BaseEnv();
-        while !env.is_null() && env != base {
-            if package_name_binding(env).as_deref() == Some(package) {
-                return true;
-            }
-            env = crate::sexp::accessors::ENCLOS(env);
+    let mut env = crate::sexp::accessors::ENCLOS(crate::sexp::globals::R_GlobalEnv());
+    let base = crate::sexp::globals::R_BaseEnv();
+    while !env.is_null() && env != base {
+        if package_name_binding(env).as_deref() == Some(package) {
+            return true;
         }
-        false
+        env = crate::sexp::accessors::ENCLOS(env);
     }
+    false
 }
 
 pub(super) fn attached_package_env(package: &str) -> Option<SEXP> {
-    unsafe {
-        let mut env = crate::sexp::accessors::ENCLOS(crate::sexp::globals::R_GlobalEnv());
-        let base = crate::sexp::globals::R_BaseEnv();
-        while !env.is_null() && env != base {
-            if package_name_binding(env).as_deref() == Some(package) {
-                return Some(env);
-            }
-            env = crate::sexp::accessors::ENCLOS(env);
+    let mut env = crate::sexp::accessors::ENCLOS(crate::sexp::globals::R_GlobalEnv());
+    let base = crate::sexp::globals::R_BaseEnv();
+    while !env.is_null() && env != base {
+        if package_name_binding(env).as_deref() == Some(package) {
+            return Some(env);
         }
-        None
+        env = crate::sexp::accessors::ENCLOS(env);
     }
+    None
 }
 
 pub(crate) fn load_pure_r_package(package: &str, package_dir: &Path) -> Result<(), String> {
     let mut loading = Vec::<String>::new();
-     load_pure_r_package_recursive(package, package_dir, &mut loading) 
+    load_pure_r_package_recursive(package, package_dir, &mut loading)
 }
 
 pub(crate) fn load_pure_r_package_recursive(
@@ -71,55 +67,52 @@ pub(crate) fn load_pure_r_package_recursive(
     package_dir: &Path,
     loading_packages: &mut Vec<String>,
 ) -> Result<(), String> {
-    unsafe {
-        let description = package_dir.join("DESCRIPTION");
-        if !package_file_exists(&description) {
-            return Err(format!("package '{}' has no DESCRIPTION", package));
-        }
-        if loading_packages.iter().any(|entry| entry == package) {
-            return Err(format!(
-                "cyclic package dependency while loading '{}': {} -> {}",
-                package,
-                loading_packages.join(" -> "),
-                package
-            ));
-        }
-        let fields = validate_package_source(package, &description)?;
-        check_dependency_versions(package, &fields, "Depends", |_| true)?;
-
-        loading_packages.push(package.to_string());
-        let result = (|| {
-            load_package_dependencies(package, package_dir, loading_packages)?;
-
-            let mut loading = vec![package.to_string()];
-            let (package_env, namespace) =
-                load_package_namespace(package, package_dir, &mut loading)?;
-            let _package_env_guard = crate::sexp::protect::protect(package_env);
-            let attach_env = if package == "utils" {
-                make_package_attach_env_lenient(package, namespace.as_ref(), package_env)?
-            } else {
-                make_package_attach_env(package, namespace.as_ref(), package_env)?
-            };
-            if package == "methods" {
-                bind_methods_base_primitives(package_env);
-                purge_missing_arg_placeholders(package_env);
-                retarget_methods_generics(package_env);
-            }
-            attach_package_env(attach_env);
-            if package == "utils" {
-                install_utils_str_option(package_env);
-            }
-            if package == "methods" {
-                run_methods_onload_cache_metadata(package_env);
-                export_s4_metadata_to_package_env(package_env, attach_env);
-                retarget_envref_object_parent(package_env);
-            }
-
-            Ok(())
-        })();
-        loading_packages.pop();
-        result
+    let description = package_dir.join("DESCRIPTION");
+    if !package_file_exists(&description) {
+        return Err(format!("package '{}' has no DESCRIPTION", package));
     }
+    if loading_packages.iter().any(|entry| entry == package) {
+        return Err(format!(
+            "cyclic package dependency while loading '{}': {} -> {}",
+            package,
+            loading_packages.join(" -> "),
+            package
+        ));
+    }
+    let fields = validate_package_source(package, &description)?;
+    check_dependency_versions(package, &fields, "Depends", |_| true)?;
+
+    loading_packages.push(package.to_string());
+    let result = (|| {
+        load_package_dependencies(package, package_dir, loading_packages)?;
+
+        let mut loading = vec![package.to_string()];
+        let (package_env, namespace) = load_package_namespace(package, package_dir, &mut loading)?;
+        let _package_env_guard = crate::sexp::protect::protect(package_env);
+        let attach_env = if package == "utils" {
+            make_package_attach_env_lenient(package, namespace.as_ref(), package_env)?
+        } else {
+            make_package_attach_env(package, namespace.as_ref(), package_env)?
+        };
+        if package == "methods" {
+            bind_methods_base_primitives(package_env);
+            purge_missing_arg_placeholders(package_env);
+            retarget_methods_generics(package_env);
+        }
+        attach_package_env(attach_env);
+        if package == "utils" {
+            install_utils_str_option(package_env);
+        }
+        if package == "methods" {
+            run_methods_onload_cache_metadata(package_env);
+            export_s4_metadata_to_package_env(package_env, attach_env);
+            retarget_envref_object_parent(package_env);
+        }
+
+        Ok(())
+    })();
+    loading_packages.pop();
+    result
 }
 
 pub(crate) fn load_package_dependencies(
@@ -202,10 +195,9 @@ pub(super) fn check_dependency_versions(
             .ok_or_else(|| {
                 format!("package '{package}' has an invalid {field} version constraint for '{dependency}'")
             })?;
-        { super::package_paths::check_declared_dependency(dependency, &requirement) }
-            .map_err(|error| {
-                format!("package '{package}' has an unsatisfied {field} requirement: {error}")
-            })?;
+        { super::package_paths::check_declared_dependency(dependency, &requirement) }.map_err(
+            |error| format!("package '{package}' has an unsatisfied {field} requirement: {error}"),
+        )?;
     }
     Ok(())
 }
@@ -639,10 +631,7 @@ pub(crate) fn ensure_methods_primitive_generic_for_object(op: SEXP, object: SEXP
 
 /// Materialize a primitive generic from the pinned methods namespace's
 /// `.BasicFunsList` without recursively calling getGeneric during dispatch.
-pub(super) fn register_original_primitive_generic(
-    ns: SEXP,
-    primitive_name: &std::ffi::CStr,
-) {
+pub(super) fn register_original_primitive_generic(ns: SEXP, primitive_name: &std::ffi::CStr) {
     unsafe {
         let owner = crate::sexp::owner::OwnerToken::current()
             .unwrap_or_else(|error| package_error(error.to_string()));
@@ -726,21 +715,19 @@ pub(crate) fn cache_attached_package_metadata(attach_env: SEXP) {
 /// session's generic table even when the package is only loaded by
 /// `requireNamespace()` and has not been attached.
 pub(crate) fn cache_loaded_namespace_metadata(namespace: SEXP) {
-    unsafe {
-        if namespace.is_null()
-            || namespace == R_NilValue()
-            || crate::mainutils::objects::isMethodsDispatchOn() != TRUE
-        {
-            return;
-        }
-        let has_metadata = frame_binding_names(namespace, true).iter().any(|name| {
-            name.starts_with(".__C__") || name.starts_with(".__T__") || name.starts_with(".__A__")
-        });
-        if !has_metadata || cached_namespace_by_name("methods").is_none() {
-            return;
-        }
-        cache_namespace_metadata(namespace, namespace);
+    if namespace.is_null()
+        || namespace == R_NilValue()
+        || crate::mainutils::objects::isMethodsDispatchOn() != TRUE
+    {
+        return;
     }
+    let has_metadata = frame_binding_names(namespace, true).iter().any(|name| {
+        name.starts_with(".__C__") || name.starts_with(".__T__") || name.starts_with(".__A__")
+    });
+    if !has_metadata || cached_namespace_by_name("methods").is_none() {
+        return;
+    }
+    cache_namespace_metadata(namespace, namespace);
 }
 
 fn cache_namespace_metadata(where_env: SEXP, search_where: SEXP) {
@@ -912,9 +899,7 @@ impl Drop for MethodsMetadataSourceBody<'_> {
     }
 }
 
-pub(super) fn methods_metadata_source_body<'s>(
-    fun: SEXP,
-) -> Option<MethodsMetadataSourceBody<'s>> {
+pub(super) fn methods_metadata_source_body<'s>(fun: SEXP) -> Option<MethodsMetadataSourceBody<'s>> {
     unsafe {
         let owner = crate::sexp::owner::OwnerToken::current().ok()?;
         let factory = crate::sexp::object::SessionNodeFactory::new(owner);

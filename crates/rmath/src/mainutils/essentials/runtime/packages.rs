@@ -91,71 +91,68 @@ pub fn do_library_dynam(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP
 }
 
 fn attach_recommended_package_stub(package: &str) {
-    unsafe {
-        if package_attached(package) {
-            return;
-        }
-        let lib_path = find_package_path(package);
-        if lib_path.is_empty()
-            && let Some(image) = crate::library::portable_package::image(package)
-        {
-            image.attach().unwrap_or_else(|message| {
-                std::panic::panic_any(crate::sexp::context::RError { message })
-            });
-            return;
-        }
-        if package == "datasets" {
-            crate::library::datasets::attach().unwrap_or_else(|message| {
-                std::panic::panic_any(crate::sexp::context::RError { message })
-            });
-            return;
-        }
-        if !lib_path.is_empty() {
-            let package_dir = Path::new(&lib_path);
-            let mut loading = vec![package.to_string()];
-            match load_package_namespace(package, package_dir, &mut loading) {
-                Ok((namespace, directives)) => {
-                    match make_package_attach_env_lenient(package, directives.as_ref(), namespace) {
-                        Ok(attach_env) => {
-                            attach_package_env(attach_env);
-                            return;
-                        }
-                        Err(err) => {
-                            let text = format!(
-                                "Warning: attaching package '{package}' without full namespace: {err}\n"
-                            );
-                            if crate::sexp::output::is_capturing() {
-                                crate::sexp::output::capture_stderr(&text);
-                            } else {
-                                eprint!("{text}");
-                            }
-                        }
+    if package_attached(package) {
+        return;
+    }
+    let lib_path = find_package_path(package);
+    if lib_path.is_empty()
+        && let Some(image) = crate::library::portable_package::image(package)
+    {
+        image.attach().unwrap_or_else(|message| {
+            std::panic::panic_any(crate::sexp::context::RError { message })
+        });
+        return;
+    }
+    if package == "datasets" {
+        crate::library::datasets::attach().unwrap_or_else(|message| {
+            std::panic::panic_any(crate::sexp::context::RError { message })
+        });
+        return;
+    }
+    if !lib_path.is_empty() {
+        let package_dir = Path::new(&lib_path);
+        let mut loading = vec![package.to_string()];
+        match load_package_namespace(package, package_dir, &mut loading) {
+            Ok((namespace, directives)) => {
+                match make_package_attach_env_lenient(package, directives.as_ref(), namespace) {
+                    Ok(attach_env) => {
+                        attach_package_env(attach_env);
+                        return;
                     }
-                }
-                Err(err) => {
-                    let text = format!(
-                        "Warning: could not load namespace for package '{package}': {err}\n"
-                    );
-                    if crate::sexp::output::is_capturing() {
-                        crate::sexp::output::capture_stderr(&text);
-                    } else {
-                        eprint!("{text}");
+                    Err(err) => {
+                        let text = format!(
+                            "Warning: attaching package '{package}' without full namespace: {err}\n"
+                        );
+                        if crate::sexp::output::is_capturing() {
+                            crate::sexp::output::capture_stderr(&text);
+                        } else {
+                            eprint!("{text}");
+                        }
                     }
                 }
             }
+            Err(err) => {
+                let text =
+                    format!("Warning: could not load namespace for package '{package}': {err}\n");
+                if crate::sexp::output::is_capturing() {
+                    crate::sexp::output::capture_stderr(&text);
+                } else {
+                    eprint!("{text}");
+                }
+            }
         }
-        let env = crate::sexp::memory_ext::NewEnvironment(
-            R_NilValue(),
-            crate::sexp::globals::R_BaseEnv(),
-            R_NilValue(),
-        );
-        if env.is_null() {
-            package_error(format!("could not attach package '{package}'"));
-        }
-        let _env = protect(env);
-        define_package_metadata(package, env);
-        attach_package_env(env);
     }
+    let env = crate::sexp::memory_ext::NewEnvironment(
+        R_NilValue(),
+        crate::sexp::globals::R_BaseEnv(),
+        R_NilValue(),
+    );
+    if env.is_null() {
+        package_error(format!("could not attach package '{package}'"));
+    }
+    let _env = protect(env);
+    define_package_metadata(package, env);
+    attach_package_env(env);
 }
 
 /// R's `library(package, ...)` — load a package.
@@ -200,43 +197,41 @@ pub fn do_library(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R's `require(package, ...)` — check if a package can be loaded.
 pub fn do_require(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let pkg_arg = CAR(args);
-        if pkg_arg.is_null() || pkg_arg == R_NilValue() {
-            crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-            return Rf_ScalarLogical(FALSE);
-        }
-        let package_name = elt_to_string(pkg_arg, 0);
-        #[cfg(feature = "renderplot-device")]
-        if package_name == "grid" {
-            crate::mainutils::portable_grid::attach();
-            crate::eval::runtime::set_visible(0);
-            return Rf_ScalarLogical(TRUE);
-        }
-        if crate::mainutils::essentials::is_builtin_package_dependency(&package_name) {
-            attach_recommended_package_stub(&package_name);
-            crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-            return Rf_ScalarLogical(TRUE);
-        }
-        let lib_path = find_package_path(&package_name);
+    let pkg_arg = CAR(args);
+    if pkg_arg.is_null() || pkg_arg == R_NilValue() {
+        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+        return Rf_ScalarLogical(FALSE);
+    }
+    let package_name = elt_to_string(pkg_arg, 0);
+    #[cfg(feature = "renderplot-device")]
+    if package_name == "grid" {
+        crate::mainutils::portable_grid::attach();
+        crate::eval::runtime::set_visible(0);
+        return Rf_ScalarLogical(TRUE);
+    }
+    if crate::mainutils::essentials::is_builtin_package_dependency(&package_name) {
+        attach_recommended_package_stub(&package_name);
+        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+        return Rf_ScalarLogical(TRUE);
+    }
+    let lib_path = find_package_path(&package_name);
 
-        if lib_path.is_empty() {
+    if lib_path.is_empty() {
+        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+        return Rf_ScalarLogical(FALSE);
+    }
+    if package_attached(&package_name) {
+        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+        return Rf_ScalarLogical(TRUE);
+    }
+    match load_pure_r_package(&package_name, Path::new(&lib_path)) {
+        Ok(()) => {
             crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-            return Rf_ScalarLogical(FALSE);
+            Rf_ScalarLogical(TRUE)
         }
-        if package_attached(&package_name) {
+        Err(_) => {
             crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-            return Rf_ScalarLogical(TRUE);
-        }
-        match load_pure_r_package(&package_name, Path::new(&lib_path)) {
-            Ok(()) => {
-                crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-                Rf_ScalarLogical(TRUE)
-            }
-            Err(_) => {
-                crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-                Rf_ScalarLogical(FALSE)
-            }
+            Rf_ScalarLogical(FALSE)
         }
     }
 }
@@ -469,110 +464,100 @@ impl NamespaceRequirement {
 }
 
 fn namespace_argument_string(value: SEXP) -> Option<String> {
-    unsafe {
-        if TYPEOF(value) != SEXPTYPE::STRSXP
-            || XLENGTH(value) != 1
-            || STRING_ELT(value, 0) == crate::sexp::globals::R_NaString()
-        {
-            return None;
-        }
-        Some(elt_to_string(value, 0))
+    if TYPEOF(value) != SEXPTYPE::STRSXP
+        || XLENGTH(value) != 1
+        || STRING_ELT(value, 0) == crate::sexp::globals::R_NaString()
+    {
+        return None;
     }
+    Some(elt_to_string(value, 0))
 }
 
 fn namespace_requirement(check: SEXP) -> Result<Option<NamespaceRequirement>, String> {
-    unsafe {
-        if check.is_null() || check == R_NilValue() || check == R_MissingArg() {
-            return Ok(None);
-        }
-        if TYPEOF(check) != SEXPTYPE::VECSXP {
-            return Err(
-                "'versionCheck' must be NULL or a list with components 'op' and 'version'".into(),
-            );
-        }
-        let component = |field| {
-            let names = crate::sexp::attrib_core::getAttrib(
-                check,
-                crate::sexp::attrib_core::R_NamesSymbol(),
-            );
-            (0..XLENGTH(check))
-                .find(|&i| TYPEOF(names) == SEXPTYPE::STRSXP && elt_to_string(names, i) == field)
-                .map(|i| VECTOR_ELT(check, i))
-                .filter(|&value| value != R_NilValue())
-        };
-        let (Some(op), Some(version)) = (component("op"), component("version")) else {
-            return Ok(None);
-        };
-        let op = namespace_argument_string(op)
-            .filter(|op| matches!(op.as_str(), "==" | "!=" | "<" | "<=" | ">" | ">="))
-            .ok_or("invalid 'versionCheck' comparison")?;
-        let parts = if TYPEOF(version) == SEXPTYPE::VECSXP && XLENGTH(version) == 1 {
-            let parts = VECTOR_ELT(version, 0);
-            if TYPEOF(parts) == SEXPTYPE::INTSXP {
-                (0..XLENGTH(parts))
-                    .map(|i| INTEGER_ELT(parts, i as i32))
-                    .collect()
-            } else {
-                Vec::new()
-            }
-        } else {
-            namespace_argument_string(version)
-                .as_deref()
-                .and_then(parse_version)
-                .unwrap_or_default()
-        };
-        if parts.is_empty() || parts.iter().any(|part| *part < 0) {
-            return Err("invalid 'versionCheck' version".into());
-        }
-        Ok(Some(NamespaceRequirement { op, version: parts }))
+    if check.is_null() || check == R_NilValue() || check == R_MissingArg() {
+        return Ok(None);
     }
+    if TYPEOF(check) != SEXPTYPE::VECSXP {
+        return Err(
+            "'versionCheck' must be NULL or a list with components 'op' and 'version'".into(),
+        );
+    }
+    let component = |field| {
+        let names =
+            crate::sexp::attrib_core::getAttrib(check, crate::sexp::attrib_core::R_NamesSymbol());
+        (0..XLENGTH(check))
+            .find(|&i| TYPEOF(names) == SEXPTYPE::STRSXP && elt_to_string(names, i) == field)
+            .map(|i| VECTOR_ELT(check, i))
+            .filter(|&value| value != R_NilValue())
+    };
+    let (Some(op), Some(version)) = (component("op"), component("version")) else {
+        return Ok(None);
+    };
+    let op = namespace_argument_string(op)
+        .filter(|op| matches!(op.as_str(), "==" | "!=" | "<" | "<=" | ">" | ">="))
+        .ok_or("invalid 'versionCheck' comparison")?;
+    let parts = if TYPEOF(version) == SEXPTYPE::VECSXP && XLENGTH(version) == 1 {
+        let parts = VECTOR_ELT(version, 0);
+        if TYPEOF(parts) == SEXPTYPE::INTSXP {
+            (0..XLENGTH(parts))
+                .map(|i| INTEGER_ELT(parts, i as i32))
+                .collect()
+        } else {
+            Vec::new()
+        }
+    } else {
+        namespace_argument_string(version)
+            .as_deref()
+            .and_then(parse_version)
+            .unwrap_or_default()
+    };
+    if parts.is_empty() || parts.iter().any(|part| *part < 0) {
+        return Err("invalid 'versionCheck' version".into());
+    }
+    Ok(Some(NamespaceRequirement { op, version: parts }))
 }
 
 fn namespace_libraries(lib_loc: SEXP) -> Result<Option<Vec<PathBuf>>, String> {
-    unsafe {
-        if lib_loc.is_null() || lib_loc == R_NilValue() || lib_loc == R_MissingArg() {
-            return Ok(None);
-        }
-        if TYPEOF(lib_loc) != SEXPTYPE::STRSXP {
-            return Err("invalid 'lib.loc' argument".into());
-        }
-        Ok(Some(
-            (0..XLENGTH(lib_loc))
-                .filter(|&i| STRING_ELT(lib_loc, i) != crate::sexp::globals::R_NaString())
-                .map(|i| PathBuf::from(elt_to_string(lib_loc, i)))
-                .collect(),
-        ))
+    if lib_loc.is_null() || lib_loc == R_NilValue() || lib_loc == R_MissingArg() {
+        return Ok(None);
     }
+    if TYPEOF(lib_loc) != SEXPTYPE::STRSXP {
+        return Err("invalid 'lib.loc' argument".into());
+    }
+    Ok(Some(
+        (0..XLENGTH(lib_loc))
+            .filter(|&i| STRING_ELT(lib_loc, i) != crate::sexp::globals::R_NaString())
+            .map(|i| PathBuf::from(elt_to_string(lib_loc, i)))
+            .collect(),
+    ))
 }
 
 /// R's `requireNamespace(package, ..., quietly = FALSE)` — namespace availability probe.
 pub fn do_require_namespace(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let package = elt_to_string(arg_by_name_or_position(args, &["package"], 0), 0);
-        let quietly = arg_by_name_or_position(args, &["quietly"], usize::MAX);
-        let is_quiet = !quietly.is_null()
-            && quietly != R_NilValue()
-            && crate::mainutils::coerce::asLogical(quietly) == TRUE;
-        let requirement =
-            namespace_requirement(arg_by_name_or_position(args, &["versionCheck"], usize::MAX))
-                .unwrap_or_else(|message| package_error(message));
-        let libraries = namespace_libraries(arg_by_name_or_position(args, &["lib.loc"], 1))
+    let package = elt_to_string(arg_by_name_or_position(args, &["package"], 0), 0);
+    let quietly = arg_by_name_or_position(args, &["quietly"], usize::MAX);
+    let is_quiet = !quietly.is_null()
+        && quietly != R_NilValue()
+        && crate::mainutils::coerce::asLogical(quietly) == TRUE;
+    let requirement =
+        namespace_requirement(arg_by_name_or_position(args, &["versionCheck"], usize::MAX))
             .unwrap_or_else(|message| package_error(message));
-        let result =
-            load_package_namespace_checked(&package, libraries.as_deref(), requirement.as_ref());
-        if let Err(message) = &result
-            && !is_quiet
-        {
-            eprintln!("Failed with error:  ‘{message}’");
-        }
-        crate::sexp::globals::set_R_Visible(FALSE);
-        Rf_ScalarLogical(if result.is_ok() { TRUE } else { FALSE })
+    let libraries = namespace_libraries(arg_by_name_or_position(args, &["lib.loc"], 1))
+        .unwrap_or_else(|message| package_error(message));
+    let result =
+        load_package_namespace_checked(&package, libraries.as_deref(), requirement.as_ref());
+    if let Err(message) = &result
+        && !is_quiet
+    {
+        eprintln!("Failed with error:  ‘{message}’");
     }
+    crate::sexp::globals::set_R_Visible(FALSE);
+    Rf_ScalarLogical(if result.is_ok() { TRUE } else { FALSE })
 }
 
 /// R's `getNamespace(name)` — return a loaded namespace, loading on demand.
 pub fn do_get_namespace(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-     do_load_namespace(_call, _op, args, rho) 
+    do_load_namespace(_call, _op, args, rho)
 }
 
 /// R's `asNamespace(ns)` — coerce a package name or environment to a namespace.
@@ -660,14 +645,12 @@ pub fn do_get_registered_namespace(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEX
 
 /// `.Internal(isRegisteredNamespace(name))` — TRUE if the namespace is loaded.
 pub fn do_is_registered_namespace(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let ns = do_get_registered_namespace(call, op, args, rho);
-        Rf_ScalarLogical(if ns.is_null() || ns == R_NilValue() {
-            FALSE
-        } else {
-            TRUE
-        })
-    }
+    let ns = do_get_registered_namespace(call, op, args, rho);
+    Rf_ScalarLogical(if ns.is_null() || ns == R_NilValue() {
+        FALSE
+    } else {
+        TRUE
+    })
 }
 
 /// R's `data(..., package, envir)` — load package data.

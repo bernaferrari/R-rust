@@ -55,41 +55,37 @@ pub fn IS_CALLING_ENTRY(e: SEXP) -> c_int {
 /// ENTRY_CLASS macro.
 #[inline]
 pub fn ENTRY_CLASS(e: SEXP) -> SEXP {
-    unsafe { VECTOR_ELT(e, 0) }
+    VECTOR_ELT(e, 0)
 }
 
 /// ENTRY_HANDLER macro.
 #[inline]
 pub fn ENTRY_HANDLER(e: SEXP) -> SEXP {
-    unsafe { VECTOR_ELT(e, 2) }
+    VECTOR_ELT(e, 2)
 }
 
 /// ENTRY_TARGET_ENVIR macro.
 #[inline]
 pub fn ENTRY_TARGET_ENVIR(e: SEXP) -> SEXP {
-    unsafe { VECTOR_ELT(e, 3) }
+    VECTOR_ELT(e, 3)
 }
 
 /// ENTRY_RETURN_RESULT macro.
 #[inline]
 pub fn ENTRY_RETURN_RESULT(e: SEXP) -> SEXP {
-    unsafe { VECTOR_ELT(e, 4) }
+    VECTOR_ELT(e, 4)
 }
 
 /// CLEAR_ENTRY_CALLING_ENVIR macro.
 #[inline]
 pub fn CLEAR_ENTRY_CALLING_ENVIR(e: SEXP) {
-    unsafe {
-        SET_VECTOR_ELT(e, 1, globals::R_NilValue());
-    }
+    SET_VECTOR_ELT(e, 1, globals::R_NilValue());
 }
 
 /// CLEAR_ENTRY_TARGET_ENVIR macro.
 #[inline]
 pub fn CLEAR_ENTRY_TARGET_ENVIR(e: SEXP) {
-    unsafe {
-        SET_VECTOR_ELT(e, 3, globals::R_NilValue());
-    }
+    SET_VECTOR_ELT(e, 3, globals::R_NilValue());
 }
 
 /// RESULT_SIZE for handler results.
@@ -171,7 +167,7 @@ pub fn do_addCondHands(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// do_resetCondHands — reset condition handlers to a previous state.
 pub fn do_resetCondHands(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-     {
+    {
         checkArity(op, args);
         let old = CAR(args);
         set_handler_stack(old);
@@ -221,7 +217,7 @@ fn findConditionHandler(cond: SEXP) -> SEXP {
 
 /// do_signalCondition — signal a condition through the handler stack.
 pub fn do_signalCondition(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-     {
+    {
         checkArity(op, args);
         signal_condition_object(CAR(args), CADR(args), CADDR(args));
         globals::R_NilValue()
@@ -232,7 +228,7 @@ pub fn do_signalCondition(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// and that entry plus newer handlers are removed before invoking its callback.
 /// Restore the original owner's stack on normal return and every unwind path.
 pub(crate) fn signal_condition_object(cond: SEXP, msg: SEXP, ecall: SEXP) -> bool {
-     signal_condition_handlers(cond, msg, ecall, SignalMode::Condition)
+    signal_condition_handlers(cond, msg, ecall, SignalMode::Condition)
 }
 
 #[derive(Clone, Copy)]
@@ -247,12 +243,7 @@ enum SignalMode<'a> {
     },
 }
 
-fn signal_condition_handlers(
-    cond: SEXP,
-    msg: SEXP,
-    ecall: SEXP,
-    mode: SignalMode<'_>,
-) -> bool {
+fn signal_condition_handlers(cond: SEXP, msg: SEXP, ecall: SEXP, mode: SignalMode<'_>) -> bool {
     let operation_pin = super::state::error_scope_pin();
     let authority = unsafe { crate::sexp::owner::OwnerToken::from_raw(operation_pin.as_ptr()) };
     let active = || {
@@ -260,9 +251,9 @@ fn signal_condition_handlers(
             .require_active()
             .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
     };
-    let condition = unsafe { crate::sexp::context::own_control_value(cond) };
-    let message = unsafe { crate::sexp::context::own_control_value(msg) };
-    let call = unsafe { crate::sexp::context::own_control_value(ecall) };
+    let condition = crate::sexp::context::own_control_value(cond);
+    let message = crate::sexp::context::own_control_value(msg);
+    let call = crate::sexp::context::own_control_value(ecall);
     super::native::with_preserved_handler_stack(|| unsafe {
         let mut called = false;
         let mut list = findConditionHandler(condition.as_raw());
@@ -319,16 +310,14 @@ fn signal_condition_handlers(
 
 /// do_dfltWarn — default warning handler.
 pub fn do_dfltWarn(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        checkArity(op, args);
-        if TYPEOF(CAR(args)) != SEXPTYPE::STRSXP || LENGTH(CAR(args)) != 1 {
-            errorcall(call, b"bad error message\x00".as_ptr() as *const c_char);
-        }
-        let msg = translateChar(STRING_ELT(CAR(args), 0));
-        let ecall = CADR(args);
-        vwarningcall_dflt(ecall, msg, ptr::null_mut());
-        globals::R_NilValue()
+    checkArity(op, args);
+    if TYPEOF(CAR(args)) != SEXPTYPE::STRSXP || LENGTH(CAR(args)) != 1 {
+        errorcall(call, b"bad error message\x00".as_ptr() as *const c_char);
     }
+    let msg = translateChar(STRING_ELT(CAR(args), 0));
+    let ecall = CADR(args);
+    vwarningcall_dflt(ecall, msg, ptr::null_mut());
+    globals::R_NilValue()
 }
 
 /// do_dfltStop — default error handler.
@@ -432,14 +421,14 @@ pub(super) fn make_condition(
 
 /// R_signalErrorCondition — signal an error condition.
 pub fn R_signalErrorCondition(cond: SEXP, call: SEXP) {
-     R_signalErrorConditionEx(cond, call, 0)
+    R_signalErrorConditionEx(cond, call, 0)
 }
 
 /// Signal the original typed condition before default rendering. Native errors
 /// skip calling handlers only when requested (for example, stack overflow).
 /// Default rendering must not signal a new simpleError over this condition.
 pub fn R_signalErrorConditionEx(cond: SEXP, call: SEXP, exitOnly: c_int) {
-     {
+    {
         signal_error_with_mode(
             cond,
             call,
@@ -457,7 +446,7 @@ pub(super) fn signal_simple_error(
     cond: SEXP,
     call: SEXP,
 ) {
-     {
+    {
         signal_error_with_mode(
             cond,
             call,
@@ -470,7 +459,7 @@ pub(super) fn signal_simple_error(
 /// `stop(condition)` resolves the named message before handlers can mutate
 /// the condition. Native R_signalErrorCondition instead uses its first field.
 pub(crate) fn signal_stop_condition(cond: SEXP, call: SEXP, message: SEXP) {
-     {
+    {
         signal_error_with_mode(
             cond,
             call,
@@ -480,12 +469,7 @@ pub(crate) fn signal_stop_condition(cond: SEXP, call: SEXP, message: SEXP) {
     }
 }
 
-fn signal_error_with_mode(
-    cond: SEXP,
-    call: SEXP,
-    mode: SignalMode<'_>,
-    selected: Option<SEXP>,
-) {
+fn signal_error_with_mode(cond: SEXP, call: SEXP, mode: SignalMode<'_>, selected: Option<SEXP>) {
     unsafe {
         let operation_pin = super::state::error_scope_pin();
         let authority = crate::sexp::owner::OwnerToken::from_raw(operation_pin.as_ptr());
@@ -545,7 +529,7 @@ fn signal_error_with_mode(
         }
         // Keep the same condition available to the outer public error adapter
         // when no installed exiting entry handled it before default rendering.
-        crate::sexp::instance::with_required_current_instance(|inst|  {
+        crate::sexp::instance::with_required_current_instance(|inst| {
             (*inst).error_state.signalled_condition =
                 crate::sexp::instance::RuntimeValue::from_raw_in(inst, cond);
         });
@@ -749,7 +733,7 @@ pub fn R_tryCatchError(
     let classes = factory
         .strings(&["error"])
         .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
-     {
+    {
         super::native::catch_native(
             body,
             bdata,
@@ -768,36 +752,34 @@ pub fn R_tryCatchError(
 
 /// R_InitConditions — initialize error/warning condition objects.
 pub fn R_InitConditions() {
-    unsafe {
-        // Create and preserve condition objects for stack overflow errors
-        let protect_so = R_makeErrorCondition(
-            globals::R_NilValue(),
-            b"stackOverflowError\x00".as_ptr() as *const c_char,
-            b"protectStackOverflowError\x00".as_ptr() as *const c_char,
-            0,
-            b"protect(): protection stack overflow\x00".as_ptr() as *const c_char,
-        );
-        crate::sexp::protect::R_PreserveObject(protect_so);
+    // Create and preserve condition objects for stack overflow errors
+    let protect_so = R_makeErrorCondition(
+        globals::R_NilValue(),
+        b"stackOverflowError\x00".as_ptr() as *const c_char,
+        b"protectStackOverflowError\x00".as_ptr() as *const c_char,
+        0,
+        b"protect(): protection stack overflow\x00".as_ptr() as *const c_char,
+    );
+    crate::sexp::protect::R_PreserveObject(protect_so);
 
-        let expr_so = R_makeErrorCondition(
-            globals::R_NilValue(),
-            b"stackOverflowError\x00".as_ptr() as *const c_char,
-            b"expressionStackOverflowError\x00".as_ptr() as *const c_char,
-            0,
-            b"evaluation nested too deeply: infinite recursion / options(expressions=)?\x00"
-                .as_ptr() as *const c_char,
-        );
-        crate::sexp::protect::R_PreserveObject(expr_so);
+    let expr_so = R_makeErrorCondition(
+        globals::R_NilValue(),
+        b"stackOverflowError\x00".as_ptr() as *const c_char,
+        b"expressionStackOverflowError\x00".as_ptr() as *const c_char,
+        0,
+        b"evaluation nested too deeply: infinite recursion / options(expressions=)?\x00".as_ptr()
+            as *const c_char,
+    );
+    crate::sexp::protect::R_PreserveObject(expr_so);
 
-        let node_so = R_makeErrorCondition(
-            globals::R_NilValue(),
-            b"stackOverflowError\x00".as_ptr() as *const c_char,
-            b"nodeStackOverflowError\x00".as_ptr() as *const c_char,
-            0,
-            b"node stack overflow\x00".as_ptr() as *const c_char,
-        );
-        crate::sexp::protect::R_PreserveObject(node_so);
-    }
+    let node_so = R_makeErrorCondition(
+        globals::R_NilValue(),
+        b"stackOverflowError\x00".as_ptr() as *const c_char,
+        b"nodeStackOverflowError\x00".as_ptr() as *const c_char,
+        0,
+        b"node stack overflow\x00".as_ptr() as *const c_char,
+    );
+    crate::sexp::protect::R_PreserveObject(node_so);
 }
 
 /// R_MissingArgError_c — report a missing argument error.
@@ -831,7 +813,7 @@ pub fn R_MissingArgError_c(arg: *const c_char, call: SEXP, subclass: *const c_ch
 /// R_MissingArgError — report a missing argument error from a symbol.
 /// Matches C's `void R_MissingArgError(SEXP symbol, SEXP call, const char* subclass)`
 pub fn R_MissingArgError(symbol: SEXP, call: SEXP, subclass: *const c_char) {
-     {
+    {
         let arg = if symbol.is_null() || TYPEOF(symbol) != SEXPTYPE::SYMSXP {
             b"\0".as_ptr() as *const c_char
         } else {
@@ -849,22 +831,20 @@ pub fn R_MissingArgError(symbol: SEXP, call: SEXP, subclass: *const c_char) {
 /// R_signalWarningCondition — signal a warning condition object.
 /// Matches C's `void R_signalWarningCondition(SEXP cond)`.
 pub fn R_signalWarningCondition(cond: SEXP) {
-    unsafe {
-        if cond.is_null() || TYPEOF(cond) != SEXPTYPE::VECSXP || LENGTH(cond) < 1 {
-            return;
-        }
-        let elt = VECTOR_ELT(cond, 0);
-        if TYPEOF(elt) != SEXPTYPE::STRSXP || LENGTH(elt) != 1 {
-            return;
-        }
-        let msg = translateChar(STRING_ELT(elt, 0));
-        let call = if LENGTH(cond) > 1 {
-            VECTOR_ELT(cond, 1)
-        } else {
-            ptr::null_mut()
-        };
-        warningcall(call, msg);
+    if cond.is_null() || TYPEOF(cond) != SEXPTYPE::VECSXP || LENGTH(cond) < 1 {
+        return;
     }
+    let elt = VECTOR_ELT(cond, 0);
+    if TYPEOF(elt) != SEXPTYPE::STRSXP || LENGTH(elt) != 1 {
+        return;
+    }
+    let msg = translateChar(STRING_ELT(elt, 0));
+    let call = if LENGTH(cond) > 1 {
+        VECTOR_ELT(cond, 1)
+    } else {
+        ptr::null_mut()
+    };
+    warningcall(call, msg);
 }
 
 /// Apply the default warning policy to an already-signaled condition.
@@ -873,22 +853,20 @@ pub fn R_signalWarningCondition(cond: SEXP) {
 /// preserve a concrete warning subclass signal it first, then collect/print it
 /// here only when no handler muffled the warning.
 pub(crate) fn warning_condition_default(cond: SEXP) {
-    unsafe {
-        if cond.is_null() || TYPEOF(cond) != SEXPTYPE::VECSXP || LENGTH(cond) < 1 {
-            return;
-        }
-        let elt = VECTOR_ELT(cond, 0);
-        if TYPEOF(elt) != SEXPTYPE::STRSXP || LENGTH(elt) != 1 {
-            return;
-        }
-        let msg = translateChar(STRING_ELT(elt, 0));
-        let call = if LENGTH(cond) > 1 {
-            VECTOR_ELT(cond, 1)
-        } else {
-            ptr::null_mut()
-        };
-        vwarningcall_dflt(call, msg, ptr::null_mut());
+    if cond.is_null() || TYPEOF(cond) != SEXPTYPE::VECSXP || LENGTH(cond) < 1 {
+        return;
     }
+    let elt = VECTOR_ELT(cond, 0);
+    if TYPEOF(elt) != SEXPTYPE::STRSXP || LENGTH(elt) != 1 {
+        return;
+    }
+    let msg = translateChar(STRING_ELT(elt, 0));
+    let call = if LENGTH(cond) > 1 {
+        VECTOR_ELT(cond, 1)
+    } else {
+        ptr::null_mut()
+    };
+    vwarningcall_dflt(call, msg, ptr::null_mut());
 }
 
 /// R_makeWarningCondition — create a warning condition object.
@@ -947,45 +925,43 @@ fn partial_match_text(x: SEXP) -> String {
 /// Matches C's `SEXP R_makePartialMatchWarningCondition(SEXP call, SEXP input, SEXP target)`
 /// where input/target are symbols or CHARSXP strings.
 pub fn R_makePartialMatchWarningCondition(call: SEXP, input: SEXP, target: SEXP) -> SEXP {
-    unsafe {
-        let msg = format!(
-            "partial match of '{}' to '{}'",
-            partial_match_text(input),
-            partial_match_text(target),
-        );
-        let c_msg = std::ffi::CString::new(msg).unwrap_or_default();
+    let msg = format!(
+        "partial match of '{}' to '{}'",
+        partial_match_text(input),
+        partial_match_text(target),
+    );
+    let c_msg = std::ffi::CString::new(msg).unwrap_or_default();
 
-        let cond = R_makeWarningCondition(
-            call,
-            b"partialMatchWarning\0".as_ptr() as *const c_char,
-            ptr::null(),
-            2,
-            c_msg.as_ptr(),
-        );
-        let _cond_guard = protect(cond);
-        R_setConditionField(
-            cond,
-            2,
-            b"input\0".as_ptr() as *const c_char,
-            if !input.is_null() && TYPEOF(input) == SEXPTYPE::SYMSXP {
-                input
-            } else {
-                Rf_ScalarString(input)
-            },
-        );
-        R_setConditionField(
-            cond,
-            3,
-            b"target\0".as_ptr() as *const c_char,
-            if !target.is_null() && TYPEOF(target) == SEXPTYPE::SYMSXP {
-                target
-            } else {
-                Rf_ScalarString(target)
-            },
-        );
-        // ideally we would want the function/object in a field also
-        cond
-    }
+    let cond = R_makeWarningCondition(
+        call,
+        b"partialMatchWarning\0".as_ptr() as *const c_char,
+        ptr::null(),
+        2,
+        c_msg.as_ptr(),
+    );
+    let _cond_guard = protect(cond);
+    R_setConditionField(
+        cond,
+        2,
+        b"input\0".as_ptr() as *const c_char,
+        if !input.is_null() && TYPEOF(input) == SEXPTYPE::SYMSXP {
+            input
+        } else {
+            Rf_ScalarString(input)
+        },
+    );
+    R_setConditionField(
+        cond,
+        3,
+        b"target\0".as_ptr() as *const c_char,
+        if !target.is_null() && TYPEOF(target) == SEXPTYPE::SYMSXP {
+            target
+        } else {
+            Rf_ScalarString(target)
+        },
+    );
+    // ideally we would want the function/object in a field also
+    cond
 }
 
 /// R_makePartialArgumentMatchWarningCondition — create a partial argument
@@ -997,27 +973,25 @@ pub fn R_makePartialArgumentMatchWarningCondition(
     argument: SEXP,
     formal: SEXP,
 ) -> SEXP {
-    unsafe {
-        let msg = format!(
-            "partial argument match of '{}' to '{}'",
-            partial_match_text(argument),
-            partial_match_text(formal),
-        );
-        let c_msg = std::ffi::CString::new(msg).unwrap_or_default();
+    let msg = format!(
+        "partial argument match of '{}' to '{}'",
+        partial_match_text(argument),
+        partial_match_text(formal),
+    );
+    let c_msg = std::ffi::CString::new(msg).unwrap_or_default();
 
-        let cond = R_makeWarningCondition(
-            call,
-            b"partialMatchWarning\0".as_ptr() as *const c_char,
-            b"partialArgumentMatchWarning\0".as_ptr() as *const c_char,
-            2,
-            c_msg.as_ptr(),
-        );
-        let _cond_guard = protect(cond);
-        R_setConditionField(cond, 2, b"argument\0".as_ptr() as *const c_char, argument);
-        R_setConditionField(cond, 3, b"formal\0".as_ptr() as *const c_char, formal);
-        // ideally we would want the function/object in a field also
-        cond
-    }
+    let cond = R_makeWarningCondition(
+        call,
+        b"partialMatchWarning\0".as_ptr() as *const c_char,
+        b"partialArgumentMatchWarning\0".as_ptr() as *const c_char,
+        2,
+        c_msg.as_ptr(),
+    );
+    let _cond_guard = protect(cond);
+    R_setConditionField(cond, 2, b"argument\0".as_ptr() as *const c_char, argument);
+    R_setConditionField(cond, 3, b"formal\0".as_ptr() as *const c_char, formal);
+    // ideally we would want the function/object in a field also
+    cond
 }
 
 /// R_makeNotSubsettableError — create a "not subsettable" error condition.
@@ -1079,7 +1053,7 @@ pub fn R_makeMissingSubscriptError(x: SEXP, call: SEXP) -> SEXP {
 /// R_makeMissingSubscriptError1 — create a missing subscript error condition (no x).
 /// Matches C's `SEXP R_makeMissingSubscriptError1(SEXP call)`
 pub fn R_makeMissingSubscriptError1(call: SEXP) -> SEXP {
-     {
+    {
         let msg = "subscript out of bounds";
         let c_msg = std::ffi::CString::new(msg).unwrap_or_default();
 
@@ -1094,25 +1068,23 @@ pub fn R_makeMissingSubscriptError1(call: SEXP) -> SEXP {
 }
 /// Signal a missing subscript with the object when the caller has it.
 pub fn R_MissingSubscriptError(x: SEXP, call: SEXP) -> ! {
-     signal_missing_subscript(call, Some(x))
+    signal_missing_subscript(call, Some(x))
 }
 
 pub(crate) fn signal_missing_subscript(call: SEXP, object: Option<SEXP>) -> ! {
-    unsafe {
-        let cond = R_makeErrorCondition(
-            call,
-            c"MissingSubscriptError".as_ptr(),
-            std::ptr::null(),
-            c_int::from(object.is_some()),
-            c"missing subscript".as_ptr(),
-        );
-        let _guard = protect(cond);
-        if let Some(x) = object {
-            R_setConditionField(cond, 2, c"object".as_ptr(), x);
-        }
-        R_signalErrorCondition(cond, call);
-        unreachable!()
+    let cond = R_makeErrorCondition(
+        call,
+        c"MissingSubscriptError".as_ptr(),
+        std::ptr::null(),
+        c_int::from(object.is_some()),
+        c"missing subscript".as_ptr(),
+    );
+    let _guard = protect(cond);
+    if let Some(x) = object {
+        R_setConditionField(cond, 2, c"object".as_ptr(), x);
     }
+    R_signalErrorCondition(cond, call);
+    unreachable!()
 }
 
 /// R_makeOutOfBoundsError — create an out-of-bounds error condition.
@@ -1142,7 +1114,7 @@ pub fn R_makeOutOfBoundsError(x: SEXP, subscript: c_int, sindex: SEXP, call: SEX
 /// R_makeCStackOverflowError — create a C stack overflow error condition.
 /// Matches C's `SEXP R_makeCStackOverflowError(SEXP call, intptr_t usage)`
 pub fn R_makeCStackOverflowError(call: SEXP, usage: isize) -> SEXP {
-     {
+    {
         let msg = format!("C stack usage {} is too close to the limit", usage);
         let c_msg = std::ffi::CString::new(msg).unwrap_or_default();
 
@@ -1193,7 +1165,7 @@ pub fn R_tryCatch(
     finally: Option<super::NativeFinally>,
     fdata: *mut c_void,
 ) -> SEXP {
-     super::native::catch_native(body, bdata, classes, handler, hdata, finally, fdata)
+    super::native::catch_native(body, bdata, classes, handler, hdata, finally, fdata)
 }
 
 /// Native calling error handler. Callback data follows the same scoped contract.
@@ -1203,7 +1175,7 @@ pub fn R_withCallingErrorHandler(
     handler: Option<super::NativeHandler>,
     hdata: *mut c_void,
 ) -> SEXP {
-     super::native::calling_native(body, bdata, handler, hdata)
+    super::native::calling_native(body, bdata, handler, hdata)
 }
 
 #[cfg(test)]

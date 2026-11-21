@@ -47,12 +47,16 @@ fn require_arg(args: SEXP, index: usize) -> SEXP {
     let mut cur = args;
     for _ in 0..index {
         if cur.is_null() || TYPEOF(cur) == SEXPTYPE::NILSXP {
-             { error("wrong number of arguments") };
+            {
+                error("wrong number of arguments")
+            };
         }
         cur = CDR(cur);
     }
     if cur.is_null() || TYPEOF(cur) == SEXPTYPE::NILSXP {
-         { error("wrong number of arguments") };
+        {
+            error("wrong number of arguments")
+        };
     }
     CAR(cur)
 }
@@ -73,7 +77,7 @@ fn optional_arg(args: SEXP, index: usize) -> SEXP {
 }
 
 fn arg_by_name_or_position(args: SEXP, name: &str, position: usize) -> SEXP {
-     {
+    {
         let mut cur = args;
         while !cur.is_null() && TYPEOF(cur) != SEXPTYPE::NILSXP {
             if call_arg_tag_name(cur).as_deref() == Some(name) {
@@ -98,7 +102,7 @@ fn arg_by_name_or_position(args: SEXP, name: &str, position: usize) -> SEXP {
 }
 
 fn arg_present_by_name_or_position(args: SEXP, name: &str, position: usize) -> bool {
-     {
+    {
         let mut cur = args;
         while !cur.is_null() && TYPEOF(cur) != SEXPTYPE::NILSXP {
             if call_arg_tag_name(cur).as_deref() == Some(name) {
@@ -159,12 +163,16 @@ fn scalar_integer_value(value: SEXP) -> Option<c_int> {
 #[inline]
 fn sexp_to_path(file: SEXP) -> PathBuf {
     if TYPEOF(file) != SEXPTYPE::STRSXP || LENGTH(file) <= 0 {
-         { error("not a proper file name") };
+        {
+            error("not a proper file name")
+        };
     }
-    let elt = unsafe { STRING_ELT(file, 0) };
+    let elt = STRING_ELT(file, 0);
     let cpath = unsafe { CHAR(elt) };
     if cpath.is_null() {
-         { error("not a proper file name") };
+        {
+            error("not a proper file name")
+        };
     }
     let cstr = unsafe { CStr::from_ptr(cpath) };
     #[cfg(unix)]
@@ -179,7 +187,7 @@ fn sexp_to_path(file: SEXP) -> PathBuf {
 
 #[inline]
 fn raw_from_bytes(bytes: &[u8]) -> SEXP {
-    let ans = unsafe { Rf_allocVector3(SEXPTYPE::RAWSXP, bytes.len() as R_xlen_t) };
+    let ans = Rf_allocVector3(SEXPTYPE::RAWSXP, bytes.len() as R_xlen_t);
     if !ans.is_null() && !bytes.is_empty() {
         unsafe {
             ptr::copy_nonoverlapping(bytes.as_ptr(), RAW(ans), bytes.len());

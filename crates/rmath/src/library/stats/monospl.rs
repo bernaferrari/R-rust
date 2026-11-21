@@ -43,10 +43,8 @@ unsafe fn isReal(x: SEXP) -> bool {
 }
 
 unsafe fn error(msg: &str) {
-    unsafe {
-        let c_msg = std::ffi::CString::new(msg).unwrap_or_default();
-        Rf_error(c_msg.as_ptr());
-    }
+    let c_msg = std::ffi::CString::new(msg).unwrap_or_default();
+    Rf_error(c_msg.as_ptr());
 }
 
 // ---------------------------------------------------------------------------

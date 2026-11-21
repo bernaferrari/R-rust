@@ -153,10 +153,7 @@ pub(super) fn format_varargs(format: *const c_char, ap: *mut c_void) -> String {
 
 /// Format a printf-style format string with variadic arguments into a buffer.
 /// Uses C's vsnprintf via FFI. Returns (formatted_string, was_truncated).
-pub(super) fn format_varargs_to_buf(
-    format: *const c_char,
-    ap: *mut c_void,
-) -> (String, bool) {
+pub(super) fn format_varargs_to_buf(format: *const c_char, ap: *mut c_void) -> (String, bool) {
     unsafe {
         if format.is_null() {
             return (String::new(), false);

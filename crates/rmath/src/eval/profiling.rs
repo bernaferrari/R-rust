@@ -302,23 +302,20 @@ unsafe fn get_R_ToplevelContext() -> *mut RCNTXT {
 ///
 /// Mirrors GNU R's `findLocTable()` in `src/main/eval.c`.
 unsafe fn find_loc_table(constants: SEXP, tclass: &CStr) -> SEXP {
-    unsafe {
-        if constants.is_null() || constants == R_NilValue() || TYPEOF(constants) != SEXPTYPE::VECSXP
-        {
-            return R_NilValue();
-        }
-        let n = LENGTH(constants);
-        for i in (0..n).rev() {
-            let entry = crate::sexp::accessors::VECTOR_ELT(constants, i as i64);
-            if !entry.is_null()
-                && TYPEOF(entry) == SEXPTYPE::INTSXP
-                && crate::mainutils::objects::inherits2(entry, tclass.as_ptr()) != 0
-            {
-                return entry;
-            }
-        }
-        R_NilValue()
+    if constants.is_null() || constants == R_NilValue() || TYPEOF(constants) != SEXPTYPE::VECSXP {
+        return R_NilValue();
     }
+    let n = LENGTH(constants);
+    for i in (0..n).rev() {
+        let entry = crate::sexp::accessors::VECTOR_ELT(constants, i as i64);
+        if !entry.is_null()
+            && TYPEOF(entry) == SEXPTYPE::INTSXP
+            && crate::mainutils::objects::inherits2(entry, tclass.as_ptr()) != 0
+        {
+            return entry;
+        }
+    }
+    R_NilValue()
 }
 
 /// Resolve the srcref for a snapshotted `(bcbody, relpc)` pair.

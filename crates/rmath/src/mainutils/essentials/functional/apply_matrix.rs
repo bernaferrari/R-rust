@@ -76,12 +76,7 @@ pub(super) fn list_apply_names(x: SEXP, n: R_xlen_t) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Extract a row from a matrix (column-major storage) as a length-ncol vector.
-pub(super) fn extract_matrix_row(
-    x: SEXP,
-    nrow: R_xlen_t,
-    ncol: R_xlen_t,
-    row: R_xlen_t,
-) -> SEXP {
+pub(super) fn extract_matrix_row(x: SEXP, nrow: R_xlen_t, ncol: R_xlen_t, row: R_xlen_t) -> SEXP {
     unsafe {
         let t = TYPEOF(x);
         let result = Rf_allocVector3(t, ncol);
@@ -103,12 +98,7 @@ pub(super) fn extract_matrix_row(
 }
 
 /// Extract a column from a matrix (column-major storage) as a length-nrow vector.
-pub(super) fn extract_matrix_col(
-    x: SEXP,
-    nrow: R_xlen_t,
-    _ncol: R_xlen_t,
-    col: R_xlen_t,
-) -> SEXP {
+pub(super) fn extract_matrix_col(x: SEXP, nrow: R_xlen_t, _ncol: R_xlen_t, col: R_xlen_t) -> SEXP {
     unsafe {
         let t = TYPEOF(x);
         let result = Rf_allocVector3(t, nrow);
@@ -316,12 +306,7 @@ pub(super) struct TapplyIndex {
     dim_name: Option<String>,
 }
 
-pub(crate) fn tapply_numeric_array(
-    x: SEXP,
-    index: SEXP,
-    fun: SEXP,
-    call: SEXP,
-) -> Option<SEXP> {
+pub(crate) fn tapply_numeric_array(x: SEXP, index: SEXP, fun: SEXP, call: SEXP) -> Option<SEXP> {
     unsafe {
         let summary = aggregate_summary_fun(fun, call)?;
         let x_type = TYPEOF(x);
@@ -376,30 +361,26 @@ pub(crate) fn tapply_numeric_array(
 }
 
 pub(super) fn tapply_indexes(index: SEXP, n: R_xlen_t) -> Option<Vec<TapplyIndex>> {
-    unsafe {
-        if TYPEOF(index) == SEXPTYPE::VECSXP {
-            let mut indexes = Vec::with_capacity(XLENGTH(index) as usize);
-            let names = crate::sexp::attrib_core::getAttrib(
-                index,
-                crate::sexp::attrib_core::R_NamesSymbol(),
-            );
-            for i in 0..XLENGTH(index) {
-                let dim_name = if !names.is_null()
-                    && names != R_NilValue()
-                    && TYPEOF(names) == SEXPTYPE::STRSXP
-                    && XLENGTH(names) > i
-                {
-                    let name = string_at_or_empty(names, i);
-                    if name.is_empty() { None } else { Some(name) }
-                } else {
-                    None
-                };
-                indexes.push(tapply_one_index(VECTOR_ELT(index, i), n, dim_name)?);
-            }
-            Some(indexes)
-        } else {
-            Some(vec![tapply_one_index(index, n, None)?])
+    if TYPEOF(index) == SEXPTYPE::VECSXP {
+        let mut indexes = Vec::with_capacity(XLENGTH(index) as usize);
+        let names =
+            crate::sexp::attrib_core::getAttrib(index, crate::sexp::attrib_core::R_NamesSymbol());
+        for i in 0..XLENGTH(index) {
+            let dim_name = if !names.is_null()
+                && names != R_NilValue()
+                && TYPEOF(names) == SEXPTYPE::STRSXP
+                && XLENGTH(names) > i
+            {
+                let name = string_at_or_empty(names, i);
+                if name.is_empty() { None } else { Some(name) }
+            } else {
+                None
+            };
+            indexes.push(tapply_one_index(VECTOR_ELT(index, i), n, dim_name)?);
         }
+        Some(indexes)
+    } else {
+        Some(vec![tapply_one_index(index, n, None)?])
     }
 }
 
@@ -701,20 +682,18 @@ pub(super) fn set_int_dim(x: SEXP, dims: &[c_int]) {
 }
 
 pub(super) fn attach_outer_dimnames(robj: SEXP, x: SEXP, y: SEXP) {
-    unsafe {
-        let nxn = crate::attrib_core::getAttrib(x, crate::attrib_core::R_NamesSymbol());
-        let nyn = crate::attrib_core::getAttrib(y, crate::attrib_core::R_NamesSymbol());
-        let has_x = !nxn.is_null() && nxn != R_NilValue();
-        let has_y = !nyn.is_null() && nyn != R_NilValue();
-        if !has_x && !has_y {
-            return;
-        }
-        let dn = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
-        let _dn = protect(dn);
-        SET_VECTOR_ELT(dn, 0, if has_x { nxn } else { R_NilValue() });
-        SET_VECTOR_ELT(dn, 1, if has_y { nyn } else { R_NilValue() });
-        crate::sexp::attrib_core::setAttrib(robj, crate::attrib_core::R_DimNamesSymbol(), dn);
+    let nxn = crate::attrib_core::getAttrib(x, crate::attrib_core::R_NamesSymbol());
+    let nyn = crate::attrib_core::getAttrib(y, crate::attrib_core::R_NamesSymbol());
+    let has_x = !nxn.is_null() && nxn != R_NilValue();
+    let has_y = !nyn.is_null() && nyn != R_NilValue();
+    if !has_x && !has_y {
+        return;
     }
+    let dn = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+    let _dn = protect(dn);
+    SET_VECTOR_ELT(dn, 0, if has_x { nxn } else { R_NilValue() });
+    SET_VECTOR_ELT(dn, 1, if has_y { nyn } else { R_NilValue() });
+    crate::sexp::attrib_core::setAttrib(robj, crate::attrib_core::R_DimNamesSymbol(), dn);
 }
 
 pub(super) fn resolve_outer_fun(fun_arg: SEXP, rho: SEXP) -> SEXP {
@@ -762,33 +741,29 @@ pub(super) fn resolve_outer_fun(fun_arg: SEXP, rho: SEXP) -> SEXP {
 }
 
 pub(super) fn rep_times(x: SEXP, times: i64) -> SEXP {
-    unsafe {
-        let n = XLENGTH(x);
-        let out_n = n.saturating_mul(times);
-        let result = Rf_allocVector3(TYPEOF(x), out_n);
-        let _r = protect(result);
-        for t in 0..times {
-            for i in 0..n {
-                copy_elt(x, i, result, t * n + i);
-            }
+    let n = XLENGTH(x);
+    let out_n = n.saturating_mul(times);
+    let result = Rf_allocVector3(TYPEOF(x), out_n);
+    let _r = protect(result);
+    for t in 0..times {
+        for i in 0..n {
+            copy_elt(x, i, result, t * n + i);
         }
-        result
     }
+    result
 }
 
 pub(super) fn rep_each(x: SEXP, each: i64) -> SEXP {
-    unsafe {
-        let n = XLENGTH(x);
-        let out_n = n.saturating_mul(each);
-        let result = Rf_allocVector3(TYPEOF(x), out_n);
-        let _r = protect(result);
-        for i in 0..n {
-            for e in 0..each {
-                copy_elt(x, i, result, i * each + e);
-            }
+    let n = XLENGTH(x);
+    let out_n = n.saturating_mul(each);
+    let result = Rf_allocVector3(TYPEOF(x), out_n);
+    let _r = protect(result);
+    for i in 0..n {
+        for e in 0..each {
+            copy_elt(x, i, result, i * each + e);
         }
-        result
     }
+    result
 }
 
 pub(super) fn copy_elt(src: SEXP, si: i64, dst: SEXP, di: i64) {

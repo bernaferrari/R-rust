@@ -15,7 +15,7 @@ use super::*;
 /// Matches C's `R_SignalCStackOverflow(intptr_t usage)`.
 /// Uses R_makeCStackOverflowError condition object when available.
 pub fn R_SignalCStackOverflow(usage: isize) {
-     {
+    {
         // Try to use the expression stack overflow error condition
         let cond = R_makeCStackOverflowError(globals::R_NilValue(), usage);
         if !cond.is_null() {
@@ -33,7 +33,7 @@ pub fn R_SignalCStackOverflow(usage: isize) {
 /// Check for stack overflow.
 /// In C this checks against R_CStackLimit; in Rust we check eval depth.
 pub fn R_CheckStack() {
-     {
+    {
         let depth = globals::R_EvalDepth();
         let limit = globals::R_EvalDepthLimit();
         if depth >= limit {
@@ -44,14 +44,14 @@ pub fn R_CheckStack() {
 
 /// Check for stack overflow with extra space.
 pub fn R_CheckStack2(_extra: usize) {
-     {
+    {
         R_CheckStack();
     }
 }
 
 /// Check for user interrupts.
 pub fn R_CheckUserInterrupt() {
-     {
+    {
         R_CheckStack();
         if interrupts_suspended() {
             return;
@@ -162,14 +162,14 @@ fn invokeRestart(restart: SEXP, _args: SEXP) {
 
 /// Handle interrupt signal.
 pub fn onintr() {
-     {
+    {
         jump_to_top_ex(1, 1, 0, 0, 0);
     }
 }
 
 /// Handle interrupt signal without resume option.
 pub fn onintrNoResume() {
-     {
+    {
         jump_to_top_ex(0, 1, 0, 0, 0);
     }
 }
@@ -214,33 +214,29 @@ pub fn do_getRestart(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// do_addRestart — add a restart to the restart stack.
 pub fn do_addRestart(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        checkArity(op, args);
-        let r = CAR(args);
-        if TYPEOF(r) != SEXPTYPE::VECSXP || LENGTH(r) < 2 {
-            errorcall(call, b"bad restart\x00".as_ptr() as *const c_char);
-        }
-        set_restart_stack(Rf_cons(r, restart_stack()));
-        globals::R_NilValue()
+    checkArity(op, args);
+    let r = CAR(args);
+    if TYPEOF(r) != SEXPTYPE::VECSXP || LENGTH(r) < 2 {
+        errorcall(call, b"bad restart\x00".as_ptr() as *const c_char);
     }
+    set_restart_stack(Rf_cons(r, restart_stack()));
+    globals::R_NilValue()
 }
 
 /// do_invokeRestart — invoke a restart.
 pub fn do_invokeRestart(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        checkArity(op, args);
-        let r = CAR(args);
-        if TYPEOF(r) != SEXPTYPE::VECSXP || LENGTH(r) < 2 {
-            errorcall(call, b"bad restart\x00".as_ptr() as *const c_char);
-        }
-        // invokeRestart would jump to the restart; for now just panic
-        let exit = VECTOR_ELT(r, 1);
-        if isNull(exit) != 0 {
-            set_restart_stack(globals::R_NilValue());
-            jump_to_top_ex(0, 0, 1, 1, 1);
-        }
-        ptr::null_mut() // unreachable
+    checkArity(op, args);
+    let r = CAR(args);
+    if TYPEOF(r) != SEXPTYPE::VECSXP || LENGTH(r) < 2 {
+        errorcall(call, b"bad restart\x00".as_ptr() as *const c_char);
     }
+    // invokeRestart would jump to the restart; for now just panic
+    let exit = VECTOR_ELT(r, 1);
+    if isNull(exit) != 0 {
+        set_restart_stack(globals::R_NilValue());
+        jump_to_top_ex(0, 0, 1, 1, 1);
+    }
+    ptr::null_mut() // unreachable
 }
 
 /// do_addTryHandlers — add tryCatch handlers.
@@ -317,7 +313,7 @@ fn addInternalRestart(cptr: *mut crate::sexp::context::RCNTXT, cname: *const c_c
 ///
 /// Matches C's `void jump_to_toplevel(void)`.
 pub fn jump_to_toplevel() {
-     {
+    {
         jump_to_top_ex(0, 0, 1, 1, 1);
     }
 }

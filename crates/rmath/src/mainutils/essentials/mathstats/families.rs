@@ -15,42 +15,38 @@ fn nls_xy_y(xy: SEXP) -> (Vec<f64>, bool) {
 
 /// GNU `NLSstLfAsymptote(xy)`.
 pub fn do_nls_lf_asymp(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let (ys, ok) = nls_xy_y(CAR(args));
-        if !ok || ys.is_empty() {
-            return R_NilValue();
-        }
-        let ymin = ys.iter().copied().fold(f64::INFINITY, f64::min);
-        let ymax = ys.iter().copied().fold(f64::NEG_INFINITY, f64::max);
-        let d = ymax - ymin;
-        let first = ys[0];
-        let val = if (ymax - first).abs() < (first - ymin).abs() {
-            ymax + d / 8.0
-        } else {
-            ymin - d / 8.0
-        };
-        Rf_ScalarReal(val)
+    let (ys, ok) = nls_xy_y(CAR(args));
+    if !ok || ys.is_empty() {
+        return R_NilValue();
     }
+    let ymin = ys.iter().copied().fold(f64::INFINITY, f64::min);
+    let ymax = ys.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+    let d = ymax - ymin;
+    let first = ys[0];
+    let val = if (ymax - first).abs() < (first - ymin).abs() {
+        ymax + d / 8.0
+    } else {
+        ymin - d / 8.0
+    };
+    Rf_ScalarReal(val)
 }
 
 /// GNU `NLSstRtAsymptote(xy)`.
 pub fn do_nls_rt_asymp(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let (ys, ok) = nls_xy_y(CAR(args));
-        if !ok || ys.is_empty() {
-            return R_NilValue();
-        }
-        let ymin = ys.iter().copied().fold(f64::INFINITY, f64::min);
-        let ymax = ys.iter().copied().fold(f64::NEG_INFINITY, f64::max);
-        let d = ymax - ymin;
-        let last = *ys.last().unwrap();
-        let val = if (ymax - last).abs() < (last - ymin).abs() {
-            ymax + d / 8.0
-        } else {
-            ymin - d / 8.0
-        };
-        Rf_ScalarReal(val)
+    let (ys, ok) = nls_xy_y(CAR(args));
+    if !ok || ys.is_empty() {
+        return R_NilValue();
     }
+    let ymin = ys.iter().copied().fold(f64::INFINITY, f64::min);
+    let ymax = ys.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+    let d = ymax - ymin;
+    let last = *ys.last().unwrap();
+    let val = if (ymax - last).abs() < (last - ymin).abs() {
+        ymax + d / 8.0
+    } else {
+        ymin - d / 8.0
+    };
+    Rf_ScalarReal(val)
 }
 
 fn nls_xy_x(xy: SEXP) -> Vec<f64> {
@@ -174,58 +170,56 @@ pub fn do_nls_asymptotic(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 
 /// GNU `NLSstClosestX(xy, yval)` — interpolate x at a target y.
 pub fn do_nls_closest_x(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let xy = CAR(args);
-        let yval = elt_real_safe(CAR(CDR(args)), 0);
-        let xs = list_named_elt(xy, "x");
-        let ys = list_named_elt(xy, "y");
-        if xs == R_NilValue() || ys == R_NilValue() {
-            return R_NilValue();
-        }
-        let n = XLENGTH(xs).min(XLENGTH(ys)) as usize;
-        if n == 0 {
-            return R_NilValue();
-        }
-        let mut lim1 = f64::NAN;
-        let mut dev1 = f64::NAN;
-        let mut lim2 = f64::NAN;
-        let mut dev2 = f64::NAN;
-        let mut have_neg = false;
-        let mut have_pos = false;
-        for i in 0..n {
-            let x = elt_real_safe(xs, i as i64);
-            let d = elt_real_safe(ys, i as i64) - yval;
-            if d == 0.0 {
-                return Rf_ScalarReal(x);
-            }
-            if d <= 0.0 {
-                if !have_neg || d > dev1 {
-                    dev1 = d;
-                    lim1 = x;
-                    have_neg = true;
-                }
-            }
-            if d >= 0.0 {
-                if !have_pos || d < dev2 {
-                    dev2 = d;
-                    lim2 = x;
-                    have_pos = true;
-                }
-            }
-        }
-        if have_neg && !have_pos {
-            return Rf_ScalarReal(lim1);
-        }
-        if have_pos && !have_neg {
-            return Rf_ScalarReal(lim2);
-        }
-        if !have_neg || !have_pos {
-            return R_NilValue();
-        }
-        let a = dev1.abs();
-        let b = dev2.abs();
-        Rf_ScalarReal(lim1 + (lim2 - lim1) * a / (a + b))
+    let xy = CAR(args);
+    let yval = elt_real_safe(CAR(CDR(args)), 0);
+    let xs = list_named_elt(xy, "x");
+    let ys = list_named_elt(xy, "y");
+    if xs == R_NilValue() || ys == R_NilValue() {
+        return R_NilValue();
     }
+    let n = XLENGTH(xs).min(XLENGTH(ys)) as usize;
+    if n == 0 {
+        return R_NilValue();
+    }
+    let mut lim1 = f64::NAN;
+    let mut dev1 = f64::NAN;
+    let mut lim2 = f64::NAN;
+    let mut dev2 = f64::NAN;
+    let mut have_neg = false;
+    let mut have_pos = false;
+    for i in 0..n {
+        let x = elt_real_safe(xs, i as i64);
+        let d = elt_real_safe(ys, i as i64) - yval;
+        if d == 0.0 {
+            return Rf_ScalarReal(x);
+        }
+        if d <= 0.0 {
+            if !have_neg || d > dev1 {
+                dev1 = d;
+                lim1 = x;
+                have_neg = true;
+            }
+        }
+        if d >= 0.0 {
+            if !have_pos || d < dev2 {
+                dev2 = d;
+                lim2 = x;
+                have_pos = true;
+            }
+        }
+    }
+    if have_neg && !have_pos {
+        return Rf_ScalarReal(lim1);
+    }
+    if have_pos && !have_neg {
+        return Rf_ScalarReal(lim2);
+    }
+    if !have_neg || !have_pos {
+        return R_NilValue();
+    }
+    let a = dev1.abs();
+    let b = dev2.abs();
+    Rf_ScalarReal(lim1 + (lim2 - lim1) * a / (a + b))
 }
 
 fn family_object(family: &str, link: &str) -> SEXP {
@@ -1138,7 +1132,7 @@ pub fn do_family(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// GNU `model.offset(x)` — `$offset` or NULL.
 pub fn do_model_offset(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-     list_named_elt(CAR(args), "offset") 
+    list_named_elt(CAR(args), "offset")
 }
 
 /// GNU `update(object)` — re-evaluate `$call`.

@@ -95,22 +95,22 @@ fn raw_codec_operation(input: SEXP, mode: u8, decode_error: Option<*mut Rboolean
 }
 
 pub fn R_compress1(input: SEXP) -> SEXP {
-     raw_codec_operation(input, 1, None)
+    raw_codec_operation(input, 1, None)
 }
 pub fn R_compress2(input: SEXP) -> SEXP {
-     raw_codec_operation(input, 2, None)
+    raw_codec_operation(input, 2, None)
 }
 pub fn R_compress3(input: SEXP) -> SEXP {
-     raw_codec_operation(input, 3, None)
+    raw_codec_operation(input, 3, None)
 }
 pub fn R_decompress1(input: SEXP, error: *mut Rboolean) -> SEXP {
-     raw_codec_operation(input, 1, Some(error))
+    raw_codec_operation(input, 1, Some(error))
 }
 pub fn R_decompress2(input: SEXP, error: *mut Rboolean) -> SEXP {
-     raw_codec_operation(input, 2, Some(error))
+    raw_codec_operation(input, 2, Some(error))
 }
 pub fn R_decompress3(input: SEXP, error: *mut Rboolean) -> SEXP {
-     raw_codec_operation(input, 3, Some(error))
+    raw_codec_operation(input, 3, Some(error))
 }
 
 // ---------------------------------------------------------------------------

@@ -273,15 +273,14 @@ impl<'arena, 'session> Parser<'arena, 'session> {
         }
 
         // Build pairlist in reverse (R expects first arg first)
-        unsafe {
-            let mut list = nil;
-            for (name, default) in pairs.into_iter().rev() {
-                let cell = self.cons(default, list)?;
-                let sym = self.install_symbol(&name)?;
-                crate::sexp::accessors::SETTAG(cell, sym);
-                list = cell;
-            }
-            Ok(list)
+
+        let mut list = nil;
+        for (name, default) in pairs.into_iter().rev() {
+            let cell = self.cons(default, list)?;
+            let sym = self.install_symbol(&name)?;
+            crate::sexp::accessors::SETTAG(cell, sym);
+            list = cell;
         }
+        Ok(list)
     }
 }

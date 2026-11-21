@@ -24,11 +24,7 @@ fn alloc_env_var(name: &str) -> Option<*mut c_char> {
     let val = env::var(name).ok()?;
     let s = CString::new(val.as_str()).ok()?;
     let out = c_strdup(s.as_ptr());
-    if out.is_null() {
-        None
-    } else {
-        Some(out)
-    }
+    if out.is_null() { None } else { Some(out) }
 }
 
 fn category_env_name(category: c_int) -> &'static str {

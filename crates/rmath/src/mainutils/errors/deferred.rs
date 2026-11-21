@@ -218,9 +218,9 @@ fn warning_dcall_in_scope(
     access: &crate::sexp::owner::RuntimeAccess,
 ) -> String {
     let domain = access.domain();
-    let deparsed = warning_checked(access.with_native(|_| {
-        domain.wrap(unsafe { crate::mainutils::deparse::deparse1s(call.as_raw()) })
-    }));
+    let deparsed = warning_checked(
+        access.with_native(|_| domain.wrap(crate::mainutils::deparse::deparse1s(call.as_raw()))),
+    );
     if deparsed.typeof_() != SEXPTYPE::STRSXP || deparsed.len() == 0 {
         return "<call>".into();
     }
@@ -248,7 +248,7 @@ pub(crate) fn warning_dcall(call: SEXP) -> String {
 
 /// Print collected warnings to stderr — upstream's channel (REprintf).
 pub fn PrintWarnings() {
-     {
+    {
         if let Some(block) = take_warnings_block() {
             eprint!("{}", block);
         }
@@ -258,7 +258,7 @@ pub fn PrintWarnings() {
 /// Flush collected warnings at a top-level statement boundary.
 /// GNU writes this block with REprintf (process stderr).
 pub fn print_warnings_at_statement_boundary() {
-     {
+    {
         let Some(block) = take_warnings_block() else {
             return;
         };
@@ -268,7 +268,7 @@ pub fn print_warnings_at_statement_boundary() {
 
 /// do_printDeferredWarnings — print deferred warnings.
 pub fn do_printDeferredWarnings(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-     {
+    {
         checkArity(op, args);
         if r_show_error_messages() && collect_warnings() > 0 {
             PrintWarnings();
@@ -280,7 +280,7 @@ pub fn do_printDeferredWarnings(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> 
 /// R_PrintDeferredWarnings — print deferred warnings.
 /// Matches C's `static void R_PrintDeferredWarnings(void)`
 pub fn R_PrintDeferredWarnings() {
-     {
+    {
         if r_show_error_messages() && collect_warnings() > 0 {
             eprint!("In addition: ");
             PrintWarnings();

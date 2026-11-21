@@ -33,7 +33,7 @@ fn do_playSnapshot(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
 }
 
 fn do_getGraphicsEvent(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe { crate::main::essentials::do_getGraphicsEvent(call, op, args, env) }
+    crate::main::essentials::do_getGraphicsEvent(call, op, args, env)
 }
 
 fn do_getGraphicsEventEnv(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {

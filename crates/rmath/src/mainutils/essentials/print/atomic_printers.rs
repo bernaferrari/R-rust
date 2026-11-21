@@ -289,12 +289,12 @@ pub fn do_print_environment(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 
 /// R's `enc2native(x)` — normalize character encodings to the native runtime encoding.
 pub fn do_enc2native(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-     do_enc2(args, false) 
+    do_enc2(args, false)
 }
 
 /// R's `enc2utf8(x)` — normalize character encodings to UTF-8.
 pub fn do_enc2utf8(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-     do_enc2(args, true) 
+    do_enc2(args, true)
 }
 
 fn do_enc2(args: SEXP, normalize_utf8: bool) -> SEXP {
