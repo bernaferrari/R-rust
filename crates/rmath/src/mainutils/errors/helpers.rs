@@ -24,7 +24,7 @@ fn owned(pointer: SEXP) -> crate::sexp::object::Sexp<'static> {
 
 /// Delegates to the real GetOption1 implementation in options.rs.
 pub(super) fn GetOption1(sym: SEXP) -> SEXP {
-    unsafe { crate::mainutils::options::GetOption1(sym) }
+    crate::mainutils::options::GetOption1(sym)
 }
 
 /// Check if an SEXP is a function (CLOSXP or BUILTINSXP).

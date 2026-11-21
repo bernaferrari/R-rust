@@ -385,128 +385,126 @@ pub(crate) fn print_method_x(call: SEXP, args: SEXP, class: &str) -> SEXP {
 
 /// R's `print.data.frame(x)` — print a data.frame nicely with aligned columns.
 pub fn do_print_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        // GNU print(x, ...) UseMethod matches `x` before the method runs.
-        // `print(width = 101, df)` therefore passes the data.frame as `x`,
-        // not CAR(args) which is still the named `width` actual.
-        let x = print_method_x(_call, args, "data.frame");
-        if x.is_null() || x == R_NilValue() {
-            emit_print_data_frame_line("NULL");
-            return R_NilValue();
-        }
-        if TYPEOF(x) != SEXPTYPE::VECSXP {
-            return do_print(_call, _op, args, _rho);
-        }
-        let ncol = XLENGTH(x);
-        let nrow = {
-            let rn = crate::sexp::attrib_core::getAttrib(
-                x,
-                crate::sexp::attrib_core::R_RowNamesSymbol(),
-            );
-            if !rn.is_null()
-                && rn != R_NilValue()
-                && TYPEOF(rn) == SEXPTYPE::INTSXP
-                && XLENGTH(rn) == 2
-                && integer_elt_checked(rn, 0) == NA_INTEGER
-            {
-                (integer_elt_checked(rn, (1) as R_xlen_t) as i64).unsigned_abs() as i64
-            } else if !rn.is_null() && rn != R_NilValue() && XLENGTH(rn) > 0 {
-                XLENGTH(rn)
-            } else if ncol > 0 {
-                let first = VECTOR_ELT(x, 0);
-                if first.is_null() { 0 } else { XLENGTH(first) }
-            } else {
-                0
-            }
-        };
-        if ncol == 0 || nrow == 0 {
-            print_empty_data_frame(x, ncol);
-            crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-            return x;
-        }
-
-        let show_row_names = print_data_frame_show_row_names(args);
-        // GNU formats x[seq_len(n0),] so column/label widths ignore omitted rows.
-        let max_print = print_data_frame_max(args) as R_xlen_t;
-        let n0 = if ncol > 0 {
-            (max_print / ncol) as usize
-        } else {
-            nrow as usize
-        };
-        let print_rows = (nrow as usize).min(n0);
-        let digits = data_frame_print_digits(args);
-        let (headers, columns) =
-            print_data_frame_column_texts(x, ncol, print_rows as R_xlen_t, digits);
-        let row_labels = data_frame_row_labels(x, nrow, print_rows as R_xlen_t);
-        let shown_labels = &row_labels[..];
-        // GNU formatString uses 0 for a blank row name; a minimum of 1 inserts a pad column.
-        let row_width = shown_labels
-            .iter()
-            .map(|label| label.len())
-            .max()
-            .unwrap_or(0);
-        let widths: Vec<usize> = headers
-            .iter()
-            .zip(&columns)
-            .map(|(header, values)| {
-                values
-                    .iter()
-                    .fold(header.len(), |max, value| max.max(value.len()))
-            })
-            .collect();
-
-        if headers.is_empty() {
-            for row in 0..print_rows {
-                let line = if show_row_names {
-                    format!(
-                        "{:<row_width$}",
-                        row_labels.get(row).map(String::as_str).unwrap_or("")
-                    )
-                } else {
-                    String::new()
-                };
-                emit_print_data_frame_line(&line);
-            }
-        } else {
-            // GNU keeps the next column only while the line stays strictly under width.
-            let page_width = crate::mainutils::options::GetOptionWidth().max(10) as usize;
-            let rlabw = if show_row_names { row_width } else { 0 };
-            let gap = 1usize;
-            let mut start = 0;
-            while start < headers.len() {
-                let mut used = rlabw;
-                let mut end = start;
-                loop {
-                    used += widths[end] + gap;
-                    end += 1;
-                    if end >= headers.len() || used + widths[end] + gap >= page_width {
-                        break;
-                    }
-                }
-                emit_print_data_frame_columns(
-                    &headers,
-                    &columns,
-                    &widths,
-                    &row_labels,
-                    show_row_names,
-                    row_width,
-                    print_rows,
-                    start,
-                    end,
-                );
-                start = end;
-            }
-        }
-        if (nrow as usize) > n0 {
-            emit_print_data_frame_line(&format!(
-                " [ reached 'max' / getOption(\"max.print\") -- omitted {} rows ]",
-                (nrow as usize) - n0
-            ));
-        }
-
-        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-        x
+    // GNU print(x, ...) UseMethod matches `x` before the method runs.
+    // `print(width = 101, df)` therefore passes the data.frame as `x`,
+    // not CAR(args) which is still the named `width` actual.
+    let x = print_method_x(_call, args, "data.frame");
+    if x.is_null() || x == R_NilValue() {
+        emit_print_data_frame_line("NULL");
+        return R_NilValue();
     }
+    if TYPEOF(x) != SEXPTYPE::VECSXP {
+        return do_print(_call, _op, args, _rho);
+    }
+    let ncol = XLENGTH(x);
+    let nrow = {
+        let rn = crate::sexp::attrib_core::getAttrib(
+            x,
+            crate::sexp::attrib_core::R_RowNamesSymbol(),
+        );
+        if !rn.is_null()
+            && rn != R_NilValue()
+            && TYPEOF(rn) == SEXPTYPE::INTSXP
+            && XLENGTH(rn) == 2
+            && integer_elt_checked(rn, 0) == NA_INTEGER
+        {
+            (integer_elt_checked(rn, (1) as R_xlen_t) as i64).unsigned_abs() as i64
+        } else if !rn.is_null() && rn != R_NilValue() && XLENGTH(rn) > 0 {
+            XLENGTH(rn)
+        } else if ncol > 0 {
+            let first = VECTOR_ELT(x, 0);
+            if first.is_null() { 0 } else { XLENGTH(first) }
+        } else {
+            0
+        }
+    };
+    if ncol == 0 || nrow == 0 {
+        print_empty_data_frame(x, ncol);
+        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+        return x;
+    }
+
+    let show_row_names = print_data_frame_show_row_names(args);
+    // GNU formats x[seq_len(n0),] so column/label widths ignore omitted rows.
+    let max_print = print_data_frame_max(args) as R_xlen_t;
+    let n0 = if ncol > 0 {
+        (max_print / ncol) as usize
+    } else {
+        nrow as usize
+    };
+    let print_rows = (nrow as usize).min(n0);
+    let digits = data_frame_print_digits(args);
+    let (headers, columns) =
+        print_data_frame_column_texts(x, ncol, print_rows as R_xlen_t, digits);
+    let row_labels = data_frame_row_labels(x, nrow, print_rows as R_xlen_t);
+    let shown_labels = &row_labels[..];
+    // GNU formatString uses 0 for a blank row name; a minimum of 1 inserts a pad column.
+    let row_width = shown_labels
+        .iter()
+        .map(|label| label.len())
+        .max()
+        .unwrap_or(0);
+    let widths: Vec<usize> = headers
+        .iter()
+        .zip(&columns)
+        .map(|(header, values)| {
+            values
+                .iter()
+                .fold(header.len(), |max, value| max.max(value.len()))
+        })
+        .collect();
+
+    if headers.is_empty() {
+        for row in 0..print_rows {
+            let line = if show_row_names {
+                format!(
+                    "{:<row_width$}",
+                    row_labels.get(row).map(String::as_str).unwrap_or("")
+                )
+            } else {
+                String::new()
+            };
+            emit_print_data_frame_line(&line);
+        }
+    } else {
+        // GNU keeps the next column only while the line stays strictly under width.
+        let page_width = crate::mainutils::options::GetOptionWidth().max(10) as usize;
+        let rlabw = if show_row_names { row_width } else { 0 };
+        let gap = 1usize;
+        let mut start = 0;
+        while start < headers.len() {
+            let mut used = rlabw;
+            let mut end = start;
+            loop {
+                used += widths[end] + gap;
+                end += 1;
+                if end >= headers.len() || used + widths[end] + gap >= page_width {
+                    break;
+                }
+            }
+            emit_print_data_frame_columns(
+                &headers,
+                &columns,
+                &widths,
+                &row_labels,
+                show_row_names,
+                row_width,
+                print_rows,
+                start,
+                end,
+            );
+            start = end;
+        }
+    }
+    if (nrow as usize) > n0 {
+        emit_print_data_frame_line(&format!(
+            " [ reached 'max' / getOption(\"max.print\") -- omitted {} rows ]",
+            (nrow as usize) - n0
+        ));
+    }
+
+    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+    x
 }
 /// GNU `summary.data.frame` — character table of per-column summaries.
 pub fn do_summary_data_frame(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {

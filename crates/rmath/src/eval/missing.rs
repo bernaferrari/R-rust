@@ -606,14 +606,12 @@ pub unsafe fn SrcrefPrompt(prefix: *const c_char, srcref: SEXP) {
 ///
 /// Ported from R's `PrintCall()` in eval.c. Used when debugging closures.
 pub fn PrintCall(call: SEXP, _rho: SEXP) {
-    unsafe {
-        if call.is_null() {
-            return;
-        }
-        // Simplified: just print the call using deparse
-        // In the full implementation, this uses PrintValueRec
-        crate::mainutils::print::PrintValue(call);
+    if call.is_null() {
+        return;
     }
+    // Simplified: just print the call using deparse
+    // In the full implementation, this uses PrintValueRec
+    crate::mainutils::print::PrintValue(call);
 }
 
 // ---------------------------------------------------------------------------

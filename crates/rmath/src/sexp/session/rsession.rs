@@ -595,7 +595,7 @@ impl RSession {
             return false;
         }
         let catch_script =
-            unsafe { crate::mainutils::options::logical_option_enabled(c"catch.script.errors") };
+            crate::mainutils::options::logical_option_enabled(c"catch.script.errors");
         if !catch_script {
             return false;
         }
@@ -671,7 +671,7 @@ impl RSession {
         let expressions = {
             let _guard = self.activate();
             let factory = SessionNodeFactory::new(self.owner_token().expect("active session"));
-            let keep_source = unsafe {
+            let keep_source = {
                 let opt = crate::mainutils::options::GetOption1(crate::sexp::symbol::install_str(
                     "keep.source",
                 ));

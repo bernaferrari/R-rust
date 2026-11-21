@@ -8,9 +8,7 @@ pub(crate) struct ScipenGuard {
 impl Drop for ScipenGuard {
     fn drop(&mut self) {
         if self.active {
-            unsafe {
-                crate::mainutils::options::SetOptionByName("scipen", self.old);
-            }
+            crate::mainutils::options::SetOptionByName("scipen", self.old);
         }
     }
 }

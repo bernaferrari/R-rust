@@ -215,7 +215,7 @@ use crate::mainutils::printvector::printVector;
 
 fn local_Rstrlen(s: SEXP, quote: c_int) -> c_int {
     // SAFETY: `s` is a live CHARSXP element read under the checked contract.
-    unsafe { crate::mainutils::printutils::Rstrlen(s, quote) }
+    crate::mainutils::printutils::Rstrlen(s, quote)
 }
 
 static EMPTY_CSTR: [u8; 1] = [0];
@@ -984,8 +984,8 @@ fn print_complex_matrix(
                 // of `rows` elements; the w/d/e out parameters are live.
                 unsafe {
                     formatComplex(
-                        col_ptr, rows, &mut wr[j], &mut dr[j], &mut er[j], &mut wi[j],
-                        &mut di[j], &mut ei[j], 0,
+                        col_ptr, rows, &mut wr[j], &mut dr[j], &mut er[j], &mut wi[j], &mut di[j],
+                        &mut ei[j], 0,
                     );
                 }
                 w[j] = wr[j] + wi[j] + 2;
@@ -1408,7 +1408,7 @@ pub unsafe fn printMatrix(
 // ---------------------------------------------------------------------------
 
 #[allow(clippy::if_same_then_else)]
-pub unsafe fn printArray(x: SEXP, dim: SEXP, quote: c_int, right: c_int, dimnames: SEXP) {
+pub fn printArray(x: SEXP, dim: SEXP, quote: c_int, right: c_int, dimnames: SEXP) {
     {
         if x.is_null() || dim.is_null() {
             return;

@@ -6,25 +6,23 @@
 //! Faithfully follows R's print.c logic with simplifications for features
 //! not yet available (S4 dispatch, source references, Win32 UTF8, etc.).
 
-use std::ffi::CStr;
 use std::os::raw::{c_char, c_int};
 use std::ptr;
 
-use crate::eval::attrib_core::{
+use crate::mainutils::r_format::{CArg, r_sprintf};
+use crate::sexp::accessors::{
+    ATTRIB, BODY, CAR, CDR, CHAR, CLOENV, INTEGER_ELT, LENGTH, PRINTNAME, SET_STRING_ELT, SETCDR,
+    STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
+};
+use crate::sexp::attrib_core::{
     R_ClassSymbol, R_DimNamesSymbol, R_DimSymbol, R_LevelsSymbol, R_NamesSymbol, R_RowNamesSymbol,
     getAttrib, isObject as isObject_fn,
 };
-use crate::mainutils::r_format::{CArg, r_sprintf};
-use crate::sexp::accessors::{
-    ATTRIB, BODY, CAR, CDR, CHAR, CLOENV, COMPLEX, INTEGER, INTEGER_ELT, LENGTH, LOGICAL,
-    PRINTNAME, REAL, SET_STRING_ELT, SETCDR, STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
-};
-use crate::sexp::constructors::{Rf_cons, Rf_mkChar};
-use crate::sexp::envir::R_findVarInFrame;
+use crate::sexp::constructors::Rf_cons;
 use crate::sexp::ffi::{NA_INTEGER, NA_LOGICAL, NA_REAL, R_IsNA, R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::{R_BaseEnv, R_GlobalEnv, R_NilValue, R_UnboundValue};
 use crate::sexp::protect::protect;
-use crate::sexp::symbol::Rf_install;
+use crate::sexp::symbol::install_str;
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -116,14 +114,13 @@ fn current_print_data_clone() -> R_PrintData {
     with_current_print_data_mut(|current| current.clone())
 }
 
-unsafe fn tagbuf_strlen() -> usize {
-    unsafe {
-        with_print_runtime(|state| {
-            CStr::from_ptr(state.tagbuf.as_ptr() as *const c_char)
-                .to_bytes()
-                .len()
-        })
-    }
+/// Length of the NUL-terminated prefix of `buf` (C `strlen`, bounded).
+fn nul_len(buf: &[u8]) -> usize {
+    buf.iter().position(|&b| b == 0).unwrap_or(buf.len())
+}
+
+fn tagbuf_strlen() -> usize {
+    with_print_runtime(|state| nul_len(&state.tagbuf))
 }
 
 fn tagbuf_set(idx: usize, val: c_char) {
@@ -140,33 +137,32 @@ fn tagbuf_clear() {
     });
 }
 
-fn tagbuf_ptr_at(offset: usize) -> *mut c_char {
-    with_print_runtime(|state| state.tagbuf.as_mut_ptr().wrapping_add(offset) as *mut c_char)
+fn tagbuf_byte_at(offset: usize) -> u8 {
+    with_print_runtime(|state| state.tagbuf.get(offset).copied().unwrap_or(0))
 }
 
-/// Bounded, NUL-terminated write into the tag buffer, matching C `snprintf`
-/// size semantics: at most `sz - 1` payload bytes plus a NUL; `sz == 0`
-/// writes nothing.
-unsafe fn write_tag(ptag: *mut c_char, sz: usize, s: &str) {
-    unsafe {
-        if sz == 0 {
+/// Bounded, NUL-terminated write into the tag buffer at byte `offset`,
+/// matching C `snprintf` size semantics: at most `sz - 1` payload bytes plus
+/// a NUL; `sz == 0` writes nothing. Writes never pass the buffer end.
+fn write_tag(offset: usize, sz: usize, s: &str) {
+    if sz == 0 {
+        return;
+    }
+    with_print_runtime(|state| {
+        let Some(room) = state.tagbuf.len().checked_sub(offset + 1) else {
             return;
-        }
+        };
         let bytes = s.as_bytes();
-        let n = (sz - 1).min(bytes.len());
-        ptr::copy_nonoverlapping(bytes.as_ptr(), ptag as *mut u8, n);
-        *ptag.add(n) = 0;
-    }
+        let n = (sz - 1).min(bytes.len()).min(room);
+        state.tagbuf[offset..offset + n].copy_from_slice(&bytes[..n]);
+        state.tagbuf[offset + n] = 0;
+    });
 }
 
-unsafe fn tagbuf_string() -> String {
-    unsafe {
-        with_print_runtime(|state| {
-            CStr::from_ptr(state.tagbuf.as_ptr() as *const c_char)
-                .to_string_lossy()
-                .into_owned()
-        })
-    }
+fn tagbuf_string() -> String {
+    with_print_runtime(|state| {
+        String::from_utf8_lossy(&state.tagbuf[..nul_len(&state.tagbuf)]).into_owned()
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -277,33 +273,29 @@ fn isFunction(x: SEXP) -> c_int {
     }
 }
 
-unsafe fn isList(x: SEXP) -> c_int {
-    unsafe {
-        if x.is_null() {
-            return 0;
-        }
-        let t = TYPEOF(x);
-        if t == SEXPTYPE::LISTSXP {
-            return 1;
-        }
-        if t == SEXPTYPE::VECSXP && getAttrib(x, R_DimSymbol()) == R_NilValue() {
-            return 1;
-        }
-        0
+fn isList(x: SEXP) -> c_int {
+    if x.is_null() {
+        return 0;
     }
+    let t = TYPEOF(x);
+    if t == SEXPTYPE::LISTSXP {
+        return 1;
+    }
+    if t == SEXPTYPE::VECSXP && getAttrib(x, R_DimSymbol()) == R_NilValue() {
+        return 1;
+    }
+    0
 }
 
-unsafe fn isArray(x: SEXP) -> c_int {
-    unsafe {
-        if x.is_null() {
-            return 0;
-        }
-        let dims = getAttrib(x, R_DimSymbol());
-        if dims == R_NilValue() {
-            return 0;
-        }
-        if LENGTH(dims) > 1 { 1 } else { 0 }
+fn isArray(x: SEXP) -> c_int {
+    if x.is_null() {
+        return 0;
     }
+    let dims = getAttrib(x, R_DimSymbol());
+    if dims == R_NilValue() {
+        return 0;
+    }
+    if LENGTH(dims) > 1 { 1 } else { 0 }
 }
 
 fn isDataFrame(_x: SEXP) -> c_int {
@@ -314,7 +306,7 @@ fn IS_S4_OBJECT(x: SEXP) -> c_int {
     crate::mainutils::objects::IS_S4_OBJECT(x)
 }
 
-unsafe fn isMethodsDispatchOn() -> c_int {
+fn isMethodsDispatchOn() -> c_int {
     crate::mainutils::objects::isMethodsDispatchOn()
 }
 
@@ -322,44 +314,50 @@ fn isByteCode(_x: SEXP) -> c_int {
     0
 }
 
-/// inherits using a *const c_char class name.
-unsafe fn inherits_cstr(x: SEXP, class_name: *const c_char) -> c_int {
-    unsafe {
-        if x.is_null() || class_name.is_null() {
-            return 0;
-        }
-        let klass = getAttrib(x, R_ClassSymbol());
-        if klass == R_NilValue() || TYPEOF(klass) != SEXPTYPE::STRSXP {
-            return 0;
-        }
-        let cn = match CStr::from_ptr(class_name).to_str() {
-            Ok(s) => s,
-            Err(_) => return 0,
-        };
-        let n = LENGTH(klass);
-        for i in 0..n {
-            let elt = STRING_ELT(klass, i as R_xlen_t);
-            if elt.is_null() || elt == R_NilValue() {
-                continue;
-            }
-            let s = CStr::from_ptr(CHAR(elt));
-            if let Ok(s_str) = s.to_str()
-                && s_str == cn
-            {
-                return 1;
-            }
-        }
-        0
+/// inherits using a class name.
+fn inherits_cstr(x: SEXP, cn: &str) -> c_int {
+    if x.is_null() {
+        return 0;
     }
+    let klass = getAttrib(x, R_ClassSymbol());
+    if klass == R_NilValue() || TYPEOF(klass) != SEXPTYPE::STRSXP {
+        return 0;
+    }
+    let n = LENGTH(klass);
+    for i in 0..n {
+        let elt = STRING_ELT(klass, i as R_xlen_t);
+        if elt.is_null() || elt == R_NilValue() {
+            continue;
+        }
+        if char_bytes(elt) == cn.as_bytes() {
+            return 1;
+        }
+    }
+    0
 }
 
-unsafe fn translateChar(x: SEXP) -> *const c_char {
-    unsafe { crate::sexp::accessors::translateChar(x) }
+/// Copy `bytes` into a NUL-terminated cell buffer, truncated to `cap` bytes.
+fn copy_pbuf(pbuf: &mut [u8], bytes: &[u8], cap: usize) {
+    let copy_len = bytes.len().min(cap);
+    pbuf[..copy_len].copy_from_slice(&bytes[..copy_len]);
+    pbuf[copy_len] = 0;
+}
+
+/// `mkChar` of the NUL-terminated prefix of `buf`.
+fn mk_char_nul(buf: &[u8]) -> SEXP {
+    let len = nul_len(buf);
+    // SAFETY: `buf` is a live buffer of at least `len` bytes; mkCharLen copies them.
+    unsafe { crate::sexp::constructors::Rf_mkCharLen(buf.as_ptr() as *const c_char, len as c_int) }
+}
+
+/// Raw CHARSXP contents (GNU `CHAR(x)`).
+fn char_bytes(x: SEXP) -> Vec<u8> {
+    crate::mainutils::printutils::charsxp_bytes(x)
 }
 
 /// GNU `isValidName` (gram.y): PrintGenericVector / printList tag quoting.
-unsafe fn isValidName(s: *const c_char) -> bool {
-    unsafe { crate::mainutils::deparse::isValidName(s) }
+fn isValidName(s: &[u8]) -> bool {
+    crate::mainutils::deparse::local_parse_data::is_valid_r_name_bytes(s)
 }
 
 /// NA_STRING accessor.
@@ -367,31 +365,76 @@ fn NA_STRING_local() -> SEXP {
     crate::mainutils::relop::NA_STRING()
 }
 
-/// Get matrix dimnames (delegate to printvector).
-unsafe fn GetMatrixDimnames(
-    x: SEXP,
-    rl: *mut SEXP,
-    cl: *mut SEXP,
-    rn: *mut *const c_char,
-    cn: *mut *const c_char,
-) {
+/// GNU `printMatrix(t, 0, dims, quote, right, rl, cl, rn, cn)` labelled with
+/// `GetMatrixDimnames(s, ...)`.
+fn print_matrix_dimnamed(t: SEXP, s: SEXP, dims: SEXP, quote: c_int, right: c_int) {
+    let mut rl: SEXP = R_NilValue();
+    let mut cl: SEXP = R_NilValue();
+    let mut rn: *const c_char = ptr::null();
+    let mut cn: *const c_char = ptr::null();
+    // SAFETY: the out pointers reference live locals; `rn`/`cn` are null or
+    // CHAR data of `s`'s dimnames names, which stay attached (and alive)
+    // for the duration of the printMatrix call.
     unsafe {
-        crate::mainutils::printvector::GetMatrixDimnames(x, rl, cl, rn, cn);
+        crate::mainutils::printvector::GetMatrixDimnames(s, &mut rl, &mut cl, &mut rn, &mut cn);
+        crate::mainutils::printarray::printMatrix(t, 0, dims, quote, right, rl, cl, rn, cn);
     }
 }
 
+/// Single-frame variable lookup (GNU `findVarInFrame`).
+fn R_findVarInFrame(rho: SEXP, symbol: SEXP) -> SEXP {
+    // SAFETY: printing passes live environments and symbols rooted by the
+    // value being printed or the base namespace.
+    unsafe { crate::sexp::envir::R_findVarInFrame(rho, symbol) }
+}
+
+/// GNU `defineVar` in a live, rooted environment.
+fn define_var(symbol: SEXP, value: SEXP, rho: SEXP) {
+    let _ = crate::sexp::envir::define_var_updates(symbol, value, rho);
+}
+
+/// GNU `findFun` from a live environment.
+fn find_fun(symbol: SEXP, rho: SEXP) -> SEXP {
+    // SAFETY: `symbol` and `rho` are live nodes owned by the active session.
+    unsafe { crate::sexp::envir::findFun(symbol, rho) }
+}
+
+/// GNU `forcePromise` on a live promise.
+fn force_promise(prom: SEXP) -> SEXP {
+    // SAFETY: `prom` is a live promise read from a rooted namespace frame.
+    unsafe { crate::sexp::envir::forcePromise(prom) }
+}
+
+/// GNU `eval(call, rho)` of a protected call.
+fn eval_in(call: SEXP, rho: SEXP) -> SEXP {
+    // SAFETY: callers protect `call` and pass a live environment.
+    unsafe { crate::eval::eval::Rf_eval(call, rho) }
+}
+
+/// GNU `duplicate`.
+fn duplicate_value(x: SEXP) -> SEXP {
+    // SAFETY: `x` is a live value being printed.
+    unsafe { crate::mainutils::duplicate::Rf_duplicate(x) }
+}
+
+/// Checked handle for a live value in the active session.
+fn wrap_sexp(x: SEXP) -> Option<crate::sexp::object::Sexp<'static>> {
+    crate::mainutils::essentials::active_owner().sexp(x).ok()
+}
+
 /// GetArrayDimnames -- local implementation.
-unsafe fn GetArrayDimnames(x: SEXP) -> SEXP {
-    unsafe { getAttrib(x, R_DimNamesSymbol()) }
+fn GetArrayDimnames(x: SEXP) -> SEXP {
+    getAttrib(x, R_DimNamesSymbol())
 }
 
 /// allocArray (delegate to array.rs).
-unsafe fn allocArray(mode: c_int, dims: SEXP) -> SEXP {
+fn allocArray(mode: c_int, dims: SEXP) -> SEXP {
+    // SAFETY: `dims` is a live, protected integer dimension vector.
     unsafe { crate::mainutils::array::allocArray(mode, dims) }
 }
 
 /// Use the shared GNU scalar coercion, including string and complex admission.
-unsafe fn asInteger(x: SEXP) -> c_int {
+fn asInteger(x: SEXP) -> c_int {
     if x.is_null() {
         NA_INTEGER
     } else {
@@ -400,64 +443,57 @@ unsafe fn asInteger(x: SEXP) -> c_int {
 }
 
 /// asLogical -- local implementation.
-unsafe fn asLogical(x: SEXP) -> c_int {
-    unsafe {
-        if x.is_null() || x == R_NilValue() {
-            return NA_LOGICAL;
-        }
-        let t = TYPEOF(x);
-        if t == SEXPTYPE::LGLSXP {
-            if LENGTH(x) >= 1 {
-                return *LOGICAL(x);
-            }
-        } else if t == SEXPTYPE::INTSXP && LENGTH(x) >= 1 {
-            return *INTEGER(x);
-        }
-        NA_LOGICAL
+fn asLogical(x: SEXP) -> c_int {
+    if x.is_null() || x == R_NilValue() {
+        return NA_LOGICAL;
     }
+    let t = TYPEOF(x);
+    if t == SEXPTYPE::LGLSXP {
+        if LENGTH(x) >= 1 {
+            return crate::mainutils::essentials::logical_elt_checked(x, 0);
+        }
+    } else if t == SEXPTYPE::INTSXP && LENGTH(x) >= 1 {
+        return crate::mainutils::essentials::integer_elt_checked(x, 0);
+    }
+    NA_LOGICAL
 }
 
 /// FixupDigits -- local implementation.
-unsafe fn FixupDigits(digits: SEXP, _warn: c_int) -> c_int {
-    unsafe {
-        let d = asInteger(digits);
-        if d == NA_INTEGER {
-            return 0;
-        }
-        if d < 1 {
-            return 1;
-        }
-        if d > 22 {
-            return 22;
-        }
-        d
+fn FixupDigits(digits: SEXP, _warn: c_int) -> c_int {
+    let d = asInteger(digits);
+    if d == NA_INTEGER {
+        return 0;
     }
+    if d < 1 {
+        return 1;
+    }
+    if d > 22 {
+        return 22;
+    }
+    d
 }
 
 /// FixupWidth -- local implementation.
-unsafe fn FixupWidth(width: SEXP, _warn: c_int) -> c_int {
-    unsafe {
-        let w = asInteger(width);
-        if w == NA_INTEGER {
-            return 80;
-        }
-        if w < 10 {
-            return 10;
-        }
-        if w > 10000 {
-            return 10000;
-        }
-        w
+fn FixupWidth(width: SEXP, _warn: c_int) -> c_int {
+    let w = asInteger(width);
+    if w == NA_INTEGER {
+        return 80;
     }
+    if w < 10 {
+        return 10;
+    }
+    if w > 10000 {
+        return 10000;
+    }
+    w
 }
 
 pub(crate) unsafe fn CHAR_OR_NULL(x: SEXP) -> *const c_char {
-    unsafe {
-        if x.is_null() {
-            return ptr::null();
-        }
-        CHAR(x)
+    if x.is_null() {
+        return ptr::null();
     }
+    // SAFETY: the caller passes a live CHARSXP.
+    unsafe { CHAR(x) }
 }
 
 // ---------------------------------------------------------------------------
@@ -465,39 +501,44 @@ pub(crate) unsafe fn CHAR_OR_NULL(x: SEXP) -> *const c_char {
 // ---------------------------------------------------------------------------
 
 pub unsafe fn PrintInit(data: *mut std::ffi::c_void, env: SEXP) {
-    unsafe {
-        let d = data as *mut R_PrintData;
-        if d.is_null() {
-            return;
+    let d = data as *mut R_PrintData;
+    if d.is_null() {
+        return;
+    }
+    // SAFETY: the caller passes a live, exclusively borrowed R_PrintData.
+    print_init(unsafe { &mut *d }, env);
+}
+
+/// Safe body of [`PrintInit`].
+fn print_init(d: &mut R_PrintData, env: SEXP) {
+    {
+        d.na_string = NA_STRING_local();
+        d.na_string_noquote = mk_char_nul(b"<NA>\0");
+        d.na_width = crate::mainutils::printutils::Rstrlen(d.na_string, 0);
+        d.na_width_noquote = crate::mainutils::printutils::Rstrlen(d.na_string_noquote, 0);
+        d.quote = 1;
+        d.right = Rprt_adj_left;
+        d.digits = crate::mainutils::options::GetOptionDigits();
+
+        let scipen_sym = install_str("scipen");
+        d.scipen = asInteger(crate::mainutils::options::GetOption1(scipen_sym));
+        if d.scipen == NA_INTEGER {
+            d.scipen = 0;
         }
 
-        (*d).na_string = NA_STRING_local();
-        (*d).na_string_noquote = Rf_mkChar(b"<NA>\0".as_ptr() as *const c_char);
-        (*d).na_width = crate::mainutils::printutils::Rstrlen((*d).na_string, 0);
-        (*d).na_width_noquote = crate::mainutils::printutils::Rstrlen((*d).na_string_noquote, 0);
-        (*d).quote = 1;
-        (*d).right = Rprt_adj_left;
-        (*d).digits = crate::mainutils::options::GetOptionDigits();
-
-        let scipen_sym = Rf_install(b"scipen\0".as_ptr() as *const c_char);
-        (*d).scipen = asInteger(crate::mainutils::options::GetOption1(scipen_sym));
-        if (*d).scipen == NA_INTEGER {
-            (*d).scipen = 0;
+        let maxprint_sym = install_str("max.print");
+        d.max = asInteger(crate::mainutils::options::GetOption1(maxprint_sym));
+        if d.max == NA_INTEGER || d.max < 0 {
+            d.max = 99999;
+        } else if d.max == c_int::MAX {
+            d.max -= 1;
         }
-
-        let maxprint_sym = Rf_install(b"max.print\0".as_ptr() as *const c_char);
-        (*d).max = asInteger(crate::mainutils::options::GetOption1(maxprint_sym));
-        if (*d).max == NA_INTEGER || (*d).max < 0 {
-            (*d).max = 99999;
-        } else if (*d).max == c_int::MAX {
-            (*d).max -= 1;
-        }
-        (*d).gap = 1;
-        (*d).width = crate::mainutils::options::GetOptionWidth();
-        (*d).useSource = USESOURCE;
-        (*d).cutoff = crate::mainutils::options::GetOptionCutoff();
-        (*d).env = env;
-        (*d).callArgs = R_NilValue();
+        d.gap = 1;
+        d.width = crate::mainutils::options::GetOptionWidth();
+        d.useSource = USESOURCE;
+        d.cutoff = crate::mainutils::options::GetOptionCutoff();
+        d.env = env;
+        d.callArgs = R_NilValue();
     }
 }
 
@@ -505,101 +546,94 @@ pub unsafe fn PrintInit(data: *mut std::ffi::c_void, env: SEXP) {
 // PrintDefaults
 // ---------------------------------------------------------------------------
 
-pub unsafe fn PrintDefaults() {
-    unsafe {
-        let env = R_GlobalEnv();
-        let defaults = with_current_print_data_mut(|data| {
-            PrintInit(data as *mut R_PrintData as *mut std::ffi::c_void, env);
-            crate::mainutils::format::RPrint {
-                digits: data.digits,
-                scipen: data.scipen,
-                na_width: data.na_width,
-                na_width_noquote: data.na_width_noquote,
-            }
-        });
-        // End the print-data borrow before resolving the ambient instance.
-        // GNU nested printing resets only the active conversion's defaults.
-        crate::sexp::instance::with_current_instance(|inst| {
+pub fn PrintDefaults() {
+    let env = R_GlobalEnv();
+    let defaults = with_current_print_data_mut(|data| {
+        print_init(data, env);
+        crate::mainutils::format::RPrint {
+            digits: data.digits,
+            scipen: data.scipen,
+            na_width: data.na_width,
+            na_width_noquote: data.na_width_noquote,
+        }
+    });
+    // End the print-data borrow before resolving the ambient instance.
+    // GNU nested printing resets only the active conversion's defaults.
+    crate::sexp::instance::with_current_instance(|inst| {
+        // SAFETY: `inst` is the pinned current instance; these primitive
+        // field accesses run no callbacks.
+        unsafe {
             if (*inst).eval_state.character_print_active {
                 (*inst).eval_state.format_print = defaults;
             }
-        });
-    }
+        }
+    });
 }
 
 // ---------------------------------------------------------------------------
 // Internal: advancePrintArgs
 // ---------------------------------------------------------------------------
 
-unsafe fn advancePrintArgs(
-    args: *mut SEXP,
-    prev: *mut SEXP,
-    missingArg: *mut *mut c_int,
-    allMissing: *mut c_int,
+fn advancePrintArgs(
+    args: &mut SEXP,
+    prev: &mut SEXP,
+    missings: SEXP,
+    missing_idx: &mut R_xlen_t,
+    allMissing: &mut c_int,
 ) {
-    unsafe {
-        *args = CDR(*args);
-        if !(*missingArg).is_null() && **missingArg != 0 {
-            SETCDR(*prev, *args);
-        } else {
-            *allMissing = 0;
-            *prev = CDR(*prev);
-        }
-        *missingArg = (*missingArg).add(1);
+    *args = CDR(*args);
+    let missing = *missing_idx < XLENGTH(missings)
+        && crate::mainutils::essentials::logical_elt_checked(missings, *missing_idx) != 0;
+    if missing {
+        SETCDR(*prev, *args);
+    } else {
+        *allMissing = 0;
+        *prev = CDR(*prev);
     }
+    *missing_idx += 1;
 }
 
 // ---------------------------------------------------------------------------
 // Internal: save/restore tagbuf
 // ---------------------------------------------------------------------------
 
-unsafe fn save_tagbuf(save: &mut [u8; TAGBUFLEN0 * 2]) {
-    unsafe {
-        with_print_runtime(|state| {
-            let len = CStr::from_ptr(state.tagbuf.as_ptr() as *const c_char)
-                .to_bytes()
-                .len();
-            if len < save.len() {
-                ptr::copy_nonoverlapping(state.tagbuf.as_ptr(), save.as_mut_ptr(), len + 1);
-            } else {
-                save[0] = 0;
-            }
-        });
-    }
+fn save_tagbuf(save: &mut [u8; TAGBUFLEN0 * 2]) {
+    with_print_runtime(|state| {
+        let len = nul_len(&state.tagbuf);
+        if len < save.len() {
+            save[..=len].copy_from_slice(&state.tagbuf[..=len]);
+        } else {
+            save[0] = 0;
+        }
+    });
 }
 
-unsafe fn restore_tagbuf(save: &[u8; TAGBUFLEN0 * 2]) {
-    unsafe {
-        with_print_runtime(|state| {
-            let len = CStr::from_ptr(save.as_ptr() as *const c_char)
-                .to_bytes()
-                .len();
-            if len < TAGBUFLEN0 * 2 {
-                ptr::copy_nonoverlapping(save.as_ptr(), state.tagbuf.as_mut_ptr(), len + 1);
-            }
-        });
-    }
+fn restore_tagbuf(save: &[u8; TAGBUFLEN0 * 2]) {
+    with_print_runtime(|state| {
+        let len = nul_len(save);
+        if len < TAGBUFLEN0 * 2 {
+            state.tagbuf[..=len].copy_from_slice(&save[..=len]);
+        }
+    });
 }
 
 // ---------------------------------------------------------------------------
 // Internal: PrintLanguage
 // ---------------------------------------------------------------------------
 
-unsafe fn PrintLanguage(s: SEXP, data: &R_PrintData) {
-    unsafe {
-        let t = crate::mainutils::deparse::deparse1w(s, false, data.useSource | DEFAULTDEPARSE);
-        let _t_guard = protect(t);
-        set_current_print_data(data);
+fn PrintLanguage(s: SEXP, data: &R_PrintData) {
+    let t = crate::mainutils::deparse::deparse1w(s, false, data.useSource | DEFAULTDEPARSE);
+    let _t_guard = protect(t);
+    set_current_print_data(data);
 
-        let n = LENGTH(t);
-        for i in 0..n {
-            let elt = STRING_ELT(t, i as R_xlen_t);
-            if !elt.is_null() && elt != R_NilValue() {
-                crate::mainutils::printutils::console_emit(format_args!(
-                    "{}\n",
-                    CStr::from_ptr(CHAR(elt)).to_str().unwrap_or("?")
-                ));
-            }
+    let n = LENGTH(t);
+    for i in 0..n {
+        let elt = STRING_ELT(t, i as R_xlen_t);
+        if !elt.is_null() && elt != R_NilValue() {
+            crate::mainutils::printutils::console_emit(format_args!(
+                "{}\n",
+                std::str::from_utf8(&char_bytes(elt)).unwrap_or("?")
+            ));
         }
     }
 }
@@ -608,24 +642,21 @@ unsafe fn PrintLanguage(s: SEXP, data: &R_PrintData) {
 // Internal: PrintClosure
 // ---------------------------------------------------------------------------
 
-unsafe fn PrintClosure(s: SEXP, data: &R_PrintData) {
-    unsafe {
-        PrintLanguage(s, data);
+fn PrintClosure(s: SEXP, data: &R_PrintData) {
+    PrintLanguage(s, data);
 
-        if isByteCode(BODY(s)) != 0 {
-            crate::mainutils::printutils::console_emit(format_args!("<bytecode: {:?}>\n", BODY(s)));
-        }
-        let t = CLOENV(s);
-        if t != R_GlobalEnv() {
-            let env_str = crate::mainutils::printutils::EncodeEnvironment(t);
-            if !env_str.is_null() {
-                crate::mainutils::printutils::console_emit(format_args!(
-                    "{}\n",
-                    CStr::from_ptr(env_str).to_str().unwrap_or("<environment>")
-                ));
-            } else {
-                crate::mainutils::printutils::console_emit(format_args!("<environment>\n"));
-            }
+    if isByteCode(BODY(s)) != 0 {
+        crate::mainutils::printutils::console_emit(format_args!("<bytecode: {:?}>\n", BODY(s)));
+    }
+    let t = CLOENV(s);
+    if t != R_GlobalEnv() {
+        if let Some(env_str) = crate::mainutils::printutils::encode_environment_bytes(t) {
+            crate::mainutils::printutils::console_emit(format_args!(
+                "{}\n",
+                std::str::from_utf8(&env_str).unwrap_or("<environment>")
+            ));
+        } else {
+            crate::mainutils::printutils::console_emit(format_args!("<environment>\n"));
         }
     }
 }
@@ -634,39 +665,30 @@ unsafe fn PrintClosure(s: SEXP, data: &R_PrintData) {
 // Internal: PrintSpecial
 // ---------------------------------------------------------------------------
 
-unsafe fn PrintSpecial(s: SEXP, data: &R_PrintData) {
-    unsafe {
-        let nm = crate::eval::builtin::PRIMNAME(s);
-        let nm_cstr = std::ffi::CString::new(nm).unwrap_or_default();
-        let nm_ptr = nm_cstr.as_ptr();
+fn PrintSpecial(s: SEXP, data: &R_PrintData) {
+    let nm = crate::eval::builtin::PRIMNAME(s);
+    let nm_sym = install_str(nm);
 
-        let env = R_findVarInFrame(
-            R_BaseEnv(),
-            Rf_install(b".ArgsEnv\0".as_ptr() as *const c_char),
-        );
+    let env = R_findVarInFrame(R_BaseEnv(), install_str(".ArgsEnv"));
 
-        let mut s2 = R_findVarInFrame(env, Rf_install(nm_ptr));
-        if s2 == R_UnboundValue() {
-            let env2 = R_findVarInFrame(
-                R_BaseEnv(),
-                Rf_install(b".GenericArgsEnv\0".as_ptr() as *const c_char),
-            );
-            s2 = R_findVarInFrame(env2, Rf_install(nm_ptr));
+    let mut s2 = R_findVarInFrame(env, nm_sym);
+    if s2 == R_UnboundValue() {
+        let env2 = R_findVarInFrame(R_BaseEnv(), install_str(".GenericArgsEnv"));
+        s2 = R_findVarInFrame(env2, nm_sym);
+    }
+
+    if s2 != R_UnboundValue() {
+        let t = crate::mainutils::deparse::deparse1m(s2, false, DEFAULTDEPARSE);
+        let _t_guard = protect(t);
+        set_current_print_data(data);
+
+        let line = STRING_ELT(t, 0);
+        if !line.is_null() && line != R_NilValue() {
+            print!("{} ", std::str::from_utf8(&char_bytes(line)).unwrap_or(""));
         }
-
-        if s2 != R_UnboundValue() {
-            let t = crate::mainutils::deparse::deparse1m(s2, false, DEFAULTDEPARSE);
-            let _t_guard = protect(t);
-            set_current_print_data(data);
-
-            let line = STRING_ELT(t, 0);
-            if !line.is_null() && line != R_NilValue() {
-                print!("{} ", CStr::from_ptr(CHAR(line)).to_str().unwrap_or(""));
-            }
-            crate::mainutils::printutils::console_emit(format_args!(".Primitive(\"{}\")\n", nm));
-        } else {
-            crate::mainutils::printutils::console_emit(format_args!(".Primitive(\"{}\")\n", nm));
-        }
+        crate::mainutils::printutils::console_emit(format_args!(".Primitive(\"{}\")\n", nm));
+    } else {
+        crate::mainutils::printutils::console_emit(format_args!(".Primitive(\"{}\")\n", nm));
     }
 }
 
@@ -674,21 +696,19 @@ unsafe fn PrintSpecial(s: SEXP, data: &R_PrintData) {
 // Internal: PrintExpression
 // ---------------------------------------------------------------------------
 
-unsafe fn PrintExpression(s: SEXP, data: &R_PrintData) {
-    unsafe {
-        let u = crate::mainutils::deparse::deparse1w(s, false, data.useSource | DEFAULTDEPARSE);
-        let _u_guard = protect(u);
-        set_current_print_data(data);
+fn PrintExpression(s: SEXP, data: &R_PrintData) {
+    let u = crate::mainutils::deparse::deparse1w(s, false, data.useSource | DEFAULTDEPARSE);
+    let _u_guard = protect(u);
+    set_current_print_data(data);
 
-        let n = LENGTH(u);
-        for i in 0..n {
-            let elt = STRING_ELT(u, i as R_xlen_t);
-            if !elt.is_null() && elt != R_NilValue() {
-                crate::mainutils::printutils::console_emit(format_args!(
-                    "{}\n",
-                    CStr::from_ptr(CHAR(elt)).to_str().unwrap_or("?")
-                ));
-            }
+    let n = LENGTH(u);
+    for i in 0..n {
+        let elt = STRING_ELT(u, i as R_xlen_t);
+        if !elt.is_null() && elt != R_NilValue() {
+            crate::mainutils::printutils::console_emit(format_args!(
+                "{}\n",
+                std::str::from_utf8(&char_bytes(elt)).unwrap_or("?")
+            ));
         }
     }
 }
@@ -697,147 +717,133 @@ unsafe fn PrintExpression(s: SEXP, data: &R_PrintData) {
 // Internal: PrintDispatch
 // ---------------------------------------------------------------------------
 
-unsafe fn PrintDispatch(s: SEXP, data: &R_PrintData) {
-    unsafe {
-        validate_print_chain(ATTRIB(s));
-        if sexp_class_is(s, "srcref") {
-            print_srcref_value(s);
-        } else if isObject_fn(s) != 0 {
-            PrintObject(s, data);
-        } else {
-            PrintValueRec_inner(s, data);
-        }
+fn PrintDispatch(s: SEXP, data: &R_PrintData) {
+    validate_print_chain(ATTRIB(s));
+    if sexp_class_is(s, "srcref") {
+        print_srcref_value(s);
+    } else if isObject_fn(s) != 0 {
+        PrintObject(s, data);
+    } else {
+        PrintValueRec_inner(s, data);
     }
 }
 
 /// GNU `print.srcref`: `cat(as.character(x), sep="\n")`.
-unsafe fn print_srcref_value(s: SEXP) {
-    unsafe {
-        let srcfile = getAttrib(s, Rf_install(c"srcfile".as_ptr()));
-        let lines =
-            if !srcfile.is_null() && srcfile != R_NilValue() && TYPEOF(srcfile) == SEXPTYPE::ENVSXP
-            {
-                crate::sexp::envir::R_findVarInFrame(srcfile, Rf_install(c"lines".as_ptr()))
-            } else {
-                R_NilValue()
-            };
-        if lines.is_null()
-            || lines == R_NilValue()
-            || lines == R_UnboundValue()
-            || TYPEOF(lines) != SEXPTYPE::STRSXP
-            || XLENGTH(s) < 4
-        {
-            PrintValueRec_inner(s, &R_PRINT_INIT);
-            return;
+fn print_srcref_value(s: SEXP) {
+    let srcfile = getAttrib(s, install_str("srcfile"));
+    let lines =
+        if !srcfile.is_null() && srcfile != R_NilValue() && TYPEOF(srcfile) == SEXPTYPE::ENVSXP {
+            R_findVarInFrame(srcfile, install_str("lines"))
+        } else {
+            R_NilValue()
+        };
+    if lines.is_null()
+        || lines == R_NilValue()
+        || lines == R_UnboundValue()
+        || TYPEOF(lines) != SEXPTYPE::STRSXP
+        || XLENGTH(s) < 4
+    {
+        PrintValueRec_inner(s, &R_PRINT_INIT);
+        return;
+    }
+    let first = INTEGER_ELT(s, 0);
+    let mut last = INTEGER_ELT(s, 2);
+    let n = XLENGTH(lines);
+    if first < 1 || last < first {
+        return;
+    }
+    last = last.min(n as i32);
+    let first_byte = INTEGER_ELT(s, 1).max(1) as usize;
+    let last_byte = INTEGER_ELT(s, 3).max(1) as usize;
+    for i in first..=last {
+        let elt = STRING_ELT(lines, (i - 1) as i64);
+        if elt.is_null() {
+            continue;
         }
-        let first = INTEGER_ELT(s, 0);
-        let mut last = INTEGER_ELT(s, 2);
-        let n = XLENGTH(lines);
-        if first < 1 || last < first {
-            return;
+        let mut text = String::from_utf8_lossy(&char_bytes(elt)).into_owned();
+        if i == last {
+            let take = last_byte.min(text.len());
+            text.truncate(take);
         }
-        last = last.min(n as i32);
-        let first_byte = INTEGER_ELT(s, 1).max(1) as usize;
-        let last_byte = INTEGER_ELT(s, 3).max(1) as usize;
-        for i in first..=last {
-            let elt = STRING_ELT(lines, (i - 1) as i64);
-            if elt.is_null() {
-                continue;
-            }
-            let mut text = std::ffi::CStr::from_ptr(CHAR(elt))
-                .to_string_lossy()
-                .into_owned();
-            if i == last {
-                let take = last_byte.min(text.len());
-                text.truncate(take);
-            }
-            if i == first {
-                let skip = first_byte.saturating_sub(1).min(text.len());
-                text = text[skip..].to_string();
-            }
-            if crate::sexp::output::is_capturing() {
-                crate::sexp::output::capture_stdout(&format!("{text}\n"));
-            } else {
-                println!("{text}");
-            }
+        if i == first {
+            let skip = first_byte.saturating_sub(1).min(text.len());
+            text = text[skip..].to_string();
+        }
+        if crate::sexp::output::is_capturing() {
+            crate::sexp::output::capture_stdout(&format!("{text}\n"));
+        } else {
+            println!("{text}");
         }
     }
 }
 
-unsafe fn sexp_class_is(s: SEXP, name: &str) -> bool {
-    unsafe {
-        let class = getAttrib(s, R_ClassSymbol());
-        if class.is_null() || class == R_NilValue() || TYPEOF(class) != SEXPTYPE::STRSXP {
-            return false;
-        }
-        let n = XLENGTH(class);
-        for i in 0..n {
-            let elt = STRING_ELT(class, i);
-            if elt.is_null() {
-                continue;
-            }
-            let ptr = CHAR(elt);
-            if !ptr.is_null() && std::ffi::CStr::from_ptr(ptr).to_bytes() == name.as_bytes() {
-                return true;
-            }
-        }
-        false
+fn sexp_class_is(s: SEXP, name: &str) -> bool {
+    let class = getAttrib(s, R_ClassSymbol());
+    if class.is_null() || class == R_NilValue() || TYPEOF(class) != SEXPTYPE::STRSXP {
+        return false;
     }
+    let n = XLENGTH(class);
+    for i in 0..n {
+        let elt = STRING_ELT(class, i);
+        if elt.is_null() {
+            continue;
+        }
+        if char_bytes(elt) == name.as_bytes() {
+            return true;
+        }
+    }
+    false
 }
 
 // ---------------------------------------------------------------------------
 // Internal: PrintObjectS3
 // ---------------------------------------------------------------------------
 
-unsafe fn PrintObjectS3(s: SEXP, data: &R_PrintData) {
-    unsafe {
-        let xsym = Rf_install(c"x".as_ptr());
-        let parent = if data.env.is_null() || data.env == R_NilValue() {
-            R_GlobalEnv()
-        } else {
-            data.env
-        };
-        let mask = crate::sexp::memory_ext::NewEnvironment(R_NilValue(), parent, R_NilValue());
-        let _mask_guard = protect(mask);
-        crate::sexp::envir::defineVar(xsym, s, mask);
-        let fun = crate::sexp::envir::findFun(Rf_install(c"print".as_ptr()), R_BaseEnv());
-        if fun.is_null() || fun == R_UnboundValue() {
-            crate::mainutils::essentials::do_print(
-                R_NilValue(),
-                R_NilValue(),
-                crate::sexp::output::cons_print_args(s),
-                parent,
-            );
-            crate::sexp::envir::defineVar(xsym, R_NilValue(), mask);
-            return;
-        }
-        let call = crate::sexp::constructors::Rf_lang2(fun, xsym);
-        let extra = if data.callArgs.is_null() {
-            R_NilValue()
-        } else {
-            data.callArgs
-        };
-        if extra != R_NilValue() {
-            SETCDR(CDR(call), extra);
-        }
-        let _call_guard = protect(call);
-        let _ = crate::eval::eval::Rf_eval(call, mask);
-        crate::sexp::envir::defineVar(xsym, R_NilValue(), mask);
+fn PrintObjectS3(s: SEXP, data: &R_PrintData) {
+    let xsym = install_str("x");
+    let parent = if data.env.is_null() || data.env == R_NilValue() {
+        R_GlobalEnv()
+    } else {
+        data.env
+    };
+    let mask = crate::sexp::memory_ext::NewEnvironment(R_NilValue(), parent, R_NilValue());
+    let _mask_guard = protect(mask);
+    define_var(xsym, s, mask);
+    let fun = find_fun(install_str("print"), R_BaseEnv());
+    if fun.is_null() || fun == R_UnboundValue() {
+        crate::mainutils::essentials::do_print(
+            R_NilValue(),
+            R_NilValue(),
+            crate::sexp::output::cons_print_args(s),
+            parent,
+        );
+        define_var(xsym, R_NilValue(), mask);
+        return;
     }
+    let call = crate::sexp::constructors::Rf_lang2(fun, xsym);
+    let extra = if data.callArgs.is_null() {
+        R_NilValue()
+    } else {
+        data.callArgs
+    };
+    if extra != R_NilValue() {
+        SETCDR(CDR(call), extra);
+    }
+    let _call_guard = protect(call);
+    let _ = eval_in(call, mask);
+    define_var(xsym, R_NilValue(), mask);
 }
 
 /// GNU `print(object, useS4=FALSE)` / `PrintValueRec` on an S4 basic object
 /// prints the data part. `format_matrix` / `print_value` go through the
 /// capture sink (stdout); `printMatrix` currently writes stderr.
-unsafe fn print_s4_data_part(s: SEXP, _data: &R_PrintData) {
-    unsafe {
-        let copy = crate::mainutils::duplicate::Rf_duplicate(s);
-        let _copy = protect(copy);
-        crate::sexp::accessors::UNSET_S4_OBJECT(copy);
-        crate::sexp::attrib_core::setAttrib(copy, R_ClassSymbol(), R_NilValue());
-        if let Some(sexp) = crate::sexp::object::Sexp::from_raw(copy) {
-            crate::sexp::output::print_value(sexp);
-        }
+fn print_s4_data_part(s: SEXP, _data: &R_PrintData) {
+    let copy = duplicate_value(s);
+    let _copy = protect(copy);
+    crate::sexp::accessors::UNSET_S4_OBJECT(copy);
+    crate::sexp::attrib_core::setAttrib(copy, R_ClassSymbol(), R_NilValue());
+    if let Some(sexp) = wrap_sexp(copy) {
+        crate::sexp::output::print_value(sexp);
     }
 }
 
@@ -847,7 +853,7 @@ struct PrintFormatGuard {
 }
 
 impl PrintFormatGuard {
-    unsafe fn new(data: &R_PrintData) -> Self {
+    fn new(data: &R_PrintData) -> Self {
         let owner = unsafe { crate::sexp::owner::OwnerToken::current() }
             .expect("print formatting requires a current runtime")
             .weak_owner()
@@ -880,415 +886,331 @@ impl Drop for PrintFormatGuard {
 /// `do_printdefault` body: S4 with no extra args uses `show()`; extra args
 /// (GNU `useS4=FALSE`) print the data part; non-S4 uses `print_value` so
 /// `capture.output(print(m))` sees the same matrix layout as auto-print.
-unsafe fn emit_print_default(x: SEXP, data: &R_PrintData, show_s4: bool) {
-    unsafe {
-        // The shared numeric formatter otherwise reads options("digits").
-        // Scope the admitted print.default parameters across recursive calls,
-        // restoring the previous formatter even when a print method errors.
-        let _format = PrintFormatGuard::new(data);
-        if show_s4 && IS_S4_OBJECT(x) != 0 && isMethodsDispatchOn() != 0 {
-            PrintObject(x, data);
-        } else if IS_S4_OBJECT(x) != 0 {
-            // GNU do_printdefault has no separate S4-with-arguments branch:
-            // PrintValueRec prints the data part by type and then the
-            // attributes (including `attr(,"class")` and its own package
-            // attribute).
-            PrintValueRec_reroot(x, data);
-        } else if let Some(sexp) = crate::sexp::object::Sexp::from_raw(x) {
-            let extras = if data.callArgs.is_null() {
-                R_NilValue()
-            } else {
-                data.callArgs
-            };
-            let _extras = protect(extras);
-            let _guard = crate::sexp::output::push_print_dispatch_extras(extras);
-            crate::sexp::output::print_value(sexp);
+fn emit_print_default(x: SEXP, data: &R_PrintData, show_s4: bool) {
+    // The shared numeric formatter otherwise reads options("digits").
+    // Scope the admitted print.default parameters across recursive calls,
+    // restoring the previous formatter even when a print method errors.
+    let _format = PrintFormatGuard::new(data);
+    if show_s4 && IS_S4_OBJECT(x) != 0 && isMethodsDispatchOn() != 0 {
+        PrintObject(x, data);
+    } else if IS_S4_OBJECT(x) != 0 {
+        // GNU do_printdefault has no separate S4-with-arguments branch:
+        // PrintValueRec prints the data part by type and then the
+        // attributes (including `attr(,"class")` and its own package
+        // attribute).
+        PrintValueRec_reroot(x, data);
+    } else if let Some(sexp) = wrap_sexp(x) {
+        let extras = if data.callArgs.is_null() {
+            R_NilValue()
         } else {
-            PrintValueRec_inner(x, data);
-        }
+            data.callArgs
+        };
+        let _extras = protect(extras);
+        let _guard = crate::sexp::output::push_print_dispatch_extras(extras);
+        crate::sexp::output::print_value(sexp);
+    } else {
+        PrintValueRec_inner(x, data);
     }
 }
 
-unsafe fn PrintObjectS4(s: SEXP, data: &R_PrintData) {
-    unsafe {
-        let depth = with_print_runtime(|state| state.active_values.len());
-        if depth > 8 {
-            print_s4_data_part(s, data);
-            return;
-        }
-        let Some(methods) = crate::mainutils::essentials::cached_namespace_by_name("methods")
-        else {
-            PrintObjectS3(s, data);
-            return;
-        };
-        let mut fun = R_findVarInFrame(methods, Rf_install(c"show".as_ptr()));
-        if fun.is_null() || fun == R_UnboundValue() {
-            PrintObjectS3(s, data);
-            return;
-        }
-        if TYPEOF(fun) == SEXPTYPE::PROMSXP {
-            fun = crate::sexp::envir::forcePromise(fun);
-        }
-        let env = if data.env.is_null() || data.env == R_NilValue() {
-            R_GlobalEnv()
-        } else {
-            data.env
-        };
-        let call = crate::sexp::constructors::Rf_lang2(fun, s);
-        let _call_guard = protect(call);
-        // GNU PrintObjectS4 eval()s show with no local handler.
-        let _ = crate::eval::eval::Rf_eval(call, env);
+fn PrintObjectS4(s: SEXP, data: &R_PrintData) {
+    let depth = with_print_runtime(|state| state.active_values.len());
+    if depth > 8 {
+        print_s4_data_part(s, data);
+        return;
     }
+    let Some(methods) = crate::mainutils::essentials::cached_namespace_by_name("methods") else {
+        PrintObjectS3(s, data);
+        return;
+    };
+    let mut fun = R_findVarInFrame(methods, install_str("show"));
+    if fun.is_null() || fun == R_UnboundValue() {
+        PrintObjectS3(s, data);
+        return;
+    }
+    if TYPEOF(fun) == SEXPTYPE::PROMSXP {
+        fun = force_promise(fun);
+    }
+    let env = if data.env.is_null() || data.env == R_NilValue() {
+        R_GlobalEnv()
+    } else {
+        data.env
+    };
+    let call = crate::sexp::constructors::Rf_lang2(fun, s);
+    let _call_guard = protect(call);
+    // GNU PrintObjectS4 eval()s show with no local handler.
+    let _ = eval_in(call, env);
 }
 
-unsafe fn PrintObject(s: SEXP, data: &R_PrintData) {
-    unsafe {
-        let mut save = [0u8; TAGBUFLEN0 * 2];
-        save_tagbuf(&mut save);
-        if isMethodsDispatchOn() != 0 && IS_S4_OBJECT(s) != 0 {
-            match enter_print_value(s) {
-                Some(_guard) => PrintObjectS4(s, data),
-                None => {
-                    // An explicit print(object) from a custom show method
-                    // dispatches again in GNU R; options(expressions) owns
-                    // the recursion error. showDefault's useS4=FALSE takes
-                    // PrintValueRec_reroot and never enters this branch.
-                    PrintObjectS4(s, data);
-                }
+fn PrintObject(s: SEXP, data: &R_PrintData) {
+    let mut save = [0u8; TAGBUFLEN0 * 2];
+    save_tagbuf(&mut save);
+    if isMethodsDispatchOn() != 0 && IS_S4_OBJECT(s) != 0 {
+        match enter_print_value(s) {
+            Some(_guard) => PrintObjectS4(s, data),
+            None => {
+                // An explicit print(object) from a custom show method
+                // dispatches again in GNU R; options(expressions) owns
+                // the recursion error. showDefault's useS4=FALSE takes
+                // PrintValueRec_reroot and never enters this branch.
+                PrintObjectS4(s, data);
             }
-        } else {
-            PrintObjectS3(s, data);
         }
-        set_current_print_data(data);
-        restore_tagbuf(&save);
+    } else {
+        PrintObjectS3(s, data);
     }
+    set_current_print_data(data);
+    restore_tagbuf(&save);
 }
 
 // ---------------------------------------------------------------------------
 // Internal: PrintGenericVector
 // ---------------------------------------------------------------------------
 
-unsafe fn PrintGenericVector(s: SEXP, data: &R_PrintData) {
-    unsafe {
-        let ns = XLENGTH(s);
-        let dims = getAttrib(s, R_DimSymbol());
+fn PrintGenericVector(s: SEXP, data: &R_PrintData) {
+    let ns = XLENGTH(s);
+    let dims = getAttrib(s, R_DimSymbol());
 
-        if dims != R_NilValue() && LENGTH(dims) > 1 {
-            // Array-like list
-            let _dims_guard = protect(dims);
-            let t = allocArray(SEXPTYPE::STRSXP.as_c_int(), dims);
-            let _t_guard = protect(t);
+    if dims != R_NilValue() && LENGTH(dims) > 1 {
+        // Array-like list
+        let _dims_guard = protect(dims);
+        let t = allocArray(SEXPTYPE::STRSXP.as_c_int(), dims);
+        let _t_guard = protect(t);
 
-            let limit = if ns <= data.max as i64 + 1 {
+        let limit = if ns <= data.max as i64 + 1 {
+            ns
+        } else {
+            data.max as i64
+        };
+        for i in 0..limit {
+            let s_i = VECTOR_ELT(s, i);
+            let mut pbuf = [0u8; 115];
+
+            if isObject_fn(s_i) != 0 {
+                let snip = match TYPEOF(s_i) {
+                    x if x == SEXPTYPE::NILSXP => "NULL",
+                    x if x == SEXPTYPE::LGLSXP => "logical",
+                    x if x == SEXPTYPE::INTSXP => {
+                        if inherits_cstr(s_i, "factor") != 0 {
+                            "factor"
+                        } else {
+                            "integer"
+                        }
+                    }
+                    x if x == SEXPTYPE::REALSXP => "numeric",
+                    x if x == SEXPTYPE::CPLXSXP => "complex",
+                    x if x == SEXPTYPE::STRSXP => "character",
+                    x if x == SEXPTYPE::RAWSXP => "raw",
+                    x if x == SEXPTYPE::LISTSXP || x == SEXPTYPE::VECSXP => "list",
+                    x if x == SEXPTYPE::LANGSXP => "expression",
+                    _ => "?",
+                };
+                let full = format!("{},{}", snip, LENGTH(s_i));
+                let bytes = full.as_bytes();
+                let copy_len = bytes.len().min(114);
+                pbuf[..copy_len].copy_from_slice(&bytes[..copy_len]);
+                pbuf[copy_len] = 0;
+            } else {
+                match TYPEOF(s_i) {
+                    _t if _t == SEXPTYPE::NILSXP => {
+                        let src = b"NULL\0";
+                        pbuf[..src.len()].copy_from_slice(src);
+                    }
+                    _t if _t == SEXPTYPE::LGLSXP => {
+                        if LENGTH(s_i) == 1 {
+                            let x = crate::mainutils::essentials::logical_elt_checked(s_i, 0);
+                            let w = crate::mainutils::format::logical_field_width(&[x]);
+                            if let Some(bytes) =
+                                crate::mainutils::printutils::encode_logical_bytes(x, w)
+                            {
+                                copy_pbuf(&mut pbuf, &bytes, 114);
+                            }
+                        } else {
+                            let full = format!("logical,{}", LENGTH(s_i));
+                            let bytes = full.as_bytes();
+                            let copy_len = bytes.len().min(114);
+                            pbuf[..copy_len].copy_from_slice(&bytes[..copy_len]);
+                            pbuf[copy_len] = 0;
+                        }
+                    }
+                    _t if _t == SEXPTYPE::INTSXP => {
+                        if inherits_cstr(s_i, "factor") != 0 {
+                            let full = format!("factor,{}", LENGTH(s_i));
+                            let bytes = full.as_bytes();
+                            let copy_len = bytes.len().min(114);
+                            pbuf[..copy_len].copy_from_slice(&bytes[..copy_len]);
+                            pbuf[copy_len] = 0;
+                        } else if LENGTH(s_i) == 1 {
+                            let x = crate::mainutils::essentials::integer_elt_checked(s_i, 0);
+                            let w = crate::mainutils::format::integer_field_width(1, |_| x);
+                            if let Some(bytes) =
+                                crate::mainutils::printutils::encode_integer_bytes(x, w)
+                            {
+                                copy_pbuf(&mut pbuf, &bytes, 114);
+                            }
+                        } else {
+                            let full = format!("integer,{}", LENGTH(s_i));
+                            let bytes = full.as_bytes();
+                            let copy_len = bytes.len().min(114);
+                            pbuf[..copy_len].copy_from_slice(&bytes[..copy_len]);
+                            pbuf[copy_len] = 0;
+                        }
+                    }
+                    _t if _t == SEXPTYPE::REALSXP => {
+                        if LENGTH(s_i) == 1 {
+                            let x = crate::mainutils::essentials::real_elt_checked(s_i, 0);
+                            let f = crate::mainutils::format::real_field(1, 0, |_| x);
+                            if let Some(bytes) = crate::mainutils::printutils::encode_real0_bytes(
+                                x, f.w, f.d, f.e, c".",
+                            ) {
+                                copy_pbuf(&mut pbuf, &bytes, 114);
+                            }
+                        } else {
+                            let full = format!("numeric,{}", LENGTH(s_i));
+                            let bytes = full.as_bytes();
+                            let copy_len = bytes.len().min(114);
+                            pbuf[..copy_len].copy_from_slice(&bytes[..copy_len]);
+                            pbuf[copy_len] = 0;
+                        }
+                    }
+                    _t if _t == SEXPTYPE::CPLXSXP => {
+                        if LENGTH(s_i) == 1 {
+                            let cx = crate::mainutils::essentials::complex_elt_checked(s_i, 0);
+                            let enc = if R_IsNA(cx.r) || R_IsNA(cx.i) {
+                                crate::mainutils::printutils::encode_real0_bytes(
+                                    NA_REAL,
+                                    data.na_width,
+                                    0,
+                                    0,
+                                    c".",
+                                )
+                            } else {
+                                let f = crate::mainutils::format::complex_field(&[cx], 0);
+                                crate::mainutils::printutils::encode_complex_bytes(
+                                    cx, f.wr, f.dr, f.er, f.wi, f.di, f.ei, c".",
+                                )
+                            };
+                            if let Some(bytes) = enc {
+                                copy_pbuf(&mut pbuf, &bytes, 114);
+                            }
+                        } else {
+                            let full = format!("complex,{}", LENGTH(s_i));
+                            let bytes = full.as_bytes();
+                            let copy_len = bytes.len().min(114);
+                            pbuf[..copy_len].copy_from_slice(&bytes[..copy_len]);
+                            pbuf[copy_len] = 0;
+                        }
+                    }
+                    _t if _t == SEXPTYPE::STRSXP => {
+                        if LENGTH(s_i) == 1 {
+                            let elt0 = STRING_ELT(s_i, 0);
+                            if !elt0.is_null() {
+                                let ctmp = char_bytes(elt0);
+                                let s_str = std::str::from_utf8(&ctmp).unwrap_or("");
+                                let quoted = if s_str.len() < 100 {
+                                    format!("\"{}\"", s_str)
+                                } else {
+                                    format!("\"{}\" [truncated]", &s_str[..99])
+                                };
+                                let bytes = quoted.as_bytes();
+                                let copy_len = bytes.len().min(114);
+                                pbuf[..copy_len].copy_from_slice(&bytes[..copy_len]);
+                                pbuf[copy_len] = 0;
+                            }
+                        } else {
+                            let full = format!("character,{}", LENGTH(s_i));
+                            let bytes = full.as_bytes();
+                            let copy_len = bytes.len().min(114);
+                            pbuf[..copy_len].copy_from_slice(&bytes[..copy_len]);
+                            pbuf[copy_len] = 0;
+                        }
+                    }
+                    _t if _t == SEXPTYPE::RAWSXP => {
+                        let full = format!("raw,{}", LENGTH(s_i));
+                        let bytes = full.as_bytes();
+                        let copy_len = bytes.len().min(114);
+                        pbuf[..copy_len].copy_from_slice(&bytes[..copy_len]);
+                        pbuf[copy_len] = 0;
+                    }
+                    _t if _t == SEXPTYPE::LISTSXP || _t == SEXPTYPE::VECSXP => {
+                        let full = format!("list,{}", LENGTH(s_i));
+                        let bytes = full.as_bytes();
+                        let copy_len = bytes.len().min(114);
+                        pbuf[..copy_len].copy_from_slice(&bytes[..copy_len]);
+                        pbuf[copy_len] = 0;
+                    }
+                    _t if _t == SEXPTYPE::LANGSXP => {
+                        let src = b"expression\0";
+                        pbuf[..src.len()].copy_from_slice(src);
+                    }
+                    _ => {
+                        let src = b"?\0";
+                        pbuf[..src.len()].copy_from_slice(src);
+                    }
+                }
+            }
+            pbuf[114] = 0;
+            SET_STRING_ELT(t, i, mk_char_nul(&pbuf));
+        }
+
+        if LENGTH(dims) == 2 {
+            print_matrix_dimnamed(t, s, dims, 0, data.right);
+        } else {
+            let names = GetArrayDimnames(s);
+            let _names_guard = protect(names);
+            crate::mainutils::printarray::printArray(t, dims, 0, Rprt_adj_left, names);
+        }
+    } else {
+        // No dim
+        let names = getAttrib(s, R_NamesSymbol());
+        let _names_guard = protect(names);
+
+        let taglen = tagbuf_strlen();
+        let ptag = taglen;
+        let sz = TAGBUFLEN0 * 2 - taglen;
+
+        if ns > 0 {
+            let n_pr = if ns <= data.max as i64 + 1 {
                 ns
             } else {
                 data.max as i64
             };
-            for i in 0..limit {
-                let s_i = VECTOR_ELT(s, i);
-                let mut pbuf = [0u8; 115];
-
-                if isObject_fn(s_i) != 0 {
-                    let snip = match TYPEOF(s_i) {
-                        x if x == SEXPTYPE::NILSXP => "NULL",
-                        x if x == SEXPTYPE::LGLSXP => "logical",
-                        x if x == SEXPTYPE::INTSXP => {
-                            if inherits_cstr(s_i, b"factor\0".as_ptr() as *const c_char) != 0 {
-                                "factor"
-                            } else {
-                                "integer"
-                            }
-                        }
-                        x if x == SEXPTYPE::REALSXP => "numeric",
-                        x if x == SEXPTYPE::CPLXSXP => "complex",
-                        x if x == SEXPTYPE::STRSXP => "character",
-                        x if x == SEXPTYPE::RAWSXP => "raw",
-                        x if x == SEXPTYPE::LISTSXP || x == SEXPTYPE::VECSXP => "list",
-                        x if x == SEXPTYPE::LANGSXP => "expression",
-                        _ => "?",
-                    };
-                    let full = format!("{},{}", snip, LENGTH(s_i));
-                    let bytes = full.as_bytes();
-                    let copy_len = bytes.len().min(114);
-                    pbuf[..copy_len].copy_from_slice(&bytes[..copy_len]);
-                    pbuf[copy_len] = 0;
-                } else {
-                    match TYPEOF(s_i) {
-                        _t if _t == SEXPTYPE::NILSXP => {
-                            let src = b"NULL\0";
-                            pbuf[..src.len()].copy_from_slice(src);
-                        }
-                        _t if _t == SEXPTYPE::LGLSXP => {
-                            if LENGTH(s_i) == 1 {
-                                let x = LOGICAL(s_i);
-                                if !x.is_null() {
-                                    let mut w: c_int = 0;
-                                    crate::mainutils::format::formatLogical(x, 1, &mut w);
-                                    let enc = crate::mainutils::printutils::EncodeLogical(*x, w);
-                                    if !enc.is_null() {
-                                        let cs = CStr::from_ptr(enc);
-                                        let bytes = cs.to_bytes();
-                                        let copy_len = bytes.len().min(114);
-                                        pbuf[..copy_len].copy_from_slice(&bytes[..copy_len]);
-                                        pbuf[copy_len] = 0;
-                                    }
-                                }
-                            } else {
-                                let full = format!("logical,{}", LENGTH(s_i));
-                                let bytes = full.as_bytes();
-                                let copy_len = bytes.len().min(114);
-                                pbuf[..copy_len].copy_from_slice(&bytes[..copy_len]);
-                                pbuf[copy_len] = 0;
-                            }
-                        }
-                        _t if _t == SEXPTYPE::INTSXP => {
-                            if inherits_cstr(s_i, b"factor\0".as_ptr() as *const c_char) != 0 {
-                                let full = format!("factor,{}", LENGTH(s_i));
-                                let bytes = full.as_bytes();
-                                let copy_len = bytes.len().min(114);
-                                pbuf[..copy_len].copy_from_slice(&bytes[..copy_len]);
-                                pbuf[copy_len] = 0;
-                            } else if LENGTH(s_i) == 1 {
-                                let x = INTEGER(s_i);
-                                if !x.is_null() {
-                                    let mut w: c_int = 0;
-                                    crate::mainutils::format::formatInteger(x, 1, &mut w);
-                                    let enc = crate::mainutils::printutils::EncodeInteger(*x, w);
-                                    if !enc.is_null() {
-                                        let cs = CStr::from_ptr(enc);
-                                        let bytes = cs.to_bytes();
-                                        let copy_len = bytes.len().min(114);
-                                        pbuf[..copy_len].copy_from_slice(&bytes[..copy_len]);
-                                        pbuf[copy_len] = 0;
-                                    }
-                                }
-                            } else {
-                                let full = format!("integer,{}", LENGTH(s_i));
-                                let bytes = full.as_bytes();
-                                let copy_len = bytes.len().min(114);
-                                pbuf[..copy_len].copy_from_slice(&bytes[..copy_len]);
-                                pbuf[copy_len] = 0;
-                            }
-                        }
-                        _t if _t == SEXPTYPE::REALSXP => {
-                            if LENGTH(s_i) == 1 {
-                                let x = REAL(s_i);
-                                if !x.is_null() {
-                                    let mut w: c_int = 0;
-                                    let mut d: c_int = 0;
-                                    let mut e: c_int = 0;
-                                    crate::mainutils::format::formatReal(
-                                        x, 1, &mut w, &mut d, &mut e, 0,
-                                    );
-                                    let outdec: *const c_char = b".\0".as_ptr() as *const c_char;
-                                    let enc = crate::mainutils::printutils::EncodeReal0(
-                                        *x, w, d, e, outdec,
-                                    );
-                                    if !enc.is_null() {
-                                        let cs = CStr::from_ptr(enc);
-                                        let bytes = cs.to_bytes();
-                                        let copy_len = bytes.len().min(114);
-                                        pbuf[..copy_len].copy_from_slice(&bytes[..copy_len]);
-                                        pbuf[copy_len] = 0;
-                                    }
-                                }
-                            } else {
-                                let full = format!("numeric,{}", LENGTH(s_i));
-                                let bytes = full.as_bytes();
-                                let copy_len = bytes.len().min(114);
-                                pbuf[..copy_len].copy_from_slice(&bytes[..copy_len]);
-                                pbuf[copy_len] = 0;
-                            }
-                        }
-                        _t if _t == SEXPTYPE::CPLXSXP => {
-                            if LENGTH(s_i) == 1 {
-                                let x = COMPLEX(s_i);
-                                if !x.is_null() {
-                                    let cx = *x;
-                                    if R_IsNA(cx.r) || R_IsNA(cx.i) {
-                                        let outdec: *const c_char =
-                                            b".\0".as_ptr() as *const c_char;
-                                        let enc = crate::mainutils::printutils::EncodeReal0(
-                                            NA_REAL,
-                                            data.na_width,
-                                            0,
-                                            0,
-                                            outdec,
-                                        );
-                                        if !enc.is_null() {
-                                            let cs = CStr::from_ptr(enc);
-                                            let bytes = cs.to_bytes();
-                                            let copy_len = bytes.len().min(114);
-                                            pbuf[..copy_len].copy_from_slice(&bytes[..copy_len]);
-                                            pbuf[copy_len] = 0;
-                                        }
-                                    } else {
-                                        let mut wr: c_int = 0;
-                                        let mut dr: c_int = 0;
-                                        let mut er: c_int = 0;
-                                        let mut wi: c_int = 0;
-                                        let mut di: c_int = 0;
-                                        let mut ei: c_int = 0;
-                                        crate::mainutils::format::formatComplex(
-                                            x, 1, &mut wr, &mut dr, &mut er, &mut wi, &mut di,
-                                            &mut ei, 0,
-                                        );
-                                        let outdec: *const c_char =
-                                            b".\0".as_ptr() as *const c_char;
-                                        let enc = crate::mainutils::printutils::EncodeComplex(
-                                            cx, wr, dr, er, wi, di, ei, outdec,
-                                        );
-                                        if !enc.is_null() {
-                                            let cs = CStr::from_ptr(enc);
-                                            let bytes = cs.to_bytes();
-                                            let copy_len = bytes.len().min(114);
-                                            pbuf[..copy_len].copy_from_slice(&bytes[..copy_len]);
-                                            pbuf[copy_len] = 0;
-                                        }
-                                    }
-                                }
-                            } else {
-                                let full = format!("complex,{}", LENGTH(s_i));
-                                let bytes = full.as_bytes();
-                                let copy_len = bytes.len().min(114);
-                                pbuf[..copy_len].copy_from_slice(&bytes[..copy_len]);
-                                pbuf[copy_len] = 0;
-                            }
-                        }
-                        _t if _t == SEXPTYPE::STRSXP => {
-                            if LENGTH(s_i) == 1 {
-                                let ctmp = translateChar(STRING_ELT(s_i, 0));
-                                if !ctmp.is_null() {
-                                    let s_str = CStr::from_ptr(ctmp).to_str().unwrap_or("");
-                                    let quoted = if s_str.len() < 100 {
-                                        format!("\"{}\"", s_str)
-                                    } else {
-                                        format!("\"{}\" [truncated]", &s_str[..99])
-                                    };
-                                    let bytes = quoted.as_bytes();
-                                    let copy_len = bytes.len().min(114);
-                                    pbuf[..copy_len].copy_from_slice(&bytes[..copy_len]);
-                                    pbuf[copy_len] = 0;
-                                }
-                            } else {
-                                let full = format!("character,{}", LENGTH(s_i));
-                                let bytes = full.as_bytes();
-                                let copy_len = bytes.len().min(114);
-                                pbuf[..copy_len].copy_from_slice(&bytes[..copy_len]);
-                                pbuf[copy_len] = 0;
-                            }
-                        }
-                        _t if _t == SEXPTYPE::RAWSXP => {
-                            let full = format!("raw,{}", LENGTH(s_i));
-                            let bytes = full.as_bytes();
-                            let copy_len = bytes.len().min(114);
-                            pbuf[..copy_len].copy_from_slice(&bytes[..copy_len]);
-                            pbuf[copy_len] = 0;
-                        }
-                        _t if _t == SEXPTYPE::LISTSXP || _t == SEXPTYPE::VECSXP => {
-                            let full = format!("list,{}", LENGTH(s_i));
-                            let bytes = full.as_bytes();
-                            let copy_len = bytes.len().min(114);
-                            pbuf[..copy_len].copy_from_slice(&bytes[..copy_len]);
-                            pbuf[copy_len] = 0;
-                        }
-                        _t if _t == SEXPTYPE::LANGSXP => {
-                            let src = b"expression\0";
-                            pbuf[..src.len()].copy_from_slice(src);
-                        }
-                        _ => {
-                            let src = b"?\0";
-                            pbuf[..src.len()].copy_from_slice(src);
-                        }
-                    }
+            for i in 0..n_pr {
+                if i > 0 {
+                    println!();
                 }
-                pbuf[114] = 0;
-                SET_STRING_ELT(t, i, Rf_mkChar(pbuf.as_ptr() as *const c_char));
-            }
 
-            if LENGTH(dims) == 2 {
-                let mut rl: SEXP = R_NilValue();
-                let mut cl: SEXP = R_NilValue();
-                let mut rn: *const c_char = ptr::null();
-                let mut cn: *const c_char = ptr::null();
-                GetMatrixDimnames(s, &mut rl, &mut cl, &mut rn, &mut cn);
-                crate::mainutils::printarray::printMatrix(
-                    t, 0, dims, 0, data.right, rl, cl, rn, cn,
-                );
-            } else {
-                let names = GetArrayDimnames(s);
-                let _names_guard = protect(names);
-                crate::mainutils::printarray::printArray(t, dims, 0, Rprt_adj_left, names);
-            }
-        } else {
-            // No dim
-            let names = getAttrib(s, R_NamesSymbol());
-            let _names_guard = protect(names);
-
-            let taglen = tagbuf_strlen();
-            let ptag = tagbuf_ptr_at(taglen);
-            let sz = TAGBUFLEN0 * 2 - taglen;
-
-            if ns > 0 {
-                let n_pr = if ns <= data.max as i64 + 1 {
-                    ns
-                } else {
-                    data.max as i64
-                };
-                for i in 0..n_pr {
-                    if i > 0 {
-                        println!();
-                    }
-
-                    if names != R_NilValue() && i < XLENGTH(names) {
-                        let name_elt = STRING_ELT(names, i);
-                        if !name_elt.is_null() && name_elt != R_NilValue() {
-                            let name_chars = CHAR(name_elt);
-                            if !name_chars.is_null() && *name_chars != 0 {
-                                let name_len = CStr::from_ptr(name_chars).to_bytes().len();
-                                if taglen + name_len > TAGBUFLEN {
-                                    if taglen <= TAGBUFLEN {
-                                        write_tag(ptag, sz, "$...");
-                                    }
-                                } else {
-                                    let na_str = NA_STRING_local();
-                                    if name_elt == na_str {
-                                        write_tag(ptag, sz, "$<NA>");
-                                    } else if isValidName(name_chars) {
-                                        let out = r_sprintf(
-                                            "$%s",
-                                            &[CArg::Str(CStr::from_ptr(name_chars).to_bytes())],
-                                        );
-                                        write_tag(ptag, sz, &out);
-                                    } else {
-                                        let enc =
-                                            crate::mainutils::printutils::EncodeChar(name_elt);
-                                        if !enc.is_null() && isValidName(enc) {
-                                            let out = r_sprintf(
-                                                "$%s",
-                                                &[CArg::Str(CStr::from_ptr(enc).to_bytes())],
-                                            );
-                                            write_tag(ptag, sz, &out);
-                                        } else if !enc.is_null() {
-                                            let out = r_sprintf(
-                                                "$`%s`",
-                                                &[CArg::Str(CStr::from_ptr(enc).to_bytes())],
-                                            );
-                                            write_tag(ptag, sz, &out);
-                                        } else {
-                                            write_tag(ptag, sz, "$...");
-                                        }
-                                    }
+                if names != R_NilValue() && i < XLENGTH(names) {
+                    let name_elt = STRING_ELT(names, i);
+                    if !name_elt.is_null() && name_elt != R_NilValue() {
+                        let name_chars = char_bytes(name_elt);
+                        if !name_chars.is_empty() {
+                            let name_len = name_chars.len();
+                            if taglen + name_len > TAGBUFLEN {
+                                if taglen <= TAGBUFLEN {
+                                    write_tag(ptag, sz, "$...");
                                 }
                             } else {
-                                let iw = crate::mainutils::printutils::IndexWidth_xlen(i);
-                                if taglen + iw as usize > TAGBUFLEN {
-                                    if taglen <= TAGBUFLEN {
-                                        write_tag(ptag, sz, "$...");
-                                    }
-                                } else {
-                                    let out = r_sprintf("[[%lld]]", &[(i + 1).into()]);
+                                let na_str = NA_STRING_local();
+                                if name_elt == na_str {
+                                    write_tag(ptag, sz, "$<NA>");
+                                } else if isValidName(&name_chars) {
+                                    let out = r_sprintf("$%s", &[CArg::Str(&name_chars)]);
                                     write_tag(ptag, sz, &out);
+                                } else {
+                                    let enc =
+                                        crate::mainutils::printutils::encode_char_bytes(name_elt);
+                                    match enc {
+                                        Some(enc) if isValidName(&enc) => {
+                                            let out = r_sprintf("$%s", &[CArg::Str(&enc)]);
+                                            write_tag(ptag, sz, &out);
+                                        }
+                                        Some(enc) => {
+                                            let out = r_sprintf("$`%s`", &[CArg::Str(&enc)]);
+                                            write_tag(ptag, sz, &out);
+                                        }
+                                        None => write_tag(ptag, sz, "$..."),
+                                    }
                                 }
                             }
                         } else {
@@ -1313,50 +1235,58 @@ unsafe fn PrintGenericVector(s: SEXP, data: &R_PrintData) {
                             write_tag(ptag, sz, &out);
                         }
                     }
-
-                    // Print tag line
-                    println!("{}", tagbuf_string());
-
-                    PrintDispatch(VECTOR_ELT(s, i), data);
-
-                    tagbuf_set(taglen, 0);
+                } else {
+                    let iw = crate::mainutils::printutils::IndexWidth_xlen(i);
+                    if taglen + iw as usize > TAGBUFLEN {
+                        if taglen <= TAGBUFLEN {
+                            write_tag(ptag, sz, "$...");
+                        }
+                    } else {
+                        let out = r_sprintf("[[%lld]]", &[(i + 1).into()]);
+                        write_tag(ptag, sz, &out);
+                    }
                 }
-                println!();
-                if (n_pr as i64) < ns {
-                    println!(
-                        " [ reached 'max' / getOption(\"max.print\") -- omitted {} entries ]",
-                        ns - n_pr as i64
-                    );
-                }
-            } else {
-                let named = names != R_NilValue() || {
-                    let mut cell = crate::sexp::accessors::ATTRIB(s);
-                    let mut found = false;
-                    while !cell.is_null() && cell != R_NilValue() {
-                        let tag = crate::sexp::accessors::TAG(cell);
-                        if !tag.is_null() && tag != R_NilValue() {
-                            let pn = crate::sexp::accessors::PRINTNAME(tag);
-                            if !pn.is_null() {
-                                let name =
-                                    std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(pn));
-                                if name.to_bytes() == b"names" {
-                                    found = true;
-                                    break;
-                                }
+
+                // Print tag line
+                println!("{}", tagbuf_string());
+
+                PrintDispatch(VECTOR_ELT(s, i), data);
+
+                tagbuf_set(taglen, 0);
+            }
+            println!();
+            if (n_pr as i64) < ns {
+                println!(
+                    " [ reached 'max' / getOption(\"max.print\") -- omitted {} entries ]",
+                    ns - n_pr as i64
+                );
+            }
+        } else {
+            let named = names != R_NilValue() || {
+                let mut cell = crate::sexp::accessors::ATTRIB(s);
+                let mut found = false;
+                while !cell.is_null() && cell != R_NilValue() {
+                    let tag = crate::sexp::accessors::TAG(cell);
+                    if !tag.is_null() && tag != R_NilValue() {
+                        let pn = crate::sexp::accessors::PRINTNAME(tag);
+                        if !pn.is_null() {
+                            if char_bytes(pn) == b"names" {
+                                found = true;
+                                break;
                             }
                         }
-                        cell = crate::sexp::accessors::CDR(cell);
                     }
-                    found
-                };
-                if named {
-                    print!("named ");
+                    cell = crate::sexp::accessors::CDR(cell);
                 }
-                println!("list()");
+                found
+            };
+            if named {
+                print!("named ");
             }
+            println!("list()");
         }
-        printAttributes(s, data, false);
     }
+    printAttributes(s, data, false);
 }
 
 // ---------------------------------------------------------------------------
@@ -1391,289 +1321,261 @@ fn validate_print_chain(head: SEXP) {
     }
 }
 
-unsafe fn printList(s: SEXP, data: &R_PrintData) {
-    unsafe {
-        validate_print_chain(s);
-        let dims = getAttrib(s, R_DimSymbol());
+fn printList(s: SEXP, data: &R_PrintData) {
+    validate_print_chain(s);
+    let dims = getAttrib(s, R_DimSymbol());
 
-        if dims != R_NilValue() && LENGTH(dims) > 1 {
-            let _dims_guard = protect(dims);
-            let t = allocArray(SEXPTYPE::STRSXP.as_c_int(), dims);
-            let _t_guard = protect(t);
-            let mut i: i64 = 0;
-            let mut cur = s;
+    if dims != R_NilValue() && LENGTH(dims) > 1 {
+        let _dims_guard = protect(dims);
+        let t = allocArray(SEXPTYPE::STRSXP.as_c_int(), dims);
+        let _t_guard = protect(t);
+        let mut i: i64 = 0;
+        let mut cur = s;
 
-            while cur != R_NilValue() && TYPEOF(cur) == SEXPTYPE::LISTSXP {
-                let mut pbuf = [0u8; 101];
-                match TYPEOF(CAR(cur)) {
-                    _t if _t == SEXPTYPE::NILSXP => {
-                        let src = b"NULL\0";
-                        pbuf[..src.len()].copy_from_slice(src);
-                    }
-                    _t if _t == SEXPTYPE::LGLSXP => {
-                        let full = format!("logical,{}", LENGTH(CAR(cur)));
-                        let bytes = full.as_bytes();
-                        let copy_len = bytes.len().min(100);
-                        pbuf[..copy_len].copy_from_slice(&bytes[..copy_len]);
-                        pbuf[copy_len] = 0;
-                    }
-                    _t if _t == SEXPTYPE::INTSXP || _t == SEXPTYPE::REALSXP => {
-                        let full = format!("numeric,{}", LENGTH(CAR(cur)));
-                        let bytes = full.as_bytes();
-                        let copy_len = bytes.len().min(100);
-                        pbuf[..copy_len].copy_from_slice(&bytes[..copy_len]);
-                        pbuf[copy_len] = 0;
-                    }
-                    _t if _t == SEXPTYPE::CPLXSXP => {
-                        let full = format!("complex,{}", LENGTH(CAR(cur)));
-                        let bytes = full.as_bytes();
-                        let copy_len = bytes.len().min(100);
-                        pbuf[..copy_len].copy_from_slice(&bytes[..copy_len]);
-                        pbuf[copy_len] = 0;
-                    }
-                    _t if _t == SEXPTYPE::STRSXP => {
-                        let full = format!("character,{}", LENGTH(CAR(cur)));
-                        let bytes = full.as_bytes();
-                        let copy_len = bytes.len().min(100);
-                        pbuf[..copy_len].copy_from_slice(&bytes[..copy_len]);
-                        pbuf[copy_len] = 0;
-                    }
-                    _t if _t == SEXPTYPE::RAWSXP => {
-                        let full = format!("raw,{}", LENGTH(CAR(cur)));
-                        let bytes = full.as_bytes();
-                        let copy_len = bytes.len().min(100);
-                        pbuf[..copy_len].copy_from_slice(&bytes[..copy_len]);
-                        pbuf[copy_len] = 0;
-                    }
-                    _t if _t == SEXPTYPE::LISTSXP => {
-                        let full = format!("list,{}", LENGTH(CAR(cur)));
-                        let bytes = full.as_bytes();
-                        let copy_len = bytes.len().min(100);
-                        pbuf[..copy_len].copy_from_slice(&bytes[..copy_len]);
-                        pbuf[copy_len] = 0;
-                    }
-                    _t if _t == SEXPTYPE::LANGSXP => {
-                        let src = b"expression\0";
-                        pbuf[..src.len()].copy_from_slice(src);
-                    }
-                    _ => {
-                        let src = b"?\0";
-                        pbuf[..src.len()].copy_from_slice(src);
-                    }
+        while cur != R_NilValue() && TYPEOF(cur) == SEXPTYPE::LISTSXP {
+            let mut pbuf = [0u8; 101];
+            match TYPEOF(CAR(cur)) {
+                _t if _t == SEXPTYPE::NILSXP => {
+                    let src = b"NULL\0";
+                    pbuf[..src.len()].copy_from_slice(src);
                 }
-                pbuf[100] = 0;
-                SET_STRING_ELT(t, i, Rf_mkChar(pbuf.as_ptr() as *const c_char));
-                cur = CDR(cur);
-                i += 1;
+                _t if _t == SEXPTYPE::LGLSXP => {
+                    let full = format!("logical,{}", LENGTH(CAR(cur)));
+                    let bytes = full.as_bytes();
+                    let copy_len = bytes.len().min(100);
+                    pbuf[..copy_len].copy_from_slice(&bytes[..copy_len]);
+                    pbuf[copy_len] = 0;
+                }
+                _t if _t == SEXPTYPE::INTSXP || _t == SEXPTYPE::REALSXP => {
+                    let full = format!("numeric,{}", LENGTH(CAR(cur)));
+                    let bytes = full.as_bytes();
+                    let copy_len = bytes.len().min(100);
+                    pbuf[..copy_len].copy_from_slice(&bytes[..copy_len]);
+                    pbuf[copy_len] = 0;
+                }
+                _t if _t == SEXPTYPE::CPLXSXP => {
+                    let full = format!("complex,{}", LENGTH(CAR(cur)));
+                    let bytes = full.as_bytes();
+                    let copy_len = bytes.len().min(100);
+                    pbuf[..copy_len].copy_from_slice(&bytes[..copy_len]);
+                    pbuf[copy_len] = 0;
+                }
+                _t if _t == SEXPTYPE::STRSXP => {
+                    let full = format!("character,{}", LENGTH(CAR(cur)));
+                    let bytes = full.as_bytes();
+                    let copy_len = bytes.len().min(100);
+                    pbuf[..copy_len].copy_from_slice(&bytes[..copy_len]);
+                    pbuf[copy_len] = 0;
+                }
+                _t if _t == SEXPTYPE::RAWSXP => {
+                    let full = format!("raw,{}", LENGTH(CAR(cur)));
+                    let bytes = full.as_bytes();
+                    let copy_len = bytes.len().min(100);
+                    pbuf[..copy_len].copy_from_slice(&bytes[..copy_len]);
+                    pbuf[copy_len] = 0;
+                }
+                _t if _t == SEXPTYPE::LISTSXP => {
+                    let full = format!("list,{}", LENGTH(CAR(cur)));
+                    let bytes = full.as_bytes();
+                    let copy_len = bytes.len().min(100);
+                    pbuf[..copy_len].copy_from_slice(&bytes[..copy_len]);
+                    pbuf[copy_len] = 0;
+                }
+                _t if _t == SEXPTYPE::LANGSXP => {
+                    let src = b"expression\0";
+                    pbuf[..src.len()].copy_from_slice(src);
+                }
+                _ => {
+                    let src = b"?\0";
+                    pbuf[..src.len()].copy_from_slice(src);
+                }
             }
+            pbuf[100] = 0;
+            SET_STRING_ELT(t, i, mk_char_nul(&pbuf));
+            cur = CDR(cur);
+            i += 1;
+        }
 
-            if LENGTH(dims) == 2 {
-                let mut rl: SEXP = R_NilValue();
-                let mut cl: SEXP = R_NilValue();
-                let mut rn: *const c_char = ptr::null();
-                let mut cn: *const c_char = ptr::null();
-                GetMatrixDimnames(s, &mut rl, &mut cl, &mut rn, &mut cn);
-                crate::mainutils::printarray::printMatrix(
-                    t, 0, dims, data.quote, data.right, rl, cl, rn, cn,
-                );
-            } else {
-                let dimnames = getAttrib(s, R_DimNamesSymbol());
-                let _dimnames_guard = protect(dimnames);
-                crate::mainutils::printarray::printArray(t, dims, 0, Rprt_adj_left, dimnames);
-            }
+        if LENGTH(dims) == 2 {
+            print_matrix_dimnamed(t, s, dims, data.quote, data.right);
         } else {
-            let mut i: c_int = 1;
-            let mut cur = s;
+            let dimnames = getAttrib(s, R_DimNamesSymbol());
+            let _dimnames_guard = protect(dimnames);
+            crate::mainutils::printarray::printArray(t, dims, 0, Rprt_adj_left, dimnames);
+        }
+    } else {
+        let mut i: c_int = 1;
+        let mut cur = s;
 
-            let taglen = tagbuf_strlen();
-            let ptag = tagbuf_ptr_at(taglen);
-            let sz = TAGBUFLEN0 * 2 - taglen;
+        let taglen = tagbuf_strlen();
+        let ptag = taglen;
+        let sz = TAGBUFLEN0 * 2 - taglen;
 
-            while TYPEOF(cur) == SEXPTYPE::LISTSXP {
-                if i > 1 {
-                    println!();
-                }
+        while TYPEOF(cur) == SEXPTYPE::LISTSXP {
+            if i > 1 {
+                println!();
+            }
 
-                let tag = TAG(cur);
-                if tag != R_NilValue() && isSymbol(tag) != 0 {
-                    let pname = PRINTNAME(tag);
-                    let name_chars = CHAR(pname);
-                    let name_len = CStr::from_ptr(name_chars).to_bytes().len();
-                    if taglen + name_len > TAGBUFLEN {
-                        if taglen <= TAGBUFLEN {
-                            write_tag(ptag, sz, "$...");
-                        }
-                    } else {
-                        let na_str = NA_STRING_local();
-                        if pname == na_str {
-                            write_tag(ptag, sz, "$<NA>");
-                        } else if isValidName(name_chars) {
-                            let out = r_sprintf(
-                                "$%s",
-                                &[CArg::Str(CStr::from_ptr(name_chars).to_bytes())],
-                            );
-                            write_tag(ptag, sz, &out);
-                        } else {
-                            let enc = crate::mainutils::printutils::EncodeChar(pname);
-                            if !enc.is_null() && isValidName(enc) {
-                                let out =
-                                    r_sprintf("$%s", &[CArg::Str(CStr::from_ptr(enc).to_bytes())]);
-                                write_tag(ptag, sz, &out);
-                            } else if !enc.is_null() {
-                                let out = r_sprintf(
-                                    "$`%s`",
-                                    &[CArg::Str(CStr::from_ptr(enc).to_bytes())],
-                                );
-                                write_tag(ptag, sz, &out);
-                            } else {
-                                write_tag(ptag, sz, "$...");
-                            }
-                        }
+            let tag = TAG(cur);
+            if tag != R_NilValue() && isSymbol(tag) != 0 {
+                let pname = PRINTNAME(tag);
+                let name_chars = char_bytes(pname);
+                let name_len = name_chars.len();
+                if taglen + name_len > TAGBUFLEN {
+                    if taglen <= TAGBUFLEN {
+                        write_tag(ptag, sz, "$...");
                     }
                 } else {
-                    let iw = crate::mainutils::printutils::IndexWidth_xlen(i as i64);
-                    if taglen + iw as usize > TAGBUFLEN {
-                        if taglen <= TAGBUFLEN {
-                            write_tag(ptag, sz, "$...");
-                        }
-                    } else {
-                        let out = r_sprintf("[[%d]]", &[i.into()]);
+                    let na_str = NA_STRING_local();
+                    if pname == na_str {
+                        write_tag(ptag, sz, "$<NA>");
+                    } else if isValidName(&name_chars) {
+                        let out = r_sprintf("$%s", &[CArg::Str(&name_chars)]);
                         write_tag(ptag, sz, &out);
+                    } else {
+                        match crate::mainutils::printutils::encode_char_bytes(pname) {
+                            Some(enc) if isValidName(&enc) => {
+                                let out = r_sprintf("$%s", &[CArg::Str(&enc)]);
+                                write_tag(ptag, sz, &out);
+                            }
+                            Some(enc) => {
+                                let out = r_sprintf("$`%s`", &[CArg::Str(&enc)]);
+                                write_tag(ptag, sz, &out);
+                            }
+                            None => write_tag(ptag, sz, "$..."),
+                        }
                     }
                 }
-
-                println!("{}", tagbuf_string());
-
-                PrintDispatch(CAR(cur), data);
-
-                tagbuf_set(taglen, 0);
-                cur = CDR(cur);
-                i += 1;
+            } else {
+                let iw = crate::mainutils::printutils::IndexWidth_xlen(i as i64);
+                if taglen + iw as usize > TAGBUFLEN {
+                    if taglen <= TAGBUFLEN {
+                        write_tag(ptag, sz, "$...");
+                    }
+                } else {
+                    let out = r_sprintf("[[%d]]", &[i.into()]);
+                    write_tag(ptag, sz, &out);
+                }
             }
 
-            if cur != R_NilValue() {
-                print!("\n. \n\n");
-                PrintValueRec_inner(cur, data);
-            }
-            println!();
+            println!("{}", tagbuf_string());
+
+            PrintDispatch(CAR(cur), data);
+
+            tagbuf_set(taglen, 0);
+            cur = CDR(cur);
+            i += 1;
         }
-        printAttributes(s, data, false);
+
+        if cur != R_NilValue() {
+            print!("\n. \n\n");
+            PrintValueRec_inner(cur, data);
+        }
+        println!();
     }
+    printAttributes(s, data, false);
 }
 
 // ---------------------------------------------------------------------------
 // Internal: printAttributes
 // ---------------------------------------------------------------------------
 
-unsafe fn printAttributes(s: SEXP, data: &R_PrintData, useSlots: bool) {
-    unsafe {
-        let mut a = ATTRIB(s);
-        if a.is_null() || a == R_NilValue() {
-            return;
+fn printAttributes(s: SEXP, data: &R_PrintData, useSlots: bool) {
+    let mut a = ATTRIB(s);
+    if a.is_null() || a == R_NilValue() {
+        return;
+    }
+
+    let current_len = tagbuf_strlen();
+    if current_len > TAGBUFLEN0 {
+        return;
+    }
+
+    let mut save = [0u8; TAGBUFLEN0 * 2];
+    save_tagbuf(&mut save);
+
+    // Remove list tag if it looks like a list, not an attribute
+    if current_len > 0 {
+        if tagbuf_byte_at(current_len - 1) != b')' {
+            tagbuf_clear();
+        }
+    }
+
+    let comment_sym = install_str("comment");
+    let srcref_sym = install_str("srcref");
+    let whole_srcref_sym = install_str("wholeSrcref");
+    let srcfile_sym = install_str("srcfile");
+    while !a.is_null() && a != R_NilValue() {
+        let tag = TAG(a);
+
+        // Skip certain attributes
+        if useSlots && tag == R_ClassSymbol() {
+            a = CDR(a);
+            continue;
+        }
+        if isArray(s) != 0 && (tag == R_DimSymbol() || tag == R_DimNamesSymbol()) {
+            a = CDR(a);
+            continue;
+        }
+        if inherits_cstr(s, "factor") != 0 && (tag == R_LevelsSymbol() || tag == R_ClassSymbol()) {
+            a = CDR(a);
+            continue;
+        }
+        if isDataFrame(s) != 0 && tag == R_RowNamesSymbol() {
+            a = CDR(a);
+            continue;
+        }
+        if isArray(s) == 0 && tag == R_NamesSymbol() {
+            a = CDR(a);
+            continue;
+        }
+        if tag == comment_sym || tag == srcref_sym || tag == whole_srcref_sym || tag == srcfile_sym
+        {
+            a = CDR(a);
+            continue;
         }
 
-        let current_len = tagbuf_strlen();
-        if current_len > TAGBUFLEN0 {
-            return;
-        }
+        // Build the attribute tag. GNU keeps `ptag` pointing at the
+        // start of this tag and truncates back to it (`*ptag = '\0'`)
+        // after the value prints, so nested attribute values render
+        // `attr(,"outer")attr(,"inner")` without accumulating stale
+        // tags from earlier siblings.
+        let tag_start = tagbuf_strlen();
+        let space = TAGBUFLEN0 - tag_start;
+        let ptag_start = tag_start;
 
-        let mut save = [0u8; TAGBUFLEN0 * 2];
-        save_tagbuf(&mut save);
-
-        // Remove list tag if it looks like a list, not an attribute
-        if current_len > 0 {
-            let last = tagbuf_ptr_at(current_len - 1);
-            if !last.is_null() && *last != b')' as c_char {
-                tagbuf_clear();
-            }
-        }
-
-        let comment_sym = Rf_install(b"comment\0".as_ptr() as *const c_char);
-        let srcref_sym = Rf_install(b"srcref\0".as_ptr() as *const c_char);
-        let whole_srcref_sym = Rf_install(b"wholeSrcref\0".as_ptr() as *const c_char);
-        let srcfile_sym = Rf_install(b"srcfile\0".as_ptr() as *const c_char);
-        while !a.is_null() && a != R_NilValue() {
-            let tag = TAG(a);
-
-            // Skip certain attributes
-            if useSlots && tag == R_ClassSymbol() {
-                a = CDR(a);
-                continue;
-            }
-            if isArray(s) != 0 && (tag == R_DimSymbol() || tag == R_DimNamesSymbol()) {
-                a = CDR(a);
-                continue;
-            }
-            if inherits_cstr(s, b"factor\0".as_ptr() as *const c_char) != 0
-                && (tag == R_LevelsSymbol() || tag == R_ClassSymbol())
-            {
-                a = CDR(a);
-                continue;
-            }
-            if isDataFrame(s) != 0 && tag == R_RowNamesSymbol() {
-                a = CDR(a);
-                continue;
-            }
-            if isArray(s) == 0 && tag == R_NamesSymbol() {
-                a = CDR(a);
-                continue;
-            }
-            if tag == comment_sym
-                || tag == srcref_sym
-                || tag == whole_srcref_sym
-                || tag == srcfile_sym
-            {
-                a = CDR(a);
-                continue;
-            }
-
-            // Build the attribute tag. GNU keeps `ptag` pointing at the
-            // start of this tag and truncates back to it (`*ptag = '\0'`)
-            // after the value prints, so nested attribute values render
-            // `attr(,"outer")attr(,"inner")` without accumulating stale
-            // tags from earlier siblings.
-            let tag_start = tagbuf_strlen();
-            let space = TAGBUFLEN0 - tag_start;
-            let ptag_start = tagbuf_ptr_at(tag_start);
-
-            if !tag.is_null() && isSymbol(tag) != 0 {
-                let pname = PRINTNAME(tag);
-                let enc = crate::mainutils::printutils::EncodeChar(pname);
-                if !enc.is_null() {
-                    if useSlots {
-                        let out =
-                            r_sprintf("Slot \"%s\":", &[CArg::Str(CStr::from_ptr(enc).to_bytes())]);
-                        write_tag(ptag_start, space, &out);
-                    } else {
-                        let out = r_sprintf(
-                            "attr(,\"%s\")",
-                            &[CArg::Str(CStr::from_ptr(enc).to_bytes())],
-                        );
-                        write_tag(ptag_start, space, &out);
-                    }
+        if !tag.is_null() && isSymbol(tag) != 0 {
+            let pname = PRINTNAME(tag);
+            if let Some(enc) = crate::mainutils::printutils::encode_char_bytes(pname) {
+                if useSlots {
+                    let out = r_sprintf("Slot \"%s\":", &[CArg::Str(&enc)]);
+                    write_tag(ptag_start, space, &out);
+                } else {
+                    let out = r_sprintf("attr(,\"%s\")", &[CArg::Str(&enc)]);
+                    write_tag(ptag_start, space, &out);
                 }
             }
-
-            // Route the header through the console sink so captured
-            // sessions see it in order (std println! bypasses capture).
-            crate::mainutils::printutils::console_emit(format_args!("{}\n", tagbuf_string()));
-
-            if tag == R_RowNamesSymbol() {
-                let val = getAttrib(s, R_RowNamesSymbol());
-                let _val_guard = protect(val);
-                PrintValueRec_inner(val, data);
-                tagbuf_set(tag_start, 0);
-                a = CDR(a);
-                continue;
-            }
-
-            PrintDispatch(CAR(a), data);
-            tagbuf_set(tag_start, 0);
-            a = CDR(a);
         }
 
-        restore_tagbuf(&save);
+        // Route the header through the console sink so captured
+        // sessions see it in order (std println! bypasses capture).
+        crate::mainutils::printutils::console_emit(format_args!("{}\n", tagbuf_string()));
+
+        if tag == R_RowNamesSymbol() {
+            let val = getAttrib(s, R_RowNamesSymbol());
+            let _val_guard = protect(val);
+            PrintValueRec_inner(val, data);
+            tagbuf_set(tag_start, 0);
+            a = CDR(a);
+            continue;
+        }
+
+        PrintDispatch(CAR(a), data);
+        tagbuf_set(tag_start, 0);
+        a = CDR(a);
     }
+
+    restore_tagbuf(&save);
 }
 
 // ---------------------------------------------------------------------------
@@ -1698,253 +1600,238 @@ pub unsafe fn PrintValueRec(s: SEXP, _data: *mut std::ffi::c_void) {
 /// `print(object, useS4 = FALSE)`). GNU has no cycle guard on this path; only
 /// true nested-element cycles (re-entry from *within* element printing) must
 /// stay recoverable errors, so temporarily lift the outer guard.
-unsafe fn PrintValueRec_reroot(s: SEXP, data: &R_PrintData) {
-    unsafe {
-        let reentered = with_print_runtime(|state| {
-            if let Some(index) = state.active_values.iter().rposition(|&value| value == s) {
-                state.active_values.remove(index);
-                true
-            } else {
-                false
-            }
-        });
-        PrintValueRec_inner(s, data);
-        if reentered {
-            with_print_runtime(|state| state.active_values.push(s));
+fn PrintValueRec_reroot(s: SEXP, data: &R_PrintData) {
+    let reentered = with_print_runtime(|state| {
+        if let Some(index) = state.active_values.iter().rposition(|&value| value == s) {
+            state.active_values.remove(index);
+            true
+        } else {
+            false
         }
+    });
+    PrintValueRec_inner(s, data);
+    if reentered {
+        with_print_runtime(|state| state.active_values.push(s));
     }
 }
 
-unsafe fn PrintValueRec_inner(s: SEXP, data: &R_PrintData) {
-    unsafe {
-        if s.is_null() {
-            return;
+fn PrintValueRec_inner(s: SEXP, data: &R_PrintData) {
+    if s.is_null() {
+        return;
+    }
+
+    // GNU showDefault's `print(object, useS4 = FALSE)` lands here.
+    // Printing the data part must not re-enter show() (active_values)
+    // and must use the capture-aware printer. With methods dispatch
+    // on, GNU PrintValueRec prints S4 objects by TYPEOF (deparse
+    // renders `new("Class", ...)` for closures) followed by
+    // printAttributes — so only the dispatch-off case keeps the
+    // stripped data-part shortcut.
+    if IS_S4_OBJECT(s) != 0 && isMethodsDispatchOn() == 0 {
+        print_s4_data_part(s, data);
+        return;
+    }
+
+    let _recursion_guard = match enter_print_value(s) {
+        Some(guard) => guard,
+        None => {
+            std::panic::panic_any(crate::sexp::context::RError {
+                message: "cyclic object encountered while printing".into(),
+            });
         }
+    };
 
-        // GNU showDefault's `print(object, useS4 = FALSE)` lands here.
-        // Printing the data part must not re-enter show() (active_values)
-        // and must use the capture-aware printer. With methods dispatch
-        // on, GNU PrintValueRec prints S4 objects by TYPEOF (deparse
-        // renders `new("Class", ...)` for closures) followed by
-        // printAttributes — so only the dispatch-off case keeps the
-        // stripped data-part shortcut.
-        if IS_S4_OBJECT(s) != 0 && isMethodsDispatchOn() == 0 {
-            print_s4_data_part(s, data);
-            return;
+    if isMethodsDispatchOn() == 0 && TYPEOF(s) == SEXPTYPE(25).0 {
+        crate::mainutils::printutils::console_emit(format_args!("<object>\n"));
+        return;
+    }
+
+    match TYPEOF(s) {
+        t if t == SEXPTYPE::NILSXP => {
+            crate::mainutils::printutils::console_emit(format_args!("NULL\n"));
         }
-
-        let _recursion_guard = match enter_print_value(s) {
-            Some(guard) => guard,
-            None => {
-                std::panic::panic_any(crate::sexp::context::RError {
-                    message: "cyclic object encountered while printing".into(),
-                });
+        t if t == SEXPTYPE::SYMSXP => {
+            let t = crate::mainutils::deparse::deparse1(s, false, SIMPLEDEPARSE);
+            let _t_guard = protect(t);
+            set_current_print_data(data);
+            let line = STRING_ELT(t, 0);
+            if !line.is_null() && line != R_NilValue() {
+                crate::mainutils::printutils::console_emit(format_args!(
+                    "{}\n",
+                    std::str::from_utf8(&char_bytes(line)).unwrap_or("?")
+                ));
             }
-        };
-
-        if isMethodsDispatchOn() == 0 && TYPEOF(s) == SEXPTYPE(25).0 {
-            crate::mainutils::printutils::console_emit(format_args!("<object>\n"));
-            return;
         }
-
-        match TYPEOF(s) {
-            t if t == SEXPTYPE::NILSXP => {
-                crate::mainutils::printutils::console_emit(format_args!("NULL\n"));
+        t if t == SEXPTYPE::SPECIALSXP || t == SEXPTYPE::BUILTINSXP => {
+            PrintSpecial(s, data);
+        }
+        t if t == SEXPTYPE::CHARSXP => {
+            crate::mainutils::printutils::console_emit(format_args!("<CHARSXP: "));
+            if let Some(enc) = crate::mainutils::printutils::encode_string_bytes(
+                s,
+                0,
+                b'"' as c_int,
+                crate::mainutils::printutils::Rprt_adj::none,
+            ) {
+                crate::mainutils::printutils::console_emit(format_args!(
+                    "{}",
+                    std::str::from_utf8(&enc).unwrap_or("")
+                ));
             }
-            t if t == SEXPTYPE::SYMSXP => {
-                let t = crate::mainutils::deparse::deparse1(s, false, SIMPLEDEPARSE);
-                let _t_guard = protect(t);
-                set_current_print_data(data);
-                let line = STRING_ELT(t, 0);
-                if !line.is_null() && line != R_NilValue() {
-                    crate::mainutils::printutils::console_emit(format_args!(
-                        "{}\n",
-                        CStr::from_ptr(CHAR(line)).to_str().unwrap_or("?")
-                    ));
-                }
+            crate::mainutils::printutils::console_emit(format_args!(">\n"));
+            return; // skip attributes for CHARSXP
+        }
+        t if t == SEXPTYPE::EXPRSXP => {
+            PrintExpression(s, data);
+        }
+        t if t == SEXPTYPE::LANGSXP => {
+            PrintLanguage(s, data);
+        }
+        t if t == SEXPTYPE::CLOSXP => {
+            PrintClosure(s, data);
+        }
+        t if t == SEXPTYPE::ENVSXP => {
+            if let Some(env_str) = crate::mainutils::printutils::encode_environment_bytes(s) {
+                crate::mainutils::printutils::console_emit(format_args!(
+                    "{}\n",
+                    std::str::from_utf8(&env_str).unwrap_or("<environment>")
+                ));
+            } else {
+                crate::mainutils::printutils::console_emit(format_args!("<environment>\n"));
             }
-            t if t == SEXPTYPE::SPECIALSXP || t == SEXPTYPE::BUILTINSXP => {
-                PrintSpecial(s, data);
-            }
-            t if t == SEXPTYPE::CHARSXP => {
-                crate::mainutils::printutils::console_emit(format_args!("<CHARSXP: "));
-                let enc = crate::mainutils::printutils::EncodeString(
-                    s,
-                    0,
-                    b'"' as c_int,
-                    crate::mainutils::printutils::Rprt_adj::none,
-                );
-                if !enc.is_null() {
-                    crate::mainutils::printutils::console_emit(format_args!(
-                        "{}",
-                        CStr::from_ptr(enc).to_str().unwrap_or("")
-                    ));
-                }
-                crate::mainutils::printutils::console_emit(format_args!(">\n"));
-                return; // skip attributes for CHARSXP
-            }
-            t if t == SEXPTYPE::EXPRSXP => {
-                PrintExpression(s, data);
-            }
-            t if t == SEXPTYPE::LANGSXP => {
-                PrintLanguage(s, data);
-            }
-            t if t == SEXPTYPE::CLOSXP => {
-                PrintClosure(s, data);
-            }
-            t if t == SEXPTYPE::ENVSXP => {
-                let env_str = crate::mainutils::printutils::EncodeEnvironment(s);
-                if !env_str.is_null() {
-                    crate::mainutils::printutils::console_emit(format_args!(
-                        "{}\n",
-                        CStr::from_ptr(env_str).to_str().unwrap_or("<environment>")
-                    ));
-                } else {
-                    crate::mainutils::printutils::console_emit(format_args!("<environment>\n"));
-                }
-            }
-            t if t == SEXPTYPE::PROMSXP => {
-                crate::mainutils::printutils::console_emit(format_args!("<promise: {:?}>\n", s));
-            }
-            t if t == SEXPTYPE::DOTSXP => {
-                crate::mainutils::printutils::console_emit(format_args!("<...>\n"));
-            }
-            t if t == SEXPTYPE::VECSXP => {
-                PrintGenericVector(s, data);
-                return; // handles attributes
-            }
-            t if t == SEXPTYPE::LISTSXP => {
-                printList(s, data);
-            }
-            t if t == SEXPTYPE::LGLSXP
-                || t == SEXPTYPE::INTSXP
-                || t == SEXPTYPE::REALSXP
-                || t == SEXPTYPE::STRSXP
-                || t == SEXPTYPE::CPLXSXP
-                || t == SEXPTYPE::RAWSXP =>
-            {
-                let dim = getAttrib(s, R_DimSymbol());
-                let _dim_guard = protect(dim);
-                if TYPEOF(dim) == SEXPTYPE::INTSXP {
-                    if LENGTH(dim) == 1 {
-                        let dnames = getAttrib(s, R_DimNamesSymbol());
-                        if dnames != R_NilValue() && VECTOR_ELT(dnames, 0) != R_NilValue() {
-                            let nn = getAttrib(dnames, R_NamesSymbol());
-                            let title = if nn != R_NilValue() && LENGTH(nn) > 0 {
-                                let title_elt = STRING_ELT(nn, 0);
-                                if !title_elt.is_null() && title_elt != R_NilValue() {
-                                    CHAR(title_elt)
-                                } else {
-                                    ptr::null()
-                                }
+        }
+        t if t == SEXPTYPE::PROMSXP => {
+            crate::mainutils::printutils::console_emit(format_args!("<promise: {:?}>\n", s));
+        }
+        t if t == SEXPTYPE::DOTSXP => {
+            crate::mainutils::printutils::console_emit(format_args!("<...>\n"));
+        }
+        t if t == SEXPTYPE::VECSXP => {
+            PrintGenericVector(s, data);
+            return; // handles attributes
+        }
+        t if t == SEXPTYPE::LISTSXP => {
+            printList(s, data);
+        }
+        t if t == SEXPTYPE::LGLSXP
+            || t == SEXPTYPE::INTSXP
+            || t == SEXPTYPE::REALSXP
+            || t == SEXPTYPE::STRSXP
+            || t == SEXPTYPE::CPLXSXP
+            || t == SEXPTYPE::RAWSXP =>
+        {
+            let dim = getAttrib(s, R_DimSymbol());
+            let _dim_guard = protect(dim);
+            if TYPEOF(dim) == SEXPTYPE::INTSXP {
+                if LENGTH(dim) == 1 {
+                    let dnames = getAttrib(s, R_DimNamesSymbol());
+                    if dnames != R_NilValue() && VECTOR_ELT(dnames, 0) != R_NilValue() {
+                        let nn = getAttrib(dnames, R_NamesSymbol());
+                        let title = if nn != R_NilValue() && LENGTH(nn) > 0 {
+                            let title_elt = STRING_ELT(nn, 0);
+                            if !title_elt.is_null() && title_elt != R_NilValue() {
+                                // SAFETY: `title_elt` is a live CHARSXP of the
+                                // rooted dimnames, alive across the print call.
+                                unsafe { CHAR(title_elt) }
                             } else {
                                 ptr::null()
-                            };
-                            crate::mainutils::printvector::printNamedVector(
-                                s,
-                                VECTOR_ELT(dnames, 0),
-                                data.quote,
-                                title,
-                            );
+                            }
                         } else {
-                            crate::mainutils::printvector::printVector(s, 1, data.quote);
-                        }
-                    } else if LENGTH(dim) == 2 {
-                        let mut rl: SEXP = R_NilValue();
-                        let mut cl: SEXP = R_NilValue();
-                        let mut rn: *const c_char = ptr::null();
-                        let mut cn: *const c_char = ptr::null();
-                        GetMatrixDimnames(s, &mut rl, &mut cl, &mut rn, &mut cn);
-                        crate::mainutils::printarray::printMatrix(
-                            s, 0, dim, data.quote, data.right, rl, cl, rn, cn,
-                        );
-                    } else {
-                        let dimnames = GetArrayDimnames(s);
-                        let _dimnames_guard = protect(dimnames);
-                        crate::mainutils::printarray::printArray(
-                            s, dim, data.quote, data.right, dimnames,
-                        );
-                    }
-                } else {
-                    let names = getAttrib(s, R_NamesSymbol());
-                    let _names_guard = protect(names);
-                    if names != R_NilValue() {
+                            ptr::null()
+                        };
                         crate::mainutils::printvector::printNamedVector(
                             s,
-                            names,
+                            VECTOR_ELT(dnames, 0),
                             data.quote,
-                            ptr::null(),
+                            title,
                         );
                     } else {
                         crate::mainutils::printvector::printVector(s, 1, data.quote);
                     }
-                    printAttributes(s, data, false);
-                    return;
-                }
-            }
-            t if t == SEXPTYPE::EXTPTRSXP => {
-                crate::mainutils::printutils::console_emit(format_args!("<pointer: {:?}>", s));
-            }
-            t if t == SEXPTYPE::BCODESXP => {
-                crate::mainutils::printutils::console_emit(format_args!("<bytecode: {:?}>", s));
-            }
-            t if t == SEXPTYPE::WEAKREFSXP => {
-                crate::mainutils::printutils::console_emit(format_args!("<weak reference>\n"));
-            }
-            t if t == SEXPTYPE(25).0 => {
-                // OBJSXP
-                if IS_S4_OBJECT(s) != 0 {
-                    crate::mainutils::printutils::console_emit(format_args!("<S4 Type Object>\n"));
+                } else if LENGTH(dim) == 2 {
+                    print_matrix_dimnamed(s, s, dim, data.quote, data.right);
                 } else {
-                    crate::mainutils::printutils::console_emit(format_args!("<object>\n"));
+                    let dimnames = GetArrayDimnames(s);
+                    let _dimnames_guard = protect(dimnames);
+                    crate::mainutils::printarray::printArray(
+                        s, dim, data.quote, data.right, dimnames,
+                    );
                 }
-            }
-            _ => {
-                crate::mainutils::printutils::console_emit(format_args!(
-                    "<unknown type {}>",
-                    TYPEOF(s)
-                ));
+            } else {
+                let names = getAttrib(s, R_NamesSymbol());
+                let _names_guard = protect(names);
+                if names != R_NilValue() {
+                    crate::mainutils::printvector::printNamedVector(
+                        s,
+                        names,
+                        data.quote,
+                        ptr::null(),
+                    );
+                } else {
+                    crate::mainutils::printvector::printVector(s, 1, data.quote);
+                }
+                printAttributes(s, data, false);
+                return;
             }
         }
-
-        printAttributes(s, data, false);
+        t if t == SEXPTYPE::EXTPTRSXP => {
+            crate::mainutils::printutils::console_emit(format_args!("<pointer: {:?}>", s));
+        }
+        t if t == SEXPTYPE::BCODESXP => {
+            crate::mainutils::printutils::console_emit(format_args!("<bytecode: {:?}>", s));
+        }
+        t if t == SEXPTYPE::WEAKREFSXP => {
+            crate::mainutils::printutils::console_emit(format_args!("<weak reference>\n"));
+        }
+        t if t == SEXPTYPE(25).0 => {
+            // OBJSXP
+            if IS_S4_OBJECT(s) != 0 {
+                crate::mainutils::printutils::console_emit(format_args!("<S4 Type Object>\n"));
+            } else {
+                crate::mainutils::printutils::console_emit(format_args!("<object>\n"));
+            }
+        }
+        _ => {
+            crate::mainutils::printutils::console_emit(format_args!(
+                "<unknown type {}>",
+                TYPEOF(s)
+            ));
+        }
     }
+
+    printAttributes(s, data, false);
 }
 
 // ---------------------------------------------------------------------------
 // PrintValue
 // ---------------------------------------------------------------------------
 
-pub unsafe fn PrintValue(s: SEXP) {
-    unsafe {
-        PrintValueEnv(s, R_GlobalEnv());
-    }
+pub fn PrintValue(s: SEXP) {
+    PrintValueEnv(s, R_GlobalEnv());
 }
 
 // ---------------------------------------------------------------------------
 // PrintValueEnv
 // ---------------------------------------------------------------------------
 
-pub unsafe fn PrintValueEnv(s: SEXP, env: SEXP) {
-    unsafe {
-        if s.is_null() {
-            return;
-        }
+pub fn PrintValueEnv(s: SEXP, env: SEXP) {
+    if s.is_null() {
+        return;
+    }
 
-        validate_print_chain(ATTRIB(s));
-        PrintDefaults();
-        tagbuf_clear();
+    validate_print_chain(ATTRIB(s));
+    PrintDefaults();
+    tagbuf_clear();
 
-        let _s_guard = protect(s);
+    let _s_guard = protect(s);
 
-        let mut data = R_PRINT_INIT.clone();
-        PrintInit(&mut data as *mut R_PrintData as *mut std::ffi::c_void, env);
+    let mut data = R_PRINT_INIT.clone();
+    print_init(&mut data, env);
 
-        if isFunction(s) != 0 {
-            PrintObject(s, &data);
-        } else {
-            PrintDispatch(s, &data);
-        }
+    if isFunction(s) != 0 {
+        PrintObject(s, &data);
+    } else {
+        PrintDispatch(s, &data);
     }
 }
 
@@ -1952,11 +1839,9 @@ pub unsafe fn PrintValueEnv(s: SEXP, env: SEXP) {
 // R_PV
 // ---------------------------------------------------------------------------
 
-pub unsafe fn R_PV(s: SEXP) {
-    unsafe {
-        if !s.is_null() && isObject_fn(s) != 0 {
-            PrintValueEnv(s, R_GlobalEnv());
-        }
+pub fn R_PV(s: SEXP) {
+    if !s.is_null() && isObject_fn(s) != 0 {
+        PrintValueEnv(s, R_GlobalEnv());
     }
 }
 
@@ -1964,278 +1849,283 @@ pub unsafe fn R_PV(s: SEXP) {
 // CustomPrintValue
 // ---------------------------------------------------------------------------
 
-pub unsafe fn CustomPrintValue(s: SEXP, env: SEXP) {
-    unsafe {
-        tagbuf_clear();
+pub fn CustomPrintValue(s: SEXP, env: SEXP) {
+    tagbuf_clear();
 
-        let mut data = R_PRINT_INIT.clone();
-        PrintInit(&mut data as *mut R_PrintData as *mut std::ffi::c_void, env);
-        PrintValueRec_inner(s, &data);
-    }
+    let mut data = R_PRINT_INIT.clone();
+    print_init(&mut data, env);
+    PrintValueRec_inner(s, &data);
 }
 
 // ---------------------------------------------------------------------------
 // do_printdefault
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_printdefault(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        if Rf_isNull(args) != 0 {
-            return ptr::null_mut();
-        }
-
-        let x = CAR(args);
-        let args_rest = CDR(args);
-
-        let mut data = R_PRINT_INIT.clone();
-        PrintInit(&mut data as *mut R_PrintData as *mut std::ffi::c_void, rho);
-
-        // GNU: x = CAR(args); args = CDR(args);
-        // missingArg = LOGICAL(CADR(args)); args = CAR(args);
-        // .Internal(print.default(x, wrapped_args, missings))
-        if args_rest == R_NilValue() || CDR(args_rest) == R_NilValue() {
-            set_current_print_data(&data);
-            tagbuf_clear();
-            emit_print_default(x, &data, true);
-            PrintDefaults();
-            return x;
-        }
-
-        let wrapped_args = CAR(args_rest);
-        let missings_vec = CAR(CDR(args_rest));
-        if missings_vec.is_null() || TYPEOF(missings_vec) != SEXPTYPE::LGLSXP {
-            set_current_print_data(&data);
-            tagbuf_clear();
-            emit_print_default(x, &data, true);
-            PrintDefaults();
-            return x;
-        }
-        let mut missing_arg_ptr = LOGICAL(missings_vec);
-        let mut all_missing: c_int = 1;
-
-        let orig = Rf_cons(R_NilValue(), wrapped_args);
-        let _orig_guard = protect(orig);
-        let mut prev = orig;
-        let mut cur_args = wrapped_args;
-
-        // digits
-        if cur_args != R_NilValue() && Rf_isNull(CAR(cur_args)) == 0 {
-            data.digits = FixupDigits(CAR(cur_args), 2);
-        }
-        if cur_args != R_NilValue() {
-            advancePrintArgs(
-                &mut cur_args,
-                &mut prev,
-                &mut missing_arg_ptr,
-                &mut all_missing,
-            );
-        }
-
-        // quote
-        if cur_args != R_NilValue() {
-            data.quote = asLogical(CAR(cur_args));
-            if data.quote == NA_LOGICAL {
-                data.quote = 1;
-            }
-            advancePrintArgs(
-                &mut cur_args,
-                &mut prev,
-                &mut missing_arg_ptr,
-                &mut all_missing,
-            );
-        }
-
-        // na.print
-        if cur_args != R_NilValue() {
-            let naprint = CAR(cur_args);
-            if Rf_isNull(naprint) == 0 && isString(naprint) != 0 && LENGTH(naprint) >= 1 {
-                let na_str = STRING_ELT(naprint, 0);
-                data.na_string = na_str;
-                data.na_string_noquote = na_str;
-                data.na_width = crate::mainutils::printutils::Rstrlen(data.na_string, 0);
-                data.na_width_noquote = data.na_width;
-            }
-            advancePrintArgs(
-                &mut cur_args,
-                &mut prev,
-                &mut missing_arg_ptr,
-                &mut all_missing,
-            );
-        }
-
-        // gap
-        if cur_args != R_NilValue() {
-            let gap = CAR(cur_args);
-            if Rf_isNull(gap) == 0 {
-                data.gap = asInteger(gap);
-                if data.gap == NA_INTEGER || data.gap < 0 {
-                    crate::sexp::context::r_error("'gap' must be non-negative integer");
-                }
-                if data.gap > 1024 {
-                    crate::sexp::context::r_error("'print.gap' must be less than 1024");
-                }
-            }
-            advancePrintArgs(
-                &mut cur_args,
-                &mut prev,
-                &mut missing_arg_ptr,
-                &mut all_missing,
-            );
-        }
-
-        // right
-        if cur_args != R_NilValue() {
-            let right_val = asLogical(CAR(cur_args));
-            if right_val != NA_LOGICAL {
-                data.right = right_val;
-            }
-            advancePrintArgs(
-                &mut cur_args,
-                &mut prev,
-                &mut missing_arg_ptr,
-                &mut all_missing,
-            );
-        }
-
-        // max
-        if cur_args != R_NilValue() {
-            let max_val = CAR(cur_args);
-            if Rf_isNull(max_val) == 0 {
-                data.max = asInteger(max_val);
-                if data.max == NA_INTEGER || data.max < 0 {
-                    data.max = 99999;
-                } else if data.max == c_int::MAX {
-                    data.max -= 1;
-                }
-            }
-            advancePrintArgs(
-                &mut cur_args,
-                &mut prev,
-                &mut missing_arg_ptr,
-                &mut all_missing,
-            );
-        }
-
-        // width
-        if cur_args != R_NilValue() {
-            let width_val = CAR(cur_args);
-            if Rf_isNull(width_val) == 0 {
-                data.width = FixupWidth(width_val, 2);
-            }
-            advancePrintArgs(
-                &mut cur_args,
-                &mut prev,
-                &mut missing_arg_ptr,
-                &mut all_missing,
-            );
-        }
-
-        // useSource
-        if cur_args != R_NilValue() {
-            let use_source = asLogical(CAR(cur_args));
-            if use_source != NA_LOGICAL {
-                data.useSource = if use_source != 0 { USESOURCE } else { 0 };
-            }
-            advancePrintArgs(
-                &mut cur_args,
-                &mut prev,
-                &mut missing_arg_ptr,
-                &mut all_missing,
-            );
-        }
-
-        let no_params = if all_missing != 0 && cur_args == R_NilValue() {
-            1
-        } else {
-            0
-        };
-        data.callArgs = CDR(orig);
-
-        set_current_print_data(&data);
-
-        tagbuf_clear();
-
-        emit_print_default(x, &data, no_params != 0);
-
-        PrintDefaults();
-        x
+pub fn do_printdefault(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    if Rf_isNull(args) != 0 {
+        return ptr::null_mut();
     }
+
+    let x = CAR(args);
+    let args_rest = CDR(args);
+
+    let mut data = R_PRINT_INIT.clone();
+    print_init(&mut data, rho);
+
+    // GNU: x = CAR(args); args = CDR(args);
+    // missingArg = LOGICAL(CADR(args)); args = CAR(args);
+    // .Internal(print.default(x, wrapped_args, missings))
+    if args_rest == R_NilValue() || CDR(args_rest) == R_NilValue() {
+        set_current_print_data(&data);
+        tagbuf_clear();
+        emit_print_default(x, &data, true);
+        PrintDefaults();
+        return x;
+    }
+
+    let wrapped_args = CAR(args_rest);
+    let missings_vec = CAR(CDR(args_rest));
+    if missings_vec.is_null() || TYPEOF(missings_vec) != SEXPTYPE::LGLSXP {
+        set_current_print_data(&data);
+        tagbuf_clear();
+        emit_print_default(x, &data, true);
+        PrintDefaults();
+        return x;
+    }
+    let mut missing_idx: R_xlen_t = 0;
+    let mut all_missing: c_int = 1;
+
+    let orig = Rf_cons(R_NilValue(), wrapped_args);
+    let _orig_guard = protect(orig);
+    let mut prev = orig;
+    let mut cur_args = wrapped_args;
+
+    // digits
+    if cur_args != R_NilValue() && Rf_isNull(CAR(cur_args)) == 0 {
+        data.digits = FixupDigits(CAR(cur_args), 2);
+    }
+    if cur_args != R_NilValue() {
+        advancePrintArgs(
+            &mut cur_args,
+            &mut prev,
+            missings_vec,
+            &mut missing_idx,
+            &mut all_missing,
+        );
+    }
+
+    // quote
+    if cur_args != R_NilValue() {
+        data.quote = asLogical(CAR(cur_args));
+        if data.quote == NA_LOGICAL {
+            data.quote = 1;
+        }
+        advancePrintArgs(
+            &mut cur_args,
+            &mut prev,
+            missings_vec,
+            &mut missing_idx,
+            &mut all_missing,
+        );
+    }
+
+    // na.print
+    if cur_args != R_NilValue() {
+        let naprint = CAR(cur_args);
+        if Rf_isNull(naprint) == 0 && isString(naprint) != 0 && LENGTH(naprint) >= 1 {
+            let na_str = STRING_ELT(naprint, 0);
+            data.na_string = na_str;
+            data.na_string_noquote = na_str;
+            data.na_width = crate::mainutils::printutils::Rstrlen(data.na_string, 0);
+            data.na_width_noquote = data.na_width;
+        }
+        advancePrintArgs(
+            &mut cur_args,
+            &mut prev,
+            missings_vec,
+            &mut missing_idx,
+            &mut all_missing,
+        );
+    }
+
+    // gap
+    if cur_args != R_NilValue() {
+        let gap = CAR(cur_args);
+        if Rf_isNull(gap) == 0 {
+            data.gap = asInteger(gap);
+            if data.gap == NA_INTEGER || data.gap < 0 {
+                crate::sexp::context::r_error("'gap' must be non-negative integer");
+            }
+            if data.gap > 1024 {
+                crate::sexp::context::r_error("'print.gap' must be less than 1024");
+            }
+        }
+        advancePrintArgs(
+            &mut cur_args,
+            &mut prev,
+            missings_vec,
+            &mut missing_idx,
+            &mut all_missing,
+        );
+    }
+
+    // right
+    if cur_args != R_NilValue() {
+        let right_val = asLogical(CAR(cur_args));
+        if right_val != NA_LOGICAL {
+            data.right = right_val;
+        }
+        advancePrintArgs(
+            &mut cur_args,
+            &mut prev,
+            missings_vec,
+            &mut missing_idx,
+            &mut all_missing,
+        );
+    }
+
+    // max
+    if cur_args != R_NilValue() {
+        let max_val = CAR(cur_args);
+        if Rf_isNull(max_val) == 0 {
+            data.max = asInteger(max_val);
+            if data.max == NA_INTEGER || data.max < 0 {
+                data.max = 99999;
+            } else if data.max == c_int::MAX {
+                data.max -= 1;
+            }
+        }
+        advancePrintArgs(
+            &mut cur_args,
+            &mut prev,
+            missings_vec,
+            &mut missing_idx,
+            &mut all_missing,
+        );
+    }
+
+    // width
+    if cur_args != R_NilValue() {
+        let width_val = CAR(cur_args);
+        if Rf_isNull(width_val) == 0 {
+            data.width = FixupWidth(width_val, 2);
+        }
+        advancePrintArgs(
+            &mut cur_args,
+            &mut prev,
+            missings_vec,
+            &mut missing_idx,
+            &mut all_missing,
+        );
+    }
+
+    // useSource
+    if cur_args != R_NilValue() {
+        let use_source = asLogical(CAR(cur_args));
+        if use_source != NA_LOGICAL {
+            data.useSource = if use_source != 0 { USESOURCE } else { 0 };
+        }
+        advancePrintArgs(
+            &mut cur_args,
+            &mut prev,
+            missings_vec,
+            &mut missing_idx,
+            &mut all_missing,
+        );
+    }
+
+    let no_params = if all_missing != 0 && cur_args == R_NilValue() {
+        1
+    } else {
+        0
+    };
+    data.callArgs = CDR(orig);
+
+    set_current_print_data(&data);
+
+    tagbuf_clear();
+
+    emit_print_default(x, &data, no_params != 0);
+
+    PrintDefaults();
+    x
 }
 
 // ---------------------------------------------------------------------------
 // do_prmatrix
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_prmatrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_prmatrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let count = LENGTH(args);
+    if count != 6 {
+        crate::mainutils::errors::errorcall_str(
+            crate::mainutils::errors::condition_caller_call(),
+            &format!("{count} arguments passed to .Internal(prmatrix) which requires 6"),
+        );
+    }
+    let mut a = args;
+    let x = CAR(a);
+    a = CDR(a);
+    let rowlab = CAR(a);
+    a = CDR(a);
+    let collab = CAR(a);
+    a = CDR(a);
+
+    let quote = asInteger(CAR(a));
+    a = CDR(a);
+    let right = asInteger(CAR(a));
+    a = CDR(a);
+    let naprint = CAR(a);
+
+    let caller = crate::mainutils::errors::condition_caller_call();
+    let dim = getAttrib(x, R_DimSymbol());
+    if dim.is_null()
+        || TYPEOF(dim) != SEXPTYPE::INTSXP
+        || LENGTH(dim) != 2
+        || INTEGER_ELT(dim, 0) < 0
+        || INTEGER_ELT(dim, 1) < 0
+    {
+        crate::mainutils::errors::errorcall_str(caller, "invalid matrix argument");
+    }
+    if Rf_isNull(naprint) == 0 && (isString(naprint) == 0 || LENGTH(naprint) < 1) {
+        crate::mainutils::errors::errorcall_str(caller, "invalid 'na.print' specification");
+    }
+    for (labels, extent, axis) in [
+        (rowlab, INTEGER_ELT(dim, 0), "row"),
+        (collab, INTEGER_ELT(dim, 1), "column"),
+    ] {
+        if Rf_isNull(labels) == 0 && isString(labels) == 0 {
+            crate::mainutils::errors::errorcall_str(caller, &format!("invalid {axis} labels"));
+        }
+        if LENGTH(labels) != 0 && LENGTH(labels) < extent {
+            crate::mainutils::errors::errorcall_str(caller, &format!("too few {axis} labels"));
+        }
+    }
+
+    with_current_print_data_mut(|data| data.right = right);
+
+    if Rf_isNull(naprint) == 0 && isString(naprint) != 0 && LENGTH(naprint) >= 1 {
+        let na_str = STRING_ELT(naprint, 0);
+        with_current_print_data_mut(|ds| {
+            ds.na_string = na_str;
+            ds.na_string_noquote = na_str;
+            ds.na_width = crate::mainutils::printutils::Rstrlen(ds.na_string, 0);
+            ds.na_width_noquote = ds.na_width;
+        });
+    }
+
+    let mut rowlab_use = rowlab;
+    let mut collab_use = collab;
+    if LENGTH(rowlab) == 0 {
+        rowlab_use = R_NilValue();
+    }
+    if LENGTH(collab) == 0 {
+        collab_use = R_NilValue();
+    }
+
+    let right_val = with_current_print_data_mut(|data| data.right);
+    // SAFETY: null row/column titles are admitted by printMatrix.
     unsafe {
-        let count = LENGTH(args);
-        if count != 6 {
-            crate::mainutils::errors::errorcall_str(
-                crate::mainutils::errors::condition_caller_call(),
-                &format!("{count} arguments passed to .Internal(prmatrix) which requires 6"),
-            );
-        }
-        let mut a = args;
-        let x = CAR(a);
-        a = CDR(a);
-        let rowlab = CAR(a);
-        a = CDR(a);
-        let collab = CAR(a);
-        a = CDR(a);
-
-        let quote = asInteger(CAR(a));
-        a = CDR(a);
-        let right = asInteger(CAR(a));
-        a = CDR(a);
-        let naprint = CAR(a);
-
-        let caller = crate::mainutils::errors::condition_caller_call();
-        let dim = getAttrib(x, R_DimSymbol());
-        if dim.is_null()
-            || TYPEOF(dim) != SEXPTYPE::INTSXP
-            || LENGTH(dim) != 2
-            || INTEGER_ELT(dim, 0) < 0
-            || INTEGER_ELT(dim, 1) < 0
-        {
-            crate::mainutils::errors::errorcall_str(caller, "invalid matrix argument");
-        }
-        if Rf_isNull(naprint) == 0 && (isString(naprint) == 0 || LENGTH(naprint) < 1) {
-            crate::mainutils::errors::errorcall_str(caller, "invalid 'na.print' specification");
-        }
-        for (labels, extent, axis) in [
-            (rowlab, INTEGER_ELT(dim, 0), "row"),
-            (collab, INTEGER_ELT(dim, 1), "column"),
-        ] {
-            if Rf_isNull(labels) == 0 && isString(labels) == 0 {
-                crate::mainutils::errors::errorcall_str(caller, &format!("invalid {axis} labels"));
-            }
-            if LENGTH(labels) != 0 && LENGTH(labels) < extent {
-                crate::mainutils::errors::errorcall_str(caller, &format!("too few {axis} labels"));
-            }
-        }
-
-        with_current_print_data_mut(|data| data.right = right);
-
-        if Rf_isNull(naprint) == 0 && isString(naprint) != 0 && LENGTH(naprint) >= 1 {
-            let na_str = STRING_ELT(naprint, 0);
-            with_current_print_data_mut(|ds| {
-                ds.na_string = na_str;
-                ds.na_string_noquote = na_str;
-                ds.na_width = crate::mainutils::printutils::Rstrlen(ds.na_string, 0);
-                ds.na_width_noquote = ds.na_width;
-            });
-        }
-
-        let mut rowlab_use = rowlab;
-        let mut collab_use = collab;
-        if LENGTH(rowlab) == 0 {
-            rowlab_use = R_NilValue();
-        }
-        if LENGTH(collab) == 0 {
-            collab_use = R_NilValue();
-        }
-
-        let right_val = with_current_print_data_mut(|data| data.right);
         crate::mainutils::printarray::printMatrix(
             x,
             0,
@@ -2247,24 +2137,22 @@ pub unsafe fn do_prmatrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
             ptr::null(),
             ptr::null(),
         );
-        PrintDefaults();
-        crate::sexp::globals::set_R_Visible(0);
-        x
     }
+    PrintDefaults();
+    crate::sexp::globals::set_R_Visible(0);
+    x
 }
 
 // ---------------------------------------------------------------------------
 // do_unclass
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_unclass(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if !x.is_null() {
-            crate::eval::attrib_core::setAttrib(x, R_ClassSymbol(), R_NilValue());
-        }
-        x
+pub fn do_unclass(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+    let x = CAR(args);
+    if !x.is_null() {
+        crate::sexp::attrib_core::setAttrib(x, R_ClassSymbol(), R_NilValue());
     }
+    x
 }
 
 // ---------------------------------------------------------------------------
@@ -2284,16 +2172,14 @@ pub fn isEnvironment(x: SEXP) -> c_int {
 // inherits (public, #[unsafe(no_mangle)])
 // ---------------------------------------------------------------------------
 
-pub unsafe fn inherits(x: SEXP, class: SEXP, _pkg: SEXP) -> c_int {
-    unsafe {
-        if class.is_null() || TYPEOF(class) != SEXPTYPE::STRSXP || LENGTH(class) < 1 {
-            return 0;
-        }
-        let class_name = CHAR(STRING_ELT(class, 0));
-        if class_name.is_null() {
-            return 0;
-        }
-        inherits_cstr(x, class_name)
+pub fn inherits(x: SEXP, class: SEXP, _pkg: SEXP) -> c_int {
+    if class.is_null() || TYPEOF(class) != SEXPTYPE::STRSXP || LENGTH(class) < 1 {
+        return 0;
+    }
+    let class_name = char_bytes(STRING_ELT(class, 0));
+    match std::str::from_utf8(&class_name) {
+        Ok(class_name) => inherits_cstr(x, class_name),
+        Err(_) => 0,
     }
 }
 
@@ -2301,12 +2187,12 @@ pub unsafe fn inherits(x: SEXP, class: SEXP, _pkg: SEXP) -> c_int {
 // Module-private helpers
 // ---------------------------------------------------------------------------
 
-unsafe fn GetOptionDigits() -> c_int {
-    unsafe { crate::mainutils::options::GetOptionDigits() }
+fn GetOptionDigits() -> c_int {
+    crate::mainutils::options::GetOptionDigits()
 }
 
-unsafe fn GetOption1(sym: SEXP) -> SEXP {
-    unsafe { crate::mainutils::options::GetOption1(sym) }
+fn GetOption1(sym: SEXP) -> SEXP {
+    crate::mainutils::options::GetOption1(sym)
 }
 
 fn do_names(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
@@ -2689,17 +2575,16 @@ mod tests {
     #[test]
     fn test_is_valid_name() {
         unsafe {
-            assert!(isValidName(b"foo\0".as_ptr() as *const c_char));
-            assert!(isValidName(b".foo\0".as_ptr() as *const c_char));
-            assert!(isValidName(b"foo_bar\0".as_ptr() as *const c_char));
-            assert!(isValidName(b".\0".as_ptr() as *const c_char));
-            assert!(isValidName(b"...\0".as_ptr() as *const c_char));
-            assert!(!isValidName(b"123\0".as_ptr() as *const c_char));
-            assert!(!isValidName(b".1\0".as_ptr() as *const c_char));
-            assert!(!isValidName(b"if\0".as_ptr() as *const c_char));
-            assert!(!isValidName(b"TRUE\0".as_ptr() as *const c_char));
-            assert!(!isValidName(b"\0".as_ptr() as *const c_char));
-            assert!(!isValidName(ptr::null()));
+            assert!(isValidName(b"foo"));
+            assert!(isValidName(b".foo"));
+            assert!(isValidName(b"foo_bar"));
+            assert!(isValidName(b"."));
+            assert!(isValidName(b"..."));
+            assert!(!isValidName(b"123"));
+            assert!(!isValidName(b".1"));
+            assert!(!isValidName(b"if"));
+            assert!(!isValidName(b"TRUE"));
+            assert!(!isValidName(b""));
         }
     }
 

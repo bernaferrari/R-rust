@@ -85,15 +85,13 @@ pub fn do_subset3(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 /// `options(warnPartialMatchDollar = TRUE)`.
 #[inline(always)]
 fn warn_partial_match_dollar_condition(call: SEXP, input: SEXP, target: SEXP) {
-    unsafe {
-        if !crate::mainutils::options::logical_option_enabled(c"warnPartialMatchDollar") {
-            return;
-        }
-        let cond =
-            crate::mainutils::errors::R_makePartialMatchWarningCondition(call, input, target);
-        let _cond_guard = protect(cond);
-        crate::mainutils::errors::R_signalWarningCondition(cond);
+    if !crate::mainutils::options::logical_option_enabled(c"warnPartialMatchDollar") {
+        return;
     }
+    let cond =
+        crate::mainutils::errors::R_makePartialMatchWarningCondition(call, input, target);
+    let _cond_guard = protect(cond);
+    crate::mainutils::errors::R_signalWarningCondition(cond);
 }
 
 /// Default method for `$`. Performs partial matching on pair-list and

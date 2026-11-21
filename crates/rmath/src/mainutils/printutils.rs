@@ -176,6 +176,89 @@ fn checked<T>(result: crate::sexp::object::SexpResult<T>) -> T {
     result.unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
 }
 
+/// Raw contents of a CHARSXP, as GNU `CHAR(x)` exposes them (untranslated,
+/// `NA_STRING` reads as `NA`). Null or non-CHARSXP input reads as empty.
+pub(crate) fn charsxp_bytes(x: SEXP) -> Vec<u8> {
+    if x.is_null() {
+        return Vec::new();
+    }
+    wrapped(x).header().char_bytes().unwrap_or_default()
+}
+
+/// Copy a NUL-terminated encoder result out of its session buffer.
+///
+/// # Safety
+/// `p` must be null or point to a live NUL-terminated string.
+unsafe fn encoded_owned(p: *const c_char) -> Option<Vec<u8>> {
+    if p.is_null() {
+        return None;
+    }
+    // SAFETY: caller guarantees `p` is a live NUL-terminated string.
+    Some(unsafe { CStr::from_ptr(p) }.to_bytes().to_vec())
+}
+
+/// Owned `EncodeLogical` result.
+pub(crate) fn encode_logical_bytes(x: c_int, w: c_int) -> Option<Vec<u8>> {
+    // SAFETY: EncodeLogical returns a static or session-buffer C string that
+    // is copied before any further encoder call can reuse the buffer.
+    unsafe { encoded_owned(EncodeLogical(x, w)) }
+}
+
+/// Owned `EncodeInteger` result.
+pub(crate) fn encode_integer_bytes(x: c_int, w: c_int) -> Option<Vec<u8>> {
+    // SAFETY: as for `encode_logical_bytes`.
+    unsafe { encoded_owned(EncodeInteger(x, w)) }
+}
+
+/// Owned `EncodeReal0` result.
+pub(crate) fn encode_real0_bytes(
+    x: f64,
+    w: c_int,
+    d: c_int,
+    e: c_int,
+    dec: &CStr,
+) -> Option<Vec<u8>> {
+    // SAFETY: `dec` is a live C string; the result is copied immediately.
+    unsafe { encoded_owned(EncodeReal0(x, w, d, e, dec.as_ptr())) }
+}
+
+/// Owned `EncodeComplex` result.
+pub(crate) fn encode_complex_bytes(
+    x: Rcomplex,
+    wr: c_int,
+    dr: c_int,
+    er: c_int,
+    wi: c_int,
+    di: c_int,
+    ei: c_int,
+    dec: &CStr,
+) -> Option<Vec<u8>> {
+    // SAFETY: `dec` is a live C string; the result is copied immediately.
+    unsafe { encoded_owned(EncodeComplex(x, wr, dr, er, wi, di, ei, dec.as_ptr())) }
+}
+
+/// Owned `EncodeEnvironment` result.
+pub(crate) fn encode_environment_bytes(x: SEXP) -> Option<Vec<u8>> {
+    // SAFETY: the session buffer result is copied immediately.
+    unsafe { encoded_owned(EncodeEnvironment(x)) }
+}
+
+/// Owned `EncodeString` result.
+pub(crate) fn encode_string_bytes(
+    s: SEXP,
+    w: c_int,
+    quote: c_int,
+    justify: Rprt_adj,
+) -> Option<Vec<u8>> {
+    // SAFETY: the session buffer result is copied immediately.
+    unsafe { encoded_owned(EncodeString(s, w, quote, justify)) }
+}
+
+/// Owned `EncodeChar` result.
+pub(crate) fn encode_char_bytes(x: SEXP) -> Option<Vec<u8>> {
+    encode_string_bytes(x, 0, 0, Rprt_adj::left)
+}
+
 fn na_string_ptr_from_print(rp: RPrint, noquote: bool) -> *const c_char {
     {
         let na = if noquote {
@@ -761,12 +844,20 @@ pub unsafe fn EncodeRaw(x: Rbyte, prefix: *const c_char) -> *const c_char {
 /// This counts the number of columns needed when the string is printed
 /// with escape sequences (e.g., `\n` counts as 2 columns).
 pub unsafe fn Rstrwid(str: *const c_char, slen: c_int, ienc: c_int, quote: c_int) -> c_int {
-    unsafe {
-        if str.is_null() || slen <= 0 {
+    if str.is_null() || slen <= 0 {
+        return 0;
+    }
+    // SAFETY: the caller guarantees `str` addresses `slen` readable bytes.
+    let bytes = unsafe { std::slice::from_raw_parts(str as *const u8, slen as usize) };
+    rstrwid_bytes(bytes, ienc, quote)
+}
+
+/// Slice form of [`Rstrwid`]: escaped display width of `bytes`.
+pub(crate) fn rstrwid_bytes(bytes: &[u8], ienc: c_int, quote: c_int) -> c_int {
+    {
+        if bytes.is_empty() {
             return 0;
         }
-
-        let bytes = std::slice::from_raw_parts(str as *const u8, slen as usize);
         let quote_char = quote as u8;
 
         // GNU CE_BYTES is distinct from CE_LATIN1.
@@ -941,36 +1032,28 @@ pub unsafe fn StringFromReal(x: f64, _warn: *mut c_int) -> SEXP {
 /// Compute the escaped display width of a CHARSXP.
 ///
 /// Delegates to `Rstrwid` with the CHARSXP's character data and length.
-pub unsafe fn Rstrlen(s: SEXP, quote: c_int) -> c_int {
-    unsafe {
-        if s.is_null() {
-            return 0;
-        }
-        let p = CHAR(s);
-        if p.is_null() {
-            return 0;
-        }
-        if !crate::mainutils::platform::locale_is_utf8() {
-            // In a single-byte locale the display width matches what
-            // EncodeString measures: escaped width for unknown/latin1
-            // text, raw byte count for UTF-8-marked elements.
-            let len = XLENGTH(s) as usize;
-            let bytes = std::slice::from_raw_parts(p as *const u8, len);
-            let ce = crate::sexp::accessors::getCharCE(s);
-            if ce == CE_UTF8 {
-                return len as c_int;
-            }
-            return c_int::try_from(
-                string_buffer::body_len(bytes, ce, quote as u8, false)
-                    .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string())),
-            )
-            .unwrap_or_else(|_| {
-                crate::sexp::context::r_error("encoded string width exceeds integer range")
-            });
-        }
-        let len = LENGTH(s);
-        Rstrwid(p, len, crate::sexp::accessors::getCharCE(s), quote)
+pub fn Rstrlen(s: SEXP, quote: c_int) -> c_int {
+    if s.is_null() {
+        return 0;
     }
+    let bytes = charsxp_bytes(s);
+    if !crate::mainutils::platform::locale_is_utf8() {
+        // In a single-byte locale the display width matches what
+        // EncodeString measures: escaped width for unknown/latin1
+        // text, raw byte count for UTF-8-marked elements.
+        let ce = crate::sexp::accessors::getCharCE(s);
+        if ce == CE_UTF8 {
+            return bytes.len() as c_int;
+        }
+        return c_int::try_from(
+            string_buffer::body_len(&bytes, ce, quote as u8, false)
+                .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string())),
+        )
+        .unwrap_or_else(|_| {
+            crate::sexp::context::r_error("encoded string width exceeds integer range")
+        });
+    }
+    rstrwid_bytes(&bytes, crate::sexp::accessors::getCharCE(s), quote)
 }
 
 /// Print-adjustment enum, matching R's Rprt_adj.

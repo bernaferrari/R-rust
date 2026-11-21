@@ -63,12 +63,12 @@ pub fn do_commandArgs(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R's `getOption(x)` — delegate to the canonical options implementation.
 pub fn do_getOption(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe { crate::mainutils::options::do_getOption(call, op, args, rho) }
+    crate::mainutils::options::do_getOption(call, op, args, rho)
 }
 
 /// R's `options(...)` — delegate to the canonical options implementation.
 pub fn do_options(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe { crate::mainutils::options::do_options(call, op, args, rho) }
+    crate::mainutils::options::do_options(call, op, args, rho)
 }
 
 /// R's `interactive()` — returns FALSE (not in interactive session).

@@ -122,7 +122,7 @@ pub(crate) fn needs_scientific(v: f64) -> bool {
     if !v.is_finite() || v == 0.0 {
         return false;
     }
-    let scipen = unsafe { crate::mainutils::options::GetOptionScipen() };
+    let scipen = crate::mainutils::options::GetOptionScipen();
     let (w_f, _, w_e) = real_format_widths(v);
     // Fixpoint whenever it needs no more space than E + scipen.
     w_f > w_e + scipen

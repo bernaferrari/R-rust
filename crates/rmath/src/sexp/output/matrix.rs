@@ -278,7 +278,7 @@ pub(crate) fn print_max_cells() -> usize {
         }
         cur = CDR(cur);
     }
-    unsafe { crate::mainutils::options::GetOptionMaxPrint() }.max(0) as usize
+    crate::mainutils::options::GetOptionMaxPrint().max(0) as usize
 }
 
 /// GNU `print.default(..., quote=)` default TRUE; NA becomes TRUE.

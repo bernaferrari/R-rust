@@ -9,7 +9,7 @@ use super::*;
 /// `noParams = 0` so S4 objects print via `PrintValueRec` instead of
 /// re-entering `show()`.
 pub fn do_print_default(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe { crate::mainutils::print::do_printdefault(call, op, args, rho) }
+    crate::mainutils::print::do_printdefault(call, op, args, rho)
 }
 
 /// GNU `print.Date(x, max = NULL, ...)`.

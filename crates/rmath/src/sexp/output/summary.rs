@@ -3,7 +3,7 @@
 use super::*;
 
 pub(crate) fn summary_default_digits() -> i32 {
-    unsafe { 3.max(crate::mainutils::options::GetOptionDigits() - 3) }
+    3.max(crate::mainutils::options::GetOptionDigits() - 3)
 }
 
 pub(crate) fn with_summary_default_digits<T>(f: impl FnOnce() -> T) -> T {

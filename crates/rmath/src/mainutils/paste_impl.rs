@@ -136,9 +136,7 @@ unsafe fn translateCharUTF8(s: SEXP) -> *const c_char {
 }
 
 unsafe fn PrintDefaults() {
-    unsafe {
-        crate::mainutils::print::PrintDefaults();
-    }
+    crate::mainutils::print::PrintDefaults();
 }
 
 unsafe fn EncodeLogical(x: c_int, w: c_int) -> *const c_char {

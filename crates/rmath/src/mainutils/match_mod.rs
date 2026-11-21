@@ -257,15 +257,13 @@ fn length(x: SEXP) -> c_int {
 /// condition when `options(warnPartialMatchArgs = TRUE)`.
 #[inline(always)]
 pub(crate) unsafe fn R_warn_partial_match_args(call: SEXP, btag: SEXP, ftag: SEXP) {
-    unsafe {
-        if !crate::mainutils::options::logical_option_enabled(c"warnPartialMatchArgs") {
-            return;
-        }
-        let cond =
-            crate::mainutils::errors::R_makePartialArgumentMatchWarningCondition(call, btag, ftag);
-        let _cond_guard = protect(cond);
-        crate::mainutils::errors::R_signalWarningCondition(cond);
+    if !crate::mainutils::options::logical_option_enabled(c"warnPartialMatchArgs") {
+        return;
     }
+    let cond =
+        crate::mainutils::errors::R_makePartialArgumentMatchWarningCondition(call, btag, ftag);
+    let _cond_guard = protect(cond);
+    crate::mainutils::errors::R_signalWarningCondition(cond);
 }
 
 /// Seql — check if two CHARSXP are string-equal.

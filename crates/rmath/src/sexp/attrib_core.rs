@@ -1412,7 +1412,7 @@ fn tsp_parameters(
         // SAFETY: the adapter pins the original owner and owns the option
         // before scalar dispatch; no payload loan crosses that callback.
         access
-            .with_native(|owner| unsafe {
+            .with_native(|owner| {
                 let option =
                     crate::mainutils::options::GetOption1(super::symbol::install_str("ts.eps"));
                 let option = owner.sexp(option)?.into_owned()?;

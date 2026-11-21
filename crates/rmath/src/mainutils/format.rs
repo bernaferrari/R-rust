@@ -414,16 +414,14 @@ pub unsafe fn formatRawS(_x: SEXP, _n: R_xlen_t, fieldwidth: *mut c_int) {
 
 /// Display width of one character element, including quoting and NA widths.
 pub(crate) unsafe fn string_element_width(element: SEXP, quote: c_int) -> c_int {
-    unsafe {
-        if element.is_null() || element == crate::sexp::globals::R_NaString() {
-            if quote != 0 {
-                current_R_print().na_width
-            } else {
-                current_R_print().na_width_noquote
-            }
+    if element.is_null() || element == crate::sexp::globals::R_NaString() {
+        if quote != 0 {
+            current_R_print().na_width
         } else {
-            Rstrlen(element, quote) + if quote != 0 { 2 } else { 0 }
+            current_R_print().na_width_noquote
         }
+    } else {
+        Rstrlen(element, quote) + if quote != 0 { 2 } else { 0 }
     }
 }
 
@@ -455,30 +453,36 @@ pub unsafe fn formatStringS(x: SEXP, n: R_xlen_t, fieldwidth: *mut c_int, quote:
 // ---------------------------------------------------------------------------
 
 pub unsafe fn formatLogical(x: *const c_int, n: R_xlen_t, fieldwidth: *mut c_int) {
-    unsafe {
-        if x.is_null() || n <= 0 {
-            if !fieldwidth.is_null() {
-                *fieldwidth = 1;
-            }
-            return;
+    if x.is_null() || n <= 0 {
+        if !fieldwidth.is_null() {
+            // SAFETY: the caller guarantees a non-null `fieldwidth` is writable.
+            unsafe { *fieldwidth = 1 };
         }
-        *fieldwidth = 1;
-        for i in 0..n {
-            let xi = *x.add(i as usize);
-            if xi == NA_LOGICAL {
-                if *fieldwidth < current_R_print().na_width {
-                    *fieldwidth = current_R_print().na_width;
-                }
-            } else if xi != 0 && *fieldwidth < 4 {
-                // TRUE
-                *fieldwidth = 4;
-            } else if xi == 0 && *fieldwidth < 5 {
-                // FALSE
-                *fieldwidth = 5;
-                break;
+        return;
+    }
+    // SAFETY: the caller guarantees `x` addresses `n` logicals and that
+    // `fieldwidth` is writable.
+    unsafe { *fieldwidth = logical_field_width(std::slice::from_raw_parts(x, n as usize)) };
+}
+
+/// Slice form of [`formatLogical`]: field width of the logical values `x`.
+pub(crate) fn logical_field_width(x: &[c_int]) -> c_int {
+    let mut fieldwidth = 1;
+    for &xi in x {
+        if xi == NA_LOGICAL {
+            if fieldwidth < current_R_print().na_width {
+                fieldwidth = current_R_print().na_width;
             }
+        } else if xi != 0 && fieldwidth < 4 {
+            // TRUE
+            fieldwidth = 4;
+        } else if xi == 0 && fieldwidth < 5 {
+            // FALSE
+            fieldwidth = 5;
+            break;
         }
     }
+    fieldwidth
 }
 
 // ---------------------------------------------------------------------------
@@ -1300,72 +1304,81 @@ pub unsafe fn formatComplex(
     ei: *mut c_int,
     nsmall: c_int,
 ) {
-    unsafe {
-        if x.is_null() || n <= 0 {
-            if !wr.is_null() {
-                *wr = 0;
-            }
-            if !dr.is_null() {
-                *dr = 0;
-            }
-            if !er.is_null() {
-                *er = 0;
-            }
-            if !wi.is_null() {
-                *wi = 0;
-            }
-            if !di.is_null() {
-                *di = 0;
-            }
-            if !ei.is_null() {
-                *ei = 0;
-            }
-            return;
-        }
-        let n_usize = n as usize;
-        if n_usize == 0 {
-            *wr = 0;
-            *dr = 0;
-            *er = 0;
-            *wi = 0;
-            *di = 0;
-            *ei = 0;
-            return;
-        }
-
-        // Use R_alloc for transient memory (matches C behavior).
-        // R_alloc args are (element_size, count).
-        use crate::sexp::memory_ext::R_alloc;
-
-        let re_ptr = R_alloc(std::mem::size_of::<c_double>(), n_usize) as *mut c_double;
-        let im_ptr = R_alloc(std::mem::size_of::<c_double>(), n_usize) as *mut c_double;
-
-        let mut i1: usize = 0;
-        let mut naflag = false;
-
-        for i in 0..n_usize {
-            let cx = *x.add(i);
-            // Arithmetic may quiet the NA NaN while preserving its payload.
-            // GNU ISNA admits both forms; ordinary NaN remains non-missing.
-            let is_na = crate::sexp::ffi::is_na_real(cx.r) || crate::sexp::ffi::is_na_real(cx.i);
-            if is_na {
-                naflag = true;
-            } else {
-                *re_ptr.add(i1) = cx.r;
-                *im_ptr.add(i1) = cx.i.abs(); // sign is handled when printing
-                i1 += 1;
-            }
-        }
-
-        formatReal(re_ptr, i1 as R_xlen_t, wr, dr, er, nsmall);
-        formatReal(im_ptr, i1 as R_xlen_t, wi, di, ei, nsmall);
-
-        // Ensure space for NA in the combined width.
-        let na_width = current_R_print().na_width;
-        if naflag && *wr + *wi + 2 < na_width {
-            *wr += na_width - (*wr + *wi + 2);
+    let field = if x.is_null() || n <= 0 {
+        ComplexField::default()
+    } else {
+        // SAFETY: the caller guarantees `x` addresses `n` complex values.
+        complex_field(unsafe { std::slice::from_raw_parts(x, n as usize) }, nsmall)
+    };
+    for (out, value) in [
+        (wr, field.wr),
+        (dr, field.dr),
+        (er, field.er),
+        (wi, field.wi),
+        (di, field.di),
+        (ei, field.ei),
+    ] {
+        if !out.is_null() {
+            // SAFETY: the caller guarantees non-null outputs are writable.
+            unsafe { *out = value };
         }
     }
+}
+
+/// Real/imaginary field parameters computed by [`complex_field`].
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct ComplexField {
+    pub wr: c_int,
+    pub dr: c_int,
+    pub er: c_int,
+    pub wi: c_int,
+    pub di: c_int,
+    pub ei: c_int,
+}
+
+/// Slice form of [`formatComplex`]: Re and Im parts are formatted
+/// independently, NA entries are skipped, and the combined width admits NA.
+pub(crate) fn complex_field(x: &[Rcomplex], nsmall: c_int) -> ComplexField {
+    if x.is_empty() {
+        return ComplexField::default();
+    }
+    let mut re = Vec::with_capacity(x.len());
+    let mut im = Vec::with_capacity(x.len());
+    let mut naflag = false;
+    for cx in x {
+        // Arithmetic may quiet the NA NaN while preserving its payload.
+        // GNU ISNA admits both forms; ordinary NaN remains non-missing.
+        let is_na = crate::sexp::ffi::is_na_real(cx.r) || crate::sexp::ffi::is_na_real(cx.i);
+        if is_na {
+            naflag = true;
+        } else {
+            re.push(cx.r);
+            im.push(cx.i.abs()); // sign is handled when printing
+        }
+    }
+    let part = |values: &[c_double]| {
+        if values.is_empty() {
+            RealField { w: 0, d: 0, e: 0 }
+        } else {
+            real_field(values.len() as R_xlen_t, nsmall, |i| values[i as usize])
+        }
+    };
+    let r = part(&re);
+    let i = part(&im);
+    let mut field = ComplexField {
+        wr: r.w,
+        dr: r.d,
+        er: r.e,
+        wi: i.w,
+        di: i.d,
+        ei: i.e,
+    };
+    // Ensure space for NA in the combined width.
+    let na_width = current_R_print().na_width;
+    if naflag && field.wr + field.wi + 2 < na_width {
+        field.wr += na_width - (field.wr + field.wi + 2);
+    }
+    field
 }
 
 // ---------------------------------------------------------------------------

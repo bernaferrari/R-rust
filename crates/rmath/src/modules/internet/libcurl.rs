@@ -1496,7 +1496,7 @@ pub(crate) fn in_newCurlUrl(
 
 /// GetOption1 - get a single option value by symbol name
 fn GetOption1(tag: SEXP) -> SEXP {
-    unsafe { crate::main::options::GetOption1(tag) }
+    crate::main::options::GetOption1(tag)
 }
 
 /// install - intern a symbol name
