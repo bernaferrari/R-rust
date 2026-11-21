@@ -27,37 +27,37 @@ use std::os::raw::c_int;
 
 use crate::mainutils::engine as ge;
 use crate::mainutils::graphics_ffi::rmath_grid_release_pattern;
-use crate::sexp::accessors::{INTEGER, Rf_isNull};
-use crate::sexp::constructors::Rf_ScalarLogical;
+use crate::sexp::accessors::Rf_isNull;
 use crate::sexp::ffi::SEXP;
 use crate::sexp::globals::R_NilValue;
-use crate::sexp::protect::protect;
 
 use super::gpar::{gcontextFromgpar, resolveGPar};
 use super::grid::getDevice;
 use super::state::{gridStateElement, setGridStateElement};
 use super::types::*;
+use super::{duplicate, inherits, integer_elt, protect, scalar_logical};
 
 struct GridPathGuard {
     dd: pGEDevDesc,
 }
 
 impl GridPathGuard {
+    // SAFETY: caller must hold a live device pointer; `GEMode` is an engine
+    // mode-switch bridge whose raw device contract is discharged by callers
+    // passing the `getDevice` result.
     unsafe fn enter(dd: pGEDevDesc) -> Self {
-        unsafe {
-            ge::GEMode(1, dd);
-            setGridStateElement(dd, GSS_RESOLVINGPATH, Rf_ScalarLogical(1));
-        }
+        unsafe { ge::GEMode(1, dd) };
+        setGridStateElement(dd, GSS_RESOLVINGPATH, scalar_logical(1));
         Self { dd }
     }
 }
 
 impl Drop for GridPathGuard {
     fn drop(&mut self) {
-        unsafe {
-            setGridStateElement(self.dd, GSS_RESOLVINGPATH, Rf_ScalarLogical(0));
-            ge::GEMode(0, self.dd);
-        }
+        setGridStateElement(self.dd, GSS_RESOLVINGPATH, scalar_logical(0));
+        // SAFETY: `dd` was a live device when the guard was entered; engine
+        // mode teardown mirrors `enter`.
+        unsafe { ge::GEMode(0, self.dd) };
     }
 }
 
@@ -66,47 +66,13 @@ fn getListElement(list: SEXP, str: *const std::os::raw::c_char) -> SEXP {
     super::util::getListElement(list, str)
 }
 
-/// Rf_inherits — check if object inherits from a class
-unsafe fn Rf_inherits(x: SEXP, what: *const std::os::raw::c_char) -> c_int {
-    if x.is_null() || what.is_null() {
-        return 0;
-    }
-    let klass = unsafe { crate::attrib_core::getAttrib(x, crate::attrib_core::R_ClassSymbol()) };
-    if klass.is_null() || klass == R_NilValue() {
-        return 0;
-    }
-    use crate::sexp::accessors::{CHAR, LENGTH, STRING_ELT, TYPEOF};
-    use std::ffi::CStr;
-    if TYPEOF(klass) != crate::sexp::ffi::SEXPTYPE::STRSXP {
-        return 0;
-    }
-    let cn = match unsafe { CStr::from_ptr(what) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return 0,
-    };
-    let n = LENGTH(klass);
-    for i in 0..n {
-        let elt = unsafe { STRING_ELT(klass, i as crate::sexp::ffi::R_xlen_t) };
-        if !elt.is_null() {
-            let cs = unsafe { CHAR(elt) };
-            if !cs.is_null() {
-                if let Ok(s2) = unsafe { CStr::from_ptr(cs) }.to_str() {
-                    if s2 == cn {
-                        return 1;
-                    }
-                }
-            }
-        }
-    }
-    0
-}
-
 // ---------------------------------------------------------------------------
 // L_stroke — stroke a path
 // ---------------------------------------------------------------------------
 
-pub unsafe fn L_stroke(path: SEXP) -> SEXP {
+pub fn L_stroke(path: SEXP) -> SEXP {
     let mut _gc: [u8; 256] = [0; 256];
+    // SAFETY: device registry bridge; a null result means no open device.
     let dd = unsafe { getDevice() };
     if dd.is_null() {
         return R_NilValue();
@@ -114,6 +80,8 @@ pub unsafe fn L_stroke(path: SEXP) -> SEXP {
     let currentgp = gridStateElement(dd, GSS_GPAR);
     gcontextFromgpar(currentgp, 0, _gc.as_mut_ptr() as *const c_void, dd);
 
+    // SAFETY: `dd` is the live device returned by `getDevice` above; `gc` is
+    // the opaque engine context buffer just filled by `gcontextFromgpar`.
     let _scope = unsafe { GridPathGuard::enter(dd) };
     unsafe { ge::GEStroke(path, _gc.as_ptr() as *const c_void, dd) };
 
@@ -124,33 +92,31 @@ pub unsafe fn L_stroke(path: SEXP) -> SEXP {
 // L_fill — fill a path
 // ---------------------------------------------------------------------------
 
-pub unsafe fn L_fill(path: SEXP, rule: SEXP) -> SEXP {
+pub fn L_fill(path: SEXP, rule: SEXP) -> SEXP {
     let mut _gc: [u8; 256] = [0; 256];
+    // SAFETY: device registry bridge; a null result means no open device.
     let dd = unsafe { getDevice() };
     if dd.is_null() {
         return R_NilValue();
     }
-    let currentgp = unsafe { crate::main::duplicate::Rf_duplicate(gridStateElement(dd, GSS_GPAR)) };
-    let _currentgp_guard = unsafe { protect(currentgp) };
+    let currentgp = duplicate(gridStateElement(dd, GSS_GPAR));
+    let _currentgp_guard = protect(currentgp);
     let resolved_fill = resolveGPar(currentgp, 0);
-    let _resolved_fill_guard = unsafe { protect(resolved_fill) };
+    let _resolved_fill_guard = protect(resolved_fill);
     gcontextFromgpar(currentgp, 0, _gc.as_mut_ptr() as *const c_void, dd);
 
+    // SAFETY: `dd` is the live device returned by `getDevice` above; `gc` is
+    // the opaque engine context buffer just filled by `gcontextFromgpar`.
     let _scope = unsafe { GridPathGuard::enter(dd) };
-    unsafe { ge::GEFill(path, *INTEGER(rule), _gc.as_ptr() as *const c_void, dd) };
+    unsafe { ge::GEFill(path, integer_elt(rule, 0), _gc.as_ptr() as *const c_void, dd) };
 
-    if Rf_isNull(resolved_fill) == 0
-        && unsafe {
-            Rf_inherits(
-                resolved_fill,
-                b"GridGrobPattern\0".as_ptr() as *const std::os::raw::c_char,
-            )
-        } != 0
-    {
+    if Rf_isNull(resolved_fill) == 0 && inherits(resolved_fill, c"GridGrobPattern") {
         let pattern_ref = getListElement(
             resolved_fill,
             b"index\0".as_ptr() as *const std::os::raw::c_char,
         );
+        // SAFETY: `dd` is the live device; `pattern_ref` is the pattern index
+        // element read from the resolved fill above.
         unsafe {
             rmath_grid_release_pattern(
                 dd as crate::mainutils::graphics_ffi::pGEDevDesc,
@@ -166,33 +132,31 @@ pub unsafe fn L_fill(path: SEXP, rule: SEXP) -> SEXP {
 // L_fillStroke — fill and stroke a path
 // ---------------------------------------------------------------------------
 
-pub unsafe fn L_fillStroke(path: SEXP, rule: SEXP) -> SEXP {
+pub fn L_fillStroke(path: SEXP, rule: SEXP) -> SEXP {
     let mut _gc: [u8; 256] = [0; 256];
+    // SAFETY: device registry bridge; a null result means no open device.
     let dd = unsafe { getDevice() };
     if dd.is_null() {
         return R_NilValue();
     }
-    let currentgp = unsafe { crate::main::duplicate::Rf_duplicate(gridStateElement(dd, GSS_GPAR)) };
-    let _currentgp_guard = unsafe { protect(currentgp) };
+    let currentgp = duplicate(gridStateElement(dd, GSS_GPAR));
+    let _currentgp_guard = protect(currentgp);
     let resolved_fill = resolveGPar(currentgp, 0);
-    let _resolved_fill_guard = unsafe { protect(resolved_fill) };
+    let _resolved_fill_guard = protect(resolved_fill);
     gcontextFromgpar(currentgp, 0, _gc.as_mut_ptr() as *const c_void, dd);
 
+    // SAFETY: `dd` is the live device returned by `getDevice` above; `gc` is
+    // the opaque engine context buffer just filled by `gcontextFromgpar`.
     let _scope = unsafe { GridPathGuard::enter(dd) };
-    unsafe { ge::GEFillStroke(path, *INTEGER(rule), _gc.as_ptr() as *const c_void, dd) };
+    unsafe { ge::GEFillStroke(path, integer_elt(rule, 0), _gc.as_ptr() as *const c_void, dd) };
 
-    if Rf_isNull(resolved_fill) == 0
-        && unsafe {
-            Rf_inherits(
-                resolved_fill,
-                b"GridGrobPattern\0".as_ptr() as *const std::os::raw::c_char,
-            )
-        } != 0
-    {
+    if Rf_isNull(resolved_fill) == 0 && inherits(resolved_fill, c"GridGrobPattern") {
         let pattern_ref = getListElement(
             resolved_fill,
             b"index\0".as_ptr() as *const std::os::raw::c_char,
         );
+        // SAFETY: `dd` is the live device; `pattern_ref` is the pattern index
+        // element read from the resolved fill above.
         unsafe {
             rmath_grid_release_pattern(
                 dd as crate::mainutils::graphics_ffi::pGEDevDesc,
