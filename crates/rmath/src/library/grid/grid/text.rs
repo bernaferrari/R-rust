@@ -1,4 +1,8 @@
 use super::*;
+use crate::library::grid::{
+    alloc_vector, logical_elt, protect, real_elt, set_logical_elt, set_real_elt,
+    set_vector_elt,
+};
 
 pub(crate) fn gridText(
     _label: SEXP,
@@ -35,7 +39,7 @@ pub fn L_text(
  * L_textBounds
  * ============================== */
 
-pub unsafe fn L_textBounds(
+pub fn L_textBounds(
     label: SEXP,
     x: SEXP,
     y: SEXP,
@@ -44,43 +48,39 @@ pub unsafe fn L_textBounds(
     rot: SEXP,
     theta: SEXP,
 ) -> SEXP {
-    unsafe {
-        let checkOverlap = Rf_allocVector(SEXPTYPE::LGLSXP, 1);
-        *LOGICAL(checkOverlap) = 0;
-        gridText(
-            label,
-            x,
-            y,
-            hjust,
-            vjust,
-            rot,
-            checkOverlap,
-            *REAL(theta),
-            false,
-        )
-    }
+    let checkOverlap = alloc_vector(SEXPTYPE::LGLSXP, 1);
+    set_logical_elt(checkOverlap, 0, 0);
+    gridText(
+        label,
+        x,
+        y,
+        hjust,
+        vjust,
+        rot,
+        checkOverlap,
+        real_elt(theta, 0),
+        false,
+    )
 }
 
 /* ==============================
  * symbolCoords (internal helper)
  * ============================== */
 
-pub(crate) unsafe fn symbolCoords(x: *const f64, y: *const f64, n: c_int, _dd: pGEDevDesc) -> SEXP {
-    unsafe {
-        let result = Rf_allocVector(SEXPTYPE::VECSXP, 2);
-        let _result_guard = protect(result);
-        let xs = Rf_allocVector(SEXPTYPE::REALSXP, n);
-        let _xs_guard = protect(xs);
-        let ys = Rf_allocVector(SEXPTYPE::REALSXP, n);
-        let _ys_guard = protect(ys);
-        for i in 0..n as usize {
-            *REAL(xs).add(i) = *x.add(i);
-            *REAL(ys).add(i) = *y.add(i);
-        }
-        SET_VECTOR_ELT(result, 0 as R_xlen_t, xs);
-        SET_VECTOR_ELT(result, 1 as R_xlen_t, ys);
-        result
+pub(crate) fn symbolCoords(x: &[f64], y: &[f64], n: c_int, _dd: pGEDevDesc) -> SEXP {
+    let result = alloc_vector(SEXPTYPE::VECSXP, 2);
+    let _result_guard = protect(result);
+    let xs = alloc_vector(SEXPTYPE::REALSXP, n);
+    let _xs_guard = protect(xs);
+    let ys = alloc_vector(SEXPTYPE::REALSXP, n);
+    let _ys_guard = protect(ys);
+    for i in 0..n as usize {
+        set_real_elt(xs, i as R_xlen_t, x[i]);
+        set_real_elt(ys, i as R_xlen_t, y[i]);
     }
+    set_vector_elt(result, 0 as R_xlen_t, xs);
+    set_vector_elt(result, 1 as R_xlen_t, ys);
+    result
 }
 
 /* ==============================
@@ -177,8 +177,10 @@ pub fn L_points(x: SEXP, y: SEXP, pch: SEXP, size: SEXP) -> SEXP {
  * L_pointsPoints
  * ============================== */
 
-pub unsafe fn L_pointsPoints(x: SEXP, y: SEXP, pch: SEXP, size: SEXP, closed: SEXP) -> SEXP {
-    unsafe { gridPoints(x, y, pch, size, false, asBool(closed) != 0) }
+pub fn L_pointsPoints(x: SEXP, y: SEXP, pch: SEXP, size: SEXP, closed: SEXP) -> SEXP {
+    // SAFETY: `closed` is a live object lent by the R caller; `asBool` is the
+    // coercion bridge.
+    gridPoints(x, y, pch, size, false, unsafe { asBool(closed) } != 0)
 }
 
 /* ==============================
