@@ -15,10 +15,10 @@ use crate::eval::attrib_core::setAttrib;
 use crate::mainutils::dstruct::mkPRIMSXP;
 use crate::mainutils::duplicate::duplicate;
 use crate::sexp::accessors::{
-    CAR, CDR, CHAR, INTEGER, LENGTH, OBJECT, PRIMOFFSET, PRINTNAME, SET_ATTRIB, SET_INTERNAL,
-    SET_PRINTNAME, SET_STRING_ELT, SET_SYMVALUE, STRING_ELT, TYPEOF,
+    CAR, CDR, CHAR, LENGTH, OBJECT, PRIMOFFSET, PRINTNAME, SET_ATTRIB, SET_INTERNAL,
+    SET_PRINTNAME, SET_SYMVALUE, TYPEOF,
 };
-use crate::sexp::constructors::{Rf_allocVector3, Rf_mkChar, Rf_mkString};
+use crate::sexp::constructors::Rf_mkString;
 use crate::sexp::context::RError;
 use crate::sexp::ffi::{FALSE, NA_INTEGER, R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
@@ -318,38 +318,39 @@ pub unsafe fn R_Primitive(primname: *const c_char) -> SEXP {
 
 /// Implementation of .Primitive()
 /// Looks up a primitive function by name and returns it as a SPECIALSXP or BUILTINSXP.
-pub unsafe fn do_primitive(call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
-        let name = CAR(args);
-        // Check that name is a single string
-        if TYPEOF(name) != SEXPTYPE::STRSXP || LENGTH(name) != 1 {
-            panic_any(RError {
-                message: "string argument required".to_string(),
-            });
-        }
-        let name_elt = STRING_ELT(name, 0);
-        if name_elt.is_null() || name_elt == R_NilValue() {
-            panic_any(RError {
-                message: "string argument required".to_string(),
-            });
-        }
-        let name_c = CHAR(name_elt);
-        if name_c.is_null() {
-            panic_any(RError {
-                message: "string argument required".to_string(),
-            });
-        }
-        let prim = R_Primitive(name_c);
-        if prim.is_null() || prim == R_NilValue() {
-            panic_any(RError {
-                message: format!(
-                    "no such primitive function '{}'",
-                    std::ffi::CStr::from_ptr(name_c).to_str().unwrap_or("?")
-                ),
-            });
-        }
-        prim
+pub fn do_primitive(call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+    let name = CAR(args);
+    // Check that name is a single string
+    if TYPEOF(name) != SEXPTYPE::STRSXP || LENGTH(name) != 1 {
+        panic_any(RError {
+            message: "string argument required".to_string(),
+        });
     }
+    let factory = crate::sexp::object::SessionNodeFactory::new(
+        // SAFETY: the do_* boundary retains the active runtime.
+        unsafe { crate::sexp::owner::OwnerToken::current() }
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
+    );
+    let name_str = factory
+        .wrap(name)
+        .ok()
+        .and_then(|name| name.try_string_value_elt(0).ok());
+    let Some(name_str) = name_str else {
+        panic_any(RError {
+            message: "string argument required".to_string(),
+        });
+    };
+    // NA_character_ looks up the name "NA", matching CHAR(NA_STRING).
+    let name_str = name_str.unwrap_or_else(|| "NA".to_string());
+    let name_cstr = std::ffi::CString::new(name_str.as_str()).unwrap_or_default();
+    // SAFETY: name_cstr is a live NUL-terminated buffer for the call.
+    let prim = unsafe { R_Primitive(name_cstr.as_ptr()) };
+    if prim.is_null() || prim == R_NilValue() {
+        panic_any(RError {
+            message: format!("no such primitive function '{}'", name_str),
+        });
+    }
+    prim
 }
 
 // ---------------------------------------------------------------------------
@@ -530,7 +531,7 @@ pub fn installDDVAL(n: c_int) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Create a symbol marker (SYMSXP whose value points to itself).
-unsafe fn mkSymMarker(pname: SEXP) -> SEXP {
+fn mkSymMarker(pname: SEXP) -> SEXP {
     unsafe {
         let sym = with_arena(|arena| arena.alloc_node(SEXPTYPE::SYMSXP));
         SET_SYMVALUE(sym, sym);
@@ -616,7 +617,7 @@ pub unsafe fn installS3Signature(className: *const c_char, methodName: *const c_
 
 /// Implementation of .Internal()
 /// Looks up an internal function and dispatches to its C implementation.
-pub unsafe fn do_internal(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub fn do_internal(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let factory = crate::sexp::object::SessionNodeFactory::new(
             crate::sexp::owner::OwnerToken::current()
@@ -910,7 +911,7 @@ fn internal_builtin_handler(name: &str) -> Option<InternalBuiltinHandler> {
 
 /// GNU `do_mkunbound` (envir.c): `.Internal(mkUnbound(name))` sets the
 /// symbol's value cell to R_UnboundValue.
-pub unsafe fn do_mkunbound(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_mkunbound(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let sym = CAR(args);
         if !sym.is_null() && TYPEOF(sym) == SEXPTYPE::SYMSXP {
@@ -919,7 +920,7 @@ pub unsafe fn do_mkunbound(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
         R_NilValue()
     }
 }
-pub unsafe fn do_add_task_callback(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_add_task_callback(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let fun = CAR(args);
         let data = crate::sexp::accessors::CADR(args);
@@ -927,7 +928,7 @@ pub unsafe fn do_add_task_callback(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEX
         crate::sexp::constructors::Rf_ScalarInteger(id)
     }
 }
-pub unsafe fn do_remove_task_callback(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_remove_task_callback(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let which = CAR(args);
         let ok = crate::mainutils::main::Rf_removeTaskCallback(which);
@@ -936,25 +937,25 @@ pub unsafe fn do_remove_task_callback(_call: SEXP, _op: SEXP, args: SEXP, _rho: 
 }
 
 /// R's `.Internal(builtins(internal))` — sorted builtin/internal name listing.
-pub unsafe fn do_refcnt(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = if args.is_null() || args == R_NilValue() {
-            R_NilValue()
-        } else {
-            CAR(args)
-        };
-        crate::sexp::constructors::Rf_ScalarInteger(crate::sexp::accessors::NAMED(x))
-    }
+pub fn do_refcnt(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = if args.is_null() || args == R_NilValue() {
+        R_NilValue()
+    } else {
+        CAR(args)
+    };
+    // SAFETY: audited boundary — scalar allocation under the active runtime.
+    unsafe { crate::sexp::constructors::Rf_ScalarInteger(crate::sexp::accessors::NAMED(x)) }
 }
 
 /// `.Internal(address(x))` — external pointer whose address is `x`.
-pub unsafe fn do_address(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_address(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = if args.is_null() || args == crate::sexp::globals::R_NilValue() {
+        crate::sexp::globals::R_NilValue()
+    } else {
+        CAR(args)
+    };
+    // SAFETY: audited boundary — stores the object's address verbatim.
     unsafe {
-        let x = if args.is_null() || args == crate::sexp::globals::R_NilValue() {
-            crate::sexp::globals::R_NilValue()
-        } else {
-            CAR(args)
-        };
         crate::mainutils::memory_main::R_MakeExternalPtr(
             x as *mut std::ffi::c_void,
             crate::sexp::globals::R_NilValue(),
@@ -964,34 +965,45 @@ pub unsafe fn do_address(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 }
 
 /// `.Internal(named(x))` reports the same NAMED level as `refcnt`.
-pub unsafe fn do_named(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe { do_refcnt(call, op, args, rho) }
+pub fn do_named(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    do_refcnt(call, op, args, rho)
 }
 
-pub unsafe fn do_builtins(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let internal = if args.is_null() || args == R_NilValue() {
+pub fn do_builtins(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let internal = if args.is_null() || args == R_NilValue() {
+        false
+    } else {
+        let first = CAR(args);
+        if first.is_null()
+            || !matches!(SEXPTYPE(TYPEOF(first)), SEXPTYPE::LGLSXP | SEXPTYPE::INTSXP)
+            || LENGTH(first) == 0
+        {
             false
         } else {
-            let first = CAR(args);
-            if first.is_null()
-                || !matches!(SEXPTYPE(TYPEOF(first)), SEXPTYPE::LGLSXP | SEXPTYPE::INTSXP)
-                || LENGTH(first) == 0
-            {
-                false
-            } else if TYPEOF(first) == SEXPTYPE::LGLSXP || TYPEOF(first) == SEXPTYPE::INTSXP {
-                let value = *INTEGER(first);
-                value != FALSE && value != NA_INTEGER
-            } else {
-                false
-            }
-        };
+            let factory = crate::sexp::object::SessionNodeFactory::new(
+                // SAFETY: the do_* boundary retains the active runtime.
+                unsafe { crate::sexp::owner::OwnerToken::current() }
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
+            );
+            let value = factory
+                .wrap(first)
+                .ok()
+                .and_then(|first| {
+                    if TYPEOF(first.as_raw()) == SEXPTYPE::LGLSXP {
+                        first.try_logical_elt(0).ok()
+                    } else {
+                        first.try_integer_elt(0).ok()
+                    }
+                })
+                .unwrap_or(NA_INTEGER);
+            value != FALSE && value != NA_INTEGER
+        }
+    };
 
-        let mut names = builtin_names_from_funtab(internal);
-        names.sort();
-        names.dedup();
-        string_vector_from_bytes(&names)
-    }
+    let mut names = builtin_names_from_funtab(internal);
+    names.sort();
+    names.dedup();
+    string_vector_from_bytes(&names)
 }
 
 fn builtin_names_from_funtab(internal: bool) -> Vec<Vec<u8>> {
@@ -1013,18 +1025,29 @@ fn builtin_names_from_funtab(internal: bool) -> Vec<Vec<u8>> {
 }
 
 fn string_vector_from_bytes(values: &[Vec<u8>]) -> SEXP {
-    unsafe {
-        let result = Rf_allocVector3(SEXPTYPE::STRSXP, values.len() as R_xlen_t);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _guard = protect(result);
-        for (i, value) in values.iter().enumerate() {
-            let cstr = std::ffi::CString::new(value.as_slice()).unwrap_or_default();
-            SET_STRING_ELT(result, i as R_xlen_t, Rf_mkChar(cstr.as_ptr()));
-        }
-        result
+    let factory = crate::sexp::object::SessionNodeFactory::new(
+        // SAFETY: the do_* boundary retains the active runtime.
+        unsafe { crate::sexp::owner::OwnerToken::current() }
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
+    );
+    let result = factory.allocate(|arena| {
+        Some(arena.alloc_vector(SEXPTYPE::STRSXP, values.len() as R_xlen_t))
+    });
+    let Ok(result) = result else {
+        return R_NilValue();
+    };
+    let Ok(mut result) = crate::sexp::object::SexpMut::try_from_checked(result) else {
+        return R_NilValue();
+    };
+    for (i, value) in values.iter().enumerate() {
+        // CString::new rejected interior NUL bytes, yielding an empty string.
+        let bytes: &[u8] = if value.contains(&0) { &[] } else { value };
+        if let Ok(chars) =
+            factory.allocate(|arena| Some(arena.alloc_charsxp(bytes)))
+            && result.try_set_string_elt(i as R_xlen_t, chars).is_ok()
+        {}
     }
+    result.freeze().as_raw()
 }
 
 // ---------------------------------------------------------------------------
@@ -1033,7 +1056,7 @@ fn string_vector_from_bytes(values: &[Vec<u8>]) -> SEXP {
 
 /// Implementation of the ~ operator.
 /// Creates a formula object with class "formula" and .Environment attribute.
-pub unsafe fn do_tilde(call: SEXP, _op: SEXP, _args: SEXP, rho: SEXP) -> SEXP {
+pub fn do_tilde(call: SEXP, _op: SEXP, _args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         if !call.is_null() && OBJECT(call) != 0 {
             duplicate(call)
@@ -1086,6 +1109,7 @@ pub fn getPRIMNAME(object: SEXP) -> *const c_char {
 #[cfg(test)]
 mod tests {
     use crate::sexp::accessors::*;
+    use crate::sexp::constructors::Rf_mkChar;
     use crate::sexp::session::RSession;
 
     use super::*;
