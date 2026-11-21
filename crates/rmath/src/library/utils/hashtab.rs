@@ -58,15 +58,15 @@ fn checkArgCountPop(args: SEXP, n: c_int) -> SEXP {
 }
 
 fn HT_TypeFromString(x: SEXP) -> c_int {
-    unsafe {
+    {
         if TYPEOF(x) != SEXPTYPE::STRSXP || XLENGTH(x) != 1 {
             Rf_error(
                 b"hash table type must be a scalar string\0".as_ptr() as *const core::ffi::c_char
             );
         }
-        let s = CHAR(STRING_ELT(x, 0));
-        let s_str = std::ffi::CStr::from_ptr(s);
-        let s_bytes = s_str.to_bytes();
+        // SAFETY: STRING_ELT yields a canonical CHARSXP whose payload pointer
+        // is valid and NUL-terminated for the node's lifetime.
+        let s_bytes = unsafe { std::ffi::CStr::from_ptr(CHAR(STRING_ELT(x, 0))) }.to_bytes();
         if s_bytes == b"identical" {
             HT_TYPE_IDENTICAL
         } else if s_bytes == b"address" {
@@ -88,7 +88,7 @@ fn hash_error(message: &'static [u8]) -> ! {
 }
 
 fn R_mkhashtab(hash_type: c_int, _k: c_int) -> SEXP {
-    unsafe {
+    {
         let table = Rf_allocVector(SEXPTYPE::VECSXP, HASH_SLOT_COUNT);
         if table.is_null() {
             return R_NilValue();
@@ -100,7 +100,8 @@ fn R_mkhashtab(hash_type: c_int, _k: c_int) -> SEXP {
         setAttrib(
             table,
             R_ClassSymbol(),
-            Rf_mkString(b"rust_hashtab\0".as_ptr() as *const core::ffi::c_char),
+            // SAFETY: `b"...\0"` is a valid NUL-terminated byte string.
+            unsafe { Rf_mkString(b"rust_hashtab\0".as_ptr() as *const core::ffi::c_char) },
         );
         table
     }
@@ -140,12 +141,14 @@ fn hash_values(h: R_hashtab_type) -> SEXP {
 }
 
 fn keys_match(hash_type: c_int, stored: SEXP, key: SEXP) -> bool {
-    unsafe {
-        match hash_type {
-            HT_TYPE_ADDRESS => stored == key,
-            HT_TYPE_IDENTICAL => R_compute_identical(stored, key, HASH_IDENTICAL_FLAGS) != 0,
-            _ => false,
-        }
+    match hash_type {
+        HT_TYPE_ADDRESS => stored == key,
+        // SAFETY: both operands are canonical live SEXP values under the
+        // runtime lock; the raw comparison contract is satisfied.
+        HT_TYPE_IDENTICAL => unsafe {
+            R_compute_identical(stored, key, HASH_IDENTICAL_FLAGS) != 0
+        },
+        _ => false,
     }
 }
 
@@ -279,7 +282,7 @@ fn R_isHashtable(x: SEXP) -> c_int {
 }
 
 pub fn hashtab_Ext(args: SEXP) -> SEXP {
-    unsafe {
+    {
         let args = checkArgCountPop(args, 2);
         let _type = HT_TypeFromString(CAR(args));
         let _k = asInteger(CADR(args));
@@ -289,7 +292,8 @@ pub fn hashtab_Ext(args: SEXP) -> SEXP {
         setAttrib(
             val,
             R_ClassSymbol(),
-            Rf_mkString(b"hashtab\0".as_ptr() as *const core::ffi::c_char),
+            // SAFETY: `b"...\0"` is a valid NUL-terminated byte string.
+            unsafe { Rf_mkString(b"hashtab\0".as_ptr() as *const core::ffi::c_char) },
         );
         val
     }
@@ -325,12 +329,15 @@ pub fn numhash_Ext(args: SEXP) -> SEXP {
 }
 
 pub fn typhash_Ext(args: SEXP) -> SEXP {
-    unsafe {
+    {
         let args = checkArgCountPop(args, 1);
         let h = R_asHashtable(CAR(args));
+        // SAFETY: each literal is a valid NUL-terminated byte string.
+        let mk =
+            |s: &'static [u8]| unsafe { Rf_mkString(s.as_ptr() as *const core::ffi::c_char) };
         match R_typhash(h) {
-            HT_TYPE_IDENTICAL => Rf_mkString(b"identical\0".as_ptr() as *const core::ffi::c_char),
-            HT_TYPE_ADDRESS => Rf_mkString(b"address\0".as_ptr() as *const core::ffi::c_char),
+            HT_TYPE_IDENTICAL => mk(b"identical\0"),
+            HT_TYPE_ADDRESS => mk(b"address\0"),
             _ => {
                 Rf_error(b"bad hash table type\0".as_ptr() as *const core::ffi::c_char);
                 std::ptr::null_mut()

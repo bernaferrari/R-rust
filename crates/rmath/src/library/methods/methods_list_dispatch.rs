@@ -37,16 +37,14 @@ fn r_error(message: impl Into<String>) -> ! {
 
 /// GNU `.InheritForDispatch` (methodsTable.R:744-752): `call. = FALSE`.
 fn no_inherited_method_error(generic: &str, sigargs: SEXP, classes: &[String]) -> ! {
-    unsafe {
+    {
         let mut parts = Vec::with_capacity(classes.len());
         for (i, class) in classes.iter().enumerate() {
             let arg_sym = VECTOR_ELT(sigargs, i as R_xlen_t);
             let arg_name = if arg_sym.is_null() || TYPEOF(arg_sym) != SEXPTYPE::SYMSXP {
                 format!("..{}", i + 1)
             } else {
-                CStr::from_ptr(CHAR(PRINTNAME(arg_sym)))
-                    .to_string_lossy()
-                    .into_owned()
+                String::from_utf8_lossy(&charsxp_as_utf8(PRINTNAME(arg_sym))).into_owned()
             };
             parts.push(format!("{arg_name} = \"{class}\""));
         }
@@ -81,7 +79,8 @@ fn eval_dispatch_arg(fname: SEXP, ev: SEXP, arg_sym: SEXP) -> SEXP {
             let Some(inner) = dispatch_arg_error_message(&*payload) else {
                 std::panic::resume_unwind(payload);
             };
-            let arg_name = unsafe { CStr::from_ptr(CHAR(PRINTNAME(arg_sym))).to_string_lossy() };
+            let arg_name =
+                String::from_utf8_lossy(&charsxp_as_utf8(PRINTNAME(arg_sym))).into_owned();
             let fun_name = sexp_to_string(fname).unwrap_or_else(|| "<unknown>".to_string());
             r_error(format!(
                 "error in evaluating the argument '{}' in selecting a method for function '{}': {}",
@@ -123,26 +122,29 @@ fn dispatch_arg_error_message(payload: &(dyn std::any::Any + Send)) -> Option<Co
 /// GNU's dispatch handler only matches conditions inheriting from "error".
 /// Condition objects carry every inherited class in their class attribute.
 fn condition_inherits_error(condition: SEXP) -> bool {
-    unsafe {
+    {
         if condition.is_null() || condition == R_NilValue() {
             return false;
         }
-        let class = crate::eval::attrib_core::getAttrib(
-            condition,
-            crate::eval::attrib_core::R_ClassSymbol(),
-        );
+        // SAFETY: `condition` is a live SEXP under the runtime lock.
+        let class = unsafe {
+            crate::eval::attrib_core::getAttrib(
+                condition,
+                crate::eval::attrib_core::R_ClassSymbol(),
+            )
+        };
         if class.is_null() || class == R_NilValue() || TYPEOF(class) != SEXPTYPE::STRSXP {
             return false;
         }
         (0..LENGTH(class)).any(|i| {
             let elt = STRING_ELT(class, i as R_xlen_t);
-            !elt.is_null() && CStr::from_ptr(CHAR(elt)).to_bytes() == b"error"
+            !elt.is_null() && charsxp_as_utf8(elt) == b"error"
         })
     }
 }
 
 fn named_element(object: SEXP, name: &str) -> SEXP {
-    unsafe {
+    {
         if object.is_null() || object == R_NilValue() {
             return R_NilValue();
         }
@@ -155,12 +157,7 @@ fn named_element(object: SEXP, name: &str) -> SEXP {
                 }
                 for i in 0..LENGTH(names) {
                     let elt = STRING_ELT(names, i as R_xlen_t);
-                    let ptr = if elt.is_null() {
-                        ptr::null()
-                    } else {
-                        CHAR(elt)
-                    };
-                    if !ptr.is_null() && CStr::from_ptr(ptr).to_bytes() == name.as_bytes() {
+                    if !elt.is_null() && charsxp_as_utf8(elt) == name.as_bytes() {
                         return VECTOR_ELT(object, i as R_xlen_t);
                     }
                 }
@@ -172,8 +169,7 @@ fn named_element(object: SEXP, name: &str) -> SEXP {
                     let tag = TAG(cell);
                     if !tag.is_null() && TYPEOF(tag) == SEXPTYPE::SYMSXP {
                         let printname = PRINTNAME(tag);
-                        if !printname.is_null()
-                            && CStr::from_ptr(CHAR(printname)).to_bytes() == name.as_bytes()
+                        if !printname.is_null() && charsxp_as_utf8(printname) == name.as_bytes()
                         {
                             return CAR(cell);
                         }
@@ -192,70 +188,61 @@ fn all_methods_slot(mlist: SEXP) -> SEXP {
 }
 
 fn named_slot(object: SEXP, name: &str) -> SEXP {
-    unsafe {
-        let Ok(name) = CString::new(name) else {
-            return R_NilValue();
-        };
-        let charsxp = Rf_mkChar(name.as_ptr());
-        crate::library::methods::slot::R_get_slot(object, charsxp)
-    }
+    let Ok(name) = CString::new(name) else {
+        return R_NilValue();
+    };
+    // SAFETY: `name` is a live NUL-terminated CString for the call.
+    let charsxp = unsafe { Rf_mkChar(name.as_ptr()) };
+    crate::library::methods::slot::R_get_slot(object, charsxp)
 }
 
 fn first_data_class_name(object: SEXP) -> Option<String> {
-    unsafe {
-        let class = crate::eval::attrib_core::R_data_class(object);
-        if class.is_null()
-            || class == R_NilValue()
-            || TYPEOF(class) != SEXPTYPE::STRSXP
-            || LENGTH(class) == 0
-        {
-            return None;
-        }
-        let elt = STRING_ELT(class, 0);
-        if elt.is_null() {
-            return None;
-        }
-        let ptr = CHAR(elt);
-        (!ptr.is_null()).then(|| CStr::from_ptr(ptr).to_string_lossy().into_owned())
+    // SAFETY: `object` is a live SEXP under the runtime lock; the raw class
+    // access is the interpreter's data-class contract.
+    let class = unsafe { crate::eval::attrib_core::R_data_class(object) };
+    if class.is_null()
+        || class == R_NilValue()
+        || TYPEOF(class) != SEXPTYPE::STRSXP
+        || LENGTH(class) == 0
+    {
+        return None;
     }
+    let elt = STRING_ELT(class, 0);
+    if elt.is_null() {
+        return None;
+    }
+    Some(String::from_utf8_lossy(&charsxp_as_utf8(elt)).into_owned())
 }
 
 fn scalar_signature_length(value: SEXP) -> Option<c_int> {
-    unsafe {
-        if value.is_null() || value == R_NilValue() || LENGTH(value) == 0 {
-            return None;
-        }
-        match TYPEOF(value) {
-            kind if kind == SEXPTYPE::INTSXP.as_c_int() => Some(*INTEGER(value)),
-            kind if kind == SEXPTYPE::REALSXP.as_c_int() => Some(*REAL(value) as c_int),
-            _ => None,
-        }
+    if value.is_null() || value == R_NilValue() || LENGTH(value) == 0 {
+        return None;
+    }
+    match TYPEOF(value) {
+        kind if kind == SEXPTYPE::INTSXP.as_c_int() => Some(INTEGER_ELT(value, 0)),
+        kind if kind == SEXPTYPE::REALSXP.as_c_int() => Some(REAL_ELT(value, 0) as c_int),
+        _ => None,
     }
 }
 
 fn sexp_to_string(value: SEXP) -> Option<String> {
-    unsafe {
-        if value.is_null() || value == R_NilValue() {
-            return None;
-        }
-        let charsxp = if TYPEOF(value) == SEXPTYPE::STRSXP && LENGTH(value) > 0 {
-            STRING_ELT(value, 0)
-        } else if TYPEOF(value) == SEXPTYPE::SYMSXP {
-            PRINTNAME(value)
-        } else if TYPEOF(value) == SEXPTYPE::CHARSXP {
-            value
-        } else {
-            return None;
-        };
-        if charsxp.is_null() {
-            return None;
-        }
-        let ptr = CHAR(charsxp);
-        if ptr.is_null() {
-            return None;
-        }
-        Some(CStr::from_ptr(ptr).to_string_lossy().into_owned())
+    if value.is_null() || value == R_NilValue() {
+        return None;
     }
+    let charsxp = if TYPEOF(value) == SEXPTYPE::STRSXP && LENGTH(value) > 0 {
+        STRING_ELT(value, 0)
+    } else if TYPEOF(value) == SEXPTYPE::SYMSXP {
+        PRINTNAME(value)
+    } else if TYPEOF(value) == SEXPTYPE::CHARSXP {
+        value
+    } else {
+        return None;
+    };
+    if charsxp.is_null() {
+        return None;
+    }
+    let bytes = charsxp_as_utf8(charsxp);
+    (!bytes.is_empty()).then(|| String::from_utf8_lossy(&bytes).into_owned())
 }
 
 fn is_primitive_function(value: SEXP) -> bool {
@@ -430,10 +417,11 @@ fn for_each_env_binding(env: SEXP, mut visit: impl FnMut(SEXP, SEXP)) {
 }
 
 fn wildcard_table_method(table: SEXP, classes: &[String]) -> SEXP {
-    unsafe {
+    {
         let mut candidates: Vec<(Vec<bool>, SEXP)> = Vec::new();
         for_each_env_binding(table, |symbol, method| {
-            let label = CStr::from_ptr(CHAR(PRINTNAME(symbol))).to_string_lossy();
+            let label =
+                String::from_utf8_lossy(&charsxp_as_utf8(PRINTNAME(symbol))).into_owned();
             let signature: Vec<&str> = label.split('#').collect();
             if signature.len() == classes.len()
                 && signature
@@ -473,10 +461,11 @@ impl Clone for TableMethod {
 }
 
 fn table_methods(table: SEXP, targets: &[String]) -> Vec<TableMethod> {
-    unsafe {
+    {
         let mut out = Vec::new();
         for_each_env_binding(table, |symbol, method| {
-            let label = CStr::from_ptr(CHAR(PRINTNAME(symbol))).to_string_lossy();
+            let label =
+                String::from_utf8_lossy(&charsxp_as_utf8(PRINTNAME(symbol))).into_owned();
             let signature: Vec<String> = label.split('#').map(str::to_owned).collect();
             if signature.len() != targets.len()
                 || method == R_NilValue()
@@ -547,12 +536,13 @@ fn nearest_method(methods: Vec<TableMethod>) -> Option<TableMethod> {
 }
 
 fn string_vector(values: &[String]) -> SEXP {
-    unsafe {
+    {
         let result = Rf_allocVector3(SEXPTYPE::STRSXP, values.len() as R_xlen_t);
         let _guard = protect(result);
         for (i, value) in values.iter().enumerate() {
             let c = CString::new(value.as_str()).unwrap_or_default();
-            SET_STRING_ELT(result, i as R_xlen_t, Rf_mkChar(c.as_ptr()));
+            // SAFETY: `c` is a live NUL-terminated CString for the call.
+            SET_STRING_ELT(result, i as R_xlen_t, unsafe { Rf_mkChar(c.as_ptr()) });
         }
         result
     }
@@ -626,16 +616,15 @@ fn recover_s4_generic(fdef: SEXP, fname: SEXP) -> SEXP {
 }
 
 fn apply_table_method(method: SEXP, ev: SEXP) -> SEXP {
-    unsafe {
-        if inherits_internal_dispatch_method(method) || is_primitive_function(method) {
-            return crate::mainutils::objects::R_deferred_default_method();
+    if inherits_internal_dispatch_method(method) || is_primitive_function(method) {
+        return crate::mainutils::objects::R_deferred_default_method();
+    }
+    match TYPEOF(method) {
+        kind if kind == SEXPTYPE::CLOSXP.as_c_int() => {
+            // SAFETY: `method`/`ev` are live SEXPs under the runtime lock.
+            unsafe { crate::eval::missing::R_execMethod(method, ev) }
         }
-        match TYPEOF(method) {
-            kind if kind == SEXPTYPE::CLOSXP.as_c_int() => {
-                crate::eval::missing::R_execMethod(method, ev)
-            }
-            _ => r_error("invalid object (non-function) used as method"),
-        }
+        _ => r_error("invalid object (non-function) used as method"),
     }
 }
 
@@ -826,7 +815,7 @@ pub unsafe fn R_dispatchGeneric(fname: SEXP, ev: SEXP, fdef: SEXP) -> SEXP {
 }
 
 fn try_s3_method_for_generic(name: &str, fname: SEXP, ev: SEXP, sigargs: SEXP) -> Option<SEXP> {
-    unsafe {
+    {
         if LENGTH(sigargs) < 1 {
             return None;
         }
@@ -843,8 +832,10 @@ fn try_s3_method_for_generic(name: &str, fname: SEXP, ev: SEXP, sigargs: SEXP) -
         if obj.is_null() || crate::mainutils::coerce::IS_S4_OBJECT(obj) != FALSE {
             return None;
         }
-        let class =
-            crate::eval::attrib_core::getAttrib(obj, crate::eval::attrib_core::R_ClassSymbol());
+        // SAFETY: `obj` is a live SEXP under the runtime lock.
+        let class = unsafe {
+            crate::eval::attrib_core::getAttrib(obj, crate::eval::attrib_core::R_ClassSymbol())
+        };
         if class.is_null() || class == R_NilValue() {
             return None;
         }
@@ -947,14 +938,13 @@ pub unsafe fn R_quick_dispatch(args: SEXP, generic_env: SEXP, _fdef: SEXP) -> SE
 
 /// GNU `IS_GENERIC`: CLOSXP with a non-NULL `generic` attribute/slot.
 fn is_generic_function(value: SEXP) -> bool {
-    unsafe {
-        if TYPEOF(value) != SEXPTYPE::CLOSXP {
-            return false;
-        }
-        let generic_sym = crate::sexp::symbol::Rf_install(c"generic".as_ptr());
-        let slot = crate::sexp::attrib_core::getAttrib(value, generic_sym);
-        !slot.is_null() && slot != R_NilValue()
+    if TYPEOF(value) != SEXPTYPE::CLOSXP {
+        return false;
     }
+    // SAFETY: literal C string for the symbol install.
+    let generic_sym = unsafe { crate::sexp::symbol::Rf_install(c"generic".as_ptr()) };
+    let slot = crate::sexp::attrib_core::getAttrib(value, generic_sym);
+    !slot.is_null() && slot != R_NilValue()
 }
 
 /// R_getGeneric - get the generic function definition for a given name.
@@ -1061,7 +1051,7 @@ fn is_missing_arg(symbol: SEXP, ev: SEXP) -> bool {
 /// R_missingArg - check if an argument is missing in a method call.
 /// Ported from R's R_missingArg() in methods_list_dispatch.c.
 pub fn R_missingArg(symbol: SEXP, ev: SEXP) -> SEXP {
-    unsafe {
+    {
         if TYPEOF(symbol) != SEXPTYPE::SYMSXP {
             r_error("invalid symbol in checking for missing argument in method dispatch");
         }
@@ -1073,11 +1063,15 @@ pub fn R_missingArg(symbol: SEXP, ev: SEXP) -> SEXP {
         }
         let res = Rf_allocVector(SEXPTYPE::LGLSXP, 1);
         let _res_guard = protect(res);
-        *LOGICAL(res).add(0) = if is_missing_arg(symbol, ev) {
-            TRUE
-        } else {
-            FALSE
-        };
+        SET_LOGICAL_ELT(
+            res,
+            0,
+            if is_missing_arg(symbol, ev) {
+                TRUE
+            } else {
+                FALSE
+            },
+        );
         res
     }
 }
@@ -1375,53 +1369,29 @@ pub extern "C" fn R_set_method_dispatch(onOff: SEXP) -> SEXP {
 /// Format: .__prefix__name or .__prefix__name:pkg
 /// Ported from R's R_methodsPackageMetaName() in methods_list_dispatch.c.
 pub fn R_methodsPackageMetaName(prefix: SEXP, name: SEXP, pkg: SEXP) -> SEXP {
-    unsafe {
-        // Extract strings
-        let prefix_str =
-            if !prefix.is_null() && TYPEOF(prefix) == SEXPTYPE::STRSXP && LENGTH(prefix) >= 1 {
-                let s = STRING_ELT(prefix, 0);
-                if !s.is_null() { CHAR(s) } else { ptr::null() }
-            } else {
-                ptr::null()
-            };
-        let name_str = if !name.is_null() && TYPEOF(name) == SEXPTYPE::STRSXP && LENGTH(name) >= 1 {
-            let s = STRING_ELT(name, 0);
-            if !s.is_null() { CHAR(s) } else { ptr::null() }
-        } else {
-            ptr::null()
-        };
-        let pkg_str = if !pkg.is_null() && TYPEOF(pkg) == SEXPTYPE::STRSXP && LENGTH(pkg) >= 1 {
-            let s = STRING_ELT(pkg, 0);
-            if !s.is_null() { CHAR(s) } else { ptr::null() }
-        } else {
-            ptr::null()
-        };
+    let scalar_text = |value: SEXP| -> String {
+        if value.is_null() || TYPEOF(value) != SEXPTYPE::STRSXP || LENGTH(value) < 1 {
+            return String::new();
+        }
+        let elt = STRING_ELT(value, 0);
+        if elt.is_null() {
+            return String::new();
+        }
+        String::from_utf8_lossy(&charsxp_as_utf8(elt)).into_owned()
+    };
+    let prefix_c = scalar_text(prefix);
+    let name_c = scalar_text(name);
+    let pkg_c = scalar_text(pkg);
 
-        let prefix_c = if !prefix_str.is_null() {
-            std::ffi::CStr::from_ptr(prefix_str).to_str().unwrap_or("")
-        } else {
-            ""
-        };
-        let name_c = if !name_str.is_null() {
-            std::ffi::CStr::from_ptr(name_str).to_str().unwrap_or("")
-        } else {
-            ""
-        };
-        let pkg_c = if !pkg_str.is_null() {
-            std::ffi::CStr::from_ptr(pkg_str).to_str().unwrap_or("")
-        } else {
-            ""
-        };
+    let res_str = if !pkg_c.is_empty() {
+        format!(".__{}__{}:{}", prefix_c, name_c, pkg_c)
+    } else {
+        format!(".__{}__{}", prefix_c, name_c)
+    };
 
-        let res_str = if !pkg_c.is_empty() {
-            format!(".__{}__{}:{}", prefix_c, name_c, pkg_c)
-        } else {
-            format!(".__{}__{}", prefix_c, name_c)
-        };
-
-        let c_str = std::ffi::CString::new(res_str).unwrap_or_default();
-        Rf_mkString(c_str.as_ptr())
-    }
+    let c_str = std::ffi::CString::new(res_str).unwrap_or_default();
+    // SAFETY: `c_str` is a live NUL-terminated CString for the call.
+    unsafe { Rf_mkString(c_str.as_ptr()) }
 }
 
 #[cfg(test)]

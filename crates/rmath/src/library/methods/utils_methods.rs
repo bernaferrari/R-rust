@@ -16,8 +16,10 @@ use crate::sexp::accessors::{
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
 
 fn class_name_owned(class_name: SEXP) -> AdmittedClassName {
-    unsafe {
-        let owner = crate::sexp::owner::OwnerToken::current()
+    {
+        // SAFETY: called within the active interpreter; the pin below retains
+        // that owner for the whole copy.
+        let owner = unsafe { crate::sexp::owner::OwnerToken::current() }
             .unwrap_or_else(|failure| crate::sexp::context::r_error(failure.to_string()));
         let _pin = owner
             .pin()
@@ -55,8 +57,8 @@ fn class_name_owned(class_name: SEXP) -> AdmittedClassName {
             .sexp(chars)
             .and_then(|v| v.into_owned())
             .unwrap_or_else(|failure| crate::sexp::context::r_error(failure.to_string()));
-        let bytes = std::ffi::CStr::from_ptr(CHAR(chars.as_raw())).to_bytes();
-        AdmittedClassName::from_bytes(owner, bytes)
+        let bytes = crate::sexp::accessors::charsxp_as_utf8(chars.as_raw());
+        AdmittedClassName::from_bytes(owner, &bytes)
             .unwrap_or_else(|failure| crate::sexp::context::r_error(failure))
     }
 }
@@ -160,7 +162,7 @@ mod tests {
                 old
             })
             .unwrap();
-        let failure = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+        let failure = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             class_name_owned(name.as_raw())
         }))
         .err()
@@ -174,7 +176,7 @@ mod tests {
         );
         assert_eq!(owner.with_arena(|a| a.workspace_bytes()).unwrap(), baseline);
         owner.with_arena(|a| a.set_budget(budget)).unwrap();
-        let copy = unsafe { class_name_owned(name.as_raw()) };
+        let copy = class_name_owned(name.as_raw());
         assert_eq!(copy.as_str(), "OwnedClassName");
         drop(copy);
         assert_eq!(owner.with_arena(|a| a.workspace_bytes()).unwrap(), baseline);
@@ -186,7 +188,7 @@ mod tests {
         let owner = session.owner_token().unwrap();
         let name = owner.node_factory().strings(&["OwnedClassName"]).unwrap();
         let baseline = owner.with_arena(|arena| arena.workspace_bytes()).unwrap();
-        let copy = unsafe { class_name_owned(name.as_raw()) };
+        let copy = class_name_owned(name.as_raw());
         assert!(owner.with_arena(|arena| arena.workspace_bytes()).unwrap() >= baseline + 14);
         drop(copy);
         assert_eq!(

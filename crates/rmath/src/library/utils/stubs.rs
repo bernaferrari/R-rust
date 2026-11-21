@@ -470,11 +470,10 @@ pub fn charClass(x: SEXP, scl: SEXP) -> SEXP {
 
                 ans = Rf_allocVector(SEXPTYPE::LGLSXP, n as c_int);
                 protect_guards.push(protect(ans));
-                let pans = LOGICAL(ans);
 
                 for (i, &wc) in wide.iter().enumerate() {
                     let result = crate::main::rlocale::Ri18n_iswctype(wc, wcl);
-                    *pans.add(i) = if result != 0 { 1 } else { 0 };
+                    SET_LOGICAL_ELT(ans, i as c_int, if result != 0 { 1 } else { 0 });
                 }
             }
         } else {
@@ -483,19 +482,17 @@ pub fn charClass(x: SEXP, scl: SEXP) -> SEXP {
             protect_guards.push(protect(x_coerced));
 
             let n = XLENGTH(x_coerced) as usize;
-            let px = INTEGER(x_coerced);
 
             ans = Rf_allocVector(SEXPTYPE::LGLSXP, n as c_int);
             protect_guards.push(protect(ans));
-            let pans = LOGICAL(ans);
 
             for i in 0..n {
-                let this = *px.add(i);
+                let this = INTEGER_ELT(x_coerced, i as c_int);
                 if this == NA_INTEGER {
-                    *pans.add(i) = NA_LOGICAL;
+                    SET_LOGICAL_ELT(ans, i as c_int, NA_LOGICAL);
                 } else {
                     let result = crate::main::rlocale::Ri18n_iswctype(this as u32, wcl);
-                    *pans.add(i) = if result != 0 { 1 } else { 0 };
+                    SET_LOGICAL_ELT(ans, i as c_int, if result != 0 { 1 } else { 0 });
                 }
             }
         }

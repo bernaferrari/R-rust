@@ -30,30 +30,22 @@ fn slot_name_charsxp(name: SEXP) -> SEXP {
 }
 
 fn slot_name_matches(names: SEXP, index: c_int, name: SEXP) -> bool {
-    unsafe {
-        let name = slot_name_charsxp(name);
-        if name.is_null() || name == R_NilValue() {
-            return false;
-        }
-        let wanted = CHAR(name);
-        if wanted.is_null() {
-            return false;
-        }
-        let current = STRING_ELT(names, index as R_xlen_t);
-        if current.is_null() {
-            return false;
-        }
-        let current = CHAR(current);
-        !current.is_null()
-            && std::ffi::CStr::from_ptr(current).to_bytes()
-                == std::ffi::CStr::from_ptr(wanted).to_bytes()
+    let name = slot_name_charsxp(name);
+    if name.is_null() || name == R_NilValue() {
+        return false;
     }
+    let wanted = charsxp_as_utf8(name);
+    let current = STRING_ELT(names, index as R_xlen_t);
+    if current.is_null() {
+        return false;
+    }
+    charsxp_as_utf8(current) == wanted
 }
 
 /// R_get_slot - get the value of a slot in an S4 object.
 /// Simplified counterpart of R_do_slot (mainutils/essentials/s4.rs).
 pub fn R_get_slot(obj: SEXP, name: SEXP) -> SEXP {
-    unsafe {
+    {
         if obj.is_null() || obj == R_NilValue() || name.is_null() || name == R_NilValue() {
             return R_NilValue();
         }
@@ -61,7 +53,9 @@ pub fn R_get_slot(obj: SEXP, name: SEXP) -> SEXP {
             return R_NilValue();
         }
 
-        let names = crate::attrib_core::getAttrib(obj, Rf_install(c"names".as_ptr()));
+        // SAFETY: `c"names"` is a valid NUL-terminated symbol name.
+        let names =
+            crate::attrib_core::getAttrib(obj, unsafe { Rf_install(c"names".as_ptr()) });
         if names.is_null() || names == R_NilValue() || TYPEOF(names) != SEXPTYPE::STRSXP {
             return R_NilValue();
         }
@@ -80,7 +74,7 @@ pub fn R_get_slot(obj: SEXP, name: SEXP) -> SEXP {
 /// Simplified counterpart of R_do_slot_assign (slot lookup itself lives in
 /// mainutils/essentials/s4.rs).
 pub fn R_set_slot(obj: SEXP, name: SEXP, value: SEXP) -> SEXP {
-    unsafe {
+    {
         if obj.is_null() || obj == R_NilValue() || name.is_null() || name == R_NilValue() {
             return obj;
         }
@@ -88,7 +82,9 @@ pub fn R_set_slot(obj: SEXP, name: SEXP, value: SEXP) -> SEXP {
             return obj;
         }
 
-        let names = crate::attrib_core::getAttrib(obj, Rf_install(c"names".as_ptr()));
+        // SAFETY: `c"names"` is a valid NUL-terminated symbol name.
+        let names =
+            crate::attrib_core::getAttrib(obj, unsafe { Rf_install(c"names".as_ptr()) });
         if names.is_null() || names == R_NilValue() || TYPEOF(names) != SEXPTYPE::STRSXP {
             return obj;
         }
@@ -108,14 +104,17 @@ pub fn R_set_slot(obj: SEXP, name: SEXP, value: SEXP) -> SEXP {
 /// Simplified counterpart of R_has_slot (see R_do_slot in
 /// mainutils/essentials/s4.rs).
 pub fn R_hasSlot(obj: SEXP, name: SEXP) -> SEXP {
-    unsafe {
+    {
         let has_slot =
             if obj.is_null() || obj == R_NilValue() || name.is_null() || name == R_NilValue() {
                 0
             } else if TYPEOF(obj) != SEXPTYPE::VECSXP {
                 0
             } else {
-                let names = crate::attrib_core::getAttrib(obj, Rf_install(c"names".as_ptr()));
+                // SAFETY: `c"names"` is a valid NUL-terminated symbol name.
+                let names = crate::attrib_core::getAttrib(obj, unsafe {
+                    Rf_install(c"names".as_ptr())
+                });
                 if names.is_null() || names == R_NilValue() || TYPEOF(names) != SEXPTYPE::STRSXP {
                     0
                 } else {

@@ -126,8 +126,10 @@ unsafe extern "C-unwind" fn c_char_class(
 }
 
 unsafe extern "C-unwind" fn c_rprof(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
-    unsafe {
-        let owner = crate::sexp::owner::OwnerToken::current()
+    {
+        // SAFETY: the native dispatcher invokes this adapter within the active
+        // interpreter; the pin below retains that same owner for the call.
+        let owner = unsafe { crate::sexp::owner::OwnerToken::current() }
             .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
         let _pin = owner
             .pin()
