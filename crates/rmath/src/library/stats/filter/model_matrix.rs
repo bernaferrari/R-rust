@@ -819,9 +819,7 @@ fn resolve_contrast_matrix(colx: SEXP) -> Option<SEXP> {
         crate::mainutils::essentials::elt_to_string(assigned, 0)
     } else {
         let tag = crate::sexp::symbol::install_str("contrasts");
-        // SAFETY: `tag` is a live interned symbol; GetOption1 only reads the
-        // options list.
-        let contrasts_opt = unsafe { crate::mainutils::options::GetOption1(tag) };
+        let contrasts_opt = crate::mainutils::options::GetOption1(tag);
         if contrasts_opt.is_null()
             || contrasts_opt == R_NilValue()
             || TYPEOF(contrasts_opt) != SEXPTYPE::STRSXP
