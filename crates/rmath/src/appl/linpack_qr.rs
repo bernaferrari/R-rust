@@ -282,7 +282,10 @@ fn dqrdc2_impl(
 /// - `info`: 0 on success, index of first zero diagonal if singular
 ///
 /// # Safety
-/// All pointers must be valid for the documented extents.
+/// Inputs and selected outputs must be valid for the documented extents.
+/// Unselected outputs are ignored and may be null. `qty` is selected whenever
+/// any of the low four job digits is nonzero. Selected buffers must not
+/// overlap, except that `y` and `qty` may be exactly the same buffer.
 pub unsafe fn dqrsl(
     x: *mut f64,
     ldx: c_int,
@@ -300,21 +303,31 @@ pub unsafe fn dqrsl(
 ) {
     unsafe {
         let (ldx, n, k) = (ldx as usize, n as usize, k as usize);
-        // The Fortran entry documents x as (ldx, k); the touched columns are
-        // bounded by ju = min(k, n-1) < k and ldx >= n.
+        let outputs = [
+            job / 10000 != 0,
+            job % 10000 != 0,
+            job % 1000 / 100 != 0,
+            job % 100 / 10 != 0,
+            job % 10 != 0,
+        ];
+        let [cqy, cqty, cb, cr, cxb] = outputs;
+        // In the in-place form, qty already contains y. Form just one
+        // reference to that buffer.
+        let y = (!(cqty && y == qty.cast_const())).then(|| from_raw_parts(y, n));
+        // SAFETY: Only selected outputs have to be backed by valid storage.
         dqrsl_impl(
             from_raw_parts_mut(x, ldx * k),
             ldx,
             n,
             k,
             from_raw_parts(qraux, k),
-            from_raw_parts(y, n),
-            from_raw_parts_mut(qy, n),
-            from_raw_parts_mut(qty, n),
-            from_raw_parts_mut(b, k),
-            from_raw_parts_mut(rsd, n),
-            from_raw_parts_mut(xb, n),
-            job,
+            y,
+            if cqy { from_raw_parts_mut(qy, n) } else { &mut [] },
+            if cqty { from_raw_parts_mut(qty, n) } else { &mut [] },
+            if cb { from_raw_parts_mut(b, k) } else { &mut [] },
+            if cr { from_raw_parts_mut(rsd, n) } else { &mut [] },
+            if cxb { from_raw_parts_mut(xb, n) } else { &mut [] },
+            outputs,
             &mut *info,
         );
     }
@@ -327,34 +340,31 @@ fn dqrsl_impl(
     n: usize,
     k: usize,
     qraux: &[f64],
-    y: &[f64],
+    y: Option<&[f64]>,
     qy: &mut [f64],
     qty: &mut [f64],
     b: &mut [f64],
     rsd: &mut [f64],
     xb: &mut [f64],
-    job: c_int,
+    [cqy, cqty, cb, cr, cxb]: [bool; 5],
     info: &mut c_int,
 ) {
     *info = 0;
 
-    let cqy = job / 10000 != 0;
-    let cqty = job % 10000 != 0;
-    let cb = job % 1000 / 100 != 0;
-    let cr = job % 100 / 10 != 0;
-    let cxb = job % 10 != 0;
     let ju = if k < n - 1 { k } else { n - 1 };
 
     // Special action when n == 1
     if ju == 0 {
+        let y0 = || y.map_or_else(|| qty[0], |y| y[0]);
+        let y0 = if cqy || cqty { y0() } else { 0.0 };
         if cqy {
-            qy[0] = y[0];
+            qy[0] = y0;
         }
         if cqty {
-            qty[0] = y[0];
+            qty[0] = y0;
         }
         if cxb {
-            xb[0] = y[0];
+            xb[0] = y0;
         }
         if !cb {
             if cr {
@@ -363,7 +373,7 @@ fn dqrsl_impl(
             return;
         }
         if x[0] != 0.0 {
-            b[0] = y[0] / x[0];
+            b[0] = y0 / x[0];
         } else {
             *info = 1;
         }
@@ -374,11 +384,15 @@ fn dqrsl_impl(
     }
 
     // Set up to compute qy or qty
-    if cqy {
-        dcopy(&y[..n], &mut qy[..n]);
-    }
-    if cqty {
-        dcopy(&y[..n], &mut qty[..n]);
+    if let Some(y) = y {
+        if cqy {
+            dcopy(&y[..n], &mut qy[..n]);
+        }
+        if cqty {
+            dcopy(&y[..n], &mut qty[..n]);
+        }
+    } else if cqy {
+        dcopy(&qty[..n], &mut qy[..n]);
     }
 
     // Compute qy

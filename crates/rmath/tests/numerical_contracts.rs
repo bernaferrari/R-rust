@@ -431,6 +431,38 @@ fn qr_fit(
 }
 
 #[test]
+fn lm_qr_accepts_in_place_qty_and_omitted_outputs() {
+    let mut x = [2.0, 0.0];
+    let qraux = [0.0];
+    let mut qty = [6.0, 7.0];
+    let in_place = qty.as_mut_ptr();
+    let mut coefficient = 0.0;
+    let mut info = -1;
+    // SAFETY: The input and selected output buffers match the documented
+    // dimensions. The kernel explicitly supports using y as qty.
+    unsafe {
+        dqrsl(
+            x.as_mut_ptr(),
+            2,
+            2,
+            1,
+            qraux.as_ptr(),
+            in_place.cast_const(),
+            std::ptr::null_mut(),
+            in_place,
+            &mut coefficient,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            100,
+            &mut info,
+        );
+    }
+    assert_eq!(info, 0);
+    assert_eq!(coefficient, 3.0);
+    assert_eq!(qty, [6.0, 7.0]);
+}
+
+#[test]
 fn lm_qr_recovers_rank_on_known_rank_problems() {
     let n = 12usize;
     // Full-rank design: x1 ramp, x2 independent, x3 = noise-free mixture
