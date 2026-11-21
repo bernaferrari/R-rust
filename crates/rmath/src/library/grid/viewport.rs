@@ -460,8 +460,8 @@ pub unsafe fn calcViewportTransform(vp: SEXP, parent: SEXP, _incremental: bool, 
                 parent_width_cm,
                 parent_height_cm,
                 parent_context,
-                gc_buf.as_ptr(),
-                dd as *const u8,
+                gc_buf.as_ptr() as pGEcontext,
+                dd,
             );
         }
     }

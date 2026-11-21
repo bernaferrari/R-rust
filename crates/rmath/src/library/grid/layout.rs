@@ -24,13 +24,14 @@
 
 use std::os::raw::c_int;
 
-use crate::sexp::accessors::{INTEGER, LENGTH, REAL, Rf_isNull, SET_VECTOR_ELT, VECTOR_ELT};
-use crate::sexp::constructors::{Rf_ScalarInteger, Rf_ScalarReal, Rf_allocVector};
+use crate::sexp::accessors::Rf_isNull;
 use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
-use crate::sexp::protect::protect;
 
 use super::types::*;
 use super::unit::{pureNullUnitValue, transformHeight, transformWidth, unit};
+use super::{
+    alloc_vector, integer_elt, protect, real_elt, set_real_elt, set_vector_elt, vector_elt,
+};
 use super::viewport::{
     viewportHeightCM, viewportLayout, viewportLayoutHeights, viewportLayoutPosCol,
     viewportLayoutPosRow, viewportLayoutWidths, viewportWidthCM,
@@ -40,67 +41,63 @@ use super::viewport::{
 // Simple layout accessor functions
 // ---------------------------------------------------------------------------
 
-pub unsafe fn layoutNRow(l: SEXP) -> c_int {
-    unsafe { *INTEGER(VECTOR_ELT(l, LAYOUT_NROW as R_xlen_t)) }
+pub fn layoutNRow(l: SEXP) -> c_int {
+    integer_elt(vector_elt(l, LAYOUT_NROW as R_xlen_t), 0)
 }
 
-pub unsafe fn layoutNCol(l: SEXP) -> c_int {
-    unsafe { *INTEGER(VECTOR_ELT(l, LAYOUT_NCOL as R_xlen_t)) }
+pub fn layoutNCol(l: SEXP) -> c_int {
+    integer_elt(vector_elt(l, LAYOUT_NCOL as R_xlen_t), 0)
 }
 
-pub unsafe fn layoutWidths(l: SEXP) -> SEXP {
-    unsafe { VECTOR_ELT(l, LAYOUT_WIDTHS as R_xlen_t) }
+pub fn layoutWidths(l: SEXP) -> SEXP {
+    vector_elt(l, LAYOUT_WIDTHS as R_xlen_t)
 }
 
-pub unsafe fn layoutHeights(l: SEXP) -> SEXP {
-    unsafe { VECTOR_ELT(l, LAYOUT_HEIGHTS as R_xlen_t) }
+pub fn layoutHeights(l: SEXP) -> SEXP {
+    vector_elt(l, LAYOUT_HEIGHTS as R_xlen_t)
 }
 
-pub unsafe fn layoutRespect(l: SEXP) -> c_int {
-    unsafe { *INTEGER(VECTOR_ELT(l, LAYOUT_VRESPECT as R_xlen_t)) }
+pub fn layoutRespect(l: SEXP) -> c_int {
+    integer_elt(vector_elt(l, LAYOUT_VRESPECT as R_xlen_t), 0)
 }
 
-pub unsafe fn layoutRespectMat(l: SEXP) -> *mut c_int {
-    unsafe { INTEGER(VECTOR_ELT(l, LAYOUT_MRESPECT as R_xlen_t)) }
+pub fn layoutRespectMat(l: SEXP) -> SEXP {
+    vector_elt(l, LAYOUT_MRESPECT as R_xlen_t)
 }
 
-pub unsafe fn layoutHJust(l: SEXP) -> f64 {
-    unsafe { *REAL(VECTOR_ELT(l, LAYOUT_VJUST as R_xlen_t)) }
+pub fn layoutHJust(l: SEXP) -> f64 {
+    real_elt(vector_elt(l, LAYOUT_VJUST as R_xlen_t), 0)
 }
 
-pub unsafe fn layoutVJust(l: SEXP) -> f64 {
-    unsafe { *REAL(VECTOR_ELT(l, LAYOUT_VJUST as R_xlen_t)).add(1) }
+pub fn layoutVJust(l: SEXP) -> f64 {
+    real_elt(vector_elt(l, LAYOUT_VJUST as R_xlen_t), 1)
 }
 
 // ---------------------------------------------------------------------------
 // relativeUnit — classify pure-null units as relative.
 // ---------------------------------------------------------------------------
 
-fn relativeUnit(_unit: SEXP, _index: c_int, _dd: *const u8) -> bool {
-    super::unit::pureNullUnit(_unit, _index, _dd as super::types::pGEDevDesc) != 0
+fn relativeUnit(_unit: SEXP, _index: c_int, _dd: pGEDevDesc) -> bool {
+    super::unit::pureNullUnit(_unit, _index, _dd) != 0
 }
 
 // ---------------------------------------------------------------------------
 // findRelWidths / findRelHeights
 // ---------------------------------------------------------------------------
 
-unsafe fn findRelWidths(layout: SEXP, relativeWidths: *mut c_int, dd: *const u8) {
-    unsafe {
-        let widths = layoutWidths(layout);
-        let ncol = layoutNCol(layout);
-        for i in 0..ncol {
-            *relativeWidths.add(i as usize) = if relativeUnit(widths, i, dd) { 1 } else { 0 };
-        }
+fn findRelWidths(layout: SEXP, relativeWidths: &mut [c_int], dd: pGEDevDesc) {
+    let widths = layoutWidths(layout);
+    let ncol = layoutNCol(layout);
+    for i in 0..ncol {
+        relativeWidths[i as usize] = if relativeUnit(widths, i, dd) { 1 } else { 0 };
     }
 }
 
-unsafe fn findRelHeights(layout: SEXP, relativeHeights: *mut c_int, dd: *const u8) {
-    unsafe {
-        let heights = layoutHeights(layout);
-        let nrow = layoutNRow(layout);
-        for i in 0..nrow {
-            *relativeHeights.add(i as usize) = if relativeUnit(heights, i, dd) { 1 } else { 0 };
-        }
+fn findRelHeights(layout: SEXP, relativeHeights: &mut [c_int], dd: pGEDevDesc) {
+    let heights = layoutHeights(layout);
+    let nrow = layoutNRow(layout);
+    for i in 0..nrow {
+        relativeHeights[i as usize] = if relativeUnit(heights, i, dd) { 1 } else { 0 };
     }
 }
 
@@ -108,70 +105,66 @@ unsafe fn findRelHeights(layout: SEXP, relativeHeights: *mut c_int, dd: *const u
 // allocateKnownWidths / allocateKnownHeights
 // ---------------------------------------------------------------------------
 
-unsafe fn allocateKnownWidths(
+fn allocateKnownWidths(
     layout: SEXP,
-    relativeWidths: *mut c_int,
+    relativeWidths: &[c_int],
     parentWidthCM: f64,
     parentHeightCM: f64,
     parentContext: LViewportContext,
-    parentgc: *const u8,
-    dd: *const u8,
-    npcWidths: *mut f64,
-    widthLeftCM: *mut f64,
+    parentgc: pGEcontext,
+    dd: pGEDevDesc,
+    npcWidths: &mut [f64],
+    widthLeftCM: &mut f64,
 ) {
-    unsafe {
-        let ncol = layoutNCol(layout);
-        let widths = layoutWidths(layout);
-        for i in 0..ncol {
-            if *relativeWidths.add(i as usize) == 0 {
-                let width_cm = transformWidth(
-                    widths,
-                    i,
-                    parentContext,
-                    parentgc as pGEcontext,
-                    parentWidthCM,
-                    parentHeightCM,
-                    0,
-                    0,
-                    dd as pGEDevDesc,
-                ) * 2.54;
-                *npcWidths.add(i as usize) = width_cm;
-                *widthLeftCM -= width_cm;
-            }
+    let ncol = layoutNCol(layout);
+    let widths = layoutWidths(layout);
+    for i in 0..ncol {
+        if relativeWidths[i as usize] == 0 {
+            let width_cm = transformWidth(
+                widths,
+                i,
+                parentContext,
+                parentgc,
+                parentWidthCM,
+                parentHeightCM,
+                0,
+                0,
+                dd,
+            ) * 2.54;
+            npcWidths[i as usize] = width_cm;
+            *widthLeftCM -= width_cm;
         }
     }
 }
 
-unsafe fn allocateKnownHeights(
+fn allocateKnownHeights(
     layout: SEXP,
-    relativeHeights: *mut c_int,
+    relativeHeights: &[c_int],
     parentWidthCM: f64,
     parentHeightCM: f64,
     parentContext: LViewportContext,
-    parentgc: *const u8,
-    dd: *const u8,
-    npcHeights: *mut f64,
-    heightLeftCM: *mut f64,
+    parentgc: pGEcontext,
+    dd: pGEDevDesc,
+    npcHeights: &mut [f64],
+    heightLeftCM: &mut f64,
 ) {
-    unsafe {
-        let nrow = layoutNRow(layout);
-        let heights = layoutHeights(layout);
-        for i in 0..nrow {
-            if *relativeHeights.add(i as usize) == 0 {
-                let height_cm = transformHeight(
-                    heights,
-                    i,
-                    parentContext,
-                    parentgc as pGEcontext,
-                    parentWidthCM,
-                    parentHeightCM,
-                    0,
-                    0,
-                    dd as pGEDevDesc,
-                ) * 2.54;
-                *npcHeights.add(i as usize) = height_cm;
-                *heightLeftCM -= height_cm;
-            }
+    let nrow = layoutNRow(layout);
+    let heights = layoutHeights(layout);
+    for i in 0..nrow {
+        if relativeHeights[i as usize] == 0 {
+            let height_cm = transformHeight(
+                heights,
+                i,
+                parentContext,
+                parentgc,
+                parentWidthCM,
+                parentHeightCM,
+                0,
+                0,
+                dd,
+            ) * 2.54;
+            npcHeights[i as usize] = height_cm;
+            *heightLeftCM -= height_cm;
         }
     }
 }
@@ -180,138 +173,128 @@ unsafe fn allocateKnownHeights(
 // colRespected / rowRespected
 // ---------------------------------------------------------------------------
 
-unsafe fn colRespected(col: c_int, layout: SEXP) -> c_int {
-    unsafe {
-        let mut result: c_int = 0;
-        let respect = layoutRespect(layout);
-        let respect_mat = layoutRespectMat(layout);
-        if respect == 1 {
-            result = 1;
-        } else {
-            let nrow = layoutNRow(layout);
-            for i in 0..nrow {
-                if *respect_mat.add((col * nrow + i) as usize) != 0 {
-                    result = 1;
-                    break;
-                }
+fn colRespected(col: c_int, layout: SEXP) -> c_int {
+    let mut result: c_int = 0;
+    let respect = layoutRespect(layout);
+    let respect_mat = layoutRespectMat(layout);
+    if respect == 1 {
+        result = 1;
+    } else {
+        let nrow = layoutNRow(layout);
+        for i in 0..nrow {
+            if integer_elt(respect_mat, (col * nrow + i) as R_xlen_t) != 0 {
+                result = 1;
+                break;
             }
         }
-        result
     }
+    result
 }
 
-unsafe fn rowRespected(row: c_int, layout: SEXP) -> c_int {
-    unsafe {
-        let mut result: c_int = 0;
-        let respect = layoutRespect(layout);
-        let respect_mat = layoutRespectMat(layout);
-        if respect == 1 {
-            result = 1;
-        } else {
-            let ncol = layoutNCol(layout);
-            for i in 0..ncol {
-                if *respect_mat.add((i * layoutNRow(layout) + row) as usize) != 0 {
-                    result = 1;
-                    break;
-                }
+fn rowRespected(row: c_int, layout: SEXP) -> c_int {
+    let mut result: c_int = 0;
+    let respect = layoutRespect(layout);
+    let respect_mat = layoutRespectMat(layout);
+    if respect == 1 {
+        result = 1;
+    } else {
+        let ncol = layoutNCol(layout);
+        for i in 0..ncol {
+            if integer_elt(respect_mat, (i * layoutNRow(layout) + row) as R_xlen_t) != 0 {
+                result = 1;
+                break;
             }
         }
-        result
     }
+    result
 }
 
 // ---------------------------------------------------------------------------
 // totalWidth / totalHeight
 // ---------------------------------------------------------------------------
 
-unsafe fn totalWidth(
+fn totalWidth(
     _layout: SEXP,
-    _relativeWidths: *mut c_int,
+    _relativeWidths: &[c_int],
     _parentContext: LViewportContext,
-    _parentgc: *const u8,
-    _dd: *const u8,
+    _parentgc: pGEcontext,
+    _dd: pGEDevDesc,
 ) -> f64 {
-    unsafe {
-        let widths = layoutWidths(_layout);
-        let mut total = 0.0;
-        for i in 0..layoutNCol(_layout) {
-            if *_relativeWidths.add(i as usize) != 0 {
-                total += pureNullUnitValue(widths, i);
-            }
+    let widths = layoutWidths(_layout);
+    let mut total = 0.0;
+    for i in 0..layoutNCol(_layout) {
+        if _relativeWidths[i as usize] != 0 {
+            total += pureNullUnitValue(widths, i);
         }
-        total
     }
+    total
 }
 
-unsafe fn totalHeight(
+fn totalHeight(
     _layout: SEXP,
-    _relativeHeights: *mut c_int,
+    _relativeHeights: &[c_int],
     _parentContext: LViewportContext,
-    _parentgc: *const u8,
-    _dd: *const u8,
+    _parentgc: pGEcontext,
+    _dd: pGEDevDesc,
 ) -> f64 {
-    unsafe {
-        let heights = layoutHeights(_layout);
-        let mut total = 0.0;
-        for i in 0..layoutNRow(_layout) {
-            if *_relativeHeights.add(i as usize) != 0 {
-                total += pureNullUnitValue(heights, i);
-            }
+    let heights = layoutHeights(_layout);
+    let mut total = 0.0;
+    for i in 0..layoutNRow(_layout) {
+        if _relativeHeights[i as usize] != 0 {
+            total += pureNullUnitValue(heights, i);
         }
-        total
     }
+    total
 }
 
 // ---------------------------------------------------------------------------
 // allocateRespected
 // ---------------------------------------------------------------------------
 
-unsafe fn allocateRespected(
+fn allocateRespected(
     _layout: SEXP,
-    _relativeWidths: *mut c_int,
-    _relativeHeights: *mut c_int,
-    _reducedWidthCM: *mut f64,
-    _reducedHeightCM: *mut f64,
+    _relativeWidths: &[c_int],
+    _relativeHeights: &[c_int],
+    _reducedWidthCM: &mut f64,
+    _reducedHeightCM: &mut f64,
     _parentContext: LViewportContext,
-    _parentgc: *const u8,
-    _dd: *const u8,
-    npcWidths: *mut f64,
-    npcHeights: *mut f64,
+    _parentgc: pGEcontext,
+    _dd: pGEDevDesc,
+    npcWidths: &mut [f64],
+    npcHeights: &mut [f64],
 ) {
-    unsafe {
-        let widths = layoutWidths(_layout);
-        let heights = layoutHeights(_layout);
-        let sum_width = totalWidth(_layout, _relativeWidths, _parentContext, _parentgc, _dd);
-        let sum_height = totalHeight(_layout, _relativeHeights, _parentContext, _parentgc, _dd);
+    let widths = layoutWidths(_layout);
+    let heights = layoutHeights(_layout);
+    let sum_width = totalWidth(_layout, _relativeWidths, _parentContext, _parentgc, _dd);
+    let sum_height = totalHeight(_layout, _relativeHeights, _parentContext, _parentgc, _dd);
 
-        let temp_width_cm = *_reducedWidthCM;
-        let temp_height_cm = *_reducedHeightCM;
-        let (mut denom, mut mult) = if temp_height_cm * sum_width > sum_height * temp_width_cm {
-            (sum_width, temp_width_cm)
-        } else {
-            (sum_height, temp_height_cm)
-        };
+    let temp_width_cm = *_reducedWidthCM;
+    let temp_height_cm = *_reducedHeightCM;
+    let (mut denom, mut mult) = if temp_height_cm * sum_width > sum_height * temp_width_cm {
+        (sum_width, temp_width_cm)
+    } else {
+        (sum_height, temp_height_cm)
+    };
 
-        for i in 0..layoutNCol(_layout) {
-            if *_relativeWidths.add(i as usize) != 0 && colRespected(i, _layout) != 0 {
-                if sum_height == 0.0 {
-                    denom = sum_width;
-                    mult = temp_width_cm;
-                }
-                *npcWidths.add(i as usize) = pureNullUnitValue(widths, i) / denom * mult;
-                *_reducedWidthCM -= *npcWidths.add(i as usize);
+    for i in 0..layoutNCol(_layout) {
+        if _relativeWidths[i as usize] != 0 && colRespected(i, _layout) != 0 {
+            if sum_height == 0.0 {
+                denom = sum_width;
+                mult = temp_width_cm;
             }
+            npcWidths[i as usize] = pureNullUnitValue(widths, i) / denom * mult;
+            *_reducedWidthCM -= npcWidths[i as usize];
         }
+    }
 
-        for i in 0..layoutNRow(_layout) {
-            if *_relativeHeights.add(i as usize) != 0 && rowRespected(i, _layout) != 0 {
-                if sum_width == 0.0 {
-                    denom = sum_height;
-                    mult = temp_height_cm;
-                }
-                *npcHeights.add(i as usize) = pureNullUnitValue(heights, i) / denom * mult;
-                *_reducedHeightCM -= *npcHeights.add(i as usize);
+    for i in 0..layoutNRow(_layout) {
+        if _relativeHeights[i as usize] != 0 && rowRespected(i, _layout) != 0 {
+            if sum_width == 0.0 {
+                denom = sum_height;
+                mult = temp_height_cm;
             }
+            npcHeights[i as usize] = pureNullUnitValue(heights, i) / denom * mult;
+            *_reducedHeightCM -= npcHeights[i as usize];
         }
     }
 }
@@ -320,29 +303,23 @@ unsafe fn allocateRespected(
 // setRespectedZero
 // ---------------------------------------------------------------------------
 
-unsafe fn setRespectedZero(
+fn setRespectedZero(
     layout: SEXP,
-    relativeWidths: *mut c_int,
-    relativeHeights: *mut c_int,
-    npcWidths: *mut f64,
-    npcHeights: *mut f64,
+    relativeWidths: &[c_int],
+    relativeHeights: &[c_int],
+    npcWidths: &mut [f64],
+    npcHeights: &mut [f64],
 ) {
-    unsafe {
-        let ncol = layoutNCol(layout);
-        for i in 0..ncol {
-            if *relativeWidths.add(i as usize) != 0 {
-                if colRespected(i, layout) != 0 {
-                    *npcWidths.add(i as usize) = 0.0;
-                }
-            }
+    let ncol = layoutNCol(layout);
+    for i in 0..ncol {
+        if relativeWidths[i as usize] != 0 && colRespected(i, layout) != 0 {
+            npcWidths[i as usize] = 0.0;
         }
-        let nrow = layoutNRow(layout);
-        for i in 0..nrow {
-            if *relativeHeights.add(i as usize) != 0 {
-                if rowRespected(i, layout) != 0 {
-                    *npcHeights.add(i as usize) = 0.0;
-                }
-            }
+    }
+    let nrow = layoutNRow(layout);
+    for i in 0..nrow {
+        if relativeHeights[i as usize] != 0 && rowRespected(i, layout) != 0 {
+            npcHeights[i as usize] = 0.0;
         }
     }
 }
@@ -351,70 +328,58 @@ unsafe fn setRespectedZero(
 // totalUnrespectedWidth / totalUnrespectedHeight
 // ---------------------------------------------------------------------------
 
-unsafe fn totalUnrespectedWidth(
+fn totalUnrespectedWidth(
     _layout: SEXP,
-    _relativeWidths: *mut c_int,
+    _relativeWidths: &[c_int],
     _parentContext: LViewportContext,
-    _parentgc: *const u8,
-    _dd: *const u8,
+    _parentgc: pGEcontext,
+    _dd: pGEDevDesc,
 ) -> f64 {
-    unsafe {
-        let widths = layoutWidths(_layout);
-        let mut total = 0.0;
-        for i in 0..layoutNCol(_layout) {
-            if *_relativeWidths.add(i as usize) != 0 && colRespected(i, _layout) == 0 {
-                total += pureNullUnitValue(widths, i);
-            }
+    let widths = layoutWidths(_layout);
+    let mut total = 0.0;
+    for i in 0..layoutNCol(_layout) {
+        if _relativeWidths[i as usize] != 0 && colRespected(i, _layout) == 0 {
+            total += pureNullUnitValue(widths, i);
         }
-        total
     }
+    total
 }
 
-unsafe fn totalUnrespectedHeight(
+fn totalUnrespectedHeight(
     _layout: SEXP,
-    _relativeHeights: *mut c_int,
+    _relativeHeights: &[c_int],
     _parentContext: LViewportContext,
-    _parentgc: *const u8,
-    _dd: *const u8,
+    _parentgc: pGEcontext,
+    _dd: pGEDevDesc,
 ) -> f64 {
-    unsafe {
-        let heights = layoutHeights(_layout);
-        let mut total = 0.0;
-        for i in 0..layoutNRow(_layout) {
-            if *_relativeHeights.add(i as usize) != 0 && rowRespected(i, _layout) == 0 {
-                total += pureNullUnitValue(heights, i);
-            }
+    let heights = layoutHeights(_layout);
+    let mut total = 0.0;
+    for i in 0..layoutNRow(_layout) {
+        if _relativeHeights[i as usize] != 0 && rowRespected(i, _layout) == 0 {
+            total += pureNullUnitValue(heights, i);
         }
-        total
     }
+    total
 }
 
 // ---------------------------------------------------------------------------
 // setRemainingWidthZero / setRemainingHeightZero
 // ---------------------------------------------------------------------------
 
-unsafe fn setRemainingWidthZero(layout: SEXP, relativeWidths: *mut c_int, npcWidths: *mut f64) {
-    unsafe {
-        let ncol = layoutNCol(layout);
-        for i in 0..ncol {
-            if *relativeWidths.add(i as usize) != 0 {
-                if colRespected(i, layout) == 0 {
-                    *npcWidths.add(i as usize) = 0.0;
-                }
-            }
+fn setRemainingWidthZero(layout: SEXP, relativeWidths: &[c_int], npcWidths: &mut [f64]) {
+    let ncol = layoutNCol(layout);
+    for i in 0..ncol {
+        if relativeWidths[i as usize] != 0 && colRespected(i, layout) == 0 {
+            npcWidths[i as usize] = 0.0;
         }
     }
 }
 
-unsafe fn setRemainingHeightZero(layout: SEXP, relativeHeights: *mut c_int, npcHeights: *mut f64) {
-    unsafe {
-        let nrow = layoutNRow(layout);
-        for i in 0..nrow {
-            if *relativeHeights.add(i as usize) != 0 {
-                if rowRespected(i, layout) == 0 {
-                    *npcHeights.add(i as usize) = 0.0;
-                }
-            }
+fn setRemainingHeightZero(layout: SEXP, relativeHeights: &[c_int], npcHeights: &mut [f64]) {
+    let nrow = layoutNRow(layout);
+    for i in 0..nrow {
+        if relativeHeights[i as usize] != 0 && rowRespected(i, layout) == 0 {
+            npcHeights[i as usize] = 0.0;
         }
     }
 }
@@ -423,55 +388,51 @@ unsafe fn setRemainingHeightZero(layout: SEXP, relativeHeights: *mut c_int, npcH
 // allocateRemainingWidth / allocateRemainingHeight
 // ---------------------------------------------------------------------------
 
-unsafe fn allocateRemainingWidth(
+fn allocateRemainingWidth(
     _layout: SEXP,
-    _relativeWidths: *mut c_int,
+    _relativeWidths: &[c_int],
     _remainingWidthCM: f64,
     _parentContext: LViewportContext,
-    _parentgc: *const u8,
-    _dd: *const u8,
-    npcWidths: *mut f64,
+    _parentgc: pGEcontext,
+    _dd: pGEDevDesc,
+    npcWidths: &mut [f64],
 ) {
-    unsafe {
-        let sum_width =
-            totalUnrespectedWidth(_layout, _relativeWidths, _parentContext, _parentgc, _dd);
-        if sum_width > 0.0 {
-            let widths = layoutWidths(_layout);
-            for i in 0..layoutNCol(_layout) {
-                if *_relativeWidths.add(i as usize) != 0 && colRespected(i, _layout) == 0 {
-                    *npcWidths.add(i as usize) =
-                        _remainingWidthCM * pureNullUnitValue(widths, i) / sum_width;
-                }
+    let sum_width =
+        totalUnrespectedWidth(_layout, _relativeWidths, _parentContext, _parentgc, _dd);
+    if sum_width > 0.0 {
+        let widths = layoutWidths(_layout);
+        for i in 0..layoutNCol(_layout) {
+            if _relativeWidths[i as usize] != 0 && colRespected(i, _layout) == 0 {
+                npcWidths[i as usize] =
+                    _remainingWidthCM * pureNullUnitValue(widths, i) / sum_width;
             }
-        } else {
-            setRemainingWidthZero(_layout, _relativeWidths, npcWidths);
         }
+    } else {
+        setRemainingWidthZero(_layout, _relativeWidths, npcWidths);
     }
 }
 
-unsafe fn allocateRemainingHeight(
+fn allocateRemainingHeight(
     _layout: SEXP,
-    _relativeHeights: *mut c_int,
+    _relativeHeights: &[c_int],
     _remainingHeightCM: f64,
     _parentContext: LViewportContext,
-    _parentgc: *const u8,
-    _dd: *const u8,
-    npcHeights: *mut f64,
+    _parentgc: pGEcontext,
+    _dd: pGEDevDesc,
+    npcHeights: &mut [f64],
 ) {
-    unsafe {
-        let sum_height =
-            totalUnrespectedHeight(_layout, _relativeHeights, _parentContext, _parentgc, _dd);
-        if sum_height > 0.0 {
-            let heights = layoutHeights(_layout);
-            for i in 0..layoutNRow(_layout) {
-                if *_relativeHeights.add(i as usize) != 0 && rowRespected(i, _layout) == 0 {
-                    *npcHeights.add(i as usize) =
-                        _remainingHeightCM * pureNullUnitValue(heights, i) / sum_height;
-                }
+    let sum_height =
+        totalUnrespectedHeight(_layout, _relativeHeights, _parentContext, _parentgc, _dd);
+    if sum_height > 0.0 {
+        let heights = layoutHeights(_layout);
+        for i in 0..layoutNRow(_layout) {
+            if _relativeHeights[i as usize] != 0 && rowRespected(i, _layout) == 0 {
+                npcHeights[i as usize] =
+                    _remainingHeightCM * pureNullUnitValue(heights, i) / sum_height;
             }
-        } else {
-            setRemainingHeightZero(_layout, _relativeHeights, npcHeights);
         }
+    } else {
+        setRemainingHeightZero(_layout, _relativeHeights, npcHeights);
     }
 }
 
@@ -479,17 +440,15 @@ unsafe fn allocateRemainingHeight(
 // sumDims — static helper
 // ---------------------------------------------------------------------------
 
-unsafe fn sumDims(dims: *const f64, from: c_int, to: c_int) -> f64 {
-    unsafe {
-        if to < from {
-            return 0.0;
-        }
-        let mut s: f64 = 0.0;
-        for i in from..=to {
-            s += *dims.add(i as usize);
-        }
-        s
+fn sumDims(dims: SEXP, from: c_int, to: c_int) -> f64 {
+    if to < from {
+        return 0.0;
     }
+    let mut s: f64 = 0.0;
+    for i in from..=to {
+        s += real_elt(dims, i as R_xlen_t);
+    }
+    s
 }
 
 // ---------------------------------------------------------------------------
@@ -510,253 +469,232 @@ fn allocationRemaining(initial: f64, remaining: f64) -> bool {
 // calcViewportLayout
 // ---------------------------------------------------------------------------
 
-pub unsafe fn calcViewportLayout(
+pub fn calcViewportLayout(
     viewport: SEXP,
     parentWidthCM: f64,
     parentHeightCM: f64,
     parentContext: LViewportContext,
-    parentgc: *const u8,
-    dd: *const u8,
+    parentgc: pGEcontext,
+    dd: pGEDevDesc,
 ) {
-    unsafe {
-        let layout = viewportLayout(viewport);
-        let ncol = layoutNCol(layout);
-        let nrow = layoutNRow(layout);
-        let mut npcWidths = vec![0.0; ncol as usize];
-        let mut npcHeights = vec![0.0; nrow as usize];
-        let mut relativeWidths = vec![0; ncol as usize];
-        let mut relativeHeights = vec![0; nrow as usize];
-        let mut reducedWidthCM = parentWidthCM;
-        let mut reducedHeightCM = parentHeightCM;
+    let layout = viewportLayout(viewport);
+    let ncol = layoutNCol(layout);
+    let nrow = layoutNRow(layout);
+    let mut npcWidths = vec![0.0; ncol as usize];
+    let mut npcHeights = vec![0.0; nrow as usize];
+    let mut relativeWidths = vec![0; ncol as usize];
+    let mut relativeHeights = vec![0; nrow as usize];
+    let mut reducedWidthCM = parentWidthCM;
+    let mut reducedHeightCM = parentHeightCM;
 
-        findRelWidths(layout, relativeWidths.as_mut_ptr(), dd);
-        findRelHeights(layout, relativeHeights.as_mut_ptr(), dd);
+    findRelWidths(layout, &mut relativeWidths, dd);
+    findRelHeights(layout, &mut relativeHeights, dd);
 
-        allocateKnownWidths(
+    allocateKnownWidths(
+        layout,
+        &relativeWidths,
+        parentWidthCM,
+        parentHeightCM,
+        parentContext,
+        parentgc,
+        dd,
+        &mut npcWidths,
+        &mut reducedWidthCM,
+    );
+    allocateKnownHeights(
+        layout,
+        &relativeHeights,
+        parentWidthCM,
+        parentHeightCM,
+        parentContext,
+        parentgc,
+        dd,
+        &mut npcHeights,
+        &mut reducedHeightCM,
+    );
+
+    if allocationRemaining(parentWidthCM, reducedWidthCM)
+        || allocationRemaining(parentHeightCM, reducedHeightCM)
+    {
+        allocateRespected(
             layout,
-            relativeWidths.as_mut_ptr(),
-            parentWidthCM,
-            parentHeightCM,
-            parentContext,
-            parentgc,
-            dd,
-            npcWidths.as_mut_ptr(),
+            &relativeWidths,
+            &relativeHeights,
             &mut reducedWidthCM,
-        );
-        allocateKnownHeights(
-            layout,
-            relativeHeights.as_mut_ptr(),
-            parentWidthCM,
-            parentHeightCM,
+            &mut reducedHeightCM,
             parentContext,
             parentgc,
             dd,
-            npcHeights.as_mut_ptr(),
-            &mut reducedHeightCM,
+            &mut npcWidths,
+            &mut npcHeights,
         );
-
-        if allocationRemaining(parentWidthCM, reducedWidthCM)
-            || allocationRemaining(parentHeightCM, reducedHeightCM)
-        {
-            allocateRespected(
-                layout,
-                relativeWidths.as_mut_ptr(),
-                relativeHeights.as_mut_ptr(),
-                &mut reducedWidthCM,
-                &mut reducedHeightCM,
-                parentContext,
-                parentgc,
-                dd,
-                npcWidths.as_mut_ptr(),
-                npcHeights.as_mut_ptr(),
-            );
-        } else {
-            setRespectedZero(
-                layout,
-                relativeWidths.as_mut_ptr(),
-                relativeHeights.as_mut_ptr(),
-                npcWidths.as_mut_ptr(),
-                npcHeights.as_mut_ptr(),
-            );
-        }
-
-        if allocationRemaining(parentWidthCM, reducedWidthCM) {
-            allocateRemainingWidth(
-                layout,
-                relativeWidths.as_mut_ptr(),
-                reducedWidthCM,
-                parentContext,
-                parentgc,
-                dd,
-                npcWidths.as_mut_ptr(),
-            );
-        } else {
-            setRemainingWidthZero(layout, relativeWidths.as_mut_ptr(), npcWidths.as_mut_ptr());
-        }
-
-        if allocationRemaining(parentHeightCM, reducedHeightCM) {
-            allocateRemainingHeight(
-                layout,
-                relativeHeights.as_mut_ptr(),
-                reducedHeightCM,
-                parentContext,
-                parentgc,
-                dd,
-                npcHeights.as_mut_ptr(),
-            );
-        } else {
-            setRemainingHeightZero(
-                layout,
-                relativeHeights.as_mut_ptr(),
-                npcHeights.as_mut_ptr(),
-            );
-        }
-
-        let currentWidths = Rf_allocVector(SEXPTYPE::REALSXP, ncol);
-        let _widths_guard = protect(currentWidths);
-        let currentHeights = Rf_allocVector(SEXPTYPE::REALSXP, nrow);
-        let _heights_guard = protect(currentHeights);
-        for i in 0..ncol {
-            *REAL(currentWidths).add(i as usize) = npcWidths[i as usize];
-        }
-        for i in 0..nrow {
-            *REAL(currentHeights).add(i as usize) = npcHeights[i as usize];
-        }
-        SET_VECTOR_ELT(viewport, PVP_WIDTHS as R_xlen_t, currentWidths);
-        SET_VECTOR_ELT(viewport, PVP_HEIGHTS as R_xlen_t, currentHeights);
+    } else {
+        setRespectedZero(
+            layout,
+            &relativeWidths,
+            &relativeHeights,
+            &mut npcWidths,
+            &mut npcHeights,
+        );
     }
+
+    if allocationRemaining(parentWidthCM, reducedWidthCM) {
+        allocateRemainingWidth(
+            layout,
+            &relativeWidths,
+            reducedWidthCM,
+            parentContext,
+            parentgc,
+            dd,
+            &mut npcWidths,
+        );
+    } else {
+        setRemainingWidthZero(layout, &relativeWidths, &mut npcWidths);
+    }
+
+    if allocationRemaining(parentHeightCM, reducedHeightCM) {
+        allocateRemainingHeight(
+            layout,
+            &relativeHeights,
+            reducedHeightCM,
+            parentContext,
+            parentgc,
+            dd,
+            &mut npcHeights,
+        );
+    } else {
+        setRemainingHeightZero(layout, &relativeHeights, &mut npcHeights);
+    }
+
+    let currentWidths = alloc_vector(SEXPTYPE::REALSXP, ncol);
+    let _widths_guard = protect(currentWidths);
+    let currentHeights = alloc_vector(SEXPTYPE::REALSXP, nrow);
+    let _heights_guard = protect(currentHeights);
+    for i in 0..ncol {
+        set_real_elt(currentWidths, i as R_xlen_t, npcWidths[i as usize]);
+    }
+    for i in 0..nrow {
+        set_real_elt(currentHeights, i as R_xlen_t, npcHeights[i as usize]);
+    }
+    set_vector_elt(viewport, PVP_WIDTHS as R_xlen_t, currentWidths);
+    set_vector_elt(viewport, PVP_HEIGHTS as R_xlen_t, currentHeights);
 }
 
 // ---------------------------------------------------------------------------
 // checkPosRowPosCol
 // ---------------------------------------------------------------------------
 
-pub unsafe fn checkPosRowPosCol(vp: SEXP, parent: SEXP) -> bool {
-    unsafe {
-        let parent_layout = viewportLayout(parent);
-        let ncol = layoutNCol(parent_layout);
-        let nrow = layoutNRow(parent_layout);
-        if Rf_isNull(viewportLayoutPosRow(vp)) == 0 {
-            let lpr = viewportLayoutPosRow(vp);
-            if *INTEGER(lpr) < 1 || *INTEGER(lpr).add(1) > nrow {
-                return false;
-            }
+pub fn checkPosRowPosCol(vp: SEXP, parent: SEXP) -> bool {
+    let parent_layout = viewportLayout(parent);
+    let ncol = layoutNCol(parent_layout);
+    let nrow = layoutNRow(parent_layout);
+    if Rf_isNull(viewportLayoutPosRow(vp)) == 0 {
+        let lpr = viewportLayoutPosRow(vp);
+        if integer_elt(lpr, 0) < 1 || integer_elt(lpr, 1) > nrow {
+            return false;
         }
-        if Rf_isNull(viewportLayoutPosCol(vp)) == 0 {
-            let lpc = viewportLayoutPosCol(vp);
-            if *INTEGER(lpc) < 1 || *INTEGER(lpc).add(1) > ncol {
-                return false;
-            }
-        }
-        true
     }
+    if Rf_isNull(viewportLayoutPosCol(vp)) == 0 {
+        let lpc = viewportLayoutPosCol(vp);
+        if integer_elt(lpc, 0) < 1 || integer_elt(lpc, 1) > ncol {
+            return false;
+        }
+    }
+    true
 }
 
 // ---------------------------------------------------------------------------
 // calcViewportLocationFromLayout
 // ---------------------------------------------------------------------------
 
-pub unsafe fn calcViewportLocationFromLayout(
+pub fn calcViewportLocationFromLayout(
     layoutPosRow: SEXP,
     layoutPosCol: SEXP,
     parent: SEXP,
-    vpl: *mut LViewportLocation,
+    vpl: &mut LViewportLocation,
 ) {
-    unsafe {
-        let layout = viewportLayout(parent);
-        let (minrow, maxrow) = if Rf_isNull(layoutPosRow) != 0 {
-            (0, layoutNRow(layout) - 1)
-        } else {
-            (
-                *INTEGER(layoutPosRow) - 1,
-                *INTEGER(layoutPosRow).add(1) - 1,
-            )
-        };
-        let (mincol, maxcol) = if Rf_isNull(layoutPosCol) != 0 {
-            (0, layoutNCol(layout) - 1)
-        } else {
-            (
-                *INTEGER(layoutPosCol) - 1,
-                *INTEGER(layoutPosCol).add(1) - 1,
-            )
-        };
+    let layout = viewportLayout(parent);
+    let (minrow, maxrow) = if Rf_isNull(layoutPosRow) != 0 {
+        (0, layoutNRow(layout) - 1)
+    } else {
+        (
+            integer_elt(layoutPosRow, 0) - 1,
+            integer_elt(layoutPosRow, 1) - 1,
+        )
+    };
+    let (mincol, maxcol) = if Rf_isNull(layoutPosCol) != 0 {
+        (0, layoutNCol(layout) - 1)
+    } else {
+        (
+            integer_elt(layoutPosCol, 0) - 1,
+            integer_elt(layoutPosCol, 1) - 1,
+        )
+    };
 
-        let widths = REAL(viewportLayoutWidths(parent));
-        let heights = REAL(viewportLayoutHeights(parent));
-        let mut left = 0.0;
-        let mut bottom = 0.0;
-        let mut width = 0.0;
-        let mut height = 0.0;
-        let parent_width_cm = *REAL(viewportWidthCM(parent));
-        let parent_height_cm = *REAL(viewportHeightCM(parent));
-        subRegion(
-            layout,
-            minrow,
-            maxrow,
-            mincol,
-            maxcol,
-            widths,
-            heights,
-            parent_width_cm,
-            parent_height_cm,
-            &mut left,
-            &mut bottom,
-            &mut width,
-            &mut height,
-        );
+    let widths = viewportLayoutWidths(parent);
+    let heights = viewportLayoutHeights(parent);
+    let parent_width_cm = real_elt(viewportWidthCM(parent), 0);
+    let parent_height_cm = real_elt(viewportHeightCM(parent), 0);
+    let (left, bottom, width, height) = subRegion(
+        layout,
+        minrow,
+        maxrow,
+        mincol,
+        maxcol,
+        widths,
+        heights,
+        parent_width_cm,
+        parent_height_cm,
+    );
 
-        let x = unit(left, super::unit::L_CM);
-        let _x_guard = protect(x);
-        let y = unit(bottom, super::unit::L_CM);
-        let _y_guard = protect(y);
-        let w = unit(width, super::unit::L_CM);
-        let _w_guard = protect(w);
-        let h = unit(height, super::unit::L_CM);
-        let _h_guard = protect(h);
-        (*vpl).x = x;
-        (*vpl).y = y;
-        (*vpl).width = w;
-        (*vpl).height = h;
-        (*vpl).hjust = 0.0;
-        (*vpl).vjust = 0.0;
-    }
+    let x = unit(left, super::unit::L_CM);
+    let _x_guard = protect(x);
+    let y = unit(bottom, super::unit::L_CM);
+    let _y_guard = protect(y);
+    let w = unit(width, super::unit::L_CM);
+    let _w_guard = protect(w);
+    let h = unit(height, super::unit::L_CM);
+    let _h_guard = protect(h);
+    vpl.x = x;
+    vpl.y = y;
+    vpl.width = w;
+    vpl.height = h;
+    vpl.hjust = 0.0;
+    vpl.vjust = 0.0;
 }
 
-unsafe fn subRegion(
+fn subRegion(
     layout: SEXP,
     minrow: c_int,
     maxrow: c_int,
     mincol: c_int,
     maxcol: c_int,
-    widths: *const f64,
-    heights: *const f64,
+    widths: SEXP,
+    heights: SEXP,
     parentWidthCM: f64,
     parentHeightCM: f64,
-    left: *mut f64,
-    bottom: *mut f64,
-    width: *mut f64,
-    height: *mut f64,
-) {
-    unsafe {
-        let hjust = layoutHJust(layout);
-        let vjust = layoutVJust(layout);
-        let total_width = sumDims(widths, 0, layoutNCol(layout) - 1);
-        let total_height = sumDims(heights, 0, layoutNRow(layout) - 1);
-        *width = sumDims(widths, mincol, maxcol);
-        *height = sumDims(heights, minrow, maxrow);
-        *left = parentWidthCM * hjust - total_width * hjust + sumDims(widths, 0, mincol - 1);
-        *bottom =
-            parentHeightCM * vjust + (1.0 - vjust) * total_height - sumDims(heights, 0, maxrow);
-    }
+) -> (f64, f64, f64, f64) {
+    let hjust = layoutHJust(layout);
+    let vjust = layoutVJust(layout);
+    let total_width = sumDims(widths, 0, layoutNCol(layout) - 1);
+    let total_height = sumDims(heights, 0, layoutNRow(layout) - 1);
+    let width = sumDims(widths, mincol, maxcol);
+    let height = sumDims(heights, minrow, maxrow);
+    let left = parentWidthCM * hjust - total_width * hjust + sumDims(widths, 0, mincol - 1);
+    let bottom =
+        parentHeightCM * vjust + (1.0 - vjust) * total_height - sumDims(heights, 0, maxrow);
+    (left, bottom, width, height)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::library::grid::unit::{L_CM, L_NULL, constructUnits, unit, unitLength, unitUnit};
-    use crate::sexp::constructors::Rf_allocVector;
+    use crate::sexp::accessors::{INTEGER, REAL, SET_VECTOR_ELT};
+    use crate::sexp::constructors::{Rf_allocVector, Rf_ScalarInteger};
     use crate::sexp::ffi::SEXPTYPE;
     use crate::sexp::globals::R_NilValue;
+    use crate::sexp::protect::protect;
 
     unsafe fn mk_unit_vec(values: &[f64], unit_id: c_int) -> SEXP {
         unsafe {
