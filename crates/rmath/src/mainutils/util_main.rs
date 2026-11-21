@@ -130,7 +130,7 @@ fn to_lower(c: u8) -> u8 {
 }
 
 #[inline]
-unsafe fn libc_malloc(size: usize) -> *mut c_void {
+fn libc_malloc(size: usize) -> *mut c_void {
     unsafe {
         let layout = std::alloc::Layout::from_size_align(size, 1)
             .unwrap_or_else(|_| std::alloc::Layout::new::<u8>());
