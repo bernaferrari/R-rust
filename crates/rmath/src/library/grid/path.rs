@@ -111,7 +111,7 @@ pub unsafe fn L_stroke(path: SEXP) -> SEXP {
     if dd.is_null() {
         return R_NilValue();
     }
-    let currentgp = unsafe { gridStateElement(dd, GSS_GPAR) };
+    let currentgp = gridStateElement(dd, GSS_GPAR);
     unsafe { gcontextFromgpar(currentgp, 0, _gc.as_mut_ptr() as *const c_void, dd) };
 
     let _scope = unsafe { GridPathGuard::enter(dd) };
@@ -132,7 +132,7 @@ pub unsafe fn L_fill(path: SEXP, rule: SEXP) -> SEXP {
     }
     let currentgp = unsafe { crate::main::duplicate::Rf_duplicate(gridStateElement(dd, GSS_GPAR)) };
     let _currentgp_guard = unsafe { protect(currentgp) };
-    let resolved_fill = unsafe { resolveGPar(currentgp, 0) };
+    let resolved_fill = resolveGPar(currentgp, 0);
     let _resolved_fill_guard = unsafe { protect(resolved_fill) };
     unsafe { gcontextFromgpar(currentgp, 0, _gc.as_mut_ptr() as *const c_void, dd) };
 
@@ -176,7 +176,7 @@ pub unsafe fn L_fillStroke(path: SEXP, rule: SEXP) -> SEXP {
     }
     let currentgp = unsafe { crate::main::duplicate::Rf_duplicate(gridStateElement(dd, GSS_GPAR)) };
     let _currentgp_guard = unsafe { protect(currentgp) };
-    let resolved_fill = unsafe { resolveGPar(currentgp, 0) };
+    let resolved_fill = resolveGPar(currentgp, 0);
     let _resolved_fill_guard = unsafe { protect(resolved_fill) };
     unsafe { gcontextFromgpar(currentgp, 0, _gc.as_mut_ptr() as *const c_void, dd) };
 

@@ -76,8 +76,8 @@ pub unsafe fn layoutVJust(l: SEXP) -> f64 {
 // relativeUnit — classify pure-null units as relative.
 // ---------------------------------------------------------------------------
 
-unsafe fn relativeUnit(_unit: SEXP, _index: c_int, _dd: *const u8) -> bool {
-    unsafe { super::unit::pureNullUnit(_unit, _index, _dd as super::types::pGEDevDesc) != 0 }
+fn relativeUnit(_unit: SEXP, _index: c_int, _dd: *const u8) -> bool {
+    super::unit::pureNullUnit(_unit, _index, _dd as super::types::pGEDevDesc) != 0
 }
 
 // ---------------------------------------------------------------------------

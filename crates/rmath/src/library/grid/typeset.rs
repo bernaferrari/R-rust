@@ -73,8 +73,8 @@ unsafe fn renderGlyphs(runs: SEXP, glyphInfo: SEXP, x: SEXP, y: SEXP, draw: bool
     if dd.is_null() {
         return;
     }
-    let currentvp = unsafe { gridStateElement(dd, GSS_VP) };
-    let currentgp = unsafe { gridStateElement(dd, GSS_GPAR) };
+    let currentvp = gridStateElement(dd, GSS_VP);
+    let currentgp = gridStateElement(dd, GSS_GPAR);
     if currentvp.is_null()
         || currentvp == R_NilValue()
         || currentgp.is_null()
@@ -97,7 +97,7 @@ unsafe fn renderGlyphs(runs: SEXP, glyphInfo: SEXP, x: SEXP, y: SEXP, draw: bool
         SET_VECTOR_ELT(currentgp, GP_FILL as R_xlen_t, fill);
     }
 
-    let (vpWidthCM, vpHeightCM, mut transform, rotationAngle) =
+    let (vpWidthCM, vpHeightCM, transform, rotationAngle) =
         unsafe { getViewportTransform(currentvp, dd) };
 
     let mut vpc = LViewportContext {
@@ -106,9 +106,7 @@ unsafe fn renderGlyphs(runs: SEXP, glyphInfo: SEXP, x: SEXP, y: SEXP, draw: bool
         yscalemin: 0.0,
         yscalemax: 1.0,
     };
-    unsafe {
-        fillViewportContextFromViewport(currentvp, &mut vpc);
-    }
+    fillViewportContextFromViewport(currentvp, &mut vpc);
 
     let _mode_guard = if draw {
         Some(unsafe { GridModeGuard::enter(dd) })
@@ -126,23 +124,14 @@ unsafe fn renderGlyphs(runs: SEXP, glyphInfo: SEXP, x: SEXP, y: SEXP, draw: bool
     let mut gy: Vec<f64> = vec![0.0; n as usize];
 
     for i in 0..n {
-        let mut xx: f64 = 0.0;
-        let mut yy: f64 = 0.0;
-        unsafe {
-            transformLocn(
-                x,
-                y,
-                i,
-                vpc,
-                _gc.as_ptr() as *const c_void,
-                vpWidthCM,
-                vpHeightCM,
-                dd,
-                &mut transform,
-                &mut xx,
-                &mut yy,
-            );
-        }
+                        let (xx, yy) = transformLocn(x,
+            y,
+            i,
+            vpc,
+            _gc.as_ptr() as *const c_void,
+            vpWidthCM,
+            vpHeightCM,
+            dd, &transform);
         gx[i as usize] = unsafe { ge::toDeviceX(xx, GE_INCHES, dd) };
         gy[i as usize] = unsafe { ge::toDeviceY(yy, GE_INCHES, dd) };
     }

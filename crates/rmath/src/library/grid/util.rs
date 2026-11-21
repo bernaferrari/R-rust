@@ -258,8 +258,8 @@ pub unsafe fn textRect(
     let mut tempTransform: LTransform = [[0.0; 3]; 3];
     let mut transform: LTransform = [[0.0; 3]; 3];
     unsafe {
-        let mut w = 0.0;
-        let mut h = 0.0;
+        let mut w: f64;
+        let mut h: f64;
 
         let text_len = XLENGTH(text) as i32;
         let idx = ((i % text_len) + text_len) % text_len;

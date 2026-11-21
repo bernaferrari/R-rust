@@ -12,7 +12,7 @@ pub unsafe fn L_moveTo(x: SEXP, y: SEXP) -> SEXP {
         let _prevloc_guard = protect(prevloc);
         let devloc = gridStateElement(dd, GSS_CURRLOC);
         let _devloc_guard = protect(devloc);
-        let (vpWidthCM, vpHeightCM, mut transform, _) = getViewportTransform(currentvp, dd);
+        let (vpWidthCM, vpHeightCM, transform, _) = getViewportTransform(currentvp, dd);
         let mut vpc = LViewportContext::default();
         getViewportContext(currentvp, &mut vpc);
 
@@ -20,21 +20,14 @@ pub unsafe fn L_moveTo(x: SEXP, y: SEXP) -> SEXP {
         let gc = gc_buf.as_mut_ptr() as pGEcontext;
         gcontextFromgpar(currentgp, 0, gc, dd);
 
-        let mut xx: c_double = NA_REAL;
-        let mut yy: c_double = NA_REAL;
-        transformLocn(
-            x,
+                        let (xx, yy) = transformLocn(x,
             y,
             0,
             vpc,
             gc,
             vpWidthCM,
             vpHeightCM,
-            dd,
-            &mut transform,
-            &mut xx,
-            &mut yy,
-        );
+            dd, &transform);
 
         if TYPEOF(prevloc) == SEXPTYPE::REALSXP
             && LENGTH(prevloc) >= 2
@@ -69,7 +62,7 @@ pub unsafe fn L_lineTo(x: SEXP, y: SEXP, arrow: SEXP) -> SEXP {
         let _prevloc_guard = protect(prevloc);
         let devloc = gridStateElement(dd, GSS_CURRLOC);
         let _devloc_guard = protect(devloc);
-        let (vpWidthCM, vpHeightCM, mut transform, _) = getViewportTransform(currentvp, dd);
+        let (vpWidthCM, vpHeightCM, transform, _) = getViewportTransform(currentvp, dd);
         let mut vpc = LViewportContext::default();
         getViewportContext(currentvp, &mut vpc);
 
@@ -77,21 +70,14 @@ pub unsafe fn L_lineTo(x: SEXP, y: SEXP, arrow: SEXP) -> SEXP {
         let gc = gc_buf.as_mut_ptr() as pGEcontext;
         gcontextFromgpar(currentgp, 0, gc, dd);
 
-        let mut xx: c_double = NA_REAL;
-        let mut yy: c_double = NA_REAL;
-        transformLocn(
-            x,
+                        let (xx, yy) = transformLocn(x,
             y,
             0,
             vpc,
             gc,
             vpWidthCM,
             vpHeightCM,
-            dd,
-            &mut transform,
-            &mut xx,
-            &mut yy,
-        );
+            dd, &transform);
 
         if TYPEOF(prevloc) == SEXPTYPE::REALSXP
             && LENGTH(prevloc) >= 2
@@ -150,7 +136,7 @@ pub unsafe fn L_lines(x: SEXP, y: SEXP, index: SEXP, arrow: SEXP) -> SEXP {
         if gp_fill_is_pattern(currentgp) {
             set_gp_fill_string(currentgp, c"transparent".as_ptr());
         }
-        let (vpWidthCM, vpHeightCM, mut transform, _) = getViewportTransform(currentvp, dd);
+        let (vpWidthCM, vpHeightCM, transform, _) = getViewportTransform(currentvp, dd);
         let mut vpc = LViewportContext::default();
         getViewportContext(currentvp, &mut vpc);
 
@@ -180,19 +166,14 @@ pub unsafe fn L_lines(x: SEXP, y: SEXP, index: SEXP, arrow: SEXP) -> SEXP {
             for i in 0..nx as usize {
                 let idx = *INTEGER(indices).add(i);
                 if idx > 0 {
-                    transformLocn(
-                        x,
+                    (xx[i], yy[i]) = transformLocn(x,
                         y,
                         idx - 1,
                         vpc,
                         gc,
                         vpWidthCM,
                         vpHeightCM,
-                        dd,
-                        &mut transform,
-                        &mut xx[i],
-                        &mut yy[i],
-                    );
+                        dd, &transform);
                     xx[i] = toDeviceX(xx[i], GE_INCHES, dd);
                     yy[i] = toDeviceY(yy[i], GE_INCHES, dd);
                 }
@@ -286,7 +267,7 @@ pub(crate) fn gridXspline(
  * L_xspline
  * ============================== */
 
-pub unsafe fn L_xspline(
+pub fn L_xspline(
     x: SEXP,
     y: SEXP,
     s: SEXP,
@@ -295,10 +276,8 @@ pub unsafe fn L_xspline(
     rep: SEXP,
     index: SEXP,
 ) -> SEXP {
-    unsafe {
-        gridXspline(x, y, s, o, a, rep, index, 0.0, true, false);
-        R_NilValue()
-    }
+    gridXspline(x, y, s, o, a, rep, index, 0.0, true, false);
+    R_NilValue()
 }
 
 /* ==============================
@@ -349,7 +328,7 @@ pub unsafe fn L_segments(x0: SEXP, y0: SEXP, x1: SEXP, y1: SEXP, arrow: SEXP) ->
             set_gp_fill_string(currentgp, c"transparent".as_ptr());
         }
 
-        let (vpWidthCM, vpHeightCM, mut transform, _) = getViewportTransform(currentvp, dd);
+        let (vpWidthCM, vpHeightCM, transform, _) = getViewportTransform(currentvp, dd);
         let mut vpc = LViewportContext::default();
         getViewportContext(currentvp, &mut vpc);
 
@@ -367,36 +346,26 @@ pub unsafe fn L_segments(x0: SEXP, y0: SEXP, x1: SEXP, y1: SEXP, arrow: SEXP) ->
         GEMode(1, dd);
         for i in 0..maxn {
             updateGContext(currentgp, i, gc, dd, &mut gp_is_scalar, gc_cache);
-            let mut xx0: c_double = NA_REAL;
-            let mut yy0: c_double = NA_REAL;
-            let mut xx1: c_double = NA_REAL;
-            let mut yy1: c_double = NA_REAL;
-            transformLocn(
-                x0,
+            let mut xx0: c_double;
+            let mut yy0: c_double;
+            let mut xx1: c_double;
+            let mut yy1: c_double;
+            (xx0, yy0) = transformLocn(x0,
                 y0,
                 i,
                 vpc,
                 gc,
                 vpWidthCM,
                 vpHeightCM,
-                dd,
-                &mut transform,
-                &mut xx0,
-                &mut yy0,
-            );
-            transformLocn(
-                x1,
+                dd, &transform);
+            (xx1, yy1) = transformLocn(x1,
                 y1,
                 i,
                 vpc,
                 gc,
                 vpWidthCM,
                 vpHeightCM,
-                dd,
-                &mut transform,
-                &mut xx1,
-                &mut yy1,
-            );
+                dd, &transform);
             xx0 = toDeviceX(xx0, GE_INCHES, dd);
             yy0 = toDeviceY(yy0, GE_INCHES, dd);
             xx1 = toDeviceX(xx1, GE_INCHES, dd);

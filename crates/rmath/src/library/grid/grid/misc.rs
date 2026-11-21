@@ -6,7 +6,7 @@ pub unsafe fn L_clip(x: SEXP, y: SEXP, w: SEXP, h: SEXP, hjust: SEXP, vjust: SEX
         let currentvp = gridStateElement(dd, GSS_VP);
         let currentgp = gridStateElement(dd, GSS_GPAR);
 
-        let (vpWidthCM, vpHeightCM, mut transform, rotationAngle) =
+        let (vpWidthCM, vpHeightCM, transform, rotationAngle) =
             getViewportTransform(currentvp, dd);
 
         let mut vpc = LViewportContext::default();
@@ -21,21 +21,16 @@ pub unsafe fn L_clip(x: SEXP, y: SEXP, w: SEXP, h: SEXP, hjust: SEXP, vjust: SEX
         let gc = gc_buf.as_mut_ptr() as pGEcontext;
         gcontextFromgpar(currentgp, 0, gc, dd);
 
-        let mut xx: c_double = 0.0;
-        let mut yy: c_double = 0.0;
-        transformLocn(
-            x,
+        let mut xx: c_double;
+        let mut yy: c_double;
+        (xx, yy) = transformLocn(x,
             y,
             0,
             vpc,
             gc,
             vpWidthCM,
             vpHeightCM,
-            dd,
-            &mut transform,
-            &mut xx,
-            &mut yy,
-        );
+            dd, &transform);
         let ww = transformWidthtoINCHES(w, 0, vpc, gc, vpWidthCM, vpHeightCM, dd);
         let hh = transformHeighttoINCHES(h, 0, vpc, gc, vpWidthCM, vpHeightCM, dd);
 

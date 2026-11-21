@@ -385,7 +385,7 @@ pub unsafe fn calcViewportTransform(vp: SEXP, parent: SEXP, _incremental: bool, 
             parent_height_cm = 1.0;
         }
 
-        let mut gc_buf: [u8; 256] = [0; 256];
+        let gc_buf: [u8; 256] = [0; 256];
         let gc = gc_buf.as_ptr() as pGEcontext;
         gcontextFromViewport(vp, gc, dd);
         let dd = dd as pGEDevDesc;

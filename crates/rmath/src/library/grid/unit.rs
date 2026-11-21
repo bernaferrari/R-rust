@@ -18,12 +18,17 @@ use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::ffi::*;
 use crate::sexp::globals::*;
-use crate::sexp::protect::protect;
+use super::protect;
 use crate::sexp::symbol::Rf_install;
 
 use super::gpar::pGEDevDesc;
 use super::matrix::{location, locationX, locationY, rotation, trans};
 use super::types::pGEcontext;
+use super::{
+    alloc_vector, char_ptr, class_gets, duplicate, get_attrib, inherits, install, integer_elt,
+    mk_char, real_elt, scalar_integer, scalar_real, set_integer_elt, set_real_elt,
+    set_string_elt, set_vector_elt, string_elt, string_value_elt, vector_elt,
+};
 
 /* ==============================
  * LUnit enum and constants
@@ -82,18 +87,18 @@ pub type LViewportContext = super::types::LViewportContext;
  * ============================== */
 
 /// uValue(X) - get value from a unit scalar (single unit)
-unsafe fn uValue(x: SEXP) -> c_double {
-    unsafe { *REAL(VECTOR_ELT(x, 0)).add(0) }
+fn uValue(x: SEXP) -> c_double {
+    real_elt(vector_elt(x, 0), 0)
 }
 
 /// uData(X) - get data from a unit scalar
-unsafe fn uData(x: SEXP) -> SEXP {
-    unsafe { VECTOR_ELT(x, 1) }
+fn uData(x: SEXP) -> SEXP {
+    vector_elt(x, 1)
 }
 
 /// uUnit(X) - get unit type from a unit scalar
-unsafe fn uUnit(x: SEXP) -> c_int {
-    unsafe { *INTEGER(VECTOR_ELT(x, 2)).add(0) }
+fn uUnit(x: SEXP) -> c_int {
+    integer_elt(vector_elt(x, 2), 0)
 }
 
 /// isAbsolute(X) - check if unit is an absolute unit type
@@ -118,7 +123,7 @@ fn isGrobUnit(x: c_int) -> bool {
     x >= L_GROBX && x <= L_GROBDESCENT
 }
 
-type TransformToInchesFn = unsafe fn(
+type TransformToInchesFn = fn(
     SEXP,
     c_int,
     LViewportContext,
@@ -265,50 +270,49 @@ fn combineArithmeticUnitValues(op: c_int, value: c_double, values: &[c_double]) 
 }
 
 #[inline]
-unsafe fn gc_pointsize_inches(gc: pGEcontext) -> c_double {
-    unsafe {
-        if gc.is_null() {
-            12.0 / POINTS_PER_INCH
-        } else {
-            let gc = gc as crate::mainutils::graphics_ffi::pGEcontext;
-            ((*gc).ps * (*gc).cex) / POINTS_PER_INCH
-        }
+fn gc_pointsize_inches(gc: pGEcontext) -> c_double {
+    if gc.is_null() {
+        12.0 / POINTS_PER_INCH
+    } else {
+        // SAFETY: grid callers lend a live engine-owned GEcontext pointer or
+        // pass null, which is handled above.
+        let gc = gc as crate::mainutils::graphics_ffi::pGEcontext;
+        unsafe { ((*gc).ps * (*gc).cex) / POINTS_PER_INCH }
     }
 }
 
 #[inline]
-unsafe fn gc_lineheight_inches(gc: pGEcontext) -> c_double {
-    unsafe {
-        let multiplier = if gc.is_null() {
-            1.2
-        } else {
-            let gc = gc as crate::mainutils::graphics_ffi::pGEcontext;
-            (*gc).lineheight
-        };
-        gc_pointsize_inches(gc) * multiplier
-    }
+fn gc_lineheight_inches(gc: pGEcontext) -> c_double {
+    let multiplier = if gc.is_null() {
+        1.2
+    } else {
+        // SAFETY: see `gc_pointsize_inches`.
+        let gc = gc as crate::mainutils::graphics_ffi::pGEcontext;
+        unsafe { (*gc).lineheight }
+    };
+    gc_pointsize_inches(gc) * multiplier
 }
 
-unsafe fn unit_data_string(unit: SEXP, index: c_int) -> *const c_char {
-    unsafe {
-        let data = unitData(unit, index);
-        if data.is_null() || TYPEOF(data) != SEXPTYPE::STRSXP || LENGTH(data) <= 0 {
-            return std::ptr::null();
-        }
-        CHAR(STRING_ELT(data, (index % LENGTH(data)) as R_xlen_t))
+fn unit_data_string(unit: SEXP, index: c_int) -> *const c_char {
+    let data = unitData(unit, index);
+    if data.is_null() || TYPEOF(data) != SEXPTYPE::STRSXP || LENGTH(data) <= 0 {
+        return std::ptr::null();
     }
+    char_ptr(string_elt(data, (index % LENGTH(data)) as R_xlen_t))
 }
 
 fn fallback_string_metrics(
     text: *const c_char,
     gc: pGEcontext,
 ) -> (c_double, c_double, c_double, c_double) {
-    let lineheight = unsafe { gc_lineheight_inches(gc) };
-    let char_width = unsafe { gc_pointsize_inches(gc) * 0.6 };
+    let lineheight = gc_lineheight_inches(gc);
+    let char_width = gc_pointsize_inches(gc) * 0.6;
     if text.is_null() {
         return (0.0, 0.0, 0.0, 0.0);
     }
 
+    // SAFETY: `text` comes from `unit_data_string`, which returns a pointer
+    // into a live CHARSXP payload (NUL-terminated by construction).
     let bytes = unsafe { std::ffi::CStr::from_ptr(text).to_bytes() };
     if bytes.is_empty() {
         return (0.0, 0.0, 0.0, 0.0);
@@ -326,21 +330,24 @@ fn fallback_string_metrics(
     (width, height, height, 0.0)
 }
 
-unsafe fn string_metrics_inches(
+fn string_metrics_inches(
     unit: SEXP,
     index: c_int,
     gc: pGEcontext,
     dd: pGEDevDesc,
 ) -> (c_double, c_double, c_double, c_double) {
+    let text = unit_data_string(unit, index);
+    if text.is_null() || dd.is_null() {
+        return fallback_string_metrics(text, gc);
+    }
+
+    let ffi_gc = gc as crate::mainutils::graphics_ffi::pGEcontext;
+    let ffi_dd = dd as crate::mainutils::graphics_ffi::pGEDevDesc;
+
+    // SAFETY: `text` points into a live CHARSXP just validated by
+    // `unit_data_string`; `ffi_gc`/`ffi_dd` are engine-owned device pointers
+    // lent by the grid entry point, and the out-parameters are live locals.
     unsafe {
-        let text = unit_data_string(unit, index);
-        if text.is_null() || dd.is_null() {
-            return fallback_string_metrics(text, gc);
-        }
-
-        let ffi_gc = gc as crate::mainutils::graphics_ffi::pGEcontext;
-        let ffi_dd = dd as crate::mainutils::graphics_ffi::pGEDevDesc;
-
         let mut ascent = 0.0;
         let mut descent = 0.0;
         let mut width = 0.0;
@@ -368,16 +375,18 @@ unsafe fn string_metrics_inches(
     }
 }
 
-unsafe fn char_metric_inches(gc: pGEcontext, dd: pGEDevDesc) -> (c_double, c_double, c_double) {
-    unsafe {
-        if dd.is_null() {
-            let pointsize = gc_pointsize_inches(gc);
-            let lineheight = gc_lineheight_inches(gc);
-            return (pointsize * 0.6, lineheight, 0.0);
-        }
+fn char_metric_inches(gc: pGEcontext, dd: pGEDevDesc) -> (c_double, c_double, c_double) {
+    if dd.is_null() {
+        let pointsize = gc_pointsize_inches(gc);
+        let lineheight = gc_lineheight_inches(gc);
+        return (pointsize * 0.6, lineheight, 0.0);
+    }
 
-        let ffi_gc = gc as crate::mainutils::graphics_ffi::pGEcontext;
-        let ffi_dd = dd as crate::mainutils::graphics_ffi::pGEDevDesc;
+    let ffi_gc = gc as crate::mainutils::graphics_ffi::pGEcontext;
+    let ffi_dd = dd as crate::mainutils::graphics_ffi::pGEDevDesc;
+    // SAFETY: `ffi_gc`/`ffi_dd` are engine-owned device pointers lent by the
+    // grid entry point, and the out-parameters are live locals.
+    unsafe {
         let mut ascent = 0.0;
         let mut descent = 0.0;
         let mut width = 0.0;
@@ -405,7 +414,7 @@ unsafe fn char_metric_inches(gc: pGEcontext, dd: pGEDevDesc) -> (c_double, c_dou
     }
 }
 
-unsafe fn transformArithmeticUnitToINCHES(
+fn transformArithmeticUnitToINCHES(
     unit: SEXP,
     index: c_int,
     vpc: LViewportContext,
@@ -415,64 +424,58 @@ unsafe fn transformArithmeticUnitToINCHES(
     dd: pGEDevDesc,
     convert: TransformToInchesFn,
 ) -> c_double {
-    unsafe {
-        let op = unitUnit(unit, index);
-        let value = unitValue(unit, index);
-        let data = unitData(unit, index);
-        let n = unitLength(data);
-        if n <= 0 {
-            return 0.0;
-        }
-
-        let mut values = Vec::with_capacity(n as usize);
-        for i in 0..n {
-            values.push(convert(data, i, vpc, gc, widthCM, heightCM, dd));
-        }
-        combineArithmeticUnitValues(op, value, &values)
+    let op = unitUnit(unit, index);
+    let value = unitValue(unit, index);
+    let data = unitData(unit, index);
+    let n = unitLength(data);
+    if n <= 0 {
+        return 0.0;
     }
+
+    let mut values = Vec::with_capacity(n as usize);
+    for i in 0..n {
+        values.push(convert(data, i, vpc, gc, widthCM, heightCM, dd));
+    }
+    combineArithmeticUnitValues(op, value, &values)
 }
 
 /* ==============================
  * unit() -- construct a unit object
  * ============================== */
 
-pub unsafe fn unit(value: c_double, unit_id: c_int) -> SEXP {
-    unsafe {
-        let units = Rf_allocVector(SEXPTYPE::VECSXP, 1);
-        let _units_guard = protect(units);
-        SET_VECTOR_ELT(units, 0 as R_xlen_t, Rf_allocVector(SEXPTYPE::VECSXP, 3));
-        let u = VECTOR_ELT(units, 0);
-        SET_VECTOR_ELT(u, 0 as R_xlen_t, Rf_ScalarReal(value));
-        SET_VECTOR_ELT(u, 1 as R_xlen_t, R_NilValue());
-        SET_VECTOR_ELT(u, 2 as R_xlen_t, Rf_ScalarInteger(unit_id));
-        let cl = Rf_allocVector(SEXPTYPE::STRSXP, 2);
-        let _cl_guard = protect(cl);
-        SET_STRING_ELT(cl, 0 as R_xlen_t, Rf_mkChar(c"unit".as_ptr()));
-        SET_STRING_ELT(cl, 1 as R_xlen_t, Rf_mkChar(c"unit_v2".as_ptr()));
-        R_classgets(units, cl);
-        units
-    }
+pub fn unit(value: c_double, unit_id: c_int) -> SEXP {
+    let units = alloc_vector(SEXPTYPE::VECSXP, 1);
+    let _units_guard = protect(units);
+    set_vector_elt(units, 0 as R_xlen_t, alloc_vector(SEXPTYPE::VECSXP, 3));
+    let u = vector_elt(units, 0);
+    set_vector_elt(u, 0 as R_xlen_t, scalar_real(value));
+    set_vector_elt(u, 1 as R_xlen_t, R_NilValue());
+    set_vector_elt(u, 2 as R_xlen_t, scalar_integer(unit_id));
+    let cl = alloc_vector(SEXPTYPE::STRSXP, 2);
+    let _cl_guard = protect(cl);
+    set_string_elt(cl, 0 as R_xlen_t, mk_char("unit"));
+    set_string_elt(cl, 1 as R_xlen_t, mk_char("unit_v2"));
+    class_gets(units, cl);
+    units
 }
 
 /* ==============================
  * isSimpleUnit / isNewUnit / upgradeUnit
  * ============================== */
 
-unsafe fn isSimpleUnit(unit: SEXP) -> bool {
-    unsafe { Rf_inherits(unit, c"simpleUnit".as_ptr()) != 0 }
+fn isSimpleUnit(unit: SEXP) -> bool {
+    inherits(unit, c"simpleUnit")
 }
 
-unsafe fn isNewUnit(unit: SEXP) -> bool {
-    unsafe { Rf_inherits(unit, c"unit_v2".as_ptr()) != 0 }
+fn isNewUnit(unit: SEXP) -> bool {
+    inherits(unit, c"unit_v2")
 }
 
-unsafe fn upgradeUnit(unit: SEXP) -> SEXP {
-    unsafe {
-        if isSimpleUnit(unit) || isNewUnit(unit) {
-            unit
-        } else {
-            grid_error("invalid unit object");
-        }
+fn upgradeUnit(unit: SEXP) -> SEXP {
+    if isSimpleUnit(unit) || isNewUnit(unit) {
+        unit
+    } else {
+        grid_error("invalid unit object");
     }
 }
 
@@ -480,103 +483,93 @@ unsafe fn upgradeUnit(unit: SEXP) -> SEXP {
  * unitScalar -- extract underlying scalar unit list structure
  * ============================== */
 
-pub unsafe fn unitScalar(unit: SEXP, index: c_int) -> SEXP {
-    unsafe {
-        let l = LENGTH(unit);
-        if l == 0 {
-            grid_error("unit object has zero length");
-        }
-        let i = index % l;
-        if isSimpleUnit(unit) {
-            let new_unit = Rf_allocVector(SEXPTYPE::VECSXP, 3);
-            let _new_unit_guard = protect(new_unit);
-            SET_VECTOR_ELT(
-                new_unit,
-                0 as R_xlen_t,
-                Rf_ScalarReal(*REAL(unit).add(i as usize)),
-            );
-            SET_VECTOR_ELT(new_unit, 1 as R_xlen_t, R_NilValue());
-            let unit_attr = getAttrib(unit, Rf_install(c"unit".as_ptr()));
-            let unit_val = if TYPEOF(unit_attr) == SEXPTYPE::INTSXP && LENGTH(unit_attr) > 0 {
-                *INTEGER(unit_attr).add(0)
-            } else {
-                0
-            };
-            SET_VECTOR_ELT(new_unit, 2 as R_xlen_t, Rf_ScalarInteger(unit_val));
-            return new_unit;
-        }
-        if isNewUnit(unit) {
-            return VECTOR_ELT(unit, i as R_xlen_t);
-        }
-        // Fallback: try to upgrade
-        let unit2 = upgradeUnit(unit);
-        let _unit2_guard = protect(unit2);
-        unitScalar(unit2, index)
+pub fn unitScalar(unit: SEXP, index: c_int) -> SEXP {
+    let l = LENGTH(unit);
+    if l == 0 {
+        grid_error("unit object has zero length");
     }
+    let i = index % l;
+    if isSimpleUnit(unit) {
+        let new_unit = alloc_vector(SEXPTYPE::VECSXP, 3);
+        let _new_unit_guard = protect(new_unit);
+        set_vector_elt(
+            new_unit,
+            0 as R_xlen_t,
+            scalar_real(real_elt(unit, i as R_xlen_t)),
+        );
+        set_vector_elt(new_unit, 1 as R_xlen_t, R_NilValue());
+        let unit_attr = get_attrib(unit, install("unit"));
+        let unit_val = if TYPEOF(unit_attr) == SEXPTYPE::INTSXP && LENGTH(unit_attr) > 0 {
+            integer_elt(unit_attr, 0)
+        } else {
+            0
+        };
+        set_vector_elt(new_unit, 2 as R_xlen_t, scalar_integer(unit_val));
+        return new_unit;
+    }
+    if isNewUnit(unit) {
+        return vector_elt(unit, i as R_xlen_t);
+    }
+    // Fallback: try to upgrade
+    let unit2 = upgradeUnit(unit);
+    let _unit2_guard = protect(unit2);
+    unitScalar(unit2, index)
 }
 
 /* ==============================
  * unitValue -- get value of unit at index
  * ============================== */
 
-pub unsafe fn unitValue(unit: SEXP, index: c_int) -> c_double {
-    unsafe {
-        if isSimpleUnit(unit) {
-            return *REAL(unit).add((index % LENGTH(unit)) as usize);
-        }
-        uValue(unitScalar(unit, index))
+pub fn unitValue(unit: SEXP, index: c_int) -> c_double {
+    if isSimpleUnit(unit) {
+        return real_elt(unit, (index % LENGTH(unit)) as R_xlen_t);
     }
+    uValue(unitScalar(unit, index))
 }
 
 /* ==============================
  * unitUnit -- get unit type at index
  * ============================== */
 
-pub unsafe fn unitUnit(unit: SEXP, index: c_int) -> c_int {
-    unsafe {
-        if isSimpleUnit(unit) {
-            let unit_attr = getAttrib(unit, Rf_install(c"unit".as_ptr()));
-            if TYPEOF(unit_attr) == SEXPTYPE::INTSXP && LENGTH(unit_attr) > 0 {
-                return *INTEGER(unit_attr).add(0);
-            }
-            return 0;
+pub fn unitUnit(unit: SEXP, index: c_int) -> c_int {
+    if isSimpleUnit(unit) {
+        let unit_attr = get_attrib(unit, install("unit"));
+        if TYPEOF(unit_attr) == SEXPTYPE::INTSXP && LENGTH(unit_attr) > 0 {
+            return integer_elt(unit_attr, 0);
         }
-        uUnit(unitScalar(unit, index))
+        return 0;
     }
+    uUnit(unitScalar(unit, index))
 }
 
 /* ==============================
  * unitData -- get data component of unit at index
  * ============================== */
 
-pub unsafe fn unitData(unit: SEXP, index: c_int) -> SEXP {
-    unsafe {
-        if isSimpleUnit(unit) {
-            return R_NilValue();
-        }
-        uData(unitScalar(unit, index))
+pub fn unitData(unit: SEXP, index: c_int) -> SEXP {
+    if isSimpleUnit(unit) {
+        return R_NilValue();
     }
+    uData(unitScalar(unit, index))
 }
 
 /* ==============================
  * unitLength -- get length of a unit object
  * ============================== */
 
-pub unsafe fn unitLength(u: SEXP) -> c_int {
-    unsafe {
-        if isNewUnit(u) {
-            return LENGTH(u);
-        }
-        LENGTH(upgradeUnit(u))
+pub fn unitLength(u: SEXP) -> c_int {
+    if isNewUnit(u) {
+        return LENGTH(u);
     }
+    LENGTH(upgradeUnit(u))
 }
 
 /* ==============================
  * pureNullUnitValue -- evaluate null unit value
  * ============================== */
 
-pub unsafe fn pureNullUnitValue(unit: SEXP, index: c_int) -> c_double {
-    unsafe {
+pub fn pureNullUnitValue(unit: SEXP, index: c_int) -> c_double {
+    {
         let u = unitUnit(unit, index);
         let value = unitValue(unit, index);
         match u {
@@ -616,8 +609,8 @@ pub unsafe fn pureNullUnitValue(unit: SEXP, index: c_int) -> c_double {
  * pureNullUnit -- check if a unit is "pure null"
  * ============================== */
 
-pub unsafe fn pureNullUnit(unit: SEXP, index: c_int, _dd: pGEDevDesc) -> c_int {
-    unsafe {
+pub fn pureNullUnit(unit: SEXP, index: c_int, _dd: pGEDevDesc) -> c_int {
+    {
         let u = unitUnit(unit, index);
         if isArith(u) {
             let data = unitData(unit, index);
@@ -669,7 +662,7 @@ fn evaluateNullUnit(
  * transformX -- transform x unit to inches
  * ============================== */
 
-pub unsafe fn transformX(
+pub fn transformX(
     x: SEXP,
     index: c_int,
     vpc: LViewportContext,
@@ -680,23 +673,21 @@ pub unsafe fn transformX(
     nullAMode: c_int,
     dd: pGEDevDesc,
 ) -> c_double {
-    unsafe {
-        let u = unitUnit(x, index);
-        if u == L_NULL {
-            return evaluateNullUnit(unitValue(x, index), widthCM, nullLMode, nullAMode);
-        }
-        if isArith(u) && pureNullUnit(x, index, dd) != 0 {
-            return evaluateNullUnit(pureNullUnitValue(x, index), widthCM, nullLMode, nullAMode);
-        }
-        transformXtoINCHES(x, index, vpc, gc, widthCM, heightCM, dd)
+    let u = unitUnit(x, index);
+    if u == L_NULL {
+        return evaluateNullUnit(unitValue(x, index), widthCM, nullLMode, nullAMode);
     }
+    if isArith(u) && pureNullUnit(x, index, dd) != 0 {
+        return evaluateNullUnit(pureNullUnitValue(x, index), widthCM, nullLMode, nullAMode);
+    }
+    transformXtoINCHES(x, index, vpc, gc, widthCM, heightCM, dd)
 }
 
 /* ==============================
  * transformY -- transform y unit to inches
  * ============================== */
 
-pub unsafe fn transformY(
+pub fn transformY(
     y: SEXP,
     index: c_int,
     vpc: LViewportContext,
@@ -707,23 +698,21 @@ pub unsafe fn transformY(
     nullAMode: c_int,
     dd: pGEDevDesc,
 ) -> c_double {
-    unsafe {
-        let u = unitUnit(y, index);
-        if u == L_NULL {
-            return evaluateNullUnit(unitValue(y, index), heightCM, nullLMode, nullAMode);
-        }
-        if isArith(u) && pureNullUnit(y, index, dd) != 0 {
-            return evaluateNullUnit(pureNullUnitValue(y, index), heightCM, nullLMode, nullAMode);
-        }
-        transformYtoINCHES(y, index, vpc, gc, widthCM, heightCM, dd)
+    let u = unitUnit(y, index);
+    if u == L_NULL {
+        return evaluateNullUnit(unitValue(y, index), heightCM, nullLMode, nullAMode);
     }
+    if isArith(u) && pureNullUnit(y, index, dd) != 0 {
+        return evaluateNullUnit(pureNullUnitValue(y, index), heightCM, nullLMode, nullAMode);
+    }
+    transformYtoINCHES(y, index, vpc, gc, widthCM, heightCM, dd)
 }
 
 /* ==============================
  * transformWidth -- transform width unit to inches
  * ============================== */
 
-pub unsafe fn transformWidth(
+pub fn transformWidth(
     width: SEXP,
     index: c_int,
     vpc: LViewportContext,
@@ -734,28 +723,26 @@ pub unsafe fn transformWidth(
     nullAMode: c_int,
     dd: pGEDevDesc,
 ) -> c_double {
-    unsafe {
-        let u = unitUnit(width, index);
-        if u == L_NULL {
-            return evaluateNullUnit(unitValue(width, index), widthCM, nullLMode, nullAMode);
-        }
-        if isArith(u) && pureNullUnit(width, index, dd) != 0 {
-            return evaluateNullUnit(
-                pureNullUnitValue(width, index),
-                widthCM,
-                nullLMode,
-                nullAMode,
-            );
-        }
-        transformWidthtoINCHES(width, index, vpc, gc, widthCM, heightCM, dd)
+    let u = unitUnit(width, index);
+    if u == L_NULL {
+        return evaluateNullUnit(unitValue(width, index), widthCM, nullLMode, nullAMode);
     }
+    if isArith(u) && pureNullUnit(width, index, dd) != 0 {
+        return evaluateNullUnit(
+            pureNullUnitValue(width, index),
+            widthCM,
+            nullLMode,
+            nullAMode,
+        );
+    }
+    transformWidthtoINCHES(width, index, vpc, gc, widthCM, heightCM, dd)
 }
 
 /* ==============================
  * transformHeight -- transform height unit to inches
  * ============================== */
 
-pub unsafe fn transformHeight(
+pub fn transformHeight(
     height: SEXP,
     index: c_int,
     vpc: LViewportContext,
@@ -766,28 +753,26 @@ pub unsafe fn transformHeight(
     nullAMode: c_int,
     dd: pGEDevDesc,
 ) -> c_double {
-    unsafe {
-        let u = unitUnit(height, index);
-        if u == L_NULL {
-            return evaluateNullUnit(unitValue(height, index), heightCM, nullLMode, nullAMode);
-        }
-        if isArith(u) && pureNullUnit(height, index, dd) != 0 {
-            return evaluateNullUnit(
-                pureNullUnitValue(height, index),
-                heightCM,
-                nullLMode,
-                nullAMode,
-            );
-        }
-        transformHeighttoINCHES(height, index, vpc, gc, widthCM, heightCM, dd)
+    let u = unitUnit(height, index);
+    if u == L_NULL {
+        return evaluateNullUnit(unitValue(height, index), heightCM, nullLMode, nullAMode);
     }
+    if isArith(u) && pureNullUnit(height, index, dd) != 0 {
+        return evaluateNullUnit(
+            pureNullUnitValue(height, index),
+            heightCM,
+            nullLMode,
+            nullAMode,
+        );
+    }
+    transformHeighttoINCHES(height, index, vpc, gc, widthCM, heightCM, dd)
 }
 
 /* ==============================
  * transformXtoINCHES -- transform x unit to inches
  * ============================== */
 
-pub unsafe fn transformXtoINCHES(
+pub fn transformXtoINCHES(
     x: SEXP,
     index: c_int,
     vpc: LViewportContext,
@@ -796,49 +781,47 @@ pub unsafe fn transformXtoINCHES(
     heightCM: c_double,
     _dd: pGEDevDesc,
 ) -> c_double {
-    unsafe {
-        let u = unitUnit(x, index);
-        let value = unitValue(x, index);
-        if isArith(u) {
-            return transformArithmeticUnitToINCHES(
-                x,
-                index,
-                vpc,
-                _gc,
-                widthCM,
-                heightCM,
-                _dd,
-                transformXtoINCHES,
-            );
-        }
-        match u {
-            L_NATIVE => {
-                let range = vpc.xscalemax - vpc.xscalemin;
-                if range == 0.0 {
-                    0.0
-                } else {
-                    (value - vpc.xscalemin) / range * widthCM / 2.54
-                }
+    let u = unitUnit(x, index);
+    let value = unitValue(x, index);
+    if isArith(u) {
+        return transformArithmeticUnitToINCHES(
+            x,
+            index,
+            vpc,
+            _gc,
+            widthCM,
+            heightCM,
+            _dd,
+            transformXtoINCHES,
+        );
+    }
+    match u {
+        L_NATIVE => {
+            let range = vpc.xscalemax - vpc.xscalemin;
+            if range == 0.0 {
+                0.0
+            } else {
+                (value - vpc.xscalemin) / range * widthCM / 2.54
             }
-            L_NPC => value * widthCM / 2.54,
-            L_SNPC => value * widthCM.min(heightCM) / 2.54,
-            L_CM | L_INCHES | L_MM | L_POINTS | L_PICAS | L_BIGPOINTS | L_DIDA | L_CICERO
-            | L_SCALEDPOINTS => absoluteUnitToInches(value, u).unwrap_or(0.0),
-            L_LINES => value * gc_lineheight_inches(_gc),
-            L_CHAR => value * char_metric_inches(_gc, _dd).0,
-            L_STRINGWIDTH => value * string_metrics_inches(x, index, _gc, _dd).0,
-            L_STRINGHEIGHT => value * string_metrics_inches(x, index, _gc, _dd).1,
-            L_STRINGASCENT => value * string_metrics_inches(x, index, _gc, _dd).2,
-            L_STRINGDESCENT => value * string_metrics_inches(x, index, _gc, _dd).3,
-            L_GROBX | L_GROBY | L_GROBWIDTH | L_GROBHEIGHT | L_GROBASCENT | L_GROBDESCENT => {
-                grid_error("grob-relative units require grid grob metric resolution")
-            }
-            L_NULL => 0.0,
-            _ => grid_error(format!(
-                "unsupported grid unit type {}",
-                unit_type_name(u).unwrap_or("<unknown>")
-            )),
         }
+        L_NPC => value * widthCM / 2.54,
+        L_SNPC => value * widthCM.min(heightCM) / 2.54,
+        L_CM | L_INCHES | L_MM | L_POINTS | L_PICAS | L_BIGPOINTS | L_DIDA | L_CICERO
+        | L_SCALEDPOINTS => absoluteUnitToInches(value, u).unwrap_or(0.0),
+        L_LINES => value * gc_lineheight_inches(_gc),
+        L_CHAR => value * char_metric_inches(_gc, _dd).0,
+        L_STRINGWIDTH => value * string_metrics_inches(x, index, _gc, _dd).0,
+        L_STRINGHEIGHT => value * string_metrics_inches(x, index, _gc, _dd).1,
+        L_STRINGASCENT => value * string_metrics_inches(x, index, _gc, _dd).2,
+        L_STRINGDESCENT => value * string_metrics_inches(x, index, _gc, _dd).3,
+        L_GROBX | L_GROBY | L_GROBWIDTH | L_GROBHEIGHT | L_GROBASCENT | L_GROBDESCENT => {
+            grid_error("grob-relative units require grid grob metric resolution")
+        }
+        L_NULL => 0.0,
+        _ => grid_error(format!(
+            "unsupported grid unit type {}",
+            unit_type_name(u).unwrap_or("<unknown>")
+        )),
     }
 }
 
@@ -846,7 +829,7 @@ pub unsafe fn transformXtoINCHES(
  * transformYtoINCHES -- transform y unit to inches
  * ============================== */
 
-pub unsafe fn transformYtoINCHES(
+pub fn transformYtoINCHES(
     y: SEXP,
     index: c_int,
     vpc: LViewportContext,
@@ -855,49 +838,47 @@ pub unsafe fn transformYtoINCHES(
     heightCM: c_double,
     _dd: pGEDevDesc,
 ) -> c_double {
-    unsafe {
-        let u = unitUnit(y, index);
-        let value = unitValue(y, index);
-        if isArith(u) {
-            return transformArithmeticUnitToINCHES(
-                y,
-                index,
-                vpc,
-                _gc,
-                widthCM,
-                heightCM,
-                _dd,
-                transformYtoINCHES,
-            );
-        }
-        match u {
-            L_NATIVE => {
-                let range = vpc.yscalemax - vpc.yscalemin;
-                if range == 0.0 {
-                    0.0
-                } else {
-                    (value - vpc.yscalemin) / range * heightCM / 2.54
-                }
+    let u = unitUnit(y, index);
+    let value = unitValue(y, index);
+    if isArith(u) {
+        return transformArithmeticUnitToINCHES(
+            y,
+            index,
+            vpc,
+            _gc,
+            widthCM,
+            heightCM,
+            _dd,
+            transformYtoINCHES,
+        );
+    }
+    match u {
+        L_NATIVE => {
+            let range = vpc.yscalemax - vpc.yscalemin;
+            if range == 0.0 {
+                0.0
+            } else {
+                (value - vpc.yscalemin) / range * heightCM / 2.54
             }
-            L_NPC => value * heightCM / 2.54,
-            L_SNPC => value * widthCM.min(heightCM) / 2.54,
-            L_CM | L_INCHES | L_MM | L_POINTS | L_PICAS | L_BIGPOINTS | L_DIDA | L_CICERO
-            | L_SCALEDPOINTS => absoluteUnitToInches(value, u).unwrap_or(0.0),
-            L_LINES => value * gc_lineheight_inches(_gc),
-            L_CHAR => value * char_metric_inches(_gc, _dd).1,
-            L_STRINGWIDTH => value * string_metrics_inches(y, index, _gc, _dd).0,
-            L_STRINGHEIGHT => value * string_metrics_inches(y, index, _gc, _dd).1,
-            L_STRINGASCENT => value * string_metrics_inches(y, index, _gc, _dd).2,
-            L_STRINGDESCENT => value * string_metrics_inches(y, index, _gc, _dd).3,
-            L_GROBX | L_GROBY | L_GROBWIDTH | L_GROBHEIGHT | L_GROBASCENT | L_GROBDESCENT => {
-                grid_error("grob-relative units require grid grob metric resolution")
-            }
-            L_NULL => 0.0,
-            _ => grid_error(format!(
-                "unsupported grid unit type {}",
-                unit_type_name(u).unwrap_or("<unknown>")
-            )),
         }
+        L_NPC => value * heightCM / 2.54,
+        L_SNPC => value * widthCM.min(heightCM) / 2.54,
+        L_CM | L_INCHES | L_MM | L_POINTS | L_PICAS | L_BIGPOINTS | L_DIDA | L_CICERO
+        | L_SCALEDPOINTS => absoluteUnitToInches(value, u).unwrap_or(0.0),
+        L_LINES => value * gc_lineheight_inches(_gc),
+        L_CHAR => value * char_metric_inches(_gc, _dd).1,
+        L_STRINGWIDTH => value * string_metrics_inches(y, index, _gc, _dd).0,
+        L_STRINGHEIGHT => value * string_metrics_inches(y, index, _gc, _dd).1,
+        L_STRINGASCENT => value * string_metrics_inches(y, index, _gc, _dd).2,
+        L_STRINGDESCENT => value * string_metrics_inches(y, index, _gc, _dd).3,
+        L_GROBX | L_GROBY | L_GROBWIDTH | L_GROBHEIGHT | L_GROBASCENT | L_GROBDESCENT => {
+            grid_error("grob-relative units require grid grob metric resolution")
+        }
+        L_NULL => 0.0,
+        _ => grid_error(format!(
+            "unsupported grid unit type {}",
+            unit_type_name(u).unwrap_or("<unknown>")
+        )),
     }
 }
 
@@ -905,7 +886,7 @@ pub unsafe fn transformYtoINCHES(
  * transformWidthtoINCHES -- transform width unit to inches
  * ============================== */
 
-pub unsafe fn transformWidthtoINCHES(
+pub fn transformWidthtoINCHES(
     w: SEXP,
     index: c_int,
     vpc: LViewportContext,
@@ -914,49 +895,47 @@ pub unsafe fn transformWidthtoINCHES(
     heightCM: c_double,
     _dd: pGEDevDesc,
 ) -> c_double {
-    unsafe {
-        let u = unitUnit(w, index);
-        let value = unitValue(w, index);
-        if isArith(u) {
-            return transformArithmeticUnitToINCHES(
-                w,
-                index,
-                vpc,
-                _gc,
-                widthCM,
-                heightCM,
-                _dd,
-                transformWidthtoINCHES,
-            );
-        }
-        match u {
-            L_NATIVE => {
-                let range = vpc.xscalemax - vpc.xscalemin;
-                if range == 0.0 {
-                    0.0
-                } else {
-                    value / range * widthCM / 2.54
-                }
+    let u = unitUnit(w, index);
+    let value = unitValue(w, index);
+    if isArith(u) {
+        return transformArithmeticUnitToINCHES(
+            w,
+            index,
+            vpc,
+            _gc,
+            widthCM,
+            heightCM,
+            _dd,
+            transformWidthtoINCHES,
+        );
+    }
+    match u {
+        L_NATIVE => {
+            let range = vpc.xscalemax - vpc.xscalemin;
+            if range == 0.0 {
+                0.0
+            } else {
+                value / range * widthCM / 2.54
             }
-            L_NPC => value * widthCM / 2.54,
-            L_SNPC => value * widthCM.min(heightCM) / 2.54,
-            L_CM | L_INCHES | L_MM | L_POINTS | L_PICAS | L_BIGPOINTS | L_DIDA | L_CICERO
-            | L_SCALEDPOINTS => absoluteUnitToInches(value, u).unwrap_or(0.0),
-            L_LINES => value * gc_lineheight_inches(_gc),
-            L_CHAR => value * char_metric_inches(_gc, _dd).0,
-            L_STRINGWIDTH => value * string_metrics_inches(w, index, _gc, _dd).0,
-            L_STRINGHEIGHT => value * string_metrics_inches(w, index, _gc, _dd).1,
-            L_STRINGASCENT => value * string_metrics_inches(w, index, _gc, _dd).2,
-            L_STRINGDESCENT => value * string_metrics_inches(w, index, _gc, _dd).3,
-            L_GROBX | L_GROBY | L_GROBWIDTH | L_GROBHEIGHT | L_GROBASCENT | L_GROBDESCENT => {
-                grid_error("grob-relative units require grid grob metric resolution")
-            }
-            L_NULL => 0.0,
-            _ => grid_error(format!(
-                "unsupported grid unit type {}",
-                unit_type_name(u).unwrap_or("<unknown>")
-            )),
         }
+        L_NPC => value * widthCM / 2.54,
+        L_SNPC => value * widthCM.min(heightCM) / 2.54,
+        L_CM | L_INCHES | L_MM | L_POINTS | L_PICAS | L_BIGPOINTS | L_DIDA | L_CICERO
+        | L_SCALEDPOINTS => absoluteUnitToInches(value, u).unwrap_or(0.0),
+        L_LINES => value * gc_lineheight_inches(_gc),
+        L_CHAR => value * char_metric_inches(_gc, _dd).0,
+        L_STRINGWIDTH => value * string_metrics_inches(w, index, _gc, _dd).0,
+        L_STRINGHEIGHT => value * string_metrics_inches(w, index, _gc, _dd).1,
+        L_STRINGASCENT => value * string_metrics_inches(w, index, _gc, _dd).2,
+        L_STRINGDESCENT => value * string_metrics_inches(w, index, _gc, _dd).3,
+        L_GROBX | L_GROBY | L_GROBWIDTH | L_GROBHEIGHT | L_GROBASCENT | L_GROBDESCENT => {
+            grid_error("grob-relative units require grid grob metric resolution")
+        }
+        L_NULL => 0.0,
+        _ => grid_error(format!(
+            "unsupported grid unit type {}",
+            unit_type_name(u).unwrap_or("<unknown>")
+        )),
     }
 }
 
@@ -964,7 +943,7 @@ pub unsafe fn transformWidthtoINCHES(
  * transformHeighttoINCHES -- transform height unit to inches
  * ============================== */
 
-pub unsafe fn transformHeighttoINCHES(
+pub fn transformHeighttoINCHES(
     h: SEXP,
     index: c_int,
     vpc: LViewportContext,
@@ -973,49 +952,47 @@ pub unsafe fn transformHeighttoINCHES(
     heightCM: c_double,
     _dd: pGEDevDesc,
 ) -> c_double {
-    unsafe {
-        let u = unitUnit(h, index);
-        let value = unitValue(h, index);
-        if isArith(u) {
-            return transformArithmeticUnitToINCHES(
-                h,
-                index,
-                vpc,
-                _gc,
-                widthCM,
-                heightCM,
-                _dd,
-                transformHeighttoINCHES,
-            );
-        }
-        match u {
-            L_NATIVE => {
-                let range = vpc.yscalemax - vpc.yscalemin;
-                if range == 0.0 {
-                    0.0
-                } else {
-                    value / range * heightCM / 2.54
-                }
+    let u = unitUnit(h, index);
+    let value = unitValue(h, index);
+    if isArith(u) {
+        return transformArithmeticUnitToINCHES(
+            h,
+            index,
+            vpc,
+            _gc,
+            widthCM,
+            heightCM,
+            _dd,
+            transformHeighttoINCHES,
+        );
+    }
+    match u {
+        L_NATIVE => {
+            let range = vpc.yscalemax - vpc.yscalemin;
+            if range == 0.0 {
+                0.0
+            } else {
+                value / range * heightCM / 2.54
             }
-            L_NPC => value * heightCM / 2.54,
-            L_SNPC => value * widthCM.min(heightCM) / 2.54,
-            L_CM | L_INCHES | L_MM | L_POINTS | L_PICAS | L_BIGPOINTS | L_DIDA | L_CICERO
-            | L_SCALEDPOINTS => absoluteUnitToInches(value, u).unwrap_or(0.0),
-            L_LINES => value * gc_lineheight_inches(_gc),
-            L_CHAR => value * char_metric_inches(_gc, _dd).1,
-            L_STRINGWIDTH => value * string_metrics_inches(h, index, _gc, _dd).0,
-            L_STRINGHEIGHT => value * string_metrics_inches(h, index, _gc, _dd).1,
-            L_STRINGASCENT => value * string_metrics_inches(h, index, _gc, _dd).2,
-            L_STRINGDESCENT => value * string_metrics_inches(h, index, _gc, _dd).3,
-            L_GROBX | L_GROBY | L_GROBWIDTH | L_GROBHEIGHT | L_GROBASCENT | L_GROBDESCENT => {
-                grid_error("grob-relative units require grid grob metric resolution")
-            }
-            L_NULL => 0.0,
-            _ => grid_error(format!(
-                "unsupported grid unit type {}",
-                unit_type_name(u).unwrap_or("<unknown>")
-            )),
         }
+        L_NPC => value * heightCM / 2.54,
+        L_SNPC => value * widthCM.min(heightCM) / 2.54,
+        L_CM | L_INCHES | L_MM | L_POINTS | L_PICAS | L_BIGPOINTS | L_DIDA | L_CICERO
+        | L_SCALEDPOINTS => absoluteUnitToInches(value, u).unwrap_or(0.0),
+        L_LINES => value * gc_lineheight_inches(_gc),
+        L_CHAR => value * char_metric_inches(_gc, _dd).1,
+        L_STRINGWIDTH => value * string_metrics_inches(h, index, _gc, _dd).0,
+        L_STRINGHEIGHT => value * string_metrics_inches(h, index, _gc, _dd).1,
+        L_STRINGASCENT => value * string_metrics_inches(h, index, _gc, _dd).2,
+        L_STRINGDESCENT => value * string_metrics_inches(h, index, _gc, _dd).3,
+        L_GROBX | L_GROBY | L_GROBWIDTH | L_GROBHEIGHT | L_GROBASCENT | L_GROBDESCENT => {
+            grid_error("grob-relative units require grid grob metric resolution")
+        }
+        L_NULL => 0.0,
+        _ => grid_error(format!(
+            "unsupported grid unit type {}",
+            unit_type_name(u).unwrap_or("<unknown>")
+        )),
     }
 }
 
@@ -1023,7 +1000,7 @@ pub unsafe fn transformHeighttoINCHES(
  * transformLocn -- transform x,y location
  * ============================== */
 
-pub unsafe fn transformLocn(
+pub fn transformLocn(
     x: SEXP,
     y: SEXP,
     index: c_int,
@@ -1032,27 +1009,22 @@ pub unsafe fn transformLocn(
     widthCM: c_double,
     heightCM: c_double,
     dd: pGEDevDesc,
-    t: *mut [[f64; 3]; 3],
-    xx: *mut c_double,
-    yy: *mut c_double,
-) {
-    unsafe {
-        let mut lin = [0.0; 3];
-        let mut lout = [0.0; 3];
-        *xx = transformXtoINCHES(x, index, vpc, gc, widthCM, heightCM, dd);
-        *yy = transformYtoINCHES(y, index, vpc, gc, widthCM, heightCM, dd);
-        location(*xx, *yy, &mut lin);
-        trans(&lin, &*t, &mut lout);
-        *xx = locationX(&lout);
-        *yy = locationY(&lout);
-    }
+    t: &[[f64; 3]; 3],
+) -> (c_double, c_double) {
+    let mut lin = [0.0; 3];
+    let mut lout = [0.0; 3];
+    let xx = transformXtoINCHES(x, index, vpc, gc, widthCM, heightCM, dd);
+    let yy = transformYtoINCHES(y, index, vpc, gc, widthCM, heightCM, dd);
+    location(xx, yy, &mut lin);
+    trans(&lin, t, &mut lout);
+    (locationX(&lout), locationY(&lout))
 }
 
 /* ==============================
  * transformDimn -- transform width,height dimensions
  * ============================== */
 
-pub unsafe fn transformDimn(
+pub fn transformDimn(
     w: SEXP,
     h: SEXP,
     index: c_int,
@@ -1062,21 +1034,16 @@ pub unsafe fn transformDimn(
     heightCM: c_double,
     dd: pGEDevDesc,
     rotationAngle: c_double,
-    ww: *mut c_double,
-    hh: *mut c_double,
-) {
-    unsafe {
-        let mut din = [0.0; 3];
-        let mut dout = [0.0; 3];
-        let mut r = [[0.0; 3]; 3];
-        *ww = transformWidthtoINCHES(w, index, vpc, gc, widthCM, heightCM, dd);
-        *hh = transformHeighttoINCHES(h, index, vpc, gc, widthCM, heightCM, dd);
-        location(*ww, *hh, &mut din);
-        rotation(rotationAngle, &mut r);
-        trans(&din, &r, &mut dout);
-        *ww = locationX(&dout);
-        *hh = locationY(&dout);
-    }
+) -> (c_double, c_double) {
+    let mut din = [0.0; 3];
+    let mut dout = [0.0; 3];
+    let mut r = [[0.0; 3]; 3];
+    let ww = transformWidthtoINCHES(w, index, vpc, gc, widthCM, heightCM, dd);
+    let hh = transformHeighttoINCHES(h, index, vpc, gc, widthCM, heightCM, dd);
+    location(ww, hh, &mut din);
+    rotation(rotationAngle, &mut r);
+    trans(&din, &r, &mut dout);
+    (locationX(&dout), locationY(&dout))
 }
 
 /* ==============================
@@ -1192,273 +1159,244 @@ pub fn transformWHfromNPC(x: c_double, to: c_int, min: c_double, max: c_double) 
  * ============================== */
 
 /// Validate that `units` inherits from "unit" class. Returns the input if valid.
-pub unsafe fn validUnits(units: SEXP) -> SEXP {
-    unsafe {
-        if Rf_inherits(units, b"unit\0".as_ptr() as *const c_char) != 0 {
-            units
-        } else {
-            R_NilValue()
-        }
+pub fn validUnits(units: SEXP) -> SEXP {
+    if inherits(units, c"unit") {
+        units
+    } else {
+        R_NilValue()
     }
 }
 
 /// Construct a unit_v2 object from parallel `amount`, `data`, and `unit_type` vectors.
-pub unsafe fn constructUnits(amount: SEXP, data: SEXP, unit_type: SEXP) -> SEXP {
-    unsafe {
-        let n = LENGTH(amount);
-        let answer = Rf_allocVector(SEXPTYPE::VECSXP, n);
-        let _answer_guard = protect(answer);
-        for i in 0..n as R_xlen_t {
-            let this_unit = Rf_allocVector(SEXPTYPE::VECSXP, 3);
-            let _this_unit_guard = protect(this_unit);
-            SET_VECTOR_ELT(this_unit, 0, Rf_ScalarReal(*REAL(amount).add(i as usize)));
-            SET_VECTOR_ELT(this_unit, 1, VECTOR_ELT(data, i));
-            SET_VECTOR_ELT(
-                this_unit,
-                2,
-                Rf_ScalarInteger(*INTEGER(unit_type).add(i as usize)),
-            );
-            SET_VECTOR_ELT(answer, i, this_unit);
-        }
-        let cl = Rf_allocVector(SEXPTYPE::STRSXP, 2);
-        let _cl_guard = protect(cl);
-        SET_STRING_ELT(cl, 0, Rf_mkChar(b"unit\0".as_ptr() as *const c_char));
-        SET_STRING_ELT(cl, 1, Rf_mkChar(b"unit_v2\0".as_ptr() as *const c_char));
-        R_classgets(answer, cl);
-        answer
+pub fn constructUnits(amount: SEXP, data: SEXP, unit_type: SEXP) -> SEXP {
+    let n = LENGTH(amount);
+    let answer = alloc_vector(SEXPTYPE::VECSXP, n);
+    let _answer_guard = protect(answer);
+    for i in 0..n as R_xlen_t {
+        let this_unit = alloc_vector(SEXPTYPE::VECSXP, 3);
+        let _this_unit_guard = protect(this_unit);
+        set_vector_elt(this_unit, 0, scalar_real(real_elt(amount, i)));
+        set_vector_elt(this_unit, 1, vector_elt(data, i));
+        set_vector_elt(this_unit, 2, scalar_integer(integer_elt(unit_type, i)));
+        set_vector_elt(answer, i, this_unit);
     }
+    let cl = alloc_vector(SEXPTYPE::STRSXP, 2);
+    let _cl_guard = protect(cl);
+    set_string_elt(cl, 0, mk_char("unit"));
+    set_string_elt(cl, 1, mk_char("unit_v2"));
+    class_gets(answer, cl);
+    answer
 }
 
 /// Convert a simpleUnit to a unit_v2 object.
-pub unsafe fn asUnit(simple_unit: SEXP) -> SEXP {
-    unsafe { upgradeUnit(simple_unit) }
+pub fn asUnit(simple_unit: SEXP) -> SEXP {
+    upgradeUnit(simple_unit)
 }
 
 /// Check that all units in a list have the same length. Returns that length or 0.
-pub unsafe fn conformingUnits(unit_list: SEXP) -> SEXP {
-    unsafe {
-        let n = LENGTH(unit_list);
-        if n == 0 {
-            return Rf_ScalarInteger(0);
-        }
-        let first_len = unitLength(VECTOR_ELT(unit_list, 0));
-        for i in 1..n as R_xlen_t {
-            if unitLength(VECTOR_ELT(unit_list, i)) != first_len {
-                return Rf_ScalarInteger(0);
-            }
-        }
-        Rf_ScalarInteger(first_len)
+pub fn conformingUnits(unit_list: SEXP) -> SEXP {
+    let n = LENGTH(unit_list);
+    if n == 0 {
+        return scalar_integer(0);
     }
+    let first_len = unitLength(vector_elt(unit_list, 0));
+    for i in 1..n as R_xlen_t {
+        if unitLength(vector_elt(unit_list, i)) != first_len {
+            return scalar_integer(0);
+        }
+    }
+    scalar_integer(first_len)
 }
 
 /// Match unit type descriptions to their integer codes.
-pub unsafe fn matchUnit(units: SEXP, unit: SEXP) -> SEXP {
-    unsafe {
-        let source = if !units.is_null() && units != R_NilValue() {
-            units
-        } else {
-            unit
-        };
-        if source.is_null() || source == R_NilValue() || TYPEOF(source) != SEXPTYPE::STRSXP {
-            grid_error("'units' must be a character vector");
-        }
-
-        let n = LENGTH(source);
-        let answer = Rf_allocVector(SEXPTYPE::INTSXP, n);
-        let _answer_guard = protect(answer);
-        for i in 0..n {
-            let chars = STRING_ELT(source, i as R_xlen_t);
-            if chars.is_null() {
-                grid_error("invalid unit name");
-            }
-            let ptr = CHAR(chars);
-            if ptr.is_null() {
-                grid_error("invalid unit name");
-            }
-            let name = std::ffi::CStr::from_ptr(ptr).to_string_lossy();
-            let Some(code) = unit_type_code(&name) else {
-                grid_error(format!("invalid unit '{}'", name));
-            };
-            *INTEGER(answer).add(i as usize) = code;
-        }
-        answer
+pub fn matchUnit(units: SEXP, unit: SEXP) -> SEXP {
+    let source = if !units.is_null() && units != R_NilValue() {
+        units
+    } else {
+        unit
+    };
+    if source.is_null() || source == R_NilValue() || TYPEOF(source) != SEXPTYPE::STRSXP {
+        grid_error("'units' must be a character vector");
     }
+
+    let n = LENGTH(source);
+    let answer = alloc_vector(SEXPTYPE::INTSXP, n);
+    let _answer_guard = protect(answer);
+    for i in 0..n {
+        let Some(name) = string_value_elt(source, i as R_xlen_t) else {
+            grid_error("invalid unit name");
+        };
+        let Some(code) = unit_type_code(&name) else {
+            grid_error(format!("invalid unit '{}'", name));
+        };
+        set_integer_elt(answer, i as R_xlen_t, code);
+    }
+    answer
 }
 
 /// Add two unit objects element-wise, producing a SUM unit.
-pub unsafe fn addUnits(u1: SEXP, u2: SEXP) -> SEXP {
-    unsafe {
-        let n1 = unitLength(u1);
-        let n2 = unitLength(u2);
-        let nmax = n1.max(n2);
-        if nmax == 0 {
-            return R_NilValue();
-        }
-        let answer = Rf_allocVector(SEXPTYPE::VECSXP, nmax);
-        let _answer_guard = protect(answer);
-        for i in 0..nmax as R_xlen_t {
-            let this_unit = Rf_allocVector(SEXPTYPE::VECSXP, 3);
-            let _this_unit_guard = protect(this_unit);
-            SET_VECTOR_ELT(this_unit, 0, Rf_ScalarReal(1.0));
-            let data = Rf_allocVector(SEXPTYPE::VECSXP, 2);
-            let _data_guard = protect(data);
-            SET_VECTOR_ELT(data, 0, unitScalar(u1, (i as c_int) % n1));
-            SET_VECTOR_ELT(data, 1, unitScalar(u2, (i as c_int) % n2));
-            SET_VECTOR_ELT(this_unit, 1, data);
-            SET_VECTOR_ELT(this_unit, 2, Rf_ScalarInteger(L_SUM));
-            SET_VECTOR_ELT(answer, i, this_unit);
-        }
-        let cl = Rf_allocVector(SEXPTYPE::STRSXP, 2);
-        let _cl_guard = protect(cl);
-        SET_STRING_ELT(cl, 0, Rf_mkChar(b"unit\0".as_ptr() as *const c_char));
-        SET_STRING_ELT(cl, 1, Rf_mkChar(b"unit_v2\0".as_ptr() as *const c_char));
-        R_classgets(answer, cl);
-        answer
+pub fn addUnits(u1: SEXP, u2: SEXP) -> SEXP {
+    let n1 = unitLength(u1);
+    let n2 = unitLength(u2);
+    let nmax = n1.max(n2);
+    if nmax == 0 {
+        return R_NilValue();
     }
+    let answer = alloc_vector(SEXPTYPE::VECSXP, nmax);
+    let _answer_guard = protect(answer);
+    for i in 0..nmax as R_xlen_t {
+        let this_unit = alloc_vector(SEXPTYPE::VECSXP, 3);
+        let _this_unit_guard = protect(this_unit);
+        set_vector_elt(this_unit, 0, scalar_real(1.0));
+        let data = alloc_vector(SEXPTYPE::VECSXP, 2);
+        let _data_guard = protect(data);
+        set_vector_elt(data, 0, unitScalar(u1, (i as c_int) % n1));
+        set_vector_elt(data, 1, unitScalar(u2, (i as c_int) % n2));
+        set_vector_elt(this_unit, 1, data);
+        set_vector_elt(this_unit, 2, scalar_integer(L_SUM));
+        set_vector_elt(answer, i, this_unit);
+    }
+    let cl = alloc_vector(SEXPTYPE::STRSXP, 2);
+    let _cl_guard = protect(cl);
+    set_string_elt(cl, 0, mk_char("unit"));
+    set_string_elt(cl, 1, mk_char("unit_v2"));
+    class_gets(answer, cl);
+    answer
 }
 
 /// Multiply unit values by a numeric vector (recycled).
-pub unsafe fn multUnits(units: SEXP, values: SEXP) -> SEXP {
-    unsafe {
-        let n = unitLength(units);
-        let nv = LENGTH(values);
-        if n == 0 {
-            return R_NilValue();
-        }
-        let answer = crate::main::duplicate::Rf_duplicate(units);
-        let _answer_guard = protect(answer);
-        if isSimpleUnit(answer) {
-            for i in 0..n as usize {
-                *REAL(answer).add(i) *= *REAL(values).add(i % nv as usize);
-            }
-        } else {
-            for i in 0..n {
-                let u = unitScalar(answer, i);
-                if !u.is_null() {
-                    let val = unitValue(answer, i) * *REAL(values).add((i as usize) % nv as usize);
-                    SET_VECTOR_ELT(u, 0, Rf_ScalarReal(val));
-                }
-            }
-        }
-        answer
+pub fn multUnits(units: SEXP, values: SEXP) -> SEXP {
+    let n = unitLength(units);
+    let nv = LENGTH(values);
+    if n == 0 {
+        return R_NilValue();
     }
+    let answer = duplicate(units);
+    let _answer_guard = protect(answer);
+    if isSimpleUnit(answer) {
+        for i in 0..n as R_xlen_t {
+            let current = real_elt(answer, i);
+            set_real_elt(answer, i, current * real_elt(values, i % nv as R_xlen_t));
+        }
+    } else {
+        for i in 0..n {
+            let u = unitScalar(answer, i);
+            if !u.is_null() {
+                let val = unitValue(answer, i) * real_elt(values, (i as usize % nv as usize) as R_xlen_t);
+                set_vector_elt(u, 0, scalar_real(val));
+            }
+        }
+    }
+    answer
 }
 
 /// Negate unit values (flip sign).
-pub unsafe fn flipUnits(units: SEXP) -> SEXP {
-    unsafe {
-        let n = unitLength(units);
-        if n == 0 {
-            return R_NilValue();
-        }
-        let answer = crate::main::duplicate::Rf_duplicate(units);
-        let _answer_guard = protect(answer);
-        if isSimpleUnit(answer) {
-            for i in 0..n as usize {
-                *REAL(answer).add(i) = -*REAL(answer).add(i);
-            }
-        } else {
-            for i in 0..n {
-                let u = unitScalar(answer, i);
-                if !u.is_null() {
-                    let val = -unitValue(answer, i);
-                    SET_VECTOR_ELT(u, 0, Rf_ScalarReal(val));
-                }
-            }
-        }
-        answer
+pub fn flipUnits(units: SEXP) -> SEXP {
+    let n = unitLength(units);
+    if n == 0 {
+        return R_NilValue();
     }
+    let answer = duplicate(units);
+    let _answer_guard = protect(answer);
+    if isSimpleUnit(answer) {
+        for i in 0..n as R_xlen_t {
+            set_real_elt(answer, i, -real_elt(answer, i));
+        }
+    } else {
+        for i in 0..n {
+            let u = unitScalar(answer, i);
+            if !u.is_null() {
+                let val = -unitValue(answer, i);
+                set_vector_elt(u, 0, scalar_real(val));
+            }
+        }
+    }
+    answer
 }
 
-unsafe fn absolute_unit_scalar(unit_scalar: SEXP) -> SEXP {
-    unsafe {
-        let unit_id = uUnit(unit_scalar);
-        let value = uValue(unit_scalar);
-        if unit_id == L_INCHES {
-            return unit_scalar;
-        }
-        if isAbsolute(unit_id) {
-            let Some(inches) = absoluteUnitToInches(value, unit_id) else {
-                grid_error(format!(
-                    "cannot convert unit '{}' to absolute inches without device metrics",
-                    unit_type_name(unit_id).unwrap_or("<unknown>")
-                ));
-            };
-            let out = Rf_allocVector(SEXPTYPE::VECSXP, 3);
-            let _out_guard = protect(out);
-            SET_VECTOR_ELT(out, 0, Rf_ScalarReal(inches));
-            SET_VECTOR_ELT(out, 1, R_NilValue());
-            SET_VECTOR_ELT(out, 2, Rf_ScalarInteger(L_INCHES));
-            return out;
-        }
-        if isArith(unit_id) {
-            let data = uData(unit_scalar);
-            let n = unitLength(data);
-            let converted = Rf_allocVector(SEXPTYPE::VECSXP, n);
-            let _converted_guard = protect(converted);
-            for i in 0..n {
-                SET_VECTOR_ELT(
-                    converted,
-                    i as R_xlen_t,
-                    absolute_unit_scalar(unitScalar(data, i)),
-                );
-            }
-            let out = Rf_allocVector(SEXPTYPE::VECSXP, 3);
-            let _out_guard = protect(out);
-            SET_VECTOR_ELT(out, 0, Rf_ScalarReal(value));
-            SET_VECTOR_ELT(out, 1, converted);
-            SET_VECTOR_ELT(out, 2, Rf_ScalarInteger(unit_id));
-            return out;
-        }
-        grid_error(format!(
-            "cannot convert relative unit '{}' to absolute units without a viewport",
-            unit_type_name(unit_id).unwrap_or("<unknown>")
-        ));
+fn absolute_unit_scalar(unit_scalar: SEXP) -> SEXP {
+    let unit_id = uUnit(unit_scalar);
+    let value = uValue(unit_scalar);
+    if unit_id == L_INCHES {
+        return unit_scalar;
     }
+    if isAbsolute(unit_id) {
+        let Some(inches) = absoluteUnitToInches(value, unit_id) else {
+            grid_error(format!(
+                "cannot convert unit '{}' to absolute inches without device metrics",
+                unit_type_name(unit_id).unwrap_or("<unknown>")
+            ));
+        };
+        let out = alloc_vector(SEXPTYPE::VECSXP, 3);
+        let _out_guard = protect(out);
+        set_vector_elt(out, 0, scalar_real(inches));
+        set_vector_elt(out, 1, R_NilValue());
+        set_vector_elt(out, 2, scalar_integer(L_INCHES));
+        return out;
+    }
+    if isArith(unit_id) {
+        let data = uData(unit_scalar);
+        let n = unitLength(data);
+        let converted = alloc_vector(SEXPTYPE::VECSXP, n);
+        let _converted_guard = protect(converted);
+        for i in 0..n {
+            set_vector_elt(
+                converted,
+                i as R_xlen_t,
+                absolute_unit_scalar(unitScalar(data, i)),
+            );
+        }
+        let out = alloc_vector(SEXPTYPE::VECSXP, 3);
+        let _out_guard = protect(out);
+        set_vector_elt(out, 0, scalar_real(value));
+        set_vector_elt(out, 1, converted);
+        set_vector_elt(out, 2, scalar_integer(unit_id));
+        return out;
+    }
+    grid_error(format!(
+        "cannot convert relative unit '{}' to absolute units without a viewport",
+        unit_type_name(unit_id).unwrap_or("<unknown>")
+    ));
 }
 
 /// Convert context-free absolute units to inches.
-pub unsafe fn absoluteUnits(units: SEXP) -> SEXP {
-    unsafe {
-        let n = unitLength(units);
-        let answer = Rf_allocVector(SEXPTYPE::VECSXP, n);
-        let _answer_guard = protect(answer);
-        for i in 0..n {
-            SET_VECTOR_ELT(
-                answer,
-                i as R_xlen_t,
-                absolute_unit_scalar(unitScalar(units, i)),
-            );
-        }
-        let cl = Rf_allocVector(SEXPTYPE::STRSXP, 2);
-        let _cl_guard = protect(cl);
-        SET_STRING_ELT(cl, 0, Rf_mkChar(c"unit".as_ptr()));
-        SET_STRING_ELT(cl, 1, Rf_mkChar(c"unit_v2".as_ptr()));
-        R_classgets(answer, cl);
-        answer
+pub fn absoluteUnits(units: SEXP) -> SEXP {
+    let n = unitLength(units);
+    let answer = alloc_vector(SEXPTYPE::VECSXP, n);
+    let _answer_guard = protect(answer);
+    for i in 0..n {
+        set_vector_elt(
+            answer,
+            i as R_xlen_t,
+            absolute_unit_scalar(unitScalar(units, i)),
+        );
     }
+    let cl = alloc_vector(SEXPTYPE::STRSXP, 2);
+    let _cl_guard = protect(cl);
+    set_string_elt(cl, 0, mk_char("unit"));
+    set_string_elt(cl, 1, mk_char("unit_v2"));
+    class_gets(answer, cl);
+    answer
 }
 
 /// Summarize units with a reduction operation (sum/min/max).
 /// `op_type` should be L_SUM, L_MIN, or L_MAX.
-pub unsafe fn summaryUnits(units: SEXP, op_type: SEXP) -> SEXP {
-    unsafe {
-        let op = *INTEGER(op_type);
-        let this_unit = Rf_allocVector(SEXPTYPE::VECSXP, 3);
-        let _this_unit_guard = protect(this_unit);
-        SET_VECTOR_ELT(this_unit, 0, Rf_ScalarReal(1.0));
-        SET_VECTOR_ELT(this_unit, 1, units);
-        SET_VECTOR_ELT(this_unit, 2, Rf_ScalarInteger(op));
-        let answer = Rf_allocVector(SEXPTYPE::VECSXP, 1);
-        let _answer_guard = protect(answer);
-        SET_VECTOR_ELT(answer, 0, this_unit);
-        let cl = Rf_allocVector(SEXPTYPE::STRSXP, 2);
-        let _cl_guard = protect(cl);
-        SET_STRING_ELT(cl, 0, Rf_mkChar(b"unit\0".as_ptr() as *const c_char));
-        SET_STRING_ELT(cl, 1, Rf_mkChar(b"unit_v2\0".as_ptr() as *const c_char));
-        R_classgets(answer, cl);
-        answer
-    }
+pub fn summaryUnits(units: SEXP, op_type: SEXP) -> SEXP {
+    let op = integer_elt(op_type, 0);
+    let this_unit = alloc_vector(SEXPTYPE::VECSXP, 3);
+    let _this_unit_guard = protect(this_unit);
+    set_vector_elt(this_unit, 0, scalar_real(1.0));
+    set_vector_elt(this_unit, 1, units);
+    set_vector_elt(this_unit, 2, scalar_integer(op));
+    let answer = alloc_vector(SEXPTYPE::VECSXP, 1);
+    let _answer_guard = protect(answer);
+    set_vector_elt(answer, 0, this_unit);
+    let cl = alloc_vector(SEXPTYPE::STRSXP, 2);
+    let _cl_guard = protect(cl);
+    set_string_elt(cl, 0, mk_char("unit"));
+    set_string_elt(cl, 1, mk_char("unit_v2"));
+    class_gets(answer, cl);
+    answer
 }
 
 #[cfg(test)]
@@ -1797,9 +1735,7 @@ mod tests {
             t[2][2] = 1.0;
             t[2][0] = 3.0;
             t[2][1] = -1.5;
-            let mut xx = 0.0;
-            let mut yy = 0.0;
-            transformLocn(
+            let (xx, yy) = transformLocn(
                 x,
                 y,
                 0,
@@ -1808,9 +1744,7 @@ mod tests {
                 0.0,
                 0.0,
                 std::ptr::null_mut(),
-                &mut t,
-                &mut xx,
-                &mut yy,
+                &t,
             );
             approx_eq(xx, 4.0);
             approx_eq(yy, 0.5);
@@ -1823,9 +1757,7 @@ mod tests {
         unsafe {
             let w = unit(1.0, L_INCHES);
             let h = unit(0.0, L_INCHES);
-            let mut ww = 0.0;
-            let mut hh = 0.0;
-            transformDimn(
+            let (ww, hh) = transformDimn(
                 w,
                 h,
                 0,
@@ -1835,8 +1767,6 @@ mod tests {
                 0.0,
                 std::ptr::null_mut(),
                 90.0,
-                &mut ww,
-                &mut hh,
             );
             approx_eq(ww, 0.0);
             approx_eq(hh, 1.0);
