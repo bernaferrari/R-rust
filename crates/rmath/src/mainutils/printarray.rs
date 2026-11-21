@@ -80,6 +80,118 @@ fn get_R_print_full() -> MutPtr<R_PrintData> {
 }
 
 // ---------------------------------------------------------------------------
+// Checked SEXP boundary helpers
+// ---------------------------------------------------------------------------
+
+/// Checked node factory bound to the active runtime session.
+fn node_factory() -> crate::sexp::object::SessionNodeFactory<'static> {
+    crate::sexp::object::SessionNodeFactory::new(
+        // SAFETY: matrix printing only runs inside evaluated R calls.
+        unsafe { crate::sexp::owner::OwnerToken::current() }
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
+    )
+}
+
+fn wrapped(x: SEXP) -> crate::sexp::object::Sexp<'static> {
+    node_factory()
+        .wrap(x)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+}
+
+fn checked<T>(result: crate::sexp::object::SexpResult<T>) -> T {
+    result.unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+}
+
+/// Checked base pointer into a live LGLSXP/INTSXP buffer.
+fn logical_ptr(x: SEXP) -> *const c_int {
+    // SAFETY: `x` is a live logical vector; its buffer outlives the call.
+    unsafe { LOGICAL(x) }
+}
+
+/// Checked base pointer into a live INTSXP buffer.
+fn integer_ptr(x: SEXP) -> *mut c_int {
+    // SAFETY: `x` is a live integer vector; its buffer outlives the call.
+    unsafe { INTEGER(x) }
+}
+
+/// Checked base pointer into a live REALSXP buffer.
+fn real_ptr(x: SEXP) -> *mut c_double {
+    // SAFETY: `x` is a live real vector; its buffer outlives the call.
+    unsafe { REAL(x) }
+}
+
+/// Checked base pointer into a live CPLXSXP buffer.
+fn complex_ptr(x: SEXP) -> *const Rcomplex {
+    // SAFETY: `x` is a live complex vector; its buffer outlives the call.
+    unsafe { COMPLEX(x) }
+}
+
+/// Checked base pointer into a live RAWSXP buffer.
+fn raw_ptr(x: SEXP) -> *mut Rbyte {
+    // SAFETY: `x` is a live raw vector; its buffer outlives the call.
+    unsafe { RAW(x) }
+}
+
+/// NUL-terminated pointer text (null maps to "").
+fn cstr_text<'a>(s: *const c_char) -> &'a str {
+    if s.is_null() {
+        return "";
+    }
+    // SAFETY: callers pass NUL-terminated static buffers or null.
+    unsafe { std::ffi::CStr::from_ptr(s) }
+        .to_str()
+        .unwrap_or("")
+}
+
+/// Encode a string element to owned text (null encodes as "").
+fn encode_label(s: SEXP, w: c_int, quote: c_int, justify: Rprt_adj) -> String {
+    // SAFETY: EncodeString returns a NUL-terminated static buffer or null.
+    let enc = unsafe { crate::mainutils::printutils::EncodeString(s, w, quote, justify) };
+    cstr_text(enc).to_string()
+}
+
+/// Encode a logical value to owned text.
+fn encode_logical(x: c_int, w: c_int) -> String {
+    // SAFETY: EncodeLogical returns a NUL-terminated static buffer.
+    cstr_text(unsafe { EncodeLogical(x, w) }).to_string()
+}
+
+/// Encode an integer value to owned text.
+fn encode_integer(x: c_int, w: c_int) -> String {
+    // SAFETY: EncodeInteger returns a NUL-terminated static buffer.
+    cstr_text(unsafe { EncodeInteger(x, w) }).to_string()
+}
+
+/// Encode a real value to owned text.
+fn encode_real(x: c_double, w: c_int, d: c_int, e: c_int, outdec: *const c_char) -> String {
+    // SAFETY: EncodeReal0 returns a NUL-terminated static buffer; `outdec`
+    // points at the static OUT_DEC pair.
+    cstr_text(unsafe { EncodeReal0(x, w, d, e, outdec) }).to_string()
+}
+
+/// Encode a complex value to owned text.
+fn encode_complex(
+    z: Rcomplex,
+    wr: c_int,
+    dr: c_int,
+    er: c_int,
+    wi: c_int,
+    di: c_int,
+    ei: c_int,
+    outdec: *const c_char,
+) -> String {
+    // SAFETY: EncodeComplex returns a NUL-terminated static buffer; `outdec`
+    // points at the static OUT_DEC pair.
+    cstr_text(unsafe { EncodeComplex(z, wr, dr, er, wi, di, ei, outdec) }).to_string()
+}
+
+/// Encode a raw byte to owned text.
+fn encode_raw(x: u8, prefix: *const c_char) -> String {
+    // SAFETY: EncodeRaw returns a NUL-terminated static buffer.
+    cstr_text(unsafe { EncodeRaw(x, prefix) }).to_string()
+}
+
+// ---------------------------------------------------------------------------
 // Functions from printutils (non-SEXP taking ones)
 // ---------------------------------------------------------------------------
 
@@ -101,17 +213,14 @@ use crate::mainutils::printvector::printVector;
 // are stubs (returning 0 and "" respectively), we define local wrappers.
 // ---------------------------------------------------------------------------
 
-unsafe fn local_Rstrlen(s: SEXP, quote: c_int) -> c_int {
+fn local_Rstrlen(s: SEXP, quote: c_int) -> c_int {
+    // SAFETY: `s` is a live CHARSXP element read under the checked contract.
     unsafe { crate::mainutils::printutils::Rstrlen(s, quote) }
 }
 
 static EMPTY_CSTR: [u8; 1] = [0];
 
-unsafe fn local_EncodeString(s: SEXP, w: c_int, quote: c_int, justify: Rprt_adj) -> *const c_char {
-    unsafe { crate::mainutils::printutils::EncodeString(s, w, quote, justify) }
-}
-
-use crate::eval::attrib_core::getAttrib;
+use crate::sexp::attrib_core::getAttrib;
 
 // ---------------------------------------------------------------------------
 // NA_STRING -- sentinel; R_NilValue is used since real NA_STRING CHARSXP
@@ -136,12 +245,13 @@ fn ceil_DIV(a: c_int, b: c_int) -> c_int {
 // Helper: strwidth -- display width of a C string (simplified)
 // ---------------------------------------------------------------------------
 
-unsafe fn strwidth(s: *const c_char) -> c_int {
-    unsafe {
+fn strwidth(s: *const c_char) -> c_int {
+    {
         if s.is_null() {
             return 0;
         }
-        let len = std::ffi::CStr::from_ptr(s).to_bytes().len();
+        // SAFETY: callers pass NUL-terminated strings or null.
+        let len = unsafe { std::ffi::CStr::from_ptr(s) }.to_bytes().len();
         if len == 0 {
             return 0;
         }
@@ -154,8 +264,8 @@ unsafe fn strwidth(s: *const c_char) -> c_int {
 // MatrixColumnLabel -- print column label
 // ---------------------------------------------------------------------------
 
-unsafe fn MatrixColumnLabel(cl: SEXP, j: c_int, w: c_int) {
-    unsafe {
+fn MatrixColumnLabel(cl: SEXP, j: c_int, w: c_int) {
+    {
         let rp = get_R_print_full();
         if cl != R_NilValue() {
             let tmp = STRING_ELT(cl, j as R_xlen_t);
@@ -168,13 +278,7 @@ unsafe fn MatrixColumnLabel(cl: SEXP, j: c_int, w: c_int) {
             if pad > 0 {
                 eprint!("{:width$}", "", width = pad as usize);
             }
-            let s = local_EncodeString(tmp, l, 0, Rprt_adj::left);
-            if !s.is_null() {
-                let cstr = std::ffi::CStr::from_ptr(s);
-                if let Ok(s) = cstr.to_str() {
-                    eprint!("{}", s);
-                }
-            }
+            eprint!("{}", encode_label(tmp, l, 0, Rprt_adj::left));
         } else {
             let iw = IndexWidth((j + 1) as R_xlen_t);
             let pad = w - iw - 3;
@@ -190,8 +294,8 @@ unsafe fn MatrixColumnLabel(cl: SEXP, j: c_int, w: c_int) {
 // RightMatrixColumnLabel -- right-adjusted column label
 // ---------------------------------------------------------------------------
 
-unsafe fn RightMatrixColumnLabel(cl: SEXP, j: c_int, w: c_int) {
-    unsafe {
+fn RightMatrixColumnLabel(cl: SEXP, j: c_int, w: c_int) {
+    {
         let rp = get_R_print_full();
         if cl != R_NilValue() {
             let tmp = STRING_ELT(cl, j as R_xlen_t);
@@ -204,13 +308,7 @@ unsafe fn RightMatrixColumnLabel(cl: SEXP, j: c_int, w: c_int) {
             if pad > 0 {
                 eprint!("{:width$}", "", width = pad as usize);
             }
-            let s = local_EncodeString(tmp, l, 0, Rprt_adj::right);
-            if !s.is_null() {
-                let cstr = std::ffi::CStr::from_ptr(s);
-                if let Ok(s) = cstr.to_str() {
-                    eprint!("{}", s);
-                }
-            }
+            eprint!("{}", encode_label(tmp, l, 0, Rprt_adj::right));
         } else {
             let iw = IndexWidth((j + 1) as R_xlen_t);
             let pad = rp.gap + w - iw - 3;
@@ -226,8 +324,8 @@ unsafe fn RightMatrixColumnLabel(cl: SEXP, j: c_int, w: c_int) {
 // LeftMatrixColumnLabel -- left-adjusted column label
 // ---------------------------------------------------------------------------
 
-unsafe fn LeftMatrixColumnLabel(cl: SEXP, j: c_int, w: c_int) {
-    unsafe {
+fn LeftMatrixColumnLabel(cl: SEXP, j: c_int, w: c_int) {
+    {
         let rp = get_R_print_full();
         if cl != R_NilValue() {
             let tmp = STRING_ELT(cl, j as R_xlen_t);
@@ -237,13 +335,7 @@ unsafe fn LeftMatrixColumnLabel(cl: SEXP, j: c_int, w: c_int) {
                 local_Rstrlen(tmp, 0)
             };
             eprint!("{:width$}", "", width = rp.gap as usize);
-            let s = local_EncodeString(tmp, l, 0, Rprt_adj::left);
-            if !s.is_null() {
-                let cstr = std::ffi::CStr::from_ptr(s);
-                if let Ok(s) = cstr.to_str() {
-                    eprint!("{}", s);
-                }
-            }
+            eprint!("{}", encode_label(tmp, l, 0, Rprt_adj::left));
             let pad = w - l;
             if pad > 0 {
                 eprint!("{:width$}", "", width = pad as usize);
@@ -264,8 +356,8 @@ unsafe fn LeftMatrixColumnLabel(cl: SEXP, j: c_int, w: c_int) {
 // MatrixRowLabel -- print row label
 // ---------------------------------------------------------------------------
 
-unsafe fn MatrixRowLabel(rl: SEXP, i: c_int, rlabw: c_int, lbloff: c_int) {
-    unsafe {
+fn MatrixRowLabel(rl: SEXP, i: c_int, rlabw: c_int, lbloff: c_int) {
+    {
         let rp = get_R_print_full();
         if rl != R_NilValue() {
             let tmp = STRING_ELT(rl, i as R_xlen_t);
@@ -275,13 +367,7 @@ unsafe fn MatrixRowLabel(rl: SEXP, i: c_int, rlabw: c_int, lbloff: c_int) {
                 local_Rstrlen(tmp, 0)
             };
             eprint!("\n{:width$}", "", width = lbloff as usize);
-            let s = local_EncodeString(tmp, l, 0, Rprt_adj::left);
-            if !s.is_null() {
-                let cstr = std::ffi::CStr::from_ptr(s);
-                if let Ok(s) = cstr.to_str() {
-                    eprint!("{}", s);
-                }
-            }
+            eprint!("{}", encode_label(tmp, l, 0, Rprt_adj::left));
             let pad = rlabw - l - lbloff;
             if pad > 0 {
                 eprint!("{:width$}", "", width = pad as usize);
@@ -307,8 +393,8 @@ struct RowLabelInfo {
     lbloff: c_int,
 }
 
-unsafe fn init_rl_rn(rl: SEXP, rn: *const c_char, r: c_int) -> RowLabelInfo {
-    unsafe {
+fn init_rl_rn(rl: SEXP, rn: *const c_char, r: c_int) -> RowLabelInfo {
+    {
         let rp = get_R_print_full();
         let mut rlabw: c_int;
         let mut lbloff: c_int = 0;
@@ -348,18 +434,16 @@ unsafe fn init_rl_rn(rl: SEXP, rn: *const c_char, r: c_int) -> RowLabelInfo {
 // print_row_header -- print the row name / column name header line
 // ---------------------------------------------------------------------------
 
-unsafe fn print_row_header(cn: *const c_char, rlabw: c_int, rn: *const c_char) {
-    unsafe {
+fn print_row_header(cn: *const c_char, rlabw: c_int, rn: *const c_char) {
+    {
         // GNU `_PRINT_ROW_LAB`: Rprintf("%*s%s\n", rlabw, "", cn)
         // then left-justified rn (or rlabw spaces).
         if !cn.is_null() {
-            let s = std::ffi::CStr::from_ptr(cn).to_str().unwrap_or("");
             eprint!("{:width$}", "", width = rlabw.max(0) as usize);
-            eprintln!("{s}");
+            eprintln!("{}", cstr_text(cn));
         }
         if !rn.is_null() {
-            let s = std::ffi::CStr::from_ptr(rn).to_str().unwrap_or("");
-            eprint!("{:<width$}", s, width = rlabw.max(0) as usize);
+            eprint!("{:<width$}", cstr_text(rn), width = rlabw.max(0) as usize);
         } else {
             eprint!("{:width$}", "", width = rlabw.max(0) as usize);
         }
@@ -370,8 +454,8 @@ unsafe fn print_row_header(cn: *const c_char, rlabw: c_int, rn: *const c_char) {
 // print_column_labels -- standard column labels
 // ---------------------------------------------------------------------------
 
-unsafe fn std_column_labels(cl: SEXP, jmin: usize, jmax: usize, w: &[c_int]) {
-    unsafe {
+fn std_column_labels(cl: SEXP, jmin: usize, jmax: usize, w: &[c_int]) {
+    {
         for j in jmin..jmax {
             MatrixColumnLabel(cl, j as c_int, w[j]);
         }
@@ -382,7 +466,7 @@ unsafe fn std_column_labels(cl: SEXP, jmin: usize, jmax: usize, w: &[c_int]) {
 // print_logical_matrix
 // ---------------------------------------------------------------------------
 
-unsafe fn print_logical_matrix(
+fn print_logical_matrix(
     sx: SEXP,
     offset: R_xlen_t,
     r_pr: c_int,
@@ -394,7 +478,7 @@ unsafe fn print_logical_matrix(
     cn: *const c_char,
     print_ij: bool,
 ) {
-    unsafe {
+    {
         let rp = get_R_print_full();
         let info = init_rl_rn(rl, rn, r);
         let rlabw = info.rlabw;
@@ -403,7 +487,7 @@ unsafe fn print_logical_matrix(
         let mut w = vec![0i32; c as usize];
         let mut clabw: c_int = 0;
 
-        let base = LOGICAL(sx);
+        let base = logical_ptr(sx);
         let len = XLENGTH(sx);
         let rows = r as R_xlen_t;
 
@@ -413,7 +497,9 @@ unsafe fn print_logical_matrix(
                 let start = column_start(offset, j as R_xlen_t, rows);
                 let col_ptr = in_column(base, len, start, rows);
                 let mut fw: c_int = 0;
-                formatLogical(col_ptr, rows, &mut fw);
+                // SAFETY: `col_ptr` is null or a live in-range column slice of
+                // `rows` elements; `fw` is a live out parameter.
+                unsafe { formatLogical(col_ptr, rows, &mut fw) };
                 w[j] = fw;
             } else {
                 w[j] = 0;
@@ -471,9 +557,7 @@ unsafe fn print_logical_matrix(
                                 len,
                                 element_index(offset, j as R_xlen_t, i as R_xlen_t, rows),
                             );
-                            let s = EncodeLogical(val, w[j]);
-                            let cstr = std::ffi::CStr::from_ptr(s);
-                            eprint!("{}", cstr.to_str().unwrap_or(""));
+                            eprint!("{}", encode_logical(val, w[j]));
                         }
                     }
                 }
@@ -647,7 +731,7 @@ fn real_at(
 // print_integer_matrix
 // ---------------------------------------------------------------------------
 
-unsafe fn print_integer_matrix(
+fn print_integer_matrix(
     sx: SEXP,
     offset: R_xlen_t,
     r_pr: c_int,
@@ -659,7 +743,7 @@ unsafe fn print_integer_matrix(
     cn: *const c_char,
     print_ij: bool,
 ) {
-    unsafe {
+    {
         let rp = get_R_print_full();
         let info = init_rl_rn(rl, rn, r);
         let rlabw = info.rlabw;
@@ -672,7 +756,7 @@ unsafe fn print_integer_matrix(
         let data = if seq.is_some() {
             ptr::null_mut()
         } else {
-            INTEGER(sx)
+            integer_ptr(sx)
         };
         let len = XLENGTH(sx);
         let rows = r as R_xlen_t;
@@ -736,9 +820,7 @@ unsafe fn print_integer_matrix(
                                 len,
                                 element_index(offset, j as R_xlen_t, i as R_xlen_t, rows),
                             );
-                            let s = EncodeInteger(val, w[j]);
-                            let cstr = std::ffi::CStr::from_ptr(s);
-                            eprint!("{}", cstr.to_str().unwrap_or(""));
+                            eprint!("{}", encode_integer(val, w[j]));
                         }
                     }
                 }
@@ -753,7 +835,7 @@ unsafe fn print_integer_matrix(
 // print_real_matrix
 // ---------------------------------------------------------------------------
 
-unsafe fn print_real_matrix(
+fn print_real_matrix(
     sx: SEXP,
     offset: R_xlen_t,
     r_pr: c_int,
@@ -765,7 +847,7 @@ unsafe fn print_real_matrix(
     cn: *const c_char,
     print_ij: bool,
 ) {
-    unsafe {
+    {
         let rp = get_R_print_full();
         let info = init_rl_rn(rl, rn, r);
         let rlabw = info.rlabw;
@@ -780,7 +862,7 @@ unsafe fn print_real_matrix(
         let data = if seq.is_some() {
             ptr::null_mut()
         } else {
-            REAL(sx)
+            real_ptr(sx)
         };
         let len = XLENGTH(sx);
         let rows = r as R_xlen_t;
@@ -847,9 +929,7 @@ unsafe fn print_real_matrix(
                                 len,
                                 element_index(offset, j as R_xlen_t, i as R_xlen_t, rows),
                             );
-                            let s = EncodeReal0(val, w[j], d[j], e[j], dec_ptr);
-                            let cstr = std::ffi::CStr::from_ptr(s);
-                            eprint!("{}", cstr.to_str().unwrap_or(""));
+                            eprint!("{}", encode_real(val, w[j], d[j], e[j], dec_ptr));
                         }
                     }
                 }
@@ -864,7 +944,7 @@ unsafe fn print_real_matrix(
 // print_complex_matrix
 // ---------------------------------------------------------------------------
 
-unsafe fn print_complex_matrix(
+fn print_complex_matrix(
     sx: SEXP,
     offset: R_xlen_t,
     r_pr: c_int,
@@ -876,7 +956,7 @@ unsafe fn print_complex_matrix(
     cn: *const c_char,
     print_ij: bool,
 ) {
-    unsafe {
+    {
         let rp = get_R_print_full();
         let info = init_rl_rn(rl, rn, r);
         let rlabw = info.rlabw;
@@ -891,7 +971,7 @@ unsafe fn print_complex_matrix(
         let mut ei = vec![0i32; c as usize];
         let mut clabw: c_int = 0;
 
-        let base = COMPLEX(sx);
+        let base = complex_ptr(sx);
         let len = XLENGTH(sx);
         let rows = r as R_xlen_t;
         let dec_ptr = OUT_DEC.as_ptr();
@@ -900,10 +980,14 @@ unsafe fn print_complex_matrix(
             if print_ij {
                 let start = column_start(offset, j as R_xlen_t, rows);
                 let col_ptr = in_column(base, len, start, rows);
-                formatComplex(
-                    col_ptr, rows, &mut wr[j], &mut dr[j], &mut er[j], &mut wi[j], &mut di[j],
-                    &mut ei[j], 0,
-                );
+                // SAFETY: `col_ptr` is null or a live in-range column slice
+                // of `rows` elements; the w/d/e out parameters are live.
+                unsafe {
+                    formatComplex(
+                        col_ptr, rows, &mut wr[j], &mut dr[j], &mut er[j], &mut wi[j],
+                        &mut di[j], &mut ei[j], 0,
+                    );
+                }
                 w[j] = wr[j] + wi[j] + 2;
             } else {
                 w[j] = 0;
@@ -959,9 +1043,9 @@ unsafe fn print_complex_matrix(
                                 element_index(offset, j as R_xlen_t, i as R_xlen_t, rows),
                             );
                             let s = if R_IsNA(cx.r) || R_IsNA(cx.i) {
-                                EncodeReal0(NA_REAL, w[j], 0, 0, dec_ptr)
+                                encode_real(NA_REAL, w[j], 0, 0, dec_ptr)
                             } else {
-                                EncodeComplex(
+                                encode_complex(
                                     cx,
                                     w[j] - wi[j] - 2,
                                     dr[j],
@@ -972,8 +1056,7 @@ unsafe fn print_complex_matrix(
                                     dec_ptr,
                                 )
                             };
-                            let cstr = std::ffi::CStr::from_ptr(s);
-                            eprint!("{}", cstr.to_str().unwrap_or(""));
+                            eprint!("{}", s);
                         }
                     }
                 }
@@ -988,7 +1071,7 @@ unsafe fn print_complex_matrix(
 // print_string_matrix
 // ---------------------------------------------------------------------------
 
-unsafe fn print_string_matrix(
+fn print_string_matrix(
     sx: SEXP,
     offset: R_xlen_t,
     r_pr: c_int,
@@ -1002,7 +1085,7 @@ unsafe fn print_string_matrix(
     cn: *const c_char,
     print_ij: bool,
 ) {
-    unsafe {
+    {
         let rp = get_R_print_full();
         let info = init_rl_rn(rl, rn, r);
         let rlabw = info.rlabw;
@@ -1102,13 +1185,7 @@ unsafe fn print_string_matrix(
                             } else {
                                 Rprt_adj::left
                             };
-                            let s = local_EncodeString(elem, w[j], quote, adj);
-                            if !s.is_null() {
-                                let cstr = std::ffi::CStr::from_ptr(s);
-                                if let Ok(s) = cstr.to_str() {
-                                    eprint!("{}", s);
-                                }
-                            }
+                            eprint!("{}", encode_label(elem, w[j], quote, adj));
                         }
                     }
                 }
@@ -1123,7 +1200,7 @@ unsafe fn print_string_matrix(
 // print_raw_matrix
 // ---------------------------------------------------------------------------
 
-unsafe fn print_raw_matrix(
+fn print_raw_matrix(
     sx: SEXP,
     offset: R_xlen_t,
     r_pr: c_int,
@@ -1135,7 +1212,7 @@ unsafe fn print_raw_matrix(
     cn: *const c_char,
     print_ij: bool,
 ) {
-    unsafe {
+    {
         let rp = get_R_print_full();
         let info = init_rl_rn(rl, rn, r);
         let rlabw = info.rlabw;
@@ -1144,7 +1221,7 @@ unsafe fn print_raw_matrix(
         let mut w = vec![0i32; c as usize];
         let mut clabw: c_int = 0;
 
-        let base = RAW(sx);
+        let base = raw_ptr(sx);
         let len = XLENGTH(sx);
         let rows = r as R_xlen_t;
 
@@ -1153,7 +1230,9 @@ unsafe fn print_raw_matrix(
                 let start = column_start(offset, j as R_xlen_t, rows);
                 let col_ptr = in_column(base, len, start, rows);
                 let mut fw: c_int = 0;
-                formatRaw(col_ptr as *const c_void, rows, &mut fw);
+                // SAFETY: `col_ptr` is null or a live in-range column slice of
+                // `rows` elements; `fw` is a live out parameter.
+                unsafe { formatRaw(col_ptr as *const c_void, rows, &mut fw) };
                 w[j] = fw;
             } else {
                 w[j] = 0;
@@ -1212,9 +1291,7 @@ unsafe fn print_raw_matrix(
                             if pad > 0 {
                                 eprint!("{:width$}", "", width = pad as usize);
                             }
-                            let s = EncodeRaw(val, std::ptr::null());
-                            let cstr = std::ffi::CStr::from_ptr(s);
-                            eprint!("{}", cstr.to_str().unwrap_or(""));
+                            eprint!("{}", encode_raw(val, std::ptr::null()));
                         }
                     }
                 }
@@ -1240,18 +1317,19 @@ pub unsafe fn printMatrix(
     rn: *const c_char,
     cn: *const c_char,
 ) {
-    unsafe {
+    {
         if x.is_null() || dim.is_null() {
             return;
         }
 
         let rp = get_R_print_full();
-        let pdim = INTEGER(dim);
+        let pdim = integer_ptr(dim);
         if pdim.is_null() {
             return;
         }
-        let r = *pdim;
-        let c = *pdim.add(1);
+        let dims = wrapped(dim);
+        let r = checked(dims.try_integer_elt(0));
+        let c = checked(dims.try_integer_elt(1));
         if r < 0 || c < 0 {
             return;
         }
@@ -1331,7 +1409,7 @@ pub unsafe fn printMatrix(
 
 #[allow(clippy::if_same_then_else)]
 pub unsafe fn printArray(x: SEXP, dim: SEXP, quote: c_int, right: c_int, dimnames: SEXP) {
-    unsafe {
+    {
         if x.is_null() || dim.is_null() {
             return;
         }
@@ -1348,20 +1426,26 @@ pub unsafe fn printArray(x: SEXP, dim: SEXP, quote: c_int, right: c_int, dimname
             let mut cl: SEXP = ptr::null_mut();
             let mut rn: *const c_char = ptr::null();
             let mut cn: *const c_char = ptr::null();
-            GetMatrixDimnames(x, &mut rl, &mut cl, &mut rn, &mut cn);
-            printMatrix(x, 0, dim, quote, 0, rl, cl, rn, cn);
+            // SAFETY: all four out pointers reference live locals; `rn`/`cn`
+            // may be null or NUL-terminated names returned by GetMatrixDimnames
+            // for the duration of the printMatrix call.
+            unsafe {
+                GetMatrixDimnames(x, &mut rl, &mut cl, &mut rn, &mut cn);
+                printMatrix(x, 0, dim, quote, 0, rl, cl, rn, cn);
+            }
             return;
         }
 
         // ndim >= 3
         let rp = get_R_print_full();
-        let pdim = INTEGER(dim);
+        let pdim = integer_ptr(dim);
         if pdim.is_null() {
             return;
         }
 
-        let nr = *pdim;
-        let nc = *pdim.add(1);
+        let dims = wrapped(dim);
+        let nr = checked(dims.try_integer_elt(0));
+        let nc = checked(dims.try_integer_elt(1));
         if nr < 0 || nc < 0 {
             return;
         }
@@ -1381,7 +1465,7 @@ pub unsafe fn printArray(x: SEXP, dim: SEXP, quote: c_int, right: c_int, dimname
         if has_dimnames {
             dn0 = VECTOR_ELT(dimnames, 0);
             dn1 = VECTOR_ELT(dimnames, 1);
-            let names_sym = crate::mainutils::relop::R_NamesSymbol();
+            let names_sym = crate::sexp::attrib_core::R_NamesSymbol();
             dnn = getAttrib(dimnames, names_sym);
             has_dnn = dnn != R_NilValue();
             // translateChar not available; rn and cn remain null
@@ -1390,7 +1474,7 @@ pub unsafe fn printArray(x: SEXP, dim: SEXP, quote: c_int, right: c_int, dimname
         // nb := number of matrix slices
         let mut nb: c_int = 1;
         for i in 2..ndim {
-            nb *= *pdim.offset(i as isize);
+            nb *= checked(dims.try_integer_elt(i as R_xlen_t));
         }
 
         let max_reached = b > 0 && rp.max / b < nb;
@@ -1426,7 +1510,8 @@ pub unsafe fn printArray(x: SEXP, dim: SEXP, quote: c_int, right: c_int, dimname
                 eprint!(", ");
                 let mut k: c_int = 1;
                 for j in 2..ndim {
-                    let l = (ii as c_int / k) % *pdim.offset(j as isize) + 1;
+                    let dj = checked(dims.try_integer_elt(j as R_xlen_t));
+                    let l = (ii as c_int / k) % dj + 1;
                     if has_dimnames {
                         let dn = VECTOR_ELT(dimnames, j as R_xlen_t);
                         if dn != R_NilValue() {
@@ -1437,16 +1522,17 @@ pub unsafe fn printArray(x: SEXP, dim: SEXP, quote: c_int, right: c_int, dimname
                     } else {
                         eprint!(", {}", l);
                     }
-                    k *= *pdim.offset(j as isize);
+                    k *= dj;
                 }
                 eprintln!();
             } else {
                 // nb == 0, e.g. <2 x 3 x 0 array>
                 for di in 0..ndim {
+                    let dd = checked(dims.try_integer_elt(di as R_xlen_t));
                     if di == 0 {
-                        eprint!("<{}", *pdim.offset(di as isize));
+                        eprint!("<{}", dd);
                     } else {
-                        eprint!(" x {}", *pdim.offset(di as isize));
+                        eprint!(" x {}", dd);
                     }
                 }
                 eprintln!(" array of type {}>", TYPEOF(x));
