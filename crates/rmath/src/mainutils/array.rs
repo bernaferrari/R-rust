@@ -18,7 +18,7 @@ use std::os::raw::c_int;
 
 use crate::mainutils::coerce::asLogical;
 use crate::sexp::accessors::{
-    ATTRIB, CADR, CAR, CDR, CHAR, COMPLEX, INTEGER, LENGTH, LOGICAL, OBJECT, PRINTNAME, RAW, REAL,
+    ATTRIB, CADR, CAR, CDR, CHAR, INTEGER, LENGTH, OBJECT, PRINTNAME,
     SET_ATTRIB, SET_OBJECT, SET_S4_OBJECT, SET_STRING_ELT, SET_VECTOR_ELT, SETTAG, STRING_ELT, TAG,
     TYPEOF, UNSET_S4_OBJECT, VECTOR_ELT, XLENGTH,
 };
@@ -33,13 +33,43 @@ use crate::sexp::ffi::{NA_INTEGER, NA_LOGICAL, R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::protect::protect;
 
-unsafe fn primitive_name(op: SEXP) -> Option<String> {
-    unsafe {
+/// Checked node factory bound to the active runtime session.
+fn node_factory() -> crate::sexp::object::SessionNodeFactory<'static> {
+    crate::sexp::object::SessionNodeFactory::new(
+        // SAFETY: array helpers only run inside evaluated R calls.
+        unsafe { crate::sexp::owner::OwnerToken::current() }
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string())),
+    )
+}
+
+fn wrapped(x: SEXP) -> crate::sexp::object::Sexp<'static> {
+    node_factory()
+        .wrap(x)
+        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
+}
+
+fn mutable_vector(x: SEXP) -> crate::sexp::object::SexpMut<'static> {
+    node_factory()
+        .wrap(x)
+        .and_then(crate::sexp::object::SexpMut::try_from_checked)
+        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
+}
+
+fn checked<T>(result: crate::sexp::object::SexpResult<T>) -> T {
+    result.unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
+}
+
+fn primitive_name(op: SEXP) -> Option<String> {
+    {
         let name = crate::mainutils::relop::PRIMNAME(op);
         if name.is_null() {
             None
         } else {
-            let name = CStr::from_ptr(name).to_string_lossy().into_owned();
+            // SAFETY: PRIMNAME of a live primitive returns a NUL-terminated
+            // static name valid for the borrow.
+            let name = unsafe { CStr::from_ptr(name) }
+                .to_string_lossy()
+                .into_owned();
             if name.is_empty() { None } else { Some(name) }
         }
     }
@@ -73,20 +103,21 @@ fn is_numeric_type(x: SEXP) -> bool {
     }
 }
 
-unsafe fn numeric_at(x: SEXP, index: usize) -> f64 {
-    unsafe {
-        match TYPEOF(x) {
-            tag if tag == SEXPTYPE::REALSXP.as_c_int() => *REAL(x).add(index),
-            tag if tag == SEXPTYPE::INTSXP.as_c_int() => {
-                let value = *INTEGER(x).add(index);
+fn numeric_at(x: SEXP, index: usize) -> f64 {
+    {
+        let x = wrapped(x);
+        match x.typeof_() {
+            SEXPTYPE::REALSXP => checked(x.try_real_elt(index as R_xlen_t)),
+            SEXPTYPE::INTSXP => {
+                let value = checked(x.try_integer_elt(index as R_xlen_t));
                 if value == NA_INTEGER {
                     f64::NAN
                 } else {
                     value as f64
                 }
             }
-            tag if tag == SEXPTYPE::LGLSXP.as_c_int() => {
-                let value = *LOGICAL(x).add(index);
+            SEXPTYPE::LGLSXP => {
+                let value = checked(x.try_logical_elt(index as R_xlen_t));
                 if value == NA_LOGICAL {
                     f64::NAN
                 } else {
@@ -98,8 +129,8 @@ unsafe fn numeric_at(x: SEXP, index: usize) -> f64 {
     }
 }
 
-unsafe fn matrix_dims(x: SEXP) -> Option<(usize, usize)> {
-    unsafe {
+fn matrix_dims(x: SEXP) -> Option<(usize, usize)> {
+    {
         let dim = getAttrib(x, R_DimSymbol());
         if dim.is_null()
             || dim == R_NilValue()
@@ -108,8 +139,9 @@ unsafe fn matrix_dims(x: SEXP) -> Option<(usize, usize)> {
         {
             return None;
         }
-        let nrow = *INTEGER(dim);
-        let ncol = *INTEGER(dim).add(1);
+        let dim = wrapped(dim);
+        let nrow = checked(dim.try_integer_elt(0));
+        let ncol = checked(dim.try_integer_elt(1));
         if nrow < 0 || ncol < 0 {
             None
         } else {
@@ -118,8 +150,8 @@ unsafe fn matrix_dims(x: SEXP) -> Option<(usize, usize)> {
     }
 }
 
-unsafe fn matrix_value(x: SEXP, row: usize, col: usize, nrow: usize) -> f64 {
-    unsafe { numeric_at(x, row + col * nrow) }
+fn matrix_value(x: SEXP, row: usize, col: usize, nrow: usize) -> f64 {
+    numeric_at(x, row + col * nrow)
 }
 
 fn first_arg(args: SEXP, name: &str) -> SEXP {
@@ -147,8 +179,8 @@ fn second_arg_or_first(args: SEXP, first: SEXP) -> SEXP {
     }
 }
 
-unsafe fn arg_tag_name(cell: SEXP) -> Option<String> {
-    unsafe {
+fn arg_tag_name(cell: SEXP) -> Option<String> {
+    {
         let tag = TAG(cell);
         if tag.is_null() || tag == R_NilValue() {
             return None;
@@ -158,7 +190,9 @@ unsafe fn arg_tag_name(cell: SEXP) -> Option<String> {
             return None;
         }
         Some(
-            CStr::from_ptr(CHAR(printname))
+            // SAFETY: `printname` is a live CHARSXP; CHAR returns its
+            // NUL-terminated contents valid for the borrow.
+            unsafe { CStr::from_ptr(CHAR(printname)) }
                 .to_string_lossy()
                 .into_owned(),
         )
@@ -178,8 +212,8 @@ fn formal_match(name: &str, formals: &[&str]) -> Option<usize> {
     matches.next().is_none().then_some(first)
 }
 
-unsafe fn match_primitive_args(args: SEXP, formals: &[&str], name: &str) -> Vec<SEXP> {
-    unsafe {
+fn match_primitive_args(args: SEXP, formals: &[&str], name: &str) -> Vec<SEXP> {
+    {
         let mut matched = vec![R_NilValue(); formals.len()];
         let mut positional = Vec::new();
         let mut cell = args;
@@ -216,12 +250,12 @@ unsafe fn match_primitive_args(args: SEXP, formals: &[&str], name: &str) -> Vec<
     }
 }
 
-unsafe fn matrix_dims_for_product(
+fn matrix_dims_for_product(
     kind: MatProductKind,
     x: SEXP,
     y: SEXP,
 ) -> ((usize, usize), (usize, usize)) {
-    unsafe {
+    {
         let x_dim = matrix_dims(x);
         let y_dim = matrix_dims(y);
         let x_len = XLENGTH(x) as usize;
@@ -270,47 +304,52 @@ unsafe fn matrix_dims_for_product(
     }
 }
 
-unsafe fn set_matrix_dim(result: SEXP, nrow: usize, ncol: usize) {
-    unsafe {
+fn set_matrix_dim(result: SEXP, nrow: usize, ncol: usize) {
+    {
         let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
         if !dim.is_null() {
-            *INTEGER(dim) = nrow as c_int;
-            *INTEGER(dim).add(1) = ncol as c_int;
-            setAttrib(result, R_DimSymbol(), dim);
+            let mut dim = mutable_vector(dim);
+            checked(dim.try_set_integer_elt(0, nrow as c_int));
+            checked(dim.try_set_integer_elt(1, ncol as c_int));
+            setAttrib(result, R_DimSymbol(), dim.as_raw());
         }
     }
 }
 
-unsafe fn copy_vector_element(dst: SEXP, dst_index: usize, src: SEXP, src_index: usize) {
-    unsafe {
-        match TYPEOF(src) {
-            tag if tag == SEXPTYPE::LGLSXP.as_c_int() => {
-                *LOGICAL(dst).add(dst_index) = *LOGICAL(src).add(src_index);
+fn copy_vector_element(dst: SEXP, dst_index: usize, src: SEXP, src_index: usize) {
+    {
+        let src = wrapped(src);
+        let mut dst = mutable_vector(dst);
+        let i = src_index as R_xlen_t;
+        let o = dst_index as R_xlen_t;
+        match src.typeof_() {
+            SEXPTYPE::LGLSXP => {
+                checked(dst.try_set_logical_elt(o, checked(src.try_logical_elt(i))));
             }
-            tag if tag == SEXPTYPE::INTSXP.as_c_int() => {
-                *INTEGER(dst).add(dst_index) = *INTEGER(src).add(src_index);
+            SEXPTYPE::INTSXP => {
+                checked(dst.try_set_integer_elt(o, checked(src.try_integer_elt(i))));
             }
-            tag if tag == SEXPTYPE::REALSXP.as_c_int() => {
-                *REAL(dst).add(dst_index) = *REAL(src).add(src_index);
+            SEXPTYPE::REALSXP => {
+                checked(dst.try_set_real_elt(o, checked(src.try_real_elt(i))));
             }
-            tag if tag == SEXPTYPE::CPLXSXP.as_c_int() => {
-                *COMPLEX(dst).add(dst_index) = *COMPLEX(src).add(src_index);
+            SEXPTYPE::CPLXSXP => {
+                checked(dst.try_set_complex_elt(o, checked(src.try_complex_elt(i))));
             }
-            tag if tag == SEXPTYPE::RAWSXP.as_c_int() => {
-                *RAW(dst).add(dst_index) = *RAW(src).add(src_index);
+            SEXPTYPE::RAWSXP => {
+                checked(dst.try_set_raw_elt(o, checked(src.try_raw_elt(i))));
             }
-            tag if tag == SEXPTYPE::STRSXP.as_c_int() => {
+            SEXPTYPE::STRSXP => {
                 SET_STRING_ELT(
-                    dst,
+                    dst.as_raw(),
                     dst_index as R_xlen_t,
-                    STRING_ELT(src, src_index as R_xlen_t),
+                    STRING_ELT(src.as_raw(), src_index as R_xlen_t),
                 );
             }
-            tag if tag == SEXPTYPE::VECSXP.as_c_int() || tag == SEXPTYPE::EXPRSXP.as_c_int() => {
+            t if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP => {
                 SET_VECTOR_ELT(
-                    dst,
+                    dst.as_raw(),
                     dst_index as R_xlen_t,
-                    VECTOR_ELT(src, src_index as R_xlen_t),
+                    VECTOR_ELT(src.as_raw(), src_index as R_xlen_t),
                 );
             }
             _ => array_error("unsupported array storage mode"),
@@ -354,8 +393,8 @@ fn product(dims: &[usize]) -> usize {
         .fold(1usize, |acc, dim| acc.saturating_mul(dim))
 }
 
-unsafe fn array_dimensions(x: SEXP, name: &str) -> Vec<usize> {
-    unsafe {
+fn array_dimensions(x: SEXP, name: &str) -> Vec<usize> {
+    {
         let dim = getAttrib(x, R_DimSymbol());
         if dim.is_null()
             || dim == R_NilValue()
@@ -364,9 +403,10 @@ unsafe fn array_dimensions(x: SEXP, name: &str) -> Vec<usize> {
         {
             array_error(format!("{name} requires an array"));
         }
-        (0..LENGTH(dim) as usize)
+        let dim = wrapped(dim);
+        (0..LENGTH(dim.as_raw()) as usize)
             .map(|index| {
-                let value = *INTEGER(dim).add(index);
+                let value = checked(dim.try_integer_elt(index as R_xlen_t));
                 if value < 0 {
                     array_error("negative extents are not allowed");
                 }
@@ -376,19 +416,22 @@ unsafe fn array_dimensions(x: SEXP, name: &str) -> Vec<usize> {
     }
 }
 
-unsafe fn set_dim_vector(target: SEXP, dims: &[usize]) {
-    unsafe {
+fn set_dim_vector(target: SEXP, dims: &[usize]) {
+    {
         let dim = Rf_allocVector3(SEXPTYPE::INTSXP, dims.len() as R_xlen_t);
         if !dim.is_null() {
-            for (index, value) in dims.iter().enumerate() {
-                *INTEGER(dim).add(index) = *value as c_int;
+            {
+                let mut dim = mutable_vector(dim);
+                for (index, value) in dims.iter().enumerate() {
+                    checked(dim.try_set_integer_elt(index as R_xlen_t, *value as c_int));
+                }
             }
             setAttrib(target, R_DimSymbol(), dim);
         }
     }
 }
 
-unsafe fn subset_dimnames(dimnames: SEXP, axes: &[usize]) -> SEXP {
+fn subset_dimnames(dimnames: SEXP, axes: &[usize]) -> SEXP {
     if dimnames.is_null() || dimnames == R_NilValue() || TYPEOF(dimnames) != SEXPTYPE::VECSXP {
         return R_NilValue();
     }
@@ -426,8 +469,8 @@ unsafe fn subset_dimnames(dimnames: SEXP, axes: &[usize]) -> SEXP {
     result
 }
 
-unsafe fn set_dimnames_from_axes(target: SEXP, source: SEXP, axes: &[usize]) {
-    unsafe {
+fn set_dimnames_from_axes(target: SEXP, source: SEXP, axes: &[usize]) {
+    {
         let dimnames = subset_dimnames(getAttrib(source, R_DimNamesSymbol()), axes);
         if !dimnames.is_null() && dimnames != R_NilValue() {
             setAttrib(target, R_DimNamesSymbol(), dimnames);
@@ -435,7 +478,7 @@ unsafe fn set_dimnames_from_axes(target: SEXP, source: SEXP, axes: &[usize]) {
     }
 }
 
-unsafe fn set_dim_names_from_axes(target_dim: SEXP, source_dim: SEXP, axes: &[usize]) {
+fn set_dim_names_from_axes(target_dim: SEXP, source_dim: SEXP, axes: &[usize]) {
     if target_dim.is_null() || source_dim.is_null() || source_dim == R_NilValue() {
         return;
     }
@@ -460,8 +503,8 @@ unsafe fn set_dim_names_from_axes(target_dim: SEXP, source_dim: SEXP, axes: &[us
     setAttrib(target_dim, R_NamesSymbol(), result_names);
 }
 
-unsafe fn parse_aperm_perm(perm: SEXP, x: SEXP, ndim: usize) -> Vec<usize> {
-    unsafe {
+fn parse_aperm_perm(perm: SEXP, x: SEXP, ndim: usize) -> Vec<usize> {
+    {
         let parsed = if perm.is_null() || perm == R_NilValue() {
             (0..ndim).rev().collect::<Vec<_>>()
         } else if TYPEOF(perm) == SEXPTYPE::STRSXP {
@@ -482,12 +525,19 @@ unsafe fn parse_aperm_perm(perm: SEXP, x: SEXP, ndim: usize) -> Vec<usize> {
             }
             let mut values = Vec::with_capacity(ndim);
             for index in 0..ndim {
-                let want_ptr = CHAR(STRING_ELT(perm, index as R_xlen_t));
-                let want = std::ffi::CStr::from_ptr(want_ptr).to_string_lossy();
+                // SAFETY: each STRING_ELT of a live STRSXP yields a CHARSXP
+                // whose CHAR pointer is valid for the borrow.
+                let want =
+                    unsafe { std::ffi::CStr::from_ptr(CHAR(STRING_ELT(perm, index as R_xlen_t))) }
+                        .to_string_lossy();
                 let mut found = None;
                 for axis in 0..XLENGTH(dn_names) {
-                    let have_ptr = CHAR(STRING_ELT(dn_names, axis));
-                    if std::ffi::CStr::from_ptr(have_ptr).to_string_lossy() == want {
+                    // SAFETY: same CHARSXP borrow contract as `want`.
+                    let have = unsafe {
+                        std::ffi::CStr::from_ptr(CHAR(STRING_ELT(dn_names, axis)))
+                    }
+                    .to_string_lossy();
+                    if have == want {
                         found = Some(axis as usize);
                         break;
                     }
@@ -527,8 +577,8 @@ unsafe fn parse_aperm_perm(perm: SEXP, x: SEXP, ndim: usize) -> Vec<usize> {
     }
 }
 
-unsafe fn parse_margin(value: SEXP, ndim: usize) -> Vec<usize> {
-    unsafe {
+fn parse_margin(value: SEXP, ndim: usize) -> Vec<usize> {
+    {
         if !is_numeric_type(value) || XLENGTH(value) == 0 {
             array_error("length-0 dimension vector is invalid");
         }
@@ -586,14 +636,14 @@ unsafe fn parse_margin(value: SEXP, ndim: usize) -> Vec<usize> {
     }
 }
 
-unsafe fn parse_bool_arg(value: SEXP, default: bool) -> bool {
-    unsafe {
+fn parse_bool_arg(value: SEXP, default: bool) -> bool {
+    {
         if value.is_null() || value == R_NilValue() {
             return default;
         }
         match TYPEOF(value) {
             tag if tag == SEXPTYPE::LGLSXP.as_c_int() => {
-                let value = *LOGICAL(value);
+                let value = LOGICAL_ELT(value, 0);
                 if value == NA_LOGICAL {
                     default
                 } else {
@@ -601,7 +651,7 @@ unsafe fn parse_bool_arg(value: SEXP, default: bool) -> bool {
                 }
             }
             tag if tag == SEXPTYPE::INTSXP.as_c_int() => {
-                let value = *INTEGER(value);
+                let value = INTEGER_ELT(value, 0);
                 if value == NA_INTEGER {
                     default
                 } else {
@@ -613,7 +663,7 @@ unsafe fn parse_bool_arg(value: SEXP, default: bool) -> bool {
     }
 }
 
-unsafe fn parse_resize_arg(value: SEXP) -> bool {
+fn parse_resize_arg(value: SEXP) -> bool {
     if value.is_null() || value == R_NilValue() {
         return true;
     }
@@ -624,8 +674,8 @@ unsafe fn parse_resize_arg(value: SEXP) -> bool {
     value != 0
 }
 
-unsafe fn parse_positive_k(value: SEXP, default: usize, limit: usize) -> usize {
-    unsafe {
+fn parse_positive_k(value: SEXP, default: usize, limit: usize) -> usize {
+    {
         if value.is_null() || value == R_NilValue() {
             return default;
         }
@@ -645,7 +695,7 @@ unsafe fn parse_positive_k(value: SEXP, default: usize, limit: usize) -> usize {
 }
 
 // Vectors promoted to matrices contribute no names, as in GNU R.
-unsafe fn set_product_dimnames(result: SEXP, kind: MatProductKind, x: SEXP, y: SEXP) {
+fn set_product_dimnames(result: SEXP, kind: MatProductKind, x: SEXP, y: SEXP) {
     let (xa, ya) = match kind {
         MatProductKind::Matrix => (0, 1),
         MatProductKind::Cross => (1, 1),
@@ -705,7 +755,7 @@ unsafe fn set_product_dimnames(result: SEXP, kind: MatProductKind, x: SEXP, y: S
 }
 
 pub(crate) unsafe fn do_matprod_kind(kind: MatProductKind, args: SEXP, name: &str) -> SEXP {
-    unsafe {
+    {
         let x = first_arg(args, name);
         let y = second_arg_or_first(args, x);
         if x.is_null() || x == R_NilValue() || y.is_null() || y == R_NilValue() {
@@ -749,7 +799,7 @@ pub(crate) unsafe fn do_matprod_kind(kind: MatProductKind, args: SEXP, name: &st
             let value = |v: SEXP, row: usize, col: usize, rows: usize| -> num::complex::Complex64 {
                 let index = row + col * rows;
                 if TYPEOF(v) == SEXPTYPE::CPLXSXP {
-                    let z = *COMPLEX(v).add(index);
+                    let z = checked(wrapped(v).try_complex_elt(index as R_xlen_t));
                     num::complex::Complex64::new(z.r, z.i)
                 } else {
                     num::complex::Complex64::new(numeric_at(v, index), 0.0)
@@ -771,15 +821,20 @@ pub(crate) unsafe fn do_matprod_kind(kind: MatProductKind, args: SEXP, name: &st
                 let b = faer::Mat::from_fn(inner, out_cols, right);
                 &a * &b
             };
-            for col in 0..out_cols {
-                for row in 0..out_rows {
-                    #[cfg(feature = "rust-backend")]
-                    let z = product[(row, col)];
-                    #[cfg(not(feature = "rust-backend"))]
-                    let z: num::complex::Complex64 =
-                        (0..inner).map(|k| left(row, k) * right(k, col)).sum();
-                    *COMPLEX(result).add(row + col * out_rows) =
-                        crate::sexp::ffi::Rcomplex { r: z.re, i: z.im };
+            {
+                let mut result_mut = mutable_vector(result);
+                for col in 0..out_cols {
+                    for row in 0..out_rows {
+                        #[cfg(feature = "rust-backend")]
+                        let z = product[(row, col)];
+                        #[cfg(not(feature = "rust-backend"))]
+                        let z: num::complex::Complex64 =
+                            (0..inner).map(|k| left(row, k) * right(k, col)).sum();
+                        checked(result_mut.try_set_complex_elt(
+                            (row + col * out_rows) as R_xlen_t,
+                            crate::sexp::ffi::Rcomplex { r: z.re, i: z.im },
+                        ));
+                    }
                 }
             }
             set_matrix_dim(result, out_rows, out_cols);
@@ -791,25 +846,26 @@ pub(crate) unsafe fn do_matprod_kind(kind: MatProductKind, args: SEXP, name: &st
             return R_NilValue();
         }
         let _result = protect(result);
-        let out = REAL(result);
-
-        for col in 0..out_cols {
-            for row in 0..out_rows {
-                let mut sum = 0.0;
-                for k in 0..inner {
-                    let x_value = match kind {
-                        MatProductKind::Matrix => matrix_value(x, row, k, x_rows),
-                        MatProductKind::Cross => matrix_value(x, k, row, x_rows),
-                        MatProductKind::TransposedCross => matrix_value(x, row, k, x_rows),
-                    };
-                    let y_value = match kind {
-                        MatProductKind::Matrix => matrix_value(y, k, col, y_rows),
-                        MatProductKind::Cross => matrix_value(y, k, col, y_rows),
-                        MatProductKind::TransposedCross => matrix_value(y, col, k, y_rows),
-                    };
-                    sum += x_value * y_value;
+        {
+            let mut result_mut = mutable_vector(result);
+            for col in 0..out_cols {
+                for row in 0..out_rows {
+                    let mut sum = 0.0;
+                    for k in 0..inner {
+                        let x_value = match kind {
+                            MatProductKind::Matrix => matrix_value(x, row, k, x_rows),
+                            MatProductKind::Cross => matrix_value(x, k, row, x_rows),
+                            MatProductKind::TransposedCross => matrix_value(x, row, k, x_rows),
+                        };
+                        let y_value = match kind {
+                            MatProductKind::Matrix => matrix_value(y, k, col, y_rows),
+                            MatProductKind::Cross => matrix_value(y, k, col, y_rows),
+                            MatProductKind::TransposedCross => matrix_value(y, col, k, y_rows),
+                        };
+                        sum += x_value * y_value;
+                    }
+                    checked(result_mut.try_set_real_elt((row + col * out_rows) as R_xlen_t, sum));
                 }
-                *out.add(row + col * out_rows) = sum;
             }
         }
 
@@ -819,8 +875,8 @@ pub(crate) unsafe fn do_matprod_kind(kind: MatProductKind, args: SEXP, name: &st
     }
 }
 
-unsafe fn parse_ties_method(value: SEXP) -> c_int {
-    unsafe {
+fn parse_ties_method(value: SEXP) -> c_int {
+    {
         if value.is_null()
             || value == R_NilValue()
             || TYPEOF(value) != SEXPTYPE::STRSXP
@@ -828,7 +884,9 @@ unsafe fn parse_ties_method(value: SEXP) -> c_int {
         {
             return 1;
         }
-        let method = CStr::from_ptr(CHAR(STRING_ELT(value, 0))).to_string_lossy();
+        // SAFETY: STRING_ELT of a live STRSXP yields a CHARSXP whose CHAR
+        // pointer is valid for the borrow.
+        let method = unsafe { CStr::from_ptr(CHAR(STRING_ELT(value, 0))) }.to_string_lossy();
         match method.as_ref() {
             "random" => 1,
             "first" => 2,
@@ -848,8 +906,8 @@ const R_XLEN_T_MAX: f64 = 4503599627370496.0;
 /// Ported from R's `dim2total` in array.c. Hard-errors on length-0, NA, or
 /// negative dims; returns `Err(())` when the product exceeds `R_XLEN_T_MAX`
 /// so each caller raises its own "too many elements" message.
-pub(crate) unsafe fn dim2total(dim: SEXP) -> Result<R_xlen_t, ()> {
-    unsafe {
+pub(crate) fn dim2total(dim: SEXP) -> Result<R_xlen_t, ()> {
+    {
         if dim.is_null() || dim == R_NilValue() || TYPEOF(dim) != SEXPTYPE::INTSXP {
             array_error("'dims' must be an integer vector");
         }
@@ -858,8 +916,9 @@ pub(crate) unsafe fn dim2total(dim: SEXP) -> Result<R_xlen_t, ()> {
             array_error("'dim' cannot be of length 0");
         }
         let mut dn: f64 = 1.0;
+        let dims = wrapped(dim);
         for i in 0..ndim as usize {
-            let d = *INTEGER(dim).add(i);
+            let d = checked(dims.try_integer_elt(i as R_xlen_t));
             // dn *= d can overflow, but the result is 0 if any dimension
             // is 0 (unless NA, so we can't simply break here) — trunk
             // r37117c2 checks the zero first to avoid f/p overflow.
@@ -883,7 +942,7 @@ pub(crate) unsafe fn dim2total(dim: SEXP) -> Result<R_xlen_t, ()> {
     }
 }
 
-unsafe fn set_dim_attr(x: SEXP, dims: SEXP) -> SEXP {
+fn set_dim_attr(x: SEXP, dims: SEXP) -> SEXP {
     if !x.is_null() {
         setAttrib(x, R_DimSymbol(), dims);
     }
@@ -947,7 +1006,7 @@ pub unsafe fn do_matrix(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 ///
 /// Ported from R's `allocMatrix` in array.c (line 221).
 pub unsafe fn allocMatrix(mode: c_int, nrow: c_int, ncol: c_int) -> SEXP {
-    unsafe {
+    {
         if nrow < 0 || ncol < 0 {
             array_error("negative extents are not allowed");
         }
@@ -961,12 +1020,7 @@ pub unsafe fn allocMatrix(mode: c_int, nrow: c_int, ncol: c_int) -> SEXP {
         if result.is_null() {
             return R_NilValue();
         }
-        let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
-        if !dim.is_null() {
-            *INTEGER(dim) = nrow;
-            *INTEGER(dim).add(1) = ncol;
-            setAttrib(result, R_DimSymbol(), dim);
-        }
+        set_dim_vector(result, &[nrow as usize, ncol as usize]);
         result
     }
 }
@@ -987,9 +1041,12 @@ pub unsafe fn alloc3DArray(mode: c_int, nrow: c_int, ncol: c_int, nface: c_int) 
         if dims.is_null() {
             return R_NilValue();
         }
-        *INTEGER(dims) = nrow;
-        *INTEGER(dims).add(1) = ncol;
-        *INTEGER(dims).add(2) = nface;
+        {
+            let mut dims_mut = mutable_vector(dims);
+            checked(dims_mut.try_set_integer_elt(0, nrow));
+            checked(dims_mut.try_set_integer_elt(1, ncol));
+            checked(dims_mut.try_set_integer_elt(2, nface));
+        }
         allocArray(mode, dims)
     }
 }
@@ -1002,7 +1059,7 @@ pub unsafe fn alloc3DArray(mode: c_int, nrow: c_int, ncol: c_int, nface: c_int) 
 ///
 /// Ported from R's `allocArray` in array.c (line 281).
 pub unsafe fn allocArray(mode: c_int, dims: SEXP) -> SEXP {
-    unsafe {
+    {
         if !valid_array_storage_type(mode) {
             array_error("invalid array storage mode");
         }
@@ -1109,7 +1166,7 @@ pub unsafe fn do_lengths(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 /// Ported from R's `do_rowscols` in array.c (line 597).
 /// PRIMVAL(op) == 1 for row(), == 2 for col().
 pub unsafe fn do_rowscols(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe {
+    {
         match primitive_name(op).as_deref() {
             Some("col") => crate::mainutils::essentials::do_col(call, op, args, env),
             Some("row") | None => crate::mainutils::essentials::do_row(call, op, args, env),
@@ -1269,8 +1326,13 @@ pub unsafe fn do_aperm(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             let dim = Rf_allocVector3(SEXPTYPE::INTSXP, ndim as R_xlen_t);
             if !dim.is_null() {
                 let _dim_guard = protect(dim);
-                for (index, value) in permuted_dims.iter().enumerate() {
-                    *INTEGER(dim).add(index) = *value as c_int;
+                {
+                    let mut dim_mut = mutable_vector(dim);
+                    for (index, value) in permuted_dims.iter().enumerate() {
+                        checked(
+                            dim_mut.try_set_integer_elt(index as R_xlen_t, *value as c_int),
+                        );
+                    }
                 }
                 set_dim_names_from_axes(dim, source_dim, &perm);
                 setAttrib(result, R_DimSymbol(), dim);
@@ -1288,7 +1350,7 @@ pub unsafe fn do_aperm(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 
 /// GNU `do_aperm` returns a fresh object with only `dim` and `dimnames`
 /// (and `names(dim)`); drop every other attribute such as `tsp`/`class`.
-unsafe fn keep_only_dim_attributes(r: SEXP) -> SEXP {
+fn keep_only_dim_attributes(r: SEXP) -> SEXP {
     let dim = getAttrib(r, R_DimSymbol());
     let _dim_guard = protect(dim);
     let dimnames = getAttrib(r, R_DimNamesSymbol());
@@ -1341,7 +1403,7 @@ pub(crate) unsafe fn copyMostAttrib(src: SEXP, dest: SEXP) {
 /// Ported from R's `do_colsum` in array.c (line 1894).
 /// PRIMVAL(op): 0 = colSums, 1 = colMeans, 2 = rowSums, 3 = rowMeans.
 pub unsafe fn do_colsum(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe {
+    {
         match primitive_name(op).as_deref() {
             Some("rowSums") => crate::mainutils::essentials::do_rowSums(call, op, args, env),
             Some("colMeans") => crate::mainutils::essentials::do_colMeans(call, op, args, env),
@@ -1385,7 +1447,7 @@ pub unsafe fn do_diag(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 ///
 /// Ported from R's `do_backsolve` in array.c (line 2357).
 pub unsafe fn do_backsolve(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
+    {
         let matched = match_primitive_args(
             args,
             &["r", "x", "k", "upper.tri", "transpose"],
@@ -1423,60 +1485,68 @@ pub unsafe fn do_backsolve(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
         if result.is_null() {
             return R_NilValue();
         }
-        let out = REAL(result);
+        let mut out = mutable_vector(result);
+        let get_out = |out: &crate::sexp::object::SexpMut<'static>, i: usize| -> f64 {
+            checked(out.try_real_elt(i as R_xlen_t))
+        };
 
         for rhs in 0..rhs_count {
             for row in 0..k {
-                *out.add(row + rhs * k) = numeric_at(b, row + rhs * b_rows);
+                checked(
+                    out.try_set_real_elt(
+                        (row + rhs * k) as R_xlen_t,
+                        numeric_at(b, row + rhs * b_rows),
+                    ),
+                );
             }
 
             if upper_tri && !transpose {
                 for row in (0..k).rev() {
-                    let mut value = *out.add(row + rhs * k);
+                    let mut value = get_out(&out, row + rhs * k);
                     for col in (row + 1)..k {
-                        value -= matrix_value(r, row, col, r_rows) * *out.add(col + rhs * k);
+                        value -= matrix_value(r, row, col, r_rows) * get_out(&out, col + rhs * k);
                     }
                     let diag = matrix_value(r, row, row, r_rows);
                     if diag == 0.0 {
                         array_error("singular matrix in 'backsolve'");
                     }
-                    *out.add(row + rhs * k) = value / diag;
+                    checked(out.try_set_real_elt((row + rhs * k) as R_xlen_t, value / diag));
                 }
             } else if upper_tri && transpose {
                 for row in 0..k {
-                    let mut value = *out.add(row + rhs * k);
+                    let mut value = get_out(&out, row + rhs * k);
                     for col in 0..row {
-                        value -= matrix_value(r, col, row, r_rows) * *out.add(col + rhs * k);
+                        value -= matrix_value(r, col, row, r_rows) * get_out(&out, col + rhs * k);
                     }
                     let diag = matrix_value(r, row, row, r_rows);
                     if diag == 0.0 {
                         array_error("singular matrix in 'backsolve'");
                     }
-                    *out.add(row + rhs * k) = value / diag;
+                    checked(out.try_set_real_elt((row + rhs * k) as R_xlen_t, value / diag));
                 }
             } else if !upper_tri && !transpose {
                 for row in 0..k {
-                    let mut value = *out.add(row + rhs * k);
+                    let mut value = get_out(&out, row + rhs * k);
                     for col in 0..row {
-                        value -= matrix_value(r, row, col, r_rows) * *out.add(col + rhs * k);
+                        value -= matrix_value(r, row, col, r_rows) * get_out(&out, col + rhs * k);
                     }
                     let diag = matrix_value(r, row, row, r_rows);
                     if diag == 0.0 {
                         array_error("singular matrix in 'backsolve'");
                     }
-                    *out.add(row + rhs * k) = value / diag;
+                    checked(out.try_set_real_elt((row + rhs * k) as R_xlen_t, value / diag));
                 }
             } else {
                 for row in (0..k).rev() {
-                    let mut value = *out.add(row + rhs * k);
+                    let mut value = get_out(&out, row + rhs * k);
                     for col in (row + 1)..k {
-                        value -= matrix_value(r, col, row, r_rows) * *out.add(col + rhs * k);
+                        value -= matrix_value(r, col, row, r_rows) * get_out(&out, col + rhs * k);
                     }
                     let diag = matrix_value(r, row, row, r_rows);
                     if diag == 0.0 {
                         array_error("singular matrix in 'backsolve'");
                     }
-                    *out.add(row + rhs * k) = value / diag;
+                    checked(out.try_set_real_elt((row + rhs * k) as R_xlen_t, value / diag));
                 }
             }
         }
@@ -1547,7 +1617,7 @@ pub unsafe fn do_maxcol(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
 /// da, dc, dna, dnc, d1, d2, drop))` reached from the staged base `array.R`
 /// wrapper after the aperm shuffle (array.c `do_asplit`).
 pub unsafe fn do_asplit(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
+    {
         if Rf_length(_args) >= 8 {
             return do_asplit_internal(_args);
         }
@@ -1610,8 +1680,8 @@ pub unsafe fn do_asplit(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP
 /// GNU `.Internal(asplit(x, da, dc, dna, dnc, d1, d2, drop))` from array.c:
 /// `x` is already permuted so the split margins are innermost; carve linear
 /// runs of `n1 = prod(d.call)` elements into `n2 = prod(d.ans)` slices.
-unsafe fn do_asplit_internal(args: SEXP) -> SEXP {
-    unsafe {
+fn do_asplit_internal(args: SEXP) -> SEXP {
+    {
         let mut cell = args;
         let mut arg = [R_NilValue(); 8];
         for slot in arg.iter_mut() {
@@ -1657,7 +1727,7 @@ unsafe fn do_asplit_internal(args: SEXP) -> SEXP {
     }
 }
 
-unsafe fn as_integer(x: SEXP) -> i32 {
+fn as_integer(x: SEXP) -> i32 {
     match TYPEOF(x) {
         t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => INTEGER_ELT(x, 0),
         t if t == SEXPTYPE::REALSXP => REAL_ELT(x, 0) as i32,
@@ -1674,7 +1744,7 @@ mod tests {
     use std::ptr;
 
     use super::*;
-    use crate::sexp::accessors::SET_VECTOR_ELT;
+    use crate::sexp::accessors::{REAL, SET_VECTOR_ELT};
     use crate::sexp::constructors::{Rf_ScalarLogical, Rf_allocVector3, Rf_mkString};
     use crate::sexp::session::RSession;
 
