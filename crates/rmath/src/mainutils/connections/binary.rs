@@ -20,7 +20,7 @@ use flate2::write::GzEncoder;
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::context::RError;
-use crate::sexp::ffi::{NA_INTEGER, NA_REAL, R_xlen_t, SEXP, SEXPTYPE};
+use crate::sexp::ffi::{NA_INTEGER, NA_REAL, R_xlen_t, Rcomplex, SEXP, SEXPTYPE};
 use crate::sexp::globals::{R_MissingArg, R_NilValue};
 use crate::sexp::instance::{RInstance, with_current_instance, with_required_current_instance};
 use crate::sexp::protect::*;
@@ -382,17 +382,8 @@ pub fn binary_size(arg: SEXP, kind: BinaryKind) -> usize {
 }
 
 pub fn raw_bytes_from_vector(raw: SEXP) -> Vec<u8> {
-    unsafe {
-        let len = LENGTH(raw) as usize;
-        if len == 0 {
-            return Vec::new();
-        }
-        let data = RAW(raw);
-        if data.is_null() {
-            return Vec::new();
-        }
-        std::slice::from_raw_parts(data, len).to_vec()
-    }
+    let len = LENGTH(raw) as usize;
+    (0..len as c_int).map(|i| RAW_ELT(raw, i)).collect()
 }
 
 fn source_connection_index(
@@ -457,15 +448,14 @@ fn raw_sink_result(
 }
 
 pub fn read_binary_source(con: SEXP, limit: Option<usize>) -> AdmittedBinarySource {
-    unsafe {
-        let owner = crate::sexp::owner::OwnerToken::current()
-            .unwrap_or_else(|error| r_error(&error.to_string()));
-        let con = owner
-            .sexp(con)
-            .and_then(crate::sexp::Sexp::into_owned)
-            .unwrap_or_else(|error| r_error(&error.to_string()));
-        filename_owned::source_bytes(con, limit).unwrap_or_else(|error| r_error(&error))
-    }
+    // SAFETY: this builtin only runs inside evaluated R calls.
+    let owner = unsafe { crate::sexp::owner::OwnerToken::current() }
+        .unwrap_or_else(|error| r_error(&error.to_string()));
+    let con = owner
+        .sexp(con)
+        .and_then(crate::sexp::Sexp::into_owned)
+        .unwrap_or_else(|error| r_error(&error.to_string()));
+    filename_owned::source_bytes(con, limit).unwrap_or_else(|error| r_error(&error))
 }
 
 pub fn read_integer_chunk(chunk: &[u8], order: ByteOrder, signed: bool) -> i32 {
@@ -513,55 +503,57 @@ pub fn write_integer_chunk(out: &mut Vec<u8>, value: i32, size: usize, order: By
 }
 
 pub fn alloc_raw_result(bytes: &[u8]) -> SEXP {
-    unsafe {
-        let ans = Rf_allocVector(SEXPTYPE::RAWSXP, bytes.len() as c_int);
-        if !ans.is_null() && !bytes.is_empty() {
-            ptr::copy_nonoverlapping(bytes.as_ptr(), RAW(ans), bytes.len());
+    let ans = Rf_allocVector(SEXPTYPE::RAWSXP, bytes.len() as c_int);
+    if !ans.is_null() {
+        for (index, byte) in bytes.iter().enumerate() {
+            SET_RAW_ELT(ans, index as c_int, *byte);
         }
-        ans
     }
+    ans
 }
 
 pub fn alloc_integer_result(values: &[i32], sexptype: SEXPTYPE) -> SEXP {
-    unsafe {
-        let ans = Rf_allocVector(sexptype.0, values.len() as c_int);
-        if !ans.is_null() {
-            let dest = if sexptype == SEXPTYPE::LGLSXP {
-                LOGICAL(ans)
+    let ans = Rf_allocVector(sexptype.0, values.len() as c_int);
+    if !ans.is_null() {
+        for (index, value) in values.iter().enumerate() {
+            if sexptype == SEXPTYPE::LGLSXP {
+                SET_LOGICAL_ELT(ans, index as c_int, *value);
             } else {
-                INTEGER(ans)
-            };
-            for (index, value) in values.iter().enumerate() {
-                *dest.add(index) = *value;
+                SET_INTEGER_ELT(ans, index as c_int, *value);
             }
         }
-        ans
     }
+    ans
 }
 
 pub fn alloc_real_result(values: &[f64]) -> SEXP {
-    unsafe {
-        let ans = Rf_allocVector(SEXPTYPE::REALSXP, values.len() as c_int);
-        if !ans.is_null() {
-            for (index, value) in values.iter().enumerate() {
-                *REAL(ans).add(index) = *value;
-            }
+    let ans = Rf_allocVector(SEXPTYPE::REALSXP, values.len() as c_int);
+    if !ans.is_null() {
+        for (index, value) in values.iter().enumerate() {
+            SET_REAL_ELT(ans, index as c_int, *value);
         }
-        ans
     }
+    ans
 }
 
 pub fn alloc_character_result(values: &[String]) -> SEXP {
-    unsafe {
-        let ans = Rf_allocVector(SEXPTYPE::STRSXP, values.len() as c_int);
-        if !ans.is_null() {
-            for (index, value) in values.iter().enumerate() {
-                let c_value = CString::new(value.as_str()).unwrap_or_default();
-                SET_STRING_ELT(ans, index as R_xlen_t, Rf_mkChar(c_value.as_ptr()));
+    let ans = Rf_allocVector(SEXPTYPE::STRSXP, values.len() as c_int);
+    if !ans.is_null() {
+        for (index, value) in values.iter().enumerate() {
+            // CString::new rejected interior NUL; mkCharLen would keep the
+            // bytes, so preserve the previous "" substitution explicitly.
+            let text = if value.contains('\0') {
+                ""
+            } else {
+                value.as_str()
+            };
+            let charsxp = mk_char(text);
+            if !charsxp.is_null() {
+                SET_STRING_ELT(ans, index as R_xlen_t, charsxp);
             }
         }
-        ans
     }
+    ans
 }
 
 pub fn decode_binary_result(
@@ -572,98 +564,100 @@ pub fn decode_binary_result(
     signed: bool,
     order: ByteOrder,
 ) -> SEXP {
-    unsafe {
-        match kind {
-            BinaryKind::Raw => alloc_raw_result(&bytes[..bytes.len().min(n)]),
-            BinaryKind::Integer | BinaryKind::Logical => {
-                let values: Vec<i32> = bytes
-                    .chunks_exact(size)
-                    .take(n)
-                    .map(|chunk| read_integer_chunk(chunk, order, signed))
-                    .collect();
-                let sexptype = if kind == BinaryKind::Logical {
-                    SEXPTYPE::LGLSXP
-                } else {
-                    SEXPTYPE::INTSXP
-                };
-                alloc_integer_result(&values, sexptype)
-            }
-            BinaryKind::Numeric => {
-                let values: Vec<f64> = bytes
-                    .chunks_exact(size)
-                    .take(n)
-                    .map(|chunk| {
-                        if size == 4 {
-                            let bytes = [chunk[0], chunk[1], chunk[2], chunk[3]];
-                            match order {
-                                ByteOrder::Little => f32::from_le_bytes(bytes) as f64,
-                                ByteOrder::Big => f32::from_be_bytes(bytes) as f64,
-                            }
-                        } else {
-                            let bytes = [
-                                chunk[0], chunk[1], chunk[2], chunk[3], chunk[4], chunk[5],
-                                chunk[6], chunk[7],
-                            ];
-                            match order {
-                                ByteOrder::Little => f64::from_le_bytes(bytes),
-                                ByteOrder::Big => f64::from_be_bytes(bytes),
-                            }
+    match kind {
+        BinaryKind::Raw => alloc_raw_result(&bytes[..bytes.len().min(n)]),
+        BinaryKind::Integer | BinaryKind::Logical => {
+            let values: Vec<i32> = bytes
+                .chunks_exact(size)
+                .take(n)
+                .map(|chunk| read_integer_chunk(chunk, order, signed))
+                .collect();
+            let sexptype = if kind == BinaryKind::Logical {
+                SEXPTYPE::LGLSXP
+            } else {
+                SEXPTYPE::INTSXP
+            };
+            alloc_integer_result(&values, sexptype)
+        }
+        BinaryKind::Numeric => {
+            let values: Vec<f64> = bytes
+                .chunks_exact(size)
+                .take(n)
+                .map(|chunk| {
+                    if size == 4 {
+                        let bytes = [chunk[0], chunk[1], chunk[2], chunk[3]];
+                        match order {
+                            ByteOrder::Little => f32::from_le_bytes(bytes) as f64,
+                            ByteOrder::Big => f32::from_be_bytes(bytes) as f64,
                         }
-                    })
-                    .collect();
-                alloc_real_result(&values)
-            }
-            BinaryKind::Complex => {
-                let values: Vec<f64> = bytes
-                    .chunks_exact(size / 2)
-                    .take(n * 2)
-                    .map(|chunk| {
-                        if size == 8 {
-                            let bytes = [chunk[0], chunk[1], chunk[2], chunk[3]];
-                            match order {
-                                ByteOrder::Little => f32::from_le_bytes(bytes) as f64,
-                                ByteOrder::Big => f32::from_be_bytes(bytes) as f64,
-                            }
-                        } else {
-                            let bytes = [
-                                chunk[0], chunk[1], chunk[2], chunk[3], chunk[4], chunk[5],
-                                chunk[6], chunk[7],
-                            ];
-                            match order {
-                                ByteOrder::Little => f64::from_le_bytes(bytes),
-                                ByteOrder::Big => f64::from_be_bytes(bytes),
-                            }
+                    } else {
+                        let bytes = [
+                            chunk[0], chunk[1], chunk[2], chunk[3], chunk[4], chunk[5], chunk[6],
+                            chunk[7],
+                        ];
+                        match order {
+                            ByteOrder::Little => f64::from_le_bytes(bytes),
+                            ByteOrder::Big => f64::from_be_bytes(bytes),
                         }
-                    })
-                    .collect();
-                let count = values.len() / 2;
-                let ans = Rf_allocVector(SEXPTYPE::CPLXSXP, count as c_int);
-                if !ans.is_null() {
-                    let dest = COMPLEX(ans);
-                    for index in 0..count {
-                        (*dest.add(index)).r = values[index * 2];
-                        (*dest.add(index)).i = values[index * 2 + 1];
                     }
-                }
-                ans
-            }
-            BinaryKind::Character => {
-                let mut values = Vec::new();
-                let mut start = 0usize;
-                while start < bytes.len() && values.len() < n {
-                    let rel_end = bytes[start..].iter().position(|byte| *byte == 0);
-                    match rel_end {
-                        Some(len) => {
-                            values.push(
-                                String::from_utf8_lossy(&bytes[start..start + len]).into_owned(),
-                            );
-                            start += len + 1;
+                })
+                .collect();
+            alloc_real_result(&values)
+        }
+        BinaryKind::Complex => {
+            let values: Vec<f64> = bytes
+                .chunks_exact(size / 2)
+                .take(n * 2)
+                .map(|chunk| {
+                    if size == 8 {
+                        let bytes = [chunk[0], chunk[1], chunk[2], chunk[3]];
+                        match order {
+                            ByteOrder::Little => f32::from_le_bytes(bytes) as f64,
+                            ByteOrder::Big => f32::from_be_bytes(bytes) as f64,
                         }
-                        None => break,
+                    } else {
+                        let bytes = [
+                            chunk[0], chunk[1], chunk[2], chunk[3], chunk[4], chunk[5], chunk[6],
+                            chunk[7],
+                        ];
+                        match order {
+                            ByteOrder::Little => f64::from_le_bytes(bytes),
+                            ByteOrder::Big => f64::from_be_bytes(bytes),
+                        }
                     }
+                })
+                .collect();
+            let count = values.len() / 2;
+            let ans = Rf_allocVector(SEXPTYPE::CPLXSXP, count as c_int);
+            if !ans.is_null() {
+                for index in 0..count {
+                    SET_COMPLEX_ELT(
+                        ans,
+                        index as c_int,
+                        Rcomplex {
+                            r: values[index * 2],
+                            i: values[index * 2 + 1],
+                        },
+                    );
                 }
-                alloc_character_result(&values)
             }
+            ans
+        }
+        BinaryKind::Character => {
+            let mut values = Vec::new();
+            let mut start = 0usize;
+            while start < bytes.len() && values.len() < n {
+                let rel_end = bytes[start..].iter().position(|byte| *byte == 0);
+                match rel_end {
+                    Some(len) => {
+                        values
+                            .push(String::from_utf8_lossy(&bytes[start..start + len]).into_owned());
+                        start += len + 1;
+                    }
+                    None => break,
+                }
+            }
+            alloc_character_result(&values)
         }
     }
 }
@@ -717,7 +711,7 @@ fn encode_binary_object_selected_size(
     order: ByteOrder,
     mut admit: impl FnMut(usize),
 ) -> Vec<u8> {
-    unsafe {
+    {
         if object.is_null() || object == R_NilValue() {
             r_error("invalid 'object' argument");
         }
@@ -748,13 +742,13 @@ fn encode_binary_object_selected_size(
                         .checked_mul(size)
                         .unwrap_or_else(|| r_error("binary encoder workspace is too large")),
                 );
-                let src = if obj_type == SEXPTYPE::LGLSXP {
-                    LOGICAL(object)
-                } else {
-                    INTEGER(object)
-                };
                 for index in 0..obj_len {
-                    write_integer_chunk(&mut bytes, *src.add(index), size, order);
+                    let value = if obj_type == SEXPTYPE::LGLSXP {
+                        LOGICAL_ELT(object, index as c_int)
+                    } else {
+                        INTEGER_ELT(object, index as c_int)
+                    };
+                    write_integer_chunk(&mut bytes, value, size, order);
                 }
             }
             t if t == SEXPTYPE::REALSXP => {
@@ -769,7 +763,7 @@ fn encode_binary_object_selected_size(
                         .unwrap_or_else(|| r_error("binary encoder workspace is too large")),
                 );
                 for index in 0..obj_len {
-                    let value = *REAL(object).add(index);
+                    let value = REAL_ELT(object, index as c_int);
                     if size == 4 {
                         let value = value as f32;
                         match order {
@@ -796,7 +790,7 @@ fn encode_binary_object_selected_size(
                         .unwrap_or_else(|| r_error("binary encoder workspace is too large")),
                 );
                 for index in 0..obj_len {
-                    let value = *COMPLEX(object).add(index);
+                    let value = COMPLEX_ELT(object, index as c_int);
                     if size == 8 {
                         for part in [value.r as f32, value.i as f32] {
                             match order {
@@ -815,25 +809,18 @@ fn encode_binary_object_selected_size(
                 }
             }
             t if t == SEXPTYPE::STRSXP => {
-                let owner = crate::sexp::owner::OwnerToken::current()
+                // SAFETY: this builtin only runs inside evaluated R calls.
+                let owner = unsafe { crate::sexp::owner::OwnerToken::current() }
                     .unwrap_or_else(|error| r_error(&error.to_string()));
                 for index in 0..obj_len as R_xlen_t {
                     // Select once and keep the actual character alive through
-                    // admission callbacks. End the raw byte borrow before that
-                    // boundary; copy only after its worst-case UTF-8 workspace
-                    // has been admitted, using this saved owning character.
+                    // admission callbacks. Copy its bounded UTF-8 text for the
+                    // workspace estimate, then write the same decoded text.
                     let character = owner
                         .sexp(STRING_ELT(object, index))
                         .and_then(crate::sexp::Sexp::into_owned)
                         .unwrap_or_else(|error| r_error(&error.to_string()));
-                    let source_len = {
-                        let pointer = CHAR(character.as_raw());
-                        if pointer.is_null() {
-                            0
-                        } else {
-                            CStr::from_ptr(pointer).to_bytes().len()
-                        }
-                    };
+                    let source_len = charsxp_as_utf8(character.as_raw()).len();
                     let length =
                         bytes
                             .len()
@@ -855,26 +842,25 @@ fn encode_binary_object_selected_size(
 }
 
 pub fn write_binary_sink(con: SEXP, bytes: &[u8]) -> SEXP {
-    unsafe {
-        if TYPEOF(con) == SEXPTYPE::RAWSXP {
-            return alloc_raw_result(bytes);
-        }
-        if TYPEOF(con) == SEXPTYPE::STRSXP {
-            let owner = crate::sexp::owner::OwnerToken::current()
-                .unwrap_or_else(|error| r_error(&error.to_string()));
-            let con = owner
-                .sexp(con)
-                .and_then(crate::sexp::Sexp::into_owned)
-                .unwrap_or_else(|error| r_error(&error.to_string()));
-            filename_owned::sink_bytes(con, bytes).unwrap_or_else(|error| r_error(&error));
-            return R_NilValue();
-        }
-        if !inherits_class(con, "connection") {
-            r_error("'con' is not a connection");
-        }
-        connection_write_bytes(as_integer(con), bytes);
-        R_NilValue()
+    if TYPEOF(con) == SEXPTYPE::RAWSXP {
+        return alloc_raw_result(bytes);
     }
+    if TYPEOF(con) == SEXPTYPE::STRSXP {
+        // SAFETY: this builtin only runs inside evaluated R calls.
+        let owner = unsafe { crate::sexp::owner::OwnerToken::current() }
+            .unwrap_or_else(|error| r_error(&error.to_string()));
+        let con = owner
+            .sexp(con)
+            .and_then(crate::sexp::Sexp::into_owned)
+            .unwrap_or_else(|error| r_error(&error.to_string()));
+        filename_owned::sink_bytes(con, bytes).unwrap_or_else(|error| r_error(&error));
+        return R_NilValue();
+    }
+    if !inherits_class(con, "connection") {
+        r_error("'con' is not a connection");
+    }
+    connection_write_bytes(as_integer(con), bytes);
+    R_NilValue()
 }
 
 // ---------------------------------------------------------------------------
@@ -882,17 +868,16 @@ pub fn write_binary_sink(con: SEXP, bytes: &[u8]) -> SEXP {
 // ---------------------------------------------------------------------------
 
 pub fn do_readBin(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
-        let owner = crate::sexp::owner::OwnerToken::current()
-            .unwrap_or_else(|error| r_error(&error.to_string()));
-        let arguments = owner
-            .sexp(args)
-            .and_then(crate::sexp::Sexp::into_owned)
-            .unwrap_or_else(|error| r_error(&error.to_string()));
-        filename_owned::read(arguments)
-            .unwrap_or_else(|error| r_error(&error))
-            .as_raw()
-    }
+    // SAFETY: this builtin only runs inside evaluated R calls.
+    let owner = unsafe { crate::sexp::owner::OwnerToken::current() }
+        .unwrap_or_else(|error| r_error(&error.to_string()));
+    let arguments = owner
+        .sexp(args)
+        .and_then(crate::sexp::Sexp::into_owned)
+        .unwrap_or_else(|error| r_error(&error.to_string()));
+    filename_owned::read(arguments)
+        .unwrap_or_else(|error| r_error(&error))
+        .as_raw()
 }
 
 // ---------------------------------------------------------------------------
@@ -900,19 +885,18 @@ pub fn do_readBin(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 pub fn do_writeBin(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
-        let owner = crate::sexp::owner::OwnerToken::current()
-            .unwrap_or_else(|error| r_error(&error.to_string()));
-        let arguments = owner
-            .sexp(args)
-            .and_then(crate::sexp::Sexp::into_owned)
-            .unwrap_or_else(|error| r_error(&error.to_string()));
-        let result = filename_owned::write(arguments).unwrap_or_else(|error| r_error(&error));
-        crate::sexp::globals::set_R_Visible(if result.is_nil() {
-            crate::sexp::ffi::FALSE
-        } else {
-            crate::sexp::ffi::TRUE
-        });
-        result.as_raw()
-    }
+    // SAFETY: this builtin only runs inside evaluated R calls.
+    let owner = unsafe { crate::sexp::owner::OwnerToken::current() }
+        .unwrap_or_else(|error| r_error(&error.to_string()));
+    let arguments = owner
+        .sexp(args)
+        .and_then(crate::sexp::Sexp::into_owned)
+        .unwrap_or_else(|error| r_error(&error.to_string()));
+    let result = filename_owned::write(arguments).unwrap_or_else(|error| r_error(&error));
+    crate::sexp::globals::set_R_Visible(if result.is_nil() {
+        crate::sexp::ffi::FALSE
+    } else {
+        crate::sexp::ffi::TRUE
+    });
+    result.as_raw()
 }

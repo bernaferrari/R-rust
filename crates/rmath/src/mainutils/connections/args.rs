@@ -2,7 +2,6 @@
 #![allow(unused_imports)]
 use super::*;
 use std::cell::RefCell;
-use std::ffi::{CStr, CString};
 use std::fs::{File, OpenOptions};
 use std::io::{self, BufRead, BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 use std::os::raw::{c_double, c_int};
@@ -31,17 +30,10 @@ use crate::sexp::protect::*;
 
 /// Extract a C string from a CHARSXP.
 pub fn charsxp_to_string(s: SEXP) -> String {
-    unsafe {
-        if s.is_null() {
-            return String::new();
-        }
-        let ptr = CHAR(s);
-        if ptr.is_null() {
-            return String::new();
-        }
-        let cstr = CStr::from_ptr(ptr);
-        cstr.to_string_lossy().into_owned()
+    if s.is_null() {
+        return String::new();
     }
+    String::from_utf8_lossy(&charsxp_as_utf8(s)).into_owned()
 }
 
 /// Extract a string from the first element of a STRSXP.
@@ -74,96 +66,64 @@ pub fn check_string_arg(arg: SEXP, name: &str) -> String {
 }
 
 pub fn connection_arg_tag_name(cell: SEXP) -> Option<String> {
-    unsafe {
-        let tag = TAG(cell);
-        if tag.is_null() || tag == R_NilValue() {
-            return None;
-        }
-        let pname = PRINTNAME(tag);
-        if pname.is_null() {
-            return None;
-        }
-        let chars = CHAR(pname);
-        if chars.is_null() {
-            return None;
-        }
-        CStr::from_ptr(chars).to_str().ok().map(str::to_string)
+    let tag = TAG(cell);
+    if tag.is_null() || tag == R_NilValue() {
+        return None;
     }
+    let pname = PRINTNAME(tag);
+    if pname.is_null() {
+        return None;
+    }
+    String::from_utf8(charsxp_as_utf8(pname)).ok()
 }
 
 /// Extract an integer from an SEXP (length-1 INTSXP or similar scalar).
 pub fn as_integer(arg: SEXP) -> c_int {
-    unsafe {
-        if arg.is_null() {
-            return NA_INTEGER;
-        }
-        let t = TYPEOF(arg);
-        if t == SEXPTYPE::INTSXP {
-            let data = INTEGER(arg);
-            if data.is_null() {
-                return NA_INTEGER;
-            }
-            *data
-        } else if t == SEXPTYPE::REALSXP {
-            let data = REAL(arg);
-            if data.is_null() {
-                return NA_INTEGER;
-            }
-            *data as c_int
-        } else if t == SEXPTYPE::LGLSXP {
-            let data = LOGICAL(arg);
-            if data.is_null() {
-                return NA_INTEGER;
-            }
-            *data
-        } else {
-            NA_INTEGER
-        }
+    if arg.is_null() {
+        return NA_INTEGER;
+    }
+    let t = TYPEOF(arg);
+    if t == SEXPTYPE::INTSXP {
+        INTEGER_ELT(arg, 0)
+    } else if t == SEXPTYPE::REALSXP {
+        REAL_ELT(arg, 0) as c_int
+    } else if t == SEXPTYPE::LGLSXP {
+        LOGICAL_ELT(arg, 0)
+    } else {
+        NA_INTEGER
     }
 }
 
 /// Extract a double from an SEXP.
 pub fn as_real(arg: SEXP) -> c_double {
-    unsafe {
-        if arg.is_null() {
-            return NA_REAL;
-        }
-        let t = TYPEOF(arg);
-        if t == SEXPTYPE::REALSXP {
-            let data = REAL(arg);
-            if data.is_null() {
-                return NA_REAL;
-            }
-            *data
-        } else if t == SEXPTYPE::INTSXP {
-            let v = as_integer(arg);
-            if v == NA_INTEGER {
-                NA_REAL
-            } else {
-                v as c_double
-            }
-        } else {
+    if arg.is_null() {
+        return NA_REAL;
+    }
+    let t = TYPEOF(arg);
+    if t == SEXPTYPE::REALSXP {
+        REAL_ELT(arg, 0)
+    } else if t == SEXPTYPE::INTSXP {
+        let v = as_integer(arg);
+        if v == NA_INTEGER {
             NA_REAL
+        } else {
+            v as c_double
         }
+    } else {
+        NA_REAL
     }
 }
 
 /// Extract a logical value from an SEXP.
 pub fn as_logical(arg: SEXP) -> c_int {
-    unsafe {
-        if arg.is_null() {
-            return NA_INTEGER;
-        }
-        let t = TYPEOF(arg);
-        if t == SEXPTYPE::LGLSXP {
-            let data = LOGICAL(arg);
-            if data.is_null() {
-                return NA_INTEGER;
-            }
-            *data
-        } else {
-            NA_INTEGER
-        }
+    if arg.is_null() {
+        return NA_INTEGER;
+    }
+    let t = TYPEOF(arg);
+    if t == SEXPTYPE::LGLSXP {
+        LOGICAL_ELT(arg, 0)
+    } else {
+        NA_INTEGER
     }
 }
 
@@ -243,83 +203,92 @@ pub fn r_error(msg: &str) -> ! {
 /// Check if an SEXP inherits from a given class name.
 /// Simplified check: looks at the class attribute.
 pub fn inherits_class(x: SEXP, class_name: &str) -> bool {
-    unsafe {
-        if x.is_null() {
-            return false;
-        }
-        // If it's an integer scalar, we check the class attribute
-        let t = TYPEOF(x);
-        if t == SEXPTYPE::INTSXP && LENGTH(x) == 1 {
-            // Fast path for this port: many call sites pass a plain connection index
-            // (INTSXP scalar) without reliable class metadata attached.
-            if class_name == "connection" {
-                let data = INTEGER(x);
-                if !data.is_null() {
-                    let idx = *data;
-                    if idx >= 0 {
-                        init_connections_table();
-                        let table = connection_table();
-                        let ui = idx as usize;
-                        if ui < table.len() && table[ui].is_some() {
-                            return true;
-                        }
-                    }
+    if x.is_null() {
+        return false;
+    }
+    // If it's an integer scalar, we check the class attribute
+    let t = TYPEOF(x);
+    if t == SEXPTYPE::INTSXP && LENGTH(x) == 1 {
+        // Fast path for this port: many call sites pass a plain connection index
+        // (INTSXP scalar) without reliable class metadata attached.
+        if class_name == "connection" {
+            let idx = INTEGER_ELT(x, 0);
+            if idx >= 0 && idx != NA_INTEGER {
+                init_connections_table();
+                let table = connection_table();
+                let ui = idx as usize;
+                if ui < table.len() && table[ui].is_some() {
+                    return true;
                 }
             }
+        }
 
-            let class_attr = ATTRIB(x);
-            if !class_attr.is_null() {
-                // Walk the class attribute pairlist
-                let mut p = class_attr;
-                while !p.is_null() && TYPEOF(p) == SEXPTYPE::LISTSXP {
-                    let tag = TAG(p);
-                    if !tag.is_null() {
-                        let pname = PRINTNAME(tag);
-                        if !pname.is_null() {
-                            let name = charsxp_to_string(pname);
-                            if name == "class" {
-                                let val = CAR(p);
-                                if !val.is_null() && TYPEOF(val) == SEXPTYPE::STRSXP {
-                                    let len = LENGTH(val);
-                                    for i in 0..len as R_xlen_t {
-                                        let s = string_elt(val, i);
-                                        if s == class_name {
-                                            return true;
-                                        }
+        let class_attr = ATTRIB(x);
+        if !class_attr.is_null() {
+            // Walk the class attribute pairlist
+            let mut p = class_attr;
+            while !p.is_null() && TYPEOF(p) == SEXPTYPE::LISTSXP {
+                let tag = TAG(p);
+                if !tag.is_null() {
+                    let pname = PRINTNAME(tag);
+                    if !pname.is_null() {
+                        let name = charsxp_to_string(pname);
+                        if name == "class" {
+                            let val = CAR(p);
+                            if !val.is_null() && TYPEOF(val) == SEXPTYPE::STRSXP {
+                                let len = LENGTH(val);
+                                for i in 0..len as R_xlen_t {
+                                    let s = string_elt(val, i);
+                                    if s == class_name {
+                                        return true;
                                     }
                                 }
                             }
                         }
                     }
-                    p = CDR(p);
                 }
+                p = CDR(p);
             }
         }
-        false
     }
+    false
+}
+
+/// Audited boundary: copy UTF-8 text into a fresh CHARSXP node.
+pub(crate) fn mk_char(text: &str) -> SEXP {
+    // SAFETY: `text` is a valid read-only buffer for the duration of the
+    // call; Rf_mkCharLen copies exactly `len` bytes into the new node.
+    unsafe {
+        Rf_mkCharLen(
+            text.as_ptr() as *const std::os::raw::c_char,
+            text.len() as c_int,
+        )
+    }
+}
+
+/// Audited boundary: named-attribute write on a live object.
+fn set_attrib(x: SEXP, symbol: SEXP, value: SEXP) {
+    // SAFETY: setAttrib mutates one named slot of a live object.
+    unsafe { crate::eval::attrib_core::setAttrib(x, symbol, value) }
 }
 
 /// Set the class attribute on an SEXP to a two-element vector.
 pub fn set_connection_class(ans: SEXP, specific_class: &str) {
-    unsafe {
-        let class_sym = crate::eval::attrib_core::R_ClassSymbol();
-        if class_sym.is_null() {
-            return;
-        }
-        let class_vec = Rf_allocVector(SEXPTYPE::STRSXP, 2);
-        if class_vec.is_null() {
-            return;
-        }
-        let c1 = CString::new(specific_class).unwrap_or_default();
-        let c2 = c"connection";
-        let charsxp1 = Rf_mkChar(c1.as_ptr());
-        let charsxp2 = Rf_mkChar(c2.as_ptr());
-        if !charsxp1.is_null() {
-            SET_STRING_ELT(class_vec, 0, charsxp1);
-        }
-        if !charsxp2.is_null() {
-            SET_STRING_ELT(class_vec, 1, charsxp2);
-        }
-        crate::eval::attrib_core::setAttrib(ans, class_sym, class_vec);
+    let class_sym = crate::sexp::attrib_core::R_ClassSymbol();
+    if class_sym.is_null() {
+        return;
     }
+    let class_vec = Rf_allocVector(SEXPTYPE::STRSXP, 2);
+    if class_vec.is_null() {
+        return;
+    }
+    let charsxp1 = mk_char(specific_class);
+    let charsxp2 = mk_char("connection");
+    if !charsxp1.is_null() {
+        SET_STRING_ELT(class_vec, 0, charsxp1);
+    }
+    if !charsxp2.is_null() {
+        SET_STRING_ELT(class_vec, 1, charsxp2);
+    }
+    set_attrib(ans, class_sym, class_vec);
 }
