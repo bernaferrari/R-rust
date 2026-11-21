@@ -8,60 +8,53 @@ use super::*;
 
 /// R's `list(...)` — create a VECSXP (list) from arguments.
 pub fn do_list(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let mut n: R_xlen_t = 0;
-        let mut current = args;
-        while !current.is_null() && current != R_NilValue() {
-            n += 1;
-            current = CDR(current);
-        }
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, n);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _result_guard = protect(result);
-        let mut i: R_xlen_t = 0;
-        current = args;
-        while !current.is_null() && current != R_NilValue() {
-            let arg = CAR(current);
-            SET_VECTOR_ELT(result, i as i64, arg);
-            i += 1;
-            current = CDR(current);
-        }
-        // Copy names from the pairlist tags if present
-        let mut name_parts: Vec<String> = Vec::new();
-        let mut has_names = false;
-        current = args;
-        while !current.is_null() && current != R_NilValue() {
-            let tag = crate::sexp::accessors::TAG(current);
-            if !tag.is_null() && tag != R_NilValue() {
-                let pname = crate::sexp::accessors::PRINTNAME(tag);
-                if !pname.is_null() {
-                    let s = crate::sexp::accessors::CHAR(pname);
-                    if !s.is_null() {
-                        name_parts.push(
-                            std::ffi::CStr::from_ptr(s)
-                                .to_str()
-                                .unwrap_or("")
-                                .to_string(),
-                        );
-                        has_names = true;
-                    } else {
-                        name_parts.push(String::new());
-                    }
+    let mut n: R_xlen_t = 0;
+    let mut current = args;
+    while !current.is_null() && current != R_NilValue() {
+        n += 1;
+        current = CDR(current);
+    }
+    let result = Rf_allocVector3(SEXPTYPE::VECSXP, n);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _result_guard = protect(result);
+    let mut i: R_xlen_t = 0;
+    current = args;
+    while !current.is_null() && current != R_NilValue() {
+        let arg = CAR(current);
+        SET_VECTOR_ELT(result, i as i64, arg);
+        i += 1;
+        current = CDR(current);
+    }
+    // Copy names from the pairlist tags if present
+    let mut name_parts: Vec<String> = Vec::new();
+    let mut has_names = false;
+    current = args;
+    while !current.is_null() && current != R_NilValue() {
+        let tag = crate::sexp::accessors::TAG(current);
+        if !tag.is_null() && tag != R_NilValue() {
+            let pname = crate::sexp::accessors::PRINTNAME(tag);
+            if !pname.is_null() {
+                let s = charsxp_text_of(pname);
+                if !s.is_null() {
+                    name_parts.push(s.as_cstr().to_str().unwrap_or("").to_string());
+                    has_names = true;
                 } else {
                     name_parts.push(String::new());
                 }
             } else {
                 name_parts.push(String::new());
             }
-            current = CDR(current);
+        } else {
+            name_parts.push(String::new());
         }
-        if has_names {
-            set_string_names(result, &name_parts);
-        }
-        result
+        current = CDR(current);
     }
+    if has_names {
+        set_string_names(result, &name_parts);
+    }
+    result
 }
 
 pub(crate) fn string_at_or_empty(x: SEXP, index: R_xlen_t) -> String {

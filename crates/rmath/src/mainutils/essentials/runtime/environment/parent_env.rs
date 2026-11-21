@@ -3,7 +3,7 @@ use crate::mainutils::essentials::{find_var_in_frame, install_cstr, install_str}
 use crate::sexp::{
     ffi::{SEXP, SEXPTYPE},
     object::{Sexp, SexpError, SexpResult},
-    owner::{OwnerToken, RuntimeAccess, with_runtime},
+    owner::{RuntimeAccess, with_runtime},
 };
 
 fn failure(message: impl Into<String>) -> SexpError {
@@ -175,7 +175,7 @@ fn set(access: &RuntimeAccess, values: &[Sexp<'static>]) -> SexpResult<Sexp<'sta
 /// before symbol installation, S4 extraction or any provider can collect/reenter.
 pub(super) fn dispatch(raw: SEXP, setter: bool) -> SEXP {
     let result = (|| {
-        let owner = unsafe { OwnerToken::current()? };
+        let owner = crate::mainutils::essentials::current_owner()?;
         let list = owner.sexp(raw)?.into_owned()?;
         let values = arguments(list)?;
         let expected = if setter { 2 } else { 1 };

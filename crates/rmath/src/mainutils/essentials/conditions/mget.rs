@@ -3,7 +3,7 @@ use crate::mainutils::essentials::install_cstr;
 use crate::sexp::{
     ffi::{NA_INTEGER, R_xlen_t, SEXP, SEXPTYPE},
     object::{Sexp, SexpError, SexpMut, SexpResult},
-    owner::{OwnerToken, RuntimeAccess, with_runtime},
+    owner::{RuntimeAccess, with_runtime},
 };
 
 fn failure(message: impl Into<String>) -> SexpError {
@@ -445,7 +445,7 @@ pub(super) fn lookup_one(
     mode: &str,
     inherits: bool,
 ) -> SexpResult<Option<Sexp<'static>>> {
-    let token = unsafe { OwnerToken::current()? };
+    let token = crate::mainutils::essentials::current_owner()?;
     let owner = token.weak_owner().ok_or(SexpError::RootUnavailable)?;
     with_runtime(&owner, |access| {
         let symbol = access.domain().wrap(symbol)?.into_owned()?;
@@ -460,7 +460,7 @@ pub(super) fn lookup_one(
 /// # Safety
 /// Arguments belong to the live current runtime at this translated entry.
 pub(super) fn invoke(args: SEXP, rho: SEXP) -> SexpResult<Sexp<'static>> {
-    let token = unsafe { OwnerToken::current()? };
+    let token = crate::mainutils::essentials::current_owner()?;
     let owner = token.weak_owner().ok_or(SexpError::RootUnavailable)?;
     with_runtime(&owner, |access| {
         let arguments = Arguments::capture(access.domain().wrap(args)?.into_owned()?)?;

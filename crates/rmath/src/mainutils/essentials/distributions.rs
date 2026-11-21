@@ -125,18 +125,14 @@ fn dist_match(args: SEXP, names: &[&str]) -> (Vec<SEXP>, Vec<bool>) {
 /// Deparse an argument value for stock-style "unused argument (...)"
 /// messages (stock uses the deparsed value, not a placeholder).
 fn deparse_arg_value(value: SEXP) -> String {
-    unsafe {
-        let text = crate::mainutils::deparse::deparse1line(value, false);
-        if !text.is_null() && text != R_NilValue() && XLENGTH(text) > 0 {
-            let chars = crate::sexp::accessors::CHAR(crate::sexp::accessors::STRING_ELT(text, 0));
-            if !chars.is_null() {
-                return std::ffi::CStr::from_ptr(chars)
-                    .to_string_lossy()
-                    .into_owned();
-            }
+    let text = crate::mainutils::deparse::deparse1line(value, false);
+    if !text.is_null() && text != R_NilValue() && XLENGTH(text) > 0 {
+        let chars = charsxp_text_of(crate::sexp::accessors::STRING_ELT(text, 0));
+        if !chars.is_null() {
+            return chars.as_cstr().to_string_lossy().into_owned();
         }
-        String::new()
     }
+    String::new()
 }
 
 /// A supplied-and-not-missing slot (explicit NULL counts as supplied).
@@ -260,7 +256,7 @@ fn dpq_flag(slots: &[SEXP], filled: &[bool], idx: usize, default: bool) -> bool 
         return default;
     }
     // SAFETY: the translated builtin enters with a live active owner.
-    let owner = checked_dpq(unsafe { OwnerToken::current() });
+    let owner = checked_dpq(current_owner());
     let value = checked_dpq(owner.sexp(slot));
     dpq_scalar(owner, &value, 0).trunc() != 0.0
 }
@@ -296,7 +292,7 @@ fn dpq_evaluate(
     compute: &mut dyn FnMut(&[f64], bool, bool) -> f64,
 ) -> SEXP {
     // SAFETY: the translated builtin enters with a live active owner.
-    let owner = checked_dpq(unsafe { OwnerToken::current() });
+    let owner = checked_dpq(current_owner());
     let _mathlib_call = crate::mainutils::errors::mathlib_warning_call_guard(call);
     let sources: Vec<_> = operands
         .iter()

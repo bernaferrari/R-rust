@@ -130,7 +130,7 @@ pub(crate) struct ScopedRestartStack {
 
 impl ScopedRestartStack {
     pub(crate) fn capture() -> Self {
-        let owner = unsafe { crate::sexp::owner::OwnerToken::current() }
+        let owner = current_owner()
             .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
         let pin = owner
             .pin()
@@ -288,57 +288,53 @@ pub(crate) fn set_restart_stack(stack: SEXP) {
 }
 
 fn restart_stack_as_list() -> SEXP {
-    unsafe {
-        let owner = crate::sexp::owner::OwnerToken::current()
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        let pin = owner
-            .pin()
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
-            .unwrap_or_else(|| crate::sexp::context::r_error("restart requires a runtime owner"));
-        let stack = restart_stack();
-        let mut cursor = if stack.is_null() {
-            owner.node_factory().nil().into_owned().unwrap()
-        } else {
-            restart_owned(stack)
-        };
-        let mut restarts = Vec::new();
-        let mut seen = std::collections::HashSet::new();
-        while !cursor.is_nil() {
-            seen.try_reserve(1)
-                .unwrap_or_else(|_| crate::sexp::context::r_error("cannot track restart stack"));
-            if !seen.insert(cursor.as_raw().addr()) {
-                crate::sexp::context::r_error("cyclic restart stack");
-            }
-            restarts
-                .try_reserve(1)
-                .unwrap_or_else(|_| crate::sexp::context::r_error("cannot reserve restarts"));
-            restarts.push(
-                cursor
-                    .try_car()
-                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
-            );
-            cursor = cursor
-                .try_cdr()
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    let owner =
+        current_owner().unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    let pin = owner
+        .pin()
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+        .unwrap_or_else(|| crate::sexp::context::r_error("restart requires a runtime owner"));
+    let stack = restart_stack();
+    let mut cursor = if stack.is_null() {
+        owner.node_factory().nil().into_owned().unwrap()
+    } else {
+        restart_owned(stack)
+    };
+    let mut restarts = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    while !cursor.is_nil() {
+        seen.try_reserve(1)
+            .unwrap_or_else(|_| crate::sexp::context::r_error("cannot track restart stack"));
+        if !seen.insert(cursor.as_raw().addr()) {
+            crate::sexp::context::r_error("cyclic restart stack");
         }
-        restarts.push(restart_owned(abort_restart_entry()));
-        let factory = condition_entry_factory();
-        let result = factory
-            .allocate(|arena| {
-                Some(arena.alloc_vector(SEXPTYPE::VECSXP, restarts.len() as R_xlen_t))
-            })
+        restarts
+            .try_reserve(1)
+            .unwrap_or_else(|_| crate::sexp::context::r_error("cannot reserve restarts"));
+        restarts.push(
+            cursor
+                .try_car()
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
+        );
+        cursor = cursor
+            .try_cdr()
             .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        let mut result_mut = SexpMut::try_from_checked(result.clone())
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        for (index, value) in restarts.iter().enumerate() {
-            result_mut
-                .try_set_vector_elt(index as R_xlen_t, value.clone())
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        }
-        pin.require_live()
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        result.as_raw()
     }
+    restarts.push(restart_owned(abort_restart_entry()));
+    let factory = condition_entry_factory();
+    let result = factory
+        .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::VECSXP, restarts.len() as R_xlen_t)))
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    let mut result_mut = SexpMut::try_from_checked(result.clone())
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    for (index, value) in restarts.iter().enumerate() {
+        result_mut
+            .try_set_vector_elt(index as R_xlen_t, value.clone())
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    }
+    pin.require_live()
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    result.as_raw()
 }
 
 fn find_restart_by_name(name: &str) -> Option<SEXP> {

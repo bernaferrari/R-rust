@@ -358,191 +358,186 @@ pub fn do_plot_default(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 #[cfg(not(feature = "renderplot-device"))]
 pub(super) fn record_plot_window(args: SEXP) {
-    unsafe {
-        let x = crate::mainutils::essentials::arg_by_name_or_position(args, &["x"], 0);
-        if x.is_null() || x == crate::sexp::globals::R_NilValue() {
-            return;
-        }
-        let y = crate::mainutils::essentials::arg_by_name_or_position(args, &["y"], 1);
-        let y_missing = y.is_null()
-            || y == crate::sexp::globals::R_NilValue()
-            || y == crate::sexp::globals::R_MissingArg();
-        let mut yv = if y_missing {
-            numeric_plot_values(x)
+    let x = crate::mainutils::essentials::arg_by_name_or_position(args, &["x"], 0);
+    if x.is_null() || x == crate::sexp::globals::R_NilValue() {
+        return;
+    }
+    let y = crate::mainutils::essentials::arg_by_name_or_position(args, &["y"], 1);
+    let y_missing = y.is_null()
+        || y == crate::sexp::globals::R_NilValue()
+        || y == crate::sexp::globals::R_MissingArg();
+    let mut yv = if y_missing {
+        numeric_plot_values(x)
+    } else {
+        numeric_plot_values(y)
+    };
+    let mut xv = if y_missing {
+        (1..=yv.len()).map(|i| i as f64).collect()
+    } else {
+        numeric_plot_values(x)
+    };
+    if xv.is_empty() || yv.is_empty() {
+        return;
+    }
+    if xv.len() != yv.len() {
+        let n = xv.len().min(yv.len());
+        xv.truncate(n);
+        yv.truncate(n);
+    }
+    let log_arg = crate::mainutils::essentials::arg_by_name_or_position(args, &["log"], 10);
+    let log = if log_arg.is_null() || TYPEOF(log_arg) != SEXPTYPE::STRSXP || XLENGTH(log_arg) == 0 {
+        String::new()
+    } else {
+        let chars = charsxp_text_of(STRING_ELT(log_arg, 0));
+        if chars.is_null() {
+            String::new()
         } else {
-            numeric_plot_values(y)
-        };
-        let mut xv = if y_missing {
-            (1..=yv.len()).map(|i| i as f64).collect()
-        } else {
-            numeric_plot_values(x)
-        };
-        if xv.is_empty() || yv.is_empty() {
-            return;
+            chars.as_cstr().to_string_lossy().into_owned()
         }
-        if xv.len() != yv.len() {
-            let n = xv.len().min(yv.len());
-            xv.truncate(n);
-            yv.truncate(n);
+    };
+    let log_x = log.contains('x');
+    let log_y = log.contains('y');
+    if log_x {
+        xv = xv
+            .into_iter()
+            .filter(|v| *v > 0.0)
+            .map(|v| v.log10())
+            .collect();
+    }
+    if log_y {
+        yv = yv
+            .into_iter()
+            .filter(|v| *v > 0.0)
+            .map(|v| v.log10())
+            .collect();
+    }
+    let xaxs_i = matches!(crate::library::graphics::par::parameter("xaxs"), crate::library::graphics::par::ParValue::String(s) if s == "i");
+    let yaxs_i = matches!(crate::library::graphics::par::parameter("yaxs"), crate::library::graphics::par::ParValue::String(s) if s == "i");
+    let tight = |v: &[f64]| {
+        let lo = v
+            .iter()
+            .copied()
+            .filter(|x| x.is_finite())
+            .fold(f64::INFINITY, f64::min);
+        let hi = v
+            .iter()
+            .copied()
+            .filter(|x| x.is_finite())
+            .fold(f64::NEG_INFINITY, f64::max);
+        if lo.is_finite() { (lo, hi) } else { (0.0, 1.0) }
+    };
+    let (x0, x1) = if xaxs_i {
+        tight(&xv)
+    } else {
+        padded_range(&xv)
+    };
+    let (y0, y1) = if yaxs_i {
+        tight(&yv)
+    } else {
+        padded_range(&yv)
+    };
+    let apply_limit = |current: (f64, f64), name: &str, logged: bool| {
+        let arg = crate::mainutils::essentials::arg_by_name_or_position(args, &[name], usize::MAX);
+        let v = numeric_plot_values(arg);
+        if v.len() < 2 || !v[0].is_finite() || !v[1].is_finite() {
+            return current;
         }
-        let log_arg = crate::mainutils::essentials::arg_by_name_or_position(args, &["log"], 10);
-        let log =
-            if log_arg.is_null() || TYPEOF(log_arg) != SEXPTYPE::STRSXP || XLENGTH(log_arg) == 0 {
-                String::new()
-            } else {
-                let chars = CHAR(STRING_ELT(log_arg, 0));
-                if chars.is_null() {
-                    String::new()
-                } else {
-                    std::ffi::CStr::from_ptr(chars)
-                        .to_string_lossy()
-                        .into_owned()
-                }
-            };
-        let log_x = log.contains('x');
-        let log_y = log.contains('y');
-        if log_x {
-            xv = xv
-                .into_iter()
-                .filter(|v| *v > 0.0)
-                .map(|v| v.log10())
-                .collect();
-        }
-        if log_y {
-            yv = yv
-                .into_iter()
-                .filter(|v| *v > 0.0)
-                .map(|v| v.log10())
-                .collect();
-        }
-        let xaxs_i = matches!(crate::library::graphics::par::parameter("xaxs"), crate::library::graphics::par::ParValue::String(s) if s == "i");
-        let yaxs_i = matches!(crate::library::graphics::par::parameter("yaxs"), crate::library::graphics::par::ParValue::String(s) if s == "i");
-        let tight = |v: &[f64]| {
-            let lo = v
-                .iter()
-                .copied()
-                .filter(|x| x.is_finite())
-                .fold(f64::INFINITY, f64::min);
-            let hi = v
-                .iter()
-                .copied()
-                .filter(|x| x.is_finite())
-                .fold(f64::NEG_INFINITY, f64::max);
-            if lo.is_finite() { (lo, hi) } else { (0.0, 1.0) }
-        };
-        let (x0, x1) = if xaxs_i {
-            tight(&xv)
-        } else {
-            padded_range(&xv)
-        };
-        let (y0, y1) = if yaxs_i {
-            tight(&yv)
-        } else {
-            padded_range(&yv)
-        };
-        let apply_limit = |current: (f64, f64), name: &str, logged: bool| {
-            let arg =
-                crate::mainutils::essentials::arg_by_name_or_position(args, &[name], usize::MAX);
-            let v = numeric_plot_values(arg);
-            if v.len() < 2 || !v[0].is_finite() || !v[1].is_finite() {
-                return current;
+        let (mut a, mut b) = (v[0], v[1]);
+        if logged {
+            a = a.log10();
+            b = b.log10();
+            if !a.is_finite() || !b.is_finite() {
+                let fmt = std::ffi::CString::new(format!(
+                    "nonfinite axis={} limits [GScale({a},{b},..); log=TRUE] -- corrected now",
+                    if name == "xlim" { 1 } else { 2 }
+                ))
+                .unwrap_or_default();
+                crate::mainutils::errors::warningcall_cstr(
+                    crate::sexp::globals::R_NilValue(),
+                    &fmt,
+                );
+                let fix = |z: f64| {
+                    if z.is_finite() {
+                        z
+                    } else if z < 0. {
+                        -320.
+                    } else {
+                        308.254715559
+                    }
+                };
+                a = fix(a);
+                b = fix(b);
             }
-            let (mut a, mut b) = (v[0], v[1]);
-            if logged {
-                a = a.log10();
-                b = b.log10();
-                if !a.is_finite() || !b.is_finite() {
-                    let fmt = std::ffi::CString::new(format!(
-                        "nonfinite axis={} limits [GScale({a},{b},..); log=TRUE] -- corrected now",
-                        if name == "xlim" { 1 } else { 2 }
-                    ))
-                    .unwrap_or_default();
-                    crate::mainutils::errors::warningcall_cstr(
-                        crate::sexp::globals::R_NilValue(),
-                        &fmt);
-                    let fix = |z: f64| {
-                        if z.is_finite() {
-                            z
-                        } else if z < 0. {
-                            -320.
-                        } else {
-                            308.254715559
-                        }
-                    };
-                    a = fix(a);
-                    b = fix(b);
-                }
-            }
-            let extra = (b - a).abs() * 0.04;
-            if a <= b {
-                (a - extra, b + extra)
-            } else {
-                (a + extra, b - extra)
-            }
-        };
-        let (mut x0, mut x1) = apply_limit((x0, x1), "xlim", log_x);
-        let (mut y0, mut y1) = apply_limit((y0, y1), "ylim", log_y);
-        let clamp_plot_log = |v: &mut f64| {
-            if *v == f64::INFINITY || *v >= 308.25035 {
-                *v = (0.99 * f64::MAX).log10();
-            } else if !v.is_finite() || *v < -1074.0 * std::f64::consts::LOG10_2 {
-                *v = (1.01 * f64::MIN_POSITIVE).log10();
-            }
-        };
-        if log_x {
-            clamp_plot_log(&mut x0);
-            clamp_plot_log(&mut x1);
         }
-        if log_y {
-            clamp_plot_log(&mut y0);
-            clamp_plot_log(&mut y1);
-        }
-        let (xa0, xa1, xn) = pretty_axp(x0, x1);
-        let (ya0, ya1, yn) = pretty_axp(y0, y1);
-        use crate::library::graphics::par::{ParValue, set_plot_parameter};
-        set_plot_parameter("usr", ParValue::Real(vec![x0, x1, y0, y1]));
-        set_plot_parameter("xlog", ParValue::Logical(vec![if log_x { 1 } else { 0 }]));
-        set_plot_parameter("ylog", ParValue::Logical(vec![if log_y { 1 } else { 0 }]));
-        if log_x {
-            let (a, b) = if x0 <= x1 { (x0, x1) } else { (x1, x0) };
-            let lo = a.ceil().clamp(-307.0, 308.0);
-            let hi = b.floor().clamp(lo, 308.0);
-            let n = if hi - lo <= 2.0 {
-                3.0
-            } else if hi - lo <= 3.0 {
-                2.0
-            } else {
-                1.0
-            };
-            let (p0, p1) = if x0 <= x1 {
-                (10f64.powf(lo), 10f64.powf(hi))
-            } else {
-                (10f64.powf(hi), 10f64.powf(lo))
-            };
-            set_plot_parameter("xaxp", ParValue::Real(vec![p0, p1, n]));
+        let extra = (b - a).abs() * 0.04;
+        if a <= b {
+            (a - extra, b + extra)
         } else {
-            set_plot_parameter("xaxp", ParValue::Real(vec![xa0, xa1, xn]));
+            (a + extra, b - extra)
         }
-        if log_y {
-            let (a, b) = if y0 <= y1 { (y0, y1) } else { (y1, y0) };
-            let lo = a.ceil().clamp(-307.0, 308.0);
-            let hi = b.floor().clamp(lo, 308.0);
-            let n = if hi - lo <= 2.0 {
-                3.0
-            } else if hi - lo <= 3.0 {
-                2.0
-            } else {
-                1.0
-            };
-            let (p0, p1) = if y0 <= y1 {
-                (10f64.powf(lo), 10f64.powf(hi))
-            } else {
-                (10f64.powf(hi), 10f64.powf(lo))
-            };
-            set_plot_parameter("yaxp", ParValue::Real(vec![p0, p1, n]));
+    };
+    let (mut x0, mut x1) = apply_limit((x0, x1), "xlim", log_x);
+    let (mut y0, mut y1) = apply_limit((y0, y1), "ylim", log_y);
+    let clamp_plot_log = |v: &mut f64| {
+        if *v == f64::INFINITY || *v >= 308.25035 {
+            *v = (0.99 * f64::MAX).log10();
+        } else if !v.is_finite() || *v < -1074.0 * std::f64::consts::LOG10_2 {
+            *v = (1.01 * f64::MIN_POSITIVE).log10();
+        }
+    };
+    if log_x {
+        clamp_plot_log(&mut x0);
+        clamp_plot_log(&mut x1);
+    }
+    if log_y {
+        clamp_plot_log(&mut y0);
+        clamp_plot_log(&mut y1);
+    }
+    let (xa0, xa1, xn) = pretty_axp(x0, x1);
+    let (ya0, ya1, yn) = pretty_axp(y0, y1);
+    use crate::library::graphics::par::{ParValue, set_plot_parameter};
+    set_plot_parameter("usr", ParValue::Real(vec![x0, x1, y0, y1]));
+    set_plot_parameter("xlog", ParValue::Logical(vec![if log_x { 1 } else { 0 }]));
+    set_plot_parameter("ylog", ParValue::Logical(vec![if log_y { 1 } else { 0 }]));
+    if log_x {
+        let (a, b) = if x0 <= x1 { (x0, x1) } else { (x1, x0) };
+        let lo = a.ceil().clamp(-307.0, 308.0);
+        let hi = b.floor().clamp(lo, 308.0);
+        let n = if hi - lo <= 2.0 {
+            3.0
+        } else if hi - lo <= 3.0 {
+            2.0
         } else {
-            set_plot_parameter("yaxp", ParValue::Real(vec![ya0, ya1, yn]));
-        }
+            1.0
+        };
+        let (p0, p1) = if x0 <= x1 {
+            (10f64.powf(lo), 10f64.powf(hi))
+        } else {
+            (10f64.powf(hi), 10f64.powf(lo))
+        };
+        set_plot_parameter("xaxp", ParValue::Real(vec![p0, p1, n]));
+    } else {
+        set_plot_parameter("xaxp", ParValue::Real(vec![xa0, xa1, xn]));
+    }
+    if log_y {
+        let (a, b) = if y0 <= y1 { (y0, y1) } else { (y1, y0) };
+        let lo = a.ceil().clamp(-307.0, 308.0);
+        let hi = b.floor().clamp(lo, 308.0);
+        let n = if hi - lo <= 2.0 {
+            3.0
+        } else if hi - lo <= 3.0 {
+            2.0
+        } else {
+            1.0
+        };
+        let (p0, p1) = if y0 <= y1 {
+            (10f64.powf(lo), 10f64.powf(hi))
+        } else {
+            (10f64.powf(hi), 10f64.powf(lo))
+        };
+        set_plot_parameter("yaxp", ParValue::Real(vec![p0, p1, n]));
+    } else {
+        set_plot_parameter("yaxp", ParValue::Real(vec![ya0, ya1, yn]));
     }
 }
 
@@ -626,154 +621,146 @@ pub fn do_plot_window(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 #[cfg(not(feature = "renderplot-device"))]
 pub(super) fn record_window_limits(args: SEXP) {
-    unsafe {
-        let xlim = crate::mainutils::essentials::arg_by_name_or_position(args, &["xlim"], 0);
-        let ylim = crate::mainutils::essentials::arg_by_name_or_position(args, &["ylim"], 1);
-        let xv = numeric_plot_values(xlim);
-        let yv = numeric_plot_values(ylim);
-        if xv.len() < 2 || yv.len() < 2 {
-            return;
-        }
-        let log_arg = crate::mainutils::essentials::arg_by_name_or_position(args, &["log"], 2);
-        let log =
-            if log_arg.is_null() || TYPEOF(log_arg) != SEXPTYPE::STRSXP || XLENGTH(log_arg) == 0 {
-                String::new()
-            } else {
-                let chars = CHAR(STRING_ELT(log_arg, 0));
-                if chars.is_null() {
-                    String::new()
-                } else {
-                    std::ffi::CStr::from_ptr(chars)
-                        .to_string_lossy()
-                        .into_owned()
-                }
-            };
-        let xlog = log.contains('x');
-        let ylog = log.contains('y');
-        let mut x_lo = xv[0];
-        let mut x_hi = xv[1];
-        let mut y_lo = yv[0];
-        let mut y_hi = yv[1];
-        let to_log = |v: f64| {
-            if v > 0.0 {
-                v.log10()
-            } else {
-                f64::NEG_INFINITY
-            }
-        };
-        if xlog {
-            x_lo = to_log(x_lo);
-            x_hi = to_log(x_hi);
-        }
-        if ylog {
-            y_lo = to_log(y_lo);
-            y_hi = to_log(y_hi);
-        }
-        let finite_floor = (1.01 * f64::MIN_POSITIVE).log10();
-        let clamp_log_end = |v: &mut f64, pull_subnormal: bool| {
-            if *v == f64::INFINITY || *v >= 308.25035 {
-                *v = (0.99 * f64::MAX).log10();
-            } else if !v.is_finite()
-                || 10f64.powf(*v) == 0.0
-                || (pull_subnormal && *v < finite_floor)
-            {
-                *v = finite_floor;
-            }
-        };
-        if xlog {
-            clamp_log_end(&mut x_lo, false);
-            clamp_log_end(&mut x_hi, false);
-        }
-        if ylog {
-            clamp_log_end(&mut y_lo, false);
-            clamp_log_end(&mut y_hi, false);
-        }
-        let style_i = |name: &str| {
-            matches!(
-                crate::library::graphics::par::parameter(name),
-                crate::library::graphics::par::ParValue::String(s) if s == "i"
-            )
-        };
-        let x_tight = style_i("xaxs");
-        let y_tight = style_i("yaxs");
-        if !x_tight {
-            let extra = if x_hi.abs() > 100.0 || x_lo.abs() > 100.0 {
-                0.04 * x_hi - 0.04 * x_lo
-            } else {
-                (x_hi - x_lo) * 0.04
-            };
-            if extra.is_finite() && extra != 0.0 {
-                let a = x_lo - extra;
-                let b = x_hi + extra;
-                if a.is_finite() {
-                    x_lo = a;
-                }
-                if b.is_finite() {
-                    x_hi = b;
-                }
-            }
-        }
-        if !y_tight {
-            let extra = if y_hi.abs() > 100.0 || y_lo.abs() > 100.0 {
-                0.04 * y_hi - 0.04 * y_lo
-            } else {
-                (y_hi - y_lo) * 0.04
-            };
-            if extra.is_finite() && extra != 0.0 {
-                let a = y_lo - extra;
-                let b = y_hi + extra;
-                if a.is_finite() {
-                    y_lo = a;
-                }
-                if b.is_finite() {
-                    y_hi = b;
-                }
-            }
-        }
-        if xlog {
-            clamp_log_end(&mut x_lo, !x_tight);
-            clamp_log_end(&mut x_hi, !x_tight);
-        }
-        if ylog {
-            clamp_log_end(&mut y_lo, !y_tight);
-            clamp_log_end(&mut y_hi, !y_tight);
-        }
-        use crate::library::graphics::par::{ParValue, set_plot_parameter};
-        set_plot_parameter("usr", ParValue::Real(vec![x_lo, x_hi, y_lo, y_hi]));
-        set_plot_parameter("xlog", ParValue::Logical(vec![if xlog { 1 } else { 0 }]));
-        set_plot_parameter("ylog", ParValue::Logical(vec![if ylog { 1 } else { 0 }]));
-        let log_axp = |lo0: f64, hi0: f64| {
-            let (a, b) = if lo0 <= hi0 { (lo0, hi0) } else { (hi0, lo0) };
-            let lo = a.ceil().clamp(-307.0, 308.0);
-            let hi = b.floor().clamp(lo, 308.0);
-            let n = if hi - lo <= 2.0 {
-                3.0
-            } else if hi - lo <= 3.0 {
-                2.0
-            } else {
-                1.0
-            };
-            let (p0, p1) = if lo0 <= hi0 {
-                (10f64.powf(lo), 10f64.powf(hi))
-            } else {
-                (10f64.powf(hi), 10f64.powf(lo))
-            };
-            (p0, p1, n)
-        };
-        if xlog {
-            let (p0, p1, n) = log_axp(x_lo, x_hi);
-            set_plot_parameter("xaxp", ParValue::Real(vec![p0, p1, n]));
+    let xlim = crate::mainutils::essentials::arg_by_name_or_position(args, &["xlim"], 0);
+    let ylim = crate::mainutils::essentials::arg_by_name_or_position(args, &["ylim"], 1);
+    let xv = numeric_plot_values(xlim);
+    let yv = numeric_plot_values(ylim);
+    if xv.len() < 2 || yv.len() < 2 {
+        return;
+    }
+    let log_arg = crate::mainutils::essentials::arg_by_name_or_position(args, &["log"], 2);
+    let log = if log_arg.is_null() || TYPEOF(log_arg) != SEXPTYPE::STRSXP || XLENGTH(log_arg) == 0 {
+        String::new()
+    } else {
+        let chars = charsxp_text_of(STRING_ELT(log_arg, 0));
+        if chars.is_null() {
+            String::new()
         } else {
-            let (xa0, xa1, xn) = pretty_axp(x_lo, x_hi);
-            set_plot_parameter("xaxp", ParValue::Real(vec![xa0, xa1, xn]));
+            chars.as_cstr().to_string_lossy().into_owned()
         }
-        if ylog {
-            let (p0, p1, n) = log_axp(y_lo, y_hi);
-            set_plot_parameter("yaxp", ParValue::Real(vec![p0, p1, n]));
+    };
+    let xlog = log.contains('x');
+    let ylog = log.contains('y');
+    let mut x_lo = xv[0];
+    let mut x_hi = xv[1];
+    let mut y_lo = yv[0];
+    let mut y_hi = yv[1];
+    let to_log = |v: f64| {
+        if v > 0.0 {
+            v.log10()
         } else {
-            let (ya0, ya1, yn) = pretty_axp(y_lo, y_hi);
-            set_plot_parameter("yaxp", ParValue::Real(vec![ya0, ya1, yn]));
+            f64::NEG_INFINITY
         }
+    };
+    if xlog {
+        x_lo = to_log(x_lo);
+        x_hi = to_log(x_hi);
+    }
+    if ylog {
+        y_lo = to_log(y_lo);
+        y_hi = to_log(y_hi);
+    }
+    let finite_floor = (1.01 * f64::MIN_POSITIVE).log10();
+    let clamp_log_end = |v: &mut f64, pull_subnormal: bool| {
+        if *v == f64::INFINITY || *v >= 308.25035 {
+            *v = (0.99 * f64::MAX).log10();
+        } else if !v.is_finite() || 10f64.powf(*v) == 0.0 || (pull_subnormal && *v < finite_floor) {
+            *v = finite_floor;
+        }
+    };
+    if xlog {
+        clamp_log_end(&mut x_lo, false);
+        clamp_log_end(&mut x_hi, false);
+    }
+    if ylog {
+        clamp_log_end(&mut y_lo, false);
+        clamp_log_end(&mut y_hi, false);
+    }
+    let style_i = |name: &str| {
+        matches!(
+            crate::library::graphics::par::parameter(name),
+            crate::library::graphics::par::ParValue::String(s) if s == "i"
+        )
+    };
+    let x_tight = style_i("xaxs");
+    let y_tight = style_i("yaxs");
+    if !x_tight {
+        let extra = if x_hi.abs() > 100.0 || x_lo.abs() > 100.0 {
+            0.04 * x_hi - 0.04 * x_lo
+        } else {
+            (x_hi - x_lo) * 0.04
+        };
+        if extra.is_finite() && extra != 0.0 {
+            let a = x_lo - extra;
+            let b = x_hi + extra;
+            if a.is_finite() {
+                x_lo = a;
+            }
+            if b.is_finite() {
+                x_hi = b;
+            }
+        }
+    }
+    if !y_tight {
+        let extra = if y_hi.abs() > 100.0 || y_lo.abs() > 100.0 {
+            0.04 * y_hi - 0.04 * y_lo
+        } else {
+            (y_hi - y_lo) * 0.04
+        };
+        if extra.is_finite() && extra != 0.0 {
+            let a = y_lo - extra;
+            let b = y_hi + extra;
+            if a.is_finite() {
+                y_lo = a;
+            }
+            if b.is_finite() {
+                y_hi = b;
+            }
+        }
+    }
+    if xlog {
+        clamp_log_end(&mut x_lo, !x_tight);
+        clamp_log_end(&mut x_hi, !x_tight);
+    }
+    if ylog {
+        clamp_log_end(&mut y_lo, !y_tight);
+        clamp_log_end(&mut y_hi, !y_tight);
+    }
+    use crate::library::graphics::par::{ParValue, set_plot_parameter};
+    set_plot_parameter("usr", ParValue::Real(vec![x_lo, x_hi, y_lo, y_hi]));
+    set_plot_parameter("xlog", ParValue::Logical(vec![if xlog { 1 } else { 0 }]));
+    set_plot_parameter("ylog", ParValue::Logical(vec![if ylog { 1 } else { 0 }]));
+    let log_axp = |lo0: f64, hi0: f64| {
+        let (a, b) = if lo0 <= hi0 { (lo0, hi0) } else { (hi0, lo0) };
+        let lo = a.ceil().clamp(-307.0, 308.0);
+        let hi = b.floor().clamp(lo, 308.0);
+        let n = if hi - lo <= 2.0 {
+            3.0
+        } else if hi - lo <= 3.0 {
+            2.0
+        } else {
+            1.0
+        };
+        let (p0, p1) = if lo0 <= hi0 {
+            (10f64.powf(lo), 10f64.powf(hi))
+        } else {
+            (10f64.powf(hi), 10f64.powf(lo))
+        };
+        (p0, p1, n)
+    };
+    if xlog {
+        let (p0, p1, n) = log_axp(x_lo, x_hi);
+        set_plot_parameter("xaxp", ParValue::Real(vec![p0, p1, n]));
+    } else {
+        let (xa0, xa1, xn) = pretty_axp(x_lo, x_hi);
+        set_plot_parameter("xaxp", ParValue::Real(vec![xa0, xa1, xn]));
+    }
+    if ylog {
+        let (p0, p1, n) = log_axp(y_lo, y_hi);
+        set_plot_parameter("yaxp", ParValue::Real(vec![p0, p1, n]));
+    } else {
+        let (ya0, ya1, yn) = pretty_axp(y_lo, y_hi);
+        set_plot_parameter("yaxp", ParValue::Real(vec![ya0, ya1, yn]));
     }
 }
 

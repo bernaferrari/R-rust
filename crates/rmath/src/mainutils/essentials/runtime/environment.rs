@@ -232,48 +232,46 @@ pub fn do_is_empty(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// GNU `.Internal(env.profile(env))`.
 pub fn do_envprofile(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let env = CAR(args);
-        if env.is_null() || TYPEOF(env) != SEXPTYPE::ENVSXP {
-            base_error("argument must be a hashed environment");
-        }
-        let Some(initial) = crate::sexp::env_hash::hashed_size(env) else {
-            return R_NilValue();
-        };
-        let mut names = Vec::new();
-        let mut frame = crate::sexp::accessors::FRAME(env);
-        while !frame.is_null() && frame != R_NilValue() {
-            let tag = crate::sexp::accessors::TAG(frame);
-            if !tag.is_null() && tag != R_NilValue() {
-                let pname = crate::sexp::accessors::PRINTNAME(tag);
-                if !pname.is_null() {
-                    let s = crate::sexp::accessors::CHAR(pname);
-                    if !s.is_null() {
-                        names.push(std::ffi::CStr::from_ptr(s).to_bytes().to_vec());
-                    }
+    let env = CAR(args);
+    if env.is_null() || TYPEOF(env) != SEXPTYPE::ENVSXP {
+        base_error("argument must be a hashed environment");
+    }
+    let Some(initial) = crate::sexp::env_hash::hashed_size(env) else {
+        return R_NilValue();
+    };
+    let mut names = Vec::new();
+    let mut frame = crate::sexp::accessors::FRAME(env);
+    while !frame.is_null() && frame != R_NilValue() {
+        let tag = crate::sexp::accessors::TAG(frame);
+        if !tag.is_null() && tag != R_NilValue() {
+            let pname = crate::sexp::accessors::PRINTNAME(tag);
+            if !pname.is_null() {
+                let s = charsxp_text_of(pname);
+                if !s.is_null() {
+                    names.push(s.as_cstr().to_bytes().to_vec());
                 }
             }
-            frame = crate::sexp::accessors::CDR(frame);
         }
-        names.reverse();
-        let (size, nchains, counts) = crate::sexp::env_hash::gnu_chain_profile(initial, &names);
-        let ans = Rf_allocVector3(SEXPTYPE::VECSXP, 3);
-        let _g = protect(ans);
-        let nms = Rf_allocVector3(SEXPTYPE::STRSXP, 3);
-        let _nms = protect(nms);
-        crate::sexp::accessors::SET_STRING_ELT(nms, 0, mk_char_cstr(c"size"));
-        crate::sexp::accessors::SET_STRING_ELT(nms, 1, mk_char_cstr(c"nchains"));
-        crate::sexp::accessors::SET_STRING_ELT(nms, 2, mk_char_cstr(c"counts"));
-        crate::sexp::attrib_core::setAttrib(ans, crate::sexp::attrib_core::R_NamesSymbol(), nms);
-        crate::sexp::accessors::SET_VECTOR_ELT(ans, 0, Rf_ScalarInteger(size));
-        crate::sexp::accessors::SET_VECTOR_ELT(ans, 1, Rf_ScalarInteger(nchains));
-        let cv = Rf_allocVector3(SEXPTYPE::INTSXP, counts.len() as R_xlen_t);
-        let _cv = protect(cv);
-        let mut ip = owner_sexp_mut(cv);
-        for (i, c) in counts.iter().enumerate() {
-            sexp_ok(ip.try_set_integer_elt(i as R_xlen_t, *c));
-        }
-        crate::sexp::accessors::SET_VECTOR_ELT(ans, 2, cv);
-        ans
+        frame = crate::sexp::accessors::CDR(frame);
     }
+    names.reverse();
+    let (size, nchains, counts) = crate::sexp::env_hash::gnu_chain_profile(initial, &names);
+    let ans = Rf_allocVector3(SEXPTYPE::VECSXP, 3);
+    let _g = protect(ans);
+    let nms = Rf_allocVector3(SEXPTYPE::STRSXP, 3);
+    let _nms = protect(nms);
+    crate::sexp::accessors::SET_STRING_ELT(nms, 0, mk_char_cstr(c"size"));
+    crate::sexp::accessors::SET_STRING_ELT(nms, 1, mk_char_cstr(c"nchains"));
+    crate::sexp::accessors::SET_STRING_ELT(nms, 2, mk_char_cstr(c"counts"));
+    crate::sexp::attrib_core::setAttrib(ans, crate::sexp::attrib_core::R_NamesSymbol(), nms);
+    crate::sexp::accessors::SET_VECTOR_ELT(ans, 0, Rf_ScalarInteger(size));
+    crate::sexp::accessors::SET_VECTOR_ELT(ans, 1, Rf_ScalarInteger(nchains));
+    let cv = Rf_allocVector3(SEXPTYPE::INTSXP, counts.len() as R_xlen_t);
+    let _cv = protect(cv);
+    let mut ip = owner_sexp_mut(cv);
+    for (i, c) in counts.iter().enumerate() {
+        sexp_ok(ip.try_set_integer_elt(i as R_xlen_t, *c));
+    }
+    crate::sexp::accessors::SET_VECTOR_ELT(ans, 2, cv);
+    ans
 }

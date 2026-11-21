@@ -127,25 +127,19 @@ pub fn do_is(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 fn list_tag_name(cell: SEXP) -> Option<String> {
-    unsafe {
-        let tag = TAG(cell);
-        if tag.is_null() || tag == R_NilValue() || TYPEOF(tag) != SEXPTYPE::SYMSXP {
-            return None;
-        }
-        let printname = PRINTNAME(tag);
-        if printname.is_null() {
-            return None;
-        }
-        let chars = CHAR(printname);
-        if chars.is_null() {
-            return None;
-        }
-        Some(
-            std::ffi::CStr::from_ptr(chars)
-                .to_string_lossy()
-                .into_owned(),
-        )
+    let tag = TAG(cell);
+    if tag.is_null() || tag == R_NilValue() || TYPEOF(tag) != SEXPTYPE::SYMSXP {
+        return None;
     }
+    let printname = PRINTNAME(tag);
+    if printname.is_null() {
+        return None;
+    }
+    let chars = charsxp_text_of(printname);
+    if chars.is_null() {
+        return None;
+    }
+    Some(chars.as_cstr().to_string_lossy().into_owned())
 }
 
 pub(crate) fn string_vector_values(x: SEXP) -> Vec<String> {
@@ -988,28 +982,22 @@ fn s4_named_slot(obj: SEXP, name: &str) -> Option<SEXP> {
 /// first element; `None` for anything else (mirrors the R_SLOT_INIT
 /// acceptance test in upstream's R_do_slot / do_AT).
 pub(crate) fn name_of(name: SEXP) -> Option<String> {
-    unsafe {
-        if name.is_null() || name == R_NilValue() {
-            return None;
-        }
-        if TYPEOF(name) == SEXPTYPE::SYMSXP {
-            let chars = CHAR(PRINTNAME(name));
-            if chars.is_null() {
-                return Some(String::new());
-            }
-            return Some(
-                std::ffi::CStr::from_ptr(chars)
-                    .to_string_lossy()
-                    .into_owned(),
-            );
-        }
-        if TYPEOF(name) == SEXPTYPE::STRSXP && LENGTH(name) == 1 {
-            if let Ok(Some(text)) = owner_sexp(active_owner(), name).try_string_value_elt(0) {
-                return Some(text);
-            }
-        }
-        None
+    if name.is_null() || name == R_NilValue() {
+        return None;
     }
+    if TYPEOF(name) == SEXPTYPE::SYMSXP {
+        let chars = charsxp_text_of(PRINTNAME(name));
+        if chars.is_null() {
+            return Some(String::new());
+        }
+        return Some(chars.as_cstr().to_string_lossy().into_owned());
+    }
+    if TYPEOF(name) == SEXPTYPE::STRSXP && LENGTH(name) == 1 {
+        if let Ok(Some(text)) = owner_sexp(active_owner(), name).try_string_value_elt(0) {
+            return Some(text);
+        }
+    }
+    None
 }
 
 /// The class name do_AT reports for a non-S4 object: the class
@@ -1109,11 +1097,11 @@ pub fn R_do_slot(obj: SEXP, name: SEXP) -> SEXP {
         // R_SLOT_INIT: symbol or non-NA scalar string, else upstream's
         // "invalid type or length for slot name".
         let name_str = if !name.is_null() && TYPEOF(name) == SEXPTYPE::SYMSXP {
-            let chars = CHAR(PRINTNAME(name));
+            let chars = charsxp_text_of(PRINTNAME(name));
             if chars.is_null() {
                 String::new()
             } else {
-                std::ffi::CStr::from_ptr(chars)
+                chars.as_cstr()
                     .to_string_lossy()
                     .into_owned()
             }
@@ -1340,74 +1328,69 @@ pub fn do_sealClass(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R's `representation(...)` — define class representation.
 pub fn do_representation(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        // Collect named args as slot name = type pairs
-        let n_list = Rf_allocVector3(SEXPTYPE::VECSXP, 0);
-        if n_list.is_null() {
-            return R_NilValue();
-        }
-        let _p = protect(n_list);
-        // Count args
-        let mut count: R_xlen_t = 0;
-        let mut current = args;
-        while !current.is_null() && current != R_NilValue() {
-            count += 1;
-            current = CDR(current);
-        }
-        if count == 0 {
-            return n_list;
-        }
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, count);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let rp = protect(result);
-        let names = Rf_allocVector3(SEXPTYPE::STRSXP, count);
-        let np = protect(names);
-        let owner = active_owner();
-        let mut result_mut = owner
-            .sexp(result)
-            .and_then(SexpMut::try_from_checked)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        let mut names_mut = owner
-            .sexp(names)
-            .and_then(SexpMut::try_from_checked)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        let mut idx: R_xlen_t = 0;
-        current = args;
-        while !current.is_null() && current != R_NilValue() {
-            let arg = CAR(current);
-            let tag = crate::sexp::accessors::TAG(current);
-            let slot_name = if !tag.is_null() && tag != R_NilValue() {
-                let sym_str = crate::sexp::accessors::CHAR(tag);
-                if !sym_str.is_null() {
-                    std::ffi::CStr::from_ptr(sym_str)
-                        .to_str()
-                        .unwrap_or("")
-                        .to_string()
-                } else {
-                    format!("slot{}", idx + 1)
-                }
+    // Collect named args as slot name = type pairs
+    let n_list = Rf_allocVector3(SEXPTYPE::VECSXP, 0);
+    if n_list.is_null() {
+        return R_NilValue();
+    }
+    let _p = protect(n_list);
+    // Count args
+    let mut count: R_xlen_t = 0;
+    let mut current = args;
+    while !current.is_null() && current != R_NilValue() {
+        count += 1;
+        current = CDR(current);
+    }
+    if count == 0 {
+        return n_list;
+    }
+    let result = Rf_allocVector3(SEXPTYPE::VECSXP, count);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let rp = protect(result);
+    let names = Rf_allocVector3(SEXPTYPE::STRSXP, count);
+    let np = protect(names);
+    let owner = active_owner();
+    let mut result_mut = owner
+        .sexp(result)
+        .and_then(SexpMut::try_from_checked)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    let mut names_mut = owner
+        .sexp(names)
+        .and_then(SexpMut::try_from_checked)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    let mut idx: R_xlen_t = 0;
+    current = args;
+    while !current.is_null() && current != R_NilValue() {
+        let arg = CAR(current);
+        let tag = crate::sexp::accessors::TAG(current);
+        let slot_name = if !tag.is_null() && tag != R_NilValue() {
+            let sym_str = charsxp_text_of(tag);
+            if !sym_str.is_null() {
+                sym_str.as_cstr().to_str().unwrap_or("").to_string()
             } else {
                 format!("slot{}", idx + 1)
-            };
-            let arg_owned = owner
-                .sexp(arg)
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-            result_mut
-                .try_set_vector_elt(idx, arg_owned)
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-            let cstr = CString::new(slot_name.as_str()).unwrap_or_default();
-            let charsxp = mk_char_cstr(&cstr);
-            if let Ok(charsxp) = owner.sexp(charsxp) {
-                let _ = names_mut.try_set_string_elt(idx as R_xlen_t, charsxp);
             }
-            idx += 1;
-            current = CDR(current);
+        } else {
+            format!("slot{}", idx + 1)
+        };
+        let arg_owned = owner
+            .sexp(arg)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        result_mut
+            .try_set_vector_elt(idx, arg_owned)
+            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        let cstr = CString::new(slot_name.as_str()).unwrap_or_default();
+        let charsxp = mk_char_cstr(&cstr);
+        if let Ok(charsxp) = owner.sexp(charsxp) {
+            let _ = names_mut.try_set_string_elt(idx as R_xlen_t, charsxp);
         }
-        crate::sexp::attrib_core::setAttrib(result, install_str("names"), names);
-        result
+        idx += 1;
+        current = CDR(current);
     }
+    crate::sexp::attrib_core::setAttrib(result, install_str("names"), names);
+    result
 }
 
 /// R's `containsClass(class1, class2)` — check class containment.

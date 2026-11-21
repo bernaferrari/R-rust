@@ -21,9 +21,9 @@ use crate::sexp::globals::R_NilValue;
 use crate::sexp::protect::protect;
 
 use crate::mainutils::essentials::{
-    active_owner, cat_elt_to_string, charsxp_utf8_lossy, elt_to_string, integer_like_elt,
-    charsxp_cstring, find_var_in_frame, install_cstr, install_str, is_string_na, mk_char_cstr, mk_string_cstr,
-    owner_sexp,
+    active_owner, cat_elt_to_string, charsxp_cstring, charsxp_text_of, charsxp_utf8_lossy,
+    elt_to_string, find_var_in_frame, install_cstr, install_str, integer_like_elt, is_string_na,
+    mk_char_cstr, mk_string_cstr, owner_sexp,
 };
 use crate::sexp::object::{Sexp, SexpMut, SexpResult};
 
@@ -1645,31 +1645,23 @@ impl Ord for RealTableKey {
 
 fn format_table_real(v: f64) -> String {
     {
-        // SAFETY: the options/print boundary below runs inside the evaluator
-        // on the active instance; `b"digits\0"` is NUL-terminated, `warn` is a
-        // live out-parameter, and `s` is a CHARSXP retained by the session.
-        unsafe {
-            let digits_sym = install_str("digits");
-            let saved = crate::mainutils::options::GetOption1(digits_sym);
-            let _saved = protect(saved);
-            let max = Rf_ScalarInteger(15);
-            let _max = protect(max);
-            crate::mainutils::options::R_SetOption(digits_sym, max);
-            let mut warn = 0;
-            let s = crate::mainutils::printutils::StringFromReal(v, &mut warn);
-            crate::mainutils::options::R_SetOption(digits_sym, saved);
-            if s.is_null() {
-                return format!("{v}");
-            }
-            let p = CHAR(s);
-            if p.is_null() {
-                return format!("{v}");
-            }
-            std::ffi::CStr::from_ptr(p)
-                .to_str()
-                .unwrap_or("")
-                .to_string()
+        let digits_sym = install_str("digits");
+        let saved = crate::mainutils::options::GetOption1(digits_sym);
+        let _saved = protect(saved);
+        let max = Rf_ScalarInteger(15);
+        let _max = protect(max);
+        crate::mainutils::options::R_SetOption(digits_sym, max);
+        let mut warn = 0;
+        let s = crate::mainutils::printutils::StringFromReal(v, &mut warn);
+        crate::mainutils::options::R_SetOption(digits_sym, saved);
+        if s.is_null() {
+            return format!("{v}");
         }
+        let p = charsxp_text_of(s);
+        if p.is_null() {
+            return format!("{v}");
+        }
+        p.as_cstr().to_str().unwrap_or("").to_string()
     }
 }
 
@@ -2043,7 +2035,7 @@ pub fn do_as_vector(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     {
         // SAFETY: this primitive runs inside the evaluator on the active
         // original owner; no arena or payload loan crosses the acquisition.
-        let owner = unsafe { crate::sexp::owner::OwnerToken::current() }
+        let owner = crate::mainutils::essentials::current_owner()
             .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
         let _pin = owner
             .pin()

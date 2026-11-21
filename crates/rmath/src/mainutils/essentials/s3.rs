@@ -2144,8 +2144,8 @@ pub fn do_vector_constructor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
 /// R's `as.complex(x)` — coerce to CPLXSXP through the shared vector coercer.
 pub fn do_as_complex(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let owner = crate::sexp::owner::OwnerToken::current()
-            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        let owner =
+            current_owner().unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
         let pin = owner
             .pin()
             .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
@@ -2213,8 +2213,8 @@ pub fn do_as_complex(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// R's `as.raw(x)` — coerce to RAWSXP.
 pub fn do_as_raw(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let owner = crate::sexp::owner::OwnerToken::current()
-            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        let owner =
+            current_owner().unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
         let pin = owner
             .pin()
             .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));

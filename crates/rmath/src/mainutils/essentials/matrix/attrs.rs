@@ -133,7 +133,7 @@ pub fn do_names_get(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 /// as cell tags (including the head of a call as `""`).
 pub fn do_names_set(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let owner = crate::sexp::owner::OwnerToken::current()
+        let owner = current_owner()
             .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
         let _pin = owner
             .pin()

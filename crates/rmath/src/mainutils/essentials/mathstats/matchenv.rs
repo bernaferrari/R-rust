@@ -22,7 +22,7 @@ pub fn do_simplify2array(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
 pub fn do_match_arg(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let factory = crate::sexp::object::SessionNodeFactory::new(
-            crate::sexp::owner::OwnerToken::current()
+            current_owner()
                 .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
         );
         let _args_owner = factory

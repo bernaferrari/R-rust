@@ -14,8 +14,15 @@ pub(crate) use crate::sexp::symbol::install_str;
 /// original owner; argument pointers arrive rooted by the caller's graph and
 /// no arena or payload loan is held across the acquisition.
 pub(crate) fn active_owner() -> OwnerToken<'static> {
+    current_owner().unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+}
+
+/// Capture the active original owner, reporting a missing owner as an error.
+///
+/// SAFETY: same contract as [`active_owner`]; the evaluator retains the
+/// active owner across the builtin call that reaches these helpers.
+pub(crate) fn current_owner() -> crate::sexp::object::SexpResult<OwnerToken<'static>> {
     unsafe { OwnerToken::current() }
-        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
 }
 
 /// Root a raw SEXP in `owner` for checked element access.
@@ -1232,4 +1239,29 @@ pub(crate) fn compute_identical(x: SEXP, y: SEXP, flags: c_int) -> c_int {
 /// Unwrap a checked object result, raising the error as an R error.
 pub(crate) fn sexp_ok<T>(result: crate::sexp::object::SexpResult<T>) -> T {
     result.unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+}
+
+/// Owned CHARSXP text standing in for a `CHAR(x)` pointer: `None` plays the
+/// role of the null pointer `CHAR` returns for a null handle.
+pub(crate) struct CharsxpText(Option<std::ffi::CString>);
+
+impl CharsxpText {
+    /// Whether the source handle was null.
+    pub(crate) fn is_null(&self) -> bool {
+        self.0.is_none()
+    }
+
+    /// The text up to the first NUL (empty for a null handle).
+    pub(crate) fn as_cstr(&self) -> &std::ffi::CStr {
+        self.0.as_deref().unwrap_or(c"")
+    }
+}
+
+/// Owned replacement for reading `CHAR(x)` through a raw pointer.
+pub(crate) fn charsxp_text_of(x: SEXP) -> CharsxpText {
+    if x.is_null() {
+        CharsxpText(None)
+    } else {
+        CharsxpText(Some(charsxp_cstring(x)))
+    }
 }

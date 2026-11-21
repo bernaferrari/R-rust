@@ -62,10 +62,10 @@ pub fn do_simpleError(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 fn simple_constructor(args: SEXP, classes: &[&str]) -> SEXP {
     use crate::sexp::{
         object::{SexpError, SexpResult},
-        owner::{OwnerToken, with_runtime},
+        owner::with_runtime,
     };
     let result = (|| -> SexpResult<_> {
-        let owner = unsafe { OwnerToken::current()? }
+        let owner = current_owner()?
             .weak_owner()
             .ok_or(SexpError::RootUnavailable)?;
         with_runtime(&owner, |access| -> SexpResult<_> {

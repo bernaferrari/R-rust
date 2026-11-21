@@ -63,7 +63,7 @@ pub fn do_Random_seed(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 /// R's `loadRDS(file, refhook)` — load a single serialized R object.
 pub fn do_loadRDS(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let owner = crate::sexp::owner::OwnerToken::current()
+        let owner = current_owner()
             .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
         let _pin = owner
             .pin()
@@ -135,7 +135,7 @@ pub fn do_loadRDS(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 /// R's `saveRDS(object, file, ascii, ...)` — save a single R object.
 pub fn do_saveRDS(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let owner = crate::sexp::owner::OwnerToken::current()
+        let owner = current_owner()
             .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
         let _pin = owner
             .pin()

@@ -326,79 +326,67 @@ pub fn do_dist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// GNU `as.dist(m)` — lower triangle of a square matrix, or pass through `dist`.
 pub fn do_as_dist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        let class =
-            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_ClassSymbol());
-        if !class.is_null() && class != R_NilValue() && TYPEOF(class) == SEXPTYPE::STRSXP {
-            for i in 0..XLENGTH(class) {
-                let raw = CHAR(STRING_ELT(class, i));
-                if !raw.is_null() && std::ffi::CStr::from_ptr(raw).to_bytes() == b"dist" {
-                    return x;
-                }
+    let x = CAR(args);
+    let class = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_ClassSymbol());
+    if !class.is_null() && class != R_NilValue() && TYPEOF(class) == SEXPTYPE::STRSXP {
+        for i in 0..XLENGTH(class) {
+            let raw = charsxp_text_of(STRING_ELT(class, i));
+            if !raw.is_null() && raw.as_cstr().to_bytes() == b"dist" {
+                return x;
             }
         }
-        let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
-        let n = if !dim.is_null()
-            && dim != R_NilValue()
-            && TYPEOF(dim) == SEXPTYPE::INTSXP
-            && XLENGTH(dim) >= 1
-        {
-            integer_elt_checked(dim, 0) as usize
-        } else {
-            return R_NilValue();
-        };
-        if n < 2 {
-            return R_NilValue();
-        }
-        let len = n * (n - 1) / 2;
-        let result = Rf_allocVector3(SEXPTYPE::REALSXP, len as i64);
-        let _r = protect(result);
-        let mut k = 0usize;
-        for i in 0..n {
-            for j in (i + 1)..n {
-                // lower triangle m[j, i] in column-major storage
-                let v = if TYPEOF(x) == SEXPTYPE::REALSXP {
-                    real_elt_checked(x, (j + i * n) as R_xlen_t)
-                } else if TYPEOF(x) == SEXPTYPE::INTSXP {
-                    integer_elt_checked(x, (j + i * n) as R_xlen_t) as f64
-                } else {
-                    f64::NAN
-                };
-                set_real_checked(result, (k) as R_xlen_t, v);
-                k += 1;
-            }
-        }
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            install_str("Size"),
-            Rf_ScalarInteger(n as c_int),
-        );
-        let dn =
-            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimNamesSymbol());
-        if !dn.is_null() && dn != R_NilValue() && TYPEOF(dn) == SEXPTYPE::VECSXP {
-            let mut labs = R_NilValue();
-            if XLENGTH(dn) >= 1 {
-                labs = VECTOR_ELT(dn, 0);
-            }
-            if (labs.is_null() || labs == R_NilValue()) && XLENGTH(dn) >= 2 {
-                labs = VECTOR_ELT(dn, 1);
-            }
-            if !labs.is_null() && labs != R_NilValue() && TYPEOF(labs) == SEXPTYPE::STRSXP {
-                crate::sexp::attrib_core::setAttrib(
-                    result,
-                    install_str("Labels"),
-                    labs,
-                );
-            }
-        }
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            crate::sexp::attrib_core::R_ClassSymbol(),
-            mk_string_cstr(c"dist"),
-        );
-        result
     }
+    let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+    let n = if !dim.is_null()
+        && dim != R_NilValue()
+        && TYPEOF(dim) == SEXPTYPE::INTSXP
+        && XLENGTH(dim) >= 1
+    {
+        integer_elt_checked(dim, 0) as usize
+    } else {
+        return R_NilValue();
+    };
+    if n < 2 {
+        return R_NilValue();
+    }
+    let len = n * (n - 1) / 2;
+    let result = Rf_allocVector3(SEXPTYPE::REALSXP, len as i64);
+    let _r = protect(result);
+    let mut k = 0usize;
+    for i in 0..n {
+        for j in (i + 1)..n {
+            // lower triangle m[j, i] in column-major storage
+            let v = if TYPEOF(x) == SEXPTYPE::REALSXP {
+                real_elt_checked(x, (j + i * n) as R_xlen_t)
+            } else if TYPEOF(x) == SEXPTYPE::INTSXP {
+                integer_elt_checked(x, (j + i * n) as R_xlen_t) as f64
+            } else {
+                f64::NAN
+            };
+            set_real_checked(result, (k) as R_xlen_t, v);
+            k += 1;
+        }
+    }
+    crate::sexp::attrib_core::setAttrib(result, install_str("Size"), Rf_ScalarInteger(n as c_int));
+    let dn = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimNamesSymbol());
+    if !dn.is_null() && dn != R_NilValue() && TYPEOF(dn) == SEXPTYPE::VECSXP {
+        let mut labs = R_NilValue();
+        if XLENGTH(dn) >= 1 {
+            labs = VECTOR_ELT(dn, 0);
+        }
+        if (labs.is_null() || labs == R_NilValue()) && XLENGTH(dn) >= 2 {
+            labs = VECTOR_ELT(dn, 1);
+        }
+        if !labs.is_null() && labs != R_NilValue() && TYPEOF(labs) == SEXPTYPE::STRSXP {
+            crate::sexp::attrib_core::setAttrib(result, install_str("Labels"), labs);
+        }
+    }
+    crate::sexp::attrib_core::setAttrib(
+        result,
+        crate::sexp::attrib_core::R_ClassSymbol(),
+        mk_string_cstr(c"dist"),
+    );
+    result
 }
 
 /// GNU `prcomp` via eigen of the sample covariance.

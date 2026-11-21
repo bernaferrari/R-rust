@@ -232,47 +232,43 @@ fn replace_closure_part(call: SEXP, args: SEXP, part: ClosurePart) -> SEXP {
 }
 
 fn list_or_pairlist_to_formals(call: SEXP, value: SEXP) -> SEXP {
-    unsafe {
-        if value.is_null() || value == R_NilValue() {
-            return R_NilValue();
-        }
-        if TYPEOF(value) == SEXPTYPE::LISTSXP {
-            return value;
-        }
-        if TYPEOF(value) != SEXPTYPE::VECSXP {
-            crate::mainutils::errors::errorcall_str(call, "invalid formals argument");
-        }
-        let n = LENGTH(value);
-        if n == 0 {
-            return R_NilValue();
-        }
-        let names =
-            crate::sexp::attrib_core::getAttrib(value, crate::sexp::attrib_core::R_NamesSymbol());
-        let _names_guard = crate::sexp::protect::protect(names);
-        let pargs = crate::sexp::constructors::Rf_allocList(n);
-        let _pargs_guard = crate::sexp::protect::protect(pargs);
-        let mut current = pargs;
-        for i in 0..n {
-            crate::sexp::accessors::SETCAR(current, VECTOR_ELT(value, i as i64));
-            if names != R_NilValue()
-                && TYPEOF(names) == SEXPTYPE::STRSXP
-                && (i as i64) < XLENGTH(names)
-            {
-                let name_elt = STRING_ELT(names, i as i64);
-                if !name_elt.is_null() && name_elt != R_NilValue() {
-                    let c = CHAR(name_elt);
-                    if !c.is_null() && *c != 0 {
-                        crate::sexp::accessors::SETTAG(
-                            current,
-                            crate::mainutils::subset::installTrChar(name_elt),
-                        );
-                    }
+    if value.is_null() || value == R_NilValue() {
+        return R_NilValue();
+    }
+    if TYPEOF(value) == SEXPTYPE::LISTSXP {
+        return value;
+    }
+    if TYPEOF(value) != SEXPTYPE::VECSXP {
+        crate::mainutils::errors::errorcall_str(call, "invalid formals argument");
+    }
+    let n = LENGTH(value);
+    if n == 0 {
+        return R_NilValue();
+    }
+    let names =
+        crate::sexp::attrib_core::getAttrib(value, crate::sexp::attrib_core::R_NamesSymbol());
+    let _names_guard = crate::sexp::protect::protect(names);
+    let pargs = crate::sexp::constructors::Rf_allocList(n);
+    let _pargs_guard = crate::sexp::protect::protect(pargs);
+    let mut current = pargs;
+    for i in 0..n {
+        crate::sexp::accessors::SETCAR(current, VECTOR_ELT(value, i as i64));
+        if names != R_NilValue() && TYPEOF(names) == SEXPTYPE::STRSXP && (i as i64) < XLENGTH(names)
+        {
+            let name_elt = STRING_ELT(names, i as i64);
+            if !name_elt.is_null() && name_elt != R_NilValue() {
+                let c = charsxp_text_of(name_elt);
+                if !c.is_null() && !c.as_cstr().is_empty() {
+                    crate::sexp::accessors::SETTAG(
+                        current,
+                        crate::mainutils::subset::installTrChar(name_elt),
+                    );
                 }
             }
-            current = CDR(current);
         }
-        pargs
+        current = CDR(current);
     }
+    pargs
 }
 
 /// R's `body(fn)` — get the body of a function.

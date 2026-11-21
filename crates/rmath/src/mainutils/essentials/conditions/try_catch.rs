@@ -59,7 +59,7 @@ pub(crate) fn caught_error_call() -> Option<crate::sexp::object::Sexp<'static>> 
 /// RSignal/RError payloads (upstream: R_TryCatch / vwarningcall).
 pub fn do_tryCatch(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let owner = crate::sexp::owner::OwnerToken::current()
+        let owner = current_owner()
             .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
         let _operation_pin = owner
             .pin()

@@ -862,29 +862,25 @@ fn bind_call_data_exprs(call: SEXP) -> SEXP {
 }
 
 fn bind_expr_cell_is_deparse_level(expr_cell: SEXP) -> bool {
-    unsafe {
-        if expr_cell.is_null() || expr_cell == R_NilValue() {
-            return false;
-        }
-        if tag_name(expr_cell).as_deref() == Some("deparse.level") {
-            return true;
-        }
-        let expr = CAR(expr_cell);
-        if expr.is_null() || TYPEOF(expr) != SEXPTYPE::SYMSXP {
-            return false;
-        }
-        let pname = PRINTNAME(expr);
-        if pname.is_null() {
-            return false;
-        }
-        let chars = CHAR(pname);
-        if chars.is_null() {
-            return false;
-        }
-        std::ffi::CStr::from_ptr(chars)
-            .to_str()
-            .is_ok_and(|s| s == "deparse.level")
+    if expr_cell.is_null() || expr_cell == R_NilValue() {
+        return false;
     }
+    if tag_name(expr_cell).as_deref() == Some("deparse.level") {
+        return true;
+    }
+    let expr = CAR(expr_cell);
+    if expr.is_null() || TYPEOF(expr) != SEXPTYPE::SYMSXP {
+        return false;
+    }
+    let pname = PRINTNAME(expr);
+    if pname.is_null() {
+        return false;
+    }
+    let chars = charsxp_text_of(pname);
+    if chars.is_null() {
+        return false;
+    }
+    chars.as_cstr().to_str().is_ok_and(|s| s == "deparse.level")
 }
 
 fn bind_cell_is_deparse_level(eval_cell: SEXP, expr_cell: SEXP) -> bool {
@@ -924,24 +920,19 @@ fn bind_arg_label(eval_cell: SEXP, expr_cell: SEXP, deparse_level: i32) -> Strin
 }
 
 fn symbol_printname(sym: SEXP) -> String {
-    unsafe {
-        let pname = PRINTNAME(sym);
-        if pname.is_null() {
-            return String::new();
-        }
-        let chars = CHAR(pname);
-        if chars.is_null() {
-            return String::new();
-        }
-        let name = std::ffi::CStr::from_ptr(chars)
-            .to_str()
-            .unwrap_or("")
-            .to_string();
-        if name == "deparse.level" || name == "..." {
-            String::new()
-        } else {
-            name
-        }
+    let pname = PRINTNAME(sym);
+    if pname.is_null() {
+        return String::new();
+    }
+    let chars = charsxp_text_of(pname);
+    if chars.is_null() {
+        return String::new();
+    }
+    let name = chars.as_cstr().to_str().unwrap_or("").to_string();
+    if name == "deparse.level" || name == "..." {
+        String::new()
+    } else {
+        name
     }
 }
 

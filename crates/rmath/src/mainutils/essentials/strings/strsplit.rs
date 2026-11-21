@@ -134,8 +134,7 @@ pub fn do_chartr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let x_arg = CAR(CDR(CDR(args)));
         // SAFETY: this primitive entry point is dispatched with one active,
         // live original R owner and retains no arena or payload loan here.
-        let owner = { crate::sexp::owner::OwnerToken::current() }
-            .unwrap_or_else(|_| chartr_original_owner_error());
+        let owner = { current_owner() }.unwrap_or_else(|_| chartr_original_owner_error());
         if old_arg.is_null() || new_arg.is_null() {
             return R_NilValue();
         }
@@ -416,7 +415,7 @@ mod chartr_workspace_tests {
 
             // SAFETY: this ALTREP element callback runs under the original
             // chartr owner, after the nested second-session GC has returned.
-            let current = unsafe { crate::sexp::owner::OwnerToken::current()? };
+            let current = current_owner()?;
             let workspace_bytes = current.with_arena(|arena| arena.workspace_bytes())?;
             self.observed_original_workspace.set(workspace_bytes);
             Ok(AltrepElement::String(context.string("α")?))
@@ -585,14 +584,12 @@ mod chartr_workspace_tests {
             let x_tail = factory.pairlist_cell(&input, &nil, &nil).unwrap();
             let new_tail = factory.pairlist_cell(&new, &x_tail, &nil).unwrap();
             let args = factory.pairlist_cell(&old, &new_tail, &nil).unwrap();
-            let raw = unsafe {
-                do_chartr(
-                    crate::sexp::globals::R_NilValue(),
-                    crate::sexp::globals::R_NilValue(),
-                    args.as_raw(),
-                    crate::sexp::globals::R_NilValue(),
-                )
-            };
+            let raw = do_chartr(
+                crate::sexp::globals::R_NilValue(),
+                crate::sexp::globals::R_NilValue(),
+                args.as_raw(),
+                crate::sexp::globals::R_NilValue(),
+            );
             session.sexp(raw).unwrap()
         });
         assert_eq!(
@@ -722,14 +719,12 @@ mod chartr_workspace_tests {
                 let x_tail = factory.pairlist_cell(&input, &nil, &nil).unwrap();
                 let new_tail = factory.pairlist_cell(&new, &x_tail, &nil).unwrap();
                 let args = factory.pairlist_cell(&old, &new_tail, &nil).unwrap();
-                let raw = unsafe {
-                    do_chartr(
-                        crate::sexp::globals::R_NilValue(),
-                        crate::sexp::globals::R_NilValue(),
-                        args.as_raw(),
-                        crate::sexp::globals::R_NilValue(),
-                    )
-                };
+                let raw = do_chartr(
+                    crate::sexp::globals::R_NilValue(),
+                    crate::sexp::globals::R_NilValue(),
+                    args.as_raw(),
+                    crate::sexp::globals::R_NilValue(),
+                );
                 let output = session.sexp(raw).unwrap();
                 assert_eq!(
                     output.try_string_value_elt(0).unwrap().as_deref(),

@@ -5,8 +5,8 @@ use super::*;
 /// GNU `lm(y ~ x)` intercept + slope, and owning intercept-only fitting.
 pub fn do_lm(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let owner = crate::sexp::owner::OwnerToken::current()
-            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        let owner =
+            current_owner().unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
         let _pin = owner
             .pin()
             .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));

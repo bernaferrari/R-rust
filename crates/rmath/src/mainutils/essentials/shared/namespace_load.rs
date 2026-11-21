@@ -388,33 +388,31 @@ pub(crate) fn bind_methods_base_primitives(ns: SEXP) {
 /// Finish the same original namespace lifecycle for installed and portable images.
 /// No runtime/field loan remains live while a step can evaluate R code.
 pub(crate) fn finalize_methods_namespace(namespace: SEXP) {
-    unsafe {
-        let owner = crate::sexp::owner::OwnerToken::current()
+    let owner =
+        current_owner().unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    let namespace = owner
+        .sexp(namespace)
+        .and_then(crate::sexp::object::Sexp::into_owned)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    let authority = crate::sexp::owner::StoredOwner::from_value(&namespace)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    let _pin = owner
+        .pin()
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    for step in [
+        bind_methods_base_primitives as fn(SEXP),
+        purge_missing_arg_placeholders,
+        retarget_methods_generics,
+        run_methods_onload_cache_metadata,
+        retarget_envref_object_parent,
+    ] {
+        authority
+            .require_active()
             .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        let namespace = owner
-            .sexp(namespace)
-            .and_then(crate::sexp::object::Sexp::into_owned)
+        step(namespace.as_raw());
+        authority
+            .require_active()
             .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        let authority = crate::sexp::owner::StoredOwner::from_value(&namespace)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        let _pin = owner
-            .pin()
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        for step in [
-            bind_methods_base_primitives as fn(SEXP),
-            purge_missing_arg_placeholders,
-            retarget_methods_generics,
-            run_methods_onload_cache_metadata,
-            retarget_envref_object_parent,
-        ] {
-            authority
-                .require_active()
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-            step(namespace.as_raw());
-            authority
-                .require_active()
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        }
     }
 }
 
@@ -469,7 +467,8 @@ pub(crate) fn run_methods_onload_cache_metadata(where_env: SEXP) {
                 primitive,
                 c"reset",
                 R_NilValue(),
-                R_NilValue());
+                R_NilValue(),
+            );
         }
         if !captured_image {
             let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -540,9 +539,9 @@ pub(crate) fn ensure_methods_primitive_generic_for_object(op: SEXP, object: SEXP
             if generic_name.is_null() {
                 continue;
             }
-            let generic_name = crate::sexp::accessors::CHAR(generic_name);
+            let generic_name = charsxp_text_of(generic_name);
             if generic_name.is_null()
-                || std::ffi::CStr::from_ptr(generic_name).to_bytes() != name.to_bytes()
+                || generic_name.as_cstr().to_bytes() != name.to_bytes()
             {
                 continue;
             }
@@ -629,69 +628,66 @@ pub(crate) fn ensure_methods_primitive_generic_for_object(op: SEXP, object: SEXP
 /// Materialize a primitive generic from the pinned methods namespace's
 /// `.BasicFunsList` without recursively calling getGeneric during dispatch.
 pub(super) fn register_original_primitive_generic(ns: SEXP, primitive_name: &std::ffi::CStr) {
-    unsafe {
-        let owner = crate::sexp::owner::OwnerToken::current()
-            .unwrap_or_else(|error| package_error(error.to_string()));
-        let namespace = owner
-            .sexp(ns)
-            .and_then(crate::sexp::object::Sexp::into_owned)
-            .unwrap_or_else(|error| package_error(error.to_string()));
-        let authority = crate::sexp::owner::StoredOwner::from_value(&namespace)
-            .unwrap_or_else(|error| package_error(error.to_string()));
-        let _pin = owner
-            .pin()
-            .unwrap_or_else(|error| package_error(error.to_string()));
-        let table =
-            find_var_in_frame(ns, install_str(".BasicFunsList"));
-        let table = owner
-            .sexp(table)
-            .and_then(crate::sexp::object::Sexp::into_owned)
-            .unwrap_or_else(|error| package_error(error.to_string()));
-        let table_raw = if TYPEOF(table.as_raw()) == SEXPTYPE::PROMSXP {
-            force_promise(table.as_raw())
-        } else {
-            table.as_raw()
-        };
-        authority
-            .require_active()
-            .unwrap_or_else(|error| package_error(error.to_string()));
-        let table = owner
-            .sexp(table_raw)
-            .and_then(crate::sexp::object::Sexp::into_owned)
-            .unwrap_or_else(|error| package_error(error.to_string()));
-        let names = owner
-            .sexp(crate::sexp::attrib_core::getAttrib(
-                table.as_raw(),
-                crate::sexp::attrib_core::R_NamesSymbol(),
-            ))
-            .and_then(crate::sexp::object::Sexp::into_owned)
-            .unwrap_or_else(|error| package_error(error.to_string()));
-        for index in 0..table.len() {
-            if names
-                .try_string_elt(index)
-                .and_then(|name| name.try_char_eq(primitive_name.to_bytes()))
-                .unwrap_or_else(|error| package_error(error.to_string()))
-            {
-                let generic = table
-                    .try_vector_elt(index)
-                    .unwrap_or_else(|error| package_error(error.to_string()));
-                let primitive = find_var_in_frame(
-                    crate::sexp::globals::R_BaseEnv(),
-                    install_cstr(&primitive_name),
-                );
-                crate::mainutils::objects::do_set_prim_method(
-                    primitive,
-                    c"reset",
-                    generic.as_raw(),
-                    R_NilValue());
-                return;
-            }
+    let owner = current_owner().unwrap_or_else(|error| package_error(error.to_string()));
+    let namespace = owner
+        .sexp(ns)
+        .and_then(crate::sexp::object::Sexp::into_owned)
+        .unwrap_or_else(|error| package_error(error.to_string()));
+    let authority = crate::sexp::owner::StoredOwner::from_value(&namespace)
+        .unwrap_or_else(|error| package_error(error.to_string()));
+    let _pin = owner
+        .pin()
+        .unwrap_or_else(|error| package_error(error.to_string()));
+    let table = find_var_in_frame(ns, install_str(".BasicFunsList"));
+    let table = owner
+        .sexp(table)
+        .and_then(crate::sexp::object::Sexp::into_owned)
+        .unwrap_or_else(|error| package_error(error.to_string()));
+    let table_raw = if TYPEOF(table.as_raw()) == SEXPTYPE::PROMSXP {
+        force_promise(table.as_raw())
+    } else {
+        table.as_raw()
+    };
+    authority
+        .require_active()
+        .unwrap_or_else(|error| package_error(error.to_string()));
+    let table = owner
+        .sexp(table_raw)
+        .and_then(crate::sexp::object::Sexp::into_owned)
+        .unwrap_or_else(|error| package_error(error.to_string()));
+    let names = owner
+        .sexp(crate::sexp::attrib_core::getAttrib(
+            table.as_raw(),
+            crate::sexp::attrib_core::R_NamesSymbol(),
+        ))
+        .and_then(crate::sexp::object::Sexp::into_owned)
+        .unwrap_or_else(|error| package_error(error.to_string()));
+    for index in 0..table.len() {
+        if names
+            .try_string_elt(index)
+            .and_then(|name| name.try_char_eq(primitive_name.to_bytes()))
+            .unwrap_or_else(|error| package_error(error.to_string()))
+        {
+            let generic = table
+                .try_vector_elt(index)
+                .unwrap_or_else(|error| package_error(error.to_string()));
+            let primitive = find_var_in_frame(
+                crate::sexp::globals::R_BaseEnv(),
+                install_cstr(&primitive_name),
+            );
+            crate::mainutils::objects::do_set_prim_method(
+                primitive,
+                c"reset",
+                generic.as_raw(),
+                R_NilValue(),
+            );
+            return;
         }
-        package_error(format!(
-            "methods namespace has no primitive generic {}",
-            primitive_name.to_string_lossy()
-        ));
     }
+    package_error(format!(
+        "methods namespace has no primitive generic {}",
+        primitive_name.to_string_lossy()
+    ));
 }
 
 /// GNU `library()`/`attach()`: `methods:::cacheMetaData(env, TRUE)`.
@@ -731,8 +727,7 @@ fn cache_namespace_metadata(where_env: SEXP, search_where: SEXP) {
         if where_env.is_null() || search_where.is_null() {
             return;
         }
-        let owner = crate::sexp::owner::OwnerToken::current()
-            .unwrap_or_else(|error| package_error(error.to_string()));
+        let owner = current_owner().unwrap_or_else(|error| package_error(error.to_string()));
         let _pin = owner
             .pin()
             .unwrap_or_else(|error| package_error(error.to_string()));
@@ -795,8 +790,7 @@ fn cache_namespace_metadata(where_env: SEXP, search_where: SEXP) {
 /// by the ordinary stats namespace loader, retaining that namespace's identity.
 pub(super) fn register_implicit_generics_table(ns: SEXP) {
     unsafe {
-        let owner = crate::sexp::owner::OwnerToken::current()
-            .unwrap_or_else(|error| package_error(error.to_string()));
+        let owner = current_owner().unwrap_or_else(|error| package_error(error.to_string()));
         let runtime = owner
             .weak_owner()
             .unwrap_or_else(|| package_error("implicit generics require a managed runtime"));
@@ -901,7 +895,7 @@ impl Drop for MethodsMetadataSourceBody<'_> {
 
 pub(super) fn methods_metadata_source_body<'s>(fun: SEXP) -> Option<MethodsMetadataSourceBody<'s>> {
     unsafe {
-        let owner = crate::sexp::owner::OwnerToken::current().ok()?;
+        let owner = current_owner().ok()?;
         let factory = crate::sexp::object::SessionNodeFactory::new(owner);
         let function = factory.wrap(fun).ok()?;
         let original = function.try_body().ok()?;

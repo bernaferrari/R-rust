@@ -119,7 +119,7 @@ fn allocate<'s>(
 
 pub(super) fn run(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let owner = OwnerToken::current().expect("active lengths owner");
+        let owner = crate::mainutils::essentials::current_owner().expect("active lengths owner");
         let pin = owner.pin().expect("live lengths owner");
         let f = owner.node_factory();
         let args = f.wrap(args).expect("lengths argument owner");

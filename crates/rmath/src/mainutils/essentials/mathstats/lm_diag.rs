@@ -179,49 +179,45 @@ pub fn do_se_contrast(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// Checked native boundary for GNU `covratio(model, infl, res)`.
 pub fn do_covratio(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        use crate::sexp::owner::OwnerToken;
-        let owner =
-            OwnerToken::current().unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
-        let _pin = owner
-            .pin()
-            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
-        let arguments = owner
-            .sexp(args)
-            .and_then(crate::sexp::object::Sexp::into_owned)
-            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
-        let weak = owner.weak_owner().unwrap_or_else(|| {
-            crate::sexp::context::r_error("covratio requires a managed runtime")
-        });
-        let names = owner
-            .sexp(crate::sexp::attrib_core::R_NamesSymbol())
-            .and_then(crate::sexp::object::Sexp::into_owned)
-            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
-        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            crate::sexp::owner::with_runtime(&weak, |access| {
-                super::covratio::evaluate(access, arguments, names, |name| {
-                    let name = CString::new(name).map_err(|_| "invalid arithmetic symbol")?;
-                    access
-                        .with_native(|original| {
-                            let symbol = install_cstr(&name);
-                            original.require_active()?;
-                            original.sexp(symbol)?.into_owned()
-                        })
-                        .map_err(|error| error.to_string())
-                })
+    let owner = current_owner().unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+    let _pin = owner
+        .pin()
+        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+    let arguments = owner
+        .sexp(args)
+        .and_then(crate::sexp::object::Sexp::into_owned)
+        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+    let weak = owner
+        .weak_owner()
+        .unwrap_or_else(|| crate::sexp::context::r_error("covratio requires a managed runtime"));
+    let names = owner
+        .sexp(crate::sexp::attrib_core::R_NamesSymbol())
+        .and_then(crate::sexp::object::Sexp::into_owned)
+        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        crate::sexp::owner::with_runtime(&weak, |access| {
+            super::covratio::evaluate(access, arguments, names, |name| {
+                let name = CString::new(name).map_err(|_| "invalid arithmetic symbol")?;
+                access
+                    .with_native(|original| {
+                        let symbol = install_cstr(&name);
+                        original.require_active()?;
+                        original.sexp(symbol)?.into_owned()
+                    })
+                    .map_err(|error| error.to_string())
             })
-        }));
-        // Preserve live callback panics, but never authenticate a result or
-        // panic with a replacement runtime after the original was revoked.
-        owner
-            .require_active()
-            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
-        match outcome {
-            Ok(Ok(Ok(value))) => value.as_raw(),
-            Ok(Ok(Err(message))) => crate::sexp::context::r_error(message),
-            Ok(Err(error)) => crate::sexp::context::r_error(error.to_string()),
-            Err(payload) => std::panic::resume_unwind(payload),
-        }
+        })
+    }));
+    // Preserve live callback panics, but never authenticate a result or
+    // panic with a replacement runtime after the original was revoked.
+    owner
+        .require_active()
+        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+    match outcome {
+        Ok(Ok(Ok(value))) => value.as_raw(),
+        Ok(Ok(Err(message))) => crate::sexp::context::r_error(message),
+        Ok(Err(error)) => crate::sexp::context::r_error(error.to_string()),
+        Err(payload) => std::panic::resume_unwind(payload),
     }
 }
 

@@ -2,7 +2,7 @@
 use crate::mainutils::essentials::define_var;
 use crate::sexp::{
     object::{Sexp, SexpError, SexpResult},
-    owner::{OwnerToken, RuntimeAccess},
+    owner::RuntimeAccess,
 };
 use std::path::Path;
 
@@ -19,7 +19,7 @@ pub(super) fn load_file(
     environment: crate::sexp::SEXP,
 ) -> Result<Vec<String>, String> {
     // SAFETY: translated package entry owns and activates the original runtime.
-    let owner = unsafe { OwnerToken::current() }.map_err(|e| e.to_string())?;
+    let owner = crate::mainutils::essentials::current_owner().map_err(|e| e.to_string())?;
     let environment = owner
         .sexp(environment)
         .and_then(Sexp::into_owned)

@@ -108,27 +108,25 @@ fn lang_equal_ignore_srcref(a: SEXP, b: SEXP) -> bool {
 
 fn attribs_equal_ignore_source(mut a: SEXP, mut b: SEXP) -> bool {
     fn skip_src(mut p: SEXP) -> SEXP {
-        unsafe {
-            while !p.is_null() && p != R_NilValue() {
-                let tag = TAG(p);
-                let name = if !tag.is_null() && TYPEOF(tag) == SEXPTYPE::SYMSXP {
-                    let c = crate::sexp::accessors::CHAR(PRINTNAME(tag));
-                    if c.is_null() {
-                        ""
-                    } else {
-                        std::ffi::CStr::from_ptr(c).to_str().unwrap_or("")
-                    }
+        while !p.is_null() && p != R_NilValue() {
+            let tag = TAG(p);
+            let name = if !tag.is_null() && TYPEOF(tag) == SEXPTYPE::SYMSXP {
+                let c = charsxp_text_of(PRINTNAME(tag));
+                if c.is_null() {
+                    String::new()
                 } else {
-                    ""
-                };
-                if name == "srcref" || name == "srcfile" || name == "wholeSrcref" {
-                    p = CDR(p);
-                    continue;
+                    c.as_cstr().to_str().unwrap_or("").to_string()
                 }
-                break;
+            } else {
+                String::new()
+            };
+            if name == "srcref" || name == "srcfile" || name == "wholeSrcref" {
+                p = CDR(p);
+                continue;
             }
-            p
+            break;
         }
+        p
     }
     a = skip_src(a);
     b = skip_src(b);

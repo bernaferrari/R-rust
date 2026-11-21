@@ -1,6 +1,7 @@
 use super::*;
 use crate::sexp::symbol::Rf_install;
 use crate::sexp::{object::Sexp, session::RSession};
+use std::ffi::CStr;
 
 fn binding(environment: Sexp<'static>, name: &CStr) -> Sexp<'static> {
     let owner = unsafe { crate::sexp::owner::OwnerToken::current() }.unwrap();

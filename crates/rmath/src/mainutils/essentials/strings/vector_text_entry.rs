@@ -3,13 +3,13 @@ use super::vector_text_owned::{self, Operation};
 use crate::sexp::{
     ffi::{SEXP, SEXPTYPE},
     object::Sexp,
-    owner::{OwnerToken, with_runtime},
+    owner::with_runtime,
 };
 pub(super) fn evaluate(args: SEXP, rho: SEXP, operation: Operation) -> SEXP {
     fn fail(e: crate::sexp::object::SexpError) -> ! {
         crate::sexp::context::r_error(e.to_string())
     }
-    let owner = unsafe { OwnerToken::current() }.unwrap_or_else(|e| fail(e));
+    let owner = crate::mainutils::essentials::current_owner().unwrap_or_else(|e| fail(e));
     let _pin = owner.pin().unwrap_or_else(|e| fail(e));
     let own = |raw| {
         owner

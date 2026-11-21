@@ -468,141 +468,128 @@ pub fn do_scan(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R's `write.table(x, file, sep=" ", ...)` — write data to file.
 pub fn do_write_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let mut x_arg = R_NilValue();
-        let mut file_arg = R_NilValue();
-        let mut sep = " ".to_string();
-        let mut row_names = true;
-        let mut positional = 0usize;
-        let mut current = args;
-        while !current.is_null() && current != R_NilValue() {
-            let arg = CAR(current);
-            let name = tag_name(current);
-            match name.as_deref() {
-                Some("x") => x_arg = arg,
-                Some("file") => file_arg = arg,
-                Some("sep") => sep = elt_to_string(arg, 0),
-                Some("row.names") => {
-                    row_names = !(TYPEOF(arg) == SEXPTYPE::LGLSXP && logical_elt_checked(arg, 0) == 0)
-                }
-                _ => {
-                    match positional {
-                        0 => x_arg = arg,
-                        1 => file_arg = arg,
-                        2 => sep = elt_to_string(arg, 0),
-                        _ => {}
-                    }
-                    positional += 1;
-                }
+    let mut x_arg = R_NilValue();
+    let mut file_arg = R_NilValue();
+    let mut sep = " ".to_string();
+    let mut row_names = true;
+    let mut positional = 0usize;
+    let mut current = args;
+    while !current.is_null() && current != R_NilValue() {
+        let arg = CAR(current);
+        let name = tag_name(current);
+        match name.as_deref() {
+            Some("x") => x_arg = arg,
+            Some("file") => file_arg = arg,
+            Some("sep") => sep = elt_to_string(arg, 0),
+            Some("row.names") => {
+                row_names = !(TYPEOF(arg) == SEXPTYPE::LGLSXP && logical_elt_checked(arg, 0) == 0)
             }
-            current = CDR(current);
+            _ => {
+                match positional {
+                    0 => x_arg = arg,
+                    1 => file_arg = arg,
+                    2 => sep = elt_to_string(arg, 0),
+                    _ => {}
+                }
+                positional += 1;
+            }
         }
-        if x_arg.is_null()
-            || x_arg == R_NilValue()
-            || file_arg.is_null()
-            || file_arg == R_NilValue()
+        current = CDR(current);
+    }
+    if x_arg.is_null() || x_arg == R_NilValue() || file_arg.is_null() || file_arg == R_NilValue() {
+        return R_NilValue();
+    }
+    let filename = elt_to_string(file_arg, 0);
+    let sep = sep.as_str();
+    let _ = row_names;
+    let rn =
+        crate::sexp::attrib_core::getAttrib(x_arg, crate::sexp::attrib_core::R_RowNamesSymbol());
+
+    let mut output = String::new();
+    let n = XLENGTH(x_arg);
+    let t = TYPEOF(x_arg);
+
+    if t == SEXPTYPE::VECSXP {
+        // Data frame-like: write columns
+        let ncols = n;
+        let nrows = if n > 0 {
+            XLENGTH(VECTOR_ELT(x_arg, 0))
+        } else {
+            0
+        };
+        if ncols == 0 {
+            output.push_str("\"\"\n");
+        }
+        // Write header with column names
+        let names_sym = install_str("names");
+        let names = crate::sexp::attrib_core::getAttrib(x_arg, names_sym);
+        if ncols > 0
+            && !names.is_null()
+            && names != R_NilValue()
+            && TYPEOF(names) == SEXPTYPE::STRSXP
         {
-            return R_NilValue();
-        }
-        let filename = elt_to_string(file_arg, 0);
-        let sep = sep.as_str();
-        let _ = row_names;
-        let rn = crate::sexp::attrib_core::getAttrib(
-            x_arg,
-            crate::sexp::attrib_core::R_RowNamesSymbol(),
-        );
-
-        let mut output = String::new();
-        let n = XLENGTH(x_arg);
-        let t = TYPEOF(x_arg);
-
-        if t == SEXPTYPE::VECSXP {
-            // Data frame-like: write columns
-            let ncols = n;
-            let nrows = if n > 0 {
-                XLENGTH(VECTOR_ELT(x_arg, 0))
-            } else {
-                0
-            };
-            if ncols == 0 {
-                output.push_str("\"\"\n");
+            let mut header = Vec::new();
+            if row_names {
+                header.push(String::new());
             }
-            // Write header with column names
-            let names_sym = install_str("names");
-            let names = crate::sexp::attrib_core::getAttrib(x_arg, names_sym);
-            if ncols > 0
-                && !names.is_null()
-                && names != R_NilValue()
-                && TYPEOF(names) == SEXPTYPE::STRSXP
-            {
-                let mut header = Vec::new();
-                if row_names {
-                    header.push(String::new());
-                }
-                for j in 0..ncols {
-                    let charsxp = crate::sexp::accessors::STRING_ELT(names, j);
-                    if !charsxp.is_null() {
-                        let s = crate::sexp::accessors::CHAR(charsxp);
-                        if !s.is_null() {
-                            header.push(
-                                std::ffi::CStr::from_ptr(s)
-                                    .to_str()
-                                    .unwrap_or("")
-                                    .to_string(),
-                            );
-                        } else {
-                            header.push(String::new());
-                        }
+            for j in 0..ncols {
+                let charsxp = crate::sexp::accessors::STRING_ELT(names, j);
+                if !charsxp.is_null() {
+                    let s = charsxp_text_of(charsxp);
+                    if !s.is_null() {
+                        header.push(s.as_cstr().to_str().unwrap_or("").to_string());
                     } else {
                         header.push(String::new());
                     }
+                } else {
+                    header.push(String::new());
                 }
-                output.push_str(&header.join(sep));
-                output.push('\n');
             }
-            // Write rows
-            for i in 0..nrows {
-                let mut row = Vec::new();
-                if row_names {
-                    let label = if TYPEOF(rn) == SEXPTYPE::STRSXP && XLENGTH(rn) == nrows {
-                        elt_to_string(rn, i)
+            output.push_str(&header.join(sep));
+            output.push('\n');
+        }
+        // Write rows
+        for i in 0..nrows {
+            let mut row = Vec::new();
+            if row_names {
+                let label = if TYPEOF(rn) == SEXPTYPE::STRSXP && XLENGTH(rn) == nrows {
+                    elt_to_string(rn, i)
+                } else {
+                    (i + 1).to_string()
+                };
+                row.push(format!("\"{}\"", label.replace('"', "\"\"")));
+            }
+            for j in 0..ncols {
+                let col = VECTOR_ELT(x_arg, j);
+                if !col.is_null() && col != R_NilValue() {
+                    let cell = elt_to_string(col, i);
+                    if TYPEOF(col) == SEXPTYPE::STRSXP {
+                        row.push(format!("\"{}\"", cell.replace('"', "\"\"")));
                     } else {
-                        (i + 1).to_string()
-                    };
-                    row.push(format!("\"{}\"", label.replace('"', "\"\"")));
-                }
-                for j in 0..ncols {
-                    let col = VECTOR_ELT(x_arg, j);
-                    if !col.is_null() && col != R_NilValue() {
-                        let cell = elt_to_string(col, i);
-                        if TYPEOF(col) == SEXPTYPE::STRSXP {
-                            row.push(format!("\"{}\"", cell.replace('"', "\"\"")));
-                        } else {
-                            row.push(cell);
-                        }
-                    } else {
-                        row.push("NA".to_string());
+                        row.push(cell);
                     }
+                } else {
+                    row.push("NA".to_string());
                 }
-                output.push_str(&row.join(sep));
-                output.push('\n');
             }
-        } else {
-            // Atomic vector: write as single column
-            for i in 0..n {
-                output.push_str(&elt_to_string(x_arg, i));
-                output.push('\n');
-            }
+            output.push_str(&row.join(sep));
+            output.push('\n');
         }
-
-        if let Err(error) =
-            crate::mainutils::browser_files::write_text_or_host(&filename, output.as_bytes())
-        {
-            base_error(error.to_string());
+    } else {
+        // Atomic vector: write as single column
+        for i in 0..n {
+            output.push_str(&elt_to_string(x_arg, i));
+            output.push('\n');
         }
-        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-        R_NilValue()
     }
+
+    if let Err(error) =
+        crate::mainutils::browser_files::write_text_or_host(&filename, output.as_bytes())
+    {
+        base_error(error.to_string());
+    }
+    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+    R_NilValue()
 }
 
 /// R's `sink(file, append, type, split)` — redirect output to a connection.

@@ -1,8 +1,8 @@
 //! Execute conditional NAMESPACE directives with metadata-only collectors.
-use crate::sexp::{object::Sexp, owner::OwnerToken};
+use crate::sexp::object::Sexp;
 
 pub(super) fn selected_source(content: &str) -> Result<String, String> {
-    let owner = unsafe { OwnerToken::current() }.map_err(|error| error.to_string())?;
+    let owner = crate::mainutils::essentials::current_owner().map_err(|error| error.to_string())?;
     let _pin = owner.pin().map_err(|error| error.to_string())?;
     let factory = owner.node_factory();
     let environment = factory

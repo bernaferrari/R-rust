@@ -5,7 +5,7 @@ use super::*;
 pub(crate) fn read_namespace_directives(
     package_dir: &Path,
 ) -> Result<Option<NamespaceDirectives>, String> {
-    let owner = unsafe { crate::sexp::owner::OwnerToken::current() }.ok();
+    let owner = current_owner().ok();
     let _pin = owner
         .map(|owner| owner.pin())
         .transpose()
@@ -763,17 +763,15 @@ pub(crate) fn attach_package_env(package_env: SEXP) {
 }
 
 pub(super) fn attached_search_name(package_env: SEXP) -> Option<String> {
-    unsafe {
-        let name = crate::sexp::attrib_core::getAttrib(package_env, name_symbol());
-        if TYPEOF(name) != SEXPTYPE::STRSXP || LENGTH(name) < 1 {
-            return None;
-        }
-        let raw = CHAR(STRING_ELT(name, 0));
-        if raw.is_null() {
-            return None;
-        }
-        CStr::from_ptr(raw).to_str().ok().map(str::to_string)
+    let name = crate::sexp::attrib_core::getAttrib(package_env, name_symbol());
+    if TYPEOF(name) != SEXPTYPE::STRSXP || LENGTH(name) < 1 {
+        return None;
     }
+    let raw = charsxp_text_of(STRING_ELT(name, 0));
+    if raw.is_null() {
+        return None;
+    }
+    raw.as_cstr().to_str().ok().map(str::to_string)
 }
 
 /// Try to find a demo file for a topic.

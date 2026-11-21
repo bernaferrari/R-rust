@@ -453,17 +453,15 @@ pub fn do_intToUtf8(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 fn utf8_bytes_valid(s: SEXP) -> bool {
-    unsafe {
-        if s.is_null() {
-            return true;
-        }
-        let p = CHAR(s);
-        if p.is_null() {
-            return true;
-        }
-        let bytes = std::ffi::CStr::from_ptr(p).to_bytes();
-        std::str::from_utf8(bytes).is_ok()
+    if s.is_null() {
+        return true;
     }
+    let p = charsxp_text_of(s);
+    if p.is_null() {
+        return true;
+    }
+    let bytes = p.as_cstr().to_bytes();
+    std::str::from_utf8(bytes).is_ok()
 }
 
 /// GNU `validUTF8(x)`.

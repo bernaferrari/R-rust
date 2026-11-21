@@ -618,12 +618,9 @@ pub fn do_local(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// Native adapter: retain all inputs before environment conversion or R callbacks.
 pub fn do_eval(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    use crate::sexp::{
-        object::SexpError,
-        owner::{OwnerToken, with_runtime},
-    };
+    use crate::sexp::{object::SexpError, owner::with_runtime};
     let result = (|| {
-        let token = unsafe { OwnerToken::current()? };
+        let token = current_owner()?;
         let original = token.weak_owner().ok_or(SexpError::RootUnavailable)?;
         with_runtime(&original, |access| {
             // Native direct callers can have a current managed runtime without
@@ -925,52 +922,50 @@ pub fn do_substitute(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R's `quote(expr)` — return expression unevaluated.
 pub fn do_quote(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        use crate::sexp::accessors::{CAR, NAMED, SET_NAMED};
-        let mut nargs = 0;
-        let mut current = args;
-        while !current.is_null() && current != R_NilValue() {
-            nargs += 1;
-            current = CDR(current);
-        }
-        if nargs != 1 {
-            base_error(format!(
-                "{nargs} arguments passed to 'quote' which requires 1"
-            ));
-        }
-        let tag = TAG(args);
-        if !tag.is_null() && tag != R_NilValue() {
-            let name = if TYPEOF(tag) == SEXPTYPE::SYMSXP {
-                let printname = PRINTNAME(tag);
-                if printname.is_null() {
+    use crate::sexp::accessors::{CAR, NAMED, SET_NAMED};
+    let mut nargs = 0;
+    let mut current = args;
+    while !current.is_null() && current != R_NilValue() {
+        nargs += 1;
+        current = CDR(current);
+    }
+    if nargs != 1 {
+        base_error(format!(
+            "{nargs} arguments passed to 'quote' which requires 1"
+        ));
+    }
+    let tag = TAG(args);
+    if !tag.is_null() && tag != R_NilValue() {
+        let name = if TYPEOF(tag) == SEXPTYPE::SYMSXP {
+            let printname = PRINTNAME(tag);
+            if printname.is_null() {
+                String::new()
+            } else {
+                let chars = charsxp_text_of(printname);
+                if chars.is_null() {
                     String::new()
                 } else {
-                    let chars = CHAR(printname);
-                    if chars.is_null() {
-                        String::new()
-                    } else {
-                        CStr::from_ptr(chars).to_string_lossy().into_owned()
-                    }
+                    chars.as_cstr().to_string_lossy().into_owned()
                 }
-            } else {
-                String::new()
-            };
-            if name != "expr" {
-                base_error(format!(
-                    "supplied argument name '{name}' does not match 'expr'"
-                ));
             }
+        } else {
+            String::new()
+        };
+        if name != "expr" {
+            base_error(format!(
+                "supplied argument name '{name}' does not match 'expr'"
+            ));
         }
-        let val = CAR(args);
-        if val.is_null() || val == R_NilValue() {
-            return R_NilValue();
-        }
-        // ENSURE_NAMEDMAX — prevent modification of source code references
-        if NAMED(val) < 2 {
-            SET_NAMED(val, 2);
-        }
-        val
     }
+    let val = CAR(args);
+    if val.is_null() || val == R_NilValue() {
+        return R_NilValue();
+    }
+    // ENSURE_NAMEDMAX — prevent modification of source code references
+    if NAMED(val) < 2 {
+        SET_NAMED(val, 2);
+    }
+    val
 }
 
 /// R's `parse(text)` — parse R code strings into an expression vector.

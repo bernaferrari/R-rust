@@ -135,8 +135,7 @@ pub fn do_capture_output(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
         if capture_type == "message" && split {
             base_error("cannot split the message connection");
         }
-        let owner =
-            crate::sexp::owner::OwnerToken::current().unwrap_or_else(|e| base_error(e.to_string()));
+        let owner = current_owner().unwrap_or_else(|e| base_error(e.to_string()));
         let mut file_guard = crate::mainutils::connections::ConnectionCleanup::new(owner, true);
         let destination = if file_value == R_NilValue() {
             None

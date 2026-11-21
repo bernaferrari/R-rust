@@ -419,70 +419,9 @@ pub fn do_memory_profile(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEX
 /// R's `object.size(x)` — estimate object size in bytes (simplified).
 /// Returns a numeric scalar with class "object_size".
 pub fn do_object_size(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            let result = Rf_ScalarReal(0.0);
-            let class_vec = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
-            if !class_vec.is_null() {
-                let _p2 = protect(class_vec);
-                let cstr = c"object_size";
-                let charsxp = mk_char_cstr(&cstr);
-                if !charsxp.is_null() {
-                    crate::sexp::accessors::SET_STRING_ELT(class_vec, 0 as R_xlen_t, charsxp);
-                }
-                crate::sexp::attrib_core::setAttrib(
-                    result,
-                    install_str("class"),
-                    class_vec,
-                );
-            }
-            return result;
-        }
-        let t = TYPEOF(x);
-        let n = XLENGTH(x);
-        let size: f64 = match t {
-            t if t == SEXPTYPE::REALSXP => (n as usize * std::mem::size_of::<f64>()) as f64,
-            t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => {
-                (n as usize * std::mem::size_of::<i32>()) as f64
-            }
-            t if t == SEXPTYPE::STRSXP => {
-                let mut total: usize = 0;
-                for i in 0..n {
-                    let charsxp = STRING_ELT(x, i);
-                    if !charsxp.is_null() {
-                        let s = CHAR(charsxp);
-                        if !s.is_null() {
-                            let cstr = std::ffi::CStr::from_ptr(s);
-                            total += cstr.to_bytes().len() + 1;
-                        }
-                    }
-                }
-                total as f64
-            }
-            t if t == SEXPTYPE::VECSXP => {
-                let mut total: usize = std::mem::size_of::<SEXP>() * n as usize;
-                for i in 0..n {
-                    let elt = VECTOR_ELT(x, i);
-                    if !elt.is_null() {
-                        let elt_size = do_object_size(
-                            _call,
-                            _op,
-                            {
-                                // Create a temporary pairlist with elt as first arg
-                                let cell = Rf_cons(elt, R_NilValue());
-                                cell
-                            },
-                            _rho,
-                        );
-                        total += real_or_default(elt_size, 0.0) as usize;
-                    }
-                }
-                total as f64
-            }
-            _ => 64.0, // Default estimate for headers
-        };
-        let result = Rf_ScalarReal(size);
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        let result = Rf_ScalarReal(0.0);
         let class_vec = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
         if !class_vec.is_null() {
             let _p2 = protect(class_vec);
@@ -491,8 +430,67 @@ pub fn do_object_size(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             if !charsxp.is_null() {
                 crate::sexp::accessors::SET_STRING_ELT(class_vec, 0 as R_xlen_t, charsxp);
             }
-            crate::sexp::attrib_core::setAttrib(result, install_str("class"), class_vec);
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                install_str("class"),
+                class_vec,
+            );
         }
-        result
+        return result;
     }
+    let t = TYPEOF(x);
+    let n = XLENGTH(x);
+    let size: f64 = match t {
+        t if t == SEXPTYPE::REALSXP => (n as usize * std::mem::size_of::<f64>()) as f64,
+        t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => {
+            (n as usize * std::mem::size_of::<i32>()) as f64
+        }
+        t if t == SEXPTYPE::STRSXP => {
+            let mut total: usize = 0;
+            for i in 0..n {
+                let charsxp = STRING_ELT(x, i);
+                if !charsxp.is_null() {
+                    let s = charsxp_text_of(charsxp);
+                    if !s.is_null() {
+                        let cstr = s.as_cstr();
+                        total += cstr.to_bytes().len() + 1;
+                    }
+                }
+            }
+            total as f64
+        }
+        t if t == SEXPTYPE::VECSXP => {
+            let mut total: usize = std::mem::size_of::<SEXP>() * n as usize;
+            for i in 0..n {
+                let elt = VECTOR_ELT(x, i);
+                if !elt.is_null() {
+                    let elt_size = do_object_size(
+                        _call,
+                        _op,
+                        {
+                            // Create a temporary pairlist with elt as first arg
+                            let cell = Rf_cons(elt, R_NilValue());
+                            cell
+                        },
+                        _rho,
+                    );
+                    total += real_or_default(elt_size, 0.0) as usize;
+                }
+            }
+            total as f64
+        }
+        _ => 64.0, // Default estimate for headers
+    };
+    let result = Rf_ScalarReal(size);
+    let class_vec = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+    if !class_vec.is_null() {
+        let _p2 = protect(class_vec);
+        let cstr = c"object_size";
+        let charsxp = mk_char_cstr(&cstr);
+        if !charsxp.is_null() {
+            crate::sexp::accessors::SET_STRING_ELT(class_vec, 0 as R_xlen_t, charsxp);
+        }
+        crate::sexp::attrib_core::setAttrib(result, install_str("class"), class_vec);
+    }
+    result
 }

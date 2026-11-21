@@ -86,8 +86,7 @@ pub(crate) fn set_condition_handler_stack(stack: SEXP) {
 
 pub(crate) fn condition_entry_factory<'s>() -> crate::sexp::object::SessionNodeFactory<'s> {
     crate::sexp::object::SessionNodeFactory::new(
-        unsafe { crate::sexp::owner::OwnerToken::current() }
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
+        current_owner().unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
     )
 }
 

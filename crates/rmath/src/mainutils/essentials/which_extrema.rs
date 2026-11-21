@@ -3,12 +3,11 @@ use crate::mainutils::essentials::install_str;
 use crate::sexp::{
     ffi::{NA_INTEGER, SEXP, SEXPTYPE},
     object::{SessionNodeFactory, Sexp, SexpMut},
-    owner::OwnerToken,
 };
 
 pub(super) fn evaluate(call: SEXP, op: SEXP, args: SEXP, rho: SEXP, minimum: bool) -> SEXP {
     unsafe {
-        let owner = OwnerToken::current().expect("active extrema owner");
+        let owner = crate::mainutils::essentials::current_owner().expect("active extrema owner");
         let pin = owner.pin().expect("live extrema owner");
         let factory = owner.node_factory();
         let arguments = factory

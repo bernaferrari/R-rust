@@ -126,58 +126,53 @@ pub fn do_print_complex(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 }
 
 pub(crate) fn function_srcref_text(x: SEXP) -> Option<String> {
-    unsafe {
-        let sr = crate::sexp::attrib_core::getAttrib(x, install_str("srcref"));
-        if sr.is_null() || sr == R_NilValue() || TYPEOF(sr) != SEXPTYPE::INTSXP || XLENGTH(sr) < 3 {
-            return None;
-        }
-        let srcfile = crate::sexp::attrib_core::getAttrib(sr, install_str("srcfile"));
-        if srcfile.is_null() || srcfile == R_NilValue() || TYPEOF(srcfile) != SEXPTYPE::ENVSXP {
-            return None;
-        }
-        let lines = find_var_in_frame(srcfile, install_str("lines"));
-        if lines.is_null() || lines == R_NilValue() || TYPEOF(lines) != SEXPTYPE::STRSXP {
-            return None;
-        }
-        let first = integer_elt_checked(sr, 0) as i64;
-        let first_col = integer_elt_checked(sr, (1) as R_xlen_t) as i64;
-        let last = integer_elt_checked(sr, (2) as R_xlen_t) as i64;
-        let last_col = integer_elt_checked(sr, (3) as R_xlen_t) as i64;
-        if first < 1 || last < first || last > XLENGTH(lines) {
-            return None;
-        }
-        let mut out = String::new();
-        for i in (first - 1)..last {
-            let s = STRING_ELT(lines, i);
-            let mut text = if !s.is_null() && s != crate::sexp::globals::R_NaString() {
-                let p = CHAR(s);
-                if p.is_null() {
-                    String::new()
-                } else {
-                    std::ffi::CStr::from_ptr(p)
-                        .to_str()
-                        .unwrap_or("")
-                        .to_string()
-                }
-            } else {
-                String::new()
-            };
-            if i == first - 1 && first_col > 1 {
-                let start = (first_col as usize).saturating_sub(1).min(text.len());
-                text = text[start..].to_string();
-            }
-            if i == last - 1
-                && last_col > 0
-                && (last_col as usize) < text.len()
-                && !(first == last && first_col > 1)
-            {
-                text.truncate(last_col as usize);
-            }
-            out.push_str(&text);
-            out.push('\n');
-        }
-        Some(out)
+    let sr = crate::sexp::attrib_core::getAttrib(x, install_str("srcref"));
+    if sr.is_null() || sr == R_NilValue() || TYPEOF(sr) != SEXPTYPE::INTSXP || XLENGTH(sr) < 3 {
+        return None;
     }
+    let srcfile = crate::sexp::attrib_core::getAttrib(sr, install_str("srcfile"));
+    if srcfile.is_null() || srcfile == R_NilValue() || TYPEOF(srcfile) != SEXPTYPE::ENVSXP {
+        return None;
+    }
+    let lines = find_var_in_frame(srcfile, install_str("lines"));
+    if lines.is_null() || lines == R_NilValue() || TYPEOF(lines) != SEXPTYPE::STRSXP {
+        return None;
+    }
+    let first = integer_elt_checked(sr, 0) as i64;
+    let first_col = integer_elt_checked(sr, (1) as R_xlen_t) as i64;
+    let last = integer_elt_checked(sr, (2) as R_xlen_t) as i64;
+    let last_col = integer_elt_checked(sr, (3) as R_xlen_t) as i64;
+    if first < 1 || last < first || last > XLENGTH(lines) {
+        return None;
+    }
+    let mut out = String::new();
+    for i in (first - 1)..last {
+        let s = STRING_ELT(lines, i);
+        let mut text = if !s.is_null() && s != crate::sexp::globals::R_NaString() {
+            let p = charsxp_text_of(s);
+            if p.is_null() {
+                String::new()
+            } else {
+                p.as_cstr().to_str().unwrap_or("").to_string()
+            }
+        } else {
+            String::new()
+        };
+        if i == first - 1 && first_col > 1 {
+            let start = (first_col as usize).saturating_sub(1).min(text.len());
+            text = text[start..].to_string();
+        }
+        if i == last - 1
+            && last_col > 0
+            && (last_col as usize) < text.len()
+            && !(first == last && first_col > 1)
+        {
+            text.truncate(last_col as usize);
+        }
+        out.push_str(&text);
+        out.push('\n');
+    }
+    Some(out)
 }
 
 /// R's `print.function(x)` — GNU PrintClosure: deparse the closure, then
@@ -228,9 +223,9 @@ pub fn do_print_function(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
             for i in 0..XLENGTH(lines) {
                 let s = STRING_ELT(lines, i);
                 if !s.is_null() && s != crate::sexp::globals::R_NaString() {
-                    let p = CHAR(s);
+                    let p = charsxp_text_of(s);
                     if !p.is_null() {
-                        rendered.push_str(std::ffi::CStr::from_ptr(p).to_str().unwrap_or(""));
+                        rendered.push_str(p.as_cstr().to_str().unwrap_or(""));
                     }
                 }
                 rendered.push('\n');
@@ -421,47 +416,42 @@ pub fn do_print_call(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R's `print.pairlist(x)` — print pairlist.
 pub fn do_print_pairlist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            println!("NULL");
-            return R_NilValue();
-        }
-        let mut cur = x;
-        let mut i = 0;
-        while !cur.is_null() && cur != R_NilValue() && TYPEOF(cur) == SEXPTYPE::LISTSXP {
-            let tag = crate::sexp::accessors::TAG(cur);
-            let val = CAR(cur);
-            let name = if !tag.is_null() && TYPEOF(tag) == SEXPTYPE::SYMSXP {
-                let pname = crate::sexp::accessors::PRINTNAME(tag);
-                if !pname.is_null() {
-                    let s = crate::sexp::accessors::CHAR(pname);
-                    if !s.is_null() {
-                        std::ffi::CStr::from_ptr(s)
-                            .to_str()
-                            .unwrap_or("")
-                            .to_string()
-                    } else {
-                        String::new()
-                    }
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        println!("NULL");
+        return R_NilValue();
+    }
+    let mut cur = x;
+    let mut i = 0;
+    while !cur.is_null() && cur != R_NilValue() && TYPEOF(cur) == SEXPTYPE::LISTSXP {
+        let tag = crate::sexp::accessors::TAG(cur);
+        let val = CAR(cur);
+        let name = if !tag.is_null() && TYPEOF(tag) == SEXPTYPE::SYMSXP {
+            let pname = crate::sexp::accessors::PRINTNAME(tag);
+            if !pname.is_null() {
+                let s = charsxp_text_of(pname);
+                if !s.is_null() {
+                    s.as_cstr().to_str().unwrap_or("").to_string()
                 } else {
                     String::new()
                 }
             } else {
                 String::new()
-            };
-            let val_str = elt_to_string(val, 0);
-            if name.is_empty() {
-                println!("[[{}]]\n{}", i + 1, val_str);
-            } else {
-                println!("${}\n{}", name, val_str);
             }
-            cur = CDR(cur);
-            i += 1;
+        } else {
+            String::new()
+        };
+        let val_str = elt_to_string(val, 0);
+        if name.is_empty() {
+            println!("[[{}]]\n{}", i + 1, val_str);
+        } else {
+            println!("${}\n{}", name, val_str);
         }
-        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-        x
+        cur = CDR(cur);
+        i += 1;
     }
+    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+    x
 }
 
 /// R's `print.raw(x)` — print raw (byte) vector.

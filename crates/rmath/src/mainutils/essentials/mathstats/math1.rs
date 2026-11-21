@@ -4,9 +4,8 @@ use super::*;
 
 /// Checked original-owner native boundary for GNU `charToRaw(x)`.
 pub fn do_charToRaw(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    use crate::sexp::owner::OwnerToken;
-    let owner = unsafe { OwnerToken::current() }
-        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    let owner =
+        current_owner().unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
     let _pin = owner
         .pin()
         .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
@@ -43,12 +42,8 @@ mod char_to_raw;
 
 /// GNU `rawToChar(x)` copies raw bytes, stripping trailing nuls.
 pub fn do_rawToChar(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    use crate::sexp::{
-        object::Sexp,
-        owner::{OwnerToken, with_runtime},
-    };
-    let owner = unsafe { OwnerToken::current() }
-        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+    use crate::sexp::{object::Sexp, owner::with_runtime};
+    let owner = current_owner().unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
     let _pin = owner
         .pin()
         .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
@@ -553,9 +548,8 @@ fn checked_math(
     warning_call: Option<SEXP>,
     warning_op: Option<SEXP>,
 ) -> SEXP {
-    use crate::sexp::{object::Sexp, owner::OwnerToken};
-    let owner = unsafe { OwnerToken::current() }
-        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+    use crate::sexp::object::Sexp;
+    let owner = current_owner().unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
     let active = || {
         owner
             .require_active()
@@ -830,9 +824,8 @@ fn bessel_scaled_entry(
     public: bool,
     operation: choose_checked::Operation,
 ) -> SEXP {
-    use crate::sexp::{object::Sexp, owner::OwnerToken};
-    let owner = unsafe { OwnerToken::current() }
-        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+    use crate::sexp::object::Sexp;
+    let owner = current_owner().unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
     let _pin = owner
         .pin()
         .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));

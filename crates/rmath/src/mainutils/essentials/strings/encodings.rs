@@ -301,12 +301,8 @@ pub fn do_iconvlist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     iconv_entry(args, true)
 }
 fn iconv_entry(args: SEXP, inventory: bool) -> SEXP {
-    use crate::sexp::{
-        object::Sexp,
-        owner::{OwnerToken, with_runtime},
-    };
-    let owner = unsafe { OwnerToken::current() }
-        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+    use crate::sexp::{object::Sexp, owner::with_runtime};
+    let owner = current_owner().unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
     let _pin = owner
         .pin()
         .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));

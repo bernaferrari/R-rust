@@ -509,7 +509,7 @@ pub fn do_is_false(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 /// R's `anyNA(x)` — internal generic with a rooted default traversal.
 pub fn do_any_na(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let owner = crate::sexp::owner::OwnerToken::current().expect("active anyNA owner");
+        let owner = current_owner().expect("active anyNA owner");
         let pin = owner.pin().expect("live anyNA owner");
         let factory = owner.node_factory();
         let _args = factory.wrap(args).expect("anyNA argument owner");

@@ -2,7 +2,6 @@
 use crate::sexp::{
     ffi::{NA_INTEGER, SEXP, SEXPTYPE},
     object::{SessionNodeFactory, Sexp, SexpMut},
-    owner::OwnerToken,
 };
 
 #[derive(Clone, Copy)]
@@ -33,7 +32,7 @@ impl Predicate {
 /// No payload span or runtime borrow is held while a provider executes.
 pub(super) fn evaluate(call: SEXP, op: SEXP, args: SEXP, rho: SEXP, kind: Predicate) -> SEXP {
     unsafe {
-        let owner = OwnerToken::current().expect("active predicate owner");
+        let owner = crate::mainutils::essentials::current_owner().expect("active predicate owner");
         let pin = owner.pin().expect("live predicate owner");
         let factory = owner.node_factory();
         let _arguments = factory

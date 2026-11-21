@@ -2,7 +2,6 @@
 use crate::sexp::{
     ffi::{NA_INTEGER, SEXP, SEXPTYPE},
     object::Sexp,
-    owner::OwnerToken,
 };
 mod coercion;
 mod input;
@@ -13,7 +12,8 @@ fn fail(message: &str) -> ! {
 
 pub(super) fn run(call: SEXP, op: SEXP, args: SEXP, rho: SEXP, any: bool) -> SEXP {
     unsafe {
-        let owner = OwnerToken::current().expect("active Boolean summary owner");
+        let owner =
+            crate::mainutils::essentials::current_owner().expect("active Boolean summary owner");
         let pin = owner.pin().expect("live Boolean summary owner");
         let f = owner.node_factory();
         let arguments = f.wrap(args).expect("Boolean summary argument owner");

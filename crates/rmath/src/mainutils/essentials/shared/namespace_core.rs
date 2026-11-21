@@ -360,7 +360,7 @@ pub(crate) fn load_package_data_set(
         if find_package_path("datasets").is_empty()
             && (packages.is_empty() || packages.iter().any(|package| package == "datasets"))
         {
-            let owner = crate::sexp::owner::OwnerToken::current().map_err(|e| e.to_string())?;
+            let owner = current_owner().map_err(|e| e.to_string())?;
             let target = owner
                 .sexp(target_env)
                 .and_then(crate::sexp::object::Sexp::into_owned)
