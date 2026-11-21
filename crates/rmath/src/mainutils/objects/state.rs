@@ -458,53 +458,51 @@ fn gnu_class_def(name: &str) -> Option<SEXP> {
 }
 
 fn named_list_names(list: SEXP) -> Vec<String> {
-    unsafe {
-        if list.is_null() || list == crate::sexp::globals::R_NilValue() {
-            return Vec::new();
-        }
-        let names = getAttrib(list, crate::eval::attrib_core::R_NamesSymbol());
-        if names.is_null()
-            || names == crate::sexp::globals::R_NilValue()
-            || TYPEOF(names) != SEXPTYPE::STRSXP
-        {
-            return Vec::new();
-        }
-        let mut out = Vec::new();
-        for i in 0..LENGTH(names) {
-            let elt = STRING_ELT(names, i as i64);
-            if elt.is_null() {
-                continue;
-            }
-            let ptr = CHAR(elt);
-            if ptr.is_null() {
-                continue;
-            }
-            let name = std::ffi::CStr::from_ptr(ptr).to_string_lossy().into_owned();
-            if !name.is_empty() {
-                out.push(name);
-            }
-        }
-        out
+    if list.is_null() || list == crate::sexp::globals::R_NilValue() {
+        return Vec::new();
     }
+    let names = getAttrib(list, crate::sexp::attrib_core::R_NamesSymbol());
+    if names.is_null()
+        || names == crate::sexp::globals::R_NilValue()
+        || TYPEOF(names) != SEXPTYPE::STRSXP
+    {
+        return Vec::new();
+    }
+    let mut out = Vec::new();
+    for i in 0..LENGTH(names) {
+        let elt = STRING_ELT(names, i as i64);
+        if elt.is_null() {
+            continue;
+        }
+        let ptr = char_cstring(elt);
+        if ptr.is_none() {
+            continue;
+        }
+        let name = ptr
+            .as_deref()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .into_owned();
+        if !name.is_empty() {
+            out.push(name);
+        }
+    }
+    out
 }
 
 fn gnu_class_contains(name: &str) -> Option<Vec<String>> {
-    unsafe {
-        let def = gnu_class_def(name)?;
-        let contains_sym = Rf_install(c"contains".as_ptr());
-        Some(named_list_names(getAttrib(def, contains_sym)))
-    }
+    let def = gnu_class_def(name)?;
+    let contains_sym = crate::sexp::symbol::install_str("contains");
+    Some(named_list_names(getAttrib(def, contains_sym)))
 }
 
 /// GNU `classRepresentation@slots` names via attributes (not `R_do_slot`,
 /// which panics/recurses when the metadata object is incomplete).
 pub(crate) fn gnu_s4_slot_names(name: &str) -> Option<Vec<String>> {
-    unsafe {
-        let def = gnu_class_def(name)?;
-        let slots_sym = Rf_install(c"slots".as_ptr());
-        let names = named_list_names(getAttrib(def, slots_sym));
-        if names.is_empty() { None } else { Some(names) }
-    }
+    let def = gnu_class_def(name)?;
+    let slots_sym = crate::sexp::symbol::install_str("slots");
+    let names = named_list_names(getAttrib(def, slots_sym));
+    if names.is_empty() { None } else { Some(names) }
 }
 
 fn s4_extends_registered(

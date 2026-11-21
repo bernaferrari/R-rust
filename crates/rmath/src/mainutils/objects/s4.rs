@@ -13,30 +13,33 @@ use super::*;
 // ---------------------------------------------------------------------------
 
 pub(crate) fn sexp_to_string(x: SEXP) -> Option<String> {
-    unsafe {
-        if x.is_null() || x == R_NilValue() {
-            return None;
-        }
-        let chars = match TYPEOF(x) {
-            t if t == SEXPTYPE::STRSXP => {
-                if LENGTH(x) < 1 {
-                    return None;
-                }
-                STRING_ELT(x, 0)
-            }
-            t if t == SEXPTYPE::CHARSXP => x,
-            t if t == SEXPTYPE::SYMSXP => asChar(x),
-            _ => return None,
-        };
-        if chars.is_null() {
-            return None;
-        }
-        let ptr = CHAR(chars);
-        if ptr.is_null() {
-            return None;
-        }
-        Some(std::ffi::CStr::from_ptr(ptr).to_string_lossy().into_owned())
+    if x.is_null() || x == R_NilValue() {
+        return None;
     }
+    let chars = match TYPEOF(x) {
+        t if t == SEXPTYPE::STRSXP => {
+            if LENGTH(x) < 1 {
+                return None;
+            }
+            STRING_ELT(x, 0)
+        }
+        t if t == SEXPTYPE::CHARSXP => x,
+        t if t == SEXPTYPE::SYMSXP => asChar(x),
+        _ => return None,
+    };
+    if chars.is_null() {
+        return None;
+    }
+    let ptr = char_cstring(chars);
+    if ptr.is_none() {
+        return None;
+    }
+    Some(
+        ptr.as_deref()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .into_owned(),
+    )
 }
 
 /// Resolve the original methods class with owning roots through evaluation.
@@ -61,7 +64,7 @@ pub(crate) fn make_class_by_name(name: &str) -> crate::sexp::object::Sexp<'stati
             .require_active()
             .unwrap_or_else(|failure| error(&failure.to_string()));
         let function = factory
-            .wrap(Rf_install(c"getClass".as_ptr()))
+            .wrap(crate::sexp::symbol::install_str("getClass"))
             .unwrap_or_else(|failure| error(&failure.to_string()));
         let name = factory
             .strings(&[name])
@@ -92,48 +95,46 @@ pub(crate) fn make_class_by_name(name: &str) -> crate::sexp::object::Sexp<'stati
 }
 
 pub fn R_do_new_object(class_def: SEXP) -> SEXP {
-    unsafe {
-        if class_def.is_null() {
-            error("C level NEW macro called with null class definition pointer");
-        }
-
-        // GNU objects.c reads the classRepresentation slots even for an
-        // invalid R value. R NULL is distinct from a null native pointer.
-        let virtual_sym = crate::sexp::symbol::Rf_install(c"virtual".as_ptr());
-        let prototype_sym = crate::sexp::symbol::Rf_install(c"prototype".as_ptr());
-        let class_name_sym = crate::sexp::symbol::Rf_install(c"className".as_ptr());
-        let virtual_flag = crate::mainutils::essentials::R_do_slot(class_def, virtual_sym);
-        if crate::mainutils::coerce::asLogical(virtual_flag) != 0 {
-            let name = crate::mainutils::essentials::R_do_slot(class_def, class_name_sym);
-            let shown = sexp_to_string(name).unwrap_or_else(|| "<unknown>".to_string());
-            error(&format!(
-                "trying to generate an object from a virtual class (\"{shown}\")"
-            ));
-        }
-        let class_name = crate::mainutils::essentials::R_do_slot(class_def, class_name_sym);
-        let _class_name_guard = protect(class_name);
-        let prototype = crate::mainutils::essentials::R_do_slot(class_def, prototype_sym);
-
-        let value = crate::mainutils::duplicate::duplicate(prototype);
-        let _value_guard = protect(value);
-        let x_data = TYPEOF(value) == SEXPTYPE::ENVSXP
-            || TYPEOF(value) == SEXPTYPE::SYMSXP
-            || TYPEOF(value) == SEXPTYPE::EXTPTRSXP;
-        let package_sym = crate::sexp::symbol::Rf_install(c"package".as_ptr());
-        let has_package = {
-            let pkg = crate::sexp::attrib_core::getAttrib(class_name, package_sym);
-            !pkg.is_null() && pkg != R_NilValue()
-        };
-        if (TYPEOF(value) == SEXPTYPE::S4SXP || has_package) && !x_data {
-            crate::sexp::attrib_core::setAttrib(
-                value,
-                crate::sexp::attrib_core::R_ClassSymbol(),
-                class_name,
-            );
-            SET_S4_OBJECT(value);
-        }
-        value
+    if class_def.is_null() {
+        error("C level NEW macro called with null class definition pointer");
     }
+
+    // GNU objects.c reads the classRepresentation slots even for an
+    // invalid R value. R NULL is distinct from a null native pointer.
+    let virtual_sym = crate::sexp::symbol::install_str("virtual");
+    let prototype_sym = crate::sexp::symbol::install_str("prototype");
+    let class_name_sym = crate::sexp::symbol::install_str("className");
+    let virtual_flag = crate::mainutils::essentials::R_do_slot(class_def, virtual_sym);
+    if crate::mainutils::coerce::asLogical(virtual_flag) != 0 {
+        let name = crate::mainutils::essentials::R_do_slot(class_def, class_name_sym);
+        let shown = sexp_to_string(name).unwrap_or_else(|| "<unknown>".to_string());
+        error(&format!(
+            "trying to generate an object from a virtual class (\"{shown}\")"
+        ));
+    }
+    let class_name = crate::mainutils::essentials::R_do_slot(class_def, class_name_sym);
+    let _class_name_guard = protect(class_name);
+    let prototype = crate::mainutils::essentials::R_do_slot(class_def, prototype_sym);
+
+    let value = crate::mainutils::duplicate::duplicate(prototype);
+    let _value_guard = protect(value);
+    let x_data = TYPEOF(value) == SEXPTYPE::ENVSXP
+        || TYPEOF(value) == SEXPTYPE::SYMSXP
+        || TYPEOF(value) == SEXPTYPE::EXTPTRSXP;
+    let package_sym = crate::sexp::symbol::install_str("package");
+    let has_package = {
+        let pkg = crate::sexp::attrib_core::getAttrib(class_name, package_sym);
+        !pkg.is_null() && pkg != R_NilValue()
+    };
+    if (TYPEOF(value) == SEXPTYPE::S4SXP || has_package) && !x_data {
+        crate::sexp::attrib_core::setAttrib(
+            value,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            class_name,
+        );
+        SET_S4_OBJECT(value);
+    }
+    value
 }
 
 // ---------------------------------------------------------------------------
@@ -141,27 +142,25 @@ pub fn R_do_new_object(class_def: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 pub fn R_seemsOldStyleS4Object(object: SEXP) -> c_int {
-    unsafe {
-        if object.is_null() {
-            return FALSE;
-        }
-        if isObject(object) == FALSE || IS_S4_OBJECT(object) != FALSE {
-            return FALSE;
-        }
-        let klass = getAttrib(object, R_ClassSymbol());
-        if klass.is_null() || klass == R_NilValue() {
-            return FALSE;
-        }
-        if LENGTH(klass) != 1 {
-            return FALSE;
-        }
-        let pkg_sym = sym("package");
-        let pkg = getAttrib(klass, pkg_sym);
-        if pkg.is_null() || pkg == R_NilValue() {
-            return FALSE;
-        }
-        TRUE
+    if object.is_null() {
+        return FALSE;
     }
+    if isObject(object) == FALSE || IS_S4_OBJECT(object) != FALSE {
+        return FALSE;
+    }
+    let klass = getAttrib(object, R_ClassSymbol());
+    if klass.is_null() || klass == R_NilValue() {
+        return FALSE;
+    }
+    if LENGTH(klass) != 1 {
+        return FALSE;
+    }
+    let pkg_sym = sym("package");
+    let pkg = getAttrib(klass, pkg_sym);
+    if pkg.is_null() || pkg == R_NilValue() {
+        return FALSE;
+    }
+    TRUE
 }
 
 pub fn isS4(s: SEXP) -> c_int {
@@ -223,9 +222,12 @@ pub fn asS4(s: SEXP, flag: c_int, complete: c_int) -> SEXP {
                         .wrap(klass)
                         .expect("asS4 class belongs to original owner");
                     let class_str = if !klass.is_null() && LENGTH(klass) > 0 {
-                        let cs = CHAR(STRING_ELT(klass, 0));
-                        if !cs.is_null() {
-                            std::ffi::CStr::from_ptr(cs).to_string_lossy().into_owned()
+                        let cs = char_cstring(STRING_ELT(klass, 0));
+                        if !cs.is_none() {
+                            cs.as_deref()
+                                .unwrap_or_default()
+                                .to_string_lossy()
+                                .into_owned()
                         } else {
                             "unknown".to_string()
                         }

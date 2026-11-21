@@ -127,9 +127,7 @@ pub(crate) fn simple_next_method_dispatch(
             && TYPEOF(klass) == SEXPTYPE::STRSXP
             && TYPEOF(method) == SEXPTYPE::STRSXP
         {
-            let generic_name = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(generic, 0)))
-                .to_string_lossy()
-                .into_owned();
+            let generic_name = char_lossy(STRING_ELT(generic, 0));
             let mut current_method = String::new();
             for i in 0..LENGTH(method) {
                 let chars = CHAR(STRING_ELT(method, i as R_xlen_t));
@@ -143,11 +141,11 @@ pub(crate) fn simple_next_method_dispatch(
 
             let mut start = 0;
             for i in 0..LENGTH(klass) {
-                let class_chars = CHAR(STRING_ELT(klass, i as R_xlen_t));
-                if class_chars.is_null() {
+                let class_chars = char_cstring(STRING_ELT(klass, i as R_xlen_t));
+                if class_chars.is_none() {
                     continue;
                 }
-                let class_name = std::ffi::CStr::from_ptr(class_chars).to_string_lossy();
+                let class_name = class_chars.as_deref().unwrap_or_default().to_string_lossy();
                 if current_method == format!("{generic_name}.{class_name}") {
                     start = i + 1;
                     break;
@@ -155,11 +153,11 @@ pub(crate) fn simple_next_method_dispatch(
             }
 
             for i in start..LENGTH(klass) {
-                let class_chars = CHAR(STRING_ELT(klass, i as R_xlen_t));
-                if class_chars.is_null() {
+                let class_chars = char_cstring(STRING_ELT(klass, i as R_xlen_t));
+                if class_chars.is_none() {
                     continue;
                 }
-                let class_name = std::ffi::CStr::from_ptr(class_chars).to_string_lossy();
+                let class_name = class_chars.as_deref().unwrap_or_default().to_string_lossy();
                 let Some(next_match) =
                     lookup_s3_method_for_class(&generic_name, &class_name, env, callenv, defenv)
                 else {
@@ -174,7 +172,7 @@ pub(crate) fn simple_next_method_dispatch(
                 let _next_class_guard = protect(next_class);
                 let method_name = Rf_ScalarString(PRINTNAME(next_match.method_symbol));
                 let _method_name_guard = protect(method_name);
-                let blank_group = Rf_mkString(b"\0".as_ptr() as *const c_char);
+                let blank_group = mk_string("");
                 let _blank_group_guard = protect(blank_group);
                 let next_vars = createS3Vars(
                     generic,
@@ -340,7 +338,7 @@ pub fn R_LookupMethod(method: SEXP, rho: SEXP, callrho: SEXP, defrho: SEXP) -> S
         }
         let base_ns = crate::sexp::envir::R_findVarInFrame(
             R_BaseEnv(),
-            Rf_install(c".BaseNamespaceEnv".as_ptr()),
+            crate::sexp::symbol::install_str(".BaseNamespaceEnv"),
         );
         if !base_ns.is_null()
             && base_ns != R_UnboundValue()
@@ -436,7 +434,7 @@ pub(crate) fn lookup_s3_method_symbol(
         if !method_symbol.is_null() {
             let pname = PRINTNAME(method_symbol);
             if !pname.is_null() {
-                let name = std::ffi::CStr::from_ptr(CHAR(pname)).to_string_lossy();
+                let name = char_lossy(pname);
                 let allow = name.ends_with(".default") || !name.starts_with("seq.");
 
                 if allow {
@@ -480,23 +478,21 @@ pub(crate) fn lookup_s3_method_for_class(
 /// GNU `usemethod` skips `sort.list` from the base namespace: it is a
 /// permutation helper, not an S3 method of `sort`.
 fn is_base_sort_list_kludge(method_symbol: SEXP, sxp: SEXP) -> bool {
-    unsafe {
-        if method_symbol.is_null() || sxp.is_null() {
-            return false;
+    if method_symbol.is_null() || sxp.is_null() {
+        return false;
+    }
+    if method_symbol != crate::sexp::symbol::install_str("sort.list") {
+        return false;
+    }
+    match TYPEOF(sxp) {
+        t if t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP => true,
+        t if t == SEXPTYPE::CLOSXP => {
+            let env = CLOENV(sxp);
+            env == R_BaseEnv()
+                || crate::mainutils::essentials::cached_namespace_by_name("base")
+                    .is_some_and(|ns| env == ns)
         }
-        if method_symbol != Rf_install(c"sort.list".as_ptr()) {
-            return false;
-        }
-        match TYPEOF(sxp) {
-            t if t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP => true,
-            t if t == SEXPTYPE::CLOSXP => {
-                let env = CLOENV(sxp);
-                env == R_BaseEnv()
-                    || crate::mainutils::essentials::cached_namespace_by_name("base")
-                        .is_some_and(|ns| env == ns)
-            }
-            _ => false,
-        }
+        _ => false,
     }
 }
 

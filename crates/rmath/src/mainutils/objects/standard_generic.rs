@@ -177,13 +177,10 @@ pub fn do_standardGeneric(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP 
 
         let fdef = get_this_generic(args);
         if fdef.is_null() || fdef == R_NilValue() {
-            let generic = CHAR(STRING_ELT(arg, 0));
-            let generic = if generic.is_null() {
-                "<unknown>"
-            } else {
-                std::ffi::CStr::from_ptr(generic)
-                    .to_str()
-                    .unwrap_or("<unknown>")
+            let generic = char_cstring(STRING_ELT(arg, 0));
+            let generic = match generic.as_deref() {
+                None => "<unknown>",
+                Some(text) => text.to_str().unwrap_or("<unknown>"),
             };
             error(&format!(
                 "call to standardGeneric(\"{}\") apparently not from the body of that generic function",
@@ -211,11 +208,14 @@ pub fn do_standardGeneric(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP 
             let is_generic_fdef =
                 (gen_attr != R_NilValue() && !gen_attr.is_null()) || env_marker != R_UnboundValue();
             if is_generic_fdef {
-                let raw = CHAR(STRING_ELT(arg, 0));
-                let name_str = if raw.is_null() {
+                let raw = char_cstring(STRING_ELT(arg, 0));
+                let name_str = if raw.is_none() {
                     "<unknown>"
                 } else {
-                    CStr::from_ptr(raw).to_str().unwrap_or("<unknown>")
+                    raw.as_deref()
+                        .unwrap_or_default()
+                        .to_str()
+                        .unwrap_or("<unknown>")
                 };
                 error(&format!(
                     "no direct or inherited method for function '{}' for this call",

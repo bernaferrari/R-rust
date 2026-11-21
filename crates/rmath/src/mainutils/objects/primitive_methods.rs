@@ -172,7 +172,7 @@ pub fn R_set_prim_method(
         if isPrimitive(op) == FALSE {
             let internal = crate::mainutils::essentials::R_do_slot(
                 op,
-                crate::sexp::symbol::Rf_install(c"internal".as_ptr()),
+                crate::sexp::symbol::install_str("internal"),
             );
             let mut name = if TYPEOF(internal) == SEXPTYPE::STRSXP && XLENGTH(internal) > 0 {
                 crate::sexp::symbol::Rf_install(CHAR(STRING_ELT(internal, 0)))
@@ -276,7 +276,7 @@ pub fn R_deferred_default_method() -> SEXP {
             return Ok(marker.as_raw());
         }
         let marker = access.with_native(|owner| {
-            let raw = unsafe { Rf_install(c"__Deferred_Default_Marker__".as_ptr()) };
+            let raw = crate::sexp::symbol::install_str("__Deferred_Default_Marker__");
             owner.sexp(raw)?.into_owned()
         })?;
         let marker = {
@@ -439,7 +439,7 @@ fn possible_dispatch_in(
                     let suppliedvars = crate::sexp::memory_ext::allocList(1);
                     let _suppliedvars_guard = protect(suppliedvars);
                     SETCAR(suppliedvars, Rf_mkString(prim_name_ptr));
-                    SETTAG(suppliedvars, Rf_install(c".Generic".as_ptr()));
+                    SETTAG(suppliedvars, crate::sexp::symbol::install_str(".Generic"));
                     require_objects(access.require_active());
 
                     if promisedArgs == FALSE {
@@ -573,8 +573,11 @@ fn get_primitive_methods(
         let name =
             std::ffi::CStr::from_ptr(crate::mainutils::relop::PRIMNAME(op)).to_string_lossy();
         let name_value = allocator.strings(&[&name])?;
-        let get_generic = access
-            .with_native(|owner| owner.sexp(Rf_install(c"getGeneric".as_ptr()))?.into_owned())?;
+        let get_generic = access.with_native(|owner| {
+            owner
+                .sexp(crate::sexp::symbol::install_str("getGeneric"))?
+                .into_owned()
+        })?;
         let arguments = allocator.pairlist_cell(&name_value, &domain.nil(), &domain.nil())?;
         let expression = allocator.call(&get_generic, &arguments)?;
         let generic = evaluate_s4_value(access, &expression, &environment)?;

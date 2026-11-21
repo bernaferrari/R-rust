@@ -361,10 +361,7 @@ pub fn do_nextmethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         if generic == R_NilValue() || generic.is_null() || generic == R_UnboundValue() {
             let called = CAR((*found_cptr).call.as_raw());
             if TYPEOF(called) == SEXPTYPE::SYMSXP {
-                let name = std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(
-                    crate::sexp::accessors::PRINTNAME(called),
-                ))
-                .to_string_lossy();
+                let name = char_lossy(crate::sexp::accessors::PRINTNAME(called));
                 let bare = name
                     .rsplit_once('.')
                     .map(|(head, _)| head)

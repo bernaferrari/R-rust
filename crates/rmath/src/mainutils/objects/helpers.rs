@@ -195,23 +195,22 @@ fn PRVALUE(x: SEXP) -> SEXP {
 
 /// Check if two CHARSXP values are equal (Seql).
 pub(crate) fn Seql(a: SEXP, b: SEXP) -> c_int {
-    unsafe {
-        if a == b {
-            return TRUE;
-        }
-        if a.is_null() || b.is_null() {
-            return FALSE;
-        }
-        let ca = CHAR(a);
-        let cb = CHAR(b);
-        if ca.is_null() || cb.is_null() {
-            return FALSE;
-        }
-        if std::ffi::CStr::from_ptr(ca).to_bytes() == std::ffi::CStr::from_ptr(cb).to_bytes() {
-            TRUE
-        } else {
-            FALSE
-        }
+    if a == b {
+        return TRUE;
+    }
+    if a.is_null() || b.is_null() {
+        return FALSE;
+    }
+    let ca = char_cstring(a);
+    let cb = char_cstring(b);
+    if ca.is_none() || cb.is_none() {
+        return FALSE;
+    }
+    if ca.as_deref().unwrap_or_default().to_bytes() == cb.as_deref().unwrap_or_default().to_bytes()
+    {
+        TRUE
+    } else {
+        FALSE
     }
 }
 
@@ -231,9 +230,9 @@ pub(crate) fn stringPositionTr(klass: SEXP, what: *const c_char) -> c_int {
         for i in 0..n {
             let elt = STRING_ELT(klass, i as R_xlen_t);
             if !elt.is_null() {
-                let cs = CHAR(elt);
-                if !cs.is_null()
-                    && std::ffi::CStr::from_ptr(cs).to_bytes()
+                let cs = char_cstring(elt);
+                if !cs.is_none()
+                    && cs.as_deref().unwrap_or_default().to_bytes()
                         == std::ffi::CStr::from_ptr(what).to_bytes()
                 {
                     return i;
@@ -283,19 +282,17 @@ fn translateChar(x: SEXP) -> *const c_char {
 /// For S4 objects, uses extends() to compute the full class vector.
 /// For S3 objects, falls back to R_data_class.
 pub(crate) fn R_data_class2(x: SEXP) -> SEXP {
-    unsafe {
-        if x.is_null() || x == R_NilValue() {
-            return Rf_mkString(c"NULL".as_ptr());
-        }
-        let class_val = getAttrib(x, R_ClassSymbol());
-        if !class_val.is_null() && class_val != R_NilValue() && XLENGTH(class_val) > 0 {
-            if crate::mainutils::coerce::IS_S4_OBJECT(x) != FALSE {
-                return S4_extends(class_val, true);
-            }
-            return class_val;
-        }
-        implicit_s3_class(x)
+    if x.is_null() || x == R_NilValue() {
+        return mk_string("NULL");
     }
+    let class_val = getAttrib(x, R_ClassSymbol());
+    if !class_val.is_null() && class_val != R_NilValue() && XLENGTH(class_val) > 0 {
+        if crate::mainutils::coerce::IS_S4_OBJECT(x) != FALSE {
+            return S4_extends(class_val, true);
+        }
+        return class_val;
+    }
+    implicit_s3_class(x)
 }
 
 fn ensure_s4_extends_table() -> crate::sexp::object::Sexp<'static> {
@@ -389,9 +386,7 @@ fn S4_extends_in(
         if class_chars.is_null() {
             return klass;
         }
-        let class = std::ffi::CStr::from_ptr(CHAR(class_chars))
-            .to_string_lossy()
-            .into_owned();
+        let class = char_lossy(class_chars);
         if class.is_empty() {
             return klass;
         }
@@ -410,8 +405,10 @@ fn S4_extends_in(
             return klass;
         };
         let _namespace_owner = require_objects(access.domain().wrap(ns));
-        let mut fun =
-            crate::sexp::envir::R_findVarInFrame(ns, Rf_install(c".extendsForS3".as_ptr()));
+        let mut fun = crate::sexp::envir::R_findVarInFrame(
+            ns,
+            crate::sexp::symbol::install_str(".extendsForS3"),
+        );
         require_objects(access.require_active());
         if fun.is_null() || fun == R_UnboundValue() {
             return S4_extends_from_contains(klass, &class);
@@ -479,7 +476,7 @@ fn S4_extends_from_contains(klass: SEXP, class: &str) -> SEXP {
 /// GNU `Type2DefaultClass` implicit S3 classes for unclassed objects.
 fn implicit_s3_class(x: SEXP) -> SEXP {
     unsafe {
-        let dim = getAttrib(x, crate::eval::attrib_core::R_DimSymbol());
+        let dim = getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
         let nd = if dim.is_null() || dim == R_NilValue() {
             0
         } else {
@@ -559,7 +556,7 @@ pub(crate) fn topenv(what: SEXP, env: SEXP) -> SEXP {
             }
             let pkg = crate::sexp::envir::R_findVarInFrame(
                 rho,
-                crate::sexp::symbol::Rf_install(c".packageName".as_ptr()),
+                crate::sexp::symbol::install_str(".packageName"),
             );
             if pkg != R_UnboundValue() {
                 return rho;

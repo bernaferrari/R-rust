@@ -14,33 +14,31 @@ use super::*;
 
 /// R's unclass() primitive. Removes the class attribute from an object.
 pub(crate) fn objects_do_unclass(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
-        if args.is_null() || args == R_NilValue() {
-            return R_NilValue();
-        }
-        let x = CAR(args);
-        if x.is_null() {
-            return R_NilValue();
-        }
-
-        if isObject(x) != FALSE {
-            let t = TYPEOF(x);
-            if t == SEXPTYPE::ENVSXP {
-                std::panic::panic_any(crate::sexp::context::RError {
-                    message: "cannot unclass an environment".to_string(),
-                });
-            }
-            if t == SEXPTYPE::EXTPTRSXP {
-                std::panic::panic_any(crate::sexp::context::RError {
-                    message: "cannot unclass an external pointer".to_string(),
-                });
-            }
-            // If potentially shared, duplicate
-            // For simplicity, we skip the MAYBE_REFERENCED check
-            setAttrib(x, R_ClassSymbol(), R_NilValue());
-        }
-        x
+    if args.is_null() || args == R_NilValue() {
+        return R_NilValue();
     }
+    let x = CAR(args);
+    if x.is_null() {
+        return R_NilValue();
+    }
+
+    if isObject(x) != FALSE {
+        let t = TYPEOF(x);
+        if t == SEXPTYPE::ENVSXP {
+            std::panic::panic_any(crate::sexp::context::RError {
+                message: "cannot unclass an environment".to_string(),
+            });
+        }
+        if t == SEXPTYPE::EXTPTRSXP {
+            std::panic::panic_any(crate::sexp::context::RError {
+                message: "cannot unclass an external pointer".to_string(),
+            });
+        }
+        // If potentially shared, duplicate
+        // For simplicity, we skip the MAYBE_REFERENCED check
+        setAttrib(x, R_ClassSymbol(), R_NilValue());
+    }
+    x
 }
 
 // ---------------------------------------------------------------------------
@@ -64,9 +62,9 @@ pub fn inherits2(x: SEXP, what: *const c_char) -> c_int {
             let _klass_guard = protect(klass);
             let nclass = length(klass);
             for i in 0..nclass {
-                let cs = CHAR(STRING_ELT(klass, i as R_xlen_t));
-                if !cs.is_null()
-                    && std::ffi::CStr::from_ptr(cs).to_bytes()
+                let cs = char_cstring(STRING_ELT(klass, i as R_xlen_t));
+                if !cs.is_none()
+                    && cs.as_deref().unwrap_or_default().to_bytes()
                         == std::ffi::CStr::from_ptr(what).to_bytes()
                 {
                     return TRUE;
@@ -111,7 +109,7 @@ pub(crate) fn inherits3(x: SEXP, what: SEXP, which: SEXP) -> SEXP {
 
         let nwhat = LENGTH(what);
         let isvec = if isLogical(which) != FALSE && LENGTH(which) == 1 {
-            !LOGICAL(which).is_null() && *LOGICAL(which) == TRUE
+            !LOGICAL(which).is_null() && LOGICAL_ELT(which, 0) == TRUE
         } else {
             false
         };
@@ -221,16 +219,14 @@ pub fn do_inherits(_call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 /// R's class() function. Returns the class attribute of an object.
 /// Note: canonical version lives in print.rs
 pub(crate) fn do_class_objects(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
-        if args.is_null() {
-            return R_NilValue();
-        }
-        let x = CAR(args);
-        if x.is_null() {
-            return R_NilValue();
-        }
-        R_data_class(x)
+    if args.is_null() {
+        return R_NilValue();
     }
+    let x = CAR(args);
+    if x.is_null() {
+        return R_NilValue();
+    }
+    R_data_class(x)
 }
 
 // ---------------------------------------------------------------------------
@@ -253,28 +249,26 @@ pub(crate) fn do_isobject(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEX
 
 /// R's oldClass() function. Gets/sets the class attribute directly.
 pub fn do_oldClass(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe {
-        if args.is_null() {
-            return R_NilValue();
-        }
-        let x = CAR(args);
-        if x.is_null() {
-            return R_NilValue();
-        }
-
-        // If there's a second argument (value), set it
-        if !CDR(args).is_null() && CDR(args) != R_NilValue() {
-            let value = CADR(args);
-            if value.is_null() || value == R_NilValue() {
-                setAttrib(x, R_ClassSymbol(), R_NilValue());
-            } else {
-                setAttrib(x, R_ClassSymbol(), value);
-            }
-        }
-
-        // Return the class attribute
-        getAttrib(x, R_ClassSymbol())
+    if args.is_null() {
+        return R_NilValue();
     }
+    let x = CAR(args);
+    if x.is_null() {
+        return R_NilValue();
+    }
+
+    // If there's a second argument (value), set it
+    if !CDR(args).is_null() && CDR(args) != R_NilValue() {
+        let value = CADR(args);
+        if value.is_null() || value == R_NilValue() {
+            setAttrib(x, R_ClassSymbol(), R_NilValue());
+        } else {
+            setAttrib(x, R_ClassSymbol(), value);
+        }
+    }
+
+    // Return the class attribute
+    getAttrib(x, R_ClassSymbol())
 }
 
 // ---------------------------------------------------------------------------
