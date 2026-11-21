@@ -721,9 +721,7 @@ pub fn R_tryCatchError(
     handler: Option<super::NativeHandler>,
     hdata: *mut c_void,
 ) -> SEXP {
-    let factory = unsafe { crate::sexp::owner::OwnerToken::current() }
-        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
-        .node_factory();
+    let factory = crate::mainutils::essentials::active_owner().node_factory();
     let classes = factory
         .strings(&["error"])
         .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));

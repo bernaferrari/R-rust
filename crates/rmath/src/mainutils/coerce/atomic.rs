@@ -51,8 +51,7 @@ pub fn LogicalFromString(x: SEXP, _warn: *mut c_int) -> c_int {
     if x.is_null() || x == R_NaString() {
         return NA_LOGICAL;
     }
-    let owner = unsafe { crate::sexp::owner::OwnerToken::current() }
-        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    let owner = crate::mainutils::essentials::active_owner();
     let _pin = owner
         .pin()
         .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));

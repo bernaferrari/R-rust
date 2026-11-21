@@ -191,23 +191,19 @@ fn trace_or_debug_state(args: SEXP, tracing: bool) -> SEXP {
     } else {
         0
     };
-    let prev = crate::sexp::instance::with_required_current_instance(|inst| {
-        // SAFETY: the current instance pointer is live for the closure;
-        // only one scalar state field is read and written, without
-        // allocation or reentry.
-        let slot = unsafe {
-            if tracing {
-                &mut (*inst).eval_state.tracing_state
-            } else {
-                &mut (*inst).eval_state.debugging_state
-            }
+    let prev = with_trace_debug_state(|tracing_state, debugging_state| {
+        let slot = if tracing {
+            tracing_state
+        } else {
+            debugging_state
         };
         let prev = *slot;
         if !query_only {
             *slot = state;
         }
         prev
-    });
+    })
+    .expect("mutable R runtime state requires an active RInstance");
     Rf_ScalarLogical(prev)
 }
 
@@ -221,10 +217,7 @@ pub fn do_traceOnOff(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 pub extern "C" fn R_current_debug_state() -> c_int {
-    crate::sexp::instance::with_current_instance(|inst| unsafe {
-        (*inst).eval_state.debugging_state
-    })
-    .unwrap_or(TRUE)
+    with_trace_debug_state(|_, debugging| *debugging).unwrap_or(TRUE)
 }
 
 // ---------------------------------------------------------------------------
@@ -232,8 +225,18 @@ pub extern "C" fn R_current_debug_state() -> c_int {
 // ---------------------------------------------------------------------------
 
 pub extern "C" fn R_current_trace_state() -> c_int {
-    crate::sexp::instance::with_current_instance(|inst| unsafe { (*inst).eval_state.tracing_state })
-        .unwrap_or(TRUE)
+    with_trace_debug_state(|tracing, _| *tracing).unwrap_or(TRUE)
+}
+
+/// Lend the session's `(tracing_state, debugging_state)` scalars, or `None`
+/// without an active instance.
+fn with_trace_debug_state<R>(f: impl FnOnce(&mut c_int, &mut c_int) -> R) -> Option<R> {
+    crate::sexp::instance::with_current_instance(|inst| {
+        // SAFETY: the current instance pointer is live for the closure; the
+        // two disjoint scalar fields are lent without allocation or reentry.
+        let state = unsafe { &mut (*inst).eval_state };
+        f(&mut state.tracing_state, &mut state.debugging_state)
+    })
 }
 
 // ---------------------------------------------------------------------------

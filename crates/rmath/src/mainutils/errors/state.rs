@@ -31,7 +31,19 @@ pub(super) fn with_error_state<F, R>(f: F) -> R
 where
     F: FnOnce(&mut ErrorState) -> R,
 {
+    // SAFETY: the current instance pointer is live for the closure; the lend
+    // covers only its error-state fields and no callback reenters it.
     instance::with_required_current_instance(|instance| unsafe { f(&mut (*instance).error_state) })
+}
+
+/// Like [`with_error_state`], but `None` without an active instance.
+pub(super) fn with_current_error_state<F, R>(f: F) -> Option<R>
+where
+    F: FnOnce(&mut ErrorState) -> R,
+{
+    // SAFETY: the current instance pointer is live for the closure; the lend
+    // covers only its error-state fields and no callback reenters it.
+    instance::with_current_instance(|instance| unsafe { f(&mut (*instance).error_state) })
 }
 
 pub(super) fn r_warn_length() -> c_int {
@@ -61,12 +73,11 @@ pub(super) fn set_r_show_error_calls(val: bool) {
 /// 1-based index of the top-level expression a session script loop is
 /// currently evaluating (0 = no script position is active).
 pub fn toplevel_expr_no() -> usize {
-    instance::with_current_instance(|inst| unsafe { (*inst).error_state.toplevel_expr_no })
-        .unwrap_or(0)
+    with_current_error_state(|state| state.toplevel_expr_no).unwrap_or(0)
 }
 
 pub fn set_toplevel_expr_no(no: usize) {
-    instance::with_current_instance(|inst| unsafe { (*inst).error_state.toplevel_expr_no = no });
+    with_current_error_state(|state| state.toplevel_expr_no = no);
 }
 
 /// Call attributed to warnings raised while it is set (null = no
@@ -75,8 +86,7 @@ pub fn set_toplevel_expr_no(no: usize) {
 /// raised inside attribute to the wrapper's call (errors.c renders them
 /// through the closure's context).
 pub fn warning_call_override() -> SEXP {
-    instance::with_current_instance(|inst| unsafe { (*inst).error_state.warning_call.as_raw() })
-        .unwrap_or(std::ptr::null_mut())
+    with_current_error_state(|state| state.warning_call.as_raw()).unwrap_or(std::ptr::null_mut())
 }
 
 /// Retain the original runtime and previous attribution through cleanup.
@@ -98,8 +108,7 @@ impl Drop for WarningCallGuard {
 }
 
 pub(super) fn error_scope_pin() -> crate::sexp::owner::OwnerPin {
-    let owner = unsafe { crate::sexp::owner::OwnerToken::current() }
-        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    let owner = crate::mainutils::essentials::active_owner();
     owner
         .pin()
         .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))

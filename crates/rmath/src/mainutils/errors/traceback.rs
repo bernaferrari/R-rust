@@ -137,8 +137,7 @@ pub fn R_GetTracebackOnly(skip: c_int) -> SEXP {
 /// as GNU's internal base-symbol write does. Each graph and the original
 /// runtime remain owned through the one allocating step.
 fn publish_error_traceback(trace: SEXP) {
-    let owner = unsafe { crate::sexp::owner::OwnerToken::current() }
-        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    let owner = crate::mainutils::essentials::active_owner();
     let _pin = owner
         .pin()
         .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));

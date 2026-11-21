@@ -1068,21 +1068,15 @@ pub fn warningcall(call: SEXP, format: *const c_char) {
 }
 
 pub(crate) fn mark_calling_handlers_signaled() {
-    crate::sexp::instance::with_required_current_instance(|inst| unsafe {
-        (*inst).error_state.calling_handlers_signaled = true;
-    });
+    super::state::with_error_state(|state| state.calling_handlers_signaled = true);
 }
 
 fn calling_handlers_already_signaled() -> bool {
-    crate::sexp::instance::with_required_current_instance(|inst| unsafe {
-        (*inst).error_state.calling_handlers_signaled
-    })
+    super::state::with_error_state(|state| state.calling_handlers_signaled)
 }
 
 fn clear_calling_handlers_signaled() {
-    crate::sexp::instance::with_required_current_instance(|inst| unsafe {
-        (*inst).error_state.calling_handlers_signaled = false;
-    });
+    super::state::with_error_state(|state| state.calling_handlers_signaled = false);
 }
 
 pub(super) fn vsignalWarning(call: SEXP, format: *const c_char) {
@@ -1227,9 +1221,7 @@ pub fn mathlib_warning_call_guard(call: SEXP) -> MathlibWarningCallGuard {
 }
 
 pub fn mathlib_warning_call() -> SEXP {
-    crate::sexp::instance::with_required_current_instance(|inst| unsafe {
-        (*inst).error_state.mathlib_warning_call.as_raw()
-    })
+    super::state::with_error_state(|state| state.mathlib_warning_call.as_raw())
 }
 
 // ---------------------------------------------------------------------------
