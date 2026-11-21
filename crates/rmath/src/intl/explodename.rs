@@ -7,24 +7,10 @@
 #![allow(non_snake_case)]
 
 use std::os::raw::{c_char, c_int};
+use std::ptr;
 
 use crate::intl::types;
-
-/// Find the end of the language part of a locale name.
-///
-/// Termination symbols are '_', '.', and '@'.
-///
-/// # Safety
-/// `name` must be a valid pointer to a NUL-terminated C string.
-fn _nl_find_language(name: *mut c_char) -> *mut c_char {
-    unsafe {
-        let mut p = name;
-        while *p != 0 && *p != b'_' as c_char && *p != b'@' as c_char && *p != b'.' as c_char {
-            p = p.add(1);
-        }
-        p
-    }
-}
+use crate::intl::types::{c_free, cstr, ptr_mut, slice_mut, slice_ref};
 
 /// Normalize a codeset name.
 ///
@@ -36,27 +22,28 @@ fn _nl_find_language(name: *mut c_char) -> *mut c_char {
 /// `codeset` must be a valid pointer and `name_len` must be the length
 /// of the string at `codeset`.
 fn _nl_normalize_codeset(codeset: *const c_char, name_len: usize) -> *mut c_char {
-    unsafe {
-        let layout = std::alloc::Layout::from_size_align(name_len + 1, 1)
-            .unwrap_or_else(|_| std::alloc::Layout::new::<u8>());
-        let result = std::alloc::alloc(layout) as *mut c_char;
-        if result.is_null() {
-            return std::ptr::null_mut();
-        }
-        // Copy the codeset, converting to uppercase and replacing
-        // non-alphanumeric characters with underscores.
-        let src = std::slice::from_raw_parts(codeset as *const u8, name_len);
-        let dst = std::slice::from_raw_parts_mut(result as *mut u8, name_len);
-        for (i, &b) in src.iter().enumerate() {
-            dst[i] = if b.is_ascii_alphanumeric() {
-                b.to_ascii_uppercase()
-            } else {
-                b'_'
-            };
-        }
-        *result.add(name_len) = 0;
-        result
+    let layout = std::alloc::Layout::from_size_align(name_len + 1, 1)
+        .unwrap_or_else(|_| std::alloc::Layout::new::<u8>());
+    // Allocate `name_len + 1` bytes for the normalized codeset.
+    let result = unsafe { std::alloc::alloc(layout) } as *mut c_char;
+    if result.is_null() {
+        return std::ptr::null_mut();
     }
+    // Copy the codeset, converting to uppercase and replacing
+    // non-alphanumeric characters with underscores.
+    let src = slice_ref(codeset as *const u8, name_len).unwrap_or(&[]);
+    let Some(dst) = slice_mut(result as *mut u8, name_len + 1) else {
+        return result;
+    };
+    for (d, &b) in dst.iter_mut().zip(src.iter()) {
+        *d = if b.is_ascii_alphanumeric() {
+            b.to_ascii_uppercase()
+        } else {
+            b'_'
+        };
+    }
+    dst[name_len] = 0;
+    result
 }
 
 /// Split a locale name NAME into its pieces: language, modifier, territory, codeset.
@@ -85,103 +72,124 @@ pub fn _nl_explode_name(
     codeset: *mut *const c_char,
     normalized_codeset: *mut *const c_char,
 ) -> c_int {
-    unsafe {
-        let mut mask: c_int = 0;
+    let set_out = |p: *mut *const c_char, v: *const c_char| {
+        if let Some(s) = ptr_mut(p) {
+            *s = v;
+        }
+    };
 
-        // Initialize all output pointers to NULL.
-        *modifier = std::ptr::null();
-        *territory = std::ptr::null();
-        *codeset = std::ptr::null();
-        *normalized_codeset = std::ptr::null();
+    // Initialize all output pointers to NULL.
+    set_out(modifier, ptr::null());
+    set_out(territory, ptr::null());
+    set_out(codeset, ptr::null());
+    set_out(normalized_codeset, ptr::null());
+    set_out(language, name);
 
-        // Determine the language part first.
-        // Termination symbols are '_', '.', and '@'.
-        *language = name;
-        let mut cp: *mut c_char = _nl_find_language(name);
+    let Some(name_len) = cstr(name).map(|s| s.to_bytes().len()) else {
+        return 0;
+    };
+    // Rewrite the caller's NUL-terminated buffer in place, inserting
+    // NUL separators between components.
+    let Some(buf) = slice_mut(name as *mut u8, name_len + 1) else {
+        return 0;
+    };
 
-        if cp == *language as *mut c_char {
-            // Language has to be specified. Use this entry as-is without exploding.
-            // Perhaps it is an alias.
-            let mut scan = *language as *mut c_char;
-            while *scan != 0 {
-                scan = scan.add(1);
+    let mut mask: c_int = 0;
+    let mut territory_start: Option<usize> = None;
+    let mut codeset_start: Option<usize> = None;
+
+    // Determine the language part first.
+    // Termination symbols are '_', '.', and '@'.
+    let mut cp = buf[..name_len]
+        .iter()
+        .position(|&b| matches!(b, b'_' | b'@' | b'.'))
+        .unwrap_or(name_len);
+
+    if cp == 0 {
+        // Language has to be specified. Use this entry as-is without exploding.
+        // Perhaps it is an alias.
+        cp = name_len;
+    } else {
+        // Check for territory after '_'.
+        if buf[cp] == b'_' {
+            buf[cp] = 0;
+            cp += 1;
+            territory_start = Some(cp);
+            set_out(territory, buf[cp..].as_ptr() as *const c_char);
+
+            while buf[cp] != 0 && buf[cp] != b'.' && buf[cp] != b'@' {
+                cp += 1;
             }
-            cp = scan;
-        } else {
-            // Check for territory after '_'.
-            if *cp == b'_' as c_char {
-                *cp = 0;
-                cp = cp.add(1);
-                *territory = cp;
 
-                while *cp != 0 && *cp != b'.' as c_char && *cp != b'@' as c_char {
-                    cp = cp.add(1);
+            mask |= types::XPG_TERRITORY;
+        }
+
+        // Check for codeset after '.'.
+        if buf[cp] == b'.' {
+            buf[cp] = 0;
+            cp += 1;
+            let start = cp;
+            codeset_start = Some(start);
+            set_out(codeset, buf[start..].as_ptr() as *const c_char);
+
+            while buf[cp] != 0 && buf[cp] != b'@' {
+                cp += 1;
+            }
+
+            mask |= types::XPG_CODESET;
+
+            // Normalize the codeset if non-empty.
+            if cp != start && buf[start] != 0 {
+                let codeset_len = cp - start;
+                let norm = _nl_normalize_codeset(
+                    buf[start..].as_ptr() as *const c_char,
+                    codeset_len,
+                );
+                if norm.is_null() {
+                    return -1;
                 }
 
-                mask |= types::XPG_TERRITORY;
-            }
-
-            // Check for codeset after '.'.
-            if *cp == b'.' as c_char {
-                *cp = 0;
-                cp = cp.add(1);
-                *codeset = cp;
-
-                while *cp != 0 && *cp != b'@' as c_char {
-                    cp = cp.add(1);
-                }
-
-                mask |= types::XPG_CODESET;
-
-                // Normalize the codeset if non-empty.
-                let codeset_start = *codeset as *mut c_char;
-                if cp != codeset_start && *codeset_start != 0 {
-                    let codeset_len = (cp as isize - codeset_start as isize) as usize;
-                    let norm = _nl_normalize_codeset(codeset_start, codeset_len);
-                    if norm.is_null() {
-                        return -1;
-                    }
-
-                    // Compare normalized with original.
-                    let norm_cstr = std::ffi::CStr::from_ptr(norm);
-                    let orig_cstr = std::ffi::CStr::from_ptr(codeset_start);
-                    if norm_cstr.to_bytes() == orig_cstr.to_bytes() {
-                        // Same, free the normalized copy.
-                        let len = norm_cstr.to_bytes().len() + 1;
-                        let layout = std::alloc::Layout::from_size_align(len, 1)
-                            .unwrap_or_else(|_| std::alloc::Layout::new::<u8>());
-                        std::alloc::dealloc(norm as *mut u8, layout);
-                    } else {
-                        *normalized_codeset = norm;
-                        mask |= types::XPG_NORM_CODESET;
-                    }
+                // Compare normalized with original.
+                let same = cstr(norm)
+                    .zip(cstr(buf[start..].as_ptr() as *const c_char))
+                    .is_some_and(|(a, b)| a.to_bytes() == b.to_bytes());
+                if same {
+                    // Same, free the normalized copy.
+                    c_free(norm);
+                } else {
+                    set_out(normalized_codeset, norm);
+                    mask |= types::XPG_NORM_CODESET;
                 }
             }
         }
-
-        // Check for modifier after '@'.
-        if *cp == b'@' as c_char {
-            *cp = 0;
-            cp = cp.add(1);
-            *modifier = cp;
-
-            if *cp != 0 {
-                mask |= types::XPG_MODIFIER;
-            }
-        }
-
-        // Clear territory flag if territory is empty.
-        if !(*territory).is_null() && **territory == 0 {
-            mask &= !types::XPG_TERRITORY;
-        }
-
-        // Clear codeset flag if codeset is empty.
-        if !(*codeset).is_null() && **codeset == 0 {
-            mask &= !types::XPG_CODESET;
-        }
-
-        mask
     }
+
+    // Check for modifier after '@'.
+    if buf[cp] == b'@' {
+        buf[cp] = 0;
+        cp += 1;
+        set_out(modifier, buf[cp..].as_ptr() as *const c_char);
+
+        if buf[cp] != 0 {
+            mask |= types::XPG_MODIFIER;
+        }
+    }
+
+    // Clear territory flag if territory is empty.
+    if let Some(i) = territory_start
+        && buf[i] == 0
+    {
+        mask &= !types::XPG_TERRITORY;
+    }
+
+    // Clear codeset flag if codeset is empty.
+    if let Some(i) = codeset_start
+        && buf[i] == 0
+    {
+        mask &= !types::XPG_CODESET;
+    }
+
+    mask
 }
 
 #[cfg(test)]

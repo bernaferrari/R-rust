@@ -25,16 +25,21 @@ mod macos {
     /// In the full C implementation this calls `_nl_locale_name_canonicalize`.
     /// Here we do minimal normalization: ensure lowercase language, etc.
     fn _nl_locale_name_canonicalize(name: *mut c_char) {
-        unsafe {
-            if name.is_null() {
-                return;
+        // Convert the language part to lowercase within the caller's
+        // NUL-terminated buffer.
+        let Some(len) =
+            crate::intl::types::cstr(name).map(|s| s.to_bytes_with_nul().len())
+        else {
+            return;
+        };
+        let Some(bytes) = crate::intl::types::slice_mut(name as *mut u8, len) else {
+            return;
+        };
+        for b in bytes.iter_mut() {
+            if *b == 0 || *b == b'_' || *b == b'.' || *b == b'@' {
+                break;
             }
-            // Convert language part to lowercase.
-            let mut p = name;
-            while *p != 0 && *p != b'_' as c_char && *p != b'.' as c_char && *p != b'@' as c_char {
-                *p = (*p as u8).to_ascii_lowercase() as c_char;
-                p = p.add(1);
-            }
+            *b = b.to_ascii_lowercase();
         }
     }
 
