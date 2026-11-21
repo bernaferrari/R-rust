@@ -48,13 +48,13 @@ fn args<'s>(f: &SessionNodeFactory<'s>, child: &Sexp<'s>) -> Sexp<'s> {
     let nil = f.nil();
     let x = list(f, &list(f, child));
     let flag = f
-        .wrap(unsafe { crate::sexp::constructors::Rf_ScalarLogical(1) })
+        .wrap(crate::sexp::constructors::Rf_ScalarLogical(1))
         .unwrap();
     let tail = f.pairlist_cell(&flag, &nil, &nil).unwrap();
     f.pairlist_cell(&x, &tail, &nil).unwrap()
 }
 fn invoke(a: &Sexp<'_>) -> bool {
-    let nil = unsafe { crate::sexp::globals::R_NilValue() };
+    let nil = crate::sexp::globals::R_NilValue();
     any_na_impl(nil, nil, a.as_raw(), nil)
 }
 
@@ -131,14 +131,12 @@ fn public_builtin_uses_rooted_recursive_default() {
     let a = args(&f, &source);
     let nil = f.nil();
     let result = f
-        .wrap(unsafe {
-            crate::mainutils::essentials::do_any_na(
-                nil.as_raw(),
-                nil.as_raw(),
-                a.as_raw(),
-                nil.as_raw(),
-            )
-        })
+        .wrap(crate::mainutils::essentials::do_any_na(
+            nil.as_raw(),
+            nil.as_raw(),
+            a.as_raw(),
+            nil.as_raw(),
+        ))
         .unwrap();
     assert_eq!(result.typeof_(), SEXPTYPE::LGLSXP);
     assert_eq!(result.try_logical_elt(0).unwrap(), 1);
@@ -157,9 +155,7 @@ fn detached_child_survives_provider_gc_and_releases_afterward() {
             "anyNA-detached",
             Provider {
                 mode: Rc::new(Cell::new(0)),
-                hook: Rc::new(move || unsafe {
-                    crate::sexp::accessors::SETCAR(detached.get(), nil);
-                }),
+                hook: Rc::new(move || crate::sexp::accessors::SETCAR(detached.get(), nil)),
             },
         )
         .unwrap();
@@ -338,7 +334,7 @@ fn checked_vector_and_pairlist_cycles_fail_and_recover() {
         .allocate(|a| Some(a.alloc_vector(SEXPTYPE::VECSXP, 2)))
         .unwrap();
     let missing = f
-        .wrap(unsafe { crate::sexp::constructors::Rf_ScalarLogical(NA_INTEGER) })
+        .wrap(crate::sexp::constructors::Rf_ScalarLogical(NA_INTEGER))
         .unwrap();
     let mut mutable = SexpMut::try_from_checked(early.clone()).unwrap();
     mutable.try_set_vector_elt(0, missing).unwrap();
@@ -366,9 +362,8 @@ fn nonrecursive_checked_pairlist_cycle_is_rejected_before_shallow_fallback() {
     let class = f
         .wrap(unsafe { crate::sexp::constructors::Rf_mkString(c"anyNA_cycle_probe".as_ptr()) })
         .unwrap();
-    unsafe {
-        crate::eval::attrib_core::R_classgets(pair.as_raw(), class.as_raw());
-    }
+    crate::eval::attrib_core::R_classgets(pair.as_raw(), class.as_raw());
+
     assert!(pair.is_object());
     assert_error(&a, "cyclic pairlist in anyNA");
     assert_error(&args(&f, &pair), "cyclic pairlist in anyNA");

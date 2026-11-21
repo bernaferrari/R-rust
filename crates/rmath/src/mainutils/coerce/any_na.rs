@@ -63,8 +63,8 @@ fn leaf(x: &Sexp<'_>, recursive: bool, env: SEXP, check: &impl Fn()) -> bool {
         // Preserve the default method's any(is.na(x)) fallback. The owning
         // input and expression guards survive arbitrary is.na methods and GC.
         unsafe {
-            let is_na = crate::sexp::symbol::Rf_install(c"is.na".as_ptr());
-            let any = crate::sexp::symbol::Rf_install(c"any".as_ptr());
+            let is_na = crate::sexp::symbol::install_str("is.na");
+            let any = crate::sexp::symbol::install_str("any");
             let e0 = crate::sexp::constructors::Rf_lang2(is_na, x.as_raw());
             let _e0 = crate::sexp::protect::protect(e0);
             let e = crate::sexp::constructors::Rf_lang2(any, e0);

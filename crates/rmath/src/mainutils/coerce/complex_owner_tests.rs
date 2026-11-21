@@ -73,9 +73,7 @@ fn complex_coercion_roots_gc_provider_and_replacement_owner() {
         )
         .unwrap();
     let source = AltrepBuilder::new(class).build().unwrap();
-    let result = factory
-        .wrap(unsafe { coerceToComplex(source.as_raw()) })
-        .unwrap();
+    let result = factory.wrap(coerceToComplex(source.as_raw())).unwrap();
     for (i, v) in [1., 2., NA_REAL, 3.].into_iter().enumerate() {
         assert_complex(result.try_complex_elt(i as _).unwrap(), (v, 0.));
     }
@@ -102,9 +100,9 @@ fn complex_coercion_rejects_owner_revocation_before_publication() {
             .unwrap();
         let source = AltrepBuilder::new(class).build().unwrap();
         assert!(
-            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
-                coerceToComplex(source.as_raw())
-            }))
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| coerceToComplex(
+                source.as_raw()
+            )))
             .is_err()
         );
     });
@@ -122,9 +120,9 @@ fn complex_coercion_rejects_foreign_source() {
     let other = RSession::new_for_gc_tests();
     other.with_active(|| {
         assert!(
-            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
-                coerceToComplex(source.as_raw())
-            }))
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| coerceToComplex(
+                source.as_raw()
+            )))
             .is_err()
         )
     });
@@ -154,7 +152,7 @@ fn complex_coercion_failure_reentry_and_denial_recover_without_workspace_leaks()
     for _ in 0..2 {
         for fail in [1, 2, 3] {
             mode.set(fail);
-            let failure = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+            let failure = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 coerceToComplex(source.as_raw())
             }))
             .unwrap_err();
@@ -165,7 +163,7 @@ fn complex_coercion_failure_reentry_and_denial_recover_without_workspace_leaks()
                 );
             }
             mode.set(0);
-            let out = f.wrap(unsafe { coerceToComplex(source.as_raw()) }).unwrap();
+            let out = f.wrap(coerceToComplex(source.as_raw())).unwrap();
             assert_complex(out.try_complex_elt(0).unwrap(), (1., 0.));
             drop(out);
             owner.full_gc().unwrap();
@@ -191,7 +189,7 @@ fn complex_coercion_failure_reentry_and_denial_recover_without_workspace_leaks()
     owner
         .with_arena(|a| a.set_budget(ArenaBudget::new(resident + 4096, usize::MAX)))
         .unwrap();
-    let denial = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+    let denial = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         coerceToComplex(big.as_raw())
     }))
     .unwrap_err();
@@ -213,7 +211,7 @@ fn complex_coercion_failure_reentry_and_denial_recover_without_workspace_leaks()
     owner
         .with_arena(|a| a.set_budget(ArenaBudget::unlimited()))
         .unwrap();
-    let out = f.wrap(unsafe { coerceToComplex(source.as_raw()) }).unwrap();
+    let out = f.wrap(coerceToComplex(source.as_raw())).unwrap();
     assert_complex(out.try_complex_elt(0).unwrap(), (1., 0.));
 }
 
@@ -261,7 +259,7 @@ fn complex_coercion_copies_all_provider_types_without_materializing() {
             )
             .unwrap();
         let source = AltrepBuilder::new(class).build().unwrap();
-        let out = f.wrap(unsafe { coerceToComplex(source.as_raw()) }).unwrap();
+        let out = f.wrap(coerceToComplex(source.as_raw())).unwrap();
         for (i, v) in expected.into_iter().enumerate() {
             assert_complex(out.try_complex_elt(i as _).unwrap(), v);
         }
@@ -292,14 +290,12 @@ fn wrapper<'s>(
 ) -> crate::sexp::object::Sexp<'s> {
     let nil = f.nil();
     let args = f.pairlist_cell(source, &nil, &nil).unwrap();
-    f.wrap(unsafe {
-        crate::mainutils::essentials::do_as_complex(
-            nil.as_raw(),
-            nil.as_raw(),
-            args.as_raw(),
-            nil.as_raw(),
-        )
-    })
+    f.wrap(crate::mainutils::essentials::do_as_complex(
+        nil.as_raw(),
+        nil.as_raw(),
+        args.as_raw(),
+        nil.as_raw(),
+    ))
     .unwrap()
 }
 fn attributed<'s>(
@@ -307,13 +303,11 @@ fn attributed<'s>(
     source: &crate::sexp::object::Sexp<'_>,
 ) {
     let key = f
-        .wrap(unsafe { Rf_install(c"complex.note".as_ptr()) })
+        .wrap(crate::sexp::symbol::install_str("complex.note"))
         .unwrap();
-    let val = f.wrap(unsafe { Rf_ScalarInteger(81) }).unwrap();
+    let val = f.wrap(Rf_ScalarInteger(81)).unwrap();
     let attr = f.pairlist_cell(&val, &f.nil(), &key).unwrap();
-    unsafe {
-        crate::sexp::accessors::SET_ATTRIB(source.as_raw(), attr.as_raw());
-    }
+    crate::sexp::accessors::SET_ATTRIB(source.as_raw(), attr.as_raw());
 }
 #[test]
 fn complex_wrapper_copies_attributed_source_across_gc_and_preserves_errors_and_budget() {
@@ -405,7 +399,7 @@ fn complex_wrapper_copies_attributed_source_across_gc_and_preserves_errors_and_b
     let cap = resident + 4096;
     o.with_arena(|a| a.set_budget(ArenaBudget::new(cap, usize::MAX)))
         .unwrap();
-    let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+    let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         crate::mainutils::essentials::do_as_complex(
             nil.as_raw(),
             nil.as_raw(),
@@ -436,14 +430,14 @@ fn complex_wrapper_copies_attributed_source_across_gc_and_preserves_errors_and_b
 fn complex_wrapper_rejects_foreign_arguments_and_callback_revocation() {
     let s = RSession::new_for_gc_tests();
     let f = s.owner_token().unwrap().node_factory();
-    let source = f.wrap(unsafe { Rf_ScalarInteger(1) }).unwrap();
+    let source = f.wrap(Rf_ScalarInteger(1)).unwrap();
     let nil = f.nil();
     let args = f.pairlist_cell(&source, &nil, &nil).unwrap();
     {
         let other = RSession::new_for_gc_tests();
         other.with_active(|| {
             let foreignnil = other.owner_token().unwrap().node_factory().nil();
-            let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+            let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 crate::mainutils::essentials::do_as_complex(
                     foreignnil.as_raw(),
                     foreignnil.as_raw(),

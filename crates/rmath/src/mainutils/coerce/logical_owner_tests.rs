@@ -62,9 +62,7 @@ fn logical_coercion_roots_gc_provider_and_replacement_owner() {
         )
         .unwrap();
     let source = AltrepBuilder::new(class).build().unwrap();
-    let result = factory
-        .wrap(unsafe { coerceToLogical(source.as_raw()) })
-        .unwrap();
+    let result = factory.wrap(coerceToLogical(source.as_raw())).unwrap();
     for (i, v) in [1, 1, NA_LOGICAL, NA_LOGICAL].into_iter().enumerate() {
         assert_eq!(result.try_logical_elt(i as _).unwrap(), v);
     }
@@ -90,9 +88,9 @@ fn logical_coercion_rejects_owner_revocation_before_publication() {
             .unwrap();
         let source = AltrepBuilder::new(class).build().unwrap();
         assert!(
-            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
-                coerceToLogical(source.as_raw())
-            }))
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| coerceToLogical(
+                source.as_raw()
+            )))
             .is_err()
         );
     });
@@ -110,9 +108,9 @@ fn logical_coercion_rejects_foreign_source() {
     let other = RSession::new_for_gc_tests();
     other.with_active(|| {
         assert!(
-            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
-                coerceToLogical(source.as_raw())
-            }))
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| coerceToLogical(
+                source.as_raw()
+            )))
             .is_err()
         )
     });
@@ -141,7 +139,7 @@ fn logical_coercion_failure_reentry_and_denial_recover_without_workspace_leaks()
     for _ in 0..2 {
         for fail in [1, 2, 3] {
             mode.set(fail);
-            let failure = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+            let failure = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 coerceToLogical(source.as_raw())
             }))
             .unwrap_err();
@@ -152,7 +150,7 @@ fn logical_coercion_failure_reentry_and_denial_recover_without_workspace_leaks()
                 );
             }
             mode.set(0);
-            let out = f.wrap(unsafe { coerceToLogical(source.as_raw()) }).unwrap();
+            let out = f.wrap(coerceToLogical(source.as_raw())).unwrap();
             assert_eq!(out.try_logical_elt(0).unwrap(), 1);
             drop(out);
             owner.full_gc().unwrap();
@@ -177,7 +175,7 @@ fn logical_coercion_failure_reentry_and_denial_recover_without_workspace_leaks()
     owner
         .with_arena(|a| a.set_budget(ArenaBudget::new(resident + 4096, usize::MAX)))
         .unwrap();
-    let denial = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+    let denial = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         coerceToLogical(big.as_raw())
     }))
     .unwrap_err();
@@ -199,7 +197,7 @@ fn logical_coercion_failure_reentry_and_denial_recover_without_workspace_leaks()
     owner
         .with_arena(|a| a.set_budget(ArenaBudget::unlimited()))
         .unwrap();
-    let out = f.wrap(unsafe { coerceToLogical(source.as_raw()) }).unwrap();
+    let out = f.wrap(coerceToLogical(source.as_raw())).unwrap();
     assert_eq!(out.try_logical_elt(0).unwrap(), 1);
 }
 
@@ -249,7 +247,7 @@ fn logical_coercion_copies_all_provider_types_without_materializing() {
             )
             .unwrap();
         let source = AltrepBuilder::new(class).build().unwrap();
-        let out = f.wrap(unsafe { coerceToLogical(source.as_raw()) }).unwrap();
+        let out = f.wrap(coerceToLogical(source.as_raw())).unwrap();
         for (i, v) in expected.into_iter().enumerate() {
             assert_eq!(out.try_logical_elt(i as _).unwrap(), v);
         }

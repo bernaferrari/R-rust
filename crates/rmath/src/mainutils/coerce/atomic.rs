@@ -139,11 +139,12 @@ pub fn IntegerFromString(x: SEXP, warn: *mut c_int) -> c_int {
         if x.is_null() || x == R_NaString() {
             return NA_INTEGER;
         }
-        let text = CHAR(x);
-        if text.is_null() {
+        let text = char_cstring(x);
+        if text.is_none() {
             return NA_INTEGER;
         }
-        let (value, flags) = super::text_number::integer(CStr::from_ptr(text).to_bytes());
+        let (value, flags) =
+            super::text_number::integer(text.as_deref().unwrap_or_default().to_bytes());
         if !warn.is_null() {
             *warn |= flags;
         }
@@ -203,11 +204,12 @@ pub fn RealFromString(x: SEXP, warn: *mut c_int) -> c_double {
         if x.is_null() || x == R_NaString() {
             return NA_REAL;
         }
-        let text = CHAR(x);
-        if text.is_null() {
+        let text = char_cstring(x);
+        if text.is_none() {
             return NA_REAL;
         }
-        let (value, flags) = super::text_number::real(CStr::from_ptr(text).to_bytes());
+        let (value, flags) =
+            super::text_number::real(text.as_deref().unwrap_or_default().to_bytes());
         if !warn.is_null() {
             *warn |= flags;
         }
@@ -289,11 +291,12 @@ pub fn ComplexFromString(x: SEXP, warn: *mut c_int) -> Rcomplex {
         if x.is_null() || x == R_NaString() {
             return missing;
         }
-        let text = CHAR(x);
-        if text.is_null() {
+        let text = char_cstring(x);
+        if text.is_none() {
             return missing;
         }
-        let (value, flags) = super::text_number::complex(CStr::from_ptr(text).to_bytes());
+        let (value, flags) =
+            super::text_number::complex(text.as_deref().unwrap_or_default().to_bytes());
         if !warn.is_null() {
             *warn |= flags;
         }
@@ -309,15 +312,13 @@ pub fn ComplexFromString(x: SEXP, warn: *mut c_int) -> Rcomplex {
 ///
 /// Returns "FALSE" for 0, "TRUE" for 1, NA_STRING for NA_LOGICAL.
 pub fn StringFromLogical(x: c_int) -> SEXP {
-    unsafe {
-        if x == NA_LOGICAL {
-            return R_NaString();
-        }
-        if x != 0 {
-            Rf_mkChar(c"TRUE".as_ptr())
-        } else {
-            Rf_mkChar(c"FALSE".as_ptr())
-        }
+    if x == NA_LOGICAL {
+        return R_NaString();
+    }
+    if x != 0 {
+        mk_char("TRUE")
+    } else {
+        mk_char("FALSE")
     }
 }
 

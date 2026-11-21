@@ -60,9 +60,7 @@ fn real_coercion_roots_gc_provider_and_replacement_owner() {
         )
         .unwrap();
     let source = AltrepBuilder::new(class).build().unwrap();
-    let result = factory
-        .wrap(unsafe { coerceToReal(source.as_raw()) })
-        .unwrap();
+    let result = factory.wrap(coerceToReal(source.as_raw())).unwrap();
     for (i, v) in [1., 2., NA_REAL, 3.].into_iter().enumerate() {
         assert_real(result.try_real_elt(i as _).unwrap(), v);
     }
@@ -88,9 +86,9 @@ fn real_coercion_rejects_owner_revocation_before_publication() {
             .unwrap();
         let source = AltrepBuilder::new(class).build().unwrap();
         assert!(
-            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
-                coerceToReal(source.as_raw())
-            }))
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| coerceToReal(
+                source.as_raw()
+            )))
             .is_err()
         );
     });
@@ -108,9 +106,9 @@ fn real_coercion_rejects_foreign_source() {
     let other = RSession::new_for_gc_tests();
     other.with_active(|| {
         assert!(
-            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
-                coerceToReal(source.as_raw())
-            }))
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| coerceToReal(
+                source.as_raw()
+            )))
             .is_err()
         )
     });
@@ -139,7 +137,7 @@ fn real_coercion_failure_reentry_and_denial_recover_without_workspace_leaks() {
     for _ in 0..2 {
         for fail in [1, 2, 3] {
             mode.set(fail);
-            let failure = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+            let failure = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 coerceToReal(source.as_raw())
             }))
             .unwrap_err();
@@ -150,7 +148,7 @@ fn real_coercion_failure_reentry_and_denial_recover_without_workspace_leaks() {
                 );
             }
             mode.set(0);
-            let out = f.wrap(unsafe { coerceToReal(source.as_raw()) }).unwrap();
+            let out = f.wrap(coerceToReal(source.as_raw())).unwrap();
             assert_eq!(out.try_real_elt(0).unwrap(), 1.);
             drop(out);
             owner.full_gc().unwrap();
@@ -175,10 +173,9 @@ fn real_coercion_failure_reentry_and_denial_recover_without_workspace_leaks() {
     owner
         .with_arena(|a| a.set_budget(ArenaBudget::new(resident + 4096, usize::MAX)))
         .unwrap();
-    let denial = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
-        coerceToReal(big.as_raw())
-    }))
-    .unwrap_err();
+    let denial =
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| coerceToReal(big.as_raw())))
+            .unwrap_err();
     let denial = denial
         .downcast_ref::<crate::sexp::context::RError>()
         .expect("allocation denial must retain its typed R error payload");
@@ -197,7 +194,7 @@ fn real_coercion_failure_reentry_and_denial_recover_without_workspace_leaks() {
     owner
         .with_arena(|a| a.set_budget(ArenaBudget::unlimited()))
         .unwrap();
-    let out = f.wrap(unsafe { coerceToReal(source.as_raw()) }).unwrap();
+    let out = f.wrap(coerceToReal(source.as_raw())).unwrap();
     assert_eq!(out.try_real_elt(0).unwrap(), 1.);
 }
 
@@ -245,7 +242,7 @@ fn real_coercion_copies_all_provider_types_without_materializing() {
             )
             .unwrap();
         let source = AltrepBuilder::new(class).build().unwrap();
-        let out = f.wrap(unsafe { coerceToReal(source.as_raw()) }).unwrap();
+        let out = f.wrap(coerceToReal(source.as_raw())).unwrap();
         for (i, v) in expected.into_iter().enumerate() {
             assert_real(out.try_real_elt(i as _).unwrap(), v);
         }

@@ -74,9 +74,7 @@ fn character_coercion_roots_gc_provider_and_replacement_owner() {
         )
         .unwrap();
     let source = AltrepBuilder::new(class).build().unwrap();
-    let result = factory
-        .wrap(unsafe { coerceToString(source.as_raw()) })
-        .unwrap();
+    let result = factory.wrap(coerceToString(source.as_raw())).unwrap();
     for (i, v) in [Some("1"), Some("2"), None, Some("3")]
         .into_iter()
         .enumerate()
@@ -106,9 +104,9 @@ fn character_coercion_rejects_owner_revocation_before_publication() {
             .unwrap();
         let source = AltrepBuilder::new(class).build().unwrap();
         assert!(
-            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
-                coerceToString(source.as_raw())
-            }))
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| coerceToString(
+                source.as_raw()
+            )))
             .is_err()
         );
     });
@@ -126,9 +124,9 @@ fn character_coercion_rejects_foreign_source() {
     let other = RSession::new_for_gc_tests();
     other.with_active(|| {
         assert!(
-            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
-                coerceToString(source.as_raw())
-            }))
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| coerceToString(
+                source.as_raw()
+            )))
             .is_err()
         )
     });
@@ -158,7 +156,7 @@ fn character_coercion_failure_reentry_and_denial_recover_without_workspace_leaks
     for _ in 0..2 {
         for fail in [1, 2, 3] {
             mode.set(fail);
-            let failure = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+            let failure = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 coerceToString(source.as_raw())
             }))
             .unwrap_err();
@@ -169,7 +167,7 @@ fn character_coercion_failure_reentry_and_denial_recover_without_workspace_leaks
                 );
             }
             mode.set(0);
-            let out = f.wrap(unsafe { coerceToString(source.as_raw()) }).unwrap();
+            let out = f.wrap(coerceToString(source.as_raw())).unwrap();
             assert_character(&out, 0, Some("1"));
             drop(out);
             owner.full_gc().unwrap();
@@ -195,7 +193,7 @@ fn character_coercion_failure_reentry_and_denial_recover_without_workspace_leaks
     owner
         .with_arena(|a| a.set_budget(ArenaBudget::new(resident + 4096, usize::MAX)))
         .unwrap();
-    let denial = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+    let denial = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         coerceToString(big.as_raw())
     }))
     .unwrap_err();
@@ -217,7 +215,7 @@ fn character_coercion_failure_reentry_and_denial_recover_without_workspace_leaks
     owner
         .with_arena(|a| a.set_budget(ArenaBudget::unlimited()))
         .unwrap();
-    let out = f.wrap(unsafe { coerceToString(source.as_raw()) }).unwrap();
+    let out = f.wrap(coerceToString(source.as_raw())).unwrap();
     assert_character(&out, 0, Some("1"));
 }
 
@@ -265,7 +263,7 @@ fn character_coercion_copies_all_provider_types_without_materializing() {
             )
             .unwrap();
         let source = AltrepBuilder::new(cls).build().unwrap();
-        let out = f.wrap(unsafe { coerceToString(source.as_raw()) }).unwrap();
+        let out = f.wrap(coerceToString(source.as_raw())).unwrap();
         for (i, v) in want.into_iter().enumerate() {
             assert_character(&out, i as _, v);
         }
@@ -291,10 +289,9 @@ fn character_digits_context_preserves_options_and_restores_on_errors_denial_and_
     let session = RSession::new_for_gc_tests();
     let owner = session.owner_token().unwrap();
     let f = owner.node_factory();
-    let three = f.wrap(unsafe { Rf_ScalarInteger(3) }).unwrap();
-    unsafe {
-        crate::mainutils::options::SetOptionByName("digits", three.as_raw());
-    }
+    let three = f.wrap(Rf_ScalarInteger(3)).unwrap();
+    crate::mainutils::options::SetOptionByName("digits", three.as_raw());
+
     let mode = Rc::new(Cell::new(0));
     let reads = Rc::new(Cell::new(0));
     let seen = Rc::new(std::cell::RefCell::new(Vec::new()));
@@ -310,14 +307,14 @@ fn character_digits_context_preserves_options_and_restores_on_errors_denial_and_
                 callback: Rc::new(move || {
                     observed
                         .borrow_mut()
-                        .push(unsafe { crate::mainutils::options::GetOptionDigits() })
+                        .push(crate::mainutils::options::GetOptionDigits())
                 }),
             },
         )
         .unwrap();
     let source = AltrepBuilder::new(cls.clone()).build().unwrap();
     let before = print_state(owner);
-    let out = f.wrap(unsafe { coerceToString(source.as_raw()) }).unwrap();
+    let out = f.wrap(coerceToString(source.as_raw())).unwrap();
     assert_character(&out, 0, Some("1.23456789012345"));
     assert_character(&out, 1, Some("0"));
     assert_character(&out, 2, None);
@@ -327,7 +324,7 @@ fn character_digits_context_preserves_options_and_restores_on_errors_denial_and_
         vec![3; 4],
         "pinned GNU ALTREP callback observes original option"
     );
-    assert_eq!(unsafe { crate::mainutils::options::GetOptionDigits() }, 3);
+    assert_eq!(crate::mainutils::options::GetOptionDigits(), 3);
     assert_eq!(print_state(owner), before);
     drop(out);
     unsafe {
@@ -335,13 +332,13 @@ fn character_digits_context_preserves_options_and_restores_on_errors_denial_and_
         (*owner.as_ptr()).eval_state.format_print.scipen = 12;
     }
     let before = print_state(owner);
-    let out = f.wrap(unsafe { coerceToString(source.as_raw()) }).unwrap();
+    let out = f.wrap(coerceToString(source.as_raw())).unwrap();
     assert_character(&out, 0, Some("1.23456789012345"));
     assert_eq!(print_state(owner), before);
     drop(out);
     for failure in [1, 2, 3] {
         mode.set(failure);
-        let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+        let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             coerceToString(source.as_raw())
         }))
         .unwrap_err();
@@ -350,8 +347,8 @@ fn character_digits_context_preserves_options_and_restores_on_errors_denial_and_
         }
         mode.set(0);
         assert_eq!(print_state(owner), before);
-        assert_eq!(unsafe { crate::mainutils::options::GetOptionDigits() }, 3);
-        let out = f.wrap(unsafe { coerceToString(source.as_raw()) }).unwrap();
+        assert_eq!(crate::mainutils::options::GetOptionDigits(), 3);
+        let out = f.wrap(coerceToString(source.as_raw())).unwrap();
         assert_character(&out, 0, Some("1.23456789012345"));
     }
     // Allow the output header but deny its first new CHARSXP after provider read.
@@ -364,14 +361,14 @@ fn character_digits_context_preserves_options_and_restores_on_errors_denial_and_
     owner
         .with_arena(|a| a.set_budget(ArenaBudget::new(usize::MAX, nodes + 1)))
         .unwrap();
-    let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+    let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         coerceToString(source.as_raw())
     }))
     .unwrap_err();
     assert!(error.is::<crate::sexp::context::RError>());
     assert!(reads.get() > count);
     assert_eq!(print_state(owner), before);
-    assert_eq!(unsafe { crate::mainutils::options::GetOptionDigits() }, 3);
+    assert_eq!(crate::mainutils::options::GetOptionDigits(), 3);
     owner.full_gc().unwrap();
     assert_eq!(
         owner
@@ -388,7 +385,7 @@ fn character_digits_context_preserves_options_and_restores_on_errors_denial_and_
         .unwrap();
     mode.set(0);
     assert_character(
-        &f.wrap(unsafe { coerceToString(source.as_raw()) }).unwrap(),
+        &f.wrap(coerceToString(source.as_raw())).unwrap(),
         0,
         Some("1.23456789012345"),
     );
@@ -408,7 +405,7 @@ fn character_digits_context_preserves_options_and_restores_on_errors_denial_and_
             )
             .unwrap();
         let value = AltrepBuilder::new(revoke).build().unwrap();
-        let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+        let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             coerceToString(value.as_raw())
         }))
         .unwrap_err();
@@ -444,17 +441,15 @@ fn character_print_context_follows_gnu_callback_defaults_and_live_decimal_mark()
     let session = RSession::new_for_gc_tests();
     let owner = session.owner_token().unwrap();
     let factory = owner.node_factory();
-    let digits = factory.wrap(unsafe { Rf_ScalarInteger(3) }).unwrap();
-    let scipen = factory.wrap(unsafe { Rf_ScalarInteger(0) }).unwrap();
-    let changed_digits = factory.wrap(unsafe { Rf_ScalarInteger(2) }).unwrap();
-    let changed_scipen = factory.wrap(unsafe { Rf_ScalarInteger(999) }).unwrap();
+    let digits = factory.wrap(Rf_ScalarInteger(3)).unwrap();
+    let scipen = factory.wrap(Rf_ScalarInteger(0)).unwrap();
+    let changed_digits = factory.wrap(Rf_ScalarInteger(2)).unwrap();
+    let changed_scipen = factory.wrap(Rf_ScalarInteger(999)).unwrap();
     let comma = factory.wrap(unsafe { Rf_mkString(c",".as_ptr()) }).unwrap();
     let dot = factory.wrap(unsafe { Rf_mkString(c".".as_ptr()) }).unwrap();
-    let nested = factory
-        .wrap(unsafe { Rf_ScalarReal(9.87654321098765) })
-        .unwrap();
+    let nested = factory.wrap(Rf_ScalarReal(9.87654321098765)).unwrap();
     let print_args = factory
-        .wrap(unsafe { Rf_cons(nested.as_raw(), R_NilValue()) })
+        .wrap(Rf_cons(nested.as_raw(), R_NilValue()))
         .unwrap();
     for (mode, first, second) in [
         (0, "1.23456789012345", "1e-08"),
@@ -463,25 +458,24 @@ fn character_print_context_follows_gnu_callback_defaults_and_live_decimal_mark()
         (3, "1.23", "1e-08"),
         (4, "1,23456789012345", "0,00000001"),
     ] {
-        unsafe {
-            crate::mainutils::options::SetOptionByName("digits", digits.as_raw());
-            crate::mainutils::options::SetOptionByName(
-                "scipen",
-                if mode == 4 {
-                    changed_scipen.as_raw()
-                } else {
-                    scipen.as_raw()
-                },
-            );
-            crate::mainutils::options::SetOptionByName(
-                "OutDec",
-                if mode == 4 {
-                    comma.as_raw()
-                } else {
-                    dot.as_raw()
-                },
-            );
-        }
+        crate::mainutils::options::SetOptionByName("digits", digits.as_raw());
+        crate::mainutils::options::SetOptionByName(
+            "scipen",
+            if mode == 4 {
+                changed_scipen.as_raw()
+            } else {
+                scipen.as_raw()
+            },
+        );
+        crate::mainutils::options::SetOptionByName(
+            "OutDec",
+            if mode == 4 {
+                comma.as_raw()
+            } else {
+                dot.as_raw()
+            },
+        );
+
         // The checked roots above outlive every provider invocation; capture
         // their stable addresses without extending a session borrow to static.
         let changed_digits = changed_digits.as_raw();
@@ -489,26 +483,24 @@ fn character_print_context_follows_gnu_callback_defaults_and_live_decimal_mark()
         let comma = comma.as_raw();
         let nested = nested.as_raw();
         let print_args = print_args.as_raw();
-        let callback = Rc::new(move || unsafe {
-            match mode {
-                1 => {
-                    crate::mainutils::options::SetOptionByName("digits", changed_digits);
-                    crate::mainutils::options::SetOptionByName("scipen", changed_scipen);
-                    crate::mainutils::options::SetOptionByName("OutDec", comma);
-                }
-                2 => {
-                    crate::mainutils::print::do_printdefault(
-                        R_NilValue(),
-                        R_NilValue(),
-                        print_args,
-                        R_GlobalEnv(),
-                    );
-                }
-                3 => {
-                    coerceToString(nested);
-                }
-                _ => {}
+        let callback = Rc::new(move || match mode {
+            1 => {
+                crate::mainutils::options::SetOptionByName("digits", changed_digits);
+                crate::mainutils::options::SetOptionByName("scipen", changed_scipen);
+                crate::mainutils::options::SetOptionByName("OutDec", comma);
             }
+            2 => {
+                crate::mainutils::print::do_printdefault(
+                    R_NilValue(),
+                    R_NilValue(),
+                    print_args,
+                    R_GlobalEnv(),
+                );
+            }
+            3 => {
+                coerceToString(nested);
+            }
+            _ => {}
         });
         let class = session
             .register_altrep_class(
@@ -518,9 +510,7 @@ fn character_print_context_follows_gnu_callback_defaults_and_live_decimal_mark()
             .unwrap();
         let source = AltrepBuilder::new(class).build().unwrap();
         let before = print_state(owner);
-        let output = factory
-            .wrap(unsafe { coerceToString(source.as_raw()) })
-            .unwrap();
+        let output = factory.wrap(coerceToString(source.as_raw())).unwrap();
         assert_character(&output, 0, Some(first));
         assert_character(&output, 1, Some(second));
         assert_eq!(print_state(owner), before);

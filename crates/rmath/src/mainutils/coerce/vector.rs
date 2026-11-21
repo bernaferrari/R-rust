@@ -6,466 +6,450 @@ use super::*;
 
 /// Coerce a vector to logical type.
 pub fn coerceToLogical(v: SEXP) -> SEXP {
-    unsafe {
-        let owner = crate::sexp::owner::OwnerToken::current()
+    let owner = crate::mainutils::essentials::active_owner();
+    let pin = owner
+        .pin()
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    let factory = owner.node_factory();
+    let source = factory
+        .wrap(v)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    let check = || {
+        if let Some(pin) = &pin {
+            pin.require_live()
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        }
+        factory
+            .require_active()
             .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        let pin = owner
-            .pin()
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        let factory = owner.node_factory();
-        let source = factory
-            .wrap(v)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        let check = || {
-            if let Some(pin) = &pin {
-                pin.require_live()
+    };
+    let n = source.len();
+    check();
+    // Keep the runtime's typed allocation-denial error and GC retry.
+    let raw_output = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
+    let output = factory
+        .wrap(raw_output)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    check();
+    SHALLOW_DUPLICATE_ATTRIB(output.as_raw(), source.as_raw());
+    check();
+    let mut output = crate::sexp::object::SexpMut::try_from_checked(output)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    let mut warn: c_int = 0;
+    for i in 0..n {
+        // Copy the provider value before accessing the output. Neither a
+        // payload projection nor an arena borrow spans a provider callback.
+        let value = match source.typeof_() {
+            SEXPTYPE::INTSXP => LogicalFromInteger(
+                source
+                    .try_integer_elt(i)
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
+                &mut warn,
+            ),
+            SEXPTYPE::REALSXP => LogicalFromReal(
+                source
+                    .try_real_elt(i)
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
+                &mut warn,
+            ),
+            SEXPTYPE::CPLXSXP => LogicalFromComplex(
+                source
+                    .try_complex_elt(i)
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
+                &mut warn,
+            ),
+            SEXPTYPE::STRSXP => {
+                let text = source
+                    .try_string_elt(i)
                     .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                check();
+                LogicalFromString(text.as_raw(), &mut warn)
             }
-            factory
-                .require_active()
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            SEXPTYPE::RAWSXP => LogicalFromInteger(
+                source
+                    .try_raw_elt(i)
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+                    as c_int,
+                &mut warn,
+            ),
+            _ => NA_LOGICAL,
         };
-        let n = source.len();
         check();
-        // Keep the runtime's typed allocation-denial error and GC retry.
-        let raw_output = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
-        let output = factory
-            .wrap(raw_output)
+        output
+            .try_set_logical_elt(i, value)
             .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        check();
-        SHALLOW_DUPLICATE_ATTRIB(output.as_raw(), source.as_raw());
-        check();
-        let mut output = crate::sexp::object::SexpMut::try_from_checked(output)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        let mut warn: c_int = 0;
-        for i in 0..n {
-            // Copy the provider value before accessing the output. Neither a
-            // payload projection nor an arena borrow spans a provider callback.
-            let value = match source.typeof_() {
-                SEXPTYPE::INTSXP => LogicalFromInteger(
-                    source
-                        .try_integer_elt(i)
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
-                    &mut warn,
-                ),
-                SEXPTYPE::REALSXP => LogicalFromReal(
-                    source
-                        .try_real_elt(i)
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
-                    &mut warn,
-                ),
-                SEXPTYPE::CPLXSXP => LogicalFromComplex(
-                    source
-                        .try_complex_elt(i)
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
-                    &mut warn,
-                ),
-                SEXPTYPE::STRSXP => {
-                    let text = source
-                        .try_string_elt(i)
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-                    check();
-                    LogicalFromString(text.as_raw(), &mut warn)
-                }
-                SEXPTYPE::RAWSXP => LogicalFromInteger(
-                    source
-                        .try_raw_elt(i)
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
-                        as c_int,
-                    &mut warn,
-                ),
-                _ => NA_LOGICAL,
-            };
-            check();
-            output
-                .try_set_logical_elt(i, value)
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        }
-        if warn != 0 {
-            CoercionWarning(warn);
-            check();
-        }
-        output.freeze().as_raw()
     }
+    if warn != 0 {
+        CoercionWarning(warn);
+        check();
+    }
+    output.freeze().as_raw()
 }
 
 /// Coerce a vector to integer type.
 pub fn coerceToInteger(v: SEXP) -> SEXP {
-    unsafe {
-        let owner = crate::sexp::owner::OwnerToken::current()
+    let owner = crate::mainutils::essentials::active_owner();
+    let pin = owner
+        .pin()
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    let factory = owner.node_factory();
+    let source = factory
+        .wrap(v)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    let check = || {
+        if let Some(pin) = &pin {
+            pin.require_live()
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        }
+        factory
+            .require_active()
             .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        let pin = owner
-            .pin()
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        let factory = owner.node_factory();
-        let source = factory
-            .wrap(v)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        let check = || {
-            if let Some(pin) = &pin {
-                pin.require_live()
+    };
+    let n = source.len();
+    check();
+    // Keep the runtime's typed allocation-denial error and GC retry.
+    let raw_output = Rf_allocVector3(SEXPTYPE::INTSXP, n);
+    let output = factory
+        .wrap(raw_output)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    check();
+    SHALLOW_DUPLICATE_ATTRIB(output.as_raw(), source.as_raw());
+    check();
+    let mut output = crate::sexp::object::SexpMut::try_from_checked(output)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    let mut warn: c_int = 0;
+    for i in 0..n {
+        // Copy the provider value before accessing the output. Neither a
+        // payload projection nor an arena borrow spans a provider callback.
+        let value = match source.typeof_() {
+            SEXPTYPE::LGLSXP => IntegerFromLogical(
+                source
+                    .try_logical_elt(i)
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
+                &mut warn,
+            ),
+            SEXPTYPE::REALSXP => IntegerFromReal(
+                source
+                    .try_real_elt(i)
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
+                &mut warn,
+            ),
+            SEXPTYPE::CPLXSXP => IntegerFromComplex(
+                source
+                    .try_complex_elt(i)
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
+                &mut warn,
+            ),
+            SEXPTYPE::STRSXP => {
+                let text = source
+                    .try_string_elt(i)
                     .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                check();
+                IntegerFromString(text.as_raw(), &mut warn)
             }
-            factory
-                .require_active()
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            SEXPTYPE::RAWSXP => source
+                .try_raw_elt(i)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+                as c_int,
+            _ => NA_INTEGER,
         };
-        let n = source.len();
         check();
-        // Keep the runtime's typed allocation-denial error and GC retry.
-        let raw_output = Rf_allocVector3(SEXPTYPE::INTSXP, n);
-        let output = factory
-            .wrap(raw_output)
+        output
+            .try_set_integer_elt(i, value)
             .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        check();
-        SHALLOW_DUPLICATE_ATTRIB(output.as_raw(), source.as_raw());
-        check();
-        let mut output = crate::sexp::object::SexpMut::try_from_checked(output)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        let mut warn: c_int = 0;
-        for i in 0..n {
-            // Copy the provider value before accessing the output. Neither a
-            // payload projection nor an arena borrow spans a provider callback.
-            let value = match source.typeof_() {
-                SEXPTYPE::LGLSXP => IntegerFromLogical(
-                    source
-                        .try_logical_elt(i)
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
-                    &mut warn,
-                ),
-                SEXPTYPE::REALSXP => IntegerFromReal(
-                    source
-                        .try_real_elt(i)
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
-                    &mut warn,
-                ),
-                SEXPTYPE::CPLXSXP => IntegerFromComplex(
-                    source
-                        .try_complex_elt(i)
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
-                    &mut warn,
-                ),
-                SEXPTYPE::STRSXP => {
-                    let text = source
-                        .try_string_elt(i)
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-                    check();
-                    IntegerFromString(text.as_raw(), &mut warn)
-                }
-                SEXPTYPE::RAWSXP => source
-                    .try_raw_elt(i)
-                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
-                    as c_int,
-                _ => NA_INTEGER,
-            };
-            check();
-            output
-                .try_set_integer_elt(i, value)
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        }
-        if warn != 0 {
-            CoercionWarning(warn);
-            check();
-        }
-        output.freeze().as_raw()
     }
+    if warn != 0 {
+        CoercionWarning(warn);
+        check();
+    }
+    output.freeze().as_raw()
 }
 
 /// Coerce a vector to real (double) type.
 pub fn coerceToReal(v: SEXP) -> SEXP {
-    unsafe {
-        let owner = crate::sexp::owner::OwnerToken::current()
+    let owner = crate::mainutils::essentials::active_owner();
+    let pin = owner
+        .pin()
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    let factory = owner.node_factory();
+    let source = factory
+        .wrap(v)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    let check = || {
+        if let Some(pin) = &pin {
+            pin.require_live()
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        }
+        factory
+            .require_active()
             .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        let pin = owner
-            .pin()
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        let factory = owner.node_factory();
-        let source = factory
-            .wrap(v)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        let check = || {
-            if let Some(pin) = &pin {
-                pin.require_live()
+    };
+    let n = source.len();
+    check();
+    // Keep the runtime's typed allocation-denial error and GC retry.
+    let raw_output = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+    let output = factory
+        .wrap(raw_output)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    check();
+    SHALLOW_DUPLICATE_ATTRIB(output.as_raw(), source.as_raw());
+    check();
+    let mut output = crate::sexp::object::SexpMut::try_from_checked(output)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    let mut warn: c_int = 0;
+    for i in 0..n {
+        // Copy the provider value before accessing the output. Neither a
+        // payload projection nor an arena borrow spans a provider callback.
+        let value = match source.typeof_() {
+            SEXPTYPE::LGLSXP => RealFromLogical(
+                source
+                    .try_logical_elt(i)
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
+                &mut warn,
+            ),
+            SEXPTYPE::INTSXP => RealFromInteger(
+                source
+                    .try_integer_elt(i)
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
+                &mut warn,
+            ),
+            SEXPTYPE::CPLXSXP => RealFromComplex(
+                source
+                    .try_complex_elt(i)
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
+                &mut warn,
+            ),
+            SEXPTYPE::STRSXP => {
+                let text = source
+                    .try_string_elt(i)
                     .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                check();
+                RealFromString(text.as_raw(), &mut warn)
             }
-            factory
-                .require_active()
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            SEXPTYPE::RAWSXP => RealFromInteger(
+                source
+                    .try_raw_elt(i)
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+                    as c_int,
+                &mut warn,
+            ),
+            _ => NA_REAL,
         };
-        let n = source.len();
         check();
-        // Keep the runtime's typed allocation-denial error and GC retry.
-        let raw_output = Rf_allocVector3(SEXPTYPE::REALSXP, n);
-        let output = factory
-            .wrap(raw_output)
+        output
+            .try_set_real_elt(i, value)
             .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        check();
-        SHALLOW_DUPLICATE_ATTRIB(output.as_raw(), source.as_raw());
-        check();
-        let mut output = crate::sexp::object::SexpMut::try_from_checked(output)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        let mut warn: c_int = 0;
-        for i in 0..n {
-            // Copy the provider value before accessing the output. Neither a
-            // payload projection nor an arena borrow spans a provider callback.
-            let value = match source.typeof_() {
-                SEXPTYPE::LGLSXP => RealFromLogical(
-                    source
-                        .try_logical_elt(i)
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
-                    &mut warn,
-                ),
-                SEXPTYPE::INTSXP => RealFromInteger(
-                    source
-                        .try_integer_elt(i)
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
-                    &mut warn,
-                ),
-                SEXPTYPE::CPLXSXP => RealFromComplex(
-                    source
-                        .try_complex_elt(i)
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
-                    &mut warn,
-                ),
-                SEXPTYPE::STRSXP => {
-                    let text = source
-                        .try_string_elt(i)
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-                    check();
-                    RealFromString(text.as_raw(), &mut warn)
-                }
-                SEXPTYPE::RAWSXP => RealFromInteger(
-                    source
-                        .try_raw_elt(i)
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
-                        as c_int,
-                    &mut warn,
-                ),
-                _ => NA_REAL,
-            };
-            check();
-            output
-                .try_set_real_elt(i, value)
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        }
-        if warn != 0 {
-            CoercionWarning(warn);
-            check();
-        }
-        output.freeze().as_raw()
     }
+    if warn != 0 {
+        CoercionWarning(warn);
+        check();
+    }
+    output.freeze().as_raw()
 }
 
 /// Coerce a vector to complex type.
 pub fn coerceToComplex(v: SEXP) -> SEXP {
-    unsafe {
-        let owner = crate::sexp::owner::OwnerToken::current()
+    let owner = crate::mainutils::essentials::active_owner();
+    let pin = owner
+        .pin()
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    let factory = owner.node_factory();
+    let source = factory
+        .wrap(v)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    let check = || {
+        if let Some(pin) = &pin {
+            pin.require_live()
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        }
+        factory
+            .require_active()
             .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        let pin = owner
-            .pin()
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        let factory = owner.node_factory();
-        let source = factory
-            .wrap(v)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        let check = || {
-            if let Some(pin) = &pin {
-                pin.require_live()
+    };
+    let n = source.len();
+    check();
+    // Keep the runtime's typed allocation-denial error and GC retry.
+    let raw_output = Rf_allocVector3(SEXPTYPE::CPLXSXP, n);
+    let output = factory
+        .wrap(raw_output)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    check();
+    SHALLOW_DUPLICATE_ATTRIB(output.as_raw(), source.as_raw());
+    check();
+    let mut output = crate::sexp::object::SexpMut::try_from_checked(output)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    let mut warn: c_int = 0;
+    for i in 0..n {
+        // Copy the provider value before accessing the output. Neither a
+        // payload projection nor an arena borrow spans a provider callback.
+        let value = match source.typeof_() {
+            SEXPTYPE::LGLSXP => ComplexFromLogical(
+                source
+                    .try_logical_elt(i)
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
+                &mut warn,
+            ),
+            SEXPTYPE::INTSXP => ComplexFromInteger(
+                source
+                    .try_integer_elt(i)
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
+                &mut warn,
+            ),
+            SEXPTYPE::REALSXP => ComplexFromReal(
+                source
+                    .try_real_elt(i)
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
+                &mut warn,
+            ),
+            SEXPTYPE::STRSXP => {
+                let text = source
+                    .try_string_elt(i)
                     .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                check();
+                ComplexFromString(text.as_raw(), &mut warn)
             }
-            factory
-                .require_active()
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            SEXPTYPE::RAWSXP => ComplexFromInteger(
+                source
+                    .try_raw_elt(i)
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+                    as c_int,
+                &mut warn,
+            ),
+            _ => Rcomplex {
+                r: NA_REAL,
+                i: NA_REAL,
+            },
         };
-        let n = source.len();
         check();
-        // Keep the runtime's typed allocation-denial error and GC retry.
-        let raw_output = Rf_allocVector3(SEXPTYPE::CPLXSXP, n);
-        let output = factory
-            .wrap(raw_output)
+        output
+            .try_set_complex_elt(i, value)
             .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        check();
-        SHALLOW_DUPLICATE_ATTRIB(output.as_raw(), source.as_raw());
-        check();
-        let mut output = crate::sexp::object::SexpMut::try_from_checked(output)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        let mut warn: c_int = 0;
-        for i in 0..n {
-            // Copy the provider value before accessing the output. Neither a
-            // payload projection nor an arena borrow spans a provider callback.
-            let value = match source.typeof_() {
-                SEXPTYPE::LGLSXP => ComplexFromLogical(
-                    source
-                        .try_logical_elt(i)
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
-                    &mut warn,
-                ),
-                SEXPTYPE::INTSXP => ComplexFromInteger(
-                    source
-                        .try_integer_elt(i)
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
-                    &mut warn,
-                ),
-                SEXPTYPE::REALSXP => ComplexFromReal(
-                    source
-                        .try_real_elt(i)
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
-                    &mut warn,
-                ),
-                SEXPTYPE::STRSXP => {
-                    let text = source
-                        .try_string_elt(i)
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-                    check();
-                    ComplexFromString(text.as_raw(), &mut warn)
-                }
-                SEXPTYPE::RAWSXP => ComplexFromInteger(
-                    source
-                        .try_raw_elt(i)
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
-                        as c_int,
-                    &mut warn,
-                ),
-                _ => Rcomplex {
-                    r: NA_REAL,
-                    i: NA_REAL,
-                },
-            };
-            check();
-            output
-                .try_set_complex_elt(i, value)
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        }
-        if warn != 0 {
-            CoercionWarning(warn);
-            check();
-        }
-        output.freeze().as_raw()
     }
+    if warn != 0 {
+        CoercionWarning(warn);
+        check();
+    }
+    output.freeze().as_raw()
 }
 
 /// Coerce a vector to raw type.
 pub fn coerceToRaw(v: SEXP) -> SEXP {
-    unsafe {
-        let owner = crate::sexp::owner::OwnerToken::current()
+    let owner = crate::mainutils::essentials::active_owner();
+    let pin = owner
+        .pin()
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    let factory = owner.node_factory();
+    let source = factory
+        .wrap(v)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    let check = || {
+        if let Some(pin) = &pin {
+            pin.require_live()
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        }
+        factory
+            .require_active()
             .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        let pin = owner
-            .pin()
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        let factory = owner.node_factory();
-        let source = factory
-            .wrap(v)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        let check = || {
-            if let Some(pin) = &pin {
-                pin.require_live()
-                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    };
+    let n = source.len();
+    check();
+    // Keep the runtime's typed allocation-denial error and GC retry.
+    let raw_output = Rf_allocVector3(SEXPTYPE::RAWSXP, n);
+    let output = factory
+        .wrap(raw_output)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    check();
+    SHALLOW_DUPLICATE_ATTRIB(output.as_raw(), source.as_raw());
+    check();
+    let mut output = crate::sexp::object::SexpMut::try_from_checked(output)
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+    let mut warn: c_int = 0;
+    for i in 0..n {
+        let tmp: c_int = match source.typeof_() {
+            SEXPTYPE::LGLSXP => {
+                let val = IntegerFromLogical(
+                    source
+                        .try_logical_elt(i)
+                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
+                    &mut warn,
+                );
+                if val == NA_INTEGER {
+                    warn |= WARN_RAW;
+                    0
+                } else {
+                    val
+                }
             }
-            factory
-                .require_active()
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            SEXPTYPE::INTSXP => {
+                let val = source
+                    .try_integer_elt(i)
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                if val == NA_INTEGER || val < 0 || val > 255 {
+                    warn |= WARN_RAW;
+                    0
+                } else {
+                    val
+                }
+            }
+            SEXPTYPE::REALSXP => {
+                let val = IntegerFromReal(
+                    source
+                        .try_real_elt(i)
+                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
+                    &mut warn,
+                );
+                if val == NA_INTEGER || val < 0 || val > 255 {
+                    warn |= WARN_RAW;
+                    0
+                } else {
+                    val
+                }
+            }
+            SEXPTYPE::CPLXSXP => {
+                let val = IntegerFromComplex(
+                    source
+                        .try_complex_elt(i)
+                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
+                    &mut warn,
+                );
+                if val == NA_INTEGER || val < 0 || val > 255 {
+                    warn |= WARN_RAW;
+                    0
+                } else {
+                    val
+                }
+            }
+            SEXPTYPE::STRSXP => {
+                let text = source
+                    .try_string_elt(i)
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                check();
+                let val = IntegerFromString(text.as_raw(), &mut warn);
+                if val == NA_INTEGER || val < 0 || val > 255 {
+                    warn |= WARN_RAW;
+                    0
+                } else {
+                    val
+                }
+            }
+            _ => 0,
         };
-        let n = source.len();
         check();
-        // Keep the runtime's typed allocation-denial error and GC retry.
-        let raw_output = Rf_allocVector3(SEXPTYPE::RAWSXP, n);
-        let output = factory
-            .wrap(raw_output)
+        output
+            .try_set_raw_elt(i, tmp as Rbyte)
             .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        check();
-        SHALLOW_DUPLICATE_ATTRIB(output.as_raw(), source.as_raw());
-        check();
-        let mut output = crate::sexp::object::SexpMut::try_from_checked(output)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        let mut warn: c_int = 0;
-        for i in 0..n {
-            let tmp: c_int = match source.typeof_() {
-                SEXPTYPE::LGLSXP => {
-                    let val = IntegerFromLogical(
-                        source.try_logical_elt(i).unwrap_or_else(|error| {
-                            crate::sexp::context::r_error(error.to_string())
-                        }),
-                        &mut warn,
-                    );
-                    if val == NA_INTEGER {
-                        warn |= WARN_RAW;
-                        0
-                    } else {
-                        val
-                    }
-                }
-                SEXPTYPE::INTSXP => {
-                    let val = source
-                        .try_integer_elt(i)
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-                    if val == NA_INTEGER || val < 0 || val > 255 {
-                        warn |= WARN_RAW;
-                        0
-                    } else {
-                        val
-                    }
-                }
-                SEXPTYPE::REALSXP => {
-                    let val = IntegerFromReal(
-                        source.try_real_elt(i).unwrap_or_else(|error| {
-                            crate::sexp::context::r_error(error.to_string())
-                        }),
-                        &mut warn,
-                    );
-                    if val == NA_INTEGER || val < 0 || val > 255 {
-                        warn |= WARN_RAW;
-                        0
-                    } else {
-                        val
-                    }
-                }
-                SEXPTYPE::CPLXSXP => {
-                    let val = IntegerFromComplex(
-                        source.try_complex_elt(i).unwrap_or_else(|error| {
-                            crate::sexp::context::r_error(error.to_string())
-                        }),
-                        &mut warn,
-                    );
-                    if val == NA_INTEGER || val < 0 || val > 255 {
-                        warn |= WARN_RAW;
-                        0
-                    } else {
-                        val
-                    }
-                }
-                SEXPTYPE::STRSXP => {
-                    let text = source
-                        .try_string_elt(i)
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-                    check();
-                    let val = IntegerFromString(text.as_raw(), &mut warn);
-                    if val == NA_INTEGER || val < 0 || val > 255 {
-                        warn |= WARN_RAW;
-                        0
-                    } else {
-                        val
-                    }
-                }
-                _ => 0,
-            };
-            check();
-            output
-                .try_set_raw_elt(i, tmp as Rbyte)
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        }
-        if warn != 0 {
-            CoercionWarning(warn);
-            check();
-        }
-        output.freeze().as_raw()
     }
+    if warn != 0 {
+        CoercionWarning(warn);
+        check();
+    }
+    output.freeze().as_raw()
 }
 
 /// Coerce a vector to string (character) type.
 pub fn coerceToString(v: SEXP) -> SEXP {
     unsafe {
-        let owner = crate::sexp::owner::OwnerToken::current()
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        let owner = crate::mainutils::essentials::active_owner();
         let pin = owner
             .pin()
             .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
@@ -667,60 +651,58 @@ pub fn coerceToVectorList(v: SEXP) -> SEXP {
 
 /// Coerce a vector to pairlist type.
 pub fn coerceToPairList(v: SEXP) -> SEXP {
-    unsafe {
-        let n = LENGTH(v);
-        let ans = Rf_allocList(n);
-        let _ans_guard = protect(ans);
-        let mut ansp = ans;
+    let n = LENGTH(v);
+    let ans = Rf_allocList(n);
+    let _ans_guard = protect(ans);
+    let mut ansp = ans;
 
-        let vtype = TYPEOF(v);
-        for i in 0..n {
-            let ii = i as c_int;
-            match vtype {
-                t if t == SEXPTYPE::LGLSXP => {
-                    let elt = Rf_allocVector3(SEXPTYPE::LGLSXP, 1);
-                    *LOGICAL(elt) = LOGICAL_ELT(v, ii);
-                    SETCAR(ansp, elt);
-                }
-                t if t == SEXPTYPE::INTSXP => {
-                    let elt = Rf_allocVector3(SEXPTYPE::INTSXP, 1);
-                    *INTEGER(elt) = INTEGER_ELT(v, ii);
-                    SETCAR(ansp, elt);
-                }
-                t if t == SEXPTYPE::REALSXP => {
-                    let elt = Rf_allocVector3(SEXPTYPE::REALSXP, 1);
-                    *REAL(elt) = REAL_ELT(v, ii);
-                    SETCAR(ansp, elt);
-                }
-                t if t == SEXPTYPE::CPLXSXP => {
-                    let elt = Rf_allocVector3(SEXPTYPE::CPLXSXP, 1);
-                    *COMPLEX(elt) = COMPLEX_ELT(v, ii);
-                    SETCAR(ansp, elt);
-                }
-                t if t == SEXPTYPE::STRSXP => {
-                    SETCAR(ansp, Rf_ScalarString(STRING_ELT(v, i as R_xlen_t)));
-                }
-                t if t == SEXPTYPE::RAWSXP => {
-                    let elt = Rf_allocVector3(SEXPTYPE::RAWSXP, 1);
-                    *RAW(elt) = RAW_ELT(v, ii);
-                    SETCAR(ansp, elt);
-                }
-                t if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP => {
-                    SETCAR(ansp, VECTOR_ELT(v, i as R_xlen_t));
-                }
-                _ => {} // intentionally unhandled: unsupported SEXPTYPE for coercion
+    let vtype = TYPEOF(v);
+    for i in 0..n {
+        let ii = i as c_int;
+        match vtype {
+            t if t == SEXPTYPE::LGLSXP => {
+                let elt = Rf_allocVector3(SEXPTYPE::LGLSXP, 1);
+                SET_LOGICAL_ELT(elt, 0, LOGICAL_ELT(v, ii));
+                SETCAR(ansp, elt);
             }
-            ansp = CDR(ansp);
+            t if t == SEXPTYPE::INTSXP => {
+                let elt = Rf_allocVector3(SEXPTYPE::INTSXP, 1);
+                SET_INTEGER_ELT(elt, 0, INTEGER_ELT(v, ii));
+                SETCAR(ansp, elt);
+            }
+            t if t == SEXPTYPE::REALSXP => {
+                let elt = Rf_allocVector3(SEXPTYPE::REALSXP, 1);
+                SET_REAL_ELT(elt, 0, REAL_ELT(v, ii));
+                SETCAR(ansp, elt);
+            }
+            t if t == SEXPTYPE::CPLXSXP => {
+                let elt = Rf_allocVector3(SEXPTYPE::CPLXSXP, 1);
+                SET_COMPLEX_ELT(elt, 0, COMPLEX_ELT(v, ii));
+                SETCAR(ansp, elt);
+            }
+            t if t == SEXPTYPE::STRSXP => {
+                SETCAR(ansp, Rf_ScalarString(STRING_ELT(v, i as R_xlen_t)));
+            }
+            t if t == SEXPTYPE::RAWSXP => {
+                let elt = Rf_allocVector3(SEXPTYPE::RAWSXP, 1);
+                SET_RAW_ELT(elt, 0, RAW_ELT(v, ii));
+                SETCAR(ansp, elt);
+            }
+            t if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP => {
+                SETCAR(ansp, VECTOR_ELT(v, i as R_xlen_t));
+            }
+            _ => {} // intentionally unhandled: unsupported SEXPTYPE for coercion
         }
-
-        // Copy names attribute if present
-        let names = getAttrib(v, R_NamesSymbol());
-        if !isNull(names) {
-            setAttrib(ans, R_NamesSymbol(), names);
-        }
-
-        ans
+        ansp = CDR(ansp);
     }
+
+    // Copy names attribute if present
+    let names = getAttrib(v, R_NamesSymbol());
+    if !isNull(names) {
+        setAttrib(ans, R_NamesSymbol(), names);
+    }
+
+    ans
 }
 
 struct PairlistNative;
@@ -769,7 +751,7 @@ impl super::pairlist::Native for PairlistNative {
         value: &Sexp<'static>,
         names: &Sexp<'static>,
     ) -> crate::sexp::SexpResult<()> {
-        access.with_native(|_| unsafe {
+        access.with_native(|_| {
             setAttrib(value.as_raw(), R_NamesSymbol(), names.as_raw());
             Ok(())
         })
@@ -863,9 +845,8 @@ pub fn coerceVectorList(v: SEXP, type_: SEXPTYPE) -> SEXP {
                 for i in 0..n {
                     let name_elt = STRING_ELT(names, i as R_xlen_t);
                     if !isNull(name_elt) {
-                        let pname = CHAR(name_elt);
-                        if !pname.is_null() && *pname != 0 {
-                            SETTAG(xptr2, Rf_install(pname));
+                        if !char_bytes(name_elt).is_empty() {
+                            SETTAG(xptr2, installTrChar(name_elt));
                         }
                     }
                     xptr2 = CDR(xptr2);
@@ -910,22 +891,22 @@ pub fn coerceVectorList(v: SEXP, type_: SEXPTYPE) -> SEXP {
             match type_.0 {
                 t if t == SEXPTYPE::LGLSXP => {
                     for i in 0..n {
-                        *LOGICAL(rval).add(i as usize) = asLogical(VECTOR_ELT(v, i));
+                        SET_LOGICAL_ELT(rval, i as c_int, asLogical(VECTOR_ELT(v, i)));
                     }
                 }
                 t if t == SEXPTYPE::INTSXP => {
                     for i in 0..n {
-                        *INTEGER(rval).add(i as usize) = asInteger(VECTOR_ELT(v, i));
+                        SET_INTEGER_ELT(rval, i as c_int, asInteger(VECTOR_ELT(v, i)));
                     }
                 }
                 t if t == SEXPTYPE::REALSXP => {
                     for i in 0..n {
-                        *REAL(rval).add(i as usize) = asReal(VECTOR_ELT(v, i));
+                        SET_REAL_ELT(rval, i as c_int, asReal(VECTOR_ELT(v, i)));
                     }
                 }
                 t if t == SEXPTYPE::CPLXSXP => {
                     for i in 0..n {
-                        *COMPLEX(rval).add(i as usize) = asComplex(VECTOR_ELT(v, i));
+                        SET_COMPLEX_ELT(rval, i as c_int, asComplex(VECTOR_ELT(v, i)));
                     }
                 }
                 t if t == SEXPTYPE::RAWSXP => {
@@ -934,11 +915,15 @@ pub fn coerceVectorList(v: SEXP, type_: SEXPTYPE) -> SEXP {
                         if tmp < 0 || tmp > 255 {
                             warn |= WARN_RAW;
                         }
-                        *RAW(rval).add(i as usize) = if tmp < 0 || tmp > 255 {
-                            0
-                        } else {
-                            tmp as Rbyte
-                        };
+                        SET_RAW_ELT(
+                            rval,
+                            i as c_int,
+                            if tmp < 0 || tmp > 255 {
+                                0
+                            } else {
+                                tmp as Rbyte
+                            },
+                        );
                     }
                 }
                 _ => {} // intentionally unhandled: unsupported SEXPTYPE for coercion
@@ -962,32 +947,30 @@ pub fn coerceVectorList(v: SEXP, type_: SEXPTYPE) -> SEXP {
 
 /// Coerce to a symbol.
 pub fn coerceToSymbol(v: SEXP) -> SEXP {
-    unsafe {
-        let mut warn: c_int = 0;
-        if LENGTH(v) <= 0 {
-            error("invalid data of mode (too short)");
-        }
-
-        let ans = match TYPEOF(v) {
-            t if t == SEXPTYPE::LGLSXP => StringFromLogical(LOGICAL_ELT(v, 0)),
-            t if t == SEXPTYPE::INTSXP => StringFromInteger(INTEGER_ELT(v, 0), &mut warn),
-            t if t == SEXPTYPE::REALSXP => {
-                crate::mainutils::printutils::StringFromReal(REAL_ELT(v, 0), &mut warn)
-            }
-            t if t == SEXPTYPE::CPLXSXP => StringFromComplex(COMPLEX_ELT(v, 0), &mut warn),
-            t if t == SEXPTYPE::STRSXP => STRING_ELT(v, 0),
-            t if t == SEXPTYPE::RAWSXP => StringFromRaw(RAW_ELT(v, 0), &mut warn),
-            _ => R_NilValue(),
-        };
-        let _ans_guard = protect(ans);
-
-        if warn != 0 {
-            CoercionWarning(warn);
-        }
-
-        let sym = Rf_install(CHAR(ans));
-        sym
+    let mut warn: c_int = 0;
+    if LENGTH(v) <= 0 {
+        error("invalid data of mode (too short)");
     }
+
+    let ans = match TYPEOF(v) {
+        t if t == SEXPTYPE::LGLSXP => StringFromLogical(LOGICAL_ELT(v, 0)),
+        t if t == SEXPTYPE::INTSXP => StringFromInteger(INTEGER_ELT(v, 0), &mut warn),
+        t if t == SEXPTYPE::REALSXP => {
+            crate::mainutils::printutils::StringFromReal(REAL_ELT(v, 0), &mut warn)
+        }
+        t if t == SEXPTYPE::CPLXSXP => StringFromComplex(COMPLEX_ELT(v, 0), &mut warn),
+        t if t == SEXPTYPE::STRSXP => STRING_ELT(v, 0),
+        t if t == SEXPTYPE::RAWSXP => StringFromRaw(RAW_ELT(v, 0), &mut warn),
+        _ => R_NilValue(),
+    };
+    let _ans_guard = protect(ans);
+
+    if warn != 0 {
+        CoercionWarning(warn);
+    }
+
+    let sym = installTrChar(ans);
+    sym
 }
 
 /// Coerce a symbol (SYMSXP) to the given type.
@@ -1017,22 +1000,19 @@ pub fn coerceSymbol(v: SEXP, type_: SEXPTYPE) -> SEXP {
 /// If x is already a symbol or NULL, return it. If x is a string of length >= 1,
 /// install it as a symbol.
 pub fn CreateTag(x: SEXP) -> SEXP {
-    unsafe {
-        if isNull(x) || isSymbol(x) {
-            return x;
-        }
-        if isString(x) && LENGTH(x) >= 1 {
-            let s = STRING_ELT(x, 0);
-            if !isNull(s) {
-                let cs = CHAR(s);
-                if !cs.is_null() && *cs != 0 {
-                    return installTrChar(s);
-                }
+    if isNull(x) || isSymbol(x) {
+        return x;
+    }
+    if isString(x) && LENGTH(x) >= 1 {
+        let s = STRING_ELT(x, 0);
+        if !isNull(s) {
+            if !char_bytes(s).is_empty() {
+                return installTrChar(s);
             }
         }
-        // fallback: return NULL
-        R_NilValue()
     }
+    // fallback: return NULL
+    R_NilValue()
 }
 
 /// Convert an SEXP to a function (closure).

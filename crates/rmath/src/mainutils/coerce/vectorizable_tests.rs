@@ -32,7 +32,7 @@ fn vectorizable_predicate_matches_gnu_null_list_pairlist_and_expression_categori
             .unwrap()
             .into_owned()
             .unwrap();
-        let actual = session.with_active(|| unsafe { super::isVectorizable(value.as_raw()) });
+        let actual = session.with_active(|| super::isVectorizable(value.as_raw()));
         assert_eq!(actual, expected, "{expression}");
     }
 }
@@ -75,14 +75,14 @@ fn vectorizable_checked_walk_rejects_cyclic_and_improper_pairlists() {
             .unwrap()
             .into_owned()
             .unwrap();
-        unsafe { crate::sexp::accessors::SETCDR(cell.as_raw(), cell.as_raw()) };
+        crate::sexp::accessors::SETCDR(cell.as_raw(), cell.as_raw());
         let cycle = with_runtime(&owner, |access| {
             super::vectorizable::check(cell.clone(), access)
         })
         .unwrap()
         .unwrap_err();
         assert!(cycle.to_string().contains("cyclic pairlist"));
-        unsafe { crate::sexp::accessors::SETCDR(cell.as_raw(), scalar.as_raw()) };
+        crate::sexp::accessors::SETCDR(cell.as_raw(), scalar.as_raw());
         let improper = with_runtime(&owner, |access| {
             super::vectorizable::check(cell.clone(), access)
         })
@@ -90,7 +90,7 @@ fn vectorizable_checked_walk_rejects_cyclic_and_improper_pairlists() {
         .unwrap_err();
         assert!(improper.to_string().contains("improper pairlist"));
         // Restore the intentional malformed fixture before unrelated traversal.
-        unsafe { crate::sexp::accessors::SETCDR(cell.as_raw(), factory.nil().as_raw()) };
+        crate::sexp::accessors::SETCDR(cell.as_raw(), factory.nil().as_raw());
     });
 }
 

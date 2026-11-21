@@ -516,35 +516,33 @@ pub fn is_atomic_safe(x: Sexp) -> c_int {
 /// This is the `do_asatomic()` function from coerce.c, handling
 /// `as.character`, `as.integer`, `as.double`, `as.complex`, `as.logical`, `as.raw`.
 pub fn do_asatomic(call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
-        let args_s =
-            Sexp::try_from_raw(args).unwrap_or_else(|err| errorcall(call, &err.to_string()));
-        let x = args_s
-            .try_pairlist_arg(0)
-            .unwrap_or_else(|err| errorcall(call, &err.to_string()));
-        let op0 = PRIMVAL(op);
-        as_atomic_safe(x, op0).unwrap_or_else(|message| errorcall(call, &message))
-    }
+    let args_s = crate::mainutils::essentials::active_owner()
+        .sexp(args)
+        .unwrap_or_else(|err| errorcall(call, &err.to_string()));
+    let x = args_s
+        .try_pairlist_arg(0)
+        .unwrap_or_else(|err| errorcall(call, &err.to_string()));
+    let op0 = PRIMVAL(op);
+    as_atomic_safe(x, op0).unwrap_or_else(|message| errorcall(call, &message))
 }
 
 /// R-level `as.vector()` entry point.
 ///
 /// This is the `do_asvector()` function from coerce.c.
 pub fn do_asvector(call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
-        let args_s =
-            Sexp::try_from_raw(args).unwrap_or_else(|err| errorcall(call, &err.to_string()));
-        let x = args_s
-            .clone()
-            .try_pairlist_arg(0)
-            .clone()
-            .unwrap_or_else(|err| errorcall(call, &err.to_string()));
-        let mode_str = match args_s.try_pairlist_arg(1) {
-            Ok(s) => s,
-            Err(_) => return x.as_raw(),
-        };
-        as_vector_safe(x, mode_str).unwrap_or_else(|message| errorcall(call, &message))
-    }
+    let args_s = crate::mainutils::essentials::active_owner()
+        .sexp(args)
+        .unwrap_or_else(|err| errorcall(call, &err.to_string()));
+    let x = args_s
+        .clone()
+        .try_pairlist_arg(0)
+        .clone()
+        .unwrap_or_else(|err| errorcall(call, &err.to_string()));
+    let mode_str = match args_s.try_pairlist_arg(1) {
+        Ok(s) => s,
+        Err(_) => return x.as_raw(),
+    };
+    as_vector_safe(x, mode_str).unwrap_or_else(|message| errorcall(call, &message))
 }
 
 /// R-level `typeof()` entry point.
@@ -556,7 +554,7 @@ pub fn coerce_typeof(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if TYPEOF(x) == SEXPTYPE::OBJSXP && IS_S4_OBJECT(x) == 0 {
-            return Rf_mkString(c"object".as_ptr());
+            return mk_string("object");
         }
         let type_name = match SEXPTYPE(TYPEOF(x)) {
             SEXPTYPE::NILSXP => "NULL",
@@ -614,8 +612,8 @@ pub fn elem_is_na(s: SEXP) -> c_int {
 /// This is the `do_is()` function from coerce.c, implementing is.null,
 /// is.logical, is.integer, is.double, is.complex, is.character, etc.
 pub fn do_is(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
-        let args_s = match Sexp::try_from_raw(args) {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let args_s = match crate::mainutils::essentials::active_owner().sexp(args) {
             Ok(s) => s,
             Err(_) => return Rf_ScalarLogical(0),
         };
@@ -636,8 +634,8 @@ pub fn do_is(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 ///
 /// This is the `do_isvector()` function from coerce.c.
 pub fn do_isvector(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
-        let args_s = match Sexp::try_from_raw(args) {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let args_s = match crate::mainutils::essentials::active_owner().sexp(args) {
             Ok(s) => s,
             Err(_) => return Rf_ScalarLogical(0),
         };
@@ -661,140 +659,142 @@ pub fn do_isvector(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 ///
 /// This is the `do_isna()` function from coerce.c.
 pub fn do_isna(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        let n = xlength(x);
-        let ans = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
-        let _ans_guard = protect(ans);
-        let pa = LOGICAL(ans);
+    let x = CAR(args);
+    let n = xlength(x);
+    let ans = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
+    let _ans_guard = protect(ans);
 
-        match TYPEOF(x) {
-            t if t == SEXPTYPE::LGLSXP => {
-                for i in 0..n {
-                    *pa.add(i as usize) = (LOGICAL_ELT(x, i as c_int) == NA_LOGICAL) as c_int;
-                }
-            }
-            t if t == SEXPTYPE::INTSXP => {
-                for i in 0..n {
-                    *pa.add(i as usize) = (INTEGER_ELT(x, i as c_int) == NA_INTEGER) as c_int;
-                }
-            }
-            t if t == SEXPTYPE::REALSXP => {
-                for i in 0..n {
-                    *pa.add(i as usize) = ISNAN(REAL_ELT(x, i as c_int)) as c_int;
-                }
-            }
-            t if t == SEXPTYPE::CPLXSXP => {
-                for i in 0..n {
-                    let v = COMPLEX_ELT(x, i as c_int);
-                    *pa.add(i as usize) = (ISNAN(v.r) || ISNAN(v.i)) as c_int;
-                }
-            }
-            t if t == SEXPTYPE::STRSXP => {
-                for i in 0..n {
-                    *pa.add(i as usize) = (STRING_ELT(x, i) == R_NaString()) as c_int;
-                }
-            }
-            t if t == SEXPTYPE::RAWSXP => {
-                for i in 0..n {
-                    *pa.add(i as usize) = 0;
-                }
-            }
-            t if t == SEXPTYPE::LISTSXP => {
-                let mut elt = x;
-                for i in 0..n {
-                    let s = CAR(elt);
-                    *pa.add(i as usize) = elem_is_na(s);
-                    elt = CDR(elt);
-                }
-            }
-            t if t == SEXPTYPE::VECSXP => {
-                for i in 0..n {
-                    let s = VECTOR_ELT(x, i);
-                    *pa.add(i as usize) = elem_is_na(s);
-                }
-            }
-            t if t == SEXPTYPE::NILSXP => {}
-            _ => {
-                for i in 0..n {
-                    *pa.add(i as usize) = 0;
-                }
+    match TYPEOF(x) {
+        t if t == SEXPTYPE::LGLSXP => {
+            for i in 0..n {
+                SET_LOGICAL_ELT(
+                    ans,
+                    i as c_int,
+                    (LOGICAL_ELT(x, i as c_int) == NA_LOGICAL) as c_int,
+                );
             }
         }
-
-        // Copy dim and names
-        if isVector(x) {
-            let dims = getAttrib(x, R_DimSymbol());
-            if !isNull(dims) {
-                setAttrib(ans, R_DimSymbol(), dims);
-            }
-            let names = if isArray(x) {
-                getAttrib(x, R_DimNamesSymbol())
-            } else {
-                getAttrib(x, R_NamesSymbol())
-            };
-            if !isNull(names) {
-                if isArray(x) {
-                    setAttrib(ans, R_DimNamesSymbol(), names);
-                } else {
-                    setAttrib(ans, R_NamesSymbol(), names);
-                }
+        t if t == SEXPTYPE::INTSXP => {
+            for i in 0..n {
+                SET_LOGICAL_ELT(
+                    ans,
+                    i as c_int,
+                    (INTEGER_ELT(x, i as c_int) == NA_INTEGER) as c_int,
+                );
             }
         }
-
-        ans
+        t if t == SEXPTYPE::REALSXP => {
+            for i in 0..n {
+                SET_LOGICAL_ELT(ans, i as c_int, ISNAN(REAL_ELT(x, i as c_int)) as c_int);
+            }
+        }
+        t if t == SEXPTYPE::CPLXSXP => {
+            for i in 0..n {
+                let v = COMPLEX_ELT(x, i as c_int);
+                SET_LOGICAL_ELT(ans, i as c_int, (ISNAN(v.r) || ISNAN(v.i)) as c_int);
+            }
+        }
+        t if t == SEXPTYPE::STRSXP => {
+            for i in 0..n {
+                SET_LOGICAL_ELT(ans, i as c_int, (STRING_ELT(x, i) == R_NaString()) as c_int);
+            }
+        }
+        t if t == SEXPTYPE::RAWSXP => {
+            for i in 0..n {
+                SET_LOGICAL_ELT(ans, i as c_int, 0);
+            }
+        }
+        t if t == SEXPTYPE::LISTSXP => {
+            let mut elt = x;
+            for i in 0..n {
+                let s = CAR(elt);
+                SET_LOGICAL_ELT(ans, i as c_int, elem_is_na(s));
+                elt = CDR(elt);
+            }
+        }
+        t if t == SEXPTYPE::VECSXP => {
+            for i in 0..n {
+                let s = VECTOR_ELT(x, i);
+                SET_LOGICAL_ELT(ans, i as c_int, elem_is_na(s));
+            }
+        }
+        t if t == SEXPTYPE::NILSXP => {}
+        _ => {
+            for i in 0..n {
+                SET_LOGICAL_ELT(ans, i as c_int, 0);
+            }
+        }
     }
+
+    // Copy dim and names
+    if isVector(x) {
+        let dims = getAttrib(x, R_DimSymbol());
+        if !isNull(dims) {
+            setAttrib(ans, R_DimSymbol(), dims);
+        }
+        let names = if isArray(x) {
+            getAttrib(x, R_DimNamesSymbol())
+        } else {
+            getAttrib(x, R_NamesSymbol())
+        };
+        if !isNull(names) {
+            if isArray(x) {
+                setAttrib(ans, R_DimNamesSymbol(), names);
+            } else {
+                setAttrib(ans, R_NamesSymbol(), names);
+            }
+        }
+    }
+
+    ans
 }
 
 /// R-level `is.nan()` entry point.
 ///
 /// This is the `do_isnan()` function from coerce.c.
 pub fn do_isnan(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        let n = xlength(x);
-        let ans = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
-        let _ans_guard = protect(ans);
-        let pa = LOGICAL(ans);
+    let x = CAR(args);
+    let n = xlength(x);
+    let ans = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
+    let _ans_guard = protect(ans);
 
-        match TYPEOF(x) {
-            t if t == SEXPTYPE::REALSXP => {
-                for i in 0..n {
-                    *pa.add(i as usize) = R_IsNaN(REAL_ELT(x, i as c_int)) as c_int;
-                }
-            }
-            t if t == SEXPTYPE::CPLXSXP => {
-                for i in 0..n {
-                    let v = COMPLEX_ELT(x, i as c_int);
-                    *pa.add(i as usize) = (R_IsNaN(v.r) || R_IsNaN(v.i)) as c_int;
-                }
-            }
-            _ => {
-                for i in 0..n {
-                    *pa.add(i as usize) = 0;
-                }
+    match TYPEOF(x) {
+        t if t == SEXPTYPE::REALSXP => {
+            for i in 0..n {
+                SET_LOGICAL_ELT(ans, i as c_int, R_IsNaN(REAL_ELT(x, i as c_int)) as c_int);
             }
         }
-
-        if isVector(x) {
-            let dims = getAttrib(x, R_DimSymbol());
-            if !isNull(dims) {
-                setAttrib(ans, R_DimSymbol(), dims);
-            }
-            let names = if isArray(x) {
-                getAttrib(x, R_DimNamesSymbol())
-            } else {
-                getAttrib(x, R_NamesSymbol())
-            };
-            if !isNull(names) {
-                if isArray(x) {
-                    setAttrib(ans, R_DimNamesSymbol(), names);
-                } else {
-                    setAttrib(ans, R_NamesSymbol(), names);
-                }
+        t if t == SEXPTYPE::CPLXSXP => {
+            for i in 0..n {
+                let v = COMPLEX_ELT(x, i as c_int);
+                SET_LOGICAL_ELT(ans, i as c_int, (R_IsNaN(v.r) || R_IsNaN(v.i)) as c_int);
             }
         }
-
-        ans
+        _ => {
+            for i in 0..n {
+                SET_LOGICAL_ELT(ans, i as c_int, 0);
+            }
+        }
     }
+
+    if isVector(x) {
+        let dims = getAttrib(x, R_DimSymbol());
+        if !isNull(dims) {
+            setAttrib(ans, R_DimSymbol(), dims);
+        }
+        let names = if isArray(x) {
+            getAttrib(x, R_DimNamesSymbol())
+        } else {
+            getAttrib(x, R_NamesSymbol())
+        };
+        if !isNull(names) {
+            if isArray(x) {
+                setAttrib(ans, R_DimNamesSymbol(), names);
+            } else {
+                setAttrib(ans, R_NamesSymbol(), names);
+            }
+        }
+    }
+
+    ans
 }

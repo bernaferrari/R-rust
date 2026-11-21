@@ -55,8 +55,7 @@ pub fn do_asfunction(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             if names != R_NilValue() {
                 let name_elt = STRING_ELT(names, i as R_xlen_t);
                 if name_elt != R_NilValue() {
-                    let c = CHAR(name_elt);
-                    if !c.is_null() && *c != 0 {
+                    if !char_bytes(name_elt).is_empty() {
                         SETTAG(current, crate::mainutils::subset::installTrChar(name_elt));
                     }
                 }
@@ -106,7 +105,7 @@ pub fn do_str2lang(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             error("argument must be a single character string");
         }
         let mut status: c_int = 0;
-        let srcfile = Rf_mkString(b"<text>\0".as_ptr() as *const c_char);
+        let srcfile = mk_string("<text>");
         let _srcfile_guard = protect(srcfile);
         let parsed = crate::mainutils::gram_main::R_ParseVector(s, -1, &mut status, srcfile);
         let _parsed_guard = protect(parsed);
@@ -157,8 +156,7 @@ pub fn do_ascall(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     if names != R_NilValue() {
                         let name_elt = STRING_ELT(names, i as R_xlen_t);
                         if name_elt != R_NilValue() {
-                            let c = CHAR(name_elt);
-                            if !c.is_null() && *c != 0 {
+                            if !char_bytes(name_elt).is_empty() {
                                 SETTAG(ap, crate::mainutils::subset::installTrChar(name_elt));
                             }
                         }
@@ -185,128 +183,133 @@ pub fn do_ascall(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     }
 }
 pub fn do_isfinite(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        let n = xlength(x);
-        let ans = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
-        let _ans_guard = protect(ans);
-        let pa = LOGICAL(ans);
+    let x = CAR(args);
+    let n = xlength(x);
+    let ans = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
+    let _ans_guard = protect(ans);
 
-        match TYPEOF(x) {
-            t if t == SEXPTYPE::STRSXP || t == SEXPTYPE::RAWSXP || t == SEXPTYPE::NILSXP => {
-                for i in 0..n {
-                    *pa.add(i as usize) = 0;
-                }
-            }
-            t if t == SEXPTYPE::LGLSXP || t == SEXPTYPE::INTSXP => {
-                for i in 0..n {
-                    *pa.add(i as usize) = (INTEGER_ELT(x, i as c_int) != NA_INTEGER) as c_int;
-                }
-            }
-            t if t == SEXPTYPE::REALSXP => {
-                for i in 0..n {
-                    *pa.add(i as usize) = R_FINITE(REAL_ELT(x, i as c_int)) as c_int;
-                }
-            }
-            t if t == SEXPTYPE::CPLXSXP => {
-                for i in 0..n {
-                    let v = COMPLEX_ELT(x, i as c_int);
-                    *pa.add(i as usize) = (R_FINITE(v.r) && R_FINITE(v.i)) as c_int;
-                }
-            }
-            _ => {
-                error("default method not implemented for type");
+    match TYPEOF(x) {
+        t if t == SEXPTYPE::STRSXP || t == SEXPTYPE::RAWSXP || t == SEXPTYPE::NILSXP => {
+            for i in 0..n {
+                SET_LOGICAL_ELT(ans, i as c_int, 0);
             }
         }
-
-        if isVector(x) {
-            let dims = getAttrib(x, R_DimSymbol());
-            if !isNull(dims) {
-                setAttrib(ans, R_DimSymbol(), dims);
-            }
-            let names = if isArray(x) {
-                getAttrib(x, R_DimNamesSymbol())
-            } else {
-                getAttrib(x, R_NamesSymbol())
-            };
-            if !isNull(names) {
-                if isArray(x) {
-                    setAttrib(ans, R_DimNamesSymbol(), names);
-                } else {
-                    setAttrib(ans, R_NamesSymbol(), names);
-                }
+        t if t == SEXPTYPE::LGLSXP || t == SEXPTYPE::INTSXP => {
+            for i in 0..n {
+                SET_LOGICAL_ELT(
+                    ans,
+                    i as c_int,
+                    (INTEGER_ELT(x, i as c_int) != NA_INTEGER) as c_int,
+                );
             }
         }
-
-        ans
+        t if t == SEXPTYPE::REALSXP => {
+            for i in 0..n {
+                SET_LOGICAL_ELT(ans, i as c_int, R_FINITE(REAL_ELT(x, i as c_int)) as c_int);
+            }
+        }
+        t if t == SEXPTYPE::CPLXSXP => {
+            for i in 0..n {
+                let v = COMPLEX_ELT(x, i as c_int);
+                SET_LOGICAL_ELT(ans, i as c_int, (R_FINITE(v.r) && R_FINITE(v.i)) as c_int);
+            }
+        }
+        _ => {
+            error("default method not implemented for type");
+        }
     }
+
+    if isVector(x) {
+        let dims = getAttrib(x, R_DimSymbol());
+        if !isNull(dims) {
+            setAttrib(ans, R_DimSymbol(), dims);
+        }
+        let names = if isArray(x) {
+            getAttrib(x, R_DimNamesSymbol())
+        } else {
+            getAttrib(x, R_NamesSymbol())
+        };
+        if !isNull(names) {
+            if isArray(x) {
+                setAttrib(ans, R_DimNamesSymbol(), names);
+            } else {
+                setAttrib(ans, R_NamesSymbol(), names);
+            }
+        }
+    }
+
+    ans
 }
 
 /// R-level `is.infinite()` entry point.
 ///
 /// This is the `do_isinfinite()` function from coerce.c.
 pub fn do_isinfinite(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        let n = xlength(x);
-        let ans = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
-        let _ans_guard = protect(ans);
-        let pa = LOGICAL(ans);
+    let x = CAR(args);
+    let n = xlength(x);
+    let ans = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
+    let _ans_guard = protect(ans);
 
-        match TYPEOF(x) {
-            t if t == SEXPTYPE::STRSXP
-                || t == SEXPTYPE::RAWSXP
-                || t == SEXPTYPE::NILSXP
-                || t == SEXPTYPE::LGLSXP
-                || t == SEXPTYPE::INTSXP =>
-            {
-                for i in 0..n {
-                    *pa.add(i as usize) = 0;
-                }
-            }
-            t if t == SEXPTYPE::REALSXP => {
-                for i in 0..n {
-                    let xr = REAL_ELT(x, i as c_int);
-                    *pa.add(i as usize) = if ISNAN(xr) || R_FINITE(xr) { 0 } else { 1 };
-                }
-            }
-            t if t == SEXPTYPE::CPLXSXP => {
-                for i in 0..n {
-                    let v = COMPLEX_ELT(x, i as c_int);
-                    *pa.add(i as usize) =
-                        if (ISNAN(v.r) || R_FINITE(v.r)) && (ISNAN(v.i) || R_FINITE(v.i)) {
-                            0
-                        } else {
-                            1
-                        };
-                }
-            }
-            _ => {
-                error("default method not implemented for type");
+    match TYPEOF(x) {
+        t if t == SEXPTYPE::STRSXP
+            || t == SEXPTYPE::RAWSXP
+            || t == SEXPTYPE::NILSXP
+            || t == SEXPTYPE::LGLSXP
+            || t == SEXPTYPE::INTSXP =>
+        {
+            for i in 0..n {
+                SET_LOGICAL_ELT(ans, i as c_int, 0);
             }
         }
-
-        if isVector(x) {
-            let dims = getAttrib(x, R_DimSymbol());
-            if !isNull(dims) {
-                setAttrib(ans, R_DimSymbol(), dims);
-            }
-            let names = if isArray(x) {
-                getAttrib(x, R_DimNamesSymbol())
-            } else {
-                getAttrib(x, R_NamesSymbol())
-            };
-            if !isNull(names) {
-                if isArray(x) {
-                    setAttrib(ans, R_DimNamesSymbol(), names);
-                } else {
-                    setAttrib(ans, R_NamesSymbol(), names);
-                }
+        t if t == SEXPTYPE::REALSXP => {
+            for i in 0..n {
+                let xr = REAL_ELT(x, i as c_int);
+                SET_LOGICAL_ELT(
+                    ans,
+                    i as c_int,
+                    if ISNAN(xr) || R_FINITE(xr) { 0 } else { 1 },
+                );
             }
         }
-
-        ans
+        t if t == SEXPTYPE::CPLXSXP => {
+            for i in 0..n {
+                let v = COMPLEX_ELT(x, i as c_int);
+                SET_LOGICAL_ELT(
+                    ans,
+                    i as c_int,
+                    if (ISNAN(v.r) || R_FINITE(v.r)) && (ISNAN(v.i) || R_FINITE(v.i)) {
+                        0
+                    } else {
+                        1
+                    },
+                );
+            }
+        }
+        _ => {
+            error("default method not implemented for type");
+        }
     }
+
+    if isVector(x) {
+        let dims = getAttrib(x, R_DimSymbol());
+        if !isNull(dims) {
+            setAttrib(ans, R_DimSymbol(), dims);
+        }
+        let names = if isArray(x) {
+            getAttrib(x, R_DimNamesSymbol())
+        } else {
+            getAttrib(x, R_NamesSymbol())
+        };
+        if !isNull(names) {
+            if isArray(x) {
+                setAttrib(ans, R_DimNamesSymbol(), names);
+            } else {
+                setAttrib(ans, R_NamesSymbol(), names);
+            }
+        }
+    }
+
+    ans
 }
 
 // ---------------------------------------------------------------------------
@@ -318,20 +321,19 @@ pub fn do_isinfinite(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 /// GNU R has no separate `do_coerce` primitive; this wrapper follows the
 /// checked `as.vector` coercion path without claiming to dispatch R methods.
 pub fn do_coerce(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe {
-        let args_s =
-            Sexp::try_from_raw(args).unwrap_or_else(|err| errorcall(call, &err.to_string()));
-        let x = args_s
-            .clone()
-            .try_pairlist_arg(0)
-            .clone()
-            .unwrap_or_else(|err| errorcall(call, &err.to_string()));
-        let mode_str = match args_s.try_pairlist_arg(1) {
-            Ok(s) => s,
-            Err(_) => return x.as_raw(),
-        };
-        coerce_vector_safe(x, mode_str).unwrap_or_else(|message| errorcall(call, &message))
-    }
+    let args_s = crate::mainutils::essentials::active_owner()
+        .sexp(args)
+        .unwrap_or_else(|err| errorcall(call, &err.to_string()));
+    let x = args_s
+        .clone()
+        .try_pairlist_arg(0)
+        .clone()
+        .unwrap_or_else(|err| errorcall(call, &err.to_string()));
+    let mode_str = match args_s.try_pairlist_arg(1) {
+        Ok(s) => s,
+        Err(_) => return x.as_raw(),
+    };
+    coerce_vector_safe(x, mode_str).unwrap_or_else(|message| errorcall(call, &message))
 }
 
 // ---------------------------------------------------------------------------
@@ -368,8 +370,7 @@ pub fn do_anyNA(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         // Keep the matcher allocations and any partial-match warning inside
         // the original runtime owner, including when this lower-level entry
         // is invoked outside the public internal-generic wrapper.
-        let owner = crate::sexp::owner::OwnerToken::current()
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+        let owner = crate::mainutils::essentials::active_owner();
         let pin = owner
             .pin()
             .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
@@ -433,11 +434,11 @@ pub fn do_anyNA(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let _recursive_formal_guard = protect(recursive_formal);
         SETTAG(
             recursive_formal,
-            crate::sexp::symbol::Rf_install(c"recursive".as_ptr()),
+            crate::sexp::symbol::install_str("recursive"),
         );
         let x_formal = Rf_cons(crate::sexp::globals::R_MissingArg(), recursive_formal);
         let _x_formal_guard = protect(x_formal);
-        SETTAG(x_formal, crate::sexp::symbol::Rf_install(c"x".as_ptr()));
+        SETTAG(x_formal, crate::sexp::symbol::install_str("x"));
         let matched = crate::mainutils::match_mod::matchArgs_RC(x_formal, args, call);
         let _matched_guard = protect(matched);
         if let Some(pin) = &pin {

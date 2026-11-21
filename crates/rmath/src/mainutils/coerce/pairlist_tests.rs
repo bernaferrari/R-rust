@@ -36,7 +36,7 @@ fn cycle_contract(name: &str, target: SEXPTYPE) {
                 ReferenceChild::Node(allocation),
             )
             .unwrap();
-            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 super::coercePairList(cell.as_raw(), target)
             }));
             replace_rest(&cell, &factory.nil());

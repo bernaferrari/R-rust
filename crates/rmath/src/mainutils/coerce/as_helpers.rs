@@ -226,27 +226,25 @@ pub fn asBool(x: SEXP) -> c_int {
 ///
 /// This is R's `asCharacterFactor()` from coerce.c.
 pub fn asCharacterFactor(x: SEXP) -> SEXP {
-    unsafe {
-        let n = xlength(x);
-        let labels = getAttrib(x, R_LevelsSymbol());
-        if TYPEOF(labels) != SEXPTYPE::STRSXP {
+    let n = xlength(x);
+    let labels = getAttrib(x, R_LevelsSymbol());
+    if TYPEOF(labels) != SEXPTYPE::STRSXP {
+        error("malformed factor");
+    }
+    let nl = LENGTH(labels);
+
+    let ans = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+    let _ans_guard = protect(ans);
+    for i in 0..n {
+        let ii = INTEGER_ELT(x, i as c_int);
+        if ii == NA_INTEGER {
+            SET_STRING_ELT(ans, i, R_NaString());
+        } else if ii >= 1 && ii <= nl {
+            SET_STRING_ELT(ans, i, STRING_ELT(labels, (ii - 1) as R_xlen_t));
+        } else {
             error("malformed factor");
         }
-        let nl = LENGTH(labels);
-
-        let ans = Rf_allocVector3(SEXPTYPE::STRSXP, n);
-        let _ans_guard = protect(ans);
-        for i in 0..n {
-            let ii = INTEGER_ELT(x, i as c_int);
-            if ii == NA_INTEGER {
-                SET_STRING_ELT(ans, i, R_NaString());
-            } else if ii >= 1 && ii <= nl {
-                SET_STRING_ELT(ans, i, STRING_ELT(labels, (ii - 1) as R_xlen_t));
-            } else {
-                error("malformed factor");
-            }
-        }
-
-        ans
     }
+
+    ans
 }

@@ -70,9 +70,7 @@ fn raw_coercion_roots_gc_provider_and_replacement_owner() {
         )
         .unwrap();
     let source = AltrepBuilder::new(class).build().unwrap();
-    let result = factory
-        .wrap(unsafe { coerceToRaw(source.as_raw()) })
-        .unwrap();
+    let result = factory.wrap(coerceToRaw(source.as_raw())).unwrap();
     for (i, v) in [1u8, 2, 3, 4].into_iter().enumerate() {
         assert_eq!(result.try_raw_elt(i as _).unwrap(), v);
     }
@@ -99,9 +97,9 @@ fn raw_coercion_rejects_owner_revocation_before_publication() {
             .unwrap();
         let source = AltrepBuilder::new(class).build().unwrap();
         assert!(
-            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
-                coerceToRaw(source.as_raw())
-            }))
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| coerceToRaw(
+                source.as_raw()
+            )))
             .is_err()
         );
     });
@@ -119,9 +117,9 @@ fn raw_coercion_rejects_foreign_source() {
     let other = RSession::new_for_gc_tests();
     other.with_active(|| {
         assert!(
-            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
-                coerceToRaw(source.as_raw())
-            }))
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| coerceToRaw(
+                source.as_raw()
+            )))
             .is_err()
         )
     });
@@ -151,7 +149,7 @@ fn raw_coercion_failure_reentry_and_denial_recover_without_workspace_leaks() {
     for _ in 0..2 {
         for fail in [1, 2, 3] {
             mode.set(fail);
-            let failure = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+            let failure = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 coerceToRaw(source.as_raw())
             }))
             .unwrap_err();
@@ -162,7 +160,7 @@ fn raw_coercion_failure_reentry_and_denial_recover_without_workspace_leaks() {
                 );
             }
             mode.set(0);
-            let out = f.wrap(unsafe { coerceToRaw(source.as_raw()) }).unwrap();
+            let out = f.wrap(coerceToRaw(source.as_raw())).unwrap();
             assert_eq!(out.try_raw_elt(0).unwrap(), 1);
             drop(out);
             owner.full_gc().unwrap();
@@ -188,10 +186,9 @@ fn raw_coercion_failure_reentry_and_denial_recover_without_workspace_leaks() {
     owner
         .with_arena(|a| a.set_budget(ArenaBudget::new(resident + 4096, usize::MAX)))
         .unwrap();
-    let denial = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
-        coerceToRaw(big.as_raw())
-    }))
-    .unwrap_err();
+    let denial =
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| coerceToRaw(big.as_raw())))
+            .unwrap_err();
     let denial = denial
         .downcast_ref::<crate::sexp::context::RError>()
         .expect("allocation denial must retain its typed R error payload");
@@ -210,7 +207,7 @@ fn raw_coercion_failure_reentry_and_denial_recover_without_workspace_leaks() {
     owner
         .with_arena(|a| a.set_budget(ArenaBudget::unlimited()))
         .unwrap();
-    let out = f.wrap(unsafe { coerceToRaw(source.as_raw()) }).unwrap();
+    let out = f.wrap(coerceToRaw(source.as_raw())).unwrap();
     assert_eq!(out.try_raw_elt(0).unwrap(), 1);
 }
 
@@ -258,7 +255,7 @@ fn raw_coercion_copies_all_provider_types_without_materializing() {
             )
             .unwrap();
         let source = AltrepBuilder::new(class).build().unwrap();
-        let out = f.wrap(unsafe { coerceToRaw(source.as_raw()) }).unwrap();
+        let out = f.wrap(coerceToRaw(source.as_raw())).unwrap();
         for (i, v) in expected.into_iter().enumerate() {
             assert_eq!(out.try_raw_elt(i as _).unwrap(), v);
         }
@@ -272,26 +269,24 @@ fn wrapper<'s>(
 ) -> crate::sexp::object::Sexp<'s> {
     let nil = f.nil();
     let args = f.pairlist_cell(source, &nil, &nil).unwrap();
-    f.wrap(unsafe {
-        crate::mainutils::essentials::do_as_raw(
-            nil.as_raw(),
-            nil.as_raw(),
-            args.as_raw(),
-            nil.as_raw(),
-        )
-    })
+    f.wrap(crate::mainutils::essentials::do_as_raw(
+        nil.as_raw(),
+        nil.as_raw(),
+        args.as_raw(),
+        nil.as_raw(),
+    ))
     .unwrap()
 }
 fn attributed<'s>(
     f: &crate::sexp::object::SessionNodeFactory<'s>,
     source: &crate::sexp::object::Sexp<'_>,
 ) {
-    let key = f.wrap(unsafe { Rf_install(c"raw.note".as_ptr()) }).unwrap();
-    let val = f.wrap(unsafe { Rf_ScalarInteger(81) }).unwrap();
+    let key = f
+        .wrap(crate::sexp::symbol::install_str("raw.note"))
+        .unwrap();
+    let val = f.wrap(Rf_ScalarInteger(81)).unwrap();
     let attr = f.pairlist_cell(&val, &f.nil(), &key).unwrap();
-    unsafe {
-        crate::sexp::accessors::SET_ATTRIB(source.as_raw(), attr.as_raw());
-    }
+    crate::sexp::accessors::SET_ATTRIB(source.as_raw(), attr.as_raw());
 }
 #[test]
 fn raw_wrapper_copies_attributed_source_across_gc_and_preserves_errors_and_budget() {
@@ -376,7 +371,7 @@ fn raw_wrapper_copies_attributed_source_across_gc_and_preserves_errors_and_budge
     let cap = resident + 4096;
     o.with_arena(|a| a.set_budget(ArenaBudget::new(cap, usize::MAX)))
         .unwrap();
-    let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+    let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         crate::mainutils::essentials::do_as_raw(
             nil.as_raw(),
             nil.as_raw(),
@@ -407,14 +402,14 @@ fn raw_wrapper_copies_attributed_source_across_gc_and_preserves_errors_and_budge
 fn raw_wrapper_rejects_foreign_arguments_and_callback_revocation() {
     let s = RSession::new_for_gc_tests();
     let f = s.owner_token().unwrap().node_factory();
-    let source = f.wrap(unsafe { Rf_ScalarInteger(1) }).unwrap();
+    let source = f.wrap(Rf_ScalarInteger(1)).unwrap();
     let nil = f.nil();
     let args = f.pairlist_cell(&source, &nil, &nil).unwrap();
     {
         let other = RSession::new_for_gc_tests();
         other.with_active(|| {
             let foreignnil = other.owner_token().unwrap().node_factory().nil();
-            let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+            let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 crate::mainutils::essentials::do_as_raw(
                     foreignnil.as_raw(),
                     foreignnil.as_raw(),

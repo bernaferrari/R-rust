@@ -39,7 +39,7 @@ fn last_warning_call(session: &RSession) -> Sexp<'static> {
 fn coercion_warning_scope_preserves_existing_legacy_root_stack() {
     let mut session = RSession::new_for_gc_tests();
     let attributed = call(&mut session, "attributed");
-    session.with_active(|| unsafe {
+    session.with_active(|| {
         let owner = session.owner_token().unwrap();
         let sentinel = owner.node_factory().character("legacy sentinel").unwrap();
         let before = R_ProtectCount();
@@ -66,11 +66,11 @@ fn coercion_warning_scope_restores_nested_attribution_across_full_gc() {
     session.with_active(|| {
         let outer_scope = coercion_scope(outer.as_raw());
         let inner_scope = coercion_scope(inner.as_raw());
-        unsafe { CoercionWarning(WARN_NA) };
+        CoercionWarning(WARN_NA);
         assert_eq!(last_warning_call(&session).as_raw(), inner.as_raw());
         drop(inner_scope);
         session.owner_token().unwrap().full_gc().unwrap();
-        unsafe { CoercionWarning(WARN_IMAG) };
+        CoercionWarning(WARN_IMAG);
         assert_eq!(
             last_warning_call(&session).as_raw(),
             outer.as_raw(),
@@ -90,11 +90,11 @@ fn coercion_warning_scope_keeps_same_thread_sessions_independent() {
         let left_scope = coercion_scope(left_call.as_raw());
         right.with_active(|| {
             let right_scope = coercion_scope(right_call.as_raw());
-            unsafe { CoercionWarning(WARN_NA) };
+            CoercionWarning(WARN_NA);
             assert_eq!(last_warning_call(&right).as_raw(), right_call.as_raw());
             drop(right_scope);
         });
-        unsafe { CoercionWarning(WARN_IMAG) };
+        CoercionWarning(WARN_IMAG);
         assert_eq!(last_warning_call(&left).as_raw(), left_call.as_raw());
         drop(left_scope);
     });

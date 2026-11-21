@@ -10,9 +10,9 @@ use super::*;
 pub fn do_call(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     use crate::eval::eval::Rf_eval;
     use crate::mainutils::errors::Rf_error;
-    use crate::sexp::accessors::{CAR, CDR, CHAR, STRING_ELT};
+    use crate::mainutils::subset::installTrChar;
+    use crate::sexp::accessors::{CAR, CDR, STRING_ELT};
     use crate::sexp::ffi::SEXPTYPE;
-    use crate::sexp::symbol::Rf_install;
     use std::ptr;
 
     unsafe {
@@ -27,15 +27,12 @@ pub fn do_call(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             Rf_error(b"first argument must be a character string\0".as_ptr() as *const c_char);
         }
 
-        let str = CHAR(STRING_ELT(rfun, 0));
-        if !str.is_null() {
-            let s = std::ffi::CStr::from_ptr(str);
-            if s.to_bytes() == b".Internal" {
-                Rf_error(b"illegal usage\0".as_ptr() as *const c_char);
-            }
+        let str = STRING_ELT(rfun, 0);
+        if char_bytes(str) == b".Internal" {
+            Rf_error(b"illegal usage\0".as_ptr() as *const c_char);
         }
 
-        let sym = Rf_install(str);
+        let sym = installTrChar(str);
         let _sym_guard = protect(sym);
 
         // Evaluate remaining arguments into FRESH cells.
@@ -87,17 +84,16 @@ pub fn do_call(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 ///
 /// Ported from R's `do_docall()` in coerce.c.
 pub fn do_docall(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    use crate::eval::attrib_core::{R_NamesSymbol, getAttrib};
     use crate::mainutils::errors::Rf_error;
     use crate::mainutils::subset::installTrChar;
     use crate::sexp::accessors::{
-        CADDR, CADR, CAR, CDR, CHAR, LENGTH, SETCAR, SETTAG, STRING_ELT, TYPEOF, VECTOR_ELT,
+        CADDR, CADR, CAR, CDR, LENGTH, SETCAR, SETTAG, STRING_ELT, TYPEOF, VECTOR_ELT,
     };
+    use crate::sexp::attrib_core::{R_NamesSymbol, getAttrib};
     use crate::sexp::constructors::Rf_allocVector;
     use crate::sexp::ffi::SEXPTYPE;
     use crate::sexp::globals::R_NilValue;
     use crate::sexp::protect::protect;
-    use crate::sexp::symbol::Rf_install;
 
     unsafe {
         let fun = CAR(args);
@@ -135,14 +131,11 @@ pub fn do_docall(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let _newcall_guard = protect(newcall);
 
         if isString(fun) {
-            let str = CHAR(STRING_ELT(fun, 0));
-            if !str.is_null() {
-                let s = std::ffi::CStr::from_ptr(str);
-                if s.to_bytes() == b".Internal" {
-                    Rf_error(b"illegal usage\0".as_ptr() as *const c_char);
-                }
+            let str = STRING_ELT(fun, 0);
+            if char_bytes(str) == b".Internal" {
+                Rf_error(b"illegal usage\0".as_ptr() as *const c_char);
             }
-            SETCAR(newcall, Rf_install(str));
+            SETCAR(newcall, installTrChar(str));
         } else {
             // Check for .Internal primitive
             let prim_name = crate::eval::builtin::PRIMNAME(fun);
@@ -162,10 +155,9 @@ pub fn do_docall(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 let name_elt = STRING_ELT(names, i as R_xlen_t);
                 if !name_elt.is_null() && name_elt != R_NilValue() {
                     if name_elt == crate::sexp::globals::R_NaString() {
-                        SETTAG(c, Rf_install(c"NA".as_ptr()));
+                        SETTAG(c, crate::sexp::symbol::install_str("NA"));
                     } else {
-                        let ch = CHAR(name_elt);
-                        if !ch.is_null() && *ch != 0 {
+                        if !char_bytes(name_elt).is_empty() {
                             SETTAG(c, installTrChar(name_elt));
                         }
                     }
@@ -549,42 +541,48 @@ pub fn duplicate_substitute_arg(name: &str) -> ! {
 }
 
 pub fn symbol_name(symbol: SEXP) -> Option<String> {
-    unsafe {
-        if symbol.is_null() || symbol == R_NilValue() || TYPEOF(symbol) != SEXPTYPE::SYMSXP {
-            return None;
-        }
-        let printname = PRINTNAME(symbol);
-        if printname.is_null() || printname == R_NilValue() {
-            return None;
-        }
-        let chars = CHAR(printname);
-        if chars.is_null() {
-            None
-        } else {
-            Some(CStr::from_ptr(chars).to_string_lossy().into_owned())
-        }
+    if symbol.is_null() || symbol == R_NilValue() || TYPEOF(symbol) != SEXPTYPE::SYMSXP {
+        return None;
+    }
+    let printname = PRINTNAME(symbol);
+    if printname.is_null() || printname == R_NilValue() {
+        return None;
+    }
+    let chars = char_cstring(printname);
+    if chars.is_none() {
+        None
+    } else {
+        Some(
+            chars
+                .as_deref()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .into_owned(),
+        )
     }
 }
 
 pub fn deparse_substitute_arg(value: SEXP) -> String {
-    unsafe {
-        if value == R_MissingArg() {
-            return String::new();
-        }
-        let text = crate::mainutils::deparse::deparse1line(value, false);
-        if text.is_null() || text == R_NilValue() || XLENGTH(text) == 0 {
-            return String::new();
-        }
-        let elt = STRING_ELT(text, 0);
-        if elt.is_null() || elt == R_NilValue() {
-            return String::new();
-        }
-        let chars = CHAR(elt);
-        if chars.is_null() {
-            String::new()
-        } else {
-            CStr::from_ptr(chars).to_string_lossy().into_owned()
-        }
+    if value == R_MissingArg() {
+        return String::new();
+    }
+    let text = crate::mainutils::deparse::deparse1line(value, false);
+    if text.is_null() || text == R_NilValue() || XLENGTH(text) == 0 {
+        return String::new();
+    }
+    let elt = STRING_ELT(text, 0);
+    if elt.is_null() || elt == R_NilValue() {
+        return String::new();
+    }
+    let chars = char_cstring(elt);
+    if chars.is_none() {
+        String::new()
+    } else {
+        chars
+            .as_deref()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .into_owned()
     }
 }
 

@@ -6,22 +6,20 @@ use std::{cell::Cell, rc::Rc};
 fn coercion_attributes_keep_detached_nested_values_rooted_across_gc() {
     let session = RSession::new_for_gc_tests();
     let factory = session.owner_token().unwrap().node_factory();
-    let source = factory.wrap(unsafe { Rf_ScalarInteger(1) }).unwrap();
-    let result = factory.wrap(unsafe { Rf_ScalarReal(1.) }).unwrap();
-    let value = factory.wrap(unsafe { Rf_ScalarInteger(81) }).unwrap();
+    let source = factory.wrap(Rf_ScalarInteger(1)).unwrap();
+    let result = factory.wrap(Rf_ScalarReal(1.)).unwrap();
+    let value = factory.wrap(Rf_ScalarInteger(81)).unwrap();
     let value_node = value.allocation().unwrap().clone();
-    let nested = factory
-        .wrap(unsafe { Rf_allocVector3(SEXPTYPE::VECSXP, 1) })
-        .unwrap();
-    unsafe { SET_VECTOR_ELT(nested.as_raw(), 0, value.as_raw()) };
+    let nested = factory.wrap(Rf_allocVector3(SEXPTYPE::VECSXP, 1)).unwrap();
+    SET_VECTOR_ELT(nested.as_raw(), 0, value.as_raw());
     let nested_node = nested.allocation().unwrap().clone();
     let tag = factory
-        .wrap(unsafe { Rf_install(c"coercion.custom".as_ptr()) })
+        .wrap(crate::sexp::symbol::install_str("coercion.custom"))
         .unwrap();
     let attributes = factory
         .pairlist_cell(&nested, &factory.nil(), &tag)
         .unwrap();
-    unsafe { SET_ATTRIB(source.as_raw(), attributes.as_raw()) };
+    SET_ATTRIB(source.as_raw(), attributes.as_raw());
     drop((attributes, nested, value, tag));
     let source_node = source.allocation().unwrap().clone();
     let heap = source_node.heap_identity();
@@ -49,7 +47,7 @@ fn coercion_attributes_keep_detached_nested_values_rooted_across_gc() {
         (*owner).memory_state.gc_force_wait = 1;
     });
     let protection = crate::sexp::protect::R_ProtectCount();
-    unsafe { SHALLOW_DUPLICATE_ATTRIB(result.as_raw(), source.as_raw()) };
+    SHALLOW_DUPLICATE_ATTRIB(result.as_raw(), source.as_raw());
     assert!(notified.get());
     assert_eq!(crate::sexp::protect::R_ProtectCount(), protection);
     assert!(source.try_attrib().unwrap().is_nil());
@@ -72,21 +70,21 @@ fn coercion_attributes_reject_foreign_source_before_publication() {
     let original = RSession::new_for_gc_tests();
     let source = original.with_active(|| {
         let factory = original.owner_token().unwrap().node_factory();
-        let source = factory.wrap(unsafe { Rf_ScalarInteger(1) }).unwrap();
-        let value = factory.wrap(unsafe { Rf_ScalarInteger(81) }).unwrap();
+        let source = factory.wrap(Rf_ScalarInteger(1)).unwrap();
+        let value = factory.wrap(Rf_ScalarInteger(81)).unwrap();
         let tag = factory
-            .wrap(unsafe { Rf_install(c"coercion.custom".as_ptr()) })
+            .wrap(crate::sexp::symbol::install_str("coercion.custom"))
             .unwrap();
         let attributes = factory.pairlist_cell(&value, &factory.nil(), &tag).unwrap();
-        unsafe { SET_ATTRIB(source.as_raw(), attributes.as_raw()) };
+        SET_ATTRIB(source.as_raw(), attributes.as_raw());
         source
     });
     let other = RSession::new_for_gc_tests();
     other.with_active(|| {
         let factory = other.owner_token().unwrap().node_factory();
-        let result = factory.wrap(unsafe { Rf_ScalarReal(1.) }).unwrap();
+        let result = factory.wrap(Rf_ScalarReal(1.)).unwrap();
         let protection = crate::sexp::protect::R_ProtectCount();
-        let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+        let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             SHALLOW_DUPLICATE_ATTRIB(result.as_raw(), source.as_raw())
         }))
         .unwrap_err();

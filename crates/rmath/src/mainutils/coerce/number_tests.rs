@@ -45,7 +45,7 @@ fn gnu_number_text_coercion_matches_independent_value_and_warning_table() {
                 "NAs introduced by coercion to integer range" => WARN_INT_NA,
                 other => panic!("unmapped original warning: {other}"),
             };
-            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 match parts[1] {
                     "double" => assert_float(
                         RealFromString(character.as_raw(), &mut warning),

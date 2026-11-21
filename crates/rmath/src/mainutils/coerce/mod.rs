@@ -33,14 +33,13 @@ use std::ffi::CStr;
 use std::os::raw::{c_char, c_double, c_int};
 use std::ptr;
 
-use crate::eval::attrib_core::{
-    R_ClassSymbol, R_DimNamesSymbol, R_DimSymbol, R_LevelsSymbol, R_NamesSymbol, getAttrib,
-    setAttrib,
-};
 use crate::mainutils::relop::PRIMVAL;
 use crate::mainutils::subset::installTrChar;
 use crate::mainutils::util_main::type2char;
 use crate::sexp::accessors::*;
+use crate::sexp::attrib_core::{
+    R_ClassSymbol, R_DimNamesSymbol, R_DimSymbol, R_NamesSymbol, getAttrib,
+};
 use crate::sexp::constructors::*;
 use crate::sexp::context::RError;
 use crate::sexp::ffi::{
@@ -50,7 +49,72 @@ use crate::sexp::globals::{R_GlobalEnv, R_MissingArg, R_NaString as R_GlobalNaSt
 use crate::sexp::memory_ext::allocSExp;
 use crate::sexp::object::Sexp;
 use crate::sexp::protect::protect;
-use crate::sexp::symbol::Rf_install;
+
+/// The interned "levels" symbol.
+fn R_LevelsSymbol() -> SEXP {
+    crate::sexp::symbol::install_str("levels")
+}
+
+/// Set attribute through the evaluator setter (GNU names/class/tsp rules).
+fn setAttrib(x: SEXP, which: SEXP, value: SEXP) {
+    // SAFETY: callers pass live, rooted nodes of the current coercion; the
+    // evaluator setter only rewrites `x`'s attribute chain.
+    unsafe { crate::eval::attrib_core::setAttrib(x, which, value) }
+}
+
+// ---------------------------------------------------------------------------
+// Checked CHARSXP text and string constructors
+// ---------------------------------------------------------------------------
+
+/// Raw CHAR bytes of a CHARSXP (GNU `CHAR(x)`).
+fn char_bytes(x: SEXP) -> Vec<u8> {
+    crate::mainutils::printutils::charsxp_bytes(x)
+}
+
+/// CHAR text of a CHARSXP as an owned C string (up to its first NUL);
+/// `None` for a null pointer, mirroring a null `CHAR(x)`.
+fn char_cstring(x: SEXP) -> Option<std::ffi::CString> {
+    if x.is_null() {
+        return None;
+    }
+    let mut bytes = char_bytes(x);
+    if let Some(nul) = bytes.iter().position(|&b| b == 0) {
+        bytes.truncate(nul);
+    }
+    std::ffi::CString::new(bytes).ok()
+}
+
+/// Lossy UTF-8 text of a CHARSXP's CHAR bytes.
+fn char_lossy(x: SEXP) -> String {
+    String::from_utf8_lossy(&char_bytes(x)).into_owned()
+}
+
+/// UTF-8 text of a CHARSXP's CHAR bytes, empty when invalid.
+fn char_utf8(x: SEXP) -> String {
+    String::from_utf8(char_bytes(x)).unwrap_or_default()
+}
+
+/// Checked CHARSXP for `text` on the active session heap. Like
+/// `Rf_mkChar(CString::new(text).unwrap_or_default())`, an interior NUL
+/// yields the empty string.
+fn mk_char(text: &str) -> SEXP {
+    let text = if text.contains('\0') { "" } else { text };
+    crate::mainutils::essentials::active_owner()
+        .node_factory()
+        .character(text)
+        .map(|value| value.as_raw())
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+}
+
+/// Checked STRSXP(1) for `text` (`Rf_mkString`); an interior NUL yields "".
+fn mk_string(text: &str) -> SEXP {
+    let text = if text.contains('\0') { "" } else { text };
+    crate::mainutils::essentials::active_owner()
+        .node_factory()
+        .strings(&[text])
+        .map(|value| value.as_raw())
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+}
 
 mod any_na;
 mod as_helpers;

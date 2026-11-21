@@ -18,20 +18,18 @@ fn mode<'s>(factory: &crate::sexp::object::SessionNodeFactory<'s>) -> Sexp<'s> {
         .unwrap()
 }
 fn decorate(source: &Sexp<'_>) {
-    unsafe {
-        setAttrib(
-            source.as_raw(),
-            Rf_install(c"note".as_ptr()),
-            Rf_ScalarInteger(9),
-        );
-    }
+    setAttrib(
+        source.as_raw(),
+        crate::sexp::symbol::install_str("note"),
+        Rf_ScalarInteger(9),
+    );
 }
 #[test]
 fn same_type_helpers_reject_actual_foreign_source_fast_and_copy_paths() {
     let original = RSession::new_for_gc_tests();
     let f = original.owner_token().unwrap().node_factory();
-    let plain = f.wrap(unsafe { Rf_ScalarInteger(42) }).unwrap();
-    let attributed = f.wrap(unsafe { Rf_ScalarInteger(43) }).unwrap();
+    let plain = f.wrap(Rf_ScalarInteger(42)).unwrap();
+    let attributed = f.wrap(Rf_ScalarInteger(43)).unwrap();
     decorate(&attributed);
     let other = RSession::new_for_gc_tests();
     let mode = mode(&other.owner_token().unwrap().node_factory());
@@ -146,9 +144,9 @@ fn same_type_copy_keeps_gc_provider_and_replacement_owner_rooted() {
             assert_eq!(result.try_integer_elt(i as _).unwrap(), want);
             assert_eq!(source.try_integer_elt(i as _).unwrap(), want);
         }
-        unsafe { SET_INTEGER_ELT(result.as_raw(), 0, 77) };
+        SET_INTEGER_ELT(result.as_raw(), 0, 77);
         assert_eq!(source.try_integer_elt(0).unwrap(), 1);
-        unsafe { SET_INTEGER_ELT(source.as_raw(), 2, 88) };
+        SET_INTEGER_ELT(source.as_raw(), 2, 88);
         assert_eq!(result.try_integer_elt(2).unwrap(), 3);
         f.require_active().unwrap();
     }
@@ -206,7 +204,7 @@ fn same_type_copy_denial_is_typed_before_provider_read_and_recovers() {
                 .unwrap(),
             before
         );
-        let small = f.wrap(unsafe { Rf_ScalarInteger(7) }).unwrap();
+        let small = f.wrap(Rf_ScalarInteger(7)).unwrap();
         decorate(&small);
         let result = f.wrap(convert(small, mode.clone(), api).unwrap()).unwrap();
         assert_eq!(result.try_integer_elt(0).unwrap(), 7);
@@ -339,7 +337,7 @@ fn same_type_copy_covers_each_atomic_provider_including_rooted_strings() {
                 _ => AltrepElement::String(if i == 0 {
                     c.string("α")?
                 } else {
-                    c.wrap(unsafe { R_GlobalNaString() })?
+                    c.wrap(R_GlobalNaString())?
                 }),
             })
         }
@@ -421,11 +419,11 @@ fn compatibility_entries_admit_source_before_mode_callback_and_reject_foreign_mo
     }
     let original = RSession::new_for_gc_tests();
     let f = original.owner_token().unwrap().node_factory();
-    let source_a = f.wrap(unsafe { Rf_ScalarInteger(42) }).unwrap();
+    let source_a = f.wrap(Rf_ScalarInteger(42)).unwrap();
     let mode_a = mode(&f);
     let other = RSession::new_for_gc_tests();
     let f = other.owner_token().unwrap().node_factory();
-    let source_b = f.wrap(unsafe { Rf_ScalarInteger(43) }).unwrap();
+    let source_b = f.wrap(Rf_ScalarInteger(43)).unwrap();
     let reads = Rc::new(Cell::new(0));
     let class = other
         .register_altrep_class("owner-admitted-mode", Mode(reads.clone()))
@@ -459,7 +457,7 @@ fn compatibility_entries_reject_stale_generations_before_classification() {
     let mode_value = mode(&f);
     let mut violations = Vec::new();
     for api in 0..3 {
-        let stale = f.wrap(unsafe { Rf_ScalarInteger(45) }).unwrap();
+        let stale = f.wrap(Rf_ScalarInteger(45)).unwrap();
         let address = stale.as_raw();
         // Match the object safety tests: invalidate only at the allocator seam and
         // reuse the physical header, retaining a checked root for the fresh node.
@@ -485,7 +483,7 @@ fn compatibility_entries_reject_stale_generations_before_classification() {
         assert_eq!(fresh.typeof_(), SEXPTYPE::REALSXP);
     }
     for api in [1, 2] {
-        let source = f.wrap(unsafe { Rf_ScalarInteger(46) }).unwrap();
+        let source = f.wrap(Rf_ScalarInteger(46)).unwrap();
         let stale_mode = mode(&f);
         let address = stale_mode.as_raw();
         let fresh = owner
@@ -517,12 +515,12 @@ fn compatibility_entries_reject_revoked_source_and_mode_without_reading_payload(
     let original = RSession::new_for_gc_tests();
     let owner = original.owner_token().unwrap();
     let f = owner.node_factory();
-    let source_a = f.wrap(unsafe { Rf_ScalarInteger(1) }).unwrap();
+    let source_a = f.wrap(Rf_ScalarInteger(1)).unwrap();
     let mode_a = mode(&f);
     unsafe { crate::sexp::instance::revoke_instance_availability(owner.as_ptr()) };
     let other = RSession::new_for_gc_tests();
     let f = other.owner_token().unwrap().node_factory();
-    let source_b = f.wrap(unsafe { Rf_ScalarInteger(2) }).unwrap();
+    let source_b = f.wrap(Rf_ScalarInteger(2)).unwrap();
     let mode_b = mode(&f);
     let mut violations = Vec::new();
     for api in 0..3 {
@@ -600,7 +598,7 @@ fn compatibility_mode_callbacks_preserve_typed_failures_and_same_input_recovery(
     let session = RSession::new_for_gc_tests();
     let owner = session.owner_token().unwrap();
     let f = owner.node_factory();
-    let source = f.wrap(unsafe { Rf_ScalarInteger(17) }).unwrap();
+    let source = f.wrap(Rf_ScalarInteger(17)).unwrap();
     let failure = Rc::new(Cell::new(0));
     let reads = Rc::new(Cell::new(0));
     let class = session
@@ -712,7 +710,7 @@ fn compatibility_entry_null_source_and_invalid_mode_neighbors_preserve_values() 
     let session = RSession::new_for_gc_tests();
     let f = session.owner_token().unwrap().node_factory();
     let valid = mode(&f);
-    let source = f.wrap(unsafe { Rf_ScalarInteger(9) }).unwrap();
+    let source = f.wrap(Rf_ScalarInteger(9)).unwrap();
     for api in 0..3 {
         let output = f
             .wrap(convert(f.nil(), valid.clone(), api).unwrap())
@@ -722,9 +720,8 @@ fn compatibility_entry_null_source_and_invalid_mode_neighbors_preserve_values() 
     }
     for invalid in [
         f.nil(),
-        f.wrap(unsafe { Rf_ScalarInteger(1) }).unwrap(),
-        f.wrap(unsafe { Rf_allocVector3(SEXPTYPE::STRSXP, 0) })
-            .unwrap(),
+        f.wrap(Rf_ScalarInteger(1)).unwrap(),
+        f.wrap(Rf_allocVector3(SEXPTYPE::STRSXP, 0)).unwrap(),
         f.wrap(unsafe { Rf_mkString(c"unknown-mode".as_ptr()) })
             .unwrap(),
     ] {
@@ -750,7 +747,7 @@ fn compatibility_large_and_byte_modes_fit_same_budget_without_input_string_copy(
     let session = RSession::new_for_gc_tests();
     let owner = session.owner_token().unwrap();
     let f = owner.node_factory();
-    let source = f.wrap(unsafe { Rf_ScalarInteger(9) }).unwrap();
+    let source = f.wrap(Rf_ScalarInteger(9)).unwrap();
     let valid = mode(&f);
     // Native exercises the large input; Miri checks the same borrow/UTF-8 and
     // budget paths with 4 KiB to bound interpreter byte-validity checking.
@@ -768,9 +765,7 @@ fn compatibility_large_and_byte_modes_fit_same_budget_without_input_string_copy(
         let chars = f
             .wrap(unsafe { Rf_mkCharLen(bytes.as_ptr().cast(), bytes.len() as _) })
             .unwrap();
-        let mode_value = f
-            .wrap(unsafe { Rf_allocVector3(SEXPTYPE::STRSXP, 1) })
-            .unwrap();
+        let mode_value = f.wrap(Rf_allocVector3(SEXPTYPE::STRSXP, 1)).unwrap();
         let mut mode_value = crate::sexp::object::SexpMut::try_from_checked(mode_value).unwrap();
         mode_value.try_set_string_elt(0, chars).unwrap();
         let mode_value = mode_value.freeze();
@@ -839,7 +834,7 @@ fn compatibility_mode_callback_revocation_stops_before_raw_character_reads() {
     for api in [1, 2] {
         let session = RSession::new_for_gc_tests();
         let f = session.owner_token().unwrap().node_factory();
-        let source = f.wrap(unsafe { Rf_ScalarInteger(11) }).unwrap();
+        let source = f.wrap(Rf_ScalarInteger(11)).unwrap();
         let class = session
             .register_altrep_class("revoke-mode-callback", RevokeMode)
             .unwrap();
@@ -999,7 +994,7 @@ fn compatibility_as_vector_uses_second_stateful_mode() {
     }
     let session = RSession::new_for_gc_tests();
     let factory = session.owner_token().unwrap().node_factory();
-    let source = factory.wrap(unsafe { Rf_ScalarInteger(7) }).unwrap();
+    let source = factory.wrap(Rf_ScalarInteger(7)).unwrap();
     let reads = Rc::new(Cell::new(0));
     let class = session
         .register_altrep_class("compat-as-vector-stateful", Mode(reads.clone()))
@@ -1011,7 +1006,7 @@ fn compatibility_as_vector_uses_second_stateful_mode() {
             let nil = factory.nil();
             let tail = factory.pairlist_cell(&mode, &nil, &nil).unwrap();
             let args = factory.pairlist_cell(&source, &tail, &nil).unwrap();
-            unsafe { do_coerce(nil.as_raw(), nil.as_raw(), args.as_raw(), nil.as_raw()) }
+            do_coerce(nil.as_raw(), nil.as_raw(), args.as_raw(), nil.as_raw())
         } else {
             convert(source.clone(), mode, api).unwrap()
         };
@@ -1029,7 +1024,7 @@ fn compatibility_as_vector_any_preserves_list_and_strips_atomic_attributes() {
     let any = factory
         .wrap(unsafe { Rf_mkString(c"any".as_ptr()) })
         .unwrap();
-    let atomic = factory.wrap(unsafe { Rf_ScalarInteger(7) }).unwrap();
+    let atomic = factory.wrap(Rf_ScalarInteger(7)).unwrap();
     let list = factory
         .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::VECSXP, 1)))
         .unwrap();

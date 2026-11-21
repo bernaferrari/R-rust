@@ -194,16 +194,14 @@ pub fn isExpression(x: SEXP) -> bool {
 /// Check if a SEXP is a matrix (has non-null dim attribute of length 2).
 #[inline]
 pub fn isMatrix(x: SEXP) -> bool {
-    unsafe {
-        let dim = getAttrib(x, R_DimSymbol());
-        !isNull(dim) && LENGTH(dim) == 2
-    }
+    let dim = getAttrib(x, R_DimSymbol());
+    !isNull(dim) && LENGTH(dim) == 2
 }
 
 /// Check if a SEXP is an array (has non-null dim attribute).
 #[inline]
 pub fn isArray(x: SEXP) -> bool {
-    unsafe { !isNull(getAttrib(x, R_DimSymbol())) }
+    !isNull(getAttrib(x, R_DimSymbol()))
 }
 
 pub fn SET_TYPEOF(x: SEXP, v: c_int) {
@@ -233,7 +231,7 @@ pub fn R_NaString() -> SEXP {
 
 /// Get R_BlankString -- returns the empty string CHARSXP.
 pub fn R_BlankString() -> SEXP {
-    unsafe { Rf_mkChar(c"".as_ptr()) }
+    mk_char("")
 }
 
 // ---------------------------------------------------------------------------
@@ -243,60 +241,54 @@ pub fn R_BlankString() -> SEXP {
 /// Copy attributes from `from` to `to` (shallow duplicate).
 /// This matches R's SHALLOW_DUPLICATE_ATTRIB macro from coerce.c.
 pub fn SHALLOW_DUPLICATE_ATTRIB(to: SEXP, from: SEXP) {
-    unsafe {
-        let attr_from = ATTRIB(from);
-        if !isNull(attr_from) {
-            let _attributes_guard = protect(attr_from);
-            // Preserve the existing class/shape checks, then transfer the
-            // remaining attributes as internal metadata, as GNU does.
-            let class = getAttrib(from, R_ClassSymbol());
-            if !isNull(class) && class_fits(to, class) {
-                setAttrib(to, R_ClassSymbol(), class);
+    let attr_from = ATTRIB(from);
+    if !isNull(attr_from) {
+        let _attributes_guard = protect(attr_from);
+        // Preserve the existing class/shape checks, then transfer the
+        // remaining attributes as internal metadata, as GNU does.
+        let class = getAttrib(from, R_ClassSymbol());
+        if !isNull(class) && class_fits(to, class) {
+            setAttrib(to, R_ClassSymbol(), class);
+        }
+        let dim = getAttrib(from, R_DimSymbol());
+        if !isNull(dim) {
+            setAttrib(to, R_DimSymbol(), dim);
+        }
+        let dimnames = getAttrib(from, R_DimNamesSymbol());
+        if !isNull(dimnames) {
+            setAttrib(to, R_DimNamesSymbol(), dimnames);
+        }
+        // Copy stored metadata. Looking up names through getAttrib on a
+        // one-dimensional array exposes its axis labels as vector names.
+        // Setting those names would replace the already copied dimnames
+        // list and lose the axis name.
+        let mut attr = attr_from;
+        while !isNull(attr) {
+            let tag = TAG(attr);
+            if tag != R_ClassSymbol() && tag != R_DimSymbol() && tag != R_DimNamesSymbol() {
+                crate::sexp::attrib_core::installAttrib(to, tag, CAR(attr));
             }
-            let dim = getAttrib(from, R_DimSymbol());
-            if !isNull(dim) {
-                setAttrib(to, R_DimSymbol(), dim);
-            }
-            let dimnames = getAttrib(from, R_DimNamesSymbol());
-            if !isNull(dimnames) {
-                setAttrib(to, R_DimNamesSymbol(), dimnames);
-            }
-            // Copy stored metadata. Looking up names through getAttrib on a
-            // one-dimensional array exposes its axis labels as vector names.
-            // Setting those names would replace the already copied dimnames
-            // list and lose the axis name.
-            let mut attr = attr_from;
-            while !isNull(attr) {
-                let tag = TAG(attr);
-                if tag != R_ClassSymbol() && tag != R_DimSymbol() && tag != R_DimNamesSymbol() {
-                    crate::sexp::attrib_core::installAttrib(to, tag, CAR(attr));
-                }
-                attr = CDR(attr);
-            }
+            attr = CDR(attr);
         }
     }
 }
 
 /// A factor or ordered class is only legal on an integer vector.
 fn class_fits(to: SEXP, class: SEXP) -> bool {
-    unsafe {
-        use crate::sexp::ffi::SEXPTYPE;
-        if crate::sexp::accessors::TYPEOF(to) == SEXPTYPE::INTSXP.as_c_int() {
-            return true;
-        }
-        if crate::sexp::accessors::TYPEOF(class) != SEXPTYPE::STRSXP.as_c_int() {
-            return true;
-        }
-        for i in 0..crate::sexp::accessors::XLENGTH(class) {
-            let s = std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(
-                crate::sexp::accessors::STRING_ELT(class, i),
-            ));
-            if s.to_bytes() == b"factor" || s.to_bytes() == b"ordered" {
-                return false;
-            }
-        }
-        true
+    use crate::sexp::ffi::SEXPTYPE;
+    if crate::sexp::accessors::TYPEOF(to) == SEXPTYPE::INTSXP.as_c_int() {
+        return true;
     }
+    if crate::sexp::accessors::TYPEOF(class) != SEXPTYPE::STRSXP.as_c_int() {
+        return true;
+    }
+    for i in 0..crate::sexp::accessors::XLENGTH(class) {
+        let s = char_bytes(crate::sexp::accessors::STRING_ELT(class, i));
+        if s == b"factor" || s == b"ordered" {
+            return false;
+        }
+    }
+    true
 }
 
 /// Clear all attributes from an SEXP, and reset object/S4 bits.
