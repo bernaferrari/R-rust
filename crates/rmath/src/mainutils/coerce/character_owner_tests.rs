@@ -445,8 +445,12 @@ fn character_print_context_follows_gnu_callback_defaults_and_live_decimal_mark()
     let scipen = factory.wrap(Rf_ScalarInteger(0)).unwrap();
     let changed_digits = factory.wrap(Rf_ScalarInteger(2)).unwrap();
     let changed_scipen = factory.wrap(Rf_ScalarInteger(999)).unwrap();
-    let comma = factory.wrap(unsafe { Rf_mkString(c",".as_ptr()) }).unwrap();
-    let dot = factory.wrap(unsafe { Rf_mkString(c".".as_ptr()) }).unwrap();
+    let comma = factory
+        .wrap(unsafe { crate::sexp::constructors::mk_string_str(",") })
+        .unwrap();
+    let dot = factory
+        .wrap(unsafe { crate::sexp::constructors::mk_string_str(".") })
+        .unwrap();
     let nested = factory.wrap(Rf_ScalarReal(9.87654321098765)).unwrap();
     let print_args = factory
         .wrap(Rf_cons(nested.as_raw(), R_NilValue()))

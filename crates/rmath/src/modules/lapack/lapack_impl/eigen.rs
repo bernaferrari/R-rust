@@ -92,7 +92,7 @@ pub fn La_rs(x: SEXP, only_values: SEXP) -> SEXP {
             guards.push(protect(ret));
             nm = Rf_allocVector(STRSXP_C, 2);
             guards.push(protect(nm));
-            SET_STRING_ELT(nm, 1, Rf_mkChar(b"vectors\0".as_ptr() as *const c_char));
+            SET_STRING_ELT(nm, 1, crate::sexp::constructors::mk_char_str("vectors"));
             SET_VECTOR_ELT(ret, 1, z);
         } else {
             ret = Rf_allocVector(VECSXP_C, 1);
@@ -100,7 +100,7 @@ pub fn La_rs(x: SEXP, only_values: SEXP) -> SEXP {
             nm = Rf_allocVector(STRSXP_C, 1);
             guards.push(protect(nm));
         }
-        SET_STRING_ELT(nm, 0, Rf_mkChar(b"values\0".as_ptr() as *const c_char));
+        SET_STRING_ELT(nm, 0, crate::sexp::constructors::mk_char_str("values"));
         setAttrib(ret, R_NamesSymbol(), nm);
         SET_VECTOR_ELT(ret, 0, values);
 
@@ -229,8 +229,8 @@ pub fn La_rg(x: SEXP, only_values: SEXP) -> SEXP {
                 let _ret_guard = protect(ret);
                 nm = Rf_allocVector(STRSXP_C, 2);
                 let _nm_guard = protect(nm);
-                SET_STRING_ELT(nm, 0, Rf_mkChar(b"values\0".as_ptr() as *const c_char));
-                SET_STRING_ELT(nm, 1, Rf_mkChar(b"vectors\0".as_ptr() as *const c_char));
+                SET_STRING_ELT(nm, 0, crate::sexp::constructors::mk_char_str("values"));
+                SET_STRING_ELT(nm, 1, crate::sexp::constructors::mk_char_str("vectors"));
                 SET_VECTOR_ELT(ret, 0, values);
                 SET_VECTOR_ELT(ret, 1, z);
                 setAttrib(ret, R_NamesSymbol(), nm);
@@ -250,8 +250,8 @@ pub fn La_rg(x: SEXP, only_values: SEXP) -> SEXP {
                 let _ret_guard = protect(ret);
                 nm = Rf_allocVector(STRSXP_C, 2);
                 let _nm_guard = protect(nm);
-                SET_STRING_ELT(nm, 0, Rf_mkChar(b"values\0".as_ptr() as *const c_char));
-                SET_STRING_ELT(nm, 1, Rf_mkChar(b"vectors\0".as_ptr() as *const c_char));
+                SET_STRING_ELT(nm, 0, crate::sexp::constructors::mk_char_str("values"));
+                SET_STRING_ELT(nm, 1, crate::sexp::constructors::mk_char_str("vectors"));
                 SET_VECTOR_ELT(ret, 0, values);
                 SET_VECTOR_ELT(ret, 1, z);
                 setAttrib(ret, R_NamesSymbol(), nm);
@@ -268,7 +268,7 @@ pub fn La_rg(x: SEXP, only_values: SEXP) -> SEXP {
             let _ret_guard = protect(ret);
             nm = Rf_allocVector(STRSXP_C, 1);
             let _nm_guard = protect(nm);
-            SET_STRING_ELT(nm, 0, Rf_mkChar(b"values\0".as_ptr() as *const c_char));
+            SET_STRING_ELT(nm, 0, crate::sexp::constructors::mk_char_str("values"));
             SET_VECTOR_ELT(ret, 0, values);
             setAttrib(ret, R_NamesSymbol(), nm);
 
@@ -400,8 +400,8 @@ pub fn La_rs_cmplx(xin: SEXP, only_values: SEXP) -> SEXP {
             _ret_guard = protect(ret);
             nm = Rf_allocVector(STRSXP_C, 2);
             _nm_guard = protect(nm);
-            SET_STRING_ELT(nm, 0, Rf_mkChar(b"values\0".as_ptr() as *const c_char));
-            SET_STRING_ELT(nm, 1, Rf_mkChar(b"vectors\0".as_ptr() as *const c_char));
+            SET_STRING_ELT(nm, 0, crate::sexp::constructors::mk_char_str("values"));
+            SET_STRING_ELT(nm, 1, crate::sexp::constructors::mk_char_str("vectors"));
             SET_VECTOR_ELT(ret, 0, values);
             SET_VECTOR_ELT(ret, 1, z);
         } else {
@@ -409,7 +409,7 @@ pub fn La_rs_cmplx(xin: SEXP, only_values: SEXP) -> SEXP {
             _ret_guard = protect(ret);
             nm = Rf_allocVector(STRSXP_C, 1);
             _nm_guard = protect(nm);
-            SET_STRING_ELT(nm, 0, Rf_mkChar(b"values\0".as_ptr() as *const c_char));
+            SET_STRING_ELT(nm, 0, crate::sexp::constructors::mk_char_str("values"));
             SET_VECTOR_ELT(ret, 0, values);
         }
 
@@ -554,8 +554,8 @@ pub fn La_rg_cmplx(x: SEXP, only_values: SEXP) -> SEXP {
             _ret_guard = protect(ret);
             nm = Rf_allocVector(STRSXP_C, 2);
             _nm_guard = protect(nm);
-            SET_STRING_ELT(nm, 0, Rf_mkChar(b"values\0".as_ptr() as *const c_char));
-            SET_STRING_ELT(nm, 1, Rf_mkChar(b"vectors\0".as_ptr() as *const c_char));
+            SET_STRING_ELT(nm, 0, crate::sexp::constructors::mk_char_str("values"));
+            SET_STRING_ELT(nm, 1, crate::sexp::constructors::mk_char_str("vectors"));
             SET_VECTOR_ELT(ret, 0, values);
             SET_VECTOR_ELT(ret, 1, z);
         } else {
@@ -563,7 +563,7 @@ pub fn La_rg_cmplx(x: SEXP, only_values: SEXP) -> SEXP {
             _ret_guard = protect(ret);
             nm = Rf_allocVector(STRSXP_C, 1);
             _nm_guard = protect(nm);
-            SET_STRING_ELT(nm, 0, Rf_mkChar(b"values\0".as_ptr() as *const c_char));
+            SET_STRING_ELT(nm, 0, crate::sexp::constructors::mk_char_str("values"));
             SET_VECTOR_ELT(ret, 0, values);
         }
 

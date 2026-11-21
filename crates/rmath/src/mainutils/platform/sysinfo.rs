@@ -135,8 +135,7 @@ pub fn do_capabilities(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP 
                 if elt.is_null() {
                     String::new()
                 } else {
-                    std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(elt))
-                        .to_string_lossy()
+                    String::from_utf8_lossy(&crate::sexp::accessors::char_cstr_bytes(elt))
                         .into_owned()
                 }
             } else {
@@ -190,54 +189,50 @@ pub fn do_sysgetpid(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R's `dir.create()` — create a directory, optionally making its parents.
 pub fn do_dircreate(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
-        use crate::mainutils::coerce::{asInteger, asLogical};
-        use crate::sexp::accessors::{CADR, CAR, CDDR, CDR, LENGTH, STRING_ELT};
-        use crate::sexp::constructors::Rf_ScalarLogical;
-        use crate::sexp::context::r_error;
-        use crate::sexp::ffi::{SEXPTYPE, TRUE};
-        use crate::sexp::globals::R_NaString;
-        let path = CAR(args);
-        if crate::sexp::accessors::TYPEOF(path) != SEXPTYPE::STRSXP || LENGTH(path) != 1 {
-            r_error("invalid 'path' argument");
-        }
-        let value = STRING_ELT(path, 0);
-        if value == R_NaString() {
-            r_error("invalid 'path' argument");
-        }
-        let path = CStr::from_ptr(crate::sexp::accessors::CHAR(value))
-            .to_str()
-            .unwrap_or("");
-        #[cfg(not(target_arch = "wasm32"))]
-        let path_max = libc::PATH_MAX as usize;
-        #[cfg(target_arch = "wasm32")]
-        let path_max = 4096;
-        if path.is_empty() || path.len() >= path_max {
-            r_error("invalid 'path' argument");
-        }
-        let flags = CDR(args);
-        let warnings = asLogical(CAR(flags)) == TRUE;
-        let recursive = asLogical(CADR(flags)) == TRUE;
-        let mode = asInteger(CAR(CDDR(flags)));
-        let result = if crate::mainutils::browser_files::enabled() {
-            crate::mainutils::browser_files::mkdir_current(path, recursive)
-                .map_err(std::io::Error::other)
-        } else if recursive && !std::path::Path::new(path).is_dir() {
-            std::fs::create_dir_all(path)
-                .and_then(|_| set_path_mode(path, mode as u32 & !current_file_creation_umask()))
-        } else {
-            std::fs::create_dir(path)
-                .and_then(|_| set_path_mode(path, mode as u32 & !current_file_creation_umask()))
-        };
-        if let Err(error) = &result
-            && warnings
-            && let Ok(message) =
-                CString::new(format!("cannot create dir '{path}', reason '{error}'"))
-        {
-            crate::mainutils::errors::Rf_warning1(&message);
-        }
-        Rf_ScalarLogical(i32::from(result.is_ok()))
+    use crate::mainutils::coerce::{asInteger, asLogical};
+    use crate::sexp::accessors::{CADR, CAR, CDDR, CDR, LENGTH, STRING_ELT};
+    use crate::sexp::constructors::Rf_ScalarLogical;
+    use crate::sexp::context::r_error;
+    use crate::sexp::ffi::{SEXPTYPE, TRUE};
+    use crate::sexp::globals::R_NaString;
+    let path = CAR(args);
+    if crate::sexp::accessors::TYPEOF(path) != SEXPTYPE::STRSXP || LENGTH(path) != 1 {
+        r_error("invalid 'path' argument");
     }
+    let value = STRING_ELT(path, 0);
+    if value == R_NaString() {
+        r_error("invalid 'path' argument");
+    }
+    let path_bytes = crate::sexp::accessors::char_cstr_bytes(value);
+    let path = std::str::from_utf8(&path_bytes).unwrap_or("");
+    #[cfg(not(target_arch = "wasm32"))]
+    let path_max = libc::PATH_MAX as usize;
+    #[cfg(target_arch = "wasm32")]
+    let path_max = 4096;
+    if path.is_empty() || path.len() >= path_max {
+        r_error("invalid 'path' argument");
+    }
+    let flags = CDR(args);
+    let warnings = asLogical(CAR(flags)) == TRUE;
+    let recursive = asLogical(CADR(flags)) == TRUE;
+    let mode = asInteger(CAR(CDDR(flags)));
+    let result = if crate::mainutils::browser_files::enabled() {
+        crate::mainutils::browser_files::mkdir_current(path, recursive)
+            .map_err(std::io::Error::other)
+    } else if recursive && !std::path::Path::new(path).is_dir() {
+        std::fs::create_dir_all(path)
+            .and_then(|_| set_path_mode(path, mode as u32 & !current_file_creation_umask()))
+    } else {
+        std::fs::create_dir(path)
+            .and_then(|_| set_path_mode(path, mode as u32 & !current_file_creation_umask()))
+    };
+    if let Err(error) = &result
+        && warnings
+        && let Ok(message) = CString::new(format!("cannot create dir '{path}', reason '{error}'"))
+    {
+        crate::mainutils::errors::Rf_warning1(&message);
+    }
+    Rf_ScalarLogical(i32::from(result.is_ok()))
 }
 
 /// File copies use the same staged publication for a target file and a tree.
@@ -345,7 +340,7 @@ pub fn locale_is_utf8() -> bool {
 pub fn do_l10n_info(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::accessors::{SET_STRING_ELT, SET_VECTOR_ELT};
-        use crate::sexp::constructors::{Rf_ScalarLogical, Rf_allocVector3, Rf_mkChar};
+        use crate::sexp::constructors::{Rf_ScalarLogical, Rf_allocVector3};
         use crate::sexp::ffi::{FALSE, SEXPTYPE, TRUE};
 
         let utf8 = locale_is_utf8();
@@ -353,10 +348,10 @@ pub fn do_l10n_info(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
         let _ans_guard = protect(ans);
         let cn = Rf_allocVector3(SEXPTYPE::STRSXP, 4);
         let _cn_guard = protect(cn);
-        SET_STRING_ELT(cn, 0, Rf_mkChar(b"MBCS\0".as_ptr() as *const _));
-        SET_STRING_ELT(cn, 1, Rf_mkChar(b"UTF-8\0".as_ptr() as *const _));
-        SET_STRING_ELT(cn, 2, Rf_mkChar(b"Latin-1\0".as_ptr() as *const _));
-        SET_STRING_ELT(cn, 3, Rf_mkChar(b"codeset\0".as_ptr() as *const _));
+        SET_STRING_ELT(cn, 0, crate::sexp::constructors::mk_char_str("MBCS"));
+        SET_STRING_ELT(cn, 1, crate::sexp::constructors::mk_char_str("UTF-8"));
+        SET_STRING_ELT(cn, 2, crate::sexp::constructors::mk_char_str("Latin-1"));
+        SET_STRING_ELT(cn, 3, crate::sexp::constructors::mk_char_str("codeset"));
 
         SET_VECTOR_ELT(ans, 0, Rf_ScalarLogical(if utf8 { TRUE } else { FALSE }));
         SET_VECTOR_ELT(ans, 1, Rf_ScalarLogical(if utf8 { TRUE } else { FALSE }));
@@ -530,7 +525,7 @@ pub fn do_readlink(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
                     }
                     Err(_) => {
                         let value = if std::fs::metadata(path).is_ok() {
-                            Rf_mkChar(c"".as_ptr())
+                            crate::sexp::constructors::mk_char_str("")
                         } else {
                             crate::sexp::globals::R_NaString()
                         };
@@ -547,17 +542,17 @@ pub fn do_readlink(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 pub fn do_Cstack_info(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::accessors::{INTEGER, SET_STRING_ELT};
-        use crate::sexp::constructors::{Rf_allocVector3, Rf_mkChar};
+        use crate::sexp::constructors::Rf_allocVector3;
         use crate::sexp::ffi::SEXPTYPE;
 
         let ans = Rf_allocVector3(SEXPTYPE::INTSXP, 4);
         let _ans_guard = protect(ans);
         let cn = Rf_allocVector3(SEXPTYPE::STRSXP, 4);
         let _cn_guard = protect(cn);
-        SET_STRING_ELT(cn, 0, Rf_mkChar(b"size\0".as_ptr() as *const _));
-        SET_STRING_ELT(cn, 1, Rf_mkChar(b"current\0".as_ptr() as *const _));
-        SET_STRING_ELT(cn, 2, Rf_mkChar(b"direction\0".as_ptr() as *const _));
-        SET_STRING_ELT(cn, 3, Rf_mkChar(b"eval_depth\0".as_ptr() as *const _));
+        SET_STRING_ELT(cn, 0, crate::sexp::constructors::mk_char_str("size"));
+        SET_STRING_ELT(cn, 1, crate::sexp::constructors::mk_char_str("current"));
+        SET_STRING_ELT(cn, 2, crate::sexp::constructors::mk_char_str("direction"));
+        SET_STRING_ELT(cn, 3, crate::sexp::constructors::mk_char_str("eval_depth"));
 
         let values = INTEGER(ans);
         *values.add(0) = 8 * 1024 * 1024;

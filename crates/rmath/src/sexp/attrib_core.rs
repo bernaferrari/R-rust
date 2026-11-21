@@ -89,76 +89,74 @@ pub fn R_EnvironmentSymbol() -> SEXP {
 /// This is the equivalent of R's `getAttrib()` from attrib.c.
 /// Searches the attribute pairlist for a matching symbol.
 pub fn getAttrib(x: SEXP, which: SEXP) -> SEXP {
-    unsafe {
-        if x.is_null() || which.is_null() {
-            return R_NilValue();
-        }
-
-        let attrib = ATTRIB(x);
-        // GNU resolves names of a one-dimensional array through dimnames
-        // before consulting pairlist tags or stored attributes.
-        if which == R_NamesSymbol() && !attrib.is_null() && attrib != R_NilValue() {
-            let dim = getAttrib(x, R_DimSymbol());
-            if TYPEOF(dim) == SEXPTYPE::INTSXP && XLENGTH(dim) == 1 {
-                let dimnames = getAttrib(x, R_DimNamesSymbol());
-                if TYPEOF(dimnames) == SEXPTYPE::VECSXP && XLENGTH(dimnames) > 0 {
-                    return super::accessors::VECTOR_ELT(dimnames, 0);
-                }
-            }
-        }
-        // Linear search through attribute pairlist
-        let mut current = attrib;
-        while !current.is_null() && current != R_NilValue() {
-            if TAG(current) == which {
-                let value = CAR(current);
-                if which == R_RowNamesSymbol() {
-                    return expand_compact_row_names(value);
-                }
-                return value;
-            }
-            current = CDR(current);
-        }
-        if which == R_NamesSymbol() {
-            let t = TYPEOF(x);
-            if t == SEXPTYPE::LISTSXP || t == SEXPTYPE::LANGSXP || t == SEXPTYPE::DOTSXP {
-                let mut n = 0i32;
-                let mut any = false;
-                let mut scan = x;
-                while !scan.is_null() && scan != R_NilValue() {
-                    let tag = TAG(scan);
-                    if !tag.is_null() && tag != R_NilValue() {
-                        any = true;
-                    }
-                    n += 1;
-                    scan = CDR(scan);
-                }
-                if n > 0 && any {
-                    let out = Rf_allocVector(SEXPTYPE::STRSXP, n);
-                    let _g = super::protect::protect(out);
-                    let mut cell = x;
-                    let mut i = 0i64;
-                    while !cell.is_null() && cell != R_NilValue() && i < n as i64 {
-                        let tag = TAG(cell);
-                        let s = if tag.is_null() || tag == R_NilValue() {
-                            Rf_mkChar(b"\0".as_ptr() as *const std::os::raw::c_char)
-                        } else {
-                            super::accessors::PRINTNAME(tag)
-                        };
-                        super::accessors::SET_STRING_ELT(out, i, s);
-                        cell = CDR(cell);
-                        i += 1;
-                    }
-                    return out;
-                }
-            }
-        }
-
-        if which == R_NamesSymbol() {
-            return names_from_one_dim(x);
-        }
-
-        R_NilValue()
+    if x.is_null() || which.is_null() {
+        return R_NilValue();
     }
+
+    let attrib = ATTRIB(x);
+    // GNU resolves names of a one-dimensional array through dimnames
+    // before consulting pairlist tags or stored attributes.
+    if which == R_NamesSymbol() && !attrib.is_null() && attrib != R_NilValue() {
+        let dim = getAttrib(x, R_DimSymbol());
+        if TYPEOF(dim) == SEXPTYPE::INTSXP && XLENGTH(dim) == 1 {
+            let dimnames = getAttrib(x, R_DimNamesSymbol());
+            if TYPEOF(dimnames) == SEXPTYPE::VECSXP && XLENGTH(dimnames) > 0 {
+                return super::accessors::VECTOR_ELT(dimnames, 0);
+            }
+        }
+    }
+    // Linear search through attribute pairlist
+    let mut current = attrib;
+    while !current.is_null() && current != R_NilValue() {
+        if TAG(current) == which {
+            let value = CAR(current);
+            if which == R_RowNamesSymbol() {
+                return expand_compact_row_names(value);
+            }
+            return value;
+        }
+        current = CDR(current);
+    }
+    if which == R_NamesSymbol() {
+        let t = TYPEOF(x);
+        if t == SEXPTYPE::LISTSXP || t == SEXPTYPE::LANGSXP || t == SEXPTYPE::DOTSXP {
+            let mut n = 0i32;
+            let mut any = false;
+            let mut scan = x;
+            while !scan.is_null() && scan != R_NilValue() {
+                let tag = TAG(scan);
+                if !tag.is_null() && tag != R_NilValue() {
+                    any = true;
+                }
+                n += 1;
+                scan = CDR(scan);
+            }
+            if n > 0 && any {
+                let out = Rf_allocVector(SEXPTYPE::STRSXP, n);
+                let _g = super::protect::protect(out);
+                let mut cell = x;
+                let mut i = 0i64;
+                while !cell.is_null() && cell != R_NilValue() && i < n as i64 {
+                    let tag = TAG(cell);
+                    let s = if tag.is_null() || tag == R_NilValue() {
+                        crate::sexp::constructors::mk_char_str("")
+                    } else {
+                        super::accessors::PRINTNAME(tag)
+                    };
+                    super::accessors::SET_STRING_ELT(out, i, s);
+                    cell = CDR(cell);
+                    i += 1;
+                }
+                return out;
+            }
+        }
+    }
+
+    if which == R_NamesSymbol() {
+        return names_from_one_dim(x);
+    }
+
+    R_NilValue()
 }
 
 /// GNU attrib.c getAttrib0: compact `c(NA, ±n)` expands to `1:n`.

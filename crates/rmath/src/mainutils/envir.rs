@@ -26,7 +26,7 @@ use crate::sexp::constructors::Rf_mkString;
 use crate::sexp::ffi::{FALSE, R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::{R_BaseEnv, R_GlobalEnv, R_NilValue};
 use crate::sexp::protect::protect;
-use std::os::raw::{c_char, c_int};
+use std::os::raw::c_int;
 
 /// djb2 string hash function.
 ///
@@ -113,7 +113,7 @@ fn isNewList(x: SEXP) -> bool {
 
 /// Get the "R_NameSymbol" — a pre-interned symbol for the "name" attribute.
 unsafe fn R_NameSymbol() -> SEXP {
-    unsafe { crate::sexp::symbol::Rf_install(b"name\0".as_ptr() as *const c_char) }
+    crate::sexp::symbol::install_str("name")
 }
 
 // ---------------------------------------------------------------------------
@@ -409,7 +409,7 @@ unsafe fn string_elt(x: SEXP, i: R_xlen_t) -> String {
 pub unsafe fn do_search(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         use crate::eval::attrib_core::getAttrib;
-        use crate::sexp::constructors::{Rf_allocVector, Rf_mkChar};
+        use crate::sexp::constructors::Rf_allocVector;
 
         let global_env = R_GlobalEnv();
         let base_env = R_BaseEnv();
@@ -433,13 +433,13 @@ pub unsafe fn do_search(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP
         let _ans_guard = protect(ans);
 
         // First element is always ".GlobalEnv"
-        SET_STRING_ELT(ans, 0, Rf_mkChar(b".GlobalEnv\0".as_ptr() as *const c_char));
+        SET_STRING_ELT(ans, 0, crate::sexp::constructors::mk_char_str(".GlobalEnv"));
 
         // Last element is always "package:base"
         SET_STRING_ELT(
             ans,
             (n - 1) as R_xlen_t,
-            Rf_mkChar(b"package:base\0".as_ptr() as *const c_char),
+            crate::sexp::constructors::mk_char_str("package:base"),
         );
 
         // Fill in middle elements
@@ -451,7 +451,7 @@ pub unsafe fn do_search(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP
                 SET_STRING_ELT(
                     ans,
                     i as R_xlen_t,
-                    Rf_mkChar(b"(unknown)\0".as_ptr() as *const c_char),
+                    crate::sexp::constructors::mk_char_str("(unknown)"),
                 );
             } else {
                 let name_elt = STRING_ELT(name, 0);
@@ -461,7 +461,7 @@ pub unsafe fn do_search(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP
                     SET_STRING_ELT(
                         ans,
                         i as R_xlen_t,
-                        Rf_mkChar(b"(unknown)\0".as_ptr() as *const c_char),
+                        crate::sexp::constructors::mk_char_str("(unknown)"),
                     );
                 }
             }

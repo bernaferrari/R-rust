@@ -31,7 +31,7 @@ use crate::eval::attrib_core::getAttrib;
 use crate::sexp::accessors::{
     CADDR, CADR, CAR, CDR, CHAR, INTEGER, LENGTH, PRINTNAME, RAW, REAL, STRING_ELT, TYPEOF, XLENGTH,
 };
-use crate::sexp::constructors::{Rf_allocVector, Rf_mkString};
+use crate::sexp::constructors::Rf_allocVector;
 use crate::sexp::context::RCNTXT;
 use crate::sexp::context::ctxt_flags;
 use crate::sexp::envir::R_findVar;
@@ -1948,78 +1948,76 @@ pub fn do_Rprof_wasm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 /// Implement the `Rprofmem()` function for memory profiling.
 #[cfg(not(target_arch = "wasm32"))]
 pub unsafe fn do_Rprofmem(_call: SEXP, _op: SEXP, mut args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        crate::sexp::owner::OwnerToken::with_current(|owner| {
-            let _pin = owner
-                .pin()
-                .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
-            let factory = owner.node_factory();
-            let _arguments = factory
-                .wrap(args)
-                .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
-            let require_owner = || {
-                owner
-                    .require_active()
-                    .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
-            };
-            let filename_arg = if args.is_null() || args == R_NilValue() {
-                Rf_mkString(c"Rprofmem.out".as_ptr())
-            } else {
-                let arg = CAR(args);
-                args = CDR(args);
-                arg
-            };
+    crate::sexp::owner::OwnerToken::with_current(|owner| {
+        let _pin = owner
+            .pin()
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        let factory = owner.node_factory();
+        let _arguments = factory
+            .wrap(args)
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        let require_owner = || {
+            owner
+                .require_active()
+                .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
+        };
+        let filename_arg = if args.is_null() || args == R_NilValue() {
+            crate::sexp::constructors::mk_string_str("Rprofmem.out")
+        } else {
+            let arg = CAR(args);
+            args = CDR(args);
+            arg
+        };
 
-            require_owner();
-            let _filename_arg = factory
-                .wrap(filename_arg)
-                .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
-            if filename_arg.is_null() || TYPEOF(filename_arg) != SEXPTYPE::STRSXP {
-                return R_NilValue();
-            }
-            let count = LENGTH(filename_arg);
-            require_owner();
-            if count != 1 {
-                return R_NilValue();
-            }
+        require_owner();
+        let _filename_arg = factory
+            .wrap(filename_arg)
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        if filename_arg.is_null() || TYPEOF(filename_arg) != SEXPTYPE::STRSXP {
+            return R_NilValue();
+        }
+        let count = LENGTH(filename_arg);
+        require_owner();
+        if count != 1 {
+            return R_NilValue();
+        }
 
-            let append_mode = if args.is_null() || args == R_NilValue() {
-                FALSE
-            } else {
-                crate::mainutils::coerce::asLogical(CAR(args))
-            };
-            require_owner();
-            let filename_sexp = STRING_ELT(filename_arg, 0);
-            require_owner();
-            let _filename = factory
-                .wrap(filename_sexp)
-                .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
+        let append_mode = if args.is_null() || args == R_NilValue() {
+            FALSE
+        } else {
+            crate::mainutils::coerce::asLogical(CAR(args))
+        };
+        require_owner();
+        let filename_sexp = STRING_ELT(filename_arg, 0);
+        require_owner();
+        let _filename = factory
+            .wrap(filename_sexp)
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
 
-            if LENGTH(filename_sexp) > 0 {
-                R_InitProfiling(
-                    filename_sexp,
-                    append_mode,
-                    0.02,
-                    TRUE,
-                    FALSE,
-                    FALSE,
-                    FALSE,
-                    100,
-                    PROFBUFSIZ as c_int,
-                    rpe_type::RPE_ELAPSED,
-                );
-            } else {
-                R_EndProfiling();
-            }
+        if LENGTH(filename_sexp) > 0 {
+            R_InitProfiling(
+                filename_sexp,
+                append_mode,
+                0.02,
+                TRUE,
+                FALSE,
+                FALSE,
+                FALSE,
+                100,
+                PROFBUFSIZ as c_int,
+                rpe_type::RPE_ELAPSED,
+            );
+        } else {
+            R_EndProfiling();
+        }
 
-            require_owner();
-            // Retain the existing explicit memory-sample boundary; Rprofmem is not
-            // a periodic CPU/elapsed Rprof session.
-            with_profiling_state(|state| state.profile_schedule = None);
-            R_NilValue()
-        })
-        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
-    }
+        require_owner();
+        // Retain the existing explicit memory-sample boundary; Rprofmem is not
+        // a periodic CPU/elapsed Rprof session.
+        with_profiling_state(|state| state.profile_schedule = None);
+        R_NilValue()
+    })
+    .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
 }
 /// WASM M1 stub for `Rprofmem()`: no memory profiler on wasm.
 /// Always raises the catchable R platform-unavailable error (matching
@@ -2262,7 +2260,7 @@ mod tests {
 
     fn r_string(text: &str) -> SEXP {
         let c_text = std::ffi::CString::new(text).expect("test string without interior nul");
-        unsafe { Rf_mkString(c_text.as_ptr()) }
+        unsafe { crate::sexp::constructors::mk_string_bytes(c_text.to_bytes()) }
     }
 
     fn pairlist(values: &[SEXP]) -> SEXP {

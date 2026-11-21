@@ -43,11 +43,13 @@ pub fn NewBase(base: SEXP, tag: SEXP) -> SEXP {
 
         if !base_empty && !tag_empty {
             // Both non-empty: create "base.tag"
-            let sb = std::ffi::CStr::from_ptr(CHAR(base)).to_str().unwrap_or("");
-            let st = std::ffi::CStr::from_ptr(CHAR(tag)).to_str().unwrap_or("");
+            let sb_bytes = crate::sexp::accessors::char_cstr_bytes(base);
+            let sb = std::str::from_utf8(&sb_bytes).unwrap_or("");
+            let st_bytes = crate::sexp::accessors::char_cstr_bytes(tag);
+            let st = std::str::from_utf8(&st_bytes).unwrap_or("");
             let combined = format!("{}.{}", sb, st);
             let c_str = std::ffi::CString::new(combined).unwrap_or_default();
-            Rf_mkChar(c_str.as_ptr())
+            crate::sexp::constructors::mk_char_bytes(c_str.to_bytes())
         } else if !tag_empty {
             tag
         } else if !base_empty {
@@ -86,19 +88,22 @@ pub fn NewName(base: SEXP, tag: SEXP, seqno: R_xlen_t, count: c_int) -> SEXP {
         if !base_empty {
             if !tag_empty {
                 // base.tag
-                let sb = std::ffi::CStr::from_ptr(CHAR(base)).to_str().unwrap_or("");
-                let st = std::ffi::CStr::from_ptr(CHAR(tag)).to_str().unwrap_or("");
+                let sb_bytes = crate::sexp::accessors::char_cstr_bytes(base);
+                let sb = std::str::from_utf8(&sb_bytes).unwrap_or("");
+                let st_bytes = crate::sexp::accessors::char_cstr_bytes(tag);
+                let st = std::str::from_utf8(&st_bytes).unwrap_or("");
                 let combined = format!("{}.{}", sb, st);
                 let c_str = std::ffi::CString::new(combined).unwrap_or_default();
-                Rf_mkChar(c_str.as_ptr())
+                crate::sexp::constructors::mk_char_bytes(c_str.to_bytes())
             } else if count == 1 {
                 base
             } else {
                 // base<seqno>
-                let sb = std::ffi::CStr::from_ptr(CHAR(base)).to_str().unwrap_or("");
+                let sb_bytes = crate::sexp::accessors::char_cstr_bytes(base);
+                let sb = std::str::from_utf8(&sb_bytes).unwrap_or("");
                 let combined = format!("{}{}", sb, seqno);
                 let c_str = std::ffi::CString::new(combined).unwrap_or_default();
-                Rf_mkChar(c_str.as_ptr())
+                crate::sexp::constructors::mk_char_bytes(c_str.to_bytes())
             }
         } else if !tag_empty {
             tag

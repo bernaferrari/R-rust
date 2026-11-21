@@ -382,8 +382,7 @@ pub fn unit_binary(op: &str, a: SEXP, b: SEXP) -> Option<SEXP> {
     Some(unit_terms_result(template, &out))
 }
 pub fn unit_summary(op: &str, args: SEXP) -> Option<SEXP> {
-    // SAFETY: audited boundary — interns a fixed symbol under the active runtime.
-    let na_tag = unsafe { crate::sexp::symbol::Rf_install(c"na.rm".as_ptr()) };
+    let na_tag = crate::sexp::symbol::install_str("na.rm");
     let mut p = args;
     let mut template = R_NilValue();
     while p != R_NilValue() {

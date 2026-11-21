@@ -317,12 +317,12 @@ mod owning_context_tests {
             let owner = crate::sexp::owner::OwnerToken::from_raw(instance);
             let nil = globals::R_NilValue();
             let first = crate::sexp::constructors::Rf_lang2(
-                crate::sexp::symbol::Rf_install(c"trace_first".as_ptr()),
+                crate::sexp::symbol::install_str("trace_first"),
                 nil,
             );
             let first = owner.sexp(first).unwrap().into_owned().unwrap();
             let second = crate::sexp::constructors::Rf_lang2(
-                crate::sexp::symbol::Rf_install(c"trace_second".as_ptr()),
+                crate::sexp::symbol::install_str("trace_second"),
                 nil,
             );
             let second = owner.sexp(second).unwrap().into_owned().unwrap();
@@ -385,7 +385,7 @@ mod owning_context_tests {
             );
             let source = crate::sexp::attrib_core::getAttrib(
                 recent_call,
-                crate::sexp::symbol::Rf_install(c"srcref".as_ptr()),
+                crate::sexp::symbol::install_str("srcref"),
             );
             assert_eq!(owner.sexp(source).unwrap().integer_elt(0), Some(71));
             owner.full_gc().unwrap();

@@ -34,7 +34,7 @@ fn make_raw(bytes: &[u8]) -> SEXP {
 
 fn make_string_scalar(value: &str) -> SEXP {
     let c_value = CString::new(value).unwrap_or_default();
-    unsafe { Rf_mkString(c_value.as_ptr()) }
+    unsafe { crate::sexp::constructors::mk_string_bytes(c_value.to_bytes()) }
 }
 
 fn make_string_vector(value: &str) -> SEXP {
@@ -294,8 +294,8 @@ fn test_write_hash_table() {
 fn test_read_ref_table() {
     let _session = crate::sexp::session::RSession::new();
     let mut rt = ReadRefTable::new();
-    let fake1 = unsafe { Rf_install(c"read_ref_one".as_ptr()) };
-    let fake2 = unsafe { Rf_install(c"read_ref_two".as_ptr()) };
+    let fake1 = unsafe { crate::sexp::symbol::install_str("read_ref_one") };
+    let fake2 = unsafe { crate::sexp::symbol::install_str("read_ref_two") };
 
     rt.add(fake1);
     rt.add(fake2);
@@ -510,9 +510,9 @@ fn test_instringvec_round_trip() {
     let _session = crate::sexp::session::RSession::new();
     unsafe {
         let src = Rf_allocVector3(SEXPTYPE::STRSXP, 3);
-        SET_STRING_ELT(src, 0, Rf_mkChar(c"foo".as_ptr()));
+        SET_STRING_ELT(src, 0, crate::sexp::constructors::mk_char_str("foo"));
         SET_STRING_ELT(src, 1, R_NaString());
-        SET_STRING_ELT(src, 2, Rf_mkChar(c"bar".as_ptr()));
+        SET_STRING_ELT(src, 2, crate::sexp::constructors::mk_char_str("bar"));
 
         let mut out_stream: R_outpstream_st = mem::zeroed();
         let mut out_buf = membuf_st {
@@ -870,7 +870,7 @@ fn test_do_get_vars_from_frame_returns_values() {
     let _session = crate::sexp::session::RSession::new();
     unsafe {
         let env = R_NewHashedEnv(R_BaseEnv(), 29);
-        let sym = Rf_install(c"x".as_ptr());
+        let sym = crate::sexp::symbol::install_str("x");
         let val = Rf_ScalarInteger(42);
         defineVar(sym, val, env);
 
@@ -1129,7 +1129,7 @@ fn test_roundtrip_complex_scalar() {
 fn test_roundtrip_string_scalar() {
     let _session = crate::sexp::session::RSession::new();
     unsafe {
-        let s = Rf_mkString(c"hello".as_ptr());
+        let s = crate::sexp::constructors::mk_string_str("hello");
         let raw = R_serialize(s, R_NilValue(), R_NilValue(), R_NilValue(), R_NilValue());
         assert_ne!(raw, R_NilValue());
 
@@ -1150,8 +1150,8 @@ fn test_roundtrip_string_vector() {
     let _session = crate::sexp::session::RSession::new();
     unsafe {
         let s = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
-        let c1 = Rf_mkChar(c"foo".as_ptr());
-        let c2 = Rf_mkChar(c"bar".as_ptr());
+        let c1 = crate::sexp::constructors::mk_char_str("foo");
+        let c2 = crate::sexp::constructors::mk_char_str("bar");
         SET_STRING_ELT(s, 0, c1);
         SET_STRING_ELT(s, 1, c2);
 
@@ -1501,14 +1501,14 @@ fn test_roundtrip_named_pairlist_identical() {
         let list = Rf_allocList(2);
         let _g = protect(list);
         let a = Rf_ScalarInteger(1);
-        let b = Rf_ScalarString(Rf_mkChar(c"x".as_ptr()));
+        let b = Rf_ScalarString(crate::sexp::constructors::mk_char_str("x"));
         let _ga = protect(a);
         let _gb = protect(b);
         SETCAR(list, a);
-        SETTAG(list, Rf_install(c"a".as_ptr()));
+        SETTAG(list, crate::sexp::symbol::install_str("a"));
         let second = CDR(list);
         SETCAR(second, b);
-        SETTAG(second, Rf_install(c"b".as_ptr()));
+        SETTAG(second, crate::sexp::symbol::install_str("b"));
         assert_eq!(CDR(second), R_NilValue());
 
         let raw = R_serialize(list, R_NilValue(), R_NilValue(), R_NilValue(), R_NilValue());
@@ -1535,10 +1535,10 @@ fn test_roundtrip_pairlist_with_attributes() {
         let list = Rf_allocList(1);
         let _g = protect(list);
         SETCAR(list, Rf_ScalarInteger(7));
-        SETTAG(list, Rf_install(c"a".as_ptr()));
-        let label = Rf_mkString(c"meta".as_ptr());
+        SETTAG(list, crate::sexp::symbol::install_str("a"));
+        let label = crate::sexp::constructors::mk_string_str("meta");
         let _gl = protect(label);
-        crate::eval::attrib_core::setAttrib(list, Rf_install(c"label".as_ptr()), label);
+        crate::eval::attrib_core::setAttrib(list, crate::sexp::symbol::install_str("label"), label);
 
         let raw = R_serialize(list, R_NilValue(), R_NilValue(), R_NilValue(), R_NilValue());
         let _gr = protect(raw);
@@ -1858,7 +1858,8 @@ fn gnu_deferred_real_strings_restore_captured_formatting() {
                 if i == 8 {
                     assert_eq!(elt, crate::sexp::globals::R_NaString());
                 } else {
-                    let actual = std::ffi::CStr::from_ptr(CHAR(elt)).to_str().unwrap();
+                    let actual_bytes = crate::sexp::accessors::char_cstr_bytes(elt);
+                    let actual = std::str::from_utf8(&actual_bytes).unwrap();
                     assert_eq!(actual, *expected, "element {i}");
                 }
             }

@@ -318,9 +318,8 @@ impl OutputCaptureGuard {
     fn owner() -> super::super::owner::OwnerPin {
         // The current token is used only to authenticate its original managed
         // owner; the returned pin, rather than the token, retains storage.
-        unsafe { super::super::owner::OwnerToken::current() }
+        super::super::owner::OwnerToken::with_current(|owner| owner.weak_owner())
             .expect("output capture requires a current runtime")
-            .weak_owner()
             .expect("output capture requires a managed runtime")
             .pin()
             .expect("output capture requires an active runtime")
@@ -633,9 +632,8 @@ pub(crate) struct PrintedOutputError {
 /// Valid UTF8 is unchanged; invalid native bytes use the capture text policy.
 pub(crate) fn capture_printed_value(x: Sexp<'_>) -> Result<RCapturedOutput, PrintedOutputError> {
     // Only the managed original authority escapes this temporary current token.
-    let original = unsafe { super::super::owner::OwnerToken::current() }
+    let original = super::super::owner::OwnerToken::with_current(|owner| owner.weak_owner())
         .expect("automatic printing requires a current runtime")
-        .weak_owner()
         .expect("automatic printing requires a managed runtime");
     let guard = OutputCaptureGuard::start();
     let printed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {

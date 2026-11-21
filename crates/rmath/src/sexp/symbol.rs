@@ -51,6 +51,15 @@ pub(crate) fn install_str(name: &str) -> SEXP {
     super::instance::with_required_current_instance(|inst| unsafe { install_str_in(inst, name) })
 }
 
+/// Intern a C string; safe spelling of [`Rf_install`] for Rust-owned
+/// `CStr`/`CString` values. Non-UTF-8 names return null, like `Rf_install`.
+pub(crate) fn install_cstr(name: &std::ffi::CStr) -> SEXP {
+    match name.to_str() {
+        Ok(name) => install_str(name),
+        Err(_) => ptr::null_mut(),
+    }
+}
+
 /// Intern `name` in `inst`'s symbol table, returning the existing SYMSXP
 /// when the name was already installed.
 ///

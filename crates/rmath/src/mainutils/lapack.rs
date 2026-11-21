@@ -71,12 +71,12 @@ pub fn do_lapack(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// GNU `La_library()`: path of the loaded LAPACK. The port's linear algebra
 /// is faer; no external LAPACK library is loaded, so this reports "".
 pub unsafe fn do_La_library(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { crate::sexp::constructors::Rf_mkString(c"".as_ptr()) }
+    crate::sexp::constructors::mk_string_str("")
 }
 
 /// GNU `La_version()`: Netlib ilaver string of the pinned oracle's LAPACK.
 pub unsafe fn do_La_version(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { crate::sexp::constructors::Rf_mkString(c"3.12.1".as_ptr()) }
+    crate::sexp::constructors::mk_string_str("3.12.1")
 }
 
 // ---------------------------------------------------------------------------

@@ -213,7 +213,7 @@ pub(crate) unsafe fn dispatch_asvector(x: *mut SEXP, call: SEXP, rho: SEXP) -> b
         if x.is_null() || (*x).is_null() {
             return false;
         }
-        let mode = Rf_mkString(c"any".as_ptr());
+        let mode = crate::sexp::constructors::mk_string_str("any");
         let _mode = protect(mode);
         let args = Rf_cons(*x, Rf_cons(mode, R_NilValue()));
         let _args = protect(args);
@@ -472,12 +472,12 @@ pub(crate) fn VectorAssign(call: SEXP, rho: SEXP, x: SEXP, s: SEXP, y: SEXP) -> 
             && XLENGTH(s) == 1
         {
             if isNull(y) {
-                let name = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(s, 0))).to_string_lossy();
+                let name = String::from_utf8_lossy(&crate::sexp::accessors::char_cstr_bytes(STRING_ELT(s, 0))).into_owned();
                 let names = getAttrib(x, crate::eval::attrib_core::R_NamesSymbol());
                 if !isNull(names) && TYPEOF(names) == STRSXP {
                     for i in 0..XLENGTH(names) {
                         let col =
-                            std::ffi::CStr::from_ptr(CHAR(STRING_ELT(names, i))).to_string_lossy();
+                            String::from_utf8_lossy(&crate::sexp::accessors::char_cstr_bytes(STRING_ELT(names, i))).into_owned();
                         if col == name {
                             let which = Rf_ScalarInteger((i + 1) as i32);
                             let _w = protect(which);

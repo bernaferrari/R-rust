@@ -206,7 +206,7 @@ mod tests {
         );
         let definition = definition.unwrap().into_owned().unwrap();
         unsafe {
-            let class = Rf_mkString(c"UtilityClass".as_ptr());
+            let class = crate::sexp::constructors::mk_string_str("UtilityClass");
             let class_def = R_methods_test_MAKE_CLASS(class);
             assert_eq!(session.sexp(class_def).unwrap(), definition);
         }
@@ -222,14 +222,17 @@ mod tests {
             .0
             .unwrap();
         unsafe {
-            let class = Rf_mkString(c"UtilityObject".as_ptr());
+            let class = crate::sexp::constructors::mk_string_str("UtilityObject");
             let object = R_methods_test_NEW(class);
 
             assert!(!object.is_null());
             let class_attr = getAttrib(object, R_ClassSymbol());
             assert_eq!(TYPEOF(class_attr), SEXPTYPE::STRSXP);
             let first = STRING_ELT(class_attr, 0);
-            assert_eq!(CStr::from_ptr(CHAR(first)).to_bytes(), b"UtilityObject");
+            assert_eq!(
+                &crate::sexp::accessors::char_cstr_bytes(first)[..],
+                b"UtilityObject"
+            );
         }
     }
 }

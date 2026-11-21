@@ -100,10 +100,9 @@ pub(crate) fn eval_keep_vis(e: SEXP, rho: SEXP) -> SEXP {
 pub(crate) fn do_withVisible(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     use crate::eval::attrib_core::{R_NamesSymbol, setAttrib};
     use crate::sexp::accessors::{CAR, SET_STRING_ELT, SET_VECTOR_ELT};
-    use crate::sexp::constructors::{Rf_ScalarLogical, Rf_allocVector, Rf_mkChar};
+    use crate::sexp::constructors::{Rf_ScalarLogical, Rf_allocVector};
     use crate::sexp::ffi::SEXPTYPE;
     use crate::sexp::protect::protect;
-    use std::os::raw::c_char;
 
     unsafe {
         let x = Rf_eval(CAR(args), rho);
@@ -115,8 +114,8 @@ pub(crate) fn do_withVisible(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
         let nm = Rf_allocVector(SEXPTYPE::STRSXP, 2);
         let _names_guard = protect(nm);
 
-        SET_STRING_ELT(nm, 0, Rf_mkChar(b"value\0".as_ptr() as *const c_char));
-        SET_STRING_ELT(nm, 1, Rf_mkChar(b"visible\0".as_ptr() as *const c_char));
+        SET_STRING_ELT(nm, 0, crate::sexp::constructors::mk_char_str("value"));
+        SET_STRING_ELT(nm, 1, crate::sexp::constructors::mk_char_str("visible"));
 
         SET_VECTOR_ELT(ret, 0, x);
         SET_VECTOR_ELT(ret, 1, Rf_ScalarLogical(super::super::runtime::visible()));

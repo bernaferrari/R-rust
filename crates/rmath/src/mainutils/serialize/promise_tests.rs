@@ -19,7 +19,9 @@ fn raw<'s>(factory: &SessionNodeFactory<'s>, bytes: &[u8]) -> Sexp<'s> {
 }
 
 fn binding<'s>(factory: &SessionNodeFactory<'s>, environment: &Sexp<'s>, name: &CStr) -> Sexp<'s> {
-    let symbol = factory.wrap(unsafe { Rf_install(name.as_ptr()) }).unwrap();
+    let symbol = factory
+        .wrap(unsafe { crate::sexp::symbol::install_cstr(&name) })
+        .unwrap();
     unsafe { crate::sexp::envir::find_var_in_frame_result(environment.clone(), symbol) }
         .unwrap()
         .unwrap()
@@ -197,7 +199,7 @@ fn promise_roundtrip_retains_full_gp_and_sole_attribute_edge_through_gc() {
         let expression = factory.wrap(unsafe { Rf_ScalarInteger(29) }).unwrap();
         let promise = factory.promise(&expression, &factory.nil()).unwrap();
         let tag = factory
-            .wrap(unsafe { Rf_install(c"promise.marker".as_ptr()) })
+            .wrap(unsafe { crate::sexp::symbol::install_str("promise.marker") })
             .unwrap();
         let marker = factory.wrap(unsafe { Rf_ScalarInteger(54) }).unwrap();
         let attributes = factory

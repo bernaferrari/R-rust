@@ -358,7 +358,6 @@ pub fn R_classgets(x: SEXP, klass: SEXP) -> SEXP {
 /// GNU `lang2str`: implicit class of a language object is the syntactic
 /// head (`if`, `while`, `for`, `=`, `<-`, `(`, `{`) or `"call"`.
 pub fn language_implicit_class_chars(obj: SEXP) -> SEXP {
-    unsafe {
         let symb = CAR(obj);
         if TYPEOF(symb) == SEXPTYPE::SYMSXP {
             let pn = PRINTNAME(symb);
@@ -372,8 +371,7 @@ pub fn language_implicit_class_chars(obj: SEXP) -> SEXP {
                 }
             }
         }
-        Rf_mkChar(c"call".as_ptr())
-    }
+    crate::sexp::constructors::mk_char_str("call")
 }
 
 /// Get the class of an object (returns the first class element).
@@ -390,12 +388,12 @@ pub unsafe fn R_data_class(x: SEXP) -> SEXP {
                 if nd == 2 {
                     let result = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
                     let _result_guard = protect(result);
-                    SET_STRING_ELT(result, 0, Rf_mkChar(c"matrix".as_ptr()));
-                    SET_STRING_ELT(result, 1, Rf_mkChar(c"array".as_ptr()));
+                    SET_STRING_ELT(result, 0, crate::sexp::constructors::mk_char_str("matrix"));
+                    SET_STRING_ELT(result, 1, crate::sexp::constructors::mk_char_str("array"));
                     return result;
                 }
                 if nd > 0 {
-                    return Rf_mkString(c"array".as_ptr());
+                    return crate::sexp::constructors::mk_string_str("array");
                 }
             }
 
@@ -403,25 +401,25 @@ pub unsafe fn R_data_class(x: SEXP) -> SEXP {
                 return Rf_ScalarString(language_implicit_class_chars(x));
             }
             if TYPEOF(x) == SEXPTYPE::EXPRSXP {
-                return Rf_mkString(c"expression".as_ptr());
+                return crate::sexp::constructors::mk_string_str("expression");
             }
             if TYPEOF(x) == SEXPTYPE::SYMSXP {
-                return Rf_mkString(c"name".as_ptr());
+                return crate::sexp::constructors::mk_string_str("name");
             }
             if TYPEOF(x) == SEXPTYPE::CLOSXP
                 || TYPEOF(x) == SEXPTYPE::SPECIALSXP
                 || TYPEOF(x) == SEXPTYPE::BUILTINSXP
             {
-                return Rf_mkString(c"function".as_ptr());
+                return crate::sexp::constructors::mk_string_str("function");
             }
             if TYPEOF(x) == SEXPTYPE::LISTSXP {
-                return Rf_mkString(c"pairlist".as_ptr());
+                return crate::sexp::constructors::mk_string_str("pairlist");
             }
             if TYPEOF(x) == SEXPTYPE::ENVSXP {
-                return Rf_mkString(c"environment".as_ptr());
+                return crate::sexp::constructors::mk_string_str("environment");
             }
             if TYPEOF(x) == SEXPTYPE::DOTSXP {
-                return Rf_mkString(c"...".as_ptr());
+                return crate::sexp::constructors::mk_string_str("...");
             }
 
             // GNU type2str fallback for remaining SEXPTYPEs.

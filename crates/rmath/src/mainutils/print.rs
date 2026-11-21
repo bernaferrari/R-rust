@@ -840,9 +840,8 @@ struct PrintFormatGuard {
 
 impl PrintFormatGuard {
     fn new(data: &R_PrintData) -> Self {
-        let owner = unsafe { crate::sexp::owner::OwnerToken::current() }
+        let owner = crate::sexp::owner::OwnerToken::with_current(|owner| owner.weak_owner())
             .expect("print formatting requires a current runtime")
-            .weak_owner()
             .expect("print formatting requires a managed runtime")
             .pin()
             .expect("print formatting requires an active runtime");

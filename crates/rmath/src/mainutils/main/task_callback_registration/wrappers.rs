@@ -10,7 +10,7 @@ use std::ffi::CStr;
 fn symbol(factory: &SessionNodeFactory<'_>, name: &CStr) -> SexpResult<Sexp<'static>> {
     factory.require_active()?;
     factory
-        .wrap(unsafe { crate::sexp::symbol::Rf_install(name.as_ptr()) })?
+        .wrap(crate::sexp::symbol::install_cstr(&name))?
         .into_owned()
 }
 

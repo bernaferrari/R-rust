@@ -346,7 +346,7 @@ pub(crate) unsafe fn install(base_env: SEXP) {
         (|| -> SexpResult<()> {
             let factory = owner.node_factory();
             let target = factory.wrap(base_env)?.into_owned()?;
-            let call = factory.wrap(unsafe { Rf_install(c".Call".as_ptr()) })?;
+            let call = factory.wrap(crate::sexp::symbol::install_str(".Call"))?;
             let loader = native_symbols::symbol_pointer(
                 owner,
                 NativeRoutine::Call(CallRoutine::Args1(materialize)),
@@ -359,7 +359,7 @@ pub(crate) unsafe fn install(base_env: SEXP) {
                 (c"removeTaskCallback", 4),
                 (c"getTaskCallbackNames", 5),
             ] {
-                let symbol = factory.wrap(unsafe { Rf_install(binding.as_ptr()) })?;
+                let symbol = factory.wrap(crate::sexp::symbol::install_cstr(&binding))?;
                 let index = factory.allocate(|a| {
                     crate::sexp::builder::scalar_integer_in(a, selector).map(|v| v.as_raw())
                 })?;
@@ -417,8 +417,8 @@ unsafe extern "C-unwind" fn materialize(index: SEXP) -> SEXP {
             {
                 let factory = owner.node_factory();
                 let keys = native_symbols::AttributeKeys {
-                    names: factory.wrap(unsafe { Rf_install(c"names".as_ptr()) })?,
-                    class: factory.wrap(unsafe { Rf_install(c"class".as_ptr()) })?,
+                    names: factory.wrap(crate::sexp::symbol::install_str("names"))?,
+                    class: factory.wrap(crate::sexp::symbol::install_str("class"))?,
                 };
                 native_symbols::registered_routine_info(
                     owner,

@@ -500,7 +500,7 @@ mod tests {
             set_vector_elt(
                 gp,
                 GP_LTY as R_xlen_t,
-                Rf_mkString(b"dashed\0".as_ptr() as *const c_char),
+                crate::sexp::constructors::mk_string_str("dashed"),
             );
             set_vector_elt(gp, GP_LWD as R_xlen_t, scalar_real(1.0));
             set_vector_elt(gp, GP_CEX as R_xlen_t, scalar_real(1.0));
@@ -512,12 +512,12 @@ mod tests {
             SET_STRING_ELT(
                 fontfamily,
                 0,
-                Rf_mkChar(b"sans\0".as_ptr() as *const c_char),
+                crate::sexp::constructors::mk_char_str("sans"),
             );
             SET_STRING_ELT(
                 fontfamily,
                 1,
-                Rf_mkChar(b"serif\0".as_ptr() as *const c_char),
+                crate::sexp::constructors::mk_char_str("serif"),
             );
             set_vector_elt(gp, GP_FONTFAMILY as R_xlen_t, fontfamily);
 
@@ -546,14 +546,14 @@ mod tests {
             set_vector_elt(
                 gp,
                 GP_LTY as R_xlen_t,
-                Rf_mkString(b"dotdash\0".as_ptr() as *const c_char),
+                crate::sexp::constructors::mk_string_str("dotdash"),
             );
             assert_eq!(gpLineType(gp, 0), ge::LTY_DOTDASH);
 
             set_vector_elt(
                 gp,
                 GP_LTY as R_xlen_t,
-                Rf_mkString(b"0f\0".as_ptr() as *const c_char),
+                crate::sexp::constructors::mk_string_str("0f"),
             );
             assert_eq!(gpLineType(gp, 0), 0x0f);
         }
@@ -578,14 +578,14 @@ mod tests {
             set_vector_elt(
                 gp,
                 GP_LINEEND as R_xlen_t,
-                Rf_mkString(b"butt\0".as_ptr() as *const c_char),
+                crate::sexp::constructors::mk_string_str("butt"),
             );
             assert_eq!(gpLineEnd(gp, 0), ge::GE_BUTT_CAP);
 
             set_vector_elt(
                 gp,
                 GP_LINEJOIN as R_xlen_t,
-                Rf_mkString(b"bevel\0".as_ptr() as *const c_char),
+                crate::sexp::constructors::mk_string_str("bevel"),
             );
             assert_eq!(gpLineJoin(gp, 0), ge::GE_BEVEL_JOIN);
         }

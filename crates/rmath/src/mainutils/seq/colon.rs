@@ -64,7 +64,7 @@ pub fn cross_colon(call: SEXP, s: SEXP, t: SEXP) -> SEXP {
             }
             setAttrib(a, R_LevelsSymbol(), la);
         }
-        let la = Rf_mkString(c"factor".as_ptr());
+        let la = crate::sexp::constructors::mk_string_str("factor");
         setAttrib(a, R_ClassSymbol(), la);
         a
     }
@@ -548,7 +548,7 @@ pub fn do_seq_along(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let mut len: R_xlen_t = 0;
         if crate::sexp::accessors::OBJECT(x) != 0 {
             let length_op = crate::sexp::envir::R_findVar(
-                crate::sexp::symbol::Rf_install(c"length".as_ptr()),
+                crate::sexp::symbol::install_str("length"),
                 crate::sexp::globals::R_BaseEnv(),
             );
             let mut ans = R_NilValue();

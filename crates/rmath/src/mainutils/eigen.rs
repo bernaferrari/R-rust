@@ -48,8 +48,7 @@ pub unsafe fn do_eigen(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 let pname = PRINTNAME(tag);
                 if !pname.is_null() {
                     Some(
-                        std::ffi::CStr::from_ptr(CHAR(pname))
-                            .to_string_lossy()
+                        String::from_utf8_lossy(&crate::sexp::accessors::char_cstr_bytes(pname))
                             .into_owned(),
                     )
                 } else {
@@ -240,11 +239,11 @@ pub unsafe fn do_eigen(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         SET_VECTOR_ELT(result, 0, out_values);
         SET_VECTOR_ELT(result, 1, out_vectors);
         let names = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
-        SET_STRING_ELT(names, 0, Rf_mkChar(c"values".as_ptr()));
-        SET_STRING_ELT(names, 1, Rf_mkChar(c"vectors".as_ptr()));
+        SET_STRING_ELT(names, 0, crate::sexp::constructors::mk_char_str("values"));
+        SET_STRING_ELT(names, 1, crate::sexp::constructors::mk_char_str("vectors"));
         setAttrib(result, crate::attrib_core::R_NamesSymbol(), names);
         if only_values == 0 {
-            let class = Rf_mkString(c"eigen".as_ptr());
+            let class = crate::sexp::constructors::mk_string_str("eigen");
             setAttrib(result, R_ClassSymbol(), class);
         }
         result

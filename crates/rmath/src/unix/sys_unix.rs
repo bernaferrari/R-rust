@@ -17,7 +17,7 @@ use std::ptr;
 
 use crate::mainutils::rfile::{RFile, r_fopen};
 use crate::sexp::accessors::SET_STRING_ELT;
-use crate::sexp::constructors::{Rf_allocVector, Rf_mkChar, Rf_mkString};
+use crate::sexp::constructors::{Rf_allocVector, Rf_mkChar};
 use crate::sexp::ffi::SEXP;
 #[cfg_attr(target_arch = "wasm32", allow(unused_imports))]
 use crate::sexp::globals::R_NilValue;
@@ -183,8 +183,7 @@ pub unsafe fn R_ExpandFileName(s: *const c_char) -> *const c_char {
 
 /// .Internal(machine()) -- returns "Unix".
 pub fn do_machine(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
-    // SAFETY: raw constructor call confined to this block.
-    unsafe { Rf_mkString(b"Unix\0".as_ptr() as *const c_char) }
+    crate::sexp::constructors::mk_string_str("Unix")
 }
 
 // ---------------------------------------------------------------------------
@@ -411,34 +410,34 @@ pub fn do_sysinfo(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
         SET_STRING_ELT(
             ansnames,
             0,
-            Rf_mkChar(b"sysname\0".as_ptr() as *const c_char),
+            crate::sexp::constructors::mk_char_str("sysname"),
         );
         SET_STRING_ELT(
             ansnames,
             1,
-            Rf_mkChar(b"release\0".as_ptr() as *const c_char),
+            crate::sexp::constructors::mk_char_str("release"),
         );
         SET_STRING_ELT(
             ansnames,
             2,
-            Rf_mkChar(b"version\0".as_ptr() as *const c_char),
+            crate::sexp::constructors::mk_char_str("version"),
         );
         SET_STRING_ELT(
             ansnames,
             3,
-            Rf_mkChar(b"nodename\0".as_ptr() as *const c_char),
+            crate::sexp::constructors::mk_char_str("nodename"),
         );
         SET_STRING_ELT(
             ansnames,
             4,
-            Rf_mkChar(b"machine\0".as_ptr() as *const c_char),
+            crate::sexp::constructors::mk_char_str("machine"),
         );
-        SET_STRING_ELT(ansnames, 5, Rf_mkChar(b"login\0".as_ptr() as *const c_char));
-        SET_STRING_ELT(ansnames, 6, Rf_mkChar(b"user\0".as_ptr() as *const c_char));
+        SET_STRING_ELT(ansnames, 5, crate::sexp::constructors::mk_char_str("login"));
+        SET_STRING_ELT(ansnames, 6, crate::sexp::constructors::mk_char_str("user"));
         SET_STRING_ELT(
             ansnames,
             7,
-            Rf_mkChar(b"effective_user\0".as_ptr() as *const c_char),
+            crate::sexp::constructors::mk_char_str("effective_user"),
         );
 
         setAttrib(ans, R_NamesSymbol(), ansnames);

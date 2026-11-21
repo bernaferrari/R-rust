@@ -1411,8 +1411,7 @@ fn par_value_to_sexp(value: &ParValue) -> SEXP {
             }
             ParValue::String(value) => {
                 let cstr = std::ffi::CString::new(value.as_str()).unwrap_or_default();
-                // SAFETY: `cstr` is a valid NUL-terminated string live for the call.
-                unsafe { Rf_mkString(cstr.as_ptr()) }
+                crate::sexp::constructors::mk_string_bytes(cstr.to_bytes())
             }
         }
     }
@@ -1440,8 +1439,7 @@ fn mixed_par_list(slots: &[(String, bool)]) -> SEXP {
             };
             SET_VECTOR_ELT(result, i as R_xlen_t, value);
             let cstr = std::ffi::CString::new(name.as_str()).unwrap_or_default();
-            // SAFETY: `cstr` is a valid NUL-terminated string live for the call.
-            SET_STRING_ELT(name_vec, i as R_xlen_t, unsafe { Rf_mkChar(cstr.as_ptr()) });
+            SET_STRING_ELT(name_vec, i as R_xlen_t, crate::sexp::constructors::mk_char_bytes(cstr.to_bytes()));
         }
         crate::sexp::attrib_core::setAttrib(
             result,
@@ -1467,8 +1465,7 @@ fn null_named_list(names: &[String]) -> SEXP {
         for (i, name) in names.iter().enumerate() {
             SET_VECTOR_ELT(result, i as R_xlen_t, R_NilValue());
             let cstr = std::ffi::CString::new(name.as_str()).unwrap_or_default();
-            // SAFETY: `cstr` is a valid NUL-terminated string live for the call.
-            SET_STRING_ELT(name_vec, i as R_xlen_t, unsafe { Rf_mkChar(cstr.as_ptr()) });
+            SET_STRING_ELT(name_vec, i as R_xlen_t, crate::sexp::constructors::mk_char_bytes(cstr.to_bytes()));
         }
         crate::sexp::attrib_core::setAttrib(
             result,
@@ -1497,8 +1494,7 @@ fn named_par_list(names: &[String]) -> SEXP {
             let value = &values[i];
             SET_VECTOR_ELT(result, i as R_xlen_t, par_value_to_sexp(&value));
             let cstr = std::ffi::CString::new(name.as_str()).unwrap_or_default();
-            // SAFETY: `cstr` is a valid NUL-terminated string live for the call.
-            SET_STRING_ELT(name_vec, i as R_xlen_t, unsafe { Rf_mkChar(cstr.as_ptr()) });
+            SET_STRING_ELT(name_vec, i as R_xlen_t, crate::sexp::constructors::mk_char_bytes(cstr.to_bytes()));
         }
 
         crate::sexp::attrib_core::setAttrib(
@@ -2080,7 +2076,7 @@ mod tests {
             let args = Rf_cons(mar, R_NilValue());
             let _args_guard = protect(args);
             let mar_name = CString::new("mar").unwrap();
-            SETTAG(args, Rf_install(mar_name.as_ptr()));
+            SETTAG(args, crate::sexp::symbol::install_cstr(&mar_name));
 
             let old = C_par(
                 std::ptr::null_mut(),
@@ -2090,7 +2086,7 @@ mod tests {
             );
             assert_eq!(LENGTH(old), 1);
 
-            let query_text = Rf_mkString(mar_name.as_ptr());
+            let query_text = crate::sexp::constructors::mk_string_bytes(mar_name.to_bytes());
             let _query_text_guard = protect(query_text);
             let query = Rf_cons(query_text, R_NilValue());
             let _query_guard = protect(query);

@@ -705,9 +705,6 @@ pub(crate) fn lookup_call(name: &str) -> Option<crate::mainutils::native_routine
 }
 
 pub fn install_stats_call_symbols(env: SEXP) {
-    // SAFETY: registration runs under the held runtime lock; `env` is a live
-    // environment and each symbol/string allocation is a fresh, valid SEXP.
-    unsafe {
         for name in RAND_CALL_NAMES
             .iter()
             .copied()
@@ -715,12 +712,11 @@ pub fn install_stats_call_symbols(env: SEXP) {
         {
             let cname = std::ffi::CString::new(name).unwrap_or_default();
             crate::sexp::envir::defineVar(
-                crate::sexp::symbol::Rf_install(cname.as_ptr()),
-                crate::sexp::constructors::Rf_mkString(cname.as_ptr()),
+            crate::sexp::symbol::install_cstr(&cname),
+            crate::sexp::constructors::mk_string_bytes(cname.to_bytes()),
                 env,
             );
         }
-    }
 }
 
 // ---------------------------------------------------------------------------

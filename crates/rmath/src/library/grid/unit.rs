@@ -1660,10 +1660,14 @@ mod tests {
         unsafe {
             let names = Rf_allocVector(SEXPTYPE::STRSXP, 4);
             let _names_guard = protect(names);
-            SET_STRING_ELT(names, 0, Rf_mkChar(c"npc".as_ptr()));
-            SET_STRING_ELT(names, 1, Rf_mkChar(c"inches".as_ptr()));
-            SET_STRING_ELT(names, 2, Rf_mkChar(c"strwidth".as_ptr()));
-            SET_STRING_ELT(names, 3, Rf_mkChar(c"grobheight".as_ptr()));
+            SET_STRING_ELT(names, 0, crate::sexp::constructors::mk_char_str("npc"));
+            SET_STRING_ELT(names, 1, crate::sexp::constructors::mk_char_str("inches"));
+            SET_STRING_ELT(names, 2, crate::sexp::constructors::mk_char_str("strwidth"));
+            SET_STRING_ELT(
+                names,
+                3,
+                crate::sexp::constructors::mk_char_str("grobheight"),
+            );
 
             let result = matchUnit(names, R_NilValue());
             assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP);
@@ -1680,7 +1684,7 @@ mod tests {
         let err = assert_r_error(|| unsafe {
             let names = Rf_allocVector(SEXPTYPE::STRSXP, 1);
             let _names_guard = protect(names);
-            SET_STRING_ELT(names, 0, Rf_mkChar(c"pixels".as_ptr()));
+            SET_STRING_ELT(names, 0, crate::sexp::constructors::mk_char_str("pixels"));
             matchUnit(names, R_NilValue());
         });
         assert!(err.message.contains("invalid unit"));

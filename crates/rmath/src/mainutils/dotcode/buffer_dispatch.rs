@@ -546,7 +546,7 @@ pub(super) unsafe fn invoke(
             let slices: Vec<_> = text.iter().map(String::as_str).collect();
             let names = allocator.strings(&slices)?;
             let tag = access.with_native(|owner| {
-                let raw = unsafe { crate::sexp::symbol::Rf_install(c"names".as_ptr()) };
+                let raw = crate::sexp::symbol::install_str("names");
                 owner.sexp(raw)?.into_owned()
             })?;
             let attributes = allocator.pairlist_cell(&names, &domain.nil(), &tag)?;
@@ -608,7 +608,7 @@ mod tests {
             session
                 .owner_token()
                 .unwrap()
-                .sexp(crate::sexp::symbol::Rf_install(text.as_ptr()))
+                .sexp(crate::sexp::symbol::install_cstr(&text))
                 .unwrap()
                 .into_owned()
                 .unwrap()

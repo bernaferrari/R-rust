@@ -308,8 +308,8 @@ mod tests {
             let owner = session.owner_token().unwrap();
             let pin = owner.pin().unwrap().unwrap();
             let names = own_operand(Rf_allocVector(SEXPTYPE::STRSXP, 2));
-            SET_STRING_ELT(names.as_raw(), 0, Rf_mkChar(c"alpha".as_ptr()));
-            SET_STRING_ELT(names.as_raw(), 1, Rf_mkChar(c"".as_ptr()));
+            SET_STRING_ELT(names.as_raw(), 0, crate::sexp::constructors::mk_char_str("alpha"));
+            SET_STRING_ELT(names.as_raw(), 1, crate::sexp::constructors::mk_char_str(""));
             let chars = integers(&[8, 6]);
             let ints = integers(&[6, 8]);
             let pool = own_operand(Rf_allocVector(SEXPTYPE::VECSXP, 4));
@@ -327,7 +327,7 @@ mod tests {
             for index in 0..4 {
                 SET_VECTOR_ELT(pool.as_raw(), index, R_NilValue());
             }
-            SET_STRING_ELT(names.as_raw(), 0, Rf_mkChar(c"beta".as_ptr()));
+            SET_STRING_ELT(names.as_raw(), 0, crate::sexp::constructors::mk_char_str("beta"));
             let mut chars = SexpMut::try_from_checked(chars).unwrap();
             let mut ints = SexpMut::try_from_checked(ints).unwrap();
             assert!(chars.set_integer_elt(0, 6));
@@ -338,8 +338,8 @@ mod tests {
             drop(constants);
             owner.full_gc().unwrap();
 
-            let alpha = own_operand(Rf_mkString(c"alpha".as_ptr()));
-            let other = own_operand(Rf_mkString(c"beta".as_ptr()));
+            let alpha = own_operand(crate::sexp::constructors::mk_string_str("alpha"));
+            let other = own_operand(crate::sexp::constructors::mk_string_str("beta"));
             let second = own_operand(Rf_ScalarInteger(2));
             assert_eq!(table.select(&alpha, &pin).unwrap(), 8);
             assert_eq!(table.select(&other, &pin).unwrap(), 6);
@@ -351,7 +351,7 @@ mod tests {
     fn owned_switch_tables_reject_bad_shapes_targets_and_indices() {
         let session = RSession::new_for_gc_tests();
         session.with_active(|| unsafe {
-            let names = own_operand(Rf_mkString(c"alpha".as_ptr()));
+            let names = own_operand(crate::sexp::constructors::mk_string_str("alpha"));
             let nil = own_operand(R_NilValue());
             let invalid = integers(&[10]);
             let valid = integers(&[6, 8]);

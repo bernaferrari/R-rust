@@ -101,7 +101,7 @@ fn run(close: bool, wrong_package: bool) {
             .strings(&[if wrong_package { "tools" } else { "stats" }])
             .unwrap();
         let tag = f
-            .wrap(unsafe { crate::sexp::symbol::Rf_install(c"PACKAGE".as_ptr()) })
+            .wrap(unsafe { crate::sexp::symbol::install_str("PACKAGE") })
             .unwrap();
         let mut tail = f
             .pairlist_cell(&package, &nil, &tag)

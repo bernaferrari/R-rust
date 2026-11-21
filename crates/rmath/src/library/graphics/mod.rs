@@ -75,43 +75,41 @@ fn draw_portable_title(args: SEXP) -> SEXP {
 /// path decodes them, retaining the original argument graph over allocations.
 #[cfg(feature = "renderplot-device")]
 fn draw_portable_positional(name: &str, args: SEXP, formals: &[&str]) -> SEXP {
-    unsafe {
-        let result = (|| {
-            use crate::sexp::object::{SessionNodeFactory, SexpResult};
-            crate::sexp::owner::OwnerToken::with_current(|owner| {
-                let _pin = owner.pin()?;
-                let factory = SessionNodeFactory::new(owner);
-                let input = owner.sexp(args)?.into_owned()?;
-                let mut cursor = input.try_cdr()?.into_owned()?;
-                let mut labels = Vec::new();
-                for name in formals {
-                    if cursor.is_nil() {
-                        break;
-                    }
-                    labels.push((name, cursor.try_car()?.into_owned()?));
-                    cursor = cursor.try_cdr()?.into_owned()?;
+    let result = (|| {
+        use crate::sexp::object::{SessionNodeFactory, SexpResult};
+        crate::sexp::owner::OwnerToken::with_current(|owner| {
+            let _pin = owner.pin()?;
+            let factory = SessionNodeFactory::new(owner);
+            let input = owner.sexp(args)?.into_owned()?;
+            let mut cursor = input.try_cdr()?.into_owned()?;
+            let mut labels = Vec::new();
+            for name in formals {
+                if cursor.is_nil() {
+                    break;
                 }
-                let mut built = cursor;
-                for (name, value) in labels.into_iter().rev() {
-                    owner.require_active()?;
-                    let name = std::ffi::CString::new(*name).expect("static graphics formal");
-                    let symbol = crate::sexp::symbol::Rf_install(name.as_ptr());
-                    owner.require_active()?;
-                    let tag = owner.sexp(symbol)?.into_owned()?;
-                    built = factory.pairlist_cell(&value, &built, &tag)?.into_owned()?;
-                }
+                labels.push((name, cursor.try_car()?.into_owned()?));
+                cursor = cursor.try_cdr()?.into_owned()?;
+            }
+            let mut built = cursor;
+            for (name, value) in labels.into_iter().rev() {
                 owner.require_active()?;
-                let drawn = if name == "rasterImage" {
-                    crate::mainutils::portable_plot::native_raster_image(built.as_raw())
-                } else {
-                    crate::mainutils::portable_plot::draw_builtin(name, built.as_raw())
-                };
+                let name = std::ffi::CString::new(*name).expect("static graphics formal");
+                let symbol = crate::sexp::symbol::install_cstr(&name);
                 owner.require_active()?;
-                SexpResult::Ok(drawn)
-            })?
-        })();
-        result.unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
-    }
+                let tag = owner.sexp(symbol)?.into_owned()?;
+                built = factory.pairlist_cell(&value, &built, &tag)?.into_owned()?;
+            }
+            owner.require_active()?;
+            let drawn = if name == "rasterImage" {
+                crate::mainutils::portable_plot::native_raster_image(built.as_raw())
+            } else {
+                crate::mainutils::portable_plot::draw_builtin(name, built.as_raw())
+            };
+            owner.require_active()?;
+            SexpResult::Ok(drawn)
+        })?
+    })();
+    result.unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
 }
 
 /// GNU text.default passes one xy.coords list before labels and text options.
@@ -157,59 +155,57 @@ fn draw_portable_text(args: SEXP) -> SEXP {
 /// The portable point/line path reads a named `x` list and a `type` string.
 #[cfg(feature = "renderplot-device")]
 fn draw_portable_plot_xy(args: SEXP) -> SEXP {
-    unsafe {
-        use crate::sexp::accessors::{CAR, CDR, SETTAG};
-        use crate::sexp::constructors::Rf_cons;
-        use crate::sexp::globals::R_NilValue;
-        use crate::sexp::symbol::Rf_install;
-        let nil = R_NilValue();
-        let mut cell = CDR(args);
-        let xy = if cell.is_null() || cell == nil {
-            nil
-        } else {
-            CAR(cell)
-        };
-        cell = if cell.is_null() || cell == nil {
-            nil
-        } else {
-            CDR(cell)
-        };
-        let typ = if cell.is_null() || cell == nil {
-            nil
-        } else {
-            CAR(cell)
-        };
-        cell = if cell.is_null() || cell == nil {
-            nil
-        } else {
-            CDR(cell)
-        };
-        let tags = ["pch", "lty", "col", "bg", "cex", "lwd"];
-        let mut extras = Vec::new();
-        let mut index = 0;
-        while !cell.is_null() && cell != nil && index < tags.len() {
-            extras.push((tags[index], CAR(cell)));
-            cell = CDR(cell);
-            index += 1;
-        }
-        let mut built = nil;
-        let mut guard = None;
-        for (tag, value) in extras.into_iter().rev() {
-            built = Rf_cons(value, built);
-            guard = Some(crate::sexp::protect::protect(built));
-            let ctag = std::ffi::CString::new(tag).unwrap_or_default();
-            SETTAG(built, Rf_install(ctag.as_ptr()));
-        }
-        built = Rf_cons(typ, built);
-        guard = Some(crate::sexp::protect::protect(built));
-        SETTAG(built, Rf_install(c"type".as_ptr()));
-        built = Rf_cons(xy, built);
-        guard = Some(crate::sexp::protect::protect(built));
-        SETTAG(built, Rf_install(c"x".as_ptr()));
-        let drawn = crate::mainutils::portable_plot::draw_builtin("points", built);
-        drop(guard);
-        drawn
+    use crate::sexp::accessors::{CAR, CDR, SETTAG};
+    use crate::sexp::constructors::Rf_cons;
+    use crate::sexp::globals::R_NilValue;
+    use crate::sexp::symbol::Rf_install;
+    let nil = R_NilValue();
+    let mut cell = CDR(args);
+    let xy = if cell.is_null() || cell == nil {
+        nil
+    } else {
+        CAR(cell)
+    };
+    cell = if cell.is_null() || cell == nil {
+        nil
+    } else {
+        CDR(cell)
+    };
+    let typ = if cell.is_null() || cell == nil {
+        nil
+    } else {
+        CAR(cell)
+    };
+    cell = if cell.is_null() || cell == nil {
+        nil
+    } else {
+        CDR(cell)
+    };
+    let tags = ["pch", "lty", "col", "bg", "cex", "lwd"];
+    let mut extras = Vec::new();
+    let mut index = 0;
+    while !cell.is_null() && cell != nil && index < tags.len() {
+        extras.push((tags[index], CAR(cell)));
+        cell = CDR(cell);
+        index += 1;
     }
+    let mut built = nil;
+    let mut guard = None;
+    for (tag, value) in extras.into_iter().rev() {
+        built = Rf_cons(value, built);
+        guard = Some(crate::sexp::protect::protect(built));
+        let ctag = std::ffi::CString::new(tag).unwrap_or_default();
+        SETTAG(built, crate::sexp::symbol::install_cstr(&ctag));
+    }
+    built = Rf_cons(typ, built);
+    guard = Some(crate::sexp::protect::protect(built));
+    SETTAG(built, crate::sexp::symbol::install_str("type"));
+    built = Rf_cons(xy, built);
+    guard = Some(crate::sexp::protect::protect(built));
+    SETTAG(built, crate::sexp::symbol::install_str("x"));
+    let drawn = crate::mainutils::portable_plot::draw_builtin("points", built);
+    drop(guard);
+    drawn
 }
 
 unsafe extern "C-unwind" fn c_plot_new(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
@@ -643,12 +639,9 @@ pub(crate) fn locator_result(args: SEXP) -> SEXP {
         SET_VECTOR_ELT(ans, 2, nobs);
         let names = Rf_allocVector3(SEXPTYPE::STRSXP, 3);
         let _names = protect(names);
-        // SAFETY: each literal is a valid NUL-terminated string.
-        unsafe {
-            SET_STRING_ELT(names, 0, Rf_mkChar(b"x\0".as_ptr().cast()));
-            SET_STRING_ELT(names, 1, Rf_mkChar(b"y\0".as_ptr().cast()));
-            SET_STRING_ELT(names, 2, Rf_mkChar(b"n\0".as_ptr().cast()));
-        }
+        SET_STRING_ELT(names, 0, crate::sexp::constructors::mk_char_str("x"));
+        SET_STRING_ELT(names, 1, crate::sexp::constructors::mk_char_str("y"));
+        SET_STRING_ELT(names, 2, crate::sexp::constructors::mk_char_str("n"));
         crate::attrib_core::setAttrib(ans, crate::attrib_core::R_NamesSymbol(), names);
         ans
     }
@@ -731,12 +724,9 @@ pub(crate) fn identify_result(args: SEXP) -> SEXP {
         SET_VECTOR_ELT(ans, 2, order);
         let names = Rf_allocVector3(SEXPTYPE::STRSXP, 3);
         let _names = protect(names);
-        // SAFETY: each literal is a valid NUL-terminated string.
-        unsafe {
-            SET_STRING_ELT(names, 0, Rf_mkChar(b"ind\0".as_ptr().cast()));
-            SET_STRING_ELT(names, 1, Rf_mkChar(b"pos\0".as_ptr().cast()));
-            SET_STRING_ELT(names, 2, Rf_mkChar(b"order\0".as_ptr().cast()));
-        }
+        SET_STRING_ELT(names, 0, crate::sexp::constructors::mk_char_str("ind"));
+        SET_STRING_ELT(names, 1, crate::sexp::constructors::mk_char_str("pos"));
+        SET_STRING_ELT(names, 2, crate::sexp::constructors::mk_char_str("order"));
         crate::attrib_core::setAttrib(ans, crate::attrib_core::R_NamesSymbol(), names);
         ans
     }
@@ -887,52 +877,50 @@ pub(crate) fn lookup(name: &str) -> Option<crate::mainutils::native_routines::Na
 }
 
 pub fn install_call_symbols(env: SEXP) {
-    unsafe {
-        for name in [
-            "C_par",
-            "C_plot_new",
-            "C_plot_window",
-            "C_plotXY",
-            "C_title",
-            "C_text",
-            "C_mtext",
-            "C_axis",
-            "C_box",
-            "C_segments",
-            "C_rect",
-            "C_polygon",
-            "C_abline",
-            "C_strWidth",
-            "C_strHeight",
-            "C_BinCount",
-            "C_contourDef",
-            "C_contour",
-            "C_image",
-            "C_layout",
-            "C_filledcontour",
-            "C_persp",
-            "C_arrows",
-            "C_clip",
-            "C_convertX",
-            "C_convertY",
-            "C_dend",
-            "C_dendwindow",
-            "C_erase",
-            "C_path",
-            "C_raster",
-            "C_symbols",
-            "C_xspline",
-            "C_locator",
-            "C_identify",
-            "C_StemLeaf",
-        ] {
-            let cname = std::ffi::CString::new(name).unwrap_or_default();
-            crate::sexp::envir::defineVar(
-                crate::sexp::symbol::Rf_install(cname.as_ptr()),
-                crate::sexp::constructors::Rf_mkString(cname.as_ptr()),
-                env,
-            );
-        }
+    for name in [
+        "C_par",
+        "C_plot_new",
+        "C_plot_window",
+        "C_plotXY",
+        "C_title",
+        "C_text",
+        "C_mtext",
+        "C_axis",
+        "C_box",
+        "C_segments",
+        "C_rect",
+        "C_polygon",
+        "C_abline",
+        "C_strWidth",
+        "C_strHeight",
+        "C_BinCount",
+        "C_contourDef",
+        "C_contour",
+        "C_image",
+        "C_layout",
+        "C_filledcontour",
+        "C_persp",
+        "C_arrows",
+        "C_clip",
+        "C_convertX",
+        "C_convertY",
+        "C_dend",
+        "C_dendwindow",
+        "C_erase",
+        "C_path",
+        "C_raster",
+        "C_symbols",
+        "C_xspline",
+        "C_locator",
+        "C_identify",
+        "C_StemLeaf",
+    ] {
+        let cname = std::ffi::CString::new(name).unwrap_or_default();
+        crate::sexp::envir::defineVar(
+            crate::sexp::symbol::install_cstr(&cname),
+            crate::sexp::constructors::mk_string_bytes(cname.to_bytes()),
+            env,
+        );
     }
 }
 

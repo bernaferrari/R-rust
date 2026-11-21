@@ -30,9 +30,8 @@ pub(crate) fn coerce_difftime_operand(
             return source;
         };
         let result_raw = Rf_allocVector3(SEXPTYPE::REALSXP, input.clone().len());
-        let Some(result) = Sexp::from_raw(result_raw) else {
-            return R_NilValue();
-        };
+        let Ok(value) = Sexp::with_registered_raw(result_raw, |result| {
+            let result = result.clone();
         // SAFETY: result is freshly allocated; no payload reference was lent.
         let mut result_mut = SexpMut::from_owned(result);
         for i in 0..input.clone().len() {
@@ -48,6 +47,10 @@ pub(crate) fn coerce_difftime_operand(
         }
         let _ = result_mut.freeze();
         result_raw
+        }) else {
+            return R_NilValue();
+        };
+        value
     }
 }
 
@@ -66,13 +69,11 @@ pub(crate) fn coerce_character_comparison_operand(
         if TYPEOF(source) != SEXPTYPE::STRSXP {
             return source;
         }
-        let Some(input) = Sexp::from_raw(source) else {
-            return R_NilValue();
-        };
+        let Ok(value) = Sexp::with_registered_raw(source, |input| {
+            let input = input.clone();
         let result_raw = Rf_allocVector3(SEXPTYPE::REALSXP, input.clone().len());
-        let Some(result) = Sexp::from_raw(result_raw) else {
-            return R_NilValue();
-        };
+            let Ok(value) = Sexp::with_registered_raw(result_raw, |result| {
+                let result = result.clone();
         let input_len = input.len();
         // SAFETY: result is freshly allocated; no payload reference was lent.
         let mut result_mut = SexpMut::from_owned(result);
@@ -91,6 +92,14 @@ pub(crate) fn coerce_character_comparison_operand(
         }
         let _ = result_mut.freeze();
         result_raw
+            }) else {
+                return R_NilValue();
+            };
+            value
+        }) else {
+            return R_NilValue();
+        };
+        value
     }
 }
 
@@ -359,9 +368,8 @@ pub(crate) fn posixct_binary_arithmetic(op: &str, a: SEXP, b: SEXP) -> Option<SE
             }
             "-" if a_is_posixct && b_is_posixct => {
                 let result = real_binary(op, a, b);
-                let Some(result_sexp) = Sexp::from_raw(result) else {
-                    return Some(result);
-                };
+                let Ok(value) = Sexp::with_registered_raw(result, |result_sexp| {
+                    let result_sexp = result_sexp.clone();
                 let values_len = result_sexp.len();
                 let values: Vec<f64> = (0..values_len)
                     .filter_map(|i| result_sexp.try_real_elt(i).ok())
@@ -379,6 +387,10 @@ pub(crate) fn posixct_binary_arithmetic(op: &str, a: SEXP, b: SEXP) -> Option<SE
                 let _ = result_mut.freeze();
                 set_difftime_attributes(result, units);
                 Some(result)
+                }) else {
+                    return Some(result);
+                };
+                value
             }
             "-" if a_is_posixct => {
                 if has_class_attribute(b)

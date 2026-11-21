@@ -59,7 +59,7 @@ fn scalar_callback_roots_altrep_and_rejects_owner_revocation() {
                 let value = AltrepBuilder::new(class).build().unwrap();
                 let env = unsafe { crate::sexp::globals::R_GlobalEnv() };
                 unsafe {
-                    let name = crate::sexp::symbol::Rf_install(c"callback_value".as_ptr());
+                    let name = crate::sexp::symbol::install_str("callback_value");
                     crate::sexp::envir::defineVar(name, value.as_raw(), env);
                 }
                 let context =
@@ -121,7 +121,7 @@ fn scalar_callback_rechecks_owner_after_nested_session() {
         let value = AltrepBuilder::new(class).build().unwrap();
         let env = unsafe { crate::sexp::globals::R_GlobalEnv() };
         unsafe {
-            let name = crate::sexp::symbol::Rf_install(c"callback_value".as_ptr());
+            let name = crate::sexp::symbol::install_str("callback_value");
             crate::sexp::envir::defineVar(name, value.as_raw(), env);
         }
         let context = unsafe { ZeroinCtx::new(function.as_raw(), env, ScalarCallbackKind::Zeroin) };

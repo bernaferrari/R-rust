@@ -81,7 +81,7 @@ unsafe fn matches_expectation(raw: SEXP, expected: Expected) -> bool {
                 let child = STRING_ELT(raw, 0);
                 memory::checked_projection(child).is_some_and(|(child, _)| {
                     (*child).sxpinfo.type_of() == SEXPTYPE::CHARSXP
-                        && std::ffi::CStr::from_ptr(CHAR(child)).to_bytes() == b"complete"
+                        && &crate::sexp::accessors::char_cstr_bytes(child)[..] == b"complete"
                 })
             }
             Expected::Language(length) if kind == SEXPTYPE::LANGSXP => {
@@ -168,7 +168,7 @@ fn strings_publish_their_complete_child_before_reentrant_collection() {
     let session = RSession::new_for_gc_tests();
     session.with_active(|| unsafe {
         arm(Expected::String);
-        let result = Rf_mkString(c"complete".as_ptr());
+        let result = crate::sexp::constructors::mk_string_str("complete");
         assert_completed(result);
         assert!(matches_expectation(result, Expected::String));
     });
@@ -208,7 +208,7 @@ fn structure_constructors_initialize_children_and_offsets_before_collection() {
         session.with_active(|| unsafe {
             let value = Rf_ScalarInteger(73);
             let value_root = protect(value);
-            let name = Rf_mkChar(c"..2".as_ptr());
+            let name = crate::sexp::constructors::mk_char_str("..2");
             let name_root = protect(name);
             let formal = Rf_cons(R_NilValue(), R_NilValue());
             let formal_root = protect(formal);
@@ -271,7 +271,7 @@ fn string_coercion_restores_the_live_original_digits_option_after_collection() {
         assert_eq!(*INTEGER(restored), 4);
         assert_eq!(XLENGTH(result), 3);
         assert_eq!(
-            std::ffi::CStr::from_ptr(CHAR(STRING_ELT(result, 0))).to_bytes(),
+            &crate::sexp::accessors::char_cstr_bytes(STRING_ELT(result, 0))[..],
             b"1.23456789"
         );
         drop(input_root);

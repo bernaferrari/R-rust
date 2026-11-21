@@ -31,7 +31,6 @@ use crate::mainutils::graphics_ffi::{
 };
 use crate::sexp::accessors::{CHAR, LENGTH, TYPEOF, VECTOR_ELT};
 use crate::sexp::attrib_core::{R_NamesSymbol, getAttrib};
-use crate::sexp::constructors::Rf_mkString;
 use crate::sexp::ffi::{NA_INTEGER, NA_LOGICAL, R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::instance::with_required_current_instance;
@@ -649,16 +648,6 @@ fn checked_error(error: crate::sexp::object::SexpError) -> ! {
 #[inline]
 fn nil_value() -> SEXP {
     R_NilValue()
-}
-
-#[inline]
-/// # Safety
-///
-/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
-/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
-/// the accompanying lengths) for the duration of the call.
-unsafe fn mk_string(ptr: *const c_char) -> SEXP {
-    unsafe { Rf_mkString(ptr) }
 }
 
 #[inline]
@@ -1299,11 +1288,11 @@ pub fn GE_LENDpar(value: SEXP, ind: c_int) -> c_int {
 pub fn GE_LENDget(lend: c_int) -> SEXP {
     match lend {
         // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-        GE_BUTT_CAP => unsafe { mk_string(c"butt".as_ptr()) },
+        GE_BUTT_CAP => crate::sexp::constructors::mk_string_str("butt"),
         // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-        GE_SQUARE_CAP => unsafe { mk_string(c"square".as_ptr()) },
+        GE_SQUARE_CAP => crate::sexp::constructors::mk_string_str("square"),
         // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-        _ => unsafe { mk_string(c"round".as_ptr()) },
+        _ => crate::sexp::constructors::mk_string_str("round"),
     }
 }
 
@@ -1327,11 +1316,11 @@ pub fn GE_LJOINpar(value: SEXP, ind: c_int) -> c_int {
 pub fn GE_LJOINget(ljoin: c_int) -> SEXP {
     match ljoin {
         // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-        GE_MITRE_JOIN => unsafe { mk_string(c"mitre".as_ptr()) },
+        GE_MITRE_JOIN => crate::sexp::constructors::mk_string_str("mitre"),
         // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-        GE_BEVEL_JOIN => unsafe { mk_string(c"bevel".as_ptr()) },
+        GE_BEVEL_JOIN => crate::sexp::constructors::mk_string_str("bevel"),
         // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-        _ => unsafe { mk_string(c"round".as_ptr()) },
+        _ => crate::sexp::constructors::mk_string_str("round"),
     }
 }
 
@@ -2158,18 +2147,14 @@ pub fn GE_LTYget(lty: c_uint) -> SEXP {
         _ => None,
     };
     if let Some(name) = named {
-        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-        return unsafe {
-            mk_string(
+        return crate::sexp::constructors::mk_string_bytes(
                 CString::new(name)
                     .expect("lty name contains no NUL")
-                    .as_ptr(),
-            )
-        };
+                .to_bytes(),
+        );
     }
     let custom = CString::new(format!("{lty:x}")).expect("hex lty contains no NUL");
-    // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
-    unsafe { mk_string(custom.as_ptr()) }
+    crate::sexp::constructors::mk_string_bytes(custom.to_bytes())
 }
 
 // ---------------------------------------------------------------------------
@@ -2592,7 +2577,7 @@ mod tests {
             for (i, (name, value)) in items.iter().enumerate() {
                 SET_VECTOR_ELT(list, i as R_xlen_t, *value);
                 let c_name = CString::new(*name).expect("test name contains no NUL");
-                SET_STRING_ELT(names, i as R_xlen_t, Rf_mkChar(c_name.as_ptr()));
+                SET_STRING_ELT(names, i as R_xlen_t, crate::sexp::constructors::mk_char_bytes(c_name.to_bytes()));
             }
             setAttrib(list, R_NamesSymbol(), names);
             list
@@ -2607,7 +2592,7 @@ mod tests {
         for (i, value) in values.iter().enumerate() {
             let c = std::ffi::CString::new(*value).expect("test string contains no NUL");
             unsafe {
-                crate::sexp::accessors::SET_STRING_ELT(v, i as R_xlen_t, Rf_mkChar(c.as_ptr()));
+                crate::sexp::accessors::SET_STRING_ELT(v, i as R_xlen_t, crate::sexp::constructors::mk_char_bytes(c.to_bytes()));
             }
         }
         v
@@ -3261,7 +3246,7 @@ mod tests {
     fn test_GEstring_to_pch_reads_first_character() {
         let _session = crate::sexp::session::RSession::new();
         unsafe {
-            let pch = Rf_mkString(c"A".as_ptr());
+            let pch = crate::sexp::constructors::mk_string_str("A");
             assert_eq!(GEstring_to_pch(pch), 'A' as c_int);
         }
     }
@@ -3321,8 +3306,8 @@ mod tests {
         let _session = crate::sexp::session::RSession::new();
         unsafe {
             let out = GE_LTYget(LTY_LONGDASH as c_uint);
-            let name = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(out, 0)))
-                .to_str()
+            let name_bytes = crate::sexp::accessors::char_cstr_bytes(STRING_ELT(out, 0));
+            let name = std::str::from_utf8(&name_bytes)
                 .expect("valid UTF-8");
             assert_eq!(name, "longdash");
         }
@@ -3486,16 +3471,16 @@ mod tests {
     fn test_GEGlyphFontInfo_extracts_named_components() {
         let _session = crate::sexp::session::RSession::new();
         unsafe {
-            let file = Rf_mkString(b"/fonts/Inter.ttf\0".as_ptr() as *const c_char);
-            let family = Rf_mkString(b"Inter\0".as_ptr() as *const c_char);
+            let file = crate::sexp::constructors::mk_string_str("/fonts/Inter.ttf");
+            let family = crate::sexp::constructors::mk_string_str("Inter");
             let weight = Rf_allocVector(SEXPTYPE::REALSXP, 1);
             *REAL(weight) = 700.0;
             let style = Rf_allocVector(SEXPTYPE::INTSXP, 1);
             *INTEGER(style) = 1;
-            let axis = Rf_mkString(b"wght\0".as_ptr() as *const c_char);
+            let axis = crate::sexp::constructors::mk_string_str("wght");
             let value = Rf_allocVector(SEXPTYPE::REALSXP, 1);
             *REAL(value) = 700.0;
-            let formatted = Rf_mkString(b"Bold\0".as_ptr() as *const c_char);
+            let formatted = crate::sexp::constructors::mk_string_str("Bold");
             let variation =
                 named_list(&[("axis", axis), ("value", value), ("formatted", formatted)]);
             let variations = Rf_allocVector(SEXPTYPE::VECSXP, 1);
@@ -3610,13 +3595,11 @@ mod tests {
             assert_eq!(GE_LENDpar(lend, 0), GE_SQUARE_CAP);
             assert_eq!(GE_LJOINpar(ljoin, 0), GE_BEVEL_JOIN);
 
-            let lend_name = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(GE_LENDget(GE_BUTT_CAP), 0)))
-                .to_str()
-                .expect("valid UTF-8");
-            let ljoin_name =
-                std::ffi::CStr::from_ptr(CHAR(STRING_ELT(GE_LJOINget(GE_MITRE_JOIN), 0)))
-                    .to_str()
+            let lend_name_bytes = crate::sexp::accessors::char_cstr_bytes(STRING_ELT(GE_LENDget(GE_BUTT_CAP), 0));
+            let lend_name = std::str::from_utf8(&lend_name_bytes)
                     .expect("valid UTF-8");
+            let ljoin_name_bytes = crate::sexp::accessors::char_cstr_bytes(STRING_ELT(GE_LJOINget(GE_MITRE_JOIN), 0));
+            let ljoin_name = std::str::from_utf8(&ljoin_name_bytes).expect("valid UTF-8");
             assert_eq!(lend_name, "butt");
             assert_eq!(ljoin_name, "mitre");
         }

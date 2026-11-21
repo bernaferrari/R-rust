@@ -798,7 +798,7 @@ pub(crate) fn install(base_env: SEXP) {
         let _as_is_formals_guard = super::super::protect::protect(as_is_formals);
         let x = Rf_install_in_current("x");
 
-        let as_is = Rf_mkString(c"AsIs".as_ptr());
+        let as_is = crate::sexp::constructors::mk_string_str("AsIs");
         let _as_is_guard = super::super::protect::protect(as_is);
         let old_class = Rf_lang2(Rf_install_in_current("oldClass"), x);
         let _old_class_guard = super::super::protect::protect(old_class);
@@ -831,7 +831,7 @@ pub(crate) fn install(base_env: SEXP) {
             arg("reverse"),
         ]);
         let _choose_formals_guard = super::super::protect::protect(choose_formals);
-        let choose_generic = Rf_mkString(c"chooseOpsMethod".as_ptr());
+        let choose_generic = crate::sexp::constructors::mk_string_str("chooseOpsMethod");
         let _choose_generic_guard = super::super::protect::protect(choose_generic);
         let choose_body = Rf_lang2(Rf_install_in_current("UseMethod"), choose_generic);
         let _choose_body_guard = super::super::protect::protect(choose_body);

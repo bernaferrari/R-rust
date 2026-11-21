@@ -194,7 +194,7 @@ fn exercise(interface: NativeInterface, close: bool) {
             session
                 .owner_token()
                 .unwrap()
-                .sexp(crate::sexp::symbol::Rf_install(c"PACKAGE".as_ptr()))
+                .sexp(crate::sexp::symbol::install_str("PACKAGE"))
                 .unwrap()
                 .into_owned()
                 .unwrap()

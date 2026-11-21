@@ -223,7 +223,6 @@ pub(crate) fn data_frame_compare(op_name: &str, call: SEXP, lhs: SEXP, rhs: SEXP
     Some(result)
 }
 pub(crate) fn data_frame_arith(op: &str, sa: SEXP, sb: SEXP) -> Option<SEXP> {
-    unsafe {
         let lhs_frame = has_class(sa, "data.frame") && TYPEOF(sa) == SEXPTYPE::VECSXP;
         let rhs_frame = has_class(sb, "data.frame") && TYPEOF(sb) == SEXPTYPE::VECSXP;
         if !lhs_frame && !rhs_frame {
@@ -250,10 +249,9 @@ pub(crate) fn data_frame_arith(op: &str, sa: SEXP, sb: SEXP) -> Option<SEXP> {
         setAttrib(
             out,
             crate::sexp::attrib_core::R_ClassSymbol(),
-            crate::sexp::constructors::Rf_mkString(c"data.frame".as_ptr()),
+        crate::sexp::constructors::mk_string_str("data.frame"),
         );
         Some(out)
-    }
 }
 
 pub(crate) fn validate_data_frame_operand(value: SEXP, is_frame: bool, ncol: R_xlen_t) {
@@ -383,9 +381,8 @@ pub(crate) fn unary_minus(x: SEXP) -> SEXP {
             SEXPTYPE::INTSXP
         };
         let result_raw = Rf_allocVector3(result_type, n);
-        let Some(result) = Sexp::from_raw(result_raw) else {
-            return R_NilValue();
-        };
+        let Ok(value) = Sexp::with_registered_raw(result_raw, |result| {
+            let result = result.clone();
         let _result_guard = protect(result_raw);
         // SAFETY: result is freshly allocated; no payload reference was lent.
         let mut result_mut = SexpMut::from_owned(result);
@@ -423,6 +420,10 @@ pub(crate) fn unary_minus(x: SEXP) -> SEXP {
             copy_all_attrib(result_raw, x);
         }
         result_raw
+        }) else {
+            return R_NilValue();
+        };
+        value
     }
 }
 
@@ -444,12 +445,10 @@ pub(crate) fn ordered_factor_compare(op: &str, sa: SEXP, sb: SEXP) -> Option<SEX
             });
         }
 
-        let Some(a) = Sexp::from_raw(sa) else {
-            return Some(R_NilValue());
-        };
-        let Some(b) = Sexp::from_raw(sb) else {
-            return Some(R_NilValue());
-        };
+        let Ok(value) = Sexp::with_registered_raw(sa, |a| {
+            let a = a.clone();
+            let Ok(value) = Sexp::with_registered_raw(sb, |b| {
+                let b = b.clone();
         let a_len = a.len();
         let b_len = b.len();
         let n = match (a_len, b_len) {
@@ -457,9 +456,8 @@ pub(crate) fn ordered_factor_compare(op: &str, sa: SEXP, sb: SEXP) -> Option<SEX
             _ => a_len.max(b_len),
         };
         let result_raw = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
-        let Some(result) = Sexp::from_raw(result_raw) else {
-            return Some(R_NilValue());
-        };
+                let Ok(value) = Sexp::with_registered_raw(result_raw, |result| {
+                    let result = result.clone();
         let _result_guard = protect(result_raw);
         warn_if_non_multiple_recycling(a_len, b_len);
         // SAFETY: result is freshly allocated; no payload reference was lent.
@@ -471,6 +469,18 @@ pub(crate) fn ordered_factor_compare(op: &str, sa: SEXP, sb: SEXP) -> Option<SEX
         }
         let _ = result_mut.freeze();
         Some(result_raw)
+                }) else {
+                    return Some(R_NilValue());
+                };
+                value
+            }) else {
+                return Some(R_NilValue());
+            };
+            value
+        }) else {
+            return Some(R_NilValue());
+        };
+        value
     }
 }
 
@@ -568,12 +578,10 @@ pub(crate) fn charsxp_to_string(charsxp: SEXP) -> Option<String> {
 
 pub(crate) fn character_compare(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
     unsafe {
-        let Some(a) = Sexp::from_raw(sa) else {
-            return R_NilValue();
-        };
-        let Some(b) = Sexp::from_raw(sb) else {
-            return R_NilValue();
-        };
+        let Ok(value) = Sexp::with_registered_raw(sa, |a| {
+            let a = a.clone();
+            let Ok(value) = Sexp::with_registered_raw(sb, |b| {
+                let b = b.clone();
         let a_len = a.len();
         let b_len = b.len();
         let n = match (a_len, b_len) {
@@ -581,9 +589,8 @@ pub(crate) fn character_compare(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
             _ => a_len.max(b_len),
         };
         let result_raw = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
-        let Some(result) = Sexp::from_raw(result_raw) else {
-            return R_NilValue();
-        };
+                let Ok(value) = Sexp::with_registered_raw(result_raw, |result| {
+                    let result = result.clone();
         let _result_guard = protect(result_raw);
         warn_if_non_multiple_recycling(a_len, b_len);
         // SAFETY: result is freshly allocated; no payload reference was lent.
@@ -626,6 +633,18 @@ pub(crate) fn character_compare(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
 
         propagate_binary_vector_attributes(result_raw, sa, sb, n);
         result_raw
+                }) else {
+                    return R_NilValue();
+                };
+                value
+            }) else {
+                return R_NilValue();
+            };
+            value
+        }) else {
+            return R_NilValue();
+        };
+        value
     }
 }
 

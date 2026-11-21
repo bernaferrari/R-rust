@@ -20,7 +20,6 @@ use crate::sexp::constructors::*;
 use crate::sexp::ffi::{NA_LOGICAL, NA_REAL, R_xlen_t, Rcomplex, SEXP, SEXPTYPE};
 use crate::sexp::globals::{R_NaString, R_NilValue};
 use crate::sexp::protect::{ProtectGuard, protect};
-use crate::sexp::symbol::Rf_install;
 
 fn error(msg: &str) -> ! {
     std::panic::panic_any(crate::sexp::context::RError {
@@ -1421,7 +1420,7 @@ pub unsafe fn do_radixsort(_call: SEXP, _op: SEXP, mut args: SEXP, _rho: SEXP) -
             let mut maxgrpn: c_int = NA_INTEGER;
             let flip = with_radix_state(|s| s.flip) as usize;
             ngrp = with_radix_state(|s| s.gsngrp[flip]);
-            let s_ends = Rf_install(c"ends".as_ptr());
+            let s_ends = crate::sexp::symbol::install_str("ends");
             let x_ends = Rf_allocVector3(SEXPTYPE::INTSXP, ngrp as R_xlen_t);
             let _x_ends_guard = protect(x_ends);
             setAttrib(ans, s_ends, x_ends);
@@ -1435,16 +1434,16 @@ pub unsafe fn do_radixsort(_call: SEXP, _op: SEXP, mut args: SEXP, _rho: SEXP) -
                 }
                 maxgrpn = with_radix_state(|s| s.gsmax[flip]);
             }
-            let s_maxgrpn = Rf_install(c"maxgrpn".as_ptr());
+            let s_maxgrpn = crate::sexp::symbol::install_str("maxgrpn");
             let scalar_maxgrpn = Rf_ScalarInteger(maxgrpn);
             let _scalar_maxgrpn_guard = protect(scalar_maxgrpn);
             setAttrib(ans, s_maxgrpn, scalar_maxgrpn);
             // Set class c("grouping", "integer")
             let nms = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
             let _nms_guard = protect(nms);
-            SET_STRING_ELT(nms, 0, Rf_mkChar(c"grouping".as_ptr()));
-            SET_STRING_ELT(nms, 1, Rf_mkChar(c"integer".as_ptr()));
-            let class_sym = Rf_install(c"class".as_ptr());
+            SET_STRING_ELT(nms, 0, crate::sexp::constructors::mk_char_str("grouping"));
+            SET_STRING_ELT(nms, 1, crate::sexp::constructors::mk_char_str("integer"));
+            let class_sym = crate::sexp::symbol::install_str("class");
             setAttrib(ans, class_sym, nms);
         }
 

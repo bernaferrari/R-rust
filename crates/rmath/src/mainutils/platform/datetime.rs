@@ -383,29 +383,26 @@ fn is_na_charsxp(s: SEXP) -> bool {
 }
 
 pub(crate) fn path_at(paths: SEXP, index: usize) -> Option<String> {
-    unsafe {
-        let elt = crate::sexp::accessors::STRING_ELT(paths, index as crate::sexp::ffi::R_xlen_t);
-        if is_na_charsxp(elt) {
-            return None;
-        }
-        CStr::from_ptr(crate::sexp::accessors::CHAR(elt))
-            .to_str()
-            .ok()
-            .map(str::to_owned)
+    let elt = crate::sexp::accessors::STRING_ELT(paths, index as crate::sexp::ffi::R_xlen_t);
+    if is_na_charsxp(elt) {
+        return None;
     }
+    std::str::from_utf8(&crate::sexp::accessors::char_cstr_bytes(elt))
+        .ok()
+        .map(str::to_owned)
 }
 
 pub(crate) fn octmode_scalar(mode: u32) -> SEXP {
     unsafe {
         use crate::sexp::accessors::SET_STRING_ELT;
-        use crate::sexp::constructors::{Rf_ScalarInteger, Rf_allocVector3, Rf_mkChar};
+        use crate::sexp::constructors::{Rf_ScalarInteger, Rf_allocVector3};
         use crate::sexp::ffi::SEXPTYPE;
 
         let ans = Rf_ScalarInteger((mode & 0o777) as c_int);
         let _ans_guard = protect(ans);
         let class = Rf_allocVector3(SEXPTYPE::STRSXP.as_c_int(), 1);
         let _class_guard = protect(class);
-        SET_STRING_ELT(class, 0, Rf_mkChar(c"octmode".as_ptr()));
+        SET_STRING_ELT(class, 0, crate::sexp::constructors::mk_char_str("octmode"));
         crate::eval::attrib_core::setAttrib(ans, crate::eval::attrib_core::R_ClassSymbol(), class);
         ans
     }

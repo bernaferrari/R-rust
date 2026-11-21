@@ -23,40 +23,36 @@ fn err(s: &str) -> ! {
 }
 
 unsafe fn is_qr(x: SEXP) -> bool {
-    unsafe {
-        let c = getAttrib(x, R_ClassSymbol());
-        if c == R_NilValue() || TYPEOF(c) != STRSXP_C {
-            return false;
-        }
-        for i in 0..XLENGTH(c) {
-            if std::ffi::CStr::from_ptr(CHAR(STRING_ELT(c, i))).to_bytes() == b"qr" {
-                return true;
-            }
-        }
-        false
+    let c = getAttrib(x, R_ClassSymbol());
+    if c == R_NilValue() || TYPEOF(c) != STRSXP_C {
+        return false;
     }
+    for i in 0..XLENGTH(c) {
+        if &crate::sexp::accessors::char_cstr_bytes(STRING_ELT(c, i))[..] == b"qr" {
+            return true;
+        }
+    }
+    false
 }
 
 unsafe fn fields(x: SEXP) -> (SEXP, SEXP, SEXP, SEXP) {
-    unsafe {
-        let names = getAttrib(x, R_NamesSymbol());
-        let mut qr = R_NilValue();
-        let mut rank = R_NilValue();
-        let mut qraux = R_NilValue();
-        let mut pivot = R_NilValue();
-        if TYPEOF(names) == STRSXP_C && XLENGTH(names) == XLENGTH(x) {
-            for i in 0..XLENGTH(names) {
-                match std::ffi::CStr::from_ptr(CHAR(STRING_ELT(names, i))).to_bytes() {
-                    b"qr" => qr = VECTOR_ELT(x, i),
-                    b"rank" => rank = VECTOR_ELT(x, i),
-                    b"qraux" => qraux = VECTOR_ELT(x, i),
-                    b"pivot" => pivot = VECTOR_ELT(x, i),
-                    _ => {}
-                }
+    let names = getAttrib(x, R_NamesSymbol());
+    let mut qr = R_NilValue();
+    let mut rank = R_NilValue();
+    let mut qraux = R_NilValue();
+    let mut pivot = R_NilValue();
+    if TYPEOF(names) == STRSXP_C && XLENGTH(names) == XLENGTH(x) {
+        for i in 0..XLENGTH(names) {
+            match &crate::sexp::accessors::char_cstr_bytes(STRING_ELT(names, i))[..] {
+                b"qr" => qr = VECTOR_ELT(x, i),
+                b"rank" => rank = VECTOR_ELT(x, i),
+                b"qraux" => qraux = VECTOR_ELT(x, i),
+                b"pivot" => pivot = VECTOR_ELT(x, i),
+                _ => {}
             }
         }
-        (qr, rank, qraux, pivot)
     }
+    (qr, rank, qraux, pivot)
 }
 
 pub unsafe fn do_qr_coef(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
@@ -66,7 +62,7 @@ pub unsafe fn do_qr_coef(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         while !cell.is_null() && cell != R_NilValue() {
             let tag = TAG(cell);
             if !tag.is_null() && tag != R_NilValue() {
-                let name = std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag))).to_bytes();
+                let name = &crate::sexp::accessors::char_cstr_bytes(PRINTNAME(tag))[..];
                 let index = [b"qr".as_slice(), b"y".as_slice()]
                     .iter()
                     .position(|formal| !name.is_empty() && formal.starts_with(name))
@@ -171,7 +167,7 @@ pub unsafe fn do_qr_coef(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         if p == 0 || k == 0 {
             return finish(coef, p, ny, matrix, f, y, pivot);
         }
-        let lap = getAttrib(q, crate::sexp::symbol::Rf_install(c"useLAPACK".as_ptr()));
+        let lap = getAttrib(q, crate::sexp::symbol::install_str("useLAPACK"));
         // GNU uses LAPACK only when useLAPACK is TRUE.
         let lap = TYPEOF(lap) == SEXPTYPE::LGLSXP && XLENGTH(lap) == 1 && LOGICAL_ELT(lap, 0) != 0;
         if lap {
@@ -400,7 +396,7 @@ unsafe fn finish(
             *INTEGER(dims).add(1) = ny as c_int;
             setAttrib(coef, R_DimSymbol(), dims);
         }
-        let xdn = getAttrib(f, crate::sexp::symbol::Rf_install(c"dimnames".as_ptr()));
+        let xdn = getAttrib(f, crate::sexp::symbol::install_str("dimnames"));
         let xnames = if TYPEOF(xdn) == VECSXP_C && XLENGTH(xdn) >= 2 {
             VECTOR_ELT(xdn, 1)
         } else {
@@ -423,7 +419,11 @@ unsafe fn finish(
             let out = Rf_allocVector3(SEXPTYPE::STRSXP, p as R_xlen_t);
             let _out = protect(out);
             for i in 0..p {
-                SET_STRING_ELT(out, i as R_xlen_t, Rf_mkChar(c"".as_ptr()));
+                SET_STRING_ELT(
+                    out,
+                    i as R_xlen_t,
+                    crate::sexp::constructors::mk_char_str(""),
+                );
             }
             for i in 0..p {
                 let dest = *INTEGER(pivot).add(i as usize);
@@ -440,7 +440,7 @@ unsafe fn finish(
             xnames
         };
         if matrix {
-            let ydn = getAttrib(y, crate::sexp::symbol::Rf_install(c"dimnames".as_ptr()));
+            let ydn = getAttrib(y, crate::sexp::symbol::install_str("dimnames"));
             let ynames = if TYPEOF(ydn) == VECSXP_C && XLENGTH(ydn) >= 2 {
                 VECTOR_ELT(ydn, 1)
             } else {
@@ -450,11 +450,7 @@ unsafe fn finish(
             let _dn = protect(dn);
             SET_VECTOR_ELT(dn, 0, row_names);
             SET_VECTOR_ELT(dn, 1, ynames);
-            setAttrib(
-                coef,
-                crate::sexp::symbol::Rf_install(c"dimnames".as_ptr()),
-                dn,
-            );
+            setAttrib(coef, crate::sexp::symbol::install_str("dimnames"), dn);
         } else if row_names != R_NilValue() && !row_names.is_null() {
             setAttrib(coef, R_NamesSymbol(), row_names);
         }

@@ -1066,9 +1066,10 @@ pub(crate) fn publish_workspace_bindings(
         .ok_or("workspace binding plan exceeds session memory limit")?;
     for cell in PairlistIter::new(temporary.try_frame().map_err(graph_error)?) {
         let symbol = cell.try_tag().map_err(graph_error)?;
-        let name = || unsafe {
-            std::ffi::CStr::from_ptr(CHAR(PRINTNAME(symbol.as_raw())))
-                .to_string_lossy()
+        let name = || {
+            String::from_utf8_lossy(&crate::sexp::accessors::char_cstr_bytes(PRINTNAME(
+                symbol.as_raw(),
+            )))
                 .into_owned()
         };
         let raw = symbol.as_raw();
@@ -2052,7 +2053,7 @@ mod tests {
         let _session = crate::sexp::session::RSession::new();
         unsafe {
             let env = memory::with_arena(|arena| arena.alloc_node(SEXPTYPE::ENVSXP));
-            let sym = Rf_install(b"x\0".as_ptr() as *const _);
+            let sym = crate::sexp::symbol::install_str("x");
             let val = R_findVarInFrame(env, sym);
             assert_eq!(val, R_UnboundValue());
         }
@@ -2063,7 +2064,7 @@ mod tests {
         let _session = crate::sexp::session::RSession::new();
         unsafe {
             let env = memory::with_arena(|arena| arena.alloc_node(SEXPTYPE::ENVSXP));
-            let sym = Rf_install(b"x\0".as_ptr() as *const _);
+            let sym = crate::sexp::symbol::install_str("x");
             let value = Rf_ScalarInteger(42);
 
             defineVar(sym, value, env);
@@ -2078,7 +2079,7 @@ mod tests {
         let _session = crate::sexp::session::RSession::new();
         unsafe {
             let env = memory::with_arena(|arena| arena.alloc_node(SEXPTYPE::ENVSXP));
-            let sym = Rf_install(b"x\0".as_ptr() as *const _);
+            let sym = crate::sexp::symbol::install_str("x");
             let v1 = Rf_ScalarInteger(1);
             let v2 = Rf_ScalarInteger(2);
 
@@ -2095,7 +2096,7 @@ mod tests {
         let _session = crate::sexp::session::RSession::new();
         unsafe {
             let env = memory::with_arena(|arena| arena.alloc_node(SEXPTYPE::ENVSXP));
-            let sym = Rf_install(b"y\0".as_ptr() as *const _);
+            let sym = crate::sexp::symbol::install_str("y");
 
             assert_eq!(R_existsVarInFrame(env, sym), 0);
 
@@ -2111,7 +2112,7 @@ mod tests {
         let _session = crate::sexp::session::RSession::new();
         unsafe {
             let env = memory::with_arena(|arena| arena.alloc_node(SEXPTYPE::ENVSXP));
-            let sym = Rf_install(b"z\0".as_ptr() as *const _);
+            let sym = crate::sexp::symbol::install_str("z");
 
             // Upstream R_isMissing: unbound-in-frame is NOT missing (the
             // check exists for the current call's formals only).
@@ -2435,7 +2436,7 @@ mod tests {
             let parent = memory::with_arena(|arena| arena.alloc_node(SEXPTYPE::ENVSXP));
             crate::sexp::accessors::SET_ENCLOS(env, parent);
 
-            let sym = Rf_install(b"newvar\0".as_ptr() as *const _);
+            let sym = crate::sexp::symbol::install_str("newvar");
             let value = Rf_ScalarReal(3.14);
 
             setVar(sym, value, env);
@@ -2476,7 +2477,7 @@ mod tests {
         };
         let symbol = unsafe {
             SET_FRAME(env, malformed_frame);
-            Rf_install(b"x\0".as_ptr() as *const _)
+            crate::sexp::symbol::install_str("x")
         };
         let sexp_env = unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ Sexp::from_raw(env) }.expect("environment");
         let sexp_symbol = unsafe { /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */ Sexp::from_raw(symbol) }.expect("symbol");
@@ -2489,18 +2490,15 @@ mod tests {
         let _session = crate::sexp::session::RSession::new();
         unsafe {
             let env = memory::with_arena(|arena| arena.alloc_node(SEXPTYPE::ENVSXP));
-            let sym = Rf_install(b"x\0".as_ptr() as *const _);
+            let sym = crate::sexp::symbol::install_str("x");
             let value = Rf_ScalarInteger(42);
 
-            let Some(sexp_env) = Sexp::from_raw(env) else {
-                return;
-            };
-            let Some(sexp_sym) = Sexp::from_raw(sym) else {
-                return;
-            };
-            let Some(sexp_val) = Sexp::from_raw(value) else {
-                return;
-            };
+            let Ok(value) = Sexp::with_registered_raw(env, |sexp_env| {
+                let sexp_env = sexp_env.clone();
+                let Ok(value) = Sexp::with_registered_raw(sym, |sexp_sym| {
+                    let sexp_sym = sexp_sym.clone();
+                    let Ok(value) = Sexp::with_registered_raw(value, |sexp_val| {
+                        let sexp_val = sexp_val.clone();
 
             assert!(define_var_safe(
                 sexp_sym.clone(),
@@ -2514,6 +2512,18 @@ mod tests {
                 return;
             };
             assert_eq!(r.clone().as_raw(), value);
+                    }) else {
+                        return;
+                    };
+                    value
+                }) else {
+                    return;
+                };
+                value
+            }) else {
+                return;
+            };
+            value
         }
     }
 
@@ -2522,7 +2532,7 @@ mod tests {
         let _session = crate::sexp::session::RSession::new();
         unsafe {
             let env = memory::with_arena(|arena| arena.alloc_node(SEXPTYPE::ENVSXP));
-            let sym = Rf_install(b"facade\0".as_ptr() as *const _);
+            let sym = crate::sexp::symbol::install_str("facade");
             let value = Rf_ScalarInteger(7);
 
             let env =
@@ -2549,17 +2559,23 @@ mod tests {
         let _session = crate::sexp::session::RSession::new();
         unsafe {
             let env = memory::with_arena(|arena| arena.alloc_node(SEXPTYPE::ENVSXP));
-            let sym = Rf_install(b"z\0".as_ptr() as *const _);
+            let sym = crate::sexp::symbol::install_str("z");
 
-            let Some(sexp_env) = Sexp::from_raw(env) else {
-                return;
-            };
-            let Some(sexp_sym) = Sexp::from_raw(sym) else {
-                return;
-            };
+            let Ok(value) = Sexp::with_registered_raw(env, |sexp_env| {
+                let sexp_env = sexp_env.clone();
+                let Ok(value) = Sexp::with_registered_raw(sym, |sexp_sym| {
+                    let sexp_sym = sexp_sym.clone();
 
             // Upstream semantics: unbound-in-frame is not missing.
             assert!(!is_missing_safe(sexp_sym, sexp_env));
+                }) else {
+                    return;
+                };
+                value
+            }) else {
+                return;
+            };
+            value
         }
     }
 
@@ -2568,14 +2584,12 @@ mod tests {
         let _session = crate::sexp::session::RSession::new();
         unsafe {
             let env = memory::with_arena(|arena| arena.alloc_node(SEXPTYPE::ENVSXP));
-            let sym = Rf_install(b"y\0".as_ptr() as *const _);
+            let sym = crate::sexp::symbol::install_str("y");
 
-            let Some(sexp_env) = Sexp::from_raw(env) else {
-                return;
-            };
-            let Some(sexp_sym) = Sexp::from_raw(sym) else {
-                return;
-            };
+            let Ok(value) = Sexp::with_registered_raw(env, |sexp_env| {
+                let sexp_env = sexp_env.clone();
+                let Ok(value) = Sexp::with_registered_raw(sym, |sexp_sym| {
+                    let sexp_sym = sexp_sym.clone();
 
             assert!(!exists_var_in_frame_safe(
                 sexp_env.clone(),
@@ -2583,12 +2597,23 @@ mod tests {
             ));
 
             let value = Rf_ScalarInteger(10);
-            let Some(sexp_val) = Sexp::from_raw(value) else {
-                return;
-            };
+                    let Ok(value) = Sexp::with_registered_raw(value, |sexp_val| {
+                        let sexp_val = sexp_val.clone();
             define_var_safe(sexp_sym.clone(), sexp_val, sexp_env.clone());
 
             assert!(exists_var_in_frame_safe(sexp_env, sexp_sym));
+                    }) else {
+                        return;
+                    };
+                    value
+                }) else {
+                    return;
+                };
+                value
+            }) else {
+                return;
+            };
+            value
         }
     }
 

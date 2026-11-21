@@ -332,7 +332,7 @@ pub(crate) fn cache_class(class: &str, klass: SEXP) -> SEXP {
         };
         let symbol = access.with_native(|owner| {
             owner
-                .sexp(unsafe { Rf_install(cname.as_ptr()) })?
+                .sexp(crate::sexp::symbol::install_cstr(&cname))?
                 .into_owned()
         })?;
         access.with_native(|_| {
@@ -367,7 +367,6 @@ fn S4_extends_in(
     klass_owner: crate::sexp::object::Sexp<'static>,
     use_tab: bool,
 ) -> SEXP {
-    unsafe {
         let klass = klass_owner.as_raw();
         if isMethodsDispatchOn() == FALSE {
             return klass;
@@ -389,7 +388,7 @@ fn S4_extends_in(
             let Ok(cname) = std::ffi::CString::new(class.as_str()) else {
                 return klass;
             };
-            let cached = crate::sexp::envir::R_findVarInFrame(table, Rf_install(cname.as_ptr()));
+        let cached = crate::sexp::envir::R_findVarInFrame(table, crate::sexp::symbol::install_cstr(&cname));
             if !cached.is_null() && cached != R_UnboundValue() && cached != R_NilValue() {
                 return cached;
             }
@@ -436,11 +435,9 @@ fn S4_extends_in(
             }
             _ => S4_extends_from_contains(klass, &class),
         }
-    }
 }
 
 fn S4_extends_from_contains(klass: SEXP, class: &str) -> SEXP {
-    unsafe {
         sync_s4_class_graph_from_gnu(class);
         let Some(def) = s4_class(class) else {
             return klass;
@@ -459,16 +456,14 @@ fn S4_extends_from_contains(klass: SEXP, class: &str) -> SEXP {
         let _out = protect(out);
         for (i, name) in names.iter().enumerate() {
             let cstr = std::ffi::CString::new(name.as_str()).unwrap_or_default();
-            SET_STRING_ELT(out, i as R_xlen_t, Rf_mkChar(cstr.as_ptr()));
+        SET_STRING_ELT(out, i as R_xlen_t, crate::sexp::constructors::mk_char_bytes(cstr.to_bytes()));
         }
         cache_class(class, out);
         out
-    }
 }
 
 /// GNU `Type2DefaultClass` implicit S3 classes for unclassed objects.
 fn implicit_s3_class(x: SEXP) -> SEXP {
-    unsafe {
         let dim = getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
         let nd = if dim.is_null() || dim == R_NilValue() {
             0
@@ -517,10 +512,9 @@ fn implicit_s3_class(x: SEXP) -> SEXP {
         }
         let result = Rf_allocVector3(SEXPTYPE::STRSXP, names.len() as i64);
         for (i, name) in names.iter().enumerate() {
-            SET_STRING_ELT(result, i as i64, Rf_mkChar(name.as_ptr()));
+        SET_STRING_ELT(result, i as i64, crate::sexp::constructors::mk_char_bytes(name.to_bytes()));
         }
         result
-    }
 }
 
 // ---------------------------------------------------------------------------

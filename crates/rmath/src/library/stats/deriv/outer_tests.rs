@@ -436,7 +436,7 @@ fn prebuilt_inputs(
         let nil = domain.nil().into_owned().unwrap();
         let symbol = |name: &std::ffi::CStr| unsafe {
             owner
-                .sexp(crate::sexp::symbol::Rf_install(name.as_ptr()))
+                .sexp(crate::sexp::symbol::install_cstr(&name))
                 .unwrap()
                 .into_owned()
                 .unwrap()

@@ -1210,8 +1210,8 @@ fn load_fortran_symbol_bindings(base_env: SEXP) {
         }
         let symbol = Rf_install_in_current(binding.as_str());
         let routine_name = std::ffi::CString::new(*routine).unwrap_or_default();
-        unsafe {
-            let string = crate::sexp::constructors::Rf_mkString(routine_name.as_ptr());
+        {
+            let string = crate::sexp::constructors::mk_string_bytes(routine_name.to_bytes());
             crate::sexp::envir::defineVar(symbol, string, base_env);
         }
     }

@@ -18,37 +18,33 @@ fn err(s: &str) -> ! {
     std::panic::panic_any(crate::sexp::context::RError { message: s.into() })
 }
 unsafe fn is_qr(x: SEXP) -> bool {
-    unsafe {
-        let c = getAttrib(x, R_ClassSymbol());
-        if c == R_NilValue() || TYPEOF(c) != STRSXP_C {
-            return false;
-        }
-        for i in 0..XLENGTH(c) {
-            if std::ffi::CStr::from_ptr(CHAR(STRING_ELT(c, i))).to_bytes() == b"qr" {
-                return true;
-            }
-        }
-        false
+    let c = getAttrib(x, R_ClassSymbol());
+    if c == R_NilValue() || TYPEOF(c) != STRSXP_C {
+        return false;
     }
+    for i in 0..XLENGTH(c) {
+        if &crate::sexp::accessors::char_cstr_bytes(STRING_ELT(c, i))[..] == b"qr" {
+            return true;
+        }
+    }
+    false
 }
 unsafe fn fields(x: SEXP) -> (SEXP, SEXP, SEXP) {
-    unsafe {
-        let names = getAttrib(x, R_NamesSymbol());
-        let mut f = R_NilValue();
-        let mut a = R_NilValue();
-        let mut r = R_NilValue();
-        if TYPEOF(names) == STRSXP_C && XLENGTH(names) == XLENGTH(x) {
-            for i in 0..XLENGTH(names) {
-                match std::ffi::CStr::from_ptr(CHAR(STRING_ELT(names, i))).to_bytes() {
-                    b"qr" => f = VECTOR_ELT(x, i),
-                    b"qraux" => a = VECTOR_ELT(x, i),
-                    b"rank" => r = VECTOR_ELT(x, i),
-                    _ => {}
-                }
+    let names = getAttrib(x, R_NamesSymbol());
+    let mut f = R_NilValue();
+    let mut a = R_NilValue();
+    let mut r = R_NilValue();
+    if TYPEOF(names) == STRSXP_C && XLENGTH(names) == XLENGTH(x) {
+        for i in 0..XLENGTH(names) {
+            match &crate::sexp::accessors::char_cstr_bytes(STRING_ELT(names, i))[..] {
+                b"qr" => f = VECTOR_ELT(x, i),
+                b"qraux" => a = VECTOR_ELT(x, i),
+                b"rank" => r = VECTOR_ELT(x, i),
+                _ => {}
             }
         }
-        (f, a, r)
     }
+    (f, a, r)
 }
 unsafe fn apply(call: SEXP, op: SEXP, args: SEXP, rho: SEXP, transpose: bool) -> SEXP {
     unsafe {
@@ -58,7 +54,7 @@ unsafe fn apply(call: SEXP, op: SEXP, args: SEXP, rho: SEXP, transpose: bool) ->
         while !cell.is_null() && cell != R_NilValue() {
             let tag = TAG(cell);
             if !tag.is_null() && tag != R_NilValue() {
-                let name = std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag))).to_bytes();
+                let name = &crate::sexp::accessors::char_cstr_bytes(PRINTNAME(tag))[..];
                 let index = [b"qr".as_slice(), b"y".as_slice()]
                     .iter()
                     .position(|formal| !name.is_empty() && formal.starts_with(name))
@@ -114,7 +110,7 @@ unsafe fn apply(call: SEXP, op: SEXP, args: SEXP, rho: SEXP, transpose: bool) ->
         if XLENGTH(a) < k as R_xlen_t {
             err("invalid QR decomposition fields");
         }
-        let lap_attr = getAttrib(q, crate::sexp::symbol::Rf_install(c"useLAPACK".as_ptr()));
+        let lap_attr = getAttrib(q, crate::sexp::symbol::install_str("useLAPACK"));
         // GNU uses LAPACK only when useLAPACK is TRUE. A plain qr() is LINPACK.
         let lap = TYPEOF(lap_attr) == SEXPTYPE::LGLSXP
             && XLENGTH(lap_attr) == 1

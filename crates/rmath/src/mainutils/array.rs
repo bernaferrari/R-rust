@@ -1788,7 +1788,7 @@ mod tests {
                 SET_STRING_ELT(
                     vector,
                     index as R_xlen_t,
-                    crate::sexp::constructors::Rf_mkChar(value.as_ptr()),
+                    crate::sexp::constructors::mk_char_bytes(value.to_bytes()),
                 );
             }
             vector
@@ -1797,8 +1797,7 @@ mod tests {
 
     unsafe fn string_elt_str(vector: SEXP, index: R_xlen_t) -> String {
         unsafe {
-            CStr::from_ptr(CHAR(STRING_ELT(vector, index)))
-                .to_string_lossy()
+            String::from_utf8_lossy(&crate::sexp::accessors::char_cstr_bytes(STRING_ELT(vector, index)))
                 .into_owned()
         }
     }
@@ -2467,7 +2466,7 @@ mod tests {
             let matrix = real_matrix(&[1.0, 3.0, 2.0, 3.0, 2.0, 1.0], 2, 3);
             let first_args = Rf_cons(
                 matrix,
-                Rf_cons(Rf_mkString(c"first".as_ptr()), R_NilValue()),
+                Rf_cons(crate::sexp::constructors::mk_string_str("first"), R_NilValue()),
             );
             let first = do_maxcol(
                 ptr::null_mut(),
@@ -2478,7 +2477,7 @@ mod tests {
             assert_eq!(*INTEGER(first), 2);
             assert_eq!(*INTEGER(first).add(1), 1);
 
-            let last_args = Rf_cons(matrix, Rf_cons(Rf_mkString(c"last".as_ptr()), R_NilValue()));
+            let last_args = Rf_cons(matrix, Rf_cons(crate::sexp::constructors::mk_string_str("last"), R_NilValue()));
             let last = do_maxcol(ptr::null_mut(), ptr::null_mut(), last_args, ptr::null_mut());
             assert_eq!(*INTEGER(last), 3);
             assert_eq!(*INTEGER(last).add(1), 2);

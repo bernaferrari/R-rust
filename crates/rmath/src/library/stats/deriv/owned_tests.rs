@@ -169,7 +169,7 @@ fn symbol(owner: &WeakOwner, text: &str) -> Sexp<'static> {
     crate::sexp::owner::with_runtime(owner, |access| {
         access.with_native(|owner| unsafe {
             owner
-                .sexp(crate::sexp::symbol::Rf_install(text.as_ptr()))?
+                .sexp(crate::sexp::symbol::install_cstr(&text))?
                 .into_owned()
         })
     })

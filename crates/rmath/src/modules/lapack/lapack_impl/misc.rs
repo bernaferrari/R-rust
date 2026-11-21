@@ -107,14 +107,14 @@ pub fn det_ge_real(ain: SEXP, logarithm: SEXP) -> SEXP {
         let _val = protect(val);
         let nm = Rf_allocVector(STRSXP_C, 2);
         let _nm = protect(nm);
-        SET_STRING_ELT(nm, 0, Rf_mkChar(b"modulus\0".as_ptr() as *const c_char));
-        SET_STRING_ELT(nm, 1, Rf_mkChar(b"sign\0".as_ptr() as *const c_char));
+        SET_STRING_ELT(nm, 0, crate::sexp::constructors::mk_char_str("modulus"));
+        SET_STRING_ELT(nm, 1, crate::sexp::constructors::mk_char_str("sign"));
         setAttrib(val, R_NamesSymbol(), nm);
         let modulus_s = Rf_ScalarReal(modulus);
         let _ms = protect(modulus_s);
         setAttrib(
             modulus_s,
-            crate::sexp::symbol::Rf_install(c"logarithm".as_ptr()),
+            crate::sexp::symbol::install_str("logarithm"),
             Rf_ScalarLogical(if use_log { 1 } else { 0 }),
         );
         SET_VECTOR_ELT(val, 0, modulus_s);
@@ -122,7 +122,7 @@ pub fn det_ge_real(ain: SEXP, logarithm: SEXP) -> SEXP {
         setAttrib(
             val,
             R_ClassSymbol(),
-            Rf_ScalarString(Rf_mkChar(b"det\0".as_ptr() as *const c_char)),
+            Rf_ScalarString(crate::sexp::constructors::mk_char_str("det")),
         );
         val
     }

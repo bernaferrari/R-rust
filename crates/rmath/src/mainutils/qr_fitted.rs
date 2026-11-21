@@ -24,72 +24,66 @@ fn err(s: &str) -> ! {
 }
 
 unsafe fn is_qr(x: SEXP) -> bool {
-    unsafe {
-        let c = getAttrib(x, R_ClassSymbol());
-        if c == R_NilValue() || TYPEOF(c) != STRSXP_C {
-            return false;
-        }
-        for i in 0..XLENGTH(c) {
-            if std::ffi::CStr::from_ptr(CHAR(STRING_ELT(c, i))).to_bytes() == b"qr" {
-                return true;
-            }
-        }
-        false
+    let c = getAttrib(x, R_ClassSymbol());
+    if c == R_NilValue() || TYPEOF(c) != STRSXP_C {
+        return false;
     }
+    for i in 0..XLENGTH(c) {
+        if &crate::sexp::accessors::char_cstr_bytes(STRING_ELT(c, i))[..] == b"qr" {
+            return true;
+        }
+    }
+    false
 }
 
 unsafe fn fields(x: SEXP) -> (SEXP, SEXP, SEXP) {
-    unsafe {
-        let names = getAttrib(x, R_NamesSymbol());
-        let mut qr = R_NilValue();
-        let mut rank = R_NilValue();
-        let mut qraux = R_NilValue();
-        if TYPEOF(names) == STRSXP_C && XLENGTH(names) == XLENGTH(x) {
-            for i in 0..XLENGTH(names) {
-                match std::ffi::CStr::from_ptr(CHAR(STRING_ELT(names, i))).to_bytes() {
-                    b"qr" => qr = VECTOR_ELT(x, i),
-                    b"rank" => rank = VECTOR_ELT(x, i),
-                    b"qraux" => qraux = VECTOR_ELT(x, i),
-                    _ => {}
-                }
+    let names = getAttrib(x, R_NamesSymbol());
+    let mut qr = R_NilValue();
+    let mut rank = R_NilValue();
+    let mut qraux = R_NilValue();
+    if TYPEOF(names) == STRSXP_C && XLENGTH(names) == XLENGTH(x) {
+        for i in 0..XLENGTH(names) {
+            match &crate::sexp::accessors::char_cstr_bytes(STRING_ELT(names, i))[..] {
+                b"qr" => qr = VECTOR_ELT(x, i),
+                b"rank" => rank = VECTOR_ELT(x, i),
+                b"qraux" => qraux = VECTOR_ELT(x, i),
+                _ => {}
             }
         }
-        (qr, rank, qraux)
     }
+    (qr, rank, qraux)
 }
 
 unsafe fn match_args<const N: usize>(args: SEXP, formals: [&[u8]; N]) -> [Option<SEXP>; N] {
-    unsafe {
-        let mut matched = [None; N];
-        let mut cell = args;
-        while !cell.is_null() && cell != R_NilValue() {
-            let tag = TAG(cell);
-            if !tag.is_null() && tag != R_NilValue() {
-                let name = std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag))).to_bytes();
-                let index = formals
-                    .iter()
-                    .position(|formal| !name.is_empty() && formal.starts_with(name))
-                    .unwrap_or_else(|| err("unused argument"));
-                if matched[index].replace(CAR(cell)).is_some() {
-                    err("formal argument matched by multiple actual arguments");
-                }
+    let mut matched = [None; N];
+    let mut cell = args;
+    while !cell.is_null() && cell != R_NilValue() {
+        let tag = TAG(cell);
+        if !tag.is_null() && tag != R_NilValue() {
+            let name = &crate::sexp::accessors::char_cstr_bytes(PRINTNAME(tag))[..];
+            let index = formals
+                .iter()
+                .position(|formal| !name.is_empty() && formal.starts_with(name))
+                .unwrap_or_else(|| err("unused argument"));
+            if matched[index].replace(CAR(cell)).is_some() {
+                err("formal argument matched by multiple actual arguments");
             }
-            cell = CDR(cell);
         }
-        cell = args;
-        while !cell.is_null() && cell != R_NilValue() {
-            let tag = TAG(cell);
-            if tag.is_null() || tag == R_NilValue() {
-                let slot = matched
-                    .iter_mut()
-                    .find(|x| x.is_none())
-                    .unwrap_or_else(|| err("unused argument"));
-                *slot = Some(CAR(cell));
-            }
-            cell = CDR(cell);
-        }
-        matched
+        cell = CDR(cell);
     }
+    cell = args;
+    while !cell.is_null() && cell != R_NilValue() {
+        let tag = TAG(cell);
+        if tag.is_null() || tag == R_NilValue() {
+            let slot = matched
+                .iter_mut()
+                .find(|x| x.is_none())
+                .unwrap_or_else(|| err("unused argument"));
+            *slot = Some(CAR(cell));
+        }
+        cell = CDR(cell);
+    }
+    matched
 }
 
 #[derive(Clone, Copy)]
@@ -125,7 +119,7 @@ unsafe fn apply(args: SEXP, job: Job) -> SEXP {
         if TYPEOF(f) != REALSXP_C {
             err("not implemented for complex 'qr'")
         }
-        let lap = getAttrib(q, crate::sexp::symbol::Rf_install(c"useLAPACK".as_ptr()));
+        let lap = getAttrib(q, crate::sexp::symbol::install_str("useLAPACK"));
         // GNU uses LAPACK only when useLAPACK is TRUE.
         let lap = TYPEOF(lap) == SEXPTYPE::LGLSXP && XLENGTH(lap) == 1 && LOGICAL_ELT(lap, 0) != 0;
         if lap {

@@ -12,7 +12,6 @@ use std::ptr;
 use crate::mainutils::startup::StartupRuntimeState;
 use crate::sexp::accessors::SET_STRING_ELT;
 use crate::sexp::constructors::Rf_allocVector;
-use crate::sexp::constructors::Rf_mkChar;
 use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::instance::with_required_current_instance;
 
@@ -263,29 +262,27 @@ fn set_no_renviron(value: bool) {
 /// - `call`, `op`, `args`, `env` are SEXP pointers following R's calling
 ///   convention. Only `args` is checked for arity.
 pub unsafe fn do_commandArgs(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe {
-        let _ = call;
-        let _ = op;
-        let _ = args;
-        let _ = env;
+    let _ = call;
+    let _ = op;
+    let _ = args;
+    let _ = env;
 
-        let command_line_args = with_startup_state(|state| state.command_line_args.clone());
-        let num_args = command_line_args.len().min(c_int::MAX as usize);
-        let vals = Rf_allocVector(SEXPTYPE::STRSXP, num_args as c_int);
+    let command_line_args = with_startup_state(|state| state.command_line_args.clone());
+    let num_args = command_line_args.len().min(c_int::MAX as usize);
+    let vals = Rf_allocVector(SEXPTYPE::STRSXP, num_args as c_int);
 
-        if vals.is_null() {
-            return ptr::null_mut();
-        }
-
-        for (i, arg) in command_line_args.iter().take(num_args).enumerate() {
-            if let Some(arg) = arg {
-                let charsxp = Rf_mkChar(arg.as_ptr());
-                SET_STRING_ELT(vals, i as R_xlen_t, charsxp);
-            }
-        }
-
-        vals
+    if vals.is_null() {
+        return ptr::null_mut();
     }
+
+    for (i, arg) in command_line_args.iter().take(num_args).enumerate() {
+        if let Some(arg) = arg {
+            let charsxp = crate::sexp::constructors::mk_char_bytes(arg.to_bytes());
+            SET_STRING_ELT(vals, i as R_xlen_t, charsxp);
+        }
+    }
+
+    vals
 }
 
 // ---------------------------------------------------------------------------

@@ -760,11 +760,11 @@ pub fn do_rep_int(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         if inherits(s, b"factor\0".as_ptr() as *const c_char) != 0 {
             if inherits(s, b"ordered\0".as_ptr() as *const c_char) != 0 {
                 let tmp = Rf_allocVector(STRSXP_VAL, 2);
-                SET_STRING_ELT(tmp, 0, Rf_mkChar(b"ordered\0".as_ptr() as *const c_char));
-                SET_STRING_ELT(tmp, 1, Rf_mkChar(b"factor\0".as_ptr() as *const c_char));
+                SET_STRING_ELT(tmp, 0, crate::sexp::constructors::mk_char_str("ordered"));
+                SET_STRING_ELT(tmp, 1, crate::sexp::constructors::mk_char_str("factor"));
                 setAttrib(a, R_ClassSymbol(), tmp);
             } else {
-                let tmp = Rf_mkString(b"factor\0".as_ptr() as *const c_char);
+                let tmp = crate::sexp::constructors::mk_string_str("factor");
                 setAttrib(a, R_ClassSymbol(), tmp);
             }
             setAttrib(a, R_LevelsSymbol(), getAttrib(s, R_LevelsSymbol()));
@@ -879,11 +879,11 @@ pub fn do_rep_len(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         if inherits(s, b"factor\0".as_ptr() as *const c_char) != 0 {
             if inherits(s, b"ordered\0".as_ptr() as *const c_char) != 0 {
                 let tmp = Rf_allocVector(STRSXP_VAL, 2);
-                SET_STRING_ELT(tmp, 0, Rf_mkChar(b"ordered\0".as_ptr() as *const c_char));
-                SET_STRING_ELT(tmp, 1, Rf_mkChar(b"factor\0".as_ptr() as *const c_char));
+                SET_STRING_ELT(tmp, 0, crate::sexp::constructors::mk_char_str("ordered"));
+                SET_STRING_ELT(tmp, 1, crate::sexp::constructors::mk_char_str("factor"));
                 setAttrib(a, R_ClassSymbol(), tmp);
             } else {
-                let tmp = Rf_mkString(b"factor\0".as_ptr() as *const c_char);
+                let tmp = crate::sexp::constructors::mk_string_str("factor");
                 setAttrib(a, R_ClassSymbol(), tmp);
             }
             setAttrib(a, R_LevelsSymbol(), getAttrib(s, R_LevelsSymbol()));
@@ -1145,7 +1145,7 @@ pub fn do_rep(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         // so an AsIs marker (I(Sys.time())) survives, plus tzone.
         if crate::mainutils::essentials::sexp_has_class(x, "POSIXct") {
             setAttrib(ans, R_ClassSymbol(), getAttrib(x, R_ClassSymbol()));
-            let tz = crate::sexp::symbol::Rf_install(c"tzone".as_ptr());
+            let tz = crate::sexp::symbol::install_str("tzone");
             let tza = getAttrib(x, tz);
             if !tza.is_null() && tza != R_NilValue() {
                 setAttrib(ans, tz, tza);
@@ -1154,7 +1154,7 @@ pub fn do_rep(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             setAttrib(ans, R_ClassSymbol(), getAttrib(x, R_ClassSymbol()));
         } else if crate::mainutils::essentials::sexp_has_class(x, "difftime") {
             setAttrib(ans, R_ClassSymbol(), getAttrib(x, R_ClassSymbol()));
-            let units = crate::sexp::symbol::Rf_install(c"units".as_ptr());
+            let units = crate::sexp::symbol::install_str("units");
             setAttrib(ans, units, getAttrib(x, units));
         }
 

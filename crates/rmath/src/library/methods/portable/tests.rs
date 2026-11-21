@@ -15,7 +15,7 @@ fn owned_portable_methods_reference_class_stays_lazy_until_public_use() {
         let namespace = crate::mainutils::essentials::cached_namespace_by_name("methods").unwrap();
         let promise = crate::sexp::envir::R_findVarInFrame(
             namespace,
-            crate::sexp::symbol::Rf_install(c".__C__envRefClass".as_ptr()),
+            crate::sexp::symbol::install_str(".__C__envRefClass"),
         );
         assert_eq!(
             crate::sexp::accessors::TYPEOF(promise),
@@ -27,7 +27,7 @@ fn owned_portable_methods_reference_class_stays_lazy_until_public_use() {
         );
         let basics = crate::sexp::envir::R_findVarInFrame(
             namespace,
-            crate::sexp::symbol::Rf_install(c".BasicFunsList".as_ptr()),
+            crate::sexp::symbol::install_str(".BasicFunsList"),
         );
         assert_eq!(
             crate::sexp::accessors::TYPEOF(basics),

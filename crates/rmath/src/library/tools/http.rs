@@ -115,21 +115,21 @@ pub fn remove_dot_segments_wrapper(x: SEXP) -> SEXP {
             }
             let p = CHAR(s);
             if p.is_null() {
-                let empty_char = Rf_mkChar(c"".as_ptr());
+                let empty_char = crate::sexp::constructors::mk_char_str("");
                 SET_STRING_ELT(y, i as R_xlen_t, empty_char);
                 continue;
             }
             let path = match CStr::from_ptr(p).to_str() {
                 Ok(s) => s,
                 Err(_) => {
-                    let empty_char = Rf_mkChar(c"".as_ptr());
+                    let empty_char = crate::sexp::constructors::mk_char_str("");
                     SET_STRING_ELT(y, i as R_xlen_t, empty_char);
                     continue;
                 }
             };
             let cleaned = remove_dot_segments(path);
             let c_string = std::ffi::CString::new(cleaned).unwrap_or_default();
-            let char_sxp = Rf_mkChar(c_string.as_ptr());
+            let char_sxp = crate::sexp::constructors::mk_char_bytes(c_string.to_bytes());
             SET_STRING_ELT(y, i as R_xlen_t, char_sxp);
         }
 

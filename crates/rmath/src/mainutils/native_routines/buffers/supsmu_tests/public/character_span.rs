@@ -7,7 +7,7 @@ fn invoke(f: &SessionNodeFactory<'_>, span: Sexp<'static>) -> Result<Sexp<'stati
     let y = real(f, &data[2][..24]);
     let nil = f.nil().into_owned().unwrap();
     let tag = f
-        .wrap(unsafe { crate::sexp::symbol::Rf_install(c"span".as_ptr()) })
+        .wrap(unsafe { crate::sexp::symbol::install_str("span") })
         .unwrap();
     let tail = f.pairlist_cell(&span, &nil, &tag).unwrap();
     let tail = f.pairlist_cell(&y, &tail, &nil).unwrap();
@@ -190,7 +190,7 @@ fn collecting_span(close_on: usize) {
             .into_owned()
             .unwrap();
         let tag = f
-            .wrap(unsafe { crate::sexp::symbol::Rf_install(c"span".as_ptr()) })
+            .wrap(unsafe { crate::sexp::symbol::install_str("span") })
             .unwrap();
         let args = f.pairlist_cell(&span, &nil, &tag).unwrap();
         let args = f.pairlist_cell(&y, &args, &nil).unwrap();

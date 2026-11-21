@@ -14,9 +14,8 @@ pub fn La_dlange(a: SEXP, type_: SEXP) -> SEXP {
         let _input_guard = protect(a);
         let _type_guard = protect(type_);
 
-        let typ_str = CStr::from_ptr(CHAR(STRING_ELT(type_, 0)))
-            .to_str()
-            .unwrap_or("O");
+        let typ_str_bytes = crate::sexp::accessors::char_cstr_bytes(STRING_ELT(type_, 0));
+        let typ_str = std::str::from_utf8(&typ_str_bytes).unwrap_or("O");
         let norm_c = La_norm_type(typ_str);
 
         let dim = getAttrib(a, R_DimSymbol());
@@ -77,9 +76,8 @@ pub fn La_dgecon(a: SEXP, norm: SEXP) -> SEXP {
         let _input_guard = protect(a);
         let _norm_guard = protect(norm);
 
-        let norm_str = CStr::from_ptr(CHAR(STRING_ELT(norm, 0)))
-            .to_str()
-            .unwrap_or("O");
+        let norm_str_bytes = crate::sexp::accessors::char_cstr_bytes(STRING_ELT(norm, 0));
+        let norm_str = std::str::from_utf8(&norm_str_bytes).unwrap_or("O");
         let norm_c = La_rcond_type(norm_str);
 
         let dim = getAttrib(a, R_DimSymbol());
@@ -198,9 +196,8 @@ pub fn La_dtrcon(a: SEXP, norm: SEXP) -> SEXP {
         let _input_guard = protect(a);
         let _norm_guard = protect(norm);
 
-        let norm_str = CStr::from_ptr(CHAR(STRING_ELT(norm, 0)))
-            .to_str()
-            .unwrap_or("O");
+        let norm_str_bytes = crate::sexp::accessors::char_cstr_bytes(STRING_ELT(norm, 0));
+        let norm_str = std::str::from_utf8(&norm_str_bytes).unwrap_or("O");
         let norm_c = La_rcond_type(norm_str);
 
         let dim = getAttrib(a, R_DimSymbol());
@@ -287,13 +284,11 @@ pub fn La_dtrcon3(a: SEXP, norm: SEXP, uplo: SEXP) -> SEXP {
         let _norm_guard = protect(norm);
         let _uplo_guard = protect(uplo);
 
-        let norm_str = CStr::from_ptr(CHAR(STRING_ELT(norm, 0)))
-            .to_str()
-            .unwrap_or("O");
+        let norm_str_bytes = crate::sexp::accessors::char_cstr_bytes(STRING_ELT(norm, 0));
+        let norm_str = std::str::from_utf8(&norm_str_bytes).unwrap_or("O");
         let norm_c = La_rcond_type(norm_str);
-        let uplo_str = CStr::from_ptr(CHAR(STRING_ELT(uplo, 0)))
-            .to_str()
-            .unwrap_or("U");
+        let uplo_str_bytes = crate::sexp::accessors::char_cstr_bytes(STRING_ELT(uplo, 0));
+        let uplo_str = std::str::from_utf8(&uplo_str_bytes).unwrap_or("U");
         let uplo_c = La_valid_uplo(uplo_str);
 
         let dim = getAttrib(a, R_DimSymbol());
@@ -374,9 +369,8 @@ pub fn La_zlange(a: SEXP, type_: SEXP) -> SEXP {
         let _input_guard = protect(a);
         let _type_guard = protect(type_);
 
-        let typ_str = CStr::from_ptr(CHAR(STRING_ELT(type_, 0)))
-            .to_str()
-            .unwrap_or("O");
+        let typ_str_bytes = crate::sexp::accessors::char_cstr_bytes(STRING_ELT(type_, 0));
+        let typ_str = std::str::from_utf8(&typ_str_bytes).unwrap_or("O");
         let norm_c = La_norm_type(typ_str);
 
         let dim = getAttrib(a, R_DimSymbol());
@@ -438,9 +432,8 @@ pub fn La_zgecon(a: SEXP, norm: SEXP) -> SEXP {
         let _input_guard = protect(a);
         let _norm_guard = protect(norm);
 
-        let norm_str = CStr::from_ptr(CHAR(STRING_ELT(norm, 0)))
-            .to_str()
-            .unwrap_or("O");
+        let norm_str_bytes = crate::sexp::accessors::char_cstr_bytes(STRING_ELT(norm, 0));
+        let norm_str = std::str::from_utf8(&norm_str_bytes).unwrap_or("O");
         let norm_c = La_rcond_type(norm_str);
 
         let dim = getAttrib(a, R_DimSymbol());
@@ -567,9 +560,8 @@ pub fn La_ztrcon(a: SEXP, norm: SEXP) -> SEXP {
         let _input_guard = protect(a);
         let _norm_guard = protect(norm);
 
-        let norm_str = CStr::from_ptr(CHAR(STRING_ELT(norm, 0)))
-            .to_str()
-            .unwrap_or("O");
+        let norm_str_bytes = crate::sexp::accessors::char_cstr_bytes(STRING_ELT(norm, 0));
+        let norm_str = std::str::from_utf8(&norm_str_bytes).unwrap_or("O");
         let norm_c = La_rcond_type(norm_str);
 
         let dim = getAttrib(a, R_DimSymbol());
@@ -661,13 +653,11 @@ pub fn La_ztrcon3(a: SEXP, norm: SEXP, uplo: SEXP) -> SEXP {
         let _norm_guard = protect(norm);
         let _uplo_guard = protect(uplo);
 
-        let norm_str = CStr::from_ptr(CHAR(STRING_ELT(norm, 0)))
-            .to_str()
-            .unwrap_or("O");
+        let norm_str_bytes = crate::sexp::accessors::char_cstr_bytes(STRING_ELT(norm, 0));
+        let norm_str = std::str::from_utf8(&norm_str_bytes).unwrap_or("O");
         let norm_c = La_rcond_type(norm_str);
-        let uplo_str = CStr::from_ptr(CHAR(STRING_ELT(uplo, 0)))
-            .to_str()
-            .unwrap_or("U");
+        let uplo_str_bytes = crate::sexp::accessors::char_cstr_bytes(STRING_ELT(uplo, 0));
+        let uplo_str = std::str::from_utf8(&uplo_str_bytes).unwrap_or("U");
         let uplo_c = La_valid_uplo(uplo_str);
 
         let dim = getAttrib(a, R_DimSymbol());

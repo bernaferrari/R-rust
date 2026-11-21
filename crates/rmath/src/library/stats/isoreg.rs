@@ -249,7 +249,7 @@ mod tests {
                 let name = STRING_ELT(names, index as R_xlen_t);
                 assert!(crate::sexp::memory::checked_projection(name).is_some());
                 assert_eq!(
-                    std::ffi::CStr::from_ptr(CHAR(name)).to_bytes(),
+                    &crate::sexp::accessors::char_cstr_bytes(name)[..],
                     expected.as_bytes()
                 );
             }

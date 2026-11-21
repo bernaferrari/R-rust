@@ -96,11 +96,7 @@ unsafe fn make_srcfile(filename: &str, copy: bool, src: &str) -> SEXP {
                 .as_ptr(),
         );
         let _fg = crate::sexp::protect::protect(fname);
-        crate::sexp::envir::defineVar(
-            crate::sexp::symbol::Rf_install(c"filename".as_ptr()),
-            fname,
-            env,
-        );
+        crate::sexp::envir::defineVar(crate::sexp::symbol::install_str("filename"), fname, env);
         if copy {
             let lines = source_lines(src);
             let line_vec =
@@ -111,25 +107,21 @@ unsafe fn make_srcfile(filename: &str, copy: bool, src: &str) -> SEXP {
                 SET_STRING_ELT(
                     line_vec,
                     i as i64,
-                    crate::sexp::constructors::Rf_mkChar(c.as_ptr()),
+                    crate::sexp::constructors::mk_char_bytes(c.to_bytes()),
                 );
             }
-            crate::sexp::envir::defineVar(
-                crate::sexp::symbol::Rf_install(c"lines".as_ptr()),
-                line_vec,
-                env,
-            );
+            crate::sexp::envir::defineVar(crate::sexp::symbol::install_str("lines"), line_vec, env);
             let copy_class = crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::STRSXP, 2);
             let _ccg = crate::sexp::protect::protect(copy_class);
             SET_STRING_ELT(
                 copy_class,
                 0,
-                crate::sexp::constructors::Rf_mkChar(c"srcfilecopy".as_ptr()),
+                crate::sexp::constructors::mk_char_str("srcfilecopy"),
             );
             SET_STRING_ELT(
                 copy_class,
                 1,
-                crate::sexp::constructors::Rf_mkChar(c"srcfile".as_ptr()),
+                crate::sexp::constructors::mk_char_str("srcfile"),
             );
             crate::sexp::attrib_core::setAttrib(
                 env,
@@ -139,11 +131,7 @@ unsafe fn make_srcfile(filename: &str, copy: bool, src: &str) -> SEXP {
         } else {
             let class = crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::STRSXP, 1);
             let _cg = crate::sexp::protect::protect(class);
-            SET_STRING_ELT(
-                class,
-                0,
-                crate::sexp::constructors::Rf_mkChar(c"srcfile".as_ptr()),
-            );
+            SET_STRING_ELT(class, 0, crate::sexp::constructors::mk_char_str("srcfile"));
             crate::sexp::attrib_core::setAttrib(
                 env,
                 crate::sexp::attrib_core::R_ClassSymbol(),
@@ -174,11 +162,7 @@ pub(crate) unsafe fn make_srcref(src: &str, start: usize, end: usize, srcfile: S
         *p.add(7) = ll;
         let class = crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::STRSXP, 1);
         let _cg = crate::sexp::protect::protect(class);
-        SET_STRING_ELT(
-            class,
-            0,
-            crate::sexp::constructors::Rf_mkChar(c"srcref".as_ptr()),
-        );
+        SET_STRING_ELT(class, 0, crate::sexp::constructors::mk_char_str("srcref"));
         crate::sexp::attrib_core::setAttrib(
             srcref,
             crate::sexp::attrib_core::R_ClassSymbol(),
@@ -187,7 +171,7 @@ pub(crate) unsafe fn make_srcref(src: &str, start: usize, end: usize, srcfile: S
         if !srcfile.is_null() && srcfile != crate::sexp::globals::R_NilValue() {
             crate::sexp::attrib_core::setAttrib(
                 srcref,
-                crate::sexp::symbol::Rf_install(c"srcfile".as_ptr()),
+                crate::sexp::symbol::install_str("srcfile"),
                 srcfile,
             );
         }
@@ -223,40 +207,27 @@ pub(crate) unsafe fn attach_srcrefs_with_spans(
 
         crate::sexp::attrib_core::setAttrib(
             exprs_vector,
-            crate::sexp::symbol::Rf_install(c"srcref".as_ptr()),
+            crate::sexp::symbol::install_str("srcref"),
             srcref_list,
         );
         crate::sexp::attrib_core::setAttrib(
             exprs_vector,
-            crate::sexp::symbol::Rf_install(c"srcfile".as_ptr()),
+            crate::sexp::symbol::install_str("srcfile"),
             srcfile,
         );
     }
 }
 
 unsafe fn bind_srcfile_to_srcref_int(sr: SEXP, srcfile: SEXP) {
-    unsafe {
-        if sr.is_null()
-            || sr == crate::sexp::globals::R_NilValue()
-            || TYPEOF(sr) != SEXPTYPE::INTSXP
-        {
-            return;
-        }
-        let class = crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::STRSXP, 1);
-        let _cg = crate::sexp::protect::protect(class);
-        SET_STRING_ELT(
-            class,
-            0,
-            crate::sexp::constructors::Rf_mkChar(c"srcref".as_ptr()),
-        );
-        crate::sexp::attrib_core::setAttrib(sr, crate::sexp::attrib_core::R_ClassSymbol(), class);
-        crate::sexp::accessors::SET_OBJECT(sr, 1);
-        crate::sexp::attrib_core::setAttrib(
-            sr,
-            crate::sexp::symbol::Rf_install(c"srcfile".as_ptr()),
-            srcfile,
-        );
+    if sr.is_null() || sr == crate::sexp::globals::R_NilValue() || TYPEOF(sr) != SEXPTYPE::INTSXP {
+        return;
     }
+    let class = crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+    let _cg = crate::sexp::protect::protect(class);
+    SET_STRING_ELT(class, 0, crate::sexp::constructors::mk_char_str("srcref"));
+    crate::sexp::attrib_core::setAttrib(sr, crate::sexp::attrib_core::R_ClassSymbol(), class);
+    crate::sexp::accessors::SET_OBJECT(sr, 1);
+    crate::sexp::attrib_core::setAttrib(sr, crate::sexp::symbol::install_str("srcfile"), srcfile);
 }
 
 /// GNU parse attaches a `srcref` to each `function()` call and `{` block. Bind
@@ -269,7 +240,7 @@ unsafe fn attach_srcfile_to_function_srcrefs(expr: SEXP, srcfile: SEXP) {
         }
         let ty = TYPEOF(expr);
         if ty == SEXPTYPE::LANGSXP {
-            let srcref_sym = crate::sexp::symbol::Rf_install(c"srcref".as_ptr());
+            let srcref_sym = crate::sexp::symbol::install_str("srcref");
             let sr = crate::sexp::attrib_core::getAttrib(expr, srcref_sym);
             if !sr.is_null() && sr != crate::sexp::globals::R_NilValue() {
                 if TYPEOF(sr) == SEXPTYPE::INTSXP {
@@ -284,7 +255,7 @@ unsafe fn attach_srcfile_to_function_srcrefs(expr: SEXP, srcfile: SEXP) {
             let head = CAR(expr);
             if !head.is_null()
                 && TYPEOF(head) == SEXPTYPE::SYMSXP
-                && std::ffi::CStr::from_ptr(CHAR(PRINTNAME(head))).to_bytes() == b"function"
+                && &crate::sexp::accessors::char_cstr_bytes(PRINTNAME(head))[..] == b"function"
             {
                 let fourth = CADDDR(expr);
                 if !fourth.is_null()
@@ -350,23 +321,23 @@ unsafe fn attach_whole_source_parse_data(srcfile: SEXP, src: &str) {
         SET_STRING_ELT(
             class,
             0,
-            crate::sexp::constructors::Rf_mkChar(c"parseData".as_ptr()),
+            crate::sexp::constructors::mk_char_str("parseData"),
         );
         crate::sexp::attrib_core::setAttrib(mat, crate::sexp::attrib_core::R_ClassSymbol(), class);
         let tokens = crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::STRSXP, 2);
         SET_STRING_ELT(
             tokens,
             0,
-            crate::sexp::constructors::Rf_mkChar(c"STR_CONST".as_ptr()),
+            crate::sexp::constructors::mk_char_str("STR_CONST"),
         );
         SET_STRING_ELT(
             tokens,
             1,
-            crate::sexp::constructors::Rf_mkChar(c"exprlist".as_ptr()),
+            crate::sexp::constructors::mk_char_str("exprlist"),
         );
         crate::sexp::attrib_core::setAttrib(
             mat,
-            crate::sexp::symbol::Rf_install(c"tokens".as_ptr()),
+            crate::sexp::symbol::install_str("tokens"),
             tokens,
         );
         let text = crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::STRSXP, 2);
@@ -374,19 +345,11 @@ unsafe fn attach_whole_source_parse_data(srcfile: SEXP, src: &str) {
         SET_STRING_ELT(
             text,
             0,
-            crate::sexp::constructors::Rf_mkChar(src_c.as_ptr()),
+            crate::sexp::constructors::mk_char_bytes(src_c.to_bytes()),
         );
-        SET_STRING_ELT(text, 1, crate::sexp::constructors::Rf_mkChar(c"".as_ptr()));
-        crate::sexp::attrib_core::setAttrib(
-            mat,
-            crate::sexp::symbol::Rf_install(c"text".as_ptr()),
-            text,
-        );
-        crate::sexp::envir::defineVar(
-            crate::sexp::symbol::Rf_install(c"parseData".as_ptr()),
-            mat,
-            srcfile,
-        );
+        SET_STRING_ELT(text, 1, crate::sexp::constructors::mk_char_str(""));
+        crate::sexp::attrib_core::setAttrib(mat, crate::sexp::symbol::install_str("text"), text);
+        crate::sexp::envir::defineVar(crate::sexp::symbol::install_str("parseData"), mat, srcfile);
     }
 }
 
@@ -404,7 +367,7 @@ pub(crate) fn set_current_srcref_location(expr: SEXP, vector: SEXP, index: usize
             // by index (per-element attributes are NULL).
             let srcref_list = crate::sexp::attrib_core::getAttrib(
                 vector,
-                crate::sexp::symbol::Rf_install(c"srcref".as_ptr()),
+                crate::sexp::symbol::install_str("srcref"),
             );
             let srcref = if !srcref_list.is_null()
                 && srcref_list != crate::sexp::globals::R_NilValue()
@@ -428,13 +391,13 @@ pub(crate) fn set_current_srcref_location(expr: SEXP, vector: SEXP, index: usize
                 } else {
                     let srcfile = crate::sexp::attrib_core::getAttrib(
                         srcref,
-                        crate::sexp::symbol::Rf_install(c"srcfile".as_ptr()),
+                        crate::sexp::symbol::install_str("srcfile"),
                     );
                     let filename =
                         if !srcfile.is_null() && srcfile != crate::sexp::globals::R_NilValue() {
                             let fname = crate::sexp::envir::R_findVarInFrame(
                                 srcfile,
-                                crate::sexp::symbol::Rf_install(c"filename".as_ptr()),
+                                crate::sexp::symbol::install_str("filename"),
                             );
                             if !fname.is_null()
                                 && fname != crate::sexp::globals::R_NilValue()
@@ -443,9 +406,10 @@ pub(crate) fn set_current_srcref_location(expr: SEXP, vector: SEXP, index: usize
                             {
                                 let cs = STRING_ELT(fname, 0);
                                 if !cs.is_null() {
-                                    std::ffi::CStr::from_ptr(CHAR(cs))
-                                        .to_string_lossy()
-                                        .into_owned()
+                                    String::from_utf8_lossy(
+                                        &crate::sexp::accessors::char_cstr_bytes(cs),
+                                    )
+                                    .into_owned()
                                 } else {
                                     String::new()
                                 }
@@ -546,22 +510,8 @@ unsafe fn recurse_remove_source(part: SEXP) -> SEXP {
 }
 
 unsafe fn clear_source_attrs(x: SEXP) {
-    unsafe {
-        let nil = crate::sexp::globals::R_NilValue();
-        crate::sexp::attrib_core::setAttrib(
-            x,
-            crate::sexp::symbol::Rf_install(c"srcref".as_ptr()),
-            nil,
-        );
-        crate::sexp::attrib_core::setAttrib(
-            x,
-            crate::sexp::symbol::Rf_install(c"wholeSrcref".as_ptr()),
-            nil,
-        );
-        crate::sexp::attrib_core::setAttrib(
-            x,
-            crate::sexp::symbol::Rf_install(c"srcfile".as_ptr()),
-            nil,
-        );
-    }
+    let nil = crate::sexp::globals::R_NilValue();
+    crate::sexp::attrib_core::setAttrib(x, crate::sexp::symbol::install_str("srcref"), nil);
+    crate::sexp::attrib_core::setAttrib(x, crate::sexp::symbol::install_str("wholeSrcref"), nil);
+    crate::sexp::attrib_core::setAttrib(x, crate::sexp::symbol::install_str("srcfile"), nil);
 }

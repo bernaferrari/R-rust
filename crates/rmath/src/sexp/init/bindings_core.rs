@@ -62,11 +62,15 @@ pub(crate) fn install(base_env: SEXP) {
         let f = Rf_ScalarLogical(FALSE);
         let _f = super::super::protect::protect(f);
         defineVar(Rf_install_in_current("F"), f, base_env);
-        let device = Rf_mkString(c"null device".as_ptr());
+        let device = crate::sexp::constructors::mk_string_str("null device");
         let _device = super::super::protect::protect(device);
         defineVar(Rf_install_in_current(".Device"), device, base_env);
         let devices = super::super::constructors::Rf_allocVector(SEXPTYPE::VECSXP, 1);
-        super::super::accessors::SET_VECTOR_ELT(devices, 0, Rf_mkString(c"null device".as_ptr()));
+        super::super::accessors::SET_VECTOR_ELT(
+            devices,
+            0,
+            crate::sexp::constructors::mk_string_str("null device"),
+        );
         defineVar(Rf_install_in_current(".Devices"), devices, base_env);
 
         // GNU formals.R: alist <- function(...) as.list(sys.call())[-1L]
@@ -78,7 +82,7 @@ pub(crate) fn install(base_env: SEXP) {
         // keeps the generic formals.
         let as_list_formals = formals_from_specs(&[arg("x"), arg("...")]);
         let _as_list_formals_guard = super::super::protect::protect(as_list_formals);
-        let as_list_generic = Rf_mkString(c"as.list".as_ptr());
+        let as_list_generic = crate::sexp::constructors::mk_string_str("as.list");
         let _as_list_generic_guard = super::super::protect::protect(as_list_generic);
         let as_list_body = Rf_lang2(Rf_install_in_current("UseMethod"), as_list_generic);
         let _as_list_body_guard = super::super::protect::protect(as_list_body);

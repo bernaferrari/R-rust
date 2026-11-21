@@ -799,8 +799,8 @@ fn owned_gnu_makeclosure_survives_collecting_srcref_and_pool_replacement() {
 fn owned_gnu_colon_keeps_coercions_and_constants_across_collecting_callbacks() {
     let session = crate::sexp::session::RSession::new_without_default_packages();
     session.with_active(|| unsafe {
-        let lhs = crate::sexp::constructors::Rf_mkString(c"1".as_ptr());
-        let rhs = crate::sexp::constructors::Rf_mkString(c"3".as_ptr());
+        let lhs = crate::sexp::constructors::mk_string_str("1");
+        let rhs = crate::sexp::constructors::mk_string_str("3");
         let call = Rf_cons(
             crate::sexp::symbol::install_str(":"),
             Rf_cons(lhs, Rf_cons(rhs, R_NilValue())),

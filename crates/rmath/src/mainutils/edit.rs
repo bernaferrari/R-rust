@@ -37,7 +37,6 @@ pub unsafe fn do_edit(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         use crate::sexp::constructors::{Rf_lang2, Rf_lang3};
         use crate::sexp::ffi::SEXPTYPE;
         use crate::sexp::globals::{R_GlobalEnv, R_NilValue};
-        use crate::sexp::symbol::Rf_install;
         // Skip the .NAME cell when invoked through .External2.
         if args.is_null() || args == R_NilValue() {
             crate::main::errors::errorcall_cstr(call, c"invalid argument to edit()");
@@ -54,18 +53,17 @@ pub unsafe fn do_edit(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             || file == R_NilValue()
             || (TYPEOF(file) == SEXPTYPE::STRSXP
                 && (crate::sexp::accessors::XLENGTH(file) == 0
-                    || std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(
+                    || (&crate::sexp::accessors::char_cstr_bytes(
                         crate::sexp::accessors::STRING_ELT(file, 0),
-                    ))
-                    .to_bytes()
-                    .is_empty()));
+                    )[..])
+                        .is_empty()));
         if file_empty {
             static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
             let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             let path = std::env::temp_dir().join(format!("redit-{}-{}", std::process::id(), n));
             let cpath =
                 std::ffi::CString::new(path.to_string_lossy().as_bytes()).unwrap_or_default();
-            file = crate::sexp::constructors::Rf_mkString(cpath.as_ptr());
+            file = crate::sexp::constructors::mk_string_bytes(cpath.to_bytes());
         }
         let _file = crate::sexp::protect::protect(file);
         cell = CDR(CDR(cell));
@@ -76,20 +74,23 @@ pub unsafe fn do_edit(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             rho
         };
         if !x.is_null() && x != R_NilValue() {
-            let deparse = Rf_lang2(Rf_install(c"deparse".as_ptr()), x);
+            let deparse = Rf_lang2(crate::sexp::symbol::install_str("deparse"), x);
             let src = crate::eval::eval::Rf_eval(deparse, env);
             let _src = crate::sexp::protect::protect(src);
-            let write = Rf_lang3(Rf_install(c"writeLines".as_ptr()), src, file);
+            let write = Rf_lang3(crate::sexp::symbol::install_str("writeLines"), src, file);
             let _ = crate::eval::eval::Rf_eval(write, env);
         }
-        let status = Rf_lang3(Rf_install(c"system2".as_ptr()), editor, file);
+        let status = Rf_lang3(crate::sexp::symbol::install_str("system2"), editor, file);
         let rc = crate::eval::eval::Rf_eval(status, env);
         if TYPEOF(rc) == SEXPTYPE::INTSXP && crate::sexp::accessors::INTEGER(rc).read() != 0 {
             crate::main::errors::errorcall_cstr(call, c"problem running editor");
         }
-        let parsed = crate::eval::eval::Rf_eval(Rf_lang2(Rf_install(c"parse".as_ptr()), file), env);
+        let parsed = crate::eval::eval::Rf_eval(
+            Rf_lang2(crate::sexp::symbol::install_str("parse"), file),
+            env,
+        );
         crate::eval::eval::Rf_eval(
-            Rf_lang2(Rf_install(c"eval".as_ptr()), parsed),
+            Rf_lang2(crate::sexp::symbol::install_str("eval"), parsed),
             R_GlobalEnv(),
         )
     }

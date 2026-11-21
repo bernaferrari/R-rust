@@ -175,7 +175,6 @@ pub fn do_dots_length(_call: SEXP, _op: SEXP, _args: SEXP, rho: SEXP) -> SEXP {
 }
 
 pub fn do_dots_names(_call: SEXP, _op: SEXP, _args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
         let dots = current_dots(rho);
         let len = dots_len(dots);
         if len == 0 {
@@ -183,7 +182,7 @@ pub fn do_dots_names(_call: SEXP, _op: SEXP, _args: SEXP, rho: SEXP) -> SEXP {
         }
         let names = Rf_allocVector3(SEXPTYPE::STRSXP, len as R_xlen_t);
         let _names_guard = protect(names);
-        let blank = Rf_mkChar(c"".as_ptr());
+    let blank = crate::sexp::constructors::mk_char_str("");
 
         let mut any_tag = false;
         let mut cell = dots;
@@ -211,7 +210,6 @@ pub fn do_dots_names(_call: SEXP, _op: SEXP, _args: SEXP, rho: SEXP) -> SEXP {
             cell = CDR(cell);
         }
         names
-    }
 }
 
 pub fn do_dots_elt(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {

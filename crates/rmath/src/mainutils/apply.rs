@@ -32,7 +32,6 @@ use crate::sexp::constructors::{Rf_ScalarLogical, Rf_allocVector, Rf_cons, Rf_la
 use crate::sexp::envir::{R_findVarInFrame, defineVar, forcePromise};
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::protect::{protect, protect_with_index_raw};
-use crate::sexp::symbol::Rf_install;
 
 // ---------------------------------------------------------------------------
 // SEXPTYPE constants used in this module
@@ -203,7 +202,7 @@ pub unsafe fn isFactor(x: SEXP) -> c_int {
         let klass = getAttrib(x, R_ClassSymbol());
         if klass.is_null() || klass == R_NilValue() {
             // No class attribute; check for "levels" attribute (old-style factor)
-            let levels_sym = Rf_install(c"levels".as_ptr());
+            let levels_sym = crate::sexp::symbol::install_str("levels");
             let levels = getAttrib(x, levels_sym);
             if !levels.is_null() && levels != R_NilValue() {
                 return 1;
@@ -391,7 +390,7 @@ pub unsafe fn do_lapply(_call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         }
 
         // Build call: FUN(X[[<ind>]], ...)
-        let isym = Rf_install(c"i".as_ptr());
+        let isym = crate::sexp::symbol::install_str("i");
         let tmp = Rf_lang3(crate::sexp::symbol::R_Bracket2Symbol(), X, isym);
         let _tmp_guard = protect(tmp);
         let R_fcall = Rf_lang3(FUN, tmp, crate::sexp::symbol::R_DotsSymbol());
@@ -516,7 +515,7 @@ pub unsafe fn do_vapply(_call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         }
 
         // Build call: FUN(XX[[<ind>]], ...)
-        let isym = Rf_install(c"i".as_ptr());
+        let isym = crate::sexp::symbol::install_str("i");
         let mut ind = Rf_allocVector(if realIndx { REALSXP_VAL } else { INTSXP_VAL }, 1);
         let mut ind_guard = protect_with_index_raw(ind, "do_vapply ind");
         defineVar(isym, ind, rho);
@@ -854,7 +853,7 @@ pub(crate) unsafe fn do_one(
 
         if matched {
             // Build and evaluate call: FUN(X, ...)
-            let Xsym = Rf_install(c"X".as_ptr());
+            let Xsym = crate::sexp::symbol::install_str("X");
             defineVar(Xsym, x, rho);
             INCREMENT_NAMED(x);
 
@@ -1048,7 +1047,7 @@ mod tests {
         // Test with a non-null value
         unsafe {
             // Create a symbol
-            let s = Rf_install(c"x".as_ptr());
+            let s = crate::sexp::symbol::install_str("x");
             let result = checkArgIsSymbol(s);
             assert_eq!(result, s);
         }
@@ -1165,7 +1164,7 @@ mod tests {
     fn test_Seql_same_pointer() {
         let _session = crate::sexp::session::RSession::new();
         unsafe {
-            let s = Rf_install(c"test".as_ptr());
+            let s = crate::sexp::symbol::install_str("test");
             assert_eq!(Seql(s, s), 1);
         }
     }

@@ -64,11 +64,8 @@ pub fn do_special_dispatch(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
 /// Dispatch special forms by name.
 fn dispatch_special_by_name(name: &str, call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        // SAFETY: this translated entry retains its explicitly active owner.
-        let factory = crate::sexp::object::SessionNodeFactory::new(
-            crate::sexp::owner::OwnerToken::current()
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
-        );
+        crate::sexp::owner::OwnerToken::with_current(|token_owner| {
+            let factory = crate::sexp::object::SessionNodeFactory::new(token_owner);
         match name {
             "{" => do_begin_with_call(call, CDR(call), rho),
             "(" => {
@@ -163,6 +160,7 @@ fn dispatch_special_by_name(name: &str, call: SEXP, op: SEXP, args: SEXP, rho: S
                 unimplemented_special_form(name)
             }
         }
+        }).unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
     }
 }
 

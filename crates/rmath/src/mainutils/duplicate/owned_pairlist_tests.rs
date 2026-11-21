@@ -168,7 +168,7 @@ fn attribute_pairlist_snapshot_admits_exact_cap_and_recovers_after_denial() {
         .wrap(unsafe { crate::sexp::constructors::Rf_ScalarInteger(73) })
         .unwrap();
     let tag = factory
-        .wrap(unsafe { crate::sexp::symbol::Rf_install(c"snapshot_probe".as_ptr()) })
+        .wrap(unsafe { crate::sexp::symbol::install_str("snapshot_probe") })
         .unwrap();
     let attributes = factory.pairlist_cell(&value, &factory.nil(), &tag).unwrap();
     let raw_vector = unsafe { crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::INTSXP, 1) };
@@ -254,7 +254,7 @@ fn attribute_snapshot_ticket_survives_provider_gc_until_attribute_copy_finishes(
         .build()
         .unwrap();
     let tag = factory
-        .wrap(unsafe { crate::sexp::symbol::Rf_install(c"snapshot_probe".as_ptr()) })
+        .wrap(unsafe { crate::sexp::symbol::install_str("snapshot_probe") })
         .unwrap();
     let attributes = factory.pairlist_cell(&lazy, &factory.nil(), &tag).unwrap();
     let raw_vector = unsafe { crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::INTSXP, 1) };

@@ -190,8 +190,7 @@ fn named_slot(object: SEXP, name: &str) -> SEXP {
     let Ok(name) = CString::new(name) else {
         return R_NilValue();
     };
-    // SAFETY: `name` is a live NUL-terminated CString for the call.
-    let charsxp = unsafe { Rf_mkChar(name.as_ptr()) };
+    let charsxp = crate::sexp::constructors::mk_char_bytes(name.to_bytes());
     crate::library::methods::slot::R_get_slot(object, charsxp)
 }
 
@@ -257,7 +256,7 @@ fn inherits_internal_dispatch_method(value: SEXP) -> bool {
 
 fn primitive_from_generic_frame(ev: SEXP) -> Option<SEXP> {
     unsafe {
-        let generic_sym = crate::sexp::symbol::Rf_install(c".Generic".as_ptr());
+        let generic_sym = crate::sexp::symbol::install_str(".Generic");
         let generic = crate::sexp::envir::R_findVarInFrame(ev, generic_sym);
         if generic == R_UnboundValue() {
             r_error(
@@ -345,7 +344,7 @@ pub unsafe fn R_standardGeneric(fname: SEXP, ev: SEXP, fdef: SEXP) -> SEXP {
 
         let mlist = match TYPEOF(fdef) {
             kind if kind == SEXPTYPE::CLOSXP.as_c_int() => {
-                let dot_methods = crate::sexp::symbol::Rf_install(c".Methods".as_ptr());
+                let dot_methods = crate::sexp::symbol::install_str(".Methods");
                 let value = crate::sexp::envir::R_findVarInFrame(CLOENV(fdef), dot_methods);
                 if value == R_UnboundValue() {
                     R_NilValue()
@@ -538,8 +537,7 @@ fn string_vector(values: &[String]) -> SEXP {
         let _guard = protect(result);
         for (i, value) in values.iter().enumerate() {
             let c = CString::new(value.as_str()).unwrap_or_default();
-            // SAFETY: `c` is a live NUL-terminated CString for the call.
-            SET_STRING_ELT(result, i as R_xlen_t, unsafe { Rf_mkChar(c.as_ptr()) });
+            SET_STRING_ELT(result, i as R_xlen_t, crate::sexp::constructors::mk_char_bytes(c.to_bytes()));
         }
         result
     }
@@ -547,11 +545,10 @@ fn string_vector(values: &[String]) -> SEXP {
 
 /// GNU `do_inherited_table`: eval `.InheritForDispatch(classes, fdef, mtable)`.
 fn do_inherited_table(classes: SEXP, fdef: SEXP, mtable: SEXP, ev: SEXP) -> SEXP {
-    unsafe {
         let Some(ns) = crate::mainutils::essentials::cached_namespace_by_name("methods") else {
             r_error("methods namespace is not loaded");
         };
-        let symbol = crate::sexp::symbol::Rf_install(c".InheritForDispatch".as_ptr());
+    let symbol = crate::sexp::symbol::install_str(".InheritForDispatch");
         let mut fun = crate::sexp::envir::R_findVarInFrame(ns, symbol);
         if fun.is_null() || fun == R_UnboundValue() {
             r_error("'.InheritForDispatch' is not in the methods namespace");
@@ -562,11 +559,9 @@ fn do_inherited_table(classes: SEXP, fdef: SEXP, mtable: SEXP, ev: SEXP) -> SEXP
         let call = Rf_lang4(fun, classes, fdef, mtable);
         let _call_guard = protect(call);
         crate::eval::eval::Rf_eval(call, ev)
-    }
 }
 
 fn recover_s4_generic(fdef: SEXP, fname: SEXP) -> SEXP {
-    unsafe {
         if crate::mainutils::coerce::IS_S4_OBJECT(fdef) != FALSE {
             return fdef;
         }
@@ -578,7 +573,7 @@ fn recover_s4_generic(fdef: SEXP, fname: SEXP) -> SEXP {
             if TYPEOF(f_env) == SEXPTYPE::ENVSXP {
                 let mtable = crate::sexp::envir::R_findVarInFrame(
                     f_env,
-                    crate::sexp::symbol::Rf_install(c".AllMTable".as_ptr()),
+                crate::sexp::symbol::install_str(".AllMTable"),
                 );
                 if mtable != R_UnboundValue() {
                     return fdef;
@@ -590,7 +585,7 @@ fn recover_s4_generic(fdef: SEXP, fname: SEXP) -> SEXP {
         };
         let mut get_generic = crate::sexp::envir::R_findVarInFrame(
             ns,
-            crate::sexp::symbol::Rf_install(c"getGeneric".as_ptr()),
+        crate::sexp::symbol::install_str("getGeneric"),
         );
         if TYPEOF(get_generic) == SEXPTYPE::PROMSXP {
             get_generic = crate::sexp::envir::forcePromise(get_generic);
@@ -609,7 +604,6 @@ fn recover_s4_generic(fdef: SEXP, fname: SEXP) -> SEXP {
         } else {
             recovered
         }
-    }
 }
 
 fn apply_table_method(method: SEXP, ev: SEXP) -> SEXP {
@@ -632,9 +626,8 @@ fn install_method_context(
     targets: &[String],
     selected: &TableMethod,
 ) {
-    unsafe {
         let generic = CString::new(generic_name).unwrap_or_default();
-        let generic_value = Rf_mkString(generic.as_ptr());
+    let generic_value = crate::sexp::constructors::mk_string_bytes(generic.to_bytes());
         let _generic_guard = protect(generic_value);
         let target_value = string_vector(targets);
         let _target_guard = protect(target_value);
@@ -657,41 +650,39 @@ fn install_method_context(
         .map_or(R_NilValue(), |candidate| candidate.method);
 
         crate::sexp::envir::defineVar(
-            crate::sexp::symbol::Rf_install(c".Generic".as_ptr()),
+        crate::sexp::symbol::install_str(".Generic"),
             generic_value,
             ev,
         );
         crate::sexp::envir::defineVar(
-            crate::sexp::symbol::Rf_install(c".Methods".as_ptr()),
+        crate::sexp::symbol::install_str(".Methods"),
             table,
             ev,
         );
         crate::sexp::envir::defineVar(
-            crate::sexp::symbol::Rf_install(c".target".as_ptr()),
+        crate::sexp::symbol::install_str(".target"),
             target_value,
             ev,
         );
         crate::sexp::envir::defineVar(
-            crate::sexp::symbol::Rf_install(c".defined".as_ptr()),
+        crate::sexp::symbol::install_str(".defined"),
             defined_value,
             ev,
         );
         crate::sexp::envir::defineVar(
-            crate::sexp::symbol::Rf_install(c".Method".as_ptr()),
+        crate::sexp::symbol::install_str(".Method"),
             selected.method,
             ev,
         );
         crate::sexp::envir::defineVar(
-            crate::sexp::symbol::Rf_install(c".nextMethod".as_ptr()),
+        crate::sexp::symbol::install_str(".nextMethod"),
             next,
             ev,
         );
-    }
 }
 
 /// R_dispatchGeneric - table-based method dispatch.
 pub unsafe fn R_dispatchGeneric(fname: SEXP, ev: SEXP, fdef: SEXP) -> SEXP {
-    unsafe {
         let name = sexp_to_string(fname).unwrap_or_else(|| "<unknown>".to_string());
         // GNU methods_list_dispatch.c rebinds fdef = R_primitive_generic(fdef)
         // for SPECIALSXP/BUILTINSXP before table lookup or inherited search.
@@ -719,9 +710,9 @@ pub unsafe fn R_dispatchGeneric(fname: SEXP, ev: SEXP, fdef: SEXP) -> SEXP {
             ));
         }
 
-        let all_mtable = crate::sexp::symbol::Rf_install(c".AllMTable".as_ptr());
-        let sig_args = crate::sexp::symbol::Rf_install(c".SigArgs".as_ptr());
-        let sig_length = crate::sexp::symbol::Rf_install(c".SigLength".as_ptr());
+    let all_mtable = crate::sexp::symbol::install_str(".AllMTable");
+    let sig_args = crate::sexp::symbol::install_str(".SigArgs");
+    let sig_length = crate::sexp::symbol::install_str(".SigLength");
         let mtable = crate::sexp::envir::R_findVarInFrame(f_env, all_mtable);
         let sigargs = crate::sexp::envir::R_findVarInFrame(f_env, sig_args);
         let nsig_value = crate::sexp::envir::R_findVarInFrame(f_env, sig_length);
@@ -764,7 +755,7 @@ pub unsafe fn R_dispatchGeneric(fname: SEXP, ev: SEXP, fdef: SEXP) -> SEXP {
         let mut exact = false;
 
         if let Ok(clabel) = CString::new(label.as_str()) {
-            let symbol = crate::sexp::symbol::Rf_install(clabel.as_ptr());
+        let symbol = crate::sexp::symbol::install_cstr(&clabel);
             method = crate::sexp::envir::R_findVarInFrame(mtable, symbol);
             if method != R_UnboundValue() && method != R_NilValue() {
                 exact = true;
@@ -808,7 +799,6 @@ pub unsafe fn R_dispatchGeneric(fname: SEXP, ev: SEXP, fdef: SEXP) -> SEXP {
         };
         install_method_context(ev, &name, mtable, &classes, &selected);
         apply_table_method(method, ev)
-    }
 }
 
 fn try_s3_method_for_generic(name: &str, fname: SEXP, ev: SEXP, sigargs: SEXP) -> Option<SEXP> {
@@ -873,7 +863,6 @@ pub unsafe fn R_quick_method_check(args: SEXP, mlist: SEXP, _fdef: SEXP) -> SEXP
 }
 
 pub unsafe fn R_quick_dispatch(args: SEXP, generic_env: SEXP, _fdef: SEXP) -> SEXP {
-    unsafe {
         let mut generic_env = generic_env;
         if TYPEOF(generic_env) == SEXPTYPE::CLOSXP {
             generic_env = CLOENV(generic_env);
@@ -884,8 +873,8 @@ pub unsafe fn R_quick_dispatch(args: SEXP, generic_env: SEXP, _fdef: SEXP) -> SE
         {
             return R_NilValue();
         }
-        let all_mtable = crate::sexp::symbol::Rf_install(c".AllMTable".as_ptr());
-        let sig_length = crate::sexp::symbol::Rf_install(c".SigLength".as_ptr());
+    let all_mtable = crate::sexp::symbol::install_str(".AllMTable");
+    let sig_length = crate::sexp::symbol::install_str(".SigLength");
         let mtable = crate::sexp::envir::R_findVarInFrame(generic_env, all_mtable);
         if mtable == R_UnboundValue() || TYPEOF(mtable) != SEXPTYPE::ENVSXP {
             return R_NilValue();
@@ -923,14 +912,13 @@ pub unsafe fn R_quick_dispatch(args: SEXP, generic_env: SEXP, _fdef: SEXP) -> SE
         let Ok(label) = CString::new(label) else {
             return R_NilValue();
         };
-        let symbol = crate::sexp::symbol::Rf_install(label.as_ptr());
+    let symbol = crate::sexp::symbol::install_cstr(&label);
         let value = crate::sexp::envir::R_findVarInFrame(mtable, symbol);
         if value == R_UnboundValue() {
             R_NilValue()
         } else {
             value
         }
-    }
 }
 
 /// GNU `IS_GENERIC`: CLOSXP with a non-NULL `generic` attribute/slot.
@@ -938,8 +926,7 @@ fn is_generic_function(value: SEXP) -> bool {
     if TYPEOF(value) != SEXPTYPE::CLOSXP {
         return false;
     }
-    // SAFETY: literal C string for the symbol install.
-    let generic_sym = unsafe { crate::sexp::symbol::Rf_install(c"generic".as_ptr()) };
+    let generic_sym = crate::sexp::symbol::install_str("generic");
     let slot = crate::sexp::attrib_core::getAttrib(value, generic_sym);
     !slot.is_null() && slot != R_NilValue()
 }
@@ -948,7 +935,6 @@ fn is_generic_function(value: SEXP) -> bool {
 /// GNU `get_generic` walks `R_ParentEnv` from `env` and accepts only
 /// genericFunction objects, then falls back to `SYMVALUE`.
 pub fn R_getGeneric(name: SEXP, mustFind: SEXP, env: SEXP, _package: SEXP) -> SEXP {
-    unsafe {
         let Some(name_string) = sexp_to_string(name) else {
             r_error("The argument \"f\" to getGeneric must be a single string or symbol");
         };
@@ -962,7 +948,7 @@ pub fn R_getGeneric(name: SEXP, mustFind: SEXP, env: SEXP, _package: SEXP) -> SE
             return R_NilValue();
         }
         let cname = CString::new(name_string.as_str()).unwrap_or_default();
-        let symbol = crate::sexp::symbol::Rf_install(cname.as_ptr());
+    let symbol = crate::sexp::symbol::install_cstr(&cname);
         let mut rho = env;
         while !rho.is_null() && rho != R_NilValue() && TYPEOF(rho) == SEXPTYPE::ENVSXP {
             let mut value = crate::sexp::envir::R_findVarInFrame(rho, symbol);
@@ -994,13 +980,11 @@ pub fn R_getGeneric(name: SEXP, mustFind: SEXP, env: SEXP, _package: SEXP) -> SE
             ));
         }
         R_NilValue()
-    }
 }
 
 /// Like R_getGeneric but walks the whole enclosing-environment chain, so a
 /// generic defined in the global environment is found from any caller.
 pub fn R_getGenericByName(name: SEXP, mustFind: SEXP, env: SEXP, _package: SEXP) -> SEXP {
-    unsafe {
         let Some(name_string) = sexp_to_string(name) else {
             r_error("The argument \"f\" to getGeneric must be a single string or symbol");
         };
@@ -1014,7 +998,7 @@ pub fn R_getGenericByName(name: SEXP, mustFind: SEXP, env: SEXP, _package: SEXP)
             return R_NilValue();
         }
         let cname = CString::new(name_string.as_str()).unwrap_or_default();
-        let symbol = crate::sexp::symbol::Rf_install(cname.as_ptr());
+    let symbol = crate::sexp::symbol::install_cstr(&cname);
         let value = crate::sexp::envir::R_findVar(symbol, env);
         if value == crate::sexp::globals::R_UnboundValue() || value == R_NilValue() {
             if crate::mainutils::coerce::asLogical(mustFind) != 0 {
@@ -1026,7 +1010,6 @@ pub fn R_getGenericByName(name: SEXP, mustFind: SEXP, env: SEXP, _package: SEXP)
             return R_NilValue();
         }
         value
-    }
 }
 
 /// GNU `is_missing_arg`: MISSING bit on the frame cell, not the bound value.
@@ -1190,7 +1173,7 @@ pub fn R_M_setPrimitiveMethods(
 /// R_nextMethodCall - implement .nextMethod() (callNextMethod).
 pub fn R_nextMethodCall(matched_call: SEXP, ev: SEXP) -> SEXP {
     unsafe {
-        let dot_next_method = crate::sexp::symbol::Rf_install(c".nextMethod".as_ptr());
+        let dot_next_method = crate::sexp::symbol::install_str(".nextMethod");
         let mut method_ev = ev;
         let mut op = crate::sexp::envir::R_findVarInFrame(method_ev, dot_next_method);
         if op == R_UnboundValue() {
@@ -1298,9 +1281,8 @@ pub unsafe fn do_callNextMethod(call: SEXP, _op: SEXP, _args: SEXP, rho: SEXP) -
 }
 
 fn methods_call_next_method_closure() -> Option<SEXP> {
-    unsafe {
         let namespace = crate::mainutils::essentials::cached_namespace_by_name("methods")?;
-        let symbol = crate::sexp::symbol::Rf_install(c"callNextMethod".as_ptr());
+    let symbol = crate::sexp::symbol::install_str("callNextMethod");
         let mut value = crate::sexp::envir::R_findVarInFrame(namespace, symbol);
         if value.is_null() || value == R_UnboundValue() {
             return None;
@@ -1313,7 +1295,6 @@ fn methods_call_next_method_closure() -> Option<SEXP> {
         } else {
             None
         }
-    }
 }
 
 pub(crate) struct MethodsDispatchState {
@@ -1380,8 +1361,7 @@ pub fn R_methodsPackageMetaName(prefix: SEXP, name: SEXP, pkg: SEXP) -> SEXP {
     };
 
     let c_str = std::ffi::CString::new(res_str).unwrap_or_default();
-    // SAFETY: `c_str` is a live NUL-terminated CString for the call.
-    unsafe { Rf_mkString(c_str.as_ptr()) }
+    crate::sexp::constructors::mk_string_bytes(c_str.to_bytes())
 }
 
 #[cfg(test)]
@@ -1425,7 +1405,7 @@ mod tests {
             for (i, (name, value)) in entries.iter().enumerate() {
                 SET_VECTOR_ELT(out, i as R_xlen_t, *value);
                 let cname = CString::new(*name).unwrap_or_default();
-                SET_STRING_ELT(names, i as R_xlen_t, Rf_mkChar(cname.as_ptr()));
+                SET_STRING_ELT(names, i as R_xlen_t, crate::sexp::constructors::mk_char_bytes(cname.to_bytes()));
             }
             crate::eval::attrib_core::setAttrib(
                 out,
@@ -1456,7 +1436,7 @@ mod tests {
             let _env_guard = protect(env);
             for (name, value) in bindings {
                 let cname = CString::new(*name).unwrap_or_default();
-                let sym = crate::sexp::symbol::Rf_install(cname.as_ptr());
+                let sym = crate::sexp::symbol::install_cstr(&cname);
                 crate::sexp::envir::defineVar(sym, *value, env);
             }
             env
@@ -1569,7 +1549,7 @@ mod tests {
     fn standard_generic_errors_instead_of_returning_null() {
         let _session = crate::sexp::session::RSession::new();
         let err = assert_r_error(|| unsafe {
-            let name = Rf_mkString(b"show\0".as_ptr() as *const std::os::raw::c_char);
+            let name = crate::sexp::constructors::mk_string_str("show");
             R_standardGeneric(name, R_NilValue(), R_NilValue());
         });
         assert!(err.message.contains("invalid generic function object"));
@@ -1589,7 +1569,7 @@ mod tests {
             let f_env = env_with(&[(".Methods", mlist)]);
             let fdef = crate::mainutils::dstruct::mkCLOSXP(R_NilValue(), R_NilValue(), f_env);
             let ev = env_with(&[("x", Rf_ScalarInteger(1))]);
-            let name = Rf_mkString(c"show".as_ptr());
+            let name = crate::sexp::constructors::mk_string_str("show");
 
             let result = R_standardGeneric(name, ev, fdef);
             assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP);
@@ -1616,7 +1596,7 @@ mod tests {
             ]);
             let fdef = crate::mainutils::dstruct::mkCLOSXP(R_NilValue(), R_NilValue(), f_env);
             let ev = env_with(&[("x", Rf_ScalarInteger(1))]);
-            let name = Rf_mkString(c"show".as_ptr());
+            let name = crate::sexp::constructors::mk_string_str("show");
 
             let result = R_dispatchGeneric(name, ev, fdef);
             assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP);
@@ -1628,7 +1608,7 @@ mod tests {
     fn next_method_call_rewrites_named_actuals_to_frame_symbols() {
         let _session = crate::sexp::session::RSession::new();
         unsafe {
-            let x_sym = crate::sexp::symbol::Rf_install(c"x".as_ptr());
+            let x_sym = crate::sexp::symbol::install_str("x");
             let next_method = crate::mainutils::dstruct::mkCLOSXP(
                 missing_formals(&["x", "y"]),
                 x_sym,
@@ -1732,7 +1712,7 @@ mod tests {
             let methods = named_list(&[("integer", method)]);
             let mlist = methods_list_for_argument("x", methods);
             let env = env_with(&[("x", Rf_ScalarInteger(1))]);
-            let fname = Rf_mkString(c"show".as_ptr());
+            let fname = crate::sexp::constructors::mk_string_str("show");
 
             let result = R_selectMethod(fname, env, mlist, Rf_ScalarLogical(TRUE));
             assert_eq!(result, method);
@@ -1747,9 +1727,9 @@ mod tests {
                 crate::mainutils::dstruct::mkCLOSXP(R_NilValue(), R_NilValue(), R_NilValue());
             let methods = named_list(&[("integer", method)]);
             let mlist = methods_list_for_argument("x", methods);
-            let class = Rf_mkString(c"integer".as_ptr());
+            let class = crate::sexp::constructors::mk_string_str("integer");
             let env = env_with(&[("x", class)]);
-            let fname = Rf_mkString(c"show".as_ptr());
+            let fname = crate::sexp::constructors::mk_string_str("show");
 
             let result = R_selectMethod(fname, env, mlist, Rf_ScalarLogical(FALSE));
             assert_eq!(result, method);
@@ -1761,7 +1741,7 @@ mod tests {
         let _session = crate::sexp::session::RSession::new();
         unsafe {
             let env = env_with(&[("x", crate::sexp::globals::R_MissingArg())]);
-            let sym = crate::sexp::symbol::Rf_install(c"x".as_ptr());
+            let sym = crate::sexp::symbol::install_str("x");
 
             let result = R_missingArg(sym, env);
             assert_eq!(*LOGICAL(result), TRUE);
@@ -1772,7 +1752,7 @@ mod tests {
     fn missing_arg_rejects_non_symbol() {
         let _session = crate::sexp::session::RSession::new();
         let err = assert_r_error(|| unsafe {
-            R_missingArg(Rf_mkString(c"x".as_ptr()), R_NilValue());
+            R_missingArg(crate::sexp::constructors::mk_string_str("x"), R_NilValue());
         });
         assert!(err.message.contains("invalid symbol"));
     }
@@ -1783,7 +1763,7 @@ mod tests {
         // so they need an active session pin like a session-level eval.
         let session = crate::sexp::session::RSession::new();
         session.with_active(|| unsafe {
-            let x_sym = crate::sexp::symbol::Rf_install(c"x".as_ptr());
+            let x_sym = crate::sexp::symbol::install_str("x");
             let generic =
                 crate::mainutils::dstruct::mkCLOSXP(missing_formals(&["x"]), x_sym, env_with(&[]));
             let _source_guard = protect(generic);
@@ -1800,7 +1780,7 @@ mod tests {
                 Rf_ScalarInteger(99),
                 R_NilValue(),
             );
-            let signature = Rf_mkString(c"integer".as_ptr());
+            let signature = crate::sexp::constructors::mk_string_str("integer");
             let args = Rf_cons(generic, Rf_cons(signature, Rf_cons(method, R_NilValue())));
             crate::mainutils::essentials::do_setMethod(
                 R_NilValue(),
@@ -1810,7 +1790,7 @@ mod tests {
             );
 
             let ev = env_with(&[("x", Rf_ScalarInteger(1))]);
-            let name = Rf_mkString(c"show".as_ptr());
+            let name = crate::sexp::constructors::mk_string_str("show");
             let result = R_dispatchGeneric(name, ev, generic);
             assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP);
             assert_eq!(*INTEGER(result), 99);
@@ -1886,7 +1866,7 @@ pub fn R_getClassFromCache(class: SEXP, table: SEXP) -> SEXP {
             if value == R_UnboundValue() {
                 return R_NilValue();
             }
-            let package_sym = crate::sexp::symbol::Rf_install(c"package".as_ptr());
+            let package_sym = crate::sexp::symbol::install_str("package");
             let package = crate::sexp::attrib_core::getAttrib(class, package_sym);
             if TYPEOF(package) == SEXPTYPE::STRSXP && LENGTH(package) >= 1 {
                 let def_pkg = crate::sexp::attrib_core::getAttrib(value, package_sym);

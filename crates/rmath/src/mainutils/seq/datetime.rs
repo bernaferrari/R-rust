@@ -441,7 +441,7 @@ pub fn datetime_seq(
                 if crate::mainutils::essentials::sexp_has_class(by, "difftime") {
                     let units_attr = crate::sexp::attrib_core::getAttrib(
                         by,
-                        crate::sexp::symbol::Rf_install(c"units".as_ptr()),
+                        crate::sexp::symbol::install_str("units"),
                     );
                     let units = if TYPEOF(units_attr) == STRSXP_VAL && XLENGTH(units_attr) > 0 {
                         first_str_elt(units_attr).unwrap_or_else(|| "secs".to_string())

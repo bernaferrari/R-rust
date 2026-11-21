@@ -748,9 +748,7 @@ pub unsafe fn do_sprintf(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                                                 // (e.g. complex -> real discards the
                                                 // imaginary part with a warning).
                                                 let tmp = crate::sexp::constructors::Rf_lang2(
-                                                    crate::sexp::symbol::Rf_install(
-                                                        b"as.double\0".as_ptr() as *const c_char,
-                                                    ),
+                                                    crate::sexp::symbol::install_str("as.double"),
                                                     _this,
                                                 );
                                                 let _tmp_guard = protect(tmp);
@@ -771,9 +769,7 @@ pub unsafe fn do_sprintf(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                                                         .to_vec()
                                                 };
                                                 let tmp = crate::sexp::constructors::Rf_lang2(
-                                                    crate::sexp::symbol::Rf_install(
-                                                        b"as.character\0".as_ptr() as *const c_char,
-                                                    ),
+                                                    crate::sexp::symbol::install_str("as.character"),
                                                     _this,
                                                 );
                                                 let _tmp_guard = protect(tmp);

@@ -448,7 +448,7 @@ pub unsafe fn do_runmed(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         }
         crate::sexp::attrib_core::setAttrib(
             ans,
-            crate::sexp::symbol::Rf_install(c"k".as_ptr()),
+            crate::sexp::symbol::install_str("k"),
             Rf_ScalarInteger(k),
         );
         ans

@@ -628,15 +628,13 @@ pub(crate) const EXPORTS: &[&str] = &[
 
 pub(crate) fn new_grid_environment() -> SEXP {
     unsafe {
-        use crate::sexp::{
-            envir::defineVar, globals::R_BaseEnv, protect::protect, symbol::Rf_install,
-        };
+        use crate::sexp::{envir::defineVar, globals::R_BaseEnv, protect::protect};
         let env = crate::sexp::memory_ext::NewEnvironment(R_NilValue(), R_BaseEnv(), R_NilValue());
         let _guard = protect(env);
         crate::mainutils::essentials::define_package_metadata("grid", env);
         for name in EXPORTS {
             let symbol_name = std::ffi::CString::new(*name).expect("static grid export");
-            let symbol = Rf_install(symbol_name.as_ptr());
+            let symbol = crate::sexp::symbol::install_cstr(&symbol_name);
             let value = if let Some(source) = grid_closure_source(name) {
                 let parser_factory = crate::eval::parser::active_factory();
                 let parsed = crate::sexp::memory::with_arena(|arena| {
@@ -651,7 +649,7 @@ pub(crate) fn new_grid_environment() -> SEXP {
             defineVar(symbol, value, env);
         }
         let auto_name = std::ffi::CString::new(".rport.vp.autoname").expect("static grid counter");
-        let auto_symbol = Rf_install(auto_name.as_ptr());
+        let auto_symbol = crate::sexp::symbol::install_cstr(&auto_name);
         let auto_value = crate::sexp::constructors::Rf_ScalarInteger(0);
         let _auto_value = protect(auto_value);
         defineVar(auto_symbol, auto_value, env);

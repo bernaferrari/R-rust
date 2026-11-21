@@ -284,7 +284,7 @@ pub fn install_methods_call_symbols(env: SEXP) {
         for name in METHODS_CALL_NAMES {
             let cname = CString::new(*name).unwrap_or_default();
             defineVar(
-                Rf_install(cname.as_ptr()),
+                crate::sexp::symbol::install_cstr(&cname),
                 Rf_mkString(cname.as_ptr() as *const c_char),
                 env,
             );

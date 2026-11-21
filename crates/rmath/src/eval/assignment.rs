@@ -619,75 +619,78 @@ pub fn applydefine(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 let call_args = CDDR(lhs);
                 let raw_subscript =
                     matches!(symbol_name(func_sym).as_deref(), Some("@") | Some("$"));
-                let factory = SessionNodeFactory::new(
-                    crate::sexp::owner::OwnerToken::current()
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
-                );
-                // Keep the evaluated subscript chain owned throughout conversion,
-                // replacement-call allocation and the final writeback.
-                let slot_subs = if raw_subscript {
-                    None
-                } else {
-                    let target = factory
-                        .wrap(target_expr)
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-                    let mut target_links = super::dispatch::NamedArguments::new();
-                    target_links.retain(&target);
-                    let call_args = factory
-                        .wrap(call_args)
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-                    let environment = factory
-                        .wrap(rho)
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-                    Some(super::dispatch::evalListKeepMissing(call_args, environment))
-                };
-                let evaluated_subs = slot_subs.as_ref().map_or(call_args, Sexp::as_raw);
-                if slot_subs.is_some() {
-                    let mut cell = evaluated_subs;
-                    while !cell.is_null() && cell != R_NilValue() {
-                        let sub = CAR(cell);
-                        if !sub.is_null() && TYPEOF(sub) == SEXPTYPE::SYMSXP {
-                            let name = crate::sexp::accessors::PRINTNAME(sub);
-                            if !name.is_null() && name != R_NilValue() {
-                                let value = factory
-                                    .wrap(crate::sexp::constructors::Rf_mkString(
-                                        crate::sexp::accessors::CHAR(name),
-                                    ))
-                                    .unwrap_or_else(|error| {
-                                        crate::sexp::context::r_error(error.to_string())
-                                    });
-                                crate::sexp::accessors::SETCAR(cell, value.as_raw());
+                crate::sexp::owner::OwnerToken::with_current(|token_owner| {
+                    let factory = SessionNodeFactory::new(token_owner);
+                    // Keep the evaluated subscript chain owned throughout conversion,
+                    // replacement-call allocation and the final writeback.
+                    let slot_subs = if raw_subscript {
+                        None
+                    } else {
+                        let target = factory.wrap(target_expr).unwrap_or_else(|error| {
+                            crate::sexp::context::r_error(error.to_string())
+                        });
+                        let mut target_links = super::dispatch::NamedArguments::new();
+                        target_links.retain(&target);
+                        let call_args = factory.wrap(call_args).unwrap_or_else(|error| {
+                            crate::sexp::context::r_error(error.to_string())
+                        });
+                        let environment = factory.wrap(rho).unwrap_or_else(|error| {
+                            crate::sexp::context::r_error(error.to_string())
+                        });
+                        Some(super::dispatch::evalListKeepMissing(call_args, environment))
+                    };
+                    let evaluated_subs = slot_subs.as_ref().map_or(call_args, Sexp::as_raw);
+                    if slot_subs.is_some() {
+                        let mut cell = evaluated_subs;
+                        while !cell.is_null() && cell != R_NilValue() {
+                            let sub = CAR(cell);
+                            if !sub.is_null() && TYPEOF(sub) == SEXPTYPE::SYMSXP {
+                                let name = crate::sexp::accessors::PRINTNAME(sub);
+                                if !name.is_null() && name != R_NilValue() {
+                                    let value = factory
+                                        .wrap(crate::sexp::constructors::Rf_mkString(
+                                            crate::sexp::accessors::CHAR(name),
+                                        ))
+                                        .unwrap_or_else(|error| {
+                                            crate::sexp::context::r_error(error.to_string())
+                                        });
+                                    crate::sexp::accessors::SETCAR(cell, value.as_raw());
+                                }
                             }
+                            cell = CDR(cell);
                         }
-                        cell = CDR(cell);
                     }
-                }
 
-                let result = if symbol_name(func_sym).as_deref() == Some("[")
-                    && let Some(result) =
-                        try_simple_vector_subassign(target_expr, evaluated_subs, rhs)
-                {
-                    result
-                } else {
-                    let arg_list = build_replacement_args(target_expr, evaluated_subs, rhs);
-                    let _arg_list_guard = protect(arg_list);
-                    let repl_call = crate::sexp::constructors::Rf_cons(assign_fn, arg_list);
-                    if !repl_call.is_null() {
-                        crate::sexp::accessors::SET_TYPEOF(repl_call, SEXPTYPE::LANGSXP.as_c_int());
+                    let result = if symbol_name(func_sym).as_deref() == Some("[")
+                        && let Some(result) =
+                            try_simple_vector_subassign(target_expr, evaluated_subs, rhs)
+                    {
+                        result
+                    } else {
+                        let arg_list = build_replacement_args(target_expr, evaluated_subs, rhs);
+                        let _arg_list_guard = protect(arg_list);
+                        let repl_call = crate::sexp::constructors::Rf_cons(assign_fn, arg_list);
+                        if !repl_call.is_null() {
+                            crate::sexp::accessors::SET_TYPEOF(
+                                repl_call,
+                                SEXPTYPE::LANGSXP.as_c_int(),
+                            );
+                        }
+                        let _repl_call_guard = protect(repl_call);
+
+                        apply_replacement_call(assign_fn, repl_call, arg_list, rho)
+                    };
+                    let _result_guard = protect(result);
+
+                    let var_sym = CADR(lhs);
+                    if TYPEOF(var_sym) == SEXPTYPE::SYMSXP {
+                        bind_assignment(var_sym, result, primval, rho);
                     }
-                    let _repl_call_guard = protect(repl_call);
 
-                    apply_replacement_call(assign_fn, repl_call, arg_list, rho)
-                };
-                let _result_guard = protect(result);
-
-                let var_sym = CADR(lhs);
-                if TYPEOF(var_sym) == SEXPTYPE::SYMSXP {
-                    bind_assignment(var_sym, result, primval, rho);
-                }
-
-                super::runtime::set_visible(FALSE);
-                rhs
+                    super::runtime::set_visible(FALSE);
+                    rhs
+                })
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
             }
         })
         .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))

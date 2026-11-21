@@ -11,7 +11,9 @@ use std::ffi::CString;
 fn symbol<'s>(factory: &SessionNodeFactory<'s>, name: &str) -> Sexp<'s> {
     let name = CString::new(name).unwrap();
     // The original factory owns the symbol immediately; no payload loan crosses interning.
-    factory.wrap(unsafe { Rf_install(name.as_ptr()) }).unwrap()
+    factory
+        .wrap(unsafe { crate::sexp::symbol::install_cstr(&name) })
+        .unwrap()
 }
 
 fn integer<'s>(factory: &SessionNodeFactory<'s>, value: i32) -> Sexp<'s> {

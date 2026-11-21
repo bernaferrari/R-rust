@@ -98,8 +98,7 @@ fn R_mkhashtab(hash_type: c_int, _k: c_int) -> SEXP {
         setAttrib(
             table,
             R_ClassSymbol(),
-            // SAFETY: `b"...\0"` is a valid NUL-terminated byte string.
-            unsafe { Rf_mkString(b"rust_hashtab\0".as_ptr() as *const core::ffi::c_char) },
+            crate::sexp::constructors::mk_string_str("rust_hashtab"),
         );
         table
     }
@@ -233,7 +232,6 @@ fn R_typhash(h: R_hashtab_type) -> c_int {
 }
 
 fn R_maphash(h: R_hashtab_type, fun: SEXP) -> SEXP {
-    unsafe {
         let _h_guard = protect(h);
         let _fun_guard = protect(fun);
         let keys = hash_keys(h);
@@ -246,9 +244,9 @@ fn R_maphash(h: R_hashtab_type, fun: SEXP) -> SEXP {
 
         let env = NewEnvironment(R_NilValue(), R_GlobalEnv(), R_NilValue());
         let _env_guard = protect(env);
-        let fun_sym = Rf_install(c"FUN".as_ptr());
-        let key_sym = Rf_install(c"key".as_ptr());
-        let value_sym = Rf_install(c"value".as_ptr());
+    let fun_sym = crate::sexp::symbol::install_str("FUN");
+    let key_sym = crate::sexp::symbol::install_str("key");
+    let value_sym = crate::sexp::symbol::install_str("value");
         defineVar(fun_sym, fun, env);
 
         let call = Rf_lang3(fun_sym, key_sym, value_sym);
@@ -259,7 +257,6 @@ fn R_maphash(h: R_hashtab_type, fun: SEXP) -> SEXP {
             let _ = Rf_eval(call, env);
         }
         R_NilValue()
-    }
 }
 
 fn R_clrhash(h: R_hashtab_type) {
@@ -288,8 +285,7 @@ pub fn hashtab_Ext(args: SEXP) -> SEXP {
         setAttrib(
             val,
             R_ClassSymbol(),
-            // SAFETY: `b"...\0"` is a valid NUL-terminated byte string.
-            unsafe { Rf_mkString(b"hashtab\0".as_ptr() as *const core::ffi::c_char) },
+            crate::sexp::constructors::mk_string_str("hashtab"),
         );
         val
     }
@@ -371,7 +367,7 @@ mod tests {
             let _formals_guard = protect(formals);
             let mut cell = formals;
             for name in names {
-                SETTAG(cell, Rf_install(name.as_ptr()));
+                SETTAG(cell, crate::sexp::symbol::install_cstr(&name));
                 SETCAR(cell, R_MissingArg());
                 cell = CDR(cell);
             }
@@ -382,7 +378,7 @@ mod tests {
     fn stop_callback(message: &'static std::ffi::CStr) -> SEXP {
         unsafe {
             let formals = missing_formals(&[c"key", c"value"]);
-            let body = Rf_lang2(Rf_install(c"stop".as_ptr()), Rf_mkString(message.as_ptr()));
+            let body = Rf_lang2(crate::sexp::symbol::install_str("stop"), crate::sexp::constructors::mk_string_bytes(message.to_bytes()));
             crate::mainutils::dstruct::mkCLOSXP(formals, body, R_BaseEnv())
         }
     }
@@ -481,7 +477,7 @@ mod tests {
             R_sethash(table, Rf_ScalarInteger(2), Rf_ScalarInteger(20));
 
             let formals = missing_formals(&[c"key", c"value"]);
-            let body = Rf_install(c"value".as_ptr());
+            let body = crate::sexp::symbol::install_str("value");
             let callback = crate::mainutils::dstruct::mkCLOSXP(formals, body, R_BaseEnv());
 
             assert_eq!(R_maphash(table, callback), R_NilValue());

@@ -239,13 +239,11 @@ fn translateChar(x: SEXP) -> *const c_char {
 }
 
 fn string_elt_key(x: SEXP, index: R_xlen_t) -> Option<Vec<u8>> {
-    unsafe {
         let elt = STRING_ELT(x, index);
         if elt.is_null() || elt == NA_STRING() {
             None
         } else {
-            Some(CStr::from_ptr(CHAR(elt)).to_bytes().to_vec())
-        }
+        Some((&crate::sexp::accessors::char_cstr_bytes(elt)[..]).to_vec())
     }
 }
 
@@ -287,7 +285,6 @@ fn duplicated(x: SEXP, from_last: c_int) -> SEXP {
 }
 
 fn sortVector(x: SEXP, decreasing: c_int) {
-    unsafe {
         if TYPEOF(x) != SEXPTYPE::STRSXP {
             Rf_error_cstr(c"sortVector() wrapper only supports character vectors");
         }
@@ -302,7 +299,7 @@ fn sortVector(x: SEXP, decreasing: c_int) {
                 if s.is_null() || s == NA_STRING() {
                     return String::new();
                 }
-                CStr::from_ptr(CHAR(s)).to_string_lossy().into_owned()
+            String::from_utf8_lossy(&crate::sexp::accessors::char_cstr_bytes(s)).into_owned()
             };
             let ord = crate::mainutils::essentials::collate_str(&text(a), &text(b));
             if decreasing != 0 { ord.reverse() } else { ord }
@@ -311,7 +308,6 @@ fn sortVector(x: SEXP, decreasing: c_int) {
         for (i, value) in values.into_iter().enumerate() {
             SET_STRING_ELT(x, i as R_xlen_t, value);
         }
-    }
 }
 
 fn matchE(table: SEXP, x: SEXP, nomatch: c_int, _env: SEXP) -> SEXP {
@@ -1869,7 +1865,7 @@ pub fn typeconvert(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                 }
 
                 attrib_core::setAttrib(rval, attrib_core::R_LevelsSymbol(), levs);
-                let class_str = Rf_mkString(b"factor\0".as_ptr() as *const c_char);
+                let class_str = crate::sexp::constructors::mk_string_str("factor");
                 let _class_guard = protect(class_str);
                 attrib_core::setAttrib(rval, attrib_core::R_ClassSymbol(), class_str);
             }

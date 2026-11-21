@@ -15,7 +15,6 @@ use crate::sexp::accessors::{
     ATTRIB, CAR, CDR, CHAR, COMPLEX, INTEGER_ELT, LENGTH, LOGICAL, PRINTNAME, RAW, REAL_ELT,
     STRING_ELT, TAG, TYPEOF, VECTOR_ELT,
 };
-use crate::sexp::constructors::Rf_mkString;
 use crate::sexp::ffi::{FALSE, NA_INTEGER, SEXP, SEXPTYPE};
 use crate::sexp::globals::{R_NaString, R_NilValue};
 
@@ -252,34 +251,32 @@ unsafe fn compare_condition(target: SEXP, current: SEXP) -> Result<(), String> {
 }
 
 unsafe fn condition_message(value: SEXP) -> String {
-    unsafe {
-        if TYPEOF(value) != SEXPTYPE::VECSXP || LENGTH(value) < 1 {
-            return String::new();
-        }
-        let names =
-            crate::sexp::attrib_core::getAttrib(value, crate::sexp::attrib_core::R_NamesSymbol());
-        let mut message = VECTOR_ELT(value, 0);
-        if !names.is_null() && names != R_NilValue() && TYPEOF(names) == SEXPTYPE::STRSXP {
-            for index in 0..LENGTH(value) {
-                let name = STRING_ELT(names, index as i64);
-                if !name.is_null() {
-                    let bytes = std::ffi::CStr::from_ptr(CHAR(name)).to_bytes();
-                    if bytes == b"message" {
-                        message = VECTOR_ELT(value, index as i64);
-                        break;
-                    }
+    if TYPEOF(value) != SEXPTYPE::VECSXP || LENGTH(value) < 1 {
+        return String::new();
+    }
+    let names =
+        crate::sexp::attrib_core::getAttrib(value, crate::sexp::attrib_core::R_NamesSymbol());
+    let mut message = VECTOR_ELT(value, 0);
+    if !names.is_null() && names != R_NilValue() && TYPEOF(names) == SEXPTYPE::STRSXP {
+        for index in 0..LENGTH(value) {
+            let name = STRING_ELT(names, index as i64);
+            if !name.is_null() {
+                let bytes = &crate::sexp::accessors::char_cstr_bytes(name)[..];
+                if bytes == b"message" {
+                    message = VECTOR_ELT(value, index as i64);
+                    break;
                 }
             }
         }
-        if TYPEOF(message) == SEXPTYPE::STRSXP && LENGTH(message) > 0 {
-            let elt = STRING_ELT(message, 0);
-            if elt.is_null() {
-                return String::new();
-            }
-            String::from_utf8_lossy(std::ffi::CStr::from_ptr(CHAR(elt)).to_bytes()).into_owned()
-        } else {
-            String::new()
+    }
+    if TYPEOF(message) == SEXPTYPE::STRSXP && LENGTH(message) > 0 {
+        let elt = STRING_ELT(message, 0);
+        if elt.is_null() {
+            return String::new();
         }
+        String::from_utf8_lossy(&crate::sexp::accessors::char_cstr_bytes(elt)[..]).into_owned()
+    } else {
+        String::new()
     }
 }
 
@@ -319,28 +316,25 @@ fn formula_length(x: SEXP) -> i32 {
 }
 
 unsafe fn deparse_joined(x: SEXP) -> String {
-    unsafe {
-        let dumped = crate::mainutils::deparse::deparse1(
-            x,
-            false,
-            crate::mainutils::deparse::DEFAULTDEPARSE,
-        );
-        let _dumped = crate::sexp::protect::protect(dumped);
-        if dumped.is_null() || dumped == R_NilValue() || TYPEOF(dumped) != SEXPTYPE::STRSXP {
-            return String::new();
-        }
-        let mut text = String::new();
-        for i in 0..LENGTH(dumped) {
-            if i > 0 {
-                text.push('\n');
-            }
-            let elt = STRING_ELT(dumped, i as i64);
-            if !elt.is_null() && elt != R_NilValue() {
-                text.push_str(&CStr::from_ptr(CHAR(elt)).to_string_lossy());
-            }
-        }
-        text
+    let dumped =
+        crate::mainutils::deparse::deparse1(x, false, crate::mainutils::deparse::DEFAULTDEPARSE);
+    let _dumped = crate::sexp::protect::protect(dumped);
+    if dumped.is_null() || dumped == R_NilValue() || TYPEOF(dumped) != SEXPTYPE::STRSXP {
+        return String::new();
     }
+    let mut text = String::new();
+    for i in 0..LENGTH(dumped) {
+        if i > 0 {
+            text.push('\n');
+        }
+        let elt = STRING_ELT(dumped, i as i64);
+        if !elt.is_null() && elt != R_NilValue() {
+            text.push_str(&String::from_utf8_lossy(
+                &crate::sexp::accessors::char_cstr_bytes(elt),
+            ));
+        }
+    }
+    text
 }
 
 unsafe fn compare_attributes(
@@ -506,15 +500,14 @@ unsafe fn scalar_logical(value: SEXP) -> Option<bool> {
 }
 
 unsafe fn strings_equal(left: SEXP, right: SEXP) -> bool {
-    unsafe {
-        if left == right {
-            return true;
-        }
-        if left == R_NaString() || right == R_NaString() || left.is_null() || right.is_null() {
-            return false;
-        }
-        CStr::from_ptr(CHAR(left)).to_bytes() == CStr::from_ptr(CHAR(right)).to_bytes()
+    if left == right {
+        return true;
     }
+    if left == R_NaString() || right == R_NaString() || left.is_null() || right.is_null() {
+        return false;
+    }
+    &crate::sexp::accessors::char_cstr_bytes(left)[..]
+        == &crate::sexp::accessors::char_cstr_bytes(right)[..]
 }
 
 unsafe fn tag_name(tag: SEXP) -> Option<String> {
@@ -545,11 +538,8 @@ fn is_nil(value: SEXP) -> bool {
 }
 
 unsafe fn mismatch(message: &str) -> SEXP {
-    unsafe {
-        let text =
-            CString::new(message).unwrap_or_else(|_| CString::new("objects differ").unwrap());
-        Rf_mkString(text.as_ptr())
-    }
+    let text = CString::new(message).unwrap_or_else(|_| CString::new("objects differ").unwrap());
+    crate::sexp::constructors::mk_string_bytes(text.to_bytes())
 }
 
 #[cfg(test)]

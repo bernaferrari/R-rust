@@ -1904,8 +1904,8 @@ mod tests {
         let _session = crate::sexp::session::RSession::new();
         unsafe {
             let op = crate::mainutils::names::R_Primitive(c"<".as_ptr());
-            let x = crate::sexp::symbol::Rf_install(c"x".as_ptr());
-            let y = crate::sexp::symbol::Rf_install(c"y".as_ptr());
+            let x = crate::sexp::symbol::install_str("x");
+            let y = crate::sexp::symbol::install_str("y");
             let err = std::panic::catch_unwind(|| {
                 let _ = do_relop_dflt(ptr::null_mut(), op, x, y);
             })

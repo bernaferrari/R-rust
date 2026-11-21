@@ -210,7 +210,7 @@ fn collected_node_resources_reenter_only_after_collection_and_arena_lends_end() 
 fn test_persistent_env_roots_retraced_every_cycle() {
     let _session = RSession::new_without_default_packages();
 
-    let sym = unsafe { crate::sexp::symbol::Rf_install(b"retrace_probe\0".as_ptr() as *const _) };
+    let sym = unsafe { crate::sexp::symbol::install_str("retrace_probe") };
     let value = unsafe {
         /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
         with_arena(|arena| arena.alloc_vector(SEXPTYPE::INTSXP, 1))

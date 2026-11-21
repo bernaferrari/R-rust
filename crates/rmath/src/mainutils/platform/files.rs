@@ -174,11 +174,11 @@ pub fn do_filesymlink(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             if f.is_null() || t.is_null() || f == R_NilValue() || t == R_NilValue() {
                 *pa.add(i) = crate::sexp::ffi::NA_INTEGER;
             } else {
-                let fc = CStr::from_ptr(crate::sexp::accessors::CHAR(f))
-                    .to_str()
+                let fc_bytes = crate::sexp::accessors::char_cstr_bytes(f);
+                let fc = std::str::from_utf8(&fc_bytes)
                     .unwrap_or("");
-                let tc = CStr::from_ptr(crate::sexp::accessors::CHAR(t))
-                    .to_str()
+                let tc_bytes = crate::sexp::accessors::char_cstr_bytes(t);
+                let tc = std::str::from_utf8(&tc_bytes)
                     .unwrap_or("");
                 *pa.add(i) = if symlink(fc, tc).is_ok() { TRUE } else { FALSE };
             }
@@ -235,11 +235,11 @@ pub fn do_filelink(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             if f.is_null() || t.is_null() || f == R_NilValue() || t == R_NilValue() {
                 *pa.add(i) = crate::sexp::ffi::NA_INTEGER;
             } else {
-                let fc = CStr::from_ptr(crate::sexp::accessors::CHAR(f))
-                    .to_str()
+                let fc_bytes = crate::sexp::accessors::char_cstr_bytes(f);
+                let fc = std::str::from_utf8(&fc_bytes)
                     .unwrap_or("");
-                let tc = CStr::from_ptr(crate::sexp::accessors::CHAR(t))
-                    .to_str()
+                let tc_bytes = crate::sexp::accessors::char_cstr_bytes(t);
+                let tc = std::str::from_utf8(&tc_bytes)
                     .unwrap_or("");
                 *pa.add(i) = if hard_link(fc, tc).is_ok() {
                     TRUE
@@ -274,11 +274,11 @@ pub fn do_filerename(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             if f.is_null() || t.is_null() || f == R_NilValue() || t == R_NilValue() {
                 *pa.add(i) = crate::sexp::ffi::NA_INTEGER;
             } else {
-                let fc = CStr::from_ptr(crate::sexp::accessors::CHAR(f))
-                    .to_str()
+                let fc_bytes = crate::sexp::accessors::char_cstr_bytes(f);
+                let fc = std::str::from_utf8(&fc_bytes)
                     .unwrap_or("");
-                let tc = CStr::from_ptr(crate::sexp::accessors::CHAR(t))
-                    .to_str()
+                let tc_bytes = crate::sexp::accessors::char_cstr_bytes(t);
+                let tc = std::str::from_utf8(&tc_bytes)
                     .unwrap_or("");
                 *pa.add(i) = if fs::rename(fc, tc).is_ok() {
                     TRUE
@@ -343,7 +343,7 @@ pub fn do_fileinfo(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         guards.push(protect(mode_col));
         let mode_class = Rf_allocVector3(SEXPTYPE::STRSXP.as_c_int(), 1);
         guards.push(protect(mode_class));
-        SET_STRING_ELT(mode_class, 0, Rf_mkChar(c"octmode".as_ptr()));
+        SET_STRING_ELT(mode_class, 0, crate::sexp::constructors::mk_char_str("octmode"));
         crate::eval::attrib_core::setAttrib(
             mode_col,
             crate::eval::attrib_core::R_ClassSymbol(),
@@ -537,8 +537,8 @@ pub fn do_fileinfo(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         for col in [mtime_col, ctime_col, atime_col] {
             let posix_class = Rf_allocVector3(SEXPTYPE::STRSXP.as_c_int(), 2);
             guards.push(protect(posix_class));
-            SET_STRING_ELT(posix_class, 0, Rf_mkChar(c"POSIXct".as_ptr()));
-            SET_STRING_ELT(posix_class, 1, Rf_mkChar(c"POSIXt".as_ptr()));
+            SET_STRING_ELT(posix_class, 0, crate::sexp::constructors::mk_char_str("POSIXct"));
+            SET_STRING_ELT(posix_class, 1, crate::sexp::constructors::mk_char_str("POSIXt"));
             crate::eval::attrib_core::setAttrib(
                 col,
                 crate::eval::attrib_core::R_ClassSymbol(),
@@ -563,7 +563,7 @@ pub fn do_fileinfo(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             SET_STRING_ELT(
                 names,
                 j as crate::sexp::ffi::R_xlen_t,
-                Rf_mkChar(lit.as_ptr()),
+                crate::sexp::constructors::mk_char_bytes(lit.to_bytes()),
             );
         }
         crate::eval::attrib_core::setAttrib(ans, crate::eval::attrib_core::R_NamesSymbol(), names);
@@ -578,7 +578,7 @@ pub fn do_fileinfo(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 SET_STRING_ELT(
                     rn,
                     i as crate::sexp::ffi::R_xlen_t,
-                    Rf_mkChar(b"NA\0".as_ptr() as *const _),
+                    crate::sexp::constructors::mk_char_str("NA"),
                 );
             } else {
                 SET_STRING_ELT(rn, i as crate::sexp::ffi::R_xlen_t, elt);
@@ -588,7 +588,7 @@ pub fn do_fileinfo(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
         let class = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
         guards.push(protect(class));
-        SET_STRING_ELT(class, 0, Rf_mkChar(b"data.frame\0".as_ptr() as *const _));
+        SET_STRING_ELT(class, 0, crate::sexp::constructors::mk_char_str("data.frame"));
         crate::eval::attrib_core::setAttrib(ans, crate::eval::attrib_core::R_ClassSymbol(), class);
 
         ans
@@ -617,8 +617,8 @@ pub fn do_setfiletime(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let ok = if elt.is_null() || !secs.is_finite() {
                 false
             } else {
-                let path = CStr::from_ptr(crate::sexp::accessors::CHAR(elt))
-                    .to_str()
+                let path_bytes = crate::sexp::accessors::char_cstr_bytes(elt);
+                let path = std::str::from_utf8(&path_bytes)
                     .unwrap_or("");
                 if crate::mainutils::browser_files::contains_current(path)
                     || crate::mainutils::browser_files::enabled()
@@ -674,8 +674,8 @@ pub fn do_filesize(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             *out.add(i) = if elt.is_null() || elt == R_NilValue() {
                 crate::sexp::ffi::NA_REAL
             } else {
-                let path = CStr::from_ptr(crate::sexp::accessors::CHAR(elt))
-                    .to_str()
+                let path_bytes = crate::sexp::accessors::char_cstr_bytes(elt);
+                let path = std::str::from_utf8(&path_bytes)
                     .unwrap_or("");
                 if let Some(info) = crate::mainutils::browser_files::info_current(path) {
                     info.size as f64
@@ -696,7 +696,7 @@ pub fn do_filesize(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 pub fn do_filemtime(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::accessors::{CAR, LENGTH, REAL, SET_STRING_ELT, STRING_ELT};
-        use crate::sexp::constructors::{Rf_allocVector3, Rf_mkChar};
+        use crate::sexp::constructors::Rf_allocVector3;
         use crate::sexp::ffi::SEXPTYPE;
         use crate::sexp::globals::R_NilValue;
 
@@ -713,8 +713,8 @@ pub fn do_filemtime(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             *out.add(i) = if elt.is_null() || elt == R_NilValue() {
                 crate::sexp::ffi::NA_REAL
             } else {
-                let path = CStr::from_ptr(crate::sexp::accessors::CHAR(elt))
-                    .to_str()
+                let path_bytes = crate::sexp::accessors::char_cstr_bytes(elt);
+                let path = std::str::from_utf8(&path_bytes)
                     .unwrap_or("");
                 if let Some(info) = crate::mainutils::browser_files::info_current(path) {
                     info.mtime
@@ -735,8 +735,8 @@ pub fn do_filemtime(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
         let class = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
         let _class_guard = protect(class);
-        SET_STRING_ELT(class, 0, Rf_mkChar(b"POSIXct\0".as_ptr() as *const _));
-        SET_STRING_ELT(class, 1, Rf_mkChar(b"POSIXt\0".as_ptr() as *const _));
+        SET_STRING_ELT(class, 0, crate::sexp::constructors::mk_char_str("POSIXct"));
+        SET_STRING_ELT(class, 1, crate::sexp::constructors::mk_char_str("POSIXt"));
         crate::eval::attrib_core::setAttrib(ans, crate::eval::attrib_core::R_ClassSymbol(), class);
         ans
     }
@@ -953,8 +953,7 @@ pub fn do_listfiles(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 Some(String::new())
             } else {
                 Some(
-                    CStr::from_ptr(crate::sexp::accessors::CHAR(elt))
-                        .to_str()
+                    std::str::from_utf8(&crate::sexp::accessors::char_cstr_bytes(elt))
                         .unwrap_or("")
                         .to_string(),
                 )
@@ -1424,7 +1423,7 @@ pub fn do_getlocale(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 /// R's `Sys.setlocale()` — set locale.
 pub fn do_setlocale(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        use crate::sexp::accessors::{CADR, CAR, CHAR, INTEGER, STRING_ELT};
+        use crate::sexp::accessors::{CADR, CAR, INTEGER, STRING_ELT};
         use crate::sexp::constructors::Rf_mkString;
         use crate::sexp::globals::R_NilValue;
         use std::ffi::CStr;
@@ -1450,7 +1449,7 @@ pub fn do_setlocale(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let loc_str = if !locale.is_null() && locale != R_NilValue() {
             let elt = STRING_ELT(locale, 0);
             if !elt.is_null() && elt != R_NilValue() {
-                CStr::from_ptr(CHAR(elt)).to_str().unwrap_or("").to_string()
+                std::str::from_utf8(&crate::sexp::accessors::char_cstr_bytes(elt)).unwrap_or("").to_string()
             } else {
                 String::new()
             }
@@ -1464,7 +1463,7 @@ pub fn do_setlocale(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if !allowed {
             // Queries use Sys.getlocale; every Sys.setlocale call mutates
             // or selects process-global locale state.
-            return Rf_mkString(b"\0".as_ptr() as *const _);
+            return crate::sexp::constructors::mk_string_str("");
         }
 
         // Attempt to set locale via libc
@@ -1495,7 +1494,7 @@ pub fn do_setlocale(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         };
 
         if result.is_null() {
-            Rf_mkString(b"\0".as_ptr() as *const _)
+            crate::sexp::constructors::mk_string_str("")
         } else {
             let s = CStr::from_ptr(result);
             Rf_mkString(
@@ -1575,7 +1574,7 @@ pub fn do_localeconv(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
                 SET_STRING_ELT(
                     ans,
                     i as crate::sexp::ffi::R_xlen_t,
-                    Rf_mkChar(b"\0".as_ptr() as *const _),
+                    crate::sexp::constructors::mk_char_str(""),
                 );
             }
         }

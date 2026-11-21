@@ -105,10 +105,8 @@ pub(crate) fn error(msg: &str) -> ! {
 
 /// Install a named symbol, caching the result.
 pub(crate) fn sym(name: &str) -> SEXP {
-    unsafe {
-        let cstr = std::ffi::CString::new(name).unwrap_or_default();
-        Rf_install(cstr.as_ptr())
-    }
+    let cstr = std::ffi::CString::new(name).unwrap_or_default();
+    crate::sexp::symbol::install_cstr(&cstr)
 }
 
 // ---------------------------------------------------------------------------
@@ -434,27 +432,25 @@ pub(crate) fn sync_s4_class_graph_from_gnu(name: &str) {
 }
 
 fn gnu_class_def(name: &str) -> Option<SEXP> {
-    unsafe {
-        let meta = format!(".__C__{name}");
-        let meta_c = std::ffi::CString::new(meta.as_str()).ok()?;
-        let symbol = Rf_install(meta_c.as_ptr());
-        let mut value = crate::sexp::envir::R_findVar(symbol, crate::sexp::globals::R_GlobalEnv());
-        if value.is_null() || value == crate::sexp::globals::R_UnboundValue() {
-            if let Some(ns) = crate::mainutils::essentials::cached_namespace_by_name("methods") {
-                value = crate::sexp::envir::R_findVarInFrame(ns, symbol);
-            }
+    let meta = format!(".__C__{name}");
+    let meta_c = std::ffi::CString::new(meta.as_str()).ok()?;
+    let symbol = crate::sexp::symbol::install_cstr(&meta_c);
+    let mut value = crate::sexp::envir::R_findVar(symbol, crate::sexp::globals::R_GlobalEnv());
+    if value.is_null() || value == crate::sexp::globals::R_UnboundValue() {
+        if let Some(ns) = crate::mainutils::essentials::cached_namespace_by_name("methods") {
+            value = crate::sexp::envir::R_findVarInFrame(ns, symbol);
         }
-        if !value.is_null() && TYPEOF(value) == SEXPTYPE::PROMSXP {
-            value = crate::sexp::envir::forcePromise(value);
-        }
-        if value.is_null()
-            || value == crate::sexp::globals::R_UnboundValue()
-            || value == crate::sexp::globals::R_NilValue()
-        {
-            None
-        } else {
-            Some(value)
-        }
+    }
+    if !value.is_null() && TYPEOF(value) == SEXPTYPE::PROMSXP {
+        value = crate::sexp::envir::forcePromise(value);
+    }
+    if value.is_null()
+        || value == crate::sexp::globals::R_UnboundValue()
+        || value == crate::sexp::globals::R_NilValue()
+    {
+        None
+    } else {
+        Some(value)
     }
 }
 

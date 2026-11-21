@@ -49,7 +49,7 @@ fn workspace_save_denial_preserves_admitted_browser_file() {
     session.with_active(|| unsafe {
         let owner = workspace_owner();
         let envir = R_GlobalEnv();
-        let name = Rf_install(c"workspace_value".as_ptr());
+        let name = crate::sexp::symbol::install_str("workspace_value");
         defineVar(name, crate::sexp::constructors::Rf_ScalarInteger(17), envir);
         let file = filename(owner, "workspace.RData");
         let baseline = owner
@@ -96,7 +96,7 @@ fn workspace_save_of_unsupported_value_does_not_replace_file() {
     session.with_active(|| unsafe {
         let owner = workspace_owner();
         let envir = R_GlobalEnv();
-        let name = Rf_install(c"workspace_value".as_ptr());
+        let name = crate::sexp::symbol::install_str("workspace_value");
         let unsupported = crate::sexp::memory_ext::allocSExp(SEXPTYPE::WEAKREFSXP);
         defineVar(name, unsupported, envir);
         let file = filename(owner, "workspace.RData");
@@ -126,8 +126,8 @@ fn workspace_restore_is_unchanged_after_a_locked_binding_or_truncated_file() {
         let owner = workspace_owner();
         let factory = owner.node_factory();
         let src = R_GlobalEnv();
-        let a = Rf_install(c"workspace_a".as_ptr());
-        let b = Rf_install(c"workspace_b".as_ptr());
+        let a = crate::sexp::symbol::install_str("workspace_a");
+        let b = crate::sexp::symbol::install_str("workspace_b");
         let target = factory
             .wrap(NewEnvironment(R_NilValue(), R_EmptyEnv(), R_NilValue()))
             .unwrap();
@@ -192,7 +192,7 @@ fn legacy_workspace_loading_retains_old_objects_and_checks_lengths() {
             .unwrap();
         let previous = filename(owner, "previous.RData");
         let truncated = filename(owner, "truncated.RData");
-        let name = Rf_install(c"x".as_ptr());
+        let name = crate::sexp::symbol::install_str("x");
         assert_eq!(
             XLENGTH(workspace_file::load(
                 owner,

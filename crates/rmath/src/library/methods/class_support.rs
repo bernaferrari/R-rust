@@ -23,7 +23,7 @@ pub fn R_get_primname(object: SEXP) -> SEXP {
     let name = crate::main::names::getPRIMNAME(object);
     if name.is_null() {
         let s = c"";
-        unsafe { Rf_mkString(s.as_ptr()) }
+        crate::sexp::constructors::mk_string_bytes(s.to_bytes())
     } else {
         unsafe { Rf_mkString(name) }
     }

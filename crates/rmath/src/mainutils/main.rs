@@ -12,13 +12,11 @@ use std::os::raw::c_int;
 use crate::eval::eval::Rf_eval;
 use crate::mainutils::rfile::{RFile, r_ferror, r_fread};
 use crate::sexp::accessors::{VECTOR_ELT, XLENGTH};
-use crate::sexp::constructors::Rf_mkString;
 use crate::sexp::context::RError;
 use crate::sexp::ffi::{FALSE, NA_INTEGER, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::{R_NilValue, R_Visible, set_R_Visible};
 use crate::sexp::instance::with_required_current_instance;
 use crate::sexp::protect::protect;
-use crate::sexp::symbol::Rf_install;
 
 /// Console buffer size.
 pub const CONSOLE_BUFFER_SIZE: usize = 1024;
@@ -60,12 +58,12 @@ where
 
 /// Get the .Last.value symbol.
 pub fn R_LastvalueSymbol() -> SEXP {
-    unsafe { Rf_install(c".Last.value".as_ptr()) }
+    crate::sexp::symbol::install_str(".Last.value")
 }
 
 /// Get the .Random.seed symbol.
 pub fn R_SeedsSymbol() -> SEXP {
-    unsafe { Rf_install(c".Random.seed".as_ptr()) }
+    crate::sexp::symbol::install_str(".Random.seed")
 }
 
 // ---------------------------------------------------------------------------
@@ -219,7 +217,7 @@ unsafe fn read_c_file_to_string(fp: *mut RFile) -> Result<String, String> {
 unsafe fn parse_source_to_exprs(source: &str, n: c_int, status: *mut c_int) -> SEXP {
     unsafe {
         let source = CString::new(source).unwrap_or_default();
-        let text = Rf_mkString(source.as_ptr());
+        let text = crate::sexp::constructors::mk_string_bytes(source.to_bytes());
         let _text_guard = protect(text);
         let mut parse_status = PARSE_NULL;
         let status_ptr: *mut c_int = if status.is_null() {
@@ -426,7 +424,7 @@ fn run_task_callback(
     for (name, value) in inputs.iter().rev().flatten() {
         let symbol = access.with_native(|owner| {
             owner
-                .sexp(unsafe { Rf_install(name.as_ptr()) })?
+                .sexp(crate::sexp::symbol::install_cstr(&name))?
                 .into_owned()
         })?;
         let promise = allocator.evaluated_promise_with_expression(&symbol, environment, value)?;
@@ -851,7 +849,7 @@ mod tests {
         let (path, fp) = open_c_source("repl_file_value <- 41\n");
         unsafe {
             R_ReplFile(fp, crate::sexp::globals::R_GlobalEnv());
-            let sym = Rf_install(c"repl_file_value".as_ptr());
+            let sym = crate::sexp::symbol::install_str("repl_file_value");
             let value =
                 crate::sexp::envir::R_findVarInFrame(crate::sexp::globals::R_GlobalEnv(), sym);
             assert_eq!(TYPEOF(value), SEXPTYPE::REALSXP);
@@ -902,7 +900,7 @@ mod tests {
                 let cell = Rf_cons(crate::sexp::globals::R_MissingArg(), formals);
                 crate::sexp::accessors::SETTAG(
                     cell,
-                    Rf_install(std::ffi::CString::new(name).unwrap().as_ptr()),
+                    crate::sexp::symbol::install_str(name),
                 );
                 formals = cell;
             }

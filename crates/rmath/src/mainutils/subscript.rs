@@ -1163,12 +1163,12 @@ unsafe fn stringSubscript(
                 continue;
             }
             if is_non_null_string(si) {
-                let sbytes = std::ffi::CStr::from_ptr(CHAR(si)).to_bytes();
+                let sbytes = &crate::sexp::accessors::char_cstr_bytes(si)[..];
                 if !names.is_null() && TYPEOF(names) == SEXPTYPE::STRSXP {
                     for j in 0..nx {
                         let name_j = STRING_ELT(names, j);
                         if is_non_null_string(name_j) {
-                            let nbytes = std::ffi::CStr::from_ptr(CHAR(name_j)).to_bytes();
+                            let nbytes = &crate::sexp::accessors::char_cstr_bytes(name_j)[..];
                             if !sbytes.is_empty() && nbytes == sbytes {
                                 sub = j + 1;
                                 break;
@@ -1201,11 +1201,12 @@ unsafe fn stringSubscript(
                             let ea = STRING_ELT(s, a);
                             let mut found: R_xlen_t = 0;
                             if is_non_null_string(ea) {
-                                let abytes = std::ffi::CStr::from_ptr(CHAR(ea)).to_bytes();
+                                let abytes = &crate::sexp::accessors::char_cstr_bytes(ea)[..];
                                 for b in 0..a {
                                     let eb = STRING_ELT(s, b);
                                     if is_non_null_string(eb) {
-                                        let bbytes = std::ffi::CStr::from_ptr(CHAR(eb)).to_bytes();
+                                        let bbytes =
+                                            &crate::sexp::accessors::char_cstr_bytes(eb)[..];
                                         if bbytes == abytes {
                                             found = b + 1;
                                             break;
@@ -1685,7 +1686,7 @@ mod tests {
         let _session = crate::sexp::session::RSession::new();
         unsafe {
             let x = make_real_vector(&[1.0]);
-            let sindex = Rf_mkString(b"foo\0".as_ptr() as *const c_char);
+            let sindex = crate::sexp::constructors::mk_string_str("foo");
             let msg = panic_message(|| {
                 ECALL_OutOfBoundsCHAR(x, 1, sindex, ptr::null_mut());
             });

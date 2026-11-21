@@ -575,13 +575,13 @@ unsafe extern "C" fn nlm_fcn(
         let mut grad: Option<Vec<f64>> = None;
         let mut hess: Option<Vec<f64>> = None;
         if state.have_gradient {
-            let gsym = crate::sexp::symbol::Rf_install(b"gradient\0".as_ptr() as *const _);
+            let gsym = crate::sexp::symbol::install_str("gradient");
             grad = Some(nlm_attr_real(
                 crate::sexp::attrib_core::getAttrib(value, gsym),
                 n,
             ));
             if state.have_hessian {
-                let hsym = crate::sexp::symbol::Rf_install(b"hessian\0".as_ptr() as *const _);
+                let hsym = crate::sexp::symbol::install_str("hessian");
                 hess = Some(nlm_attr_real(
                     crate::sexp::attrib_core::getAttrib(value, hsym),
                     n * n,
@@ -877,8 +877,8 @@ pub unsafe fn do_nlm(
             ft_last: -1,
             ftable: Vec::new(),
         };
-        let gsym = crate::sexp::symbol::Rf_install(b"gradient\0".as_ptr() as *const _);
-        let hsym = crate::sexp::symbol::Rf_install(b"hessian\0".as_ptr() as *const _);
+        let gsym = crate::sexp::symbol::install_str("gradient");
+        let hsym = crate::sexp::symbol::install_str("hessian");
 
         let xv = Rf_allocVector3(SEXPTYPE::REALSXP, n as i64);
         let _px = protect(xv);
@@ -1009,7 +1009,7 @@ pub unsafe fn do_nlm(
             SET_INTEGER_ELT(dim, 1, n as i32);
             crate::sexp::attrib_core::setAttrib(
                 hess,
-                crate::sexp::symbol::Rf_install(b"dim\0".as_ptr() as *const _),
+                crate::sexp::symbol::install_str("dim"),
                 dim,
             );
             SET_VECTOR_ELT(result, 3, hess);

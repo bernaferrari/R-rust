@@ -468,7 +468,7 @@ mod tests {
     fn base_string_metrics_delegate_to_engine_and_tolerate_no_device() {
         let _session = RSession::new();
         unsafe {
-            let text = Rf_mkString(c"abc".as_ptr());
+            let text = crate::sexp::constructors::mk_string_str("abc");
             assert_eq!(C_strWidth(text, R_NilValue(), std::ptr::null_mut()), 0.0);
             assert_eq!(C_strHeight(text, R_NilValue(), std::ptr::null_mut()), 0.0);
         }

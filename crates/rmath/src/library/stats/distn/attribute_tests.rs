@@ -25,7 +25,7 @@ fn note(session: &RSession, source: &Sexp<'_>, child: &Sexp<'_>) {
     session.with_active(|| unsafe {
         crate::attrib_core::setAttrib(
             source.as_raw(),
-            crate::sexp::symbol::Rf_install(c"note".as_ptr()),
+            crate::sexp::symbol::install_str("note"),
             child.as_raw(),
         )
     });
@@ -38,7 +38,7 @@ fn registered_attribute_graph_is_shallow_ordered_and_survives_source_release() {
     let child = reals(&session, &[19.0, 23.0]);
     note(&session, &source, &child);
     session.with_active(|| unsafe {
-        let class = Rf_mkString(c"dpq.contract".as_ptr());
+        let class = crate::sexp::constructors::mk_string_str("dpq.contract");
         let _class = protect(class);
         crate::attrib_core::setAttrib(source.as_raw(), crate::attrib_core::R_ClassSymbol(), class);
         SET_S4_OBJECT(source.as_raw());
@@ -80,7 +80,7 @@ fn registered_attribute_graph_is_shallow_ordered_and_survives_source_release() {
         owner
             .sexp(crate::attrib_core::getAttrib(
                 result.as_raw(),
-                crate::sexp::symbol::Rf_install(c"note".as_ptr()),
+                crate::sexp::symbol::install_str("note"),
             ))
             .unwrap()
             .into_owned()

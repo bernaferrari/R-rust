@@ -308,15 +308,13 @@ pub fn StringFromLogical(x: c_int) -> SEXP {
 ///
 /// Returns NA_STRING for NA_INTEGER, otherwise the decimal representation.
 pub fn StringFromInteger(x: c_int, _warn: *mut c_int) -> SEXP {
-    unsafe {
         if x == NA_INTEGER {
             return R_NaString();
         }
         // Format integer as string
         let s = format!("{}", x);
         let cstr = std::ffi::CString::new(s).unwrap_or_default();
-        Rf_mkChar(cstr.as_ptr())
-    }
+    crate::sexp::constructors::mk_char_bytes(cstr.to_bytes())
 }
 
 pub fn string_from_real_for_complex(x: c_double) -> String {
@@ -371,7 +369,6 @@ pub fn string_from_real_for_complex(x: c_double) -> String {
 ///
 /// Returns NA_STRING if either part is R's NA. Otherwise formats as "r+i" or "r-i".
 pub fn StringFromComplex(x: Rcomplex, _warn: *mut c_int) -> SEXP {
-    unsafe {
         if R_IsNA(x.r) || R_IsNA(x.i) {
             return R_NaString();
         }
@@ -383,19 +380,16 @@ pub fn StringFromComplex(x: Rcomplex, _warn: *mut c_int) -> SEXP {
             format!("{real}+{imaginary}i")
         };
         let cstr = std::ffi::CString::new(s).unwrap_or_default();
-        Rf_mkChar(cstr.as_ptr())
-    }
+    crate::sexp::constructors::mk_char_bytes(cstr.to_bytes())
 }
 
 /// Convert raw byte to string (CHARSXP).
 ///
 /// Formats as two-digit hexadecimal, e.g. 255 -> "ff".
 pub fn StringFromRaw(x: Rbyte, _warn: *mut c_int) -> SEXP {
-    unsafe {
         let s = format!("{:02x}", x);
         let cstr = std::ffi::CString::new(s).unwrap_or_default();
-        Rf_mkChar(cstr.as_ptr())
-    }
+    crate::sexp::constructors::mk_char_bytes(cstr.to_bytes())
 }
 
 // ---------------------------------------------------------------------------

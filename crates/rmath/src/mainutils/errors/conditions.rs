@@ -531,7 +531,6 @@ fn signal_error_with_mode(cond: SEXP, call: SEXP, mode: SignalMode<'_>, selected
 
 /// GNU `R_ObjectNotFoundError(sym, call, mode)`.
 pub fn R_ObjectNotFoundError(sym: SEXP, call: SEXP, mode: Option<&str>) -> ! {
-    unsafe {
         let pname = PRINTNAME(sym);
         let name = if pname.is_null() {
             String::from("???")
@@ -564,12 +563,11 @@ pub fn R_ObjectNotFoundError(sym: SEXP, call: SEXP, mode: Option<&str>) -> ! {
         R_setConditionField(cond, 2, c"name", sym);
         let mode_name = mode.unwrap_or("any");
         let mode_cstr = std::ffi::CString::new(mode_name).unwrap_or_default();
-        let mode_sexp = Rf_mkString(mode_cstr.as_ptr());
+    let mode_sexp = crate::sexp::constructors::mk_string_bytes(mode_cstr.to_bytes());
         let _mode_guard = protect(mode_sexp);
         R_setConditionField(cond, 3, c"mode", mode_sexp);
         R_signalErrorCondition(cond, call);
         unreachable!("R_signalErrorCondition does not return")
-    }
 }
 
 /// GNU `R_FunctionNotFoundError(sym, call)`.
@@ -616,7 +614,6 @@ pub fn R_FunctionNotFoundError(sym: SEXP, call: SEXP) -> ! {
 
 /// R_setConditionField — set a field in a condition object.
 pub fn R_setConditionField(cond: SEXP, idx: R_xlen_t, name: &CStr, val: SEXP) {
-    unsafe {
         if TYPEOF(cond) != SEXPTYPE::VECSXP {
             return;
         }
@@ -627,8 +624,7 @@ pub fn R_setConditionField(cond: SEXP, idx: R_xlen_t, name: &CStr, val: SEXP) {
         SET_VECTOR_ELT(cond, idx, val);
         let names = getAttrib_wrap(cond, R_NamesSymbol());
         if !names.is_null() && TYPEOF(names) == SEXPTYPE::STRSXP && XLENGTH(names) == len {
-            SET_STRING_ELT(names, idx, Rf_mkChar(name.as_ptr()));
-        }
+        SET_STRING_ELT(names, idx, crate::sexp::constructors::mk_char_bytes(name.to_bytes()));
     }
 }
 

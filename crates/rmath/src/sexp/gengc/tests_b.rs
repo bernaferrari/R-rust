@@ -1684,7 +1684,7 @@ fn test_active_bindings_traced_and_dead_entries_swept() {
     // of the unrelated startup objects reclaimed by the first collection.
     let _session = RSession::new_for_gc_tests();
 
-    let sym = unsafe { crate::sexp::symbol::Rf_install(b"active_probe\0".as_ptr() as *const _) };
+    let sym = unsafe { crate::sexp::symbol::install_str("active_probe") };
     let env = make_detached_env();
     // The binding function is reachable only through the side table.
     let fun = unsafe {
@@ -1751,7 +1751,7 @@ fn test_active_bindings_traced_and_dead_entries_swept() {
 fn test_locked_tables_swept_with_dead_keys_live_keys_kept() {
     let _session = RSession::new_without_default_packages();
 
-    let sym = unsafe { crate::sexp::symbol::Rf_install(b"lock_probe\0".as_ptr() as *const _) };
+    let sym = unsafe { crate::sexp::symbol::install_str("lock_probe") };
     let live_env = make_detached_env();
     let dead_env = make_detached_env();
     crate::sexp::envir::lock_environment_raw(dead_env);
@@ -1806,10 +1806,8 @@ fn test_locked_tables_swept_with_dead_keys_live_keys_kept() {
 fn test_binding_tables_resolve_across_gc_churn() {
     let _session = RSession::new_without_default_packages();
 
-    let sym_active =
-        unsafe { crate::sexp::symbol::Rf_install(b"churn_active\0".as_ptr() as *const _) };
-    let sym_locked =
-        unsafe { crate::sexp::symbol::Rf_install(b"churn_locked\0".as_ptr() as *const _) };
+    let sym_active = unsafe { crate::sexp::symbol::install_str("churn_active") };
+    let sym_locked = unsafe { crate::sexp::symbol::install_str("churn_locked") };
 
     let mut rooted = Vec::new();
     let mut transient = Vec::new();

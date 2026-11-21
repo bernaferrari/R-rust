@@ -180,11 +180,7 @@ fn char_string(x: SEXP) -> String {
 /// yields the empty string.
 fn mk_char_cstring(bytes: &[u8]) -> SEXP {
     let bytes = if bytes.contains(&0) { &[][..] } else { bytes };
-    crate::mainutils::essentials::active_owner()
-        .node_factory()
-        .allocate(|arena| Some(arena.alloc_charsxp(bytes)))
-        .map(|value| value.as_raw())
-        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+    crate::sexp::constructors::mk_char_bytes(bytes)
 }
 
 /// ScalarString -- create scalar STRSXP.

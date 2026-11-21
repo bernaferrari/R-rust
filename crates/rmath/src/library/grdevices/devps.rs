@@ -2171,7 +2171,6 @@ pub fn CIDFontInUse(name: SEXP, isPDF: SEXP) -> SEXP {
 /// not written; like [`PDF`] this mirrors GNU device bookkeeping so the
 /// interpreter's device state tracks the open postscript() device.
 pub fn PostScript(args: SEXP) -> SEXP {
-    unsafe {
         if !args.is_null() && args != R_NilValue() {
             let file = CADR(args);
             if !file.is_null() && TYPEOF(file) == SEXPTYPE::STRSXP && LENGTH(file) > 0 {
@@ -2189,7 +2188,7 @@ pub fn PostScript(args: SEXP) -> SEXP {
         }
         crate::library::grdevices::device_registry::selectDevice(0);
         let base = crate::sexp::globals::R_BaseEnv();
-        let sym = crate::sexp::symbol::Rf_install(c".Devices".as_ptr());
+    let sym = crate::sexp::symbol::install_str(".Devices");
         let old = crate::sexp::envir::R_findVarInFrame(base, sym);
         let n = if !old.is_null()
             && old != crate::sexp::globals::R_UnboundValue()
@@ -2204,30 +2203,29 @@ pub fn PostScript(args: SEXP) -> SEXP {
             SET_VECTOR_ELT(devices, i, VECTOR_ELT(old, i));
         }
         if n == 0 {
-            SET_VECTOR_ELT(devices, 0, Rf_mkString(c"null device".as_ptr()));
+        SET_VECTOR_ELT(devices, 0, crate::sexp::constructors::mk_string_str("null device"));
         }
         SET_VECTOR_ELT(
             devices,
             if n == 0 { 0i64 } else { n },
-            Rf_mkString(c"postscript".as_ptr()),
+        crate::sexp::constructors::mk_string_str("postscript"),
         );
         // The n==0 arm wrote null device at 0 and then overwrites it. Fix below.
         if n == 0 {
             let both = crate::sexp::constructors::Rf_allocVector(SEXPTYPE::VECSXP, 2);
-            SET_VECTOR_ELT(both, 0, Rf_mkString(c"null device".as_ptr()));
-            SET_VECTOR_ELT(both, 1, Rf_mkString(c"postscript".as_ptr()));
+        SET_VECTOR_ELT(both, 0, crate::sexp::constructors::mk_string_str("null device"));
+        SET_VECTOR_ELT(both, 1, crate::sexp::constructors::mk_string_str("postscript"));
             crate::sexp::envir::defineVar(sym, both, base);
         } else {
             crate::sexp::envir::defineVar(sym, devices, base);
         }
         // GNU initDevice() sets .Device to the newly opened device's name.
         crate::sexp::envir::defineVar(
-            crate::sexp::symbol::Rf_install(c".Device".as_ptr()),
-            Rf_mkString(c"postscript".as_ptr()),
+        crate::sexp::symbol::install_str(".Device"),
+        crate::sexp::constructors::mk_string_str("postscript"),
             base,
         );
         R_NilValue()
-    }
 }
 
 /// Open the ordinary grDevices PDF with a device-owned recording.
@@ -2428,11 +2426,11 @@ mod tests {
             // initDevice() bookkeeping: .Device names the opened device.
             let device = crate::sexp::envir::R_findVarInFrame(
                 crate::sexp::globals::R_BaseEnv(),
-                crate::sexp::symbol::Rf_install(c".Device".as_ptr()),
+                crate::sexp::symbol::install_str(".Device"),
             );
             assert_eq!(TYPEOF(device), SEXPTYPE::STRSXP);
             assert_eq!(
-                std::ffi::CStr::from_ptr(CHAR(STRING_ELT(device, 0))).to_bytes(),
+                &crate::sexp::accessors::char_cstr_bytes(STRING_ELT(device, 0))[..],
                 b"postscript"
             );
 

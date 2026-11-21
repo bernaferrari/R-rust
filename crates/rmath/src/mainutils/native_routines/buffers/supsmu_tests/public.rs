@@ -303,7 +303,7 @@ fn supsmu_public_named_cv_and_missing_weight_use_real_defaults() {
         session
             .owner_token()
             .unwrap()
-            .sexp(crate::sexp::symbol::Rf_install(c"span".as_ptr()))
+            .sexp(crate::sexp::symbol::install_str("span"))
             .unwrap()
     };
     let mut args = f
@@ -363,7 +363,7 @@ fn supsmu_public_matches_exact_names_before_positionals_and_partial_names() {
         session
             .owner_token()
             .unwrap()
-            .sexp(crate::sexp::symbol::Rf_install(c"x".as_ptr()))
+            .sexp(crate::sexp::symbol::install_str("x"))
             .unwrap()
     };
     // GNU supsmu(y_vector, x=x_vector) matches exact x first, then positional y.
@@ -391,14 +391,14 @@ fn supsmu_public_matches_exact_names_before_positionals_and_partial_names() {
         session
             .owner_token()
             .unwrap()
-            .sexp(crate::sexp::symbol::Rf_install(c"sp".as_ptr()))
+            .sexp(crate::sexp::symbol::install_str("sp"))
             .unwrap()
     };
     let y_tag = unsafe {
         session
             .owner_token()
             .unwrap()
-            .sexp(crate::sexp::symbol::Rf_install(c"y".as_ptr()))
+            .sexp(crate::sexp::symbol::install_str("y"))
             .unwrap()
     };
     let args = f

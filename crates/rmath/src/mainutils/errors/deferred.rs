@@ -319,7 +319,7 @@ mod owned_warning_snapshot_tests {
             let names = warnings.try_attrib().unwrap().try_car().unwrap();
             let call = owner
                 .sexp(Rf_lang2(
-                    Rf_install(c"original_warning_call".as_ptr()),
+                    crate::sexp::symbol::install_str("original_warning_call"),
                     Rf_ScalarInteger(23),
                 ))
                 .unwrap()
@@ -389,7 +389,7 @@ mod owned_warning_snapshot_tests {
             assert!(block.contains("2: second collected message"), "{block}");
             let owner = crate::sexp::owner::OwnerToken::from_raw(instance);
             let last = owner
-                .sexp(SYMVALUE(Rf_install(c"last.warning".as_ptr())))
+                .sexp(SYMVALUE(crate::sexp::symbol::install_str("last.warning")))
                 .unwrap();
             assert_eq!(last.len(), 2);
             assert_eq!(last.try_vector_elt(0).unwrap().typeof_(), SEXPTYPE::LANGSXP);
@@ -461,7 +461,7 @@ mod owned_warning_snapshot_tests {
             let owner = crate::sexp::owner::OwnerToken::from_raw(instance);
             let call = owner
                 .sexp(Rf_lang2(
-                    Rf_install(c"original_warning_call".as_ptr()),
+                    crate::sexp::symbol::install_str("original_warning_call"),
                     Rf_ScalarInteger(23),
                 ))
                 .unwrap()
@@ -541,9 +541,12 @@ mod owned_warning_snapshot_tests {
             let owner = crate::sexp::owner::OwnerToken::from_raw(instance);
             let expression = owner
                 .sexp(Rf_lang3(
-                    Rf_install(c"<-".as_ptr()),
-                    Rf_install(c"warning_expression_result".as_ptr()),
-                    Rf_lang2(Rf_install(c"list".as_ptr()), Rf_ScalarInteger(19)),
+                    crate::sexp::symbol::install_str("<-"),
+                    crate::sexp::symbol::install_str("warning_expression_result"),
+                    Rf_lang2(
+                        crate::sexp::symbol::install_str("list"),
+                        Rf_ScalarInteger(19),
+                    ),
                 ))
                 .unwrap()
                 .into_owned()
@@ -578,7 +581,7 @@ mod owned_warning_snapshot_tests {
             assert_eq!((*instance).error_state.collect_warnings, 0);
             let result = owner
                 .sexp(crate::sexp::envir::R_findVar(
-                    Rf_install(c"warning_expression_result".as_ptr()),
+                    crate::sexp::symbol::install_str("warning_expression_result"),
                     (*instance).global_env,
                 ))
                 .unwrap();

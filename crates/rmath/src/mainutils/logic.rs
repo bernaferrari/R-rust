@@ -592,7 +592,7 @@ pub unsafe fn do_logic(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         let is_frame = |s: SEXP| {
             let class = crate::sexp::attrib_core::getAttrib(
                 s,
-                crate::sexp::symbol::Rf_install(c"class".as_ptr()),
+                crate::sexp::symbol::install_str("class"),
             );
             if class.is_null()
                 || class == R_NilValue()
@@ -607,7 +607,7 @@ pub unsafe fn do_logic(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         if is_frame(x) && is_frame(y) && XLENGTH(x) == 0 && XLENGTH(y) == 0 {
             let rn = crate::sexp::attrib_core::getAttrib(
                 x,
-                crate::sexp::symbol::Rf_install(c"row.names".as_ptr()),
+                crate::sexp::symbol::install_str("row.names"),
             );
             let compact =
                 TYPEOF(rn) == SEXPTYPE::INTSXP && XLENGTH(rn) == 2 && *INTEGER(rn) == NA_INTEGER;
@@ -680,7 +680,7 @@ pub unsafe fn do_logic(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             crate::sexp::accessors::SET_STRING_ELT(
                 class,
                 0,
-                crate::sexp::constructors::Rf_mkChar(c"octmode".as_ptr()),
+                crate::sexp::constructors::mk_char_str("octmode"),
             );
             crate::sexp::attrib_core::setAttrib(
                 combined,

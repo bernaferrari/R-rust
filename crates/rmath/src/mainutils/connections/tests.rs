@@ -148,8 +148,8 @@ fn test_do_file_create() {
 
         let desc = test_ok(CString::new(tmp.to_str().unwrap_or("")));
         let open = test_ok(CString::new("r"));
-        let desc_sxp = Rf_mkString(desc.as_ptr());
-        let open_sxp = Rf_mkString(open.as_ptr());
+        let desc_sxp = crate::sexp::constructors::mk_string_bytes(desc.to_bytes());
+        let open_sxp = crate::sexp::constructors::mk_string_bytes(open.to_bytes());
         let _desc_guard = protect(desc_sxp);
         let _open_guard = protect(open_sxp);
 
@@ -310,9 +310,9 @@ fn test_do_isseekable_uses_connection_capability() {
 
         let raw = Rf_allocVector3(SEXPTYPE::RAWSXP, 0);
         let _raw_guard = protect(raw);
-        let desc = Rf_mkString(c"raw".as_ptr());
+        let desc = crate::sexp::constructors::mk_string_str("raw");
         let _desc_guard = protect(desc);
-        let open = Rf_mkString(c"rb".as_ptr());
+        let open = crate::sexp::constructors::mk_string_str("rb");
         let _open_guard = protect(open);
         let open_tail = Rf_cons(open, R_NilValue());
         let _open_tail_guard = protect(open_tail);
@@ -356,7 +356,7 @@ fn test_do_gzfile_create() {
     unsafe {
         let tmp = std::env::temp_dir().join("rport_test_gz.txt");
         let desc = test_ok(CString::new(tmp.to_str().unwrap_or("")));
-        let desc_sxp = Rf_mkString(desc.as_ptr());
+        let desc_sxp = crate::sexp::constructors::mk_string_bytes(desc.to_bytes());
         let _desc_guard = protect(desc_sxp);
         let open_sxp = Rf_mkString(test_ok(CString::new("wb")).as_ptr());
         let _open_guard = protect(open_sxp);
@@ -613,9 +613,9 @@ fn test_open_file_read_lines() {
         // Create and open file connection
         let desc = test_ok(CString::new(tmp.to_str().unwrap_or("")));
         let open = test_ok(CString::new("r"));
-        let desc_sxp = Rf_mkString(desc.as_ptr());
+        let desc_sxp = crate::sexp::constructors::mk_string_bytes(desc.to_bytes());
         let _desc_guard = protect(desc_sxp);
-        let open_sxp = Rf_mkString(open.as_ptr());
+        let open_sxp = crate::sexp::constructors::mk_string_bytes(open.to_bytes());
         let _open_guard = protect(open_sxp);
         let enc_sxp = Rf_mkString(test_ok(CString::new("")).as_ptr());
         let _enc_guard = protect(enc_sxp);
@@ -705,9 +705,9 @@ fn test_write_lines_to_file() {
         // Create and open file connection for writing
         let desc = test_ok(CString::new(tmp.to_str().unwrap_or("")));
         let open = test_ok(CString::new("w"));
-        let desc_sxp = Rf_mkString(desc.as_ptr());
+        let desc_sxp = crate::sexp::constructors::mk_string_bytes(desc.to_bytes());
         let _desc_guard = protect(desc_sxp);
-        let open_sxp = Rf_mkString(open.as_ptr());
+        let open_sxp = crate::sexp::constructors::mk_string_bytes(open.to_bytes());
         let _open_guard = protect(open_sxp);
         let enc_sxp = Rf_mkString(test_ok(CString::new("")).as_ptr());
         let _enc_guard = protect(enc_sxp);

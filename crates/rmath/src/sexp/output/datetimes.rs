@@ -52,7 +52,7 @@ pub(crate) fn format_date_vector_max(x: Sexp<'_>, max_override: Option<i64>) -> 
                     crate::sexp::accessors::SET_STRING_ELT(
                         formatted,
                         i,
-                        crate::sexp::constructors::Rf_mkChar(c.as_ptr()),
+                        crate::sexp::constructors::mk_char_bytes(c.to_bytes()),
                     );
                 }
             } else {
@@ -119,13 +119,13 @@ pub(crate) fn format_posixct_vector_max(
         return "POSIXct of length 0".to_string();
     }
     unsafe {
-        use crate::sexp::constructors::{Rf_ScalarLogical, Rf_cons, Rf_mkString};
+        use crate::sexp::constructors::{Rf_ScalarLogical, Rf_cons};
         use crate::sexp::ffi::TRUE;
         use crate::sexp::protect::protect;
         let n = x.clone().len();
         let opt_max = crate::mainutils::options::GetOptionMaxPrint() as i64;
         let max = max_override.unwrap_or(opt_max).max(0);
-        let format = Rf_mkString(c"".as_ptr());
+        let format = crate::sexp::constructors::mk_string_str("");
         let _fmt = protect(format);
         let usetz = Rf_ScalarLogical(if include_tz { TRUE } else { 0 });
         let _u = protect(usetz);
@@ -182,10 +182,10 @@ pub(crate) fn format_posixlt_vector(x: Sexp<'_>) -> String {
         return "POSIXlt of length 0".to_string();
     }
     unsafe {
-        use crate::sexp::constructors::{Rf_ScalarInteger, Rf_ScalarLogical, Rf_cons, Rf_mkString};
+        use crate::sexp::constructors::{Rf_ScalarInteger, Rf_ScalarLogical, Rf_cons};
         use crate::sexp::ffi::{NA_INTEGER, TRUE};
         use crate::sexp::protect::protect;
-        let format = Rf_mkString(c"".as_ptr());
+        let format = crate::sexp::constructors::mk_string_str("");
         let _fmt = protect(format);
         let usetz = Rf_ScalarLogical(TRUE);
         let _u = protect(usetz);

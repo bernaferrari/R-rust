@@ -21,64 +21,61 @@ fn err(s: &str) -> ! {
 }
 
 unsafe fn is_qr(x: SEXP) -> bool {
-    unsafe {
-        let c = getAttrib(x, R_ClassSymbol());
-        if c == R_NilValue() || TYPEOF(c) != STRSXP_C {
-            return false;
-        }
-        for i in 0..XLENGTH(c) {
-            if std::ffi::CStr::from_ptr(CHAR(STRING_ELT(c, i))).to_bytes() == b"qr" {
-                return true;
-            }
-        }
-        false
+    let c = getAttrib(x, R_ClassSymbol());
+    if c == R_NilValue() || TYPEOF(c) != STRSXP_C {
+        return false;
     }
+    for i in 0..XLENGTH(c) {
+        if &crate::sexp::accessors::char_cstr_bytes(STRING_ELT(c, i))[..] == b"qr" {
+            return true;
+        }
+    }
+    false
 }
 
 unsafe fn field(x: SEXP, name: &[u8]) -> SEXP {
-    unsafe {
-        let names = getAttrib(x, R_NamesSymbol());
-        if TYPEOF(names) == STRSXP_C && XLENGTH(names) == XLENGTH(x) {
-            for i in 0..XLENGTH(names) {
-                if std::ffi::CStr::from_ptr(CHAR(STRING_ELT(names, i))).to_bytes() == name {
-                    return VECTOR_ELT(x, i);
-                }
+    let names = getAttrib(x, R_NamesSymbol());
+    if TYPEOF(names) == STRSXP_C && XLENGTH(names) == XLENGTH(x) {
+        for i in 0..XLENGTH(names) {
+            if &crate::sexp::accessors::char_cstr_bytes(STRING_ELT(names, i))[..] == name {
+                return VECTOR_ELT(x, i);
             }
         }
-        R_NilValue()
     }
+    R_NilValue()
 }
 
 unsafe fn match_args(args: SEXP) -> [Option<SEXP>; 3] {
-    unsafe {
-        let mut matched = [None; 3];
-        let mut cell = args;
-        while cell != R_NilValue() && !cell.is_null() {
-            if TAG(cell) != R_NilValue() && !TAG(cell).is_null() {
-                let tag = std::ffi::CStr::from_ptr(CHAR(PRINTNAME(TAG(cell)))).to_string_lossy();
-                let index = ["qr", "complete", "ncol"]
-                    .iter()
-                    .position(|name| !tag.is_empty() && name.starts_with(tag.as_ref()))
-                    .unwrap_or_else(|| err("unused argument"));
-                if matched[index].replace(CAR(cell)).is_some() {
-                    err("formal argument matched by multiple actual arguments");
-                }
+    let mut matched = [None; 3];
+    let mut cell = args;
+    while cell != R_NilValue() && !cell.is_null() {
+        if TAG(cell) != R_NilValue() && !TAG(cell).is_null() {
+            let tag = String::from_utf8_lossy(&crate::sexp::accessors::char_cstr_bytes(PRINTNAME(
+                TAG(cell),
+            )))
+            .into_owned();
+            let index = ["qr", "complete", "ncol"]
+                .iter()
+                .position(|name| !tag.is_empty() && name.starts_with(tag.as_str()))
+                .unwrap_or_else(|| err("unused argument"));
+            if matched[index].replace(CAR(cell)).is_some() {
+                err("formal argument matched by multiple actual arguments");
             }
-            cell = CDR(cell);
         }
-        cell = args;
-        while cell != R_NilValue() && !cell.is_null() {
-            if TAG(cell) == R_NilValue() || TAG(cell).is_null() {
-                let slot = matched
-                    .iter_mut()
-                    .find(|slot| slot.is_none())
-                    .unwrap_or_else(|| err("unused argument"));
-                *slot = Some(CAR(cell));
-            }
-            cell = CDR(cell);
-        }
-        matched
+        cell = CDR(cell);
     }
+    cell = args;
+    while cell != R_NilValue() && !cell.is_null() {
+        if TAG(cell) == R_NilValue() || TAG(cell).is_null() {
+            let slot = matched
+                .iter_mut()
+                .find(|slot| slot.is_none())
+                .unwrap_or_else(|| err("unused argument"));
+            *slot = Some(CAR(cell));
+        }
+        cell = CDR(cell);
+    }
+    matched
 }
 
 pub unsafe fn do_qr_X(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {

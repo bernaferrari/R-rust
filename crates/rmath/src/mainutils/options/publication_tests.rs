@@ -78,7 +78,9 @@ fn owned_options_publication_resolves_frame_replaced_by_collecting_callback() {
         (*instance).options_initialization = OptionsInitialization::Initialized;
         let value = f.strings(&["selected"]).unwrap().into_owned().unwrap();
         (*instance).options.insert("selected".into(), value);
-        let _warm = f.wrap(Rf_install(c"selected".as_ptr())).unwrap();
+        let _warm = f
+            .wrap(crate::sexp::symbol::install_str("selected"))
+            .unwrap();
         refresh_options_binding(owner);
         let base = f.wrap(R_BaseEnv()).unwrap().into_owned().unwrap();
         let symbol = f.wrap(options_symbol()).unwrap();
@@ -160,7 +162,9 @@ fn callback_panic(revoke: bool) {
                     "selected".into(),
                     f.strings(&["selected"]).unwrap().into_owned().unwrap(),
                 );
-                let _warm = f.wrap(Rf_install(c"selected".as_ptr())).unwrap();
+                let _warm = f
+                    .wrap(crate::sexp::symbol::install_str("selected"))
+                    .unwrap();
                 refresh_options_binding(token);
                 crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
                     if !observed.replace(true) {

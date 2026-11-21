@@ -111,7 +111,7 @@ fn test_vector_subset_missing_arg() {
                 *INTEGER(x).add(i) = ((i + 1) * 10) as c_int;
             }
             /* Missing arg: create a symbol with empty name */
-            let missing = Rf_install(c"".as_ptr());
+            let missing = crate::sexp::symbol::install_str("");
             let result = VectorSubset(x, missing, R_NilValue());
             /* Should return a duplicate (same length) */
             assert!(!result.is_null());
@@ -132,7 +132,7 @@ fn extract_subset_uses_na_string_for_missing_character_elements() {
     let _session = crate::sexp::session::RSession::new();
     unsafe {
         let values = Rf_allocVector(SEXPTYPE::STRSXP, 1);
-        SET_STRING_ELT(values, 0, Rf_mkChar(c"present".as_ptr()));
+        SET_STRING_ELT(values, 0, crate::sexp::constructors::mk_char_str("present"));
         let indices = Rf_allocVector(SEXPTYPE::INTSXP, 1);
         *INTEGER(indices) = 2;
 

@@ -89,7 +89,7 @@ fn owned_gregexpr_capture_rows_stay_charged_through_real_gc_publication() {
         let starts = owner
             .sexp(crate::sexp::attrib_core::getAttrib(
                 element.as_raw(),
-                crate::sexp::symbol::Rf_install(c"capture.start".as_ptr()),
+                crate::sexp::symbol::install_str("capture.start"),
             ))
             .unwrap()
             .into_owned()
@@ -97,7 +97,7 @@ fn owned_gregexpr_capture_rows_stay_charged_through_real_gc_publication() {
         let lengths = owner
             .sexp(crate::sexp::attrib_core::getAttrib(
                 element.as_raw(),
-                crate::sexp::symbol::Rf_install(c"capture.length".as_ptr()),
+                crate::sexp::symbol::install_str("capture.length"),
             ))
             .unwrap()
             .into_owned()

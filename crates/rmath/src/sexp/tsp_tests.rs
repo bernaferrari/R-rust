@@ -249,16 +249,16 @@ fn owned_tsp_publication_appends_to_chain_replaced_during_cell_allocation() {
         let factory = token.node_factory();
         let object = real_vector(&owner, &[10., 20., 30., 40.]);
         let input = real_vector(&owner, &[1., 4., 1.]);
-        let old_tag = unsafe { token.sexp(super::super::symbol::Rf_install(c"old".as_ptr())) }
+        let old_tag = unsafe { token.sexp(crate::sexp::symbol::install_str("old")) }
             .unwrap()
             .into_owned()
             .unwrap();
-        let current_tag = unsafe { token.sexp(super::super::symbol::Rf_install(c"current".as_ptr())) }
+        let current_tag = unsafe { token.sexp(crate::sexp::symbol::install_str("current")) }
             .unwrap()
             .into_owned()
             .unwrap();
         // Warm the epsilon symbol before arming allocation notifications.
-        unsafe { super::super::symbol::Rf_install(c"ts.eps".as_ptr()) };
+        unsafe { crate::sexp::symbol::install_str("ts.eps") };
         let old = factory
             .pairlist_cell(&factory.nil(), &factory.nil(), &old_tag)
             .unwrap()

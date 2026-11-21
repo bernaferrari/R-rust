@@ -882,6 +882,49 @@ pub unsafe fn CHAR(x: SEXP) -> *const c_char {
     lease.native_projection().cast::<c_char>().cast_const()
 }
 
+/// Copy the bytes `CStr::from_ptr(CHAR(x))` reads, applying `CHAR`'s checks.
+///
+/// Safe spelling of that idiom: the same type, shape and seal checks raise the
+/// same R errors, `NA_STRING` reads as `"NA"`, and bytes stop at the first NUL.
+/// Where `CHAR` would return null (an unregistered pointer) this raises an R
+/// error instead of handing a null pointer to `CStr::from_ptr`.
+pub(crate) fn char_cstr_bytes(x: SEXP) -> Vec<u8> {
+    let Some(read) = header_read(x, "unowned header read") else {
+        super::context::r_error("CHAR requires a character scalar");
+    };
+    if read.snapshot.sxpinfo.type_of() != SEXPTYPE::CHARSXP {
+        super::context::r_error("CHAR requires a character scalar");
+    }
+    if !read.snapshot.has_valid_shape() {
+        super::context::r_error("invalid character shape");
+    }
+    let lease = match &read.origin {
+        HeaderOrigin::Singleton(singleton) if singleton.is_na_string() => return b"NA".to_vec(),
+        HeaderOrigin::Singleton(singleton) => singleton.payload_lease(),
+        HeaderOrigin::Managed { node, .. } => node.heap_identity().payload_lease(node),
+    }
+    .unwrap_or_else(|| {
+        super::context::r_error("character scalar has no committed byte allocation")
+    });
+    let length = usize::try_from(read.snapshot.data.vector().length)
+        .unwrap_or_else(|_| super::context::r_error("invalid character length"));
+    if !lease.matches_header(&read.snapshot)
+        || !lease.is_immutable()
+        || lease.byte_elt(length) != Some(0)
+    {
+        super::context::r_error("character payload must be sealed with a trailing NUL");
+    }
+    let mut bytes = Vec::with_capacity(length);
+    for index in 0..length {
+        match lease.byte_elt(index) {
+            Some(0) => break,
+            Some(byte) => bytes.push(byte),
+            None => super::context::r_error("character payload must be sealed with a trailing NUL"),
+        }
+    }
+    bytes
+}
+
 // ---------------------------------------------------------------------------
 // String/list element accessors
 // ---------------------------------------------------------------------------
@@ -1689,21 +1732,18 @@ mod tests {
         assert_eq!(heap.node_snapshot(&node).unwrap().payload, original.payload);
         unsafe {
             assert_eq!(
-                std::ffi::CStr::from_ptr(CHAR(character)).to_bytes(),
+                &crate::sexp::accessors::char_cstr_bytes(character)[..],
                 "café".as_bytes()
             );
             assert_eq!(ROBJ_DATAPTR(character), CHAR(character).cast::<c_void>());
         }
         let generic = arena.alloc_node(SEXPTYPE::CHARSXP);
-        assert_eq!(
-            unsafe { std::ffi::CStr::from_ptr(CHAR(generic)).to_bytes() },
-            b""
-        );
+        assert_eq!(&crate::sexp::accessors::char_cstr_bytes(generic)[..], b"");
 
         let mut permanent = super::super::instance::persistent::PersistentHeap::new(heap);
         let character = permanent.allocate_chars(b"permanent").unwrap();
         assert_eq!(
-            unsafe { std::ffi::CStr::from_ptr(CHAR(character)).to_bytes() },
+            &crate::sexp::accessors::char_cstr_bytes(character)[..],
             b"permanent"
         );
         assert!(
@@ -1727,7 +1767,10 @@ mod tests {
         let session = super::super::session::RSession::new_for_gc_tests();
         session.with_active(|| unsafe {
             let sentinel = super::super::globals::R_NaString();
-            assert_eq!(std::ffi::CStr::from_ptr(CHAR(sentinel)).to_bytes(), b"NA");
+            assert_eq!(
+                &crate::sexp::accessors::char_cstr_bytes(sentinel)[..],
+                b"NA"
+            );
             assert_eq!(
                 std::ffi::CStr::from_ptr(ROBJ_DATAPTR(sentinel).cast()).to_bytes(),
                 b"NA"

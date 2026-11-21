@@ -54,7 +54,7 @@ pub fn R_get_slot(obj: SEXP, name: SEXP) -> SEXP {
         }
 
         // SAFETY: `c"names"` is a valid NUL-terminated symbol name.
-        let names = crate::attrib_core::getAttrib(obj, unsafe { Rf_install(c"names".as_ptr()) });
+        let names = crate::attrib_core::getAttrib(obj, crate::sexp::symbol::install_str("names"));
         if names.is_null() || names == R_NilValue() || TYPEOF(names) != SEXPTYPE::STRSXP {
             return R_NilValue();
         }
@@ -82,7 +82,7 @@ pub fn R_set_slot(obj: SEXP, name: SEXP, value: SEXP) -> SEXP {
         }
 
         // SAFETY: `c"names"` is a valid NUL-terminated symbol name.
-        let names = crate::attrib_core::getAttrib(obj, unsafe { Rf_install(c"names".as_ptr()) });
+        let names = crate::attrib_core::getAttrib(obj, crate::sexp::symbol::install_str("names"));
         if names.is_null() || names == R_NilValue() || TYPEOF(names) != SEXPTYPE::STRSXP {
             return obj;
         }
@@ -109,9 +109,8 @@ pub fn R_hasSlot(obj: SEXP, name: SEXP) -> SEXP {
             } else if TYPEOF(obj) != SEXPTYPE::VECSXP {
                 0
             } else {
-                // SAFETY: `c"names"` is a valid NUL-terminated symbol name.
                 let names =
-                    crate::attrib_core::getAttrib(obj, unsafe { Rf_install(c"names".as_ptr()) });
+                    crate::attrib_core::getAttrib(obj, crate::sexp::symbol::install_str("names"));
                 if names.is_null() || names == R_NilValue() || TYPEOF(names) != SEXPTYPE::STRSXP {
                     0
                 } else {
@@ -146,8 +145,12 @@ mod tests {
 
             let names = Rf_allocVector(SEXPTYPE::STRSXP, 1);
             let _names_guard = protect(names);
-            SET_STRING_ELT(names, 0, Rf_mkChar(slot_name.as_ptr()));
-            setAttrib(obj, Rf_install(c"names".as_ptr()), names);
+            SET_STRING_ELT(
+                names,
+                0,
+                crate::sexp::constructors::mk_char_bytes(slot_name.to_bytes()),
+            );
+            setAttrib(obj, crate::sexp::symbol::install_str("names"), names);
             obj
         }
     }
@@ -157,7 +160,7 @@ mod tests {
         let _session = RSession::new();
         unsafe {
             let obj = named_object(c"slot", Rf_ScalarInteger(42));
-            let result = R_get_slot(obj, Rf_mkString(c"slot".as_ptr()));
+            let result = R_get_slot(obj, crate::sexp::constructors::mk_string_str("slot"));
 
             assert_eq!(*INTEGER(result), 42);
         }
@@ -169,10 +172,16 @@ mod tests {
         unsafe {
             let obj = named_object(c"slot", Rf_ScalarInteger(1));
             let replacement = Rf_ScalarInteger(7);
-            let result = R_set_slot(obj, Rf_install(c"slot".as_ptr()), replacement);
+            let result = R_set_slot(obj, crate::sexp::symbol::install_str("slot"), replacement);
 
             assert_eq!(result, replacement);
-            assert_eq!(*INTEGER(R_get_slot(obj, Rf_mkChar(c"slot".as_ptr()))), 7);
+            assert_eq!(
+                *INTEGER(R_get_slot(
+                    obj,
+                    crate::sexp::constructors::mk_char_str("slot")
+                )),
+                7
+            );
         }
     }
 
@@ -181,7 +190,7 @@ mod tests {
         let _session = RSession::new();
         unsafe {
             let obj = named_object(c"slot", Rf_ScalarInteger(1));
-            let result = R_hasSlot(obj, Rf_install(c"slot".as_ptr()));
+            let result = R_hasSlot(obj, crate::sexp::symbol::install_str("slot"));
 
             assert_eq!(*LOGICAL(result), 1);
         }

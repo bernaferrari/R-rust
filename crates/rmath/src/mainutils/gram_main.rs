@@ -600,7 +600,7 @@ mod tests {
     fn test_parse_filename_uses_parse_error_file() {
         let _session = crate::sexp::session::RSession::new();
         unsafe {
-            let file = Rf_mkString(c"script.R".as_ptr());
+            let file = crate::sexp::constructors::mk_string_str("script.R");
             crate::mainutils::source::store_parse_error("parse error", 1, 1, file);
             let s = R_ParseFilename();
             assert_eq!(CStr::from_ptr(s).to_str(), Ok("script.R"));

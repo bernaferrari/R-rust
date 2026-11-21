@@ -2159,7 +2159,7 @@ mod tests {
                 .unwrap();
         }
         let head = factory
-            .wrap(unsafe { crate::sexp::symbol::Rf_install(c"+".as_ptr()) })
+            .wrap(unsafe { crate::sexp::symbol::install_str("+") })
             .unwrap();
         let body = factory
             .allocate(|arena| {
@@ -2699,8 +2699,8 @@ mod tests {
     fn test_duplicate_string_vector() {
         let _session = crate::sexp::session::RSession::new();
         unsafe {
-            let s1 = crate::sexp::constructors::Rf_mkChar(c"a".as_ptr());
-            let s2 = crate::sexp::constructors::Rf_mkChar(c"b".as_ptr());
+            let s1 = crate::sexp::constructors::mk_char_str("a");
+            let s2 = crate::sexp::constructors::mk_char_str("b");
             let v = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
             let _v_guard = crate::sexp::protect::protect(v);
             SET_STRING_ELT(v, 0, s1);

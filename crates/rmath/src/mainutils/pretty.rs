@@ -275,7 +275,7 @@ pub unsafe fn dot_pretty(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
             crate::sexp::accessors::SET_STRING_ELT(
                 name_vec,
                 i as R_xlen_t,
-                crate::sexp::constructors::Rf_mkChar(c.as_ptr()),
+                crate::sexp::constructors::mk_char_bytes(c.to_bytes()),
             );
         }
         crate::sexp::attrib_core::setAttrib(

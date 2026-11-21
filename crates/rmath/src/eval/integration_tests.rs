@@ -106,7 +106,7 @@ fn test_self_evaluating_logical() {
 fn test_self_evaluating_string() {
     let _session = crate::sexp::session::RSession::new();
     unsafe {
-        let val = Rf_mkString(c"hello".as_ptr());
+        let val = crate::sexp::constructors::mk_string_str("hello");
         assert!(!val.is_null());
         let env = make_test_env();
         let result = crate::eval::eval::Rf_eval(val, env);

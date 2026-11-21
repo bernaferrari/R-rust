@@ -1978,7 +1978,7 @@ mod tests {
         let tags = session.with_active(|| unsafe {
             [c"names", c"dim", c"class"].map(|name| {
                 factory
-                    .wrap(crate::sexp::symbol::Rf_install(name.as_ptr()))
+                    .wrap(crate::sexp::symbol::install_cstr(&name))
                     .unwrap()
             })
         });

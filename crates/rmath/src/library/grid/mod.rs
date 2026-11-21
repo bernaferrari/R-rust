@@ -192,28 +192,28 @@ pub(crate) fn scalar_logical(value: c_int) -> SEXP {
 /// Allocate a one-element STRSXP from Rust text.
 #[inline]
 pub(crate) fn mk_string(text: &str) -> SEXP {
-    let text = std::ffi::CString::new(text)
-        .unwrap_or_else(|_| r_error("embedded NUL byte in grid string"));
-    // SAFETY: see `alloc_vector`; `text` is a live NUL-terminated buffer.
-    unsafe { crate::sexp::constructors::Rf_mkString(text.as_ptr()) }
+    if text.as_bytes().contains(&0) {
+        r_error("embedded NUL byte in grid string");
+    }
+    crate::sexp::constructors::mk_string_str(text)
 }
 
 /// Allocate a CHARSXP from Rust text.
 #[inline]
 pub(crate) fn mk_char(text: &str) -> SEXP {
-    let text = std::ffi::CString::new(text)
-        .unwrap_or_else(|_| r_error("embedded NUL byte in grid string"));
-    // SAFETY: see `alloc_vector`; `text` is a live NUL-terminated buffer.
-    unsafe { crate::sexp::constructors::Rf_mkChar(text.as_ptr()) }
+    if text.as_bytes().contains(&0) {
+        r_error("embedded NUL byte in grid string");
+    }
+    crate::sexp::constructors::mk_char_str(text)
 }
 
 /// Intern a symbol from Rust text.
 #[inline]
 pub(crate) fn install(text: &str) -> SEXP {
-    let text = std::ffi::CString::new(text)
-        .unwrap_or_else(|_| r_error("embedded NUL byte in grid symbol"));
-    // SAFETY: `text` is a live NUL-terminated buffer for the call.
-    unsafe { crate::sexp::symbol::Rf_install(text.as_ptr()) }
+    if text.as_bytes().contains(&0) {
+        r_error("embedded NUL byte in grid symbol");
+    }
+    crate::sexp::symbol::install_str(text)
 }
 
 /// Protect a live object and return the RAII guard.
@@ -279,12 +279,10 @@ pub(crate) fn lookup(name: &str) -> Option<crate::mainutils::native_routines::Na
 }
 
 pub unsafe fn install_call_symbols(env: SEXP) {
-    unsafe {
-        let cname = std::ffi::CString::new("C_pretty2").unwrap_or_default();
-        crate::sexp::envir::defineVar(
-            crate::sexp::symbol::Rf_install(cname.as_ptr()),
-            crate::sexp::constructors::Rf_mkString(cname.as_ptr()),
-            env,
-        );
-    }
+    let cname = std::ffi::CString::new("C_pretty2").unwrap_or_default();
+    crate::sexp::envir::defineVar(
+        crate::sexp::symbol::install_cstr(&cname),
+        crate::sexp::constructors::mk_string_bytes(cname.to_bytes()),
+        env,
+    );
 }

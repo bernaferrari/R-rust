@@ -197,7 +197,11 @@ pub unsafe fn do_getenv(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             for (i, (key, val)) in vars.iter().enumerate() {
                 let combined = format!("{}={}", key, val);
                 let c_str = std::ffi::CString::new(combined).unwrap_or_default();
-                SET_STRING_ELT(ans, i as R_xlen_t, Rf_mkChar(c_str.as_ptr()));
+                SET_STRING_ELT(
+                    ans,
+                    i as R_xlen_t,
+                    crate::sexp::constructors::mk_char_bytes(c_str.to_bytes()),
+                );
             }
             ans
         } else {
@@ -209,7 +213,11 @@ pub unsafe fn do_getenv(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                 let name_str = std::ffi::CStr::from_ptr(name_c).to_str().unwrap_or("");
                 if let Ok(val) = std::env::var(name_str) {
                     let c_str = std::ffi::CString::new(val).unwrap_or_default();
-                    SET_STRING_ELT(ans, j, Rf_mkChar(c_str.as_ptr()));
+                    SET_STRING_ELT(
+                        ans,
+                        j,
+                        crate::sexp::constructors::mk_char_bytes(c_str.to_bytes()),
+                    );
                 } else {
                     SET_STRING_ELT(ans, j, STRING_ELT(unset, 0));
                 }
@@ -375,7 +383,11 @@ pub unsafe fn do_tempfile(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) ->
 
             if let Some(name) = R_tmpnam2(tn, td, te) {
                 let c_str = std::ffi::CString::new(name).unwrap_or_default();
-                SET_STRING_ELT(ans, i, Rf_mkChar(c_str.as_ptr()));
+                SET_STRING_ELT(
+                    ans,
+                    i,
+                    crate::sexp::constructors::mk_char_bytes(c_str.to_bytes()),
+                );
             } else {
                 SET_STRING_ELT(ans, i, STRING_ELT(fileext, 0));
             }
@@ -407,15 +419,15 @@ pub(crate) unsafe fn do_sysinfo_mainutils(_call: SEXP, _op: SEXP, _args: SEXP, _
         let _ans_guard = protect(ans);
 
         // sysname
-        let sysname = Rf_mkString(c"Darwin".as_ptr());
+        let sysname = crate::sexp::constructors::mk_string_str("Darwin");
         SET_VECTOR_ELT(ans, 0, sysname);
 
         // release
-        let release = Rf_mkString(c"".as_ptr());
+        let release = crate::sexp::constructors::mk_string_str("");
         SET_VECTOR_ELT(ans, 1, release);
 
         // version
-        let version = Rf_mkString(c"".as_ptr());
+        let version = crate::sexp::constructors::mk_string_str("");
         SET_VECTOR_ELT(ans, 2, version);
 
         // nodename
@@ -428,17 +440,17 @@ pub(crate) unsafe fn do_sysinfo_mainutils(_call: SEXP, _op: SEXP, _args: SEXP, _
         SET_VECTOR_ELT(ans, 3, nodename);
 
         // machine
-        let machine = Rf_mkString(c"x86_64".as_ptr());
+        let machine = crate::sexp::constructors::mk_string_str("x86_64");
         SET_VECTOR_ELT(ans, 4, machine);
 
         // Set names
         let names = Rf_allocVector3(SEXPTYPE::STRSXP, 5);
         let _names_guard = protect(names);
-        SET_STRING_ELT(names, 0, Rf_mkChar(c"sysname".as_ptr()));
-        SET_STRING_ELT(names, 1, Rf_mkChar(c"release".as_ptr()));
-        SET_STRING_ELT(names, 2, Rf_mkChar(c"version".as_ptr()));
-        SET_STRING_ELT(names, 3, Rf_mkChar(c"nodename".as_ptr()));
-        SET_STRING_ELT(names, 4, Rf_mkChar(c"machine".as_ptr()));
+        SET_STRING_ELT(names, 0, crate::sexp::constructors::mk_char_str("sysname"));
+        SET_STRING_ELT(names, 1, crate::sexp::constructors::mk_char_str("release"));
+        SET_STRING_ELT(names, 2, crate::sexp::constructors::mk_char_str("version"));
+        SET_STRING_ELT(names, 3, crate::sexp::constructors::mk_char_str("nodename"));
+        SET_STRING_ELT(names, 4, crate::sexp::constructors::mk_char_str("machine"));
 
         let names_sym = crate::eval::attrib_core::R_NamesSymbol();
         crate::eval::attrib_core::setAttrib(ans, names_sym, names);
@@ -461,8 +473,16 @@ pub unsafe fn do_sysenvir(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SE
         for (i, (key, val)) in vars.iter().enumerate() {
             let k = std::ffi::CString::new(key.as_str()).unwrap_or_default();
             let v = std::ffi::CString::new(val.as_str()).unwrap_or_default();
-            SET_STRING_ELT(ans, i as R_xlen_t, Rf_mkChar(v.as_ptr()));
-            SET_STRING_ELT(names, i as R_xlen_t, Rf_mkChar(k.as_ptr()));
+            SET_STRING_ELT(
+                ans,
+                i as R_xlen_t,
+                crate::sexp::constructors::mk_char_bytes(v.to_bytes()),
+            );
+            SET_STRING_ELT(
+                names,
+                i as R_xlen_t,
+                crate::sexp::constructors::mk_char_bytes(k.to_bytes()),
+            );
         }
 
         let names_sym = crate::eval::attrib_core::R_NamesSymbol();
@@ -512,11 +532,9 @@ mod tests {
         let before = std::env::var_os(name);
         let session = crate::sexp::session::RSession::new();
         session.with_active(|| unsafe {
-            let nm = crate::sexp::constructors::Rf_mkString(
-                c"RPORT_INTERNAL_SETENV_POLICY_TEST".as_ptr(),
-            );
+            let nm = crate::sexp::constructors::mk_string_str("RPORT_INTERNAL_SETENV_POLICY_TEST");
             let _nm = protect(nm);
-            let val = crate::sexp::constructors::Rf_mkString(c"leak".as_ptr());
+            let val = crate::sexp::constructors::mk_string_str("leak");
             let _val = protect(val);
             let tail = crate::sexp::constructors::Rf_cons(val, crate::sexp::globals::R_NilValue());
             let _tail = protect(tail);

@@ -144,7 +144,7 @@ mod tests {
         let weak = owner.weak_owner().unwrap();
         let instance = session.with_active_in(|instance| instance);
         let entered = session.with_active_in(|_| unsafe {
-            crate::sexp::symbol::Rf_install(c".__nlenz_method_entered__".as_ptr())
+            crate::sexp::symbol::install_str(".__nlenz_method_entered__")
         });
         let revoked_from_method = Rc::new(Cell::new(false));
         let callback_observed = Rc::clone(&revoked_from_method);
@@ -351,7 +351,7 @@ mod tests {
             let object = factory.strings(&["validity argument"]).unwrap();
             let class = factory.strings(&["OwnedValidityCall"]).unwrap();
             setAttrib(object.as_raw(), R_ClassSymbol(), class.as_raw());
-            let symbol = factory.wrap(Rf_install(c"object".as_ptr())).unwrap();
+            let symbol = factory.wrap(crate::sexp::symbol::install_str("object")).unwrap();
             let formals = factory
                 .pairlist_cell(&factory.missing(), &factory.nil(), &symbol)
                 .unwrap();
@@ -617,7 +617,7 @@ mod tests {
     fn test_isString() {
         let _session = crate::sexp::session::RSession::new();
         unsafe {
-            let s = Rf_mkString(b"hello\0".as_ptr() as *const c_char);
+            let s = crate::sexp::constructors::mk_string_str("hello");
             assert_eq!(isString(s), TRUE);
             let v = Rf_ScalarInteger(42);
             assert_eq!(isString(v), FALSE);
@@ -643,7 +643,7 @@ mod tests {
     fn test_isValidString() {
         let _session = crate::sexp::session::RSession::new();
         unsafe {
-            let s = Rf_mkString(b"hello\0".as_ptr() as *const c_char);
+            let s = crate::sexp::constructors::mk_string_str("hello");
             assert_eq!(isValidString(s), TRUE);
             let empty = Rf_mkString(b"\x00".as_ptr() as *const c_char);
             assert_eq!(isValidString(empty), FALSE);
@@ -701,7 +701,7 @@ mod tests {
             SET_STRING_ELT(
                 class_vec,
                 0,
-                Rf_mkChar(b"myclass\0".as_ptr() as *const c_char),
+                crate::sexp::constructors::mk_char_str("myclass"),
             );
             setAttrib(v, R_ClassSymbol(), class_vec);
             SET_OBJECT(v, 1); // Ensure OBJECT bit is set for this test
@@ -715,7 +715,7 @@ mod tests {
         let _session = crate::sexp::session::RSession::new();
         unsafe {
             let v = Rf_ScalarInteger(42);
-            let what = Rf_mkString(b"integer\0".as_ptr() as *const c_char);
+            let what = crate::sexp::constructors::mk_string_str("integer");
             let which = Rf_ScalarLogical(FALSE);
             let args = Rf_cons(v, Rf_cons(what, Rf_cons(which, R_NilValue())));
             let result = do_inherits(ptr::null_mut(), ptr::null_mut(), args, ptr::null_mut());
@@ -884,7 +884,7 @@ mod tests {
             SET_STRING_ELT(
                 class_vec,
                 0,
-                Rf_mkChar(b"myclass\0".as_ptr() as *const c_char),
+                crate::sexp::constructors::mk_char_str("myclass"),
             );
             setAttrib(v, R_ClassSymbol(), class_vec);
             SET_OBJECT(v, 1); // Ensure OBJECT bit is set for this test
@@ -979,10 +979,10 @@ mod tests {
     fn test_createS3Vars() {
         let _session = crate::sexp::session::RSession::new();
         unsafe {
-            let generic = Rf_mkString(b"print\0".as_ptr() as *const c_char);
+            let generic = crate::sexp::constructors::mk_string_str("print");
             let group = Rf_mkString(b"\x00".as_ptr() as *const c_char);
-            let klass = Rf_mkString(b"foo\0".as_ptr() as *const c_char);
-            let method = Rf_mkString(b"print.foo\0".as_ptr() as *const c_char);
+            let klass = crate::sexp::constructors::mk_string_str("foo");
+            let method = crate::sexp::constructors::mk_string_str("print.foo");
             let callenv = R_GlobalEnv();
             let defenv = R_GlobalEnv();
 
@@ -1005,7 +1005,7 @@ mod tests {
         let _session = crate::sexp::session::RSession::new();
         unsafe {
             let name = sym(".Generic");
-            let value = Rf_mkString(b"print\0".as_ptr() as *const c_char);
+            let value = crate::sexp::constructors::mk_string_str("print");
             let vars = addS3Var(R_NilValue(), name, value);
             assert!(!vars.is_null());
             assert_eq!(TAG(vars), name);
@@ -1051,9 +1051,9 @@ mod tests {
         unsafe {
             let klass = Rf_allocVector(SEXPTYPE::STRSXP, 3);
             let _klass_guard = protect(klass);
-            SET_STRING_ELT(klass, 0, Rf_mkChar(b"foo\0".as_ptr() as *const c_char));
-            SET_STRING_ELT(klass, 1, Rf_mkChar(b"bar\0".as_ptr() as *const c_char));
-            SET_STRING_ELT(klass, 2, Rf_mkChar(b"baz\0".as_ptr() as *const c_char));
+            SET_STRING_ELT(klass, 0, crate::sexp::constructors::mk_char_str("foo"));
+            SET_STRING_ELT(klass, 1, crate::sexp::constructors::mk_char_str("bar"));
+            SET_STRING_ELT(klass, 2, crate::sexp::constructors::mk_char_str("baz"));
 
             assert_eq!(stringPositionTr(klass, c"foo"), 0);
             assert_eq!(stringPositionTr(klass, c"bar"), 1);
@@ -1069,9 +1069,9 @@ mod tests {
         unsafe {
             let klass = Rf_allocVector(SEXPTYPE::STRSXP, 3);
             let _klass_guard = protect(klass);
-            SET_STRING_ELT(klass, 0, Rf_mkChar(b"foo\0".as_ptr() as *const c_char));
-            SET_STRING_ELT(klass, 1, Rf_mkChar(b"bar\0".as_ptr() as *const c_char));
-            SET_STRING_ELT(klass, 2, Rf_mkChar(b"baz\0".as_ptr() as *const c_char));
+            SET_STRING_ELT(klass, 0, crate::sexp::constructors::mk_char_str("foo"));
+            SET_STRING_ELT(klass, 1, crate::sexp::constructors::mk_char_str("bar"));
+            SET_STRING_ELT(klass, 2, crate::sexp::constructors::mk_char_str("baz"));
 
             let suffix = stringSuffix(klass, 1);
             assert!(!suffix.is_null());
@@ -1163,7 +1163,7 @@ mod tests {
         // pin, just like a session-level eval.
         let session = crate::sexp::session::RSession::new();
         session.with_active(|| unsafe {
-            let class_name = Rf_mkString(b"LegacyClass\0".as_ptr() as *const c_char);
+            let class_name = crate::sexp::constructors::mk_string_str("LegacyClass");
             let args = Rf_cons(class_name, R_NilValue());
             let result = do_setClass(ptr::null_mut(), ptr::null_mut(), args, R_GlobalEnv());
             assert!(!result.is_null());
@@ -1313,8 +1313,8 @@ mod tests {
             let rooted = session.sexp(result).unwrap();
             let result = rooted.as_raw();
             assert_eq!(IS_S4_OBJECT(result), TRUE);
-            assert_eq!(asReal(R_do_slot(result, Rf_install(c"x".as_ptr()))), 1.0);
-            assert_eq!(asReal(R_do_slot(result, Rf_install(c"y".as_ptr()))), 2.0);
+            assert_eq!(asReal(R_do_slot(result, crate::sexp::symbol::install_str("x"))), 1.0);
+            assert_eq!(asReal(R_do_slot(result, crate::sexp::symbol::install_str("y"))), 2.0);
         }
     }
 
@@ -1322,7 +1322,7 @@ mod tests {
     fn test_R_set_prim_method() {
         let _session = crate::sexp::session::RSession::new();
         unsafe {
-            let code = Rf_mkString(c"clear".as_ptr());
+            let code = crate::sexp::constructors::mk_string_str("clear");
             let _code = crate::sexp::protect::protect(code);
             let result =
                 R_set_prim_method(R_NilValue(), R_NilValue(), code, R_NilValue(), R_NilValue());
@@ -1330,7 +1330,7 @@ mod tests {
             let _ = R_set_prim_method(
                 R_NilValue(),
                 R_NilValue(),
-                Rf_mkString(c"set".as_ptr()),
+                crate::sexp::constructors::mk_string_str("set"),
                 R_NilValue(),
                 R_NilValue(),
             );
@@ -1359,10 +1359,10 @@ mod tests {
             assert!(!op.is_null());
             let generic =
                 crate::mainutils::dstruct::mkCLOSXP(R_NilValue(), R_NilValue(), R_GlobalEnv());
-            let methods = Rf_mkString(c"plus-methods".as_ptr());
+            let methods = crate::sexp::constructors::mk_string_str("plus-methods");
 
-            let name = Rf_mkString(c"+".as_ptr());
-            R_set_prim_method(name, op, Rf_mkString(c"set".as_ptr()), generic, methods);
+            let name = crate::sexp::constructors::mk_string_str("+");
+            R_set_prim_method(name, op, crate::sexp::constructors::mk_string_str("set"), generic, methods);
 
             assert_eq!(R_primitive_generic(op), generic);
             assert_eq!(R_primitive_methods(op), methods);
@@ -1373,7 +1373,7 @@ mod tests {
             R_set_prim_method(
                 name,
                 op,
-                Rf_mkString(c"clear".as_ptr()),
+                crate::sexp::constructors::mk_string_str("clear"),
                 R_NilValue(),
                 R_NilValue(),
             );
@@ -1438,7 +1438,7 @@ mod tests {
             SET_STRING_ELT(
                 class_vec,
                 0,
-                Rf_mkChar(b"myclass\0".as_ptr() as *const c_char),
+                crate::sexp::constructors::mk_char_str("myclass"),
             );
             setAttrib(v, R_ClassSymbol(), class_vec);
             SET_OBJECT(v, 1); // Ensure OBJECT bit is set for this test
@@ -1458,7 +1458,7 @@ mod tests {
         let _session = crate::sexp::session::RSession::new();
         unsafe {
             let v = Rf_ScalarInteger(42);
-            let what = Rf_mkString(b"integer\0".as_ptr() as *const c_char);
+            let what = crate::sexp::constructors::mk_string_str("integer");
             let which = Rf_ScalarLogical(FALSE);
             let result = inherits3(v, what, which);
             assert!(!result.is_null());
@@ -1474,8 +1474,8 @@ mod tests {
             let v = Rf_ScalarInteger(42);
             let what = Rf_allocVector(SEXPTYPE::STRSXP, 2);
             let _what_guard = protect(what);
-            SET_STRING_ELT(what, 0, Rf_mkChar(b"numeric\0".as_ptr() as *const c_char));
-            SET_STRING_ELT(what, 1, Rf_mkChar(b"integer\0".as_ptr() as *const c_char));
+            SET_STRING_ELT(what, 0, crate::sexp::constructors::mk_char_str("numeric"));
+            SET_STRING_ELT(what, 1, crate::sexp::constructors::mk_char_str("integer"));
             let which = Rf_ScalarLogical(TRUE);
             let result = inherits3(v, what, which);
             assert!(!result.is_null());
@@ -1491,15 +1491,15 @@ mod tests {
             let v = Rf_ScalarInteger(42);
             let class_vec = Rf_allocVector(SEXPTYPE::STRSXP, 2);
             let _class_vec_guard = protect(class_vec);
-            SET_STRING_ELT(class_vec, 0, Rf_mkChar(b"foo\0".as_ptr() as *const c_char));
-            SET_STRING_ELT(class_vec, 1, Rf_mkChar(b"bar\0".as_ptr() as *const c_char));
+            SET_STRING_ELT(class_vec, 0, crate::sexp::constructors::mk_char_str("foo"));
+            SET_STRING_ELT(class_vec, 1, crate::sexp::constructors::mk_char_str("bar"));
             setAttrib(v, R_ClassSymbol(), class_vec);
 
             let what = Rf_allocVector(SEXPTYPE::STRSXP, 3);
             let _what_guard = protect(what);
-            SET_STRING_ELT(what, 0, Rf_mkChar(b"baz\0".as_ptr() as *const c_char));
-            SET_STRING_ELT(what, 1, Rf_mkChar(b"bar\0".as_ptr() as *const c_char));
-            SET_STRING_ELT(what, 2, Rf_mkChar(b"foo\0".as_ptr() as *const c_char));
+            SET_STRING_ELT(what, 0, crate::sexp::constructors::mk_char_str("baz"));
+            SET_STRING_ELT(what, 1, crate::sexp::constructors::mk_char_str("bar"));
+            SET_STRING_ELT(what, 2, crate::sexp::constructors::mk_char_str("foo"));
             let which = Rf_ScalarLogical(TRUE);
             let result = inherits3(v, what, which);
             assert!(!result.is_null());
@@ -1532,8 +1532,8 @@ mod tests {
             let input = factory.wrap(Rf_ScalarInteger(42)).unwrap();
             let s3_class = factory.strings(&["Restored", "integer"]).unwrap();
             let marker = factory.strings(&["retained attribute"]).unwrap();
-            let s3_symbol = Rf_install(c".S3Class".as_ptr());
-            let marker_symbol = Rf_install(c"marker".as_ptr());
+            let s3_symbol = crate::sexp::symbol::install_str(".S3Class");
+            let marker_symbol = crate::sexp::symbol::install_str("marker");
             setAttrib(input.as_raw(), s3_symbol, s3_class.as_raw());
             setAttrib(input.as_raw(), marker_symbol, marker.as_raw());
             SET_S4_OBJECT(input.as_raw());
@@ -1630,7 +1630,7 @@ mod tests {
             let class = factory.strings(&["integer"]).unwrap();
             setAttrib(
                 basic.as_raw(),
-                Rf_install(c".S3Class".as_ptr()),
+                crate::sexp::symbol::install_str(".S3Class"),
                 class.as_raw(),
             );
             let restored = factory
@@ -1648,7 +1648,7 @@ mod tests {
             let data = factory.wrap(Rf_ScalarInteger(7)).unwrap();
             setAttrib(
                 wrapper.as_raw(),
-                Rf_install(c".Data".as_ptr()),
+                crate::sexp::symbol::install_str(".Data"),
                 data.as_raw(),
             );
             assert_eq!(
@@ -1696,7 +1696,7 @@ mod tests {
     fn test_install_pname() {
         let _session = crate::sexp::session::RSession::new();
         unsafe {
-            let s = Rf_install(c"test_sym".as_ptr());
+            let s = crate::sexp::symbol::install_str("test_sym");
             assert!(!s.is_null());
             let pname = PRINTNAME(s);
             assert!(!pname.is_null(), "PRINTNAME should not be null");
@@ -1718,7 +1718,7 @@ mod tests {
             SET_STRING_ELT(
                 class_vec,
                 0,
-                Rf_mkChar(b"myclass\0".as_ptr() as *const c_char),
+                crate::sexp::constructors::mk_char_str("myclass"),
             );
             setAttrib(v, class_sym, class_vec);
             SET_OBJECT(v, 1); // Ensure OBJECT bit is set for this test
@@ -1741,7 +1741,7 @@ mod tests {
             SET_STRING_ELT(
                 class_vec,
                 0,
-                Rf_mkChar(b"myclass\0".as_ptr() as *const c_char),
+                crate::sexp::constructors::mk_char_str("myclass"),
             );
             setAttrib(v, class_sym, class_vec);
             SET_OBJECT(v, 1); // Ensure OBJECT bit is set for this test

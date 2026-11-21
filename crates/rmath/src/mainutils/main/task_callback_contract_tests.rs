@@ -419,7 +419,7 @@ fn task_callback_lazy_metadata_survives_gc_reentry_lock_and_forces_once() {
             let owner = session.owner_token().unwrap();
             let base = crate::sexp::globals::R_BaseEnv();
             install_task_callback_symbols(base);
-            let symbol = Rf_install(binding.as_ptr());
+            let symbol = crate::sexp::symbol::install_cstr(&binding);
             let promise = owner
                 .sexp(crate::sexp::envir::R_findVarInFrame(base, symbol))
                 .unwrap()
@@ -494,7 +494,7 @@ fn task_callback_lazy_metadata_survives_gc_reentry_lock_and_forces_once() {
                 let value = owner
                     .sexp(crate::sexp::envir::R_findVarInFrame(
                         base,
-                        Rf_install(name.as_ptr()),
+                        crate::sexp::symbol::install_cstr(&name),
                     ))
                     .unwrap();
                 assert_eq!(value.typeof_(), SEXPTYPE::PROMSXP);
@@ -520,7 +520,7 @@ fn task_callback_lazy_metadata_revocation_never_publishes_into_replacement() {
         original.with_active(|| unsafe {
             let base = crate::sexp::globals::R_BaseEnv();
             install_task_callback_symbols(base);
-            let symbol = Rf_install(binding.as_ptr());
+            let symbol = crate::sexp::symbol::install_cstr(&binding);
             let promise = owner
                 .sexp(crate::sexp::envir::R_findVarInFrame(base, symbol))
                 .unwrap()

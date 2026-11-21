@@ -5,7 +5,7 @@
 //! Routines for manipulating B-splines, based on the pseudo-code in
 //! Schumacher (Wiley, 1981) and the CMLIB library DBSPLINES.
 
-use std::os::raw::{c_char, c_double, c_int, c_void};
+use std::os::raw::{c_double, c_int, c_void};
 use std::ptr;
 
 use crate::attrib_core::setAttrib;
@@ -16,7 +16,6 @@ use crate::sexp::constructors::Rf_allocVector;
 use crate::sexp::ffi::{NA_INTEGER, SEXP, SEXPTYPE};
 use crate::sexp::memory_ext::R_alloc;
 use crate::sexp::protect::protect;
-use crate::sexp::symbol::Rf_install;
 
 // ---------------------------------------------------------------------------
 // spl_struct — internal B-spline state
@@ -351,7 +350,7 @@ pub unsafe fn spline_basis(knots: SEXP, order: SEXP, xvals: SEXP, derivs: SEXP) 
         }
 
         // Set the "Offsets" attribute on the result
-        let offsets_sym = Rf_install(b"Offsets\0".as_ptr() as *const c_char);
+        let offsets_sym = crate::sexp::symbol::install_str("Offsets");
         setAttrib(val, offsets_sym, offsets);
 
         val
@@ -409,14 +408,12 @@ pub(crate) fn lookup(name: &str) -> Option<crate::mainutils::native_routines::Na
 }
 
 pub unsafe fn install_splines_call_symbols(env: SEXP) {
-    unsafe {
-        for name in SPLINE_CALL_NAMES {
-            let cname = std::ffi::CString::new(*name).unwrap_or_default();
-            crate::sexp::envir::defineVar(
-                crate::sexp::symbol::Rf_install(cname.as_ptr()),
-                crate::sexp::constructors::Rf_mkString(cname.as_ptr()),
-                env,
-            );
-        }
+    for name in SPLINE_CALL_NAMES {
+        let cname = std::ffi::CString::new(*name).unwrap_or_default();
+        crate::sexp::envir::defineVar(
+            crate::sexp::symbol::install_cstr(&cname),
+            crate::sexp::constructors::mk_string_bytes(cname.to_bytes()),
+            env,
+        );
     }
 }

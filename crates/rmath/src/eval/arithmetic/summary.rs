@@ -399,7 +399,6 @@ pub(crate) fn eval_prod(args: SEXP, shape: SummaryShape, na_rm: bool) -> SEXP {
 }
 
 pub(crate) fn eval_minmax_string(args: SEXP, na_rm: bool, op: SummaryOp) -> SEXP {
-    unsafe {
         let mut best: Option<String> = None;
         let mut current = args;
         while !current.is_null() && current != R_NilValue() {
@@ -502,12 +501,11 @@ pub(crate) fn eval_minmax_string(args: SEXP, na_rm: bool, op: SummaryOp) -> SEXP
         let out = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
         if let Some(text) = best {
             let cstr = std::ffi::CString::new(text).unwrap_or_default();
-            SET_STRING_ELT(out, 0, Rf_mkChar(cstr.as_ptr()));
+        SET_STRING_ELT(out, 0, crate::sexp::constructors::mk_char_bytes(cstr.to_bytes()));
         } else {
             SET_STRING_ELT(out, 0, crate::sexp::globals::R_NaString());
         }
         out
-    }
 }
 
 pub(crate) fn eval_minmax(
@@ -815,9 +813,8 @@ pub fn do_is_type(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             }
             return Rf_ScalarLogical(FALSE);
         }
-        let Some(x) = Sexp::from_raw(x) else {
-            return Rf_ScalarLogical(FALSE);
-        };
+        let Ok(value) = Sexp::with_registered_raw(x, |x| {
+            let x = x.clone();
         if op_name == "is.numeric" {
             let raw = CAR(args);
             if crate::mainutils::objects::inherits2(raw, c"Date") != 0
@@ -839,6 +836,10 @@ pub fn do_is_type(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             _ => false,
         };
         Rf_ScalarLogical(if result { TRUE } else { FALSE })
+        }) else {
+            return Rf_ScalarLogical(FALSE);
+        };
+        value
     }
 }
 

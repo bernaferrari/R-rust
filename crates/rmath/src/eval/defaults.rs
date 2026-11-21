@@ -304,7 +304,6 @@ pub fn isNumericOnly(x: SEXP) -> c_int {
 /// Ported from R's `asLogicalNoNA()` in eval.c. Used in condition
 /// evaluation for if/while statements.
 pub fn asLogicalNoNA(s: SEXP, _call: SEXP) -> c_int {
-    unsafe {
         let len = LENGTH(s);
         if len > 1 {
             eprintln!("Error: the condition has length > 1");
@@ -313,9 +312,8 @@ pub fn asLogicalNoNA(s: SEXP, _call: SEXP) -> c_int {
             });
         }
         if len > 0 {
-            let Some(value) = Sexp::from_raw(s) else {
-                return NA_INTEGER;
-            };
+        let Ok(value) = Sexp::with_registered_raw(s, |value| {
+            let value = value.clone();
             match value.clone().typeof_() {
                 SEXPTYPE::LGLSXP => {
                     logical_scalar_no_na(value.logical_elt(0).unwrap_or(NA_INTEGER))
@@ -325,10 +323,13 @@ pub fn asLogicalNoNA(s: SEXP, _call: SEXP) -> c_int {
                 }
                 _ => crate::mainutils::coerce::asLogical(s),
             }
+        }) else {
+            return NA_INTEGER;
+        };
+        value
         } else {
             NA_INTEGER
         }
-    }
 }
 
 fn logical_scalar_no_na(value: c_int) -> c_int {

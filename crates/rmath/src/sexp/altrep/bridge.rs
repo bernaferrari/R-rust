@@ -70,10 +70,13 @@ pub(super) fn compact_real_sequence<'s>(
 /// # Safety
 /// `raw` and its reachable metadata must be live throughout this nonallocating read.
 pub(crate) unsafe fn has_extension_raw(raw: SEXP) -> bool {
-    let Some(view) = (unsafe { Sexp::from_raw(raw) }) else {
+    let Ok(value) = Sexp::with_registered_raw(raw, |view| {
+        let view = view.clone();
+        Metadata::load(&view).is_some()
+    }) else {
         return false;
     };
-    Metadata::load(&view).is_some()
+    value
 }
 
 /// # Safety

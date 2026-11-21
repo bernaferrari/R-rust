@@ -4,12 +4,11 @@
 //!
 //! Provides do_parse() for .Internal(parse(...)).
 
-use std::ffi::CStr;
 use std::os::raw::c_int;
 use std::ptr;
 
 use crate::sexp::accessors::{
-    CAR, CDR, CHAR, SET_STRING_ELT, SET_VECTOR_ELT, STRING_ELT, TAG, TYPEOF, XLENGTH,
+    CAR, CDR, SET_STRING_ELT, SET_VECTOR_ELT, STRING_ELT, TAG, TYPEOF, XLENGTH,
 };
 use crate::sexp::constructors::{Rf_allocVector3, Rf_mkCharLen};
 use crate::sexp::context::RError;
@@ -23,7 +22,6 @@ use crate::sexp::protect::protect;
 ///
 /// .Internal( parse(file, n, text, prompt, srcfile, encoding) )
 unsafe fn keep_source_enabled(args: SEXP) -> bool {
-    unsafe {
         let mut p = args;
         while !p.is_null() && p != R_NilValue() {
             if crate::mainutils::essentials::tag_name(p).as_deref() == Some("keep.source") {
@@ -31,11 +29,8 @@ unsafe fn keep_source_enabled(args: SEXP) -> bool {
             }
             p = CDR(p);
         }
-        let opt = crate::mainutils::options::GetOption1(crate::sexp::symbol::Rf_install(
-            c"keep.source".as_ptr(),
-        ));
+    let opt = crate::mainutils::options::GetOption1(crate::sexp::symbol::install_str("keep.source"));
         !opt.is_null() && crate::mainutils::coerce::asLogical(opt) == 1
-    }
 }
 
 pub unsafe fn do_parse(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
@@ -105,7 +100,7 @@ pub unsafe fn do_parse(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
             if elt == R_NaString() {
                 parse_failure("invalid 'text' argument");
             }
-            let source = CStr::from_ptr(CHAR(elt)).to_string_lossy().into_owned();
+            let source = String::from_utf8_lossy(&crate::sexp::accessors::char_cstr_bytes(elt)).into_owned();
             if !combined.is_empty() {
                 combined.push('\n');
             }
@@ -154,7 +149,6 @@ unsafe fn parse_content_to_exprs(content: &str) -> SEXP {
 // Local element-to-string (mirrors essentials' helper without
 // reaching into its private `shared` module).
 unsafe fn local_elt_to_string(x: SEXP, i: R_xlen_t) -> String {
-    unsafe {
         if x.is_null() || x == R_NilValue() {
             return String::new();
         }
@@ -165,8 +159,7 @@ unsafe fn local_elt_to_string(x: SEXP, i: R_xlen_t) -> String {
         if elt.is_null() {
             return String::new();
         }
-        CStr::from_ptr(CHAR(elt)).to_string_lossy().into_owned()
-    }
+    String::from_utf8_lossy(&crate::sexp::accessors::char_cstr_bytes(elt)).into_owned()
 }
 
 // Compare a tag symbol's printed name without reaching into private modules.
@@ -464,7 +457,7 @@ mod tests {
     fn test_do_parse_text_arg() {
         let _session = crate::sexp::session::RSession::new_for_gc_tests();
         unsafe {
-            let text = crate::sexp::constructors::Rf_mkString(c"1 + 2".as_ptr());
+            let text = crate::sexp::constructors::mk_string_str("1 + 2");
             let n = crate::sexp::constructors::Rf_ScalarInteger(-1);
             let args = crate::sexp::constructors::Rf_cons(
                 R_NilValue(),
@@ -497,7 +490,7 @@ mod tests {
     fn test_do_parse_records_error_message_and_context() {
         let _session = crate::sexp::session::RSession::new_for_gc_tests();
         unsafe {
-            let text = crate::sexp::constructors::Rf_mkString(c"1 +".as_ptr());
+            let text = crate::sexp::constructors::mk_string_str("1 +");
             let n = crate::sexp::constructors::Rf_ScalarInteger(-1);
             let args = crate::sexp::constructors::Rf_cons(
                 R_NilValue(),
@@ -518,7 +511,7 @@ mod tests {
             assert_eq!(R_GetParseError(), 1);
             assert_eq!(R_GetParseErrorCol(), 1);
             assert!(
-                CStr::from_ptr(crate::mainutils::main::R_GetParseErrorMsg())
+                std::ffi::CStr::from_ptr(crate::mainutils::main::R_GetParseErrorMsg())
                     .to_string_lossy()
                     .contains("unexpected end of input")
             );
@@ -527,7 +520,7 @@ mod tests {
             assert_eq!(TYPEOF(context), SEXPTYPE::STRSXP);
             assert_eq!(XLENGTH(context), 1);
             assert_eq!(
-                CStr::from_ptr(CHAR(STRING_ELT(context, 0))).to_str(),
+                std::str::from_utf8(&crate::sexp::accessors::char_cstr_bytes(STRING_ELT(context, 0))),
                 Ok("1 +")
             );
         }

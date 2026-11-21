@@ -20,12 +20,11 @@ use crate::sexp::accessors::{
     TYPEOF, XLENGTH,
 };
 use crate::sexp::attrib_core::{R_ClassSymbol, getAttrib};
-use crate::sexp::constructors::{Rf_allocList, Rf_allocVector3, Rf_mkChar};
+use crate::sexp::constructors::{Rf_allocList, Rf_allocVector3};
 use crate::sexp::envir::R_findVar;
 use crate::sexp::ffi::{R_NA_BIT_PATTERN, R_xlen_t, Rcomplex, SEXP, SEXPTYPE};
 use crate::sexp::globals::{R_MissingArg, R_NaString, R_NilValue, R_UnboundValue};
 use crate::sexp::protect::protect;
-use crate::sexp::symbol::Rf_install;
 
 use std::io::{self, BufRead, Cursor, Read, Write};
 use std::os::raw::c_int;
@@ -400,7 +399,7 @@ unsafe fn read_saved_object(reader: &mut Cursor<&[u8]>, depth: usize) -> io::Res
                     .filter(|name| !name.is_empty())
                     .ok_or_else(|| io::Error::other("invalid legacy workspace symbol"))?;
                 let cstr = std::ffi::CString::new(name).map_err(io::Error::other)?;
-                Ok(Rf_install(cstr.as_ptr()))
+                Ok(crate::sexp::symbol::install_cstr(&cstr))
             }
             SEXPTYPE::CLOSXP => {
                 let formals = read_saved_object(reader, depth + 1)?;
@@ -476,7 +475,11 @@ unsafe fn read_saved_object(reader: &mut Cursor<&[u8]>, depth: usize) -> io::Res
                     match InStringAscii(reader)? {
                         Some(text) => {
                             let cstr = std::ffi::CString::new(text).map_err(io::Error::other)?;
-                            SET_STRING_ELT(value, i, Rf_mkChar(cstr.as_ptr()));
+                            SET_STRING_ELT(
+                                value,
+                                i,
+                                crate::sexp::constructors::mk_char_bytes(cstr.to_bytes()),
+                            );
                         }
                         None => SET_STRING_ELT(value, i, R_NaString()),
                     }
@@ -648,27 +651,23 @@ unsafe fn eval_save_argument(arg: Option<SEXP>, rho: SEXP) -> SEXP {
 }
 
 unsafe fn names_from_save_list(list: SEXP) -> Vec<String> {
-    unsafe {
-        if list == R_NilValue() {
-            return Vec::new();
-        }
-        if TYPEOF(list) != SEXPTYPE::STRSXP {
-            error("'list' must be a character vector");
-        }
-        let mut names = Vec::new();
-        for i in 0..XLENGTH(list) {
-            let charsxp = STRING_ELT(list, i);
-            if charsxp.is_null() || charsxp == R_NaString() {
-                error("'list' contains missing object names");
-            }
-            names.push(
-                std::ffi::CStr::from_ptr(CHAR(charsxp))
-                    .to_string_lossy()
-                    .into_owned(),
-            );
-        }
-        names
+    if list == R_NilValue() {
+        return Vec::new();
     }
+    if TYPEOF(list) != SEXPTYPE::STRSXP {
+        error("'list' must be a character vector");
+    }
+    let mut names = Vec::new();
+    for i in 0..XLENGTH(list) {
+        let charsxp = STRING_ELT(list, i);
+        if charsxp.is_null() || charsxp == R_NaString() {
+            error("'list' contains missing object names");
+        }
+        names.push(
+            String::from_utf8_lossy(&crate::sexp::accessors::char_cstr_bytes(charsxp)).into_owned(),
+        );
+    }
+    names
 }
 
 /// Read the Rport-specific ASCII layout written before standard workspace
@@ -691,7 +690,7 @@ fn read_legacy_workspace<'a>(
             .filter(|name| !name.is_empty())
             .ok_or_else(|| io::Error::other("invalid legacy workspace binding name"))?;
         let name = std::ffi::CString::new(name).map_err(io::Error::other)?;
-        let symbol = unsafe { Rf_install(name.as_ptr()) };
+        let symbol = crate::sexp::symbol::install_cstr(&name);
         let symbol = builder.wrap(symbol).map_err(io::Error::other)?;
         let value = unsafe { read_saved_object(&mut reader, 0) }?;
         let value = builder.wrap(value).map_err(io::Error::other)?;
@@ -753,7 +752,7 @@ unsafe fn workspace_codec(value: SEXP, ascii: bool) -> Option<&'static str> {
                 if name == R_NaString() {
                     error("missing value where TRUE/FALSE needed");
                 }
-                match std::ffi::CStr::from_ptr(CHAR(name)).to_bytes() {
+                match &crate::sexp::accessors::char_cstr_bytes(name)[..] {
                     b"gzip" => Some("gzip"),
                     b"bzip2" => Some("bzip2"),
                     b"xz" => Some("xz"),

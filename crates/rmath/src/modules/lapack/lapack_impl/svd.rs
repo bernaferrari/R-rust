@@ -199,9 +199,9 @@ pub fn La_svd(jobu: SEXP, x: SEXP, s: SEXP, u: SEXP, vt: SEXP) -> SEXP {
         let _val_guard = protect(val);
         let nm = Rf_allocVector(STRSXP_C, 3);
         let _names_guard = protect(nm);
-        SET_STRING_ELT(nm, 0, Rf_mkChar(b"d\0".as_ptr() as *const c_char));
-        SET_STRING_ELT(nm, 1, Rf_mkChar(b"u\0".as_ptr() as *const c_char));
-        SET_STRING_ELT(nm, 2, Rf_mkChar(b"vt\0".as_ptr() as *const c_char));
+        SET_STRING_ELT(nm, 0, crate::sexp::constructors::mk_char_str("d"));
+        SET_STRING_ELT(nm, 1, crate::sexp::constructors::mk_char_str("u"));
+        SET_STRING_ELT(nm, 2, crate::sexp::constructors::mk_char_str("vt"));
         setAttrib(val, R_NamesSymbol(), nm);
         SET_VECTOR_ELT(val, 0, s);
         SET_VECTOR_ELT(val, 1, u);
@@ -418,9 +418,9 @@ pub fn La_svd_cmplx(jobu: SEXP, x: SEXP, s: SEXP, u: SEXP, v: SEXP) -> SEXP {
         let _val_guard = protect(val);
         let nm = Rf_allocVector(STRSXP_C, 3);
         let _nm_guard = protect(nm);
-        SET_STRING_ELT(nm, 0, Rf_mkChar(b"d\0".as_ptr() as *const c_char));
-        SET_STRING_ELT(nm, 1, Rf_mkChar(b"u\0".as_ptr() as *const c_char));
-        SET_STRING_ELT(nm, 2, Rf_mkChar(b"vt\0".as_ptr() as *const c_char));
+        SET_STRING_ELT(nm, 0, crate::sexp::constructors::mk_char_str("d"));
+        SET_STRING_ELT(nm, 1, crate::sexp::constructors::mk_char_str("u"));
+        SET_STRING_ELT(nm, 2, crate::sexp::constructors::mk_char_str("vt"));
         setAttrib(val, R_NamesSymbol(), nm);
         SET_VECTOR_ELT(val, 0, s);
         SET_VECTOR_ELT(val, 1, u);

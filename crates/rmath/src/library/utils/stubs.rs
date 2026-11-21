@@ -411,9 +411,7 @@ pub fn processevents() -> SEXP {
 // tzcode_type -- Return which timezone code implementation is in use
 // ---------------------------------------------------------------------------
 pub fn tzcode_type() -> SEXP {
-    unsafe {
-        crate::sexp::constructors::Rf_mkString(b"internal\0".as_ptr() as *const core::ffi::c_char)
-    }
+    crate::sexp::constructors::mk_string_str("internal")
 }
 
 // ---------------------------------------------------------------------------
@@ -551,14 +549,14 @@ pub fn crc64(in_: SEXP) -> SEXP {
             let hash = compute_crc64(b"");
             let hash_str = format!("{:016x}", hash);
             let c_hash = CString::new(hash_str).unwrap_or_default();
-            return Rf_mkString(c_hash.as_ptr());
+            return crate::sexp::constructors::mk_string_bytes(c_hash.to_bytes());
         }
 
         let bytes = CStr::from_ptr(c_ptr).to_bytes();
         let hash = compute_crc64(bytes);
         let hash_str = format!("{:016x}", hash);
         let c_hash = CString::new(hash_str).unwrap_or_default();
-        Rf_mkString(c_hash.as_ptr())
+        crate::sexp::constructors::mk_string_bytes(c_hash.to_bytes())
     }
 }
 
@@ -635,7 +633,7 @@ pub fn nsl(hostname: SEXP) -> SEXP {
         }
 
         let c_ip = CString::new(ip).unwrap_or_default();
-        Rf_mkString(c_ip.as_ptr())
+        crate::sexp::constructors::mk_string_bytes(c_ip.to_bytes())
     }
 }
 

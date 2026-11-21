@@ -43,7 +43,11 @@ unsafe fn grid_origin() -> Sexp<'static> {
         let id = Rf_allocVector3(SEXPTYPE::RAWSXP, token.len() as i64);
         let _id = protect(id);
         std::ptr::copy_nonoverlapping(token.as_ptr(), RAW(id), token.len());
-        setAttrib(origin, Rf_install(c"rport.grid.token".as_ptr()), id);
+        setAttrib(
+            origin,
+            crate::sexp::symbol::install_str("rport.grid.token"),
+            id,
+        );
         let origin = OwnerToken::current()
             .and_then(|owner| owner.sexp(origin)?.into_owned())
             .unwrap_or_else(|error| base_error(error.to_string()));
@@ -54,13 +58,16 @@ unsafe fn grid_origin() -> Sexp<'static> {
 
 unsafe fn round_tripped_in_session(recording: SEXP) -> bool {
     unsafe {
-        let saved = getAttrib(recording, Rf_install(c"rport.grid.origin".as_ptr()));
+        let saved = getAttrib(
+            recording,
+            crate::sexp::symbol::install_str("rport.grid.origin"),
+        );
         let live = with_required_current_instance(|inst| (*inst).grid_recording_origin.clone());
         let Some(live) = live else { return false };
         if saved == live.as_raw() || TYPEOF(saved) != SEXPTYPE::ENVSXP {
             return false;
         }
-        let symbol = Rf_install(c"rport.grid.token".as_ptr());
+        let symbol = crate::sexp::symbol::install_str("rport.grid.token");
         let saved = getAttrib(saved, symbol);
         let live = getAttrib(live.as_raw(), symbol);
         TYPEOF(saved) == SEXPTYPE::RAWSXP
@@ -113,7 +120,7 @@ pub(crate) unsafe fn install_namespace_replay(namespace: SEXP) {
 }
 
 unsafe fn recording_state_symbol() -> SEXP {
-    unsafe { Rf_install(c"rport.graphics.state".as_ptr()) }
+    crate::sexp::symbol::install_str("rport.graphics.state")
 }
 
 fn scale_rect(rect: &mut [f32; 4], sx: f32, sy: f32) {
@@ -374,7 +381,7 @@ pub(crate) unsafe fn record(_: SEXP, _: SEXP, _: SEXP, _: SEXP) -> SEXP {
         setAttrib(
             result,
             R_ClassSymbol(),
-            Rf_mkString(c"recordedplot".as_ptr()),
+            crate::sexp::constructors::mk_string_str("recordedplot"),
         );
         if has_recorded_operations {
             snapshot_portable_state(result);
@@ -382,12 +389,12 @@ pub(crate) unsafe fn record(_: SEXP, _: SEXP, _: SEXP, _: SEXP) -> SEXP {
                 let origin = grid_origin();
                 setAttrib(
                     result,
-                    Rf_install(c"rport.grid.commands".as_ptr()),
+                    crate::sexp::symbol::install_str("rport.grid.commands"),
                     commands.as_raw(),
                 );
                 setAttrib(
                     result,
-                    Rf_install(c"rport.grid.origin".as_ptr()),
+                    crate::sexp::symbol::install_str("rport.grid.origin"),
                     origin.as_raw(),
                 );
             }
@@ -422,7 +429,10 @@ pub(crate) unsafe fn replay(_: SEXP, _: SEXP, args: SEXP, _: SEXP) -> SEXP {
         let state = decode_portable_state(recording).unwrap_or_else(|e| base_error(e));
         let source_dimensions = scene.dimensions();
         let target_dimensions = r_graphics_engine::DrawTarget::dimensions(&target);
-        let commands = getAttrib(recording, Rf_install(c"rport.grid.commands".as_ptr()));
+        let commands = getAttrib(
+            recording,
+            crate::sexp::symbol::install_str("rport.grid.commands"),
+        );
         if commands != R_NilValue() && target.is_pdf() {
             let commands = OwnerToken::current()
                 .and_then(|owner| owner.sexp(commands)?.into_owned())

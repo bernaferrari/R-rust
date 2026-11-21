@@ -68,7 +68,7 @@ mod special_environment_identity_tests {
     ) -> Sexp<'s> {
         let base = factory.wrap(unsafe { R_BaseEnv() }).unwrap();
         let symbol = factory
-            .wrap(unsafe { crate::sexp::symbol::Rf_install(c".BaseNamespaceEnv".as_ptr()) })
+            .wrap(unsafe { crate::sexp::symbol::install_str(".BaseNamespaceEnv") })
             .unwrap();
         // Bootstrap uses a shared original base frame, then replaces its placeholder.
         unsafe { crate::sexp::envir::define_var_safe(symbol.clone(), base.clone(), base.clone()) };

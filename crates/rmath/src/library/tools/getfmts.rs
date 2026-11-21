@@ -149,7 +149,7 @@ pub fn getfmts(format: SEXP) -> SEXP {
                     }
 
                     if (nstar as usize) < MAXNARGS {
-                        let star_char = Rf_mkChar(c"*".as_ptr());
+                        let star_char = crate::sexp::constructors::mk_char_str("*");
                         SET_STRING_ELT(res, nstar as R_xlen_t, star_char);
                         maxlen = if (nstar as usize + 1) > maxlen {
                             nstar as usize + 1
@@ -166,7 +166,7 @@ pub fn getfmts(format: SEXP) -> SEXP {
                     }
                     if (nthis as usize) < MAXNARGS {
                         let c_str = std::ffi::CString::new(fmt).unwrap_or_default();
-                        let char_sxp = Rf_mkChar(c_str.as_ptr());
+                        let char_sxp = crate::sexp::constructors::mk_char_bytes(c_str.to_bytes());
                         SET_STRING_ELT(res, nthis as R_xlen_t, char_sxp);
                         maxlen = if (nthis as usize + 1) > maxlen {
                             nthis as usize + 1

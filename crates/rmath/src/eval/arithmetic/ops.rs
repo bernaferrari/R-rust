@@ -12,9 +12,8 @@ pub(crate) fn math1_vec(call: SEXP, sa: SEXP, f: fn(f64) -> f64) -> SEXP {
         };
         let n = x.clone().len();
         let result_raw = Rf_allocVector3(SEXPTYPE::REALSXP, n);
-        let Some(result) = Sexp::from_raw(result_raw) else {
-            return R_NilValue();
-        };
+        let Ok(value) = Sexp::with_registered_raw(result_raw, |result| {
+            let result = result.clone();
         let _result_guard = protect(result_raw);
         // SAFETY: result is freshly allocated; no payload reference was lent.
         let mut result_mut = SexpMut::from_owned(result);
@@ -38,6 +37,10 @@ pub(crate) fn math1_vec(call: SEXP, sa: SEXP, f: fn(f64) -> f64) -> SEXP {
         }
         propagate_unary_vector_attributes(result_raw, sa, n);
         result_raw
+        }) else {
+            return R_NilValue();
+        };
+        value
     }
 }
 
@@ -100,9 +103,8 @@ pub(crate) fn factor_na_result(e1: SEXP, e2: SEXP) -> SEXP {
         };
         let n = n1.max(n2);
         let result_raw = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
-        let Some(result) = Sexp::from_raw(result_raw) else {
-            return R_NilValue();
-        };
+        let Ok(value) = Sexp::with_registered_raw(result_raw, |result| {
+            let result = result.clone();
         let _result_guard = protect(result_raw);
         // SAFETY: result is freshly allocated; no payload reference was lent.
         let mut result_mut = SexpMut::from_owned(result);
@@ -111,6 +113,10 @@ pub(crate) fn factor_na_result(e1: SEXP, e2: SEXP) -> SEXP {
         }
         let _ = result_mut.freeze();
         result_raw
+        }) else {
+            return R_NilValue();
+        };
+        value
     }
 }
 
@@ -141,7 +147,6 @@ pub(crate) fn factor_arith(op: &str, call: SEXP, a: SEXP, b: SEXP) -> Option<SEX
 /// as.character(<factor>): level strings by 1-based code; NA and 0 codes
 /// stay NA.
 pub(crate) fn factor_as_character(f: SEXP) -> SEXP {
-    unsafe {
         let n = XLENGTH(f);
         let out = Rf_allocVector3(SEXPTYPE::STRSXP, n);
         if out.is_null() {
@@ -161,7 +166,7 @@ pub(crate) fn factor_as_character(f: SEXP) -> SEXP {
                 if level.is_null() || level == R_NaString() {
                     let sentinel = na_level_sentinel(levels, n_levels);
                     let c = std::ffi::CString::new(sentinel).unwrap_or_default();
-                    Rf_mkChar(c.as_ptr())
+                crate::sexp::constructors::mk_char_bytes(c.to_bytes())
                 } else {
                     level
                 }
@@ -169,7 +174,6 @@ pub(crate) fn factor_as_character(f: SEXP) -> SEXP {
             SET_STRING_ELT(out, i as i64, s);
         }
         out
-    }
 }
 pub(crate) fn na_level_sentinel(levels: SEXP, n_levels: i32) -> String {
     let mut sentinel = "  NA ".to_string();
@@ -320,9 +324,8 @@ pub(crate) fn factor_scalar_string_compare(
     unsafe {
         let n = XLENGTH(f);
         let result_raw = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
-        let Some(result) = Sexp::from_raw(result_raw) else {
-            return R_NilValue();
-        };
+        let Ok(value) = Sexp::with_registered_raw(result_raw, |result| {
+            let result = result.clone();
         let _result_guard = protect(result_raw);
         // SAFETY: result is freshly allocated; no payload reference was lent.
         let mut result_mut = SexpMut::from_owned(result);
@@ -338,6 +341,10 @@ pub(crate) fn factor_scalar_string_compare(
         }
         let _ = result_mut.freeze();
         result_raw
+        }) else {
+            return R_NilValue();
+        };
+        value
     }
 }
 
@@ -361,9 +368,8 @@ pub(crate) fn complex_relop(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
         let n2 = XLENGTH(b);
         let n = n1.max(n2);
         let result_raw = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
-        let Some(result) = Sexp::from_raw(result_raw) else {
-            return R_NilValue();
-        };
+        let Ok(value) = Sexp::with_registered_raw(result_raw, |result| {
+            let result = result.clone();
         let _result_guard = protect(result_raw);
         // SAFETY: result is freshly allocated; no payload reference was lent.
         let mut result_mut = SexpMut::from_owned(result);
@@ -381,6 +387,10 @@ pub(crate) fn complex_relop(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
         }
         let _ = result_mut.freeze();
         result_raw
+        }) else {
+            return R_NilValue();
+        };
+        value
     }
 }
 

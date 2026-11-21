@@ -118,7 +118,7 @@ pub fn socklisten(sport: SEXP) -> SEXP {
         let host = Rf_allocVector(SEXPTYPE::STRSXP, 1);
         let _host_guard = protect(host);
         SET_STRING_ELT(host, 0, Rf_mkChar(buf.as_ptr()));
-        setAttrib(ans, Rf_install(b"host\0".as_ptr() as *const c_char), host);
+        setAttrib(ans, crate::sexp::symbol::install_str("host"), host);
         ans
     }
 }

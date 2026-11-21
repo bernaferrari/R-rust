@@ -257,9 +257,7 @@ pub fn do_addTryHandlers(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// `cptr` must point to a live context on the current context stack.
 unsafe fn R_InsertRestartHandlers(cptr: *mut crate::sexp::context::RCNTXT, cname: &CStr) {
     unsafe {
-        let h = GetOption1(Rf_install(
-            b"browser.error.handler\0".as_ptr() as *const c_char
-        ));
+        let h = GetOption1(crate::sexp::symbol::install_str("browser.error.handler"));
         let h = if !h.is_null() && TYPEOF(h) == SEXPTYPE::CLOSXP {
             h
         } else {

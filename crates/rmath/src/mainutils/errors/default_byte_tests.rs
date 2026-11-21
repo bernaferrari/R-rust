@@ -24,8 +24,8 @@ fn deparse_callback(action: u8, stop_condition: bool) {
     unsafe {
         crate::sexp::session::with_instance_active(instance, || {
             let call = context::own_control_value(Rf_lang2(
-                Rf_install(c"render_target".as_ptr()),
-                Rf_install(c"x".as_ptr()),
+                crate::sexp::symbol::install_str("render_target"),
+                crate::sexp::symbol::install_str("x"),
             ));
             let stop_message = if stop_condition {
                 let factory = crate::sexp::owner::OwnerToken::from_raw(instance).node_factory();

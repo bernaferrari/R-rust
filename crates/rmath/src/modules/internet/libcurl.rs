@@ -1097,7 +1097,7 @@ pub(crate) fn in_do_curlVersion(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> 
         if !d.is_null() && !(*d).version.is_null() {
             SET_STRING_ELT(ans, 0, Rf_mkChar((*d).version));
         } else {
-            SET_STRING_ELT(ans, 0, Rf_mkChar(b"\0".as_ptr() as *const c_char));
+            SET_STRING_ELT(ans, 0, crate::sexp::constructors::mk_char_str(""));
         }
 
         // ssl_version attribute
@@ -1108,7 +1108,7 @@ pub(crate) fn in_do_curlVersion(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> 
             setAttrib(ans, sSSLVersion, value);
         } else if !d.is_null() {
             let sSSLVersion = install(b"ssl_version\0".as_ptr() as *const c_char);
-            let value = Rf_mkString(b"none\0".as_ptr() as *const c_char);
+            let value = crate::sexp::constructors::mk_string_str("none");
             let _value_guard = protect(value);
             setAttrib(ans, sSSLVersion, value);
         }
@@ -1121,7 +1121,7 @@ pub(crate) fn in_do_curlVersion(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> 
             setAttrib(ans, sLibSSHVersion, value);
         } else {
             let sLibSSHVersion = install(b"libssh_version\0".as_ptr() as *const c_char);
-            let value = Rf_mkString(b"\0".as_ptr() as *const c_char);
+            let value = crate::sexp::constructors::mk_string_str("");
             let _value_guard = protect(value);
             setAttrib(ans, sLibSSHVersion, value);
         }
@@ -1687,7 +1687,7 @@ mod tests {
             let owner = session.owner_token().expect("live session owner");
             let values = [
                 session
-                    .sexp(unsafe { Rf_mkString(c"https://unused.invalid".as_ptr()) })
+                    .sexp(unsafe { crate::sexp::constructors::mk_string_str("https://unused.invalid") })
                     .expect("owned URL"),
                 session
                     .sexp(unsafe { Rf_ScalarLogical(0) })

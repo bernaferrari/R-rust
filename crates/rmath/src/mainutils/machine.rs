@@ -36,10 +36,6 @@ unsafe fn R_NamesSymbol() -> SEXP {
     unsafe { crate::eval::attrib_core::R_NamesSymbol() }
 }
 
-unsafe fn install(name: *const std::os::raw::c_char) -> SEXP {
-    unsafe { crate::sexp::symbol::Rf_install(name) }
-}
-
 // ---------------------------------------------------------------------------
 // R_AccuracyInfo
 // ---------------------------------------------------------------------------
@@ -111,10 +107,16 @@ unsafe fn define_machine_binding(rho: SEXP, ans: SEXP) {
     let Ok(env) = Environment::new(rho) else {
         return;
     };
-    let Some(machine_symbol) = (unsafe { Sexp::from_raw(install(c".Machine".as_ptr())) }) else {
+    let Ok(value) = Sexp::with_registered_raw(
+        crate::sexp::symbol::install_str(".Machine"),
+        |machine_symbol| {
+            let machine_symbol = machine_symbol.clone();
+            let _ = env.define(machine_symbol, ans);
+        },
+    ) else {
         return;
     };
-    let _ = env.define(machine_symbol, ans);
+    value
 }
 
 // ---------------------------------------------------------------------------
@@ -238,8 +240,8 @@ mod tests {
 
             let env = Environment::new(Sexp::from_raw(env_raw).expect("environment"))
                 .expect("environment facade");
-            let machine_symbol =
-                Sexp::from_raw(install(c".Machine".as_ptr())).expect(".Machine symbol");
+            let machine_symbol = Sexp::from_raw(crate::sexp::symbol::install_str(".Machine"))
+                .expect(".Machine symbol");
             let machine = env
                 .find_in_frame(machine_symbol)
                 .expect(".Machine lookup")

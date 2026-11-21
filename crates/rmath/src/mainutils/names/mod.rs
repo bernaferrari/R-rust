@@ -18,7 +18,6 @@ use crate::sexp::accessors::{
     CAR, CDR, CHAR, LENGTH, OBJECT, PRIMOFFSET, PRINTNAME, SET_ATTRIB, SET_INTERNAL, SET_PRINTNAME,
     SET_SYMVALUE, TYPEOF,
 };
-use crate::sexp::constructors::Rf_mkString;
 use crate::sexp::context::RError;
 use crate::sexp::ffi::{FALSE, NA_INTEGER, R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
@@ -402,7 +401,7 @@ fn installFunTab(i: usize) {
         };
 
         let name_cstr = std::ffi::CString::new(entry_name).unwrap_or_default();
-        let sym = Rf_install(name_cstr.as_ptr());
+        let sym = crate::sexp::symbol::install_cstr(&name_cstr);
 
         let prim = mkPRIMSXP(i as c_int, entry.eval % 10);
 
@@ -423,65 +422,63 @@ fn installFunTab(i: usize) {
 /// Install all the symbol shortcuts used by the interpreter.
 /// These are global pointers to frequently accessed symbols.
 pub fn SymbolShortcuts() {
-    unsafe {
-        // These use Rf_install which is our HashMap-based implementation.
-        // The results are cached in the symbol table.
-        let _ = Rf_install(b"[[\0".as_ptr() as *const c_char);
-        let _ = Rf_install(b"[\0".as_ptr() as *const c_char);
-        let _ = Rf_install(b"{\0".as_ptr() as *const c_char);
-        let _ = Rf_install(b"class\0".as_ptr() as *const c_char);
-        let _ = Rf_install(b".Device\0".as_ptr() as *const c_char);
-        let _ = Rf_install(b"dimnames\0".as_ptr() as *const c_char);
-        let _ = Rf_install(b"dim\0".as_ptr() as *const c_char);
-        let _ = Rf_install(b"$\0".as_ptr() as *const c_char);
-        let _ = Rf_install(b"@\0".as_ptr() as *const c_char);
-        let _ = Rf_install(b"...\0".as_ptr() as *const c_char);
-        let _ = Rf_install(b"drop\0".as_ptr() as *const c_char);
-        let _ = Rf_install(b"eval\0".as_ptr() as *const c_char);
-        let _ = Rf_install(b".Last.value\0".as_ptr() as *const c_char);
-        let _ = Rf_install(b"levels\0".as_ptr() as *const c_char);
-        let _ = Rf_install(b"mode\0".as_ptr() as *const c_char);
-        let _ = Rf_install(b"name\0".as_ptr() as *const c_char);
-        let _ = Rf_install(b"names\0".as_ptr() as *const c_char);
-        let _ = Rf_install(b"na.rm\0".as_ptr() as *const c_char);
-        let _ = Rf_install(b"package\0".as_ptr() as *const c_char);
-        let _ = Rf_install(b"previous\0".as_ptr() as *const c_char);
-        let _ = Rf_install(b"quote\0".as_ptr() as *const c_char);
-        let _ = Rf_install(b"row.names\0".as_ptr() as *const c_char);
-        let _ = Rf_install(b".Random.seed\0".as_ptr() as *const c_char);
-        let _ = Rf_install(b"sort.list\0".as_ptr() as *const c_char);
-        let _ = Rf_install(b"source\0".as_ptr() as *const c_char);
-        let _ = Rf_install(b"tsp\0".as_ptr() as *const c_char);
-        let _ = Rf_install(b"comment\0".as_ptr() as *const c_char);
-        let _ = Rf_install(b".Environment\0".as_ptr() as *const c_char);
-        let _ = Rf_install(b"exact\0".as_ptr() as *const c_char);
-        let _ = Rf_install(b"recursive\0".as_ptr() as *const c_char);
-        let _ = Rf_install(b"srcfile\0".as_ptr() as *const c_char);
-        let _ = Rf_install(b"srcref\0".as_ptr() as *const c_char);
-        let _ = Rf_install(b"wholeSrcref\0".as_ptr() as *const c_char);
-        let _ = Rf_install(b"*tmp*\0".as_ptr() as *const c_char);
-        let _ = Rf_install(b"use.names\0".as_ptr() as *const c_char);
-        let _ = Rf_install(b":\0".as_ptr() as *const c_char);
-        let _ = Rf_install(b"::\0".as_ptr() as *const c_char);
-        let _ = Rf_install(b":::\0".as_ptr() as *const c_char);
-        let _ = Rf_install(b"conn_id\0".as_ptr() as *const c_char);
-        let _ = Rf_install(b".Devices\0".as_ptr() as *const c_char);
-        let _ = Rf_install(b"base\0".as_ptr() as *const c_char);
-        let _ = Rf_install(b"spec\0".as_ptr() as *const c_char);
-        let _ = Rf_install(b".__NAMESPACE__.\0".as_ptr() as *const c_char);
-        let _ = Rf_install(b"as.character\0".as_ptr() as *const c_char);
-        let _ = Rf_install(b"function\0".as_ptr() as *const c_char);
-        let _ = Rf_install(b".Generic\0".as_ptr() as *const c_char);
-        let _ = Rf_install(b".Method\0".as_ptr() as *const c_char);
-        let _ = Rf_install(b".Methods\0".as_ptr() as *const c_char);
-        let _ = Rf_install(b".defined\0".as_ptr() as *const c_char);
-        let _ = Rf_install(b".target\0".as_ptr() as *const c_char);
-        let _ = Rf_install(b".Group\0".as_ptr() as *const c_char);
-        let _ = Rf_install(b".Class\0".as_ptr() as *const c_char);
-        let _ = Rf_install(b".GenericCallEnv\0".as_ptr() as *const c_char);
-        let _ = Rf_install(b".GenericDefEnv\0".as_ptr() as *const c_char);
-        let _ = Rf_install(b".packageName\0".as_ptr() as *const c_char);
-    }
+    // These use Rf_install which is our HashMap-based implementation.
+    // The results are cached in the symbol table.
+    let _ = crate::sexp::symbol::install_str("[[");
+    let _ = crate::sexp::symbol::install_str("[");
+    let _ = crate::sexp::symbol::install_str("{");
+    let _ = crate::sexp::symbol::install_str("class");
+    let _ = crate::sexp::symbol::install_str(".Device");
+    let _ = crate::sexp::symbol::install_str("dimnames");
+    let _ = crate::sexp::symbol::install_str("dim");
+    let _ = crate::sexp::symbol::install_str("$");
+    let _ = crate::sexp::symbol::install_str("@");
+    let _ = crate::sexp::symbol::install_str("...");
+    let _ = crate::sexp::symbol::install_str("drop");
+    let _ = crate::sexp::symbol::install_str("eval");
+    let _ = crate::sexp::symbol::install_str(".Last.value");
+    let _ = crate::sexp::symbol::install_str("levels");
+    let _ = crate::sexp::symbol::install_str("mode");
+    let _ = crate::sexp::symbol::install_str("name");
+    let _ = crate::sexp::symbol::install_str("names");
+    let _ = crate::sexp::symbol::install_str("na.rm");
+    let _ = crate::sexp::symbol::install_str("package");
+    let _ = crate::sexp::symbol::install_str("previous");
+    let _ = crate::sexp::symbol::install_str("quote");
+    let _ = crate::sexp::symbol::install_str("row.names");
+    let _ = crate::sexp::symbol::install_str(".Random.seed");
+    let _ = crate::sexp::symbol::install_str("sort.list");
+    let _ = crate::sexp::symbol::install_str("source");
+    let _ = crate::sexp::symbol::install_str("tsp");
+    let _ = crate::sexp::symbol::install_str("comment");
+    let _ = crate::sexp::symbol::install_str(".Environment");
+    let _ = crate::sexp::symbol::install_str("exact");
+    let _ = crate::sexp::symbol::install_str("recursive");
+    let _ = crate::sexp::symbol::install_str("srcfile");
+    let _ = crate::sexp::symbol::install_str("srcref");
+    let _ = crate::sexp::symbol::install_str("wholeSrcref");
+    let _ = crate::sexp::symbol::install_str("*tmp*");
+    let _ = crate::sexp::symbol::install_str("use.names");
+    let _ = crate::sexp::symbol::install_str(":");
+    let _ = crate::sexp::symbol::install_str("::");
+    let _ = crate::sexp::symbol::install_str(":::");
+    let _ = crate::sexp::symbol::install_str("conn_id");
+    let _ = crate::sexp::symbol::install_str(".Devices");
+    let _ = crate::sexp::symbol::install_str("base");
+    let _ = crate::sexp::symbol::install_str("spec");
+    let _ = crate::sexp::symbol::install_str(".__NAMESPACE__.");
+    let _ = crate::sexp::symbol::install_str("as.character");
+    let _ = crate::sexp::symbol::install_str("function");
+    let _ = crate::sexp::symbol::install_str(".Generic");
+    let _ = crate::sexp::symbol::install_str(".Method");
+    let _ = crate::sexp::symbol::install_str(".Methods");
+    let _ = crate::sexp::symbol::install_str(".defined");
+    let _ = crate::sexp::symbol::install_str(".target");
+    let _ = crate::sexp::symbol::install_str(".Group");
+    let _ = crate::sexp::symbol::install_str(".Class");
+    let _ = crate::sexp::symbol::install_str(".GenericCallEnv");
+    let _ = crate::sexp::symbol::install_str(".GenericDefEnv");
+    let _ = crate::sexp::symbol::install_str(".packageName");
 }
 
 // ---------------------------------------------------------------------------
@@ -607,7 +604,7 @@ pub unsafe fn installS3Signature(className: *const c_char, methodName: *const c_
         }
 
         let sig_cstr = std::ffi::CString::new(sig).unwrap_or_default();
-        Rf_install(sig_cstr.as_ptr())
+        crate::sexp::symbol::install_cstr(&sig_cstr)
     }
 }
 
@@ -619,178 +616,178 @@ pub unsafe fn installS3Signature(className: *const c_char, methodName: *const c_
 /// Looks up an internal function and dispatches to its C implementation.
 pub fn do_internal(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
-        let factory = crate::sexp::object::SessionNodeFactory::new(
-            crate::sexp::owner::OwnerToken::current()
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
-        );
-        let args_owner = factory
-            .wrap(args)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        let env_owner = factory
-            .wrap(env)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        let call_owner = factory
-            .wrap(call)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        let s = CAR(args_owner.as_raw());
-        // s is the unevaluated call supplied to .Internal, represented as a
-        // language object in ordinary source and as a pairlist in a few
-        // low-level call paths.
-        if s.is_null() || (TYPEOF(s) != SEXPTYPE::LISTSXP && TYPEOF(s) != SEXPTYPE::LANGSXP) {
-            panic_any(RError {
-                message: "invalid .Internal() argument".to_string(),
-            });
-        }
-        let fun = CAR(s);
-        // fun must be a symbol
-        if fun.is_null() || TYPEOF(fun) != SEXPTYPE::SYMSXP {
-            panic_any(RError {
-                message: "invalid .Internal() argument".to_string(),
-            });
-        }
-        let pname = PRINTNAME(fun);
-        let name_str = if !pname.is_null() {
-            let pc = CHAR(pname);
-            if !pc.is_null() {
-                std::ffi::CStr::from_ptr(pc)
-                    .to_str()
-                    .unwrap_or("?")
-                    .to_string()
+        crate::sexp::owner::OwnerToken::with_current(|token_owner| {
+            let factory = crate::sexp::object::SessionNodeFactory::new(token_owner);
+            let args_owner = factory
+                .wrap(args)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            let env_owner = factory
+                .wrap(env)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            let call_owner = factory
+                .wrap(call)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            let s = CAR(args_owner.as_raw());
+            // s is the unevaluated call supplied to .Internal, represented as a
+            // language object in ordinary source and as a pairlist in a few
+            // low-level call paths.
+            if s.is_null() || (TYPEOF(s) != SEXPTYPE::LISTSXP && TYPEOF(s) != SEXPTYPE::LANGSXP) {
+                panic_any(RError {
+                    message: "invalid .Internal() argument".to_string(),
+                });
+            }
+            let fun = CAR(s);
+            // fun must be a symbol
+            if fun.is_null() || TYPEOF(fun) != SEXPTYPE::SYMSXP {
+                panic_any(RError {
+                    message: "invalid .Internal() argument".to_string(),
+                });
+            }
+            let pname = PRINTNAME(fun);
+            let name_str = if !pname.is_null() {
+                let pc = CHAR(pname);
+                if !pc.is_null() {
+                    std::ffi::CStr::from_ptr(pc)
+                        .to_str()
+                        .unwrap_or("?")
+                        .to_string()
+                } else {
+                    "?".to_string()
+                }
             } else {
                 "?".to_string()
-            }
-        } else {
-            "?".to_string()
-        };
+            };
 
-        let mut internal_val = crate::sexp::accessors::INTERNAL(fun);
-        if internal_val.is_null() || internal_val == R_NilValue() {
-            let name_cstr = std::ffi::CString::new(name_str.as_str()).unwrap_or_default();
-            let idx = StrToInternal(name_cstr.as_ptr());
-            if idx != NA_INTEGER {
-                let entry = &R_FunTab[idx as usize];
-                if (entry.eval % 100) / 10 != 0 {
-                    internal_val = mkPRIMSXP(idx, entry.eval % 10);
+            let mut internal_val = crate::sexp::accessors::INTERNAL(fun);
+            if internal_val.is_null() || internal_val == R_NilValue() {
+                let name_cstr = std::ffi::CString::new(name_str.as_str()).unwrap_or_default();
+                let idx = StrToInternal(name_cstr.as_ptr());
+                if idx != NA_INTEGER {
+                    let entry = &R_FunTab[idx as usize];
+                    if (entry.eval % 100) / 10 != 0 {
+                        internal_val = mkPRIMSXP(idx, entry.eval % 10);
+                    }
                 }
             }
-        }
-        if internal_val.is_null() || internal_val == R_NilValue() {
-            if let Some(handler) = internal_builtin_handler(&name_str) {
-                let actual_args = CDR(s);
-                let evaluated_args = crate::eval::dispatch::evalList(
+            if internal_val.is_null() || internal_val == R_NilValue() {
+                if let Some(handler) = internal_builtin_handler(&name_str) {
+                    let actual_args = CDR(s);
+                    let evaluated_args = crate::eval::dispatch::evalList(
+                        factory.wrap(actual_args).unwrap_or_else(|error| {
+                            crate::sexp::context::r_error(error.to_string())
+                        }),
+                        env_owner.clone(),
+                        Some(call_owner.clone()),
+                        -1,
+                    );
+                    let ans = handler(s, R_NilValue(), evaluated_args.as_raw(), env);
+                    // No funtab entry: honor the stock-invisible list (GNU marks
+                    // these via the eval column we cannot read here).
+                    resolve_internal_visibility(&name_str, 2);
+                    return ans;
+                }
+                // GNU .Internal resolves strictly through R_FunTab; the port
+                // also accepts handlers registered in the evaluated-builtin
+                // table (topenv, bindingIsLocked, makeActiveBinding,
+                // normalizePath, ...) when no INTERNAL slot or funtab entry
+                // exists.
+                if let Some(handler) = crate::eval::builtin::evaluated_builtin_handler(&name_str) {
+                    let actual_args = CDR(s);
+                    let evaluated_args = crate::eval::dispatch::evalList(
+                        factory.wrap(actual_args).unwrap_or_else(|error| {
+                            crate::sexp::context::r_error(error.to_string())
+                        }),
+                        env_owner.clone(),
+                        Some(call_owner.clone()),
+                        -1,
+                    );
+                    let ans = handler(s, R_NilValue(), evaluated_args.as_raw(), env);
+                    resolve_internal_visibility(&name_str, 2);
+                    return ans;
+                }
+                panic_any(RError {
+                    message: format!("there is no .Internal function '{}'", name_str),
+                });
+            }
+
+            // On-demand primitives are not necessarily installed in a symbol's
+            // INTERNAL slot. Argument evaluation can collect, so root this one.
+            let _internal_owner = factory
+                .wrap(internal_val)
+                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+            // Get the actual arguments (CDR of the pairlist)
+            let actual_args = CDR(s);
+
+            // For BUILTINSXP, evaluate the argument list; for SPECIALSXP, pass as-is
+            let evaluated_args = if TYPEOF(internal_val) == SEXPTYPE::BUILTINSXP {
+                crate::eval::dispatch::evalList(
                     factory
                         .wrap(actual_args)
                         .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
                     env_owner.clone(),
                     Some(call_owner.clone()),
                     -1,
-                );
-                let ans = handler(s, R_NilValue(), evaluated_args.as_raw(), env);
-                // No funtab entry: honor the stock-invisible list (GNU marks
-                // these via the eval column we cannot read here).
-                resolve_internal_visibility(&name_str, 2);
-                return ans;
-            }
-            // GNU .Internal resolves strictly through R_FunTab; the port
-            // also accepts handlers registered in the evaluated-builtin
-            // table (topenv, bindingIsLocked, makeActiveBinding,
-            // normalizePath, ...) when no INTERNAL slot or funtab entry
-            // exists.
-            if let Some(handler) = crate::eval::builtin::evaluated_builtin_handler(&name_str) {
-                let actual_args = CDR(s);
-                let evaluated_args = crate::eval::dispatch::evalList(
-                    factory
-                        .wrap(actual_args)
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
-                    env_owner.clone(),
-                    Some(call_owner.clone()),
-                    -1,
-                );
-                let ans = handler(s, R_NilValue(), evaluated_args.as_raw(), env);
-                resolve_internal_visibility(&name_str, 2);
-                return ans;
-            }
-            panic_any(RError {
-                message: format!("there is no .Internal function '{}'", name_str),
-            });
-        }
-
-        // On-demand primitives are not necessarily installed in a symbol's
-        // INTERNAL slot. Argument evaluation can collect, so root this one.
-        let _internal_owner = factory
-            .wrap(internal_val)
-            .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        // Get the actual arguments (CDR of the pairlist)
-        let actual_args = CDR(s);
-
-        // For BUILTINSXP, evaluate the argument list; for SPECIALSXP, pass as-is
-        let evaluated_args = if TYPEOF(internal_val) == SEXPTYPE::BUILTINSXP {
-            crate::eval::dispatch::evalList(
+                )
+            } else {
                 factory
                     .wrap(actual_args)
-                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
-                env_owner.clone(),
-                Some(call_owner.clone()),
-                -1,
-            )
-        } else {
-            factory
-                .wrap(actual_args)
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
-        };
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+            };
 
-        // Get the PRIMPRINT flag (visibility hint)
-        let flag = crate::eval::eval::PRIMPRINT(internal_val);
-        // Set R_Visible: flag != 1 means visible
-        crate::sexp::globals::set_R_Visible(if flag != 1 { 1 } else { 0 });
+            // Get the PRIMPRINT flag (visibility hint)
+            let flag = crate::eval::eval::PRIMPRINT(internal_val);
+            // Set R_Visible: flag != 1 means visible
+            crate::sexp::globals::set_R_Visible(if flag != 1 { 1 } else { 0 });
 
-        let offset = PRIMOFFSET(internal_val);
-        let entry = R_FunTab.get(offset as usize).unwrap_or_else(|| {
-            panic_any(RError {
-                message: "invalid internal primitive offset".into(),
-            })
-        });
-        let mut end = entry.name.len();
-        if end > 0 && entry.name[end - 1] == 0 {
-            end -= 1;
-        }
-        let name = std::str::from_utf8(&entry.name[..end]).unwrap_or("<invalid>");
-
-        if let Some(handler) = internal_builtin_handler(name) {
-            let ans = crate::mainutils::errors::attribute_handler_errors(s, || {
-                handler(s, internal_val, evaluated_args.as_raw(), env)
+            let offset = PRIMOFFSET(internal_val);
+            let entry = R_FunTab.get(offset as usize).unwrap_or_else(|| {
+                panic_any(RError {
+                    message: "invalid internal primitive offset".into(),
+                })
             });
+            let mut end = entry.name.len();
+            if end > 0 && entry.name[end - 1] == 0 {
+                end -= 1;
+            }
+            let name = std::str::from_utf8(&entry.name[..end]).unwrap_or("<invalid>");
+
+            if let Some(handler) = internal_builtin_handler(name) {
+                let ans = crate::mainutils::errors::attribute_handler_errors(s, || {
+                    handler(s, internal_val, evaluated_args.as_raw(), env)
+                });
+                resolve_internal_visibility(name, flag);
+                return ans;
+            }
+
+            if let Some(handler) = crate::eval::builtin::evaluated_builtin_handler(name) {
+                let ans = crate::mainutils::errors::attribute_handler_errors(s, || {
+                    handler(s, internal_val, evaluated_args.as_raw(), env)
+                });
+                resolve_internal_visibility(name, flag);
+                return ans;
+            }
+
+            // Get the function pointer from the FunTab via offset.
+            let cfun = entry.cfun;
+
+            let ans = if let Some(f) = cfun {
+                crate::mainutils::errors::attribute_handler_errors(s, || {
+                    f(s, internal_val, evaluated_args.as_raw(), env)
+                })
+            } else if name == "inspect" {
+                crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+                R_NilValue()
+            } else {
+                panic_any(RError {
+                    message: format!("internal function '{name}' is not implemented"),
+                });
+            };
+
             resolve_internal_visibility(name, flag);
-            return ans;
-        }
 
-        if let Some(handler) = crate::eval::builtin::evaluated_builtin_handler(name) {
-            let ans = crate::mainutils::errors::attribute_handler_errors(s, || {
-                handler(s, internal_val, evaluated_args.as_raw(), env)
-            });
-            resolve_internal_visibility(name, flag);
-            return ans;
-        }
-
-        // Get the function pointer from the FunTab via offset.
-        let cfun = entry.cfun;
-
-        let ans = if let Some(f) = cfun {
-            crate::mainutils::errors::attribute_handler_errors(s, || {
-                f(s, internal_val, evaluated_args.as_raw(), env)
-            })
-        } else if name == "inspect" {
-            crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-            R_NilValue()
-        } else {
-            panic_any(RError {
-                message: format!("internal function '{name}' is not implemented"),
-            });
-        };
-
-        resolve_internal_visibility(name, flag);
-
-        ans
+            ans
+        })
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
     }
 }
 
@@ -1055,16 +1052,16 @@ pub fn do_tilde(call: SEXP, _op: SEXP, _args: SEXP, rho: SEXP) -> SEXP {
         if !call.is_null() && OBJECT(call) != 0 {
             duplicate(call)
         } else {
-            let klass = Rf_mkString(b"formula\0".as_ptr() as *const c_char);
+            let klass = crate::sexp::constructors::mk_string_str("formula");
             let _klass_guard = protect(klass);
 
             let result = duplicate(call);
             let _result_guard = protect(result);
 
-            let class_sym = Rf_install(b"class\0".as_ptr() as *const c_char);
+            let class_sym = crate::sexp::symbol::install_str("class");
             setAttrib(result, class_sym, klass);
 
-            let dot_env_sym = Rf_install(b".Environment\0".as_ptr() as *const c_char);
+            let dot_env_sym = crate::sexp::symbol::install_str(".Environment");
             setAttrib(result, dot_env_sym, rho);
 
             result
@@ -1262,9 +1259,9 @@ mod tests {
         unsafe {
             InitNames();
             // Verify that a few symbols exist in the table
-            let sym_if = Rf_install(b"if\0".as_ptr() as *const c_char);
+            let sym_if = crate::sexp::symbol::install_str("if");
             assert!(!sym_if.is_null());
-            let sym_colon = Rf_install(b":\0".as_ptr() as *const c_char);
+            let sym_colon = crate::sexp::symbol::install_str(":");
             assert!(!sym_colon.is_null());
         }
     }
@@ -1344,7 +1341,7 @@ mod tests {
         let _session = RSession::new();
 
         unsafe {
-            let pname = Rf_mkChar(b"test\0".as_ptr() as *const c_char);
+            let pname = crate::sexp::constructors::mk_char_str("test");
             let sym = mkSymMarker(pname);
             assert!(!sym.is_null());
             // Value should point to itself

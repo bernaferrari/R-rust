@@ -35,7 +35,7 @@ fn registered_flags_cover_all_math_arities_and_empty_short_circuit() {
     let four = reals(&session, &[4.0]);
     let flag = session.with_active(|| unsafe {
         owner
-            .sexp(Rf_mkString(c"0".as_ptr()))
+            .sexp(crate::sexp::constructors::mk_string_str("0"))
             .unwrap()
             .into_owned()
             .unwrap()
@@ -72,7 +72,7 @@ fn registered_flags_cover_all_math_arities_and_empty_short_circuit() {
     let empty = reals(&session, &[]);
     let bad = session.with_active(|| unsafe {
         owner
-            .sexp(Rf_mkString(c"bad".as_ptr()))
+            .sexp(crate::sexp::constructors::mk_string_str("bad"))
             .unwrap()
             .into_owned()
             .unwrap()

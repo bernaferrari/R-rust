@@ -64,33 +64,29 @@ fn expand_os_format(
 }
 
 pub(crate) fn format_posix_named_arg(args: SEXP, name: &str, pos: usize) -> SEXP {
-    unsafe {
-        let mut cell = CDR(args);
-        let mut i = 0usize;
-        let mut positional = R_NilValue();
-        while !cell.is_null() && cell != R_NilValue() {
-            let tag = TAG(cell);
-            let tagged = if !tag.is_null() && tag != R_NilValue() && TYPEOF(tag) == SEXPTYPE::SYMSXP
-            {
-                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
-                    .to_string_lossy()
-                    .into_owned()
-            } else {
-                String::new()
-            };
-            if tagged == name {
-                return CAR(cell);
-            }
-            if tagged.is_empty() {
-                if i == pos {
-                    positional = CAR(cell);
-                }
-                i += 1;
-            }
-            cell = CDR(cell);
+    let mut cell = CDR(args);
+    let mut i = 0usize;
+    let mut positional = R_NilValue();
+    while !cell.is_null() && cell != R_NilValue() {
+        let tag = TAG(cell);
+        let tagged = if !tag.is_null() && tag != R_NilValue() && TYPEOF(tag) == SEXPTYPE::SYMSXP {
+            String::from_utf8_lossy(&crate::sexp::accessors::char_cstr_bytes(PRINTNAME(tag)))
+                .into_owned()
+        } else {
+            String::new()
+        };
+        if tagged == name {
+            return CAR(cell);
         }
-        positional
+        if tagged.is_empty() {
+            if i == pos {
+                positional = CAR(cell);
+            }
+            i += 1;
+        }
+        cell = CDR(cell);
     }
+    positional
 }
 
 #[cfg(test)]
@@ -212,7 +208,7 @@ pub fn do_formatPOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
             let u = CADDR(args);
             !u.is_null() && u != R_NilValue() && crate::mainutils::coerce::asLogical(u) == TRUE
         };
-        let tzone = getAttrib(x, Rf_install(c"tzone".as_ptr()));
+        let tzone = getAttrib(x, crate::sexp::symbol::install_str("tzone"));
         // GNU: if the format includes %Z or %z, set TZ from the tzone attr.
         let mut _timezone = None;
         {
@@ -224,7 +220,8 @@ pub fn do_formatPOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
             {
                 let ch = STRING_ELT(tzone, 0);
                 if !ch.is_null() && ch != R_NaString() {
-                    let s = CStr::from_ptr(CHAR(ch)).to_string_lossy().into_owned();
+                    let s = String::from_utf8_lossy(&crate::sexp::accessors::char_cstr_bytes(ch))
+                        .into_owned();
                     if !s.is_empty() {
                         tz1 = Some(s);
                     }
@@ -236,7 +233,8 @@ pub fn do_formatPOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
                     if ch.is_null() || ch == R_NaString() {
                         return false;
                     }
-                    let s = CStr::from_ptr(CHAR(ch)).to_string_lossy();
+                    let s = String::from_utf8_lossy(&crate::sexp::accessors::char_cstr_bytes(ch))
+                        .into_owned();
                     s.contains("%Z") || s.contains("%z")
                 });
                 if need_tz {
@@ -286,7 +284,11 @@ pub fn do_formatPOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
                         "-Inf"
                     };
                     let cstr = CString::new(s).unwrap_or_default();
-                    SET_STRING_ELT(ans, i as R_xlen_t, Rf_mkChar(cstr.as_ptr()));
+                    SET_STRING_ELT(
+                        ans,
+                        i as R_xlen_t,
+                        crate::sexp::constructors::mk_char_bytes(cstr.to_bytes()),
+                    );
                 }
             } else if ctm.tm_min == NA_INTEGER
                 || ctm.tm_hour == NA_INTEGER
@@ -346,7 +348,7 @@ pub fn do_formatPOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
                         if TYPEOF(zv) == SEXPTYPE::STRSXP && XLENGTH(zv) > 0 {
                             let ch = STRING_ELT(zv, (i % XLENGTH(zv)) as R_xlen_t);
                             if !ch.is_null() && ch != R_NaString() {
-                                let bytes = CStr::from_ptr(CHAR(ch)).to_bytes();
+                                let bytes = &crate::sexp::accessors::char_cstr_bytes(ch)[..];
                                 let n = bytes.len().min(19);
                                 tm_zone_buf[..n].copy_from_slice(&bytes[..n]);
                                 sf_tm_ctm.tm_zone =
@@ -392,7 +394,11 @@ pub fn do_formatPOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
                             }
                         }
                         let cstr = CString::new(out).unwrap_or_default();
-                        SET_STRING_ELT(ans, i as R_xlen_t, Rf_mkChar(cstr.as_ptr()));
+                        SET_STRING_ELT(
+                            ans,
+                            i as R_xlen_t,
+                            crate::sexp::constructors::mk_char_bytes(cstr.to_bytes()),
+                        );
                     } else {
                         let s = std::str::from_utf8(&buf[..res as usize]).unwrap_or("");
                         let mut out = s.to_string();
@@ -403,7 +409,11 @@ pub fn do_formatPOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
                             }
                         }
                         let cstr = CString::new(out).unwrap_or_default();
-                        SET_STRING_ELT(ans, i as R_xlen_t, Rf_mkChar(cstr.as_ptr()));
+                        SET_STRING_ELT(
+                            ans,
+                            i as R_xlen_t,
+                            crate::sexp::constructors::mk_char_bytes(cstr.to_bytes()),
+                        );
                     }
                 }
             }

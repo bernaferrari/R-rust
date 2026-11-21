@@ -183,12 +183,12 @@ pub(crate) fn install(base_env: SEXP) {
             crate::sexp::accessors::SET_STRING_ELT(
                 klass,
                 0,
-                crate::sexp::constructors::Rf_mkChar(c"POSIXct".as_ptr()),
+                crate::sexp::constructors::mk_char_str("POSIXct"),
             );
             crate::sexp::accessors::SET_STRING_ELT(
                 klass,
                 1,
-                crate::sexp::constructors::Rf_mkChar(c"POSIXt".as_ptr()),
+                crate::sexp::constructors::mk_char_str("POSIXt"),
             );
             crate::sexp::attrib_core::R_classgets(leap, klass);
             defineVar(Rf_install_in_current(".leap.seconds"), leap, base_env);

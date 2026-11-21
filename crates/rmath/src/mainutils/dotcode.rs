@@ -25,7 +25,6 @@ use crate::sexp::ffi::{FALSE, NA_INTEGER, R_xlen_t, Rcomplex, SEXP, SEXPTYPE, TR
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::instance;
 use crate::sexp::memory_ext::{R_alloc, vmaxget, vmaxset};
-use crate::sexp::symbol::Rf_install;
 use crate::unix::dynload::DL_FUNC;
 
 // ---------------------------------------------------------------------------
@@ -181,23 +180,23 @@ fn dotcode_retval_check_enabled() -> bool {
 // ---------------------------------------------------------------------------
 
 fn NaokSymbol() -> SEXP {
-    unsafe { Rf_install(b"NAOK\0".as_ptr() as *const c_char) }
+    crate::sexp::symbol::install_str("NAOK")
 }
 
 fn DupSymbol() -> SEXP {
-    unsafe { Rf_install(b"DUP\0".as_ptr() as *const c_char) }
+    crate::sexp::symbol::install_str("DUP")
 }
 
 fn PkgSymbol() -> SEXP {
-    unsafe { Rf_install(b"PACKAGE\0".as_ptr() as *const c_char) }
+    crate::sexp::symbol::install_str("PACKAGE")
 }
 
 fn EncSymbol() -> SEXP {
-    unsafe { Rf_install(b"ENCODING\0".as_ptr() as *const c_char) }
+    crate::sexp::symbol::install_str("ENCODING")
 }
 
 fn CSingSymbol() -> SEXP {
-    unsafe { Rf_install(b"Csingle\0".as_ptr() as *const c_char) }
+    crate::sexp::symbol::install_str("Csingle")
 }
 
 // ---------------------------------------------------------------------------
@@ -274,9 +273,8 @@ unsafe fn checkValidSymbolId(
         }
 
         if TYPEOF(op) == SEXPTYPE::EXTPTRSXP {
-            let _native_sym = Rf_install(b"native symbol\0".as_ptr() as *const c_char);
-            let _reg_native_sym =
-                Rf_install(b"registered native symbol\0".as_ptr() as *const c_char);
+            let _native_sym = crate::sexp::symbol::install_str("native symbol");
+            let _reg_native_sym = crate::sexp::symbol::install_str("registered native symbol");
 
             if fun.is_none() {
                 errorcall(call, "NULL value passed as symbol address");
@@ -502,9 +500,10 @@ fn comparePrimitiveTypes(ty: c_int, s: SEXP) -> bool {
     // SINGLESXP check
     if ty == 302 {
         // SINGLESXP in R
-        return crate::mainutils::coerce::asLogical(getAttrib(s, unsafe {
-            Rf_install(b"Csingle\0".as_ptr() as *const c_char)
-        })) == TRUE as c_int;
+        return crate::mainutils::coerce::asLogical(getAttrib(
+            s,
+            crate::sexp::symbol::install_str("Csingle"),
+        )) == TRUE as c_int;
     }
     false
 }
@@ -1427,7 +1426,7 @@ unsafe fn do_foreign_dotcode(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEX
                     SET_STRING_ELT(
                         names,
                         na as R_xlen_t,
-                        Rf_mkChar(b"\0".as_ptr() as *const c_char),
+                        crate::sexp::constructors::mk_char_str(""),
                     );
                 } else {
                     SET_STRING_ELT(names, na as R_xlen_t, PRINTNAME(tag));
@@ -1435,7 +1434,7 @@ unsafe fn do_foreign_dotcode(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEX
                 na += 1;
                 pa = CDR(pa);
             }
-            setAttrib(ans, Rf_install(b"names\0".as_ptr() as *const c_char), names);
+            setAttrib(ans, crate::sexp::symbol::install_str("names"), names);
         }
 
         // Marshal arguments to C types
@@ -1644,7 +1643,11 @@ unsafe fn do_foreign_dotcode(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEX
                         let cstr = std::ffi::CStr::from_bytes_with_nul(&char_buf).unwrap_or(
                             std::ffi::CStr::from_bytes_with_nul(b"\0").unwrap_or_default(),
                         );
-                        SET_STRING_ELT(s, 0, Rf_mkChar(cstr.as_ptr()));
+                        SET_STRING_ELT(
+                            s,
+                            0,
+                            crate::sexp::constructors::mk_char_bytes(cstr.to_bytes()),
+                        );
                         SET_VECTOR_ELT(ans, na_idx as R_xlen_t, s);
                     } else {
                         let cptr = p as *const *const c_char;
@@ -1808,8 +1811,7 @@ mod tests {
     fn test_check_valid_symbol_id_copies_name() {
         let session = RSession::new();
         session.with_protected(|| unsafe {
-            let op =
-                crate::sexp::constructors::Rf_mkString(b"registered\0".as_ptr() as *const c_char);
+            let op = crate::sexp::constructors::mk_string_str("registered");
             let mut fun: DL_FUNC = None;
             let mut symbol = R_RegisteredNativeSymbol::new(R_CALL_SYM);
             let mut buf = [0u8; MAX_SYMBOL_BYTES];
@@ -1829,7 +1831,7 @@ mod tests {
         let session = RSession::new();
         session.with_protected(|| unsafe {
             let args = crate::sexp::constructors::Rf_cons(
-                crate::sexp::constructors::Rf_mkString(b"missing\0".as_ptr() as *const c_char),
+                crate::sexp::constructors::mk_string_str("missing"),
                 R_NilValue(),
             );
             let out = do_isloaded(R_NilValue(), R_NilValue(), args, R_NilValue());
@@ -2038,7 +2040,7 @@ mod typed_native_handler_tests {
                 session
                     .owner_token()
                     .unwrap()
-                    .sexp(Rf_install(c"PACKAGE".as_ptr()))
+                    .sexp(crate::sexp::symbol::install_str("PACKAGE"))
                     .unwrap()
                     .into_owned()
                     .unwrap()
@@ -2107,7 +2109,7 @@ mod typed_native_handler_tests {
                 session
                     .owner_token()
                     .unwrap()
-                    .sexp(Rf_install(c"PACKAGE".as_ptr()))
+                    .sexp(crate::sexp::symbol::install_str("PACKAGE"))
                     .unwrap()
                     .into_owned()
                     .unwrap()
@@ -2315,7 +2317,7 @@ mod typed_native_handler_tests {
                         session
                             .owner_token()
                             .unwrap()
-                            .sexp(Rf_install(c"PACKAGE".as_ptr()))
+                            .sexp(crate::sexp::symbol::install_str("PACKAGE"))
                             .unwrap()
                             .into_owned()
                             .unwrap()
@@ -2528,7 +2530,7 @@ utils	ishashtab_Ext	1";
                 session
                     .owner_token()
                     .unwrap()
-                    .sexp(Rf_install(c"PACKAGE".as_ptr()))
+                    .sexp(crate::sexp::symbol::install_str("PACKAGE"))
                     .unwrap()
                     .into_owned()
                     .unwrap()
@@ -2618,7 +2620,7 @@ utils	ishashtab_Ext	1";
                 session
                     .owner_token()
                     .unwrap()
-                    .sexp(Rf_install(c"PACKAGE".as_ptr()))
+                    .sexp(crate::sexp::symbol::install_str("PACKAGE"))
                     .unwrap()
                     .into_owned()
                     .unwrap()

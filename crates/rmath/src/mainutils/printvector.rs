@@ -20,7 +20,6 @@ use crate::sexp::altseq::{CompactSeq, unexpanded_int, unexpanded_real};
 use crate::sexp::attrib_core::getAttrib;
 use crate::sexp::ffi::{ISNAN, NA_INTEGER, NA_REAL, R_IsNA, R_xlen_t, Rcomplex, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
-use crate::sexp::symbol::Rf_install;
 
 // ---------------------------------------------------------------------------
 // R_PrintData struct -- full R_print parameters for printvector.c
@@ -1204,7 +1203,7 @@ pub unsafe fn GetMatrixDimnames(
             return;
         }
 
-        let dimnames_sym = Rf_install(b"dimnames\0".as_ptr() as *const c_char);
+        let dimnames_sym = crate::sexp::symbol::install_str("dimnames");
         let dimnames = getAttrib(x, dimnames_sym);
 
         if dimnames.is_null() || dimnames == R_NilValue() {

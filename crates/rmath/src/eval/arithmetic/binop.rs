@@ -91,9 +91,8 @@ pub fn real_binary(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
         } else {
             Rf_allocVector3(SEXPTYPE::INTSXP, n)
         };
-        let Some(result) = Sexp::from_raw(result_raw) else {
-            return R_NilValue();
-        };
+        let Ok(value) = Sexp::with_registered_raw(result_raw, |result| {
+            let result = result.clone();
         let _result_guard = protect(result_raw);
         // SAFETY: result is freshly allocated; no payload reference was lent.
         let mut result_mut = SexpMut::from_owned(result);
@@ -160,6 +159,10 @@ pub fn real_binary(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
         let _ = result_mut.freeze();
         propagate_arithmetic_attributes(result_raw, sa, sb, n);
         result_raw
+        }) else {
+            return R_NilValue();
+        };
+        value
     }
 }
 
@@ -212,9 +215,8 @@ pub(crate) fn binary_compare(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
             return empty;
         }
         let result_raw = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
-        let Some(result) = Sexp::from_raw(result_raw) else {
-            return R_NilValue();
-        };
+        let Ok(value) = Sexp::with_registered_raw(result_raw, |result| {
+            let result = result.clone();
         let _result_guard = protect(result_raw);
         // SAFETY: result is freshly allocated; no payload reference was lent.
         let mut result_mut = SexpMut::from_owned(result);
@@ -269,6 +271,10 @@ pub(crate) fn binary_compare(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
         let _ = result_mut.freeze();
         propagate_binary_vector_attributes(result_raw, sa, sb, n);
         result_raw
+        }) else {
+            return R_NilValue();
+        };
+        value
     }
 }
 
@@ -405,38 +411,33 @@ pub(crate) fn propagate_plain_names(result: SEXP, a: SEXP, b: SEXP, result_len: 
 }
 
 pub(crate) fn set_single_string_class(result: SEXP, class_name: &str) {
-    unsafe {
         let class = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
         if class.is_null() {
             return;
         }
         let _class_guard = protect(class);
         let cstr = CString::new(class_name).unwrap_or_default();
-        SET_STRING_ELT(class, 0, Rf_mkChar(cstr.as_ptr()));
+    SET_STRING_ELT(class, 0, crate::sexp::constructors::mk_char_bytes(cstr.to_bytes()));
         setAttrib(result, crate::sexp::symbol::install_str("class"), class);
-    }
 }
 
 pub(crate) fn set_string_attribute(result: SEXP, name: &str, value: &str) {
-    unsafe {
         let attr = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
         if attr.is_null() {
             return;
         }
         let _attr_guard = protect(attr);
         let cvalue = CString::new(value).unwrap_or_default();
-        SET_STRING_ELT(attr, 0, Rf_mkChar(cvalue.as_ptr()));
+    SET_STRING_ELT(attr, 0, crate::sexp::constructors::mk_char_bytes(cvalue.to_bytes()));
         setAttrib(result, crate::sexp::symbol::install_str(name), attr);
-    }
 }
 
 pub(crate) fn set_posixct_attributes_from(result: SEXP, source: SEXP) {
-    unsafe {
         let class = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
         if !class.is_null() {
             let _class_guard = protect(class);
-            SET_STRING_ELT(class, 0, Rf_mkChar(c"POSIXct".as_ptr()));
-            SET_STRING_ELT(class, 1, Rf_mkChar(c"POSIXt".as_ptr()));
+        SET_STRING_ELT(class, 0, crate::sexp::constructors::mk_char_str("POSIXct"));
+        SET_STRING_ELT(class, 1, crate::sexp::constructors::mk_char_str("POSIXt"));
             setAttrib(result, crate::sexp::symbol::install_str("class"), class);
         }
 
@@ -448,7 +449,6 @@ pub(crate) fn set_posixct_attributes_from(result: SEXP, source: SEXP) {
                 crate::mainutils::duplicate::duplicate(tzone),
             );
         }
-    }
 }
 
 pub(crate) fn first_summary_data_arg(args: SEXP) -> SEXP {

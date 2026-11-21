@@ -51,10 +51,8 @@ pub(crate) unsafe fn R_DispatchOrEvalSP(
         use crate::sexp::object::SessionNodeFactory;
         use crate::sexp::symbol::R_DotsSymbol;
 
-        let factory = SessionNodeFactory::new(
-            crate::sexp::owner::OwnerToken::current()
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
-        );
+        crate::sexp::owner::OwnerToken::with_current(|token_owner| {
+            let factory = SessionNodeFactory::new(token_owner);
         let args_owner = if args.is_null() {
             factory.nil()
         } else {
@@ -113,6 +111,7 @@ pub(crate) unsafe fn R_DispatchOrEvalSP(
             0,
             0,
         )
+        }).unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
     }
 }
 

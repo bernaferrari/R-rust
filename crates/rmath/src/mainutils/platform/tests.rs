@@ -8,7 +8,7 @@ fn setlocale_denies_mutation_by_default() {
     let mutation = session.with_active(|| unsafe {
         let category = crate::sexp::constructors::Rf_ScalarInteger(1);
         let _category = crate::sexp::protect::protect(category);
-        let denied_locale = crate::sexp::constructors::Rf_mkString(c"C".as_ptr());
+        let denied_locale = crate::sexp::constructors::mk_string_str("C");
         let _locale = crate::sexp::protect::protect(denied_locale);
         let tail =
             crate::sexp::constructors::Rf_cons(denied_locale, crate::sexp::globals::R_NilValue());
@@ -26,10 +26,9 @@ fn setlocale_denies_mutation_by_default() {
         assert_eq!(crate::sexp::accessors::TYPEOF(mutation), SEXPTYPE::STRSXP);
         assert_eq!(crate::sexp::accessors::XLENGTH(mutation), 1);
         assert_eq!(
-            CStr::from_ptr(crate::sexp::accessors::CHAR(
-                crate::sexp::accessors::STRING_ELT(mutation, 0),
-            ))
-            .to_bytes(),
+            &crate::sexp::accessors::char_cstr_bytes(crate::sexp::accessors::STRING_ELT(
+                mutation, 0
+            ),)[..],
             b""
         );
     }
@@ -77,7 +76,7 @@ fn trunk_r90451_dircreate_rejects_a_path_past_path_max() {
     session.with_active(|| unsafe {
         let too_long = "a".repeat(libc::PATH_MAX as usize);
         let bytes = std::ffi::CString::new(too_long).unwrap();
-        let path = crate::sexp::constructors::Rf_mkString(bytes.as_ptr());
+        let path = crate::sexp::constructors::mk_string_bytes(bytes.to_bytes());
         let args = crate::sexp::constructors::Rf_cons(path, crate::sexp::globals::R_NilValue());
         let err = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             do_dircreate(

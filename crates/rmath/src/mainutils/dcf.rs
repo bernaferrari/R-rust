@@ -498,7 +498,7 @@ pub unsafe fn do_readDCF(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
                     let idx = (r + c * nrows) as R_xlen_t;
                     if let Some(val) = field_val {
                         let cs = CString::new(val.as_str()).unwrap_or_default();
-                        let charsxp = Rf_mkChar(cs.as_ptr());
+                        let charsxp = crate::sexp::constructors::mk_char_bytes(cs.to_bytes());
                         SET_STRING_ELT(retval, idx, charsxp);
                     }
                     // else: leave as NA
@@ -525,7 +525,7 @@ pub unsafe fn do_readDCF(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
         let _col_names_guard = protect(col_names);
         for (i, name) in field_names.iter().enumerate() {
             let cs = CString::new(name.as_str()).unwrap_or_default();
-            let charsxp = Rf_mkChar(cs.as_ptr());
+            let charsxp = crate::sexp::constructors::mk_char_bytes(cs.to_bytes());
             SET_STRING_ELT(col_names, i as R_xlen_t, charsxp);
         }
         SET_VECTOR_ELT(dimnames, 1, col_names);

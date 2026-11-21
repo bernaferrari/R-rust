@@ -360,7 +360,7 @@ fn nonrecursive_checked_pairlist_cycle_is_rejected_before_shallow_fallback() {
     // The compatibility class setter operates on already checked/rooted nodes;
     // all cyclic edges themselves were made with SexpMut's checked API.
     let class = f
-        .wrap(unsafe { crate::sexp::constructors::Rf_mkString(c"anyNA_cycle_probe".as_ptr()) })
+        .wrap(unsafe { crate::sexp::constructors::mk_string_str("anyNA_cycle_probe") })
         .unwrap();
     crate::eval::attrib_core::R_classgets(pair.as_raw(), class.as_raw());
 

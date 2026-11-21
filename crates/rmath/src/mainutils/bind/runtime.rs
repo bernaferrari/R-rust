@@ -543,7 +543,7 @@ pub fn R_BlankString() -> SEXP {
             return existing;
         }
 
-        let s = Rf_mkChar(b"\0".as_ptr() as *const c_char);
+        let s = crate::sexp::constructors::mk_char_str("");
         instance::with_required_current_instance(|inst| {
             if (*inst).bind_state.blank_string.is_null() {
                 (*inst).bind_state.blank_string = s;

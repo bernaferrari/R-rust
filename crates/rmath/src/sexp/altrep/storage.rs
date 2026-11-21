@@ -189,10 +189,7 @@ pub(super) fn string<'s>(owner: OwnerToken<'s>, text: &str) -> SexpResult<Sexp<'
     })
 }
 pub(super) fn intern<'s>(owner: OwnerToken<'s>, name: &std::ffi::CStr) -> SexpResult<Sexp<'s>> {
-    // SAFETY: terminated name stays live; interned symbol belongs to this owner.
-    let raw = activate(owner, || unsafe {
-        super::super::symbol::Rf_install(name.as_ptr())
-    });
+    let raw = activate(owner, || crate::sexp::symbol::install_cstr(&name));
     owner.sexp(raw)
 }
 fn cons<'s>(

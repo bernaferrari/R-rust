@@ -127,14 +127,10 @@ pub fn La_chol(a: SEXP, pivot: SEXP, stol: SEXP) -> SEXP {
             for i in 0..nn {
                 *INTEGER(pivot_s).add(i) = *piv_arr.add(i);
             }
+            setAttrib(ans, crate::sexp::symbol::install_str("pivot"), pivot_s);
             setAttrib(
                 ans,
-                crate::sexp::symbol::Rf_install(c"pivot".as_ptr()),
-                pivot_s,
-            );
-            setAttrib(
-                ans,
-                crate::sexp::symbol::Rf_install(c"rank".as_ptr()),
+                crate::sexp::symbol::install_str("rank"),
                 Rf_ScalarInteger(rank),
             );
             ans

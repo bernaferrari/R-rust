@@ -43,12 +43,12 @@ pub(crate) fn mutable(x: SEXP) -> SexpMut<'static> {
 
 /// Checked CHARSXP from Rust text; matches `Rf_mkChar` on the session heap.
 pub(crate) fn mk_char(text: &str) -> SEXP {
-    checked(node_factory().character(text)).as_raw()
+    crate::sexp::constructors::mk_char_str(text)
 }
 
 /// Checked STRSXP(1) scalar; matches `Rf_mkString` on the session heap.
 pub(crate) fn mk_string(text: &str) -> SEXP {
-    checked(node_factory().strings(&[text])).as_raw()
+    crate::sexp::constructors::mk_string_str(text)
 }
 
 /// Copy a REALSXP payload through checked element reads.

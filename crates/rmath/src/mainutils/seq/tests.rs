@@ -586,7 +586,7 @@ fn test_check1arg_partial_match_warning() {
 fn root_global(name: &str, value: SEXP) {
     let c_name = std::ffi::CString::new(name).unwrap();
     unsafe {
-        let sym = crate::sexp::symbol::Rf_install(c_name.as_ptr());
+        let sym = crate::sexp::symbol::install_cstr(&c_name);
         crate::sexp::envir::defineVar(sym, value, crate::sexp::globals::R_GlobalEnv());
     }
 }
@@ -814,7 +814,7 @@ fn altseq_names_on_a_lazy_colon_do_not_expose_the_formula() {
         let seq = seq_colon(1.0, 5.0, ptr::null_mut());
         root_global("alt_names", seq);
         let foo = Rf_ScalarInteger(7);
-        let sym = crate::sexp::symbol::Rf_install(c"foo".as_ptr());
+        let sym = crate::sexp::symbol::install_str("foo");
         crate::sexp::attrib_core::setAttrib(seq, sym, foo);
         assert_eq!(crate::sexp::accessors::ALTREP(seq), 1);
         assert_eq!(crate::sexp::accessors::INTEGER_ELT(seq, 4), 5);

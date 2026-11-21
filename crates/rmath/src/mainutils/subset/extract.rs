@@ -798,67 +798,74 @@ pub(crate) unsafe fn R_DispatchOrEvalSP(
         use crate::sexp::object::SessionNodeFactory;
         use crate::sexp::symbol::R_DotsSymbol;
 
-        let factory = SessionNodeFactory::new(
-            crate::sexp::owner::OwnerToken::current()
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
-        );
-        let args_owner = if args.is_null() {
-            factory.nil()
-        } else {
-            factory
-                .wrap(args)
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
-        };
-        let rho_owner = if rho.is_null() {
-            factory.nil()
-        } else {
-            factory
-                .wrap(rho)
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
-        };
-        let mut args_work = args_owner.clone();
+        crate::sexp::owner::OwnerToken::with_current(|token_owner| {
+            let factory = SessionNodeFactory::new(token_owner);
+            let args_owner = if args.is_null() {
+                factory.nil()
+            } else {
+                factory
+                    .wrap(args)
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+            };
+            let rho_owner = if rho.is_null() {
+                factory.nil()
+            } else {
+                factory
+                    .wrap(rho)
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
+            };
+            let mut args_work = args_owner.clone();
 
-        if !args_owner.is_nil() && CAR(args) != R_DotsSymbol() {
-            let expression = args_owner
-                .try_car()
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-            let tail = args_owner
-                .try_cdr()
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-            let x = factory
-                .wrap(Rf_eval(expression.as_raw(), rho_owner.as_raw()))
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-            if !isObject(x.as_raw()) && crate::mainutils::coerce::IS_S4_OBJECT(x.as_raw()) == 0 {
-                let rest = evalListKeepMissing(tail, rho_owner.clone());
-                if !ans.is_null() {
-                    let nil = factory.nil();
-                    let evaluated = factory
-                        .allocate(|arena| Some(arena.cons(x.as_raw(), rest.as_raw(), nil.as_raw())))
-                        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-                    *ans = evaluated.as_raw();
+            if !args_owner.is_nil() && CAR(args) != R_DotsSymbol() {
+                let expression = args_owner
+                    .try_car()
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                let tail = args_owner
+                    .try_cdr()
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                let x = factory
+                    .wrap(Rf_eval(expression.as_raw(), rho_owner.as_raw()))
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                if !isObject(x.as_raw()) && crate::mainutils::coerce::IS_S4_OBJECT(x.as_raw()) == 0
+                {
+                    let rest = evalListKeepMissing(tail, rho_owner.clone());
+                    if !ans.is_null() {
+                        let nil = factory.nil();
+                        let evaluated = factory
+                            .allocate(|arena| {
+                                Some(arena.cons(x.as_raw(), rest.as_raw(), nil.as_raw()))
+                            })
+                            .unwrap_or_else(|error| {
+                                crate::sexp::context::r_error(error.to_string())
+                            });
+                        *ans = evaluated.as_raw();
+                    }
+                    return 0;
                 }
-                return 0;
+                let promise = factory
+                    .wrap(R_mkEVPROMISE(expression.as_raw(), x.as_raw()))
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
+                let nil = factory.nil();
+                args_work = factory
+                    .allocate(|arena| {
+                        Some(arena.cons(promise.as_raw(), tail.as_raw(), nil.as_raw()))
+                    })
+                    .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
             }
-            let promise = factory
-                .wrap(R_mkEVPROMISE(expression.as_raw(), x.as_raw()))
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-            let nil = factory.nil();
-            args_work = factory
-                .allocate(|arena| Some(arena.cons(promise.as_raw(), tail.as_raw(), nil.as_raw())))
-                .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
-        }
 
-        // The owned prefix retains its promise and evaluated value throughout
-        // method lookup, fallback argument evaluation and method application.
-        DispatchOrEval(
-            call,
-            op,
-            generic,
-            args_work.as_raw(),
-            rho_owner.as_raw(),
-            ans,
-            0,
-            0,
-        )
+            // The owned prefix retains its promise and evaluated value throughout
+            // method lookup, fallback argument evaluation and method application.
+            DispatchOrEval(
+                call,
+                op,
+                generic,
+                args_work.as_raw(),
+                rho_owner.as_raw(),
+                ans,
+                0,
+                0,
+            )
+        })
+        .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
     }
 }

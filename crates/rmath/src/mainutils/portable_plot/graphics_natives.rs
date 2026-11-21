@@ -22,7 +22,7 @@ use crate::mainutils::essentials::base_error;
 use crate::mainutils::plotmath::Label;
 #[allow(unused_imports)]
 use crate::sexp::accessors::*;
-use crate::sexp::constructors::{Rf_allocVector3, Rf_mkChar};
+use crate::sexp::constructors::Rf_allocVector3;
 use crate::sexp::ffi::{NA_INTEGER, NA_LOGICAL, R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::{R_NaString, R_NilValue};
 use crate::sexp::protect::protect;
@@ -625,8 +625,8 @@ unsafe fn xspline(args: SEXP) -> SEXP {
             SET_VECTOR_ELT(ans, 1, sy);
             let names = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
             let _names = protect(names);
-            SET_STRING_ELT(names, 0, Rf_mkChar(b"x\0".as_ptr().cast()));
-            SET_STRING_ELT(names, 1, Rf_mkChar(b"y\0".as_ptr().cast()));
+            SET_STRING_ELT(names, 0, crate::sexp::constructors::mk_char_str("x"));
+            SET_STRING_ELT(names, 1, crate::sexp::constructors::mk_char_str("y"));
             crate::attrib_core::setAttrib(ans, crate::attrib_core::R_NamesSymbol(), names);
             crate::sexp::globals::set_R_Visible(1);
             return ans;

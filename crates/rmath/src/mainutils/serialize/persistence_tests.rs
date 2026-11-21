@@ -13,7 +13,9 @@ fn env<'s>(factory: &SessionNodeFactory<'s>) -> Sexp<'s> {
 }
 
 fn define(factory: &SessionNodeFactory<'_>, environment: &Sexp<'_>, name: &CStr, value: Sexp<'_>) {
-    let symbol = factory.wrap(unsafe { Rf_install(name.as_ptr()) }).unwrap();
+    let symbol = factory
+        .wrap(unsafe { crate::sexp::symbol::install_cstr(&name) })
+        .unwrap();
     unsafe { crate::sexp::envir::define_var_safe(symbol, value, environment.clone()) };
 }
 
@@ -105,7 +107,7 @@ fn lazy_load_persistence_failure_preserves_error_and_never_returns_empty_success
                 "unknown input format"
             );
             let symbol = factory
-                .wrap(unsafe { Rf_install(c"env::broken".as_ptr()) })
+                .wrap(unsafe { crate::sexp::symbol::install_str("env::broken") })
                 .unwrap();
             assert!(
                 unsafe { crate::sexp::envir::find_var_in_frame_result(cache.clone(), symbol) }
@@ -167,7 +169,9 @@ fn lazy_persistence_rollback_keeps_original_and_callback_bindings_after_revocati
                     return;
                 }
                 let factory = callback_weak.node_factory().unwrap();
-                let symbol = factory.wrap(Rf_install(c"env::broken".as_ptr())).unwrap();
+                let symbol = factory
+                    .wrap(crate::sexp::symbol::install_str("env::broken"))
+                    .unwrap();
                 if crate::sexp::envir::find_var_in_frame_result(callback_cache.clone(), symbol)
                     .unwrap()
                     .is_none()

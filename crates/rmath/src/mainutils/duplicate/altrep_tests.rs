@@ -33,7 +33,7 @@ fn public_attribute<'s>(session: &'s RSession, value: &Sexp<'s>) -> Sexp<'s> {
     unsafe {
         SETTAG(
             attributes.clone().as_raw(),
-            crate::sexp::symbol::Rf_install(c"custom".as_ptr()),
+            crate::sexp::symbol::install_str("custom"),
         );
     }
     attributes

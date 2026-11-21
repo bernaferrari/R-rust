@@ -231,40 +231,38 @@ pub(crate) fn lookup_external(
 }
 
 pub fn install_call_symbols(env: crate::sexp::ffi::SEXP) {
-    unsafe {
-        for name in [
-            "C_cairoProps",
-            "C_PDF",
-            "C_PostScript",
-            "C_palette",
-            "C_palette2",
-            "C_devholdflush",
-            "C_devAskNewPage",
-            "C_devcur",
-            "C_devoff",
-            "C_devset",
-            "C_devcontrol",
-            "C_devdisplaylist",
-            "C_devcap",
-            "C_devsize",
-            "C_devnext",
-            "C_devprev",
-            "C_R_CreateAtVector",
-            "C_R_GAxisPars",
-            "C_gray",
-            "C_col2rgb",
-            "C_hsv",
-            "C_hcl",
-            "C_rgb",
-            "C_getSnapshot",
-            "C_playSnapshot",
-        ] {
-            let cname = std::ffi::CString::new(name).unwrap_or_default();
-            crate::sexp::envir::defineVar(
-                crate::sexp::symbol::Rf_install(cname.as_ptr()),
-                crate::sexp::constructors::Rf_mkString(cname.as_ptr()),
-                env,
-            );
-        }
+    for name in [
+        "C_cairoProps",
+        "C_PDF",
+        "C_PostScript",
+        "C_palette",
+        "C_palette2",
+        "C_devholdflush",
+        "C_devAskNewPage",
+        "C_devcur",
+        "C_devoff",
+        "C_devset",
+        "C_devcontrol",
+        "C_devdisplaylist",
+        "C_devcap",
+        "C_devsize",
+        "C_devnext",
+        "C_devprev",
+        "C_R_CreateAtVector",
+        "C_R_GAxisPars",
+        "C_gray",
+        "C_col2rgb",
+        "C_hsv",
+        "C_hcl",
+        "C_rgb",
+        "C_getSnapshot",
+        "C_playSnapshot",
+    ] {
+        let cname = std::ffi::CString::new(name).unwrap_or_default();
+        crate::sexp::envir::defineVar(
+            crate::sexp::symbol::install_cstr(&cname),
+            crate::sexp::constructors::mk_string_bytes(cname.to_bytes()),
+            env,
+        );
     }
 }

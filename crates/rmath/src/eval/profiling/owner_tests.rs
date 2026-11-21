@@ -1186,7 +1186,7 @@ fn gnu_bytecode_srcrefs_index_resolves_line_profiling_and_survives_gc() {
         SET_STRING_ELT(
             idx_class.as_raw(),
             0,
-            crate::sexp::constructors::Rf_mkChar(c"srcrefsIndex".as_ptr()),
+            crate::sexp::constructors::mk_char_str("srcrefsIndex"),
         );
         crate::sexp::attrib_core::setAttrib(
             srcrefs_index.as_raw(),

@@ -12,7 +12,7 @@ use std::ptr;
 use crate::eval::attrib_core::{R_NamesSymbol, setAttrib};
 use crate::main::errors::Rf_error_unimplemented;
 use crate::sexp::accessors::SET_STRING_ELT;
-use crate::sexp::constructors::{Rf_allocVector, Rf_mkChar};
+use crate::sexp::constructors::Rf_allocVector;
 use crate::sexp::ffi::SEXP;
 use crate::sexp::protect::protect;
 
@@ -71,14 +71,14 @@ pub fn do_bmVersion() -> SEXP {
         let nms = Rf_allocVector(STRSXP_VAL, 3);
         let _nms = protect(nms);
 
-        SET_STRING_ELT(nms, 0, Rf_mkChar(b"libpng\0".as_ptr() as *const _));
-        SET_STRING_ELT(nms, 1, Rf_mkChar(b"jpeg\0".as_ptr() as *const _));
-        SET_STRING_ELT(nms, 2, Rf_mkChar(b"libtiff\0".as_ptr() as *const _));
+        SET_STRING_ELT(nms, 0, crate::sexp::constructors::mk_char_str("libpng"));
+        SET_STRING_ELT(nms, 1, crate::sexp::constructors::mk_char_str("jpeg"));
+        SET_STRING_ELT(nms, 2, crate::sexp::constructors::mk_char_str("libtiff"));
 
         // Without X11 module loaded, leave ans elements as empty strings
-        SET_STRING_ELT(ans, 0, Rf_mkChar(b"\0".as_ptr() as *const _));
-        SET_STRING_ELT(ans, 1, Rf_mkChar(b"\0".as_ptr() as *const _));
-        SET_STRING_ELT(ans, 2, Rf_mkChar(b"\0".as_ptr() as *const _));
+        SET_STRING_ELT(ans, 0, crate::sexp::constructors::mk_char_str(""));
+        SET_STRING_ELT(ans, 1, crate::sexp::constructors::mk_char_str(""));
+        SET_STRING_ELT(ans, 2, crate::sexp::constructors::mk_char_str(""));
 
         setAttrib(ans, R_NamesSymbol(), nms);
         ans
@@ -173,13 +173,14 @@ mod tests {
                 assert_eq!(LENGTH(names), 3);
                 for (i, expected) in ["libpng", "jpeg", "libtiff"].iter().enumerate() {
                     assert_eq!(
-                        std::ffi::CStr::from_ptr(CHAR(STRING_ELT(names, i as i64)))
-                            .to_str()
-                            .unwrap(),
+                        std::str::from_utf8(&crate::sexp::accessors::char_cstr_bytes(STRING_ELT(
+                            names, i as i64
+                        )))
+                        .unwrap(),
                         *expected
                     );
                     assert_eq!(
-                        std::ffi::CStr::from_ptr(CHAR(STRING_ELT(result, i as i64))).to_bytes(),
+                        &crate::sexp::accessors::char_cstr_bytes(STRING_ELT(result, i as i64))[..],
                         b""
                     );
                 }

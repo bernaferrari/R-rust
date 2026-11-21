@@ -136,7 +136,7 @@ pub fn do_strptime(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
         // supplies the default tz = "" when the argument is missing.
         let mut stz = CADDR(args);
         if stz.is_null() || stz == R_NilValue() || stz == R_MissingArg() {
-            stz = Rf_mkString(c"".as_ptr());
+            stz = crate::sexp::constructors::mk_string_str("");
         } else if TYPEOF(stz) != SEXPTYPE::STRSXP || XLENGTH(stz) != 1 {
             std::panic::panic_any(RError {
                 message: "invalid 'tz' value".to_string(),
@@ -184,7 +184,11 @@ pub fn do_strptime(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
                 .enumerate()
             {
                 let cs = CString::new(s.as_str()).unwrap_or_default();
-                SET_STRING_ELT(tzone, j as R_xlen_t, Rf_mkChar(cs.as_ptr()));
+                SET_STRING_ELT(
+                    tzone,
+                    j as R_xlen_t,
+                    crate::sexp::constructors::mk_char_bytes(cs.to_bytes()),
+                );
             }
             tzone
         };
@@ -277,7 +281,11 @@ pub fn do_strptime(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 
             if isUTC {
                 let cs = CString::new(tz.as_str()).unwrap_or_default();
-                SET_STRING_ELT(VECTOR_ELT(ans, 9), i as R_xlen_t, Rf_mkChar(cs.as_ptr()));
+                SET_STRING_ELT(
+                    VECTOR_ELT(ans, 9),
+                    i as R_xlen_t,
+                    crate::sexp::constructors::mk_char_bytes(cs.to_bytes()),
+                );
                 *INTEGER(VECTOR_ELT(ans, 10)).add(iu) = 0; // gmtoff
             } else {
                 let p = if !invalid && tm.tm_isdst >= 0 {
@@ -291,7 +299,11 @@ pub fn do_strptime(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
                     String::new()
                 };
                 let cs = CString::new(p).unwrap_or_default();
-                SET_STRING_ELT(VECTOR_ELT(ans, 9), i as R_xlen_t, Rf_mkChar(cs.as_ptr()));
+                SET_STRING_ELT(
+                    VECTOR_ELT(ans, 9),
+                    i as R_xlen_t,
+                    crate::sexp::constructors::mk_char_bytes(cs.to_bytes()),
+                );
                 *INTEGER(VECTOR_ELT(ans, 10)).add(iu) = if invalid {
                     NA_INTEGER
                 } else {
@@ -304,11 +316,11 @@ pub fn do_strptime(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
         setAttrib(ans, R_NamesSymbol(), ansnames);
         let klass = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
         let _klass_guard = protect(klass);
-        SET_STRING_ELT(klass, 0, Rf_mkChar(c"POSIXlt".as_ptr()));
-        SET_STRING_ELT(klass, 1, Rf_mkChar(c"POSIXt".as_ptr()));
+        SET_STRING_ELT(klass, 0, crate::sexp::constructors::mk_char_str("POSIXlt"));
+        SET_STRING_ELT(klass, 1, crate::sexp::constructors::mk_char_str("POSIXt"));
         R_classgets(ans, klass);
         if TYPEOF(tzone) == SEXPTYPE::STRSXP {
-            setAttrib(ans, Rf_install(c"tzone".as_ptr()), tzone);
+            setAttrib(ans, crate::sexp::symbol::install_str("tzone"), tzone);
         }
         set_posixlt_balanced(ans);
 
@@ -335,10 +347,18 @@ pub fn do_strptime(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
                 *INTEGER(VECTOR_ELT(ans, 8)).add(i as usize) = -1;
                 if isUTC {
                     let cs = CString::new(tz.as_str()).unwrap_or_default();
-                    SET_STRING_ELT(VECTOR_ELT(ans, 9), i as R_xlen_t, Rf_mkChar(cs.as_ptr()));
+                    SET_STRING_ELT(
+                        VECTOR_ELT(ans, 9),
+                        i as R_xlen_t,
+                        crate::sexp::constructors::mk_char_bytes(cs.to_bytes()),
+                    );
                     *INTEGER(VECTOR_ELT(ans, 10)).add(i as usize) = 0;
                 } else {
-                    SET_STRING_ELT(VECTOR_ELT(ans, 9), i as R_xlen_t, Rf_mkChar(c"".as_ptr()));
+                    SET_STRING_ELT(
+                        VECTOR_ELT(ans, 9),
+                        i as R_xlen_t,
+                        crate::sexp::constructors::mk_char_str(""),
+                    );
                     *INTEGER(VECTOR_ELT(ans, 10)).add(i as usize) = NA_INTEGER;
                 }
             }

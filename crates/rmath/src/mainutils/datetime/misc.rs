@@ -34,7 +34,7 @@ pub(crate) fn as_character_real(
         let _s = protect(scalar);
         // GNU: if(getOption("OutDec") != OutDec) options(OutDec = OutDec)
         // for the duration (restored on exit).
-        let outdec_sym = Rf_install(c"OutDec".as_ptr());
+        let outdec_sym = crate::sexp::symbol::install_str("OutDec");
         let old_outdec = crate::mainutils::options::GetOption1(outdec_sym);
         let _od = protect(old_outdec);
         let old_text = if !old_outdec.is_null() && old_outdec != R_NilValue() {
@@ -141,7 +141,9 @@ pub fn do_D2POSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
                 if TYPEOF(stz) == SEXPTYPE::STRSXP && XLENGTH(stz) > 0 {
                     let ch = STRING_ELT(stz, 0);
                     if !ch.is_null() && ch != R_NaString() {
-                        let s = CStr::from_ptr(CHAR(ch)).to_string_lossy().into_owned();
+                        let s =
+                            String::from_utf8_lossy(&crate::sexp::accessors::char_cstr_bytes(ch))
+                                .into_owned();
                         if s.is_empty() { "UTC".to_string() } else { s }
                     } else {
                         "UTC".to_string()
@@ -191,7 +193,7 @@ pub fn do_D2POSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
             SET_STRING_ELT(
                 VECTOR_ELT(ans, 9),
                 i as R_xlen_t,
-                Rf_mkChar(zone_cstr.as_ptr()),
+                crate::sexp::constructors::mk_char_bytes(zone_cstr.to_bytes()),
             );
             *INTEGER(VECTOR_ELT(ans, 10)).add(iu) = 0;
         }
@@ -288,7 +290,7 @@ pub fn do_POSIXlt2D(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
         if !nm.is_null() && nm != R_NilValue() {
             setAttrib(ans, R_NamesSymbol(), nm);
         }
-        let klass = crate::sexp::constructors::Rf_mkString(c"Date".as_ptr());
+        let klass = crate::sexp::constructors::mk_string_str("Date");
         let _klass_guard = protect(klass);
         setAttrib(ans, R_ClassSymbol(), klass);
         ans
@@ -380,30 +382,28 @@ fn balance_posixlt_fill_only(
     nn: i32,
     keep_class: bool,
 ) -> SEXP {
-    unsafe {
-        let ans = crate::mainutils::duplicate::Rf_duplicate(x);
-        let _a = protect(ans);
-        for i in 0..nn {
-            let iu = i as usize;
-            if nlen[iu] != n {
-                SET_VECTOR_ELT(
-                    ans,
-                    i as R_xlen_t,
-                    recycle_vector_mod(VECTOR_ELT(x, i as R_xlen_t), n),
-                );
-            }
+    let ans = crate::mainutils::duplicate::Rf_duplicate(x);
+    let _a = protect(ans);
+    for i in 0..nn {
+        let iu = i as usize;
+        if nlen[iu] != n {
+            SET_VECTOR_ELT(
+                ans,
+                i as R_xlen_t,
+                recycle_vector_mod(VECTOR_ELT(x, i as R_xlen_t), n),
+            );
         }
-        recycle_posixlt_year_names(ans, x, n);
-        if !keep_class {
-            setAttrib(ans, R_ClassSymbol(), R_NilValue());
-        }
-        setAttrib(
-            ans,
-            Rf_install(c"balanced".as_ptr()),
-            Rf_ScalarLogical(NA_INTEGER),
-        );
-        ans
     }
+    recycle_posixlt_year_names(ans, x, n);
+    if !keep_class {
+        setAttrib(ans, R_ClassSymbol(), R_NilValue());
+    }
+    setAttrib(
+        ans,
+        crate::sexp::symbol::install_str("balanced"),
+        Rf_ScalarLogical(NA_INTEGER),
+    );
+    ans
 }
 
 /// Ported from `do_balancePOSIXlt()` in datetime.c.
@@ -439,7 +439,7 @@ pub fn do_balancePOSIXlt(call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
                 message: "a valid \"POSIXlt\" object is a list of at least 9 elements".to_string(),
             });
         }
-        let bal = getAttrib(x, Rf_install(c"balanced".as_ptr()));
+        let bal = getAttrib(x, crate::sexp::symbol::install_str("balanced"));
         if !bal.is_null()
             && bal != R_NilValue()
             && TYPEOF(bal) == SEXPTYPE::LGLSXP
@@ -498,7 +498,11 @@ pub fn do_balancePOSIXlt(call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
         let _ansnames_guard = protect(ansnames);
         for i in 0..nn {
             let cstr = CString::new(ltnames[i as usize]).unwrap_or_default();
-            SET_STRING_ELT(ansnames, i as R_xlen_t, Rf_mkChar(cstr.as_ptr()));
+            SET_STRING_ELT(
+                ansnames,
+                i as R_xlen_t,
+                crate::sexp::constructors::mk_char_bytes(cstr.to_bytes()),
+            );
         }
 
         for i in 0..n {
@@ -601,13 +605,13 @@ pub fn do_balancePOSIXlt(call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
             }
         }
         recycle_posixlt_year_names(ans, x, n);
-        let tzone = getAttrib(x, Rf_install(c"tzone".as_ptr()));
+        let tzone = getAttrib(x, crate::sexp::symbol::install_str("tzone"));
         if !tzone.is_null() && tzone != R_NilValue() {
-            setAttrib(ans, Rf_install(c"tzone".as_ptr()), tzone);
+            setAttrib(ans, crate::sexp::symbol::install_str("tzone"), tzone);
         }
         setAttrib(
             ans,
-            Rf_install(c"balanced".as_ptr()),
+            crate::sexp::symbol::install_str("balanced"),
             Rf_ScalarLogical(TRUE),
         );
         ans

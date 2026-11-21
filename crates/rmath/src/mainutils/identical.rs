@@ -261,10 +261,8 @@ unsafe fn body_expr_no_src(fun: SEXP, flags: c_int) -> SEXP {
             return body;
         }
         let has_src = [c"srcref", c"srcfile", c"wholeSrcref"].iter().any(|name| {
-            let attr = crate::sexp::attrib_core::getAttrib(
-                body,
-                crate::sexp::symbol::Rf_install(name.as_ptr()),
-            );
+            let attr =
+                crate::sexp::attrib_core::getAttrib(body, crate::sexp::symbol::install_cstr(&name));
             !attr.is_null() && attr != R_NilValue()
         });
         if !has_src {
@@ -275,7 +273,7 @@ unsafe fn body_expr_no_src(fun: SEXP, flags: c_int) -> SEXP {
         for name in [c"srcref", c"srcfile", c"wholeSrcref"] {
             crate::sexp::attrib_core::setAttrib(
                 copy,
-                crate::sexp::symbol::Rf_install(name.as_ptr()),
+                crate::sexp::symbol::install_cstr(&name),
                 R_NilValue(),
             );
         }

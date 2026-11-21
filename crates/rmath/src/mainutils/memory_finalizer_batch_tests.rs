@@ -117,7 +117,7 @@ fn ready_finalizer_batch_roots_later_r_function_before_first_c_callback() {
                 let formal = arena.cons(
                     crate::sexp::globals::R_MissingArg(),
                     nil,
-                    crate::sexp::symbol::Rf_install(c"key".as_ptr()),
+                    crate::sexp::symbol::install_str("key"),
                 );
                 let function = arena.alloc_node(SEXPTYPE::CLOSXP);
                 crate::sexp::accessors::SET_FORMALS(function, formal);
@@ -159,8 +159,8 @@ fn real_r_finalizer_call_survives_torture_before_evaluation() {
         let assignment =
             crate::eval::primitive::make_primitive_binding("<<-", SEXPTYPE::SPECIALSXP);
         let assignment_root = crate::sexp::protect::protect(assignment);
-        let argument = crate::sexp::symbol::Rf_install(c"key".as_ptr());
-        let observation = crate::sexp::symbol::Rf_install(c"finalizer_observation".as_ptr());
+        let argument = crate::sexp::symbol::install_str("key");
+        let observation = crate::sexp::symbol::install_str("finalizer_observation");
         // A real R closure writes its argument into the global environment.
         // A swallowed evaluator error cannot masquerade as successful dispatch.
         let (function, function_root) = with_arena(|arena| {

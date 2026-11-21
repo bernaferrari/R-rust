@@ -230,7 +230,7 @@ fn nmath_bridge_text_attribution_and_warn2_match_legacy() {
         (*instance).error_state.nwarnings = 3;
         let call = owner
             .sexp(Rf_lang2(
-                Rf_install(c"attributed_warning".as_ptr()),
+                crate::sexp::symbol::install_str("attributed_warning"),
                 Rf_ScalarInteger(23),
             ))
             .unwrap()
@@ -292,7 +292,7 @@ fn nmath_bridge_reclaimable_pressure_retries_same_cap_and_snapshots_attribution(
         let f = owner.node_factory();
         let mathlib = owner
             .sexp(Rf_lang2(
-                Rf_install(c"original_mathlib_call".as_ptr()),
+                crate::sexp::symbol::install_str("original_mathlib_call"),
                 Rf_ScalarInteger(11),
             ))
             .unwrap()
@@ -300,7 +300,7 @@ fn nmath_bridge_reclaimable_pressure_retries_same_cap_and_snapshots_attribution(
             .unwrap();
         let selected = owner
             .sexp(Rf_lang2(
-                Rf_install(c"original_override_call".as_ptr()),
+                crate::sexp::symbol::install_str("original_override_call"),
                 Rf_ScalarInteger(23),
             ))
             .unwrap()
@@ -335,7 +335,7 @@ fn nmath_bridge_reclaimable_pressure_retries_same_cap_and_snapshots_attribution(
                 let owner = crate::sexp::owner::OwnerToken::from_raw(instance);
                 let changed = owner
                     .sexp(Rf_lang2(
-                        Rf_install(c"changed_override_call".as_ptr()),
+                        crate::sexp::symbol::install_str("changed_override_call"),
                         Rf_ScalarInteger(99),
                     ))
                     .and_then(Sexp::into_owned)

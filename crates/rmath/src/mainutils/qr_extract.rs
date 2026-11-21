@@ -27,35 +27,36 @@ fn qr_r_error(message: &str) -> ! {
 }
 
 unsafe fn match_args(args: SEXP) -> [Option<SEXP>; 2] {
-    unsafe {
-        let mut matched = [None; 2];
-        let mut cell = args;
-        while cell != R_NilValue() && !cell.is_null() {
-            if TAG(cell) != R_NilValue() && !TAG(cell).is_null() {
-                let tag = std::ffi::CStr::from_ptr(CHAR(PRINTNAME(TAG(cell)))).to_string_lossy();
-                let index = ["qr", "complete"]
-                    .iter()
-                    .position(|name| !tag.is_empty() && name.starts_with(tag.as_ref()))
-                    .unwrap_or_else(|| qr_r_error("unused argument"));
-                if matched[index].replace(CAR(cell)).is_some() {
-                    qr_r_error("formal argument matched by multiple actual arguments");
-                }
+    let mut matched = [None; 2];
+    let mut cell = args;
+    while cell != R_NilValue() && !cell.is_null() {
+        if TAG(cell) != R_NilValue() && !TAG(cell).is_null() {
+            let tag = String::from_utf8_lossy(&crate::sexp::accessors::char_cstr_bytes(PRINTNAME(
+                TAG(cell),
+            )))
+            .into_owned();
+            let index = ["qr", "complete"]
+                .iter()
+                .position(|name| !tag.is_empty() && name.starts_with(tag.as_str()))
+                .unwrap_or_else(|| qr_r_error("unused argument"));
+            if matched[index].replace(CAR(cell)).is_some() {
+                qr_r_error("formal argument matched by multiple actual arguments");
             }
-            cell = CDR(cell);
         }
-        cell = args;
-        while cell != R_NilValue() && !cell.is_null() {
-            if TAG(cell) == R_NilValue() || TAG(cell).is_null() {
-                let slot = matched
-                    .iter_mut()
-                    .find(|slot| slot.is_none())
-                    .unwrap_or_else(|| qr_r_error("unused argument"));
-                *slot = Some(CAR(cell));
-            }
-            cell = CDR(cell);
-        }
-        matched
+        cell = CDR(cell);
     }
+    cell = args;
+    while cell != R_NilValue() && !cell.is_null() {
+        if TAG(cell) == R_NilValue() || TAG(cell).is_null() {
+            let slot = matched
+                .iter_mut()
+                .find(|slot| slot.is_none())
+                .unwrap_or_else(|| qr_r_error("unused argument"));
+            *slot = Some(CAR(cell));
+        }
+        cell = CDR(cell);
+    }
+    matched
 }
 
 unsafe fn has_qr_class(value: SEXP) -> bool {
@@ -101,7 +102,7 @@ pub unsafe fn do_qr_R(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let mut factor = R_NilValue();
         if TYPEOF(names) == STRSXP_C && XLENGTH(names) == XLENGTH(object) {
             for i in 0..XLENGTH(names) {
-                if std::ffi::CStr::from_ptr(CHAR(STRING_ELT(names, i))).to_bytes() == b"qr" {
+                if &crate::sexp::accessors::char_cstr_bytes(STRING_ELT(names, i))[..] == b"qr" {
                     factor = VECTOR_ELT(object, i);
                     break;
                 }

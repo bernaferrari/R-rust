@@ -473,7 +473,7 @@ pub(super) unsafe fn vsignalError(call: SEXP, format: *const c_char) {
                 }
                 let hooksym = crate::sexp::symbol::install_str(".handleSimpleError");
                 let msg_cstr = std::ffi::CString::new(localbuf.as_str()).unwrap_or_default();
-                let msg_sexp = Rf_mkString(msg_cstr.as_ptr());
+                let msg_sexp = crate::sexp::constructors::mk_string_bytes(msg_cstr.to_bytes());
                 let _msg_guard = protect(msg_sexp);
                 // GNU .handleSimpleError takes (handler, message, call).
                 // The originating call is condition data, not an expression

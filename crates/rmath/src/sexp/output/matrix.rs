@@ -87,9 +87,8 @@ pub(crate) fn matrix_dimnames(x: Sexp<'_>, nrow: usize, ncol: usize) -> MatrixDi
         x.as_raw(),
         crate::sexp::attrib_core::R_DimNamesSymbol(),
     );
-    let Some(dimnames) = (unsafe { Sexp::from_raw(dimnames) }) else {
-        return empty_matrix_dimnames();
-    };
+    let Ok(value) = Sexp::with_registered_raw(dimnames, |dimnames| {
+        let dimnames = dimnames.clone();
     if dimnames.clone().typeof_() != SEXPTYPE::VECSXP || dimnames.clone().len() < 2 {
         return empty_matrix_dimnames();
     }
@@ -124,6 +123,10 @@ pub(crate) fn matrix_dimnames(x: Sexp<'_>, nrow: usize, ncol: usize) -> MatrixDi
         row_title,
         col_title,
     }
+    }) else {
+        return empty_matrix_dimnames();
+    };
+    value
 }
 
 /// GNU `init_rl_rn`: a present row title (even `""`) adds `R_MIN_LBLOFF`.

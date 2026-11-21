@@ -1015,7 +1015,7 @@ fn malformed_binary_arguments(malformed: &str) {
         session
             .owner_token()
             .unwrap()
-            .sexp(crate::sexp::symbol::Rf_install(c"con".as_ptr()))
+            .sexp(crate::sexp::symbol::install_str("con"))
             .unwrap()
             .into_owned()
             .unwrap()
@@ -1116,7 +1116,7 @@ fn binary_admission_named_con_keeps_first_unnamed_what_and_count() {
         session
             .owner_token()
             .unwrap()
-            .sexp(crate::sexp::symbol::Rf_install(c"con".as_ptr()))
+            .sexp(crate::sexp::symbol::install_str("con"))
             .unwrap()
             .into_owned()
             .unwrap()

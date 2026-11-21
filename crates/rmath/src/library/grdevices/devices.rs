@@ -400,8 +400,7 @@ pub fn devcapture(args: SEXP) -> SEXP {
 
     let _raster_guard = protect(raster);
     if native != 0 {
-        // SAFETY: the literal is a live NUL-terminated string for the call.
-        let class = unsafe { Rf_mkString(b"nativeRaster\0".as_ptr() as *const c_char) };
+        let class = crate::sexp::constructors::mk_string_str("nativeRaster");
         let _class_guard = protect(class);
         setAttrib(raster, R_ClassSymbol(), class);
         return raster;
@@ -450,7 +449,7 @@ mod tests {
     /// `Rf_mkString` on a literal: safe-wrapper for the test arg lists.
     fn mk_test_string(text: &std::ffi::CStr) -> SEXP {
         // SAFETY: `text` is a live NUL-terminated string for the call.
-        unsafe { Rf_mkString(text.as_ptr()) }
+        unsafe { crate::sexp::constructors::mk_string_bytes(text.to_bytes()) }
     }
 
     #[test]

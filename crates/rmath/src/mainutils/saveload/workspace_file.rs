@@ -22,7 +22,7 @@ pub(super) unsafe fn save(
         if name.is_empty() {
             crate::sexp::context::r_error("invalid object name");
         }
-        let symbol = unsafe { Rf_install(native.as_ptr()) };
+        let symbol = crate::sexp::symbol::install_cstr(&native);
         let tag = bindings.wrap(symbol).unwrap_or_else(fail);
         let mut value = R_findVar(symbol, envir.as_raw());
         if value == R_UnboundValue() {
@@ -157,20 +157,17 @@ fn fail<T>(error: impl std::fmt::Display) -> T {
 }
 
 unsafe fn workspace_path(file: SEXP, diagnostic: &str) -> String {
-    unsafe {
-        if file.is_null() || TYPEOF(file) != SEXPTYPE::STRSXP || XLENGTH(file) != 1 {
-            crate::sexp::context::r_error(diagnostic);
-        }
-        let element = STRING_ELT(file, 0);
-        if element.is_null() || element == R_NaString() {
-            crate::sexp::context::r_error(diagnostic);
-        }
-        let path = std::ffi::CStr::from_ptr(CHAR(element))
-            .to_str()
-            .unwrap_or_else(fail);
-        if path.is_empty() {
-            crate::sexp::context::r_error(diagnostic);
-        }
-        path.to_owned()
+    if file.is_null() || TYPEOF(file) != SEXPTYPE::STRSXP || XLENGTH(file) != 1 {
+        crate::sexp::context::r_error(diagnostic);
     }
+    let element = STRING_ELT(file, 0);
+    if element.is_null() || element == R_NaString() {
+        crate::sexp::context::r_error(diagnostic);
+    }
+    let path_bytes = crate::sexp::accessors::char_cstr_bytes(element);
+    let path = std::str::from_utf8(&path_bytes).unwrap_or_else(fail);
+    if path.is_empty() {
+        crate::sexp::context::r_error(diagnostic);
+    }
+    path.to_owned()
 }

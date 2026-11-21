@@ -14,7 +14,7 @@ fn convert<'s>(source: Sexp<'s>, mode: Sexp<'s>, api: u8) -> Result<SEXP, String
 }
 fn mode<'s>(factory: &crate::sexp::object::SessionNodeFactory<'s>) -> Sexp<'s> {
     factory
-        .wrap(unsafe { Rf_mkString(c"integer".as_ptr()) })
+        .wrap(unsafe { crate::sexp::constructors::mk_string_str("integer") })
         .unwrap()
 }
 fn decorate(source: &Sexp<'_>) {
@@ -722,7 +722,7 @@ fn compatibility_entry_null_source_and_invalid_mode_neighbors_preserve_values() 
         f.nil(),
         f.wrap(Rf_ScalarInteger(1)).unwrap(),
         f.wrap(Rf_allocVector3(SEXPTYPE::STRSXP, 0)).unwrap(),
-        f.wrap(unsafe { Rf_mkString(c"unknown-mode".as_ptr()) })
+        f.wrap(unsafe { crate::sexp::constructors::mk_string_str("unknown-mode") })
             .unwrap(),
     ] {
         for api in [1, 2] {
@@ -732,7 +732,9 @@ fn compatibility_entry_null_source_and_invalid_mode_neighbors_preserve_values() 
             );
         }
     }
-    let any = f.wrap(unsafe { Rf_mkString(c"any".as_ptr()) }).unwrap();
+    let any = f
+        .wrap(unsafe { crate::sexp::constructors::mk_string_str("any") })
+        .unwrap();
     for api in [1, 2] {
         assert_eq!(
             convert(source.clone(), any.clone(), api).unwrap(),
@@ -1023,7 +1025,7 @@ fn compatibility_as_vector_any_preserves_list_and_strips_atomic_attributes() {
     let session = RSession::new_for_gc_tests();
     let factory = session.owner_token().unwrap().node_factory();
     let any = factory
-        .wrap(unsafe { Rf_mkString(c"any".as_ptr()) })
+        .wrap(unsafe { crate::sexp::constructors::mk_string_str("any") })
         .unwrap();
     let atomic = factory.wrap(Rf_ScalarInteger(7)).unwrap();
     let list = factory

@@ -112,7 +112,7 @@ fn text_publication_callback(action: u8) {
         let value = factory
             .wrap(crate::sexp::envir::R_findVarInFrame(
                 env.as_raw(),
-                crate::sexp::symbol::Rf_install(c"publication_lines".as_ptr()),
+                crate::sexp::symbol::install_str("publication_lines"),
             ))
             .unwrap();
         assert_eq!(value.len(), 1);

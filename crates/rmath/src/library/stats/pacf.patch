@@ -11,11 +11,11 @@
  
  unsafe fn get_starma_tag() -> SEXP {
 -    if STARMA_TAG.is_null() {
--        STARMA_TAG = Rf_install(b"STARMA_TAG\0".as_ptr() as *const libc::c_char);
+-        STARMA_TAG = crate::sexp::symbol::install_str("STARMA_TAG");
 -    }
 -    STARMA_TAG
 +    *STARMA_TAG.get_or_init(|| unsafe {
-+        Rf_install(b"STARMA_TAG\0".as_ptr() as *const libc::c_char)
++        crate::sexp::symbol::install_str("STARMA_TAG")
 +    })
  }
  

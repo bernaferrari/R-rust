@@ -1273,55 +1273,49 @@ fn remember_device_name(name: &std::ffi::CStr, device_label: c_int) {
 }
 
 fn update_device_names(name: &std::ffi::CStr, device_label: c_int, current_label: c_int) {
-    unsafe {
-        let base = crate::sexp::globals::R_BaseEnv();
-        let sym = crate::sexp::symbol::Rf_install(c".Devices".as_ptr());
-        let old = crate::sexp::envir::R_findVarInFrame(base, sym);
-        let unbound = crate::sexp::globals::R_UnboundValue();
-        let n = if !old.is_null()
-            && old != unbound
-            && crate::sexp::accessors::TYPEOF(old) == SEXPTYPE::VECSXP
-        {
-            crate::sexp::accessors::XLENGTH(old)
-        } else {
-            0
-        };
-        // Registry labels are monotonic and may contain holes after devices
-        // are closed. `.Devices` is indexed by the external label, not by the
-        // number of currently open devices.
-        let slot = i64::from(device_label - 1);
-        let needed = n.max(slot + 1).max(i64::from(current_label));
-        let devices = Rf_allocVector(SEXPTYPE::VECSXP, needed as i32);
-        let _devices_guard = crate::sexp::protect::protect(devices);
-        for i in 0..n {
-            crate::sexp::accessors::SET_VECTOR_ELT(
-                devices,
-                i,
-                crate::sexp::accessors::VECTOR_ELT(old, i),
-            );
-        }
-        if n == 0 {
-            crate::sexp::accessors::SET_VECTOR_ELT(
-                devices,
-                0,
-                crate::sexp::constructors::Rf_mkString(c"null device".as_ptr()),
-            );
-        }
-        let start = if n == 0 { 1 } else { n };
-        for i in start..needed {
-            let label = crate::sexp::constructors::Rf_mkString(c"".as_ptr());
-            crate::sexp::accessors::SET_VECTOR_ELT(devices, i, label);
-        }
-        let current_name = crate::sexp::constructors::Rf_mkString(name.as_ptr());
-        crate::sexp::accessors::SET_VECTOR_ELT(devices, slot, current_name);
-        crate::sexp::envir::defineVar(sym, devices, base);
-        let current = crate::sexp::accessors::VECTOR_ELT(devices, i64::from(current_label - 1));
-        crate::sexp::envir::defineVar(
-            crate::sexp::symbol::Rf_install(c".Device".as_ptr()),
-            current,
-            base,
+    let base = crate::sexp::globals::R_BaseEnv();
+    let sym = crate::sexp::symbol::install_str(".Devices");
+    let old = crate::sexp::envir::R_findVarInFrame(base, sym);
+    let unbound = crate::sexp::globals::R_UnboundValue();
+    let n = if !old.is_null()
+        && old != unbound
+        && crate::sexp::accessors::TYPEOF(old) == SEXPTYPE::VECSXP
+    {
+        crate::sexp::accessors::XLENGTH(old)
+    } else {
+        0
+    };
+    // Registry labels are monotonic and may contain holes after devices
+    // are closed. `.Devices` is indexed by the external label, not by the
+    // number of currently open devices.
+    let slot = i64::from(device_label - 1);
+    let needed = n.max(slot + 1).max(i64::from(current_label));
+    let devices = Rf_allocVector(SEXPTYPE::VECSXP, needed as i32);
+    let _devices_guard = crate::sexp::protect::protect(devices);
+    for i in 0..n {
+        crate::sexp::accessors::SET_VECTOR_ELT(
+            devices,
+            i,
+            crate::sexp::accessors::VECTOR_ELT(old, i),
         );
     }
+    if n == 0 {
+        crate::sexp::accessors::SET_VECTOR_ELT(
+            devices,
+            0,
+            crate::sexp::constructors::mk_string_str("null device"),
+        );
+    }
+    let start = if n == 0 { 1 } else { n };
+    for i in start..needed {
+        let label = crate::sexp::constructors::mk_string_str("");
+        crate::sexp::accessors::SET_VECTOR_ELT(devices, i, label);
+    }
+    let current_name = crate::sexp::constructors::mk_string_bytes(name.to_bytes());
+    crate::sexp::accessors::SET_VECTOR_ELT(devices, slot, current_name);
+    crate::sexp::envir::defineVar(sym, devices, base);
+    let current = crate::sexp::accessors::VECTOR_ELT(devices, i64::from(current_label - 1));
+    crate::sexp::envir::defineVar(crate::sexp::symbol::install_str(".Device"), current, base);
 }
 
 /// Exported engine entry point: returns the current device, opening the

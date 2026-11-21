@@ -19,49 +19,48 @@ fn qr_q_error(s: &str) -> ! {
     std::panic::panic_any(crate::sexp::context::RError { message: s.into() })
 }
 unsafe fn match_args(args: SEXP) -> [Option<SEXP>; 3] {
-    unsafe {
-        let mut out = [None; 3];
-        let mut cell = args;
-        while cell != R_NilValue() && !cell.is_null() {
-            if TAG(cell) != R_NilValue() && !TAG(cell).is_null() {
-                let t = std::ffi::CStr::from_ptr(CHAR(PRINTNAME(TAG(cell)))).to_string_lossy();
-                let i = ["qr", "complete", "Dvec"]
-                    .iter()
-                    .position(|n| !t.is_empty() && n.starts_with(t.as_ref()))
-                    .unwrap_or_else(|| qr_q_error("unused argument"));
-                if out[i].replace(CAR(cell)).is_some() {
-                    qr_q_error("formal argument matched by multiple actual arguments")
-                }
+    let mut out = [None; 3];
+    let mut cell = args;
+    while cell != R_NilValue() && !cell.is_null() {
+        if TAG(cell) != R_NilValue() && !TAG(cell).is_null() {
+            let t = String::from_utf8_lossy(&crate::sexp::accessors::char_cstr_bytes(PRINTNAME(
+                TAG(cell),
+            )))
+            .into_owned();
+            let i = ["qr", "complete", "Dvec"]
+                .iter()
+                .position(|n| !t.is_empty() && n.starts_with(t.as_str()))
+                .unwrap_or_else(|| qr_q_error("unused argument"));
+            if out[i].replace(CAR(cell)).is_some() {
+                qr_q_error("formal argument matched by multiple actual arguments")
             }
-            cell = CDR(cell);
         }
-        cell = args;
-        while cell != R_NilValue() && !cell.is_null() {
-            if TAG(cell) == R_NilValue() || TAG(cell).is_null() {
-                let s = out
-                    .iter_mut()
-                    .find(|x| x.is_none())
-                    .unwrap_or_else(|| qr_q_error("unused argument"));
-                *s = Some(CAR(cell));
-            }
-            cell = CDR(cell);
-        }
-        out
+        cell = CDR(cell);
     }
+    cell = args;
+    while cell != R_NilValue() && !cell.is_null() {
+        if TAG(cell) == R_NilValue() || TAG(cell).is_null() {
+            let s = out
+                .iter_mut()
+                .find(|x| x.is_none())
+                .unwrap_or_else(|| qr_q_error("unused argument"));
+            *s = Some(CAR(cell));
+        }
+        cell = CDR(cell);
+    }
+    out
 }
 unsafe fn is_qr(x: SEXP) -> bool {
-    unsafe {
-        let c = getAttrib(x, R_ClassSymbol());
-        if c == R_NilValue() || TYPEOF(c) != STRSXP_C {
-            return false;
-        }
-        for i in 0..XLENGTH(c) {
-            if std::ffi::CStr::from_ptr(CHAR(STRING_ELT(c, i))).to_bytes() == b"qr" {
-                return true;
-            }
-        }
-        false
+    let c = getAttrib(x, R_ClassSymbol());
+    if c == R_NilValue() || TYPEOF(c) != STRSXP_C {
+        return false;
     }
+    for i in 0..XLENGTH(c) {
+        if &crate::sexp::accessors::char_cstr_bytes(STRING_ELT(c, i))[..] == b"qr" {
+            return true;
+        }
+    }
+    false
 }
 /// Extract Q using the stored Householder vectors, without calling raw dqrsl.
 pub unsafe fn do_qr_Q(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
@@ -77,7 +76,7 @@ pub unsafe fn do_qr_Q(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let mut rank = R_NilValue();
         if TYPEOF(names) == STRSXP_C && XLENGTH(names) == XLENGTH(obj) {
             for i in 0..XLENGTH(names) {
-                let n = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(names, i))).to_bytes();
+                let n = &crate::sexp::accessors::char_cstr_bytes(STRING_ELT(names, i))[..];
                 if n == b"qr" {
                     factor = VECTOR_ELT(obj, i)
                 } else if n == b"rank" {
@@ -113,7 +112,7 @@ pub unsafe fn do_qr_Q(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if XLENGTH(aux) < k as i64 {
             qr_q_error("invalid QR decomposition fields")
         }
-        let lapack_flag = getAttrib(obj, crate::sexp::symbol::Rf_install(c"useLAPACK".as_ptr()));
+        let lapack_flag = getAttrib(obj, crate::sexp::symbol::install_str("useLAPACK"));
         // GNU uses LAPACK only when useLAPACK is TRUE. A plain qr() is LINPACK.
         let lapack = TYPEOF(lapack_flag) == SEXPTYPE::LGLSXP
             && XLENGTH(lapack_flag) == 1

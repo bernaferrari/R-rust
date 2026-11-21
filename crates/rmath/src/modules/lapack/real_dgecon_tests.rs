@@ -31,7 +31,7 @@ unsafe fn make_input(dimensions: &[i32], values: &[f64]) -> SEXP {
 }
 
 unsafe fn one_norm() -> SEXP {
-    unsafe { Rf_mkString(b"O\0".as_ptr() as *const std::os::raw::c_char) }
+    unsafe { crate::sexp::constructors::mk_string_str("O") }
 }
 
 fn error_message(result: Result<(), Box<dyn std::any::Any + Send>>) -> String {

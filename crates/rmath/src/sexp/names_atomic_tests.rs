@@ -453,7 +453,7 @@ fn atomic_names_publication_appends_to_chain_replaced_during_cell_allocation() {
         let factory = token.node_factory();
         let object = factory.allocate(|a| Some(a.alloc_vector(SEXPTYPE::INTSXP, 3))).unwrap().into_owned().unwrap();
         let input = factory.allocate(|a| Some(a.alloc_vector(SEXPTYPE::INTSXP, 3))).unwrap().into_owned().unwrap();
-        let old_tag = unsafe { token.sexp(super::super::symbol::Rf_install(c"old".as_ptr())) }
+        let old_tag = unsafe { token.sexp(crate::sexp::symbol::install_str("old")) }
             .unwrap()
             .into_owned()
             .unwrap();
@@ -698,7 +698,7 @@ fn atomic_names_coerces_classed_input_and_pads_short_input() {
         .unwrap();
     let name = unsafe { super::R_NamesSymbol() };
     unsafe {
-        let class = crate::sexp::constructors::Rf_mkString(c"factor".as_ptr());
+        let class = crate::sexp::constructors::mk_string_str("factor");
         let class = factory.wrap(class).unwrap();
         super::setAttrib(source.as_raw(), super::R_ClassSymbol(), class.as_raw());
         assert!(super::try_set_atomic_names(
@@ -904,7 +904,7 @@ fn names_replacement_plain_copy_survives_gc_and_rejects_revocation() {
             unsafe {
                 super::setAttrib(
                     input.as_raw(),
-                    super::super::symbol::Rf_install(c"marker".as_ptr()),
+                    crate::sexp::symbol::install_str("marker"),
                     marker.as_raw(),
                 )
             };
@@ -956,7 +956,7 @@ fn names_replacement_plain_copy_denial_preserves_source_and_target() {
     unsafe {
         super::setAttrib(
             input.as_raw(),
-            super::super::symbol::Rf_install(c"marker".as_ptr()),
+            crate::sexp::symbol::install_str("marker"),
             marker.as_raw(),
         )
     };
@@ -1010,7 +1010,7 @@ fn names_replacement_attribute_probe_rejects_foreign_singleton_and_stale() {
     unsafe {
         super::setAttrib(
             local.as_raw(),
-            super::super::symbol::Rf_install(c"marker".as_ptr()),
+            crate::sexp::symbol::install_str("marker"),
             marker.as_raw(),
         )
     };
@@ -1351,7 +1351,7 @@ fn classed_atomic_names_survive_gc_and_reject_revocation() {
                 )
                 .unwrap();
             let input = AltrepBuilder::new(class).build().unwrap();
-            let class_value = crate::sexp::constructors::Rf_mkString(c"factor".as_ptr());
+            let class_value = crate::sexp::constructors::mk_string_str("factor");
             let _class_root = crate::sexp::protect::protect(class_value);
             super::setAttrib(input.as_raw(), super::R_ClassSymbol(), class_value);
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -1400,7 +1400,7 @@ fn classed_names_metadata_change_during_publication_is_rejected() {
             .into_owned()
             .unwrap();
         let class = token
-            .sexp(crate::sexp::constructors::Rf_mkString(c"factor".as_ptr()))
+            .sexp(crate::sexp::constructors::mk_string_str("factor"))
             .unwrap()
             .into_owned()
             .unwrap();
@@ -1482,7 +1482,7 @@ fn classed_names_allocation_denial_does_not_publish() {
             .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::INTSXP, 1)))
             .unwrap();
         let class = owner
-            .sexp(crate::sexp::constructors::Rf_mkString(c"factor".as_ptr()))
+            .sexp(crate::sexp::constructors::mk_string_str("factor"))
             .unwrap()
             .into_owned()
             .unwrap();
@@ -1558,7 +1558,7 @@ fn classed_names_metadata_change_during_coercion_is_rejected() {
                     .unwrap()
             };
             let input = AltrepBuilder::new(class).build().unwrap();
-            let class_value = crate::sexp::constructors::Rf_mkString(c"demo".as_ptr());
+            let class_value = crate::sexp::constructors::mk_string_str("demo");
             let _class_root = crate::sexp::protect::protect(class_value);
             super::setAttrib(input.as_raw(), super::R_ClassSymbol(), class_value);
             *saved.borrow_mut() = Some(input.clone().into_owned().unwrap());
@@ -1627,7 +1627,7 @@ fn classed_names_length_does_not_reenter_altrep_provider() {
             } else {
                 (plain, provider)
             };
-            let class_value = crate::sexp::constructors::Rf_mkString(c"demo".as_ptr());
+            let class_value = crate::sexp::constructors::mk_string_str("demo");
             let _class_root = crate::sexp::protect::protect(class_value);
             super::setAttrib(input.as_raw(), super::R_ClassSymbol(), class_value);
             *saved.borrow_mut() = Some(input.clone().into_owned().unwrap());
@@ -1660,7 +1660,7 @@ fn exact_classed_character_names_reject_metadata_change_during_publication() {
             .unwrap()
             .into_owned()
             .unwrap();
-        let class = crate::sexp::constructors::Rf_mkString(c"demo".as_ptr());
+        let class = crate::sexp::constructors::mk_string_str("demo");
         let _class_root = crate::sexp::protect::protect(class);
         super::setAttrib(input.as_raw(), super::R_ClassSymbol(), class);
         let changed = Rc::new(Cell::new(false));
@@ -1700,7 +1700,7 @@ fn exact_classed_character_names_reject_revocation_and_allocation_denial() {
             let input = factory
                 .allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::STRSXP, 2)))
                 .unwrap();
-            let class = crate::sexp::constructors::Rf_mkString(c"demo".as_ptr());
+            let class = crate::sexp::constructors::mk_string_str("demo");
             let _class_root = crate::sexp::protect::protect(class);
             super::setAttrib(input.as_raw(), super::R_ClassSymbol(), class);
             let name = super::R_NamesSymbol();

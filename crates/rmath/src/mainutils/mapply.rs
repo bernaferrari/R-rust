@@ -78,7 +78,7 @@ unsafe fn varying_length(v: SEXP, rho: SEXP) -> R_xlen_t {
             };
         if OBJECT(v) != 0 && !rho.is_null() && rho != R_NilValue() {
             let length_op = crate::sexp::envir::R_findVar(
-                crate::sexp::symbol::Rf_install(c"length".as_ptr()),
+                crate::sexp::symbol::install_str("length"),
                 crate::sexp::globals::R_BaseEnv(),
             );
             if !length_op.is_null()
@@ -117,37 +117,35 @@ unsafe fn varying_length(v: SEXP, rho: SEXP) -> R_xlen_t {
 /// elements); a non-vector object is the whole argument (scalar semantics).
 /// Classed objects go through `[[` so S4 methods fire (GNU `dots[[j]][[i]]`).
 unsafe fn varying_element(v: SEXP, idx: R_xlen_t, rho: SEXP) -> SEXP {
-    unsafe {
-        if OBJECT(v) != 0 && !rho.is_null() && rho != R_NilValue() {
-            let i = Rf_ScalarInteger((idx + 1) as i32);
-            let _i = protect(i);
-            let call = Rf_lang3(crate::sexp::symbol::Rf_install(c"[[".as_ptr()), v, i);
-            let _call = protect(call);
-            return crate::eval::eval::Rf_eval(call, rho);
+    if OBJECT(v) != 0 && !rho.is_null() && rho != R_NilValue() {
+        let i = Rf_ScalarInteger((idx + 1) as i32);
+        let _i = protect(i);
+        let call = Rf_lang3(crate::sexp::symbol::install_str("[["), v, i);
+        let _call = protect(call);
+        return crate::eval::eval::Rf_eval(call, rho);
+    }
+    let t = SEXPTYPE(TYPEOF(v));
+    if t == SEXPTYPE::DOTSXP {
+        let mut p = v;
+        let mut k: R_xlen_t = 0;
+        while !p.is_null() && p != R_NilValue() && k < idx {
+            k += 1;
+            p = CDR(p);
         }
-        let t = SEXPTYPE(TYPEOF(v));
-        if t == SEXPTYPE::DOTSXP {
-            let mut p = v;
-            let mut k: R_xlen_t = 0;
-            while !p.is_null() && p != R_NilValue() && k < idx {
-                k += 1;
-                p = CDR(p);
-            }
-            if p.is_null() || p == R_NilValue() {
-                R_NilValue()
-            } else {
-                CAR(p)
-            }
-        } else if t == SEXPTYPE::LISTSXP
-            || t == SEXPTYPE::LANGSXP
-            || t == SEXPTYPE::VECSXP
-            || t == SEXPTYPE::EXPRSXP
-            || is_vector_type(t)
-        {
-            crate::mainutils::essentials::extract_element(v, idx)
+        if p.is_null() || p == R_NilValue() {
+            R_NilValue()
         } else {
-            v
+            CAR(p)
         }
+    } else if t == SEXPTYPE::LISTSXP
+        || t == SEXPTYPE::LANGSXP
+        || t == SEXPTYPE::VECSXP
+        || t == SEXPTYPE::EXPRSXP
+        || is_vector_type(t)
+    {
+        crate::mainutils::essentials::extract_element(v, idx)
+    } else {
+        v
     }
 }
 
@@ -468,7 +466,7 @@ pub unsafe fn do_mapply_internal(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) ->
         };
         if !fun.is_null() && fun != R_NilValue() {
             let tag = if fun_named {
-                crate::sexp::symbol::Rf_install(c"FUN".as_ptr())
+                crate::sexp::symbol::install_str("FUN")
             } else {
                 R_NilValue()
             };
@@ -494,7 +492,7 @@ pub unsafe fn do_mapply_internal(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) ->
         if !moreargs.is_null() {
             push(
                 moreargs,
-                crate::sexp::symbol::Rf_install(c"MoreArgs".as_ptr()),
+                crate::sexp::symbol::install_str("MoreArgs"),
                 &mut spread,
                 &mut tail,
                 &mut guards,
@@ -506,10 +504,7 @@ pub unsafe fn do_mapply_internal(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) ->
         let _simplify_guard = protect(simplify_false);
         let simplify_cell = Rf_cons(simplify_false, R_NilValue());
         let _simplify_cell_guard = protect(simplify_cell);
-        SETTAG(
-            simplify_cell,
-            crate::sexp::symbol::Rf_install(c"SIMPLIFY".as_ptr()),
-        );
+        SETTAG(simplify_cell, crate::sexp::symbol::install_str("SIMPLIFY"));
         if spread == R_NilValue() {
             spread = simplify_cell;
         } else {
@@ -536,10 +531,10 @@ mod tests {
     unsafe fn eval_r(code: &str) -> SEXP {
         unsafe {
             let ccode = std::ffi::CString::new(code).expect("nul-free code");
-            let text = Rf_mkString(ccode.as_ptr());
+            let text = crate::sexp::constructors::mk_string_bytes(ccode.to_bytes());
             let _text_guard = protect(text);
             let mut status: c_int = 0;
-            let srcfile = Rf_mkString(c"<text>".as_ptr());
+            let srcfile = crate::sexp::constructors::mk_string_str("<text>");
             let _srcfile_guard = protect(srcfile);
             let parsed = crate::mainutils::gram_main::R_ParseVector(text, -1, &mut status, srcfile);
             assert_eq!(status, 1, "parse failed for {code:?}");
@@ -585,10 +580,7 @@ mod tests {
             crate::sexp::accessors::SETCAR(args, vec);
             crate::sexp::accessors::SETTAG(args, R_NilValue());
             crate::sexp::accessors::SETCAR(CDR(args), fun);
-            crate::sexp::accessors::SETTAG(
-                CDR(args),
-                crate::sexp::symbol::Rf_install(c"FUN".as_ptr()),
-            );
+            crate::sexp::accessors::SETTAG(CDR(args), crate::sexp::symbol::install_str("FUN"));
 
             let result = do_mapply(ptr::null_mut(), ptr::null_mut(), args, R_GlobalEnv());
             let _result_guard = protect(result);
@@ -616,10 +608,7 @@ mod tests {
             crate::sexp::accessors::SETCAR(CDR(args), renders);
             crate::sexp::accessors::SETTAG(CDR(args), R_NilValue());
             crate::sexp::accessors::SETCAR(CDR(CDR(args)), fun);
-            crate::sexp::accessors::SETTAG(
-                CDR(CDR(args)),
-                crate::sexp::symbol::Rf_install(c"FUN".as_ptr()),
-            );
+            crate::sexp::accessors::SETTAG(CDR(CDR(args)), crate::sexp::symbol::install_str("FUN"));
 
             let result = do_mapply(ptr::null_mut(), ptr::null_mut(), args, R_GlobalEnv());
             let _result_guard = protect(result);
@@ -675,14 +664,11 @@ mod tests {
             crate::sexp::accessors::SETCAR(args, vec);
             crate::sexp::accessors::SETTAG(args, R_NilValue());
             crate::sexp::accessors::SETCAR(CDR(args), fun);
-            crate::sexp::accessors::SETTAG(
-                CDR(args),
-                crate::sexp::symbol::Rf_install(c"FUN".as_ptr()),
-            );
+            crate::sexp::accessors::SETTAG(CDR(args), crate::sexp::symbol::install_str("FUN"));
             crate::sexp::accessors::SETCAR(CDR(CDR(args)), more);
             crate::sexp::accessors::SETTAG(
                 CDR(CDR(args)),
-                crate::sexp::symbol::Rf_install(c"MoreArgs".as_ptr()),
+                crate::sexp::symbol::install_str("MoreArgs"),
             );
 
             let result = do_mapply(ptr::null_mut(), ptr::null_mut(), args, R_GlobalEnv());
@@ -704,10 +690,7 @@ mod tests {
             crate::sexp::accessors::SETCAR(args, vec);
             crate::sexp::accessors::SETTAG(args, R_NilValue());
             crate::sexp::accessors::SETCAR(CDR(args), fun);
-            crate::sexp::accessors::SETTAG(
-                CDR(args),
-                crate::sexp::symbol::Rf_install(c"FUN".as_ptr()),
-            );
+            crate::sexp::accessors::SETTAG(CDR(args), crate::sexp::symbol::install_str("FUN"));
 
             let result = do_mapply(ptr::null_mut(), ptr::null_mut(), args, R_GlobalEnv());
             assert_eq!(TYPEOF(result), SEXPTYPE::VECSXP);

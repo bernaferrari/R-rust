@@ -666,7 +666,7 @@ mod tests {
     fn symbol<'s>(factory: &SessionNodeFactory<'s>, name: &str) -> Sexp<'s> {
         let name = std::ffi::CString::new(name).unwrap();
         factory
-            .wrap(unsafe { crate::sexp::symbol::Rf_install(name.as_ptr()) })
+            .wrap(unsafe { crate::sexp::symbol::install_cstr(&name) })
             .unwrap()
     }
     fn integer<'s>(factory: &SessionNodeFactory<'s>, value: i32) -> Sexp<'s> {

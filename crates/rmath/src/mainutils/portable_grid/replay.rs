@@ -102,9 +102,7 @@ impl ReplayCommands {
         let mut steps = Vec::new();
         let mut current = head.as_raw();
         let mut remaining = MAX_ARGUMENT_ELEMENTS;
-        // SAFETY: audited boundary — interns the fixed command-name symbols
-        // under the active runtime.
-        let tags = OPERATIONS.map(|name| unsafe { Rf_install(name.as_ptr()) });
+        let tags = OPERATIONS.map(|name| crate::sexp::symbol::install_cstr(&name));
         while current != R_NilValue() {
             if steps.len() == MAX_COMMANDS || TYPEOF(current) != SEXPTYPE::LISTSXP {
                 return Err(INVALID);

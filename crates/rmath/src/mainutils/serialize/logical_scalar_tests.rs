@@ -39,7 +39,7 @@ fn decoded_logical_metadata_and_attributes_never_modify_shared_singletons() {
                 SETLEVELS(source, 1);
                 SET_OBJECT(source, 1);
             } else {
-                let names = Rf_mkString(c"kept".as_ptr());
+                let names = crate::sexp::constructors::mk_string_str("kept");
                 setAttrib(source, R_NamesSymbol(), names);
             }
             let wire = R_serialize(
@@ -60,7 +60,7 @@ fn decoded_logical_metadata_and_attributes_never_modify_shared_singletons() {
             } else {
                 let names = crate::eval::attrib_core::getAttrib(decoded, R_NamesSymbol());
                 assert_eq!(
-                    CStr::from_ptr(CHAR(STRING_ELT(names, 0))).to_bytes(),
+                    &crate::sexp::accessors::char_cstr_bytes(STRING_ELT(names, 0))[..],
                     b"kept"
                 );
             }

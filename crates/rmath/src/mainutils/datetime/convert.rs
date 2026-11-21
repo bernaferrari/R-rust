@@ -165,30 +165,32 @@ pub(crate) fn makelt(tm: &stm, ans: SEXP, i: R_xlen_t, valid: bool, frac_secs: c
 /// Build the standard POSIXlt VECSXP with 11 named components.
 /// Returns (ans, ansnames) both protected.
 pub(crate) fn make_posixlt_skeleton(n: R_xlen_t) -> (SEXP, SEXP) {
-    unsafe {
-        let nans: c_int = 11;
-        let ans = Rf_allocVector3(SEXPTYPE::VECSXP, nans as R_xlen_t);
-        let _ans_guard = protect(ans);
-        for i in 0..9 {
-            let sexp: c_int = if i > 0 {
-                SEXPTYPE::INTSXP.into()
-            } else {
-                SEXPTYPE::REALSXP.into()
-            };
-            SET_VECTOR_ELT(ans, i as R_xlen_t, Rf_allocVector3(sexp, n));
-        }
-        SET_VECTOR_ELT(ans, 9, Rf_allocVector3(SEXPTYPE::STRSXP, n)); // zone
-        SET_VECTOR_ELT(ans, 10, Rf_allocVector3(SEXPTYPE::INTSXP, n)); // gmtoff
-
-        let ansnames = Rf_allocVector3(SEXPTYPE::STRSXP, nans as R_xlen_t);
-        let _ansnames_guard = protect(ansnames);
-        for i in 0..nans {
-            let cstr = CString::new(ltnames[i as usize]).unwrap_or_default();
-            SET_STRING_ELT(ansnames, i as R_xlen_t, Rf_mkChar(cstr.as_ptr()));
-        }
-
-        (ans, ansnames)
+    let nans: c_int = 11;
+    let ans = Rf_allocVector3(SEXPTYPE::VECSXP, nans as R_xlen_t);
+    let _ans_guard = protect(ans);
+    for i in 0..9 {
+        let sexp: c_int = if i > 0 {
+            SEXPTYPE::INTSXP.into()
+        } else {
+            SEXPTYPE::REALSXP.into()
+        };
+        SET_VECTOR_ELT(ans, i as R_xlen_t, Rf_allocVector3(sexp, n));
     }
+    SET_VECTOR_ELT(ans, 9, Rf_allocVector3(SEXPTYPE::STRSXP, n)); // zone
+    SET_VECTOR_ELT(ans, 10, Rf_allocVector3(SEXPTYPE::INTSXP, n)); // gmtoff
+
+    let ansnames = Rf_allocVector3(SEXPTYPE::STRSXP, nans as R_xlen_t);
+    let _ansnames_guard = protect(ansnames);
+    for i in 0..nans {
+        let cstr = CString::new(ltnames[i as usize]).unwrap_or_default();
+        SET_STRING_ELT(
+            ansnames,
+            i as R_xlen_t,
+            crate::sexp::constructors::mk_char_bytes(cstr.to_bytes()),
+        );
+    }
+
+    (ans, ansnames)
 }
 
 /// # Safety
@@ -274,40 +276,39 @@ fn posixlt_has_valid_time(x: SEXP) -> bool {
 /// GNU `as.POSIXlt.default` uses `missing(tz)`. A supplied non-empty tz
 /// only relabels `tzone` on an existing POSIXlt.
 pub(crate) fn posixlt_supplied_tz(args: SEXP) -> Option<String> {
-    unsafe {
-        let mut cell = CDR(args);
-        while !cell.is_null() && cell != R_NilValue() {
-            let tag = TAG(cell);
-            let named_tz =
-                !tag.is_null() && tag != R_NilValue() && TYPEOF(tag) == SEXPTYPE::SYMSXP && {
-                    let name = std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag))).to_string_lossy();
-                    name == "tz"
-                };
-            let positional = tag.is_null() || tag == R_NilValue();
-            if named_tz || positional {
-                let t = CAR(cell);
-                if t.is_null() || t == R_NilValue() || t == R_MissingArg() {
-                    return None;
-                }
-                if TYPEOF(t) == SEXPTYPE::STRSXP && XLENGTH(t) > 0 {
-                    return Some(charsxp_text(STRING_ELT(t, 0), "tz"));
-                }
+    let mut cell = CDR(args);
+    while !cell.is_null() && cell != R_NilValue() {
+        let tag = TAG(cell);
+        let named_tz =
+            !tag.is_null() && tag != R_NilValue() && TYPEOF(tag) == SEXPTYPE::SYMSXP && {
+                let name = String::from_utf8_lossy(&crate::sexp::accessors::char_cstr_bytes(
+                    PRINTNAME(tag),
+                ))
+                .into_owned();
+                name == "tz"
+            };
+        let positional = tag.is_null() || tag == R_NilValue();
+        if named_tz || positional {
+            let t = CAR(cell);
+            if t.is_null() || t == R_NilValue() || t == R_MissingArg() {
                 return None;
             }
-            cell = CDR(cell);
+            if TYPEOF(t) == SEXPTYPE::STRSXP && XLENGTH(t) > 0 {
+                return Some(charsxp_text(STRING_ELT(t, 0), "tz"));
+            }
+            return None;
         }
-        None
+        cell = CDR(cell);
     }
+    None
 }
 
 pub(crate) fn set_posixlt_balanced(ans: SEXP) {
-    unsafe {
-        setAttrib(
-            ans,
-            Rf_install(c"balanced".as_ptr()),
-            Rf_ScalarLogical(TRUE),
-        );
-    }
+    setAttrib(
+        ans,
+        crate::sexp::symbol::install_str("balanced"),
+        Rf_ScalarLogical(TRUE),
+    );
 }
 
 fn posixlt_tzone_sexp(tz: &str, is_utc: bool) -> SEXP {
@@ -327,7 +328,11 @@ fn posixlt_tzone_sexp(tz: &str, is_utc: bool) -> SEXP {
             let tzone = Rf_allocVector3(SEXPTYPE::STRSXP, 3);
             for (j, s) in [label, tzname_str(0), tzname_str(1)].iter().enumerate() {
                 let cs = CString::new(s.as_str()).unwrap_or_default();
-                SET_STRING_ELT(tzone, j as R_xlen_t, Rf_mkChar(cs.as_ptr()));
+                SET_STRING_ELT(
+                    tzone,
+                    j as R_xlen_t,
+                    crate::sexp::constructors::mk_char_bytes(cs.to_bytes()),
+                );
             }
             tzone
         }
@@ -335,18 +340,16 @@ fn posixlt_tzone_sexp(tz: &str, is_utc: bool) -> SEXP {
 }
 
 pub(crate) fn finish_posixlt(ans: SEXP, ansnames: SEXP, tzone: SEXP) {
-    unsafe {
-        setAttrib(ans, R_NamesSymbol(), ansnames);
-        let klass = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
-        let _klass_guard = protect(klass);
-        SET_STRING_ELT(klass, 0, Rf_mkChar(c"POSIXlt".as_ptr()));
-        SET_STRING_ELT(klass, 1, Rf_mkChar(c"POSIXt".as_ptr()));
-        R_classgets(ans, klass);
-        if !tzone.is_null() && tzone != R_NilValue() && TYPEOF(tzone) == SEXPTYPE::STRSXP {
-            setAttrib(ans, Rf_install(c"tzone".as_ptr()), tzone);
-        }
-        set_posixlt_balanced(ans);
+    setAttrib(ans, R_NamesSymbol(), ansnames);
+    let klass = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
+    let _klass_guard = protect(klass);
+    SET_STRING_ELT(klass, 0, crate::sexp::constructors::mk_char_str("POSIXlt"));
+    SET_STRING_ELT(klass, 1, crate::sexp::constructors::mk_char_str("POSIXt"));
+    R_classgets(ans, klass);
+    if !tzone.is_null() && tzone != R_NilValue() && TYPEOF(tzone) == SEXPTYPE::STRSXP {
+        setAttrib(ans, crate::sexp::symbol::install_str("tzone"), tzone);
     }
+    set_posixlt_balanced(ans);
 }
 
 /// GNU `.Internal(as.POSIXlt(x, tz))` for numeric POSIXct seconds.

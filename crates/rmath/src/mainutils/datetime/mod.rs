@@ -44,7 +44,6 @@ use crate::sexp::context::RError;
 use crate::sexp::ffi::*;
 use crate::sexp::globals::{R_MissingArg, R_NaString, R_NilValue};
 use crate::sexp::protect::*;
-use crate::sexp::symbol::Rf_install;
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -137,8 +136,7 @@ fn class_symbol() -> SEXP {
 
 /// Audited boundary: symbol interning under the active runtime.
 fn install(name: &std::ffi::CStr) -> SEXP {
-    // SAFETY: interns a NUL-terminated name under the active runtime.
-    unsafe { crate::sexp::symbol::Rf_install(name.as_ptr()) }
+    crate::sexp::symbol::install_cstr(&name)
 }
 
 /// Checked STRSXP(1) scalar; matches `Rf_mkString` on the session heap.

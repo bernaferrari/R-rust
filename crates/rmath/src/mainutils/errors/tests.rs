@@ -559,8 +559,8 @@ fn test_r_make_partial_match_warning_condition() {
     let _session = RSession::new();
 
     unsafe {
-        let input = Rf_install(b"abc\0".as_ptr() as *const c_char);
-        let target = Rf_install(b"abcdef\0".as_ptr() as *const c_char);
+        let input = crate::sexp::symbol::install_str("abc");
+        let target = crate::sexp::symbol::install_str("abcdef");
         let cond = R_makePartialMatchWarningCondition(ptr::null_mut(), input, target);
         assert!(!cond.is_null());
         assert_eq!(TYPEOF(cond), SEXPTYPE::VECSXP);
@@ -596,7 +596,7 @@ fn test_r_make_partial_match_warning_condition() {
         );
 
         // Non-symbol (CHARSXP) input is wrapped via ScalarString
-        let chars = Rf_mkChar(b"nam\0".as_ptr() as *const c_char);
+        let chars = crate::sexp::constructors::mk_char_str("nam");
         let cond2 = R_makePartialMatchWarningCondition(ptr::null_mut(), chars, target);
         let wrapped = VECTOR_ELT(cond2, 2);
         assert_eq!(TYPEOF(wrapped), SEXPTYPE::STRSXP);
@@ -618,8 +618,8 @@ fn test_r_make_partial_argument_match_warning_condition() {
     let _session = RSession::new();
 
     unsafe {
-        let argument = Rf_install(b"ab\0".as_ptr() as *const c_char);
-        let formal = Rf_install(b"abcde\0".as_ptr() as *const c_char);
+        let argument = crate::sexp::symbol::install_str("ab");
+        let formal = crate::sexp::symbol::install_str("abcde");
         let cond = R_makePartialArgumentMatchWarningCondition(ptr::null_mut(), argument, formal);
         assert!(!cond.is_null());
         assert_eq!(TYPEOF(cond), SEXPTYPE::VECSXP);
@@ -804,10 +804,10 @@ fn test_entry_macros() {
     unsafe {
         let entry = Rf_allocVector(SEXPTYPE::VECSXP, 5);
         // Set up some values
-        let v0 = Rf_mkString(b"class\0".as_ptr() as *const c_char);
-        let v2 = Rf_mkString(b"handler\0".as_ptr() as *const c_char);
-        let v3 = Rf_mkString(b"target\0".as_ptr() as *const c_char);
-        let v4 = Rf_mkString(b"result\0".as_ptr() as *const c_char);
+        let v0 = crate::sexp::constructors::mk_string_str("class");
+        let v2 = crate::sexp::constructors::mk_string_str("handler");
+        let v3 = crate::sexp::constructors::mk_string_str("target");
+        let v4 = crate::sexp::constructors::mk_string_str("result");
         SET_VECTOR_ELT(entry, 0, v0);
         SET_VECTOR_ELT(entry, 2, v2);
         SET_VECTOR_ELT(entry, 3, v3);

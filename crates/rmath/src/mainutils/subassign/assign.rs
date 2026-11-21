@@ -84,7 +84,7 @@ fn drop_data_frame_columns(frame: SEXP, index: SEXP) -> SEXP {
         crate::sexp::attrib_core::setAttrib(
             out,
             crate::sexp::attrib_core::R_ClassSymbol(),
-            crate::sexp::constructors::Rf_mkString(c"data.frame".as_ptr()),
+            crate::sexp::constructors::mk_string_str("data.frame"),
         );
         let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
         let nrow = if XLENGTH(frame) > 0 {
@@ -220,7 +220,7 @@ fn data_frame_assign_cells(frame: SEXP, subs: SEXP, value: SEXP) -> Option<SEXP>
                         crate::sexp::attrib_core::R_NamesSymbol(),
                         new_names,
                     );
-                    let klass = crate::sexp::constructors::Rf_mkString(c"data.frame".as_ptr());
+                    let klass = crate::sexp::constructors::mk_string_str("data.frame");
                     crate::sexp::attrib_core::setAttrib(
                         wider,
                         crate::sexp::attrib_core::R_ClassSymbol(),
@@ -304,7 +304,7 @@ fn data_frame_assign_cells(frame: SEXP, subs: SEXP, value: SEXP) -> Option<SEXP>
                         crate::sexp::attrib_core::R_NamesSymbol(),
                         new_names,
                     );
-                    let klass = crate::sexp::constructors::Rf_mkString(c"data.frame".as_ptr());
+                    let klass = crate::sexp::constructors::mk_string_str("data.frame");
                     crate::sexp::attrib_core::setAttrib(
                         wider,
                         crate::sexp::attrib_core::R_ClassSymbol(),

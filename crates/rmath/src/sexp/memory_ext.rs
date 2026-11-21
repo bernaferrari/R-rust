@@ -856,18 +856,18 @@ mod tests {
             super::super::gengc::full_gc();
             assert_eq!(INTEGER_ELT(CAR(binding), 0), 77);
             assert_eq!(
-                std::ffi::CStr::from_ptr(CHAR(character)).to_bytes(),
+                &crate::sexp::accessors::char_cstr_bytes(character)[..],
                 b"multi-byte-persistent"
             );
             assert_eq!(
-                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(name))).to_bytes(),
+                &crate::sexp::accessors::char_cstr_bytes(PRINTNAME(name))[..],
                 b"multi-byte-symbol"
             );
             assert_eq!(INTEGER_ELT(integer, 0), 41);
             assert_eq!(LOGICAL_ELT(logical, 0), 1);
             assert_eq!(REAL_ELT(real, 0), 2.5);
             assert_eq!(
-                std::ffi::CStr::from_ptr(CHAR(STRING_ELT(string, 0))).to_bytes(),
+                &crate::sexp::accessors::char_cstr_bytes(STRING_ELT(string, 0))[..],
                 b"owned-string-bytes"
             );
             token

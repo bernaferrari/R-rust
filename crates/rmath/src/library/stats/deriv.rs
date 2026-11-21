@@ -78,7 +78,7 @@ fn derivative_symbol(
         CString::new(name).map_err(|_| crate::sexp::object::SexpError::EvaluationFailed {
             message: "invalid variable name".into(),
         })?;
-    access.with_native(|owner| unsafe { owner.sexp(Rf_install(name.as_ptr()))?.into_owned() })
+    access.with_native(|owner| owner.sexp(crate::sexp::symbol::install_cstr(&name))?.into_owned())
 }
 
 /// `.External(C_doD, expr, name)`.
@@ -181,7 +181,7 @@ fn install_builder_formal(
     })?;
     // The caller retains admitted immutable native bytes. No R payload loan
     // or interpreter field borrow spans this original-owner native boundary.
-    access.with_native(|owner| unsafe { owner.sexp(Rf_install(name.as_ptr()))?.into_owned() })
+    access.with_native(|owner| owner.sexp(crate::sexp::symbol::install_cstr(&name))?.into_owned())
 }
 
 fn builder_environment(

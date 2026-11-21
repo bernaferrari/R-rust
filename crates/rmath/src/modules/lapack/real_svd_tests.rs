@@ -31,7 +31,7 @@ unsafe fn make_input(dimensions: &[i32], values: &[f64]) -> SEXP {
 }
 
 unsafe fn make_jobu() -> SEXP {
-    unsafe { Rf_mkString(b"N\0".as_ptr() as *const std::os::raw::c_char) }
+    unsafe { crate::sexp::constructors::mk_string_str("N") }
 }
 
 fn error_message(result: Result<(), Box<dyn std::any::Any + Send>>) -> String {

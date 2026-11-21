@@ -78,7 +78,7 @@ fn ppr_prediction_managed_fortran_matches_gnu_zero_term_short_model() {
     let mut tail = nil.clone();
     let package = f.strings(&["stats"]).unwrap().into_owned().unwrap();
     let tag = f
-        .wrap(unsafe { crate::sexp::symbol::Rf_install(c"PACKAGE".as_ptr()) })
+        .wrap(unsafe { crate::sexp::symbol::install_str("PACKAGE") })
         .unwrap();
     tail = f
         .pairlist_cell(&package, &tail, &tag)

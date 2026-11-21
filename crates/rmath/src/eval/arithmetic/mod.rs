@@ -26,7 +26,7 @@ use crate::sexp::attrib_core::{
 };
 use crate::sexp::constructors::{
     Rf_ScalarComplex, Rf_ScalarInteger, Rf_ScalarLogical, Rf_ScalarReal, Rf_allocVector3, Rf_cons,
-    Rf_lang2, Rf_lang3, Rf_mkChar,
+    Rf_lang2, Rf_lang3,
 };
 
 use crate::sexp::context::RError;

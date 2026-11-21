@@ -22,44 +22,47 @@ pub(crate) fn log_with_base(call: SEXP, sx: SEXP, sbase: SEXP) -> SEXP {
         }
         let n = nx.max(nb);
         let result_raw = Rf_allocVector3(SEXPTYPE::REALSXP, n);
-        let Some(result) = Sexp::from_raw(result_raw) else {
+        let Ok(value) = Sexp::with_registered_raw(result_raw, |result| {
+            let result = result.clone();
+            let _result_guard = protect(result_raw);
+            warn_if_non_multiple_recycling(nx, nb);
+            // SAFETY: result is freshly allocated; no payload reference was lent.
+            let mut result_mut = SexpMut::from_owned(result);
+            let mut naflag = false;
+            for i in 0..n {
+                let xv = x.clone().real_at(i % nx);
+                let bv = base.clone().real_at(i % nb);
+                // if_NA_Math2_set: NA in -> NA, NaN in -> NaN
+                let out = if xv.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN
+                    || bv.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN
+                {
+                    crate::sexp::ffi::NA_REAL
+                } else if xv.is_nan() || bv.is_nan() {
+                    f64::NAN
+                } else {
+                    let v = libm::log(xv) / libm::log(bv);
+                    if v.is_nan() {
+                        naflag = true;
+                    }
+                    v
+                };
+                result_mut.set_real_elt(i, out);
+            }
+            let _ = result_mut.freeze();
+            if naflag {
+                crate::mainutils::errors::Rf_warningcall1(call, c"NaNs produced");
+            }
+            // FINISH_Math2: attributes from the first operand of length n
+            if n == nx {
+                copy_all_attrib(result_raw, sx);
+            } else if n == nb {
+                copy_all_attrib(result_raw, sbase);
+            }
+            result_raw
+        }) else {
             return R_NilValue();
         };
-        let _result_guard = protect(result_raw);
-        warn_if_non_multiple_recycling(nx, nb);
-        // SAFETY: result is freshly allocated; no payload reference was lent.
-        let mut result_mut = SexpMut::from_owned(result);
-        let mut naflag = false;
-        for i in 0..n {
-            let xv = x.clone().real_at(i % nx);
-            let bv = base.clone().real_at(i % nb);
-            // if_NA_Math2_set: NA in -> NA, NaN in -> NaN
-            let out = if xv.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN
-                || bv.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN
-            {
-                crate::sexp::ffi::NA_REAL
-            } else if xv.is_nan() || bv.is_nan() {
-                f64::NAN
-            } else {
-                let v = libm::log(xv) / libm::log(bv);
-                if v.is_nan() {
-                    naflag = true;
-                }
-                v
-            };
-            result_mut.set_real_elt(i, out);
-        }
-        let _ = result_mut.freeze();
-        if naflag {
-            crate::mainutils::errors::Rf_warningcall1(call, c"NaNs produced");
-        }
-        // FINISH_Math2: attributes from the first operand of length n
-        if n == nx {
-            copy_all_attrib(result_raw, sx);
-        } else if n == nb {
-            copy_all_attrib(result_raw, sbase);
-        }
-        result_raw
+        value
     }
 }
 
@@ -109,7 +112,7 @@ pub fn complex_log_with_base(sx: SEXP, sbase: SEXP) -> SEXP {
 }
 
 /// SHALLOW_DUPLICATE_ATTRIB: copy every attribute of `src` onto `dst`.
-pub(crate) fn copy_all_attrib(dst: SEXP, src: SEXP) {
+pub(crate)  fn copy_all_attrib(dst: SEXP, src: SEXP) {
     if src.is_null() || src == R_NilValue() {
         return;
     }

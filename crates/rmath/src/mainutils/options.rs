@@ -1788,7 +1788,7 @@ mod tests {
             let platform = session
                 .sexp(crate::sexp::envir::R_findVarInFrame(
                     R_BaseEnv(),
-                    Rf_install(c".Platform".as_ptr()),
+                    crate::sexp::symbol::install_str(".Platform"),
                 ))
                 .unwrap();
             assert_eq!(platform.len(), 9);
@@ -2089,7 +2089,7 @@ mod tests {
             InitOptions();
 
             // Set a custom option
-            let tag = Rf_install(c"my_custom_option".as_ptr());
+            let tag = crate::sexp::symbol::install_str("my_custom_option");
             let val = Rf_ScalarInteger(42);
             let _guard = protect(val);
             let old = R_SetOption(tag, val);

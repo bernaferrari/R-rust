@@ -219,7 +219,7 @@ pub fn delim_match(x: SEXP, delims: SEXP) -> SEXP {
         }
 
         if !ans.is_null() {
-            let attr_sym = crate::sexp::symbol::Rf_install(c"match.length".as_ptr());
+            let attr_sym = crate::sexp::symbol::install_str("match.length");
             crate::attrib_core::setAttrib(ans, attr_sym, matchlen);
         }
 
@@ -365,13 +365,13 @@ pub fn doTabExpand(strings: SEXP, starts: SEXP) -> SEXP {
         for i in 0..n as usize {
             let elt = STRING_ELT(strings, i as R_xlen_t);
             if elt.is_null() {
-                let empty_char = Rf_mkChar(c"".as_ptr());
+                let empty_char = crate::sexp::constructors::mk_char_str("");
                 SET_STRING_ELT(result, i as R_xlen_t, empty_char);
                 continue;
             }
             let input_ptr = CHAR(elt);
             if input_ptr.is_null() {
-                let empty_char = Rf_mkChar(c"".as_ptr());
+                let empty_char = crate::sexp::constructors::mk_char_str("");
                 SET_STRING_ELT(result, i as R_xlen_t, empty_char);
                 continue;
             }

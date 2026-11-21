@@ -216,14 +216,14 @@ pub fn install_utils_call_symbols(env: crate::sexp::ffi::SEXP) {
                 .wrap(env)
                 .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
             let binding = factory
-                .wrap(crate::sexp::symbol::Rf_install(c"C_Rprof".as_ptr()))
+                .wrap(crate::sexp::symbol::install_str("C_Rprof"))
                 .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
             let keys = crate::mainutils::native_symbols::AttributeKeys {
                 names: factory
-                    .wrap(crate::sexp::symbol::Rf_install(c"names".as_ptr()))
+                    .wrap(crate::sexp::symbol::install_str("names"))
                     .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string())),
                 class: factory
-                    .wrap(crate::sexp::symbol::Rf_install(c"class".as_ptr()))
+                    .wrap(crate::sexp::symbol::install_str("class"))
                     .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string())),
             };
             let metadata =
@@ -242,7 +242,7 @@ pub fn install_utils_call_symbols(env: crate::sexp::ffi::SEXP) {
                 .require_active()
                 .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
             let binding = factory
-                .wrap(crate::sexp::symbol::Rf_install(c"C_charClass".as_ptr()))
+                .wrap(crate::sexp::symbol::install_str("C_charClass"))
                 .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
             let metadata = crate::mainutils::native_symbols::symbol_info(
                 owner,
@@ -266,47 +266,47 @@ pub fn install_utils_call_symbols(env: crate::sexp::ffi::SEXP) {
                 .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()));
             let flush = c"C_flushconsole";
             crate::sexp::envir::defineVar(
-                crate::sexp::symbol::Rf_install(flush.as_ptr()),
-                crate::sexp::constructors::Rf_mkString(flush.as_ptr()),
+                crate::sexp::symbol::install_cstr(&flush),
+                crate::sexp::constructors::mk_string_bytes(flush.to_bytes()),
                 env,
             );
             let cname = std::ffi::CString::new("C_countfields").unwrap_or_default();
             crate::sexp::envir::defineVar(
-                crate::sexp::symbol::Rf_install(cname.as_ptr()),
-                crate::sexp::constructors::Rf_mkString(cname.as_ptr()),
+                crate::sexp::symbol::install_cstr(&cname),
+                crate::sexp::constructors::mk_string_bytes(cname.to_bytes()),
                 env,
             );
             let head = std::ffi::CString::new("C_readtablehead").unwrap_or_default();
             crate::sexp::envir::defineVar(
-                crate::sexp::symbol::Rf_install(head.as_ptr()),
-                crate::sexp::constructors::Rf_mkString(head.as_ptr()),
+                crate::sexp::symbol::install_cstr(&head),
+                crate::sexp::constructors::mk_string_bytes(head.to_bytes()),
                 env,
             );
             let convert = std::ffi::CString::new("C_typeconvert").unwrap_or_default();
             crate::sexp::envir::defineVar(
-                crate::sexp::symbol::Rf_install(convert.as_ptr()),
-                crate::sexp::constructors::Rf_mkString(convert.as_ptr()),
+                crate::sexp::symbol::install_cstr(&convert),
+                crate::sexp::constructors::mk_string_bytes(convert.to_bytes()),
                 env,
             );
             let write = std::ffi::CString::new("C_writetable").unwrap_or_default();
             crate::sexp::envir::defineVar(
-                crate::sexp::symbol::Rf_install(write.as_ptr()),
-                crate::sexp::constructors::Rf_mkString(write.as_ptr()),
+                crate::sexp::symbol::install_cstr(&write),
+                crate::sexp::constructors::mk_string_bytes(write.to_bytes()),
                 env,
             );
             let size = std::ffi::CString::new("C_objectSize").unwrap_or_default();
             crate::sexp::envir::defineVar(
-                crate::sexp::symbol::Rf_install(size.as_ptr()),
-                crate::sexp::constructors::Rf_mkString(size.as_ptr()),
+                crate::sexp::symbol::install_cstr(&size),
+                crate::sexp::constructors::mk_string_bytes(size.to_bytes()),
                 env,
             );
             let edit = std::ffi::CString::new("C_edit").unwrap_or_default();
             crate::sexp::envir::defineVar(
-                crate::sexp::symbol::Rf_install(edit.as_ptr()),
-                crate::sexp::constructors::Rf_mkString(edit.as_ptr()),
+                crate::sexp::symbol::install_cstr(&edit),
+                crate::sexp::constructors::mk_string_bytes(edit.to_bytes()),
                 env,
             );
-            let maker = crate::sexp::symbol::Rf_install(c"makeRweaveLatexCodeRunner".as_ptr());
+            let maker = crate::sexp::symbol::install_str("makeRweaveLatexCodeRunner");
             let bound = crate::sexp::envir::R_findVarInFrame(env, maker);
             if bound.is_null()
                 || bound == crate::sexp::globals::R_UnboundValue()

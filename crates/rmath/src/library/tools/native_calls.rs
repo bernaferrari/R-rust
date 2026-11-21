@@ -31,54 +31,50 @@ const TOOLS_CALL_NAMES: &[&str] = &[
 ];
 
 unsafe extern "C-unwind" fn c_parse_latex(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
-        let arg = crate::sexp::accessors::CAR(crate::sexp::accessors::CDR(args));
-        let mut text = if TYPEOF(arg) == SEXPTYPE::STRSXP {
-            let ch = crate::sexp::accessors::STRING_ELT(arg, 0);
-            std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(ch))
-                .to_string_lossy()
-                .into_owned()
-        } else {
-            String::new()
-        };
-        for (from, to) in [
-            ("\\~{}", "~"),
-            ("\\~{n}", "ñ"),
-            ("\\\"{u}", "ü"),
-            ("{\\\"u}", "ü"),
-            ("\\'{e}", "é"),
-            ("{\\'e}", "é"),
-            ("\\`{I}", "Ì"),
-            ("\\'{I}", "Í"),
-            ("\\^{I}", "Î"),
-            ("\\\"{I}", "Ï"),
-            ("\\`{i}", "ì"),
-            ("\\'{i}", "í"),
-            ("\\^{i}", "î"),
-            ("\\\"{i}", "ï"),
-        ] {
-            text = text.replace(from, to);
-        }
-        let elt = crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::STRSXP, 1);
-        let _elt = crate::sexp::protect::protect(elt);
-        let c = std::ffi::CString::new(text).unwrap_or_default();
-        crate::sexp::accessors::SET_STRING_ELT(
-            elt,
-            0,
-            crate::sexp::constructors::Rf_mkChar(c.as_ptr()),
-        );
-        let tag = crate::sexp::symbol::Rf_install(c"latex_tag".as_ptr());
-        crate::sexp::attrib_core::setAttrib(elt, tag, Rf_mkString(c"TEXT".as_ptr()));
-        let out = crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::VECSXP, 1);
-        let _out = crate::sexp::protect::protect(out);
-        crate::sexp::accessors::SET_VECTOR_ELT(out, 0, elt);
-        crate::sexp::attrib_core::setAttrib(
-            out,
-            crate::sexp::symbol::Rf_install(c"class".as_ptr()),
-            Rf_mkString(c"LaTeX".as_ptr()),
-        );
-        out
+    let arg = crate::sexp::accessors::CAR(crate::sexp::accessors::CDR(args));
+    let mut text = if TYPEOF(arg) == SEXPTYPE::STRSXP {
+        let ch = crate::sexp::accessors::STRING_ELT(arg, 0);
+        String::from_utf8_lossy(&crate::sexp::accessors::char_cstr_bytes(ch)).into_owned()
+    } else {
+        String::new()
+    };
+    for (from, to) in [
+        ("\\~{}", "~"),
+        ("\\~{n}", "ñ"),
+        ("\\\"{u}", "ü"),
+        ("{\\\"u}", "ü"),
+        ("\\'{e}", "é"),
+        ("{\\'e}", "é"),
+        ("\\`{I}", "Ì"),
+        ("\\'{I}", "Í"),
+        ("\\^{I}", "Î"),
+        ("\\\"{I}", "Ï"),
+        ("\\`{i}", "ì"),
+        ("\\'{i}", "í"),
+        ("\\^{i}", "î"),
+        ("\\\"{i}", "ï"),
+    ] {
+        text = text.replace(from, to);
     }
+    let elt = crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+    let _elt = crate::sexp::protect::protect(elt);
+    let c = std::ffi::CString::new(text).unwrap_or_default();
+    crate::sexp::accessors::SET_STRING_ELT(
+        elt,
+        0,
+        crate::sexp::constructors::mk_char_bytes(c.to_bytes()),
+    );
+    let tag = crate::sexp::symbol::install_str("latex_tag");
+    crate::sexp::attrib_core::setAttrib(elt, tag, crate::sexp::constructors::mk_string_str("TEXT"));
+    let out = crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::VECSXP, 1);
+    let _out = crate::sexp::protect::protect(out);
+    crate::sexp::accessors::SET_VECTOR_ELT(out, 0, elt);
+    crate::sexp::attrib_core::setAttrib(
+        out,
+        crate::sexp::symbol::install_str("class"),
+        crate::sexp::constructors::mk_string_str("LaTeX"),
+    );
+    out
 }
 
 unsafe extern "C-unwind" fn c_do_tab_expand(strings: SEXP, starts: SEXP) -> SEXP {
@@ -97,26 +93,24 @@ unsafe extern "C-unwind" fn c_split_string(string: SEXP, delims: SEXP) -> SEXP {
 }
 
 unsafe extern "C-unwind" fn c_deparse_rd(element: SEXP, state: SEXP) -> SEXP {
-    unsafe {
-        let text = if TYPEOF(element) == SEXPTYPE::STRSXP {
-            element
-        } else {
-            Rf_mkString(c"".as_ptr())
-        };
-        let out = crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::VECSXP, 2);
-        let _out = crate::sexp::protect::protect(out);
-        crate::sexp::accessors::SET_VECTOR_ELT(out, 0, text);
-        let state = if state.is_null() || crate::sexp::accessors::XLENGTH(state) < 2 {
-            let z = crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::INTSXP, 2);
-            crate::sexp::accessors::SET_INTEGER_ELT(z, 0, 0);
-            crate::sexp::accessors::SET_INTEGER_ELT(z, 1, 0);
-            z
-        } else {
-            state
-        };
-        crate::sexp::accessors::SET_VECTOR_ELT(out, 1, state);
-        out
-    }
+    let text = if TYPEOF(element) == SEXPTYPE::STRSXP {
+        element
+    } else {
+        crate::sexp::constructors::mk_string_str("")
+    };
+    let out = crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+    let _out = crate::sexp::protect::protect(out);
+    crate::sexp::accessors::SET_VECTOR_ELT(out, 0, text);
+    let state = if state.is_null() || crate::sexp::accessors::XLENGTH(state) < 2 {
+        let z = crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+        crate::sexp::accessors::SET_INTEGER_ELT(z, 0, 0);
+        crate::sexp::accessors::SET_INTEGER_ELT(z, 1, 0);
+        z
+    } else {
+        state
+    };
+    crate::sexp::accessors::SET_VECTOR_ELT(out, 1, state);
+    out
 }
 
 unsafe extern "C-unwind" fn c_renctest(x: *mut std::ffi::c_void) {
@@ -403,7 +397,7 @@ pub fn install_tools_call_symbols(env: SEXP) {
         for name in TOOLS_CALL_NAMES {
             let cname = CString::new(*name).unwrap_or_default();
             defineVar(
-                Rf_install(cname.as_ptr()),
+                crate::sexp::symbol::install_cstr(&cname),
                 Rf_mkString(cname.as_ptr() as *const c_char),
                 env,
             );
@@ -427,25 +421,23 @@ fn eval_tools_source(env: SEXP, source: &str) {
     }
 }
 pub fn install_tools_assert_closures(env: SEXP) {
-    unsafe {
-        let already =
-            crate::sexp::envir::R_findVarInFrame(env, Rf_install(c"assertError".as_ptr()));
-        if already == crate::sexp::globals::R_UnboundValue()
-            || crate::sexp::accessors::TYPEOF(already) != crate::sexp::ffi::SEXPTYPE::CLOSXP
-        {
-            eval_tools_source(env, include_str!("gnu_assertCondition.R"));
-        }
-        eval_tools_source(
-            env,
-            "delimMatch <- function(x, delim = c(\"{\", \"}\"), syntax = \"Rd\") {\n\
-             if (!is.character(x))\n\
-                 stop(\"argument 'x' must be a character vector\")\n\
-             if ((length(delim) != 2L) || any(nchar(delim) != 1L))\n\
-                 stop(\"argument 'delim' must specify two characters\")\n\
-             if (syntax != \"Rd\")\n\
-                 stop(\"only Rd syntax is currently supported\")\n\
-             .Call(C_delim_match, x, delim)\n\
-             }\n",
-        );
+    let already =
+        crate::sexp::envir::R_findVarInFrame(env, crate::sexp::symbol::install_str("assertError"));
+    if already == crate::sexp::globals::R_UnboundValue()
+        || crate::sexp::accessors::TYPEOF(already) != crate::sexp::ffi::SEXPTYPE::CLOSXP
+    {
+        eval_tools_source(env, include_str!("gnu_assertCondition.R"));
     }
+    eval_tools_source(
+        env,
+        "delimMatch <- function(x, delim = c(\"{\", \"}\"), syntax = \"Rd\") {\n\
+         if (!is.character(x))\n\
+             stop(\"argument 'x' must be a character vector\")\n\
+         if ((length(delim) != 2L) || any(nchar(delim) != 1L))\n\
+             stop(\"argument 'delim' must specify two characters\")\n\
+         if (syntax != \"Rd\")\n\
+             stop(\"only Rd syntax is currently supported\")\n\
+         .Call(C_delim_match, x, delim)\n\
+         }\n",
+    );
 }

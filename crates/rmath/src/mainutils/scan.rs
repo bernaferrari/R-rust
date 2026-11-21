@@ -24,7 +24,6 @@
 use std::os::raw::{c_char, c_int};
 
 use crate::sexp::accessors::{CAR, LENGTH, STRING_ELT, translateChar};
-use crate::sexp::constructors::Rf_mkString;
 use crate::sexp::ffi::{NA_INTEGER, Rcomplex, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::protect::protect;
@@ -375,7 +374,7 @@ pub unsafe fn do_readln(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 );
             }
             crate::unix::system::R_WriteConsole(b"\n\0".as_ptr() as *const c_char, 1);
-            return Rf_mkString(b"\0".as_ptr() as *const c_char);
+            return crate::sexp::constructors::mk_string_str("");
         }
 
         let mut buffer = [0u8; MAXELTSIZE];
@@ -386,7 +385,7 @@ pub unsafe fn do_readln(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             1,
         );
         if ok == 0 {
-            return Rf_mkString(b"\0".as_ptr() as *const c_char);
+            return crate::sexp::constructors::mk_string_str("");
         }
 
         let nul = buffer
@@ -399,7 +398,7 @@ pub unsafe fn do_readln(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             .trim_matches([' ', '\t'])
             .to_string();
         let c_line = std::ffi::CString::new(trimmed).unwrap_or_default();
-        Rf_mkString(c_line.as_ptr())
+        crate::sexp::constructors::mk_string_bytes(c_line.to_bytes())
     }
 }
 
@@ -447,14 +446,13 @@ mod tests {
             crate::unix::system::set_read_console_callback_for_tests(Some(fixture_read_console));
             crate::mainutils::main::R_SetInteractive(1);
 
-            let prompt = Rf_mkString(c"prompt> ".as_ptr());
+            let prompt = crate::sexp::constructors::mk_string_str("prompt> ");
             let args = Rf_cons(prompt, R_NilValue());
             let result = do_readln(ptr::null_mut(), ptr::null_mut(), args, ptr::null_mut());
 
             assert_eq!(TYPEOF(result), SEXPTYPE::STRSXP);
-            let value = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(result, 0)))
-                .to_str()
-                .unwrap();
+            let value_bytes = crate::sexp::accessors::char_cstr_bytes(STRING_ELT(result, 0));
+            let value = std::str::from_utf8(&value_bytes).unwrap();
             assert_eq!(value, "hello from console");
         }
     }

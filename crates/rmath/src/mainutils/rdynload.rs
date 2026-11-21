@@ -22,7 +22,7 @@ use crate::sexp::accessors::{
 };
 use crate::sexp::attrib_core::{R_ClassSymbol, R_NamesSymbol, setAttrib};
 use crate::sexp::constructors::{
-    Rf_ScalarLogical, Rf_allocVector, Rf_isString, Rf_length, Rf_mkChar, Rf_mkString,
+    Rf_ScalarLogical, Rf_allocVector, Rf_isString, Rf_length, Rf_mkChar,
 };
 use crate::sexp::envir::{R_NewHashedEnv, R_findVarInFrame, defineVar};
 use crate::sexp::ffi::{FALSE, SEXP, SEXPTYPE, TRUE};
@@ -1093,28 +1093,28 @@ pub fn R_getSymbolInfo(sname: SEXP, spackage: SEXP, _with_registration: SEXP) ->
         let names = Rf_allocVector(SEXPTYPE::STRSXP, 3);
 
         SET_VECTOR_ELT(sym, 0, sname);
-        SET_STRING_ELT(names, 0, Rf_mkChar(b"name\0".as_ptr() as *const c_char));
+        SET_STRING_ELT(names, 0, crate::sexp::constructors::mk_char_str("name"));
 
         // Address as external pointer (simplified)
         SET_VECTOR_ELT(
             sym,
             1,
-            Rf_mkString(b"<native symbol>\0".as_ptr() as *const c_char),
+            crate::sexp::constructors::mk_string_str("<native symbol>"),
         );
-        SET_STRING_ELT(names, 1, Rf_mkChar(b"address\0".as_ptr() as *const c_char));
+        SET_STRING_ELT(names, 1, crate::sexp::constructors::mk_char_str("address"));
 
         SET_VECTOR_ELT(
             sym,
             2,
-            Rf_mkString(b"<unknown>\0".as_ptr() as *const c_char),
+            crate::sexp::constructors::mk_string_str("<unknown>"),
         );
-        SET_STRING_ELT(names, 2, Rf_mkChar(b"dll\0".as_ptr() as *const c_char));
+        SET_STRING_ELT(names, 2, crate::sexp::constructors::mk_char_str("dll"));
 
         setAttrib(sym, R_NamesSymbol(), names);
         setAttrib(
             sym,
             R_ClassSymbol(),
-            Rf_mkString(b"NativeSymbolInfo\0".as_ptr() as *const c_char),
+            crate::sexp::constructors::mk_string_str("NativeSymbolInfo"),
         );
 
         sym
@@ -1162,7 +1162,11 @@ fn legacy_foreign_dll_table() -> SEXP {
                 SET_VECTOR_ELT(ans, index as R_xlen_t, make_dll_info_sexp(info));
             }
         }
-        setAttrib(ans, R_ClassSymbol(), Rf_mkString(c"DLLInfoList".as_ptr()));
+        setAttrib(
+            ans,
+            R_ClassSymbol(),
+            crate::sexp::constructors::mk_string_str("DLLInfoList"),
+        );
         ans
     }
 }
@@ -1181,7 +1185,7 @@ unsafe fn make_dll_info_sexp(info: *const DllInfo) -> SEXP {
             SET_STRING_ELT(tmp, 0, Rf_mkChar((*info).name));
         }
         SET_VECTOR_ELT(ref_vec, 0, tmp);
-        SET_STRING_ELT(el_names, 0, Rf_mkChar(b"name\0".as_ptr() as *const c_char));
+        SET_STRING_ELT(el_names, 0, crate::sexp::constructors::mk_char_str("name"));
 
         // path
         let tmp = Rf_allocVector(SEXPTYPE::STRSXP, 1);
@@ -1189,7 +1193,7 @@ unsafe fn make_dll_info_sexp(info: *const DllInfo) -> SEXP {
             SET_STRING_ELT(tmp, 0, Rf_mkChar((*info).path));
         }
         SET_VECTOR_ELT(ref_vec, 1, tmp);
-        SET_STRING_ELT(el_names, 1, Rf_mkChar(b"path\0".as_ptr() as *const c_char));
+        SET_STRING_ELT(el_names, 1, crate::sexp::constructors::mk_char_str("path"));
 
         // dynamicLookup
         SET_VECTOR_ELT(
@@ -1204,7 +1208,7 @@ unsafe fn make_dll_info_sexp(info: *const DllInfo) -> SEXP {
         SET_STRING_ELT(
             el_names,
             2,
-            Rf_mkChar(b"dynamicLookup\0".as_ptr() as *const c_char),
+            crate::sexp::constructors::mk_char_str("dynamicLookup"),
         );
 
         // handle (simplified as nil)
@@ -1212,12 +1216,12 @@ unsafe fn make_dll_info_sexp(info: *const DllInfo) -> SEXP {
         SET_STRING_ELT(
             el_names,
             3,
-            Rf_mkChar(b"handle\0".as_ptr() as *const c_char),
+            crate::sexp::constructors::mk_char_str("handle"),
         );
 
         // info (simplified as nil)
         SET_VECTOR_ELT(ref_vec, 4, R_NilValue());
-        SET_STRING_ELT(el_names, 4, Rf_mkChar(b"info\0".as_ptr() as *const c_char));
+        SET_STRING_ELT(el_names, 4, crate::sexp::constructors::mk_char_str("info"));
 
         // forceSymbols
         SET_VECTOR_ELT(
@@ -1228,14 +1232,14 @@ unsafe fn make_dll_info_sexp(info: *const DllInfo) -> SEXP {
         SET_STRING_ELT(
             el_names,
             5,
-            Rf_mkChar(b"forceSymbols\0".as_ptr() as *const c_char),
+            crate::sexp::constructors::mk_char_str("forceSymbols"),
         );
 
         setAttrib(ref_vec, R_NamesSymbol(), el_names);
         setAttrib(
             ref_vec,
             R_ClassSymbol(),
-            Rf_mkString(b"DLLInfo\0".as_ptr() as *const c_char),
+            crate::sexp::constructors::mk_string_str("DLLInfo"),
         );
 
         ref_vec
@@ -1713,9 +1717,9 @@ mod tests {
             unsafe {
                 let root = with_dynload_state(|state| state.c_entry_table);
                 assert!(!root.is_null());
-                let stats = R_findVarInFrame(root, Rf_install(c"stats".as_ptr()));
+                let stats = R_findVarInFrame(root, crate::sexp::symbol::install_str("stats"));
                 assert_ne!(stats, R_UnboundValue());
-                let callable = R_findVarInFrame(stats, Rf_install(c"rcont2".as_ptr()));
+                let callable = R_findVarInFrame(stats, crate::sexp::symbol::install_str("rcont2"));
                 assert_eq!(TYPEOF(callable), SEXPTYPE::EXTPTRSXP);
                 (callable, R_ExternalPtrAddr(callable))
             }
@@ -1749,7 +1753,7 @@ mod tests {
             // means no left-only registration, rather than an empty table.
             assert_ne!(root, left_root_table);
             assert_eq!(
-                R_findVarInFrame(root, Rf_install(c"leftpkg".as_ptr())),
+                R_findVarInFrame(root, crate::sexp::symbol::install_str("leftpkg")),
                 R_UnboundValue()
             );
             assert_eq!(stats_registration(), right_stats);
@@ -1776,14 +1780,20 @@ mod tests {
                 Some(left_only as *const ())
             );
             assert_eq!(
-                R_findVarInFrame(left_root_table, Rf_install(c"rightpkg".as_ptr())),
+                R_findVarInFrame(
+                    left_root_table,
+                    crate::sexp::symbol::install_str("rightpkg")
+                ),
                 R_UnboundValue()
             );
         });
         right.with_protected(|| unsafe {
             assert_eq!(stats_registration(), right_stats);
             assert_eq!(
-                R_findVarInFrame(right_root_table, Rf_install(c"leftpkg".as_ptr())),
+                R_findVarInFrame(
+                    right_root_table,
+                    crate::sexp::symbol::install_str("leftpkg")
+                ),
                 R_UnboundValue()
             );
         });

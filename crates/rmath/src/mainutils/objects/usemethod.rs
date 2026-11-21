@@ -32,7 +32,7 @@ unsafe fn dispatchMethod(
 ) -> SEXP {
     unsafe {
         // Create the S3 dispatch variables
-        let generic_str = Rf_mkString(generic.as_ptr());
+        let generic_str = crate::sexp::constructors::mk_string_bytes(generic.to_bytes());
         let _generic_str_guard = protect(generic_str);
 
         let blank_str = Rf_mkString(b"\x00".as_ptr() as *const c_char);

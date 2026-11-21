@@ -86,9 +86,7 @@ mod vector_gc_tests {
     #[test]
     fn plain_vector_survives_full_gc_with_alt_bit_clear() {
         let _session = crate::sexp::session::RSession::new_for_gc_tests();
-        let sym = unsafe {
-            crate::sexp::symbol::Rf_install(b"plain_vector_probe\0".as_ptr() as *const _)
-        };
+        let sym = unsafe { crate::sexp::symbol::install_str("plain_vector_probe") };
         let outer = unsafe {
             /* SAFETY: fixture keeps its owner live; no Rust payload borrow overlaps this raw operation. */
             with_arena(|arena| arena.alloc_vector(SEXPTYPE::VECSXP, 2))

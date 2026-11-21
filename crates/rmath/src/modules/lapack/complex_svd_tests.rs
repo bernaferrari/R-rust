@@ -32,7 +32,7 @@ unsafe fn make_input(dimensions: &[i32], values: &[(f64, f64)]) -> SEXP {
 }
 
 unsafe fn make_jobu() -> SEXP {
-    unsafe { Rf_mkString(b"N\0".as_ptr() as *const std::os::raw::c_char) }
+    unsafe { crate::sexp::constructors::mk_string_str("N") }
 }
 
 fn error_message(result: Result<(), Box<dyn std::any::Any + Send>>) -> String {
@@ -479,7 +479,7 @@ fn complex_svd_admission_overwrite_rectangular_workspace_stages() {
         let warm = La_svd_cmplx(ej, ex, es, eu, ev);
         let _warm = protect(warm);
         for (n, p) in [(3, 2), (2, 3)] {
-            let jobu = Rf_mkString(b"O\0".as_ptr().cast());
+            let jobu = crate::sexp::constructors::mk_string_str("O");
             let _j = protect(jobu);
             let mut values = vec![(0., 0.); (n * p) as usize];
             values[0] = (3., 0.);

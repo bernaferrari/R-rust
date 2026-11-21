@@ -355,7 +355,7 @@ pub fn do_nextmethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                     .map(|(head, _)| head)
                     .unwrap_or(name.as_ref());
                 let c_name = std::ffi::CString::new(bare).unwrap_or_default();
-                generic = crate::sexp::constructors::Rf_mkString(c_name.as_ptr());
+                generic = crate::sexp::constructors::mk_string_bytes(c_name.to_bytes());
             }
         }
         if generic == R_NilValue() || generic.is_null() {

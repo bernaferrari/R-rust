@@ -6,7 +6,7 @@
 
 #![allow(non_snake_case)]
 
-use std::os::raw::{c_char, c_int};
+use std::os::raw::c_int;
 
 use crate::appl::linpack_qr::dqrdc2;
 use crate::attrib_core::{
@@ -19,7 +19,6 @@ use crate::sexp::constructors::*;
 use crate::sexp::ffi::*;
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::protect::protect;
-use crate::sexp::symbol::Rf_install;
 
 const REALSXP_C: c_int = 14;
 const INTSXP_C: c_int = 13;
@@ -39,35 +38,36 @@ fn qr_error(message: &str) -> ! {
 /// The dispatcher supplies evaluated arguments. Complex input always
 /// decomposes through LAPACK `zgeqp3`, matching GNU `qr.default`.
 unsafe fn match_qr_args(args: SEXP) -> [Option<SEXP>; 3] {
-    unsafe {
-        let names = ["x", "tol", "LAPACK"];
-        let mut matched = [None; 3];
-        let mut cell = args;
-        while cell != R_NilValue() && !cell.is_null() {
-            if TAG(cell) != R_NilValue() && !TAG(cell).is_null() {
-                let tag = std::ffi::CStr::from_ptr(CHAR(PRINTNAME(TAG(cell)))).to_string_lossy();
-                if let Some(index) = names
-                    .iter()
-                    .position(|name| !tag.is_empty() && name.starts_with(tag.as_ref()))
-                {
-                    if matched[index].replace(CAR(cell)).is_some() {
-                        qr_error("formal argument matched by multiple actual arguments")
-                    }
+    let names = ["x", "tol", "LAPACK"];
+    let mut matched = [None; 3];
+    let mut cell = args;
+    while cell != R_NilValue() && !cell.is_null() {
+        if TAG(cell) != R_NilValue() && !TAG(cell).is_null() {
+            let tag = String::from_utf8_lossy(&crate::sexp::accessors::char_cstr_bytes(PRINTNAME(
+                TAG(cell),
+            )))
+            .into_owned();
+            if let Some(index) = names
+                .iter()
+                .position(|name| !tag.is_empty() && name.starts_with(tag.as_str()))
+            {
+                if matched[index].replace(CAR(cell)).is_some() {
+                    qr_error("formal argument matched by multiple actual arguments")
                 }
             }
-            cell = CDR(cell);
         }
-        cell = args;
-        while cell != R_NilValue() && !cell.is_null() {
-            if TAG(cell) == R_NilValue() || TAG(cell).is_null() {
-                if let Some(slot) = matched.iter_mut().find(|slot| slot.is_none()) {
-                    *slot = Some(CAR(cell));
-                }
-            }
-            cell = CDR(cell);
-        }
-        matched
+        cell = CDR(cell);
     }
+    cell = args;
+    while cell != R_NilValue() && !cell.is_null() {
+        if TAG(cell) == R_NilValue() || TAG(cell).is_null() {
+            if let Some(slot) = matched.iter_mut().find(|slot| slot.is_none()) {
+                *slot = Some(CAR(cell));
+            }
+        }
+        cell = CDR(cell);
+    }
+    matched
 }
 
 pub unsafe fn do_qr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
@@ -131,13 +131,13 @@ pub unsafe fn do_qr_default(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
             setAttrib(
                 decomposed,
                 R_ClassSymbol(),
-                Rf_mkString(b"qr\0".as_ptr() as *const c_char),
+                crate::sexp::constructors::mk_string_str("qr"),
             );
             // GNU qr.default returns structure(..., useLAPACK = TRUE, class = "qr")
             // for complex input.
             setAttrib(
                 decomposed,
-                Rf_install(b"useLAPACK\0".as_ptr() as *const c_char),
+                crate::sexp::symbol::install_str("useLAPACK"),
                 Rf_ScalarLogical(1),
             );
             return decomposed;
@@ -210,18 +210,18 @@ pub unsafe fn do_qr_default(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
                 // `<-`(storage.mode(x), "double"); build exactly that so
                 // warning rendering matches GNU byte for byte.
                 let lhs = crate::sexp::constructors::Rf_lang2(
-                    crate::sexp::symbol::Rf_install(c"storage.mode".as_ptr()),
-                    crate::sexp::symbol::Rf_install(c"x".as_ptr()),
+                    crate::sexp::symbol::install_str("storage.mode"),
+                    crate::sexp::symbol::install_str("x"),
                 );
                 let call = crate::sexp::constructors::Rf_lang3(
-                    crate::sexp::symbol::Rf_install(c"<-".as_ptr()),
+                    crate::sexp::symbol::install_str("<-"),
                     lhs,
                     {
                         let value = crate::sexp::constructors::Rf_allocVector(SEXPTYPE::STRSXP, 1);
                         crate::sexp::accessors::SET_STRING_ELT(
                             value,
                             0,
-                            crate::sexp::constructors::Rf_mkChar(c"double".as_ptr()),
+                            crate::sexp::constructors::mk_char_str("double"),
                         );
                         value
                     },
@@ -354,7 +354,11 @@ pub unsafe fn do_qr_default(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
         let names = Rf_allocVector(STRSXP_C, 4);
         let _names_guard = protect(names);
         for (i, name) in [c"qr", c"rank", c"qraux", c"pivot"].iter().enumerate() {
-            SET_STRING_ELT(names, i as i64, Rf_mkChar(name.as_ptr()));
+            SET_STRING_ELT(
+                names,
+                i as i64,
+                crate::sexp::constructors::mk_char_bytes(name.to_bytes()),
+            );
         }
         SET_VECTOR_ELT(ret, 0, qr);
         SET_VECTOR_ELT(ret, 1, Rf_ScalarInteger(rank));
@@ -364,12 +368,12 @@ pub unsafe fn do_qr_default(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
         setAttrib(
             ret,
             R_ClassSymbol(),
-            Rf_mkString(b"qr\0".as_ptr() as *const c_char),
+            crate::sexp::constructors::mk_string_str("qr"),
         );
         if lapack {
             setAttrib(
                 ret,
-                Rf_install(b"useLAPACK\0".as_ptr() as *const c_char),
+                crate::sexp::symbol::install_str("useLAPACK"),
                 Rf_ScalarLogical(1),
             );
         }

@@ -6,9 +6,7 @@
 
 use super::accessors::{CDR, SET_SYMVALUE, SETCAR, SETTAG, TYPEOF};
 
-use super::constructors::{
-    Rf_ScalarInteger, Rf_ScalarLogical, Rf_allocList, Rf_lang2, Rf_lang3, Rf_mkString,
-};
+use super::constructors::{Rf_ScalarInteger, Rf_ScalarLogical, Rf_allocList, Rf_lang2, Rf_lang3};
 use super::envir::{R_findVarInFrame, defineVar};
 use super::ffi::{FALSE, SEXP, SEXPTYPE, TRUE};
 use super::globals::{R_EmptyEnv, R_MissingArg, R_NilValue, R_UnboundValue};
@@ -253,7 +251,7 @@ fn initialize_special_environment_bindings(base_env: SEXP) {
         let library = CString::new(library.to_string_lossy().as_ref()).unwrap_or_default();
         defineVar(
             Rf_install_in_current(".Library"),
-            Rf_mkString(library.as_ptr()),
+            crate::sexp::constructors::mk_string_bytes(library.to_bytes()),
             base_env,
         );
         // GNU puts an empty "Autoloads" environment on the search path
@@ -268,7 +266,7 @@ fn initialize_special_environment_bindings(base_env: SEXP) {
         super::attrib_core::setAttrib(
             autoloads,
             Rf_install_in_current("name"),
-            Rf_mkString(c"Autoloads".as_ptr()),
+            crate::sexp::constructors::mk_string_str("Autoloads"),
         );
         super::accessors::SET_ENCLOS(global, autoloads);
         defineVar(Rf_install_in_current(".AutoloadEnv"), autoloads, base_env);
@@ -739,10 +737,8 @@ fn formal_default_value(default: FormalDefault) -> SEXP {
 }
 
 fn string_scalar(value: &str) -> SEXP {
-    unsafe {
-        let c_value = CString::new(value).expect("static R string has no interior NUL");
-        Rf_mkString(c_value.as_ptr())
-    }
+    let c_value = CString::new(value).expect("static R string has no interior NUL");
+    crate::sexp::constructors::mk_string_bytes(c_value.to_bytes())
 }
 
 fn Rf_install_in_current(name: &str) -> SEXP {

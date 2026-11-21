@@ -136,7 +136,7 @@ pub unsafe fn do_comment(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let _ = (call, op, env);
 
-        let comment_sym = crate::sexp::symbol::Rf_install(c"comment".as_ptr());
+        let comment_sym = crate::sexp::symbol::install_str("comment");
 
         if Rf_length(args) == 1 {
             let x = CAR(args);
@@ -160,7 +160,7 @@ pub unsafe fn do_commentgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEX
         }
         let x = CAR(args);
         let val = CADR(args);
-        let comment_sym = crate::sexp::symbol::Rf_install(c"comment".as_ptr());
+        let comment_sym = crate::sexp::symbol::install_str("comment");
         crate::eval::attrib_core::setAttrib(x, comment_sym, val);
         x
     }
@@ -209,10 +209,9 @@ pub unsafe fn do_attrgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             && crate::sexp::accessors::XLENGTH(which) > 0
             && crate::sexp::accessors::STRING_ELT(which, 0) != crate::sexp::globals::R_NaString()
         {
-            let text = std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(
+            let text = String::from_utf8_lossy(&crate::sexp::accessors::char_cstr_bytes(
                 crate::sexp::accessors::STRING_ELT(which, 0),
             ))
-            .to_string_lossy()
             .into_owned();
             crate::sexp::symbol::Rf_install(
                 std::ffi::CString::new(text).unwrap_or_default().as_ptr(),
