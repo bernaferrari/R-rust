@@ -349,6 +349,32 @@ pub(crate) fn cstr<'a>(s: *const c_char) -> Option<&'a std::ffi::CStr> {
     }
 }
 
+/// Null-checked borrow of a `len`-element buffer.
+///
+/// Callers guarantee the buffer holds at least `len` elements, matching
+/// the C API's buffer-and-length contract.
+#[inline]
+pub(crate) fn slice_ref<'a, T>(ptr: *const T, len: usize) -> Option<&'a [T]> {
+    if ptr.is_null() {
+        if len == 0 { Some(&[]) } else { None }
+    } else {
+        Some(unsafe { std::slice::from_raw_parts(ptr, len) })
+    }
+}
+
+/// Null-checked mutable borrow of a `len`-element buffer.
+///
+/// Callers must ensure no conflicting borrow of the buffer exists,
+/// matching the C code's single-threaded access model.
+#[inline]
+pub(crate) fn slice_mut<'a, T>(ptr: *mut T, len: usize) -> Option<&'a mut [T]> {
+    if ptr.is_null() {
+        if len == 0 { Some(&mut []) } else { None }
+    } else {
+        Some(unsafe { std::slice::from_raw_parts_mut(ptr, len) })
+    }
+}
+
 /// Duplicate a C string using `std::alloc`.
 pub(crate) fn c_strdup(s: *const c_char) -> *mut c_char {
     let Some(s) = cstr(s) else {
