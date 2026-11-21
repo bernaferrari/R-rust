@@ -6,7 +6,7 @@ pub unsafe fn L_moveTo(x: SEXP, y: SEXP) -> SEXP {
         let currentvp = gridStateElement(dd, GSS_VP);
         let currentgp = Rf_duplicate(gridStateElement(dd, GSS_GPAR));
         let _currentgp_guard = protect(currentgp);
-        set_gp_fill_string(currentgp, c"transparent".as_ptr());
+        set_gp_fill_string(currentgp, "transparent");
 
         let prevloc = gridStateElement(dd, GSS_PREVLOC);
         let _prevloc_guard = protect(prevloc);
@@ -55,7 +55,7 @@ pub unsafe fn L_lineTo(x: SEXP, y: SEXP, arrow: SEXP) -> SEXP {
         let currentgp = Rf_duplicate(gridStateElement(dd, GSS_GPAR));
         let _currentgp_guard = protect(currentgp);
         if gp_fill_is_pattern(currentgp) {
-            set_gp_fill_string(currentgp, c"transparent".as_ptr());
+            set_gp_fill_string(currentgp, "transparent");
         }
 
         let prevloc = gridStateElement(dd, GSS_PREVLOC);
@@ -134,7 +134,7 @@ pub unsafe fn L_lines(x: SEXP, y: SEXP, index: SEXP, arrow: SEXP) -> SEXP {
         let currentgp = Rf_duplicate(gridStateElement(dd, GSS_GPAR));
         let _currentgp_guard = protect(currentgp);
         if gp_fill_is_pattern(currentgp) {
-            set_gp_fill_string(currentgp, c"transparent".as_ptr());
+            set_gp_fill_string(currentgp, "transparent");
         }
         let (vpWidthCM, vpHeightCM, transform, _) = getViewportTransform(currentvp, dd);
         let mut vpc = LViewportContext::default();
@@ -325,7 +325,7 @@ pub unsafe fn L_segments(x0: SEXP, y0: SEXP, x1: SEXP, y1: SEXP, arrow: SEXP) ->
         let currentgp = Rf_duplicate(gridStateElement(dd, GSS_GPAR));
         let _currentgp_guard = protect(currentgp);
         if gp_fill_is_pattern(currentgp) {
-            set_gp_fill_string(currentgp, c"transparent".as_ptr());
+            set_gp_fill_string(currentgp, "transparent");
         }
 
         let (vpWidthCM, vpHeightCM, transform, _) = getViewportTransform(currentvp, dd);

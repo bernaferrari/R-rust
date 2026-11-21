@@ -47,7 +47,7 @@ pub unsafe fn L_convert(x: SEXP, whatfrom: SEXP, whatto: SEXP, unitto: SEXP) -> 
         let currentvp = gridStateElement(dd, GSS_VP);
         let currentgp = Rf_duplicate(gridStateElement(dd, GSS_GPAR));
         let _currentgp_guard = protect(currentgp);
-        set_gp_fill_string(currentgp, c"black".as_ptr());
+        set_gp_fill_string(currentgp, "black");
 
         let (vpWidthCM, vpHeightCM, _, _) = getViewportTransform(currentvp, dd);
         let mut vpc = LViewportContext::default();
@@ -227,7 +227,7 @@ pub unsafe fn L_devLoc(x: SEXP, y: SEXP, device: SEXP) -> SEXP {
         let currentvp = gridStateElement(dd, GSS_VP);
         let currentgp = Rf_duplicate(gridStateElement(dd, GSS_GPAR));
         let _currentgp_guard = protect(currentgp);
-        set_gp_fill_string(currentgp, c"black".as_ptr());
+        set_gp_fill_string(currentgp, "black");
 
         let (vpWidthCM, vpHeightCM, transform, _) = getViewportTransform(currentvp, dd);
         let mut vpc = LViewportContext::default();
@@ -282,7 +282,7 @@ pub unsafe fn L_devDim(x: SEXP, y: SEXP, device: SEXP) -> SEXP {
         let currentvp = gridStateElement(dd, GSS_VP);
         let currentgp = Rf_duplicate(gridStateElement(dd, GSS_GPAR));
         let _currentgp_guard = protect(currentgp);
-        set_gp_fill_string(currentgp, c"black".as_ptr());
+        set_gp_fill_string(currentgp, "black");
 
         let (vpWidthCM, vpHeightCM, _, rotationAngle) = getViewportTransform(currentvp, dd);
         let mut vpc = LViewportContext::default();
