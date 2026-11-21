@@ -28,213 +28,215 @@ fn set_binding_values(
     dirnamep: *mut *const c_char,
     codesetp: *mut *const c_char,
 ) {
-    unsafe {
-        // Sanity check: empty or null domain name -> return defaults.
-        if domainname.is_null() || *domainname == 0 {
-            if !dirnamep.is_null() {
-                *dirnamep = ptr::null();
-            }
-            if !codesetp.is_null() {
-                *codesetp = ptr::null();
-            }
-            return;
+    // Sanity check: empty or null domain name -> return defaults.
+    if cstr(domainname).map_or(true, |s| s.to_bytes().is_empty()) {
+        if let Some(p) = ptr_mut(dirnamep) {
+            *p = ptr::null();
         }
-
-        let mut modified: c_int = 0;
-        let mut binding: *mut binding = with_intl_runtime(|intl| intl.domain_bindings);
-
-        // Walk the sorted linked list looking for an existing binding.
-        while !binding.is_null() {
-            let compare = libc_strcmp(domainname, (*binding).domainname.as_ptr());
-            if compare == 0 {
-                break; // Found it.
-            }
-            if compare < 0 {
-                binding = ptr::null_mut();
-                break;
-            }
-            binding = (*binding).next;
+        if let Some(p) = ptr_mut(codesetp) {
+            *p = ptr::null();
         }
+        return;
+    }
 
-        if !binding.is_null() {
-            // --- Existing binding: update dirname ---
-            if !dirnamep.is_null() {
-                let dirname = *dirnamep;
-                if dirname.is_null() {
-                    // Return the current binding.
-                    *dirnamep = (*binding).dirname;
-                } else {
-                    let result = (*binding).dirname;
-                    if libc_strcmp(dirname, result) != 0 {
-                        let new_result = if libc_strcmp(dirname, _nl_default_dirname.as_ptr()) == 0
-                        {
-                            _nl_default_dirname.as_ptr() as *mut c_char
-                        } else {
-                            c_strdup(dirname)
-                        };
-                        if !new_result.is_null() {
-                            if (*binding).dirname
-                                != (*std::ptr::addr_of!(_nl_default_dirname)).as_ptr()
-                                    as *mut c_char
-                                && !(*binding).dirname.is_null()
-                            {
-                                let layout =
-                                    Layout::from_size_align(libc_strlen((*binding).dirname) + 1, 1)
-                                        .unwrap_or_else(|_| Layout::new::<u8>());
-                                std::alloc::dealloc((*binding).dirname as *mut u8, layout);
-                            }
-                            (*binding).dirname = new_result;
-                            modified = 1;
-                        }
-                    }
-                    *dirnamep = (*binding).dirname;
-                }
-            }
+    let mut modified: c_int = 0;
+    let mut binding: *mut binding = with_intl_runtime(|intl| intl.domain_bindings);
 
-            // --- Existing binding: update codeset ---
-            if !codesetp.is_null() {
-                let codeset = *codesetp;
-                if codeset.is_null() {
-                    *codesetp = (*binding).codeset;
-                } else {
-                    let result = (*binding).codeset;
-                    if result.is_null() || libc_strcmp(codeset, result) != 0 {
-                        let new_result = c_strdup(codeset);
-                        if !new_result.is_null() {
-                            if !(*binding).codeset.is_null() {
-                                let layout =
-                                    Layout::from_size_align(libc_strlen((*binding).codeset) + 1, 1)
-                                        .unwrap_or_else(|_| Layout::new::<u8>());
-                                std::alloc::dealloc((*binding).codeset as *mut u8, layout);
-                            }
-                            (*binding).codeset = new_result;
-                            modified = 1;
-                        }
-                    }
-                    *codesetp = (*binding).codeset;
-                }
-            }
-        } else if (dirnamep.is_null() || (*dirnamep).is_null())
-            && (codesetp.is_null() || (*codesetp).is_null())
-        {
-            // No existing binding and nothing to set -> return defaults.
-            if !dirnamep.is_null() {
-                *dirnamep = (*std::ptr::addr_of!(_nl_default_dirname)).as_ptr();
-            }
-            if !codesetp.is_null() {
-                *codesetp = ptr::null();
-            }
-        } else {
-            // --- Create a new binding ---
-            let len = libc_strlen(domainname) + 1;
-            // Allocate binding + flexible array domainname at the end.
-            let struct_size = std::mem::size_of::<binding>();
-            let layout =
-                Layout::from_size_align(struct_size + len, std::mem::align_of::<binding>())
-                    .unwrap_or_else(|_| Layout::new::<u8>());
-            let new_binding = std::alloc::alloc(layout) as *mut binding;
+    // Walk the sorted linked list looking for an existing binding.
+    while let Some(b) = ptr_mut(binding) {
+        let compare = libc_strcmp(domainname, b.domainname.as_ptr());
+        if compare == 0 {
+            break; // Found it.
+        }
+        if compare < 0 {
+            binding = ptr::null_mut();
+            break;
+        }
+        binding = b.next;
+    }
 
-            if new_binding.is_null() {
-                // Allocation failed.
-                if !dirnamep.is_null() {
-                    *dirnamep = ptr::null();
-                }
-                if !codesetp.is_null() {
-                    *codesetp = ptr::null();
+    if let Some(b) = ptr_mut(binding) {
+        // --- Existing binding: update dirname ---
+        if !dirnamep.is_null() {
+            let dirname = ptr_ref(dirnamep).map_or(ptr::null(), |p| *p);
+            if dirname.is_null() {
+                // Return the current binding.
+                if let Some(p) = ptr_mut(dirnamep) {
+                    *p = b.dirname;
                 }
             } else {
-                ptr::copy_nonoverlapping(domainname, (*new_binding).domainname.as_mut_ptr(), len);
-
-                // --- Set dirname ---
-                if !dirnamep.is_null() {
-                    let mut dirname = *dirnamep;
-                    if dirname.is_null()
-                        || libc_strcmp(dirname, (*std::ptr::addr_of!(_nl_default_dirname)).as_ptr())
-                            == 0
-                    {
-                        dirname = (*std::ptr::addr_of!(_nl_default_dirname)).as_ptr();
+                let result = b.dirname;
+                if libc_strcmp(dirname, result) != 0 {
+                    let new_result = if libc_strcmp(dirname, _nl_default_dirname.as_ptr()) == 0 {
+                        _nl_default_dirname.as_ptr() as *mut c_char
                     } else {
-                        let result = c_strdup(dirname);
-                        if result.is_null() {
-                            // Failed to strdup dirname.
-                            std::alloc::dealloc(new_binding as *mut u8, layout);
-                            if !dirnamep.is_null() {
-                                *dirnamep = ptr::null();
-                            }
-                            if !codesetp.is_null() {
-                                *codesetp = ptr::null();
-                            }
-                        } else {
-                            dirname = result;
+                        c_strdup(dirname)
+                    };
+                    if !new_result.is_null() {
+                        if b.dirname != _nl_default_dirname.as_ptr() as *mut c_char
+                            && !b.dirname.is_null()
+                        {
+                            c_free(b.dirname);
                         }
+                        b.dirname = new_result;
+                        modified = 1;
                     }
-                    *dirnamep = dirname;
-                    (*new_binding).dirname = dirname as *mut c_char;
-                } else {
-                    (*new_binding).dirname =
-                        (*std::ptr::addr_of!(_nl_default_dirname)).as_ptr() as *mut c_char;
                 }
-
-                // --- Set codeset ---
-                if !codesetp.is_null() {
-                    let mut codeset = *codesetp;
-                    if !codeset.is_null() {
-                        let result = c_strdup(codeset);
-                        if result.is_null() {
-                            // Failed to strdup codeset.
-                            if (*new_binding).dirname
-                                != (*std::ptr::addr_of!(_nl_default_dirname)).as_ptr()
-                                    as *mut c_char
-                                && !(*new_binding).dirname.is_null()
-                            {
-                                let layout2 = Layout::from_size_align(
-                                    libc_strlen((*new_binding).dirname) + 1,
-                                    1,
-                                )
-                                .unwrap_or_else(|_| Layout::new::<u8>());
-                                std::alloc::dealloc((*new_binding).dirname as *mut u8, layout2);
-                            }
-                            std::alloc::dealloc(new_binding as *mut u8, layout);
-                            if !dirnamep.is_null() {
-                                *dirnamep = ptr::null();
-                            }
-                            if !codesetp.is_null() {
-                                *codesetp = ptr::null();
-                            }
-                        } else {
-                            codeset = result;
-                        }
-                    }
-                    *codesetp = codeset;
-                    (*new_binding).codeset = codeset as *mut c_char;
-                } else {
-                    (*new_binding).codeset = ptr::null_mut();
+                if let Some(p) = ptr_mut(dirnamep) {
+                    *p = b.dirname;
                 }
-
-                // --- Enqueue the new binding in sorted order ---
-                let head = with_intl_runtime(|intl| intl.domain_bindings);
-                if head.is_null() || libc_strcmp(domainname, (*head).domainname.as_ptr()) < 0 {
-                    (*new_binding).next = head;
-                    with_intl_runtime(|intl| intl.domain_bindings = new_binding);
-                } else {
-                    let mut cur = head;
-                    while !(*cur).next.is_null()
-                        && libc_strcmp(domainname, (*(*cur).next).domainname.as_ptr()) > 0
-                    {
-                        cur = (*cur).next;
-                    }
-                    (*new_binding).next = (*cur).next;
-                    (*cur).next = new_binding;
-                }
-
-                modified = 1;
             }
         }
 
-        // If we modified any binding, flush the caches.
-        if modified != 0 {
-            with_intl_runtime(|intl| intl.msg_cat_cntr += 1);
+        // --- Existing binding: update codeset ---
+        if !codesetp.is_null() {
+            let codeset = ptr_ref(codesetp).map_or(ptr::null(), |p| *p);
+            if codeset.is_null() {
+                if let Some(p) = ptr_mut(codesetp) {
+                    *p = b.codeset;
+                }
+            } else {
+                let result = b.codeset;
+                if result.is_null() || libc_strcmp(codeset, result) != 0 {
+                    let new_result = c_strdup(codeset);
+                    if !new_result.is_null() {
+                        if !b.codeset.is_null() {
+                            c_free(b.codeset);
+                        }
+                        b.codeset = new_result;
+                        modified = 1;
+                    }
+                }
+                if let Some(p) = ptr_mut(codesetp) {
+                    *p = b.codeset;
+                }
+            }
         }
+    } else if ptr_ref(dirnamep).map_or(true, |p| (*p).is_null())
+        && ptr_ref(codesetp).map_or(true, |p| (*p).is_null())
+    {
+        // No existing binding and nothing to set -> return defaults.
+        if let Some(p) = ptr_mut(dirnamep) {
+            *p = _nl_default_dirname.as_ptr();
+        }
+        if let Some(p) = ptr_mut(codesetp) {
+            *p = ptr::null();
+        }
+    } else {
+        // --- Create a new binding ---
+        let len = libc_strlen(domainname) + 1;
+        // Allocate binding + flexible array domainname at the end.
+        let struct_size = std::mem::size_of::<binding>();
+        let layout =
+            Layout::from_size_align(struct_size + len, std::mem::align_of::<binding>())
+                .unwrap_or_else(|_| Layout::new::<u8>());
+        // Allocate `struct_size + len` bytes: the binding plus its name.
+        let new_binding = unsafe { std::alloc::alloc(layout) } as *mut binding;
+
+        if new_binding.is_null() {
+            // Allocation failed.
+            if let Some(p) = ptr_mut(dirnamep) {
+                *p = ptr::null();
+            }
+            if let Some(p) = ptr_mut(codesetp) {
+                *p = ptr::null();
+            }
+        } else if let Some(nb) = ptr_mut(new_binding) {
+            if let (Some(dst), Some(src)) = (
+                slice_mut(nb.domainname.as_mut_ptr() as *mut u8, len),
+                slice_ref(domainname as *const u8, len),
+            ) {
+                dst.copy_from_slice(src);
+            }
+
+            // --- Set dirname ---
+            if !dirnamep.is_null() {
+                let mut dirname = ptr_ref(dirnamep).map_or(ptr::null(), |p| *p);
+                if dirname.is_null() || libc_strcmp(dirname, _nl_default_dirname.as_ptr()) == 0 {
+                    dirname = _nl_default_dirname.as_ptr();
+                } else {
+                    let result = c_strdup(dirname);
+                    if result.is_null() {
+                        // Failed to strdup dirname; free the new binding.
+                        unsafe { std::alloc::dealloc(new_binding as *mut u8, layout) };
+                        if let Some(p) = ptr_mut(dirnamep) {
+                            *p = ptr::null();
+                        }
+                        if let Some(p) = ptr_mut(codesetp) {
+                            *p = ptr::null();
+                        }
+                    } else {
+                        dirname = result;
+                    }
+                }
+                if let Some(p) = ptr_mut(dirnamep) {
+                    *p = dirname;
+                }
+                nb.dirname = dirname as *mut c_char;
+            } else {
+                nb.dirname = _nl_default_dirname.as_ptr() as *mut c_char;
+            }
+
+            // --- Set codeset ---
+            if !codesetp.is_null() {
+                let mut codeset = ptr_ref(codesetp).map_or(ptr::null(), |p| *p);
+                if !codeset.is_null() {
+                    let result = c_strdup(codeset);
+                    if result.is_null() {
+                        // Failed to strdup codeset; free the new binding.
+                        if nb.dirname != _nl_default_dirname.as_ptr() as *mut c_char
+                            && !nb.dirname.is_null()
+                        {
+                            c_free(nb.dirname);
+                        }
+                        unsafe { std::alloc::dealloc(new_binding as *mut u8, layout) };
+                        if let Some(p) = ptr_mut(dirnamep) {
+                            *p = ptr::null();
+                        }
+                        if let Some(p) = ptr_mut(codesetp) {
+                            *p = ptr::null();
+                        }
+                    } else {
+                        codeset = result;
+                    }
+                }
+                if let Some(p) = ptr_mut(codesetp) {
+                    *p = codeset;
+                }
+                nb.codeset = codeset as *mut c_char;
+            } else {
+                nb.codeset = ptr::null_mut();
+            }
+
+            // --- Enqueue the new binding in sorted order ---
+            let head = with_intl_runtime(|intl| intl.domain_bindings);
+            let head_name = ptr_ref(head).map_or(ptr::null(), |h| h.domainname.as_ptr());
+            if head_name.is_null() || libc_strcmp(domainname, head_name) < 0 {
+                nb.next = head;
+                with_intl_runtime(|intl| intl.domain_bindings = new_binding);
+            } else {
+                let mut cur = head;
+                while let Some(c) = ptr_mut(cur) {
+                    let next_name =
+                        ptr_ref(c.next).map_or(ptr::null(), |n| n.domainname.as_ptr());
+                    if next_name.is_null() || libc_strcmp(domainname, next_name) <= 0 {
+                        break;
+                    }
+                    cur = c.next;
+                }
+                nb.next = ptr_mut(cur).map_or(ptr::null_mut(), |c| c.next);
+                if let Some(c) = ptr_mut(cur) {
+                    c.next = new_binding;
+                }
+            }
+
+            modified = 1;
+        }
+    }
+
+    // If we modified any binding, flush the caches.
+    if modified != 0 {
+        with_intl_runtime(|intl| intl.msg_cat_cntr += 1);
     }
 }
 
@@ -343,18 +345,14 @@ mod tests {
 
     #[test]
     fn test_bindtextdomain_null_domain() {
-        unsafe {
-            let result = libintl_bindtextdomain(ptr::null(), ptr::null());
-            assert!(result.is_null());
-        }
+        let result = libintl_bindtextdomain(ptr::null(), ptr::null());
+        assert!(result.is_null());
     }
 
     #[test]
     fn test_bindtextdomain_empty_domain() {
-        unsafe {
-            let empty = b"\0".as_ptr() as *const c_char;
-            let result = libintl_bindtextdomain(empty, ptr::null());
-            assert!(result.is_null());
-        }
+        let empty = b"\0".as_ptr() as *const c_char;
+        let result = libintl_bindtextdomain(empty, ptr::null());
+        assert!(result.is_null());
     }
 }

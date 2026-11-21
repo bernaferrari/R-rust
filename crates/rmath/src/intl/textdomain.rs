@@ -10,7 +10,7 @@
 use std::os::raw::c_char;
 use std::ptr;
 
-use crate::intl::types::{self, c_free, c_strdup};
+use crate::intl::types::{self, c_free, c_strdup, cstr};
 
 /// Set the current default message catalog to DOMAINNAME.
 ///
@@ -21,7 +21,7 @@ use crate::intl::types::{self, c_free, c_strdup};
 /// # Safety
 /// `domainname` must be a valid pointer to a NUL-terminated C string, or NULL.
 pub fn libintl_textdomain(domainname: *const c_char) -> *mut c_char {
-    unsafe {
+    {
         // A NULL pointer requests the current setting.
         if domainname.is_null() {
             return types::with_intl_runtime(|intl| intl.current_default_domain) as *mut c_char;
@@ -30,7 +30,9 @@ pub fn libintl_textdomain(domainname: *const c_char) -> *mut c_char {
         let old_domain = types::with_intl_runtime(|intl| intl.current_default_domain);
 
         // If domain name is the null string, set to default domain "messages".
-        if *domainname == 0 || ptr::eq(domainname, types::_nl_default_default_domain.as_ptr()) {
+        if cstr(domainname).is_some_and(|s| s.to_bytes().is_empty())
+            || ptr::eq(domainname, types::_nl_default_default_domain.as_ptr())
+        {
             types::with_intl_runtime(|intl| {
                 intl.current_default_domain = types::_nl_default_default_domain.as_ptr();
             });
@@ -44,16 +46,9 @@ pub fn libintl_textdomain(domainname: *const c_char) -> *mut c_char {
         }
 
         // Check if the new domain is the same as the old one.
-        let old_domain_cstr = if old_domain.is_null() {
-            None
-        } else {
-            Some(std::ffi::CStr::from_ptr(old_domain))
-        };
-        let new_domain_cstr = std::ffi::CStr::from_ptr(domainname);
-
-        let is_same = match old_domain_cstr {
-            Some(old) => old == new_domain_cstr,
-            None => false,
+        let is_same = match (cstr(old_domain), cstr(domainname)) {
+            (Some(old), Some(new)) => old == new,
+            _ => false,
         };
 
         let new_domain: *mut c_char;
