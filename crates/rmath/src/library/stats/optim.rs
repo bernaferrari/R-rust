@@ -9,7 +9,7 @@ use std::ffi::CString;
 use std::os::raw::{c_char, c_double, c_int};
 
 use super::checked::{char_bytes, duplicate, eval, mk_char, mk_string, rprintf};
-use crate::main::errors::Rf_error;
+use crate::main::errors::{Rf_error, Rf_error_cstr};
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::ffi::*;
@@ -144,7 +144,7 @@ fn real_option<'s>(scope: &'s TransientScope<'_>, x: SEXP, npar: c_int) -> &'s [
 
 fn non_finite_par() -> ! {
     let msg = CString::new("non-finite value supplied by optim").unwrap_or_default();
-    Rf_error(msg.as_ptr());
+    Rf_error_cstr(&msg);
     unreachable!("Rf_error returned")
 }
 
@@ -192,7 +192,7 @@ fn objective(os: &OptStruct<'_>, p: &[c_double]) -> c_double {
             LENGTH(s)
         ))
         .unwrap_or_default();
-        Rf_error(msg.as_ptr());
+        Rf_error_cstr(&msg);
     }
     REAL_ELT(s, 0) / os.fnscale
 }
@@ -215,7 +215,7 @@ fn gradient(os: &OptStruct<'_>, p: &[c_double], df: &mut [c_double]) {
                 n
             ))
             .unwrap_or_default();
-            Rf_error(msg.as_ptr());
+            Rf_error_cstr(&msg);
         }
         for i in 0..p.len() {
             df[i] = REAL_ELT(s, i as c_int) * os.parscale[i] / os.fnscale;
@@ -259,7 +259,7 @@ fn gradient(os: &OptStruct<'_>, p: &[c_double], df: &mut [c_double]) {
             if !R_FINITE(df[i]) {
                 let msg = CString::new(format!("non-finite finite-difference value [{}]", i + 1))
                     .unwrap_or_default();
-                Rf_error(msg.as_ptr());
+                Rf_error_cstr(&msg);
             }
             SET_REAL_ELT(x, ic, p[i] * os.parscale[i]);
         }
@@ -474,7 +474,7 @@ fn load_ndeps<'s>(
 ) {
     let ndeps = getListElement(options, "ndeps");
     if LENGTH(ndeps) != npar {
-        Rf_error(b"'ndeps' is of the wrong length\0".as_ptr() as *const _);
+        Rf_error_cstr(c"'ndeps' is of the wrong length");
     }
     os.ndeps = real_option(scope, ndeps, npar);
 }
@@ -483,7 +483,7 @@ fn load_ndeps<'s>(
 fn load_gcall(os: &mut OptStruct<'_>, gr: SEXP) {
     if Rf_isNull(gr) == 0 {
         if !is_function(gr) {
-            Rf_error(b"'gr' is not a function\0".as_ptr() as *const _);
+            Rf_error_cstr(c"'gr' is not a function");
         }
         os.R_gcall = Rf_lang2(gr, R_NilValue());
     } else {
@@ -512,14 +512,14 @@ pub fn optim(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     args = CDR(args);
     let fn_sexp = CAR(args);
     if !is_function(fn_sexp) {
-        Rf_error(b"'fn' is not a function\0".as_ptr() as *const _);
+        Rf_error_cstr(c"'fn' is not a function");
     }
     args = CDR(args);
     let gr = CAR(args);
     args = CDR(args);
     let method = CAR(args);
     if !is_string(method) || LENGTH(method) != 1 {
-        Rf_error(b"invalid 'method' argument\0".as_ptr() as *const _);
+        Rf_error_cstr(c"invalid 'method' argument");
     }
     let tn_owned = char_bytes(STRING_ELT(method, 0));
     let tn = tn_owned.as_slice();
@@ -540,7 +540,7 @@ pub fn optim(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     os.fnscale = as_real(getListElement(options, "fnscale"));
     let tmp = getListElement(options, "parscale");
     if LENGTH(tmp) != npar {
-        Rf_error(b"'parscale' is of the wrong length\0".as_ptr() as *const _);
+        Rf_error_cstr(c"'parscale' is of the wrong length");
     }
     os.parscale = real_option(&scratch, tmp, npar);
     for i in 0..n_usize {
@@ -575,7 +575,7 @@ pub fn optim(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     let reltol = as_real(getListElement(options, "reltol"));
     let maxit = as_integer(getListElement(options, "maxit"));
     if maxit == NA_INTEGER {
-        Rf_error(b"'maxit' is not an integer\0".as_ptr() as *const _);
+        Rf_error_cstr(c"'maxit' is not an integer");
     }
 
     let mut fncount: c_int = 0;
@@ -620,7 +620,7 @@ pub fn optim(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             0
         };
         if tmax == NA_INTEGER || tmax < 1 {
-            Rf_error(b"'tmax' is not a positive integer\0".as_ptr() as *const _);
+            Rf_error_cstr(c"'tmax' is not a positive integer");
         }
         load_gcall(&mut os, gr);
         let _gcall_guard = protect(os.R_gcall);
@@ -693,7 +693,7 @@ pub fn optim(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     } else if tn == b"L-BFGS-B" {
         let nREPORT = as_integer(getListElement(options, "REPORT"));
         if nREPORT <= 0 {
-            Rf_error(c"REPORT must be > 0 (method = \"L-BFGS-B\")".as_ptr());
+            Rf_error_cstr(c"REPORT must be > 0 (method = \"L-BFGS-B\")");
         }
         let factr = as_real(getListElement(options, "factr"));
         let pgtol = as_real(getListElement(options, "pgtol"));
@@ -797,7 +797,7 @@ pub fn optim(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 // lbfgsb() wrapper errors on a non-finite fn value.
                 val = objective(&os, dpar);
                 if !R_FINITE(val) {
-                    Rf_error(b"L-BFGS-B needs finite values of 'fn'\0".as_ptr() as *const _);
+                    Rf_error_cstr(c"L-BFGS-B needs finite values of 'fn'");
                 }
                 gradient(&os, dpar, g);
             } else if task_bytes.starts_with(b"NEW_X") {
@@ -846,7 +846,7 @@ pub fn optim(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let _smsg_guard = protect(smsg);
         SET_VECTOR_ELT(res, 4, smsg);
     } else {
-        Rf_error(b"unknown 'method'\0".as_ptr() as *const _);
+        Rf_error_cstr(c"unknown 'method'");
     }
 
     if Rf_isNull(os.names) == 0 {
@@ -879,7 +879,7 @@ pub fn optimhess(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     args = CDR(args);
     let fn_sexp = CAR(args);
     if !is_function(fn_sexp) {
-        Rf_error(b"'fn' is not a function\0".as_ptr() as *const _);
+        Rf_error_cstr(c"'fn' is not a function");
     }
     args = CDR(args);
     let gr = CAR(args);
@@ -889,7 +889,7 @@ pub fn optimhess(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     os.fnscale = as_real(getListElement(options, "fnscale"));
     let tmp = getListElement(options, "parscale");
     if LENGTH(tmp) != npar {
-        Rf_error(b"'parscale' is of the wrong length\0".as_ptr() as *const _);
+        Rf_error_cstr(c"'parscale' is of the wrong length");
     }
     os.parscale = real_option(&scratch, tmp, npar);
 

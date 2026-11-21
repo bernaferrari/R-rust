@@ -123,7 +123,7 @@ pub fn do_noquote(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
     x = crate::mainutils::duplicate::shallow_duplicate_if_shared(x);
     let _x = protect(x);
-    if crate::mainutils::objects::inherits2(x, c"noquote".as_ptr()) == FALSE {
+    if crate::mainutils::objects::inherits2(x, c"noquote") == FALSE {
         let old =
             crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_ClassSymbol());
         let old_n = if !old.is_null() && old != R_NilValue() && TYPEOF(old) == SEXPTYPE::STRSXP

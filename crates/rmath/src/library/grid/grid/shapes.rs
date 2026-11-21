@@ -449,7 +449,7 @@ pub fn L_path(x: SEXP, y: SEXP, index: SEXP, rule: SEXP) -> SEXP {
 
                     if !xx[k].is_finite() || !yy[k].is_finite() {
                         // SAFETY: static format string, no arguments.
-                        Rf_error(c"non-finite x or y in graphics path".as_ptr());
+                        Rf_error_cstr(c"non-finite x or y in graphics path");
                     }
                     k += 1;
                 }

@@ -457,10 +457,9 @@ pub(super) fn record_plot_window(args: SEXP) {
                         if name == "xlim" { 1 } else { 2 }
                     ))
                     .unwrap_or_default();
-                    crate::mainutils::errors::warningcall(
+                    crate::mainutils::errors::warningcall_cstr(
                         crate::sexp::globals::R_NilValue(),
-                        fmt.as_ptr(),
-                    );
+                        &fmt);
                     let fix = |z: f64| {
                         if z.is_finite() {
                             z

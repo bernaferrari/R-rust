@@ -4,7 +4,7 @@
 use crate::attrib_core::{R_NamesSymbol, getAttrib, setAttrib};
 use crate::eval::eval::Rf_eval;
 use crate::main::coerce::asInteger;
-use crate::main::errors::Rf_error;
+use crate::main::errors::{Rf_error, Rf_error_cstr};
 use crate::mainutils::rfile::{
     RFile, SEEK_END, SEEK_SET, r_fclose, r_feof, r_fopen, r_fread, r_fseek, r_ftell,
 };
@@ -226,7 +226,7 @@ fn with_httpd_state<R>(f: impl FnOnce(&mut HttpdRuntimeState) -> R) -> R {
 // ============================================================
 
 fn R_FindNamespace(_name: SEXP) -> SEXP {
-    Rf_error(b"HTTPD namespace lookup is not implemented\0".as_ptr() as *const c_char);
+    Rf_error_cstr(c"HTTPD namespace lookup is not implemented");
     R_NilValue()
 }
 
@@ -266,7 +266,7 @@ fn addInputHandler(
     _handler: Option<unsafe fn(*mut c_void)>,
     _activity: c_int,
 ) -> *mut c_void {
-    Rf_error(b"HTTPD input handlers are not implemented\0".as_ptr() as *const c_char);
+    Rf_error_cstr(c"HTTPD input handlers are not implemented");
     std::ptr::null_mut()
 }
 
@@ -2144,7 +2144,7 @@ pub(crate) unsafe fn in_R_HTTPDCreate(ip: *const c_char, port: c_int) -> c_int {
         // Create a new socket
         with_httpd_state(|state| state.srv_sock = socket(AF_INET, SOCK_STREAM, 0));
         if with_httpd_state(|state| state.srv_sock) == INVALID_SOCKET {
-            Rf_error(b"unable to create socket\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"unable to create socket");
             unreachable!();
         }
 
@@ -2172,7 +2172,7 @@ pub(crate) unsafe fn in_R_HTTPDCreate(ip: *const c_char, port: c_int) -> c_int {
             } else {
                 close(with_httpd_state(|state| state.srv_sock));
                 with_httpd_state(|state| state.srv_sock = INVALID_SOCKET);
-                Rf_error(b"unable to bind socket to TCP port\0".as_ptr() as *const c_char);
+                Rf_error_cstr(c"unable to bind socket to TCP port");
                 unreachable!();
             }
         }
@@ -2181,7 +2181,7 @@ pub(crate) unsafe fn in_R_HTTPDCreate(ip: *const c_char, port: c_int) -> c_int {
         if listen(with_httpd_state(|state| state.srv_sock), 8) != 0 {
             close(with_httpd_state(|state| state.srv_sock));
             with_httpd_state(|state| state.srv_sock = INVALID_SOCKET);
-            Rf_error(b"cannot listen to TCP port\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"cannot listen to TCP port");
             unreachable!();
         }
 
@@ -2232,7 +2232,7 @@ pub(crate) fn R_init_httpd(sIP: SEXP, sPort: SEXP) -> SEXP {
         let vmax = vmaxget();
 
         if sIP != R_NilValue() && (TYPEOF(sIP) != SEXPTYPE::STRSXP || LENGTH(sIP) != 1) {
-            Rf_error(b"invalid bind address specification\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"invalid bind address specification");
             unreachable!();
         }
         if sIP != R_NilValue() {

@@ -176,7 +176,7 @@ pub(crate) fn push(data: SEXP, parent: &Frame) -> Frame {
                     // viewport's axis-aligned bounds.
                     // SAFETY: audited boundary — warning reporter under the
                     // active runtime.
-                    unsafe { Rf_warning1(c"cannot clip to rotated viewport".as_ptr()) };
+                    unsafe { Rf_warning1(c"cannot clip to rotated viewport") };
                     f.clip = parent.clip;
                 } else {
                     let a = f.map(0., 0.);

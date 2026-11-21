@@ -215,7 +215,7 @@ pub fn do_addRestart(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     checkArity(op, args);
     let r = CAR(args);
     if TYPEOF(r) != SEXPTYPE::VECSXP || LENGTH(r) < 2 {
-        errorcall(call, b"bad restart\x00".as_ptr() as *const c_char);
+        errorcall_cstr(call, c"bad restart");
     }
     set_restart_stack(Rf_cons(r, restart_stack()));
     globals::R_NilValue()
@@ -226,7 +226,7 @@ pub fn do_invokeRestart(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     checkArity(op, args);
     let r = CAR(args);
     if TYPEOF(r) != SEXPTYPE::VECSXP || LENGTH(r) < 2 {
-        errorcall(call, b"bad restart\x00".as_ptr() as *const c_char);
+        errorcall_cstr(call, c"bad restart");
     }
     // invokeRestart would jump to the restart; for now just panic
     let exit = VECTOR_ELT(r, 1);
@@ -245,15 +245,19 @@ pub fn do_addTryHandlers(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         if global_ctx.is_null()
             || (*global_ctx).callflag & crate::sexp::context::ctxt_flags::CTXT_FUNCTION == 0
         {
-            errorcall(call, b"not in a try context\0".as_ptr() as *const c_char);
+            errorcall_cstr(call, c"not in a try context");
         }
         (*global_ctx).callflag |= crate::sexp::context::ctxt_flags::CTXT_RETURN;
-        R_InsertRestartHandlers(global_ctx, b"tryRestart\0".as_ptr() as *const c_char);
+        // SAFETY: `global_ctx` is the live, non-null global context checked above.
+        R_InsertRestartHandlers(global_ctx, c"tryRestart");
         globals::R_NilValue()
     }
 }
 
-fn R_InsertRestartHandlers(cptr: *mut crate::sexp::context::RCNTXT, cname: *const c_char) {
+/// # Safety
+///
+/// `cptr` must point to a live context on the current context stack.
+unsafe fn R_InsertRestartHandlers(cptr: *mut crate::sexp::context::RCNTXT, cname: &CStr) {
     unsafe {
         let h = GetOption1(Rf_install(
             b"browser.error.handler\0".as_ptr() as *const c_char
@@ -275,9 +279,9 @@ fn R_InsertRestartHandlers(cptr: *mut crate::sexp::context::RCNTXT, cname: *cons
     }
 }
 
-fn addInternalRestart(cptr: *mut crate::sexp::context::RCNTXT, cname: *const c_char) {
+fn addInternalRestart(cptr: *mut crate::sexp::context::RCNTXT, cname: &CStr) {
     unsafe {
-        let cname_str = CStr::from_ptr(cname).to_bytes();
+        let cname_str = cname.to_bytes();
         let name = Rf_mkString(
             std::ffi::CString::new(cname_str)
                 .unwrap_or_default()

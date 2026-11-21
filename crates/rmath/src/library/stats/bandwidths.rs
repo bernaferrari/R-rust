@@ -201,7 +201,7 @@ pub fn bw_phi6(sn: SEXP, sd: SEXP, cnt: SEXP, sh: SEXP) -> SEXP {
 }
 
 pub fn bw_den(nbin: SEXP, sx: SEXP) -> SEXP {
-    use crate::main::errors::Rf_error;
+    use crate::main::errors::{Rf_error, Rf_error_cstr};
 
     let owner = current_owner();
     let nb = as_integer(owner, nbin);
@@ -216,7 +216,7 @@ pub fn bw_den(nbin: SEXP, sx: SEXP) -> SEXP {
                 std::ffi::CString::new(format!("non-finite x[{}] in bandwidth calculation", i + 1))
                     .unwrap();
 
-            Rf_error(msg.as_ptr());
+            Rf_error_cstr(&msg);
         }
         if value < xmin {
             xmin = value;
@@ -227,8 +227,8 @@ pub fn bw_den(nbin: SEXP, sx: SEXP) -> SEXP {
     }
     let mut rang = (xmax - xmin) * 1.01;
     if rang == 0.0 {
-        Rf_error(
-            b"data are constant in bandwidth calculation\0".as_ptr() as *const core::ffi::c_char
+        Rf_error_cstr(
+            c"data are constant in bandwidth calculation"
         );
     }
     let dd = rang / nb as c_double;

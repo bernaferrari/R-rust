@@ -51,7 +51,7 @@ pub(crate) fn log_with_base(call: SEXP, sx: SEXP, sbase: SEXP) -> SEXP {
         }
         let _ = result_mut.freeze();
         if naflag {
-            crate::mainutils::errors::Rf_warningcall1(call, c"NaNs produced".as_ptr());
+            crate::mainutils::errors::Rf_warningcall1(call, c"NaNs produced");
         }
         // FINISH_Math2: attributes from the first operand of length n
         if n == nx {

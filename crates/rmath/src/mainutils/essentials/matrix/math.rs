@@ -103,7 +103,7 @@ pub fn real_math1(call: SEXP, op: SEXP, args: SEXP, rho: SEXP, f: impl Fn(f64) -
             *dst.add(i as usize) = out;
         }
         if naflag {
-            crate::mainutils::errors::Rf_warningcall1(call, c"NaNs produced".as_ptr());
+            crate::mainutils::errors::Rf_warningcall1(call, c"NaNs produced");
         }
         result
     }

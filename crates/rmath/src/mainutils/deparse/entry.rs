@@ -216,8 +216,7 @@ pub fn deparse1WithCutoff(
                 access
                     .with_native(|_| {
                         crate::mainutils::errors::Rf_warning1(
-                            c"deparse may be incomplete".as_ptr(),
-                        );
+                            c"deparse may be incomplete");
                         Ok(())
                     })
                     .unwrap_or_else(|_| allocation_error());

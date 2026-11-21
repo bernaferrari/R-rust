@@ -7,7 +7,7 @@ pub fn La_chol(a: SEXP, pivot: SEXP, stol: SEXP) -> SEXP {
     unsafe {
         let piv = asLogical(pivot);
         if piv == NA_INTEGER {
-            Rf_error(b"invalid 'pivot' argument\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"invalid 'pivot' argument");
         }
 
         let tol = asReal(stol);
@@ -95,7 +95,7 @@ pub fn La_chol(a: SEXP, pivot: SEXP, stol: SEXP) -> SEXP {
                     "the matrix is either rank-deficient or not positive definite",
                 )
                 .unwrap();
-                crate::mainutils::errors::warningcall(R_NilValue(), msg.as_ptr());
+                crate::mainutils::errors::warningcall_cstr(R_NilValue(), &msg);
                 if rank <= 0 {
                     rank = 0;
                 }
@@ -177,7 +177,7 @@ pub fn La_chol2inv(a: SEXP, size: SEXP, diag_only: SEXP) -> SEXP {
         }
         let n = asInteger(size);
         if n == NA_INTEGER || n <= 0 {
-            Rf_error(b"'size' must be a positive integer\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"'size' must be a positive integer");
         }
 
         if TYPEOF(a) != REALSXP_C {
@@ -241,7 +241,7 @@ pub fn La_chol2inv(a: SEXP, size: SEXP, diag_only: SEXP) -> SEXP {
         super::backend::dpotri_(&uplo, &n, a_copy.as_mut_ptr(), &n, &mut info);
 
         if info != 0 {
-            Rf_error(b"error code from Lapack routine 'dpotri'\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"error code from Lapack routine 'dpotri'");
         }
 
         // diag.only is the diagonal of inv(R'R). This backend's dpotri

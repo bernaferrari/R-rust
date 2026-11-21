@@ -707,7 +707,7 @@ fn expand_formula_dot(form: SEXP, data: SEXP) {
             let msg =
                 std::ffi::CString::new(format!("duplicated name '{name}' in data frame using '.'"))
                     .unwrap_or_default();
-            crate::main::errors::Rf_error(msg.as_ptr());
+            crate::main::errors::Rf_error_cstr(&msg);
         }
         seen.push(name.clone());
         if !response_names.contains(&name) {
@@ -832,14 +832,14 @@ pub fn termsform(args: SEXP) -> SEXP {
     let args = CDR(args);
     let form = CAR(args);
     if form.is_null() || TYPEOF(form) != SEXPTYPE::LANGSXP {
-        crate::main::errors::Rf_error(
-            b"argument is not a valid model\0".as_ptr() as *const std::os::raw::c_char
+        crate::main::errors::Rf_error_cstr(
+            c"argument is not a valid model"
         );
     }
     let tilde = crate::sexp::symbol::install_str("~");
     if CAR(form) != tilde {
-        crate::main::errors::Rf_error(
-            b"argument is not a valid model\0".as_ptr() as *const std::os::raw::c_char
+        crate::main::errors::Rf_error_cstr(
+            c"argument is not a valid model"
         );
     }
     let dup = crate::mainutils::seq::Rf_duplicate(form);

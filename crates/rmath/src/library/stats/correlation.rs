@@ -157,7 +157,7 @@ fn corcov(x: SEXP, y: SEXP, na_method: SEXP, kendall: SEXP, statistic: Statistic
         }
     }
     if zero_sd {
-        crate::mainutils::errors::Rf_warning1(c"the standard deviation is zero".as_ptr());
+        crate::mainutils::errors::Rf_warning1(c"the standard deviation is zero");
     }
     ans
 }

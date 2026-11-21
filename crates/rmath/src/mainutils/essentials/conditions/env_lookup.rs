@@ -194,10 +194,9 @@ pub fn do_get(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             || name_arg == crate::sexp::globals::R_MissingArg()
         {
             crate::mainutils::errors::R_MissingArgError_c(
-                c"x".as_ptr(),
+                Some(c"x"),
                 _call,
-                c"getvarError".as_ptr(),
-            );
+                Some(c"getvarError"));
         }
         let name = elt_to_string(name_arg, 0);
         let env = lookup_get_environment(args, rho, _call, _op, true);
@@ -220,10 +219,9 @@ pub fn do_get(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         if value == crate::sexp::globals::R_MissingArg() {
             let c_name = CString::new(name.as_str()).unwrap_or_default();
             crate::mainutils::errors::R_MissingArgError_c(
-                c_name.as_ptr(),
+                Some(&c_name),
                 _call,
-                c"getMissingError".as_ptr(),
-            );
+                Some(c"getMissingError"));
         }
         ensure_get_value_named(value)
     }
@@ -240,10 +238,9 @@ pub fn do_get0(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             || name_arg == crate::sexp::globals::R_MissingArg()
         {
             crate::mainutils::errors::R_MissingArgError_c(
-                c"x".as_ptr(),
+                Some(c"x"),
                 _call,
-                c"getvarError".as_ptr(),
-            );
+                Some(c"getvarError"));
         }
         let name = elt_to_string(name_arg, 0);
         let env = lookup_get_environment(args, rho, _call, _op, false);
@@ -267,10 +264,9 @@ pub fn do_get0(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 if value == crate::sexp::globals::R_MissingArg() {
                     let c_name = CString::new(name).unwrap_or_default();
                     crate::mainutils::errors::R_MissingArgError_c(
-                        c_name.as_ptr(),
+                        Some(&c_name),
                         _call,
-                        c"getMissingError".as_ptr(),
-                    );
+                        Some(c"getMissingError"));
                 }
                 ensure_get_value_named(value)
             }

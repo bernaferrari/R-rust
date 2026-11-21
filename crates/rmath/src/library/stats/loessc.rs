@@ -132,10 +132,9 @@ unsafe fn fit_loess_model(
                 // warning() inside the routine attributes to the
                 // calling closure (findCall = simpleLoess(...)),
                 // not the .C(...) expression.
-                crate::mainutils::errors::warningcall(
+                crate::mainutils::errors::warningcall_cstr(
                     crate::mainutils::errors::findCall(),
-                    bytes.as_ptr() as *const core::ffi::c_char,
-                );
+                    std::ffi::CStr::from_bytes_until_nul(&bytes).unwrap_or_default());
             }
             Ok(model)
         }
@@ -282,7 +281,8 @@ fn fail_loess(message: &str) -> ! {
     let mut bytes = message.as_bytes().to_vec();
     bytes.push(0);
 
-    crate::main::errors::Rf_error(bytes.as_ptr() as *const c_char);
+    crate::main::errors::Rf_error_cstr(
+        std::ffi::CStr::from_bytes_until_nul(&bytes).unwrap_or_default());
     unreachable!();
 }
 
@@ -1039,12 +1039,12 @@ unsafe fn loess_workspace(
     set_lf: bool,
 ) {
     unsafe {
-        use crate::main::errors::Rf_error;
+        use crate::main::errors::{Rf_error, Rf_error_cstr};
 
         let nvmax = r_max(200, n);
         let nf = r_min(n, (n as f64 * span + 1e-5).floor() as c_int);
         if nf <= 0 {
-            Rf_error(b"span is too small\0".as_ptr() as *const core::ffi::c_char);
+            Rf_error_cstr(c"span is too small");
         }
 
         let tau0 = if degree > 1 {
@@ -1067,14 +1067,14 @@ unsafe fn loess_workspace(
             if total_dlv < c_int::MAX as f64 && total_dliv < c_int::MAX as f64 {
                 (total_dlv as c_int, total_dliv as c_int)
             } else {
-                Rf_error(b"workspace required is too large\0".as_ptr() as *const core::ffi::c_char);
+                Rf_error_cstr(c"workspace required is too large");
                 unreachable!()
             }
         } else {
             if dlv < c_int::MAX as f64 && dliv < c_int::MAX as f64 {
                 (dlv as c_int, dliv as c_int)
             } else {
-                Rf_error(b"workspace required is too large\0".as_ptr() as *const core::ffi::c_char);
+                Rf_error_cstr(c"workspace required is too large");
                 unreachable!()
             }
         };
@@ -1268,7 +1268,7 @@ pub unsafe fn loesswarn(i: *mut c_int) {
                 "Assert failed"
             }
         };
-        crate::main::errors::Rf_warning(format!("{}\0", msg).as_ptr() as *const core::ffi::c_char);
+        crate::main::errors::Rf_warning_cstr(crate::mainutils::errors::cstr_until_nul(format!("{}\0", msg).as_bytes()));
     }
 }
 
@@ -1289,7 +1289,7 @@ pub unsafe fn ehg183a(
             mess.push_str(&format!(" {}", *i.add(j * (*inc as usize))));
         }
         mess.push('\n');
-        crate::main::errors::Rf_warning(format!("{}\0", mess).as_ptr() as *const core::ffi::c_char);
+        crate::main::errors::Rf_warning_cstr(crate::mainutils::errors::cstr_until_nul(format!("{}\0", mess).as_bytes()));
     }
 }
 
@@ -1310,7 +1310,7 @@ pub unsafe fn ehg184a(
             mess.push_str(&format!(" {:.5}", *x.add(j * (*inc as usize))));
         }
         mess.push('\n');
-        crate::main::errors::Rf_warning(format!("{}\0", mess).as_ptr() as *const core::ffi::c_char);
+        crate::main::errors::Rf_warning_cstr(crate::mainutils::errors::cstr_until_nul(format!("{}\0", mess).as_bytes()));
     }
 }
 

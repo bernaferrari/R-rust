@@ -27,7 +27,7 @@
 use std::os::raw::{c_double, c_int};
 use std::ptr;
 
-use crate::main::errors::Rf_error;
+use crate::main::errors::{Rf_error, Rf_error_cstr};
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::ffi::{R_FINITE, R_xlen_t, SEXP, SEXPTYPE};
@@ -42,7 +42,7 @@ const R_PosInf: c_double = f64::INFINITY;
 
 fn error(msg: &str) {
     let c_msg = std::ffi::CString::new(msg).unwrap_or_default();
-    Rf_error(c_msg.as_ptr());
+    Rf_error_cstr(&c_msg);
 }
 
 /// Create a named list (simplified mkNamed for known patterns)

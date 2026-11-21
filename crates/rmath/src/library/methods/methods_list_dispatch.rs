@@ -253,7 +253,7 @@ fn is_primitive_function(value: SEXP) -> bool {
 }
 
 fn inherits_internal_dispatch_method(value: SEXP) -> bool {
-    crate::mainutils::objects::inherits2(value, c"internalDispatchMethod".as_ptr()) != FALSE
+    crate::mainutils::objects::inherits2(value, c"internalDispatchMethod") != FALSE
 }
 
 fn primitive_from_generic_frame(ev: SEXP) -> Option<SEXP> {
@@ -1265,10 +1265,9 @@ pub fn R_nextMethodCall(matched_call: SEXP, ev: SEXP) -> SEXP {
         if prim_case {
             crate::mainutils::objects::do_set_prim_method(
                 op,
-                c"suppress".as_ptr(),
+                c"suppress",
                 R_NilValue(),
-                R_NilValue(),
-            );
+                R_NilValue());
         } else {
             SETCAR(call, dot_next_method);
         }
@@ -1288,10 +1287,9 @@ pub fn R_nextMethodCall(matched_call: SEXP, ev: SEXP) -> SEXP {
             }));
             crate::mainutils::objects::do_set_prim_method(
                 op,
-                c"set".as_ptr(),
+                c"set",
                 R_NilValue(),
-                R_NilValue(),
-            );
+                R_NilValue());
             match result {
                 Ok(value) => value,
                 Err(payload) => std::panic::resume_unwind(payload),

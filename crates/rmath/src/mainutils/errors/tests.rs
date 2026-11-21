@@ -291,11 +291,10 @@ fn test_r_makeErrorCondition() {
     unsafe {
         let cond = R_makeErrorCondition(
             ptr::null_mut(),
-            b"simpleError\x00".as_ptr() as *const c_char,
-            ptr::null_mut(),
+            Some(c"simpleError"),
+            None,
             0,
-            b"test error message\x00".as_ptr() as *const c_char,
-        );
+            Some(c"test error message"));
         assert!(!cond.is_null());
         assert_eq!(TYPEOF(cond), SEXPTYPE::VECSXP);
         assert_eq!(LENGTH(cond), 2);
@@ -309,11 +308,10 @@ fn test_r_makeErrorCondition_with_subclass() {
     unsafe {
         let cond = R_makeErrorCondition(
             ptr::null_mut(),
-            b"error\x00".as_ptr() as *const c_char,
-            b"simpleError\x00".as_ptr() as *const c_char,
+            Some(c"error"),
+            Some(c"simpleError"),
             0,
-            b"test error\x00".as_ptr() as *const c_char,
-        );
+            Some(c"test error"));
         assert!(!cond.is_null());
         assert_eq!(LENGTH(cond), 2);
         // Class attribute should exist (either via getAttrib or direct ATTRIB check)
@@ -475,11 +473,10 @@ fn test_r_make_warning_condition() {
     unsafe {
         let cond = R_makeWarningCondition(
             ptr::null_mut(),
-            b"simpleWarning\0".as_ptr() as *const c_char,
-            ptr::null(),
+            Some(c"simpleWarning"),
+            None,
             0,
-            b"test warning message\0".as_ptr() as *const c_char,
-        );
+            Some(c"test warning message"));
         assert!(!cond.is_null());
         assert_eq!(TYPEOF(cond), SEXPTYPE::VECSXP);
         assert_eq!(LENGTH(cond), 2);
@@ -667,7 +664,7 @@ fn test_r_missing_arg_error_c() {
         let classes = factory.strings(&["missingArgError"]).unwrap();
         let result = super::native::try_catch_owned(
             || unsafe {
-                R_MissingArgError_c(c"my_arg".as_ptr(), factory.nil().as_raw(), ptr::null());
+                R_MissingArgError_c(Some(c"my_arg"), factory.nil().as_raw(), None);
                 unreachable!("missing argument must signal")
             },
             &classes,
@@ -755,11 +752,10 @@ fn test_r_signal_warning_condition_valid() {
     unsafe {
         let cond = R_makeWarningCondition(
             ptr::null_mut(),
-            b"simpleWarning\0".as_ptr() as *const c_char,
-            ptr::null(),
+            Some(c"simpleWarning"),
+            None,
             0,
-            b"test warning\0".as_ptr() as *const c_char,
-        );
+            Some(c"test warning"));
         R_signalWarningCondition(cond);
         // Should not panic — warning is printed to stderr
     }
@@ -793,7 +789,7 @@ fn test_rf_errorcall_fmt() {
     let arg2 = must(std::ffi::CStr::from_bytes_with_nul(b"today\0"));
     // This function pre-formats and calls verrorcall_dflt, which panics
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        Rf_errorcall_fmt(ptr::null_mut(), fmt.as_ptr(), &[arg1, arg2]);
+        Rf_errorcall_fmt(ptr::null_mut(), &fmt, &[arg1, arg2]);
     }));
     assert!(result.is_err());
 }

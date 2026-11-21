@@ -244,7 +244,7 @@ pub(crate) fn get_attrib(x: SEXP, which: SEXP) -> SEXP {
 pub(crate) fn inherits(x: SEXP, name: &std::ffi::CStr) -> bool {
     let _ = checked(x);
     // SAFETY: `x` was just validated as a live registered object.
-    let result = crate::mainutils::objects::inherits2(x, name.as_ptr());
+    let result = crate::mainutils::objects::inherits2(x, &name);
     result != 0
 }
 

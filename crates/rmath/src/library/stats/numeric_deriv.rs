@@ -20,13 +20,13 @@ pub unsafe extern "C-unwind" fn c_numeric_deriv(
 ) -> SEXP {
     unsafe {
         if TYPEOF(theta) != SEXPTYPE::STRSXP {
-            crate::main::errors::Rf_error(
-                b"'theta' should be of type character\0".as_ptr() as *const std::os::raw::c_char
+            crate::main::errors::Rf_error_cstr(
+                c"'theta' should be of type character"
             );
         }
         if TYPEOF(rho) != SEXPTYPE::ENVSXP {
-            crate::main::errors::Rf_error(
-                b"'rho' should be an environment\0".as_ptr() as *const std::os::raw::c_char
+            crate::main::errors::Rf_error_cstr(
+                c"'rho' should be an environment"
             );
         }
         let dir = if TYPEOF(dir) == SEXPTYPE::REALSXP {
@@ -36,10 +36,8 @@ pub unsafe extern "C-unwind" fn c_numeric_deriv(
         };
         let _dir = protect(dir);
         if XLENGTH(dir) != XLENGTH(theta) {
-            crate::main::errors::Rf_error(
-                b"'dir' is not a numeric vector of the correct length\0".as_ptr()
-                    as *const std::os::raw::c_char,
-            );
+            crate::main::errors::Rf_error_cstr(
+                c"'dir' is not a numeric vector of the correct length");
         }
         let central = crate::mainutils::coerce::asLogical(centr) != 0;
         let rho1 = crate::sexp::memory_ext::NewEnvironment(R_NilValue(), rho, R_NilValue());
@@ -53,8 +51,8 @@ pub unsafe extern "C-unwind" fn c_numeric_deriv(
             let sym = crate::sexp::symbol::install_str(cname.to_str().unwrap_or_default());
             let found = R_findVar(sym, rho);
             if found == R_UnboundValue() || TYPEOF(found) != SEXPTYPE::REALSXP {
-                crate::main::errors::Rf_error(
-                    b"variable is not numeric\0".as_ptr() as *const std::os::raw::c_char
+                crate::main::errors::Rf_error_cstr(
+                    c"variable is not numeric"
                 );
             }
             let copy = crate::mainutils::seq::Rf_duplicate(found);

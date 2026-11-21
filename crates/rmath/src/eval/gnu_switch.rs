@@ -114,8 +114,8 @@ impl OwnedSwitch {
         let factor = crate::mainutils::connections::inherits_class(value.as_raw(), "factor");
         pin.require_live().map_err(|error| error.to_string())?;
         if factor {
-            crate::mainutils::errors::warningcall(self.call.as_raw(),
-                c"EXPR is a \"factor\", treated as integer.\n Consider using 'switch(as.character( * ), ...)' instead.".as_ptr());
+            crate::mainutils::errors::warningcall_cstr(self.call.as_raw(),
+                c"EXPR is a \"factor\", treated as integer.\n Consider using 'switch(as.character( * ), ...)' instead.");
 
             pin.require_live().map_err(|error| error.to_string())?;
         }
@@ -169,10 +169,9 @@ impl OwnedSwitch {
     fn warn_empty(&self, pin: &crate::sexp::owner::OwnerPin) -> Result<(), String> {
         pin.require_live().map_err(|error| error.to_string())?;
 
-        crate::mainutils::errors::warningcall(
+        crate::mainutils::errors::warningcall_cstr(
             self.call.as_raw(),
-            c"'switch' with no alternatives".as_ptr(),
-        );
+            c"'switch' with no alternatives");
 
         pin.require_live().map_err(|error| error.to_string())
     }

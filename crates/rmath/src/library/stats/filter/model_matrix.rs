@@ -99,7 +99,7 @@ pub fn do_model_matrix(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             let shown = format!("{width:.0e}").replace('e', "e+");
             let msg = std::ffi::CString::new(format!("term 1 would require {shown} columns"))
                 .unwrap_or_default();
-            crate::main::errors::Rf_error(msg.as_ptr());
+            crate::main::errors::Rf_error_cstr(&msg);
         }
     }
     let xname = if TYPEOF(rhs) == SEXPTYPE::SYMSXP {
@@ -407,8 +407,8 @@ pub fn modelmatrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     let terms = CAR(args);
     let data = CADR(args);
     if data.is_null() || TYPEOF(data) != SEXPTYPE::VECSXP || XLENGTH(data) == 0 {
-        crate::main::errors::Rf_error(
-            b"invalid model frame\0".as_ptr() as *const std::os::raw::c_char
+        crate::main::errors::Rf_error_cstr(
+            c"invalid model frame"
         );
     }
     let first = VECTOR_ELT(data, 0);
@@ -524,7 +524,7 @@ pub fn modelmatrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let msg =
                 std::ffi::CString::new(format!("term {} would require {} columns", j + 1, shown))
                     .unwrap_or_default();
-            crate::main::errors::Rf_error(msg.as_ptr());
+            crate::main::errors::Rf_error_cstr(&msg);
         }
         dnc += dk;
     }
@@ -532,7 +532,7 @@ pub fn modelmatrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let shown = format!("{:.0e}", dnc).replace('e', "e+");
         let msg = std::ffi::CString::new(format!("matrix would require {shown} columns"))
             .unwrap_or_default();
-        crate::main::errors::Rf_error(msg.as_ptr());
+        crate::main::errors::Rf_error_cstr(&msg);
     }
     for j in 0..nterms {
         let lab = if TYPEOF(labs) == SEXPTYPE::STRSXP {
@@ -563,8 +563,8 @@ pub fn modelmatrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         }
         if !colx.is_null()
             && colx != R_NilValue()
-            && (crate::mainutils::objects::inherits2(colx, c"factor".as_ptr()) != 0
-                || crate::mainutils::objects::inherits2(colx, c"ordered".as_ptr()) != 0)
+            && (crate::mainutils::objects::inherits2(colx, c"factor") != 0
+                || crate::mainutils::objects::inherits2(colx, c"ordered") != 0)
         {
             let full = full_map[j as usize].first().copied().unwrap_or(false);
             term_cols.push(factor_contrast_columns(colx, full));
@@ -692,10 +692,8 @@ pub fn modelmatrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             }
         }
         if colx.is_null() || colx == R_NilValue() {
-            crate::main::errors::Rf_error(
-                b"C_modelmatrix cannot find a numeric column for a term\0".as_ptr()
-                    as *const std::os::raw::c_char,
-            );
+            crate::main::errors::Rf_error_cstr(
+                c"C_modelmatrix cannot find a numeric column for a term");
         }
         if !term_cols[j as usize].is_empty() {
             for column in &term_cols[j as usize] {
@@ -708,8 +706,7 @@ pub fn modelmatrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         }
         let col_ty = TYPEOF(colx);
         if col_ty != SEXPTYPE::REALSXP && col_ty != SEXPTYPE::INTSXP && col_ty != SEXPTYPE::LGLSXP {
-            crate::main::errors::Rf_error(b"C_modelmatrix needs numeric term columns\0".as_ptr()
-                as *const std::os::raw::c_char);
+            crate::main::errors::Rf_error_cstr(c"C_modelmatrix needs numeric term columns");
         }
         for i in 0..n {
             let v = if colx.is_null() || colx == R_NilValue() {
@@ -826,7 +823,7 @@ fn resolve_contrast_matrix(colx: SEXP) -> Option<SEXP> {
         {
             return None;
         }
-        let ordered = crate::mainutils::objects::inherits2(colx, c"ordered".as_ptr()) != 0;
+        let ordered = crate::mainutils::objects::inherits2(colx, c"ordered") != 0;
         let idx = if ordered { 1 } else { 0 };
         if XLENGTH(contrasts_opt) <= idx {
             return None;
@@ -1058,8 +1055,8 @@ fn interaction_product_columns(
         if colx.is_null() || colx == R_NilValue() {
             return Vec::new();
         }
-        if crate::mainutils::objects::inherits2(colx, c"factor".as_ptr()) != 0
-            || crate::mainutils::objects::inherits2(colx, c"ordered".as_ptr()) != 0
+        if crate::mainutils::objects::inherits2(colx, c"factor") != 0
+            || crate::mainutils::objects::inherits2(colx, c"ordered") != 0
         {
             let full = full_flags.get(part_index).copied().unwrap_or(false);
             groups.push(factor_contrast_columns(colx, full));
@@ -1195,8 +1192,8 @@ fn find_data_column(data: SEXP, label: &str) -> Option<SEXP> {
 fn is_factor_column(colx: SEXP) -> bool {
     !colx.is_null()
         && colx != R_NilValue()
-        && (crate::mainutils::objects::inherits2(colx, c"factor".as_ptr()) != 0
-            || crate::mainutils::objects::inherits2(colx, c"ordered".as_ptr()) != 0)
+        && (crate::mainutils::objects::inherits2(colx, c"factor") != 0
+            || crate::mainutils::objects::inherits2(colx, c"ordered") != 0)
 }
 
 fn interaction_column_names(data: SEXP, lab: &str, full_flags: &[bool]) -> Vec<String> {
@@ -1218,8 +1215,8 @@ fn interaction_column_names(data: SEXP, lab: &str, full_flags: &[bool]) -> Vec<S
         if colx.is_null() || colx == R_NilValue() {
             return Vec::new();
         }
-        if crate::mainutils::objects::inherits2(colx, c"factor".as_ptr()) != 0
-            || crate::mainutils::objects::inherits2(colx, c"ordered".as_ptr()) != 0
+        if crate::mainutils::objects::inherits2(colx, c"factor") != 0
+            || crate::mainutils::objects::inherits2(colx, c"ordered") != 0
         {
             let full = full_flags.get(part_index).copied().unwrap_or(false);
             let suffixes = contrast_suffixes(colx, part, full);
@@ -1232,7 +1229,7 @@ fn interaction_column_names(data: SEXP, lab: &str, full_flags: &[bool]) -> Vec<S
         let shown = format!("{width:.0e}").replace('e', "e+");
         let msg = std::ffi::CString::new(format!("term 1 would require {shown} columns"))
             .unwrap_or_default();
-        crate::main::errors::Rf_error(msg.as_ptr());
+        crate::main::errors::Rf_error_cstr(&msg);
     }
     let mut names_out = vec![String::new()];
     for group in &groups {
@@ -1553,7 +1550,7 @@ pub fn do_contrasts_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 /// GNU `C(factor)` attaches the default contrast name.
 pub fn do_C(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     let object = crate::mainutils::seq::Rf_duplicate(CAR(args));
-    let ordered = crate::mainutils::objects::inherits2(object, c"ordered".as_ptr()) != FALSE;
+    let ordered = crate::mainutils::objects::inherits2(object, c"ordered") != FALSE;
     let (kind, name) = if ordered {
         ("contr.poly", "ordered")
     } else {

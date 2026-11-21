@@ -117,9 +117,8 @@ pub unsafe fn doSetViewport(vp: SEXP, topLevelVP: c_int, pushing: c_int, dd: pGE
             if !isClipPath(viewportClipSXP(vp))
                 && (viewportClip(vp) == NA_LOGICAL || viewportClip(vp) != 0)
             {
-                Rf_warning(
-                    c"Turning clipping on or off within a (clipping) path is no honoured".as_ptr(),
-                );
+                Rf_warning_cstr(
+                    c"Turning clipping on or off within a (clipping) path is no honoured");
             }
         } else if isClipPath(viewportClipSXP(vp)) {
             let parentClip = viewportClipRect(viewportParent(vp));
@@ -172,7 +171,7 @@ pub unsafe fn doSetViewport(vp: SEXP, topLevelVP: c_int, pushing: c_int, dd: pGE
                     && rotationAngle != 270.0
                     && rotationAngle != 360.0
                 {
-                    Rf_warning(c"cannot clip to rotated viewport".as_ptr());
+                    Rf_warning_cstr(c"cannot clip to rotated viewport");
                     let parentClip = viewportClipRect(viewportParent(vp));
                     let _parent_clip_guard = protect(parentClip);
                     xx1 = real_elt(parentClip, (0) as R_xlen_t);
@@ -348,9 +347,8 @@ pub fn L_setviewport(invp: SEXP, hasParent: SEXP) -> SEXP {
                     && LENGTH(resolving_path) > 0
                     && logical_elt(resolving_path, 0) != 0
                 {
-                    Rf_warning(
-                        c"Clipping paths within a (clipping) path are not honoured".as_ptr(),
-                    );
+                    Rf_warning_cstr(
+                        c"Clipping paths within a (clipping) path are not honoured");
                     set_vector_elt(pushedvp, PVP_CLIPPATH as R_xlen_t, R_NilValue());
                 } else {
                     let resolvedclip = resolveClipPath(clip, dd);
@@ -369,7 +367,7 @@ pub fn L_setviewport(invp: SEXP, hasParent: SEXP) -> SEXP {
                     && LENGTH(resolving_path) > 0
                     && logical_elt(resolving_path, 0) != 0
                 {
-                    Rf_warning(c"Masks within a (clipping) path are not honoured".as_ptr());
+                    Rf_warning_cstr(c"Masks within a (clipping) path are not honoured");
                     set_vector_elt(pushedvp, PVP_MASK as R_xlen_t, R_NilValue());
                 } else {
                     let resolvedmask = resolveMask(mask, dd);
@@ -633,10 +631,14 @@ pub fn L_downviewport(name: SEXP, strict: SEXP) -> SEXP {
             }
             vector_elt(found, 0 as R_xlen_t)
         } else {
-            Rf_error1(
-                c"Viewport '%s' was not found".as_ptr(),
-                char_ptr(string_elt(name, 0)),
-            );
+            let name_ptr = char_ptr(string_elt(name, 0));
+            let name_text = if name_ptr.is_null() {
+                c""
+            } else {
+                // SAFETY: CHARSXP data is NUL-terminated and kept alive by `name`.
+                unsafe { std::ffi::CStr::from_ptr(name_ptr) }
+            };
+            Rf_error1(c"Viewport '%s' was not found", name_text);
 
             R_NilValue()
         }
@@ -677,10 +679,14 @@ pub fn L_downvppath(path: SEXP, name: SEXP, strict: SEXP) -> SEXP {
             }
             vector_elt(found, 0 as R_xlen_t)
         } else {
-            Rf_error1(
-                c"Viewport '%s' was not found".as_ptr(),
-                char_ptr(string_elt(name, 0)),
-            );
+            let name_ptr = char_ptr(string_elt(name, 0));
+            let name_text = if name_ptr.is_null() {
+                c""
+            } else {
+                // SAFETY: CHARSXP data is NUL-terminated and kept alive by `name`.
+                unsafe { std::ffi::CStr::from_ptr(name_ptr) }
+            };
+            Rf_error1(c"Viewport '%s' was not found", name_text);
 
             R_NilValue()
         }
@@ -697,18 +703,15 @@ pub fn L_unsetviewport(n: SEXP) -> SEXP {
         let mut gvp = gridStateElement(dd, GSS_VP);
         let mut newvp = vector_elt(gvp, PVP_PARENT as R_xlen_t);
         if isNull(newvp) {
-            Rf_error(
-                c"cannot pop the top-level viewport ('grid' and 'graphics' output mixed?)".as_ptr(),
-            );
+            Rf_error_cstr(
+                c"cannot pop the top-level viewport ('grid' and 'graphics' output mixed?)");
         }
         for _i in 1..integer_elt(n, 0) {
             gvp = newvp;
             newvp = vector_elt(gvp, PVP_PARENT as R_xlen_t);
             if isNull(newvp) {
-                Rf_error(
-                    c"cannot pop the top-level viewport ('grid' and 'graphics' output mixed?)"
-                        .as_ptr(),
-                );
+                Rf_error_cstr(
+                    c"cannot pop the top-level viewport ('grid' and 'graphics' output mixed?)");
             }
         }
 
@@ -785,18 +788,15 @@ pub fn L_upviewport(n: SEXP) -> SEXP {
         let mut gvp = gridStateElement(dd, GSS_VP);
         let mut newvp = vector_elt(gvp, PVP_PARENT as R_xlen_t);
         if isNull(newvp) {
-            Rf_error(
-                c"cannot pop the top-level viewport ('grid' and 'graphics' output mixed?)".as_ptr(),
-            );
+            Rf_error_cstr(
+                c"cannot pop the top-level viewport ('grid' and 'graphics' output mixed?)");
         }
         for _i in 1..integer_elt(n, 0) {
             gvp = newvp;
             newvp = vector_elt(gvp, PVP_PARENT as R_xlen_t);
             if isNull(newvp) {
-                Rf_error(
-                    c"cannot pop the top-level viewport ('grid' and 'graphics' output mixed?)"
-                        .as_ptr(),
-                );
+                Rf_error_cstr(
+                    c"cannot pop the top-level viewport ('grid' and 'graphics' output mixed?)");
             }
         }
 

@@ -514,8 +514,7 @@ fn strptime_internal(
                 // https://en.wikipedia.org/wiki/List_of_UTC_time_offsets
                 if val > 1400 {
                     crate::mainutils::errors::Rf_warning1(
-                        c"values for %z outside +/-1400 are an error\n".as_ptr(),
-                    );
+                        c"values for %z outside +/-1400 are an error\n");
 
                     return None;
                 }
@@ -632,7 +631,7 @@ fn strptime_internal(
                 ))
                 .unwrap_or_default();
 
-                crate::mainutils::errors::Rf_warning1(msg.as_ptr());
+                crate::mainutils::errors::Rf_warning1(&msg);
 
                 t_mon = 12; // this will give an invalid mday, so invalid tm
             } else {
@@ -703,7 +702,7 @@ fn strptime_internal(
                     ))
                     .unwrap_or_default();
 
-                    crate::mainutils::errors::Rf_warning1(msg.as_ptr());
+                    crate::mainutils::errors::Rf_warning1(&msg);
 
                     t_mon = 12;
                 } else {

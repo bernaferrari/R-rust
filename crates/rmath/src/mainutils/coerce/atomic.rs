@@ -91,18 +91,16 @@ pub fn IntegerFromLogical(x: c_int, _warn: *mut c_int) -> c_int {
 ///
 /// Returns `NA_INTEGER` if `x` is NaN or outside `INT_MIN..INT_MAX` range.
 /// Sets `WARN_INT_NA` flag in `warn` on overflow.
-pub fn IntegerFromReal(x: c_double, warn: *mut c_int) -> c_int {
-    unsafe {
-        if ISNAN(x) {
-            NA_INTEGER
-        } else if x >= (c_int::MAX as f64) + 1.0 || x <= c_int::MIN as f64 {
-            if !warn.is_null() {
-                *warn |= WARN_INT_NA;
-            }
-            NA_INTEGER
-        } else {
-            x as c_int
+pub fn IntegerFromReal(x: c_double, warn: Option<&mut c_int>) -> c_int {
+    if ISNAN(x) {
+        NA_INTEGER
+    } else if x >= (c_int::MAX as f64) + 1.0 || x <= c_int::MIN as f64 {
+        if let Some(warn) = warn {
+            *warn |= WARN_INT_NA;
         }
+        NA_INTEGER
+    } else {
+        x as c_int
     }
 }
 
@@ -111,21 +109,21 @@ pub fn IntegerFromReal(x: c_double, warn: *mut c_int) -> c_int {
 /// Returns `NA_INTEGER` if real part is NaN or out of range.
 /// Sets `WARN_IMAG` if imaginary part is non-zero.
 /// Sets `WARN_INT_NA` on overflow.
-pub fn IntegerFromComplex(x: Rcomplex, warn: *mut c_int) -> c_int {
-    unsafe {
-        if ISNAN(x.r) || ISNAN(x.i) {
-            NA_INTEGER
-        } else if x.r > (c_int::MAX as f64) + 1.0 || x.r <= c_int::MIN as f64 {
-            if !warn.is_null() {
-                *warn |= WARN_INT_NA;
-            }
-            NA_INTEGER
-        } else {
-            if x.i != 0.0 && !warn.is_null() {
-                *warn |= WARN_IMAG;
-            }
-            x.r as c_int
+pub fn IntegerFromComplex(x: Rcomplex, warn: Option<&mut c_int>) -> c_int {
+    if ISNAN(x.r) || ISNAN(x.i) {
+        NA_INTEGER
+    } else if x.r > (c_int::MAX as f64) + 1.0 || x.r <= c_int::MIN as f64 {
+        if let Some(warn) = warn {
+            *warn |= WARN_INT_NA;
         }
+        NA_INTEGER
+    } else {
+        if x.i != 0.0
+            && let Some(warn) = warn
+        {
+            *warn |= WARN_IMAG;
+        }
+        x.r as c_int
     }
 }
 
@@ -133,22 +131,20 @@ pub fn IntegerFromComplex(x: Rcomplex, warn: *mut c_int) -> c_int {
 ///
 /// Parses the string as a double, then converts to integer with overflow checking.
 /// Returns NA_INTEGER for NA_STRING, blank strings, or unparseable strings.
-pub fn IntegerFromString(x: SEXP, warn: *mut c_int) -> c_int {
-    unsafe {
-        if x.is_null() || x == R_NaString() {
-            return NA_INTEGER;
-        }
-        let text = char_cstring(x);
-        if text.is_none() {
-            return NA_INTEGER;
-        }
-        let (value, flags) =
-            super::text_number::integer(text.as_deref().unwrap_or_default().to_bytes());
-        if !warn.is_null() {
-            *warn |= flags;
-        }
-        value
+pub fn IntegerFromString(x: SEXP, warn: Option<&mut c_int>) -> c_int {
+    if x.is_null() || x == R_NaString() {
+        return NA_INTEGER;
     }
+    let text = char_cstring(x);
+    if text.is_none() {
+        return NA_INTEGER;
+    }
+    let (value, flags) =
+        super::text_number::integer(text.as_deref().unwrap_or_default().to_bytes());
+    if let Some(warn) = warn {
+        *warn |= flags;
+    }
+    value
 }
 
 // ---------------------------------------------------------------------------
@@ -181,16 +177,16 @@ pub fn RealFromInteger(x: c_int, _warn: *mut c_int) -> c_double {
 ///
 /// Returns `NA_REAL` if either part is NaN.
 /// Sets `WARN_IMAG` if imaginary part is non-zero.
-pub fn RealFromComplex(x: Rcomplex, warn: *mut c_int) -> c_double {
-    unsafe {
-        if ISNAN(x.r) || ISNAN(x.i) {
-            NA_REAL
-        } else {
-            if x.i != 0.0 && !warn.is_null() {
-                *warn |= WARN_IMAG;
-            }
-            x.r
+pub fn RealFromComplex(x: Rcomplex, warn: Option<&mut c_int>) -> c_double {
+    if ISNAN(x.r) || ISNAN(x.i) {
+        NA_REAL
+    } else {
+        if x.i != 0.0
+            && let Some(warn) = warn
+        {
+            *warn |= WARN_IMAG;
         }
+        x.r
     }
 }
 
@@ -198,22 +194,20 @@ pub fn RealFromComplex(x: Rcomplex, warn: *mut c_int) -> c_double {
 ///
 /// Parses the string as a double. Returns NA_REAL for NA_STRING,
 /// blank strings, or unparseable strings.
-pub fn RealFromString(x: SEXP, warn: *mut c_int) -> c_double {
-    unsafe {
-        if x.is_null() || x == R_NaString() {
-            return NA_REAL;
-        }
-        let text = char_cstring(x);
-        if text.is_none() {
-            return NA_REAL;
-        }
-        let (value, flags) =
-            super::text_number::real(text.as_deref().unwrap_or_default().to_bytes());
-        if !warn.is_null() {
-            *warn |= flags;
-        }
-        value
+pub fn RealFromString(x: SEXP, warn: Option<&mut c_int>) -> c_double {
+    if x.is_null() || x == R_NaString() {
+        return NA_REAL;
     }
+    let text = char_cstring(x);
+    if text.is_none() {
+        return NA_REAL;
+    }
+    let (value, flags) =
+        super::text_number::real(text.as_deref().unwrap_or_default().to_bytes());
+    if let Some(warn) = warn {
+        *warn |= flags;
+    }
+    value
 }
 
 // ---------------------------------------------------------------------------
@@ -262,45 +256,35 @@ pub fn ComplexFromReal(x: c_double, _warn: *mut c_int) -> Rcomplex {
 ///
 /// Parses strings like "3", "2i", "3+2i", "3-2i".
 /// Returns `Rcomplex { r: NA_REAL, i: NA_REAL }` for invalid input.
-pub fn ComplexFromStringC(s: *const c_char, warn: *mut c_int) -> Rcomplex {
-    unsafe {
-        if s.is_null() {
-            return Rcomplex {
-                r: NA_REAL,
-                i: NA_REAL,
-            };
-        }
-        let (value, flags) = super::text_number::complex(CStr::from_ptr(s).to_bytes());
-        if !warn.is_null() {
-            *warn |= flags;
-        }
-        value
+pub fn ComplexFromStringC(s: &CStr, warn: Option<&mut c_int>) -> Rcomplex {
+    let (value, flags) = super::text_number::complex(s.to_bytes());
+    if let Some(warn) = warn {
+        *warn |= flags;
     }
+    value
 }
 
 /// Convert string (CHARSXP/STRSXP element) to complex.
 ///
 /// Faithfully ports R's ComplexFromString from coerce.c which uses R_strtod.
-pub fn ComplexFromString(x: SEXP, warn: *mut c_int) -> Rcomplex {
-    unsafe {
-        let missing = Rcomplex {
-            r: NA_REAL,
-            i: NA_REAL,
-        };
-        if x.is_null() || x == R_NaString() {
-            return missing;
-        }
-        let text = char_cstring(x);
-        if text.is_none() {
-            return missing;
-        }
-        let (value, flags) =
-            super::text_number::complex(text.as_deref().unwrap_or_default().to_bytes());
-        if !warn.is_null() {
-            *warn |= flags;
-        }
-        value
+pub fn ComplexFromString(x: SEXP, warn: Option<&mut c_int>) -> Rcomplex {
+    let missing = Rcomplex {
+        r: NA_REAL,
+        i: NA_REAL,
+    };
+    if x.is_null() || x == R_NaString() {
+        return missing;
     }
+    let text = char_cstring(x);
+    if text.is_none() {
+        return missing;
+    }
+    let (value, flags) =
+        super::text_number::complex(text.as_deref().unwrap_or_default().to_bytes());
+    if let Some(warn) = warn {
+        *warn |= flags;
+    }
+    value
 }
 
 // ---------------------------------------------------------------------------

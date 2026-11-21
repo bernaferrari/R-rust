@@ -305,13 +305,16 @@ unsafe fn set_binding_values(
 ///
 /// Returns the current dirname for the domain (may be the newly set value).
 ///
-/// SOUNDNESS GAP (tracked): `domainname` and `dirname` must each be null or a
-/// NUL-terminated string, but this keeps a safe signature because
-/// `mainutils::errors::messages` (owned by another change) calls it without
-/// `unsafe`. Once that caller wraps the call, this should become `unsafe fn`.
-pub fn libintl_bindtextdomain(domainname: *const c_char, dirname: *const c_char) -> *mut c_char {
+/// # Safety
+///
+/// `domainname` and `dirname` must each be null or point to a NUL-terminated
+/// string valid for reads for the duration of the call.
+pub unsafe fn libintl_bindtextdomain(
+    domainname: *const c_char,
+    dirname: *const c_char,
+) -> *mut c_char {
     let mut dirname_mut: *const c_char = dirname;
-    // SAFETY: not enforced by the signature -- see the doc comment above.
+    // SAFETY: both pointers satisfy this function's `# Safety` contract.
     unsafe { set_binding_values(domainname, &mut dirname_mut, ptr::null_mut()) };
     dirname_mut as *mut c_char
 }
@@ -430,14 +433,16 @@ mod tests {
 
     #[test]
     fn test_bindtextdomain_null_domain() {
-        let result = libintl_bindtextdomain(ptr::null(), ptr::null());
+        // SAFETY: null is accepted for both arguments.
+        let result = unsafe { libintl_bindtextdomain(ptr::null(), ptr::null()) };
         assert!(result.is_null());
     }
 
     #[test]
     fn test_bindtextdomain_empty_domain() {
         let empty = b"\0".as_ptr() as *const c_char;
-        let result = libintl_bindtextdomain(empty, ptr::null());
+        // SAFETY: `empty` is a NUL-terminated literal; null dirname is accepted.
+        let result = unsafe { libintl_bindtextdomain(empty, ptr::null()) };
         assert!(result.is_null());
     }
 }

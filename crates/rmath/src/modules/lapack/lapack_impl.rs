@@ -16,7 +16,7 @@ use crate::attrib_core::{
 };
 
 use crate::main::coerce::{asInteger, asLogical, asReal, coerceVector};
-use crate::main::errors::Rf_error;
+use crate::main::errors::{Rf_error, Rf_error_cstr};
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::ffi::*;

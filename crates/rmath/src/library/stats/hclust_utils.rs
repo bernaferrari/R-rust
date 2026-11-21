@@ -291,14 +291,13 @@ pub fn do_cutree(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 pub unsafe extern "C-unwind" fn c_mono_fc_m(m: SEXP, sx: SEXP) -> SEXP {
     let n = crate::sexp::accessors::XLENGTH(m);
     if n < 2 {
-        crate::main::errors::Rf_error(c"length(m) must be at least two".as_ptr());
+        crate::main::errors::Rf_error_cstr(c"length(m) must be at least two");
     }
     if crate::sexp::accessors::TYPEOF(sx) != SEXPTYPE::REALSXP
         || crate::sexp::accessors::XLENGTH(sx) != n - 1
     {
-        crate::main::errors::Rf_error(
-            c"Argument Sx must be numeric vector one shorter than m[]".as_ptr(),
-        );
+        crate::main::errors::Rf_error_cstr(
+            c"Argument Sx must be numeric vector one shorter than m[]");
     }
     let val = crate::mainutils::seq::Rf_duplicate(m);
     let _g = protect_sexp(val);

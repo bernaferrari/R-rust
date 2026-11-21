@@ -392,8 +392,7 @@ pub fn do_cor(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if denom == 0.0 {
             crate::mainutils::errors::Rf_warningcall1(
                 call,
-                c"the standard deviation is zero".as_ptr(),
-            );
+                c"the standard deviation is zero");
             return Rf_ScalarReal(NA_REAL);
         }
         Rf_ScalarReal(cov / denom)

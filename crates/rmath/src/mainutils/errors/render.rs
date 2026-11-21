@@ -193,7 +193,14 @@ pub(super) fn show_error_locations_enabled() -> bool {
     false
 }
 
-pub(super) fn verrorcall_dflt(call: SEXP, format: *const c_char, ap: *mut c_void) {
+/// Default error renderer for a C-style message (`ap` is an optional `va_list`).
+///
+/// # Safety
+///
+/// `format` must be null or point to a NUL-terminated string valid for reads
+/// for the duration of the call, and `ap` must be null or a live `va_list`
+/// whose arguments match `format`.
+pub(super) unsafe fn verrorcall_dflt(call: SEXP, format: *const c_char, ap: *mut c_void) {
     unsafe {
         use super::byte_buffer::Snapshot;
         // Copy literal native bytes before touching error state: format can
@@ -428,7 +435,13 @@ pub(super) fn gotoExitingHandler(cond: SEXP, call: SEXP, entry: SEXP) {
     std::panic::panic_any(crate::sexp::context::RSignal::ExitingHandler(transfer));
 }
 
-pub(super) fn vsignalError(call: SEXP, format: *const c_char) {
+/// Walk the handler stack for a simple error carrying `format`.
+///
+/// # Safety
+///
+/// `format` must be null or point to a NUL-terminated string valid for reads
+/// for the duration of the call.
+pub(super) unsafe fn vsignalError(call: SEXP, format: *const c_char) {
     unsafe {
         let localbuf = if format.is_null() {
             String::new()
@@ -492,6 +505,21 @@ pub(super) fn vsignalError(call: SEXP, format: *const c_char) {
     }
 }
 
+/// Borrow the NUL-terminated prefix of a byte buffer as a C string
+/// (empty when the buffer holds no NUL).
+pub fn cstr_until_nul(bytes: &[u8]) -> &CStr {
+    CStr::from_bytes_until_nul(bytes).unwrap_or_default()
+}
+
+/// Borrow the NUL-terminated prefix of a `c_char` buffer as a C string
+/// (empty when the buffer holds no NUL).
+pub fn c_chars_until_nul(chars: &[c_char]) -> &CStr {
+    // SAFETY: `c_char` and `u8` have identical size and alignment, so the
+    // live slice may be viewed as bytes for the same lifetime.
+    let bytes = unsafe { std::slice::from_raw_parts(chars.as_ptr().cast::<u8>(), chars.len()) };
+    cstr_until_nul(bytes)
+}
+
 /// Report an error with a call.
 ///
 /// This is the equivalent of R's `errorcall()`.
@@ -500,32 +528,63 @@ pub(super) fn vsignalError(call: SEXP, format: *const c_char) {
 /// For formatted errors, use `Rf_errorcall1()` or pre-format before calling.
 ///
 /// It does not return — it panics with an RError payload.
-pub fn errorcall(call: SEXP, format: *const c_char) {
-    raise_error(call, format, true);
+/// Rust callers should use [`errorcall_cstr`] / [`errorcall_str`].
+///
+/// # Safety
+///
+/// `format` must be null or point to a NUL-terminated string valid for reads
+/// for the duration of the call.
+pub unsafe fn errorcall(call: SEXP, format: *const c_char) {
+    // SAFETY: forwarded under this function's `# Safety` contract.
+    unsafe { raise_error(call, format, true) };
+}
+
+/// Safe core of [`errorcall`]: report an error with a call from a C string.
+pub fn errorcall_cstr(call: SEXP, message: &CStr) {
+    // SAFETY: `message` is a live NUL-terminated string for the whole call.
+    unsafe { raise_error(call, message.as_ptr(), true) };
 }
 
 /// Raise an error whose call was inferred from the current context, as in
 /// GNU error()/stop(). tryCatch may substitute its frame for this call.
-pub(crate) fn implicit_errorcall(call: SEXP, format: *const c_char) {
-    raise_error(call, format, false);
+///
+/// # Safety
+///
+/// `format` must be null or point to a NUL-terminated string valid for reads
+/// for the duration of the call.
+pub(crate) unsafe fn implicit_errorcall(call: SEXP, format: *const c_char) {
+    // SAFETY: forwarded under this function's `# Safety` contract.
+    unsafe { raise_error(call, format, false) };
 }
 
-fn raise_error(call: SEXP, format: *const c_char, explicit: bool) {
+/// Safe core of [`implicit_errorcall`].
+pub(crate) fn implicit_errorcall_cstr(call: SEXP, message: &CStr) {
+    // SAFETY: `message` is a live NUL-terminated string for the whole call.
+    unsafe { raise_error(call, message.as_ptr(), false) };
+}
+
+/// # Safety
+///
+/// `format` must be null or point to a NUL-terminated string that stays
+/// valid for reads until this call unwinds.
+unsafe fn raise_error(call: SEXP, format: *const c_char, explicit: bool) {
     let _call = protect(if call.is_null() {
         globals::R_NilValue()
     } else {
         call
     });
-    vsignalError(call, format);
+    // SAFETY: `format` is valid under this function's `# Safety` contract.
+    unsafe { vsignalError(call, format) };
     // A calling handler can raise a replacement error. Record only after
     // it returns, so the original applied call cannot override that error.
     record_error_call(call, explicit);
-    verrorcall_dflt(call, format, ptr::null_mut());
+    // SAFETY: as above; a null `ap` means `format` is the final message.
+    unsafe { verrorcall_dflt(call, format, ptr::null_mut()) };
 }
 
 pub(crate) fn implicit_errorcall_str(call: SEXP, message: &str) -> ! {
     let c_msg = std::ffi::CString::new(message).unwrap_or_default();
-    implicit_errorcall(call, c_msg.as_ptr());
+    implicit_errorcall_cstr(call, &c_msg);
     unreachable!("implicit_errorcall never returns");
 }
 
@@ -538,7 +597,7 @@ pub(crate) fn implicit_errorcall_str(call: SEXP, message: &str) -> ! {
 /// Pass a null call for upstream `call. = FALSE` semantics ("Error: <message>").
 pub fn errorcall_str(call: SEXP, message: &str) -> ! {
     let c_msg = std::ffi::CString::new(message).unwrap_or_default();
-    errorcall(call, c_msg.as_ptr());
+    errorcall_cstr(call, &c_msg);
     unreachable!("errorcall never returns: verrorcall_dflt panics with RError");
 }
 
@@ -551,7 +610,8 @@ pub fn errorcall_str(call: SEXP, message: &str) -> ! {
 pub fn dflt_stop_str(call: SEXP, message: &str) -> ! {
     {
         let c_msg = std::ffi::CString::new(message).unwrap_or_default();
-        verrorcall_dflt(call, c_msg.as_ptr(), ptr::null_mut());
+        // SAFETY: `c_msg` is a live NUL-terminated message and `ap` is null.
+        unsafe { verrorcall_dflt(call, c_msg.as_ptr(), ptr::null_mut()) };
         unreachable!("verrorcall_dflt panics with RError");
     }
 }
@@ -603,35 +663,17 @@ where
 
 /// Report a formatted error with one string argument.
 /// Equivalent to C's `errorcall(call, "%s", msg)`.
-pub fn Rf_errorcall1(call: SEXP, format: *const c_char, arg: *const c_char) {
-    unsafe {
-        let msg = if arg.is_null() {
-            ""
-        } else {
-            CStr::from_ptr(arg).to_str().unwrap_or("")
-        };
-        let formatted = format!(
-            "{}{}",
-            if format.is_null() {
-                ""
-            } else {
-                CStr::from_ptr(format).to_str().unwrap_or("")
-            },
-            msg
-        );
-        errorcall_str(call, &formatted);
-    }
+pub fn Rf_errorcall1(call: SEXP, format: &CStr, arg: &CStr) {
+    let msg = arg.to_str().unwrap_or("");
+    let formatted = format!("{}{}", format.to_str().unwrap_or(""), msg);
+    errorcall_str(call, &formatted);
 }
 
 /// Report a formatted error with call, using printf-style formatting.
 /// This is a Rust-native helper that supports simple format strings.
-pub fn Rf_errorcall_fmt(call: SEXP, format: *const c_char, args: &[&CStr]) {
-    unsafe {
-        if format.is_null() {
-            errorcall(call, b"\0".as_ptr() as *const c_char);
-            return;
-        }
-        let fmt = CStr::from_ptr(format).to_str().unwrap_or("");
+pub fn Rf_errorcall_fmt(call: SEXP, format: &CStr, args: &[&CStr]) {
+    {
+        let fmt = format.to_str().unwrap_or("");
         // Simple format expansion: replace %s with args in order
         let mut result = fmt.to_string();
         for arg_cstr in args {
@@ -645,24 +687,20 @@ pub fn Rf_errorcall_fmt(call: SEXP, format: *const c_char, args: &[&CStr]) {
             }
         }
         let c_result = std::ffi::CString::new(result).unwrap_or_default();
-        errorcall(call, c_result.as_ptr());
+        errorcall_cstr(call, &c_result);
     }
 }
 
 /// Report an error with a call and pre-formatted message buffer.
 /// Matches C's `errorcall_cpy()` — copies all data before doing anything else.
-pub fn errorcall_cpy(call: SEXP, format: *const c_char) {
-    unsafe {
-        let mut buf = vec![0u8; BUFSIZE + 1];
-        if !format.is_null() {
-            let len = CStr::from_ptr(format).to_bytes().len().min(BUFSIZE - 1);
-            ptr::copy_nonoverlapping(format as *const u8, buf.as_mut_ptr(), len);
-            buf[len] = 0;
-        } else {
-            buf[0] = 0;
-        }
-        errorcall(call, buf.as_ptr() as *const c_char);
-    }
+pub fn errorcall_cpy(call: SEXP, format: &CStr) {
+    let mut buf = vec![0u8; BUFSIZE + 1];
+    let bytes = format.to_bytes();
+    let len = bytes.len().min(BUFSIZE - 1);
+    buf[..len].copy_from_slice(&bytes[..len]);
+    buf[len] = 0;
+    let message = CStr::from_bytes_until_nul(&buf).unwrap_or_default();
+    errorcall_cstr(call, message);
 }
 
 /// Report an error (without call).
@@ -670,32 +708,33 @@ pub fn errorcall_cpy(call: SEXP, format: *const c_char) {
 /// This is the equivalent of R's `Rf_error()`.
 /// The format string should be a pre-formatted message.
 /// It does not return — it panics with an RError payload.
-pub fn Rf_error(format: *const c_char) {
-    {
-        let call = getCurrentCall();
-        // Rf_error in C is variadic: void error(const char *format, ...)
-        // In Rust, callers should pass pre-formatted strings.
-        implicit_errorcall(call, format);
-    }
+/// Rust callers should use [`Rf_error_cstr`].
+///
+/// # Safety
+///
+/// `format` must be null or point to a NUL-terminated string valid for reads
+/// for the duration of the call.
+pub unsafe fn Rf_error(format: *const c_char) {
+    let call = getCurrentCall();
+    // Rf_error in C is variadic: void error(const char *format, ...)
+    // In Rust, callers should pass pre-formatted strings.
+    // SAFETY: forwarded under this function's `# Safety` contract.
+    unsafe { implicit_errorcall(call, format) };
+}
+
+/// Safe core of [`Rf_error`]: report an error (without call) from a C string.
+pub fn Rf_error_cstr(message: &CStr) {
+    let call = getCurrentCall();
+    implicit_errorcall_cstr(call, message);
 }
 
 /// Report a formatted error (without call), with one string argument.
 /// Equivalent to C's `error("%s", msg)`.
-pub fn Rf_error1(format: *const c_char, arg: *const c_char) {
-    unsafe {
-        let call = getCurrentCall();
-        let fmt = if format.is_null() {
-            ""
-        } else {
-            CStr::from_ptr(format).to_str().unwrap_or("")
-        };
-        let arg = if arg.is_null() {
-            ""
-        } else {
-            CStr::from_ptr(arg).to_str().unwrap_or("")
-        };
-        implicit_errorcall_str(call, &format!("{fmt}{arg}"));
-    }
+pub fn Rf_error1(format: &CStr, arg: &CStr) {
+    let call = getCurrentCall();
+    let fmt = format.to_str().unwrap_or("");
+    let arg = arg.to_str().unwrap_or("");
+    implicit_errorcall_str(call, &format!("{fmt}{arg}"));
 }
 
 /// Unimplemented error — for functions that haven't been ported yet.
@@ -707,34 +746,22 @@ pub fn Rf_error_unimplemented(name: &str) {
 
 /// UNIMPLEMENTED — called from C when a feature is not yet ported.
 /// Matches C: `void UNIMPLEMENTED(const char *s) { error("unimplemented feature in %s", s); }`
-pub fn UNIMPLEMENTED(s: *const c_char) {
-    unsafe {
-        let name = if s.is_null() {
-            "unknown"
-        } else {
-            CStr::from_ptr(s).to_str().unwrap_or("unknown")
-        };
-        let msg = format!("unimplemented feature in {}", name);
-        let c_msg = std::ffi::CString::new(msg).unwrap_or_default();
-        let call = getCurrentCall();
-        implicit_errorcall(call, c_msg.as_ptr());
-    }
+pub fn UNIMPLEMENTED(s: &CStr) {
+    let name = s.to_str().unwrap_or("unknown");
+    let msg = format!("unimplemented feature in {}", name);
+    let c_msg = std::ffi::CString::new(msg).unwrap_or_default();
+    let call = getCurrentCall();
+    implicit_errorcall_cstr(call, &c_msg);
 }
 
 /// WrongArgCount — incorrect number of arguments error.
 /// Matches C: `void WrongArgCount(const char *s) { error("incorrect number of arguments to \"%s\"", s); }`
-pub fn WrongArgCount(s: *const c_char) {
-    unsafe {
-        let name = if s.is_null() {
-            "unknown"
-        } else {
-            CStr::from_ptr(s).to_str().unwrap_or("unknown")
-        };
-        let msg = format!("incorrect number of arguments to \"{}\"", name);
-        let c_msg = std::ffi::CString::new(msg).unwrap_or_default();
-        let call = getCurrentCall();
-        implicit_errorcall(call, c_msg.as_ptr());
-    }
+pub fn WrongArgCount(s: &CStr) {
+    let name = s.to_str().unwrap_or("unknown");
+    let msg = format!("incorrect number of arguments to \"{}\"", name);
+    let c_msg = std::ffi::CString::new(msg).unwrap_or_default();
+    let call = getCurrentCall();
+    implicit_errorcall_cstr(call, &c_msg);
 }
 
 // ---------------------------------------------------------------------------
@@ -749,7 +776,14 @@ pub fn WrongArgCount(s: *const c_char) {
 /// - w == 0: collect warnings for later display
 /// - w == 1: print immediately
 /// - w >= 2: convert to error
-pub(super) fn vwarningcall_dflt(call: SEXP, format: *const c_char, ap: *mut c_void) {
+/// Default warning renderer for a C-style message (`ap` is an optional `va_list`).
+///
+/// # Safety
+///
+/// `format` must be null or point to a NUL-terminated string valid for reads
+/// for the duration of the call, and `ap` must be null or a live `va_list`
+/// whose arguments match `format`.
+pub(super) unsafe fn vwarningcall_dflt(call: SEXP, format: *const c_char, ap: *mut c_void) {
     let pin = super::state::error_scope_pin();
     let pointer = pin.as_ptr();
     let owner = unsafe { crate::sexp::owner::OwnerToken::from_raw(pointer) };
@@ -841,6 +875,7 @@ pub(super) fn vwarningcall_dflt(call: SEXP, format: *const c_char, ap: *mut c_vo
             let _cleanup = WarningCollectionScope { owner: pin };
 
             // Format the variadic message into a string
+            // SAFETY: `format`/`ap` are valid under this function's contract.
             let (mut fmt_str, truncated) = format_varargs_to_buf(format, ap);
             if truncated {
                 // Append truncation marker if room
@@ -855,7 +890,7 @@ pub(super) fn vwarningcall_dflt(call: SEXP, format: *const c_char, ap: *mut c_vo
                 (*pointer).error_state.in_warning = 0;
                 let full_msg = format!("(converted from warning) {}", fmt_str);
                 let c_msg = std::ffi::CString::new(full_msg).unwrap_or_default();
-                errorcall(call, c_msg.as_ptr());
+                errorcall_cstr(call, &c_msg);
             } else if w == 1 || immediate_warning() {
                 // Print warnings immediately
                 let dcall = if !call.is_null() && isNull(call) == 0 {
@@ -1061,10 +1096,21 @@ pub(super) fn effective_warning_call(call: SEXP) -> SEXP {
 ///
 /// This is the equivalent of R's `warningcall()`.
 /// Unlike errors, warnings do not terminate execution.
-pub fn warningcall(call: SEXP, format: *const c_char) {
-    {
-        vsignalWarning(effective_warning_call(call), format);
-    }
+/// Rust callers should use [`warningcall_cstr`].
+///
+/// # Safety
+///
+/// `format` must be null or point to a NUL-terminated string valid for reads
+/// for the duration of the call.
+pub unsafe fn warningcall(call: SEXP, format: *const c_char) {
+    // SAFETY: forwarded under this function's `# Safety` contract.
+    unsafe { vsignalWarning(effective_warning_call(call), format) };
+}
+
+/// Safe core of [`warningcall`]: issue a warning with call from a C string.
+pub fn warningcall_cstr(call: SEXP, message: &CStr) {
+    // SAFETY: `message` is a live NUL-terminated string for the whole call.
+    unsafe { vsignalWarning(effective_warning_call(call), message.as_ptr()) };
 }
 
 pub(crate) fn mark_calling_handlers_signaled() {
@@ -1079,7 +1125,14 @@ fn clear_calling_handlers_signaled() {
     super::state::with_error_state(|state| state.calling_handlers_signaled = false);
 }
 
-pub(super) fn vsignalWarning(call: SEXP, format: *const c_char) {
+/// Signal a simple warning carrying `format` to calling handlers, then
+/// fall back to the default warning action.
+///
+/// # Safety
+///
+/// `format` must be null or point to a NUL-terminated string valid for reads
+/// for the duration of the call.
+pub(super) unsafe fn vsignalWarning(call: SEXP, format: *const c_char) {
     unsafe {
         // Calling handlers first (upstream signals the simpleWarning
         // through R_HandlerStack before any default emission): a handler
@@ -1140,52 +1193,52 @@ pub(super) fn vsignalWarning(call: SEXP, format: *const c_char) {
 }
 
 /// Issue an immediate warning (bypass collection).
-pub fn warningcall_immediate(call: SEXP, format: *const c_char) {
-    {
-        let prev = immediate_warning();
-        set_immediate_warning(true);
-        vwarningcall_dflt(call, format, ptr::null_mut());
-        set_immediate_warning(prev);
-    }
+pub fn warningcall_immediate(call: SEXP, message: &CStr) {
+    let prev = immediate_warning();
+    set_immediate_warning(true);
+    // SAFETY: `message` is a live NUL-terminated string and `ap` is null.
+    unsafe { vwarningcall_dflt(call, message.as_ptr(), ptr::null_mut()) };
+    set_immediate_warning(prev);
 }
 
 /// Issue a warning (without call).
-pub fn Rf_warning(format: *const c_char) {
-    {
-        let call = getCurrentCall();
-        warningcall(call, format);
-    }
+/// Rust callers should use [`Rf_warning_cstr`].
+///
+/// # Safety
+///
+/// `format` must be null or point to a NUL-terminated string valid for reads
+/// for the duration of the call.
+pub unsafe fn Rf_warning(format: *const c_char) {
+    let call = getCurrentCall();
+    // SAFETY: forwarded under this function's `# Safety` contract.
+    unsafe { warningcall(call, format) };
+}
+
+/// Safe core of [`Rf_warning`]: issue a warning (without call) from a C string.
+pub fn Rf_warning_cstr(message: &CStr) {
+    let call = getCurrentCall();
+    warningcall_cstr(call, message);
 }
 
 /// Issue an immediate warning (without call).
-pub fn Rf_warning_immediate(format: *const c_char) {
-    {
-        let call = getCurrentCall();
-        warningcall_immediate(call, format);
-    }
+pub fn Rf_warning_immediate(message: &CStr) {
+    let call = getCurrentCall();
+    warningcall_immediate(call, message);
 }
 
 /// Issue a formatted warning with call (Rust helper).
 /// Equivalent to C's `warningcall(call, "%s", msg)`.
-pub fn Rf_warningcall1(call: SEXP, msg: *const c_char) {
-    unsafe {
-        let msg_str = if msg.is_null() {
-            ""
-        } else {
-            CStr::from_ptr(msg).to_str().unwrap_or("")
-        };
-        let c_msg = std::ffi::CString::new(msg_str).unwrap_or_default();
-        warningcall(call, c_msg.as_ptr());
-    }
+pub fn Rf_warningcall1(call: SEXP, msg: &CStr) {
+    let msg_str = msg.to_str().unwrap_or("");
+    let c_msg = std::ffi::CString::new(msg_str).unwrap_or_default();
+    warningcall_cstr(call, &c_msg);
 }
 
 /// Issue a formatted warning without call (Rust helper).
 /// Equivalent to C's `warning("%s", msg)`.
-pub fn Rf_warning1(msg: *const c_char) {
-    {
-        let call = getCurrentCall();
-        Rf_warningcall1(call, msg);
-    }
+pub fn Rf_warning1(msg: &CStr) {
+    let call = getCurrentCall();
+    Rf_warningcall1(call, msg);
 }
 
 /// Own the previous attribution and original runtime until scope cleanup.
@@ -1233,22 +1286,20 @@ pub fn mathlib_warning_call() -> SEXP {
 /// Unlike errors/warnings, messages do not terminate or indicate problems.
 ///
 /// Ported from R's `Rf_message()` concept.
-pub fn Rf_message(format: *const c_char) {
-    unsafe {
-        if format.is_null() {
-            println!();
-            return;
-        }
-        let msg = CStr::from_ptr(format).to_str().unwrap_or("");
-        // Strip trailing newline if present (C version does this)
-        let msg = msg.trim_end_matches('\n');
-        println!("{}", msg);
-    }
+pub fn Rf_message(format: Option<&CStr>) {
+    let Some(format) = format else {
+        println!();
+        return;
+    };
+    let msg = format.to_str().unwrap_or("");
+    // Strip trailing newline if present (C version does this)
+    let msg = msg.trim_end_matches('\n');
+    println!("{}", msg);
 }
 
 /// Issue a message with call.
 /// Ported from R's message handling in errors.c.
-pub fn messagecall(call: SEXP, format: *const c_char) {
+pub fn messagecall(call: SEXP, format: Option<&CStr>) {
     {
         // In C, message() doesn't use the call for display,
         // but it's passed for consistency
@@ -1262,21 +1313,19 @@ pub fn messagecall(call: SEXP, format: *const c_char) {
 /// When append=FALSE (default), the message starts on a new line.
 ///
 /// This matches R's `message(..., appendLF = TRUE)` behavior.
-pub fn Rf_message_append(format: *const c_char, append: c_int) {
-    unsafe {
-        if format.is_null() {
-            if append == 0 {
-                println!();
-            }
-            return;
-        }
-        let msg = CStr::from_ptr(format).to_str().unwrap_or("");
-        let msg = msg.trim_end_matches('\n');
+pub fn Rf_message_append(format: Option<&CStr>, append: c_int) {
+    let Some(format) = format else {
         if append == 0 {
-            println!("{}", msg);
-        } else {
-            print!("{}", msg);
+            println!();
         }
+        return;
+    };
+    let msg = format.to_str().unwrap_or("");
+    let msg = msg.trim_end_matches('\n');
+    if append == 0 {
+        println!("{}", msg);
+    } else {
+        print!("{}", msg);
     }
 }
 
@@ -1298,6 +1347,9 @@ pub fn do_message(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         SETCAR(args, coerceVector(CAR(args), SEXPTYPE::STRSXP.as_c_int()));
         if isValidString(CAR(args)) != 0 {
             let msg = translateChar(STRING_ELT(CAR(args), 0));
+            // SAFETY: `translateChar` returns null or a NUL-terminated string
+            // kept alive by the protected argument for this call.
+            let msg = (!msg.is_null()).then(|| unsafe { CStr::from_ptr(msg) });
             Rf_message_append(msg, append);
         }
     }

@@ -5,7 +5,7 @@ use crate::sexp::accessors::{INTEGER_ELT, REAL_ELT, SET_REAL_ELT};
 use std::os::raw::{c_double, c_int};
 
 use crate::main::coerce::{asInteger, asReal};
-use crate::main::errors::Rf_error;
+use crate::main::errors::{Rf_error, Rf_error_cstr};
 use crate::main::sort::rPsort;
 use crate::sexp::accessors::{LENGTH, REAL, TYPEOF};
 use crate::sexp::constructors::Rf_allocVector;
@@ -290,23 +290,23 @@ unsafe fn clowess(
 
 pub fn lowess(x: SEXP, y: SEXP, sf: SEXP, siter: SEXP, sdelta: SEXP) -> SEXP {
     if TYPEOF(x) != SEXPTYPE::REALSXP || TYPEOF(y) != SEXPTYPE::REALSXP {
-        Rf_error(b"invalid input\0".as_ptr() as *const _);
+        Rf_error_cstr(c"invalid input");
     }
     let nx = LENGTH(x);
     if nx == NA_INTEGER || nx == 0 {
-        Rf_error(b"invalid input\0".as_ptr() as *const _);
+        Rf_error_cstr(c"invalid input");
     }
     let f = asReal(sf);
     if !f.is_finite() || f <= 0.0 {
-        Rf_error(b"'f' must be finite and > 0\0".as_ptr() as *const _);
+        Rf_error_cstr(c"'f' must be finite and > 0");
     }
     let iter = asInteger(siter);
     if iter == NA_INTEGER || iter < 0 {
-        Rf_error(b"'iter' must be finite and >= 0\0".as_ptr() as *const _);
+        Rf_error_cstr(c"'iter' must be finite and >= 0");
     }
     let delta = asReal(sdelta);
     if !delta.is_finite() || delta < 0.0 {
-        Rf_error(b"'delta' must be finite and > 0\0".as_ptr() as *const _);
+        Rf_error_cstr(c"'delta' must be finite and > 0");
     }
 
     let ans = Rf_allocVector(SEXPTYPE::REALSXP, nx);
@@ -878,7 +878,7 @@ pub fn do_supsmu(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let message = std::ffi::CString::new(text).unwrap();
             access
                 .with_native(|_| {
-                    crate::mainutils::errors::Rf_warning1(message.as_ptr());
+                    crate::mainutils::errors::Rf_warning1(&message);
 
                     Ok(())
                 })
@@ -904,8 +904,7 @@ pub fn do_supsmu(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     };
                     if !complete {
                         crate::mainutils::errors::Rf_warning1(
-                            c"NAs introduced by coercion".as_ptr(),
-                        );
+                            c"NAs introduced by coercion");
 
                         Ok(f64::NAN)
                     } else {

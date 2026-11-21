@@ -96,16 +96,6 @@ fn checkArity(op: SEXP, args: SEXP) {
     crate::mainutils::relop::checkArity(op, args)
 }
 
-// error/errorcall use panic_any(RError{..}) in the full port.
-fn error(fmt: *const c_char, _a1: usize, _a2: usize, _a3: usize) {
-    {
-        crate::mainutils::errors::errorcall(crate::sexp::globals::R_NilValue(), fmt);
-    }
-}
-
-fn errorcall(_call: SEXP, fmt: *const c_char, _a1: usize, _a2: usize, _a3: usize) {
-    crate::mainutils::errors::errorcall(_call, fmt);
-}
 
 fn asLogical(x: SEXP) -> c_int {
     crate::mainutils::coerce::asLogical(x)

@@ -5,7 +5,7 @@
  *  Stubs for class support utilities.
  */
 
-use crate::mainutils::errors::Rf_error;
+use crate::mainutils::errors::{Rf_error, Rf_error_cstr};
 use crate::sexp::accessors::{SET_S4_OBJECT, TYPEOF};
 use crate::sexp::constructors::Rf_mkString;
 use crate::sexp::ffi::*;
@@ -18,7 +18,7 @@ pub fn R_get_primname(object: SEXP) -> SEXP {
     if t != SEXPTYPE::BUILTINSXP && t != SEXPTYPE::SPECIALSXP {
         let msg = c"'R_get_primname' called on a non-primitive";
 
-        Rf_error(msg.as_ptr());
+        Rf_error_cstr(&msg);
     }
     let name = crate::main::names::getPRIMNAME(object);
     if name.is_null() {

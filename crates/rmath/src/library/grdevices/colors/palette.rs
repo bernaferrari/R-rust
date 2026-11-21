@@ -64,7 +64,7 @@ pub fn initPalette() {
 pub fn do_palette(val: SEXP) -> SEXP {
     {
         if Rf_isString(val) == 0 {
-            Rf_error(b"invalid argument type\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"invalid argument type");
         }
 
         // Record current palette
@@ -96,11 +96,11 @@ pub fn do_palette(val: SEXP) -> SEXP {
                     state.palette_size = DEFAULT_PALETTE.len() as c_int;
                 });
             } else {
-                Rf_error(b"unknown palette (need >= 2 colors)\0".as_ptr() as *const c_char);
+                Rf_error_cstr(c"unknown palette (need >= 2 colors)");
             }
         } else if n > 1 {
             if n > MAX_PALETTE_SIZE {
-                Rf_error(b"maximum number of colors is 1024\0".as_ptr() as *const c_char);
+                Rf_error_cstr(c"maximum number of colors is 1024");
             }
             let mut color_buf: [rcolor; MAX_PALETTE_SIZE] = [0; MAX_PALETTE_SIZE];
             let mut i = 0usize;
@@ -141,10 +141,10 @@ pub fn do_palette2(val: SEXP) -> SEXP {
         let n = LENGTH(val) as usize;
         if n > 0 {
             if TYPEOF(val) != SEXPTYPE::INTSXP {
-                Rf_error(b"requires INTSXP argument\0".as_ptr() as *const c_char);
+                Rf_error_cstr(c"requires INTSXP argument");
             }
             if n > MAX_PALETTE_SIZE {
-                Rf_error(b"maximum number of colors is 1024\0".as_ptr() as *const c_char);
+                Rf_error_cstr(c"maximum number of colors is 1024");
             }
             with_color_state(|state| {
                 let mut i = 0usize;

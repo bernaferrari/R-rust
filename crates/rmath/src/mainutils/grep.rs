@@ -34,7 +34,7 @@ use crate::sexp::ffi::{NA_INTEGER, NA_LOGICAL, R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::*;
 use crate::sexp::protect::protect;
 use crate::tre::ast::{REG_EXTENDED, REG_ICASE, REG_OK, regmatch_t};
-use crate::tre::regapi::tre_regnexec;
+use crate::tre::regapi::tre_regnexec_bytes;
 
 #[cfg(test)]
 mod capture_publication_tests;
@@ -368,9 +368,8 @@ impl TreRegex {
                 wide.push(u32::from(ch));
             }
         }
-        let preg = crate::tre::compile::tre_compile_owned(
-            wide.as_ptr(),
-            wide.len(),
+        let preg = crate::tre::compile::tre_compile_owned_slice(
+            &wide,
             cflags,
             workspace.clone(),
         )
@@ -417,14 +416,7 @@ impl TreRegex {
         let status = if let Some(wide) = &wide {
             crate::tre::regapi::tre_regwnexec(self.preg.regex(), wide, &mut pmatch, flags)
         } else {
-            tre_regnexec(
-                self.preg.regex(),
-                input.as_ptr().cast(),
-                input.len(),
-                nmatch,
-                pmatch.as_mut_ptr(),
-                flags,
-            )
+            tre_regnexec_bytes(self.preg.regex(), input, &mut pmatch, flags)
         };
         let byte_offset = |index: usize| {
             if wide.is_some() {

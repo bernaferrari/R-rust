@@ -1,7 +1,7 @@
 use core::ffi::c_int;
 use std::slice;
 
-use crate::main::errors::Rf_error;
+use crate::main::errors::{Rf_error, Rf_error_cstr};
 use crate::sexp::ffi::SEXP;
 
 fn kmeans_lloyd_impl(
@@ -292,7 +292,7 @@ pub unsafe extern "C-unwind" fn c_kmeans_macqueen(
 
 // Fortran tracing stubs (F77_SUB name mangling: lowercase + underscore suffix)
 pub fn kmns1_(_k: *const c_int, _it: *const c_int, _indx: *const c_int) {
-    Rf_error(b"kmeans tracing stub kmns1_ is not implemented\0".as_ptr() as *const _);
+    Rf_error_cstr(c"kmeans tracing stub kmns1_ is not implemented");
 }
 
 pub fn kmnsqpr_(
@@ -302,7 +302,7 @@ pub fn kmnsqpr_(
     _k: *const c_int,
     _trace: *const c_int,
 ) {
-    Rf_error(b"kmeans tracing stub kmnsqpr_ is not implemented\0".as_ptr() as *const _);
+    Rf_error_cstr(c"kmeans tracing stub kmnsqpr_ is not implemented");
 }
 
 /// GNU `kmeans(x, k)` Lloyd, min/max initial centers.

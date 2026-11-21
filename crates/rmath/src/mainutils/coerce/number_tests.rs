@@ -48,22 +48,22 @@ fn gnu_number_text_coercion_matches_independent_value_and_warning_table() {
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 match parts[1] {
                     "double" => assert_float(
-                        RealFromString(character.as_raw(), &mut warning),
+                        RealFromString(character.as_raw(), Some(&mut warning)),
                         &expected,
                         &text,
                     ),
                     "integer" => assert_eq!(
-                        IntegerFromString(character.as_raw(), &mut warning),
+                        IntegerFromString(character.as_raw(), Some(&mut warning)),
                         i32::from_le_bytes(expected.try_into().unwrap()),
                         "{text:?}"
                     ),
                     "complex" => {
-                        let value = ComplexFromString(character.as_raw(), &mut warning);
+                        let value = ComplexFromString(character.as_raw(), Some(&mut warning));
                         assert_float(value.r, &expected[..8], &text);
                         assert_float(value.i, &expected[8..], &text);
                         let input = std::ffi::CString::new(input.clone()).unwrap();
                         let mut c_warning = 0;
-                        let c_value = ComplexFromStringC(input.as_ptr(), &mut c_warning);
+                        let c_value = ComplexFromStringC(&input, Some(&mut c_warning));
                         assert_float(c_value.r, &expected[..8], &text);
                         assert_float(c_value.i, &expected[8..], &text);
                         assert_eq!(c_warning, expected_warning, "{text:?}: C-string warning");

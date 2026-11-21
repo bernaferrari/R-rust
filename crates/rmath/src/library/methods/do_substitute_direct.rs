@@ -24,8 +24,8 @@ pub fn do_substitute_direct(f: SEXP, mut env: SEXP) -> SEXP {
     }
 
     if TYPEOF(env) != SEXPTYPE::ENVSXP {
-        crate::mainutils::errors::Rf_error(
-            b"invalid list for substitution\0".as_ptr() as *const c_char
+        crate::mainutils::errors::Rf_error_cstr(
+            c"invalid list for substitution"
         );
     }
 

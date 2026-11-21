@@ -135,13 +135,12 @@ pub(crate) fn do_withVisible(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
 /// This is a special `.Internal`.
 pub(crate) fn do_recall(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     use crate::eval::closure::applyClosure;
-    use crate::mainutils::errors::Rf_error;
+    use crate::mainutils::errors::Rf_error_cstr;
     use crate::sexp::accessors::{CAR, TYPEOF};
     use crate::sexp::context::ctxt_flags::CTXT_RETURN;
     use crate::sexp::envir::findFun;
     use crate::sexp::ffi::SEXPTYPE;
     use crate::sexp::globals::R_NilValue;
-    use std::os::raw::c_char;
 
     unsafe {
         let instance = crate::sexp::instance::with_required_current_instance(|instance| instance);
@@ -166,7 +165,7 @@ pub(crate) fn do_recall(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         };
         let top = super::super::runtime::global_context();
         if top.is_null() {
-            Rf_error(b"'Recall' called from outside a closure\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"'Recall' called from outside a closure");
         }
         let top_cell =
             crate::sexp::context::retain_context_in(instance, top).unwrap_or_else(|| {
@@ -243,7 +242,7 @@ pub(crate) fn do_recall(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         };
         let function_pointer = projection(&function);
         if TYPEOF(function_pointer) != SEXPTYPE::CLOSXP {
-            Rf_error(b"'Recall' called from outside a closure\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"'Recall' called from outside a closure");
         }
         let result = applyClosure(
             source,

@@ -479,8 +479,10 @@ pub(crate) unsafe fn tryDispatch(
 
         let mut dispatched: c_int = FALSE;
         let mut result: SEXP = R_NilValue();
+        // SAFETY: `generic` is the caller's NUL-terminated generic name (already
+        // passed to `Rf_install` above).
         let dispatch_result = crate::mainutils::objects::usemethod(
-            generic,
+            std::ffi::CStr::from_ptr(generic),
             x,
             call,
             pargs,
@@ -899,7 +901,7 @@ pub fn signalMissingArgError(call: SEXP, _rho: SEXP, arg_sym: SEXP) {
     };
     crate::mainutils::errors::errorcall_cpy(
         call,
-        std::ffi::CString::new(msg).unwrap_or_default().as_ptr(),
+        &std::ffi::CString::new(msg).unwrap_or_default(),
     );
 }
 

@@ -578,10 +578,9 @@ pub fn do_rbind(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     "number of columns of result, {ncols}, is not a multiple of vector length {arg_len} of arg"
                 ))
                 .unwrap_or_default();
-                crate::mainutils::errors::warningcall(
+                crate::mainutils::errors::warningcall_cstr(
                     crate::sexp::globals::R_NilValue(),
-                    msg.as_ptr(),
-                );
+                    &msg);
             }
             for j in 0..ncols {
                 for i in 0..arg_nrow {
@@ -694,10 +693,9 @@ fn rbind_data_frame(args: SEXP) -> SEXP {
                         "number of columns of result, {ncols}, is not a multiple of vector length {ni} of arg"
                     ))
                     .unwrap_or_default();
-                crate::mainutils::errors::warningcall(
+                crate::mainutils::errors::warningcall_cstr(
                     crate::sexp::globals::R_NilValue(),
-                    msg.as_ptr(),
-                );
+                    &msg);
             }
             let value_names = crate::sexp::attrib_core::getAttrib(
                 value,

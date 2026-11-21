@@ -76,13 +76,14 @@ pub fn do_usemethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         let obj = if !obj_arg.is_null() && obj_arg != R_NilValue() && obj_arg != R_MissingArg() {
             crate::eval::eval::Rf_eval(obj_arg, env)
         } else {
+            // SAFETY: `cptr` is the live global context checked non-null above.
             GetObject(cptr)
         };
         let _obj = protect(obj);
 
         let mut ans: SEXP = ptr::null_mut();
         if usemethod(
-            generic_cstr,
+            std::ffi::CStr::from_ptr(generic_cstr),
             obj,
             call,
             CDR(args),
@@ -146,12 +147,12 @@ pub fn do_usemethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 /// .GenericCallEnv, .GenericDefEnv) from the method's evaluation frame.
 pub fn readS3VarsFromFrame(
     frame: SEXP,
-    generic: *mut SEXP,
-    group: *mut SEXP,
-    klass: *mut SEXP,
-    method: *mut SEXP,
-    callenv: *mut SEXP,
-    defenv: *mut SEXP,
+    generic: &mut SEXP,
+    group: &mut SEXP,
+    klass: &mut SEXP,
+    method: &mut SEXP,
+    callenv: &mut SEXP,
+    defenv: &mut SEXP,
 ) {
     unsafe {
         if frame.is_null() {
@@ -165,24 +166,12 @@ pub fn readS3VarsFromFrame(
         let dot_callenv_sym = sym(".GenericCallEnv");
         let dot_defenv_sym = sym(".GenericDefEnv");
 
-        if !generic.is_null() {
-            *generic = crate::sexp::envir::R_findVarInFrame(frame, dot_generic_sym);
-        }
-        if !group.is_null() {
-            *group = crate::sexp::envir::R_findVarInFrame(frame, dot_group_sym);
-        }
-        if !klass.is_null() {
-            *klass = crate::sexp::envir::R_findVarInFrame(frame, dot_class_sym);
-        }
-        if !method.is_null() {
-            *method = crate::sexp::envir::R_findVarInFrame(frame, dot_method_sym);
-        }
-        if !callenv.is_null() {
-            *callenv = crate::sexp::envir::R_findVarInFrame(frame, dot_callenv_sym);
-        }
-        if !defenv.is_null() {
-            *defenv = crate::sexp::envir::R_findVarInFrame(frame, dot_defenv_sym);
-        }
+        *generic = crate::sexp::envir::R_findVarInFrame(frame, dot_generic_sym);
+        *group = crate::sexp::envir::R_findVarInFrame(frame, dot_group_sym);
+        *klass = crate::sexp::envir::R_findVarInFrame(frame, dot_class_sym);
+        *method = crate::sexp::envir::R_findVarInFrame(frame, dot_method_sym);
+        *callenv = crate::sexp::envir::R_findVarInFrame(frame, dot_callenv_sym);
+        *defenv = crate::sexp::envir::R_findVarInFrame(frame, dot_defenv_sym);
     }
 }
 
@@ -333,6 +322,7 @@ pub fn do_nextmethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 
         // Get klass if unbound
         if klass == R_UnboundValue() {
+            // SAFETY: `found_cptr` is a live context found on the context stack.
             let obj = GetObject(found_cptr);
             if isObject(obj) == FALSE {
                 std::panic::panic_any(crate::sexp::context::RError {
@@ -458,9 +448,8 @@ pub fn do_nextmethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                     && std::ffi::CStr::from_ptr(b).to_bytes()
                         != std::ffi::CStr::from_ptr(bb).to_bytes()
                 {
-                    crate::mainutils::errors::Rf_warning(
-                        b"Incompatible methods ignored\0".as_ptr() as *const c_char,
-                    );
+                    crate::mainutils::errors::Rf_warning_cstr(
+                        c"Incompatible methods ignored");
                 }
             }
         } else {

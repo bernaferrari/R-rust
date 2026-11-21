@@ -467,10 +467,9 @@ pub(crate) fn run_methods_onload_cache_metadata(where_env: SEXP) {
             // generic when the first S4 lookup resets the method table.
             crate::mainutils::objects::do_set_prim_method(
                 primitive,
-                c"reset".as_ptr(),
+                c"reset",
                 R_NilValue(),
-                R_NilValue(),
-            );
+                R_NilValue());
         }
         if !captured_image {
             let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -682,10 +681,9 @@ pub(super) fn register_original_primitive_generic(ns: SEXP, primitive_name: &std
                 );
                 crate::mainutils::objects::do_set_prim_method(
                     primitive,
-                    c"reset".as_ptr(),
+                    c"reset",
                     generic.as_raw(),
-                    R_NilValue(),
-                );
+                    R_NilValue());
                 return;
             }
         }

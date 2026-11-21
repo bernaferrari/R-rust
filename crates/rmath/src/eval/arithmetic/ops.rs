@@ -34,7 +34,7 @@ pub(crate) fn math1_vec(call: SEXP, sa: SEXP, f: fn(f64) -> f64) -> SEXP {
         }
         let _ = result_mut.freeze();
         if naflag {
-            crate::mainutils::errors::Rf_warningcall1(call, c"NaNs produced".as_ptr());
+            crate::mainutils::errors::Rf_warningcall1(call, c"NaNs produced");
         }
         propagate_unary_vector_attributes(result_raw, sa, n);
         result_raw
@@ -79,7 +79,7 @@ pub(crate) fn factor_not_meaningful_warning(
         };
         let _call_guard = protect(method_call);
         let c_msg = std::ffi::CString::new(message).unwrap_or_default();
-        crate::mainutils::errors::Rf_warningcall1(method_call, c_msg.as_ptr());
+        crate::mainutils::errors::Rf_warningcall1(method_call, &c_msg);
     }
 }
 

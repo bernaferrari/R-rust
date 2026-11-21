@@ -15,7 +15,7 @@ use std::ffi::CStr;
 use std::os::raw::c_char;
 use std::ptr;
 
-use crate::main::errors::Rf_error;
+use crate::main::errors::{Rf_error, Rf_error_cstr};
 use crate::sexp::accessors::{CHAR, LENGTH, RAW, STRING_ELT, TYPEOF, XLENGTH};
 use crate::sexp::constructors::{Rf_allocVector, Rf_isString, Rf_mkChar, Rf_mkString};
 use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
@@ -93,7 +93,7 @@ pub fn Rsha256(files: SEXP) -> SEXP {
         }
 
         if Rf_isString(files) == 0 {
-            Rf_error(b"argument 'files' must be character\0".as_ptr() as *const _);
+            Rf_error_cstr(c"argument 'files' must be character");
             return R_NilValue();
         }
 
@@ -132,7 +132,7 @@ pub fn Rsha256(files: SEXP) -> SEXP {
                         let msg =
                             std::ffi::CString::new(format!("sha256 failed on file '{}'", path))
                                 .unwrap_or_default();
-                        Rf_error(msg.as_ptr());
+                        Rf_error_cstr(&msg);
                         SET_STRING_ELT(ans, i as R_xlen_t, ptr::null_mut());
                     } else {
                         let out = hex_encode_lower(&resblock);

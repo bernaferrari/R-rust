@@ -95,10 +95,9 @@ mod tests {
                 .unwrap();
             do_set_prim_method(
                 operation.as_raw(),
-                c"set".as_ptr(),
+                c"set",
                 generic.as_raw(),
-                R_NilValue(),
-            );
+                R_NilValue());
             let fired = Rc::new(Cell::new(false));
             let observed = fired.clone();
             crate::sexp::gengc::register_gc_callback(Box::new(move |_| {
@@ -269,7 +268,7 @@ mod tests {
             let methods_node = methods.allocation().unwrap().clone();
             let preserved = (*instance).preserve_stack.checked_entries_snapshot().len();
             assert!(
-                do_set_prim_method(op, c"set".as_ptr(), generic.as_raw(), methods.as_raw())
+                do_set_prim_method(op, c"set", generic.as_raw(), methods.as_raw())
                     .is_null()
             );
             drop(generic);
@@ -280,10 +279,9 @@ mod tests {
             let previous = factory
                 .wrap(do_set_prim_method(
                     op,
-                    c"clear".as_ptr(),
+                    c"clear",
                     R_NilValue(),
-                    R_NilValue(),
-                ))
+                    R_NilValue()))
                 .unwrap();
             assert_eq!(previous.allocation().unwrap().link(), generic_node.link());
             drop(previous);
@@ -313,7 +311,7 @@ mod tests {
                 .unwrap();
             let generic_node = generic.allocation().unwrap().clone();
             let op = crate::mainutils::names::R_Primitive(c"+".as_ptr());
-            do_set_prim_method(op, c"set".as_ptr(), generic.as_raw(), R_NilValue());
+            do_set_prim_method(op, c"set", generic.as_raw(), R_NilValue());
             drop(generic);
             drop(body);
             let evicted = Rc::new(Cell::new(false));
@@ -695,7 +693,7 @@ mod tests {
     fn test_inherits2_null() {
         let _session = crate::sexp::session::RSession::new();
         assert_eq!(
-            inherits2(ptr::null_mut(), b"foo\0".as_ptr() as *const c_char),
+            inherits2(ptr::null_mut(), c"foo"),
             FALSE
         );
     }
@@ -704,7 +702,7 @@ mod tests {
     fn test_inherits2_no_class() {
         let _session = crate::sexp::session::RSession::new();
         let v = Rf_ScalarInteger(42);
-        assert_eq!(inherits2(v, b"numeric\0".as_ptr() as *const c_char), FALSE);
+        assert_eq!(inherits2(v, c"numeric"), FALSE);
     }
 
     #[test]
@@ -721,9 +719,9 @@ mod tests {
             );
             setAttrib(v, R_ClassSymbol(), class_vec);
             SET_OBJECT(v, 1); // Ensure OBJECT bit is set for this test
-            assert_eq!(inherits2(v, b"myclass\0".as_ptr() as *const c_char), TRUE);
+            assert_eq!(inherits2(v, c"myclass"), TRUE);
             assert_eq!(
-                inherits2(v, b"otherclass\0".as_ptr() as *const c_char),
+                inherits2(v, c"otherclass"),
                 FALSE
             );
         }
@@ -875,15 +873,17 @@ mod tests {
     fn test_R_check_class_etc() {
         let _session = crate::sexp::session::RSession::new();
         let valid: Vec<*const c_char> = vec![b"foo\0".as_ptr() as *const c_char, ptr::null()];
-        assert_eq!(R_check_class_etc(ptr::null_mut(), valid.as_ptr()), -1);
+        // SAFETY: `valid` is a live null-terminated array of NUL-terminated literals.
+        assert_eq!(unsafe { R_check_class_etc(ptr::null_mut(), valid.as_ptr()) }, -1);
     }
 
     #[test]
     fn test_R_check_class_and_super() {
         let _session = crate::sexp::session::RSession::new();
         let valid: Vec<*const c_char> = vec![b"foo\0".as_ptr() as *const c_char, ptr::null()];
+        // SAFETY: `valid` is a live null-terminated array of NUL-terminated literals.
         assert_eq!(
-            R_check_class_and_super(ptr::null_mut(), valid.as_ptr(), ptr::null_mut()),
+            unsafe { R_check_class_and_super(ptr::null_mut(), valid.as_ptr(), ptr::null_mut()) },
             -1
         );
     }
@@ -967,15 +967,14 @@ mod tests {
         let mut ans: SEXP = ptr::null_mut();
         assert_eq!(
             usemethod(
-                b"print\0".as_ptr() as *const c_char,
+                c"print",
                 ptr::null_mut(),
                 ptr::null_mut(),
                 ptr::null_mut(),
                 ptr::null_mut(),
                 ptr::null_mut(),
                 ptr::null_mut(),
-                &mut ans,
-            ),
+                &mut ans),
             0
         );
     }
@@ -1070,23 +1069,23 @@ mod tests {
             SET_STRING_ELT(klass, 2, Rf_mkChar(b"baz\0".as_ptr() as *const c_char));
 
             assert_eq!(
-                stringPositionTr(klass, b"foo\0".as_ptr() as *const c_char),
+                stringPositionTr(klass, c"foo"),
                 0
             );
             assert_eq!(
-                stringPositionTr(klass, b"bar\0".as_ptr() as *const c_char),
+                stringPositionTr(klass, c"bar"),
                 1
             );
             assert_eq!(
-                stringPositionTr(klass, b"baz\0".as_ptr() as *const c_char),
+                stringPositionTr(klass, c"baz"),
                 2
             );
             assert_eq!(
-                stringPositionTr(klass, b"qux\0".as_ptr() as *const c_char),
+                stringPositionTr(klass, c"qux"),
                 -1
             );
             assert_eq!(
-                stringPositionTr(klass, b"\x00".as_ptr() as *const c_char),
+                stringPositionTr(klass, c""),
                 -1
             );
         }
@@ -1240,12 +1239,11 @@ mod tests {
             ptr::null_mut(),
             ptr::null_mut(),
             ptr::null_mut(),
-            b"print\0".as_ptr() as *const c_char,
+            c"print",
             &mut method,
             ptr::null_mut(),
             ptr::null_mut(),
-            ptr::null_mut(),
-        );
+            ptr::null_mut());
         // A NULL object has no class, so the generic's `default` method
         // (print.default, found via the base search added for S3
         // dispatch) is the lookup result: 0 = default in this port's
@@ -1259,12 +1257,11 @@ mod tests {
         let _session = crate::sexp::session::RSession::new();
         let result = DispatchGroup(
             ptr::null_mut(),
-            b"Ops\0".as_ptr() as *const c_char,
+            c"Ops",
             ptr::null_mut(),
-            b"+\0".as_ptr() as *const c_char,
+            c"+",
             ptr::null_mut(),
-            ptr::null_mut(),
-        );
+            ptr::null_mut());
         assert_eq!(result, 0);
     }
 
@@ -1275,11 +1272,10 @@ mod tests {
         let result = DispatchOrEval_objects(
             ptr::null_mut(),
             ptr::null_mut(),
-            b"print\0".as_ptr() as *const c_char,
+            c"print",
             ptr::null_mut(),
             ptr::null_mut(),
-            &mut ans,
-        );
+            &mut ans);
         assert_eq!(result, 0);
     }
 

@@ -291,13 +291,16 @@ pub unsafe fn tre_regfree(preg: *mut regex_t) {
 
 // ===== regexec functions =====
 
-/// SOUNDNESS GAP (tracked): this C-shaped entry point keeps a safe signature
-/// only because `mainutils::grep` (owned by another change) still calls it
-/// without `unsafe`. It trusts `preg` to be a compiled regex, `str` to be valid
-/// for `len` bytes (or NUL-terminated) and `pmatch` for `nmatch` writes.
-/// Callers should migrate to [`tre_regnexec_bytes`]; then this should become
-/// `unsafe fn`.
-pub fn tre_regnexec(
+/// C-shaped TRE match entry point; Rust callers should use
+/// [`tre_regnexec_bytes`].
+///
+/// # Safety
+///
+/// `preg` must point to a regex compiled by a successful `tre_regcomp`-family
+/// call and not yet freed, `str` must be valid for `len` byte reads (or be
+/// NUL-terminated when `len == usize::MAX`), and `pmatch` must be valid for
+/// `nmatch` writes (or null when `nmatch == 0`).
+pub unsafe fn tre_regnexec(
     preg: *const regex_t,
     str: *const c_char,
     len: usize,
@@ -305,7 +308,7 @@ pub fn tre_regnexec(
     pmatch: *mut regmatch_t,
     eflags: c_int,
 ) -> c_int {
-    // SAFETY: not enforced by the signature -- see the doc comment above.
+    // SAFETY: the caller upholds this function's `# Safety` contract.
     unsafe {
         let tnfa = (*preg).value as *const tre_tnfa_t;
         tre_match(
@@ -378,7 +381,8 @@ pub unsafe fn tre_regexec(
     pmatch: *mut regmatch_t,
     eflags: c_int,
 ) -> c_int {
-    tre_regnexec(preg, str, usize::MAX, nmatch, pmatch, eflags)
+    // SAFETY: forwarded unchanged under this function's `# Safety` contract.
+    unsafe { tre_regnexec(preg, str, usize::MAX, nmatch, pmatch, eflags) }
 }
 
 /// # Safety

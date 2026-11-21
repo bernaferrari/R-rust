@@ -132,7 +132,7 @@ fn is_numeric_mode(x: SEXP) -> bool {
     let t = TYPEOF(x);
     if t == SEXPTYPE::INTSXP {
         // SAFETY: inherits2 performs a read-only class walk on a live SEXP.
-        crate::mainutils::objects::inherits2(x, c"factor".as_ptr()) == 0
+        crate::mainutils::objects::inherits2(x, c"factor") == 0
     } else {
         t == SEXPTYPE::REALSXP
     }
@@ -525,8 +525,8 @@ pub fn do_any_na(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         // calls with excess actuals from reaching a method.
         let nargs = LENGTH(args);
         if nargs < 1 || nargs > 2 {
-            crate::mainutils::errors::Rf_error(
-                b"anyNA takes 1 or 2 arguments\0".as_ptr() as *const c_char
+            crate::mainutils::errors::Rf_error_cstr(
+                c"anyNA takes 1 or 2 arguments"
             );
         }
         let mut ans = R_NilValue();

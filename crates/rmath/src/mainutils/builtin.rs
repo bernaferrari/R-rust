@@ -37,7 +37,7 @@ fn errorcall(_call: SEXP, msg: &str) {
 
 fn warningcall(call: SEXP, msg: &str) {
     let c = std::ffi::CString::new(msg).unwrap_or_default();
-    crate::mainutils::errors::warningcall(call, c.as_ptr());
+    crate::mainutils::errors::warningcall_cstr(call, &c);
 }
 
 fn isNull(x: SEXP) -> bool {
@@ -971,10 +971,7 @@ pub fn do_switch(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         // Stock warns (and invisibly returns NULL) when there are no
         // alternatives beyond EXPR.
         if nargs == 1 {
-            crate::mainutils::errors::warningcall(
-                _call,
-                b"'switch' with no alternatives\0".as_ptr() as *const c_char,
-            );
+            crate::mainutils::errors::warningcall_cstr(_call, c"'switch' with no alternatives");
             crate::eval::runtime::set_visible(FALSE);
             return R_NilValue();
         }

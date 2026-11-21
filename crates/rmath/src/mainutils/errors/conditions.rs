@@ -306,11 +306,13 @@ fn signal_condition_handlers(cond: SEXP, msg: SEXP, ecall: SEXP, mode: SignalMod
 pub fn do_dfltWarn(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     checkArity(op, args);
     if TYPEOF(CAR(args)) != SEXPTYPE::STRSXP || LENGTH(CAR(args)) != 1 {
-        errorcall(call, b"bad error message\x00".as_ptr() as *const c_char);
+        errorcall_cstr(call, c"bad error message");
     }
     let msg = translateChar(STRING_ELT(CAR(args), 0));
     let ecall = CADR(args);
-    vwarningcall_dflt(ecall, msg, ptr::null_mut());
+    // SAFETY: `translateChar` returns a NUL-terminated string kept alive by
+    // the protected argument list; `ap` is null.
+    unsafe { vwarningcall_dflt(ecall, msg, ptr::null_mut()) };
     globals::R_NilValue()
 }
 
@@ -319,7 +321,7 @@ pub fn do_dfltStop(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
         if TYPEOF(CAR(args)) != SEXPTYPE::STRSXP || LENGTH(CAR(args)) != 1 {
-            errorcall(call, b"bad error message\x00".as_ptr() as *const c_char);
+            errorcall_cstr(call, c"bad error message");
         }
         let msg = translateChar(STRING_ELT(CAR(args), 0));
         let message = CStr::from_ptr(msg).to_str().unwrap_or("").to_string();
@@ -334,30 +336,15 @@ pub fn do_dfltStop(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// R_makeErrorCondition — create an error condition object.
 pub fn R_makeErrorCondition(
     call: SEXP,
-    classname: *const c_char,
-    subclassname: *const c_char,
+    classname: Option<&CStr>,
+    subclassname: Option<&CStr>,
     nextra: c_int,
-    format: *const c_char,
+    format: Option<&CStr>,
 ) -> SEXP {
-    unsafe {
-        let class = if classname.is_null() {
-            ""
-        } else {
-            CStr::from_ptr(classname).to_str().unwrap_or("")
-        };
-        let sub = if subclassname.is_null() {
-            ""
-        } else {
-            CStr::from_ptr(subclassname).to_str().unwrap_or("")
-        };
-        let fmt = if format.is_null() {
-            ""
-        } else {
-            CStr::from_ptr(format).to_str().unwrap_or("")
-        };
-
-        make_condition(call, class, sub, nextra, fmt, "error")
-    }
+    let class = classname.map_or("", |value| value.to_str().unwrap_or(""));
+    let sub = subclassname.map_or("", |value| value.to_str().unwrap_or(""));
+    let fmt = format.map_or("", |value| value.to_str().unwrap_or(""));
+    make_condition(call, class, sub, nextra, fmt, "error")
 }
 
 /// The raw attribute bridge remains here until graph edges use checked links.
@@ -488,11 +475,9 @@ fn signal_error_with_mode(cond: SEXP, call: SEXP, mode: SignalMode<'_>, selected
         active();
         let cond = condition.as_raw();
         if selected.is_none() && (TYPEOF(cond) != SEXPTYPE::VECSXP || LENGTH(cond) == 0) {
-            errorcall(
+            errorcall_cstr(
                 call.as_raw(),
-                b"condition object must be a VECSXP of length at least one\x00".as_ptr()
-                    as *const c_char,
-            );
+                c"condition object must be a VECSXP of length at least one");
         }
         let supplied_message = selected.is_some();
         let message = selected.unwrap_or_else(|| {
@@ -510,12 +495,12 @@ fn signal_error_with_mode(cond: SEXP, call: SEXP, mode: SignalMode<'_>, selected
         };
         active();
         if message_type != SEXPTYPE::STRSXP || message_length != 1 {
-            errorcall(
+            errorcall_cstr(
                 call.as_raw(),
                 if supplied_message {
-                    c"bad error message".as_ptr()
+                    c"bad error message"
                 } else {
-                    c"first element of condition object must be a scalar string".as_ptr()
+                    c"first element of condition object must be a scalar string"
                 },
             );
         }
@@ -575,18 +560,17 @@ pub fn R_ObjectNotFoundError(sym: SEXP, call: SEXP, mode: Option<&str>) -> ! {
         let _call_guard = protect(call);
         let cond = R_makeErrorCondition(
             call,
-            c"objectNotFoundError".as_ptr(),
-            std::ptr::null(),
+            Some(c"objectNotFoundError"),
+            None,
             2,
-            c_msg.as_ptr(),
-        );
+            Some(&c_msg));
         let _cond_guard = protect(cond);
-        R_setConditionField(cond, 2, c"name".as_ptr(), sym);
+        R_setConditionField(cond, 2, c"name", sym);
         let mode_name = mode.unwrap_or("any");
         let mode_cstr = std::ffi::CString::new(mode_name).unwrap_or_default();
         let mode_sexp = Rf_mkString(mode_cstr.as_ptr());
         let _mode_guard = protect(mode_sexp);
-        R_setConditionField(cond, 3, c"mode".as_ptr(), mode_sexp);
+        R_setConditionField(cond, 3, c"mode", mode_sexp);
         R_signalErrorCondition(cond, call);
         unreachable!("R_signalErrorCondition does not return")
     }
@@ -620,22 +604,21 @@ pub fn R_FunctionNotFoundError(sym: SEXP, call: SEXP) -> ! {
     let _call_guard = protect(call);
     let cond = R_makeErrorCondition(
         call,
-        c"objectNotFoundError".as_ptr(),
-        c"functionNotFoundError".as_ptr(),
+        Some(c"objectNotFoundError"),
+        Some(c"functionNotFoundError"),
         2,
-        c_msg.as_ptr(),
-    );
+        Some(&c_msg));
     let _cond_guard = protect(cond);
-    R_setConditionField(cond, 2, c"name".as_ptr(), sym);
+    R_setConditionField(cond, 2, c"name", sym);
     let mode_sexp = mk_string("function");
     let _mode_guard = protect(mode_sexp);
-    R_setConditionField(cond, 3, c"mode".as_ptr(), mode_sexp);
+    R_setConditionField(cond, 3, c"mode", mode_sexp);
     R_signalErrorCondition(cond, call);
     unreachable!("R_signalErrorCondition does not return")
 }
 
 /// R_setConditionField — set a field in a condition object.
-pub fn R_setConditionField(cond: SEXP, idx: R_xlen_t, name: *const c_char, val: SEXP) {
+pub fn R_setConditionField(cond: SEXP, idx: R_xlen_t, name: &CStr, val: SEXP) {
     unsafe {
         if TYPEOF(cond) != SEXPTYPE::VECSXP {
             return;
@@ -647,7 +630,7 @@ pub fn R_setConditionField(cond: SEXP, idx: R_xlen_t, name: *const c_char, val: 
         SET_VECTOR_ELT(cond, idx, val);
         let names = getAttrib_wrap(cond, R_NamesSymbol());
         if !names.is_null() && TYPEOF(names) == SEXPTYPE::STRSXP && XLENGTH(names) == len {
-            SET_STRING_ELT(names, idx, Rf_mkChar(name));
+            SET_STRING_ELT(names, idx, Rf_mkChar(name.as_ptr()));
         }
     }
 }
@@ -747,42 +730,34 @@ pub fn R_InitConditions() {
     // Create and preserve condition objects for stack overflow errors
     let protect_so = R_makeErrorCondition(
         globals::R_NilValue(),
-        b"stackOverflowError\x00".as_ptr() as *const c_char,
-        b"protectStackOverflowError\x00".as_ptr() as *const c_char,
+        Some(c"stackOverflowError"),
+        Some(c"protectStackOverflowError"),
         0,
-        b"protect(): protection stack overflow\x00".as_ptr() as *const c_char,
-    );
+        Some(c"protect(): protection stack overflow"));
     crate::sexp::protect::R_PreserveObject(protect_so);
 
     let expr_so = R_makeErrorCondition(
         globals::R_NilValue(),
-        b"stackOverflowError\x00".as_ptr() as *const c_char,
-        b"expressionStackOverflowError\x00".as_ptr() as *const c_char,
+        Some(c"stackOverflowError"),
+        Some(c"expressionStackOverflowError"),
         0,
-        b"evaluation nested too deeply: infinite recursion / options(expressions=)?\x00".as_ptr()
-            as *const c_char,
-    );
+        Some(c"evaluation nested too deeply: infinite recursion / options(expressions=)?"));
     crate::sexp::protect::R_PreserveObject(expr_so);
 
     let node_so = R_makeErrorCondition(
         globals::R_NilValue(),
-        b"stackOverflowError\x00".as_ptr() as *const c_char,
-        b"nodeStackOverflowError\x00".as_ptr() as *const c_char,
+        Some(c"stackOverflowError"),
+        Some(c"nodeStackOverflowError"),
         0,
-        b"node stack overflow\x00".as_ptr() as *const c_char,
-    );
+        Some(c"node stack overflow"));
     crate::sexp::protect::R_PreserveObject(node_so);
 }
 
 /// R_MissingArgError_c — report a missing argument error.
 /// Matches C's `void R_MissingArgError_c(const char* arg, SEXP call, const char* subclass)`
-pub fn R_MissingArgError_c(arg: *const c_char, call: SEXP, subclass: *const c_char) {
-    unsafe {
-        let arg_str = if arg.is_null() {
-            ""
-        } else {
-            CStr::from_ptr(arg).to_str().unwrap_or("")
-        };
+pub fn R_MissingArgError_c(arg: Option<&CStr>, call: SEXP, subclass: Option<&CStr>) {
+    {
+        let arg_str = arg.map_or("", |value| value.to_str().unwrap_or(""));
         let _call_guard = protect(call);
         let msg = if !arg_str.is_empty() {
             format!("argument \"{}\" is missing, with no default", arg_str)
@@ -790,13 +765,7 @@ pub fn R_MissingArgError_c(arg: *const c_char, call: SEXP, subclass: *const c_ch
             "argument is missing, with no default".to_string()
         };
         let c_msg = std::ffi::CString::new(msg.clone()).unwrap_or_default();
-        let cond = R_makeErrorCondition(
-            call,
-            b"missingArgError\0".as_ptr() as *const c_char,
-            subclass,
-            0,
-            c_msg.as_ptr(),
-        );
+        let cond = R_makeErrorCondition(call, Some(c"missingArgError"), subclass, 0, Some(&c_msg));
         let _cond_guard = protect(cond);
         R_signalErrorCondition(cond, call);
     }
@@ -804,20 +773,19 @@ pub fn R_MissingArgError_c(arg: *const c_char, call: SEXP, subclass: *const c_ch
 
 /// R_MissingArgError — report a missing argument error from a symbol.
 /// Matches C's `void R_MissingArgError(SEXP symbol, SEXP call, const char* subclass)`
-pub fn R_MissingArgError(symbol: SEXP, call: SEXP, subclass: *const c_char) {
-    {
-        let arg = if symbol.is_null() || TYPEOF(symbol) != SEXPTYPE::SYMSXP {
-            b"\0".as_ptr() as *const c_char
-        } else {
-            let name = CHAR_local(PRINTNAME(symbol));
-            if name.is_null() {
-                b"\0".as_ptr() as *const c_char
-            } else {
-                name
-            }
-        };
-        R_MissingArgError_c(arg, call, subclass);
-    }
+pub fn R_MissingArgError(symbol: SEXP, call: SEXP, subclass: Option<&CStr>) {
+    let name = if symbol.is_null() || TYPEOF(symbol) != SEXPTYPE::SYMSXP {
+        ptr::null()
+    } else {
+        CHAR_local(PRINTNAME(symbol))
+    };
+    let arg = if name.is_null() {
+        c""
+    } else {
+        // SAFETY: a symbol's PRINTNAME is a live NUL-terminated CHARSXP.
+        unsafe { CStr::from_ptr(name) }
+    };
+    R_MissingArgError_c(Some(arg), call, subclass);
 }
 
 /// R_signalWarningCondition — signal a warning condition object.
@@ -836,7 +804,9 @@ pub fn R_signalWarningCondition(cond: SEXP) {
     } else {
         ptr::null_mut()
     };
-    warningcall(call, msg);
+    // SAFETY: `translateChar` returns a NUL-terminated string kept alive by
+    // the condition's message element for the duration of the call.
+    unsafe { warningcall(call, msg) };
 }
 
 /// Apply the default warning policy to an already-signaled condition.
@@ -858,7 +828,9 @@ pub(crate) fn warning_condition_default(cond: SEXP) {
     } else {
         ptr::null_mut()
     };
-    vwarningcall_dflt(call, msg, ptr::null_mut());
+    // SAFETY: `translateChar` returns a NUL-terminated string kept alive by
+    // the condition's message element; `ap` is null.
+    unsafe { vwarningcall_dflt(call, msg, ptr::null_mut()) };
 }
 
 /// R_makeWarningCondition — create a warning condition object.
@@ -866,32 +838,17 @@ pub(crate) fn warning_condition_default(cond: SEXP) {
 /// const char *subclassname, int nextra, const char *format, ...)`
 pub fn R_makeWarningCondition(
     call: SEXP,
-    classname: *const c_char,
-    subclassname: *const c_char,
+    classname: Option<&CStr>,
+    subclassname: Option<&CStr>,
     nextra: c_int,
-    format: *const c_char,
+    format: Option<&CStr>,
 ) -> SEXP {
-    unsafe {
-        let class = if classname.is_null() {
-            "simpleWarning"
-        } else {
-            CStr::from_ptr(classname)
-                .to_str()
-                .unwrap_or("simpleWarning")
-        };
-        let sub = if subclassname.is_null() {
-            ""
-        } else {
-            CStr::from_ptr(subclassname).to_str().unwrap_or("")
-        };
-        let fmt = if format.is_null() {
-            ""
-        } else {
-            CStr::from_ptr(format).to_str().unwrap_or("")
-        };
-
-        make_condition(call, class, sub, nextra, fmt, "warning")
-    }
+    let class = classname.map_or("simpleWarning", |value| {
+        value.to_str().unwrap_or("simpleWarning")
+    });
+    let sub = subclassname.map_or("", |value| value.to_str().unwrap_or(""));
+    let fmt = format.map_or("", |value| value.to_str().unwrap_or(""));
+    make_condition(call, class, sub, nextra, fmt, "warning")
 }
 
 /// Message text for a partial-match warning operand: PRINTNAME for a
@@ -926,32 +883,29 @@ pub fn R_makePartialMatchWarningCondition(call: SEXP, input: SEXP, target: SEXP)
 
     let cond = R_makeWarningCondition(
         call,
-        b"partialMatchWarning\0".as_ptr() as *const c_char,
-        ptr::null(),
+        Some(c"partialMatchWarning"),
+        None,
         2,
-        c_msg.as_ptr(),
-    );
+        Some(&c_msg));
     let _cond_guard = protect(cond);
     R_setConditionField(
         cond,
         2,
-        b"input\0".as_ptr() as *const c_char,
+        c"input",
         if !input.is_null() && TYPEOF(input) == SEXPTYPE::SYMSXP {
             input
         } else {
             Rf_ScalarString(input)
-        },
-    );
+        });
     R_setConditionField(
         cond,
         3,
-        b"target\0".as_ptr() as *const c_char,
+        c"target",
         if !target.is_null() && TYPEOF(target) == SEXPTYPE::SYMSXP {
             target
         } else {
             Rf_ScalarString(target)
-        },
-    );
+        });
     // ideally we would want the function/object in a field also
     cond
 }
@@ -974,14 +928,13 @@ pub fn R_makePartialArgumentMatchWarningCondition(
 
     let cond = R_makeWarningCondition(
         call,
-        b"partialMatchWarning\0".as_ptr() as *const c_char,
-        b"partialArgumentMatchWarning\0".as_ptr() as *const c_char,
+        Some(c"partialMatchWarning"),
+        Some(c"partialArgumentMatchWarning"),
         2,
-        c_msg.as_ptr(),
-    );
+        Some(&c_msg));
     let _cond_guard = protect(cond);
-    R_setConditionField(cond, 2, b"argument\0".as_ptr() as *const c_char, argument);
-    R_setConditionField(cond, 3, b"formal\0".as_ptr() as *const c_char, formal);
+    R_setConditionField(cond, 2, c"argument", argument);
+    R_setConditionField(cond, 3, c"formal", formal);
     // ideally we would want the function/object in a field also
     cond
 }
@@ -1006,11 +959,10 @@ pub fn R_makeNotSubsettableError(x: SEXP, call: SEXP) -> SEXP {
 
         R_makeErrorCondition(
             call,
-            b"simpleError\0".as_ptr() as *const c_char,
-            b"notSubsettableError\0".as_ptr() as *const c_char,
+            Some(c"simpleError"),
+            Some(c"notSubsettableError"),
             0,
-            c_msg.as_ptr(),
-        )
+            Some(&c_msg))
     }
 }
 
@@ -1034,11 +986,10 @@ pub fn R_makeMissingSubscriptError(x: SEXP, call: SEXP) -> SEXP {
 
         R_makeErrorCondition(
             call,
-            b"simpleError\0".as_ptr() as *const c_char,
-            b"missingSubscriptError\0".as_ptr() as *const c_char,
+            Some(c"simpleError"),
+            Some(c"missingSubscriptError"),
             0,
-            c_msg.as_ptr(),
-        )
+            Some(&c_msg))
     }
 }
 
@@ -1051,11 +1002,10 @@ pub fn R_makeMissingSubscriptError1(call: SEXP) -> SEXP {
 
         R_makeErrorCondition(
             call,
-            b"simpleError\0".as_ptr() as *const c_char,
-            b"missingSubscriptError\0".as_ptr() as *const c_char,
+            Some(c"simpleError"),
+            Some(c"missingSubscriptError"),
             0,
-            c_msg.as_ptr(),
-        )
+            Some(&c_msg))
     }
 }
 /// Signal a missing subscript with the object when the caller has it.
@@ -1066,14 +1016,13 @@ pub fn R_MissingSubscriptError(x: SEXP, call: SEXP) -> ! {
 pub(crate) fn signal_missing_subscript(call: SEXP, object: Option<SEXP>) -> ! {
     let cond = R_makeErrorCondition(
         call,
-        c"MissingSubscriptError".as_ptr(),
-        std::ptr::null(),
+        Some(c"MissingSubscriptError"),
+        None,
         c_int::from(object.is_some()),
-        c"missing subscript".as_ptr(),
-    );
+        Some(c"missing subscript"));
     let _guard = protect(cond);
     if let Some(x) = object {
-        R_setConditionField(cond, 2, c"object".as_ptr(), x);
+        R_setConditionField(cond, 2, c"object", x);
     }
     R_signalErrorCondition(cond, call);
     unreachable!()
@@ -1094,11 +1043,10 @@ pub fn R_makeOutOfBoundsError(x: SEXP, subscript: c_int, sindex: SEXP, call: SEX
 
     R_makeErrorCondition(
         call,
-        b"simpleError\0".as_ptr() as *const c_char,
-        b"outOfBoundsError\0".as_ptr() as *const c_char,
+        Some(c"simpleError"),
+        Some(c"outOfBoundsError"),
         0,
-        c_msg.as_ptr(),
-    )
+        Some(&c_msg))
 }
 
 /// R_makeCStackOverflowError — create a C stack overflow error condition.
@@ -1110,11 +1058,10 @@ pub fn R_makeCStackOverflowError(call: SEXP, usage: isize) -> SEXP {
 
         R_makeErrorCondition(
             call,
-            b"stackOverflowError\0".as_ptr() as *const c_char,
-            b"cStackOverflowError\0".as_ptr() as *const c_char,
+            Some(c"stackOverflowError"),
+            Some(c"cStackOverflowError"),
             0,
-            c_msg.as_ptr(),
-        )
+            Some(&c_msg))
     }
 }
 

@@ -2186,12 +2186,14 @@ pub(crate) fn tre_compile_owned_slice(
     }
 }
 
-/// Raw-pointer form kept for the `mainutils::grep` caller.
+/// Raw-pointer form of [`tre_compile_owned_slice`].
 ///
-/// SOUNDNESS GAP (tracked): this safe signature still trusts `regex` to be
-/// valid for `n` reads. Callers should migrate to [`tre_compile_owned_slice`],
-/// after which this shim should be deleted.
-pub(crate) fn tre_compile_owned(
+/// # Safety
+///
+/// When `n > 0`, `regex` must be valid for `n` reads of `tre_char_t` for the
+/// duration of the call.
+#[cfg(test)]
+pub(crate) unsafe fn tre_compile_owned(
     regex: *const tre_char_t,
     n: usize,
     cflags: c_int,
@@ -2200,8 +2202,7 @@ pub(crate) fn tre_compile_owned(
     let regex = if n == 0 {
         &[][..]
     } else {
-        // SAFETY: not guaranteed by the type system -- see the doc comment;
-        // the sole caller passes a live `Vec` buffer pointer and its length.
+        // SAFETY: the caller guarantees `regex` is valid for `n` reads.
         unsafe { std::slice::from_raw_parts(regex, n) }
     };
     tre_compile_owned_slice(regex, cflags, workspace)

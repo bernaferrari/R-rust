@@ -23,7 +23,7 @@
 use std::os::raw::{c_double, c_int};
 
 use crate::library::stats::checked::duplicate;
-use crate::main::errors::Rf_error;
+use crate::main::errors::{Rf_error, Rf_error_cstr};
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::Rf_allocVector;
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
@@ -44,7 +44,7 @@ fn isReal(x: SEXP) -> bool {
 
 fn error(msg: &str) {
     let c_msg = std::ffi::CString::new(msg).unwrap_or_default();
-    Rf_error(c_msg.as_ptr());
+    Rf_error_cstr(&c_msg);
 }
 
 // ---------------------------------------------------------------------------

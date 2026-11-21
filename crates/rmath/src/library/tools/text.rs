@@ -15,7 +15,7 @@ use std::ffi::CStr;
 use std::os::raw::{c_char, c_int};
 use std::ptr;
 
-use crate::main::errors::Rf_error;
+use crate::main::errors::{Rf_error, Rf_error_cstr};
 use crate::sexp::accessors::{CHAR, INTEGER, LENGTH, LOGICAL, STRING_ELT, TYPEOF, XLENGTH};
 use crate::sexp::constructors::{
     Rf_ScalarLogical, Rf_ScalarString, Rf_allocVector, Rf_isString, Rf_mkChar,
@@ -41,7 +41,7 @@ pub fn delim_match(x: SEXP, delims: SEXP) -> SEXP {
             return R_NilValue();
         }
         if Rf_isString(x) == 0 || Rf_isString(delims) == 0 || LENGTH(delims) != 2 {
-            Rf_error(b"invalid argument type\0".as_ptr() as *const _);
+            Rf_error_cstr(c"invalid argument type");
         }
 
         let delim_start = STRING_ELT(delims, 0);
@@ -239,11 +239,11 @@ pub fn check_nonASCII(text: SEXP, ignore_quotes: SEXP) -> SEXP {
             return Rf_ScalarLogical(FALSE);
         }
         if TYPEOF(text) != SEXPTYPE::STRSXP {
-            Rf_error(b"invalid input\0".as_ptr() as *const _);
+            Rf_error_cstr(c"invalid input");
         }
         let ign = coerce_to_logical(ignore_quotes);
         if ign == NA_LOGICAL {
-            Rf_error(b"'ignore_quotes' must be TRUE or FALSE\0".as_ptr() as *const _);
+            Rf_error_cstr(c"'ignore_quotes' must be TRUE or FALSE");
             return Rf_ScalarLogical(FALSE);
         }
 
@@ -301,7 +301,7 @@ pub fn check_nonASCII2(text: SEXP) -> SEXP {
             return R_NilValue();
         }
         if TYPEOF(text) != SEXPTYPE::STRSXP {
-            Rf_error(b"invalid input\0".as_ptr() as *const _);
+            Rf_error_cstr(c"invalid input");
         }
 
         let n = LENGTH(text);
@@ -429,11 +429,11 @@ pub fn splitString(string: SEXP, delims: SEXP) -> SEXP {
             return R_NilValue();
         }
         if Rf_isString(string) == 0 || LENGTH(string) != 1 {
-            Rf_error(b"first arg must be a single character string\0".as_ptr() as *const _);
+            Rf_error_cstr(c"first arg must be a single character string");
             return R_NilValue();
         }
         if Rf_isString(delims) == 0 || LENGTH(delims) != 1 {
-            Rf_error(b"first arg must be a single character string\0".as_ptr() as *const _);
+            Rf_error_cstr(c"first arg must be a single character string");
             return R_NilValue();
         }
 
@@ -497,7 +497,7 @@ pub fn nonASCII(text: SEXP) -> SEXP {
             return R_NilValue();
         }
         if TYPEOF(text) != SEXPTYPE::STRSXP {
-            Rf_error(b"invalid input\0".as_ptr() as *const _);
+            Rf_error_cstr(c"invalid input");
         }
         let len = XLENGTH(text);
         let ans = Rf_allocVector(SEXPTYPE::LGLSXP, len as c_int);

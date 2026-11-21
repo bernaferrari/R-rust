@@ -395,8 +395,8 @@ pub fn do_anyNA(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         });
         let nargs = LENGTH(args);
         if nargs < 1 || nargs > 2 {
-            crate::mainutils::errors::Rf_error(
-                b"anyNA takes 1 or 2 arguments\0".as_ptr() as *const c_char
+            crate::mainutils::errors::Rf_error_cstr(
+                c"anyNA takes 1 or 2 arguments"
             );
         }
 
@@ -414,8 +414,8 @@ pub fn do_anyNA(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 .require_active()
                 .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
             if CAR(args) == crate::sexp::globals::R_MissingArg() {
-                crate::mainutils::errors::Rf_error(
-                    b"argument 1 is empty\0".as_ptr() as *const c_char
+                crate::mainutils::errors::Rf_error_cstr(
+                    c"argument 1 is empty"
                 );
             }
             return Rf_ScalarLogical(if any_na_impl(call, op, args, rho) {
@@ -450,12 +450,12 @@ pub fn do_anyNA(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
         let x = CAR(matched);
         if x == crate::sexp::globals::R_MissingArg() {
-            crate::mainutils::errors::Rf_error(b"argument 1 is empty\0".as_ptr() as *const c_char);
+            crate::mainutils::errors::Rf_error_cstr(c"argument 1 is empty");
         }
 
         let recursive = CADR(matched);
         if nargs == 2 && recursive == crate::sexp::globals::R_MissingArg() {
-            crate::mainutils::errors::Rf_error(b"argument 2 is empty\0".as_ptr() as *const c_char);
+            crate::mainutils::errors::Rf_error_cstr(c"argument 2 is empty");
         }
         let normalized = if recursive == crate::sexp::globals::R_MissingArg() {
             let value = Rf_ScalarLogical(FALSE);

@@ -32,7 +32,7 @@ use std::os::raw::{c_char, c_double, c_int, c_uint};
 use crate::attrib_core::{R_DimSymbol, R_NamesSymbol, getAttrib, setAttrib};
 use crate::main::coerce::{asInteger, asLogical, asReal, coerceVector};
 use crate::main::duplicate::duplicate;
-use crate::main::errors::Rf_error;
+use crate::main::errors::{Rf_error, Rf_error_cstr};
 use crate::mainutils::bind::isList;
 use crate::mainutils::colors::RGBpar3;
 use crate::mainutils::engine::GErecordGraphicOperation;
@@ -205,7 +205,7 @@ const NA_STRING: SEXP = 1 as SEXP; /* placeholder; real NA_STRING is a special C
 #[inline(always)]
 fn TypeCheck(s: SEXP, stype: c_int) {
     if TYPEOF(s) != stype {
-        Rf_error(b"invalid type passed to graphics function\0".as_ptr() as *const c_char);
+        Rf_error_cstr(c"invalid type passed to graphics function");
     }
 }
 
@@ -233,7 +233,7 @@ pub fn isNAcol(col: SEXP, index: c_int, ncol: c_int) -> Rboolean {
             } else if isReal(col) != 0 {
                 result = (R_FINITE(REAL(col).add((index % ncol) as usize).read()) == 0) as Rboolean;
             } else {
-                Rf_error(b"invalid color specification\0".as_ptr() as *const c_char);
+                Rf_error_cstr(c"invalid color specification");
             }
         }
         result
@@ -314,13 +314,13 @@ fn FixupPch(pch: SEXP, dflt: c_int) -> SEXP {
                 if LOGICAL(pch).add(i).read() == NA_LOGICAL {
                     INTEGER(ans).add(i).write(NA_INTEGER);
                 } else {
-                    Rf_error(
-                        b"only NA allowed in logical plotting symbol\0".as_ptr() as *const c_char
+                    Rf_error_cstr(
+                        c"only NA allowed in logical plotting symbol"
                     );
                 }
             }
         } else {
-            Rf_error(b"invalid plotting symbol\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"invalid plotting symbol");
         }
         ans
     }
@@ -422,7 +422,7 @@ fn FixupFont(font: SEXP, dflt: c_int) -> SEXP {
                 INTEGER(ans).add(i).write(k);
             }
         } else {
-            Rf_error(b"invalid font specification\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"invalid font specification");
         }
         ans
     }
@@ -500,7 +500,7 @@ fn FixupCex(cex: SEXP, dflt: c_double) -> SEXP {
                     REAL(ans).add(i).write(c);
                 }
             } else {
-                Rf_error(b"invalid 'cex' value\0".as_ptr() as *const c_char);
+                Rf_error_cstr(c"invalid 'cex' value");
             }
         }
         ans
@@ -519,11 +519,11 @@ pub fn FixupVFont(vfont: SEXP) -> SEXP {
         let vf = coerceVector(vfont, SEXPTYPE::INTSXP.into());
         let _vf_guard = protect(vf);
         if length(vf) != 2 {
-            Rf_error(b"invalid 'vfont' value\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"invalid 'vfont' value");
         }
         let typeface = INTEGER(vf).add(0).read();
         if typeface < 1 || typeface > 8 {
-            Rf_error(b"invalid 'vfont' value\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"invalid 'vfont' value");
         }
         let mut maxindex: c_int = 0;
         match typeface {
@@ -548,7 +548,7 @@ pub fn FixupVFont(vfont: SEXP) -> SEXP {
         }
         let fontindex = INTEGER(vf).add(1).read();
         if fontindex < 1 || fontindex > maxindex {
-            Rf_error(b"invalid 'vfont' value\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"invalid 'vfont' value");
         }
         let ans = Rf_allocVector(SEXPTYPE::INTSXP, 2);
         INTEGER(ans).add(0).write(INTEGER(vf).add(0).read());
@@ -618,7 +618,7 @@ unsafe fn GetTextArg(
                                 txt = coerceVector(txt, SEXPTYPE::STRSXP.into());
                             }
                         } else {
-                            Rf_error(b"invalid graphics parameter\0".as_ptr() as *const c_char);
+                            Rf_error_cstr(c"invalid graphics parameter");
                         }
                     }
                 }
@@ -914,7 +914,7 @@ unsafe fn xypoints(args: SEXP, n: *mut c_int) {
         let mut kmin: c_int = 0;
 
         if isNumeric(CAR(args)) == 0 {
-            Rf_error(b"invalid first argument\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"invalid first argument");
         }
         SETCAR(args, coerceVector(CAR(args), SEXPTYPE::REALSXP.into()));
         k = length(CAR(args));
@@ -923,7 +923,7 @@ unsafe fn xypoints(args: SEXP, n: *mut c_int) {
         let args2 = CDR(args);
 
         if isNumeric(CAR(args2)) == 0 {
-            Rf_error(b"invalid second argument\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"invalid second argument");
         }
         k = length(CAR(args2));
         SETCAR(args2, coerceVector(CAR(args2), SEXPTYPE::REALSXP.into()));
@@ -936,7 +936,7 @@ unsafe fn xypoints(args: SEXP, n: *mut c_int) {
         let args3 = CDR(args2);
 
         if isNumeric(CAR(args3)) == 0 {
-            Rf_error(b"invalid third argument\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"invalid third argument");
         }
         k = length(CAR(args3));
         SETCAR(args3, coerceVector(CAR(args3), SEXPTYPE::REALSXP.into()));
@@ -949,7 +949,7 @@ unsafe fn xypoints(args: SEXP, n: *mut c_int) {
         let args4 = CDR(args3);
 
         if isNumeric(CAR(args4)) == 0 {
-            Rf_error(b"invalid fourth argument\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"invalid fourth argument");
         }
         k = length(CAR(args4));
         SETCAR(args4, coerceVector(CAR(args4), SEXPTYPE::REALSXP.into()));
@@ -961,10 +961,8 @@ unsafe fn xypoints(args: SEXP, n: *mut c_int) {
         }
 
         if *n > 0 && kmin == 0 {
-            Rf_error(
-                b"cannot mix zero-length and non-zero-length coordinates\0".as_ptr()
-                    as *const c_char,
-            );
+            Rf_error_cstr(
+                c"cannot mix zero-length and non-zero-length coordinates");
         }
     }
 }
@@ -1129,7 +1127,7 @@ unsafe fn CheckSymbolPar(p: SEXP, nr: *mut c_int, nc: *mut c_int) {
             }
         }
         if *nr == 0 || *nc == 0 {
-            Rf_error(b"invalid symbol parameter vector\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"invalid symbol parameter vector");
         }
     }
 }
@@ -1213,7 +1211,7 @@ pub fn labelformat(labels: SEXP) -> SEXP {
                 }
             }
             _ => {
-                Rf_error(b"invalid type for axis labels\0".as_ptr() as *const c_char);
+                Rf_error_cstr(c"invalid type for axis labels");
             }
         }
         ans
@@ -1228,12 +1226,12 @@ pub fn C_plot_new(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let dd = GEcurrentDevice();
         if dd.is_null() {
-            Rf_error(b"no active graphics device\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"no active graphics device");
         }
         let recording = GRecording(call, dd);
         let dd = GNewPlot(recording);
         if dd.is_null() {
-            Rf_error(b"no active graphics device\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"no active graphics device");
         }
         let dp = dpptr(dd) as *mut GPar;
         let gp = gpptr(dd) as *mut GPar;
@@ -1265,7 +1263,7 @@ pub fn C_path(args: SEXP) -> SEXP {
 
         let mut args = CDR(args);
         if length(args) < 2 {
-            Rf_error(b"too few arguments\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"too few arguments");
         }
 
         SETCAR(args, coerceVector(CAR(args), SEXPTYPE::REALSXP.into()));
@@ -1304,14 +1302,14 @@ pub fn C_path(args: SEXP) -> SEXP {
         let xx = R_alloc(nx as usize, std::mem::size_of::<c_double>()) as *mut c_double;
         let yy = R_alloc(nx as usize, std::mem::size_of::<c_double>()) as *mut c_double;
         if xx.is_null() || yy.is_null() {
-            Rf_error(b"unable to allocate memory (in GPath)\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"unable to allocate memory (in GPath)");
         }
         for i in 0..nx as usize {
             *xx.add(i) = REAL(sx).add(i).read();
             *yy.add(i) = REAL(sy).add(i).read();
             GConvert(xx.add(i), yy.add(i), USER, DEVICE, dd);
             if R_FINITE(*xx.add(i)) == 0 || R_FINITE(*yy.add(i)) == 0 {
-                Rf_error(b"invalid 'x' or 'y' (in 'GPath')\0".as_ptr() as *const c_char);
+                Rf_error_cstr(c"invalid 'x' or 'y' (in 'GPath')");
             }
         }
 
@@ -1474,19 +1472,19 @@ pub fn C_dend(args: SEXP) -> SEXP {
 
         let mut args = CDR(args);
         if length(args) < 6 {
-            Rf_error(b"too few arguments\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"too few arguments");
         }
 
         /* n */
         n = asInteger(CAR(args));
         if n == NA_INTEGER || n < 2 {
-            Rf_error(b"invalid dendrogram input\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"invalid dendrogram input");
         }
         args = CDR(args);
 
         /* merge */
         if TYPEOF(CAR(args)) != SEXPTYPE::INTSXP || length(CAR(args)) != 2 * n {
-            Rf_error(b"invalid dendrogram input\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"invalid dendrogram input");
         }
         with_dendrogram_state(|state| {
             state.lptr = &mut *INTEGER(CAR(args)).add(0);
@@ -1496,7 +1494,7 @@ pub fn C_dend(args: SEXP) -> SEXP {
 
         /* height */
         if TYPEOF(CAR(args)) != SEXPTYPE::REALSXP || length(CAR(args)) != n {
-            Rf_error(b"invalid dendrogram input\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"invalid dendrogram input");
         }
         with_dendrogram_state(|state| {
             state.hght = &mut *REAL(CAR(args)).add(0);
@@ -1505,7 +1503,7 @@ pub fn C_dend(args: SEXP) -> SEXP {
 
         /* ord */
         if length(CAR(args)) != n + 1 {
-            Rf_error(b"invalid dendrogram input\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"invalid dendrogram input");
         }
         let xpos = coerceVector(CAR(args), SEXPTYPE::REALSXP.into());
         let _xpos_guard = protect(xpos);
@@ -1517,7 +1515,7 @@ pub fn C_dend(args: SEXP) -> SEXP {
         /* hang */
         let hang = asReal(CAR(args));
         if R_FINITE(hang) == 0 {
-            Rf_error(b"invalid dendrogram input\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"invalid dendrogram input");
         }
         with_dendrogram_state(|state| {
             state.hang = hang * (*state.hght.add((n - 1) as usize) - *state.hght.add(0));
@@ -1526,7 +1524,7 @@ pub fn C_dend(args: SEXP) -> SEXP {
 
         /* labels */
         if TYPEOF(CAR(args)) != SEXPTYPE::STRSXP || length(CAR(args)) != n + 1 {
-            Rf_error(b"invalid dendrogram input\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"invalid dendrogram input");
         }
         dnd_llabels = CAR(args);
         args = CDR(args);
@@ -1584,20 +1582,20 @@ pub fn C_dendwindow(args: SEXP) -> SEXP {
         GCheckState(dd);
         let mut args = CDR(args);
         if length(args) < 5 {
-            Rf_error(b"too few arguments\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"too few arguments");
         }
         n = asInteger(CAR(args));
         if n == NA_INTEGER || n < 2 {
-            Rf_error(b"invalid dendrogram input\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"invalid dendrogram input");
         }
         args = CDR(args);
         if TYPEOF(CAR(args)) != SEXPTYPE::INTSXP || length(CAR(args)) != 2 * n {
-            Rf_error(b"invalid dendrogram input\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"invalid dendrogram input");
         }
         merge = CAR(args);
         args = CDR(args);
         if TYPEOF(CAR(args)) != SEXPTYPE::REALSXP || length(CAR(args)) != n {
-            Rf_error(b"invalid dendrogram input\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"invalid dendrogram input");
         }
         height = CAR(args);
         args = CDR(args);
@@ -1606,11 +1604,11 @@ pub fn C_dendwindow(args: SEXP) -> SEXP {
             state.hang = hang;
         });
         if R_FINITE(hang) == 0 {
-            Rf_error(b"invalid dendrogram input\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"invalid dendrogram input");
         }
         args = CDR(args);
         if TYPEOF(CAR(args)) != SEXPTYPE::STRSXP || length(CAR(args)) != n + 1 {
-            Rf_error(b"invalid dendrogram input\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"invalid dendrogram input");
         }
         llabels = CAR(args);
         args = CDR(args);
@@ -1734,16 +1732,16 @@ pub fn C_convertX(args: SEXP) -> SEXP {
         let mut args = CDR(args);
         let x = CAR(args);
         if TYPEOF(x) != SEXPTYPE::REALSXP {
-            Rf_error(b"invalid 'x' argument\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"invalid 'x' argument");
         }
         let n = length(x);
         let mut from = asInteger(CADR(args));
         if from == NA_INTEGER || from <= 0 || from > 17 {
-            Rf_error(b"invalid 'from' argument\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"invalid 'from' argument");
         }
         let mut to = asInteger(CADDR(args));
         if to == NA_INTEGER || to <= 0 || to > 17 {
-            Rf_error(b"invalid 'to' argument\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"invalid 'to' argument");
         }
         from -= 1;
         to -= 1;
@@ -1767,16 +1765,16 @@ pub fn C_convertY(args: SEXP) -> SEXP {
         let mut args = CDR(args);
         let x = CAR(args);
         if TYPEOF(x) != SEXPTYPE::REALSXP {
-            Rf_error(b"invalid 'x' argument\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"invalid 'x' argument");
         }
         let n = length(x);
         let mut from = asInteger(CADR(args));
         if from == NA_INTEGER || from <= 0 || from > 17 {
-            Rf_error(b"invalid 'from' argument\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"invalid 'from' argument");
         }
         let mut to = asInteger(CADDR(args));
         if to == NA_INTEGER || to <= 0 || to > 17 {
-            Rf_error(b"invalid 'to' argument\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"invalid 'to' argument");
         }
         from -= 1;
         to -= 1;

@@ -30,7 +30,7 @@
 //!     do_isna, do_isnan, do_isfinite, do_isinfinite
 
 use std::ffi::CStr;
-use std::os::raw::{c_char, c_double, c_int};
+use std::os::raw::{c_double, c_int};
 use std::ptr;
 
 use crate::mainutils::relop::PRIMVAL;

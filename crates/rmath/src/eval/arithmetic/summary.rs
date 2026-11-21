@@ -827,8 +827,8 @@ pub fn do_is_type(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         };
         if op_name == "is.numeric" {
             let raw = CAR(args);
-            if crate::mainutils::objects::inherits2(raw, c"Date".as_ptr()) != 0
-                || crate::mainutils::objects::inherits2(raw, c"POSIXt".as_ptr()) != 0
+            if crate::mainutils::objects::inherits2(raw, c"Date") != 0
+                || crate::mainutils::objects::inherits2(raw, c"POSIXt") != 0
             {
                 return Rf_ScalarLogical(FALSE);
             }

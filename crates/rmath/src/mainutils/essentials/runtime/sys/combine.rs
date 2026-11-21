@@ -172,7 +172,7 @@ pub fn do_c_POSIXlt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 false
             };
             if !skip {
-                let v = if crate::mainutils::objects::inherits2(v, c"factor".as_ptr()) != 0 {
+                let v = if crate::mainutils::objects::inherits2(v, c"factor") != 0 {
                     // GNU c.POSIXlt: factor goes through as.character().
                     let levels = crate::sexp::attrib_core::getAttrib(
                         v,

@@ -18,7 +18,7 @@
 use std::os::raw::{c_double, c_int};
 
 use crate::eval::attrib_core::{R_NamesSymbol, getAttrib, setAttrib};
-use crate::mainutils::errors::{Rf_error, Rf_warning};
+use crate::mainutils::errors::{Rf_error_cstr, Rf_warning_cstr};
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::ffi::{NA_INTEGER, R_NA_BIT_PATTERN, Rcomplex, SEXP, SEXPTYPE};
@@ -353,7 +353,7 @@ pub unsafe fn do_cumsum(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
                 if sum > c_int::MAX as c_double || sum < (c_int::MIN as c_double) + 1.0 {
                     // Integer overflow — issue warning and stop
                     let msg = c"integer overflow in 'cumsum'; use 'cumsum(as.numeric(.))'";
-                    Rf_warning(msg.as_ptr());
+                    Rf_warning_cstr(&msg);
                     break;
                 }
                 *dst.add(i) = sum as c_int;
@@ -450,7 +450,7 @@ pub unsafe fn do_cummax(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
         if t == SEXPTYPE::CPLXSXP {
             // R errors: "'cummax' not defined for complex numbers"
             let msg = c"'cummax' not defined for complex numbers";
-            Rf_error(msg.as_ptr());
+            Rf_error_cstr(&msg);
             unreachable!()
         } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
             // Integer/logical path: coerce to integer, use icummax logic
@@ -523,7 +523,7 @@ pub unsafe fn do_cummin(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
         if t == SEXPTYPE::CPLXSXP {
             // R errors: "'cummin' not defined for complex numbers"
             let msg = c"'cummin' not defined for complex numbers";
-            Rf_error(msg.as_ptr());
+            Rf_error_cstr(&msg);
             unreachable!()
         } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
             // Integer/logical path: coerce to integer, use icummin logic

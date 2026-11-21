@@ -206,7 +206,7 @@ pub fn do_warning(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let wcall = warning_call;
         let c_msg = CString::new(warning_text.as_str()).unwrap_or_default();
         crate::mainutils::errors::mark_calling_handlers_signaled();
-        crate::mainutils::errors::warningcall(wcall, c_msg.as_ptr());
+        crate::mainutils::errors::warningcall_cstr(wcall, &c_msg);
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
         // Stock returns the message string (the R closure wraps it in
         // invisible()); print(warning("w")) therefore renders `[1] "w"`.
@@ -366,15 +366,14 @@ pub(crate) fn simple_error_condition_at(message: &str, call: Option<SEXP>) -> SE
         let c_msg = CString::new(message).unwrap_or_default();
         let cond = crate::mainutils::errors::R_makeErrorCondition(
             call,
-            c"simpleError".as_ptr() as *const core::ffi::c_char,
-            std::ptr::null(),
+            Some(c"simpleError"),
+            None,
             if which > 0 { 1 } else { 0 },
-            c_msg.as_ptr(),
-        );
+            Some(&c_msg));
         if which > 0 {
             let scalar = Rf_ScalarInteger(which);
             let _g = protect(scalar);
-            crate::mainutils::errors::R_setConditionField(cond, 2, c"subscript".as_ptr(), scalar);
+            crate::mainutils::errors::R_setConditionField(cond, 2, c"subscript", scalar);
         }
         cond
     }
@@ -390,11 +389,10 @@ pub(crate) fn simple_warning_condition(message: &str, call: SEXP) -> SEXP {
     let c_msg = CString::new(message).unwrap_or_default();
     crate::mainutils::errors::R_makeWarningCondition(
         call,
-        c"simpleWarning".as_ptr() as *const core::ffi::c_char,
-        std::ptr::null(),
+        Some(c"simpleWarning"),
+        None,
         0,
-        c_msg.as_ptr(),
-    )
+        Some(&c_msg))
 }
 pub(crate) fn simple_condition(message: &str, classes: &[&str]) -> SEXP {
     simple_condition_at(message, classes, R_NilValue())

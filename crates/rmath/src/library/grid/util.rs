@@ -8,7 +8,7 @@ use std::os::raw::{c_char, c_double, c_int};
 
 use crate::main::memory_main::{R_ExternalPtrAddr, R_MakeExternalPtr};
 use crate::mainutils::engine::{GEStrHeight, GEStrWidth, fromDeviceHeight, fromDeviceWidth};
-use crate::mainutils::errors::Rf_error;
+use crate::mainutils::errors::{Rf_error, Rf_error_cstr};
 use crate::sexp::accessors::{LENGTH, TYPEOF, XLENGTH};
 use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
@@ -25,7 +25,7 @@ use super::{
 fn GEExpressionWidth(_expr: SEXP, _gc: pGEcontext, _dd: pGEDevDesc) -> c_double {
     // SAFETY: static NUL-terminated literal.
 
-    Rf_error(b"grid expression widths are not supported\0".as_ptr() as *const c_char);
+    Rf_error_cstr(c"grid expression widths are not supported");
 
     unreachable!()
 }
@@ -33,7 +33,7 @@ fn GEExpressionWidth(_expr: SEXP, _gc: pGEcontext, _dd: pGEDevDesc) -> c_double 
 fn GEExpressionHeight(_expr: SEXP, _gc: pGEcontext, _dd: pGEDevDesc) -> c_double {
     // SAFETY: static NUL-terminated literal.
 
-    Rf_error(b"grid expression heights are not supported\0".as_ptr() as *const c_char);
+    Rf_error_cstr(c"grid expression heights are not supported");
 
     unreachable!()
 }
@@ -322,10 +322,10 @@ pub unsafe fn textRect(
             if !h.is_finite() {
                 h = 0.0;
             }
-            let msg = b"Unable to calculate text width/height (using zero)\0";
+            let msg = c"Unable to calculate text width/height (using zero)";
             // SAFETY: static NUL-terminated literal.
 
-            crate::main::errors::Rf_warning1(msg.as_ptr() as *const c_char);
+            crate::main::errors::Rf_warning1(msg);
         }
 
         if w >= 0.0 {
@@ -393,13 +393,10 @@ pub fn L_GetSEXPPtr(sp: SEXP) -> SEXP {
     // SAFETY: `sp` is a live EXTPTRSXP created by `L_CreateSEXPPtr`.
     let data = unsafe { R_ExternalPtrAddr(sp) as SEXP };
     if data.is_null() {
-        let msg = b"grid grob object is empty\0";
+        let msg = c"grid grob object is empty";
         // SAFETY: static NUL-terminated literals.
 
-        crate::main::errors::Rf_error1(
-            b"%s\0".as_ptr() as *const c_char,
-            msg.as_ptr() as *const c_char,
-        );
+        crate::main::errors::Rf_error1(c"%s", msg);
 
         unreachable!()
     }
@@ -411,13 +408,10 @@ pub fn L_SetSEXPPtr(sp: SEXP, s: SEXP) -> SEXP {
     // SAFETY: `sp` is a live EXTPTRSXP created by `L_CreateSEXPPtr`.
     let data = unsafe { R_ExternalPtrAddr(sp) as SEXP };
     if data.is_null() {
-        let msg = b"grid grob object is empty\0";
+        let msg = c"grid grob object is empty";
         // SAFETY: static NUL-terminated literals.
 
-        crate::main::errors::Rf_error1(
-            b"%s\0".as_ptr() as *const c_char,
-            msg.as_ptr() as *const c_char,
-        );
+        crate::main::errors::Rf_error1(c"%s", msg);
 
         unreachable!()
     }

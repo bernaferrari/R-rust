@@ -5,7 +5,7 @@ use std::os::raw::{c_double, c_int};
 use std::slice;
 
 use crate::main::coerce::asInteger;
-use crate::mainutils::errors::Rf_error;
+use crate::mainutils::errors::{Rf_error, Rf_error_cstr};
 use crate::sexp::accessors::{LENGTH, REAL};
 use crate::sexp::constructors::{Rf_ScalarReal, Rf_allocVector};
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
@@ -45,7 +45,7 @@ fn integrate_values(x: &[c_double], xi: &[c_double], lag: usize, y: &mut [c_doub
 }
 
 fn error(msg: &'static [u8]) -> ! {
-    Rf_error(msg.as_ptr() as *const _);
+    Rf_error_cstr(crate::mainutils::errors::cstr_until_nul(msg));
 
     unreachable!("Rf_error returned");
 }

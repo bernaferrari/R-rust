@@ -68,12 +68,12 @@ fn test_integer_from_logical() {
 #[test]
 fn test_integer_from_real() {
     let _session = crate::sexp::session::RSession::new_for_gc_tests();
-    assert_eq!(IntegerFromReal(3.7, std::ptr::null_mut()), 3);
-    assert_eq!(IntegerFromReal(-2.1, std::ptr::null_mut()), -2);
-    assert_eq!(IntegerFromReal(f64::NAN, std::ptr::null_mut()), NA_INTEGER);
+    assert_eq!(IntegerFromReal(3.7, None), 3);
+    assert_eq!(IntegerFromReal(-2.1, None), -2);
+    assert_eq!(IntegerFromReal(f64::NAN, None), NA_INTEGER);
 
     let mut warn: c_int = 0;
-    let result = IntegerFromReal(1e20, &mut warn);
+    let result = IntegerFromReal(1e20, Some(&mut warn));
     assert_eq!(result, NA_INTEGER);
     assert!(warn & WARN_INT_NA != 0);
 }
@@ -82,7 +82,7 @@ fn test_integer_from_real() {
 fn test_integer_from_complex() {
     let _session = crate::sexp::session::RSession::new_for_gc_tests();
     let mut warn: c_int = 0;
-    let result = IntegerFromComplex(Rcomplex { r: 3.0, i: 2.0 }, &mut warn);
+    let result = IntegerFromComplex(Rcomplex { r: 3.0, i: 2.0 }, Some(&mut warn));
     assert_eq!(result, 3);
     assert!(warn & WARN_IMAG != 0);
 }
@@ -145,22 +145,22 @@ fn test_complex_from_real() {
 fn test_complex_from_string_c() {
     let _session = crate::sexp::session::RSession::new_for_gc_tests();
     let s = c"3+2i";
-    let z = ComplexFromStringC(s.as_ptr(), std::ptr::null_mut());
+    let z = ComplexFromStringC(s, None);
     assert_eq!(z.r, 3.0);
     assert_eq!(z.i, 2.0);
 
     let s2 = c"5i";
-    let z2 = ComplexFromStringC(s2.as_ptr(), std::ptr::null_mut());
+    let z2 = ComplexFromStringC(s2, None);
     assert_eq!(z2.r, 0.0);
     assert_eq!(z2.i, 5.0);
 
     let s3 = c"3-4i";
-    let z3 = ComplexFromStringC(s3.as_ptr(), std::ptr::null_mut());
+    let z3 = ComplexFromStringC(s3, None);
     assert_eq!(z3.r, 3.0);
     assert_eq!(z3.i, -4.0);
 
     let s4 = c"42";
-    let z4 = ComplexFromStringC(s4.as_ptr(), std::ptr::null_mut());
+    let z4 = ComplexFromStringC(s4, None);
     assert_eq!(z4.r, 42.0);
     assert_eq!(z4.i, 0.0);
 }
@@ -253,11 +253,11 @@ fn test_warn_constants() {
 fn test_coercion_warning_flags() {
     let _session = crate::sexp::session::RSession::new_for_gc_tests();
     let mut warn: c_int = 0;
-    IntegerFromReal(1e20, &mut warn);
+    IntegerFromReal(1e20, Some(&mut warn));
     assert_ne!(warn & WARN_INT_NA, 0);
 
     let mut warn2: c_int = 0;
-    IntegerFromComplex(Rcomplex { r: 3.0, i: 2.0 }, &mut warn2);
+    IntegerFromComplex(Rcomplex { r: 3.0, i: 2.0 }, Some(&mut warn2));
     assert_ne!(warn2 & WARN_IMAG, 0);
 }
 
@@ -295,21 +295,21 @@ fn test_r_finite() {
 fn test_integer_from_string() {
     let _session = crate::sexp::session::RSession::new_for_gc_tests();
     // Test with null (no CHARSXP available in test)
-    let result = IntegerFromString(std::ptr::null_mut(), std::ptr::null_mut());
+    let result = IntegerFromString(std::ptr::null_mut(), None);
     assert_eq!(result, NA_INTEGER);
 }
 
 #[test]
 fn test_real_from_string() {
     let _session = crate::sexp::session::RSession::new_for_gc_tests();
-    let result = RealFromString(std::ptr::null_mut(), std::ptr::null_mut());
+    let result = RealFromString(std::ptr::null_mut(), None);
     assert!(result.is_nan());
 }
 
 #[test]
 fn test_complex_from_string() {
     let _session = crate::sexp::session::RSession::new_for_gc_tests();
-    let z = ComplexFromString(std::ptr::null_mut(), std::ptr::null_mut());
+    let z = ComplexFromString(std::ptr::null_mut(), None);
     assert!(z.r.is_nan());
     assert!(z.i.is_nan());
 }

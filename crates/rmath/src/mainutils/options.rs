@@ -449,7 +449,7 @@ fn FixupScipen(scipen: SEXP, warn: warn_type) -> c_int {
             iWARN => {
                 let msg = std::ffi::CString::new(format!("invalid 'scipen' {d}, used {dnew}"))
                     .unwrap_or_default();
-                crate::mainutils::errors::Rf_warning(msg.as_ptr());
+                crate::mainutils::errors::Rf_warning_cstr(&msg);
                 return dnew;
             }
             iSILENT => return dnew,
@@ -1369,7 +1369,7 @@ pub fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 if nchars != 1 {
                     let msg = std::ffi::CString::new("'OutDec' must be a string of one character")
                         .unwrap_or_default();
-                    crate::mainutils::errors::Rf_warning(msg.as_ptr());
+                    crate::mainutils::errors::Rf_warning_cstr(&msg);
                 }
                 let new_val = duplicate_sexp(argi);
                 let _guard = protect(new_val);

@@ -147,7 +147,7 @@ pub fn do_args(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 pub fn do_formals(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     let fn_arg = CAR(args);
     if fn_arg.is_null() || fn_arg == R_NilValue() {
-        crate::mainutils::errors::Rf_warningcall1(_call, c"argument is not a function".as_ptr());
+        crate::mainutils::errors::Rf_warningcall1(_call, c"argument is not a function");
         return R_NilValue();
     }
     let t = TYPEOF(fn_arg);
@@ -164,7 +164,7 @@ pub fn do_formals(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         // closures only, even when that prototype is available.
         return R_NilValue();
     }
-    crate::mainutils::errors::Rf_warningcall1(_call, c"argument is not a function".as_ptr());
+    crate::mainutils::errors::Rf_warningcall1(_call, c"argument is not a function");
     R_NilValue()
 }
 
@@ -289,8 +289,7 @@ pub fn do_body(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         {
             crate::mainutils::errors::Rf_warningcall1(
                 _call,
-                c"argument is not a function".as_ptr(),
-            );
+                c"argument is not a function");
             return R_NilValue();
         }
         if TYPEOF(fn_arg) != SEXPTYPE::CLOSXP {

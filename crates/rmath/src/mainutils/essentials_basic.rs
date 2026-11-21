@@ -925,7 +925,7 @@ pub fn do_which(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let x = CAR(args);
         // GNU summary.c do_which: isLogical(v) only — INTSXP/NULL error.
         if x.is_null() || TYPEOF(x) != SEXPTYPE::LGLSXP {
-            crate::mainutils::errors::Rf_error(c"argument to 'which' is not logical".as_ptr());
+            crate::mainutils::errors::Rf_error_cstr(c"argument to 'which' is not logical");
         }
 
         let n = XLENGTH(x);
@@ -1989,7 +1989,7 @@ pub fn do_as_logical(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             return ans;
         }
         let x = CAR(args);
-        if crate::mainutils::objects::inherits2(x, c"factor".as_ptr()) != 0
+        if crate::mainutils::objects::inherits2(x, c"factor") != 0
             && TYPEOF(x) == SEXPTYPE::INTSXP
         {
             let n = XLENGTH(x);
@@ -2181,16 +2181,15 @@ pub fn do_as_symbol(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 "invalid type/length (symbol/{}) in vector allocation",
                 LENGTH(x)
             );
-            crate::mainutils::errors::Rf_error(CString::new(message).unwrap_or_default().as_ptr());
+            crate::mainutils::errors::Rf_error_cstr(&CString::new(message).unwrap_or_default());
             unreachable!()
         }
     };
     let _chars_guard = protect(chars);
 
     if chars.is_null() || chars == R_NilValue() || XLENGTH(chars) == 0 {
-        crate::mainutils::errors::Rf_error(
-            c"invalid data of mode 'character' (too short)".as_ptr(),
-        );
+        crate::mainutils::errors::Rf_error_cstr(
+            c"invalid data of mode 'character' (too short)");
     }
     crate::mainutils::subset::installTrChar(STRING_ELT(chars, 0))
 }

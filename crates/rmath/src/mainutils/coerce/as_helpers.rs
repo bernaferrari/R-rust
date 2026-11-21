@@ -59,9 +59,9 @@ pub fn asInteger(x: SEXP) -> c_int {
             t if t == SEXPTYPE::RAWSXP => RAW_ELT(x, 0) as c_int,
             t if t == SEXPTYPE::LGLSXP => IntegerFromLogical(LOGICAL_ELT(x, 0), &mut warn),
             t if t == SEXPTYPE::INTSXP => INTEGER_ELT(x, 0),
-            t if t == SEXPTYPE::REALSXP => IntegerFromReal(REAL_ELT(x, 0), &mut warn),
-            t if t == SEXPTYPE::CPLXSXP => IntegerFromComplex(COMPLEX_ELT(x, 0), &mut warn),
-            t if t == SEXPTYPE::STRSXP => IntegerFromString(STRING_ELT(x, 0), &mut warn),
+            t if t == SEXPTYPE::REALSXP => IntegerFromReal(REAL_ELT(x, 0), Some(&mut warn)),
+            t if t == SEXPTYPE::CPLXSXP => IntegerFromComplex(COMPLEX_ELT(x, 0), Some(&mut warn)),
+            t if t == SEXPTYPE::STRSXP => IntegerFromString(STRING_ELT(x, 0), Some(&mut warn)),
             _ => NA_INTEGER,
         };
         if warn != 0 {
@@ -69,7 +69,7 @@ pub fn asInteger(x: SEXP) -> c_int {
         }
         return res;
     } else if TYPEOF(x) == SEXPTYPE::CHARSXP {
-        let res = IntegerFromString(x, &mut warn);
+        let res = IntegerFromString(x, Some(&mut warn));
         if warn != 0 {
             CoercionWarning(warn);
         }
@@ -94,8 +94,8 @@ pub fn asReal(x: SEXP) -> c_double {
             t if t == SEXPTYPE::LGLSXP => RealFromLogical(LOGICAL_ELT(x, 0), &mut warn),
             t if t == SEXPTYPE::INTSXP => RealFromInteger(INTEGER_ELT(x, 0), &mut warn),
             t if t == SEXPTYPE::REALSXP => REAL_ELT(x, 0),
-            t if t == SEXPTYPE::CPLXSXP => RealFromComplex(COMPLEX_ELT(x, 0), &mut warn),
-            t if t == SEXPTYPE::STRSXP => RealFromString(STRING_ELT(x, 0), &mut warn),
+            t if t == SEXPTYPE::CPLXSXP => RealFromComplex(COMPLEX_ELT(x, 0), Some(&mut warn)),
+            t if t == SEXPTYPE::STRSXP => RealFromString(STRING_ELT(x, 0), Some(&mut warn)),
             t if t == SEXPTYPE::RAWSXP => error("unimplemented type 'raw' in 'asReal'\n"),
             _ => NA_REAL,
         };
@@ -104,7 +104,7 @@ pub fn asReal(x: SEXP) -> c_double {
         }
         return res;
     } else if TYPEOF(x) == SEXPTYPE::CHARSXP {
-        let res = RealFromString(x, &mut warn);
+        let res = RealFromString(x, Some(&mut warn));
         if warn != 0 {
             CoercionWarning(warn);
         }
@@ -148,7 +148,7 @@ pub fn asComplex(x: SEXP) -> Rcomplex {
                 z = COMPLEX_ELT(x, 0);
             }
             t if t == SEXPTYPE::STRSXP => {
-                z = ComplexFromString(STRING_ELT(x, 0), &mut warn);
+                z = ComplexFromString(STRING_ELT(x, 0), Some(&mut warn));
             }
             t if t == SEXPTYPE::RAWSXP => error("unimplemented type 'raw' in 'asComplex'\n"),
             _ => {} // intentionally unhandled: unsupported SEXPTYPE for complex coercion
@@ -158,7 +158,7 @@ pub fn asComplex(x: SEXP) -> Rcomplex {
         }
         return z;
     } else if TYPEOF(x) == SEXPTYPE::CHARSXP {
-        z = ComplexFromString(x, &mut warn);
+        z = ComplexFromString(x, Some(&mut warn));
         if warn != 0 {
             CoercionWarning(warn);
         }

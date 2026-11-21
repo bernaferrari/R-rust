@@ -440,7 +440,7 @@ pub(crate) fn ignore_perl_when_fixed(perl: &mut bool, fixed: bool) {
     if fixed && *perl {
         let msg = CString::new("argument 'perl = TRUE' will be ignored").unwrap_or_default();
 
-        crate::mainutils::errors::Rf_warning(msg.as_ptr());
+        crate::mainutils::errors::Rf_warning_cstr(&msg);
 
         *perl = false;
     }
@@ -482,10 +482,9 @@ pub(crate) fn grep_match_indices(
             if invalid_utf8 {
                 utf8_warned = true;
                 let msg = format!("input string {} is invalid UTF-8\0", i + 1);
-                crate::mainutils::errors::warningcall(
+                crate::mainutils::errors::warningcall_cstr(
                     crate::sexp::globals::R_NilValue(),
-                    msg.as_ptr() as *const std::os::raw::c_char,
-                );
+                    std::ffi::CStr::from_bytes_until_nul(msg.as_bytes()).unwrap_or_default());
             }
         }
         let matched = grep_value_matches(&elt_to_string(x, i), pattern, ignore_case, perl, fixed);

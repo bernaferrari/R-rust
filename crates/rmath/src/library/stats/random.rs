@@ -11,7 +11,7 @@ use std::os::raw::{c_double, c_int};
 
 use crate::attrib_core::{R_DimNamesSymbol, R_NamesSymbol, getAttrib, setAttrib};
 use crate::main::coerce::coerceVector;
-use crate::main::errors::Rf_error;
+use crate::main::errors::{Rf_error, Rf_error_cstr};
 use crate::main::random::{GetRNGstate, PutRNGstate};
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
@@ -83,12 +83,10 @@ call_trampoline!(c_do_fmin, (call, op, args, env) => super::zeroin::do_fmin(call
 pub(super) fn reject_var_on_factor(x: SEXP) {
     if !x.is_null()
         && x != R_NilValue()
-        && crate::mainutils::objects::inherits2(x, c"factor".as_ptr()) != 0
+        && crate::mainutils::objects::inherits2(x, c"factor") != 0
     {
-        Rf_error(
-            c"Calling var(x) on a factor x is defunct.\n  Use something like 'all(duplicated(x)[-1L])' to test for a constant vector."
-                .as_ptr(),
-        );
+        Rf_error_cstr(
+            c"Calling var(x) on a factor x is defunct.\n  Use something like 'all(duplicated(x)[-1L])' to test for a constant vector.");
     }
 }
 
@@ -898,7 +896,7 @@ fn random_n<const K: usize>(
         }
         // SAFETY: the warning is dispatched under the active runtime.
         {
-            crate::mainutils::errors::Rf_warning1(c"NAs produced".as_ptr())
+            crate::mainutils::errors::Rf_warning1(c"NAs produced")
         };
         return x;
     }
@@ -978,13 +976,13 @@ fn random_n<const K: usize>(
                 }
                 PutRNGstate();
                 if naflag {
-                    crate::mainutils::errors::Rf_warning1(c"NAs produced".as_ptr());
+                    crate::mainutils::errors::Rf_warning1(c"NAs produced");
                 }
                 return xr;
             }
             PutRNGstate();
             if naflag {
-                crate::mainutils::errors::Rf_warning1(c"NAs produced".as_ptr());
+                crate::mainutils::errors::Rf_warning1(c"NAs produced");
             }
             return x;
         }
@@ -1009,7 +1007,7 @@ fn random_n<const K: usize>(
         }
         PutRNGstate();
         if naflag {
-            crate::mainutils::errors::Rf_warning1(c"NAs produced".as_ptr());
+            crate::mainutils::errors::Rf_warning1(c"NAs produced");
         }
         x
     }
@@ -1226,13 +1224,13 @@ fn fixup_prob(p: &mut [c_double]) {
     for value in p.iter() {
         if !R_FINITE(*value) {
             {
-                Rf_error(b"NA in probability vector\0".as_ptr() as *const _);
+                Rf_error_cstr(c"NA in probability vector");
             }
             return;
         }
         if *value < 0.0 {
             {
-                Rf_error(b"negative probability\0".as_ptr() as *const _);
+                Rf_error_cstr(c"negative probability");
             }
             return;
         }
@@ -1243,7 +1241,7 @@ fn fixup_prob(p: &mut [c_double]) {
     }
     if npos == 0 {
         {
-            Rf_error(b"no positive probabilities\0".as_ptr() as *const _);
+            Rf_error_cstr(c"no positive probabilities");
         }
         return;
     }
@@ -1262,11 +1260,11 @@ pub fn do_rmultinom(sn: SEXP, ssize: SEXP, prob: SEXP) -> SEXP {
     let n = as_integer(owner, sn);
     let size = as_integer(owner, ssize);
     if n == NA_INTEGER || n < 0 {
-        Rf_error(b"invalid first argument 'n'\0".as_ptr() as *const _);
+        Rf_error_cstr(c"invalid first argument 'n'");
         return R_NilValue();
     }
     if size == NA_INTEGER || size < 0 {
-        Rf_error(b"invalid second argument 'size'\0".as_ptr() as *const _);
+        Rf_error_cstr(c"invalid second argument 'size'");
         return R_NilValue();
     }
     let prob = coerceVector(prob, SEXPTYPE::REALSXP.as_c_int());
@@ -1322,7 +1320,7 @@ pub fn r2dtable(n: SEXP, r: SEXP, c: SEXP) -> SEXP {
         || TYPEOF(c) != SEXPTYPE::INTSXP
         || nc <= 1
     {
-        Rf_error(b"invalid arguments\0".as_ptr() as *const _);
+        Rf_error_cstr(c"invalid arguments");
         return R_NilValue();
     }
 
@@ -1678,7 +1676,7 @@ pub fn do_rgamma_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let s0 = checked(owner.sexp(sv)).real_elt(0).unwrap_or(NA_REAL);
         if (r0 * s0 - 1.0).abs() < 1e-15 {
             let msg = c"specify 'rate' or 'scale' but not both";
-            crate::main::errors::Rf_warningcall1(call, msg.as_ptr());
+            crate::main::errors::Rf_warningcall1(call, &msg);
         } else {
             crate::main::errors::errorcall_str(call, "specify 'rate' or 'scale' but not both");
         }

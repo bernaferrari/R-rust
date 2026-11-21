@@ -412,7 +412,7 @@ pub fn do_type_convert(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 elt_to_string(x, 0)
             );
             let cmsg = std::ffi::CString::new(msg).unwrap_or_default();
-            crate::mainutils::errors::Rf_warning(cmsg.as_ptr());
+            crate::mainutils::errors::Rf_warning_cstr(&cmsg);
         }
         let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
         let _p = protect(result);

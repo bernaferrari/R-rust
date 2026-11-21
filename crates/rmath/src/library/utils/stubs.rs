@@ -27,7 +27,7 @@ use std::os::raw::{c_char, c_int};
 use std::path::PathBuf;
 use std::ptr;
 
-use crate::main::errors::{Rf_error, Rf_warning};
+use crate::main::errors::{Rf_error, Rf_error_cstr, Rf_warning, Rf_warning_cstr};
 use crate::mainutils::edit::do_edit;
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
@@ -41,12 +41,12 @@ fn nil_value() -> SEXP {
 
 fn warn_message(message: impl AsRef<str>) {
     let msg = CString::new(message.as_ref()).unwrap_or_default();
-    Rf_warning(msg.as_ptr());
+    Rf_warning_cstr(&msg);
 }
 
 fn error_message(message: impl AsRef<str>) {
     let msg = CString::new(message.as_ref()).unwrap_or_default();
-    Rf_error(msg.as_ptr());
+    Rf_error_cstr(&msg);
 }
 
 fn do_Rprof(_args: SEXP) -> SEXP {
@@ -248,7 +248,7 @@ pub fn addhistory(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
         if !isString(stamp) {
             let msg = c"invalid timestamp";
-            Rf_warning(msg.as_ptr());
+            Rf_warning_cstr(&msg);
             return R_NilValue();
         }
 
@@ -286,7 +286,7 @@ pub fn addhistory(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 pub fn dataentry(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     let _ = (call, op, args, env);
     let msg = c"data entry editor is not available";
-    Rf_warning(msg.as_ptr());
+    Rf_warning_cstr(&msg);
     R_NilValue()
 }
 
@@ -296,7 +296,7 @@ pub fn dataentry(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 pub fn dataviewer(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     let _ = (call, op, args, env);
     let msg = c"data viewer is not available";
-    Rf_warning(msg.as_ptr());
+    Rf_warning_cstr(&msg);
     R_NilValue()
 }
 
@@ -328,7 +328,7 @@ pub fn fileedit(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         // Validate editor argument
         if !isString(ed) || LENGTH(ed) != 1 {
             let msg = c"invalid 'editor' specification";
-            Rf_error(msg.as_ptr());
+            Rf_error_cstr(&msg);
         }
 
         let n = LENGTH(fn_);
@@ -338,13 +338,13 @@ pub fn fileedit(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         if n > 0 {
             if !isString(fn_) {
                 let msg = c"invalid 'filename' specification";
-                Rf_error(msg.as_ptr());
+                Rf_error_cstr(&msg);
             }
             for i in 0..n {
                 let elt = STRING_ELT(fn_, i as R_xlen_t);
                 if elt.is_null() || elt == R_NilValue() {
                     let msg = c"'filename' contains missing values";
-                    Rf_error(msg.as_ptr());
+                    Rf_error_cstr(&msg);
                 }
                 let c = CHAR(elt);
                 if !c.is_null() {
@@ -380,7 +380,7 @@ pub fn fileedit(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         if let Err(e) = result {
             let msg = CString::new(format!("unable to run editor '{}': {}", editor, e))
                 .unwrap_or_default();
-            Rf_warning(msg.as_ptr());
+            Rf_warning_cstr(&msg);
         }
 
         R_NilValue()
@@ -426,13 +426,13 @@ pub fn charClass(x: SEXP, scl: SEXP) -> SEXP {
         // Validate class argument
         if !isString(scl) || LENGTH(scl) != 1 {
             let msg = c"argument 'class' must be a character string";
-            Rf_error(msg.as_ptr());
+            Rf_error_cstr(&msg);
         }
 
         let cl_ptr = CHAR(STRING_ELT(scl, 0));
         if cl_ptr.is_null() {
             let msg = c"argument 'class' must be a character string";
-            Rf_error(msg.as_ptr());
+            Rf_error_cstr(&msg);
         }
         let cl = CStr::from_ptr(cl_ptr).to_string_lossy();
 
@@ -444,7 +444,7 @@ pub fn charClass(x: SEXP, scl: SEXP) -> SEXP {
         if wcl == 0 {
             let msg =
                 CString::new(format!("character class \"{}\" is invalid", cl)).unwrap_or_default();
-            Rf_error(msg.as_ptr());
+            Rf_error_cstr(&msg);
         }
 
         let mut protect_guards = Vec::new();
@@ -454,7 +454,7 @@ pub fn charClass(x: SEXP, scl: SEXP) -> SEXP {
             // x is a character string: classify each character
             if XLENGTH(x) != 1 {
                 let msg = c"argument 'x' must be a length-1 character vector";
-                Rf_error(msg.as_ptr());
+                Rf_error_cstr(&msg);
             }
 
             let sx = STRING_ELT(x, 0);
@@ -541,7 +541,7 @@ pub fn crc64(in_: SEXP) -> SEXP {
     unsafe {
         if !isString(in_) {
             let msg = c"input must be a character string";
-            Rf_error(msg.as_ptr());
+            Rf_error_cstr(&msg);
         }
 
         let s = STRING_ELT(in_, 0);
@@ -573,14 +573,14 @@ pub fn nsl(hostname: SEXP) -> SEXP {
     unsafe {
         if !isString(hostname) || LENGTH(hostname) != 1 {
             let msg = c"'hostname' must be a character vector of length 1";
-            Rf_error(msg.as_ptr());
+            Rf_error_cstr(&msg);
         }
 
         let s = STRING_ELT(hostname, 0);
         let c_ptr = CHAR(s);
         if c_ptr.is_null() {
             let msg = c"'hostname' must be a character vector of length 1";
-            Rf_error(msg.as_ptr());
+            Rf_error_cstr(&msg);
         }
 
         let name = CStr::from_ptr(c_ptr).to_string_lossy();
@@ -598,7 +598,7 @@ pub fn nsl(hostname: SEXP) -> SEXP {
         if ret != 0 || res.is_null() {
             let msg = CString::new(format!("nsl() was unable to resolve host '{}'", name))
                 .unwrap_or_default();
-            Rf_warning(msg.as_ptr());
+            Rf_warning_cstr(&msg);
             return R_NilValue();
         }
 
@@ -631,7 +631,7 @@ pub fn nsl(hostname: SEXP) -> SEXP {
 
         if !found {
             let msg = c"unknown format returned by name resolution";
-            Rf_warning(msg.as_ptr());
+            Rf_warning_cstr(&msg);
         }
 
         let c_ip = CString::new(ip).unwrap_or_default();
@@ -647,20 +647,20 @@ pub fn nsl(hostname: SEXP) -> SEXP {
     unsafe {
         if !isString(hostname) || LENGTH(hostname) != 1 {
             let msg = c"'hostname' must be a character vector of length 1";
-            Rf_error(msg.as_ptr());
+            Rf_error_cstr(&msg);
         }
 
         let s = STRING_ELT(hostname, 0);
         let c_ptr = CHAR(s);
         if c_ptr.is_null() {
             let msg = c"'hostname' must be a character vector of length 1";
-            Rf_error(msg.as_ptr());
+            Rf_error_cstr(&msg);
         }
 
         let name = CStr::from_ptr(c_ptr).to_string_lossy();
         let msg = CString::new(format!("nsl() was unable to resolve host '{}'", name))
             .unwrap_or_default();
-        Rf_warning(msg.as_ptr());
+        Rf_warning_cstr(&msg);
         R_NilValue()
     }
 }
@@ -678,7 +678,7 @@ pub fn octsize(size: SEXP) -> SEXP {
 
         if !s_val.is_finite() || s_val < 0.0 {
             let msg = c"size must be finite and >= 0";
-            Rf_error(msg.as_ptr());
+            Rf_error_cstr(&msg);
         }
 
         let mut s = s_val;

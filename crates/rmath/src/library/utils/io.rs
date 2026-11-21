@@ -38,7 +38,7 @@ use crate::main::duplicate::{Rf_duplicate, copyVector};
 use crate::mainutils::connections::{
     connection_fgetc, connection_pushback, connection_write_bytes,
 };
-use crate::mainutils::errors::{R_CheckUserInterrupt, Rf_error, Rf_warning};
+use crate::mainutils::errors::{R_CheckUserInterrupt, Rf_error, Rf_error_cstr, Rf_warning, Rf_warning_cstr};
 use crate::mainutils::print::PrintDefaults;
 use crate::mainutils::printutils::EncodeElement0;
 use crate::sexp::memory_ext::{vmaxget, vmaxset};
@@ -250,9 +250,8 @@ fn string_elt_key(x: SEXP, index: R_xlen_t) -> Option<Vec<u8>> {
 fn duplicated(x: SEXP, from_last: c_int) -> SEXP {
     unsafe {
         if TYPEOF(x) != SEXPTYPE::STRSXP {
-            Rf_error(
-                b"duplicated() wrapper only supports character vectors\0".as_ptr() as *const c_char,
-            );
+            Rf_error_cstr(
+                c"duplicated() wrapper only supports character vectors");
         }
 
         let len = LENGTH(x);
@@ -289,9 +288,8 @@ fn duplicated(x: SEXP, from_last: c_int) -> SEXP {
 fn sortVector(x: SEXP, decreasing: c_int) {
     unsafe {
         if TYPEOF(x) != SEXPTYPE::STRSXP {
-            Rf_error(
-                b"sortVector() wrapper only supports character vectors\0".as_ptr() as *const c_char,
-            );
+            Rf_error_cstr(
+                c"sortVector() wrapper only supports character vectors");
         }
 
         let len = LENGTH(x) as R_xlen_t;
@@ -319,9 +317,8 @@ fn sortVector(x: SEXP, decreasing: c_int) {
 fn matchE(table: SEXP, x: SEXP, nomatch: c_int, _env: SEXP) -> SEXP {
     unsafe {
         if TYPEOF(table) != SEXPTYPE::STRSXP || TYPEOF(x) != SEXPTYPE::STRSXP {
-            Rf_error(
-                b"matchE() wrapper only supports character vectors\0".as_ptr() as *const c_char,
-            );
+            Rf_error_cstr(
+                c"matchE() wrapper only supports character vectors");
         }
 
         let x_len = LENGTH(x);
@@ -633,7 +630,7 @@ unsafe fn Strtod(
                 if i_exact == NA_LOGICAL() {
                     let msg = std::ffi::CString::new("accuracy loss in conversion to numeric")
                         .unwrap_or_default();
-                    crate::mainutils::errors::Rf_warning(msg.as_ptr());
+                    crate::mainutils::errors::Rf_warning_cstr(&msg);
                 } else {
                     ans = NA_REAL();
                     p = nptr;
@@ -761,7 +758,7 @@ unsafe fn Strtod(
             if i_exact == NA_LOGICAL() {
                 let msg = std::ffi::CString::new("accuracy loss in conversion to numeric")
                     .unwrap_or_default();
-                crate::mainutils::errors::Rf_warning(msg.as_ptr());
+                crate::mainutils::errors::Rf_warning_cstr(&msg);
             } else {
                 ans = NA_REAL();
                 p = nptr;
@@ -1236,7 +1233,7 @@ fn r_error(fmt: &CStr, arg: Option<&CStr>) {
         Some(arg) => vec![CArg::Str(arg.to_bytes())],
     };
     crate::mainutils::r_format::r_snprintf_c(&mut buf, &fmt_b, &args);
-    Rf_error(buf.as_ptr());
+    Rf_error_cstr(crate::mainutils::errors::c_chars_until_nul(&buf));
 }
 
 /// Format an error message with int arg and call Rf_error
@@ -1244,7 +1241,7 @@ fn r_error_int(fmt: &CStr, arg: c_int) {
     let mut buf = [0 as core::ffi::c_char; 512];
     let fmt_b = fmt.to_bytes().to_vec();
     crate::mainutils::r_format::r_snprintf_c(&mut buf, &fmt_b, &[arg.into()]);
-    Rf_error(buf.as_ptr());
+    Rf_error_cstr(crate::mainutils::errors::c_chars_until_nul(&buf));
 }
 
 /// Format a warning message and call Rf_warning
@@ -1256,7 +1253,7 @@ fn r_warning(fmt: &CStr, arg: Option<&CStr>) {
         Some(arg) => vec![CArg::Str(arg.to_bytes())],
     };
     crate::mainutils::r_format::r_snprintf_c(&mut buf, &fmt_b, &args);
-    Rf_warning(buf.as_ptr());
+    Rf_warning_cstr(crate::mainutils::errors::c_chars_until_nul(&buf));
 }
 
 /// EncodeElement2 — encode an element for writetable output.
@@ -1572,7 +1569,7 @@ pub fn typeconvert(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         }
 
         if !isString(CAR(args_cdr)) {
-            Rf_error(b"the first argument must be of mode character\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"the first argument must be of mode character");
         }
 
         let mut data = LocalData::new();
@@ -1585,7 +1582,7 @@ pub fn typeconvert(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         args_rest = CDR(args_rest);
         let na_strings_arg = CAR(args_rest);
         if TYPEOF(na_strings_arg) != SEXPTYPE::STRSXP {
-            Rf_error(b"invalid 'na.strings' argument\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"invalid 'na.strings' argument");
         }
         data.NAstrings = na_strings_arg;
 
@@ -2106,7 +2103,7 @@ pub fn readtablehead(args: SEXP) -> SEXP {
                         b"line %d appears to contain embedded nulls\0",
                         &[nread.into()],
                     );
-                    Rf_warning(warn_buf.as_ptr());
+                    Rf_warning_cstr(crate::mainutils::errors::c_chars_until_nul(&warn_buf));
                 }
             }
             if last_c == R_EOF_VAL {
@@ -2243,7 +2240,7 @@ pub fn writetable(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                         b"corrupt data frame -- length of column %d does not match nrows\0",
                         &[(j + 1).into()],
                     );
-                    Rf_error(encode_buf.as_ptr());
+                    Rf_error_cstr(crate::mainutils::errors::c_chars_until_nul(&encode_buf));
                 }
                 if inherits(xj, c"factor") {
                     *levels_arr.add(j) = attrib_core::getAttrib(xj, attrib_core::R_LevelsSymbol());

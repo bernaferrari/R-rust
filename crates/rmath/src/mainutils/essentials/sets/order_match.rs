@@ -1636,7 +1636,7 @@ pub fn do_diff(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     if !warned {
                         warned = true;
                         let msg = c"NAs produced by integer overflow";
-                        crate::mainutils::errors::Rf_warning(msg.as_ptr());
+                        crate::mainutils::errors::Rf_warning_cstr(&msg);
                     }
                     NA_INTEGER
                 } else {

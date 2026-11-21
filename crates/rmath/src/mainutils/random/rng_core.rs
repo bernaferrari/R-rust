@@ -762,7 +762,7 @@ pub fn r_binom_kind() -> Binomtype {
 /// shows RNG warnings the way stock R does.
 pub(crate) fn warn(msg: &str) {
     let c_msg = std::ffi::CString::new(msg).unwrap_or_default();
-    crate::mainutils::errors::Rf_warning1(c_msg.as_ptr());
+    crate::mainutils::errors::Rf_warning1(&c_msg);
     let message = format!("Warning message:\n{} \n", msg);
     {
         if crate::sexp::output::is_capturing() {

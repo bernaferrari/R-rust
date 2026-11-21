@@ -691,10 +691,9 @@ fn coordinates(args: SEXP, x: &[f64], y: &[f64], new: bool) -> (Coordinates, boo
                     if logs[axis] { "TRUE" } else { "F" }
                 ))
                 .unwrap_or_default();
-                crate::mainutils::errors::warningcall(
+                crate::mainutils::errors::warningcall_cstr(
                     crate::sexp::globals::R_NilValue(),
-                    fmt.as_ptr(),
-                );
+                    &fmt);
                 let fix = |v: f64| {
                     if v.is_finite() {
                         v

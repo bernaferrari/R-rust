@@ -26,7 +26,7 @@ use std::os::raw::{c_double, c_int};
 
 use crate::attrib_core::{R_NamesSymbol, getAttrib, setAttrib};
 use crate::main::coerce::{asInteger, asReal};
-use crate::main::errors::Rf_error;
+use crate::main::errors::{Rf_error, Rf_error_cstr};
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::{Rf_allocVector, Rf_mkChar};
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
@@ -104,7 +104,7 @@ fn allocMatrix(sexptype: c_int, nrow: c_int, ncol: c_int) -> SEXP {
 }
 
 fn influence_error(message: &'static [u8]) -> ! {
-    Rf_error(message.as_ptr() as *const std::os::raw::c_char);
+    Rf_error_cstr(crate::mainutils::errors::cstr_until_nul(message));
     unreachable!("Rf_error must not return")
 }
 

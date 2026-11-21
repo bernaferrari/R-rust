@@ -297,7 +297,7 @@ pub fn do_print_factor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         }
         if let Some(msg) = factor_validity_message(x) {
             let cmsg = std::ffi::CString::new(msg).unwrap_or_default();
-            crate::mainutils::errors::Rf_warning1(cmsg.as_ptr());
+            crate::mainutils::errors::Rf_warning1(&cmsg);
         }
 
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);

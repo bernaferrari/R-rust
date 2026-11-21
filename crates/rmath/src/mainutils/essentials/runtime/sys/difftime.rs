@@ -6,7 +6,7 @@ pub fn do_julian(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     if x.is_null() || x == R_NilValue() {
         return R_NilValue();
     }
-    let x = if crate::mainutils::objects::inherits2(x, c"POSIXlt".as_ptr()) != 0 {
+    let x = if crate::mainutils::objects::inherits2(x, c"POSIXlt") != 0 {
         do_as_POSIXct(_call, _op, Rf_cons(x, R_NilValue()), _rho)
     } else {
         x
@@ -81,7 +81,7 @@ fn difftime_seconds(x: SEXP) -> f64 {
         } else {
             return f64::NAN;
         };
-        if crate::mainutils::objects::inherits2(x, c"Date".as_ptr()) != 0 {
+        if crate::mainutils::objects::inherits2(x, c"Date") != 0 {
             v * 86_400.0
         } else {
             v
@@ -105,7 +105,7 @@ fn difftime_seconds_at(x: SEXP, i: i64) -> f64 {
         } else {
             return f64::NAN;
         };
-        if crate::mainutils::objects::inherits2(x, c"Date".as_ptr()) != 0 {
+        if crate::mainutils::objects::inherits2(x, c"Date") != 0 {
             v * 86_400.0
         } else {
             v
@@ -216,7 +216,7 @@ pub fn do_difftime(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 pub fn do_as_difftime(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let tim = CAR(args);
-        if crate::mainutils::objects::inherits2(tim, c"difftime".as_ptr()) != 0 {
+        if crate::mainutils::objects::inherits2(tim, c"difftime") != 0 {
             return tim;
         }
         if TYPEOF(tim) == SEXPTYPE::STRSXP {

@@ -112,8 +112,7 @@ pub fn myfmod(x1: f64, x2: f64) -> f64 {
         // Rf_warning().
 
         crate::mainutils::errors::Rf_warning1(
-            c"probable complete loss of accuracy in modulus".as_ptr(),
-        );
+            c"probable complete loss of accuracy in modulus");
     }
     let tmp = x1 - libm::floor(q) * x2;
     tmp - libm::floor(tmp / x2) * x2

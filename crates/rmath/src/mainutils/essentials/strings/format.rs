@@ -60,7 +60,7 @@ fn set_mode_class(x: SEXP, class: &str) -> SEXP {
 /// GNU `as.hexmode(x)`.
 pub fn do_as_hexmode(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     let x = CAR(args);
-    if crate::mainutils::objects::inherits2(x, c"hexmode".as_ptr()) != FALSE {
+    if crate::mainutils::objects::inherits2(x, c"hexmode") != FALSE {
         return x;
     }
     match as_mode_integer(x, 16) {
@@ -75,7 +75,7 @@ pub fn do_as_hexmode(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 /// GNU `as.octmode(x)`.
 pub fn do_as_octmode(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     let x = CAR(args);
-    if crate::mainutils::objects::inherits2(x, c"octmode".as_ptr()) != FALSE {
+    if crate::mainutils::objects::inherits2(x, c"octmode") != FALSE {
         return x;
     }
     match as_mode_integer(x, 8) {
@@ -673,33 +673,33 @@ pub fn do_format(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             return result;
         }
         if !inside_format_default
-            && crate::mainutils::objects::inherits2(x, c"POSIXlt".as_ptr()) != FALSE
+            && crate::mainutils::objects::inherits2(x, c"POSIXlt") != FALSE
         {
             return crate::mainutils::datetime::do_format_POSIXlt(_call, _op, args, _rho);
         }
         if !inside_format_default
-            && (crate::mainutils::objects::inherits2(x, c"POSIXct".as_ptr()) != FALSE
-                || crate::mainutils::objects::inherits2(x, c"POSIXt".as_ptr()) != FALSE)
+            && (crate::mainutils::objects::inherits2(x, c"POSIXct") != FALSE
+                || crate::mainutils::objects::inherits2(x, c"POSIXt") != FALSE)
         {
             return crate::mainutils::datetime::do_format_POSIXct(_call, _op, args, _rho);
         }
         if !inside_format_default
-            && crate::mainutils::objects::inherits2(x, c"Date".as_ptr()) != FALSE
+            && crate::mainutils::objects::inherits2(x, c"Date") != FALSE
         {
             return crate::mainutils::essentials::do_format_Date(_call, _op, args, _rho);
         }
         if !inside_format_default
-            && crate::mainutils::objects::inherits2(x, c"data.frame".as_ptr()) != FALSE
+            && crate::mainutils::objects::inherits2(x, c"data.frame") != FALSE
         {
             return crate::mainutils::essentials::do_format_data_frame(_call, _op, args, _rho);
         }
         if !inside_format_default
-            && crate::mainutils::objects::inherits2(x, c"hexmode".as_ptr()) != FALSE
+            && crate::mainutils::objects::inherits2(x, c"hexmode") != FALSE
         {
             return format_mode_ints(x, true);
         }
         if !inside_format_default
-            && crate::mainutils::objects::inherits2(x, c"octmode".as_ptr()) != FALSE
+            && crate::mainutils::objects::inherits2(x, c"octmode") != FALSE
         {
             return format_mode_ints(x, false);
         }
@@ -988,7 +988,7 @@ fn format_numeric_vector(x: SEXP, n: R_xlen_t, args: SEXP) -> SEXP {
                 "the decimal mark is {which} than one character wide; this will become an error"
             ))
             .unwrap_or_default();
-            crate::mainutils::errors::Rf_warning(msg.as_ptr());
+            crate::mainutils::errors::Rf_warning_cstr(&msg);
         }
 
         // formatReal/formatComplex read the live digits option; honor an

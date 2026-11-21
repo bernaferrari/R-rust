@@ -2,7 +2,7 @@
 // libcurl FFI wrapper for HTTP/FTP downloads and URL connections
 
 use crate::attrib_core::setAttrib;
-use crate::main::errors::Rf_error;
+use crate::main::errors::{Rf_error, Rf_error_cstr};
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
@@ -597,13 +597,13 @@ unsafe fn download_report_url_error(msg: *mut CURLMsg) {
             if !url.is_null() && *url == 'h' as c_char {
                 let strerr = http_errstr(status);
                 Rf_warning1(
-                    b"cannot open URL '%s': HTTP status was '%ld %s'\0".as_ptr() as *const c_char
+                    c"cannot open URL '%s': HTTP status was '%ld %s'"
                 );
                 let _ = strerr;
             } else {
                 let strerr = ftp_errstr(status);
                 Rf_warning1(
-                    b"cannot open URL '%s': FTP status was '%ld %s'\0".as_ptr() as *const c_char
+                    c"cannot open URL '%s': FTP status was '%ld %s'"
                 );
                 let _ = strerr;
             }
@@ -616,10 +616,10 @@ unsafe fn download_report_url_error(msg: *mut CURLMsg) {
                     && streql(strerr, b"Timeout was reached\0".as_ptr() as *const c_char));
 
             if timedout {
-                Rf_warning1(b"URL '%s': Timeout was reached\0".as_ptr() as *const c_char);
+                Rf_warning1(c"URL '%s': Timeout was reached");
                 let _ = current_timeout();
             } else {
-                Rf_warning1(b"URL '%s': status was unknown\0".as_ptr() as *const c_char);
+                Rf_warning1(c"URL '%s': status was unknown");
                 let _ = strerr;
             }
         }
@@ -914,7 +914,7 @@ unsafe fn download_add_url(
         if hnd_ptr.is_null() || (*hnd_ptr).is_null() {
             if mustwork != 0 {
                 *c_ref.errs.add(i as usize) += 1;
-                Rf_warning1(b"could not create curl handle\0".as_ptr() as *const c_char);
+                Rf_warning1(c"could not create curl handle");
             }
             return 1;
         }
@@ -936,7 +936,7 @@ unsafe fn download_add_url(
         if out_ptr.is_null() || (*out_ptr).is_null() {
             if mustwork != 0 {
                 *c_ref.errs.add(i as usize) += 1;
-                Rf_warning1(b"URL: cannot open destfile\0".as_ptr() as *const c_char);
+                Rf_warning1(c"URL: cannot open destfile");
             }
             return 1;
         }
@@ -1162,7 +1162,7 @@ pub(crate) fn in_do_curlGetHeaders(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) 
         // url
         let scmd = CAR(args);
         if TYPEOF(scmd) != SEXPTYPE::STRSXP || LENGTH(scmd) != 1 {
-            Rf_error(b"invalid 'url' argument\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"invalid 'url' argument");
         }
         let url = translateChar(STRING_ELT(scmd, 0));
 
@@ -1171,19 +1171,19 @@ pub(crate) fn in_do_curlGetHeaders(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) 
         // redirect
         let redirect = asLogical(CADR(args));
         if redirect == NA_LOGICAL {
-            Rf_error(b"invalid 'redirect' argument\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"invalid 'redirect' argument");
         }
 
         // verify
         let verify = asLogical(CADDR(args));
         if verify == NA_LOGICAL {
-            Rf_error(b"invalid 'verify' argument\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"invalid 'verify' argument");
         }
 
         // timeout
         let timeout = asInteger(CADDDR(args));
         if timeout == NA_INTEGER {
-            Rf_error(b"invalid 'timeout' argument\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"invalid 'timeout' argument");
         }
 
         // TLS (CAD4R)
@@ -1191,7 +1191,7 @@ pub(crate) fn in_do_curlGetHeaders(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) 
 
         let hnd = curl_easy_init();
         if hnd.is_null() {
-            Rf_error(b"could not create curl handle\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"could not create curl handle");
         }
 
         // Set up cleanup context
@@ -1222,7 +1222,7 @@ pub(crate) fn in_do_curlGetHeaders(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) 
                 tls_ver = CURL_SSLVERSION_TLSv1_3;
             } else {
                 curl_easy_cleanup(hnd);
-                Rf_error(b"invalid 'TLS' argument\0".as_ptr() as *const c_char);
+                Rf_error_cstr(c"invalid 'TLS' argument");
             }
             curl_easy_setopt(hnd, CURLOPT_SSLVERSION, tls_ver);
         }
@@ -1235,16 +1235,14 @@ pub(crate) fn in_do_curlGetHeaders(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) 
         if ret != CURLE_OK {
             if errbuf[0] != 0 {
                 curl_easy_cleanup(hnd);
-                Rf_error(b"libcurl error code %d\0".as_ptr() as *const c_char);
+                Rf_error_cstr(c"libcurl error code %d");
             } else if ret == 77 {
                 curl_easy_cleanup(hnd);
-                Rf_error(
-                    b"libcurl error code 77: unable to access SSL/TLS CA certificates\0".as_ptr()
-                        as *const c_char,
-                );
+                Rf_error_cstr(
+                    c"libcurl error code 77: unable to access SSL/TLS CA certificates");
             } else {
                 curl_easy_cleanup(hnd);
-                Rf_error(b"libcurl error code\0".as_ptr() as *const c_char);
+                Rf_error_cstr(c"libcurl error code");
             }
         }
 
@@ -1282,7 +1280,7 @@ pub(crate) fn in_do_curlDownload(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) ->
         let scmd = CAR(args_iter);
         args_iter = CDR(args_iter);
         if TYPEOF(scmd) != SEXPTYPE::STRSXP || LENGTH(scmd) < 1 {
-            Rf_error(b"invalid 'url' argument\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"invalid 'url' argument");
         }
         let nurls = LENGTH(scmd);
         let single = if nurls == 1 { 1 } else { 0 };
@@ -1292,24 +1290,24 @@ pub(crate) fn in_do_curlDownload(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) ->
         let sfile = CAR(args_iter);
         args_iter = CDR(args_iter);
         if TYPEOF(sfile) != SEXPTYPE::STRSXP || LENGTH(sfile) < 1 {
-            Rf_error(b"invalid 'destfile' argument\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"invalid 'destfile' argument");
         }
         if LENGTH(sfile) != LENGTH(scmd) {
-            Rf_error(b"lengths of 'url' and 'destfile' must match\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"lengths of 'url' and 'destfile' must match");
         }
 
         // quiet
         let quiet = asLogical(CAR(args_iter));
         args_iter = CDR(args_iter);
         if quiet == NA_LOGICAL {
-            Rf_error(b"invalid 'quiet' argument\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"invalid 'quiet' argument");
         }
 
         // mode
         let smode = CAR(args_iter);
         args_iter = CDR(args_iter);
         if TYPEOF(smode) != SEXPTYPE::STRSXP || LENGTH(smode) != 1 {
-            Rf_error(b"invalid 'mode' argument\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"invalid 'mode' argument");
         }
         let mode = translateChar(STRING_ELT(smode, 0));
 
@@ -1317,13 +1315,13 @@ pub(crate) fn in_do_curlDownload(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) ->
         let cacheOK = asLogical(CAR(args_iter));
         args_iter = CDR(args_iter);
         if cacheOK == NA_LOGICAL {
-            Rf_error(b"invalid 'cacheOK' argument\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"invalid 'cacheOK' argument");
         }
 
         // headers
         let sheaders = CAR(args_iter);
         if Rf_isNull(sheaders) == 0 && TYPEOF(sheaders) != SEXPTYPE::STRSXP {
-            Rf_error(b"invalid 'headers' argument\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"invalid 'headers' argument");
         }
 
         // Build cleanup info
@@ -1356,7 +1354,7 @@ pub(crate) fn in_do_curlDownload(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) ->
                     if !headers.is_null() {
                         curl_slist_free_all(headers);
                     }
-                    Rf_error(b"out of memory\0".as_ptr() as *const c_char);
+                    Rf_error_cstr(c"out of memory");
                 }
                 headers = tmp;
                 c_info.headers = headers;
@@ -1370,7 +1368,7 @@ pub(crate) fn in_do_curlDownload(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) ->
                 if !headers.is_null() {
                     curl_slist_free_all(headers);
                 }
-                Rf_error(b"out of memory\0".as_ptr() as *const c_char);
+                Rf_error_cstr(c"out of memory");
             }
             headers = tmp;
             c_info.headers = headers;
@@ -1381,7 +1379,7 @@ pub(crate) fn in_do_curlDownload(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) ->
             if !headers.is_null() {
                 curl_slist_free_all(headers);
             }
-            Rf_error(b"could not create curl handle\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"could not create curl handle");
         }
         c_info.mhnd = mhnd;
 
@@ -1525,7 +1523,7 @@ pub(crate) fn in_do_curlDownload(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) ->
                 &mut cl as *mut c_double as *mut c_void,
             );
             if cl >= 0.0 && (dl - cl).abs() > f64::EPSILON {
-                Rf_warning1(b"downloaded length != reported length\0".as_ptr() as *const c_char);
+                Rf_warning1(c"downloaded length != reported length");
             }
         }
 
@@ -1551,17 +1549,17 @@ pub(crate) fn in_do_curlDownload(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) ->
 
         if single == 0 {
             if n_err == nurls {
-                Rf_error(b"cannot download any files\0".as_ptr() as *const c_char);
+                Rf_error_cstr(c"cannot download any files");
             } else if n_err != 0 {
-                Rf_warning1(b"some files were not downloaded\0".as_ptr() as *const c_char);
+                Rf_warning1(c"some files were not downloaded");
             }
         } else if n_err != 0 {
             if status != 200 {
                 let url = translateChar(STRING_ELT(scmd, 0));
-                Rf_error(b"cannot open URL\0".as_ptr() as *const c_char);
+                Rf_error_cstr(c"cannot open URL");
                 let _ = url;
             } else {
-                Rf_error(b"download failed\0".as_ptr() as *const c_char);
+                Rf_error_cstr(c"download failed");
             }
         }
 
@@ -1591,7 +1589,7 @@ pub(crate) fn in_newCurlUrl(
     r#type: c_int,
 ) -> *mut c_void {
     let _ = (description, mode, headers, r#type);
-    Rf_error(b"libcurl URL connections are not implemented\0".as_ptr() as *const c_char);
+    Rf_error_cstr(c"libcurl URL connections are not implemented");
     std::ptr::null_mut()
 }
 
@@ -1656,7 +1654,7 @@ fn currentTime() -> f64 {
 }
 
 /// Rf_warning1 - issue a warning (single string)
-fn Rf_warning1(msg: *const c_char) {
+fn Rf_warning1(msg: &std::ffi::CStr) {
     crate::mainutils::errors::Rf_warning1(msg);
 }
 
@@ -1669,7 +1667,7 @@ fn CAD4R(args: SEXP) -> SEXP {
 fn curl_header_tls(args: SEXP) -> *const c_char {
     let tls = CAR(CAD4R(args));
     if TYPEOF(tls) != SEXPTYPE::STRSXP || LENGTH(tls) != 1 {
-        Rf_error(b"invalid 'TLS' argument\0".as_ptr() as *const c_char);
+        Rf_error_cstr(c"invalid 'TLS' argument");
     }
     translateChar(STRING_ELT(tls, 0))
 }

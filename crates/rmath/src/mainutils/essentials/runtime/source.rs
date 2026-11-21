@@ -121,8 +121,7 @@ pub fn do_source(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     if crate::mainutils::connections::inherits_class(file_arg, "connection") {
         if parsed.chdir {
             crate::mainutils::errors::Rf_warning1(
-                c"'chdir = TRUE' makes no sense for a connection".as_ptr(),
-            );
+                c"'chdir = TRUE' makes no sense for a connection");
         }
         let idx = crate::mainutils::coerce::asInteger(file_arg);
         let mut bytes = Vec::new();
@@ -167,7 +166,7 @@ pub fn do_source(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                         "invalid input found on input connection '{}'",
                         file_path
                     )) {
-                        crate::mainutils::errors::Rf_warning1(message.as_ptr());
+                        crate::mainutils::errors::Rf_warning1(&message);
                     }
                 }
                 let _directory = SourceDirectoryGuard::enter(&file_path, parsed.chdir);

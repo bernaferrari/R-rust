@@ -215,9 +215,9 @@ fn legacy_nmath_hook(message: &str) {
     unsafe {
         let call = mathlib_warning_call();
         if !call.is_null() && call != globals::R_NilValue() {
-            Rf_warningcall1(call, c_msg.as_ptr());
+            Rf_warningcall1(call, &c_msg);
         } else {
-            Rf_warning1(c_msg.as_ptr());
+            Rf_warning1(&c_msg);
         }
     }
 }

@@ -12,8 +12,8 @@ use crate::sexp::protect::protect;
 
 fn partrans(p: usize, raw: &[f64], new: &mut [f64]) {
     if p > 100 {
-        crate::main::errors::Rf_error(
-            b"can only transform 100 pars in arima0\0".as_ptr() as *const std::os::raw::c_char
+        crate::main::errors::Rf_error_cstr(
+            c"can only transform 100 pars in arima0"
         );
     }
     let mut work = [0.0f64; 100];
@@ -34,8 +34,8 @@ fn partrans(p: usize, raw: &[f64], new: &mut [f64]) {
 
 fn invpartrans(p: usize, phi: &[f64], new: &mut [f64]) {
     if p > 100 {
-        crate::main::errors::Rf_error(
-            b"can only transform 100 pars in arima0\0".as_ptr() as *const std::os::raw::c_char
+        crate::main::errors::Rf_error_cstr(
+            c"can only transform 100 pars in arima0"
         );
     }
     let mut work = [0.0f64; 100];
@@ -636,8 +636,8 @@ pub unsafe extern "C-unwind" fn c_get_q0(sphi: SEXP, stheta: SEXP) -> SEXP {
     };
     let r = p.max(q + 1);
     if r > 350 {
-        crate::main::errors::Rf_error(
-            b"maximum supported lag is 350\0".as_ptr() as *const std::os::raw::c_char
+        crate::main::errors::Rf_error_cstr(
+            c"maximum supported lag is 350"
         );
     }
     let np = r * (r + 1) / 2;

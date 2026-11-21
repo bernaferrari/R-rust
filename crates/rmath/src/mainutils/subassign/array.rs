@@ -90,10 +90,8 @@ pub(crate) fn ArrayAssign(call: SEXP, rho: SEXP, x: SEXP, s: SEXP, y: SEXP) -> S
             for j in 0..kk {
                 for i in 0..bound[j] {
                     if *subs[j].add(i as usize) == NA_INTEGER {
-                        crate::mainutils::errors::Rf_error(
-                            b"NAs are not allowed in subscripted assignments\0".as_ptr()
-                                as *const core::ffi::c_char,
-                        );
+                        crate::mainutils::errors::Rf_error_cstr(
+                            c"NAs are not allowed in subscripted assignments");
                     }
                 }
             }

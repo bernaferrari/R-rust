@@ -258,26 +258,23 @@ fn parse_failure(message: impl Into<String>) -> ! {
         let c_msg = std::ffi::CString::new(message.as_str()).unwrap_or_default();
         let cond = crate::mainutils::errors::R_makeErrorCondition(
             R_NilValue(),
-            b"parseError\0".as_ptr() as *const std::os::raw::c_char,
-            std::ptr::null(),
+            Some(c"parseError"),
+            None,
             2,
-            c_msg.as_ptr(),
-        );
+            Some(&c_msg));
         let _guard = protect(cond);
         let lineno = crate::sexp::constructors::Rf_ScalarInteger(line);
         let colno = crate::sexp::constructors::Rf_ScalarInteger(col);
         crate::mainutils::errors::R_setConditionField(
             cond,
             2,
-            b"lineno\0".as_ptr() as *const std::os::raw::c_char,
-            lineno,
-        );
+            c"lineno",
+            lineno);
         crate::mainutils::errors::R_setConditionField(
             cond,
             3,
-            b"colno\0".as_ptr() as *const std::os::raw::c_char,
-            colno,
-        );
+            c"colno",
+            colno);
         crate::sexp::instance::with_required_current_instance(|inst| {
             (*inst).error_state.signalled_condition =
                 crate::sexp::instance::RuntimeValue::from_raw_in(inst, cond);

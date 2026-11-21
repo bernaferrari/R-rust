@@ -31,7 +31,7 @@ use std::slice;
 
 use crate::attrib_core::{R_NamesSymbol, setAttrib};
 use crate::main::coerce::{asInteger, asReal, coerceVector};
-use crate::main::errors::Rf_error;
+use crate::main::errors::{Rf_error, Rf_error_cstr};
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::ffi::{NA_REAL, SEXP, SEXPTYPE};
@@ -43,7 +43,7 @@ use crate::sexp::protect::protect;
 
 fn error(msg: &str) {
     let c_msg = CString::new(msg).unwrap_or_default();
-    Rf_error(c_msg.as_ptr());
+    Rf_error_cstr(&c_msg);
 }
 
 fn mkChar(s: &str) -> SEXP {
@@ -189,7 +189,7 @@ pub fn ksmooth(x: SEXP, y: SEXP, xp: SEXP, skrn: SEXP, sbw: SEXP) -> SEXP {
 
     let nx = XLENGTH(x) as usize;
     if XLENGTH(y) != nx as crate::sexp::ffi::R_xlen_t {
-        Rf_error(b"'x' and 'y' lengths differ\0".as_ptr() as *const std::os::raw::c_char);
+        Rf_error_cstr(c"'x' and 'y' lengths differ");
     }
     let np = XLENGTH(xp) as usize;
     let yp = Rf_allocVector3(SEXPTYPE::REALSXP, np as crate::sexp::ffi::R_xlen_t);

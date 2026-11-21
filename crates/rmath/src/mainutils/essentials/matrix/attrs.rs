@@ -1418,11 +1418,10 @@ pub fn do_structure(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             // deprecations while the default path retains structure()'s call.
             let condition = crate::mainutils::errors::R_makeWarningCondition(
                 call,
-                c"deprecatedWarning".as_ptr(),
-                std::ptr::null(),
+                Some(c"deprecatedWarning"),
+                None,
                 0,
-                c_msg.as_ptr(),
-            );
+                Some(&c_msg));
             let _condition_guard = protect(condition);
             let muffled =
                 crate::mainutils::essentials::signal_calling_warning_condition(condition, rho);

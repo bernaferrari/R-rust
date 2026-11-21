@@ -225,8 +225,7 @@ pub fn Smirnov_sim(sr: SEXP, sc: SEXP, sb: SEXP, twosided: SEXP) -> SEXP {
     let nc = LENGTH(sc);
     let b = crate::mainutils::coerce::asInteger(sb);
     if nc != 2 {
-        crate::main::errors::Rf_error(b"Smirnov statistic only defined for two groups\0".as_ptr()
-            as *const std::os::raw::c_char);
+        crate::main::errors::Rf_error_cstr(c"Smirnov statistic only defined for two groups");
     }
     let isr = crate::library::stats::checked::int_vec(sr);
     let isc = crate::library::stats::checked::int_vec(sc);
@@ -235,8 +234,8 @@ pub fn Smirnov_sim(sr: SEXP, sc: SEXP, sb: SEXP, twosided: SEXP) -> SEXP {
         match n.checked_add(isr[i]) {
             Some(total) => n = total,
             None => {
-                crate::main::errors::Rf_error(
-                    b"Sample size too large\0".as_ptr() as *const std::os::raw::c_char
+                crate::main::errors::Rf_error_cstr(
+                    c"Sample size too large"
                 );
                 unreachable!("Rf_error raises an R error");
             }

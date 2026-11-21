@@ -549,7 +549,7 @@ pub fn do_signalCondition_r(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SE
     };
     if cond.is_null()
         || cond == R_NilValue()
-        || crate::mainutils::objects::inherits2(cond, c"condition".as_ptr()) == 0
+        || crate::mainutils::objects::inherits2(cond, c"condition") == 0
     {
         let msg = elt_to_string(cond, 0);
         cond = simple_condition(&msg, &["simpleCondition", "condition"]);

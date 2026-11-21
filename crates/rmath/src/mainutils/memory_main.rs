@@ -394,8 +394,7 @@ pub fn R_chk_calloc(nelem: usize, elsize: usize) -> *mut c_void {
     unsafe {
         let p = crate::mainutils::raw_heap::calloc(nelem, elsize);
         if p.is_null() {
-            static MSG: &[u8] = b"memory allocation failed (calloc)\0";
-            crate::mainutils::errors::Rf_error(MSG.as_ptr() as *const c_char);
+            crate::mainutils::errors::Rf_error_cstr(c"memory allocation failed (calloc)");
         }
         p
     }
@@ -408,8 +407,7 @@ pub unsafe fn R_chk_realloc(ptr: *mut c_void, size: usize) -> *mut c_void {
     unsafe {
         let p = crate::mainutils::raw_heap::realloc(ptr, size);
         if p.is_null() {
-            static MSG: &[u8] = b"memory allocation failed (realloc)\0";
-            crate::mainutils::errors::Rf_error(MSG.as_ptr() as *const c_char);
+            crate::mainutils::errors::Rf_error_cstr(c"memory allocation failed (realloc)");
         }
         p
     }
@@ -1441,19 +1439,17 @@ pub fn R_duplicateAsResizable(x: SEXP) -> SEXP {
 /// This is the equivalent of R's `R_signal_protect_error()`.
 pub fn R_signal_protect_error() {
     {
-        crate::mainutils::errors::errorcall(
+        crate::mainutils::errors::errorcall_cstr(
             R_NilValue(),
-            b"protect stack overflow\0".as_ptr() as *const c_char,
-        );
+            c"protect stack overflow");
     }
 }
 
 pub fn R_signal_unprotect_error() {
     {
-        crate::mainutils::errors::errorcall(
+        crate::mainutils::errors::errorcall_cstr(
             R_NilValue(),
-            b"unprotect stack underflow\0".as_ptr() as *const c_char,
-        );
+            c"unprotect stack underflow");
     }
 }
 

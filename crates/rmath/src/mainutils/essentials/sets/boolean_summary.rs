@@ -93,7 +93,7 @@ fn reduce(
             if value.typeof_() != SEXPTYPE::INTSXP {
                 crate::mainutils::errors::Rf_warningcall1(
                     call,
-                    coercion::warning(value.typeof_()).as_ptr(),
+                    coercion::warning(value.typeof_()),
                 );
 
                 check();

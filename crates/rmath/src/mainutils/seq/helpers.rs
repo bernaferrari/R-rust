@@ -101,7 +101,7 @@ pub unsafe fn check1arg(args: SEXP, call: SEXP, name: *const c_char) {
                 String::from_utf8_lossy(supplied),
                 String::from_utf8_lossy(formal),
             );
-            errorcall(call, msg.as_ptr() as *const c_char);
+            errorcall_cstr(call, std::ffi::CStr::from_bytes_until_nul(msg.as_bytes()).unwrap_or_default());
             return;
         }
         if !supplied.is_empty()
@@ -118,16 +118,10 @@ pub unsafe fn check1arg(args: SEXP, call: SEXP, name: *const c_char) {
     }
 }
 
-pub fn errorcall(call: SEXP, format: *const c_char) {
-    crate::mainutils::errors::errorcall(call, format);
-}
+pub use crate::mainutils::errors::{errorcall, errorcall_cstr, warningcall, warningcall_cstr};
 
 pub fn errorcall_never(call: SEXP, msg: &str) -> ! {
     crate::mainutils::errors::errorcall_str(call, msg);
-}
-
-pub unsafe fn warningcall(call: SEXP, format: *const c_char) {
-    crate::mainutils::errors::warningcall(call, format)
 }
 
 /// `xlength()` — like `XLENGTH()`, but walks pairlists (counting cells) and
@@ -156,7 +150,7 @@ pub fn xlength(s: SEXP) -> R_xlen_t {
 
 pub fn error(msg: &str) {
     let c_msg = std::ffi::CString::new(msg).unwrap_or_default();
-    crate::mainutils::errors::errorcall(std::ptr::null_mut(), c_msg.as_ptr() as *const c_char);
+    crate::mainutils::errors::errorcall_cstr(std::ptr::null_mut(), &c_msg);
 }
 
 pub fn R_typeToChar(s: SEXP) -> *const c_char {
@@ -241,8 +235,15 @@ pub fn allocFormalsList6(a1: SEXP, a2: SEXP, a3: SEXP, a4: SEXP, a5: SEXP, a6: S
 pub fn matchArgs_NR(formals: SEXP, args: SEXP, call: SEXP) -> SEXP {
     unsafe { crate::mainutils::match_mod::matchArgs_RC(formals, args, call) }
 }
+/// # Safety
+///
+/// `what` must be null or point to a NUL-terminated string valid for reads.
 pub unsafe fn inherits(s: SEXP, what: *const c_char) -> c_int {
-    crate::mainutils::objects::inherits2(s, what)
+    if what.is_null() {
+        return 0;
+    }
+    // SAFETY: the caller guarantees a non-null `what` is a NUL-terminated string.
+    crate::mainutils::objects::inherits2(s, unsafe { std::ffi::CStr::from_ptr(what) })
 }
 
 // Use the runtime's scalar conversion for strings, complex values and empty

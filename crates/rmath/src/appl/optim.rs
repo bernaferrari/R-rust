@@ -8,7 +8,7 @@
 // Based on Pascal code in J.C. Nash, 'Compact Numerical Methods for
 // Computers', 2nd edition, converted by p2c then re-crafted by B.D. Ripley.
 
-use crate::main::errors::Rf_error;
+use crate::main::errors::Rf_error_cstr;
 use libm::*;
 
 // =====================================================================
@@ -141,7 +141,7 @@ pub unsafe fn vmmin(
     let result =
         minimize_bfgs(point, mask, &mut objective, settings, owner).unwrap_or_else(|message| {
             let message = std::ffi::CString::new(message).unwrap_or_default();
-            Rf_error(message.as_ptr());
+            Rf_error_cstr(&message);
             unreachable!("Rf_error does not return")
         });
     unsafe {

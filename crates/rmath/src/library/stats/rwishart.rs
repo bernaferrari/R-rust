@@ -24,7 +24,7 @@ use std::os::raw::{c_double, c_int};
 
 use crate::attrib_core::{R_DimSymbol, getAttrib, setAttrib};
 use crate::main::coerce::{asInteger, asReal};
-use crate::main::errors::Rf_error;
+use crate::main::errors::{Rf_error, Rf_error_cstr};
 use crate::main::random::{GetRNGstate, PutRNGstate};
 use crate::modules::lapack::backend;
 use crate::sexp::accessors::*;
@@ -59,7 +59,7 @@ fn alloc3DArray(sexptype: c_int, nrow: c_int, ncol: c_int, ndepth: c_int) -> SEX
 
 fn error(msg: &str) {
     let c_msg = std::ffi::CString::new(msg).unwrap_or_default();
-    Rf_error(c_msg.as_ptr());
+    Rf_error_cstr(&c_msg);
 }
 
 // ---------------------------------------------------------------------------

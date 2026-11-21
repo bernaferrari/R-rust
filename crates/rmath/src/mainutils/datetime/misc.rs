@@ -72,7 +72,7 @@ pub(crate) fn as_character_real(
 pub fn do_as_double_POSIXt(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
-        let ct = if crate::mainutils::objects::inherits2(x, c"POSIXct".as_ptr()) != 0
+        let ct = if crate::mainutils::objects::inherits2(x, c"POSIXct") != 0
             && (TYPEOF(x) == SEXPTYPE::REALSXP || TYPEOF(x) == SEXPTYPE::INTSXP)
         {
             x

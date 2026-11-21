@@ -220,8 +220,7 @@ impl<'session> ZeroinCtx<'session> {
                     let number = number?;
                     if number == crate::sexp::ffi::NA_INTEGER {
                         crate::mainutils::errors::Rf_warning1(
-                            c"NA replaced by maximum positive value".as_ptr(),
-                        );
+                            c"NA replaced by maximum positive value");
                         owner.require_active()?;
                         f64::MAX
                     } else {
@@ -267,7 +266,7 @@ fn finite_uniroot(v: f64) -> f64 {
     };
     // GNU signals at the evaluation that produced the value.  In particular,
     // handlers may run nested optimizers or turn this warning into an error.
-    crate::mainutils::errors::Rf_warning1(message.as_ptr());
+    crate::mainutils::errors::Rf_warning1(&message);
     replacement
 }
 
@@ -541,8 +540,7 @@ unsafe extern "C" fn nlm_fcn(
                 let iv = INTEGER_ELT(value, 0);
                 if iv == NA_INTEGER {
                     crate::mainutils::errors::Rf_warning1(
-                        c"NA replaced by maximum positive value".as_ptr(),
-                    );
+                        c"NA replaced by maximum positive value");
                     *f = f64::MAX;
                 } else {
                     *f = iv as f64;
@@ -557,14 +555,13 @@ unsafe extern "C" fn nlm_fcn(
                     if rv == f64::NEG_INFINITY {
                         // keep sign for root finding !
                         crate::mainutils::errors::Rf_warning1(
-                            c"-Inf replaced by maximally negative value".as_ptr(),
-                        );
+                            c"-Inf replaced by maximally negative value");
                         *f = -f64::MAX;
                     } else {
                         crate::mainutils::errors::Rf_warning1(if ISNAN(rv) {
-                            c"NA/NaN replaced by maximum positive value".as_ptr()
+                            c"NA/NaN replaced by maximum positive value"
                         } else {
-                            c"Inf replaced by maximum positive value".as_ptr()
+                            c"Inf replaced by maximum positive value"
                         });
                         *f = f64::MAX;
                     }
@@ -907,14 +904,12 @@ pub unsafe fn do_nlm(
                         state.have_hessian = true;
                     } else {
                         crate::mainutils::errors::Rf_warning1(
-                            c"hessian supplied is of the wrong length or mode, so ignored".as_ptr(),
-                        );
+                            c"hessian supplied is of the wrong length or mode, so ignored");
                     }
                 }
             } else {
                 crate::mainutils::errors::Rf_warning1(
-                    c"gradient supplied is of the wrong length or mode, so ignored".as_ptr(),
-                );
+                    c"gradient supplied is of the wrong length or mode, so ignored");
             }
         }
         if (msg / 4) % 2 != 0 && iahflg == 0 {

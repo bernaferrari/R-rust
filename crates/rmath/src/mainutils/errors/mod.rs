@@ -192,7 +192,8 @@ pub fn nmath_warning_hook(message: &str) {
     {
         // Skip both redundant CString recopy and a second mutable attribution
         // lookup: handlers and default emission use the rooted original call.
-        render::vsignalWarning(call.as_raw(), buffer.as_c_str().as_ptr());
+        // SAFETY: `buffer` owns a live NUL-terminated message for the call.
+        unsafe { render::vsignalWarning(call.as_raw(), buffer.as_c_str().as_ptr()) };
     }
     nmath_bridge_checked(owner.require_active());
 }

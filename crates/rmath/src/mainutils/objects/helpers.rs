@@ -221,26 +221,23 @@ pub(crate) fn Seql(a: SEXP, b: SEXP) -> c_int {
 /// Find the position of string `what` in character vector `klass`.
 /// Returns the 0-based index, or -1 if not found.
 /// This is the Rust equivalent of R's `stringPositionTr()`.
-pub(crate) fn stringPositionTr(klass: SEXP, what: *const c_char) -> c_int {
-    unsafe {
-        if klass.is_null() || what.is_null() {
-            return -1;
-        }
-        let n = LENGTH(klass);
-        for i in 0..n {
-            let elt = STRING_ELT(klass, i as R_xlen_t);
-            if !elt.is_null() {
-                let cs = char_cstring(elt);
-                if !cs.is_none()
-                    && cs.as_deref().unwrap_or_default().to_bytes()
-                        == std::ffi::CStr::from_ptr(what).to_bytes()
-                {
-                    return i;
-                }
+pub(crate) fn stringPositionTr(klass: SEXP, what: &std::ffi::CStr) -> c_int {
+    if klass.is_null() {
+        return -1;
+    }
+    let n = LENGTH(klass);
+    for i in 0..n {
+        let elt = STRING_ELT(klass, i as R_xlen_t);
+        if !elt.is_null() {
+            let cs = char_cstring(elt);
+            if !cs.is_none()
+                && cs.as_deref().unwrap_or_default().to_bytes() == what.to_bytes()
+            {
+                return i;
             }
         }
-        -1
     }
+    -1
 }
 
 // ---------------------------------------------------------------------------

@@ -39,7 +39,7 @@ pub(super) fn do_dput(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         };
         let lines = required(factory.wrap(super::deparse1(printed.as_raw(), false, options)));
         required(owner.require_active());
-        if crate::mainutils::objects::inherits2(file.as_raw(), c"connection".as_ptr()) == 0 {
+        if crate::mainutils::objects::inherits2(file.as_raw(), c"connection") == 0 {
             r_error("'file' must be a character string or connection");
         }
         let separator = required(factory.strings(&["\n"]));

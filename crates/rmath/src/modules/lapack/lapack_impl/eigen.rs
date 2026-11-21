@@ -7,18 +7,18 @@ pub fn La_rs(x: SEXP, only_values: SEXP) -> SEXP {
     unsafe {
         let dim = getAttrib(x, R_DimSymbol());
         if dim.is_null() || dim == R_NilValue() {
-            Rf_error(b"'x' must be a matrix\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"'x' must be a matrix");
         }
 
         let n = INTEGER(coerceVector(dim, INTSXP_C)).add(0).read() as i32;
         let n2 = INTEGER(coerceVector(dim, INTSXP_C)).add(1).read() as i32;
         if n != n2 {
-            Rf_error(b"'x' must be a square numeric matrix\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"'x' must be a square numeric matrix");
         }
 
         let ov = asLogical(only_values);
         if ov == NA_INTEGER {
-            Rf_error(b"invalid 'only.values' argument\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"invalid 'only.values' argument");
         }
 
         let jobv = if ov != 0 { b'N' } else { b'V' };
@@ -67,7 +67,7 @@ pub fn La_rs(x: SEXP, only_values: SEXP) -> SEXP {
         );
 
         if info != 0 {
-            Rf_error(b"error code from Lapack routine 'dsyevr'\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"error code from Lapack routine 'dsyevr'");
         }
 
         lwork = tmp as c_int;
@@ -82,7 +82,7 @@ pub fn La_rs(x: SEXP, only_values: SEXP) -> SEXP {
         );
 
         if info != 0 {
-            Rf_error(b"error code from Lapack routine 'dsyevr'\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"error code from Lapack routine 'dsyevr'");
         }
 
         let ret;
@@ -115,18 +115,18 @@ pub fn La_rg(x: SEXP, only_values: SEXP) -> SEXP {
     unsafe {
         let dim = getAttrib(x, R_DimSymbol());
         if dim.is_null() || dim == R_NilValue() {
-            Rf_error(b"'x' must be a matrix\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"'x' must be a matrix");
         }
 
         let n = INTEGER(coerceVector(dim, INTSXP_C)).add(0).read() as i32;
         let n2 = INTEGER(coerceVector(dim, INTSXP_C)).add(1).read() as i32;
         if n != n2 {
-            Rf_error(b"'x' must be a square numeric matrix\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"'x' must be a square numeric matrix");
         }
 
         let ov = asLogical(only_values);
         if ov == NA_INTEGER {
-            Rf_error(b"invalid 'only.values' argument\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"invalid 'only.values' argument");
         }
 
         let jobvl = b'N';
@@ -175,7 +175,7 @@ pub fn La_rg(x: SEXP, only_values: SEXP) -> SEXP {
         );
 
         if info != 0 {
-            Rf_error(b"error code from Lapack routine 'dgeev'\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"error code from Lapack routine 'dgeev'");
         }
 
         lwork = tmp as c_int;
@@ -199,7 +199,7 @@ pub fn La_rg(x: SEXP, only_values: SEXP) -> SEXP {
         );
 
         if info != 0 {
-            Rf_error(b"error code from Lapack routine 'dgeev'\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"error code from Lapack routine 'dgeev'");
         }
 
         // Build the result
@@ -309,7 +309,7 @@ pub fn La_rs_cmplx(xin: SEXP, only_values: SEXP) -> SEXP {
 
         let ov = asLogical(only_values);
         if ov == NA_INTEGER {
-            Rf_error(b"invalid 'only.values' argument\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"invalid 'only.values' argument");
         }
 
         let jobv = if ov != 0 { b'N' } else { b'V' };
@@ -364,7 +364,7 @@ pub fn La_rs_cmplx(xin: SEXP, only_values: SEXP) -> SEXP {
         );
 
         if info != 0 {
-            Rf_error(b"error code from Lapack routine 'zheev'\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"error code from Lapack routine 'zheev'");
         }
 
         lwork = tmp.r as c_int;
@@ -384,7 +384,7 @@ pub fn La_rs_cmplx(xin: SEXP, only_values: SEXP) -> SEXP {
         );
 
         if info != 0 {
-            Rf_error(b"error code from Lapack routine 'zheev'\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"error code from Lapack routine 'zheev'");
         }
 
         let ret;
@@ -450,7 +450,7 @@ pub fn La_rg_cmplx(x: SEXP, only_values: SEXP) -> SEXP {
 
         let ov = asLogical(only_values);
         if ov == NA_INTEGER {
-            Rf_error(b"invalid 'only.values' argument\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"invalid 'only.values' argument");
         }
 
         let jobvl = b'N';
@@ -514,7 +514,7 @@ pub fn La_rg_cmplx(x: SEXP, only_values: SEXP) -> SEXP {
         );
 
         if info != 0 {
-            Rf_error(b"error code from Lapack routine 'zgeev'\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"error code from Lapack routine 'zgeev'");
         }
 
         lwork = tmp.r as c_int;
@@ -538,7 +538,7 @@ pub fn La_rg_cmplx(x: SEXP, only_values: SEXP) -> SEXP {
         );
 
         if info != 0 {
-            Rf_error(b"error code from Lapack routine 'zgeev'\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"error code from Lapack routine 'zgeev'");
         }
 
         let ret;

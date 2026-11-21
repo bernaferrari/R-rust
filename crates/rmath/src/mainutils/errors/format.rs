@@ -28,8 +28,13 @@ unsafe extern "C" {
 /// passes a NULL `ap` with an already-formatted message (see
 /// `format_varargs`). Mirror that contract: copy the format string as the
 /// final message, honoring the size/truncation-return semantics.
+///
+/// # Safety
+///
+/// `format` must be null or NUL-terminated, and `buf` must be null or valid
+/// for `size` byte writes.
 #[cfg(target_arch = "wasm32")]
-pub(super) fn vsnprintf_c(
+pub(super) unsafe fn vsnprintf_c(
     buf: *mut c_char,
     size: usize,
     format: *const c_char,
@@ -57,17 +62,6 @@ pub(super) fn vsnprintf_c(
 /// Ported from R's `wd()` function in errors.c.
 pub fn wd(buf: &str) -> usize {
     buf.chars().count()
-}
-
-/// Display width from C string.
-pub(super) fn wd_c(s: *const c_char) -> usize {
-    unsafe {
-        if s.is_null() {
-            return 0;
-        }
-        let str = CStr::from_ptr(s).to_str().unwrap_or("");
-        wd(str)
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -124,7 +118,12 @@ pub(super) fn print_trunc(buf: &mut [u8; BUFSIZE + 1], truncated: bool) {
 /// Note: The `ap` parameter is only meaningful when called from C code that passes
 /// a real va_list. When called from Rust, ap is typically null and the format
 /// string should be pre-formatted.
-pub(super) fn format_varargs(format: *const c_char, ap: *mut c_void) -> String {
+///
+/// # Safety
+///
+/// `format` must be null or NUL-terminated and valid for reads, and `ap` must
+/// be null or a live `va_list` whose arguments match `format`.
+pub(super) unsafe fn format_varargs(format: *const c_char, ap: *mut c_void) -> String {
     unsafe {
         if format.is_null() {
             return String::new();
@@ -153,7 +152,14 @@ pub(super) fn format_varargs(format: *const c_char, ap: *mut c_void) -> String {
 
 /// Format a printf-style format string with variadic arguments into a buffer.
 /// Uses C's vsnprintf via FFI. Returns (formatted_string, was_truncated).
-pub(super) fn format_varargs_to_buf(format: *const c_char, ap: *mut c_void) -> (String, bool) {
+///
+/// # Safety
+///
+/// Same contract as [`format_varargs`].
+pub(super) unsafe fn format_varargs_to_buf(
+    format: *const c_char,
+    ap: *mut c_void,
+) -> (String, bool) {
     unsafe {
         if format.is_null() {
             return (String::new(), false);

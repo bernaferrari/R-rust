@@ -14,20 +14,25 @@ use super::*;
 
 /// Dispatch an S3 method by creating the dispatch environment and calling
 /// the method function.
-fn dispatchMethod(
+///
+/// # Safety
+///
+/// `cptr` must be null or point to a live context on the current context
+/// stack, not aliased by another active Rust reference during the call.
+unsafe fn dispatchMethod(
     op: SEXP,
     sxp: SEXP,
     dotClass: SEXP,
     cptr: *mut RCNTXT,
     method: SEXP,
-    generic: *const c_char,
+    generic: &std::ffi::CStr,
     rho: SEXP,
     callrho: SEXP,
     defrho: SEXP,
 ) -> SEXP {
     unsafe {
         // Create the S3 dispatch variables
-        let generic_str = Rf_mkString(generic);
+        let generic_str = Rf_mkString(generic.as_ptr());
         let _generic_str_guard = protect(generic_str);
 
         let blank_str = Rf_mkString(b"\x00".as_ptr() as *const c_char);
@@ -580,19 +585,16 @@ fn lookup_s3_method_in_attached_tables(method_sym: SEXP, rho: SEXP) -> SEXP {
 /// method, dispatching to it if found. Returns 1 if a method was dispatched,
 /// 0 if no method was found.
 pub fn usemethod(
-    generic: *const c_char,
+    generic: &std::ffi::CStr,
     obj: SEXP,
     call: SEXP,
     args: SEXP,
     rho: SEXP,
     callrho: SEXP,
     defrho: SEXP,
-    ans: *mut SEXP,
+    ans: &mut SEXP,
 ) -> c_int {
     unsafe {
-        if generic.is_null() || ans.is_null() {
-            return 0;
-        }
 
         // Get the context which UseMethod was called from
         let cptr = R_GlobalContext();
@@ -604,7 +606,7 @@ pub fn usemethod(
         let klass = R_data_class2(obj);
         let _klass_guard = protect(klass);
 
-        let generic_name = std::ffi::CStr::from_ptr(generic).to_string_lossy();
+        let generic_name = generic.to_string_lossy();
         let Some(method_match) =
             lookup_s3_method_for_classes(&generic_name, klass, rho, callrho, defrho, true)
         else {
@@ -618,6 +620,7 @@ pub fn usemethod(
                     let dotClass = stringSuffix(klass, i);
                     let _dotclass_guard = protect(dotClass);
                     setAttrib(dotClass, sym("previous"), klass);
+                    // SAFETY: `cptr` is the live global context checked non-null above.
                     *ans = dispatchMethod(
                         op,
                         method_match.method,
@@ -630,6 +633,7 @@ pub fn usemethod(
                         defrho,
                     );
                 } else {
+                    // SAFETY: `cptr` is the live global context checked non-null above.
                     *ans = dispatchMethod(
                         op,
                         method_match.method,
@@ -644,6 +648,7 @@ pub fn usemethod(
                 }
             }
             None => {
+                // SAFETY: `cptr` is the live global context checked non-null above.
                 *ans = dispatchMethod(
                     op,
                     method_match.method,
@@ -671,16 +676,13 @@ pub fn findmethod(
     call: SEXP,
     op: SEXP,
     obj: SEXP,
-    generic: *const c_char,
-    method: *mut SEXP,
+    generic: &std::ffi::CStr,
+    method: &mut SEXP,
     _rho: SEXP,
     _callrho: SEXP,
     _defrho: SEXP,
 ) -> c_int {
     unsafe {
-        if generic.is_null() || method.is_null() {
-            return 0;
-        }
 
         let klass = R_data_class2(obj);
         let _klass_guard = protect(klass);
@@ -688,7 +690,7 @@ pub fn findmethod(
 
         for i in 0..nclass {
             let ss = translateChar(STRING_ELT(klass, i as R_xlen_t));
-            let m = crate::mainutils::names::installS3Signature(generic, ss);
+            let m = crate::mainutils::names::installS3Signature(generic.as_ptr(), ss);
             let sxp = R_LookupMethod(m, ptr::null_mut(), ptr::null_mut(), ptr::null_mut());
             if isFunction(sxp) != FALSE {
                 if is_base_sort_list_kludge(m, sxp) {
@@ -700,10 +702,7 @@ pub fn findmethod(
         }
 
         // Try default
-        let m = crate::mainutils::names::installS3Signature(
-            generic,
-            b"default\x00".as_ptr() as *const c_char,
-        );
+        let m = crate::mainutils::names::installS3Signature(generic.as_ptr(), c"default".as_ptr());
         let sxp = R_LookupMethod(m, ptr::null_mut(), ptr::null_mut(), ptr::null_mut());
         if isFunction(sxp) != FALSE {
             *method = sxp;
@@ -722,14 +721,14 @@ pub fn findmethod(
 /// Returns 1 if dispatch occurred, 0 otherwise.
 pub fn DispatchGroup(
     s: SEXP,
-    code: *const c_char,
+    code: &std::ffi::CStr,
     call: SEXP,
-    op: *const c_char,
+    op: &std::ffi::CStr,
     args: SEXP,
     env: SEXP,
 ) -> c_int {
     unsafe {
-        if s.is_null() || code.is_null() {
+        if s.is_null() {
             return 0;
         }
 
@@ -757,7 +756,7 @@ pub fn DispatchGroup(
 
             // Build the method name: group.class
             let mut buf = [0u8; 512];
-            let code_str = std::ffi::CStr::from_ptr(code);
+            let code_str = code;
             let ss_str = std::ffi::CStr::from_ptr(ss);
             let mut pos = 0;
             for &b in code_str.to_bytes() {
@@ -802,15 +801,12 @@ pub fn DispatchGroup(
 pub(crate) fn DispatchOrEval_objects(
     call: SEXP,
     op: SEXP,
-    generic: *const c_char,
+    generic: &std::ffi::CStr,
     args: SEXP,
     env: SEXP,
-    ans: *mut SEXP,
+    ans: &mut SEXP,
 ) -> c_int {
     unsafe {
-        if generic.is_null() || ans.is_null() {
-            return 0;
-        }
 
         // Get the class of the first argument
         let obj = if !args.is_null() && args != R_NilValue() {
@@ -829,7 +825,7 @@ pub(crate) fn DispatchOrEval_objects(
 
         for i in 0..nclass {
             let ss = translateChar(STRING_ELT(klass, i as R_xlen_t));
-            let method_sym = crate::mainutils::names::installS3Signature(generic, ss);
+            let method_sym = crate::mainutils::names::installS3Signature(generic.as_ptr(), ss);
             let method_val = R_LookupMethod(method_sym, env, env, R_GlobalEnv());
 
             if isFunction(method_val) != FALSE {

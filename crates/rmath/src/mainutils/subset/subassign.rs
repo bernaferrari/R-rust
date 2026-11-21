@@ -242,11 +242,9 @@ pub fn do_subassign(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                         && vs != crate::sexp::globals::R_NaString()
                     {
                         warned = true;
-                        crate::mainutils::errors::warningcall(
+                        crate::mainutils::errors::warningcall_cstr(
                             call,
-                            b"invalid factor level, NA generated\0".as_ptr()
-                                as *const core::ffi::c_char,
-                        );
+                            c"invalid factor level, NA generated");
                     }
                     SET_INTEGER_ELT(codes, i as c_int, code);
                 }

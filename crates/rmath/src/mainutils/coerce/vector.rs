@@ -132,20 +132,18 @@ pub fn coerceToInteger(v: SEXP) -> SEXP {
                 source
                     .try_real_elt(i)
                     .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
-                &mut warn,
-            ),
+                Some(&mut warn)),
             SEXPTYPE::CPLXSXP => IntegerFromComplex(
                 source
                     .try_complex_elt(i)
                     .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
-                &mut warn,
-            ),
+                Some(&mut warn)),
             SEXPTYPE::STRSXP => {
                 let text = source
                     .try_string_elt(i)
                     .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
                 check();
-                IntegerFromString(text.as_raw(), &mut warn)
+                IntegerFromString(text.as_raw(), Some(&mut warn))
             }
             SEXPTYPE::RAWSXP => source
                 .try_raw_elt(i)
@@ -217,14 +215,13 @@ pub fn coerceToReal(v: SEXP) -> SEXP {
                 source
                     .try_complex_elt(i)
                     .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
-                &mut warn,
-            ),
+                Some(&mut warn)),
             SEXPTYPE::STRSXP => {
                 let text = source
                     .try_string_elt(i)
                     .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
                 check();
-                RealFromString(text.as_raw(), &mut warn)
+                RealFromString(text.as_raw(), Some(&mut warn))
             }
             SEXPTYPE::RAWSXP => RealFromInteger(
                 source
@@ -306,7 +303,7 @@ pub fn coerceToComplex(v: SEXP) -> SEXP {
                     .try_string_elt(i)
                     .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
                 check();
-                ComplexFromString(text.as_raw(), &mut warn)
+                ComplexFromString(text.as_raw(), Some(&mut warn))
             }
             SEXPTYPE::RAWSXP => ComplexFromInteger(
                 source
@@ -396,8 +393,7 @@ pub fn coerceToRaw(v: SEXP) -> SEXP {
                     source
                         .try_real_elt(i)
                         .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
-                    &mut warn,
-                );
+                    Some(&mut warn));
                 if val == NA_INTEGER || val < 0 || val > 255 {
                     warn |= WARN_RAW;
                     0
@@ -410,8 +406,7 @@ pub fn coerceToRaw(v: SEXP) -> SEXP {
                     source
                         .try_complex_elt(i)
                         .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string())),
-                    &mut warn,
-                );
+                    Some(&mut warn));
                 if val == NA_INTEGER || val < 0 || val > 255 {
                     warn |= WARN_RAW;
                     0
@@ -424,7 +419,7 @@ pub fn coerceToRaw(v: SEXP) -> SEXP {
                     .try_string_elt(i)
                     .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
                 check();
-                let val = IntegerFromString(text.as_raw(), &mut warn);
+                let val = IntegerFromString(text.as_raw(), Some(&mut warn));
                 if val == NA_INTEGER || val < 0 || val > 255 {
                     warn |= WARN_RAW;
                     0

@@ -15,7 +15,7 @@ use std::ptr;
 
 use crate::appl::pretty::r_pretty;
 use crate::library::grdevices::device_registry;
-use crate::mainutils::errors::Rf_error;
+use crate::mainutils::errors::Rf_error_cstr;
 use crate::mainutils::graphics_ffi::{
     pGEDevDesc, pGEcontext, rmath_ge_circle, rmath_ge_device_dirty, rmath_ge_fill,
     rmath_ge_fill_stroke, rmath_ge_from_device_height, rmath_ge_from_device_width,
@@ -966,7 +966,7 @@ pub fn R_GE_checkVersionOrDie(version: c_int) {
             "graphics engine version mismatch: runtime has {R_GE_version}, device requested {version}"
         ))
         .expect("static graphics version error contains no NUL");
-        Rf_error(message.as_ptr());
+        Rf_error_cstr(&message);
     }
 }
 
@@ -1274,7 +1274,7 @@ fn reject_real_line_code_past_int(value: SEXP, ind: c_int, what: &str) {
     if rcode >= (c_int::MAX as f64) + 1.0 {
         let msg =
             CString::new(format!("invalid {what}")).expect("line-parameter error contains no NUL");
-        Rf_error(msg.as_ptr());
+        Rf_error_cstr(&msg);
     }
 }
 
@@ -1756,7 +1756,7 @@ pub unsafe fn GEPretty(lo: *mut c_double, up: *mut c_double, ndiv: *mut c_int) {
         ))
         .expect("GEPretty message contains no NUL");
 
-        Rf_error(msg.as_ptr());
+        Rf_error_cstr(&msg);
     }
     if !lo_value.is_finite() || !up_value.is_finite() {
         let msg = CString::new(format!(
@@ -1765,7 +1765,7 @@ pub unsafe fn GEPretty(lo: *mut c_double, up: *mut c_double, ndiv: *mut c_int) {
         ))
         .expect("GEPretty message contains no NUL");
 
-        Rf_error(msg.as_ptr());
+        Rf_error_cstr(&msg);
     }
     let mut ns = lo_value;
     let mut nu = up_value;

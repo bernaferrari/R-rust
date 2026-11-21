@@ -98,7 +98,7 @@ pub fn L_clip(x: SEXP, y: SEXP, w: SEXP, h: SEXP, hjust: SEXP, vjust: SEXP) -> S
         } else {
             // SAFETY: static format string, no arguments.
             {
-                Rf_warning(c"unable to clip to rotated rectangle".as_ptr())
+                Rf_warning_cstr(c"unable to clip to rotated rectangle")
             };
         }
 

@@ -4,7 +4,7 @@
 use std::os::raw::c_int;
 
 use crate::attrib_core::{R_RowNamesSymbol, getAttrib};
-use crate::main::errors::Rf_error;
+use crate::main::errors::{Rf_error, Rf_error_cstr};
 use crate::main::relop::NA_STRING;
 use crate::main::relop::R_DimSymbol;
 use crate::main::relop::R_NamesSymbol;
@@ -118,7 +118,7 @@ fn check_vector_na(
             }
         }
         _ => {
-            Rf_error(b"invalid 'type' of argument\0".as_ptr() as *const _);
+            Rf_error_cstr(c"invalid 'type' of argument");
         }
     }
 }
@@ -150,7 +150,7 @@ pub fn compcases(args: SEXP) -> SEXP {
                     if len < 0 {
                         len = dim_nrow(owner, dim);
                     } else if len != dim_nrow(owner, dim) {
-                        Rf_error(b"not all arguments have the same length\0".as_ptr() as *const _);
+                        Rf_error_cstr(c"not all arguments have the same length");
 
                         return nil;
                     }
@@ -158,12 +158,12 @@ pub fn compcases(args: SEXP) -> SEXP {
                     if len < 0 {
                         len = LENGTH(u);
                     } else if len != LENGTH(u) {
-                        Rf_error(b"not all arguments have the same length\0".as_ptr() as *const _);
+                        Rf_error_cstr(c"not all arguments have the same length");
 
                         return nil;
                     }
                 } else {
-                    Rf_error(b"invalid 'type' of argument\0".as_ptr() as *const _);
+                    Rf_error_cstr(c"invalid 'type' of argument");
 
                     return nil;
                 }
@@ -181,8 +181,8 @@ pub fn compcases(args: SEXP) -> SEXP {
                         if len < 0 {
                             len = dim_nrow(owner, dim);
                         } else if len != dim_nrow(owner, dim) {
-                            Rf_error(
-                                b"not all arguments have the same length\0".as_ptr() as *const _
+                            Rf_error_cstr(
+                                c"not all arguments have the same length"
                             );
 
                             return nil;
@@ -191,14 +191,14 @@ pub fn compcases(args: SEXP) -> SEXP {
                         if len < 0 {
                             len = LENGTH(u);
                         } else if len != LENGTH(u) {
-                            Rf_error(
-                                b"not all arguments have the same length\0".as_ptr() as *const _
+                            Rf_error_cstr(
+                                c"not all arguments have the same length"
                             );
 
                             return nil;
                         }
                     } else {
-                        Rf_error(b"invalid 'type' of argument\0".as_ptr() as *const _);
+                        Rf_error_cstr(c"invalid 'type' of argument");
 
                         return nil;
                     }
@@ -210,7 +210,7 @@ pub fn compcases(args: SEXP) -> SEXP {
                     if len < 0 {
                         len = LENGTH(u);
                     } else if len != checked(owner.sexp(u)).integer_elt(0).unwrap_or(NA_INTEGER) {
-                        Rf_error(b"not all arguments have the same length\0".as_ptr() as *const _);
+                        Rf_error_cstr(c"not all arguments have the same length");
 
                         return nil;
                     }
@@ -221,7 +221,7 @@ pub fn compcases(args: SEXP) -> SEXP {
             if len < 0 {
                 len = dim_nrow(owner, dim);
             } else if len != dim_nrow(owner, dim) {
-                Rf_error(b"not all arguments have the same length\0".as_ptr() as *const _);
+                Rf_error_cstr(c"not all arguments have the same length");
 
                 return nil;
             }
@@ -229,12 +229,12 @@ pub fn compcases(args: SEXP) -> SEXP {
             if len < 0 {
                 len = LENGTH(car);
             } else if len != LENGTH(car) {
-                Rf_error(b"not all arguments have the same length\0".as_ptr() as *const _);
+                Rf_error_cstr(c"not all arguments have the same length");
 
                 return nil;
             }
         } else {
-            Rf_error(b"invalid 'type' of argument\0".as_ptr() as *const _);
+            Rf_error_cstr(c"invalid 'type' of argument");
 
             return nil;
         }
@@ -242,7 +242,7 @@ pub fn compcases(args: SEXP) -> SEXP {
     }
 
     if len < 0 {
-        Rf_error(b"no input has determined the number of cases\0".as_ptr() as *const _);
+        Rf_error_cstr(c"no input has determined the number of cases");
 
         return nil;
     }

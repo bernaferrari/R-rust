@@ -26,7 +26,7 @@ use std::ptr;
 
 use crate::attrib_core::setAttrib;
 use crate::main::coerce::asInteger;
-use crate::mainutils::errors::Rf_error;
+use crate::mainutils::errors::{Rf_error, Rf_error_cstr};
 #[cfg(not(target_arch = "wasm32"))]
 use crate::modules::internet::rsock::{
     in_Rsockclose, in_Rsockconnect, in_Rsocklisten, in_Rsockopen, in_Rsockread, in_Rsockwrite,
@@ -41,7 +41,7 @@ use crate::sexp::symbol::Rf_install;
 
 fn require_scalar(x: SEXP, message: &[u8]) {
     if LENGTH(x) != 1 {
-        Rf_error(message.as_ptr() as *const c_char);
+        Rf_error_cstr(crate::mainutils::errors::cstr_until_nul(message));
     }
 }
 
@@ -62,14 +62,14 @@ pub fn sockread(sport: SEXP, smaxlen: SEXP) -> SEXP {
         let mut sock = asInteger(sport);
         let mut maxlen = asInteger(smaxlen);
         if maxlen < 0 {
-            Rf_error(b"maxlen must be non-negative\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"maxlen must be non-negative");
         }
 
         let mut buf: *mut c_char = ptr::null_mut();
         let mut abuf = &mut buf as *mut *mut c_char;
         in_Rsockread(&mut sock, abuf, &mut maxlen);
         if maxlen < 0 {
-            Rf_error(b"Error reading data in Rsockread\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"Error reading data in Rsockread");
         }
 
         let ans = Rf_allocVector(SEXPTYPE::STRSXP, 1);
@@ -88,7 +88,7 @@ pub fn sockclose(sport: SEXP) -> SEXP {
     require_scalar(sport, b"invalid 'socket' argument\0");
     let mut sock = asInteger(sport);
     if sock <= 0 {
-        Rf_error(b"attempt to close invalid socket\0".as_ptr() as *const c_char);
+        Rf_error_cstr(c"attempt to close invalid socket");
     }
     // SAFETY: `sock` is a live local `c_int`.
     unsafe { in_Rsockclose(&mut sock) };

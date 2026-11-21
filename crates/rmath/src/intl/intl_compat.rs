@@ -20,7 +20,8 @@ use std::os::raw::c_char;
 /// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
 /// the accompanying lengths) for the duration of the call.
 pub unsafe fn bindtextdomain(domainname: *const c_char, dirname: *const c_char) -> *mut c_char {
-    crate::intl::bindtextdom::libintl_bindtextdomain(domainname, dirname)
+    // SAFETY: forwarded under this function's `# Safety` contract.
+    unsafe { crate::intl::bindtextdom::libintl_bindtextdomain(domainname, dirname) }
 }
 
 /// Alias for `bind_textdomain_codeset()` that calls the libintl_ version.

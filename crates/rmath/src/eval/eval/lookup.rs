@@ -85,10 +85,9 @@ pub fn find_var_safe<'a>(symbol: Sexp<'a>, rho: Sexp<'a>) -> Option<Sexp<'a>> {
 pub(crate) fn missing_arg_error(name: &str) -> ! {
     let c_name = std::ffi::CString::new(name).unwrap_or_default();
     crate::mainutils::errors::R_MissingArgError_c(
-        c_name.as_ptr(),
+        Some(&c_name),
         crate::mainutils::errors::R_getCurrentCall(),
-        c"evalError".as_ptr(),
-    );
+        Some(c"evalError"));
 
     unreachable!("R_MissingArgError_c signals");
 }

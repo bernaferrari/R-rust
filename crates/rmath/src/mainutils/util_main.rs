@@ -777,7 +777,7 @@ pub unsafe fn R_strtod5(
     if let Some(message) = warning {
         // The message has independent storage throughout signaling. Neither
         // the source bytes nor their end-pointer destination are read again.
-        crate::mainutils::errors::Rf_warning1(message.as_ptr());
+        crate::mainutils::errors::Rf_warning1(&message);
     }
     value
 }

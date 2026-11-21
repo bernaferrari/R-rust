@@ -20,7 +20,7 @@ use crate::mainutils::rfile::{RFile, r_fclose, r_feof, r_fgets, r_fopen};
 
 use crate::attrib_core::{R_DimNamesSymbol, R_DimSymbol, R_NamesSymbol, getAttrib, setAttrib};
 use crate::main::coerce::{asInteger, asLogical, asReal, coerceVector};
-use crate::main::errors::{Rf_error, Rf_error_unimplemented};
+use crate::main::errors::{Rf_error, Rf_error_cstr, Rf_error_unimplemented};
 use crate::main::relop::NA_STRING;
 use crate::mainutils::r_format::CArg;
 use crate::sexp::accessors::*;
@@ -2140,7 +2140,7 @@ pub fn Type1FontInUse(name: SEXP, isPDF: SEXP) -> SEXP {
         use crate::sexp::constructors::Rf_ScalarLogical;
         // If name is not a string or length > 1, error
         if TYPEOF(name) != SEXPTYPE::STRSXP || LENGTH(name) > 1 {
-            Rf_error(b"invalid font name or more than one font name\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"invalid font name or more than one font name");
         }
         let fname = CHAR(STRING_ELT(name, 0));
         let pdf = asLogical(isPDF);
@@ -2156,7 +2156,7 @@ pub fn CIDFontInUse(name: SEXP, isPDF: SEXP) -> SEXP {
         use crate::main::coerce::asLogical;
         use crate::sexp::constructors::Rf_ScalarLogical;
         if TYPEOF(name) != SEXPTYPE::STRSXP || LENGTH(name) > 1 {
-            Rf_error(b"invalid font name or more than one font name\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"invalid font name or more than one font name");
         }
         let fname = CHAR(STRING_ELT(name, 0));
         let pdf = asLogical(isPDF);

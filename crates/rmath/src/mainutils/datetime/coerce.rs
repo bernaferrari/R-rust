@@ -25,7 +25,7 @@ pub fn do_as_POSIXlt(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         if x.is_null() || x == R_NilValue() {
             return x;
         }
-        if crate::mainutils::objects::inherits2(x, c"POSIXlt".as_ptr()) != 0 {
+        if crate::mainutils::objects::inherits2(x, c"POSIXlt") != 0 {
             if let Some(tz) = posixlt_supplied_tz(args) {
                 if !tz.is_empty() {
                     let out = crate::mainutils::duplicate::Rf_duplicate(x);
@@ -55,7 +55,7 @@ pub fn do_as_POSIXlt(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         } else {
             String::new()
         };
-        if crate::mainutils::objects::inherits2(x, c"Date".as_ptr()) != 0 {
+        if crate::mainutils::objects::inherits2(x, c"Date") != 0 {
             // GNU as.POSIXlt.Date(x, tz="UTC"): Date2POSIXlt(x, tz) then
             // .POSIXlt(x, tz) — zone strings and tzone both carry tz.
             let tz_use = if tz_s.is_empty() {
@@ -68,7 +68,7 @@ pub fn do_as_POSIXlt(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             return do_D2POSIXlt(call, op, Rf_cons(x, Rf_cons(tz_arg, R_NilValue())), env);
         }
 
-        if crate::mainutils::objects::inherits2(x, c"POSIXct".as_ptr()) != 0
+        if crate::mainutils::objects::inherits2(x, c"POSIXct") != 0
             || TYPEOF(x) == SEXPTYPE::REALSXP
             || TYPEOF(x) == SEXPTYPE::INTSXP
             || TYPEOF(x) == SEXPTYPE::LGLSXP
@@ -148,7 +148,7 @@ pub fn do_as_POSIXlt(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                 "character string is not in a standard unambiguous format",
             );
         }
-        let (text, fmt) = if crate::mainutils::objects::inherits2(x, c"Date".as_ptr()) != 0 {
+        let (text, fmt) = if crate::mainutils::objects::inherits2(x, c"Date") != 0 {
             let formatted = crate::mainutils::essentials::do_format_Date(
                 call,
                 op,
@@ -434,7 +434,7 @@ mod seconds_slice_tests {
 }
 
 fn posixlt_as_date(call: SEXP, op: SEXP, x: SEXP, env: SEXP) -> SEXP {
-    if crate::mainutils::objects::inherits2(x, c"POSIXlt".as_ptr()) != 0 {
+    if crate::mainutils::objects::inherits2(x, c"POSIXlt") != 0 {
         crate::mainutils::essentials::do_as_Date(call, op, Rf_cons(x, R_NilValue()), env)
     } else {
         x
@@ -467,7 +467,7 @@ pub fn do_as_character_POSIXt(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SE
         let x = matched[0];
         let digits_arg = matched[1];
         let outdec_arg = matched[2];
-        let is_lt = crate::mainutils::objects::inherits2(x, c"POSIXlt".as_ptr()) != 0;
+        let is_lt = crate::mainutils::objects::inherits2(x, c"POSIXlt") != 0;
         let digits = if !digits_arg.is_null()
             && digits_arg != R_NilValue()
             && digits_arg != R_MissingArg()

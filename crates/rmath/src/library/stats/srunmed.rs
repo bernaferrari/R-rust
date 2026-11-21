@@ -5,7 +5,7 @@ use std::os::raw::{c_double, c_int};
 
 use crate::library::stats::trunmed::Trunmed;
 use crate::main::coerce::{asInteger, coerceVector};
-use crate::main::errors::Rf_error;
+use crate::main::errors::{Rf_error, Rf_error_cstr};
 use crate::sexp::accessors::{REAL, TYPEOF, XLENGTH};
 use crate::sexp::constructors::Rf_allocVector;
 use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
@@ -314,11 +314,11 @@ pub unsafe fn runmed(
                         "runmed(x, .., na.action=\"na.fail\"): have NAs starting at x[{firstNA}]"
                     ))
                     .unwrap_or_default();
-                    Rf_error(msg.as_ptr());
+                    Rf_error_cstr(&msg);
                     unreachable!();
                 }
                 _ => {
-                    Rf_error(b"runmed(): invalid 'na.action'\0".as_ptr() as *const _);
+                    Rf_error_cstr(c"runmed(): invalid 'na.action'");
                     unreachable!();
                 }
             }
@@ -336,9 +336,8 @@ pub unsafe fn runmed(
             Trunmed(xx_slice, ans_slice, nn, k as i64, end_rule);
         } else {
             if k > nn as c_int {
-                Rf_error(
-                    b"bandwidth/span of running medians is larger than n\0".as_ptr() as *const _,
-                );
+                Rf_error_cstr(
+                    c"bandwidth/span of running medians is larger than n");
             }
             Srunmed(
                 std::slice::from_raw_parts(xx, nn as usize),

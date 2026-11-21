@@ -4,7 +4,7 @@
 use std::os::raw::{c_double, c_int};
 
 use crate::main::coerce::{asInteger, coerceVector};
-use crate::mainutils::errors::Rf_error;
+use crate::mainutils::errors::{Rf_error, Rf_error_cstr};
 use crate::sexp::accessors::{LENGTH, SET_VECTOR_ELT};
 use crate::sexp::constructors::Rf_allocVector;
 use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
@@ -71,7 +71,7 @@ fn burg_values(
 }
 
 fn error(msg: &'static [u8]) -> ! {
-    Rf_error(msg.as_ptr() as *const _);
+    Rf_error_cstr(crate::mainutils::errors::cstr_until_nul(msg));
 
     unreachable!("Rf_error returned");
 }

@@ -308,7 +308,7 @@ pub fn do_array_margin_summary(args: SEXP, rows: bool, mean: bool) -> SEXP {
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
-        if crate::mainutils::objects::inherits2(x, c"data.frame".as_ptr()) != 0 {
+        if crate::mainutils::objects::inherits2(x, c"data.frame") != 0 {
             x = super::construct::data_frame_as_matrix(x);
         }
         let na_rm = named_logical_arg(args, "na.rm").unwrap_or_else(|| {

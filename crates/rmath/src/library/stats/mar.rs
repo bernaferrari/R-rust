@@ -2,7 +2,7 @@ use core::ffi::{c_char, c_double, c_int};
 use std::ptr;
 use std::slice;
 
-use crate::main::errors::Rf_error;
+use crate::main::errors::{Rf_error, Rf_error_cstr};
 
 /*
  * Port of R's src/library/stats/src/mAR.c
@@ -71,7 +71,7 @@ impl Array {
 
 fn array_assert(cond: bool) {
     if !cond {
-        Rf_error(b"assert failed in src/library/stats/mar.rs\0".as_ptr() as *const _);
+        Rf_error_cstr(c"assert failed in src/library/stats/mar.rs");
     }
 }
 
@@ -229,7 +229,7 @@ fn array_op(arr1: &Array, arr2: &Array, op: char, ans: &mut Array) {
             }
         }
         _ => {
-            Rf_error(b"Unknown op in array_op\0".as_ptr() as *const _);
+            Rf_error_cstr(c"Unknown op in array_op");
         }
     }
 }
@@ -261,7 +261,7 @@ fn array_op_in_place(ans: &mut Array, arr: &Array, op: char) {
             }
         }
         _ => {
-            Rf_error(b"Unknown op in array_op_in_place\0".as_ptr() as *const _);
+            Rf_error_cstr(c"Unknown op in array_op_in_place");
         }
     }
 }
@@ -292,7 +292,7 @@ fn scalar_op(arr: &Array, s: f64, op: char, ans: &mut Array) {
             }
         }
         _ => {
-            Rf_error(b"Unknown op in scalar_op\0".as_ptr() as *const _);
+            Rf_error_cstr(c"Unknown op in scalar_op");
         }
     }
 }
@@ -322,7 +322,7 @@ fn scalar_op_in_place(arr: &mut Array, s: f64, op: char) {
             }
         }
         _ => {
-            Rf_error(b"Unknown op in scalar_op_in_place\0".as_ptr() as *const _);
+            Rf_error_cstr(c"Unknown op in scalar_op_in_place");
         }
     }
 }
@@ -524,7 +524,7 @@ fn ldet(x: &Array) -> f64 {
     }
 
     if rank != p {
-        Rf_error(b"Singular matrix in ldet\0".as_ptr() as *const c_char);
+        Rf_error_cstr(c"Singular matrix in ldet");
         unreachable!();
     }
 

@@ -7,6 +7,7 @@
 )]
 
 use super::*;
+use std::ffi::CStr;
 use crate::sexp::{instance::RuntimeValue, object::Sexp};
 
 /// Restore the original physical runtime even when a method throws or revokes
@@ -57,90 +58,83 @@ impl Drop for PrimitiveStatusGuard {
 // ---------------------------------------------------------------------------
 
 /// Set or query the primitive method table for a given operation.
-pub fn do_set_prim_method(op: SEXP, code_string: *const c_char, fundef: SEXP, mlist: SEXP) -> SEXP {
-    unsafe {
-        if code_string.is_null() {
-            error(
-                "invalid primitive methods code: should be \"clear\", \"reset\", \"set\", or \"suppress\"",
-            );
+pub fn do_set_prim_method(op: SEXP, code_string: &CStr, fundef: SEXP, mlist: SEXP) -> SEXP {
+    let code_bytes = code_string.to_bytes_with_nul();
+    let code = match code_bytes[0] {
+        b'c' | b'C' => prim_methods_t::NO_METHODS,
+        b'r' | b'R' => prim_methods_t::NEEDS_RESET,
+        b's' | b'S' => {
+            let next = code_bytes[1];
+            if next == b'e' || next == b'E' {
+                prim_methods_t::HAS_METHODS
+            } else if next == b'u' || next == b'U' {
+                prim_methods_t::SUPPRESSED
+            } else {
+                error(
+                    "invalid primitive methods code: should be \"clear\", \"reset\", \"set\", or \"suppress\"",
+                );
+            }
         }
+        _ => error(
+            "invalid primitive methods code: should be \"clear\", \"reset\", \"set\", or \"suppress\"",
+        ),
+    };
 
-        let code = match *code_string as u8 {
-            b'c' | b'C' => prim_methods_t::NO_METHODS,
-            b'r' | b'R' => prim_methods_t::NEEDS_RESET,
-            b's' | b'S' => {
-                let next = *code_string.add(1) as u8;
-                if next == b'e' || next == b'E' {
-                    prim_methods_t::HAS_METHODS
-                } else if next == b'u' || next == b'U' {
-                    prim_methods_t::SUPPRESSED
-                } else {
-                    error(
-                        "invalid primitive methods code: should be \"clear\", \"reset\", \"set\", or \"suppress\"",
-                    );
+    let Some(offset) = primitive_offset(op) else {
+        error("invalid object: must be a primitive function");
+    };
+
+    with_objects_runtime(|access| {
+        let domain = access.domain();
+        let fundef = if fundef.is_null() || fundef == domain.nil().as_raw() {
+            None
+        } else {
+            Some(domain.wrap(fundef)?)
+        };
+        let mlist = if mlist.is_null() || mlist == domain.nil().as_raw() {
+            None
+        } else {
+            Some(domain.wrap(mlist)?)
+        };
+        let generic = objects_state_in(access, |state| {
+            state.ensure_primitive_slot(offset);
+            let previous = state.prim_generics[offset].owned();
+            if !matches!(
+                code,
+                prim_methods_t::NO_METHODS | prim_methods_t::SUPPRESSED
+            ) && state.prim_generics[offset].is_null()
+                && fundef
+                    .as_ref()
+                    .is_some_and(|fun| fun.typeof_() != SEXPTYPE::CLOSXP)
+            {
+                error("the formal definition of a primitive generic must be a function object");
+            }
+
+            state.prim_methods[offset] = code;
+            if offset as c_int > state.cur_max_offset {
+                state.cur_max_offset = offset as c_int;
+            }
+
+            if code == prim_methods_t::NO_METHODS {
+                state.prim_generics[offset] = RuntimeValue::empty();
+                state.prim_mlist[offset] = RuntimeValue::empty();
+            } else if code != prim_methods_t::SUPPRESSED
+                && state.prim_generics[offset].is_null()
+            {
+                if let Some(fundef) = fundef {
+                    state.prim_generics[offset] = RuntimeValue::from_owned(fundef);
                 }
             }
-            _ => error(
-                "invalid primitive methods code: should be \"clear\", \"reset\", \"set\", or \"suppress\"",
-            ),
-        };
 
-        let Some(offset) = primitive_offset(op) else {
-            error("invalid object: must be a primitive function");
-        };
-
-        with_objects_runtime(|access| {
-            let domain = access.domain();
-            let fundef = if fundef.is_null() || fundef == domain.nil().as_raw() {
-                None
-            } else {
-                Some(domain.wrap(fundef)?)
-            };
-            let mlist = if mlist.is_null() || mlist == domain.nil().as_raw() {
-                None
-            } else {
-                Some(domain.wrap(mlist)?)
-            };
-            let generic = objects_state_in(access, |state| {
-                state.ensure_primitive_slot(offset);
-                let previous = state.prim_generics[offset].owned();
-                if !matches!(
-                    code,
-                    prim_methods_t::NO_METHODS | prim_methods_t::SUPPRESSED
-                ) && state.prim_generics[offset].is_null()
-                    && fundef
-                        .as_ref()
-                        .is_some_and(|fun| fun.typeof_() != SEXPTYPE::CLOSXP)
-                {
-                    error("the formal definition of a primitive generic must be a function object");
+            if code == prim_methods_t::HAS_METHODS {
+                if let Some(mlist) = mlist {
+                    state.prim_mlist[offset] = RuntimeValue::from_owned(mlist);
                 }
-
-                state.prim_methods[offset] = code;
-                if offset as c_int > state.cur_max_offset {
-                    state.cur_max_offset = offset as c_int;
-                }
-
-                if code == prim_methods_t::NO_METHODS {
-                    state.prim_generics[offset] = RuntimeValue::empty();
-                    state.prim_mlist[offset] = RuntimeValue::empty();
-                } else if code != prim_methods_t::SUPPRESSED
-                    && state.prim_generics[offset].is_null()
-                {
-                    if let Some(fundef) = fundef {
-                        state.prim_generics[offset] = RuntimeValue::from_owned(fundef);
-                    }
-                }
-
-                if code == prim_methods_t::HAS_METHODS {
-                    if let Some(mlist) = mlist {
-                        state.prim_mlist[offset] = RuntimeValue::from_owned(mlist);
-                    }
-                }
-                previous
-            })?;
-            Ok(generic.as_ref().map_or(ptr::null_mut(), Sexp::as_raw))
-        })
-    }
+            }
+            previous
+        })?;
+        Ok(generic.as_ref().map_or(ptr::null_mut(), Sexp::as_raw))
+    })
 }
 
 /// R_set_prim_method -- public API for setting primitive methods.
@@ -199,7 +193,7 @@ pub fn R_set_prim_method(
             }
         }
 
-        do_set_prim_method(op, code_string, fundef, mlist);
+        do_set_prim_method(op, CStr::from_ptr(code_string), fundef, mlist);
         fname
     }
 }
@@ -383,20 +377,18 @@ fn possible_dispatch_in(
                 require_objects(PrimitiveStatusGuard::new(access, offset as usize, current));
             do_set_prim_method(
                 op,
-                b"suppressed\x00".as_ptr() as *const c_char,
+                c"suppressed",
                 R_NilValue(),
-                R_NilValue(),
-            );
+                R_NilValue());
             let mlist_owner = require_objects(get_primitive_methods(access, op, rho));
             let mlist = mlist_owner.as_raw();
             require_objects(access.require_active());
             let _mlist_guard = protect(mlist);
             do_set_prim_method(
                 op,
-                b"set\x00".as_ptr() as *const c_char,
+                c"set",
                 R_NilValue(),
-                mlist,
-            );
+                mlist);
             current = with_objects_state(|state| state.prim_methods[offset as usize]);
             reset.armed = false;
         }
@@ -429,8 +421,7 @@ fn possible_dispatch_in(
                 if isFunction(value) != FALSE {
                     if inherits2(
                         value,
-                        b"internalDispatchMethod\x00".as_ptr() as *const c_char,
-                    ) != FALSE
+                        c"internalDispatchMethod") != FALSE
                     {
                         return ptr::null_mut();
                     }
@@ -566,7 +557,7 @@ fn get_primitive_methods(
         access.require_active()?;
         // Discovering the generic can itself evaluate R; maintain the same
         // suppression that GNU applies over the entire reset operation.
-        do_set_prim_method(op, c"suppressed".as_ptr(), R_NilValue(), R_NilValue());
+        do_set_prim_method(op, c"suppressed", R_NilValue(), R_NilValue());
         let domain = access.domain();
         let environment = domain.wrap(rho)?;
         let allocator = access.allocator(&domain)?;

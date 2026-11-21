@@ -60,7 +60,7 @@ pub fn do_hsv(h: SEXP, s: SEXP, v: SEXP, a: SEXP) -> SEXP {
                 let ss = REAL_ELT(s, (i % ns) as c_int);
                 let vv = REAL_ELT(v, (i % nv) as c_int);
                 if hh < 0.0 || hh > 1.0 || ss < 0.0 || ss > 1.0 || vv < 0.0 || vv > 1.0 {
-                    Rf_error(b"invalid hsv color\0".as_ptr() as *const c_char);
+                    Rf_error_cstr(c"invalid hsv color");
                 }
                 hsv2rgb(hh, ss, vv, &mut r, &mut g, &mut b);
                 SET_STRING_ELT(
@@ -89,7 +89,7 @@ pub fn do_hsv(h: SEXP, s: SEXP, v: SEXP, a: SEXP) -> SEXP {
                     || aa < 0.0
                     || aa > 1.0
                 {
-                    Rf_error(b"invalid hsv color\0".as_ptr() as *const c_char);
+                    Rf_error_cstr(c"invalid hsv color");
                 }
                 hsv2rgb(hh, ss, vv, &mut r, &mut g, &mut b);
                 SET_STRING_ELT(
@@ -164,7 +164,7 @@ pub fn do_hcl(h: SEXP, c: SEXP, l: SEXP, a: SEXP, sfixup: SEXP) -> SEXP {
                 let L = REAL_ELT(l, (i % nl) as c_int);
                 if R_FINITE(H) && R_FINITE(C) && R_FINITE(L) {
                     if L < 0.0 || L > WHITE_Y || C < 0.0 {
-                        Rf_error(b"invalid hcl color\0".as_ptr() as *const c_char);
+                        Rf_error_cstr(c"invalid hcl color");
                     }
                     let mut rv: c_double = 0.0;
                     let mut gv: c_double = 0.0;
@@ -200,7 +200,7 @@ pub fn do_hcl(h: SEXP, c: SEXP, l: SEXP, a: SEXP, sfixup: SEXP) -> SEXP {
                 }
                 if R_FINITE(H) && R_FINITE(C) && R_FINITE(L) {
                     if L < 0.0 || L > WHITE_Y || C < 0.0 || A < 0.0 || A > 1.0 {
-                        Rf_error(b"invalid hcl color\0".as_ptr() as *const c_char);
+                        Rf_error_cstr(c"invalid hcl color");
                     }
                     let mut rv: c_double = 0.0;
                     let mut gv: c_double = 0.0;
@@ -240,7 +240,7 @@ pub fn do_rgb(r: SEXP, g: SEXP, b: SEXP, a: SEXP, mcv: SEXP, nam: SEXP) -> SEXP 
     {
         let mV = asReal(mcv);
         if !R_FINITE(mV) || mV == 0.0 {
-            Rf_error(b"invalid value of 'maxColorValue'\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"invalid value of 'maxColorValue'");
         }
 
         let mut guards = Vec::with_capacity(6);
@@ -301,7 +301,7 @@ pub fn do_rgb(r: SEXP, g: SEXP, b: SEXP, a: SEXP, mcv: SEXP, nam: SEXP) -> SEXP 
         let nam = coerceVector(nam, SEXPTYPE::STRSXP.into());
         guards.push(protect(nam));
         if LENGTH(nam) != 0 && LENGTH(nam) != l_max as c_int {
-            Rf_error(b"invalid 'names' vector\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"invalid 'names' vector");
         }
         let c = Rf_allocVector(SEXPTYPE::STRSXP, l_max as c_int);
         guards.push(protect(c));
@@ -420,7 +420,7 @@ pub fn do_gray(lev: SEXP, a: SEXP) -> SEXP {
             while i < nlev {
                 let level = REAL_ELT(lev, i as c_int);
                 if ISNAN(level) || level < 0.0 || level > 1.0 {
-                    Rf_error(b"invalid gray level, must be in [0,1].\0".as_ptr() as *const c_char);
+                    Rf_error_cstr(c"invalid gray level, must be in [0,1].");
                 }
                 let ilevel = (255.0 * level + 0.5) as c_int;
                 SET_STRING_ELT(
@@ -440,7 +440,7 @@ pub fn do_gray(lev: SEXP, a: SEXP) -> SEXP {
             while i < max {
                 let level = REAL_ELT(lev, (i % nlev) as c_int);
                 if ISNAN(level) || level < 0.0 || level > 1.0 {
-                    Rf_error(b"invalid gray level, must be in [0,1].\0".as_ptr() as *const c_char);
+                    Rf_error_cstr(c"invalid gray level, must be in [0,1].");
                 }
                 let ilevel = (255.0 * level + 0.5) as c_int;
                 let aa = REAL_ELT(a, (i % na) as c_int);
@@ -472,11 +472,11 @@ pub fn do_RGB2hsv(rgb: SEXP) -> SEXP {
         let rgb = coerceVector(rgb, SEXPTYPE::REALSXP.into());
         guards.push(protect(rgb));
         if !isMatrix(rgb) {
-            Rf_error(b"rgb is not a matrix (internally)\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"rgb is not a matrix (internally)");
         }
         let dd = getAttrib(rgb, R_DimSymbol());
         if INTEGER_ELT(dd, 0) != 3 {
-            Rf_error(b"rgb must have 3 rows (internally)\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"rgb must have 3 rows (internally)");
         }
         let n = INTEGER_ELT(dd, 1) as usize;
 
@@ -542,7 +542,7 @@ pub fn do_col2rgb(colors: SEXP, alpha: SEXP) -> SEXP {
 
         let alph = asLogical(alpha);
         if alph == NA_LOGICAL {
-            Rf_error(b"invalid 'alpha' value\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"invalid 'alpha' value");
         }
 
         let t = TYPEOF(colors);

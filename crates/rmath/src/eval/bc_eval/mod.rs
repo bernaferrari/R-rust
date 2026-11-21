@@ -91,8 +91,7 @@ fn bc_missing_arg_error(arg_sym: SEXP) -> ! {
     crate::mainutils::errors::R_MissingArgError(
         arg_sym,
         crate::mainutils::errors::R_getCurrentCall(),
-        c"getvarError".as_ptr(),
-    );
+        Some(c"getvarError"));
 
     unreachable!("R_MissingArgError signals");
 }

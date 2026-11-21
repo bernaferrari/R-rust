@@ -12,7 +12,7 @@ use std::net::TcpStream;
 use std::os::unix::io::IntoRawFd;
 use std::ptr;
 
-use crate::main::errors::Rf_error;
+use crate::main::errors::{Rf_error, Rf_error_cstr};
 use crate::sexp::accessors::{CAR, CDR, CHAR, INTEGER, LENGTH, STRING_ELT, TYPEOF};
 use crate::sexp::constructors::Rf_ScalarInteger;
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
@@ -526,7 +526,7 @@ unsafe fn file_download(url: *const c_char, file: *const c_char, mode: *const c_
             let errno_val = std::io::Error::last_os_error();
             let msg = format!("cannot open URL '{}', reason '{}'", url_str, errno_val);
             let c_msg = CString::new(msg).unwrap_or_default();
-            Rf_error(c_msg.as_ptr());
+            Rf_error_cstr(&c_msg);
         }
 
         // Open dest file
@@ -540,7 +540,7 @@ unsafe fn file_download(url: *const c_char, file: *const c_char, mode: *const c_
                 file_str, errno_val
             );
             let c_msg = CString::new(msg).unwrap_or_default();
-            Rf_error(c_msg.as_ptr());
+            Rf_error_cstr(&c_msg);
         }
 
         // Copy data
@@ -555,7 +555,7 @@ unsafe fn file_download(url: *const c_char, file: *const c_char, mode: *const c_
                 r_fclose(dst_file);
                 r_fclose(src_file);
                 let msg = c"write failed";
-                Rf_error(msg.as_ptr());
+                Rf_error_cstr(&msg);
             }
         }
 
@@ -601,7 +601,7 @@ unsafe fn http_download(
                 file_str, errno_val
             );
             let c_msg = CString::new(msg).unwrap_or_default();
-            Rf_error(c_msg.as_ptr());
+            Rf_error_cstr(&c_msg);
         }
 
         // Report URL being tried
@@ -639,7 +639,7 @@ unsafe fn http_download(
             }
             let msg = format!("cannot open URL '{}'", url_str);
             let c_msg = CString::new(msg).unwrap_or_default();
-            Rf_error(c_msg.as_ptr());
+            Rf_error_cstr(&c_msg);
         }
 
         // Get content length from context
@@ -664,7 +664,7 @@ unsafe fn http_download(
                 http_close(ctxt);
                 r_fclose(dst_file);
                 let msg = c"write failed";
-                Rf_error(msg.as_ptr());
+                Rf_error_cstr(&msg);
             }
 
             nbytes += nread as DLsize_t;
@@ -706,7 +706,7 @@ unsafe fn http_download(
                 nbytes as f64, total as f64
             );
             let c_msg = CString::new(msg).unwrap_or_default();
-            crate::main::errors::Rf_warning(c_msg.as_ptr());
+            crate::main::errors::Rf_warning_cstr(&c_msg);
         }
 
         0
@@ -737,7 +737,7 @@ pub(crate) fn in_do_download(args: SEXP) -> SEXP {
         args = CDR(args);
         if !is_single_string(scmd) {
             let msg = c"invalid 'url' argument";
-            Rf_error(msg.as_ptr());
+            Rf_error_cstr(&msg);
         }
         let url = CHAR(STRING_ELT(scmd, 0));
 
@@ -746,7 +746,7 @@ pub(crate) fn in_do_download(args: SEXP) -> SEXP {
         args = CDR(args);
         if !is_single_string(sfile) {
             let msg = c"invalid 'destfile' argument";
-            Rf_error(msg.as_ptr());
+            Rf_error_cstr(&msg);
         }
         // Use translateChar for destfile (may have encoded paths)
         let file = crate::sexp::accessors::translateChar(STRING_ELT(sfile, 0));
@@ -757,7 +757,7 @@ pub(crate) fn in_do_download(args: SEXP) -> SEXP {
         let quiet = asRbool(squiet);
         if quiet == NA_LOGICAL {
             let msg = c"invalid 'quiet' argument";
-            Rf_error(msg.as_ptr());
+            Rf_error_cstr(&msg);
         }
         set_internet_quiet(quiet);
 
@@ -766,7 +766,7 @@ pub(crate) fn in_do_download(args: SEXP) -> SEXP {
         args = CDR(args);
         if !is_string_len1(smode) {
             let msg = c"invalid 'mode' argument";
-            Rf_error(msg.as_ptr());
+            Rf_error_cstr(&msg);
         }
         let mode = CHAR(STRING_ELT(smode, 0));
 
@@ -776,7 +776,7 @@ pub(crate) fn in_do_download(args: SEXP) -> SEXP {
         let cacheOK = asLogical_val(scacheOK);
         if cacheOK == NA_LOGICAL {
             let msg = c"invalid 'cacheOK' argument";
-            Rf_error(msg.as_ptr());
+            Rf_error_cstr(&msg);
         }
         let _ = cacheOK; // Used only by Windows wininet code path
 
@@ -809,15 +809,15 @@ pub(crate) fn in_do_download(args: SEXP) -> SEXP {
                 url_rust
             ))
             .unwrap_or_default();
-            Rf_error(msg.as_ptr());
+            Rf_error_cstr(&msg);
         } else if url_rust.starts_with("ftp://") {
             // FTP is defunct in R 4.2+
             let msg = c"the 'internal' method for ftp:// URLs is defunct";
-            Rf_error(msg.as_ptr());
+            Rf_error_cstr(&msg);
         } else {
             let msg = CString::new(format!("scheme not supported in URL '{}'", url_rust))
                 .unwrap_or_default();
-            Rf_error(msg.as_ptr());
+            Rf_error_cstr(&msg);
         }
 
         Rf_ScalarInteger(status)

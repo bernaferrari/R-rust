@@ -128,10 +128,10 @@ pub fn La_solve(a: SEXP, bin: SEXP, tolin: SEXP) -> SEXP {
         );
 
         if info > 0 {
-            Rf_error(b"singular matrix in 'solve'\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"singular matrix in 'solve'");
         }
         if info != 0 {
-            Rf_error(b"error code from Lapack routine 'dgesv'\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"error code from Lapack routine 'dgesv'");
         }
 
         if tol > 0.0 {
@@ -299,10 +299,10 @@ pub fn La_solve_cmplx(a: SEXP, bin: SEXP, tolin: SEXP) -> SEXP {
         );
 
         if info > 0 {
-            Rf_error(b"singular matrix in 'solve'\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"singular matrix in 'solve'");
         }
         if info != 0 {
-            Rf_error(b"error code from Lapack routine 'zgesv'\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"error code from Lapack routine 'zgesv'");
         }
 
         if tol > 0.0 {

@@ -129,7 +129,7 @@ fn R_manhattan(x: &[c_double], nr: c_int, nc: c_int, i1: c_int, i2: c_int) -> c_
 }
 
 fn R_canberra(x: &[c_double], nr: c_int, nc: c_int, i1: c_int, i2: c_int) -> c_double {
-    use crate::main::errors::Rf_warning;
+    use crate::main::errors::{Rf_warning, Rf_warning_cstr};
 
     let mut count: c_int = 0;
     let mut dist: c_double = 0.0;
@@ -166,7 +166,7 @@ fn R_canberra(x: &[c_double], nr: c_int, nc: c_int, i1: c_int, i2: c_int) -> c_d
 }
 
 fn R_dist_binary(x: &[c_double], nr: c_int, nc: c_int, i1: c_int, i2: c_int) -> c_double {
-    use crate::main::errors::Rf_warning;
+    use crate::main::errors::{Rf_warning, Rf_warning_cstr};
 
     let mut total: c_int = 0;
     let mut count: c_int = 0;
@@ -179,8 +179,8 @@ fn R_dist_binary(x: &[c_double], nr: c_int, nc: c_int, i1: c_int, i2: c_int) -> 
         let b = x[idx2];
         if both_non_na(a, b) {
             if !both_finite(a, b) {
-                Rf_warning(
-                    b"treating non-finite values as NA\0".as_ptr() as *const core::ffi::c_char
+                Rf_warning_cstr(
+                    c"treating non-finite values as NA"
                 );
             } else {
                 if a != 0.0 || b != 0.0 {
@@ -319,10 +319,10 @@ pub fn Cdist(x: SEXP, smethod: SEXP, attrs: SEXP, p: SEXP) -> SEXP {
     let _x_guard = protect_sexp(x);
     // Match GNU admission before exposing any payload spans to the kernels.
     if !(EUCLIDEAN..=MINKOWSKI).contains(&method) {
-        crate::main::errors::Rf_error(c"distance(): invalid distance".as_ptr());
+        crate::main::errors::Rf_error_cstr(c"distance(): invalid distance");
     }
     if method == MINKOWSKI && (!rp.is_finite() || rp <= 0.0) {
-        crate::main::errors::Rf_error(c"distance(): invalid p".as_ptr());
+        crate::main::errors::Rf_error_cstr(c"distance(): invalid p");
     }
     let x_len = LENGTH(x);
     let x_slice: &[c_double] = if x_len == 0 {

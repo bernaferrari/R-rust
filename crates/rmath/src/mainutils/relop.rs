@@ -64,20 +64,6 @@ const BITWISE_SHIFT_R: c_int = 6;
 // Local helpers delegating to canonical implementations
 // ---------------------------------------------------------------------------
 
-pub fn errorcall_stub(call: SEXP, format: *const c_char) {
-    crate::mainutils::errors::errorcall(call, format);
-}
-
-pub fn error_stub(format: *const c_char) {
-    crate::mainutils::errors::errorcall(R_NilValue(), format)
-}
-
-pub fn warningcall_stub(call: SEXP, format: *const c_char) {
-    // SAFETY: delegates to the raw warningcall boundary; `call` and `format`
-    // carry the same contract the unsafe callee already requires.
-
-    crate::mainutils::errors::warningcall(call, format);
-}
 
 /// GNU `Seql`: pointer equality, else UTF-8 translation (memory.c).
 pub fn Seql(x: SEXP, y: SEXP) -> c_int {
@@ -237,15 +223,8 @@ pub fn conformable(a: SEXP, b: SEXP) -> c_int {
 }
 
 /// Report an unimplemented type error.
-pub fn UNIMPLEMENTED_TYPE(routine: *const c_char, x: SEXP) -> ! {
-    let routine = if routine.is_null() {
-        "relop"
-    } else {
-        // SAFETY: callers pass NUL-terminated routine name literals.
-        unsafe { CStr::from_ptr(routine) }
-            .to_str()
-            .unwrap_or("relop")
-    };
+pub fn UNIMPLEMENTED_TYPE(routine: &CStr, x: SEXP) -> ! {
+    let routine = routine.to_str().unwrap_or("relop");
     let sexptype = if x.is_null() { -1 } else { TYPEOF(x) };
     std::panic::panic_any(crate::sexp::context::RError {
         message: format!("{routine}: unsupported SEXPTYPE {sexptype}"),
@@ -1419,23 +1398,23 @@ fn bitwise_not<'a>(a: &Sexp<'a>) -> SexpResult<Sexp<'a>> {
             }
             Ok(ans.freeze())
         }
-        _ => UNIMPLEMENTED_TYPE(b"bitwNot\0".as_ptr() as *const c_char, a.as_raw()),
+        _ => UNIMPLEMENTED_TYPE(c"bitwNot", a.as_raw()),
     }
 }
 
 /// Bitwise AND of two integer vectors with recycling.
 fn bitwise_and<'a>(a: &Sexp<'a>, b: &Sexp<'a>) -> SexpResult<Sexp<'a>> {
-    bitwise_op(a, b, |x, y| x & y, b"bitwAnd\0")
+    bitwise_op(a, b, |x, y| x & y, c"bitwAnd")
 }
 
 /// Bitwise OR of two integer vectors with recycling.
 fn bitwise_or<'a>(a: &Sexp<'a>, b: &Sexp<'a>) -> SexpResult<Sexp<'a>> {
-    bitwise_op(a, b, |x, y| x | y, b"bitwOr\0")
+    bitwise_op(a, b, |x, y| x | y, c"bitwOr")
 }
 
 /// Bitwise XOR of two integer vectors with recycling.
 fn bitwise_xor<'a>(a: &Sexp<'a>, b: &Sexp<'a>) -> SexpResult<Sexp<'a>> {
-    bitwise_op(a, b, |x, y| x ^ y, b"bitwXor\0")
+    bitwise_op(a, b, |x, y| x ^ y, c"bitwXor")
 }
 
 /// Generic bitwise operation with type coercion and recycling.
@@ -1443,7 +1422,7 @@ fn bitwise_op<'a, F: Fn(c_int, c_int) -> c_int>(
     a: &Sexp<'a>,
     b: &Sexp<'a>,
     op: F,
-    name: &'static [u8],
+    name: &'static CStr,
 ) -> SexpResult<Sexp<'a>> {
     let a = coerce_bitwise_operand(a)?;
     let b = coerce_bitwise_operand(b)?;
@@ -1472,7 +1451,7 @@ fn bitwise_op<'a, F: Fn(c_int, c_int) -> c_int>(
             })?;
             Ok(ans.freeze())
         }
-        _ => UNIMPLEMENTED_TYPE(name.as_ptr() as *const c_char, a.as_raw()),
+        _ => UNIMPLEMENTED_TYPE(name, a.as_raw()),
     }
 }
 
@@ -1491,7 +1470,7 @@ fn bitwise_shift_l<'a>(a: &Sexp<'a>, b: &Sexp<'a>) -> SexpResult<Sexp<'a>> {
         a,
         b,
         |aa, bb| ((aa as c_uint) << bb) as c_int,
-        b"bitShiftL\0",
+        c"bitShiftL",
     )
 }
 
@@ -1501,7 +1480,7 @@ fn bitwise_shift_r<'a>(a: &Sexp<'a>, b: &Sexp<'a>) -> SexpResult<Sexp<'a>> {
         a,
         b,
         |aa, bb| ((aa as c_uint) >> bb) as c_int,
-        b"bitShiftR\0",
+        c"bitShiftR",
     )
 }
 
@@ -1510,7 +1489,7 @@ fn bitwise_shift<'a, F: Fn(c_int, c_int) -> c_int>(
     a: &Sexp<'a>,
     b: &Sexp<'a>,
     op: F,
-    name: &'static [u8],
+    name: &'static CStr,
 ) -> SexpResult<Sexp<'a>> {
     let a = coerce_bitwise_operand(a)?;
     let b = bitwise_shift_rhs(b)?;
@@ -1539,7 +1518,7 @@ fn bitwise_shift<'a, F: Fn(c_int, c_int) -> c_int>(
             })?;
             Ok(ans.freeze())
         }
-        _ => UNIMPLEMENTED_TYPE(name.as_ptr() as *const c_char, a.as_raw()),
+        _ => UNIMPLEMENTED_TYPE(name, a.as_raw()),
     }
 }
 
@@ -1901,7 +1880,7 @@ mod tests {
                     &checked(integer),
                     &checked(logical),
                     |x, y| x & y,
-                    b"bitwAnd\0",
+                    c"bitwAnd",
                 );
             })
             .expect_err("mismatched bitwise operands should raise an RError");

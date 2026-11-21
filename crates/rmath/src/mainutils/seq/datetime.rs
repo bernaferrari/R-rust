@@ -103,28 +103,26 @@ pub fn pmatch_one(x: &str, table: &[&str]) -> Option<usize> {
 /// toward zero (as.integer("1.5") == 1L).  Non-numeric or out-of-range
 /// strings give NA with stock's coercion warning.
 pub fn as_integer_multiplier(call: SEXP, s: &str) -> Option<i64> {
-    unsafe {
-        let warn = |msg: &str| {
-            let c_msg = std::ffi::CString::new(msg).unwrap_or_default();
-            warningcall(call, c_msg.as_ptr());
-        };
-        let t = s.trim();
-        if t.is_empty() {
-            warn("NAs introduced by coercion");
-            return None;
+    let warn = |msg: &str| {
+        let c_msg = std::ffi::CString::new(msg).unwrap_or_default();
+        warningcall_cstr(call, &c_msg);
+    };
+    let t = s.trim();
+    if t.is_empty() {
+        warn("NAs introduced by coercion");
+        return None;
+    }
+    match t.parse::<c_double>() {
+        Ok(v) if v.is_finite() && v >= INT_MIN_C && v <= INT_MAX_C => Some(v as i64),
+        Ok(_) => {
+            // Numeric but outside the integer range: stock's distinct
+            // "coercion to integer range" warning.
+            warn("NAs introduced by coercion to integer range");
+            None
         }
-        match t.parse::<c_double>() {
-            Ok(v) if v.is_finite() && v >= INT_MIN_C && v <= INT_MAX_C => Some(v as i64),
-            Ok(_) => {
-                // Numeric but outside the integer range: stock's distinct
-                // "coercion to integer range" warning.
-                warn("NAs introduced by coercion to integer range");
-                None
-            }
-            Err(_) => {
-                warn("NAs introduced by coercion");
-                None
-            }
+        Err(_) => {
+            warn("NAs introduced by coercion");
+            None
         }
     }
 }
@@ -179,17 +177,15 @@ pub fn calendar_count(call: SEXP, from: i64, to: i64, by: i64) -> i64 {
             if from == to {
                 return 1;
             }
-            errorcall(
+            errorcall_cstr(
                 call,
-                b"invalid '(to - from)/by'\0".as_ptr() as *const c_char,
-            );
+                c"invalid '(to - from)/by'");
         }
         let del = to - from;
         if del != 0 && (del > 0) != (by > 0) {
-            errorcall(
+            errorcall_cstr(
                 call,
-                b"wrong sign in 'by' argument\0".as_ptr() as *const c_char,
-            );
+                c"wrong sign in 'by' argument");
         }
         del / by + 1
     }
@@ -270,10 +266,9 @@ pub fn calendar_seq(
             // "We might have a short day, so need to over-estimate":
             // length.out = 2 + floor((cto - cfrom)/(by * 86400)).
             if mult == 0 {
-                errorcall(
+                errorcall_cstr(
                     call,
-                    b"invalid '(to - from)/by'\0".as_ptr() as *const c_char,
-                );
+                    c"invalid '(to - from)/by'");
             }
             let span = (vother - vanchor) / (mult as c_double * 86_400.0);
             let n_est = 2.0 + span.floor();
@@ -339,27 +334,23 @@ pub fn datetime_seq(
             let missing_count =
                 miss_from as u32 + miss_to as u32 + (!have_lout) as u32 + (!by_given) as u32;
             if missing_count != 1 {
-                errorcall(
+                errorcall_cstr(
                     call,
-                    b"exactly three of 'to', 'from', 'by' and 'length.out' / 'along.with' must be specified\0"
-                        .as_ptr() as *const c_char,
-                );
+                    c"exactly three of 'to', 'from', 'by' and 'length.out' / 'along.with' must be specified");
             }
             if !miss_to {
                 if !crate::mainutils::essentials::sexp_has_class(to, "POSIXct")
                     && !crate::mainutils::essentials::sexp_has_class(to, "POSIXlt")
                     && !crate::mainutils::essentials::sexp_has_class(to, "POSIXt")
                 {
-                    errorcall(
+                    errorcall_cstr(
                         call,
-                        b"'to' must be a \"POSIXt\" object\0".as_ptr() as *const c_char,
-                    );
+                        c"'to' must be a \"POSIXt\" object");
                 }
                 if posix_time_length(to) != 1 {
-                    errorcall(
+                    errorcall_cstr(
                         call,
-                        b"'to' must be of length 1\0".as_ptr() as *const c_char,
-                    );
+                        c"'to' must be of length 1");
                 }
             }
             if !miss_from {
@@ -367,25 +358,21 @@ pub fn datetime_seq(
                     && !crate::mainutils::essentials::sexp_has_class(from, "POSIXlt")
                     && !crate::mainutils::essentials::sexp_has_class(from, "POSIXt")
                 {
-                    errorcall(
+                    errorcall_cstr(
                         call,
-                        b"'from' must be a \"POSIXt\" object\0".as_ptr() as *const c_char,
-                    );
+                        c"'from' must be a \"POSIXt\" object");
                 }
                 if posix_time_length(from) != 1 {
-                    errorcall(
+                    errorcall_cstr(
                         call,
-                        b"'from' must be of length 1\0".as_ptr() as *const c_char,
-                    );
+                        c"'from' must be of length 1");
                 }
             }
         } else if !by_given && (miss_from || miss_to) && !have_lout {
             // seq.Date without 'by'.
-            errorcall(
+            errorcall_cstr(
                 call,
-                b"without 'by', when one of 'to', 'from' is missing, 'length.out' / 'along.with' must be specified\0"
-                    .as_ptr() as *const c_char,
-            );
+                c"without 'by', when one of 'to', 'from' is missing, 'length.out' / 'along.with' must be specified");
         }
 
         // 'by' handling -----------------------------------------------------
@@ -394,19 +381,16 @@ pub fn datetime_seq(
         let mut calendar: Option<(CalendarField, i64)> = None;
         if by_given {
             if LENGTH(by) != 1 {
-                errorcall(
+                errorcall_cstr(
                     call,
-                    b"'by' must be of length 1\0".as_ptr() as *const c_char,
-                );
+                    c"'by' must be of length 1");
             }
             if kind == DatetimeKind::Date {
                 let missing_count = miss_from as u32 + miss_to as u32 + (!have_lout) as u32;
                 if missing_count != 1 {
-                    errorcall(
+                    errorcall_cstr(
                         call,
-                        b"given 'by', exactly two of 'to', 'from' and 'length.out' / 'along.with' must be specified\0"
-                            .as_ptr() as *const c_char,
-                    );
+                        c"given 'by', exactly two of 'to', 'from' and 'length.out' / 'along.with' must be specified");
                 }
             }
             if TYPEOF(by) == STRSXP_VAL {
@@ -418,7 +402,7 @@ pub fn datetime_seq(
                 };
                 let parts = split_by_spaces(&text);
                 if parts.is_empty() || parts.len() > 2 {
-                    errorcall(call, b"invalid 'by' string\0".as_ptr() as *const c_char);
+                    errorcall_cstr(call, c"invalid 'by' string");
                 }
                 let last = parts[parts.len() - 1];
                 let table: &[&str] = if kind == DatetimeKind::Date {
@@ -468,7 +452,7 @@ pub fn datetime_seq(
             } else if TYPEOF(by) == REALSXP_VAL || TYPEOF(by) == INTSXP_VAL {
                 rby = asReal(by);
                 if ISNAN(rby) {
-                    errorcall(call, b"'by' is NA\0".as_ptr() as *const c_char);
+                    errorcall_cstr(call, c"'by' is NA");
                 }
                 if crate::mainutils::essentials::sexp_has_class(by, "difftime") {
                     let units_attr = crate::sexp::attrib_core::getAttrib(
@@ -494,7 +478,7 @@ pub fn datetime_seq(
                     }
                 }
             } else {
-                errorcall(call, b"invalid mode for 'by'\0".as_ptr() as *const c_char);
+                errorcall_cstr(call, c"invalid mode for 'by'");
             }
         }
 
@@ -562,22 +546,19 @@ pub fn datetime_seq(
             let del = vto - vfrom;
             let n = del / rby;
             if !n.is_finite() {
-                errorcall(
+                errorcall_cstr(
                     call,
-                    b"invalid '(to - from)/by'\0".as_ptr() as *const c_char,
-                );
+                    c"invalid '(to - from)/by'");
             }
             if n > 100.0 * INT_MAX_C {
-                errorcall(
+                errorcall_cstr(
                     call,
-                    b"'by' argument is much too small\0".as_ptr() as *const c_char,
-                );
+                    c"'by' argument is much too small");
             }
             if n < -FEPS {
-                errorcall(
+                errorcall_cstr(
                     call,
-                    b"wrong sign in 'by' argument\0".as_ptr() as *const c_char,
-                );
+                    c"wrong sign in 'by' argument");
             }
             let nn = (n + FEPS) as i64;
             build(vfrom, rby, (nn + 1) as usize)

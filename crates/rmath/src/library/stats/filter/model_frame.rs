@@ -416,16 +416,14 @@ pub fn modelframe(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     let mut na_action = CAR(args);
 
     if TYPEOF(variables) != SEXPTYPE::VECSXP || TYPEOF(varnames) != SEXPTYPE::STRSXP {
-        crate::main::errors::Rf_error(
-            b"invalid variables\0".as_ptr() as *const std::os::raw::c_char
+        crate::main::errors::Rf_error_cstr(
+            c"invalid variables"
         );
     }
     let nvars = XLENGTH(variables);
     if nvars != XLENGTH(varnames) {
-        crate::main::errors::Rf_error(
-            b"number of variables != number of variable names\0".as_ptr()
-                as *const std::os::raw::c_char,
-        );
+        crate::main::errors::Rf_error_cstr(
+            c"number of variables != number of variable names");
     }
     let ndots = if dots.is_null() || dots == R_NilValue() || TYPEOF(dots) != SEXPTYPE::VECSXP {
         0
@@ -514,7 +512,7 @@ pub fn modelframe(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             };
             let msg = std::ffi::CString::new(format!("invalid type ({ty}) for variable '{name}'"))
                 .unwrap_or_else(|_| std::ffi::CString::new("invalid type for variable").unwrap());
-            crate::main::errors::Rf_error(msg.as_ptr());
+            crate::main::errors::Rf_error_cstr(&msg);
         }
         let rows = model_column_rows(ans);
         if i == 0 {

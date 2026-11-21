@@ -9,7 +9,7 @@ use super::*;
 /// Ported from R's `do_call()` in coerce.c.
 pub fn do_call(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     use crate::eval::eval::Rf_eval;
-    use crate::mainutils::errors::Rf_error;
+    use crate::mainutils::errors::Rf_error_cstr;
     use crate::mainutils::subset::installTrChar;
     use crate::sexp::accessors::{CAR, CDR, STRING_ELT};
     use crate::sexp::ffi::SEXPTYPE;
@@ -17,19 +17,19 @@ pub fn do_call(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
     unsafe {
         if crate::sexp::constructors::Rf_length(args) < 1 {
-            Rf_error(b"'name' is missing\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"'name' is missing");
         }
 
         let rfun = Rf_eval(CAR(args), rho);
         let _rfun_guard = protect(rfun);
 
         if !isString(rfun) || LENGTH(rfun) != 1 {
-            Rf_error(b"first argument must be a character string\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"first argument must be a character string");
         }
 
         let str = STRING_ELT(rfun, 0);
         if char_bytes(str) == b".Internal" {
-            Rf_error(b"illegal usage\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"illegal usage");
         }
 
         let sym = installTrChar(str);
@@ -84,7 +84,7 @@ pub fn do_call(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 ///
 /// Ported from R's `do_docall()` in coerce.c.
 pub fn do_docall(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    use crate::mainutils::errors::Rf_error;
+    use crate::mainutils::errors::Rf_error_cstr;
     use crate::mainutils::subset::installTrChar;
     use crate::sexp::accessors::{
         CADDR, CADR, CAR, CDR, LENGTH, SETCAR, SETTAG, STRING_ELT, TYPEOF, VECTOR_ELT,
@@ -102,15 +102,15 @@ pub fn do_docall(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
         // fun must be a function or a single character string
         if !isFunction(fun) && !(isString(fun) && LENGTH(fun) == 1) {
-            Rf_error(b"'what' must be a function or character string\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"'what' must be a function or character string");
         }
 
         if !cargs.is_null() && cargs != R_NilValue() && TYPEOF(cargs) != SEXPTYPE::VECSXP {
-            Rf_error(b"'args' must be a list\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"'args' must be a list");
         }
 
         if !isEnvironment(envir) {
-            Rf_error(b"'envir' must be an environment\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"'envir' must be an environment");
         }
 
         let n = if cargs.is_null() || cargs == R_NilValue() {
@@ -133,14 +133,14 @@ pub fn do_docall(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         if isString(fun) {
             let str = STRING_ELT(fun, 0);
             if char_bytes(str) == b".Internal" {
-                Rf_error(b"illegal usage\0".as_ptr() as *const c_char);
+                Rf_error_cstr(c"illegal usage");
             }
             SETCAR(newcall, installTrChar(str));
         } else {
             // Check for .Internal primitive
             let prim_name = crate::eval::builtin::PRIMNAME(fun);
             if prim_name == ".Internal" {
-                Rf_error(b"illegal usage\0".as_ptr() as *const c_char);
+                Rf_error_cstr(c"illegal usage");
             }
             SETCAR(newcall, fun);
         }
@@ -179,7 +179,7 @@ pub fn do_docall(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 ///
 /// Ported from R's `substitute()` in coerce.c.
 pub fn substitute(lang: SEXP, rho: SEXP) -> SEXP {
-    use crate::mainutils::errors::Rf_error;
+    use crate::mainutils::errors::Rf_error_cstr;
     use crate::sexp::accessors::{PRCODE, TYPEOF};
     use crate::sexp::envir::R_findVarInFrame;
     use crate::sexp::ffi::SEXPTYPE;
@@ -232,8 +232,8 @@ pub fn substitute(lang: SEXP, rho: SEXP) -> SEXP {
                             }
                             return expr;
                         } else if TYPEOF(t) == SEXPTYPE::DOTSXP {
-                            Rf_error(
-                                b"'...' used in an incorrect context\0".as_ptr() as *const c_char
+                            Rf_error_cstr(
+                                c"'...' used in an incorrect context"
                             );
                         }
                         if rho != R_GlobalEnv() {
@@ -305,9 +305,8 @@ pub fn substitute_list(el: SEXP, rho: SEXP) -> SEXP {
                     h = substitute_list(h, R_NilValue());
                     // h is now a substituted pairlist — don't unprotect the protected one yet
                 } else {
-                    crate::mainutils::errors::Rf_error(
-                        b"'...' used in an incorrect context\0".as_ptr() as *const c_char,
-                    );
+                    crate::mainutils::errors::Rf_error_cstr(
+                        c"'...' used in an incorrect context");
                     unreachable!()
                 }
 
@@ -388,8 +387,8 @@ pub fn do_substitute(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         }
 
         if env != R_NilValue() && TYPEOF(env) != SEXPTYPE::ENVSXP {
-            crate::mainutils::errors::Rf_error(
-                b"invalid environment specified\0".as_ptr() as *const c_char
+            crate::mainutils::errors::Rf_error_cstr(
+                c"invalid environment specified"
             );
         }
 
@@ -611,7 +610,7 @@ pub fn substitute_error(message: impl Into<String>) -> ! {
 ///
 /// Ported from R's `do_storage_mode()` in coerce.c.
 pub fn do_storage_mode(call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    use crate::mainutils::errors::Rf_error;
+    use crate::mainutils::errors::Rf_error_cstr;
     use crate::sexp::accessors::{CADR, CAR, CHAR, SET_ATTRIB, STRING_ELT, TYPEOF};
     use crate::sexp::protect::protect;
 
@@ -624,24 +623,28 @@ pub fn do_storage_mode(call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
             || LENGTH(value) < 1
             || STRING_ELT(value, 0) == crate::sexp::globals::R_NaString()
         {
-            Rf_error(b"'value' must be non-null character string\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"'value' must be non-null character string");
         }
 
         let type_str = CHAR(STRING_ELT(value, 0));
-        let target_type = str2type(type_str);
+        let target_type = if type_str.is_null() {
+            -1
+        } else {
+            str2type(std::ffi::CStr::from_ptr(type_str))
+        };
 
         if target_type == -1 as c_int {
             let s = std::ffi::CStr::from_ptr(type_str);
             if s.to_bytes() == b"real" {
-                Rf_error(
-                    b"use of 'real' is defunct: use 'double' instead\0".as_ptr() as *const c_char
+                Rf_error_cstr(
+                    c"use of 'real' is defunct: use 'double' instead"
                 );
             } else if s.to_bytes() == b"single" {
-                Rf_error(
-                    b"use of 'single' is defunct: use mode<- instead\0".as_ptr() as *const c_char
+                Rf_error_cstr(
+                    c"use of 'single' is defunct: use mode<- instead"
                 );
             } else {
-                Rf_error(b"invalid value\0".as_ptr() as *const c_char);
+                Rf_error_cstr(c"invalid value");
             }
         }
 
@@ -651,7 +654,7 @@ pub fn do_storage_mode(call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 
         // Check for factor
         if crate::mainutils::apply::isFactor(obj) != 0 {
-            Rf_error(b"invalid to change the storage mode of a factor\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"invalid to change the storage mode of a factor");
         }
 
         let ans = coerceVector(obj, target_type);
@@ -667,13 +670,9 @@ pub fn do_storage_mode(call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 /// Map a type name string to a SEXPTYPE value.
 ///
 /// Ported from R's `str2type()` in coerce.c.
-pub fn str2type(s: *const c_char) -> c_int {
+pub fn str2type(s: &std::ffi::CStr) -> c_int {
     use crate::sexp::ffi::SEXPTYPE;
-    if s.is_null() {
-        return -1;
-    }
-    let bytes = unsafe { std::ffi::CStr::from_ptr(s).to_bytes() };
-    match bytes {
+    match s.to_bytes() {
         b"logical" => SEXPTYPE::LGLSXP.into(),
         b"integer" => SEXPTYPE::INTSXP.into(),
         b"double" => SEXPTYPE::REALSXP.into(),

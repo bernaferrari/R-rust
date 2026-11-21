@@ -158,7 +158,7 @@ fn mkNamed(sexptype: SEXPTYPE, names: &[&str]) -> SEXP {
 }
 
 pub fn Cdqrls(x: SEXP, y: SEXP, tol: SEXP, chk: SEXP) -> SEXP {
-    use crate::main::errors::Rf_error;
+    use crate::main::errors::{Rf_error, Rf_error_cstr};
 
     let mut x = x;
     let mut y = y;
@@ -166,7 +166,7 @@ pub fn Cdqrls(x: SEXP, y: SEXP, tol: SEXP, chk: SEXP) -> SEXP {
 
     let ans_dim = getAttrib(x, R_DimSymbol());
     if asBool(chk) && LENGTH(ans_dim) != 2 {
-        Rf_error(b"'x' is not a matrix\0".as_ptr() as *const core::ffi::c_char);
+        Rf_error_cstr(c"'x' is not a matrix");
     }
     let n = INTEGER_ELT(ans_dim, 0);
     let p = INTEGER_ELT(ans_dim, 1);
@@ -175,7 +175,7 @@ pub fn Cdqrls(x: SEXP, y: SEXP, tol: SEXP, chk: SEXP) -> SEXP {
         ny = (XLENGTH(y) as i64 / n as i64) as c_int;
     }
     if asBool(chk) && n * ny != XLENGTH(y) as c_int {
-        Rf_error(b"dimensions of 'x' and 'y' do not match\0".as_ptr() as *const core::ffi::c_char);
+        Rf_error_cstr(c"dimensions of 'x' and 'y' do not match");
     }
 
     /* These lose attributes, so do after we have extracted dims */
@@ -190,13 +190,13 @@ pub fn Cdqrls(x: SEXP, y: SEXP, tol: SEXP, chk: SEXP) -> SEXP {
 
     for i in 0..(XLENGTH(x) as usize) {
         if !R_FINITE(REAL_ELT(x, i as i32)) {
-            Rf_error(b"NA/NaN/Inf in 'x'\0".as_ptr() as *const core::ffi::c_char);
+            Rf_error_cstr(c"NA/NaN/Inf in 'x'");
         }
     }
 
     for i in 0..(XLENGTH(y) as usize) {
         if !R_FINITE(REAL_ELT(y, i as i32)) {
-            Rf_error(b"NA/NaN/Inf in 'y'\0".as_ptr() as *const core::ffi::c_char);
+            Rf_error_cstr(c"NA/NaN/Inf in 'y'");
         }
     }
 

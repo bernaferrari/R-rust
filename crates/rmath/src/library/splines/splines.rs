@@ -9,7 +9,7 @@ use std::os::raw::{c_char, c_double, c_int, c_void};
 use std::ptr;
 
 use crate::attrib_core::setAttrib;
-use crate::main::errors::Rf_error;
+use crate::main::errors::Rf_error_cstr;
 use crate::main::util_main::R_NaN;
 use crate::sexp::accessors::{INTEGER, LENGTH, REAL};
 use crate::sexp::constructors::Rf_allocVector;
@@ -192,7 +192,7 @@ pub unsafe fn spline_value(knots: SEXP, coeff: SEXP, order: SEXP, x: SEXP, deriv
 
         if ord == NA_INTEGER || ord <= 0 {
             let msg = c"'ord' must be a positive integer";
-            Rf_error(msg.as_ptr());
+            Rf_error_cstr(&msg);
         }
 
         // Allocate scratch arrays via R_alloc (transient memory)
@@ -324,7 +324,7 @@ pub unsafe fn spline_basis(knots: SEXP, order: SEXP, xvals: SEXP, derivs: SEXP) 
                         ))
                         .unwrap_or_default()
                     };
-                    Rf_error(msg.as_ptr());
+                    Rf_error_cstr(&msg);
                 }
                 let mut ii: c_int = 0;
                 while ii < ord {

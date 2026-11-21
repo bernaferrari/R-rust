@@ -10,7 +10,7 @@ use std::ptr;
 
 use crate::appl::integrate::{Rdqagi, Rdqags};
 use crate::attrib_core::{R_NamesSymbol, setAttrib};
-use crate::main::errors::Rf_error;
+use crate::main::errors::{Rf_error, Rf_error_cstr};
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::ffi::*;
@@ -48,9 +48,8 @@ unsafe extern "C-unwind" fn Rintfn(x: *mut c_double, n: c_int, ex: *mut std::ffi
         // Check length
         let rlen = LENGTH(resultsxp);
         if rlen != n {
-            Rf_error(
-                b"evaluation of function gave a result of wrong length\0".as_ptr() as *const _,
-            );
+            Rf_error_cstr(
+                c"evaluation of function gave a result of wrong length");
         }
 
         // Check type and coerce if needed
@@ -60,7 +59,7 @@ unsafe extern "C-unwind" fn Rintfn(x: *mut c_double, n: c_int, ex: *mut std::ffi
             coerced_guard = Some(protect(coerced));
             coerced
         } else if TYPEOF(resultsxp) != SEXPTYPE::REALSXP {
-            Rf_error(b"evaluation of function gave a result of wrong type\0".as_ptr() as *const _);
+            Rf_error_cstr(c"evaluation of function gave a result of wrong type");
             unreachable!();
         } else {
             resultsxp
@@ -69,7 +68,7 @@ unsafe extern "C-unwind" fn Rintfn(x: *mut c_double, n: c_int, ex: *mut std::ffi
         for i in 0..n {
             *x.add(i as usize) = REAL_ELT(resultsxp, i as i32);
             if !R_FINITE(*x.add(i as usize)) {
-                Rf_error(b"non-finite function value\0".as_ptr() as *const _);
+                Rf_error_cstr(c"non-finite function value");
             }
         }
         drop(coerced_guard);
@@ -201,13 +200,13 @@ pub fn call_dqags(args: SEXP) -> SEXP {
     args = CDR(args);
 
     if LENGTH(CAR(args)) > 1 {
-        Rf_error(b"'lower' must be of length one\0".as_ptr() as *const _);
+        Rf_error_cstr(c"'lower' must be of length one");
     }
     let mut lower = as_real(CAR(args));
     args = CDR(args);
 
     if LENGTH(CAR(args)) > 1 {
-        Rf_error(b"'upper' must be of length one\0".as_ptr() as *const _);
+        Rf_error_cstr(c"'upper' must be of length one");
     }
     let mut upper = as_real(CAR(args));
     args = CDR(args);
@@ -273,7 +272,7 @@ pub fn call_dqagi(args: SEXP) -> SEXP {
     args = CDR(args);
 
     if LENGTH(CAR(args)) > 1 {
-        Rf_error(b"'bound' must be of length one\0".as_ptr() as *const _);
+        Rf_error_cstr(c"'bound' must be of length one");
     }
     let mut bound = as_real(CAR(args));
     args = CDR(args);

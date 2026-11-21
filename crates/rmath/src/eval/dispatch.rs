@@ -917,15 +917,17 @@ pub unsafe fn DispatchOrEval(
                     }
                 }
 
+                // SAFETY: `generic` and `ans` were checked non-null on entry and are
+                // valid under this function's `# Safety` contract.
                 let dispatched = crate::mainutils::objects::usemethod(
-                    generic,
+                    std::ffi::CStr::from_ptr(generic),
                     x,
                     call,
                     pargs,
                     rho1,
                     rho,
                     super::runtime::base_env(),
-                    ans,
+                    &mut *ans,
                 );
 
                 if dispatched != FALSE {
@@ -1245,7 +1247,7 @@ pub unsafe fn DispatchGroup(
                     {
                         lsxp = R_NilValue();
                     } else {
-                        crate::mainutils::errors::Rf_warning(warning.as_ptr());
+                        crate::mainutils::errors::Rf_warning_cstr(&warning);
                         return 0;
                     }
                 }

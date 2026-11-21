@@ -40,7 +40,7 @@ pub unsafe fn do_edit(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         use crate::sexp::symbol::Rf_install;
         // Skip the .NAME cell when invoked through .External2.
         if args.is_null() || args == R_NilValue() {
-            crate::main::errors::errorcall(call, c"invalid argument to edit()".as_ptr());
+            crate::main::errors::errorcall_cstr(call, c"invalid argument to edit()");
         }
         let mut cell = args;
         let head = CAR(cell);
@@ -85,7 +85,7 @@ pub unsafe fn do_edit(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let status = Rf_lang3(Rf_install(c"system2".as_ptr()), editor, file);
         let rc = crate::eval::eval::Rf_eval(status, env);
         if TYPEOF(rc) == SEXPTYPE::INTSXP && crate::sexp::accessors::INTEGER(rc).read() != 0 {
-            crate::main::errors::errorcall(call, c"problem running editor".as_ptr());
+            crate::main::errors::errorcall_cstr(call, c"problem running editor");
         }
         let parsed = crate::eval::eval::Rf_eval(Rf_lang2(Rf_install(c"parse".as_ptr()), file), env);
         crate::eval::eval::Rf_eval(

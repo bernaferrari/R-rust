@@ -29,18 +29,18 @@ pub fn do_stop(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             SETCAR(args, coerceVector(CAR(args), SEXPTYPE::STRSXP.as_c_int()));
             if isValidString(CAR(args)) == 0 {
                 let c_msg = c" [invalid string in stop(.)]";
-                implicit_errorcall(c_call, c_msg.as_ptr());
+                implicit_errorcall_cstr(c_call, &c_msg);
             }
             // Pre-format: in C this is errorcall(c_call, "%s", translateChar(...))
             // In Rust, we pre-format the string
             let msg = translateChar(STRING_ELT(CAR(args), 0));
             let msg_str = CStr::from_ptr(msg).to_str().unwrap_or("");
             let c_msg = std::ffi::CString::new(msg_str).unwrap_or_default();
-            implicit_errorcall(c_call, c_msg.as_ptr());
+            implicit_errorcall_cstr(c_call, &c_msg);
             // errorcall doesn't return, but we need a return type
             ptr::null_mut()
         } else {
-            implicit_errorcall(c_call, b"\0".as_ptr() as *const c_char);
+            implicit_errorcall_cstr(c_call, c"");
             ptr::null_mut()
         }
     }
@@ -102,16 +102,16 @@ pub fn do_warning(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             let message = CAR(args);
             if isValidString(message) == 0 {
                 let c_msg = c" [invalid string in warning(.)]";
-                warningcall(c_call, c_msg.as_ptr());
+                warningcall_cstr(c_call, &c_msg);
             } else {
                 // Pre-format: in C this is warningcall(c_call, "%s", translateChar(...))
                 let msg = translateChar(STRING_ELT(message, 0));
                 let msg_str = CStr::from_ptr(msg).to_str().unwrap_or("");
                 let c_msg = std::ffi::CString::new(msg_str).unwrap_or_default();
-                warningcall(c_call, c_msg.as_ptr());
+                warningcall_cstr(c_call, &c_msg);
             }
         } else {
-            warningcall(c_call, b"\0".as_ptr() as *const c_char);
+            warningcall_cstr(c_call, c"");
         }
 
         set_immediate_warning(false);

@@ -31,8 +31,8 @@ pub mod warning_codes {
 
 /// ErrorMessage — look up an error message from the database and call errorcall.
 /// Matches C: `void ErrorMessage(SEXP call, int which_error, ...)`
-pub fn ErrorMessage(call: SEXP, which_error: c_int, format: *const c_char) {
-    unsafe {
+pub fn ErrorMessage(call: SEXP, which_error: c_int, format: Option<&CStr>) {
+    {
         let messages = [
             "invalid number of arguments",
             "invalid argument type",
@@ -49,21 +49,23 @@ pub fn ErrorMessage(call: SEXP, which_error: c_int, format: *const c_char) {
         };
 
         // For format strings with %s, use the format argument
-        let msg = if which_error == error_codes::ERROR_UNIMPLEMENTED && !format.is_null() {
-            let arg = CStr::from_ptr(format).to_str().unwrap_or("unknown");
+        let msg = if which_error == error_codes::ERROR_UNIMPLEMENTED
+            && let Some(format) = format
+        {
+            let arg = format.to_str().unwrap_or("unknown");
             format!("unimplemented feature in {}", arg)
         } else {
             messages[idx].to_string()
         };
 
         let c_msg = std::ffi::CString::new(msg).unwrap_or_default();
-        errorcall(call, c_msg.as_ptr());
+        errorcall_cstr(call, &c_msg);
     }
 }
 
 /// WarningMessage — look up a warning message from the database and call warningcall.
 /// Matches C: `void WarningMessage(SEXP call, R_WARNING which_warn, ...)`
-pub fn WarningMessage(call: SEXP, which_warn: c_int, format: *const c_char) {
+pub fn WarningMessage(call: SEXP, which_warn: c_int, format: Option<&CStr>) {
     {
         let messages = [
             "NAs introduced by coercion",
@@ -79,7 +81,7 @@ pub fn WarningMessage(call: SEXP, which_warn: c_int, format: *const c_char) {
         };
 
         let c_msg = std::ffi::CString::new(messages[idx]).unwrap_or_default();
-        warningcall(call, c_msg.as_ptr());
+        warningcall_cstr(call, &c_msg);
     }
 }
 
@@ -136,7 +138,7 @@ pub fn do_ngettext(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         };
 
         if n == crate::sexp::ffi::NA_INTEGER || n < 0 {
-            errorcall(call, b"invalid 'n' argument\x00".as_ptr() as *const c_char);
+            errorcall_cstr(call, c"invalid 'n' argument");
         }
 
         // Return singular or plural form based on n
@@ -157,14 +159,7 @@ pub fn do_bindtextdomain(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
         let domain_cstr = sexp_string_cstr(domain);
         let dirname_cstr = sexp_string_cstr(dirname);
-        let domain_ptr = domain_cstr
-            .as_ref()
-            .map_or(ptr::null(), |value| value.as_ptr());
-        let dirname_ptr = dirname_cstr
-            .as_ref()
-            .map_or(ptr::null(), |value| value.as_ptr());
-
-        let result = bindtextdomain_impl(domain_ptr, dirname_ptr);
+        let result = bindtextdomain_impl(domain_cstr.as_deref(), dirname_cstr.as_deref());
         if result.is_null() {
             return globals::R_NilValue();
         }
@@ -174,22 +169,21 @@ pub fn do_bindtextdomain(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 #[cfg(not(any(target_os = "android", target_arch = "wasm32")))]
-fn bindtextdomain_impl(
-    domain_ptr: *const std::os::raw::c_char,
-    dirname_ptr: *const std::os::raw::c_char,
-) -> *mut std::os::raw::c_char {
-    crate::intl::bindtextdom::libintl_bindtextdomain(domain_ptr, dirname_ptr)
+fn bindtextdomain_impl(domain: Option<&CStr>, dirname: Option<&CStr>) -> *mut std::os::raw::c_char {
+    // SAFETY: each pointer is null or borrowed from a live `CStr` for the call.
+    unsafe {
+        crate::intl::bindtextdom::libintl_bindtextdomain(
+            domain.map_or(ptr::null(), CStr::as_ptr),
+            dirname.map_or(ptr::null(), CStr::as_ptr),
+        )
+    }
 }
 
 #[cfg(any(target_os = "android", target_arch = "wasm32"))]
-fn bindtextdomain_impl(
-    domain_ptr: *const std::os::raw::c_char,
-    dirname_ptr: *const std::os::raw::c_char,
-) -> *mut std::os::raw::c_char {
-    if domain_ptr.is_null() || dirname_ptr.is_null() {
-        ptr::null_mut()
-    } else {
-        dirname_ptr as *mut std::os::raw::c_char
+fn bindtextdomain_impl(domain: Option<&CStr>, dirname: Option<&CStr>) -> *mut std::os::raw::c_char {
+    match (domain, dirname) {
+        (Some(_), Some(dirname)) => dirname.as_ptr() as *mut std::os::raw::c_char,
+        _ => ptr::null_mut(),
     }
 }
 

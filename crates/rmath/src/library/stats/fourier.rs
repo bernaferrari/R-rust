@@ -242,7 +242,7 @@ mod transform_tests {
             0,
         ));
         let failure = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
-            crate::mainutils::errors::Rf_error(c"direct low-budget sentinel".as_ptr());
+            crate::mainutils::errors::Rf_error_cstr(c"direct low-budget sentinel");
         }))
         .expect_err("Rf_error must remain an R error under a low memory limit");
         assert_eq!(
@@ -375,7 +375,7 @@ fn as_logical(x: SEXP) -> c_int {
 /* Fourier Transform for Univariate Spatial and Time Series */
 
 pub fn fft(z: SEXP, inverse: SEXP) -> SEXP {
-    use crate::main::errors::Rf_error;
+    use crate::main::errors::{Rf_error, Rf_error_cstr};
 
     let mut z = z;
 
@@ -390,7 +390,7 @@ pub fn fft(z: SEXP, inverse: SEXP) -> SEXP {
                 }
             }
             _ => {
-                Rf_error(b"non-numeric argument\0".as_ptr() as *const core::ffi::c_char);
+                Rf_error_cstr(c"non-numeric argument");
             }
         }
         let _z_guard = protect(z);
@@ -403,8 +403,7 @@ pub fn fft(z: SEXP, inverse: SEXP) -> SEXP {
             if d.is_null() || d == R_NilValue() {
                 /* temporal transform */
                 if !transform_line(&mut buf, 0, LENGTH(z) as usize, 1, inverse) {
-                    Rf_error(b"FFT workspace exceeds session allocation limit\0".as_ptr()
-                        as *const core::ffi::c_char);
+                    Rf_error_cstr(c"FFT workspace exceeds session allocation limit");
                 }
             } else {
                 /* spatial transform */
@@ -424,10 +423,8 @@ pub fn fft(z: SEXP, inverse: SEXP) -> SEXP {
                                     stride,
                                     inverse,
                                 ) {
-                                    Rf_error(
-                                        b"FFT workspace exceeds session allocation limit\0".as_ptr()
-                                            as *const core::ffi::c_char,
-                                    );
+                                    Rf_error_cstr(
+                                        c"FFT workspace exceeds session allocation limit");
                                 }
                             }
                         }
@@ -465,14 +462,13 @@ pub fn do_fft(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 /* Fourier Transform for Vector-Valued ("multivariate") Series */
 
 pub fn mvfft(z: SEXP, inverse: SEXP) -> SEXP {
-    use crate::main::errors::Rf_error;
+    use crate::main::errors::{Rf_error, Rf_error_cstr};
 
     let mut z = z;
     {
         let d = getAttrib(z, R_DimSymbol());
         if d.is_null() || d == R_NilValue() || LENGTH(d) != 2 {
-            Rf_error(b"vector-valued (multivariate) series required\0".as_ptr()
-                as *const core::ffi::c_char);
+            Rf_error_cstr(c"vector-valued (multivariate) series required");
         }
         let n = INTEGER_ELT(d, 0);
         let p = INTEGER_ELT(d, 1);
@@ -487,7 +483,7 @@ pub fn mvfft(z: SEXP, inverse: SEXP) -> SEXP {
                 }
             }
             _ => {
-                Rf_error(b"non-numeric argument\0".as_ptr() as *const core::ffi::c_char);
+                Rf_error_cstr(c"non-numeric argument");
             }
         }
         let _z_guard = protect(z);
@@ -498,8 +494,7 @@ pub fn mvfft(z: SEXP, inverse: SEXP) -> SEXP {
             let mut buf = complex_vec(z);
             for i in 0..(p as usize) {
                 if !transform_line(&mut buf, i * n as usize, n as usize, 1, inverse) {
-                    Rf_error(b"FFT workspace exceeds session allocation limit\0".as_ptr()
-                        as *const core::ffi::c_char);
+                    Rf_error_cstr(c"FFT workspace exceeds session allocation limit");
                 }
             }
             store_complex(z, &buf);
@@ -566,10 +561,8 @@ fn nextn0(mut n: c_int, f: &[c_int]) -> c_int {
         n += 1;
     }
     if n >= c_int::MAX {
-        crate::main::errors::Rf_warning(
-            b"nextn() found no solution < INT_MAX (the maximal integer)\0".as_ptr()
-                as *const core::ffi::c_char,
-        );
+        crate::main::errors::Rf_warning_cstr(
+            c"nextn() found no solution < INT_MAX (the maximal integer)");
 
         return NA_INTEGER;
     }
@@ -587,8 +580,8 @@ fn nextn0_64(mut n: u64, f: &[c_int]) -> u64 {
         n += 1;
     }
     if n >= u64::MAX {
-        crate::main::errors::Rf_warning(
-            b"nextn<64>() found no solution < UINT64_MAX\0".as_ptr() as *const core::ffi::c_char
+        crate::main::errors::Rf_warning_cstr(
+            c"nextn<64>() found no solution < UINT64_MAX"
         );
 
         return 0;
@@ -597,7 +590,7 @@ fn nextn0_64(mut n: u64, f: &[c_int]) -> u64 {
 }
 
 pub fn nextn(mut n: SEXP, f: SEXP) -> SEXP {
-    use crate::main::errors::Rf_error;
+    use crate::main::errors::{Rf_error, Rf_error_cstr};
 
     {
         if TYPEOF(n) == SEXPTYPE::NILSXP {
@@ -613,25 +606,23 @@ pub fn nextn(mut n: SEXP, f: SEXP) -> SEXP {
 
         /* check the factors */
         if nf == 0 {
-            Rf_error(b"no factors\0".as_ptr() as *const core::ffi::c_char);
+            Rf_error_cstr(c"no factors");
         }
         if nf < 0 {
-            Rf_error(b"too many factors\0".as_ptr() as *const core::ffi::c_char);
+            Rf_error_cstr(c"too many factors");
         }
         let factors_vec = crate::library::stats::checked::int_vec(f);
         let factors = factors_vec.as_slice();
         for &factor in factors {
             if factor == NA_INTEGER || factor <= 1 {
-                Rf_error(b"invalid factors\0".as_ptr() as *const core::ffi::c_char);
+                Rf_error_cstr(c"invalid factors");
             }
         }
 
         let mut use_int = TYPEOF(n) == SEXPTYPE::INTSXP;
         if !use_int && TYPEOF(n) != SEXPTYPE::REALSXP {
-            Rf_error(
-                b"'n' must have typeof(.) \"integer\" or \"double\"\0".as_ptr()
-                    as *const core::ffi::c_char,
-            );
+            Rf_error_cstr(
+                c"'n' must have typeof(.) \"integer\" or \"double\"");
         }
         let nn = XLENGTH(n);
         let mut _n_guard = protect(n);
@@ -690,10 +681,8 @@ pub fn nextn(mut n: SEXP, f: SEXP) -> SEXP {
                     let max_dbl_int: u64 = 9007199254740992; // 2^53
                     let n_n = nextn0_64(value as u64, factors);
                     if n_n > max_dbl_int {
-                        crate::main::errors::Rf_warning(
-                            b"nextn() may not be exactly representable in R (as \"double\")\0"
-                                .as_ptr() as *const core::ffi::c_char,
-                        );
+                        crate::main::errors::Rf_warning_cstr(
+                            c"nextn() may not be exactly representable in R (as \"double\")");
                     }
                     r[i] = n_n as c_double;
                 }

@@ -505,7 +505,12 @@ pub(super) fn set_rendered_error_buffer(
 }
 
 /// Set the error message buffer (C FFI).
-pub fn R_SetErrmessage_c(s: *const c_char) {
+///
+/// # Safety
+///
+/// `s` must be null or point to a NUL-terminated string valid for reads
+/// (it may alias the buffer returned by `R_curErrorBuf`).
+pub unsafe fn R_SetErrmessage_c(s: *const c_char) {
     unsafe {
         if s.is_null() {
             return;

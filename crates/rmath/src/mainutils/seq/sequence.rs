@@ -121,7 +121,7 @@ pub fn do_sequence(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     msg
                 ))
                 .unwrap_or_default();
-                warningcall(R_NilValue(), c_msg.as_ptr());
+                warningcall_cstr(R_NilValue(), &c_msg);
             }
             max_len = lengths_len;
         }

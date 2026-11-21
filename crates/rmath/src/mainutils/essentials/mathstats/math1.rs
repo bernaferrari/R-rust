@@ -347,7 +347,7 @@ fn apply_unary_scalar_fn(
             }
         }
         if naflag {
-            crate::mainutils::errors::Rf_warningcall1(call, c"NaNs produced".as_ptr());
+            crate::mainutils::errors::Rf_warningcall1(call, c"NaNs produced");
         }
         result
     }
@@ -421,7 +421,7 @@ fn apply_binary_scalar_fn(
             }
         }
         if naflag {
-            crate::mainutils::errors::Rf_warningcall1(call, c"NaNs produced".as_ptr());
+            crate::mainutils::errors::Rf_warningcall1(call, c"NaNs produced");
         }
         if n == x_len {
             copy_all_attribs(result, x);

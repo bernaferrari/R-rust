@@ -38,7 +38,7 @@ pub fn L_raster(
         let n = LENGTH(raster);
         if n <= 0 {
             // SAFETY: longjmp-style error bridge; does not return.
-            Rf_error(c"Empty raster".as_ptr());
+            Rf_error_cstr(c"Empty raster");
         }
 
         let mut image_owned: Vec<c_uint>;
@@ -60,7 +60,7 @@ pub fn L_raster(
         let dim = get_attrib(raster, R_DimSymbol());
         if TYPEOF(dim) != SEXPTYPE::INTSXP || LENGTH(dim) < 2 {
             // SAFETY: longjmp-style error bridge; does not return.
-            Rf_error(c"invalid raster dimensions".as_ptr());
+            Rf_error_cstr(c"invalid raster dimensions");
         }
 
         let mut maxn = unitLength(x);

@@ -293,12 +293,10 @@ pub fn is_type_safe(x: Sexp<'_>, op: i32) -> Result<c_int, String> {
                 {
                     let is_factor = crate::mainutils::objects::inherits2(
                         x_raw,
-                        b"factor\0".as_ptr() as *const c_char,
-                    ) != 0;
+                        c"factor") != 0;
                     let is_ordered = crate::mainutils::objects::inherits2(
                         x_raw,
-                        b"ordered\0".as_ptr() as *const c_char,
-                    ) != 0;
+                        c"ordered") != 0;
                     if is_factor || is_ordered { 0 } else { 1 }
                 }
             } else {
@@ -450,7 +448,7 @@ pub fn is_null_safe(x: Sexp) -> c_int {
 pub fn is_numeric_safe(x: Sexp) -> c_int {
     let t = x.clone().typeof_();
     if (t == SEXPTYPE::INTSXP || t == SEXPTYPE::REALSXP) && x.is_vector() && {
-        crate::mainutils::objects::inherits2(x.as_raw(), c"factor".as_ptr()) == 0
+        crate::mainutils::objects::inherits2(x.as_raw(), c"factor") == 0
     } {
         1
     } else {

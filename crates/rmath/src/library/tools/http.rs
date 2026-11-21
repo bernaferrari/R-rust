@@ -14,7 +14,7 @@
 use std::ffi::CStr;
 use std::ptr;
 
-use crate::main::errors::Rf_error;
+use crate::main::errors::{Rf_error, Rf_error_cstr};
 use crate::mainutils::errors::Rf_error_unimplemented;
 use crate::sexp::accessors::{CHAR, STRING_ELT, TYPEOF, XLENGTH};
 use crate::sexp::constructors::{Rf_allocVector, Rf_mkChar};
@@ -100,7 +100,7 @@ pub fn remove_dot_segments_wrapper(x: SEXP) -> SEXP {
             return R_NilValue();
         }
         if TYPEOF(x) != SEXPTYPE::STRSXP {
-            Rf_error(b"non-character argument\0".as_ptr() as *const _);
+            Rf_error_cstr(c"non-character argument");
         }
         let n = XLENGTH(x);
         let y = Rf_allocVector(SEXPTYPE::STRSXP, n as i32);

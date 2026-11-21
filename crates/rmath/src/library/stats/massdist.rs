@@ -52,8 +52,8 @@ fn as_integer(s: SEXP) -> c_int {
 pub fn BinDist(sx: SEXP, sw: SEXP, slo: SEXP, shi: SEXP, sn: SEXP) -> SEXP {
     let n = as_integer(sn);
     if n == NA_INTEGER || n <= 0 {
-        crate::main::errors::Rf_error(
-            b"invalid 'n' argument\0".as_ptr() as *const std::os::raw::c_char
+        crate::main::errors::Rf_error_cstr(
+            c"invalid 'n' argument"
         );
     }
 

@@ -375,7 +375,7 @@ fn dpq_evaluate(
     if produced_nan {
         // SAFETY: the result and all arguments remain rooted through warning
         // dispatch, and the warning format is static.
-        crate::mainutils::errors::Rf_warningcall1(call, c"NaNs produced".as_ptr());
+        crate::mainutils::errors::Rf_warningcall1(call, c"NaNs produced");
         checked_dpq(owner.require_active());
     }
     if let Some(Some(source)) = sources.iter().find(|source| length(source) == n) {
@@ -580,8 +580,7 @@ fn gamma_rate_scale_conflict(slots: &[SEXP], filled: &[bool]) {
         let scale = real_or_default(slots[3], 1.0);
         if (rate * scale - 1.0).abs() < 1e-15 {
             crate::mainutils::errors::Rf_warning1(
-                c"specify 'rate' or 'scale' but not both".as_ptr(),
-            );
+                c"specify 'rate' or 'scale' but not both");
         } else {
             base_error("specify 'rate' or 'scale' but not both");
         }

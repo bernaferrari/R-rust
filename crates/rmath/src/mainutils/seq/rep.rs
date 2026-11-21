@@ -40,7 +40,7 @@ pub fn rep2(s: SEXP, ncopy: SEXP) -> SEXP {
             for i in 0..nc {
                 let v = *REAL(t).add(i as usize);
                 if ISNAN(v) || v <= -1.0 || v >= R_XLEN_T_MAX_DBL + 1.0 {
-                    crate::mainutils::errors::Rf_error(c"invalid 'times' value".as_ptr());
+                    crate::mainutils::errors::Rf_error_cstr(c"invalid 'times' value");
                 }
                 sna += v as R_xlen_t as c_double;
             }
@@ -48,13 +48,13 @@ pub fn rep2(s: SEXP, ncopy: SEXP) -> SEXP {
             for i in 0..nc {
                 let v = *INTEGER(t).add(i as usize);
                 if v == NA_INTEGER || v < 0 {
-                    crate::mainutils::errors::Rf_error(c"invalid 'times' value".as_ptr());
+                    crate::mainutils::errors::Rf_error_cstr(c"invalid 'times' value");
                 }
                 sna += v as c_double;
             }
         }
         if sna > R_XLEN_T_MAX_DBL {
-            crate::mainutils::errors::Rf_error(c"invalid 'times' value".as_ptr());
+            crate::mainutils::errors::Rf_error_cstr(c"invalid 'times' value");
         }
         let na = sna as R_xlen_t;
 
@@ -710,7 +710,7 @@ pub fn do_rep_int(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 kind.to_string_lossy(),
             ))
             .unwrap_or_default();
-            crate::mainutils::errors::Rf_error(message.as_ptr());
+            crate::mainutils::errors::Rf_error_cstr(&message);
         }
 
         if isVector(s) == 0 && s != R_NilValue() {
@@ -720,7 +720,7 @@ pub fn do_rep_int(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 kind.to_string_lossy(),
             ))
             .unwrap_or_default();
-            crate::mainutils::errors::Rf_error(message.as_ptr());
+            crate::mainutils::errors::Rf_error_cstr(&message);
         }
 
         let nc = XLENGTH(ncopy);
@@ -728,7 +728,7 @@ pub fn do_rep_int(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             a = rep2(s, ncopy);
         } else {
             if nc != 1 {
-                crate::mainutils::errors::Rf_error(c"invalid 'times' value".as_ptr());
+                crate::mainutils::errors::Rf_error_cstr(c"invalid 'times' value");
             }
 
             let ns = XLENGTH(s);
@@ -736,17 +736,17 @@ pub fn do_rep_int(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             if TYPEOF(ncopy) != INTSXP_VAL {
                 let snc = asReal(ncopy);
                 if !R_FINITE(snc) || snc <= -1.0 || (ns > 0 && snc >= R_XLEN_T_MAX_DBL + 1.0) {
-                    crate::mainutils::errors::Rf_error(c"invalid 'times' value".as_ptr());
+                    crate::mainutils::errors::Rf_error_cstr(c"invalid 'times' value");
                 }
                 nc_val = if ns == 0 { 1 } else { snc as R_xlen_t };
             } else {
                 nc_val = asInteger(ncopy) as R_xlen_t;
                 if nc_val as c_int == NA_INTEGER || nc_val < 0 {
-                    crate::mainutils::errors::Rf_error(c"invalid 'times' value".as_ptr());
+                    crate::mainutils::errors::Rf_error_cstr(c"invalid 'times' value");
                 }
             }
             if nc_val as c_double * ns as c_double > R_XLEN_T_MAX_DBL {
-                crate::mainutils::errors::Rf_error(c"invalid 'times' value".as_ptr());
+                crate::mainutils::errors::Rf_error_cstr(c"invalid 'times' value");
             }
             a = rep3(s, ns, nc_val * ns);
         }
@@ -833,32 +833,31 @@ pub fn do_rep_len(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         }
 
         if isVector(s) == 0 && s != R_NilValue() {
-            crate::mainutils::errors::Rf_error(c"attempt to replicate non-vector".as_ptr());
+            crate::mainutils::errors::Rf_error_cstr(c"attempt to replicate non-vector");
         }
 
         let len = CADR(args);
         if LENGTH(len) != 1 {
-            crate::mainutils::errors::Rf_error(c"invalid 'length.out' value".as_ptr());
+            crate::mainutils::errors::Rf_error_cstr(c"invalid 'length.out' value");
         }
 
         let na: R_xlen_t;
         if TYPEOF(len) != INTSXP_VAL {
             let sna = asReal(len);
             if ISNAN(sna) || sna <= -1.0 || sna >= R_XLEN_T_MAX_DBL + 1.0 {
-                crate::mainutils::errors::Rf_error(c"invalid 'length.out' value".as_ptr());
+                crate::mainutils::errors::Rf_error_cstr(c"invalid 'length.out' value");
             }
             na = sna as R_xlen_t;
         } else {
             na = asInteger(len) as R_xlen_t;
             if na as c_int == NA_INTEGER || na < 0 {
-                crate::mainutils::errors::Rf_error(c"invalid 'length.out' value".as_ptr());
+                crate::mainutils::errors::Rf_error_cstr(c"invalid 'length.out' value");
             }
         }
 
         if TYPEOF(s) == NILSXP_VAL && na > 0 {
-            crate::mainutils::errors::Rf_error(
-                c"cannot replicate NULL to a non-zero length".as_ptr(),
-            );
+            crate::mainutils::errors::Rf_error_cstr(
+                c"cannot replicate NULL to a non-zero length");
         }
 
         let ns = XLENGTH(s);
@@ -939,10 +938,9 @@ pub fn do_rep(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         x = CAR(args);
 
         if TYPEOF(x) == LISTSXP_VAL {
-            errorcall(
+            errorcall_cstr(
                 call,
-                b"replication of pairlists is defunct\0".as_ptr() as *const c_char,
-            );
+                c"replication of pairlists is defunct");
         }
 
         let lx = if crate::mainutils::essentials::sexp_has_class(x, "POSIXlt")
@@ -959,10 +957,9 @@ pub fn do_rep(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             let slen = asReal(length_out_arg);
             if R_FINITE(slen) {
                 if slen <= -1.0 || slen >= R_XLEN_T_MAX_DBL + 1.0 {
-                    errorcall(
+                    errorcall_cstr(
                         call,
-                        b"invalid 'length.out' argument\0".as_ptr() as *const c_char,
-                    );
+                        c"invalid 'length.out' argument");
                 }
                 len = slen as R_xlen_t;
             } else {
@@ -971,10 +968,9 @@ pub fn do_rep(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         } else {
             len = asInteger(length_out_arg) as R_xlen_t;
             if len != NA_INTEGER as R_xlen_t && len < 0 {
-                errorcall(
+                errorcall_cstr(
                     call,
-                    b"invalid 'length.out' argument\0".as_ptr() as *const c_char,
-                );
+                    c"invalid 'length.out' argument");
             }
         }
 
@@ -984,7 +980,7 @@ pub fn do_rep(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             let seach = asReal(each_arg);
             if R_FINITE(seach) {
                 if seach <= -1.0 || (lx > 0 && seach >= R_XLEN_T_MAX_DBL + 1.0) {
-                    errorcall(call, b"invalid 'each' argument\0".as_ptr() as *const c_char);
+                    errorcall_cstr(call, c"invalid 'each' argument");
                 }
                 each = if lx == 0 {
                     NA_INTEGER as R_xlen_t
@@ -997,7 +993,7 @@ pub fn do_rep(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         } else {
             each = asInteger(each_arg) as R_xlen_t;
             if each != NA_INTEGER as R_xlen_t && each < 0 {
-                errorcall(call, b"invalid 'each' argument\0".as_ptr() as *const c_char);
+                errorcall_cstr(call, c"invalid 'each' argument");
             }
         }
         if each == NA_INTEGER as R_xlen_t {
@@ -1014,11 +1010,9 @@ pub fn do_rep(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         }
 
         if isVector(x) == 0 {
-            errorcall(
+            errorcall_cstr(
                 call,
-                b"attempt to replicate an object of type 'not-a-vector'\0".as_ptr()
-                    as *const c_char,
-            );
+                c"attempt to replicate an object of type 'not-a-vector'");
         }
 
         // Determine final length using 'times' and 'each'
@@ -1040,37 +1034,33 @@ pub fn do_rep(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 if TYPEOF(times) == REALSXP_VAL {
                     let rt = *REAL(times);
                     if ISNAN(rt) || rt <= -1.0 || rt >= R_XLEN_T_MAX_DBL + 1.0 {
-                        errorcall(
+                        errorcall_cstr(
                             call,
-                            b"invalid 'times' argument\0".as_ptr() as *const c_char,
-                        );
+                            c"invalid 'times' argument");
                     }
                     it = rt as R_xlen_t;
                 } else {
                     it = *INTEGER(times) as R_xlen_t;
                     if it as c_int == NA_INTEGER || it < 0 {
-                        errorcall(
+                        errorcall_cstr(
                             call,
-                            b"invalid 'times' argument\0".as_ptr() as *const c_char,
-                        );
+                            c"invalid 'times' argument");
                     }
                 }
                 if lx as c_double * it as c_double * each as c_double > 4503599627370496.0 {
-                    errorcall(
+                    errorcall_cstr(
                         call,
-                        b"length(x) * 'times' * 'each' is too large\0".as_ptr() as *const c_char,
-                    );
+                        c"length(x) * 'times' * 'each' is too large");
                 }
                 len = lx * it * each;
             } else {
                 if nt as c_double != lx as c_double * each as c_double {
-                    errorcall(
+                    errorcall_cstr(
                         call,
                         if each == 1 {
-                            b"invalid 'times' argument\0".as_ptr() as *const c_char
+                            c"invalid 'times' argument"
                         } else {
-                            b"invalid 'times' argument, given the value of 'each'\0".as_ptr()
-                                as *const c_char
+                            c"invalid 'times' argument, given the value of 'each'"
                         },
                     );
                 }
@@ -1078,10 +1068,9 @@ pub fn do_rep(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     for i in 0..nt {
                         let rt = *REAL(times).add(i as usize);
                         if ISNAN(rt) || rt <= -1.0 || rt >= R_XLEN_T_MAX_DBL + 1.0 {
-                            errorcall(
+                            errorcall_cstr(
                                 call,
-                                b"invalid 'times' argument\0".as_ptr() as *const c_char,
-                            );
+                                c"invalid 'times' argument");
                         }
                         sum += rt as R_xlen_t as c_double;
                     }
@@ -1089,26 +1078,24 @@ pub fn do_rep(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     for i in 0..nt {
                         let it = *INTEGER(times).add(i as usize);
                         if it == NA_INTEGER || it < 0 {
-                            errorcall(
+                            errorcall_cstr(
                                 call,
-                                b"invalid 'times' argument\0".as_ptr() as *const c_char,
-                            );
+                                c"invalid 'times' argument");
                         }
                         sum += it as c_double;
                     }
                 }
                 if sum > R_XLEN_T_MAX_DBL {
-                    errorcall(
+                    errorcall_cstr(
                         call,
-                        b"invalid 'times' argument\0".as_ptr() as *const c_char,
-                    );
+                        c"invalid 'times' argument");
                 }
                 len = sum as R_xlen_t;
             }
         }
 
         if len > 0 && each == 0 {
-            errorcall(call, b"invalid 'each' argument\0".as_ptr() as *const c_char);
+            errorcall_cstr(call, c"invalid 'each' argument");
         }
 
         if crate::mainutils::essentials::sexp_has_class(x, "POSIXlt") && TYPEOF(x) == VECSXP_VAL {

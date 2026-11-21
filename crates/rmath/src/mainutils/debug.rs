@@ -10,7 +10,7 @@ use std::cell::RefCell;
 use std::ffi::CString;
 use std::os::raw::c_int;
 
-use crate::mainutils::errors::Rf_error;
+use crate::mainutils::errors::Rf_error_cstr;
 use crate::sexp::accessors::{CAR, PRINTNAME, TAG, TYPEOF};
 use crate::sexp::constructors::Rf_ScalarLogical;
 use crate::sexp::ffi::{FALSE, SEXP, SEXPTYPE, TRUE};
@@ -102,7 +102,7 @@ pub fn do_debug(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
     // Validate that the argument is a function type
     if t != SEXPTYPE::CLOSXP && t != SEXPTYPE::SPECIALSXP && t != SEXPTYPE::BUILTINSXP {
-        Rf_error(c"debug/undebug/isdebugged/debugonce requires a function".as_ptr() as *const _);
+        Rf_error_cstr(c"debug/undebug/isdebugged/debugonce requires a function");
     }
 
     match PRIMVAL(op) {
@@ -262,7 +262,7 @@ fn reject_traced_function(object: SEXP) {
     }
     let t = TYPEOF(object);
     if t == SEXPTYPE::CLOSXP || t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP {
-        Rf_error(c"argument must not be a function".as_ptr() as *const _);
+        Rf_error_cstr(c"argument must not be a function");
     }
 }
 
@@ -285,7 +285,7 @@ fn check_tracemem_arg(args: SEXP, _call: SEXP) {
             String::from_utf8_lossy(supplied)
         ))
         .unwrap_or_else(|_| CString::new("supplied argument name does not match 'x'").unwrap());
-        Rf_error(message.as_ptr());
+        Rf_error_cstr(&message);
     }
 }
 
@@ -303,7 +303,7 @@ fn memory_profiling_enabled() -> bool {
 }
 
 fn reject_without_memory_profiling() {
-    Rf_error(c"R was not compiled with support for memory profiling".as_ptr() as *const _);
+    Rf_error_cstr(c"R was not compiled with support for memory profiling");
 }
 
 /// R's `tracemem(x)` — mark `x` and return `"<address>"`.
@@ -325,19 +325,16 @@ pub fn do_tracemem(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     };
     reject_traced_function(object);
     if object.is_null() || object == R_NilValue() {
-        Rf_error(c"cannot trace NULL".as_ptr() as *const _);
+        Rf_error_cstr(c"cannot trace NULL");
     }
     let t = TYPEOF(object);
     if t == SEXPTYPE::ENVSXP || t == SEXPTYPE::PROMSXP {
-        Rf_error(
-            c"'tracemem' is not useful for promise and environment objects".as_ptr() as *const _,
-        );
+        Rf_error_cstr(
+            c"'tracemem' is not useful for promise and environment objects");
     }
     if t == SEXPTYPE::EXTPTRSXP || t == SEXPTYPE::WEAKREFSXP {
-        Rf_error(
-            c"'tracemem' is not useful for weak reference or external pointer objects".as_ptr()
-                as *const _,
-        );
+        Rf_error_cstr(
+            c"'tracemem' is not useful for weak reference or external pointer objects");
     }
     set_memory_traced(object, true);
     mk_string(&format!("<{:p}>", object))

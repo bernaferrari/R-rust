@@ -283,7 +283,7 @@ pub fn do_traceback(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         checkArity(op, args);
         let skip = crate::mainutils::coerce::asInteger(CAR(args));
         if skip == crate::sexp::ffi::NA_INTEGER || skip < 0 {
-            errorcall(call, b"invalid 'skip' value\x00".as_ptr() as *const c_char);
+            errorcall_cstr(call, c"invalid 'skip' value");
         }
         R_GetTracebackOnly(skip)
     }

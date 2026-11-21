@@ -32,7 +32,7 @@ pub fn dirchmod(dr: SEXP, gwsxp: SEXP) -> SEXP {
             return R_NilValue();
         }
         if Rf_isString(dr) == 0 || LENGTH(dr) != 1 {
-            crate::main::errors::Rf_error(b"invalid 'dir' argument\0".as_ptr() as *const _);
+            crate::main::errors::Rf_error_cstr(c"invalid 'dir' argument");
         }
 
         let grpwrt = if !gwsxp.is_null() {
@@ -142,14 +142,14 @@ pub fn codeFilesAppend(f1: SEXP, f2: SEXP, enc: SEXP) -> SEXP {
             return Rf_allocVector(SEXPTYPE::LGLSXP, 0);
         }
         if Rf_isString(f1) == 0 || LENGTH(f1) != 1 {
-            crate::main::errors::Rf_error(b"invalid 'file1' argument\0".as_ptr() as *const _);
+            crate::main::errors::Rf_error_cstr(c"invalid 'file1' argument");
         }
         if Rf_isString(f2) == 0 {
-            crate::main::errors::Rf_error(b"invalid 'file2' argument\0".as_ptr() as *const _);
+            crate::main::errors::Rf_error_cstr(c"invalid 'file2' argument");
             return Rf_allocVector(SEXPTYPE::LGLSXP, 0);
         }
         if Rf_isString(enc) == 0 || LENGTH(enc) != 1 {
-            crate::main::errors::Rf_error(b"invalid 'enc' argument\0".as_ptr() as *const _);
+            crate::main::errors::Rf_error_cstr(c"invalid 'enc' argument");
             return Rf_allocVector(SEXPTYPE::LGLSXP, 0);
         }
         let enc_elt = STRING_ELT(enc, 0);

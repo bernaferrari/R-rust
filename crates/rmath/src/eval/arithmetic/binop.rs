@@ -282,7 +282,7 @@ pub(crate) fn warn_if_non_multiple_recycling(a_len: R_xlen_t, b_len: R_xlen_t) {
 
 pub(crate) fn warn_simple(message: &str) {
     let cmsg = std::ffi::CString::new(message).unwrap_or_default();
-    crate::mainutils::errors::Rf_warning(cmsg.as_ptr())
+    crate::mainutils::errors::Rf_warning_cstr(&cmsg)
 }
 
 pub(crate) fn arithmetic_error(message: impl Into<String>) -> ! {

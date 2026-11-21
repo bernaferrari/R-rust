@@ -179,10 +179,10 @@ unsafe fn decode_raster_image_input(value: SEXP, native_payload: bool) -> Raster
             base_error("raster image dimensions do not match its data");
         }
         let native =
-            TYPEOF(value) == SEXPTYPE::INTSXP && inherits2(value, c"nativeRaster".as_ptr()) != 0;
+            TYPEOF(value) == SEXPTYPE::INTSXP && inherits2(value, c"nativeRaster") != 0;
         // as.raster transposes an ordinary matrix before restoring its
         // dimensions. Both raster classes therefore carry row-major pixels.
-        let row_major = native_payload || native || inherits2(value, c"raster".as_ptr()) != 0;
+        let row_major = native_payload || native || inherits2(value, c"raster") != 0;
         let mut pixels = Vec::with_capacity(length * 4);
         for row in 0..height {
             for column in 0..width {

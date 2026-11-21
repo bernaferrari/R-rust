@@ -1484,7 +1484,7 @@ pub fn data_frame_as_matrix(frame: SEXP) -> SEXP {
             }
             continue;
         }
-        if crate::mainutils::objects::inherits2(column, c"data.frame".as_ptr()) != 0 {
+        if crate::mainutils::objects::inherits2(column, c"data.frame") != 0 {
             changed = true;
             let inner_names = crate::sexp::attrib_core::getAttrib(
                 column,
@@ -1597,7 +1597,7 @@ pub fn data_frame_as_matrix(frame: SEXP) -> SEXP {
             .try_vector_elt(j)
             .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
             .as_raw();
-        let factor = crate::mainutils::objects::inherits2(column, c"factor".as_ptr()) != 0;
+        let factor = crate::mainutils::objects::inherits2(column, c"factor") != 0;
         if factor {
             any_factor = true;
         }
@@ -1638,7 +1638,7 @@ pub fn data_frame_as_matrix(frame: SEXP) -> SEXP {
             .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
             .as_raw();
         let offset = j * nrow;
-        let factor = crate::mainutils::objects::inherits2(column, c"factor".as_ptr()) != 0;
+        let factor = crate::mainutils::objects::inherits2(column, c"factor") != 0;
         let column_owned = owner_sexp(owner, column);
         for row in 0..nrow {
             let src = if XLENGTH(column) == 0 {

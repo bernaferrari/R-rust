@@ -10,7 +10,7 @@ use std::os::raw::{c_char, c_double, c_int, c_uint};
 use crate::attrib_core::{R_ClassSymbol, R_DimSymbol, getAttrib, setAttrib};
 use crate::main::coerce::{asInteger, asLogical};
 use crate::main::colors::col2name;
-use crate::main::errors::{Rf_error, Rf_warning};
+use crate::main::errors::{Rf_error, Rf_error_cstr, Rf_warning, Rf_warning_cstr};
 use crate::sexp::accessors::{
     CAR, CDR, INTEGER_ELT, LENGTH, SET_INTEGER_ELT, SET_REAL_ELT, SET_STRING_ELT, SET_VECTOR_ELT,
     STRING_ELT, TYPEOF, charsxp_as_utf8,
@@ -111,7 +111,7 @@ fn NumDevices() -> c_int {
 fn checkArity_length(args: SEXP) -> SEXP {
     let args = CDR(args);
     if LENGTH(CAR(args)) == 0 {
-        Rf_error(b"argument must have positive length\0".as_ptr() as *const c_char);
+        Rf_error_cstr(c"argument must have positive length");
     }
     args
 }
@@ -124,7 +124,7 @@ pub fn devcontrol(args: SEXP) -> SEXP {
         asLogical(CAR(args))
     };
     if listFlag == NA_LOGICAL {
-        Rf_error(b"invalid argument\0".as_ptr() as *const c_char);
+        Rf_error_cstr(c"invalid argument");
     }
     let gdd = GEcurrentDevice();
     let _ = device_registry::with_device_mut(gdd, |device| device.displayListOn = listFlag);
@@ -158,7 +158,7 @@ pub fn devnext(args: SEXP) -> SEXP {
     let args = checkArity_length(args);
     let nxt = INTEGER_ELT(CAR(args), 0);
     if nxt == NA_INTEGER {
-        Rf_error(b"NA argument is invalid\0".as_ptr() as *const c_char);
+        Rf_error_cstr(c"NA argument is invalid");
     }
     Rf_ScalarInteger(nextDevice(nxt - 1) + 1)
 }
@@ -168,7 +168,7 @@ pub fn devprev(args: SEXP) -> SEXP {
     let args = checkArity_length(args);
     let prev = INTEGER_ELT(CAR(args), 0);
     if prev == NA_INTEGER {
-        Rf_error(b"NA argument is invalid\0".as_ptr() as *const c_char);
+        Rf_error_cstr(c"NA argument is invalid");
     }
     Rf_ScalarInteger(prevDevice(prev - 1) + 1)
 }
@@ -178,7 +178,7 @@ pub fn devset(args: SEXP) -> SEXP {
     let args = checkArity_length(args);
     let dev_num = INTEGER_ELT(CAR(args), 0);
     if dev_num == NA_INTEGER {
-        Rf_error(b"NA argument is invalid\0".as_ptr() as *const c_char);
+        Rf_error_cstr(c"NA argument is invalid");
     }
     Rf_ScalarInteger(selectDevice(dev_num - 1) + 1)
 }
@@ -188,13 +188,13 @@ pub fn devoff(args: SEXP) -> SEXP {
     let args = checkArity_length(args);
     let dev_num = INTEGER_ELT(CAR(args), 0);
     if dev_num == 1 {
-        Rf_error(b"cannot shut down device 1 (the null device)\0".as_ptr() as *const c_char);
+        Rf_error_cstr(c"cannot shut down device 1 (the null device)");
     }
     if dev_num > 1 {
         let gdd = GEgetDevice(dev_num - 1);
         let _ = device_registry::with_device_mut(gdd, |device| {
             if device.lock != 0 {
-                Rf_warning(b"Killing locked device\0".as_ptr() as *const c_char);
+                Rf_warning_cstr(c"Killing locked device");
                 device.lock = 0;
             }
         });
@@ -224,18 +224,18 @@ fn devsize_unit_scale(units: SEXP) -> c_double {
         return 1.0;
     }
     if TYPEOF(units) != SEXPTYPE::STRSXP {
-        Rf_error(b"'units' must be a character string\0".as_ptr() as *const c_char);
+        Rf_error_cstr(c"'units' must be a character string");
     }
     let unit = STRING_ELT(units, 0);
     if unit.is_null() {
-        Rf_error(b"'units' must be a character string\0".as_ptr() as *const c_char);
+        Rf_error_cstr(c"'units' must be a character string");
     }
     match charsxp_as_utf8(unit).as_slice() {
         b"in" => 1.0,
         b"cm" => 2.54,
         b"px" => 72.0,
         _ => {
-            Rf_error(b"'arg' should be one of \"in\", \"cm\", \"px\"\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"'arg' should be one of \"in\", \"cm\", \"px\"");
             unreachable!("Rf_error returned");
         }
     }

@@ -684,7 +684,7 @@ pub fn do_lm_wfit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 "weights smaller than tolerance wtol*sum(w) = {thresh} treated as zero"
             ))
             .unwrap_or_default();
-            crate::mainutils::errors::Rf_warning1(msg.as_ptr());
+            crate::mainutils::errors::Rf_warning1(&msg);
         }
         let mut a00 = 0.0;
         let mut sx = 0.0;

@@ -420,7 +420,7 @@ pub fn qr_coef_real(q: SEXP, bin: SEXP) -> SEXP {
         );
 
         if info != 0 {
-            Rf_error(b"error code from Lapack routine 'dtrtrs'\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"error code from Lapack routine 'dtrtrs'");
         }
 
         let ans = Rf_allocVector(REALSXP_C, ((k as usize) * (nrhs as usize)) as c_int);
@@ -677,7 +677,7 @@ pub fn qr_qy_real(q: SEXP, bin: SEXP, trans: SEXP) -> SEXP {
 
         let tr = asLogical(trans);
         if tr == NA_INTEGER {
-            Rf_error(b"invalid 'trans' argument\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"invalid 'trans' argument");
         }
 
         let k = if m < n { m } else { n };
@@ -735,7 +735,7 @@ pub fn qr_qy_real(q: SEXP, bin: SEXP, trans: SEXP) -> SEXP {
         );
 
         if info != 0 {
-            Rf_error(b"error code from Lapack routine 'dormqr'\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"error code from Lapack routine 'dormqr'");
         }
 
         lwork = tmp as c_int;
@@ -758,7 +758,7 @@ pub fn qr_qy_real(q: SEXP, bin: SEXP, trans: SEXP) -> SEXP {
         );
 
         if info != 0 {
-            Rf_error(b"error code from Lapack routine 'dormqr'\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"error code from Lapack routine 'dormqr'");
         }
 
         let ans = Rf_allocVector(REALSXP_C, len_b as c_int);
@@ -825,7 +825,7 @@ pub fn qr_qy_cmplx(q: SEXP, bin: SEXP, trans: SEXP) -> SEXP {
 
         let tr = asLogical(trans);
         if tr == NA_INTEGER {
-            Rf_error(b"invalid 'trans' argument\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"invalid 'trans' argument");
         }
 
         let k = if m < n { m } else { n };

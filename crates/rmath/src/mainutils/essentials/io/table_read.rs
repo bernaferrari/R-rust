@@ -321,7 +321,7 @@ fn parse_table_col_classes(arg: SEXP, col_names: &[String]) -> Vec<TableColClass
             if missing {
                 let msg = std::ffi::CString::new("not all columns named in 'colClasses' exist")
                     .unwrap_or_default();
-                crate::mainutils::errors::Rf_warning(msg.as_ptr());
+                crate::mainutils::errors::Rf_warning_cstr(&msg);
             }
         } else if n > 0 {
             for j in 0..ncols {

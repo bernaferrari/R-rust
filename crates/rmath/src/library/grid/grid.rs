@@ -18,7 +18,7 @@ use crate::mainutils::engine::{
     GEStrMetric, GEdeviceDirty, Rf_eval_with_gd, fromDeviceX, fromDeviceY, toDeviceHeight,
     toDeviceWidth, toDeviceX, toDeviceY,
 };
-use crate::mainutils::errors::{Rf_error, Rf_error1, Rf_warning};
+use crate::mainutils::errors::{Rf_error, Rf_error_cstr, Rf_error1, Rf_warning, Rf_warning_cstr};
 use crate::mainutils::graphics_ffi::rmath_grid_release_definitions as release_grid_definitions;
 use crate::mainutils::objects::inherits2 as Rf_inherits;
 use crate::mainutils::subset::installTrChar;

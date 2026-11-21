@@ -113,8 +113,8 @@ pub fn do_methods(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
     if !class_arg.is_null() && class_arg != R_NilValue() {
         if XLENGTH(class_arg) > 1 {
-            crate::mainutils::errors::Rf_warning(
-                c"'class' is of length > 1; only the first element will be used".as_ptr(),
+            crate::mainutils::errors::Rf_warning_cstr(
+                c"'class' is of length > 1; only the first element will be used",
             );
         }
         let class_name = elt_to_string(class_arg, 0);

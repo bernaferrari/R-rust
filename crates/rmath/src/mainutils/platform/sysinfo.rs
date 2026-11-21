@@ -234,7 +234,7 @@ pub fn do_dircreate(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
             && let Ok(message) =
                 CString::new(format!("cannot create dir '{path}', reason '{error}'"))
         {
-            crate::mainutils::errors::Rf_warning1(message.as_ptr());
+            crate::mainutils::errors::Rf_warning1(&message);
         }
         Rf_ScalarLogical(i32::from(result.is_ok()))
     }

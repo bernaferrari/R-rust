@@ -47,32 +47,29 @@ pub(crate) fn objects_do_unclass(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP)
 
 /// Version of inherits() that supports S4 inheritance and implicit classes.
 /// Returns TRUE/FALSE as c_int.
-pub fn inherits2(x: SEXP, what: *const c_char) -> c_int {
-    unsafe {
-        if x.is_null() || what.is_null() {
-            return FALSE;
-        }
+pub fn inherits2(x: SEXP, what: &std::ffi::CStr) -> c_int {
+    if x.is_null() {
+        return FALSE;
+    }
 
-        if OBJECT(x) != FALSE {
-            let klass = if IS_S4_OBJECT(x) != FALSE {
-                R_data_class2(x)
-            } else {
-                R_data_class(x)
-            };
-            let _klass_guard = protect(klass);
-            let nclass = length(klass);
-            for i in 0..nclass {
-                let cs = char_cstring(STRING_ELT(klass, i as R_xlen_t));
-                if !cs.is_none()
-                    && cs.as_deref().unwrap_or_default().to_bytes()
-                        == std::ffi::CStr::from_ptr(what).to_bytes()
-                {
-                    return TRUE;
-                }
+    if OBJECT(x) != FALSE {
+        let klass = if IS_S4_OBJECT(x) != FALSE {
+            R_data_class2(x)
+        } else {
+            R_data_class(x)
+        };
+        let _klass_guard = protect(klass);
+        let nclass = length(klass);
+        for i in 0..nclass {
+            let cs = char_cstring(STRING_ELT(klass, i as R_xlen_t));
+            if !cs.is_none()
+                && cs.as_deref().unwrap_or_default().to_bytes() == what.to_bytes()
+            {
+                return TRUE;
             }
         }
-        FALSE
     }
+    FALSE
 }
 
 // ---------------------------------------------------------------------------
@@ -124,7 +121,11 @@ pub(crate) fn inherits3(x: SEXP, what: SEXP, which: SEXP) -> SEXP {
 
         for j in 0..nwhat {
             let ss = translateChar(STRING_ELT(what, j as R_xlen_t));
-            let idx = stringPositionTr(klass, ss);
+            let idx = if ss.is_null() {
+                -1
+            } else {
+                stringPositionTr(klass, std::ffi::CStr::from_ptr(ss))
+            };
             if isvec {
                 *INTEGER_ELT_mut(rval, j) = idx + 1; // 0 when not found
             } else if idx >= 0 {
@@ -389,7 +390,13 @@ pub fn do_setRefClass(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
 
 /// Return the 0-based index of an is() match in a vector of class-name
 /// strings terminated by an empty string. Returns -1 for no match.
-pub fn R_check_class_and_super(x: SEXP, valid: *const *const c_char, _rho: SEXP) -> c_int {
+///
+/// # Safety
+///
+/// `valid` must be null or point to an array of pointers to NUL-terminated
+/// strings, terminated by a null pointer or an empty string, all valid for
+/// reads for the duration of the call.
+pub unsafe fn R_check_class_and_super(x: SEXP, valid: *const *const c_char, _rho: SEXP) -> c_int {
     unsafe {
         if x.is_null() || valid.is_null() {
             return -1;
@@ -423,6 +430,10 @@ pub fn R_check_class_and_super(x: SEXP, valid: *const *const c_char, _rho: SEXP)
 // R_check_class_etc -- simplified class check (no environment)
 // ---------------------------------------------------------------------------
 
-pub fn R_check_class_etc(x: SEXP, valid: *const *const c_char) -> c_int {
-    R_check_class_and_super(x, valid, ptr::null_mut())
+/// # Safety
+///
+/// Same contract as [`R_check_class_and_super`] for `valid`.
+pub unsafe fn R_check_class_etc(x: SEXP, valid: *const *const c_char) -> c_int {
+    // SAFETY: `valid` is forwarded under this function's `# Safety` contract.
+    unsafe { R_check_class_and_super(x, valid, ptr::null_mut()) }
 }

@@ -162,7 +162,7 @@ pub unsafe extern "C-unwind" fn c_nls_iter(m: SEXP, control: SEXP, do_trace_arg:
                 let msg = "singular gradient";
                 if warn_only {
                     let c = std::ffi::CString::new(msg).unwrap();
-                    crate::mainutils::errors::Rf_warning(c.as_ptr());
+                    crate::mainutils::errors::Rf_warning_cstr(&c);
                     return conv_info(msg, i, 1, conv_new);
                 }
                 crate::mainutils::errors::errorcall_str(std::ptr::null_mut(), msg);
@@ -185,7 +185,7 @@ pub unsafe extern "C-unwind" fn c_nls_iter(m: SEXP, control: SEXP, do_trace_arg:
             let msg = format!("step factor {fac} reduced below 'minFactor' of {min_fac}");
             if warn_only {
                 let c = std::ffi::CString::new(msg.clone()).unwrap();
-                crate::mainutils::errors::Rf_warning(c.as_ptr());
+                crate::mainutils::errors::Rf_warning_cstr(&c);
                 return conv_info(&msg, i, 2, conv_new);
             }
             crate::mainutils::errors::errorcall_str(std::ptr::null_mut(), &msg);
@@ -196,7 +196,7 @@ pub unsafe extern "C-unwind" fn c_nls_iter(m: SEXP, control: SEXP, do_trace_arg:
         let msg = format!("number of iterations exceeded maximum of {max_iter}");
         if warn_only {
             let c = std::ffi::CString::new(msg.clone()).unwrap();
-            crate::mainutils::errors::Rf_warning(c.as_ptr());
+            crate::mainutils::errors::Rf_warning_cstr(&c);
             return conv_info(&msg, i, 3, conv_new);
         }
         crate::mainutils::errors::errorcall_str(std::ptr::null_mut(), &msg);

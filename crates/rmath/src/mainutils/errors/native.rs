@@ -486,14 +486,16 @@ mod tests {
     }
     extern "C-unwind" fn body_rendered_error(_: *mut c_void) -> SEXP {
         unsafe {
-            super::super::errorcall(
+            super::super::errorcall_cstr(
                 crate::sexp::globals::R_NilValue(),
-                c"rendered native error".as_ptr(),
-            );
+                c"rendered native error");
         }
         unreachable!()
     }
-    extern "C-unwind" fn handler_collects(condition: SEXP, data: *mut c_void) -> SEXP {
+    /// # Safety
+    ///
+    /// `data` must point to a live `Trace`.
+    unsafe extern "C-unwind" fn handler_collects(condition: SEXP, data: *mut c_void) -> SEXP {
         let condition = unsafe { context::own_control_value(condition) };
         let message = condition
             .try_vector_elt(0)
@@ -517,7 +519,10 @@ mod tests {
         );
         condition.as_raw()
     }
-    extern "C-unwind" fn finally_collects(data: *mut c_void) {
+    /// # Safety
+    ///
+    /// `data` must point to a live `Trace`.
+    unsafe extern "C-unwind" fn finally_collects(data: *mut c_void) {
         unsafe { &*data.cast::<Trace>() }.collect("finally");
     }
     fn trace(session: &RSession) -> Trace {
@@ -656,30 +661,30 @@ mod tests {
         trace: Trace,
         exit_only: i32,
     }
-    extern "C-unwind" fn body_typed_error(data: *mut c_void) -> SEXP {
+    /// # Safety
+    ///
+    /// `data` must point to a live `TypedTrace`.
+    unsafe extern "C-unwind" fn body_typed_error(data: *mut c_void) -> SEXP {
         unsafe {
             let factory = OwnerToken::current().unwrap().node_factory();
             let condition = context::own_control_value(super::super::R_makeErrorCondition(
                 factory.nil().as_raw(),
-                c"objectNotFoundError".as_ptr(),
-                std::ptr::null(),
+                Some(c"objectNotFoundError"),
+                None,
                 2,
-                c"typed native error".as_ptr(),
-            ));
+                Some(c"typed native error")));
             let name = factory.strings(&["original name"]).unwrap();
             let mode = factory.strings(&["function"]).unwrap();
             super::super::R_setConditionField(
                 condition.as_raw(),
                 2,
-                c"name".as_ptr(),
-                name.as_raw(),
-            );
+                c"name",
+                name.as_raw());
             super::super::R_setConditionField(
                 condition.as_raw(),
                 3,
-                c"mode".as_ptr(),
-                mode.as_raw(),
-            );
+                c"mode",
+                mode.as_raw());
             super::super::R_signalErrorConditionEx(
                 condition.as_raw(),
                 factory.nil().as_raw(),
@@ -688,7 +693,14 @@ mod tests {
         }
         unreachable!("typed native error must exit")
     }
-    fn check_typed_condition(condition: SEXP, data: *mut c_void, event: &'static str) -> SEXP {
+    /// # Safety
+    ///
+    /// `data` must point to a live `TypedTrace`.
+    unsafe fn check_typed_condition(
+        condition: SEXP,
+        data: *mut c_void,
+        event: &'static str,
+    ) -> SEXP {
         let condition = unsafe { context::own_control_value(condition) };
         unsafe { &*data.cast::<TypedTrace>() }.trace.collect(event);
         for (index, expected) in [
@@ -718,13 +730,24 @@ mod tests {
         );
         condition.as_raw()
     }
-    extern "C-unwind" fn typed_calling(condition: SEXP, data: *mut c_void) -> SEXP {
+    /// # Safety
+    ///
+    /// `data` must point to a live `TypedTrace`.
+    unsafe extern "C-unwind" fn typed_calling(condition: SEXP, data: *mut c_void) -> SEXP {
+        // SAFETY: forwarded under this callback's `# Safety` contract.
         unsafe { check_typed_condition(condition, data, "calling") }
     }
-    extern "C-unwind" fn typed_exiting(condition: SEXP, data: *mut c_void) -> SEXP {
+    /// # Safety
+    ///
+    /// `data` must point to a live `TypedTrace`.
+    unsafe extern "C-unwind" fn typed_exiting(condition: SEXP, data: *mut c_void) -> SEXP {
+        // SAFETY: forwarded under this callback's `# Safety` contract.
         unsafe { check_typed_condition(condition, data, "exiting") }
     }
-    extern "C-unwind" fn typed_finally(data: *mut c_void) {
+    /// # Safety
+    ///
+    /// `data` must point to a live `TypedTrace`.
+    unsafe extern "C-unwind" fn typed_finally(data: *mut c_void) {
         unsafe { &*data.cast::<TypedTrace>() }
             .trace
             .collect("finally");
@@ -846,7 +869,10 @@ mod tests {
         assert!(owner.pin().is_err());
     }
 
-    extern "C-unwind" fn capture_calling_handler(data: *mut c_void) -> SEXP {
+    /// # Safety
+    ///
+    /// `data` must point to a live `RefCell<Option<Sexp<'static>>>`.
+    unsafe extern "C-unwind" fn capture_calling_handler(data: *mut c_void) -> SEXP {
         let handler = unsafe {
             super::super::conditions::ENTRY_HANDLER(crate::sexp::accessors::CAR(
                 super::super::handler_stack(),
@@ -887,7 +913,10 @@ mod tests {
             );
         });
     }
-    extern "C-unwind" fn body_return(data: *mut c_void) -> SEXP {
+    /// # Safety
+    ///
+    /// `data` must point to a live, readable `SEXP`.
+    unsafe extern "C-unwind" fn body_return(data: *mut c_void) -> SEXP {
         let value = unsafe { *data.cast::<SEXP>() };
         let ticket = unsafe { context::return_transfer(std::ptr::null_mut(), value) };
         std::panic::panic_any(RSignal::Return(ticket));

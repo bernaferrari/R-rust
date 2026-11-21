@@ -12,7 +12,7 @@ use std::os::raw::{c_char, c_double, c_int};
 use std::ptr;
 
 use crate::attrib_core::{R_NamesSymbol, setAttrib};
-use crate::main::errors::{Rf_error, Rf_warning};
+use crate::main::errors::{Rf_error, Rf_error_cstr, Rf_warning, Rf_warning_cstr};
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::ffi::*;
@@ -232,7 +232,7 @@ unsafe fn loglin(
 
         // Check validity of NVAR and maxit
         if nvar == 0 {
-            Rf_error(b"no variables\0".as_ptr() as *const _);
+            Rf_error_cstr(c"no variables");
         }
         // Check validity of maxit
         if maxit <= 0 {
@@ -462,13 +462,13 @@ pub fn LogLin(
 
     match ifault {
         1 | 2 => {
-            Rf_error(b"this should not happen\0".as_ptr() as *const _);
+            Rf_error_cstr(c"this should not happen");
         }
         3 => {
-            Rf_warning(b"algorithm did not converge\0".as_ptr() as *const _);
+            Rf_warning_cstr(c"algorithm did not converge");
         }
         4 => {
-            Rf_error(b"incorrect specification of 'table' or 'start'\0".as_ptr() as *const _);
+            Rf_error_cstr(c"incorrect specification of 'table' or 'start'");
         }
         _ => {} // intentionally unhandled: unknown convergence error code
     }

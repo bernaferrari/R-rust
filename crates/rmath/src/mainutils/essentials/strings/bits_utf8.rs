@@ -256,10 +256,8 @@ pub fn do_utf8ToInt(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         }
         let _x_root = protect(x);
         if XLENGTH(x) > 1 {
-            crate::mainutils::errors::Rf_warning(
-                c"argument should be a character vector of length 1\nall but the first element will be ignored"
-                    .as_ptr(),
-            );
+            crate::mainutils::errors::Rf_warning_cstr(
+                c"argument should be a character vector of length 1\nall but the first element will be ignored");
         }
         let ch = STRING_ELT(x, 0);
         if ch.is_null() || ch == crate::sexp::globals::R_NaString() {
@@ -366,10 +364,8 @@ pub fn do_intToUtf8(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         };
         if multiple {
             if s_pair {
-                crate::main::errors::Rf_warning(
-                    c"allow_surrogate_pairs = TRUE is incompatible with multiple = TRUE and will be ignored"
-                        .as_ptr(),
-                );
+                crate::main::errors::Rf_warning_cstr(
+                    c"allow_surrogate_pairs = TRUE is incompatible with multiple = TRUE and will be ignored");
             }
             let out = Rf_allocVector3(SEXPTYPE::STRSXP, n);
             let _o = protect(out);

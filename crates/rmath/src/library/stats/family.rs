@@ -42,8 +42,8 @@ fn shallow_duplicate(x: SEXP) -> SEXP {
 #[inline]
 fn x_d_omx(x: c_double) -> c_double {
     if x < 0.0 || x > 1.0 {
-        crate::main::errors::Rf_error(
-            b"Value out of range (0, 1)\0".as_ptr() as *const core::ffi::c_char
+        crate::main::errors::Rf_error_cstr(
+            c"Value out of range (0, 1)"
         );
     }
     x / (1.0 - x)
@@ -58,8 +58,8 @@ fn x_d_opx(x: c_double) -> c_double {
 pub fn logit_link(mu: SEXP) -> SEXP {
     let n = LENGTH(mu);
     if n == 0 || TYPEOF(mu) != SEXPTYPE::REALSXP {
-        crate::main::errors::Rf_error(
-            b"Argument must be a nonempty numeric vector\0".as_ptr() as *const core::ffi::c_char
+        crate::main::errors::Rf_error_cstr(
+            c"Argument must be a nonempty numeric vector"
         );
     }
     let ans = shallow_duplicate(mu);
@@ -78,8 +78,8 @@ pub fn logit_linkinv(eta: SEXP) -> SEXP {
             || TYPEOF(eta) == SEXPTYPE::INTSXP
             || TYPEOF(eta) == SEXPTYPE::LGLSXP)
     {
-        crate::main::errors::Rf_error(
-            b"Argument must be a nonempty numeric vector\0".as_ptr() as *const core::ffi::c_char
+        crate::main::errors::Rf_error_cstr(
+            c"Argument must be a nonempty numeric vector"
         );
     }
     let mut guards = Vec::with_capacity(2);
@@ -112,8 +112,8 @@ pub fn logit_mu_eta(eta: SEXP) -> SEXP {
             || TYPEOF(eta) == SEXPTYPE::INTSXP
             || TYPEOF(eta) == SEXPTYPE::LGLSXP)
     {
-        crate::main::errors::Rf_error(
-            b"Argument must be a nonempty numeric vector\0".as_ptr() as *const core::ffi::c_char
+        crate::main::errors::Rf_error_cstr(
+            c"Argument must be a nonempty numeric vector"
         );
     }
     let mut guards = Vec::with_capacity(2);
@@ -175,16 +175,12 @@ pub fn binomial_dev_resids(y: SEXP, mu: SEXP, wt: SEXP) -> SEXP {
     }
 
     if lmu != n && lmu != 1 {
-        crate::main::errors::Rf_error(
-            b"argument mu must be a numeric vector of length 1 or matching length\0".as_ptr()
-                as *const core::ffi::c_char,
-        );
+        crate::main::errors::Rf_error_cstr(
+            c"argument mu must be a numeric vector of length 1 or matching length");
     }
     if lwt != n && lwt != 1 {
-        crate::main::errors::Rf_error(
-            b"argument wt must be a numeric vector of length 1 or matching length\0".as_ptr()
-                as *const core::ffi::c_char,
-        );
+        crate::main::errors::Rf_error_cstr(
+            c"argument wt must be a numeric vector of length 1 or matching length");
     }
 
     if lmu > 1 {

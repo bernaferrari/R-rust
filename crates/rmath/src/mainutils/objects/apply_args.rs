@@ -14,7 +14,11 @@ use super::*;
 
 /// Get the object argument for method dispatch from the calling context.
 /// This examines the generic function's formals and matched arguments.
-pub(crate) fn GetObject(cptr: *mut RCNTXT) -> SEXP {
+///
+/// # Safety
+///
+/// `cptr` must be null or point to a live context on the current context stack.
+pub(crate) unsafe fn GetObject(cptr: *mut RCNTXT) -> SEXP {
     unsafe {
         if cptr.is_null() {
             return R_NilValue();
@@ -198,21 +202,26 @@ enum fstype_t {
 /// Patch a single supplied argument into a promise referencing the formal name.
 /// If the supplied value is R_MissingArg, looks up a local variable in cloenv.
 /// Ported from match.c:424-438.
-fn patch_argument(supplied_slot: SEXP, name: SEXP, farg: *mut fstype_t, cloenv: SEXP) {
+fn patch_argument(
+    supplied_slot: SEXP,
+    name: SEXP,
+    farg: Option<&mut fstype_t>,
+    cloenv: SEXP,
+) {
     unsafe {
         let value = CAR(supplied_slot);
         if value == R_MissingArg() {
             let local = crate::sexp::envir::R_findVarInFrame(cloenv, name);
             if local == R_MissingArg() {
-                if !farg.is_null() {
+                if let Some(farg) = farg {
                     *farg = fstype_t::MatchedMissing;
                 }
                 return;
             }
-            if !farg.is_null() {
+            if let Some(farg) = farg {
                 *farg = fstype_t::MatchedLocal;
             }
-        } else if !farg.is_null() {
+        } else if let Some(farg) = farg {
             *farg = fstype_t::MatchedPresent;
         }
         SETCAR(
@@ -258,7 +267,7 @@ pub(crate) fn patchArgsByActuals(formals: SEXP, supplied: SEXP, cloenv: SEXP) ->
                         && TAG(b2) != R_NilValue()
                         && crate::mainutils::match_mod::pmatch(TAG(f), TAG(b2), 1) != 0
                     {
-                        patch_argument(b2, TAG(f), &mut farg[farg_i], cloenv);
+                        patch_argument(b2, TAG(f), Some(&mut farg[farg_i]), cloenv);
                         let gp = (*b2).sxpinfo.gp();
                         (*b2).sxpinfo.set_gp((gp & !2) | 2);
                         break;
@@ -293,7 +302,7 @@ pub(crate) fn patchArgsByActuals(formals: SEXP, supplied: SEXP, cloenv: SEXP) ->
                                 if seendots { 1 } else { 0 },
                             ) != 0
                         {
-                            patch_argument(b2, TAG(f), &mut farg[farg_i], cloenv);
+                            patch_argument(b2, TAG(f), Some(&mut farg[farg_i]), cloenv);
                             // SET_ARGUSED(b2, 1)
                             let gp2 = (*b2).sxpinfo.gp();
                             (*b2).sxpinfo.set_gp((gp2 & !2) | 2);
@@ -327,7 +336,7 @@ pub(crate) fn patchArgsByActuals(formals: SEXP, supplied: SEXP, cloenv: SEXP) ->
                     if farg[farg_i] == fstype_t::MatchedLocal {
                         SETCAR(b3, R_MissingArg());
                     } else {
-                        patch_argument(b3, TAG(f), ptr::null_mut(), cloenv);
+                        patch_argument(b3, TAG(f), None, cloenv);
                     }
                     // SET_ARGUSED(b3, 1)
                     let gp2 = (*b3).sxpinfo.gp();

@@ -203,7 +203,7 @@ pub(crate)  fn gnu_is_number(value: SEXP) -> bool {
     }
     match TYPEOF(value) {
         t if t == SEXPTYPE::INTSXP => {
-            crate::mainutils::objects::inherits2(value, c"factor".as_ptr()) == 0
+            crate::mainutils::objects::inherits2(value, c"factor") == 0
         }
         t if t == SEXPTYPE::LGLSXP || t == SEXPTYPE::REALSXP || t == SEXPTYPE::CPLXSXP => true,
         _ => false,

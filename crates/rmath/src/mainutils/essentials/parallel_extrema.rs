@@ -223,10 +223,9 @@ pub(super) fn numeric(
             kind = SEXPTYPE::INTSXP;
         }
         if length > 0 && inputs.values.iter().any(|x| length % x.length != 0) {
-            crate::mainutils::errors::warningcall(
+            crate::mainutils::errors::warningcall_cstr(
                 call,
-                c"an argument will be fractionally recycled".as_ptr(),
-            );
+                c"an argument will be fractionally recycled");
             check();
         }
         let result = crate::sexp::constructors::Rf_allocVector3(kind, length);

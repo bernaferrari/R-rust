@@ -348,12 +348,9 @@ pub fn CoercionWarning(warn: c_int) {
                     access.with_native(|_| {
                         {
                             if let Some(call) = &attributed {
-                                crate::mainutils::errors::warningcall(
-                                    call.as_raw(),
-                                    message.as_ptr(),
-                                );
+                                crate::mainutils::errors::warningcall_cstr(call.as_raw(), message);
                             } else {
-                                crate::mainutils::errors::Rf_warning(message.as_ptr());
+                                crate::mainutils::errors::Rf_warning_cstr(message);
                             }
                         }
                         Ok(())

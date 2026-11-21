@@ -817,8 +817,7 @@ pub fn force_promise_result<'a>(prom: Sexp<'a>) -> EnvResult<LookupResult<'a>> {
                     promise_callback(&authority, || {
                         crate::mainutils::errors::Rf_warningcall1(
                             call.as_raw(),
-                            c"restarting interrupted promise evaluation".as_ptr(),
-                        );
+                            c"restarting interrupted promise evaluation");
                     })?;
                     restart.enter()
                 }

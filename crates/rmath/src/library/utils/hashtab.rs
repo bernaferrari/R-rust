@@ -23,7 +23,7 @@ use std::os::raw::c_int;
 
 use crate::attrib_core::{R_ClassSymbol, setAttrib};
 use crate::eval::eval::Rf_eval;
-use crate::main::errors::Rf_error;
+use crate::main::errors::{Rf_error, Rf_error_cstr};
 use crate::mainutils::identical::R_compute_identical;
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
@@ -52,7 +52,7 @@ const HASH_IDENTICAL_FLAGS: c_int = 0;
 fn checkArgCountPop(args: SEXP, n: c_int) -> SEXP {
     let args = CDR(args);
     if LENGTH(args) != n {
-        Rf_error(b"wrong argument count\0".as_ptr() as *const core::ffi::c_char);
+        Rf_error_cstr(c"wrong argument count");
     }
     args
 }
@@ -60,8 +60,8 @@ fn checkArgCountPop(args: SEXP, n: c_int) -> SEXP {
 fn HT_TypeFromString(x: SEXP) -> c_int {
     {
         if TYPEOF(x) != SEXPTYPE::STRSXP || XLENGTH(x) != 1 {
-            Rf_error(
-                b"hash table type must be a scalar string\0".as_ptr() as *const core::ffi::c_char
+            Rf_error_cstr(
+                c"hash table type must be a scalar string"
             );
         }
         // SAFETY: STRING_ELT yields a canonical CHARSXP whose payload pointer
@@ -72,7 +72,7 @@ fn HT_TypeFromString(x: SEXP) -> c_int {
         } else if s_bytes == b"address" {
             HT_TYPE_ADDRESS
         } else {
-            Rf_error(b"hash table type is not supported\0".as_ptr() as *const core::ffi::c_char);
+            Rf_error_cstr(c"hash table type is not supported");
             0
         }
     }
@@ -83,7 +83,7 @@ fn nil_value() -> SEXP {
 }
 
 fn hash_error(message: &'static [u8]) -> ! {
-    Rf_error(message.as_ptr() as *const core::ffi::c_char);
+    Rf_error_cstr(crate::mainutils::errors::cstr_until_nul(message));
     panic!("Rf_error returned unexpectedly")
 }
 
@@ -339,7 +339,7 @@ pub fn typhash_Ext(args: SEXP) -> SEXP {
             HT_TYPE_IDENTICAL => mk(b"identical\0"),
             HT_TYPE_ADDRESS => mk(b"address\0"),
             _ => {
-                Rf_error(b"bad hash table type\0".as_ptr() as *const core::ffi::c_char);
+                Rf_error_cstr(c"bad hash table type");
                 std::ptr::null_mut()
             }
         }

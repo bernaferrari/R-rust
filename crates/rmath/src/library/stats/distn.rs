@@ -10,7 +10,7 @@
 use std::os::raw::{c_double, c_int};
 use std::ptr;
 
-use crate::main::errors::Rf_error;
+use crate::main::errors::{Rf_error, Rf_error_cstr};
 use crate::nmath::dist::{
     beta, binomial, cauchy, chisq, exponential, f_dist, gamma, geometric, hypergeometric, lnorm,
     logistic, nbeta, nbinom, nchisq, nf_dist, normal, nt_dist, poisson, t_dist, tukey, uniform,
@@ -41,7 +41,7 @@ fn isNumeric(owner: crate::sexp::owner::OwnerToken<'_>, x: SEXP) -> bool {
     let numeric = t == SEXPTYPE::REALSXP
         || t == SEXPTYPE::LGLSXP
         || (t == SEXPTYPE::INTSXP
-            && crate::mainutils::objects::inherits2(x, c"factor".as_ptr()) == 0);
+            && crate::mainutils::objects::inherits2(x, c"factor") == 0);
     owner
         .require_active()
         .unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()));
@@ -152,7 +152,7 @@ fn finish_math_attributes(
 fn nans_produced() {
     // SAFETY: the caller dispatches the warning under an active owner.
 
-    crate::mainutils::errors::Rf_warning1(c"NaNs produced".as_ptr());
+    crate::mainutils::errors::Rf_warning1(c"NaNs produced");
 }
 
 // ---------------------------------------------------------------------------
@@ -178,7 +178,7 @@ fn math_recycle<const N: usize, const F: usize>(
         // predicate also checks the original owner across class lookup.
         if !isNumeric(owner, operand.as_raw()) {
             // SAFETY: the owner is active; error dispatch may longjmp.
-            Rf_error(c"Non-numeric argument to mathematical function".as_ptr());
+            Rf_error_cstr(c"Non-numeric argument to mathematical function");
             unreachable!("Rf_error does not return");
         }
     }

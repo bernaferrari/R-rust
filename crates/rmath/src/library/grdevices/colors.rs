@@ -10,7 +10,7 @@ use std::os::raw::{c_char, c_double, c_int, c_uint};
 
 use crate::attrib_core::{R_DimNamesSymbol, R_DimSymbol, R_NamesSymbol, getAttrib, setAttrib};
 use crate::main::coerce::{asInteger, asLogical, asReal, coerceVector};
-use crate::main::errors::Rf_error;
+use crate::main::errors::{Rf_error, Rf_error_cstr};
 use crate::main::relop::NA_STRING;
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;

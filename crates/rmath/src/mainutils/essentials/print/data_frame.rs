@@ -768,7 +768,7 @@ fn mark_asis_if_character(x: SEXP) -> SEXP {
     if x.is_null() || TYPEOF(x) != SEXPTYPE::STRSXP {
         return x;
     }
-    if crate::mainutils::objects::inherits2(x, c"AsIs".as_ptr()) != FALSE {
+    if crate::mainutils::objects::inherits2(x, c"AsIs") != FALSE {
         return x;
     }
     let class_vec = Rf_allocVector3(SEXPTYPE::STRSXP, 1);

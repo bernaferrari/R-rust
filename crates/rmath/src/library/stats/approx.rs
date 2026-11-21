@@ -190,7 +190,7 @@ pub fn ApproxTest(x: SEXP, y: SEXP, method: SEXP, f: SEXP, na_rm: SEXP) -> SEXP 
     prepare_real(owner, &y);
     paired(&x, &y);
     if let Err(message) = R_approxtest(&x, &y, method, f, na_rm, owner) {
-        crate::main::errors::Rf_error(message.as_ptr());
+        crate::main::errors::Rf_error_cstr(&message);
     }
     active(owner);
     R_NilValue()

@@ -10,7 +10,7 @@ use std::slice::{from_raw_parts, from_raw_parts_mut};
 
 use crate::attrib_core::{R_NamesSymbol, getAttrib, setAttrib};
 use crate::main::coerce::{asInteger, coerceVector};
-use crate::main::errors::Rf_error;
+use crate::main::errors::{Rf_error, Rf_error_cstr};
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::context::r_error;
@@ -389,7 +389,7 @@ pub fn SplineCoef(method: SEXP, x: SEXP, y: SEXP) -> SEXP {
     let n = XLENGTH(x);
     let m = asInteger(method);
     if XLENGTH(y) != n {
-        Rf_error(b"inputs of different lengths\0".as_ptr() as *const c_char);
+        Rf_error_cstr(c"inputs of different lengths");
     }
 
     let b = Rf_allocVector3(SEXPTYPE::REALSXP, n);

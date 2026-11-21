@@ -1006,10 +1006,9 @@ fn apply_parameter(
             for warning in state.layout.set_mfg(value, cexbase, mex, 1.0) {
                 let message = std::ffi::CString::new(warning).unwrap_or_default();
 
-                crate::mainutils::errors::warningcall(
+                crate::mainutils::errors::warningcall_cstr(
                     crate::sexp::globals::R_NilValue(),
-                    message.as_ptr(),
-                );
+                    &message);
             }
             state
                 .overrides
@@ -1691,10 +1690,9 @@ pub fn do_par(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                                                 "\"{qname}\" is not a graphical parameter"
                                             ))
                                             .unwrap_or_default();
-                                            crate::mainutils::errors::warningcall(
+                                            crate::mainutils::errors::warningcall_cstr(
                                                 call,
-                                                msg.as_ptr(),
-                                            );
+                                                &msg);
                                             list_slots
                                                 .get_or_insert_with(Vec::new)
                                                 .push((qname, false));
@@ -1705,7 +1703,7 @@ pub fn do_par(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                                             i + 1
                                         ))
                                         .unwrap_or_default();
-                                        crate::mainutils::errors::warningcall(call, msg.as_ptr());
+                                        crate::mainutils::errors::warningcall_cstr(call, &msg);
                                         list_slots
                                             .get_or_insert_with(Vec::new)
                                             .push((String::new(), false));
@@ -1717,7 +1715,7 @@ pub fn do_par(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                                         "\"{name}\" is not a graphical parameter"
                                     ))
                                     .unwrap_or_default();
-                                    crate::mainutils::errors::warningcall(call, msg.as_ptr());
+                                    crate::mainutils::errors::warningcall_cstr(call, &msg);
                                     list_slots.get_or_insert_with(Vec::new).push((name, false));
                                     continue;
                                 }
@@ -1726,7 +1724,7 @@ pub fn do_par(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                                         "graphical parameter \"{name}\" cannot be set"
                                     ))
                                     .unwrap_or_default();
-                                    crate::mainutils::errors::warningcall(call, msg.as_ptr());
+                                    crate::mainutils::errors::warningcall_cstr(call, &msg);
                                     list_slots.get_or_insert_with(Vec::new).push((name, true));
                                     continue;
                                 }
@@ -1762,14 +1760,14 @@ pub fn do_par(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                                 "argument 1 does not name a graphical parameter",
                             )
                             .unwrap_or_default();
-                            crate::mainutils::errors::warningcall(call, msg.as_ptr());
+                            crate::mainutils::errors::warningcall_cstr(call, &msg);
                         }
                     } else {
                         let msg = std::ffi::CString::new(format!(
                             "argument {arg_n} does not name a graphical parameter"
                         ))
                         .unwrap_or_default();
-                        crate::mainutils::errors::warningcall(call, msg.as_ptr());
+                        crate::mainutils::errors::warningcall_cstr(call, &msg);
                     }
                 }
             }

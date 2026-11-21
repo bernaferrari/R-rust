@@ -153,11 +153,11 @@ fn asInteger(x: SEXP) -> c_int {
 }
 
 pub fn tukeyline(x: SEXP, y: SEXP, iter: SEXP, call: SEXP) -> SEXP {
-    use crate::main::errors::Rf_error;
+    use crate::main::errors::{Rf_error, Rf_error_cstr};
 
     let n = LENGTH(x);
     if n < 2 {
-        Rf_error(b"insufficient observations\0".as_ptr() as *const core::ffi::c_char);
+        Rf_error_cstr(c"insufficient observations");
     }
 
     let ans = Rf_allocVector(SEXPTYPE::VECSXP, 4);

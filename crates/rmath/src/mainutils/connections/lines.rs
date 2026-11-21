@@ -99,7 +99,7 @@ pub fn do_readLines(call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
             }
             if incomplete_line && _warn != 0 {
                 let warning = incomplete_line_warning(&path);
-                crate::mainutils::errors::Rf_warningcall1(call, warning.as_ptr());
+                crate::mainutils::errors::Rf_warningcall1(call, &warning);
             }
             return ans;
         }
@@ -276,7 +276,7 @@ pub fn do_readLines(call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
         if _warn != 0
             && let Some(warning) = incomplete_warning
         {
-            crate::mainutils::errors::Rf_warningcall1(call, warning.as_ptr());
+            crate::mainutils::errors::Rf_warningcall1(call, &warning);
         }
         ans
     }

@@ -1531,7 +1531,7 @@ pub fn do_unserializeFromConn(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SE
                 R_unserialize(conn.as_raw(), hook.as_raw())
             } else if conn.typeof_() == SEXPTYPE::INTSXP
                 && conn.len() == 1
-                && crate::mainutils::objects::inherits2(conn.as_raw(), c"connection".as_ptr()) != 0
+                && crate::mainutils::objects::inherits2(conn.as_raw(), c"connection") != 0
             {
                 let index = conn
                     .try_integer_elt(0)

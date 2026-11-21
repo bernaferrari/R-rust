@@ -154,7 +154,7 @@ pub fn do_c(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         } else {
             CAR(args)
         };
-        if crate::mainutils::objects::inherits2(first, c"POSIXlt".as_ptr()) != 0 {
+        if crate::mainutils::objects::inherits2(first, c"POSIXlt") != 0 {
             return do_c_POSIXlt(call, op, args, rho);
         }
         let datetime_class = leading_datetime_class(args);
@@ -1272,14 +1272,14 @@ fn head_tail_n(n_arg: SEXP) -> i64 {
     let numeric_or_logical = if kind == SEXPTYPE::LGLSXP {
         true
     } else if kind == SEXPTYPE::INTSXP {
-        crate::mainutils::objects::inherits2(n_arg, c"factor".as_ptr()) == 0
-            && crate::mainutils::objects::inherits2(n_arg, c"Date".as_ptr()) == 0
-            && crate::mainutils::objects::inherits2(n_arg, c"POSIXt".as_ptr()) == 0
-            && crate::mainutils::objects::inherits2(n_arg, c"difftime".as_ptr()) == 0
+        crate::mainutils::objects::inherits2(n_arg, c"factor") == 0
+            && crate::mainutils::objects::inherits2(n_arg, c"Date") == 0
+            && crate::mainutils::objects::inherits2(n_arg, c"POSIXt") == 0
+            && crate::mainutils::objects::inherits2(n_arg, c"difftime") == 0
     } else if kind == SEXPTYPE::REALSXP {
-        crate::mainutils::objects::inherits2(n_arg, c"Date".as_ptr()) == 0
-            && crate::mainutils::objects::inherits2(n_arg, c"POSIXt".as_ptr()) == 0
-            && crate::mainutils::objects::inherits2(n_arg, c"difftime".as_ptr()) == 0
+        crate::mainutils::objects::inherits2(n_arg, c"Date") == 0
+            && crate::mainutils::objects::inherits2(n_arg, c"POSIXt") == 0
+            && crate::mainutils::objects::inherits2(n_arg, c"difftime") == 0
     } else {
         false
     };

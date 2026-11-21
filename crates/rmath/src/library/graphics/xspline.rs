@@ -12,7 +12,7 @@ use crate::mainutils::engine::{
     fromDeviceHeight, fromDeviceWidth, fromDeviceX, fromDeviceY, toDeviceHeight, toDeviceWidth,
     toDeviceX, toDeviceY,
 };
-use crate::mainutils::errors::Rf_error;
+use crate::mainutils::errors::{Rf_error, Rf_error_cstr};
 
 type PGEDevDesc = *mut c_void;
 
@@ -71,7 +71,7 @@ impl SplineBuilder {
 }
 
 fn r_error(message: &'static CStr) -> ! {
-    Rf_error(message.as_ptr());
+    Rf_error_cstr(&message);
     unreachable!("Rf_error should not return")
 }
 

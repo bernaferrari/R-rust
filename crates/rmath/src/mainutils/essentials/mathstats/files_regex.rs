@@ -125,7 +125,7 @@ pub fn do_normalizePath(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
                         i + 1
                     ))
                     .unwrap_or_default();
-                    crate::mainutils::errors::Rf_warning(msg.as_ptr());
+                    crate::mainutils::errors::Rf_warning_cstr(&msg);
                 }
                 SET_STRING_ELT(result, i, crate::sexp::globals::R_NaString());
                 continue;

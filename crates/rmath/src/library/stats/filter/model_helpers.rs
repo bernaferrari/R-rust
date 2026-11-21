@@ -228,7 +228,7 @@ pub fn do_makepredictcall(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     let pred = CAR(CDR(args));
     if !var.is_null()
         && var != R_NilValue()
-        && crate::mainutils::objects::inherits2(var, c"poly".as_ptr()) != 0
+        && crate::mainutils::objects::inherits2(var, c"poly") != 0
     {
         let sym = crate::sexp::symbol::install_str("makepredictcall.poly");
         let fun = crate::library::stats::checked::find_fun(sym, rho);

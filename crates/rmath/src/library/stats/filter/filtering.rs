@@ -3,10 +3,10 @@
 use super::*;
 
 pub fn cfilter(sx: SEXP, sfilter: SEXP, ssides: SEXP, scircular: SEXP) -> SEXP {
-    use crate::main::errors::Rf_error;
+    use crate::main::errors::{Rf_error, Rf_error_cstr};
 
     if TYPEOF(sx) != SEXPTYPE::REALSXP || TYPEOF(sfilter) != SEXPTYPE::REALSXP {
-        Rf_error(b"invalid input\0".as_ptr() as *const core::ffi::c_char);
+        Rf_error_cstr(c"invalid input");
     }
 
     let nx = XLENGTH(sx) as isize;
@@ -14,7 +14,7 @@ pub fn cfilter(sx: SEXP, sfilter: SEXP, ssides: SEXP, scircular: SEXP) -> SEXP {
     let sides = as_integer(ssides);
     let circular = as_logical(scircular);
     if sides == NA_INTEGER || circular == NA_INTEGER {
-        Rf_error(b"invalid input\0".as_ptr() as *const core::ffi::c_char);
+        Rf_error_cstr(c"invalid input");
     }
 
     let ans = Rf_allocVector(SEXPTYPE::REALSXP, nx as c_int);
@@ -132,13 +132,13 @@ pub fn do_filter(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /* recursive filtering */
 pub fn rfilter(x: SEXP, filter: SEXP, out: SEXP) -> SEXP {
-    use crate::main::errors::Rf_error;
+    use crate::main::errors::{Rf_error, Rf_error_cstr};
 
     if TYPEOF(x) != SEXPTYPE::REALSXP
         || TYPEOF(filter) != SEXPTYPE::REALSXP
         || TYPEOF(out) != SEXPTYPE::REALSXP
     {
-        Rf_error(b"invalid input\0".as_ptr() as *const core::ffi::c_char);
+        Rf_error_cstr(c"invalid input");
     }
 
     let nx = XLENGTH(x);

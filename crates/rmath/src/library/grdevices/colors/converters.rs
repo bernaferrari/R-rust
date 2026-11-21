@@ -103,40 +103,40 @@ pub(crate) fn incol2name_buf_trans(col: rcolor) -> *const c_char {
 
 pub(crate) fn ScaleColor(x: c_double) -> u32 {
     if ISNAN(x) {
-        Rf_error(b"color intensity NA, not in [0,1]\0".as_ptr() as *const c_char);
+        Rf_error_cstr(c"color intensity NA, not in [0,1]");
     }
     if !R_FINITE(x) || x < 0.0 || x > 1.0 {
-        Rf_error(b"color intensity not in [0,1]\0".as_ptr() as *const c_char);
+        Rf_error_cstr(c"color intensity not in [0,1]");
     }
     (255.0 * x + 0.5) as u32
 }
 
 pub(crate) fn CheckColor(x: c_int) -> u32 {
     if x == NA_INTEGER {
-        Rf_error(b"color intensity NA, not in 0:255\0".as_ptr() as *const c_char);
+        Rf_error_cstr(c"color intensity NA, not in 0:255");
     }
     if x < 0 || x > 255 {
-        Rf_error(b"color intensity not in 0:255\0".as_ptr() as *const c_char);
+        Rf_error_cstr(c"color intensity not in 0:255");
     }
     x as u32
 }
 
 pub(crate) fn ScaleAlpha(x: c_double) -> u32 {
     if ISNAN(x) {
-        Rf_error(b"alpha level NA, not in [0,1]\0".as_ptr() as *const c_char);
+        Rf_error_cstr(c"alpha level NA, not in [0,1]");
     }
     if !R_FINITE(x) || x < 0.0 || x > 1.0 {
-        Rf_error(b"alpha level not in [0,1]\0".as_ptr() as *const c_char);
+        Rf_error_cstr(c"alpha level not in [0,1]");
     }
     (255.0 * x + 0.5) as u32
 }
 
 pub(crate) fn CheckAlpha(x: c_int) -> u32 {
     if x == NA_INTEGER {
-        Rf_error(b"alpha level NA, not in 0:255\0".as_ptr() as *const c_char);
+        Rf_error_cstr(c"alpha level NA, not in 0:255");
     }
     if x < 0 || x > 255 {
-        Rf_error(b"alpha level not in 0:255\0".as_ptr() as *const c_char);
+        Rf_error_cstr(c"alpha level not in 0:255");
     }
     x as u32
 }
@@ -154,7 +154,7 @@ pub(crate) fn hsv2rgb(
     b: &mut c_double,
 ) {
     if !R_FINITE(h) || !R_FINITE(s) || !R_FINITE(v) {
-        Rf_error(b"inputs must be finite\0".as_ptr() as *const c_char);
+        Rf_error_cstr(c"inputs must be finite");
     }
     let (f, t_val) = libm::modf(h * 6.0);
     let i = (t_val as c_int) % 6;
@@ -193,7 +193,7 @@ pub(crate) fn hsv2rgb(
             *b = q;
         }
         _ => {
-            Rf_error(b"bad hsv to rgb color conversion\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"bad hsv to rgb color conversion");
         }
     }
 }
@@ -392,7 +392,7 @@ pub(crate) fn hexdigit(d: c_int) -> u32 {
     if d >= b'a' as c_int && d <= b'f' as c_int {
         return (10 + d - b'a' as c_int) as u32;
     }
-    Rf_error(b"invalid hex digit in 'color' or 'lty'\0".as_ptr() as *const c_char);
+    Rf_error_cstr(c"invalid hex digit in 'color' or 'lty'");
     0
 }
 
@@ -403,7 +403,7 @@ pub(crate) fn hexdigit(d: c_int) -> u32 {
 pub(crate) fn rgb2col_bytes(rgb: &[u8]) -> rcolor {
     {
         if rgb.first() != Some(&b'#') {
-            Rf_error(b"invalid RGB specification\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"invalid RGB specification");
         }
         let len = rgb.len();
         let digit = |i: usize| hexdigit(rgb[i] as c_int);
@@ -441,7 +441,7 @@ pub(crate) fn rgb2col_bytes(rgb: &[u8]) -> rcolor {
                 R_RGB(r as c_int, g as c_int, b as c_int)
             }
             _ => {
-                Rf_error(b"invalid RGB specification\0".as_ptr() as *const c_char);
+                Rf_error_cstr(c"invalid RGB specification");
                 0
             }
         }
@@ -528,7 +528,7 @@ pub unsafe extern "C" fn inR_GE_str2col(s: *const c_char) -> c_uint {
     // NUL-terminated string for the duration of the call.
     let bytes = unsafe { std::ffi::CStr::from_ptr(s) }.to_bytes();
     if bytes == b"0".as_slice() {
-        Rf_error(b"invalid color specification\0".as_ptr() as *const c_char);
+        Rf_error_cstr(c"invalid color specification");
     }
     str2col_bytes(bytes, R_TRANWHITE)
 }
@@ -592,7 +592,7 @@ pub fn inRGBpar3(x: SEXP, i: c_int, bg: rcolor) -> rcolor {
             }
         }
         if indx < 0 {
-            Rf_error(b"numerical color values must be >= 0\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"numerical color values must be >= 0");
         }
         if indx == 0 {
             return bg;

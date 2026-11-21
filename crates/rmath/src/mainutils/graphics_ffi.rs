@@ -3,7 +3,7 @@
 use std::ffi::{CStr, CString, c_void};
 use std::os::raw::{c_char, c_double, c_int, c_uint};
 
-use crate::mainutils::errors::{Rf_error, Rf_warning};
+use crate::mainutils::errors::{Rf_error_cstr, Rf_warning_cstr};
 use crate::sexp::ffi::{FALSE, NA_INTEGER, NA_REAL, Rboolean, SEXP, TRUE};
 use crate::sexp::globals::R_NilValue;
 
@@ -316,13 +316,13 @@ unsafe fn ge_max_line_width(
 #[inline]
 fn warning_message(message: String) {
     let msg = cstring_message(message);
-    Rf_warning(msg.as_ptr());
+    Rf_warning_cstr(&msg);
 }
 
 #[inline]
 fn error_message(message: String) -> ! {
     let msg = cstring_message(message);
-    Rf_error(msg.as_ptr());
+    Rf_error_cstr(&msg);
     unreachable!("Rf_error does not return");
 }
 

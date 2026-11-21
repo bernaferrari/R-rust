@@ -194,7 +194,7 @@ pub fn do_cut_POSIXt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
-        let x = if crate::mainutils::objects::inherits2(x, c"POSIXlt".as_ptr()) != 0 {
+        let x = if crate::mainutils::objects::inherits2(x, c"POSIXlt") != 0 {
             do_as_POSIXct(call, op, Rf_cons(x, R_NilValue()), rho)
         } else {
             x

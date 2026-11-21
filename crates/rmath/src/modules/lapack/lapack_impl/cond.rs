@@ -6,7 +6,7 @@ use super::*;
 pub fn La_dlange(a: SEXP, type_: SEXP) -> SEXP {
     unsafe {
         if TYPEOF(type_) != 16 {
-            Rf_error(b"'type' must be a character string\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"'type' must be a character string");
         }
         if TYPEOF(a) != REALSXP_C {
             crate::sexp::context::r_error("'a' must be a numeric matrix");
@@ -69,7 +69,7 @@ pub fn La_dlange(a: SEXP, type_: SEXP) -> SEXP {
 pub fn La_dgecon(a: SEXP, norm: SEXP) -> SEXP {
     unsafe {
         if TYPEOF(norm) != 16 || XLENGTH(norm) < 1 {
-            Rf_error(b"'norm' must be a character string\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"'norm' must be a character string");
         }
         if TYPEOF(a) != REALSXP_C {
             crate::sexp::context::r_error("'a' must be a numeric matrix");
@@ -155,7 +155,7 @@ pub fn La_dgecon(a: SEXP, norm: SEXP) -> SEXP {
             return ans;
         }
         if info != 0 {
-            Rf_error(b"error code from Lapack routine 'dgetrf'\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"error code from Lapack routine 'dgetrf'");
         }
 
         let mut rcond: f64 = 0.0;
@@ -175,7 +175,7 @@ pub fn La_dgecon(a: SEXP, norm: SEXP) -> SEXP {
         );
 
         if info != 0 {
-            Rf_error(b"error code from Lapack routine 'dgecon'\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"error code from Lapack routine 'dgecon'");
         }
 
         let ans = Rf_allocVector(REALSXP_C, 1);
@@ -190,7 +190,7 @@ pub fn La_dgecon(a: SEXP, norm: SEXP) -> SEXP {
 pub fn La_dtrcon(a: SEXP, norm: SEXP) -> SEXP {
     unsafe {
         if TYPEOF(norm) != 16 {
-            Rf_error(b"'norm' must be a character string\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"'norm' must be a character string");
         }
         if TYPEOF(a) != REALSXP_C {
             crate::sexp::context::r_error("'a' must be a numeric matrix");
@@ -260,7 +260,7 @@ pub fn La_dtrcon(a: SEXP, norm: SEXP) -> SEXP {
         );
 
         if info != 0 {
-            Rf_error(b"error code from Lapack routine 'dtrcon'\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"error code from Lapack routine 'dtrcon'");
         }
 
         let ans = Rf_allocVector(REALSXP_C, 1);
@@ -275,10 +275,10 @@ pub fn La_dtrcon(a: SEXP, norm: SEXP) -> SEXP {
 pub fn La_dtrcon3(a: SEXP, norm: SEXP, uplo: SEXP) -> SEXP {
     unsafe {
         if TYPEOF(norm) != 16 {
-            Rf_error(b"'norm' must be a character string\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"'norm' must be a character string");
         }
         if TYPEOF(uplo) != 16 {
-            Rf_error(b"'uplo' must be a character string\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"'uplo' must be a character string");
         }
         if TYPEOF(a) != REALSXP_C {
             crate::sexp::context::r_error("'a' must be a numeric matrix");
@@ -351,7 +351,7 @@ pub fn La_dtrcon3(a: SEXP, norm: SEXP, uplo: SEXP) -> SEXP {
         );
 
         if info != 0 {
-            Rf_error(b"error code from Lapack routine 'dtrcon'\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"error code from Lapack routine 'dtrcon'");
         }
 
         let ans = Rf_allocVector(REALSXP_C, 1);
@@ -366,7 +366,7 @@ pub fn La_dtrcon3(a: SEXP, norm: SEXP, uplo: SEXP) -> SEXP {
 pub fn La_zlange(a: SEXP, type_: SEXP) -> SEXP {
     unsafe {
         if TYPEOF(type_) != 16 {
-            Rf_error(b"'type' must be a character string\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"'type' must be a character string");
         }
         if TYPEOF(a) != CPLXSXP_C {
             crate::sexp::context::r_error("'a' must be a complex matrix");
@@ -430,7 +430,7 @@ pub fn La_zlange(a: SEXP, type_: SEXP) -> SEXP {
 pub fn La_zgecon(a: SEXP, norm: SEXP) -> SEXP {
     unsafe {
         if TYPEOF(norm) != 16 || XLENGTH(norm) < 1 {
-            Rf_error(b"'norm' must be a character string\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"'norm' must be a character string");
         }
         if TYPEOF(a) != CPLXSXP_C {
             crate::sexp::context::r_error("'a' must be a complex matrix");
@@ -524,7 +524,7 @@ pub fn La_zgecon(a: SEXP, norm: SEXP) -> SEXP {
             return ans;
         }
         if info != 0 {
-            Rf_error(b"error code from Lapack routine 'zgetrf'\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"error code from Lapack routine 'zgetrf'");
         }
 
         let mut rcond: f64 = 0.0;
@@ -544,7 +544,7 @@ pub fn La_zgecon(a: SEXP, norm: SEXP) -> SEXP {
         );
 
         if info != 0 {
-            Rf_error(b"error code from Lapack routine 'zgecon'\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"error code from Lapack routine 'zgecon'");
         }
 
         let ans = Rf_allocVector(REALSXP_C, 1);
@@ -559,7 +559,7 @@ pub fn La_zgecon(a: SEXP, norm: SEXP) -> SEXP {
 pub fn La_ztrcon(a: SEXP, norm: SEXP) -> SEXP {
     unsafe {
         if TYPEOF(norm) != 16 {
-            Rf_error(b"'norm' must be a character string\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"'norm' must be a character string");
         }
         if TYPEOF(a) != CPLXSXP_C {
             crate::sexp::context::r_error("'a' must be a complex matrix");
@@ -634,7 +634,7 @@ pub fn La_ztrcon(a: SEXP, norm: SEXP) -> SEXP {
         );
 
         if info != 0 {
-            Rf_error(b"error code from Lapack routine 'ztrcon'\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"error code from Lapack routine 'ztrcon'");
         }
 
         let ans = Rf_allocVector(REALSXP_C, 1);
@@ -649,10 +649,10 @@ pub fn La_ztrcon(a: SEXP, norm: SEXP) -> SEXP {
 pub fn La_ztrcon3(a: SEXP, norm: SEXP, uplo: SEXP) -> SEXP {
     unsafe {
         if TYPEOF(norm) != 16 {
-            Rf_error(b"'norm' must be a character string\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"'norm' must be a character string");
         }
         if TYPEOF(uplo) != 16 {
-            Rf_error(b"'uplo' must be a character string\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"'uplo' must be a character string");
         }
         if TYPEOF(a) != CPLXSXP_C {
             crate::sexp::context::r_error("'a' must be a complex matrix");
@@ -731,7 +731,7 @@ pub fn La_ztrcon3(a: SEXP, norm: SEXP, uplo: SEXP) -> SEXP {
         );
 
         if info != 0 {
-            Rf_error(b"error code from Lapack routine 'ztrcon'\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"error code from Lapack routine 'ztrcon'");
         }
 
         let ans = Rf_allocVector(REALSXP_C, 1);

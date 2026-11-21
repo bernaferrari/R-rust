@@ -5,7 +5,7 @@ use std::os::raw::{c_double, c_int};
 
 use crate::attrib_core::setAttrib;
 use crate::main::coerce::asInteger;
-use crate::main::errors::Rf_error;
+use crate::main::errors::{Rf_error, Rf_error_cstr};
 use crate::main::relop::R_NamesSymbol;
 use crate::sexp::accessors::{
     INTEGER_ELT, LENGTH, REAL_ELT, SET_REAL_ELT, SET_STRING_ELT, SET_VECTOR_ELT, TYPEOF, XLENGTH,
@@ -66,7 +66,7 @@ fn sm_do_endrule(x: &[c_double], y: &mut [c_double], n: R_xlen_t, end_rule: c_in
                 end_rule
             ))
             .unwrap_or_default();
-            Rf_error(msg.as_ptr());
+            Rf_error_cstr(&msg);
         }
     }
 }

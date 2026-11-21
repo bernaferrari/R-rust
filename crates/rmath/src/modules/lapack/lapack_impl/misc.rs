@@ -7,7 +7,7 @@ pub fn det_ge_real(ain: SEXP, logarithm: SEXP) -> SEXP {
     unsafe {
         let ldet = asLogical(logarithm);
         if ldet == NA_INTEGER {
-            Rf_error(b"invalid 'logarithm' argument\0".as_ptr() as *const c_char);
+            Rf_error_cstr(c"invalid 'logarithm' argument");
         }
         let ain = if TYPEOF(ain) == REALSXP_C {
             ain

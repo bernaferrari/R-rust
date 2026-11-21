@@ -50,7 +50,7 @@ pub fn do_diff_POSIXt(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if x.is_null() || x == R_NilValue() {
             return Rf_allocVector3(SEXPTYPE::REALSXP, 0);
         }
-        let x = if crate::mainutils::objects::inherits2(x, c"POSIXlt".as_ptr()) != 0 {
+        let x = if crate::mainutils::objects::inherits2(x, c"POSIXlt") != 0 {
             do_as_POSIXct(_call, _op, Rf_cons(x, R_NilValue()), _rho)
         } else {
             x
@@ -169,7 +169,7 @@ pub fn do_trunc_POSIXt(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if x.is_null() || x == R_NilValue() {
             return x;
         }
-        let x = if crate::mainutils::objects::inherits2(x, c"POSIXlt".as_ptr()) != 0 {
+        let x = if crate::mainutils::objects::inherits2(x, c"POSIXlt") != 0 {
             do_as_POSIXct(_call, _op, Rf_cons(x, R_NilValue()), _rho)
         } else {
             x
@@ -235,7 +235,7 @@ pub fn do_round_POSIXt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 }
             }
         }
-        let x = if crate::mainutils::objects::inherits2(x, c"POSIXlt".as_ptr()) != 0 {
+        let x = if crate::mainutils::objects::inherits2(x, c"POSIXlt") != 0 {
             do_as_POSIXct(call, op, Rf_cons(x, R_NilValue()), rho)
         } else {
             x

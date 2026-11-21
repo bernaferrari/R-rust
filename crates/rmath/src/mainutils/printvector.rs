@@ -443,7 +443,7 @@ pub(crate) fn warn_illegal_outdec() {
             "the decimal mark is less than one character wide; this will become an error"
         };
         if let Ok(c) = std::ffi::CString::new(msg) {
-            crate::mainutils::errors::Rf_warning(c.as_ptr());
+            crate::mainutils::errors::Rf_warning_cstr(&c);
         }
     }
 }

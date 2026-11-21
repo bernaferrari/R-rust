@@ -168,7 +168,7 @@ fn pretty_impl(
             ))
             .unwrap_or_default();
 
-            crate::mainutils::errors::warningcall(crate::sexp::globals::R_NilValue(), msg.as_ptr());
+            crate::mainutils::errors::warningcall_cstr(crate::sexp::globals::R_NilValue(), &msg);
         }
         cell = subsmall;
     } else if cell > dbL_MAX / max_f {
@@ -178,7 +178,7 @@ fn pretty_impl(
         ))
         .unwrap_or_default();
 
-        crate::mainutils::errors::warningcall(crate::sexp::globals::R_NilValue(), msg.as_ptr());
+        crate::mainutils::errors::warningcall_cstr(crate::sexp::globals::R_NilValue(), &msg);
 
         cell = shrunk;
     }

@@ -152,7 +152,7 @@ fn math2_complex(
         if naflag {
             let msg =
                 CString::new(format!("NaNs produced in function \"{name}\"")).unwrap_or_default();
-            crate::mainutils::errors::Rf_warningcall1(call, msg.as_ptr());
+            crate::mainutils::errors::Rf_warningcall1(call, &msg);
         }
         if n == na {
             copy_all_attribs(sy, sa);
@@ -267,7 +267,7 @@ fn match_x_digits(args: SEXP) -> (SEXP, SEXP) {
                         seen[hits[0]] = true;
                     } else {
                         let msg = format!("unused argument ({name} = ...)\0");
-                        crate::mainutils::errors::Rf_error(msg.as_ptr() as *const _);
+                        crate::mainutils::errors::Rf_error_cstr(std::ffi::CStr::from_bytes_until_nul(msg.as_bytes()).unwrap_or_default());
                     }
                 }
             }
@@ -280,9 +280,8 @@ fn match_x_digits(args: SEXP) -> (SEXP, SEXP) {
             }
         }
         if !seen[0] {
-            crate::mainutils::errors::Rf_error(
-                b"argument \"x\" is missing, with no default\0".as_ptr() as *const _,
-            );
+            crate::mainutils::errors::Rf_error_cstr(
+                c"argument \"x\" is missing, with no default");
         }
         (bound[0], bound[1])
     
@@ -313,9 +312,8 @@ pub fn do_round(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         }
 
         if x_arg.is_null() || x_arg == R_NilValue() || x_arg == R_MissingArg() {
-            crate::mainutils::errors::Rf_error(
-                b"argument \"x\" is missing, with no default\0".as_ptr() as *const _,
-            );
+            crate::mainutils::errors::Rf_error_cstr(
+                c"argument \"x\" is missing, with no default");
         }
         // Stock routes complex x to complex_math2 (main/complex.c): round
         // each part with the same ties-even fround as the real path.
@@ -640,9 +638,8 @@ pub fn do_signif(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let digits_arg = force(m.get(1).copied().unwrap_or(missing));
 
         if x_arg.is_null() || x_arg == R_NilValue() || x_arg == missing {
-            crate::mainutils::errors::Rf_error(
-                b"argument \"x\" is missing, with no default\0".as_ptr() as *const _,
-            );
+            crate::mainutils::errors::Rf_error_cstr(
+                c"argument \"x\" is missing, with no default");
         }
         if TYPEOF(x_arg) == SEXPTYPE::CPLXSXP {
             return math2_complex(call, x_arg, digits_arg, 6.0, "signif", z_prec_r);
@@ -735,7 +732,7 @@ pub fn do_trunc(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         {
             return dispatched;
         }
-        if crate::mainutils::objects::inherits2(CAR(args), c"Date".as_ptr()) != 0 {
+        if crate::mainutils::objects::inherits2(CAR(args), c"Date") != 0 {
             return crate::mainutils::essentials::do_trunc_Date(call, op, args, rho);
         }
         let x_arg = CAR(args);

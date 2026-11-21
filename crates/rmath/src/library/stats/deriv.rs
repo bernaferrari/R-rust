@@ -85,9 +85,8 @@ pub fn do_d(args: SEXP) -> SEXP {
     run_owned_derivative(args, None, |access, arguments, _| {
         owned::direct(access, arguments, derivative_symbol, |access| {
             access.with_native(|_| {
-                crate::mainutils::errors::Rf_warning(
-                    c"only the first element is used as variable name".as_ptr(),
-                );
+                crate::mainutils::errors::Rf_warning_cstr(
+                    c"only the first element is used as variable name");
                 Ok(())
             })
         })

@@ -54,8 +54,8 @@ fn expand_dots(object: SEXP, value: SEXP) -> SEXP {
     let head = CAR(object);
     let n = lang_len(object);
     let bad = || {
-        crate::main::errors::Rf_error(
-            b"invalid formula in 'update'\0".as_ptr() as *const std::os::raw::c_char
+        crate::main::errors::Rf_error_cstr(
+            c"invalid formula in 'update'"
         );
     };
     if head == sym("+") {
@@ -134,7 +134,7 @@ pub fn updateform(old: SEXP, new: SEXP) -> SEXP {
         || (TYPEOF(new) != SEXPTYPE::LANGSXP && CAR(old) != tilde)
         || CAR(new) != tilde
     {
-        crate::main::errors::Rf_error(b"formula expected\0".as_ptr() as *const std::os::raw::c_char);
+        crate::main::errors::Rf_error_cstr(c"formula expected");
     }
     if lang_len(old) == 3 {
         let lhs = CADR(old);

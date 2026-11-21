@@ -16,7 +16,7 @@
 use std::ffi::CStr;
 use std::os::raw::c_int;
 
-use crate::main::errors::Rf_error;
+use crate::main::errors::{Rf_error, Rf_error_cstr};
 use crate::sexp::accessors::{CHAR, LENGTH, STRING_ELT, TYPEOF};
 use crate::sexp::constructors::{Rf_allocVector, Rf_isString, Rf_mkChar};
 use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
@@ -36,11 +36,11 @@ pub fn getfmts(format: SEXP) -> SEXP {
             return R_NilValue();
         }
         if Rf_isString(format) == 0 {
-            Rf_error(b"'fmt' is not a character vector\0".as_ptr() as *const _);
+            Rf_error_cstr(c"'fmt' is not a character vector");
         }
         let nfmt = LENGTH(format);
         if nfmt != 1 {
-            Rf_error(b"'fmt' must be length 1\0".as_ptr() as *const _);
+            Rf_error_cstr(c"'fmt' must be length 1");
         }
 
         let res = Rf_allocVector(SEXPTYPE::STRSXP, MAXNARGS as c_int);
@@ -62,7 +62,7 @@ pub fn getfmts(format: SEXP) -> SEXP {
                 MAXLINE
             ))
             .unwrap_or_default();
-            Rf_error(msg.as_ptr());
+            Rf_error_cstr(&msg);
             return res;
         }
 
@@ -90,7 +90,7 @@ pub fn getfmts(format: SEXP) -> SEXP {
                     }
                 }
                 if !found_type || cur + chunk > n {
-                    Rf_error(b"unrecognised format specification\0".as_ptr() as *const _);
+                    Rf_error_cstr(c"unrecognised format specification");
                     return res;
                 }
 
@@ -143,10 +143,8 @@ pub fn getfmts(format: SEXP) -> SEXP {
                     }
 
                     if fmt[star_pos + 1..].contains('*') {
-                        Rf_error(
-                            b"at most one asterisk '*' is supported in each conversion specification\0"
-                                .as_ptr() as *const _,
-                        );
+                        Rf_error_cstr(
+                            c"at most one asterisk '*' is supported in each conversion specification");
                         return res;
                     }
 

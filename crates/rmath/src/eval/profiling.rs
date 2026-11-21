@@ -309,7 +309,7 @@ fn find_loc_table(constants: SEXP, tclass: &CStr) -> SEXP {
         let entry = crate::sexp::accessors::VECTOR_ELT(constants, i as i64);
         if !entry.is_null()
             && TYPEOF(entry) == SEXPTYPE::INTSXP
-            && crate::mainutils::objects::inherits2(entry, tclass.as_ptr()) != 0
+            && crate::mainutils::objects::inherits2(entry, &tclass) != 0
         {
             return entry;
         }
