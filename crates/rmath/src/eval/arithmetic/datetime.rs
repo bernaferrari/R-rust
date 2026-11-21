@@ -81,8 +81,8 @@ pub(crate) fn coerce_character_comparison_operand(
             let parsed = if value.is_null() || value == R_NaString() {
                 NA_REAL
             } else {
-                let text = CStr::from_ptr(CHAR(value)).to_str().unwrap_or("");
-                parser(text).unwrap_or_else(|| {
+                let text = String::from_utf8_lossy(&crate::sexp::accessors::charsxp_as_utf8(value)).into_owned();
+                parser(&text).unwrap_or_else(|| {
                     arithmetic_error("character string is not in a standard unambiguous format");
                 })
             };
@@ -119,36 +119,35 @@ pub(crate)  fn is_numeric_version(x: SEXP) -> bool {
 }
 
 pub(crate) fn version_components(x: SEXP) -> Option<Vec<i32>> {
-    unsafe {
-        if is_numeric_version(x) && TYPEOF(x) == SEXPTYPE::VECSXP && XLENGTH(x) >= 1 {
-            let elt = VECTOR_ELT(x, 0);
-            if TYPEOF(elt) == SEXPTYPE::INTSXP {
-                let n = XLENGTH(elt);
-                let mut out = Vec::with_capacity(n as usize);
-                for i in 0..n {
-                    out.push(INTEGER_ELT(elt, i as std::os::raw::c_int));
-                }
-                return Some(out);
-            }
-        }
-
-        if TYPEOF(x) == SEXPTYPE::STRSXP && XLENGTH(x) >= 1 {
-            let ch = STRING_ELT(x, 0);
-            if ch.is_null() || ch == crate::sexp::globals::R_NaString() {
-                return None;
-            }
-            let text = std::ffi::CStr::from_ptr(CHAR(ch)).to_string_lossy();
-            let mut out = Vec::new();
-            for part in text.split(['.', '-']) {
-                if part.is_empty() {
-                    continue;
-                }
-                out.push(part.parse::<i32>().ok()?);
+    if is_numeric_version(x) && TYPEOF(x) == SEXPTYPE::VECSXP && XLENGTH(x) >= 1 {
+        let elt = VECTOR_ELT(x, 0);
+        if TYPEOF(elt) == SEXPTYPE::INTSXP {
+            let n = XLENGTH(elt);
+            let mut out = Vec::with_capacity(n as usize);
+            for i in 0..n {
+                out.push(INTEGER_ELT(elt, i as std::os::raw::c_int));
             }
             return Some(out);
         }
-        None
     }
+
+    if TYPEOF(x) == SEXPTYPE::STRSXP && XLENGTH(x) >= 1 {
+        let ch = STRING_ELT(x, 0);
+        if ch.is_null() || ch == crate::sexp::globals::R_NaString() {
+            return None;
+        }
+        let text =
+            String::from_utf8_lossy(&crate::sexp::accessors::charsxp_as_utf8(ch)).into_owned();
+        let mut out = Vec::new();
+        for part in text.split(['.', '-']) {
+            if part.is_empty() {
+                continue;
+            }
+            out.push(part.parse::<i32>().ok()?);
+        }
+        return Some(out);
+    }
+    None
 }
 
 pub(crate) fn numeric_version_comparison(op: &str, a: SEXP, b: SEXP) -> Option<SEXP> {

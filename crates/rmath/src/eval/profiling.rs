@@ -875,7 +875,7 @@ fn getFilenum(filename: &crate::sexp::object::Sexp<'_>) -> c_int {
         // This scope performs only bounded byte reads. It ends every payload
         // reference before source-table admission borrows the original arena.
         let (existing, length) = {
-            let name = std::ffi::CStr::from_ptr(CHAR(filename.as_raw())).to_bytes();
+            let name = crate::sexp::accessors::charsxp_as_utf8(filename.as_raw());
             let existing = with_profiling_state(|state| {
                 for (index, offset) in state.srcfiles.iter().copied().enumerate() {
                     let Some(remaining) = total.checked_sub(offset) else {
@@ -927,7 +927,7 @@ fn getFilenum(filename: &crate::sexp::object::Sexp<'_>) -> c_int {
         }
         // Admission above runs no R callback or collection. Both dense payloads
         // remain rooted, and no payload reference spans that arena operation.
-        let name = std::ffi::CStr::from_ptr(CHAR(filename.as_raw())).to_bytes();
+        let name = crate::sexp::accessors::charsxp_as_utf8(filename.as_raw());
         if name.len() != length {
             with_profiling_state(|state| state.profiling_error = 2);
             return 0;

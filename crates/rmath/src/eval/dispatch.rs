@@ -1231,9 +1231,9 @@ pub unsafe fn DispatchGroup(
                     lsxp = R_NilValue();
                 } else if crate::mainutils::identical::R_compute_identical(lsxp, rsxp, 23) == 0 {
                     let left_name =
-                        std::ffi::CStr::from_ptr(CHAR(PRINTNAME(lmeth))).to_string_lossy();
+                        String::from_utf8_lossy(&crate::sexp::accessors::charsxp_as_utf8(PRINTNAME(lmeth))).into_owned();
                     let right_name =
-                        std::ffi::CStr::from_ptr(CHAR(PRINTNAME(rmeth))).to_string_lossy();
+                        String::from_utf8_lossy(&crate::sexp::accessors::charsxp_as_utf8(PRINTNAME(rmeth))).into_owned();
                     let warning = std::ffi::CString::new(format!(
                         "Incompatible methods (\"{left_name}\", \"{right_name}\") for \"{}\"",
                         generic.to_string_lossy()

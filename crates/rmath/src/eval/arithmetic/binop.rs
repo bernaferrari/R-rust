@@ -544,9 +544,6 @@ pub(crate) fn string_attribute_value(source: SEXP, name: &CStr) -> Option<String
         if value.is_null() || value == R_NaString() {
             return None;
         }
-        CStr::from_ptr(CHAR(value))
-            .to_str()
-            .ok()
-            .map(str::to_string)
+        Some(String::from_utf8_lossy(&crate::sexp::accessors::charsxp_as_utf8(value)).into_owned())
     }
 }

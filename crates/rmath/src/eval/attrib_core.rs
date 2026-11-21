@@ -335,11 +335,11 @@ pub fn R_classgets(x: SEXP, klass: SEXP) -> SEXP {
             let n = XLENGTH(klass);
             let is_matrix = |i: i64| {
                 let ch = STRING_ELT(klass, i);
-                !ch.is_null() && std::ffi::CStr::from_ptr(CHAR(ch)).to_bytes() == b"matrix"
+                !ch.is_null() && crate::sexp::accessors::charsxp_as_utf8(ch) == b"matrix"
             };
             let is_array = |i: i64| {
                 let ch = STRING_ELT(klass, i);
-                !ch.is_null() && std::ffi::CStr::from_ptr(CHAR(ch)).to_bytes() == b"array"
+                !ch.is_null() && crate::sexp::accessors::charsxp_as_utf8(ch) == b"array"
             };
             if (n == 1 && is_matrix(0)) || (n == 2 && is_matrix(0) && is_array(1)) {
                 setAttrib(x, class_sym, R_NilValue());
@@ -363,8 +363,8 @@ pub fn language_implicit_class_chars(obj: SEXP) -> SEXP {
         if TYPEOF(symb) == SEXPTYPE::SYMSXP {
             let pn = PRINTNAME(symb);
             if !pn.is_null() {
-                let name = std::ffi::CStr::from_ptr(CHAR(pn)).to_bytes();
-                if matches!(name, b"if" | b"while" | b"for" | b"=" | b"<-" | b"(" | b"{") {
+                let name = crate::sexp::accessors::charsxp_as_utf8(pn);
+                if matches!(name.as_slice(), b"if" | b"while" | b"for" | b"=" | b"<-" | b"(" | b"{") {
                     return pn;
                 }
             }

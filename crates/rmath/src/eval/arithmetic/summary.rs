@@ -484,9 +484,7 @@ pub(crate) fn eval_minmax_string(args: SEXP, na_rm: bool, op: SummaryOp) -> SEXP
                     SET_STRING_ELT(out, 0, crate::sexp::globals::R_NaString());
                     return out;
                 } else {
-                    std::ffi::CStr::from_ptr(CHAR(s))
-                        .to_string_lossy()
-                        .into_owned()
+                    String::from_utf8_lossy(&crate::sexp::accessors::charsxp_as_utf8(s)).into_owned()
                 };
                 best = Some(match best {
                     None => text,

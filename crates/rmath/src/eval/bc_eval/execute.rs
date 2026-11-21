@@ -321,8 +321,9 @@ pub(crate) fn eval_gnu_adapter(
                         let text = if name.is_null() || name == R_NilValue() {
                             std::borrow::Cow::Borrowed("?")
                         } else {
-                            std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(name))
-                                .to_string_lossy()
+                            std::borrow::Cow::Owned(String::from_utf8_lossy(
+                                &crate::sexp::accessors::charsxp_as_utf8(name),
+                            ).into_owned())
                         };
                         bc_error(format!("there is no .Internal function '{text}'"));
                     }
@@ -455,7 +456,7 @@ pub(crate) fn eval_gnu_adapter(
                         }
                         if fun == R_UnboundValue() || TYPEOF(fun) != SEXPTYPE::SPECIALSXP {
                             let name =
-                                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(symbol))).to_string_lossy();
+                                String::from_utf8_lossy(&crate::sexp::accessors::charsxp_as_utf8(PRINTNAME(symbol))).into_owned();
                             fun = super::super::primitive::make_primitive_binding(
                                 name.as_ref(),
                                 SEXPTYPE::SPECIALSXP,
@@ -466,7 +467,7 @@ pub(crate) fn eval_gnu_adapter(
                             || TYPEOF(fun) != SEXPTYPE::SPECIALSXP
                         {
                             let name =
-                                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(symbol))).to_string_lossy();
+                                String::from_utf8_lossy(&crate::sexp::accessors::charsxp_as_utf8(PRINTNAME(symbol))).into_owned();
                             let kind = if fun.is_null() || fun == R_UnboundValue() {
                                 -1
                             } else {
@@ -556,7 +557,7 @@ pub(crate) fn eval_gnu_adapter(
                         && fun_type != SEXPTYPE::BUILTINSXP
                     {
                         let name =
-                            std::ffi::CStr::from_ptr(CHAR(PRINTNAME(symbol))).to_string_lossy();
+                            String::from_utf8_lossy(&crate::sexp::accessors::charsxp_as_utf8(PRINTNAME(symbol))).into_owned();
                         bc_error(format!(
                             "GNU GETBUILTIN did not resolve to a builtin: {name} has type {fun_type:?}"
                         ));
