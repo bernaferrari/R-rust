@@ -419,44 +419,38 @@ pub unsafe fn R_compileExpr(expr: SEXP, rho: SEXP) -> SEXP {
 /// Ported from R's `bytecodeExpr()` in eval.c. If the expression is
 /// bytecode, returns the first constant (the original expression).
 /// Otherwise returns the expression as-is.
-pub unsafe fn bytecodeExpr(e: SEXP) -> SEXP {
-    unsafe {
-        if !e.is_null() && TYPEOF(e) == SEXPTYPE::BCODESXP {
-            let consts = super::bc_eval::BCODE_CONSTS(e);
-            if !consts.is_null() && LENGTH(consts) > 0 {
-                return crate::sexp::accessors::VECTOR_ELT(consts, 0);
-            } else {
-                return R_NilValue();
-            }
+pub fn bytecodeExpr(e: SEXP) -> SEXP {
+    if !e.is_null() && TYPEOF(e) == SEXPTYPE::BCODESXP {
+        let consts = super::bc_eval::BCODE_CONSTS(e);
+        if !consts.is_null() && LENGTH(consts) > 0 {
+            return crate::sexp::accessors::VECTOR_ELT(consts, 0);
+        } else {
+            return R_NilValue();
         }
-        e
     }
+    e
 }
 
 /// Get the bytecode expression (public API).
-pub unsafe fn R_BytecodeExpr(e: SEXP) -> SEXP {
-    unsafe { bytecodeExpr(e) }
+pub fn R_BytecodeExpr(e: SEXP) -> SEXP {
+    bytecodeExpr(e)
 }
 
 /// Get the promise expression.
 /// Note: no_mangle removed to avoid duplicate symbol with sexp/envir.rs.
-pub(crate) unsafe fn r_PromiseExpr(p: SEXP) -> SEXP {
-    unsafe {
-        if p.is_null() || TYPEOF(p) != SEXPTYPE::PROMSXP {
-            return R_NilValue();
-        }
-        bytecodeExpr(crate::sexp::accessors::PRCODE(p))
+pub(crate) fn r_PromiseExpr(p: SEXP) -> SEXP {
+    if p.is_null() || TYPEOF(p) != SEXPTYPE::PROMSXP {
+        return R_NilValue();
     }
+    bytecodeExpr(crate::sexp::accessors::PRCODE(p))
 }
 
 /// Get the closure body expression.
-pub unsafe fn R_ClosureExpr(p: SEXP) -> SEXP {
-    unsafe {
-        if p.is_null() || TYPEOF(p) != SEXPTYPE::CLOSXP {
-            return R_NilValue();
-        }
-        bytecodeExpr(BODY(p))
+pub fn R_ClosureExpr(p: SEXP) -> SEXP {
+    if p.is_null() || TYPEOF(p) != SEXPTYPE::CLOSXP {
+        return R_NilValue();
     }
+    bytecodeExpr(BODY(p))
 }
 
 // ---------------------------------------------------------------------------
@@ -488,7 +482,7 @@ fn checkCompilerOptions(jitEnabled: c_int) {
 /// Apply `compiler::enableJIT` semantics and return the previous level.
 /// Negative and NA-coerced values are queries, matching GNU R's internal
 /// `do_enablejit`; nonnegative values are stored without clamping.
-pub unsafe fn compiler_enable_jit(level: SEXP) -> c_int {
+pub  fn compiler_enable_jit(level: SEXP) -> c_int {
     let old = get_R_jit_enabled();
     let new = crate::mainutils::coerce::asInteger(level);
     if new >= 0 {

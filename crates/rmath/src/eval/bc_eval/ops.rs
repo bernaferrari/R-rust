@@ -205,7 +205,7 @@ pub(crate) unsafe fn for_sequence_element(sequence: SEXP, index: c_int) -> SEXP 
 // Helper: evaluate a condition value to bool
 // ---------------------------------------------------------------------------
 
-pub(crate) unsafe fn gnu_is_number(value: SEXP) -> bool {
+pub(crate)  fn gnu_is_number(value: SEXP) -> bool {
     if value.is_null() {
         return false;
     }
@@ -220,22 +220,20 @@ pub(crate) unsafe fn gnu_is_number(value: SEXP) -> bool {
 
 /// eval.c FIXUP_SCALAR_LOGICAL: coerce the current && / || operand to a
 /// length-1 logical. AND1ST/OR1ST keep the boxed value on the stack.
-pub(crate) unsafe fn fixup_scalar_logical(value: SEXP, call: SEXP, arg: &str, op: &str) -> c_int {
-    unsafe {
-        if TYPEOF(value) == SEXPTYPE::LGLSXP
-            && crate::mainutils::relop::IS_SIMPLE_SCALAR(value, SEXPTYPE::LGLSXP.into()) != 0
-        {
-            return crate::sexp::accessors::SCALAR_LVAL(value);
-        }
-        if !gnu_is_number(value) {
-            crate::mainutils::coerce::errorcall(call, &format!("invalid {arg} type in 'x {op} y'"));
-        }
-        crate::mainutils::coerce::asLogical2(value, 1, call)
+pub(crate) fn fixup_scalar_logical(value: SEXP, call: SEXP, arg: &str, op: &str) -> c_int {
+    if TYPEOF(value) == SEXPTYPE::LGLSXP
+        && crate::mainutils::relop::IS_SIMPLE_SCALAR(value, SEXPTYPE::LGLSXP.into()) != 0
+    {
+        return crate::sexp::accessors::SCALAR_LVAL(value);
     }
+    if !gnu_is_number(value) {
+        crate::mainutils::coerce::errorcall(call, &format!("invalid {arg} type in 'x {op} y'"));
+    }
+    crate::mainutils::coerce::asLogical2(value, 1, call)
 }
 
 /// Evaluate a value as a boolean condition for branching.
-pub(crate) unsafe fn eval_bc_condition(val: SEXP) -> bool {
+pub(crate)  fn eval_bc_condition(val: SEXP) -> bool {
     let length = if val.is_null() { 0 } else { LENGTH(val) };
     if length == 0 {
         bc_error("argument is of length zero");
@@ -359,7 +357,7 @@ pub(crate) unsafe fn eval_gnu_dollargets(
 
 /// GNU INCREMENT_LINKS for NAMED-tracking values: raise NAMED toward the
 /// maximum so in-place modification of the protected value duplicates.
-pub(crate) unsafe fn increment_named_link(value: SEXP) {
+pub(crate)  fn increment_named_link(value: SEXP) {
     if value.is_null() || value == R_NilValue() {
         return;
     }
@@ -370,7 +368,7 @@ pub(crate) unsafe fn increment_named_link(value: SEXP) {
 }
 
 /// GNU DECREMENT_LINKS: release one link taken by INCREMENT_LINKS.
-pub(crate) unsafe fn decrement_named_link(value: SEXP) {
+pub(crate)  fn decrement_named_link(value: SEXP) {
     if value.is_null() || value == R_NilValue() {
         return;
     }

@@ -247,7 +247,7 @@ unsafe fn tag_name(cell: SEXP) -> Option<String> {
     }
 }
 
-unsafe fn list_append(s: SEXP, t: SEXP) -> SEXP {
+ fn list_append(s: SEXP, t: SEXP) -> SEXP {
     if is_null(s) {
         return t;
     }

@@ -496,7 +496,7 @@ pub(crate) unsafe fn restore_datetime_summary_class(source: SEXP, result: SEXP) 
     }
 }
 
-pub(crate) unsafe fn coerce_summary_posixlt_args(
+pub(crate)  fn coerce_summary_posixlt_args(
     call: SEXP,
     op: SEXP,
     args: SEXP,

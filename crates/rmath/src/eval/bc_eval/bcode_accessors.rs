@@ -22,7 +22,7 @@ pub unsafe fn BCODE_CODE(x: SEXP) -> *const c_int {
 }
 
 /// Get the constant pool from a BCODESXP.
-pub unsafe fn BCODE_CONSTS(x: SEXP) -> SEXP {
+pub  fn BCODE_CONSTS(x: SEXP) -> SEXP {
     if x.is_null() {
         return R_NilValue();
     }

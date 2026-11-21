@@ -964,7 +964,7 @@ fn replace_tmp_call(
 }
 
 /// Convert `f` or `pkg::f` / `pkg:::f` to the assignment function head.
-unsafe fn replacement_fun_head(fun: SEXP) -> SEXP {
+ fn replacement_fun_head(fun: SEXP) -> SEXP {
     if TYPEOF(fun) == SEXPTYPE::SYMSXP {
         return get_assign_fcn_sym(fun);
     }

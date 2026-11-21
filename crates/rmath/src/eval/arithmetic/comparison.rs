@@ -286,36 +286,34 @@ pub(crate) fn validate_data_frame_operand(value: SEXP, is_frame: bool, ncol: R_x
     }
 }
 
-pub(crate) unsafe fn data_frame_column_operand(
+pub(crate) fn data_frame_column_operand(
     value: SEXP,
     is_frame: bool,
     column: R_xlen_t,
     nrow: R_xlen_t,
 ) -> (SEXP, Option<crate::sexp::protect::ProtectGuard<'static>>) {
-    unsafe {
-        if is_frame {
-            return (VECTOR_ELT(value, column), None);
-        }
-        if value == R_NilValue() || TYPEOF(value) == SEXPTYPE::NILSXP {
-            let empty = Rf_allocVector3(SEXPTYPE::LGLSXP, nrow);
-            let guard = protect(empty);
-            return (empty, Some(guard));
-        }
-        if TYPEOF(value) == SEXPTYPE::VECSXP {
-            let index = if XLENGTH(value) == 1 { 0 } else { column };
-            return (VECTOR_ELT(value, index), None);
-        }
-        if XLENGTH(value) <= 1 {
-            return (value, None);
-        }
-
-        let segment = recycled_atomic_segment(value, column * nrow, nrow);
-        let guard = protect(segment);
-        (segment, Some(guard))
+    if is_frame {
+        return (VECTOR_ELT(value, column), None);
     }
+    if value == R_NilValue() || TYPEOF(value) == SEXPTYPE::NILSXP {
+        let empty = Rf_allocVector3(SEXPTYPE::LGLSXP, nrow);
+        let guard = protect(empty);
+        return (empty, Some(guard));
+    }
+    if TYPEOF(value) == SEXPTYPE::VECSXP {
+        let index = if XLENGTH(value) == 1 { 0 } else { column };
+        return (VECTOR_ELT(value, index), None);
+    }
+    if XLENGTH(value) <= 1 {
+        return (value, None);
+    }
+
+    let segment = recycled_atomic_segment(value, column * nrow, nrow);
+    let guard = protect(segment);
+    (segment, Some(guard))
 }
 
-pub(crate) unsafe fn recycled_atomic_segment(value: SEXP, offset: R_xlen_t, len: R_xlen_t) -> SEXP {
+pub(crate)  fn recycled_atomic_segment(value: SEXP, offset: R_xlen_t, len: R_xlen_t) -> SEXP {
     let source_len = XLENGTH(value);
     let result = Rf_allocVector3(TYPEOF(value), len);
     if source_len == 0 {
@@ -345,7 +343,7 @@ pub(crate) unsafe fn recycled_atomic_segment(value: SEXP, offset: R_xlen_t, len:
     result
 }
 
-pub(crate) unsafe fn explicit_data_frame_row_names(frame: SEXP) -> SEXP {
+pub(crate)  fn explicit_data_frame_row_names(frame: SEXP) -> SEXP {
     // GNU Ops.data.frame keeps `rn <- NULL` unless
     // `.row_names_info(e) > 0`: compact `c(NA, -n)` automatic row
     // names stay NULL. `getAttrib` materializes them to `1:n`, so

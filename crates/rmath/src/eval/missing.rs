@@ -157,7 +157,7 @@ fn dots_cell_at(dots: SEXP, index: c_int) -> SEXP {
     }
 }
 
-unsafe fn call_from_head_and_args(head: SEXP, args: SEXP) -> SEXP {
+ fn call_from_head_and_args(head: SEXP, args: SEXP) -> SEXP {
     let mut nargs = 0;
     let mut arg = args;
     while !arg.is_null() && arg != R_NilValue() {
@@ -741,7 +741,7 @@ fn MAYBE_SHARED(x: SEXP) -> bool {
 }
 
 /// Increment the NAMED field, capped at 2.
-unsafe fn INCREMENT_NAMED(x: SEXP) {
+ fn INCREMENT_NAMED(x: SEXP) {
     if !x.is_null() {
         let n = NAMED(x);
         if n < 2 {
@@ -880,7 +880,7 @@ pub unsafe fn replaceCall(fun: SEXP, val: SEXP, args: SEXP, rhs: SEXP) -> SEXP {
 /// Ported from R's `unpromiseArgs()` in eval.c. This is called after
 /// a closure execution to clean up promise arguments that are no longer
 /// needed. It clears the promise code and environment fields.
-pub unsafe fn unpromiseArgs(pargs: SEXP) {
+pub  fn unpromiseArgs(pargs: SEXP) {
     let mut current = pargs;
     while !current.is_null() && current != R_NilValue() {
         let v = CAR(current);
@@ -1402,7 +1402,7 @@ pub fn R_initialize_bcode_full() {
 /// Ensure a value has NAMED >= 1.
 ///
 /// Ported from the ENSURE_NAMED macro in eval.c.
-pub unsafe fn R_ensureNamed(x: SEXP, n: c_int) {
+pub  fn R_ensureNamed(x: SEXP, n: c_int) {
     if !x.is_null() && x != R_NilValue() {
         let current = crate::sexp::accessors::NAMED(x);
         if current < n {
@@ -1416,10 +1416,8 @@ pub unsafe fn R_ensureNamed(x: SEXP, n: c_int) {
 // ---------------------------------------------------------------------------
 
 /// Ensure a value has NAMED == NAMEDMAX.
-pub unsafe fn R_ensureNamedMax(x: SEXP) {
-    unsafe {
-        R_ensureNamed(x, 2);
-    }
+pub fn R_ensureNamedMax(x: SEXP) {
+    R_ensureNamed(x, 2);
 }
 
 #[cfg(test)]

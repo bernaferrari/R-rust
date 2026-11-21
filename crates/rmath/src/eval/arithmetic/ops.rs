@@ -222,7 +222,7 @@ pub(crate) unsafe fn rewritten_level_labels(f: SEXP) -> Vec<String> {
 /// Coerce a relop operand to character following the stock ladder; only
 /// logical/integer/real/complex/raw make it (the rest error like stock's
 /// final else).
-pub(crate) unsafe fn relop_operand_to_character(x: SEXP) -> SEXP {
+pub(crate)  fn relop_operand_to_character(x: SEXP) -> SEXP {
     if TYPEOF(x) == SEXPTYPE::STRSXP {
         return x;
     }

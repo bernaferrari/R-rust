@@ -80,7 +80,7 @@ fn convert<'a>(
         SEXPTYPE::STRSXP => Ok(value.clone()),
         SEXPTYPE::VECSXP | SEXPTYPE::EXPRSXP => list_to_character(owner, factory, value),
         _ => {
-            let raw = unsafe { relop_operand_to_character(value.as_raw()) };
+            let raw = relop_operand_to_character(value.as_raw());
             owner.require_active().map_err(|error| error.to_string())?;
             factory.wrap(raw).map_err(|error| error.to_string())
         }

@@ -66,7 +66,7 @@ fn collect_at_instruction_boundary(pin: &crate::sexp::owner::OwnerPin) {
 /// falling back to the current function context. GNU `findFun` attributes
 /// `R_FunctionNotFoundError` with `R_CurrentExpression`; in bytecode that
 /// is the CALL constant.
-unsafe fn gnu_pending_call(words: &[c_int], mut pc: usize, constants: &[Sexp<'static>]) -> SEXP {
+ fn gnu_pending_call(words: &[c_int], mut pc: usize, constants: &[Sexp<'static>]) -> SEXP {
     while pc < words.len() {
         let opcode = words[pc];
         if opcode == super::bytecode::GNU_OP_CALL || opcode == super::bytecode::GNU_OP_CALLBUILTIN {

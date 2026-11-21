@@ -413,25 +413,21 @@ impl<'a> NamedArguments<'a> {
     }
 
     pub(super) fn retain(&mut self, value: &Sexp<'a>) {
-        unsafe {
-            bump_named_link(value.as_raw());
-        }
+        bump_named_link(value.as_raw());
         self.values.push(value.clone());
     }
 }
 impl Drop for NamedArguments<'_> {
     fn drop(&mut self) {
         for value in &self.values {
-            unsafe {
-                drop_named_link(value.as_raw());
-            }
+            drop_named_link(value.as_raw());
         }
     }
 }
 
 /// GNU `INCREMENT_LINKS`: a later argument can still see this value as shared.
 /// 3 is sticky so a value that was already `NAMEDMAX` is not unshared later.
-unsafe fn bump_named_link(val: SEXP) {
+ fn bump_named_link(val: SEXP) {
     if val.is_null() {
         return;
     }
@@ -441,7 +437,7 @@ unsafe fn bump_named_link(val: SEXP) {
     }
 }
 
-unsafe fn drop_named_link(val: SEXP) {
+ fn drop_named_link(val: SEXP) {
     if val.is_null() {
         return;
     }
@@ -682,7 +678,7 @@ unsafe fn R_mkString(s: *const c_char) -> SEXP {
 // Helper: stringSuffix — get suffix of character vector starting at pos
 // ---------------------------------------------------------------------------
 
-unsafe fn stringSuffix(klass: SEXP, pos: c_int) -> SEXP {
+ fn stringSuffix(klass: SEXP, pos: c_int) -> SEXP {
     if klass.is_null() || pos < 0 {
         return R_NilValue();
     }

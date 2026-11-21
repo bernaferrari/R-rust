@@ -301,7 +301,7 @@ unsafe fn get_R_ToplevelContext() -> *mut RCNTXT {
 /// whose class inherits `tclass`, e.g. `"srcrefsIndex"`).
 ///
 /// Mirrors GNU R's `findLocTable()` in `src/main/eval.c`.
-unsafe fn find_loc_table(constants: SEXP, tclass: &CStr) -> SEXP {
+ fn find_loc_table(constants: SEXP, tclass: &CStr) -> SEXP {
     if constants.is_null() || constants == R_NilValue() || TYPEOF(constants) != SEXPTYPE::VECSXP {
         return R_NilValue();
     }

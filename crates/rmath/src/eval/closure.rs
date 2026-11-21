@@ -829,7 +829,7 @@ fn deparse_for_error(expr: SEXP) -> String {
     }
 }
 
-unsafe fn install_default_promises(formals: SEXP, frame: SEXP, new_env: SEXP) {
+ fn install_default_promises(formals: SEXP, frame: SEXP, new_env: SEXP) {
     let mut formal = formals;
     let mut actual = frame;
 

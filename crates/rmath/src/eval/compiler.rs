@@ -123,7 +123,7 @@ pub unsafe fn do_compile(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
     }
 }
 /// GNU `.Internal(bcVersion())` — current bytecode format, `R_bcVersion`.
-pub unsafe fn do_bcversion(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+pub  fn do_bcversion(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     crate::sexp::constructors::Rf_ScalarInteger(12)
 }
 
@@ -223,7 +223,7 @@ pub(crate) unsafe fn namespace() -> SEXP {
 }
 
 /// GNU `.Internal(growconst(constBuf))`: double a VECSXP constant pool.
-pub unsafe fn do_growconst(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub  fn do_growconst(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     let const_buf = CAR(args);
     if TYPEOF(const_buf) != SEXPTYPE::VECSXP {
         compiler_error("constant buffer must be a generic vector");
@@ -266,7 +266,7 @@ pub unsafe fn do_putconst(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 }
 
 /// GNU `.Internal(getconst(constBuf, n))`: the first `n` pool entries.
-pub unsafe fn do_getconst(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub  fn do_getconst(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     let const_buf = CAR(args);
     if TYPEOF(const_buf) != SEXPTYPE::VECSXP {
         compiler_error("constant buffer must be a generic vector");

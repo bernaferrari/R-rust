@@ -98,7 +98,7 @@ pub unsafe fn getAttrib(x: SEXP, which: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// `names(x) <- pairlist("a","b","c")` stores `c("a","b","c")`.
-pub(crate) unsafe fn pairlist_to_names(value: SEXP) -> SEXP {
+pub(crate)  fn pairlist_to_names(value: SEXP) -> SEXP {
     let mut n = 0i32;
     let mut cell = value;
     while !cell.is_null() && cell != R_NilValue() {

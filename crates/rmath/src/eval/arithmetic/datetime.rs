@@ -114,7 +114,7 @@ pub(crate) fn parse_posixct_comparison_seconds(text: &str) -> Option<f64> {
     crate::mainutils::essentials::parse_iso_datetime_seconds(text)
 }
 
-pub(crate) unsafe fn is_numeric_version(x: SEXP) -> bool {
+pub(crate)  fn is_numeric_version(x: SEXP) -> bool {
     crate::mainutils::essentials::sexp_has_class(x, "numeric_version")
         || crate::mainutils::essentials::sexp_has_class(x, "package_version")
         || crate::mainutils::essentials::sexp_has_class(x, "R_system_version")
@@ -204,7 +204,7 @@ pub(crate) unsafe fn date_binary_comparison(op: &str, a: SEXP, b: SEXP) -> Optio
         Some(binary_compare(op, a, b))
     }
 }
-pub(crate) unsafe fn posixlt_as_posixct_operand(call: SEXP, x: SEXP) -> SEXP {
+pub(crate)  fn posixlt_as_posixct_operand(call: SEXP, x: SEXP) -> SEXP {
     if crate::mainutils::essentials::sexp_has_class(x, "POSIXlt") {
         let ct = crate::mainutils::essentials::do_as_POSIXct(
             call,
