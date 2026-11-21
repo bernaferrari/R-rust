@@ -2,14 +2,18 @@
 //! Port of r-source/src/library/stats/src/burg.c
 
 use std::os::raw::{c_double, c_int};
-use std::slice;
 
 use crate::main::coerce::{asInteger, coerceVector};
 use crate::mainutils::errors::Rf_error;
-use crate::sexp::accessors::{LENGTH, REAL, SET_VECTOR_ELT};
+use crate::sexp::accessors::{LENGTH, SET_VECTOR_ELT};
 use crate::sexp::constructors::Rf_allocVector;
-use crate::sexp::ffi::{SEXP, SEXPTYPE};
+use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
+use crate::sexp::object::SexpMut;
 use crate::sexp::protect::protect;
+
+fn checked<T>(result: crate::sexp::object::SexpResult<T>) -> T {
+    result.unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()))
+}
 
 fn burg_values(
     x: &[c_double],
@@ -79,7 +83,9 @@ fn non_negative_usize(value: c_int, name: &'static [u8]) -> usize {
     value as usize
 }
 
-pub unsafe fn Burg(x: SEXP, order: SEXP) -> SEXP {
+pub fn Burg(x: SEXP, order: SEXP) -> SEXP {
+    // SAFETY: the raw ABI caller retains the active runtime across dispatch.
+    let owner = checked(unsafe { crate::sexp::owner::OwnerToken::current() });
     let x = coerceVector(x, SEXPTYPE::REALSXP.as_c_int());
     let _x_guard = protect(x);
     let n = LENGTH(x);
@@ -96,11 +102,32 @@ pub unsafe fn Burg(x: SEXP, order: SEXP) -> SEXP {
     let var2 = Rf_allocVector(SEXPTYPE::REALSXP, pmax + 1);
     let _var2_guard = protect(var2);
 
-    let x_values = unsafe { slice::from_raw_parts(REAL(x), n as usize) };
-    let coefs_values = unsafe { slice::from_raw_parts_mut(REAL(coefs), pmax_usize * pmax_usize) };
-    let var1_values = unsafe { slice::from_raw_parts_mut(REAL(var1), pmax_usize + 1) };
-    let var2_values = unsafe { slice::from_raw_parts_mut(REAL(var2), pmax_usize + 1) };
-    burg_values(x_values, pmax_usize, coefs_values, var1_values, var2_values);
+    let x_value = checked(owner.sexp(x));
+    let x_values: Vec<c_double> = (0..x_value.len())
+        .map(|i| checked(x_value.try_real_elt(i)))
+        .collect();
+    let mut coefs_values = vec![0.0; pmax_usize * pmax_usize];
+    let mut var1_values = vec![0.0; pmax_usize + 1];
+    let mut var2_values = vec![0.0; pmax_usize + 1];
+    burg_values(
+        &x_values,
+        pmax_usize,
+        &mut coefs_values,
+        &mut var1_values,
+        &mut var2_values,
+    );
+    let mut coefs_out = checked(SexpMut::try_from_checked(checked(owner.sexp(coefs))));
+    for (i, &v) in coefs_values.iter().enumerate() {
+        checked(coefs_out.try_set_real_elt(i as R_xlen_t, v));
+    }
+    let mut var1_out = checked(SexpMut::try_from_checked(checked(owner.sexp(var1))));
+    for (i, &v) in var1_values.iter().enumerate() {
+        checked(var1_out.try_set_real_elt(i as R_xlen_t, v));
+    }
+    let mut var2_out = checked(SexpMut::try_from_checked(checked(owner.sexp(var2))));
+    for (i, &v) in var2_values.iter().enumerate() {
+        checked(var2_out.try_set_real_elt(i as R_xlen_t, v));
+    }
 
     let ans = Rf_allocVector(SEXPTYPE::VECSXP, 3);
     let _ans_guard = protect(ans);
@@ -112,6 +139,10 @@ pub unsafe fn Burg(x: SEXP, order: SEXP) -> SEXP {
     ans
 }
 
+// SAFETY: registered .Fortran routine; the dispatch passes live workspaces
+// whose extents follow the scalar `lr` argument per the eureka.f contract.
+// The Fortran workspace layout keeps its raw-pointer arithmetic in this
+// narrow boundary block.
 pub unsafe extern "C-unwind" fn c_eureka(
     lr: *mut std::ffi::c_void,
     r: *mut std::ffi::c_void,

@@ -1,6 +1,6 @@
 //! GNU `stats/src/deriv.c`: symbolic `D()` and `deriv()`.
 
-use crate::sexp::accessors::{INTEGER, LOGICAL, REAL, STRING_ELT};
+use crate::sexp::accessors::STRING_ELT;
 use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
 #[cfg(test)]
 use crate::sexp::globals::R_NilValue;
@@ -13,7 +13,7 @@ use std::ffi::{CStr, CString};
 #[path = "deriv/owned.rs"]
 mod owned;
 
-unsafe fn run_owned_derivative(
+fn run_owned_derivative(
     first: SEXP,
     second: Option<SEXP>,
     operation: impl FnOnce(
@@ -29,6 +29,7 @@ unsafe fn run_owned_derivative(
     let fail = |message: String| -> ! {
         std::panic::panic_any(crate::sexp::context::RError { message });
     };
+    // SAFETY: the raw ABI caller retains the active runtime across dispatch.
     let token = unsafe { OwnerToken::current() }.unwrap_or_else(|error| fail(error.to_string()));
     let authority = StoredOwner::from_token(token);
     let owner = authority
@@ -80,19 +81,17 @@ fn derivative_symbol(
 }
 
 /// `.External(C_doD, expr, name)`.
-pub unsafe fn do_d(args: SEXP) -> SEXP {
-    unsafe {
-        run_owned_derivative(args, None, |access, arguments, _| {
-            owned::direct(access, arguments, derivative_symbol, |access| {
-                access.with_native(|_| {
-                    crate::mainutils::errors::Rf_warning(
-                        c"only the first element is used as variable name".as_ptr(),
-                    );
-                    Ok(())
-                })
+pub fn do_d(args: SEXP) -> SEXP {
+    run_owned_derivative(args, None, |access, arguments, _| {
+        owned::direct(access, arguments, derivative_symbol, |access| {
+            access.with_native(|_| {
+                crate::mainutils::errors::Rf_warning(
+                    c"only the first element is used as variable name".as_ptr(),
+                );
+                Ok(())
             })
         })
-    }
+    })
 }
 
 // Native auxiliary builders retain actual inputs and every intermediate in
@@ -114,74 +113,60 @@ fn duplicate_builder_value(
 }
 
 #[cfg(test)]
-unsafe fn create_grad(names: SEXP) -> SEXP {
-    unsafe {
-        run_owned_derivative(names, None, |access, names, _| {
-            builders::Builder::new(access).initialize(names, false)
-        })
-    }
+fn create_grad(names: SEXP) -> SEXP {
+    run_owned_derivative(names, None, |access, names, _| {
+        builders::Builder::new(access).initialize(names, false)
+    })
 }
 #[cfg(test)]
-unsafe fn create_hess(names: SEXP) -> SEXP {
-    unsafe {
-        run_owned_derivative(names, None, |access, names, _| {
-            builders::Builder::new(access).initialize(names, true)
-        })
-    }
+fn create_hess(names: SEXP) -> SEXP {
+    run_owned_derivative(names, None, |access, names, _| {
+        builders::Builder::new(access).initialize(names, true)
+    })
 }
 #[cfg(test)]
-unsafe fn deriv_assign(name: SEXP, expr: SEXP) -> SEXP {
-    unsafe {
-        run_owned_derivative(name, Some(expr), |access, name, expression| {
-            builders::Builder::new(access).assign_gradient(
-                name,
-                expression.ok_or(crate::sexp::object::SexpError::RootUnavailable)?,
-            )
-        })
-    }
+fn deriv_assign(name: SEXP, expr: SEXP) -> SEXP {
+    run_owned_derivative(name, Some(expr), |access, name, expression| {
+        builders::Builder::new(access).assign_gradient(
+            name,
+            expression.ok_or(crate::sexp::object::SexpError::RootUnavailable)?,
+        )
+    })
 }
 #[cfg(test)]
-unsafe fn hess_assign1(name: SEXP, expr: SEXP) -> SEXP {
-    unsafe {
-        run_owned_derivative(name, Some(expr), |access, name, expression| {
-            builders::Builder::new(access).assign_hessian(
-                name,
-                None,
-                expression.ok_or(crate::sexp::object::SexpError::RootUnavailable)?,
-            )
-        })
-    }
+fn hess_assign1(name: SEXP, expr: SEXP) -> SEXP {
+    run_owned_derivative(name, Some(expr), |access, name, expression| {
+        builders::Builder::new(access).assign_hessian(
+            name,
+            None,
+            expression.ok_or(crate::sexp::object::SexpError::RootUnavailable)?,
+        )
+    })
 }
 #[cfg(test)]
-unsafe fn hess_assign2(name1: SEXP, name2: SEXP, expr: SEXP) -> SEXP {
-    unsafe {
-        // Retain all three operands before any helper allocation. The tuple
-        // is built with owning values inside the original-runtime boundary.
-        run_owned_derivative(name1, Some(name2), |access, first, second| {
-            let expression = access.with_native(|owner| owner.sexp(expr)?.into_owned())?;
-            builders::Builder::new(access).assign_hessian(
-                first,
-                Some(second.ok_or(crate::sexp::object::SexpError::RootUnavailable)?),
-                &expression,
-            )
-        })
-    }
+fn hess_assign2(name1: SEXP, name2: SEXP, expr: SEXP) -> SEXP {
+    // Retain all three operands before any helper allocation. The tuple
+    // is built with owning values inside the original-runtime boundary.
+    run_owned_derivative(name1, Some(name2), |access, first, second| {
+        let expression = access.with_native(|owner| owner.sexp(expr)?.into_owned())?;
+        builders::Builder::new(access).assign_hessian(
+            first,
+            Some(second.ok_or(crate::sexp::object::SexpError::RootUnavailable)?),
+            &expression,
+        )
+    })
 }
 #[cfg(test)]
-unsafe fn add_grad() -> SEXP {
-    unsafe {
-        run_owned_derivative(R_NilValue(), None, |access, _, _| {
-            builders::Builder::new(access).attach(false)
-        })
-    }
+fn add_grad() -> SEXP {
+    run_owned_derivative(R_NilValue(), None, |access, _, _| {
+        builders::Builder::new(access).attach(false)
+    })
 }
 #[cfg(test)]
-unsafe fn add_hess() -> SEXP {
-    unsafe {
-        run_owned_derivative(R_NilValue(), None, |access, _, _| {
-            builders::Builder::new(access).attach(true)
-        })
-    }
+fn add_hess() -> SEXP {
+    run_owned_derivative(R_NilValue(), None, |access, _, _| {
+        builders::Builder::new(access).attach(true)
+    })
 }
 
 fn install_builder_formal(
@@ -201,26 +186,26 @@ fn install_builder_formal(
 fn builder_environment(
     access: &crate::sexp::owner::RuntimeAccess,
 ) -> crate::sexp::object::SexpResult<crate::sexp::object::Sexp<'static>> {
-    access.with_native(|owner| unsafe { owner.sexp((*owner.as_ptr()).global_env)?.into_owned() })
+    access.with_native(|owner| {
+        owner
+            .sexp(crate::sexp::globals::R_GlobalEnv())?
+            .into_owned()
+    })
 }
 #[cfg(test)]
-unsafe fn closure_with_formals(names: SEXP, body: SEXP) -> SEXP {
-    unsafe {
-        run_owned_derivative(names, Some(body), |access, names, body| {
-            builders::Builder::new(access).closure(
-                names,
-                body.ok_or(crate::sexp::object::SexpError::RootUnavailable)?,
-            )
-        })
-    }
+fn closure_with_formals(names: SEXP, body: SEXP) -> SEXP {
+    run_owned_derivative(names, Some(body), |access, names, body| {
+        builders::Builder::new(access).closure(
+            names,
+            body.ok_or(crate::sexp::object::SexpError::RootUnavailable)?,
+        )
+    })
 }
 /// `.External(C_deriv, expr, namevec, function.arg, tag, hessian)`.
-pub unsafe fn do_deriv(args: SEXP) -> SEXP {
-    unsafe {
-        run_owned_derivative(args, None, |access, arguments, _| {
-            outer::build(access, arguments)
-        })
-    }
+pub fn do_deriv(args: SEXP) -> SEXP {
+    run_owned_derivative(args, None, |access, arguments, _| {
+        outer::build(access, arguments)
+    })
 }
 
 #[path = "deriv/outer.rs"]
@@ -341,37 +326,24 @@ fn derivative_function_flag(
     value: &crate::sexp::object::Sexp<'static>,
 ) -> crate::sexp::object::SexpResult<bool> {
     access.domain().link(value)?;
-    access.with_native(|owner| unsafe {
-        if value.is_empty()
-            && matches!(
-                value.typeof_(),
-                SEXPTYPE::LGLSXP | SEXPTYPE::INTSXP | SEXPTYPE::REALSXP
-            )
-        {
-            return Err(crate::sexp::object::SexpError::EvaluationFailed {
-                message: "invalid hessian argument".into(),
-            });
-        }
-        let result = match value.typeof_() {
-            SEXPTYPE::LGLSXP => {
-                let data = LOGICAL(value.as_raw());
-                owner.require_active()?;
-                data.read() != 0
-            }
-            SEXPTYPE::INTSXP => {
-                let data = INTEGER(value.as_raw());
-                owner.require_active()?;
-                data.read() != 0
-            }
-            SEXPTYPE::REALSXP => {
-                let data = REAL(value.as_raw());
-                owner.require_active()?;
-                data.read() != 0.0
-            }
-            _ => false,
-        };
-        Ok(result)
-    })
+    if value.is_empty()
+        && matches!(
+            value.typeof_(),
+            SEXPTYPE::LGLSXP | SEXPTYPE::INTSXP | SEXPTYPE::REALSXP
+        )
+    {
+        return Err(crate::sexp::object::SexpError::EvaluationFailed {
+            message: "invalid hessian argument".into(),
+        });
+    }
+    let result = match value.typeof_() {
+        SEXPTYPE::LGLSXP => value.try_logical_elt(0)? != 0,
+        SEXPTYPE::INTSXP => value.try_integer_elt(0)? != 0,
+        SEXPTYPE::REALSXP => value.try_real_elt(0)? != 0.0,
+        _ => false,
+    };
+    access.require_active()?;
+    Ok(result)
 }
 fn equal_derivative_scalars(
     access: &crate::sexp::owner::RuntimeAccess,
@@ -380,52 +352,34 @@ fn equal_derivative_scalars(
 ) -> crate::sexp::object::SexpResult<bool> {
     access.domain().link(first)?;
     access.domain().link(second)?;
-    access.with_native(|owner| unsafe {
-        if first.is_empty() || second.is_empty() {
-            return Err(crate::sexp::object::SexpError::EvaluationFailed {
-                message: "invalid expression in 'equal'".into(),
-            });
-        }
-        if first.typeof_() == SEXPTYPE::REALSXP {
-            let data = REAL(first.as_raw());
-            owner.require_active()?;
-            let first = data.read();
-            let data = REAL(second.as_raw());
-            owner.require_active()?;
-            Ok(first == data.read())
-        } else {
-            let data = INTEGER(first.as_raw());
-            owner.require_active()?;
-            let first = data.read();
-            let data = INTEGER(second.as_raw());
-            owner.require_active()?;
-            Ok(first == data.read())
-        }
-    })
+    if first.is_empty() || second.is_empty() {
+        return Err(crate::sexp::object::SexpError::EvaluationFailed {
+            message: "invalid expression in 'equal'".into(),
+        });
+    }
+    let equal = if first.typeof_() == SEXPTYPE::REALSXP {
+        first.try_real_elt(0)? == second.try_real_elt(0)?
+    } else {
+        first.try_integer_elt(0)? == second.try_integer_elt(0)?
+    };
+    access.require_active()?;
+    Ok(equal)
 }
 fn derivative_is_zero(
     access: &crate::sexp::owner::RuntimeAccess,
     value: &crate::sexp::object::Sexp<'static>,
 ) -> crate::sexp::object::SexpResult<bool> {
     access.domain().link(value)?;
-    access.with_native(|owner| unsafe {
-        if value.is_empty() {
-            return Ok(false);
-        }
-        match value.typeof_() {
-            SEXPTYPE::REALSXP => {
-                let data = REAL(value.as_raw());
-                owner.require_active()?;
-                Ok(data.read() == 0.0)
-            }
-            SEXPTYPE::INTSXP => {
-                let data = INTEGER(value.as_raw());
-                owner.require_active()?;
-                Ok(data.read() == 0)
-            }
-            _ => Ok(false),
-        }
-    })
+    if value.is_empty() {
+        return Ok(false);
+    }
+    let is_zero = match value.typeof_() {
+        SEXPTYPE::REALSXP => value.try_real_elt(0)? == 0.0,
+        SEXPTYPE::INTSXP => value.try_integer_elt(0)? == 0,
+        _ => false,
+    };
+    access.require_active()?;
+    Ok(is_zero)
 }
 
 #[cfg(test)]

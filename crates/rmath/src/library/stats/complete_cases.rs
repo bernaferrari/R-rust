@@ -2,22 +2,24 @@
 //! Port of r-source/src/library/stats/src/complete_cases.c
 
 use std::os::raw::c_int;
-use std::slice;
 
 use crate::attrib_core::{R_RowNamesSymbol, getAttrib};
 use crate::main::errors::Rf_error;
 use crate::main::relop::NA_STRING;
 use crate::main::relop::R_DimSymbol;
 use crate::main::relop::R_NamesSymbol;
-use crate::sexp::accessors::{
-    CAR, CDR, COMPLEX, INTEGER, LENGTH, REAL, STRING_ELT, TYPEOF, VECTOR_ELT, XLENGTH,
-};
+use crate::sexp::accessors::{CAR, CDR, LENGTH, STRING_ELT, TYPEOF, VECTOR_ELT};
 use crate::sexp::constructors::Rf_allocVector;
 use crate::sexp::constructors::Rf_isList;
 use crate::sexp::ffi::NA_INTEGER;
-use crate::sexp::ffi::{SEXP, SEXPTYPE};
+use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
+use crate::sexp::object::SexpMut;
 use crate::sexp::protect::protect as protect_sexp;
+
+fn checked<T>(result: crate::sexp::object::SexpResult<T>) -> T {
+    result.unwrap_or_else(|e| crate::mainutils::essentials::base_error(e.to_string()))
+}
 
 fn isMatrix(x: SEXP) -> bool {
     let u = getAttrib(x, R_DimSymbol());
@@ -61,51 +63,72 @@ fn length_sexp(x: SEXP) -> c_int {
     }
 }
 
-fn check_vector_na(u: SEXP, rval: &mut [c_int], len: c_int) {
+/// First integer payload element of a checked dimension attribute.
+fn dim_nrow(owner: crate::sexp::owner::OwnerToken<'_>, dim: SEXP) -> c_int {
+    checked(owner.sexp(dim)).integer_elt(0).unwrap_or(NA_INTEGER)
+}
+
+fn check_vector_na(
+    owner: crate::sexp::owner::OwnerToken<'_>,
+    u: SEXP,
+    rval: &mut [c_int],
+    len: c_int,
+) {
     let len = len as usize;
-    unsafe {
-        let n = LENGTH(u) as usize;
-        let t = TYPEOF(u);
-        match t {
-            x if x == SEXPTYPE::INTSXP || x == SEXPTYPE::LGLSXP => {
-                let values = slice::from_raw_parts(INTEGER(u), n);
-                for (i, &value) in values.iter().enumerate() {
-                    if value == NA_INTEGER {
-                        rval[i % len] = 0;
-                    }
+    let n = LENGTH(u) as usize;
+    let t = TYPEOF(u);
+    let u_value = checked(owner.sexp(u));
+    match t {
+        x if x == SEXPTYPE::INTSXP => {
+            for i in 0..n {
+                if u_value.integer_elt(i as R_xlen_t) == Some(NA_INTEGER) {
+                    rval[i % len] = 0;
                 }
             }
-            x if x == SEXPTYPE::REALSXP => {
-                let values = slice::from_raw_parts(REAL(u), n);
-                for (i, &value) in values.iter().enumerate() {
-                    if value.is_nan() {
-                        rval[i % len] = 0;
-                    }
+        }
+        x if x == SEXPTYPE::LGLSXP => {
+            for i in 0..n {
+                if u_value.logical_elt(i as R_xlen_t) == Some(NA_INTEGER) {
+                    rval[i % len] = 0;
                 }
             }
-            x if x == SEXPTYPE::CPLXSXP => {
-                let values = slice::from_raw_parts(COMPLEX(u), n);
-                for (i, value) in values.iter().enumerate() {
-                    if value.r.is_nan() || value.i.is_nan() {
-                        rval[i % len] = 0;
-                    }
+        }
+        x if x == SEXPTYPE::REALSXP => {
+            for i in 0..n {
+                if u_value
+                    .real_elt(i as R_xlen_t)
+                    .is_some_and(|value| value.is_nan())
+                {
+                    rval[i % len] = 0;
                 }
             }
-            x if x == SEXPTYPE::STRSXP => {
-                for i in 0..n {
-                    if STRING_ELT(u, i as i64) == NA_STRING() {
-                        rval[i % len] = 0;
-                    }
+        }
+        x if x == SEXPTYPE::CPLXSXP => {
+            for i in 0..n {
+                if let Some(value) = u_value.complex_elt(i as R_xlen_t)
+                    && (value.r.is_nan() || value.i.is_nan())
+                {
+                    rval[i % len] = 0;
                 }
             }
-            _ => {
-                Rf_error(b"invalid 'type' of argument\0".as_ptr() as *const _);
+        }
+        x if x == SEXPTYPE::STRSXP => {
+            for i in 0..n {
+                if STRING_ELT(u, i as i64) == NA_STRING() {
+                    rval[i % len] = 0;
+                }
             }
+        }
+        _ => {
+            Rf_error(b"invalid 'type' of argument\0".as_ptr() as *const _);
         }
     }
 }
 
-pub unsafe fn compcases(args: SEXP) -> SEXP {
+pub fn compcases(args: SEXP) -> SEXP {
+    // SAFETY: the raw ABI caller retains the active runtime across dispatch;
+    // the token scopes every checked element access below.
+    let owner = checked(unsafe { crate::sexp::owner::OwnerToken::current() });
     let mut len: c_int = -1;
     let nil = R_NilValue();
 
@@ -127,8 +150,8 @@ pub unsafe fn compcases(args: SEXP) -> SEXP {
                 if isMatrix(u) {
                     let dim = getAttrib(u, R_DimSymbol());
                     if len < 0 {
-                        len = unsafe { *INTEGER(dim) };
-                    } else if len != unsafe { *INTEGER(dim) } {
+                        len = dim_nrow(owner, dim);
+                    } else if len != dim_nrow(owner, dim) {
                         Rf_error(b"not all arguments have the same length\0".as_ptr() as *const _);
 
                         return nil;
@@ -158,8 +181,8 @@ pub unsafe fn compcases(args: SEXP) -> SEXP {
                     if isMatrix(u) {
                         let dim = getAttrib(u, R_DimSymbol());
                         if len < 0 {
-                            len = unsafe { *INTEGER(dim) };
-                        } else if len != unsafe { *INTEGER(dim) } {
+                            len = dim_nrow(owner, dim);
+                        } else if len != dim_nrow(owner, dim) {
                             Rf_error(
                                 b"not all arguments have the same length\0".as_ptr() as *const _
                             );
@@ -188,7 +211,7 @@ pub unsafe fn compcases(args: SEXP) -> SEXP {
                 if !u.is_null() && u != nil {
                     if len < 0 {
                         len = LENGTH(u);
-                    } else if len != unsafe { *INTEGER(u) } {
+                    } else if len != checked(owner.sexp(u)).integer_elt(0).unwrap_or(NA_INTEGER) {
                         Rf_error(b"not all arguments have the same length\0".as_ptr() as *const _);
 
                         return nil;
@@ -198,8 +221,8 @@ pub unsafe fn compcases(args: SEXP) -> SEXP {
         } else if isMatrix(car) {
             let dim = getAttrib(car, R_DimSymbol());
             if len < 0 {
-                len = unsafe { *INTEGER(dim) };
-            } else if len != unsafe { *INTEGER(dim) } {
+                len = dim_nrow(owner, dim);
+            } else if len != dim_nrow(owner, dim) {
                 Rf_error(b"not all arguments have the same length\0".as_ptr() as *const _);
 
                 return nil;
@@ -228,8 +251,7 @@ pub unsafe fn compcases(args: SEXP) -> SEXP {
 
     let rval = Rf_allocVector(SEXPTYPE::LGLSXP, len);
     let _rval_guard = protect_sexp(rval);
-    let rval_int = unsafe { slice::from_raw_parts_mut(INTEGER(rval), len as usize) };
-    rval_int.fill(1);
+    let mut rval_buf = vec![1; len as usize];
 
     // Second pass: check for NAs
     s = args_iter;
@@ -243,7 +265,7 @@ pub unsafe fn compcases(args: SEXP) -> SEXP {
             let mut t = car;
             while !t.is_null() && t != nil {
                 let u = CAR(t);
-                check_vector_na(u, rval_int, len);
+                check_vector_na(owner, u, &mut rval_buf, len);
                 t = CDR(t);
             }
         } else if isNewList(car) {
@@ -252,14 +274,18 @@ pub unsafe fn compcases(args: SEXP) -> SEXP {
             let mut it: c_int = 0;
             while it < nt {
                 let u = VECTOR_ELT(t, it as i64);
-                check_vector_na(u, rval_int, len);
+                check_vector_na(owner, u, &mut rval_buf, len);
                 it += 1;
             }
         } else {
-            check_vector_na(car, rval_int, len);
+            check_vector_na(owner, car, &mut rval_buf, len);
         }
         s = CDR(s);
     }
 
+    let mut rval_out = checked(SexpMut::try_from_checked(checked(owner.sexp(rval))));
+    for (index, value) in rval_buf.iter().enumerate() {
+        checked(rval_out.try_set_logical_elt(index as R_xlen_t, *value));
+    }
     rval
 }

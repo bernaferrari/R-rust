@@ -44,19 +44,9 @@ pub(crate) fn rcont2_slices(
         return Err("rcont2 factorial values must be finite");
     }
     // The slice extents and marginal invariants above establish the legacy
-    // pointer kernel's bounds and arithmetic preconditions.
-    unsafe {
-        rcont2(
-            nrow,
-            ncol,
-            nrowt.as_ptr(),
-            ncolt.as_ptr(),
-            ntotal,
-            fact.as_ptr(),
-            jwork.as_mut_ptr(),
-            matrix.as_mut_ptr(),
-        );
-    }
+    // kernel's bounds and arithmetic preconditions; slice indexing retains
+    // them dynamically.
+    rcont2_kernel(nrow, ncol, nrowt, ncolt, ntotal, fact, jwork, matrix);
     Ok(())
 }
 
@@ -105,11 +95,17 @@ pub(crate) unsafe extern "C" fn rcont2_c_callable(
     }
     // C-callable contract requires arrays sized by the scalar dimensions and
     // total; this boundary checks the scalar invariants before slice creation.
-    let rows = unsafe { std::slice::from_raw_parts(nrowt, nr) };
-    let cols = unsafe { std::slice::from_raw_parts(ncolt, nc) };
-    let facts = unsafe { std::slice::from_raw_parts(fact, fact_len) };
-    let work = unsafe { std::slice::from_raw_parts_mut(jwork, nc.saturating_sub(1)) };
-    let table = unsafe { std::slice::from_raw_parts_mut(matrix, cells) };
+    // SAFETY: the caller provides live arrays of the checked extents per the
+    // public S_rcont2 contract; the loans do not overlap mutably.
+    let (rows, cols, facts, work, table) = unsafe {
+        (
+            std::slice::from_raw_parts(nrowt, nr),
+            std::slice::from_raw_parts(ncolt, nc),
+            std::slice::from_raw_parts(fact, fact_len),
+            std::slice::from_raw_parts_mut(jwork, nc.saturating_sub(1)),
+            std::slice::from_raw_parts_mut(matrix, cells),
+        )
+    };
     let _ = rcont2_slices(nrow, ncol, rows, cols, ntotal, facts, work, table);
 }
 
@@ -120,6 +116,15 @@ pub(crate) unsafe extern "C" fn rcont2_c_callable(
 /// Use double precision for integer multiplication (against overflow).
 ///
 /// Translated from R's C source: r-source/src/library/stats/src/rcont.c
+///
+/// Legacy raw-pointer entry retained for translated callers that still hold
+/// Fortran-style workspaces. New code should use [`rcont2_slices`].
+///
+/// # Safety
+/// The caller must provide live arrays of `nrow`, `ncol`, `ntotal + 1`,
+/// `ncol - 1`, and `nrow * ncol` elements respectively, satisfying the
+/// marginal invariants documented on [`rcont2_slices`]; mutable loans must
+/// not overlap.
 pub unsafe fn rcont2(
     nrow: c_int,
     ncol: c_int,
@@ -130,153 +135,176 @@ pub unsafe fn rcont2(
     jwork: *mut c_int,
     matrix: *mut c_int,
 ) {
-    unsafe {
-        let nr_1 = nrow - 1;
-        let nc_1 = ncol - 1;
-        let mut ib: c_int = 0;
+    // SAFETY: the caller contract supplies the scalar-derived extents used
+    // here; degenerate inputs are rejected by the slice contract below.
+    let (rows, cols, facts, work, table) = unsafe {
+        (
+            std::slice::from_raw_parts(nrowt, nrow as usize),
+            std::slice::from_raw_parts(ncolt, ncol as usize),
+            std::slice::from_raw_parts(fact, (ntotal + 1) as usize),
+            std::slice::from_raw_parts_mut(jwork, (ncol - 1) as usize),
+            std::slice::from_raw_parts_mut(matrix, (nrow * ncol) as usize),
+        )
+    };
+    let _ = rcont2_slices(nrow, ncol, rows, cols, ntotal, facts, work, table);
+}
 
-        /* Construct random matrix */
-        for j in 0..nc_1 {
-            *jwork.add(j as usize) = *ncolt.add(j as usize);
-        }
+/// The slice wrapper validates every extent and marginal invariant before
+/// entry, so indexing reproduces the legacy pointer arithmetic bounds.
+fn rcont2_kernel(
+    nrow: c_int,
+    ncol: c_int,
+    nrowt: &[c_int],
+    ncolt: &[c_int],
+    ntotal: c_int,
+    fact: &[f64],
+    jwork: &mut [c_int],
+    matrix: &mut [c_int],
+) {
+    let nr_1 = nrow - 1;
+    let nc_1 = ncol - 1;
+    let mut ib: c_int = 0;
+    let nrow_us = nrow as usize;
 
-        let mut jc = ntotal;
-        for l in 0..nr_1 {
-            /* -----  matrix[ l, * ] ----- */
-            let mut ia = *nrowt.add(l as usize);
-            let mut ic = jc;
-            jc -= ia; /* = n_tot - sum(nr[0:l]) */
-
-            for m in 0..nc_1 {
-                let id = *jwork.add(m as usize);
-                let ie = ic;
-                let ii = (ie - ia) - id;
-                ic -= id;
-                ib = ie - ia;
-
-                if ie == 0 {
-                    /* Row [l,] is full, fill rest with zero entries */
-                    for j in m..nc_1 {
-                        *matrix.add((l + j * nrow) as usize) = 0;
-                    }
-                    ia = 0;
-                    break;
-                }
-
-                let nlm = rcont2_sample(ia, id, ie, ib, ic, ii, fact);
-
-                *matrix.add((l + m * nrow) as usize) = nlm;
-                ia -= nlm;
-                *jwork.add(m as usize) -= nlm;
-            }
-            // Last column in row l
-            *matrix.add((l + nc_1 * nrow) as usize) = ia;
-        }
-
-        /* Compute entries in last row of MATRIX */
-        for m in 0..nc_1 {
-            *matrix.add((nr_1 + m * nrow) as usize) = *jwork.add(m as usize);
-        }
-
-        *matrix.add((nr_1 + nc_1 * nrow) as usize) =
-            ib - *matrix.add((nr_1 + (nc_1 - 1) * nrow) as usize);
+    /* Construct random matrix */
+    for j in 0..nc_1 {
+        jwork[j as usize] = ncolt[j as usize];
     }
+
+    let mut jc = ntotal;
+    for l in 0..nr_1 {
+        /* -----  matrix[ l, * ] ----- */
+        let mut ia = nrowt[l as usize];
+        let mut ic = jc;
+        jc -= ia; /* = n_tot - sum(nr[0:l]) */
+
+        for m in 0..nc_1 {
+            let id = jwork[m as usize];
+            let ie = ic;
+            let ii = (ie - ia) - id;
+            ic -= id;
+            ib = ie - ia;
+
+            if ie == 0 {
+                /* Row [l,] is full, fill rest with zero entries */
+                for j in m..nc_1 {
+                    matrix[(l + j * nrow) as usize] = 0;
+                }
+                ia = 0;
+                break;
+            }
+
+            let nlm = rcont2_sample(ia, id, ie, ib, ic, ii, fact);
+
+            matrix[l as usize + m as usize * nrow_us] = nlm;
+            ia -= nlm;
+            jwork[m as usize] -= nlm;
+        }
+        // Last column in row l
+        matrix[(l + nc_1 * nrow) as usize] = ia;
+    }
+
+    /* Compute entries in last row of MATRIX */
+    for m in 0..nc_1 {
+        matrix[(nr_1 + m * nrow) as usize] = jwork[m as usize];
+    }
+
+    matrix[(nr_1 + nc_1 * nrow) as usize] =
+        ib - matrix[(nr_1 + (nc_1 - 1) * nrow) as usize];
 }
 
 /// Sample a single entry for the rcont2 algorithm using rejection sampling.
 /// This is the inner loop of AS 159, corresponding to the `do { ... } while(1)` / `L160` block.
 #[inline(never)]
-unsafe fn rcont2_sample(
+fn rcont2_sample(
     ia: c_int,
     id: c_int,
     ie: c_int,
     ib: c_int,
     ic: c_int,
     ii: c_int,
-    fact: *const f64,
+    fact: &[f64],
 ) -> c_int {
-    unsafe {
-        /* Generate pseudo-random number */
-        let mut U = unif_rand();
-        let mut nlm: c_int;
+    /* Generate pseudo-random number */
+    let mut U = unif_rand();
+    let mut nlm: c_int;
+
+    loop {
+        /* Outer Loop */
+
+        /* Compute conditional expected value of MATRIX(L, M) */
+        nlm = (ia as f64 * (id as f64 / ie as f64) + 0.5) as c_int;
+        let mut x = (fact[ia as usize]
+            + fact[ib as usize]
+            + fact[ic as usize]
+            + fact[id as usize]
+            - fact[ie as usize]
+            - fact[nlm as usize]
+            - fact[(id - nlm) as usize]
+            - fact[(ia - nlm) as usize]
+            - fact[(ii + nlm) as usize])
+        .exp();
+        if x >= U {
+            return nlm;
+        }
+        if x == 0.0 {
+            /* Algorithm failure: exp underflow to 0.
+            In R this calls error(), but we cannot call R's error from here.
+            Return nlm (the conditional expected value) as a fallback. */
+            return nlm;
+        }
+
+        let mut sumprb = x;
+        let mut y = x;
+
+        let mut nll = nlm;
+        let mut lsp: bool;
 
         loop {
-            /* Outer Loop */
-
-            /* Compute conditional expected value of MATRIX(L, M) */
-            nlm = (ia as f64 * (id as f64 / ie as f64) + 0.5) as c_int;
-            let mut x = (*fact.add(ia as usize)
-                + *fact.add(ib as usize)
-                + *fact.add(ic as usize)
-                + *fact.add(id as usize)
-                - *fact.add(ie as usize)
-                - *fact.add(nlm as usize)
-                - *fact.add((id - nlm) as usize)
-                - *fact.add((ia - nlm) as usize)
-                - *fact.add((ii + nlm) as usize))
-            .exp();
-            if x >= U {
-                return nlm;
-            }
-            if x == 0.0 {
-                /* Algorithm failure: exp underflow to 0.
-                In R this calls error(), but we cannot call R's error from here.
-                Return nlm (the conditional expected value) as a fallback. */
-                return nlm;
+            /* Increment entry in row L, column M */
+            let j_val = (id - nlm) as f64 * (ia - nlm) as f64;
+            lsp = (nlm == ia) || (nlm == id);
+            if !lsp {
+                nlm += 1;
+                x *= j_val / (nlm as f64 * (ii + nlm) as f64);
+                sumprb += x;
+                if sumprb >= U {
+                    return nlm;
+                }
             }
 
-            let mut sumprb = x;
-            let mut y = x;
-
-            let mut nll = nlm;
-            let mut lsp: bool;
-
+            let mut lsm: bool;
             loop {
-                /* Increment entry in row L, column M */
-                let j_val = (id - nlm) as f64 * (ia - nlm) as f64;
-                lsp = (nlm == ia) || (nlm == id);
-                if !lsp {
-                    nlm += 1;
-                    x *= j_val / (nlm as f64 * (ii + nlm) as f64);
-                    sumprb += x;
+                /* R_CheckUserInterrupt() is not available in this context;
+                we skip it in the Rust port. */
+
+                /* Decrement entry in row L, column M */
+                let j_val2 = nll as f64 * (ii + nll) as f64;
+                lsm = nll == 0;
+                if !lsm {
+                    nll -= 1;
+                    y *= j_val2 / ((id - nll) as f64 * (ia - nll) as f64);
+                    sumprb += y;
                     if sumprb >= U {
-                        return nlm;
+                        return nll;
+                    }
+                    /* else */
+                    if !lsp {
+                        break; /* to while (!lsp) */
                     }
                 }
-
-                let mut lsm: bool;
-                loop {
-                    /* R_CheckUserInterrupt() is not available in this context;
-                    we skip it in the Rust port. */
-
-                    /* Decrement entry in row L, column M */
-                    let j_val2 = nll as f64 * (ii + nll) as f64;
-                    lsm = nll == 0;
-                    if !lsm {
-                        nll -= 1;
-                        y *= j_val2 / ((id - nll) as f64 * (ia - nll) as f64);
-                        sumprb += y;
-                        if sumprb >= U {
-                            return nll;
-                        }
-                        /* else */
-                        if !lsp {
-                            break; /* to while (!lsp) */
-                        }
-                    }
-                    if lsm {
-                        break;
-                    }
-                }
-
-                if lsp {
+                if lsm {
                     break;
                 }
             }
 
-            U = sumprb * unif_rand();
-        } // 'Outer Loop'
-    }
+            if lsp {
+                break;
+            }
+        }
+
+        U = sumprb * unif_rand();
+    } // 'Outer Loop'
 }
 
 #[cfg(test)]

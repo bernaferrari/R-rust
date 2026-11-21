@@ -7,7 +7,9 @@
 use core::ffi::{c_double, c_int, c_void};
 use std::{cell::RefCell, rc::Rc};
 
-use crate::sexp::accessors::{INTEGER, REAL, SET_VECTOR_ELT, TYPEOF, XLENGTH};
+use crate::sexp::accessors::{
+    INTEGER_ELT, REAL_ELT, SET_INTEGER_ELT, SET_REAL_ELT, SET_VECTOR_ELT, TYPEOF, XLENGTH,
+};
 use crate::sexp::constructors::{Rf_ScalarReal, Rf_allocVector3};
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
@@ -105,7 +107,7 @@ impl Drop for StarmaPublication {
     }
 }
 
-unsafe fn alloc_result(kind: SEXPTYPE, length: i64) -> SEXP {
+fn alloc_result(kind: SEXPTYPE, length: i64) -> SEXP {
     let result = Rf_allocVector3(kind, length);
     if result.is_null() {
         starma_error("could not allocate starma result");
@@ -113,7 +115,7 @@ unsafe fn alloc_result(kind: SEXPTYPE, length: i64) -> SEXP {
     result
 }
 
-unsafe fn scalar_result(value: f64) -> SEXP {
+fn scalar_result(value: f64) -> SEXP {
     let result = Rf_ScalarReal(value);
     if result.is_null() {
         starma_error("could not allocate starma result");
@@ -121,18 +123,28 @@ unsafe fn scalar_result(value: f64) -> SEXP {
     result
 }
 
+/// Copy up to `needed` real payload elements through the checked accessor.
+fn real_prefix(x: SEXP, needed: i64) -> Vec<f64> {
+    (0..needed).map(|i| REAL_ELT(x, i as c_int)).collect()
+}
+
+/// Write a buffer into a protected real result via the checked setter.
+fn store_reals(x: SEXP, values: &[f64]) {
+    for (i, &v) in values.iter().enumerate() {
+        SET_REAL_ELT(x, i as c_int, v);
+    }
+}
+
 fn as_i32(x: SEXP) -> i32 {
-    unsafe {
-        if x.is_null() || x == R_NilValue() || XLENGTH(x) < 1 {
-            return 0;
-        }
-        if TYPEOF(x) == SEXPTYPE::INTSXP || TYPEOF(x) == SEXPTYPE::LGLSXP {
-            *INTEGER(x)
-        } else if TYPEOF(x) == SEXPTYPE::REALSXP {
-            *REAL(x) as i32
-        } else {
-            0
-        }
+    if x.is_null() || x == R_NilValue() || XLENGTH(x) < 1 {
+        return 0;
+    }
+    if TYPEOF(x) == SEXPTYPE::INTSXP || TYPEOF(x) == SEXPTYPE::LGLSXP {
+        INTEGER_ELT(x, 0)
+    } else if TYPEOF(x) == SEXPTYPE::REALSXP {
+        REAL_ELT(x, 0) as i32
+    } else {
+        0
     }
 }
 
@@ -143,30 +155,28 @@ fn starma_error(message: &str) -> ! {
 }
 
 fn dimension(value: SEXP, name: &str) -> i32 {
-    unsafe {
-        if value.is_null() || XLENGTH(value) != 1 {
-            starma_error(&format!("invalid starma {name}"));
-        }
-        let number = match SEXPTYPE(TYPEOF(value)) {
-            SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP => {
-                let number = *INTEGER(value);
-                if number == crate::sexp::ffi::NA_INTEGER {
-                    starma_error(&format!("invalid starma {name}"));
-                }
-                f64::from(number)
-            }
-            SEXPTYPE::REALSXP => *REAL(value),
-            _ => starma_error(&format!("invalid starma {name}")),
-        };
-        if !number.is_finite()
-            || number.fract() != 0.0
-            || number < 0.0
-            || number > f64::from(i32::MAX)
-        {
-            starma_error(&format!("invalid starma {name}"));
-        }
-        number as i32
+    if value.is_null() || XLENGTH(value) != 1 {
+        starma_error(&format!("invalid starma {name}"));
     }
+    let number = match SEXPTYPE(TYPEOF(value)) {
+        SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP => {
+            let number = INTEGER_ELT(value, 0);
+            if number == crate::sexp::ffi::NA_INTEGER {
+                starma_error(&format!("invalid starma {name}"));
+            }
+            f64::from(number)
+        }
+        SEXPTYPE::REALSXP => REAL_ELT(value, 0),
+        _ => starma_error(&format!("invalid starma {name}")),
+    };
+    if !number.is_finite()
+        || number.fract() != 0.0
+        || number < 0.0
+        || number > f64::from(i32::MAX)
+    {
+        starma_error(&format!("invalid starma {name}"));
+    }
+    number as i32
 }
 
 fn checked_size(value: i64) -> i32 {
@@ -176,37 +186,33 @@ fn checked_size(value: i64) -> i32 {
         .unwrap_or_else(|| starma_error("starma dimensions are too large"))
 }
 
-unsafe fn require_reals(value: SEXP, needed: i32, name: &str) {
+fn require_reals(value: SEXP, needed: i32, name: &str) {
     if needed == 0 {
         return;
     }
+    if value.is_null()
+        || TYPEOF(value) != SEXPTYPE::REALSXP
+        || XLENGTH(value) < i64::from(needed)
     {
-        if value.is_null()
-            || TYPEOF(value) != SEXPTYPE::REALSXP
-            || XLENGTH(value) < i64::from(needed)
-        {
-            starma_error(&format!("starma {name} is shorter than its dimensions"));
-        }
+        starma_error(&format!("starma {name} is shorter than its dimensions"));
     }
 }
 
 fn as_f64(x: SEXP) -> f64 {
-    unsafe {
-        if x.is_null() || x == R_NilValue() || XLENGTH(x) < 1 {
-            return 0.0;
-        }
-        if TYPEOF(x) == SEXPTYPE::REALSXP {
-            *REAL(x)
-        } else if TYPEOF(x) == SEXPTYPE::INTSXP || TYPEOF(x) == SEXPTYPE::LGLSXP {
-            let v = *INTEGER(x);
-            if v == crate::sexp::ffi::NA_INTEGER {
-                f64::NAN
-            } else {
-                v as f64
-            }
+    if x.is_null() || x == R_NilValue() || XLENGTH(x) < 1 {
+        return 0.0;
+    }
+    if TYPEOF(x) == SEXPTYPE::REALSXP {
+        REAL_ELT(x, 0)
+    } else if TYPEOF(x) == SEXPTYPE::INTSXP || TYPEOF(x) == SEXPTYPE::LGLSXP {
+        let v = INTEGER_ELT(x, 0);
+        if v == crate::sexp::ffi::NA_INTEGER {
+            f64::NAN
         } else {
-            0.0
+            v as f64
         }
+    } else {
+        0.0
     }
 }
 
@@ -301,6 +307,8 @@ fn dotrans(orders: [usize; 4], m: usize, raw: &[f64], new: &mut [f64], trans: i3
     }
 }
 
+// SAFETY: registered .Call routine; the interpreter holds the runtime lock
+// across dispatch and the callee validates its arguments under that lock.
 pub unsafe extern "C-unwind" fn c_setup_starma(
     na: SEXP,
     x: SEXP,
@@ -311,7 +319,7 @@ pub unsafe extern "C-unwind" fn c_setup_starma(
     ptrans: SEXP,
     sncond: SEXP,
 ) -> SEXP {
-    unsafe {
+    {
         if na.is_null() || TYPEOF(na) != SEXPTYPE::INTSXP || XLENGTH(na) < 5 {
             starma_error("starma orders must begin with five nonnegative integers");
         }
@@ -319,8 +327,7 @@ pub unsafe extern "C-unwind" fn c_setup_starma(
         // followed by the two differencing orders already applied by its R
         // wrapper. This kernel consumes the first five; retain minimum-length
         // admission without rejecting that original public metadata tail.
-        let orders = INTEGER(na);
-        let [mp, mq, msp, msq, ns] = std::array::from_fn(|index| *orders.add(index));
+        let [mp, mq, msp, msq, ns] = std::array::from_fn(|index| INTEGER_ELT(na, index as c_int));
         if [mp, mq, msp, msq, ns].iter().any(|order| *order < 0) {
             starma_error("starma orders must begin with five nonnegative integers");
         }
@@ -344,24 +351,27 @@ pub unsafe extern "C-unwind" fn c_setup_starma(
         .unwrap_or_else(|error| starma_error(&error.to_string()));
         // Materialization happens before state publication or any model loan.
         if n > 0 {
-            let observations = std::slice::from_raw_parts(REAL(x), n as usize);
-            g.w[..n as usize].copy_from_slice(observations);
-            g.wkeep[..n as usize].copy_from_slice(observations);
+            let observations = real_prefix(x, i64::from(n));
+            g.w[..n as usize].copy_from_slice(&observations);
+            g.wkeep[..n as usize].copy_from_slice(&observations);
         }
         if reg_n > 0 {
-            g.reg[..reg_n as usize]
-                .copy_from_slice(std::slice::from_raw_parts(REAL(xreg), reg_n as usize));
+            g.reg[..reg_n as usize].copy_from_slice(&real_prefix(xreg, i64::from(reg_n)));
         }
         let state = StarmaState::new(g);
         let mut publication = StarmaPublication {
             state,
             published: None,
         };
-        let owner = crate::sexp::owner::OwnerToken::current().unwrap_or_else(|error| {
-            std::panic::panic_any(crate::sexp::context::RError {
-                message: error.to_string(),
+        // SAFETY: the interpreter holds the runtime lock across dispatch; the
+        // token borrows the interpreter-held owner for this call only.
+        let owner = unsafe {
+            crate::sexp::owner::OwnerToken::current().unwrap_or_else(|error| {
+                std::panic::panic_any(crate::sexp::context::RError {
+                    message: error.to_string(),
+                })
             })
-        });
+        };
         let factory = owner.node_factory();
         let result = factory
             .allocate(|arena| {
@@ -376,11 +386,15 @@ pub unsafe extern "C-unwind" fn c_setup_starma(
                 heap.attach_resource(&token, publication.state.clone())?;
                 publication.published = Some(token);
                 let address = Rc::as_ptr(&publication.state);
-                *(*node).data.extptr_mut() = crate::sexp::ffi::ExtPtrBody {
-                    address: address as *mut c_void,
-                    protected: crate::sexp::heap::NodeLink::NULL,
-                    tag: crate::sexp::heap::NodeLink::NULL,
-                };
+                // SAFETY: `node` is a fresh arena allocation whose extptr
+                // body slot is initialized by this write before publication.
+                unsafe {
+                    *(*node).data.extptr_mut() = crate::sexp::ffi::ExtPtrBody {
+                        address: address as *mut c_void,
+                        protected: crate::sexp::heap::NodeLink::NULL,
+                        tag: crate::sexp::heap::NodeLink::NULL,
+                    };
+                }
                 Some(node)
             })
             .unwrap_or_else(|error| {
@@ -393,6 +407,8 @@ pub unsafe extern "C-unwind" fn c_setup_starma(
     }
 }
 
+// SAFETY: registered .Call routine; the interpreter holds the runtime lock
+// across dispatch and the callee validates its arguments under that lock.
 pub unsafe extern "C-unwind" fn c_free_starma(pg: SEXP) -> SEXP {
     {
         let (_, token) = crate::sexp::memory::checked_projection(pg)
@@ -423,6 +439,8 @@ pub unsafe extern "C-unwind" fn c_free_starma(pg: SEXP) -> SEXP {
     }
 }
 
+// SAFETY: registered .Call routine; the interpreter holds the runtime lock
+// across dispatch and the callee validates its arguments under that lock.
 pub unsafe extern "C-unwind" fn c_starma_method(pg: SEXP, method: SEXP) -> SEXP {
     {
         let state = starma_state(pg);
@@ -432,6 +450,8 @@ pub unsafe extern "C-unwind" fn c_starma_method(pg: SEXP, method: SEXP) -> SEXP 
     }
 }
 
+// SAFETY: registered .Call routine; the interpreter holds the runtime lock
+// across dispatch and the callee validates its arguments under that lock.
 pub unsafe extern "C-unwind" fn c_set_trans(pg: SEXP, ptrans: SEXP) -> SEXP {
     {
         let state = starma_state(pg);
@@ -441,8 +461,10 @@ pub unsafe extern "C-unwind" fn c_set_trans(pg: SEXP, ptrans: SEXP) -> SEXP {
     }
 }
 
+// SAFETY: registered .Call routine; the interpreter holds the runtime lock
+// across dispatch and the callee validates its arguments under that lock.
 pub unsafe extern "C-unwind" fn c_arma0fa(pg: SEXP, inparams: SEXP) -> SEXP {
-    unsafe {
+    {
         let state = starma_state(pg);
         let npar = {
             let g = state.state.borrow();
@@ -454,7 +476,7 @@ pub unsafe extern "C-unwind" fn c_arma0fa(pg: SEXP, inparams: SEXP) -> SEXP {
                     message: "too few starma parameters".to_string(),
                 });
             }
-            Some(std::slice::from_raw_parts(REAL(inparams), npar).to_vec())
+            Some(real_prefix(inparams, npar as i64))
         } else {
             None
         };
@@ -560,16 +582,20 @@ pub unsafe extern "C-unwind" fn c_arma0fa(pg: SEXP, inparams: SEXP) -> SEXP {
     }
 }
 
+// SAFETY: registered .Call routine; the interpreter holds the runtime lock
+// across dispatch and the callee validates its arguments under that lock.
 pub unsafe extern "C-unwind" fn c_get_s2(pg: SEXP) -> SEXP {
-    unsafe {
+    {
         let state = starma_state(pg);
         let s2 = state.state.borrow().s2;
         scalar_result(s2)
     }
 }
 
+// SAFETY: registered .Call routine; the interpreter holds the runtime lock
+// across dispatch and the callee validates its arguments under that lock.
 pub unsafe extern "C-unwind" fn c_get_resid(pg: SEXP) -> SEXP {
-    unsafe {
+    {
         let state = starma_state(pg);
         let values = {
             let g = state.state.borrow();
@@ -577,16 +603,16 @@ pub unsafe extern "C-unwind" fn c_get_resid(pg: SEXP) -> SEXP {
         };
         let res = alloc_result(SEXPTYPE::REALSXP, values.len() as _);
         let _res = protect(res);
-        if !values.is_empty() {
-            std::ptr::copy_nonoverlapping(values.as_ptr(), REAL(res), values.len());
-        }
+        store_reals(res, &values);
         res
     }
 }
 
 /// Forecast `n_ahead` steps. Returns a list of mean and variance.
+// SAFETY: registered .Call routine; the interpreter holds the runtime lock
+// across dispatch and the callee validates its arguments under that lock.
 pub unsafe extern "C-unwind" fn c_arma0_kfore(pg: SEXP, pd: SEXP, psd: SEXP, nahead: SEXP) -> SEXP {
-    unsafe {
+    {
         let state = starma_state(pg);
         let dd = dimension(pd, "difference count");
         let sd = dimension(psd, "seasonal difference count");
@@ -646,18 +672,20 @@ pub unsafe extern "C-unwind" fn c_arma0_kfore(pg: SEXP, pd: SEXP, psd: SEXP, nah
         let var = alloc_result(SEXPTYPE::REALSXP, il as i64);
         SET_VECTOR_ELT(res, 0, x);
         SET_VECTOR_ELT(res, 1, var);
-        std::ptr::copy_nonoverlapping(forecast.as_ptr(), REAL(x), forecast.len());
-        std::ptr::copy_nonoverlapping(variance.as_ptr(), REAL(var), variance.len());
+        store_reals(x, &forecast);
+        store_reals(var, &variance);
         res
     }
 }
 
+// SAFETY: registered .Call routine; the interpreter holds the runtime lock
+// across dispatch and the callee validates its arguments under that lock.
 pub unsafe extern "C-unwind" fn c_dotrans(pg: SEXP, x: SEXP) -> SEXP {
-    unsafe {
+    {
         let state = starma_state(pg);
         let n = XLENGTH(x).max(0);
         let input = if n > 0 && TYPEOF(x) == SEXPTYPE::REALSXP {
-            Some(std::slice::from_raw_parts(REAL(x), n as usize).to_vec())
+            Some(real_prefix(x, n))
         } else {
             None
         };
@@ -672,17 +700,19 @@ pub unsafe extern "C-unwind" fn c_dotrans(pg: SEXP, x: SEXP) -> SEXP {
         }
         let y = alloc_result(SEXPTYPE::REALSXP, n);
         let _y = protect(y);
-        std::ptr::copy_nonoverlapping(output.as_ptr(), REAL(y), output.len());
+        store_reals(y, &output);
         y
     }
 }
 
+// SAFETY: registered .Call routine; the interpreter holds the runtime lock
+// across dispatch and the callee validates its arguments under that lock.
 pub unsafe extern "C-unwind" fn c_invtrans(pg: SEXP, x: SEXP) -> SEXP {
-    unsafe {
+    {
         let state = starma_state(pg);
         let n = XLENGTH(x).max(0);
         let input = if n > 0 && TYPEOF(x) == SEXPTYPE::REALSXP {
-            Some(std::slice::from_raw_parts(REAL(x), n as usize).to_vec())
+            Some(real_prefix(x, n))
         } else {
             None
         };
@@ -705,7 +735,7 @@ pub unsafe extern "C-unwind" fn c_invtrans(pg: SEXP, x: SEXP) -> SEXP {
         }
         let y = alloc_result(SEXPTYPE::REALSXP, n);
         let _y = protect(y);
-        std::ptr::copy_nonoverlapping(output.as_ptr(), REAL(y), output.len());
+        store_reals(y, &output);
         y
     }
 }
@@ -753,77 +783,55 @@ fn transform_jacobian(
     gradient
 }
 
+// SAFETY: registered .Call routine; the interpreter holds the runtime lock
+// across dispatch and the callee validates its arguments under that lock.
 pub unsafe extern "C-unwind" fn c_gradtrans(pg: SEXP, x: SEXP) -> SEXP {
-    unsafe {
+    {
         let state = starma_state(pg);
         let (orders, m) = {
             let model = state.state.borrow();
             (transform_orders(&model), model.m as usize)
         };
         let n = orders.iter().sum::<usize>() + m;
-        let factory = crate::sexp::owner::OwnerToken::current()
-            .unwrap_or_else(|error| starma_error(&error.to_string()))
-            .node_factory();
-        let input = factory
-            .wrap(x)
-            .unwrap_or_else(|error| starma_error(&error.to_string()));
-        if input.typeof_() != SEXPTYPE::REALSXP || input.len() < n as i64 {
+        if x.is_null() || TYPEOF(x) != SEXPTYPE::REALSXP || XLENGTH(x) < n as i64 {
             starma_error("too few starma parameters");
         }
-        let dimension = usize::try_from(input.len())
+        let dimension = usize::try_from(XLENGTH(x))
             .unwrap_or_else(|_| starma_error("starma dimensions are too large"));
         let dimension_i32 = i32::try_from(dimension)
             .unwrap_or_else(|_| starma_error("starma dimensions are too large"));
-        let mut parameters = transform_workspace(n);
-        for (index, parameter) in parameters.iter_mut().enumerate() {
-            *parameter = input
-                .try_real_elt(index as i64)
-                .unwrap_or_else(|error| starma_error(&error.to_string()));
-        }
+        let parameters = real_prefix(x, n as i64);
         // Gradtrans does not consult the model's trans flag in GNU. All model
         // loans end before input materialization or any R result allocation.
         let gradient = transform_jacobian(orders, m, &parameters, dimension);
-        let result = factory
-            .allocate(|arena| {
-                let raw = arena.alloc_vector(SEXPTYPE::REALSXP, gradient.len() as i64);
-                if raw.is_null() {
-                    return None;
-                }
-                std::ptr::copy_nonoverlapping(gradient.as_ptr(), REAL(raw), gradient.len());
-                Some(raw)
-            })
-            .unwrap_or_else(|error| {
-                starma_error(&format!("could not allocate starma result: {error}"))
-            });
-        let dimensions = factory
-            .allocate(|arena| {
-                let raw = arena.alloc_vector(SEXPTYPE::INTSXP, 2);
-                if raw.is_null() {
-                    return None;
-                }
-                INTEGER(raw).write(dimension_i32);
-                INTEGER(raw).add(1).write(dimension_i32);
-                Some(raw)
-            })
-            .unwrap_or_else(|error| {
-                starma_error(&format!("could not allocate starma result: {error}"))
-            });
+        let result = alloc_result(SEXPTYPE::REALSXP, gradient.len() as i64);
+        let _result = protect(result);
+        store_reals(result, &gradient);
+        let dimensions = alloc_result(SEXPTYPE::INTSXP, 2);
+        let _dimensions = protect(dimensions);
+        SET_INTEGER_ELT(dimensions, 0, dimension_i32);
+        SET_INTEGER_ELT(dimensions, 1, dimension_i32);
         crate::sexp::attrib_core::setAttrib(
-            result.as_raw(),
+            result,
             crate::sexp::attrib_core::R_DimSymbol(),
-            dimensions.as_raw(),
+            dimensions,
         );
-        result.as_raw()
+        result
     }
 }
 
+// SAFETY: registered .Call routine; the interpreter holds the runtime lock
+// across dispatch and the callee validates its arguments under that lock.
 pub unsafe extern "C-unwind" fn c_fexact(x: SEXP, pars: SEXP, work: SEXP, smult: SEXP) -> SEXP {
+    // SAFETY: forwards the validated raw SEXP ABI contract of the registered
+    // fexact routine unchanged.
     unsafe { super::fexact::Fexact(x, pars, work, smult) }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sexp::accessors::{INTEGER, REAL};
     use crate::sexp::memory::{self, ArenaBudget};
     use crate::sexp::{Sexp, session::RSession};
     use std::{cell::Cell, panic::AssertUnwindSafe};
