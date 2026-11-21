@@ -28,9 +28,7 @@ use std::ptr;
 #[cfg(test)]
 use std::rc::Rc;
 
-use crate::sexp::accessors::{
-    CHAR, COMPLEX, INTEGER, LENGTH, LOGICAL, RAW, REAL, STRING_ELT, TYPEOF, XLENGTH,
-};
+use crate::sexp::accessors::{CHAR, LENGTH, STRING_ELT, TYPEOF, XLENGTH};
 use crate::sexp::altseq::{unexpanded_int, unexpanded_real};
 use crate::sexp::constructors::Rf_mkChar;
 use crate::sexp::ffi::{
@@ -159,15 +157,35 @@ fn current_R_print() -> RPrint {
     .unwrap_or_default()
 }
 
-unsafe fn na_string_ptr_from_print(rp: RPrint, noquote: bool) -> *const c_char {
-    unsafe {
+/// Checked node factory bound to the active runtime session.
+fn node_factory() -> crate::sexp::object::SessionNodeFactory<'static> {
+    crate::sexp::object::SessionNodeFactory::new(
+        // SAFETY: encode helpers only run inside evaluated R calls.
+        unsafe { crate::sexp::owner::OwnerToken::current() }
+            .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string())),
+    )
+}
+
+fn wrapped(x: SEXP) -> crate::sexp::object::Sexp<'static> {
+    node_factory()
+        .wrap(x)
+        .unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
+}
+
+fn checked<T>(result: crate::sexp::object::SexpResult<T>) -> T {
+    result.unwrap_or_else(|e| crate::sexp::context::r_error(e.to_string()))
+}
+
+fn na_string_ptr_from_print(rp: RPrint, noquote: bool) -> *const c_char {
+    {
         let na = if noquote {
             rp.na_string_noquote
         } else {
             rp.na_string
         };
         if !na.is_null() {
-            let p = CHAR(na as SEXP);
+            // SAFETY: `na` is a live CHARSXP; CHAR returns its contents.
+            let p = unsafe { CHAR(na as SEXP) };
             if !p.is_null() {
                 return p;
             }
@@ -176,12 +194,11 @@ unsafe fn na_string_ptr_from_print(rp: RPrint, noquote: bool) -> *const c_char {
     }
 }
 
-unsafe fn na_string_owned_from_print(rp: RPrint, noquote: bool) -> String {
-    unsafe {
-        CStr::from_ptr(na_string_ptr_from_print(rp, noquote))
-            .to_string_lossy()
-            .into_owned()
-    }
+fn na_string_owned_from_print(rp: RPrint, noquote: bool) -> String {
+    // SAFETY: na_string_ptr_from_print returns a NUL-terminated string.
+    unsafe { CStr::from_ptr(na_string_ptr_from_print(rp, noquote)) }
+        .to_string_lossy()
+        .into_owned()
 }
 
 /// Return a copy of the current R_print configuration.
@@ -190,20 +207,20 @@ pub fn get_R_print() -> RPrint {
 }
 
 /// Set the R_print configuration.
-pub unsafe fn set_R_print(rp: RPrint) {
+pub fn set_R_print(rp: RPrint) {
     crate::sexp::instance::with_required_current_instance(|inst| unsafe {
         (*inst).eval_state.printutils.print = rp;
     });
 }
 
 /// Helper: return the NA string from R_print, falling back to "NA".
-unsafe fn na_string_str() -> String {
-    unsafe { na_string_owned_from_print(current_R_print(), false) }
+fn na_string_str() -> String {
+    na_string_owned_from_print(current_R_print(), false)
 }
 
 /// Helper: return the no-quote NA string from R_print, falling back to "NA".
-unsafe fn na_string_noquote_str() -> String {
-    unsafe { na_string_owned_from_print(current_R_print(), true) }
+fn na_string_noquote_str() -> String {
+    na_string_owned_from_print(current_R_print(), true)
 }
 
 // ---------------------------------------------------------------------------
@@ -1064,11 +1081,7 @@ fn one_integer(x: SEXP, indx: R_xlen_t) -> c_int {
     if let Some(seq) = unexpanded_int(x) {
         return seq.int_or_na(indx);
     }
-    let data = unsafe { INTEGER(x) };
-    if data.is_null() {
-        return NA_INTEGER;
-    }
-    unsafe { *data.add(indx as usize) }
+    checked(wrapped(x).try_integer_elt(indx))
 }
 
 fn one_real(x: SEXP, indx: R_xlen_t) -> c_double {
@@ -1078,22 +1091,14 @@ fn one_real(x: SEXP, indx: R_xlen_t) -> c_double {
     if let Some(seq) = unexpanded_real(x) {
         return seq.real_or_na(indx);
     }
-    let data = unsafe { REAL(x) };
-    if data.is_null() {
-        return NA_REAL;
-    }
-    unsafe { *data.add(indx as usize) }
+    checked(wrapped(x).try_real_elt(indx))
 }
 
 fn one_logical(x: SEXP, indx: R_xlen_t) -> c_int {
     if !element_in_range(x, indx) {
         return NA_LOGICAL;
     }
-    let data = unsafe { LOGICAL(x) };
-    if data.is_null() {
-        return NA_LOGICAL;
-    }
-    unsafe { *data.add(indx as usize) }
+    checked(wrapped(x).try_logical_elt(indx))
 }
 
 fn one_complex(x: SEXP, indx: R_xlen_t) -> Rcomplex {
@@ -1103,25 +1108,14 @@ fn one_complex(x: SEXP, indx: R_xlen_t) -> Rcomplex {
             i: NA_REAL,
         };
     }
-    let data = unsafe { COMPLEX(x) };
-    if data.is_null() {
-        return Rcomplex {
-            r: NA_REAL,
-            i: NA_REAL,
-        };
-    }
-    unsafe { *data.add(indx as usize) }
+    checked(wrapped(x).try_complex_elt(indx))
 }
 
 fn one_raw(x: SEXP, indx: R_xlen_t) -> Rbyte {
     if !element_in_range(x, indx) {
         return 0;
     }
-    let data = unsafe { RAW(x) };
-    if data.is_null() {
-        return 0;
-    }
-    unsafe { *data.add(indx as usize) }
+    checked(wrapped(x).try_raw_elt(indx))
 }
 
 fn one_string(x: SEXP, indx: R_xlen_t) -> SEXP {
