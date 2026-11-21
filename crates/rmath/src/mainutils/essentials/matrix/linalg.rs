@@ -393,70 +393,66 @@ pub fn do_chol(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// GNU `chol2inv(x, size = NCOL(x))` — inverse from an upper Cholesky / R factor.
 pub fn do_chol2inv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let mut x = CAR(args);
-        let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
-        let has_dim = !dim.is_null() && dim != R_NilValue() && XLENGTH(dim) == 2;
-        if !has_dim && crate::sexp::accessors::XLENGTH(x) == 1 {
-            x = crate::mainutils::duplicate::Rf_duplicate(x);
-            let _xd = protect(x);
-            let d = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
-            let _d = protect(d);
-            set_integer_checked(d, 0, 1);
-            set_integer_checked(d, (1) as R_xlen_t, 1);
-            crate::sexp::attrib_core::setAttrib(x, crate::sexp::attrib_core::R_DimSymbol(), d);
-        }
-        let size_arg = CADR(args);
-        let size = if size_arg.is_null() || size_arg == R_NilValue() {
-            let dim =
-                crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
-            let ncol = if !dim.is_null()
-                && dim != R_NilValue()
-                && TYPEOF(dim) == SEXPTYPE::INTSXP
-                && XLENGTH(dim) >= 2
-            {
-                integer_elt_checked(dim, (1) as R_xlen_t)
-            } else {
-                1
-            };
-            let s = Rf_ScalarInteger(ncol);
-            let _s = protect(s);
-            s
-        } else {
-            size_arg
-        };
-        let mut linpack_supplied = false;
-        let mut diag_only = R_NilValue();
-        let mut cell = CDR(CDR(args));
-        let mut untagged = 0usize;
-        while !cell.is_null() && cell != R_NilValue() {
-            let tag = TAG(cell);
-            let name = if !tag.is_null() && tag != R_NilValue() && TYPEOF(tag) == SEXPTYPE::SYMSXP {
-                std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(
-                    crate::sexp::accessors::PRINTNAME(tag),
-                ))
-                .to_string_lossy()
-                .into_owned()
-            } else {
-                String::new()
-            };
-            if name.is_empty() {
-                untagged += 1;
-                if untagged == 1 {
-                    linpack_supplied = true;
-                }
-            } else if name == "LINPACK" {
-                linpack_supplied = true;
-            } else if name == "diag.only" {
-                diag_only = CAR(cell);
-            }
-            cell = CDR(cell);
-        }
-        if linpack_supplied {
-            base_error("the LINPACK argument has been defunct since R 3.1.0".to_owned());
-        }
-        crate::modules::lapack::lapack_impl::La_chol2inv(x, size, diag_only)
+    let mut x = CAR(args);
+    let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+    let has_dim = !dim.is_null() && dim != R_NilValue() && XLENGTH(dim) == 2;
+    if !has_dim && crate::sexp::accessors::XLENGTH(x) == 1 {
+        x = crate::mainutils::duplicate::Rf_duplicate(x);
+        let _xd = protect(x);
+        let d = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+        let _d = protect(d);
+        set_integer_checked(d, 0, 1);
+        set_integer_checked(d, (1) as R_xlen_t, 1);
+        crate::sexp::attrib_core::setAttrib(x, crate::sexp::attrib_core::R_DimSymbol(), d);
     }
+    let size_arg = CADR(args);
+    let size = if size_arg.is_null() || size_arg == R_NilValue() {
+        let dim =
+            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+        let ncol = if !dim.is_null()
+            && dim != R_NilValue()
+            && TYPEOF(dim) == SEXPTYPE::INTSXP
+            && XLENGTH(dim) >= 2
+        {
+            integer_elt_checked(dim, (1) as R_xlen_t)
+        } else {
+            1
+        };
+        let s = Rf_ScalarInteger(ncol);
+        let _s = protect(s);
+        s
+    } else {
+        size_arg
+    };
+    let mut linpack_supplied = false;
+    let mut diag_only = R_NilValue();
+    let mut cell = CDR(CDR(args));
+    let mut untagged = 0usize;
+    while !cell.is_null() && cell != R_NilValue() {
+        let tag = TAG(cell);
+        let name = if !tag.is_null() && tag != R_NilValue() && TYPEOF(tag) == SEXPTYPE::SYMSXP {
+            charsxp_cstring(crate::sexp::accessors::PRINTNAME(tag),)
+            .to_string_lossy()
+            .into_owned()
+        } else {
+            String::new()
+        };
+        if name.is_empty() {
+            untagged += 1;
+            if untagged == 1 {
+                linpack_supplied = true;
+            }
+        } else if name == "LINPACK" {
+            linpack_supplied = true;
+        } else if name == "diag.only" {
+            diag_only = CAR(cell);
+        }
+        cell = CDR(cell);
+    }
+    if linpack_supplied {
+        base_error("the LINPACK argument has been defunct since R 3.1.0".to_owned());
+    }
+    crate::modules::lapack::lapack_impl::La_chol2inv(x, size, diag_only)
 }
 
 /// GNU `norm(x, type)` — `La_dlange`. Default type `"O"`.

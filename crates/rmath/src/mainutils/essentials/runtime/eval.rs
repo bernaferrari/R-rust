@@ -1097,16 +1097,14 @@ pub(crate) fn parse_source_expression_vector(source: &str) -> SEXP {
 }
 
 fn d_symbol_name(sym: SEXP) -> String {
-    unsafe {
-        if TYPEOF(sym) != SEXPTYPE::SYMSXP {
-            return String::new();
-        }
-        let pn = PRINTNAME(sym);
-        if pn.is_null() {
-            return String::new();
-        }
-        CStr::from_ptr(CHAR(pn)).to_string_lossy().into_owned()
+    if TYPEOF(sym) != SEXPTYPE::SYMSXP {
+        return String::new();
     }
+    let pn = PRINTNAME(sym);
+    if pn.is_null() {
+        return String::new();
+    }
+    charsxp_cstring(pn).to_string_lossy().into_owned()
 }
 
 fn d_numeric(x: SEXP) -> Option<f64> {
@@ -1401,88 +1399,87 @@ fn d_diff(expr: SEXP, var: &str) -> SEXP {
 
 /// GNU `D(expr, name)`.
 pub fn do_D(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let mut expr = CAR(args);
-        if TYPEOF(expr) == SEXPTYPE::EXPRSXP && XLENGTH(expr) >= 1 {
-            expr = VECTOR_ELT(expr, 0);
-        }
-        let name_s = CAR(CDR(args));
-        let var = if TYPEOF(name_s) == SEXPTYPE::STRSXP {
-            CStr::from_ptr(CHAR(STRING_ELT(name_s, 0)))
-                .to_string_lossy()
-                .into_owned()
-        } else {
-            d_symbol_name(name_s)
-        };
-        d_diff(expr, &var)
+    let mut expr = CAR(args);
+    if TYPEOF(expr) == SEXPTYPE::EXPRSXP && XLENGTH(expr) >= 1 {
+        expr = VECTOR_ELT(expr, 0);
     }
+    let name_s = CAR(CDR(args));
+    let var = if TYPEOF(name_s) == SEXPTYPE::STRSXP {
+        charsxp_cstring(STRING_ELT(name_s, 0))
+            .to_string_lossy()
+            .into_owned()
+    } else {
+        d_symbol_name(name_s)
+    };
+    d_diff(expr, &var)
 }
 
 /// GNU `deriv(~expr, name)` as an evaluable expression.
 pub fn do_deriv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let mut expr = CAR(args);
-        if TYPEOF(expr) == SEXPTYPE::LANGSXP && d_symbol_name(CAR(expr)) == "~" {
-            expr = CAR(CDR(expr));
-        }
-        if TYPEOF(expr) == SEXPTYPE::EXPRSXP && XLENGTH(expr) >= 1 {
-            expr = VECTOR_ELT(expr, 0);
-        }
-        let name_s = CAR(CDR(args));
-        let var = if TYPEOF(name_s) == SEXPTYPE::STRSXP {
-            CStr::from_ptr(CHAR(STRING_ELT(name_s, 0)))
-                .to_string_lossy()
-                .into_owned()
-        } else {
-            d_symbol_name(name_s)
-        };
-        let d = d_diff(expr, &var);
-        let _d = protect(d);
-        let e_txt = crate::mainutils::deparse::deparse1line(expr, false);
-        let _et = protect(e_txt);
-        let d_txt = crate::mainutils::deparse::deparse1line(d, false);
-        let _dt = protect(d_txt);
-        let e_s = CStr::from_ptr(CHAR(STRING_ELT(e_txt, 0))).to_string_lossy();
-        let d_s = CStr::from_ptr(CHAR(STRING_ELT(d_txt, 0))).to_string_lossy();
-        let src = format!("{{ .value <- {e_s}; attr(.value, \"gradient\") <- {d_s}; .value }}");
-        parse_source_expression_vector(&src)
+    let mut expr = CAR(args);
+    if TYPEOF(expr) == SEXPTYPE::LANGSXP && d_symbol_name(CAR(expr)) == "~" {
+        expr = CAR(CDR(expr));
     }
+    if TYPEOF(expr) == SEXPTYPE::EXPRSXP && XLENGTH(expr) >= 1 {
+        expr = VECTOR_ELT(expr, 0);
+    }
+    let name_s = CAR(CDR(args));
+    let var = if TYPEOF(name_s) == SEXPTYPE::STRSXP {
+        charsxp_cstring(STRING_ELT(name_s, 0))
+            .to_string_lossy()
+            .into_owned()
+    } else {
+        d_symbol_name(name_s)
+    };
+    let d = d_diff(expr, &var);
+    let _d = protect(d);
+    let e_txt = crate::mainutils::deparse::deparse1line(expr, false);
+    let _et = protect(e_txt);
+    let d_txt = crate::mainutils::deparse::deparse1line(d, false);
+    let _dt = protect(d_txt);
+    let e_s_cstr = charsxp_cstring(STRING_ELT(e_txt, 0));
+    let e_s = e_s_cstr.to_string_lossy();
+    let d_s_cstr = charsxp_cstring(STRING_ELT(d_txt, 0));
+    let d_s = d_s_cstr.to_string_lossy();
+    let src = format!("{{ .value <- {e_s}; attr(.value, \"gradient\") <- {d_s}; .value }}");
+    parse_source_expression_vector(&src)
 }
 
 /// GNU `deriv3(~expr, name)` with hessian.
 pub fn do_deriv3(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let mut expr = CAR(args);
-        if TYPEOF(expr) == SEXPTYPE::LANGSXP && d_symbol_name(CAR(expr)) == "~" {
-            expr = CAR(CDR(expr));
-        }
-        if TYPEOF(expr) == SEXPTYPE::EXPRSXP && XLENGTH(expr) >= 1 {
-            expr = VECTOR_ELT(expr, 0);
-        }
-        let name_s = CAR(CDR(args));
-        let var = if TYPEOF(name_s) == SEXPTYPE::STRSXP {
-            CStr::from_ptr(CHAR(STRING_ELT(name_s, 0)))
-                .to_string_lossy()
-                .into_owned()
-        } else {
-            d_symbol_name(name_s)
-        };
-        let d = d_diff(expr, &var);
-        let _d = protect(d);
-        let h = d_diff(d, &var);
-        let _h = protect(h);
-        let e_txt = crate::mainutils::deparse::deparse1line(expr, false);
-        let _et = protect(e_txt);
-        let d_txt = crate::mainutils::deparse::deparse1line(d, false);
-        let _dt = protect(d_txt);
-        let h_txt = crate::mainutils::deparse::deparse1line(h, false);
-        let _ht = protect(h_txt);
-        let e_s = CStr::from_ptr(CHAR(STRING_ELT(e_txt, 0))).to_string_lossy();
-        let d_s = CStr::from_ptr(CHAR(STRING_ELT(d_txt, 0))).to_string_lossy();
-        let h_s = CStr::from_ptr(CHAR(STRING_ELT(h_txt, 0))).to_string_lossy();
-        let src = format!(
-            "{{ .value <- {e_s}; attr(.value, \"gradient\") <- {d_s}; attr(.value, \"hessian\") <- {h_s}; .value }}"
-        );
-        parse_source_expression_vector(&src)
+    let mut expr = CAR(args);
+    if TYPEOF(expr) == SEXPTYPE::LANGSXP && d_symbol_name(CAR(expr)) == "~" {
+        expr = CAR(CDR(expr));
     }
+    if TYPEOF(expr) == SEXPTYPE::EXPRSXP && XLENGTH(expr) >= 1 {
+        expr = VECTOR_ELT(expr, 0);
+    }
+    let name_s = CAR(CDR(args));
+    let var = if TYPEOF(name_s) == SEXPTYPE::STRSXP {
+        charsxp_cstring(STRING_ELT(name_s, 0))
+            .to_string_lossy()
+            .into_owned()
+    } else {
+        d_symbol_name(name_s)
+    };
+    let d = d_diff(expr, &var);
+    let _d = protect(d);
+    let h = d_diff(d, &var);
+    let _h = protect(h);
+    let e_txt = crate::mainutils::deparse::deparse1line(expr, false);
+    let _et = protect(e_txt);
+    let d_txt = crate::mainutils::deparse::deparse1line(d, false);
+    let _dt = protect(d_txt);
+    let h_txt = crate::mainutils::deparse::deparse1line(h, false);
+    let _ht = protect(h_txt);
+    let e_s_cstr = charsxp_cstring(STRING_ELT(e_txt, 0));
+    let e_s = e_s_cstr.to_string_lossy();
+    let d_s_cstr = charsxp_cstring(STRING_ELT(d_txt, 0));
+    let d_s = d_s_cstr.to_string_lossy();
+    let h_s_cstr = charsxp_cstring(STRING_ELT(h_txt, 0));
+    let h_s = h_s_cstr.to_string_lossy();
+    let src = format!(
+        "{{ .value <- {e_s}; attr(.value, \"gradient\") <- {d_s}; attr(.value, \"hessian\") <- {h_s}; .value }}"
+    );
+    parse_source_expression_vector(&src)
 }

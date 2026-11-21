@@ -608,7 +608,8 @@ fn c_arg_elem_name(tag: SEXP, arg_names: SEXP, i: R_xlen_t, n: R_xlen_t) -> SEXP
         match (tag_chars, own) {
             (Some(t), Some(o)) => {
                 let tb = charsxp_text(t).unwrap_or_default();
-                let ob = std::ffi::CStr::from_ptr(CHAR(o)).to_string_lossy();
+                let ob_cstr = charsxp_cstring(o);
+                let ob = ob_cstr.to_string_lossy();
                 let combined = format!("{tb}.{ob}");
                 let cstr = CString::new(combined).unwrap_or_default();
                 mk_char_cstr(&cstr)
@@ -616,7 +617,8 @@ fn c_arg_elem_name(tag: SEXP, arg_names: SEXP, i: R_xlen_t, n: R_xlen_t) -> SEXP
             (None, Some(o)) => o,
             (Some(t), None) if n == 1 => t,
             (Some(t), None) => {
-                let tb = std::ffi::CStr::from_ptr(CHAR(t)).to_string_lossy();
+                let tb_cstr = charsxp_cstring(t);
+                let tb = tb_cstr.to_string_lossy();
                 let combined = format!("{}{}", tb, i + 1);
                 let cstr = CString::new(combined).unwrap_or_default();
                 mk_char_cstr(&cstr)

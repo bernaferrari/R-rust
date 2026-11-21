@@ -636,96 +636,94 @@ pub fn do_ppplot(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// GNU `rfree1way(n, delta=0)` — two-group Control/B; logit shift on treated.
 pub fn do_rfree1way(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let n = elt_real_safe(CAR(args), 0).floor() as i32;
-        if n < 1 {
-            return R_NilValue();
-        }
-        let mut delta = 0.0;
-        let mut cell = CDR(args);
-        let mut pos = 0;
-        while !cell.is_null() && cell != R_NilValue() {
-            let tag = TAG(cell);
-            let name = if !tag.is_null() && tag != R_NilValue() {
-                CStr::from_ptr(CHAR(PRINTNAME(tag)))
-                    .to_string_lossy()
-                    .into_owned()
-            } else {
-                String::new()
-            };
-            let val = CAR(cell);
-            if name == "delta" || (name.is_empty() && pos == 4) {
-                delta = elt_real_safe(val, 0);
-            }
-            if name.is_empty() {
-                pos += 1;
-            }
-            cell = CDR(cell);
-        }
-        let ntot = (2 * n) as i64;
-        let n_s = Rf_ScalarInteger(ntot as c_int);
-        let _ns = protect(n_s);
-        let a_s = Rf_ScalarReal(0.0);
-        let _as = protect(a_s);
-        let b_s = Rf_ScalarReal(1.0);
-        let _bs = protect(b_s);
-        let y = crate::library::stats::random::do_runif(n_s, a_s, b_s);
-        let _y = protect(y);
-        if delta.abs() > 0.0 {
-            for i in n as usize..ntot as usize {
-                let u = real_elt_checked(y, (i) as R_xlen_t);
-                let q = crate::dist::logistic::qlogis_inner(u, 0.0, 1.0, true, false);
-                set_real_checked(y, (i) as R_xlen_t, crate::dist::logistic::plogis_inner(q + delta, 0.0, 1.0, true, false));
-            }
-        }
-        let groups = Rf_allocVector3(SEXPTYPE::INTSXP, ntot);
-        let _g = protect(groups);
-        for i in 0..n as usize {
-            set_integer_checked(groups, (i) as R_xlen_t, 1);
-            set_integer_checked(groups, (i + n as usize) as R_xlen_t, 2);
-        }
-        let lev = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
-        let _lv = protect(lev);
-        SET_STRING_ELT(lev, 0, mk_char_cstr(c"Control"));
-        SET_STRING_ELT(lev, 1, mk_char_cstr(c"B"));
-        crate::sexp::attrib_core::setAttrib(
-            groups,
-            crate::sexp::attrib_core::R_LevelsSymbol(),
-            lev,
-        );
-        let fclass = mk_string_cstr(c"factor");
-        let _fc = protect(fclass);
-        crate::sexp::attrib_core::setAttrib(
-            groups,
-            crate::sexp::attrib_core::R_ClassSymbol(),
-            fclass,
-        );
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
-        let _r = protect(result);
-        SET_VECTOR_ELT(result, 0, groups);
-        SET_VECTOR_ELT(result, 1, y);
-        crate::mainutils::essentials::set_string_names(
-            result,
-            &["groups".to_string(), "y".to_string()],
-        );
-        let rn = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
-        let _rn = protect(rn);
-        set_integer_checked(rn, 0, NA_INTEGER);
-        set_integer_checked(rn, (1) as R_xlen_t, -(ntot as i32));
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            install_str("row.names"),
-            rn,
-        );
-        let class = mk_string_cstr(c"data.frame");
-        let _cl = protect(class);
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            crate::sexp::attrib_core::R_ClassSymbol(),
-            class,
-        );
-        result
+    let n = elt_real_safe(CAR(args), 0).floor() as i32;
+    if n < 1 {
+        return R_NilValue();
     }
+    let mut delta = 0.0;
+    let mut cell = CDR(args);
+    let mut pos = 0;
+    while !cell.is_null() && cell != R_NilValue() {
+        let tag = TAG(cell);
+        let name = if !tag.is_null() && tag != R_NilValue() {
+            charsxp_cstring(PRINTNAME(tag))
+                .to_string_lossy()
+                .into_owned()
+        } else {
+            String::new()
+        };
+        let val = CAR(cell);
+        if name == "delta" || (name.is_empty() && pos == 4) {
+            delta = elt_real_safe(val, 0);
+        }
+        if name.is_empty() {
+            pos += 1;
+        }
+        cell = CDR(cell);
+    }
+    let ntot = (2 * n) as i64;
+    let n_s = Rf_ScalarInteger(ntot as c_int);
+    let _ns = protect(n_s);
+    let a_s = Rf_ScalarReal(0.0);
+    let _as = protect(a_s);
+    let b_s = Rf_ScalarReal(1.0);
+    let _bs = protect(b_s);
+    let y = crate::library::stats::random::do_runif(n_s, a_s, b_s);
+    let _y = protect(y);
+    if delta.abs() > 0.0 {
+        for i in n as usize..ntot as usize {
+            let u = real_elt_checked(y, (i) as R_xlen_t);
+            let q = crate::dist::logistic::qlogis_inner(u, 0.0, 1.0, true, false);
+            set_real_checked(y, (i) as R_xlen_t, crate::dist::logistic::plogis_inner(q + delta, 0.0, 1.0, true, false));
+        }
+    }
+    let groups = Rf_allocVector3(SEXPTYPE::INTSXP, ntot);
+    let _g = protect(groups);
+    for i in 0..n as usize {
+        set_integer_checked(groups, (i) as R_xlen_t, 1);
+        set_integer_checked(groups, (i + n as usize) as R_xlen_t, 2);
+    }
+    let lev = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
+    let _lv = protect(lev);
+    SET_STRING_ELT(lev, 0, mk_char_cstr(c"Control"));
+    SET_STRING_ELT(lev, 1, mk_char_cstr(c"B"));
+    crate::sexp::attrib_core::setAttrib(
+        groups,
+        crate::sexp::attrib_core::R_LevelsSymbol(),
+        lev,
+    );
+    let fclass = mk_string_cstr(c"factor");
+    let _fc = protect(fclass);
+    crate::sexp::attrib_core::setAttrib(
+        groups,
+        crate::sexp::attrib_core::R_ClassSymbol(),
+        fclass,
+    );
+    let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+    let _r = protect(result);
+    SET_VECTOR_ELT(result, 0, groups);
+    SET_VECTOR_ELT(result, 1, y);
+    crate::mainutils::essentials::set_string_names(
+        result,
+        &["groups".to_string(), "y".to_string()],
+    );
+    let rn = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+    let _rn = protect(rn);
+    set_integer_checked(rn, 0, NA_INTEGER);
+    set_integer_checked(rn, (1) as R_xlen_t, -(ntot as i32));
+    crate::sexp::attrib_core::setAttrib(
+        result,
+        install_str("row.names"),
+        rn,
+    );
+    let class = mk_string_cstr(c"data.frame");
+    let _cl = protect(class);
+    crate::sexp::attrib_core::setAttrib(
+        result,
+        crate::sexp::attrib_core::R_ClassSymbol(),
+        class,
+    );
+    result
 }
 
 /// GNU `stepfun(x, y)` — cadlag step function, `length(y)=length(x)+1`.

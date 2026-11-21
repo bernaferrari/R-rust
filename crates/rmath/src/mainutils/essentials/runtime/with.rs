@@ -141,7 +141,7 @@ pub fn do_transform(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         while !p.is_null() && p != R_NilValue() {
             let tag = TAG(p);
             let name = if !tag.is_null() && tag != R_NilValue() && TYPEOF(tag) == SEXPTYPE::SYMSXP {
-                CStr::from_ptr(CHAR(PRINTNAME(tag)))
+                charsxp_cstring(PRINTNAME(tag))
                     .to_string_lossy()
                     .into_owned()
             } else {

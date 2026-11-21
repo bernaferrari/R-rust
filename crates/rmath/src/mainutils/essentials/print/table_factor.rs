@@ -208,8 +208,7 @@ pub fn do_print_factor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     let name = crate::sexp::accessors::PRINTNAME(tag);
                     if !name.is_null() && name != R_NilValue() && TYPEOF(name) == SEXPTYPE::CHARSXP
                     {
-                        let bytes =
-                            std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(name)).to_bytes();
+                        let bytes = charsxp_cstring(name).into_bytes();
                         if bytes != b"levels" && bytes != b"class" {
                             crate::sexp::attrib_core::Rf_setAttrib(xx, tag, CAR(attr));
                         }

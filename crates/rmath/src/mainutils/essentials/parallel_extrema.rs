@@ -15,14 +15,12 @@ struct Inputs<'s> {
     _ticket: WorkspaceReservation,
 }
 fn flag(cell: &Sexp<'_>) -> bool {
-    unsafe {
-        let tag = cell.try_tag().expect("parallel extrema argument tag");
-        if tag.is_nil() {
-            return false;
-        }
-        let name = tag.try_printname().expect("parallel extrema tag name");
-        std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(name.as_raw())).to_bytes() == b"na.rm"
+    let tag = cell.try_tag().expect("parallel extrema argument tag");
+    if tag.is_nil() {
+        return false;
     }
+    let name = tag.try_printname().expect("parallel extrema tag name");
+    crate::mainutils::essentials::charsxp_cstring(name.as_raw()).to_bytes() == b"na.rm"
 }
 fn supported(value: &Sexp<'_>) -> bool {
     !value.is_object()

@@ -771,189 +771,187 @@ pub fn do_inverse_rle(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// GNU `rowsum(x, group)` — sum rows by group.
 pub fn do_rowsum(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        let group = CAR(CDR(args));
-        if x.is_null() || x == R_NilValue() {
-            return R_NilValue();
-        }
-        let xt = TYPEOF(x);
-        if xt == SEXPTYPE::VECSXP {
-            let class = crate::sexp::attrib_core::getAttrib(x, install_str("class"));
-            let is_df = !class.is_null()
-                && TYPEOF(class) == SEXPTYPE::STRSXP
-                && (0..XLENGTH(class)).any(|i| {
-                    let s = STRING_ELT(class, i);
-                    !s.is_null()
-                        && std::ffi::CStr::from_ptr(CHAR(s)).to_str().ok() == Some("data.frame")
-                });
-            if !is_df {
-                crate::mainutils::errors::errorcall_str(
-                    crate::mainutils::errors::R_getCurrentCall(),
-                    "'x' must be numeric",
-                );
-            }
-            let nc = XLENGTH(x);
-            let ans = Rf_allocVector3(SEXPTYPE::VECSXP, nc);
-            let _a = protect(ans);
-            let mut rownames = R_NilValue();
-            for i in 0..nc {
-                let col = VECTOR_ELT(x, i);
-                let args_i = Rf_cons(col, Rf_cons(group, R_NilValue()));
-                let _ai = protect(args_i);
-                let summed = do_rowsum(_call, _op, args_i, _rho);
-                if i == 0 {
-                    let dn = crate::sexp::attrib_core::getAttrib(
-                        summed,
-                        crate::sexp::attrib_core::R_DimNamesSymbol(),
-                    );
-                    if !dn.is_null() && TYPEOF(dn) == SEXPTYPE::VECSXP && XLENGTH(dn) > 0 {
-                        rownames = VECTOR_ELT(dn, 0);
-                    }
-                }
-                crate::sexp::attrib_core::setAttrib(
-                    summed,
-                    crate::sexp::attrib_core::R_DimSymbol(),
-                    R_NilValue(),
-                );
-                crate::sexp::attrib_core::setAttrib(
-                    summed,
-                    crate::sexp::attrib_core::R_DimNamesSymbol(),
-                    R_NilValue(),
-                );
-                SET_VECTOR_ELT(ans, i, summed);
-            }
-            let names =
-                crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
-            if !names.is_null() && names != R_NilValue() {
-                crate::sexp::attrib_core::setAttrib(
-                    ans,
-                    crate::sexp::attrib_core::R_NamesSymbol(),
-                    names,
-                );
-            }
-            if !rownames.is_null() && rownames != R_NilValue() {
-                crate::sexp::attrib_core::setAttrib(
-                    ans,
-                    install_str("row.names"),
-                    rownames,
-                );
-            }
-            let cls = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
-            let c = std::ffi::CString::new("data.frame").unwrap_or_default();
-            SET_STRING_ELT(cls, 0, mk_char_cstr(&c));
-            crate::sexp::attrib_core::setAttrib(ans, install_str("class"), cls);
-            return ans;
-        }
-        if xt != SEXPTYPE::INTSXP && xt != SEXPTYPE::REALSXP && xt != SEXPTYPE::LGLSXP {
+    let x = CAR(args);
+    let group = CAR(CDR(args));
+    if x.is_null() || x == R_NilValue() {
+        return R_NilValue();
+    }
+    let xt = TYPEOF(x);
+    if xt == SEXPTYPE::VECSXP {
+        let class = crate::sexp::attrib_core::getAttrib(x, install_str("class"));
+        let is_df = !class.is_null()
+            && TYPEOF(class) == SEXPTYPE::STRSXP
+            && (0..XLENGTH(class)).any(|i| {
+                let s = STRING_ELT(class, i);
+                !s.is_null()
+                    && charsxp_cstring(s).to_str().ok() == Some("data.frame")
+            });
+        if !is_df {
             crate::mainutils::errors::errorcall_str(
                 crate::mainutils::errors::R_getCurrentCall(),
                 "'x' must be numeric",
             );
         }
-        let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
-        let (nr, nc) = if !dim.is_null()
-            && dim != R_NilValue()
-            && TYPEOF(dim) == SEXPTYPE::INTSXP
-            && XLENGTH(dim) >= 2
-        {
-            (integer_elt_checked(dim, 0) as i64, integer_elt_checked(dim, (1) as R_xlen_t) as i64)
-        } else {
-            (XLENGTH(x), 1)
-        };
-        if XLENGTH(group) != nr {
-            crate::mainutils::errors::errorcall_str(
-                crate::mainutils::errors::R_getCurrentCall(),
-                "incorrect length for 'group'",
-            );
-        }
-        let mut labels: Vec<String> = Vec::new();
-        let mut index: Vec<usize> = Vec::new();
-        for i in 0..nr {
-            let key = format_rowsum_group(group, i);
-            if let Some(pos) = labels.iter().position(|s| s == &key) {
-                index.push(pos);
-            } else {
-                index.push(labels.len());
-                labels.push(key);
-            }
-        }
-        let mut order: Vec<usize> = (0..labels.len()).collect();
-        order.sort_by(|&a, &b| labels[a].cmp(&labels[b]));
-        let mut new_pos = vec![0usize; labels.len()];
-        let mut sorted_labels = vec![String::new(); labels.len()];
-        for (dst, &src) in order.iter().enumerate() {
-            new_pos[src] = dst;
-            sorted_labels[dst].clone_from(&labels[src]);
-        }
-        let ng = labels.len() as i64;
-        let out_ty = if xt == SEXPTYPE::REALSXP {
-            SEXPTYPE::REALSXP
-        } else {
-            SEXPTYPE::INTSXP
-        };
-        let result = Rf_allocVector3(out_ty, ng * nc);
-        let _result = protect(result);
-        if out_ty == SEXPTYPE::REALSXP {
-            for i in 0..(ng * nc) as usize {
-                set_real_checked(result, (i) as R_xlen_t, 0.0);
-            }
-        } else {
-            for i in 0..(ng * nc) as usize {
-                set_integer_checked(result, (i) as R_xlen_t, 0);
-            }
-        }
-        for col in 0..nc {
-            for row in 0..nr {
-                let g = new_pos[index[row as usize]] as i64;
-                let src = row + col * nr;
-                let dst = g + col * ng;
-                let val = if xt == SEXPTYPE::REALSXP {
-                    real_elt_checked(x, (src as usize) as R_xlen_t)
-                } else {
-                    integer_elt_checked(x, (src as usize) as R_xlen_t) as f64
-                };
-                if out_ty == SEXPTYPE::REALSXP {
-                    set_real_checked(result, (dst as usize) as R_xlen_t, real_elt_checked(result, (dst as usize) as R_xlen_t) + val);
-                } else {
-                    set_integer_checked(result, (dst as usize) as R_xlen_t, integer_elt_checked(result, (dst as usize) as R_xlen_t) + val as i32);
+        let nc = XLENGTH(x);
+        let ans = Rf_allocVector3(SEXPTYPE::VECSXP, nc);
+        let _a = protect(ans);
+        let mut rownames = R_NilValue();
+        for i in 0..nc {
+            let col = VECTOR_ELT(x, i);
+            let args_i = Rf_cons(col, Rf_cons(group, R_NilValue()));
+            let _ai = protect(args_i);
+            let summed = do_rowsum(_call, _op, args_i, _rho);
+            if i == 0 {
+                let dn = crate::sexp::attrib_core::getAttrib(
+                    summed,
+                    crate::sexp::attrib_core::R_DimNamesSymbol(),
+                );
+                if !dn.is_null() && TYPEOF(dn) == SEXPTYPE::VECSXP && XLENGTH(dn) > 0 {
+                    rownames = VECTOR_ELT(dn, 0);
                 }
             }
+            crate::sexp::attrib_core::setAttrib(
+                summed,
+                crate::sexp::attrib_core::R_DimSymbol(),
+                R_NilValue(),
+            );
+            crate::sexp::attrib_core::setAttrib(
+                summed,
+                crate::sexp::attrib_core::R_DimNamesSymbol(),
+                R_NilValue(),
+            );
+            SET_VECTOR_ELT(ans, i, summed);
         }
-        let out_dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
-        set_integer_checked(out_dim, 0, ng as c_int);
-        set_integer_checked(out_dim, (1) as R_xlen_t, nc as c_int);
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            crate::sexp::attrib_core::R_DimSymbol(),
-            out_dim,
-        );
-        let dn = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
-        let rn = Rf_allocVector3(SEXPTYPE::STRSXP, ng);
-        for (i, lab) in sorted_labels.iter().enumerate() {
-            let cstr = CString::new(lab.as_str()).unwrap_or_default();
-            SET_STRING_ELT(rn, i as i64, mk_char_cstr(&cstr));
+        let names =
+            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
+        if !names.is_null() && names != R_NilValue() {
+            crate::sexp::attrib_core::setAttrib(
+                ans,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+                names,
+            );
         }
-        SET_VECTOR_ELT(dn, 0, rn);
-        let xdn =
-            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimNamesSymbol());
-        let cn = if !xdn.is_null()
-            && xdn != R_NilValue()
-            && TYPEOF(xdn) == SEXPTYPE::VECSXP
-            && XLENGTH(xdn) > 1
-        {
-            VECTOR_ELT(xdn, 1)
-        } else {
-            R_NilValue()
-        };
-        SET_VECTOR_ELT(dn, 1, cn);
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            crate::sexp::attrib_core::R_DimNamesSymbol(),
-            dn,
-        );
-        result
+        if !rownames.is_null() && rownames != R_NilValue() {
+            crate::sexp::attrib_core::setAttrib(
+                ans,
+                install_str("row.names"),
+                rownames,
+            );
+        }
+        let cls = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+        let c = std::ffi::CString::new("data.frame").unwrap_or_default();
+        SET_STRING_ELT(cls, 0, mk_char_cstr(&c));
+        crate::sexp::attrib_core::setAttrib(ans, install_str("class"), cls);
+        return ans;
     }
+    if xt != SEXPTYPE::INTSXP && xt != SEXPTYPE::REALSXP && xt != SEXPTYPE::LGLSXP {
+        crate::mainutils::errors::errorcall_str(
+            crate::mainutils::errors::R_getCurrentCall(),
+            "'x' must be numeric",
+        );
+    }
+    let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+    let (nr, nc) = if !dim.is_null()
+        && dim != R_NilValue()
+        && TYPEOF(dim) == SEXPTYPE::INTSXP
+        && XLENGTH(dim) >= 2
+    {
+        (integer_elt_checked(dim, 0) as i64, integer_elt_checked(dim, (1) as R_xlen_t) as i64)
+    } else {
+        (XLENGTH(x), 1)
+    };
+    if XLENGTH(group) != nr {
+        crate::mainutils::errors::errorcall_str(
+            crate::mainutils::errors::R_getCurrentCall(),
+            "incorrect length for 'group'",
+        );
+    }
+    let mut labels: Vec<String> = Vec::new();
+    let mut index: Vec<usize> = Vec::new();
+    for i in 0..nr {
+        let key = format_rowsum_group(group, i);
+        if let Some(pos) = labels.iter().position(|s| s == &key) {
+            index.push(pos);
+        } else {
+            index.push(labels.len());
+            labels.push(key);
+        }
+    }
+    let mut order: Vec<usize> = (0..labels.len()).collect();
+    order.sort_by(|&a, &b| labels[a].cmp(&labels[b]));
+    let mut new_pos = vec![0usize; labels.len()];
+    let mut sorted_labels = vec![String::new(); labels.len()];
+    for (dst, &src) in order.iter().enumerate() {
+        new_pos[src] = dst;
+        sorted_labels[dst].clone_from(&labels[src]);
+    }
+    let ng = labels.len() as i64;
+    let out_ty = if xt == SEXPTYPE::REALSXP {
+        SEXPTYPE::REALSXP
+    } else {
+        SEXPTYPE::INTSXP
+    };
+    let result = Rf_allocVector3(out_ty, ng * nc);
+    let _result = protect(result);
+    if out_ty == SEXPTYPE::REALSXP {
+        for i in 0..(ng * nc) as usize {
+            set_real_checked(result, (i) as R_xlen_t, 0.0);
+        }
+    } else {
+        for i in 0..(ng * nc) as usize {
+            set_integer_checked(result, (i) as R_xlen_t, 0);
+        }
+    }
+    for col in 0..nc {
+        for row in 0..nr {
+            let g = new_pos[index[row as usize]] as i64;
+            let src = row + col * nr;
+            let dst = g + col * ng;
+            let val = if xt == SEXPTYPE::REALSXP {
+                real_elt_checked(x, (src as usize) as R_xlen_t)
+            } else {
+                integer_elt_checked(x, (src as usize) as R_xlen_t) as f64
+            };
+            if out_ty == SEXPTYPE::REALSXP {
+                set_real_checked(result, (dst as usize) as R_xlen_t, real_elt_checked(result, (dst as usize) as R_xlen_t) + val);
+            } else {
+                set_integer_checked(result, (dst as usize) as R_xlen_t, integer_elt_checked(result, (dst as usize) as R_xlen_t) + val as i32);
+            }
+        }
+    }
+    let out_dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+    set_integer_checked(out_dim, 0, ng as c_int);
+    set_integer_checked(out_dim, (1) as R_xlen_t, nc as c_int);
+    crate::sexp::attrib_core::setAttrib(
+        result,
+        crate::sexp::attrib_core::R_DimSymbol(),
+        out_dim,
+    );
+    let dn = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+    let rn = Rf_allocVector3(SEXPTYPE::STRSXP, ng);
+    for (i, lab) in sorted_labels.iter().enumerate() {
+        let cstr = CString::new(lab.as_str()).unwrap_or_default();
+        SET_STRING_ELT(rn, i as i64, mk_char_cstr(&cstr));
+    }
+    SET_VECTOR_ELT(dn, 0, rn);
+    let xdn =
+        crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimNamesSymbol());
+    let cn = if !xdn.is_null()
+        && xdn != R_NilValue()
+        && TYPEOF(xdn) == SEXPTYPE::VECSXP
+        && XLENGTH(xdn) > 1
+    {
+        VECTOR_ELT(xdn, 1)
+    } else {
+        R_NilValue()
+    };
+    SET_VECTOR_ELT(dn, 1, cn);
+    crate::sexp::attrib_core::setAttrib(
+        result,
+        crate::sexp::attrib_core::R_DimNamesSymbol(),
+        dn,
+    );
+    result
 }
 
 fn format_rowsum_group(group: SEXP, i: i64) -> String {

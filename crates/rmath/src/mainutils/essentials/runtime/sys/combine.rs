@@ -141,21 +141,19 @@ fn drop_empty_names(x: SEXP) {
 }
 
 fn names_have_label(names: SEXP) -> bool {
-    unsafe {
-        if names.is_null() || names == R_NilValue() || TYPEOF(names) != SEXPTYPE::STRSXP {
-            return false;
-        }
-        for i in 0..XLENGTH(names) {
-            let ch = STRING_ELT(names, i);
-            if ch.is_null() || ch == crate::sexp::globals::R_NaString() {
-                continue;
-            }
-            if !std::ffi::CStr::from_ptr(CHAR(ch)).to_bytes().is_empty() {
-                return true;
-            }
-        }
-        false
+    if names.is_null() || names == R_NilValue() || TYPEOF(names) != SEXPTYPE::STRSXP {
+        return false;
     }
+    for i in 0..XLENGTH(names) {
+        let ch = STRING_ELT(names, i);
+        if ch.is_null() || ch == crate::sexp::globals::R_NaString() {
+            continue;
+        }
+        if !charsxp_cstring(ch).to_bytes().is_empty() {
+            return true;
+        }
+    }
+    false
 }
 
 /// GNU `c.POSIXlt(...)`.
@@ -169,7 +167,7 @@ pub fn do_c_POSIXlt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             let _v = protect(v);
             let tag = TAG(cell);
             let skip = if !tag.is_null() && tag != R_NilValue() {
-                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag))).to_string_lossy() == "recursive"
+                charsxp_cstring(PRINTNAME(tag)).to_string_lossy() == "recursive"
             } else {
                 false
             };
@@ -286,7 +284,7 @@ pub fn do_c_POSIXlt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         while !cell.is_null() && cell != R_NilValue() {
             let tag = TAG(cell);
             if !tag.is_null() && tag != R_NilValue() {
-                let s = std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)));
+                let s = charsxp_cstring(PRINTNAME(tag));
                 if !s.to_bytes().is_empty() {
                     any_tag = true;
                     break;

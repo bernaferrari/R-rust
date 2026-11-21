@@ -98,8 +98,8 @@ fn string(value: &Sexp<'_>) -> i32 {
     if value.as_raw() == crate::sexp::globals::R_NaString() {
         return NA_INTEGER;
     }
-    let text = unsafe { CStr::from_ptr(crate::sexp::accessors::CHAR(value.as_raw())) }.to_bytes();
-    match text {
+    let text = crate::mainutils::essentials::charsxp_cstring(value.as_raw());
+    match text.to_bytes() {
         b"T" | b"TRUE" | b"True" | b"true" => 1,
         b"F" | b"FALSE" | b"False" | b"false" => 0,
         _ => NA_INTEGER,

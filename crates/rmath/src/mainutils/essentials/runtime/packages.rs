@@ -60,7 +60,7 @@ pub fn do_lib_paths(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             if !value.is_null() && value != R_NilValue() && TYPEOF(value) == SEXPTYPE::STRSXP {
                 let mut paths = Vec::with_capacity(LENGTH(value).max(0) as usize);
                 for i in 0..LENGTH(value) {
-                    let path = CStr::from_ptr(CHAR(STRING_ELT(value, i as R_xlen_t)))
+                    let path = charsxp_cstring(STRING_ELT(value, i as R_xlen_t))
                         .to_string_lossy()
                         .into_owned();
                     paths.push(PathBuf::from(path));
@@ -595,7 +595,7 @@ pub fn do_unload_namespace(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
     unsafe {
         let name = CAR(args);
         let package = if TYPEOF(name) == SEXPTYPE::SYMSXP {
-            std::ffi::CStr::from_ptr(CHAR(PRINTNAME(name)))
+            charsxp_cstring(PRINTNAME(name))
                 .to_str()
                 .unwrap_or("")
                 .to_string()
@@ -621,26 +621,24 @@ pub fn do_unload_namespace(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
 
 /// `.Internal(getRegisteredNamespace(name))` — loaded namespace or NULL.
 pub fn do_get_registered_namespace(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let name = CAR(args);
-        let package = if TYPEOF(name) == SEXPTYPE::SYMSXP {
-            std::ffi::CStr::from_ptr(CHAR(PRINTNAME(name)))
-                .to_str()
-                .unwrap_or("")
-                .to_string()
-        } else {
-            elt_to_string(name, 0)
-        };
-        if package.is_empty() {
-            return R_NilValue();
-        }
-        if package == "base" {
-            return crate::sexp::envir::R_BaseNamespace();
-        }
-
-        crate::mainutils::essentials::shared::cached_namespace_by_name(&package)
-            .unwrap_or_else(R_NilValue)
+    let name = CAR(args);
+    let package = if TYPEOF(name) == SEXPTYPE::SYMSXP {
+        charsxp_cstring(PRINTNAME(name))
+            .to_str()
+            .unwrap_or("")
+            .to_string()
+    } else {
+        elt_to_string(name, 0)
+    };
+    if package.is_empty() {
+        return R_NilValue();
     }
+    if package == "base" {
+        return crate::sexp::envir::R_BaseNamespace();
+    }
+
+    crate::mainutils::essentials::shared::cached_namespace_by_name(&package)
+        .unwrap_or_else(R_NilValue)
 }
 
 /// `.Internal(isRegisteredNamespace(name))` — TRUE if the namespace is loaded.

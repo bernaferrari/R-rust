@@ -593,7 +593,7 @@ pub fn do_loglin(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             while !cell.is_null() && cell != R_NilValue() {
                 let tag = TAG(cell);
                 let name = if !tag.is_null() && tag != R_NilValue() {
-                    CStr::from_ptr(CHAR(PRINTNAME(tag)))
+                    charsxp_cstring(PRINTNAME(tag))
                         .to_string_lossy()
                         .into_owned()
                 } else {
@@ -1066,7 +1066,7 @@ pub fn do_rsmirnov(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         while !cell.is_null() && cell != R_NilValue() {
             let tag = TAG(cell);
             let name = if !tag.is_null() && tag != R_NilValue() {
-                CStr::from_ptr(CHAR(PRINTNAME(tag)))
+                charsxp_cstring(PRINTNAME(tag))
                     .to_string_lossy()
                     .into_owned()
             } else {
@@ -1153,24 +1153,22 @@ pub fn do_rsmirnov(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 fn smirnov_alternative(arg: SEXP) -> &'static str {
-    unsafe {
-        if arg.is_null()
-            || arg == R_NilValue()
-            || TYPEOF(arg) != SEXPTYPE::STRSXP
-            || XLENGTH(arg) < 1
-        {
-            return "two.sided";
-        }
-        let s = CStr::from_ptr(CHAR(STRING_ELT(arg, 0)))
-            .to_string_lossy()
-            .into_owned();
-        if s.starts_with('l') {
-            "less"
-        } else if s.starts_with('g') {
-            "greater"
-        } else {
-            "two.sided"
-        }
+    if arg.is_null()
+        || arg == R_NilValue()
+        || TYPEOF(arg) != SEXPTYPE::STRSXP
+        || XLENGTH(arg) < 1
+    {
+        return "two.sided";
+    }
+    let s = charsxp_cstring(STRING_ELT(arg, 0))
+        .to_string_lossy()
+        .into_owned();
+    if s.starts_with('l') {
+        "less"
+    } else if s.starts_with('g') {
+        "greater"
+    } else {
+        "two.sided"
     }
 }
 

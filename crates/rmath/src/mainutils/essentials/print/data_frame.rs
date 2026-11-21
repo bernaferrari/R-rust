@@ -610,13 +610,14 @@ pub fn do_summary_data_frame(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
                             R_NilValue()
                         };
                     let mut bytes = Vec::new();
-                    let outer = CStr::from_ptr(CHAR(ch)).to_bytes();
+                    let outer_cstr = charsxp_cstring(ch);
+                    let outer = outer_cstr.to_bytes();
                     for k in 0..mc as i64 {
                         bytes.extend_from_slice(outer);
                         bytes.push(b'.');
                         if TYPEOF(cnames) == SEXPTYPE::STRSXP && k < XLENGTH(cnames) {
                             bytes.extend_from_slice(
-                                CStr::from_ptr(CHAR(STRING_ELT(cnames, k))).to_bytes(),
+                                charsxp_cstring(STRING_ELT(cnames, k)).to_bytes(),
                             );
                         }
                     }

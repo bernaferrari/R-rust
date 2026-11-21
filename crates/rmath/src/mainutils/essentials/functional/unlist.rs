@@ -396,118 +396,116 @@ pub(super) fn collect_unlist_entries(
     use_names: bool,
     out: &mut Vec<UnlistEntry>,
 ) {
-    unsafe {
-        if x.is_null() || x == R_NilValue() {
-            return;
-        }
-        if TYPEOF(x) == SEXPTYPE::VECSXP || TYPEOF(x) == SEXPTYPE::EXPRSXP {
-            let names =
-                crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
-            let n = XLENGTH(x);
-            if !recursive {
-                let any_list = (0..n).any(|i| {
-                    let child = VECTOR_ELT(x, i);
-                    TYPEOF(child) == SEXPTYPE::VECSXP || TYPEOF(child) == SEXPTYPE::EXPRSXP
-                });
-                if any_list || !matches!(prefix, UnlistName::Absent) {
-                    for i in 0..n {
-                        let child = VECTOR_ELT(x, i);
-                        let child_name = if use_names {
-                            unlist_element_name(&prefix, names, i, n)
-                        } else {
-                            UnlistName::Absent
-                        };
-                        if TYPEOF(child) == SEXPTYPE::VECSXP || TYPEOF(child) == SEXPTYPE::EXPRSXP {
-                            let child_names = crate::sexp::attrib_core::getAttrib(
-                                child,
-                                crate::sexp::attrib_core::R_NamesSymbol(),
-                            );
-                            let child_n = XLENGTH(child);
-                            for j in 0..child_n {
-                                let leaf_name = if use_names {
-                                    unlist_element_name(&child_name, child_names, j, child_n)
-                                } else {
-                                    UnlistName::Absent
-                                };
-                                out.push(UnlistEntry {
-                                    value: UnlistValue::Object(VECTOR_ELT(child, j)),
-                                    name: leaf_name,
-                                });
-                            }
-                        } else {
-                            let child_n = XLENGTH(child);
-                            let child_names = crate::sexp::attrib_core::getAttrib(
-                                child,
-                                crate::sexp::attrib_core::R_NamesSymbol(),
-                            );
-                            for j in 0..child_n {
-                                let leaf_name = if use_names {
-                                    unlist_element_name(&child_name, child_names, j, child_n)
-                                } else {
-                                    UnlistName::Absent
-                                };
-                                out.push(UnlistEntry {
-                                    value: UnlistValue::Element {
-                                        parent: child,
-                                        index: j,
-                                    },
-                                    name: leaf_name,
-                                });
-                            }
-                        }
-                    }
-                    return;
-                }
-            }
-            for i in 0..n {
-                let child_name = if use_names {
-                    unlist_element_name(&prefix, names, i, n)
-                } else {
-                    UnlistName::Absent
-                };
-                collect_unlist_entries(VECTOR_ELT(x, i), child_name, recursive, use_names, out);
-            }
-            return;
-        }
-        if TYPEOF(x) == SEXPTYPE::LANGSXP
-            || TYPEOF(x) == SEXPTYPE::SYMSXP
-            || TYPEOF(x) == SEXPTYPE::CLOSXP
-            || TYPEOF(x) == SEXPTYPE::ENVSXP
-        {
-            out.push(UnlistEntry {
-                value: UnlistValue::Object(x),
-                name: prefix,
-            });
-            return;
-        }
-
+    if x.is_null() || x == R_NilValue() {
+        return;
+    }
+    if TYPEOF(x) == SEXPTYPE::VECSXP || TYPEOF(x) == SEXPTYPE::EXPRSXP {
         let names =
             crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
-        for i in 0..XLENGTH(x) {
-            let name = if use_names {
-                unlist_element_name(&prefix, names, i, XLENGTH(x))
+        let n = XLENGTH(x);
+        if !recursive {
+            let any_list = (0..n).any(|i| {
+                let child = VECTOR_ELT(x, i);
+                TYPEOF(child) == SEXPTYPE::VECSXP || TYPEOF(child) == SEXPTYPE::EXPRSXP
+            });
+            if any_list || !matches!(prefix, UnlistName::Absent) {
+                for i in 0..n {
+                    let child = VECTOR_ELT(x, i);
+                    let child_name = if use_names {
+                        unlist_element_name(&prefix, names, i, n)
+                    } else {
+                        UnlistName::Absent
+                    };
+                    if TYPEOF(child) == SEXPTYPE::VECSXP || TYPEOF(child) == SEXPTYPE::EXPRSXP {
+                        let child_names = crate::sexp::attrib_core::getAttrib(
+                            child,
+                            crate::sexp::attrib_core::R_NamesSymbol(),
+                        );
+                        let child_n = XLENGTH(child);
+                        for j in 0..child_n {
+                            let leaf_name = if use_names {
+                                unlist_element_name(&child_name, child_names, j, child_n)
+                            } else {
+                                UnlistName::Absent
+                            };
+                            out.push(UnlistEntry {
+                                value: UnlistValue::Object(VECTOR_ELT(child, j)),
+                                name: leaf_name,
+                            });
+                        }
+                    } else {
+                        let child_n = XLENGTH(child);
+                        let child_names = crate::sexp::attrib_core::getAttrib(
+                            child,
+                            crate::sexp::attrib_core::R_NamesSymbol(),
+                        );
+                        for j in 0..child_n {
+                            let leaf_name = if use_names {
+                                unlist_element_name(&child_name, child_names, j, child_n)
+                            } else {
+                                UnlistName::Absent
+                            };
+                            out.push(UnlistEntry {
+                                value: UnlistValue::Element {
+                                    parent: child,
+                                    index: j,
+                                },
+                                name: leaf_name,
+                            });
+                        }
+                    }
+                }
+                return;
+            }
+        }
+        for i in 0..n {
+            let child_name = if use_names {
+                unlist_element_name(&prefix, names, i, n)
             } else {
                 UnlistName::Absent
             };
-
-            let value = match TYPEOF(x) {
-                t if t == SEXPTYPE::LGLSXP => UnlistValue::Logical(logical_elt_checked(x, (i as usize) as R_xlen_t)),
-                t if t == SEXPTYPE::INTSXP => UnlistValue::Integer(integer_elt_checked(x, (i as usize) as R_xlen_t)),
-                t if t == SEXPTYPE::REALSXP => UnlistValue::Real(real_elt_checked(x, (i as usize) as R_xlen_t)),
-                t if t == SEXPTYPE::CPLXSXP => UnlistValue::Complex(complex_elt_checked(x, (i as usize) as R_xlen_t)),
-                t if t == SEXPTYPE::RAWSXP => UnlistValue::Raw(raw_elt_checked(x, (i as usize) as R_xlen_t)),
-                t if t == SEXPTYPE::STRSXP => {
-                    let string = STRING_ELT(x, i);
-                    if string.is_null() || string == crate::sexp::globals::R_NaString() {
-                        UnlistValue::NaString
-                    } else {
-                        UnlistValue::String(CStr::from_ptr(CHAR(string)).to_bytes().to_vec())
-                    }
-                }
-                _ => UnlistValue::String(elt_to_string(x, i).into_bytes()),
-            };
-            out.push(UnlistEntry { value, name });
+            collect_unlist_entries(VECTOR_ELT(x, i), child_name, recursive, use_names, out);
         }
+        return;
+    }
+    if TYPEOF(x) == SEXPTYPE::LANGSXP
+        || TYPEOF(x) == SEXPTYPE::SYMSXP
+        || TYPEOF(x) == SEXPTYPE::CLOSXP
+        || TYPEOF(x) == SEXPTYPE::ENVSXP
+    {
+        out.push(UnlistEntry {
+            value: UnlistValue::Object(x),
+            name: prefix,
+        });
+        return;
+    }
+
+    let names =
+        crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
+    for i in 0..XLENGTH(x) {
+        let name = if use_names {
+            unlist_element_name(&prefix, names, i, XLENGTH(x))
+        } else {
+            UnlistName::Absent
+        };
+
+        let value = match TYPEOF(x) {
+            t if t == SEXPTYPE::LGLSXP => UnlistValue::Logical(logical_elt_checked(x, (i as usize) as R_xlen_t)),
+            t if t == SEXPTYPE::INTSXP => UnlistValue::Integer(integer_elt_checked(x, (i as usize) as R_xlen_t)),
+            t if t == SEXPTYPE::REALSXP => UnlistValue::Real(real_elt_checked(x, (i as usize) as R_xlen_t)),
+            t if t == SEXPTYPE::CPLXSXP => UnlistValue::Complex(complex_elt_checked(x, (i as usize) as R_xlen_t)),
+            t if t == SEXPTYPE::RAWSXP => UnlistValue::Raw(raw_elt_checked(x, (i as usize) as R_xlen_t)),
+            t if t == SEXPTYPE::STRSXP => {
+                let string = STRING_ELT(x, i);
+                if string.is_null() || string == crate::sexp::globals::R_NaString() {
+                    UnlistValue::NaString
+                } else {
+                    UnlistValue::String(charsxp_cstring(string).to_bytes().to_vec())
+                }
+            }
+            _ => UnlistValue::String(elt_to_string(x, i).into_bytes()),
+        };
+        out.push(UnlistEntry { value, name });
     }
 }
 
@@ -517,44 +515,42 @@ pub(super) fn unlist_element_name(
     index: R_xlen_t,
     len: R_xlen_t,
 ) -> UnlistName {
-    unsafe {
-        let own = if !names.is_null()
-            && names != R_NilValue()
-            && TYPEOF(names) == SEXPTYPE::STRSXP
-            && index < XLENGTH(names)
-        {
-            let elt = STRING_ELT(names, index);
-            if elt.is_null() || elt == crate::sexp::globals::R_NaString() {
-                UnlistName::Na
-            } else {
-                let value = CStr::from_ptr(CHAR(elt)).to_string_lossy().into_owned();
-                if value.is_empty() {
-                    UnlistName::Absent
-                } else {
-                    UnlistName::Value(value)
-                }
-            }
+    let own = if !names.is_null()
+        && names != R_NilValue()
+        && TYPEOF(names) == SEXPTYPE::STRSXP
+        && index < XLENGTH(names)
+    {
+        let elt = STRING_ELT(names, index);
+        if elt.is_null() || elt == crate::sexp::globals::R_NaString() {
+            UnlistName::Na
         } else {
-            UnlistName::Absent
-        };
-
-        match (prefix, own) {
-            (UnlistName::Value(prefix), UnlistName::Value(own)) => {
-                UnlistName::Value(format!("{prefix}.{own}"))
+            let value = charsxp_cstring(elt).to_string_lossy().into_owned();
+            if value.is_empty() {
+                UnlistName::Absent
+            } else {
+                UnlistName::Value(value)
             }
-            (UnlistName::Absent, own) => own,
-            (UnlistName::Na, UnlistName::Value(own)) => UnlistName::Value(format!("NA.{own}")),
-            (UnlistName::Na, UnlistName::Absent) if len > 1 => {
-                UnlistName::Value(format!("NA{}", index + 1))
-            }
-            (UnlistName::Na, _) => UnlistName::Na,
-            (UnlistName::Value(prefix), UnlistName::Na) => {
-                UnlistName::Value(format!("{prefix}.NA"))
-            }
-            (UnlistName::Value(prefix), UnlistName::Absent) if len > 1 => {
-                UnlistName::Value(format!("{}{}", prefix, index + 1))
-            }
-            (UnlistName::Value(prefix), UnlistName::Absent) => UnlistName::Value(prefix.clone()),
         }
+    } else {
+        UnlistName::Absent
+    };
+
+    match (prefix, own) {
+        (UnlistName::Value(prefix), UnlistName::Value(own)) => {
+            UnlistName::Value(format!("{prefix}.{own}"))
+        }
+        (UnlistName::Absent, own) => own,
+        (UnlistName::Na, UnlistName::Value(own)) => UnlistName::Value(format!("NA.{own}")),
+        (UnlistName::Na, UnlistName::Absent) if len > 1 => {
+            UnlistName::Value(format!("NA{}", index + 1))
+        }
+        (UnlistName::Na, _) => UnlistName::Na,
+        (UnlistName::Value(prefix), UnlistName::Na) => {
+            UnlistName::Value(format!("{prefix}.NA"))
+        }
+        (UnlistName::Value(prefix), UnlistName::Absent) if len > 1 => {
+            UnlistName::Value(format!("{}{}", prefix, index + 1))
+        }
+        (UnlistName::Value(prefix), UnlistName::Absent) => UnlistName::Value(prefix.clone()),
     }
 }

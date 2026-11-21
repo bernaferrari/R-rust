@@ -65,17 +65,15 @@ pub fn do_list(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 pub(crate) fn string_at_or_empty(x: SEXP, index: R_xlen_t) -> String {
-    unsafe {
-        if x.is_null() || x == R_NilValue() || TYPEOF(x) != SEXPTYPE::STRSXP || index >= XLENGTH(x)
-        {
-            return String::new();
-        }
-        let value = STRING_ELT(x, index);
-        if value.is_null() || value == crate::sexp::globals::R_NaString() {
-            return String::new();
-        }
-        CStr::from_ptr(CHAR(value)).to_string_lossy().into_owned()
+    if x.is_null() || x == R_NilValue() || TYPEOF(x) != SEXPTYPE::STRSXP || index >= XLENGTH(x)
+    {
+        return String::new();
     }
+    let value = STRING_ELT(x, index);
+    if value.is_null() || value == crate::sexp::globals::R_NaString() {
+        return String::new();
+    }
+    charsxp_cstring(value).to_string_lossy().into_owned()
 }
 
 pub(crate) fn set_string_names(x: SEXP, names: &[String]) {

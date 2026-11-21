@@ -385,89 +385,87 @@ pub(super) fn tapply_one_index(
     n: R_xlen_t,
     dim_name: Option<String>,
 ) -> Option<TapplyIndex> {
-    unsafe {
-        if index.is_null() || index == R_NilValue() || XLENGTH(index) == 0 {
-            return None;
-        }
-        let index_type = TYPEOF(index);
-        if index_type == SEXPTYPE::INTSXP {
-            if let Some(levels) = aggregate_factor_levels(index) {
-                let row_codes = (0..n)
-                    .map(|row| {
-                        let value = integer_elt_checked(index, row % XLENGTH(index));
-                        if value == NA_INTEGER || value <= 0 || value as usize > levels.len() {
-                            None
-                        } else {
-                            Some((value - 1) as usize)
-                        }
-                    })
-                    .collect();
-                return Some(TapplyIndex {
-                    labels: levels,
-                    row_codes,
-                    dim_name,
-                });
-            }
-            let mut labels = std::collections::BTreeSet::<i32>::new();
-            let mut values = Vec::with_capacity(n as usize);
-            for row in 0..n {
-                let value = integer_elt_checked(index, row % XLENGTH(index));
-                if value == NA_INTEGER {
-                    values.push(None);
-                } else {
-                    labels.insert(value);
-                    values.push(Some(value));
-                }
-            }
-            let labels = labels.into_iter().collect::<Vec<_>>();
-            let positions = labels
-                .iter()
-                .enumerate()
-                .map(|(i, value)| (*value, i))
-                .collect::<BTreeMap<_, _>>();
-            let row_codes = values
-                .into_iter()
-                .map(|value| value.and_then(|value| positions.get(&value).copied()))
-                .collect();
-            return Some(TapplyIndex {
-                labels: labels.into_iter().map(|value| value.to_string()).collect(),
-                row_codes,
-                dim_name,
-            });
-        }
-
-        if index_type == SEXPTYPE::STRSXP {
-            let mut labels = std::collections::BTreeSet::<String>::new();
-            let mut values = Vec::with_capacity(n as usize);
-            for row in 0..n {
-                let elt = STRING_ELT(index, row % XLENGTH(index));
-                if elt.is_null() || elt == crate::sexp::globals::R_NaString() {
-                    values.push(None);
-                } else {
-                    let value = CStr::from_ptr(CHAR(elt)).to_string_lossy().into_owned();
-                    labels.insert(value.clone());
-                    values.push(Some(value));
-                }
-            }
-            let labels = labels.into_iter().collect::<Vec<_>>();
-            let positions = labels
-                .iter()
-                .enumerate()
-                .map(|(i, value)| (value.clone(), i))
-                .collect::<BTreeMap<_, _>>();
-            let row_codes = values
-                .into_iter()
-                .map(|value| value.and_then(|value| positions.get(&value).copied()))
-                .collect();
-            return Some(TapplyIndex {
-                labels,
-                row_codes,
-                dim_name,
-            });
-        }
-
-        None
+    if index.is_null() || index == R_NilValue() || XLENGTH(index) == 0 {
+        return None;
     }
+    let index_type = TYPEOF(index);
+    if index_type == SEXPTYPE::INTSXP {
+        if let Some(levels) = aggregate_factor_levels(index) {
+            let row_codes = (0..n)
+                .map(|row| {
+                    let value = integer_elt_checked(index, row % XLENGTH(index));
+                    if value == NA_INTEGER || value <= 0 || value as usize > levels.len() {
+                        None
+                    } else {
+                        Some((value - 1) as usize)
+                    }
+                })
+                .collect();
+            return Some(TapplyIndex {
+                labels: levels,
+                row_codes,
+                dim_name,
+            });
+        }
+        let mut labels = std::collections::BTreeSet::<i32>::new();
+        let mut values = Vec::with_capacity(n as usize);
+        for row in 0..n {
+            let value = integer_elt_checked(index, row % XLENGTH(index));
+            if value == NA_INTEGER {
+                values.push(None);
+            } else {
+                labels.insert(value);
+                values.push(Some(value));
+            }
+        }
+        let labels = labels.into_iter().collect::<Vec<_>>();
+        let positions = labels
+            .iter()
+            .enumerate()
+            .map(|(i, value)| (*value, i))
+            .collect::<BTreeMap<_, _>>();
+        let row_codes = values
+            .into_iter()
+            .map(|value| value.and_then(|value| positions.get(&value).copied()))
+            .collect();
+        return Some(TapplyIndex {
+            labels: labels.into_iter().map(|value| value.to_string()).collect(),
+            row_codes,
+            dim_name,
+        });
+    }
+
+    if index_type == SEXPTYPE::STRSXP {
+        let mut labels = std::collections::BTreeSet::<String>::new();
+        let mut values = Vec::with_capacity(n as usize);
+        for row in 0..n {
+            let elt = STRING_ELT(index, row % XLENGTH(index));
+            if elt.is_null() || elt == crate::sexp::globals::R_NaString() {
+                values.push(None);
+            } else {
+                let value = charsxp_cstring(elt).to_string_lossy().into_owned();
+                labels.insert(value.clone());
+                values.push(Some(value));
+            }
+        }
+        let labels = labels.into_iter().collect::<Vec<_>>();
+        let positions = labels
+            .iter()
+            .enumerate()
+            .map(|(i, value)| (value.clone(), i))
+            .collect::<BTreeMap<_, _>>();
+        let row_codes = values
+            .into_iter()
+            .map(|value| value.and_then(|value| positions.get(&value).copied()))
+            .collect();
+        return Some(TapplyIndex {
+            labels,
+            row_codes,
+            dim_name,
+        });
+    }
+
+    None
 }
 
 pub(super) fn tapply_value_at(x: SEXP, x_type: c_int, i: R_xlen_t) -> f64 {

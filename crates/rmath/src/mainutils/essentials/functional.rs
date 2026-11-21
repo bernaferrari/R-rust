@@ -2,7 +2,7 @@
 
 use super::*;
 use std::collections::BTreeMap;
-use std::ffi::{CStr, CString};
+use std::ffi::CString;
 use std::os::raw::c_int;
 
 #[allow(unused_imports)]

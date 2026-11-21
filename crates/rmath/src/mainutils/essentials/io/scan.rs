@@ -48,23 +48,22 @@ fn parse_scan_logical(value: &str) -> Option<c_int> {
 }
 
 pub(crate) fn named_arg(args: SEXP, name: &str) -> Option<SEXP> {
-    unsafe {
-        let mut current = args;
-        while !current.is_null() && current != R_NilValue() {
-            let tag = TAG(current);
-            if !tag.is_null() && tag != R_NilValue() {
-                let printname = PRINTNAME(tag);
-                if !printname.is_null() {
-                    let tag_name = CStr::from_ptr(CHAR(printname)).to_string_lossy();
-                    if tag_name == name {
-                        return Some(CAR(current));
-                    }
+    let mut current = args;
+    while !current.is_null() && current != R_NilValue() {
+        let tag = TAG(current);
+        if !tag.is_null() && tag != R_NilValue() {
+            let printname = PRINTNAME(tag);
+            if !printname.is_null() {
+                let tag_name_cstr = charsxp_cstring(printname);
+                let tag_name = tag_name_cstr.to_string_lossy();
+                if tag_name == name {
+                    return Some(CAR(current));
                 }
             }
-            current = CDR(current);
         }
-        None
+        current = CDR(current);
     }
+    None
 }
 
 /// R's `scan(file, what, nmax, sep, ...)` — read data from a file path.

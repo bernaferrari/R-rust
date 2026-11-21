@@ -3,46 +3,46 @@
 use super::*;
 
 pub(crate) fn datetime_c_value(source: SEXP, index: R_xlen_t, class: DatetimeVectorClass) -> f64 {
-    unsafe {
-        match class {
-            DatetimeVectorClass::Date => {
-                if TYPEOF(source) == SEXPTYPE::STRSXP {
-                    let value = STRING_ELT(source, index);
-                    if value.is_null() || value == crate::sexp::globals::R_NaString() {
-                        return NA_REAL;
-                    }
-                    let text = CStr::from_ptr(CHAR(value)).to_str().unwrap_or("");
-                    if text.is_empty() {
-                        return NA_REAL;
-                    }
-                    return parse_iso_date_days(text).unwrap_or_else(|| {
-                        base_error("character string is not in a standard unambiguous format");
-                    });
+    match class {
+        DatetimeVectorClass::Date => {
+            if TYPEOF(source) == SEXPTYPE::STRSXP {
+                let value = STRING_ELT(source, index);
+                if value.is_null() || value == crate::sexp::globals::R_NaString() {
+                    return NA_REAL;
                 }
-                let value = real_elt_or_default(source, index, NA_REAL);
-                if sexp_has_class(source, "POSIXct") && value.to_bits() != R_NA_BIT_PATTERN {
-                    (value / 86_400.0).floor()
-                } else {
-                    value
+                let text_cstr = charsxp_cstring(value);
+                let text = text_cstr.to_str().unwrap_or("");
+                if text.is_empty() {
+                    return NA_REAL;
                 }
+                return parse_iso_date_days(text).unwrap_or_else(|| {
+                    base_error("character string is not in a standard unambiguous format");
+                });
             }
-            DatetimeVectorClass::Posixct => {
-                if TYPEOF(source) == SEXPTYPE::STRSXP {
-                    let value = STRING_ELT(source, index);
-                    if value.is_null() || value == crate::sexp::globals::R_NaString() {
-                        return NA_REAL;
-                    }
-                    let text = CStr::from_ptr(CHAR(value)).to_str().unwrap_or("");
-                    return parse_iso_datetime_seconds(text).unwrap_or_else(|| {
-                        base_error("character string is not in a standard unambiguous format");
-                    });
+            let value = real_elt_or_default(source, index, NA_REAL);
+            if sexp_has_class(source, "POSIXct") && value.to_bits() != R_NA_BIT_PATTERN {
+                (value / 86_400.0).floor()
+            } else {
+                value
+            }
+        }
+        DatetimeVectorClass::Posixct => {
+            if TYPEOF(source) == SEXPTYPE::STRSXP {
+                let value = STRING_ELT(source, index);
+                if value.is_null() || value == crate::sexp::globals::R_NaString() {
+                    return NA_REAL;
                 }
-                let value = real_elt_or_default(source, index, NA_REAL);
-                if sexp_has_class(source, "Date") && value.to_bits() != R_NA_BIT_PATTERN {
-                    value.floor() * 86_400.0
-                } else {
-                    value
-                }
+                let text_cstr = charsxp_cstring(value);
+                let text = text_cstr.to_str().unwrap_or("");
+                return parse_iso_datetime_seconds(text).unwrap_or_else(|| {
+                    base_error("character string is not in a standard unambiguous format");
+                });
+            }
+            let value = real_elt_or_default(source, index, NA_REAL);
+            if sexp_has_class(source, "Date") && value.to_bits() != R_NA_BIT_PATTERN {
+                value.floor() * 86_400.0
+            } else {
+                value
             }
         }
     }

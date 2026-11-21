@@ -494,7 +494,7 @@ pub fn do_naprint(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let mut omit = false;
         if !class.is_null() && TYPEOF(class) == SEXPTYPE::STRSXP {
             for i in 0..XLENGTH(class) {
-                let s = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(class, i)));
+                let s = charsxp_cstring(STRING_ELT(class, i));
                 if s.to_bytes() == b"omit" || s.to_bytes() == b"exclude" {
                     omit = true;
                     break;
@@ -859,8 +859,10 @@ pub fn do_tukey_hsd(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 set_real_checked(tab, (row + 3 * npairs) as R_xlen_t, padj);
                 let li = STRING_ELT(levels, i as i64);
                 let lj = STRING_ELT(levels, j as i64);
-                let si = std::ffi::CStr::from_ptr(CHAR(li)).to_string_lossy();
-                let sj = std::ffi::CStr::from_ptr(CHAR(lj)).to_string_lossy();
+                let si_cstr = charsxp_cstring(li);
+                let si = si_cstr.to_string_lossy();
+                let sj_cstr = charsxp_cstring(lj);
+                let sj = sj_cstr.to_string_lossy();
                 let lab = format!("{sj}-{si}\0");
                 SET_STRING_ELT(rn, row as i64, Rf_mkChar(lab.as_ptr() as *const _));
                 row += 1;

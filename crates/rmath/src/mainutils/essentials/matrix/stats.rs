@@ -147,8 +147,7 @@ fn try_s3_bind(call: SEXP, args: SEXP, rho: SEXP, generic: &str) -> Option<SEXP>
                 let head = CAR(seen);
                 if TYPEOF(head) == SEXPTYPE::SYMSXP {
                     let pname = crate::sexp::accessors::PRINTNAME(head);
-                    let label = std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(pname))
-                        .to_string_lossy();
+                    let label = charsxp_cstring(pname).to_string_lossy().into_owned();
                     if label == generic {
                         user_args = CDR(seen);
                         break;

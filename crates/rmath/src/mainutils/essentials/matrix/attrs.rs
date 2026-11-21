@@ -677,132 +677,131 @@ pub fn do_oldClass_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R's `attr(x, which)` — get arbitrary attribute by name.
 pub fn do_attr(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let mut x = R_NilValue();
-        let mut which = R_NilValue();
-        let mut exact_arg = crate::sexp::globals::R_MissingArg();
-        let mut cell = args;
-        let mut pos = 0i32;
-        while !cell.is_null() && cell != R_NilValue() {
-            let tag = TAG(cell);
-            let name = if !tag.is_null() && tag != R_NilValue() {
-                let pname = PRINTNAME(tag);
-                if pname.is_null() {
-                    String::new()
-                } else {
-                    charsxp_text(pname).unwrap_or_default()
-                }
-            } else {
+    let mut x = R_NilValue();
+    let mut which = R_NilValue();
+    let mut exact_arg = crate::sexp::globals::R_MissingArg();
+    let mut cell = args;
+    let mut pos = 0i32;
+    while !cell.is_null() && cell != R_NilValue() {
+        let tag = TAG(cell);
+        let name = if !tag.is_null() && tag != R_NilValue() {
+            let pname = PRINTNAME(tag);
+            if pname.is_null() {
                 String::new()
-            };
-            let val = CAR(cell);
-            if name == "x" || (name.is_empty() && pos == 0) {
-                x = val;
-            } else if name == "which" || (name.is_empty() && pos == 1) {
-                which = val;
-            } else if name == "exact" || (name.is_empty() && pos == 2) {
-                exact_arg = val;
+            } else {
+                charsxp_text(pname).unwrap_or_default()
             }
-            if name.is_empty() {
-                pos += 1;
-            }
-            cell = CDR(cell);
+        } else {
+            String::new()
+        };
+        let val = CAR(cell);
+        if name == "x" || (name.is_empty() && pos == 0) {
+            x = val;
+        } else if name == "which" || (name.is_empty() && pos == 1) {
+            which = val;
+        } else if name == "exact" || (name.is_empty() && pos == 2) {
+            exact_arg = val;
         }
-        if x.is_null() || x == R_NilValue() || which.is_null() || which == R_NilValue() {
+        if name.is_empty() {
+            pos += 1;
+        }
+        cell = CDR(cell);
+    }
+    if x.is_null() || x == R_NilValue() || which.is_null() || which == R_NilValue() {
+        return R_NilValue();
+    }
+    let query = if TYPEOF(which) == SEXPTYPE::STRSXP {
+        if XLENGTH(which) != 1 {
+            crate::mainutils::errors::errorcall_str(
+                call,
+                "exactly one attribute 'which' must be given",
+            );
+        }
+        let elt = STRING_ELT(which, 0);
+        if elt.is_null() || elt == crate::sexp::globals::R_NaString() {
             return R_NilValue();
         }
-        let query = if TYPEOF(which) == SEXPTYPE::STRSXP {
-            if XLENGTH(which) != 1 {
-                crate::mainutils::errors::errorcall_str(
-                    call,
-                    "exactly one attribute 'which' must be given",
-                );
-            }
-            let elt = STRING_ELT(which, 0);
-            if elt.is_null() || elt == crate::sexp::globals::R_NaString() {
-                return R_NilValue();
-            }
-            charsxp_text(elt).unwrap_or_default()
+        charsxp_text(elt).unwrap_or_default()
+    } else {
+        elt_to_string(which, 0)
+    };
+    let exact = if exact_arg.is_null()
+        || exact_arg == R_NilValue()
+        || exact_arg == crate::sexp::globals::R_MissingArg()
+    {
+        false
+    } else {
+        let v = if TYPEOF(exact_arg) == SEXPTYPE::LGLSXP && XLENGTH(exact_arg) >= 1 {
+            logical_elt_checked(exact_arg, 0)
+        } else if TYPEOF(exact_arg) == SEXPTYPE::INTSXP && XLENGTH(exact_arg) >= 1 {
+            integer_elt_checked(exact_arg, 0)
         } else {
-            elt_to_string(which, 0)
+            0
         };
-        let exact = if exact_arg.is_null()
-            || exact_arg == R_NilValue()
-            || exact_arg == crate::sexp::globals::R_MissingArg()
-        {
-            false
-        } else {
-            let v = if TYPEOF(exact_arg) == SEXPTYPE::LGLSXP && XLENGTH(exact_arg) >= 1 {
-                logical_elt_checked(exact_arg, 0)
-            } else if TYPEOF(exact_arg) == SEXPTYPE::INTSXP && XLENGTH(exact_arg) >= 1 {
-                integer_elt_checked(exact_arg, 0)
-            } else {
-                0
-            };
-            v != 0 && v != crate::sexp::ffi::NA_INTEGER
-        };
+        v != 0 && v != crate::sexp::ffi::NA_INTEGER
+    };
 
-        // GNU do_attr: full match wins; one partial match is used unless
-        // exact=TRUE; two partial matches are ambiguous (NULL).
-        const NONE: i32 = 0;
-        const PARTIAL: i32 = 1;
-        const AMBIGUOUS: i32 = 2;
-        const FULL: i32 = 3;
-        let mut found: SEXP = R_NilValue();
-        let mut kind = NONE;
-        let mut alist = ATTRIB(x);
-        while !alist.is_null() && alist != R_NilValue() {
-            let name_sym = TAG(alist);
-            if !name_sym.is_null() && name_sym != R_NilValue() {
-                let pname = PRINTNAME(name_sym);
-                if !pname.is_null() {
-                    let name = charsxp_text(pname).unwrap_or_default().into_bytes();
-                    let q = query.as_bytes();
-                    if name.starts_with(q) {
-                        if name.len() == q.len() {
-                            found = name_sym;
-                            kind = FULL;
-                            break;
-                        } else if kind == PARTIAL || kind == AMBIGUOUS {
-                            kind = AMBIGUOUS;
-                        } else {
-                            found = name_sym;
-                            kind = PARTIAL;
-                        }
+    // GNU do_attr: full match wins; one partial match is used unless
+    // exact=TRUE; two partial matches are ambiguous (NULL).
+    const NONE: i32 = 0;
+    const PARTIAL: i32 = 1;
+    const AMBIGUOUS: i32 = 2;
+    const FULL: i32 = 3;
+    let mut found: SEXP = R_NilValue();
+    let mut kind = NONE;
+    let mut alist = ATTRIB(x);
+    while !alist.is_null() && alist != R_NilValue() {
+        let name_sym = TAG(alist);
+        if !name_sym.is_null() && name_sym != R_NilValue() {
+            let pname = PRINTNAME(name_sym);
+            if !pname.is_null() {
+                let name = charsxp_text(pname).unwrap_or_default().into_bytes();
+                let q = query.as_bytes();
+                if name.starts_with(q) {
+                    if name.len() == q.len() {
+                        found = name_sym;
+                        kind = FULL;
+                        break;
+                    } else if kind == PARTIAL || kind == AMBIGUOUS {
+                        kind = AMBIGUOUS;
+                    } else {
+                        found = name_sym;
+                        kind = PARTIAL;
                     }
                 }
             }
-            alist = CDR(alist);
         }
-        if kind == AMBIGUOUS {
-            return R_NilValue();
-        }
+        alist = CDR(alist);
+    }
+    if kind == AMBIGUOUS {
+        return R_NilValue();
+    }
 
-        let names_sym = crate::sexp::attrib_core::R_NamesSymbol();
-        if kind != FULL && b"names".starts_with(query.as_bytes()) {
-            if query == "names" {
-                found = names_sym;
-                kind = FULL;
-            } else if kind == NONE && !exact {
-                let names = crate::sexp::attrib_core::getAttrib(x, names_sym);
-                if !names.is_null() && names != R_NilValue() {
-                    return names;
-                }
-            } else if kind == PARTIAL {
-                let found_name = std::ffi::CStr::from_ptr(CHAR(PRINTNAME(found))).to_bytes();
-                if found_name != b"names"
-                    && crate::sexp::attrib_core::getAttrib(x, names_sym) != R_NilValue()
-                {
-                    return R_NilValue();
-                }
+    let names_sym = crate::sexp::attrib_core::R_NamesSymbol();
+    if kind != FULL && b"names".starts_with(query.as_bytes()) {
+        if query == "names" {
+            found = names_sym;
+            kind = FULL;
+        } else if kind == NONE && !exact {
+            let names = crate::sexp::attrib_core::getAttrib(x, names_sym);
+            if !names.is_null() && names != R_NilValue() {
+                return names;
+            }
+        } else if kind == PARTIAL {
+            let found_name_cstr = charsxp_cstring(PRINTNAME(found));
+            let found_name = found_name_cstr.to_bytes();
+            if found_name != b"names"
+                && crate::sexp::attrib_core::getAttrib(x, names_sym) != R_NilValue()
+            {
+                return R_NilValue();
             }
         }
-
-        if kind == NONE || (exact && kind != FULL) {
-            return R_NilValue();
-        }
-        crate::sexp::attrib_core::getAttrib(x, found)
     }
+
+    if kind == NONE || (exact && kind != FULL) {
+        return R_NilValue();
+    }
+    crate::sexp::attrib_core::getAttrib(x, found)
 }
 
 /// R's `attr(x, which) <- value` — set or remove a single attribute.
@@ -1061,7 +1060,7 @@ pub fn do_namespace_get(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             if pname.is_null() {
                 String::new()
             } else {
-                CStr::from_ptr(CHAR(pname)).to_string_lossy().into_owned()
+                charsxp_cstring(pname).to_string_lossy().into_owned()
             }
         } else {
             elt_to_string(package, 0)

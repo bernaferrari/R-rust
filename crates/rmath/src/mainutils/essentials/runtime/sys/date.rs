@@ -79,7 +79,7 @@ pub fn do_as_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             if ch.is_null() {
                 String::new()
             } else {
-                CStr::from_ptr(CHAR(ch)).to_string_lossy().into_owned()
+                charsxp_cstring(ch).to_string_lossy().into_owned()
             }
         } else {
             String::new()
@@ -90,7 +90,8 @@ pub fn do_as_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 let days = if value == crate::sexp::globals::R_NaString() {
                     NA_REAL
                 } else {
-                    let text = CStr::from_ptr(CHAR(value)).to_str().unwrap_or("");
+                    let text_cstr = charsxp_cstring(value);
+                    let text = text_cstr.to_str().unwrap_or("");
                     if text.is_empty() {
                         NA_REAL
                     } else if text == "Inf" || text == "+Inf" {

@@ -270,7 +270,8 @@ pub fn do_transpose(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 if elt.is_null() {
                     continue;
                 }
-                let bytes = std::ffi::CStr::from_ptr(CHAR(elt)).to_bytes();
+                let bytes_cstr = charsxp_cstring(elt);
+                let bytes = bytes_cstr.to_bytes();
                 if bytes == b"ts" || bytes == b"mts" {
                     ts = true;
                     break;
@@ -443,60 +444,59 @@ pub fn do_dim_set(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// R's `tsp(x) <- value` — replace or remove time-series parameters.
 pub fn do_tsp_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        let value = CAR(CDR(args));
-        if x.is_null() || x == R_NilValue() {
-            return R_NilValue();
-        }
-        if value.is_null() || value == R_NilValue() {
-            crate::sexp::attrib_core::setAttrib(
-                x,
-                crate::sexp::attrib_core::R_TspSymbol(),
-                R_NilValue(),
-            );
-            let class =
-                crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_ClassSymbol());
-            if !class.is_null() && class != R_NilValue() && TYPEOF(class) == SEXPTYPE::STRSXP {
-                let n = XLENGTH(class);
-                let mut keep = Vec::new();
-                for i in 0..n {
-                    let elt = STRING_ELT(class, i);
-                    if elt.is_null() {
-                        continue;
-                    }
-                    let name = std::ffi::CStr::from_ptr(CHAR(elt)).to_string_lossy();
-                    if name != "ts" && name != "mts" {
-                        keep.push(elt);
-                    }
+    let x = CAR(args);
+    let value = CAR(CDR(args));
+    if x.is_null() || x == R_NilValue() {
+        return R_NilValue();
+    }
+    if value.is_null() || value == R_NilValue() {
+        crate::sexp::attrib_core::setAttrib(
+            x,
+            crate::sexp::attrib_core::R_TspSymbol(),
+            R_NilValue(),
+        );
+        let class =
+            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_ClassSymbol());
+        if !class.is_null() && class != R_NilValue() && TYPEOF(class) == SEXPTYPE::STRSXP {
+            let n = XLENGTH(class);
+            let mut keep = Vec::new();
+            for i in 0..n {
+                let elt = STRING_ELT(class, i);
+                if elt.is_null() {
+                    continue;
                 }
-                if keep.is_empty() {
-                    crate::sexp::attrib_core::setAttrib(
-                        x,
-                        crate::sexp::attrib_core::R_ClassSymbol(),
-                        R_NilValue(),
-                    );
-                } else if keep.len() as i64 != n {
-                    let next = Rf_allocVector3(SEXPTYPE::STRSXP, keep.len() as i64);
-                    let _next = protect(next);
-                    for (i, elt) in keep.iter().enumerate() {
-                        SET_STRING_ELT(next, i as i64, *elt);
-                    }
-                    crate::sexp::attrib_core::setAttrib(
-                        x,
-                        crate::sexp::attrib_core::R_ClassSymbol(),
-                        next,
-                    );
+                let name_cstr = charsxp_cstring(elt);
+                let name = name_cstr.to_string_lossy();
+                if name != "ts" && name != "mts" {
+                    keep.push(elt);
                 }
             }
-            crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-            return x;
+            if keep.is_empty() {
+                crate::sexp::attrib_core::setAttrib(
+                    x,
+                    crate::sexp::attrib_core::R_ClassSymbol(),
+                    R_NilValue(),
+                );
+            } else if keep.len() as i64 != n {
+                let next = Rf_allocVector3(SEXPTYPE::STRSXP, keep.len() as i64);
+                let _next = protect(next);
+                for (i, elt) in keep.iter().enumerate() {
+                    SET_STRING_ELT(next, i as i64, *elt);
+                }
+                crate::sexp::attrib_core::setAttrib(
+                    x,
+                    crate::sexp::attrib_core::R_ClassSymbol(),
+                    next,
+                );
+            }
         }
-
-        crate::sexp::attrib_core::setAttrib(x, crate::sexp::attrib_core::R_TspSymbol(), value);
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-        x
+        return x;
     }
+
+    crate::sexp::attrib_core::setAttrib(x, crate::sexp::attrib_core::R_TspSymbol(), value);
+    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+    x
 }
 
 pub fn dimension_attribute(value: SEXP, object_len: R_xlen_t) -> Result<SEXP, String> {

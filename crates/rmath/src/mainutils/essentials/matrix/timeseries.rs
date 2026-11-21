@@ -144,119 +144,117 @@ fn default_ts_class(nseries: R_xlen_t) -> SEXP {
 /// two-component endpoints, recycling/truncation to the requested span, and
 /// the canonical `tsp` and class attributes.
 pub fn do_ts(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let data = supplied_arg(args, "data", 0).unwrap_or_else(|| Rf_ScalarReal(NA_REAL));
-        let _data_guard = protect(data);
+    let data = supplied_arg(args, "data", 0).unwrap_or_else(|| Rf_ScalarReal(NA_REAL));
+    let _data_guard = protect(data);
 
-        let dim =
-            crate::sexp::attrib_core::getAttrib(data, crate::sexp::attrib_core::R_DimSymbol());
-        let (ndata, nseries) = if dim != R_NilValue() && XLENGTH(dim) == 2 {
-            (
-                real_elt_or_default(dim, 0, 0.0) as R_xlen_t,
-                real_elt_or_default(dim, 1, 0.0) as R_xlen_t,
-            )
-        } else {
-            (XLENGTH(data), 1)
-        };
-        if ndata == 0 {
-            std::panic::panic_any(RError {
-                message: "'ts' object must have one or more observations".to_string(),
-            });
-        }
-
-        let frequency_arg = supplied_arg(args, "frequency", 3);
-        let deltat_arg = supplied_arg(args, "deltat", 4);
-        let mut frequency = match (frequency_arg, deltat_arg) {
-            (Some(value), _) => real_elt_or_default(value, 0, 1.0),
-            (None, Some(value)) => 1.0 / real_elt_or_default(value, 0, 1.0),
-            (None, None) => 1.0,
-        };
-        if !frequency.is_finite() || frequency <= 0.0 {
-            std::panic::panic_any(RError {
-                message: "invalid 'frequency' argument".to_string(),
-            });
-        }
-        let ts_eps = supplied_arg(args, "ts.eps", 5)
-            .map(|value| real_elt_or_default(value, 0, 1e-5))
-            .unwrap_or(1e-5);
-        let distance_to_integer = (frequency - frequency.round()).abs();
-        if frequency > 1.0 && distance_to_integer > 0.0 && distance_to_integer < ts_eps {
-            frequency = frequency.round();
-        }
-
-        let start_arg = supplied_arg(args, "start", 1);
-        let end_arg = supplied_arg(args, "end", 2);
-        let mut start = start_arg.map_or(1.0, |value| time_value(value, 1.0));
-        let mut end = end_arg.map_or(f64::NAN, |value| time_value(value, f64::NAN));
-        // Calendar-style c(year, period) endpoints use the selected frequency.
-        if let Some(value) = start_arg
-            && XLENGTH(value) > 1
-        {
-            start = real_elt_or_default(value, 0, 1.0)
-                + (real_elt_or_default(value, 1, 1.0) - 1.0) / frequency;
-        }
-        if let Some(value) = end_arg
-            && XLENGTH(value) > 1
-        {
-            end = real_elt_or_default(value, 0, 1.0)
-                + (real_elt_or_default(value, 1, 1.0) - 1.0) / frequency;
-        }
-        if end_arg.is_none() {
-            end = start + (ndata - 1) as f64 / frequency;
-        } else if start_arg.is_none() {
-            start = end - (ndata - 1) as f64 / frequency;
-        }
-        if !start.is_finite() || !end.is_finite() || start > end {
-            std::panic::panic_any(RError {
-                message: "'start' cannot be after 'end'".to_string(),
-            });
-        }
-
-        let cycles = (end - start) * frequency;
-        let rounded_cycles = cycles.round();
-        if (rounded_cycles - cycles).abs() > ts_eps * cycles.max(1.0) {
-            std::panic::panic_any(RError {
-                message: "'end' must be a whole number of cycles after 'start'".to_string(),
-            });
-        }
-        let nobs = (cycles + 1.01).floor() as R_xlen_t;
-        let result = resize_series(data, ndata, nseries, nobs);
-        if result == R_NilValue() {
-            return result;
-        }
-        let _result_guard = protect(result);
-        if nseries > 1 {
-            set_ts_matrix_dimnames(result, data, nseries, args);
-        }
-
-        if (end - start - (nobs - 1) as f64 / frequency).abs() > ts_eps {
-            std::panic::panic_any(RError {
-                message: "invalid time series parameters specified (1)".to_string(),
-            });
-        }
-
-        let tsp = Rf_allocVector3(SEXPTYPE::REALSXP, 3);
-        let _tsp_guard = protect(tsp);
-        set_real_checked(tsp, 0, start);
-        set_real_checked(tsp, (1) as R_xlen_t, end);
-        set_real_checked(tsp, (2) as R_xlen_t, frequency);
-        crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_TspSymbol(), tsp);
-
-        let class_arg = supplied_arg(args, "class", 6);
-        let class = class_arg.unwrap_or_else(|| default_ts_class(nseries));
-        let _class_guard = protect(class);
-        let class_is_none = TYPEOF(class) == SEXPTYPE::STRSXP
-            && XLENGTH(class) > 0
-            && CStr::from_ptr(CHAR(STRING_ELT(class, 0))).to_bytes() == b"none";
-        if class != R_NilValue() && !class_is_none {
-            crate::sexp::attrib_core::setAttrib(
-                result,
-                crate::sexp::attrib_core::R_ClassSymbol(),
-                class,
-            );
-        }
-        result
+    let dim =
+        crate::sexp::attrib_core::getAttrib(data, crate::sexp::attrib_core::R_DimSymbol());
+    let (ndata, nseries) = if dim != R_NilValue() && XLENGTH(dim) == 2 {
+        (
+            real_elt_or_default(dim, 0, 0.0) as R_xlen_t,
+            real_elt_or_default(dim, 1, 0.0) as R_xlen_t,
+        )
+    } else {
+        (XLENGTH(data), 1)
+    };
+    if ndata == 0 {
+        std::panic::panic_any(RError {
+            message: "'ts' object must have one or more observations".to_string(),
+        });
     }
+
+    let frequency_arg = supplied_arg(args, "frequency", 3);
+    let deltat_arg = supplied_arg(args, "deltat", 4);
+    let mut frequency = match (frequency_arg, deltat_arg) {
+        (Some(value), _) => real_elt_or_default(value, 0, 1.0),
+        (None, Some(value)) => 1.0 / real_elt_or_default(value, 0, 1.0),
+        (None, None) => 1.0,
+    };
+    if !frequency.is_finite() || frequency <= 0.0 {
+        std::panic::panic_any(RError {
+            message: "invalid 'frequency' argument".to_string(),
+        });
+    }
+    let ts_eps = supplied_arg(args, "ts.eps", 5)
+        .map(|value| real_elt_or_default(value, 0, 1e-5))
+        .unwrap_or(1e-5);
+    let distance_to_integer = (frequency - frequency.round()).abs();
+    if frequency > 1.0 && distance_to_integer > 0.0 && distance_to_integer < ts_eps {
+        frequency = frequency.round();
+    }
+
+    let start_arg = supplied_arg(args, "start", 1);
+    let end_arg = supplied_arg(args, "end", 2);
+    let mut start = start_arg.map_or(1.0, |value| time_value(value, 1.0));
+    let mut end = end_arg.map_or(f64::NAN, |value| time_value(value, f64::NAN));
+    // Calendar-style c(year, period) endpoints use the selected frequency.
+    if let Some(value) = start_arg
+        && XLENGTH(value) > 1
+    {
+        start = real_elt_or_default(value, 0, 1.0)
+            + (real_elt_or_default(value, 1, 1.0) - 1.0) / frequency;
+    }
+    if let Some(value) = end_arg
+        && XLENGTH(value) > 1
+    {
+        end = real_elt_or_default(value, 0, 1.0)
+            + (real_elt_or_default(value, 1, 1.0) - 1.0) / frequency;
+    }
+    if end_arg.is_none() {
+        end = start + (ndata - 1) as f64 / frequency;
+    } else if start_arg.is_none() {
+        start = end - (ndata - 1) as f64 / frequency;
+    }
+    if !start.is_finite() || !end.is_finite() || start > end {
+        std::panic::panic_any(RError {
+            message: "'start' cannot be after 'end'".to_string(),
+        });
+    }
+
+    let cycles = (end - start) * frequency;
+    let rounded_cycles = cycles.round();
+    if (rounded_cycles - cycles).abs() > ts_eps * cycles.max(1.0) {
+        std::panic::panic_any(RError {
+            message: "'end' must be a whole number of cycles after 'start'".to_string(),
+        });
+    }
+    let nobs = (cycles + 1.01).floor() as R_xlen_t;
+    let result = resize_series(data, ndata, nseries, nobs);
+    if result == R_NilValue() {
+        return result;
+    }
+    let _result_guard = protect(result);
+    if nseries > 1 {
+        set_ts_matrix_dimnames(result, data, nseries, args);
+    }
+
+    if (end - start - (nobs - 1) as f64 / frequency).abs() > ts_eps {
+        std::panic::panic_any(RError {
+            message: "invalid time series parameters specified (1)".to_string(),
+        });
+    }
+
+    let tsp = Rf_allocVector3(SEXPTYPE::REALSXP, 3);
+    let _tsp_guard = protect(tsp);
+    set_real_checked(tsp, 0, start);
+    set_real_checked(tsp, (1) as R_xlen_t, end);
+    set_real_checked(tsp, (2) as R_xlen_t, frequency);
+    crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_TspSymbol(), tsp);
+
+    let class_arg = supplied_arg(args, "class", 6);
+    let class = class_arg.unwrap_or_else(|| default_ts_class(nseries));
+    let _class_guard = protect(class);
+    let class_is_none = TYPEOF(class) == SEXPTYPE::STRSXP
+        && XLENGTH(class) > 0
+        && charsxp_cstring(STRING_ELT(class, 0)).to_bytes() == b"none";
+    if class != R_NilValue() && !class_is_none {
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            class,
+        );
+    }
+    result
 }
 
 fn series_tsp(x: SEXP) -> (f64, f64, f64) {

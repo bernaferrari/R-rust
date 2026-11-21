@@ -694,343 +694,338 @@ pub(crate) fn emit_print_text(text: &str) {
 }
 
 fn str_emit_nonstandard_attrs(x: SEXP, skip: &[&str]) {
-    unsafe {
-        let mut attrs = crate::sexp::accessors::ATTRIB(x);
-        while !attrs.is_null() && attrs != R_NilValue() {
-            let tag = TAG(attrs);
-            let name = if tag.is_null() || tag == R_NilValue() {
-                String::new()
+    let mut attrs = crate::sexp::accessors::ATTRIB(x);
+    while !attrs.is_null() && attrs != R_NilValue() {
+        let tag = TAG(attrs);
+        let name = if tag.is_null() || tag == R_NilValue() {
+            String::new()
+        } else {
+            charsxp_cstring(PRINTNAME(tag))
+                .to_string_lossy()
+                .into_owned()
+        };
+        if !name.is_empty() && !skip.iter().any(|s| *s == name) {
+            let summary = str_atomic_summary_opts(CAR(attrs), true, true);
+            let sep = if summary.starts_with("Class") || summary.starts_with("List") {
+                ""
             } else {
-                CStr::from_ptr(CHAR(PRINTNAME(tag)))
-                    .to_string_lossy()
-                    .into_owned()
+                " "
             };
-            if !name.is_empty() && !skip.iter().any(|s| *s == name) {
-                let summary = str_atomic_summary_opts(CAR(attrs), true, true);
-                let sep = if summary.starts_with("Class") || summary.starts_with("List") {
-                    ""
-                } else {
-                    " "
-                };
-                str_emit_line(&format!(" - attr(*, \"{name}\")={sep}{summary}"));
-            }
-            attrs = CDR(attrs);
+            str_emit_line(&format!(" - attr(*, \"{name}\")={sep}{summary}"));
         }
+        attrs = CDR(attrs);
     }
 }
 
 /// R's `str(x)` — compact structure display.
 pub fn do_str(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        // utils::str(digits.d = .): numeric formatting precision override.
-        let mut str_digits_arg: Option<i32> = None;
+    // utils::str(digits.d = .): numeric formatting precision override.
+    let mut str_digits_arg: Option<i32> = None;
+    {
+        let digits_sym = install_str("digits.d");
+        let mut p = CDR(args);
+        while !p.is_null() && p != R_NilValue() {
+            if TAG(p) == digits_sym {
+                let v = CAR(p);
+                if !v.is_null() && v != R_NilValue() {
+                    if TYPEOF(v) == SEXPTYPE::INTSXP && XLENGTH(v) > 0 {
+                        str_digits_arg = Some(integer_elt_checked(v, 0));
+                    } else if TYPEOF(v) == SEXPTYPE::REALSXP && XLENGTH(v) > 0 {
+                        str_digits_arg = Some(real_elt_checked(v, 0) as i32);
+                    }
+                }
+                break;
+            }
+            p = CDR(p);
+        }
+    }
+    let _str_digits_guard = StrDigitsGuard::new(str_digits_arg);
+    let mut x = CAR(args);
+    if TYPEOF(x) == SEXPTYPE::PROMSXP {
+        x = force_promise(x);
+    }
+    if x.is_null() || x == R_NilValue() {
+        str_emit_line(" NULL");
+        return R_NilValue();
+    }
+    if crate::mainutils::coerce::IS_S4_OBJECT(x) != 0 && !sexp_has_class_name(x, "envRefClass")
+    {
+        str_s4_formal_class(x);
+        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+        return x;
+    }
+
+    let t = TYPEOF(x);
+    let n = crate::sexp::constructors::Rf_length(x) as R_xlen_t;
+
+    // str.default for is.language && !is.expression: prints
+    // " language "/" symbol " followed by the deparsed object
+    // (braced blocks collapsed to "{ ... }" on one line). The generic
+    // vector path below must not see these: XLENGTH of a pairlist node
+    // is garbage.
+    if sexp_has_class_name(x, "formula") {
+        str_emit_line(&str_language_summary(x));
+        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+        return x;
+    }
+    if t == SEXPTYPE::LANGSXP || t == SEXPTYPE::SYMSXP || t == SEXPTYPE::EXPRSXP {
+        // str.default for expressions: "  expression(...)" with at most
+        // three elements shown (round(0.75 * vec.len)) and " ..." when
+        // truncated.
+        if t == SEXPTYPE::EXPRSXP {
+            let n_expr = XLENGTH(x);
+            let show = n_expr.min(3);
+            let _sub_guard;
+            let deparse_target = if show == n_expr {
+                x
+            } else {
+                let sub = Rf_allocVector3(SEXPTYPE::EXPRSXP, show);
+                _sub_guard = protect(sub);
+                for i in 0..show {
+                    SET_VECTOR_ELT(sub, i, VECTOR_ELT(x, i));
+                }
+                sub
+            };
+            let deparsed = crate::mainutils::deparse::deparse_symbolic(deparse_target, true);
+            let _deparsed_guard = protect(deparsed);
+            let mut text = String::new();
+            for i in 0..XLENGTH(deparsed) {
+                if i > 0 {
+                    text.push(' ');
+                }
+                text.push_str(&elt_to_string(deparsed, i));
+            }
+            if show < n_expr {
+                text.push_str(" ...");
+            }
+            str_emit_line(&format!("  {text}"));
+            crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+            return x;
+        }
+        let deparsed = crate::mainutils::deparse::deparse_symbolic(x, true);
+        let _deparsed_guard = protect(deparsed);
+        let mut lines: Vec<String> = (0..XLENGTH(deparsed))
+            .map(|i| elt_to_string(deparsed, i))
+            .collect();
+        let last = lines.len().saturating_sub(1);
+        if t == SEXPTYPE::LANGSXP
+            && lines.len() > 1
+            && lines[0].trim() == "{"
+            && lines[last].trim() == "}"
+            && lines.len() >= 3
         {
-            let digits_sym = install_str("digits.d");
+            // str.default: trimEnds each middle line (leading space run
+            // becomes a single space, trailing spaces stripped) and join
+            // with ";".
+            let middles: Vec<String> = lines[1..last]
+                .iter()
+                .map(|l| {
+                    let body = l.trim_start_matches(' ');
+                    let lead = l.len() - body.len();
+                    let trimmed = if lead > 0 {
+                        format!(" {body}")
+                    } else {
+                        body.to_string()
+                    };
+                    trimmed.trim_end_matches(' ').to_string()
+                })
+                .collect();
+            lines = vec![lines[0].clone(), middles.join(";"), lines[last].clone()];
+        }
+        let prefix = if t == SEXPTYPE::LANGSXP {
+            let mode_chars = crate::eval::attrib_core::language_implicit_class_chars(x);
+            let mode = charsxp_text(mode_chars).unwrap_or_default();
+            if mode.as_str() == "(" {
+                " language, mode \"(\":".to_string()
+            } else {
+                " language".to_string()
+            }
+        } else {
+            " symbol".to_string()
+        };
+        str_emit_line(&format!("{} {}", prefix, lines.join(" ")));
+        str_emit_nonstandard_attrs(x, &["names"]);
+        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+        return x;
+    }
+
+    if t == SEXPTYPE::VECSXP {
+        let names = crate::sexp::attrib_core::getAttrib(x, install_str("names"));
+        let has_names = !names.is_null() && TYPEOF(names) == SEXPTYPE::STRSXP;
+        let class = crate::sexp::attrib_core::getAttrib(x, install_str("class"));
+        let is_df = if !class.is_null() && TYPEOF(class) == SEXPTYPE::STRSXP {
+            (0..XLENGTH(class)).any(|i| elt_to_string(class, i) == "data.frame")
+        } else {
+            false
+        };
+
+        if is_df {
+            let ncol = n;
+            let nrow = if ncol > 0 {
+                let first = VECTOR_ELT(x, 0);
+                if first.is_null() { 0 } else { XLENGTH(first) }
+            } else {
+                0
+            };
+            let extra_classes: Vec<String> =
+                if !class.is_null() && TYPEOF(class) == SEXPTYPE::STRSXP {
+                    (0..XLENGTH(class))
+                        .map(|i| elt_to_string(class, i))
+                        .filter(|c| c != "data.frame")
+                        .collect()
+                } else {
+                    Vec::new()
+                };
+            let var_word = if ncol == 1 { "variable" } else { "variables" };
+            let colon = if ncol > 0 { ":" } else { "" };
+            if extra_classes.is_empty() {
+                str_emit_line(&format!(
+                    "'data.frame':\t{nrow} obs. of  {ncol} {var_word}{colon}"
+                ));
+            } else {
+                let quoted: Vec<String> =
+                    extra_classes.iter().map(|c| format!("'{c}'")).collect();
+                str_emit_line(&format!(
+                    "Classes {} and 'data.frame':\t{nrow} obs. of  {ncol} {var_word}{colon}",
+                    quoted.join(", ")
+                ));
+            }
+            let raw_names: Vec<String> = (0..ncol)
+                .map(|i| {
+                    if has_names && i < XLENGTH(names) {
+                        elt_to_string(names, i)
+                    } else {
+                        format!("{}", i + 1)
+                    }
+                })
+                .collect();
+            let mut list_len = ncol;
             let mut p = CDR(args);
             while !p.is_null() && p != R_NilValue() {
-                if TAG(p) == digits_sym {
-                    let v = CAR(p);
-                    if !v.is_null() && v != R_NilValue() {
+                let tag = TAG(p);
+                if !tag.is_null() && tag != R_NilValue() {
+                    let name = charsxp_cstring(crate::sexp::accessors::PRINTNAME(tag))
+                        .to_string_lossy()
+                        .into_owned();
+                    if name == "list.len" {
+                        let v = CAR(p);
                         if TYPEOF(v) == SEXPTYPE::INTSXP && XLENGTH(v) > 0 {
-                            str_digits_arg = Some(integer_elt_checked(v, 0));
+                            list_len = (integer_elt_checked(v, 0) as R_xlen_t).max(0);
                         } else if TYPEOF(v) == SEXPTYPE::REALSXP && XLENGTH(v) > 0 {
-                            str_digits_arg = Some(real_elt_checked(v, 0) as i32);
+                            list_len = (real_elt_checked(v, 0) as R_xlen_t).max(0);
                         }
                     }
-                    break;
                 }
                 p = CDR(p);
             }
-        }
-        let _str_digits_guard = StrDigitsGuard::new(str_digits_arg);
-        let mut x = CAR(args);
-        if TYPEOF(x) == SEXPTYPE::PROMSXP {
-            x = force_promise(x);
-        }
-        if x.is_null() || x == R_NilValue() {
-            str_emit_line(" NULL");
-            return R_NilValue();
-        }
-        if crate::mainutils::coerce::IS_S4_OBJECT(x) != 0 && !sexp_has_class_name(x, "envRefClass")
-        {
-            str_s4_formal_class(x);
-            crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-            return x;
-        }
-
-        let t = TYPEOF(x);
-        let n = crate::sexp::constructors::Rf_length(x) as R_xlen_t;
-
-        // str.default for is.language && !is.expression: prints
-        // " language "/" symbol " followed by the deparsed object
-        // (braced blocks collapsed to "{ ... }" on one line). The generic
-        // vector path below must not see these: XLENGTH of a pairlist node
-        // is garbage.
-        if sexp_has_class_name(x, "formula") {
-            str_emit_line(&str_language_summary(x));
-            crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-            return x;
-        }
-        if t == SEXPTYPE::LANGSXP || t == SEXPTYPE::SYMSXP || t == SEXPTYPE::EXPRSXP {
-            // str.default for expressions: "  expression(...)" with at most
-            // three elements shown (round(0.75 * vec.len)) and " ..." when
-            // truncated.
-            if t == SEXPTYPE::EXPRSXP {
-                let n_expr = XLENGTH(x);
-                let show = n_expr.min(3);
-                let _sub_guard;
-                let deparse_target = if show == n_expr {
-                    x
-                } else {
-                    let sub = Rf_allocVector3(SEXPTYPE::EXPRSXP, show);
-                    _sub_guard = protect(sub);
-                    for i in 0..show {
-                        SET_VECTOR_ELT(sub, i, VECTOR_ELT(x, i));
-                    }
-                    sub
-                };
-                let deparsed = crate::mainutils::deparse::deparse_symbolic(deparse_target, true);
-                let _deparsed_guard = protect(deparsed);
-                let mut text = String::new();
-                for i in 0..XLENGTH(deparsed) {
-                    if i > 0 {
-                        text.push(' ');
-                    }
-                    text.push_str(&elt_to_string(deparsed, i));
-                }
-                if show < n_expr {
-                    text.push_str(" ...");
-                }
-                str_emit_line(&format!("  {text}"));
-                crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-                return x;
-            }
-            let deparsed = crate::mainutils::deparse::deparse_symbolic(x, true);
-            let _deparsed_guard = protect(deparsed);
-            let mut lines: Vec<String> = (0..XLENGTH(deparsed))
-                .map(|i| elt_to_string(deparsed, i))
-                .collect();
-            let last = lines.len().saturating_sub(1);
-            if t == SEXPTYPE::LANGSXP
-                && lines.len() > 1
-                && lines[0].trim() == "{"
-                && lines[last].trim() == "}"
-                && lines.len() >= 3
-            {
-                // str.default: trimEnds each middle line (leading space run
-                // becomes a single space, trailing spaces stripped) and join
-                // with ";".
-                let middles: Vec<String> = lines[1..last]
-                    .iter()
-                    .map(|l| {
-                        let body = l.trim_start_matches(' ');
-                        let lead = l.len() - body.len();
-                        let trimmed = if lead > 0 {
-                            format!(" {body}")
-                        } else {
-                            body.to_string()
-                        };
-                        trimmed.trim_end_matches(' ').to_string()
-                    })
-                    .collect();
-                lines = vec![lines[0].clone(), middles.join(";"), lines[last].clone()];
-            }
-            let prefix = if t == SEXPTYPE::LANGSXP {
-                let mode_chars = crate::eval::attrib_core::language_implicit_class_chars(x);
-                let mode = charsxp_text(mode_chars).unwrap_or_default();
-                if mode.as_str() == "(" {
-                    " language, mode \"(\":".to_string()
-                } else {
-                    " language".to_string()
-                }
-            } else {
-                " symbol".to_string()
-            };
-            str_emit_line(&format!("{} {}", prefix, lines.join(" ")));
-            str_emit_nonstandard_attrs(x, &["names"]);
-            crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-            return x;
-        }
-
-        if t == SEXPTYPE::VECSXP {
-            let names = crate::sexp::attrib_core::getAttrib(x, install_str("names"));
-            let has_names = !names.is_null() && TYPEOF(names) == SEXPTYPE::STRSXP;
-            let class = crate::sexp::attrib_core::getAttrib(x, install_str("class"));
-            let is_df = if !class.is_null() && TYPEOF(class) == SEXPTYPE::STRSXP {
-                (0..XLENGTH(class)).any(|i| elt_to_string(class, i) == "data.frame")
-            } else {
-                false
-            };
-
-            if is_df {
-                let ncol = n;
-                let nrow = if ncol > 0 {
-                    let first = VECTOR_ELT(x, 0);
-                    if first.is_null() { 0 } else { XLENGTH(first) }
-                } else {
-                    0
-                };
-                let extra_classes: Vec<String> =
-                    if !class.is_null() && TYPEOF(class) == SEXPTYPE::STRSXP {
-                        (0..XLENGTH(class))
-                            .map(|i| elt_to_string(class, i))
-                            .filter(|c| c != "data.frame")
-                            .collect()
-                    } else {
-                        Vec::new()
-                    };
-                let var_word = if ncol == 1 { "variable" } else { "variables" };
-                let colon = if ncol > 0 { ":" } else { "" };
-                if extra_classes.is_empty() {
-                    str_emit_line(&format!(
-                        "'data.frame':\t{nrow} obs. of  {ncol} {var_word}{colon}"
-                    ));
-                } else {
-                    let quoted: Vec<String> =
-                        extra_classes.iter().map(|c| format!("'{c}'")).collect();
-                    str_emit_line(&format!(
-                        "Classes {} and 'data.frame':\t{nrow} obs. of  {ncol} {var_word}{colon}",
-                        quoted.join(", ")
-                    ));
-                }
-                let raw_names: Vec<String> = (0..ncol)
-                    .map(|i| {
-                        if has_names && i < XLENGTH(names) {
-                            elt_to_string(names, i)
-                        } else {
-                            format!("{}", i + 1)
-                        }
-                    })
-                    .collect();
-                let mut list_len = ncol;
-                let mut p = CDR(args);
-                while !p.is_null() && p != R_NilValue() {
-                    let tag = TAG(p);
-                    if !tag.is_null() && tag != R_NilValue() {
-                        let name = std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(
-                            crate::sexp::accessors::PRINTNAME(tag),
-                        ))
-                        .to_string_lossy();
-                        if name == "list.len" {
-                            let v = CAR(p);
-                            if TYPEOF(v) == SEXPTYPE::INTSXP && XLENGTH(v) > 0 {
-                                list_len = (integer_elt_checked(v, 0) as R_xlen_t).max(0);
-                            } else if TYPEOF(v) == SEXPTYPE::REALSXP && XLENGTH(v) > 0 {
-                                list_len = (real_elt_checked(v, 0) as R_xlen_t).max(0);
-                            }
-                        }
-                    }
-                    p = CDR(p);
-                }
-                let show = ncol.min(list_len);
-                let name_width = raw_names
-                    .iter()
-                    .take(show as usize)
-                    .map(String::len)
-                    .max()
-                    .unwrap_or(0);
-                for i in 0..show {
-                    let name = format!("{:<name_width$}", raw_names[i as usize]);
-                    let elem = VECTOR_ELT(x, i as i64);
-                    str_emit_line(&format!(
-                        " $ {name}: {}",
-                        str_atomic_summary_opts(elem, false, true)
-                    ));
-                    if let Some(extra) = str_child_dimnames_lines(elem) {
-                        str_emit_line(&extra);
-                    }
-                }
-                if show < ncol {
-                    str_emit_line(" [list output truncated]");
-                }
-                str_emit_nonstandard_attrs(x, &["names", "class", "row.names"]);
-            } else {
-                let mut max_level = 100i64;
-                let mut list_len = 99i64;
-                let mut p = CDR(args);
-                while !p.is_null() && p != R_NilValue() {
-                    let tag = TAG(p);
-                    if !tag.is_null() && tag != R_NilValue() {
-                        let name = charsxp_text(crate::sexp::accessors::PRINTNAME(tag))
-                            .unwrap_or_default();
-                        let v = CAR(p);
-                        let num = if TYPEOF(v) == SEXPTYPE::INTSXP && XLENGTH(v) > 0 {
-                            integer_elt_checked(v, 0) as i64
-                        } else if TYPEOF(v) == SEXPTYPE::REALSXP && XLENGTH(v) > 0 {
-                            real_elt_checked(v, 0) as i64
-                        } else {
-                            i64::MIN
-                        };
-                        if num != i64::MIN && num != crate::sexp::ffi::NA_INTEGER as i64 {
-                            if name == "max.level" {
-                                max_level = num;
-                            } else if name == "list.len" {
-                                list_len = num;
-                            }
-                        }
-                    }
-                    p = CDR(p);
-                }
-                STR_LEVEL.store(max_level, std::sync::atomic::Ordering::Relaxed);
-                STR_LIST_LEN.store(list_len, std::sync::atomic::Ordering::Relaxed);
-                let show = n.min(list_len.max(0) as R_xlen_t);
-                let class_attr = crate::sexp::attrib_core::getAttrib(
-                    x,
-                    crate::sexp::attrib_core::R_ClassSymbol(),
-                );
-                let mut header = format!("List of {n}");
-                if TYPEOF(class_attr) == SEXPTYPE::STRSXP && XLENGTH(class_attr) > 0 {
-                    let cname = elt_to_string(class_attr, 0);
-                    let len_args = Rf_cons(x, R_NilValue());
-                    let _len_guard = protect(len_args);
-                    let len_sexp = crate::eval::arithmetic::do_length(
-                        R_NilValue(),
-                        R_NilValue(),
-                        len_args,
-                        _rho,
-                    );
-                    let dispatched =
-                        if TYPEOF(len_sexp) == SEXPTYPE::INTSXP && XLENGTH(len_sexp) > 0 {
-                            integer_elt_checked(len_sexp, 0) as i64
-                        } else if TYPEOF(len_sexp) == SEXPTYPE::REALSXP && XLENGTH(len_sexp) > 0 {
-                            real_elt_checked(len_sexp, 0) as i64
-                        } else {
-                            n as i64
-                        };
-                    if dispatched != n as i64 {
-                        header = format!("Class '{cname}'  hidden list of {n}");
-                    }
-                }
-                str_emit_line(&header);
-                let raw_names: Vec<String> = (0..show)
-                    .map(|i| {
-                        if has_names && i < XLENGTH(names) {
-                            elt_to_string(names, i)
-                        } else {
-                            String::new()
-                        }
-                    })
-                    .collect();
-                let name_width = raw_names.iter().map(String::len).max().unwrap_or(0);
-                for i in 0..show {
-                    let name = format!("{:<name_width$}", raw_names[i as usize]);
-                    let elem = VECTOR_ELT(x, i as i64);
-                    str_emit_line(&format!(
-                        " $ {name}: {}",
-                        str_atomic_summary_opts(elem, true, true)
-                    ));
-
-                    if let Some(extra) = str_child_dimnames_lines(elem) {
-                        str_emit_line(&extra);
-                    }
+            let show = ncol.min(list_len);
+            let name_width = raw_names
+                .iter()
+                .take(show as usize)
+                .map(String::len)
+                .max()
+                .unwrap_or(0);
+            for i in 0..show {
+                let name = format!("{:<name_width$}", raw_names[i as usize]);
+                let elem = VECTOR_ELT(x, i as i64);
+                str_emit_line(&format!(
+                    " $ {name}: {}",
+                    str_atomic_summary_opts(elem, false, true)
+                ));
+                if let Some(extra) = str_child_dimnames_lines(elem) {
+                    str_emit_line(&extra);
                 }
             }
+            if show < ncol {
+                str_emit_line(" [list output truncated]");
+            }
+            str_emit_nonstandard_attrs(x, &["names", "class", "row.names"]);
         } else {
-            str_emit_line(&format!(" {}", str_atomic_summary(x)));
-            str_emit_nonstandard_attrs(x, &["class", "tsp", "dim", "levels"]);
-        }
+            let mut max_level = 100i64;
+            let mut list_len = 99i64;
+            let mut p = CDR(args);
+            while !p.is_null() && p != R_NilValue() {
+                let tag = TAG(p);
+                if !tag.is_null() && tag != R_NilValue() {
+                    let name = charsxp_text(crate::sexp::accessors::PRINTNAME(tag))
+                        .unwrap_or_default();
+                    let v = CAR(p);
+                    let num = if TYPEOF(v) == SEXPTYPE::INTSXP && XLENGTH(v) > 0 {
+                        integer_elt_checked(v, 0) as i64
+                    } else if TYPEOF(v) == SEXPTYPE::REALSXP && XLENGTH(v) > 0 {
+                        real_elt_checked(v, 0) as i64
+                    } else {
+                        i64::MIN
+                    };
+                    if num != i64::MIN && num != crate::sexp::ffi::NA_INTEGER as i64 {
+                        if name == "max.level" {
+                            max_level = num;
+                        } else if name == "list.len" {
+                            list_len = num;
+                        }
+                    }
+                }
+                p = CDR(p);
+            }
+            STR_LEVEL.store(max_level, std::sync::atomic::Ordering::Relaxed);
+            STR_LIST_LEN.store(list_len, std::sync::atomic::Ordering::Relaxed);
+            let show = n.min(list_len.max(0) as R_xlen_t);
+            let class_attr = crate::sexp::attrib_core::getAttrib(
+                x,
+                crate::sexp::attrib_core::R_ClassSymbol(),
+            );
+            let mut header = format!("List of {n}");
+            if TYPEOF(class_attr) == SEXPTYPE::STRSXP && XLENGTH(class_attr) > 0 {
+                let cname = elt_to_string(class_attr, 0);
+                let len_args = Rf_cons(x, R_NilValue());
+                let _len_guard = protect(len_args);
+                let len_sexp = crate::eval::arithmetic::do_length(
+                    R_NilValue(),
+                    R_NilValue(),
+                    len_args,
+                    _rho,
+                );
+                let dispatched =
+                    if TYPEOF(len_sexp) == SEXPTYPE::INTSXP && XLENGTH(len_sexp) > 0 {
+                        integer_elt_checked(len_sexp, 0) as i64
+                    } else if TYPEOF(len_sexp) == SEXPTYPE::REALSXP && XLENGTH(len_sexp) > 0 {
+                        real_elt_checked(len_sexp, 0) as i64
+                    } else {
+                        n as i64
+                    };
+                if dispatched != n as i64 {
+                    header = format!("Class '{cname}'  hidden list of {n}");
+                }
+            }
+            str_emit_line(&header);
+            let raw_names: Vec<String> = (0..show)
+                .map(|i| {
+                    if has_names && i < XLENGTH(names) {
+                        elt_to_string(names, i)
+                    } else {
+                        String::new()
+                    }
+                })
+                .collect();
+            let name_width = raw_names.iter().map(String::len).max().unwrap_or(0);
+            for i in 0..show {
+                let name = format!("{:<name_width$}", raw_names[i as usize]);
+                let elem = VECTOR_ELT(x, i as i64);
+                str_emit_line(&format!(
+                    " $ {name}: {}",
+                    str_atomic_summary_opts(elem, true, true)
+                ));
 
-        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-        x
+                if let Some(extra) = str_child_dimnames_lines(elem) {
+                    str_emit_line(&extra);
+                }
+            }
+        }
+    } else {
+        str_emit_line(&format!(" {}", str_atomic_summary(x)));
+        str_emit_nonstandard_attrs(x, &["class", "tsp", "dim", "levels"]);
     }
+
+    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+    x
 }

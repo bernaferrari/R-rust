@@ -858,7 +858,9 @@ fn format_numeric_vector(x: SEXP, n: R_xlen_t, args: SEXP) -> SEXP {
             let label: Option<std::borrow::Cow<'_, str>> = if !name.is_null()
                 && name != R_NilValue()
             {
-                Some(std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(name)).to_string_lossy())
+                Some(std::borrow::Cow::Owned(
+                    charsxp_cstring(name).to_string_lossy().into_owned(),
+                ))
             } else {
                 None
             };
@@ -1372,154 +1374,154 @@ fn format_zero_print(original: &str, zero: &str) -> String {
 }
 
 fn format_character_vector(x: SEXP, n: R_xlen_t, args: SEXP) -> SEXP {
-    unsafe {
-        // GNU format.default: match.arg(justify) defaults to "left" (0).
-        // 0=left, 1=right, 2=centre, 3=none.
-        let mut justify: c_int = 0;
-        let mut width: c_int = 0;
-        let mut na_encode = true;
-        let mut positional = 0;
-        let mut cell = crate::sexp::accessors::CDR(args);
-        while !cell.is_null() && cell != R_NilValue() {
-            let value = CAR(cell);
-            let tag = TAG(cell);
-            let name = if !tag.is_null() && tag != R_NilValue() {
-                crate::sexp::accessors::PRINTNAME(tag)
-            } else {
-                std::ptr::null_mut()
-            };
-            let label: Option<std::borrow::Cow<'_, str>> = if !name.is_null()
-                && name != R_NilValue()
-            {
-                Some(std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(name)).to_string_lossy())
-            } else {
-                None
-            };
-            let slot = label
-                .as_deref()
-                .and_then(|label| match label {
-                    "trim" => Some(0),
-                    "digits" => Some(1),
-                    "nsmall" => Some(2),
-                    "justify" => Some(3),
-                    "width" => Some(4),
-                    "na.encode" => Some(5),
-                    "scientific" => Some(6),
-                    "decimal.mark" => Some(7),
-                    _ => None,
-                })
-                .unwrap_or_else(|| {
-                    if label.is_some() {
-                        return 99;
-                    }
-                    let order = [0, 1, 2, 4, 3, 5, 6, 7];
-                    let slot = order.get(positional).copied().unwrap_or(99);
-                    positional += 1;
-                    slot
-                });
-            match slot {
-                3 => {
-                    if TYPEOF(value) == SEXPTYPE::STRSXP {
-                        // GNU format.default: justify <- match.arg(justify) against
-                        // c("left", "right", "centre", "none") — prefix matching
-                        // applies; unknown/ambiguous values are an error.
-                        const JUSTIFY_CHOICES: [&str; 4] = ["left", "right", "centre", "none"];
-                        let text = elt_to_string(value, 0);
-                        let mut exact: Option<usize> = None;
-                        let mut prefixes: Vec<usize> = Vec::new();
-                        for (i, choice) in JUSTIFY_CHOICES.iter().enumerate() {
-                            if *choice == text {
-                                exact = Some(i);
-                                break;
-                            }
-                            if choice.starts_with(text.as_str()) {
-                                prefixes.push(i);
-                            }
-                        }
-                        let idx = exact.or_else(|| {
-                            if prefixes.len() == 1 {
-                                prefixes.pop()
-                            } else {
-                                None
-                            }
-                        });
-                        match idx {
-                            Some(i) => justify = i as c_int,
-                            None => {
-                                let list = JUSTIFY_CHOICES
-                                    .iter()
-                                    .map(|c| format!("\"{c}\""))
-                                    .collect::<Vec<_>>()
-                                    .join(", ");
-                                crate::mainutils::errors::errorcall_str(
-                                    crate::mainutils::errors::R_getCurrentCall(),
-                                    &format!("'arg' should be one of {list}"),
-                                );
-                            }
-                        }
-                    } else {
-                        let v = crate::main::coerce::asInteger(value);
-                        if v != NA_INTEGER && (0..=3).contains(&v) {
-                            justify = v;
-                        }
-                    }
-                }
-                4 => {
-                    let v = crate::main::coerce::asInteger(value);
-                    if v != NA_INTEGER {
-                        width = v;
-                    }
-                }
-                5 => na_encode = crate::main::coerce::asLogical(value) != FALSE,
-                _ => {}
-            }
-            cell = CDR(cell);
-        }
-
-        let mut strings = Vec::with_capacity(n as usize);
-        let mut max_w = 0usize;
-        for i in 0..n {
-            if !na_encode && STRING_ELT(x, i) == crate::sexp::globals::R_NaString() {
-                strings.push(None);
-                continue;
-            }
-            let s = elt_to_string(x, i);
-            max_w = max_w.max(s.chars().count());
-            strings.push(Some(s));
-        }
-        let field = if width > 0 {
-            (width as usize).max(max_w)
+    // GNU format.default: match.arg(justify) defaults to "left" (0).
+    // 0=left, 1=right, 2=centre, 3=none.
+    let mut justify: c_int = 0;
+    let mut width: c_int = 0;
+    let mut na_encode = true;
+    let mut positional = 0;
+    let mut cell = crate::sexp::accessors::CDR(args);
+    while !cell.is_null() && cell != R_NilValue() {
+        let value = CAR(cell);
+        let tag = TAG(cell);
+        let name = if !tag.is_null() && tag != R_NilValue() {
+            crate::sexp::accessors::PRINTNAME(tag)
         } else {
-            max_w
+            std::ptr::null_mut()
         };
-        let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _result_guard = protect(result);
-        for (i, s) in strings.iter().enumerate() {
-            let Some(s) = s else {
-                crate::sexp::accessors::SET_STRING_ELT(
-                    result,
-                    i as R_xlen_t,
-                    crate::sexp::globals::R_NaString(),
-                );
-                continue;
-            };
-            let out = if justify == 3 {
-                s.clone()
-            } else {
-                justify_pad(s, field, justify)
-            };
-            let cstr = CString::new(out).unwrap_or_default();
-            let charsxp = mk_char_cstr(&cstr);
-            if !charsxp.is_null() {
-                crate::sexp::accessors::SET_STRING_ELT(result, i as R_xlen_t, charsxp);
+        let label: Option<std::borrow::Cow<'_, str>> = if !name.is_null()
+            && name != R_NilValue()
+        {
+            Some(std::borrow::Cow::Owned(
+                charsxp_cstring(name).to_string_lossy().into_owned(),
+            ))
+        } else {
+            None
+        };
+        let slot = label
+            .as_deref()
+            .and_then(|label| match label {
+                "trim" => Some(0),
+                "digits" => Some(1),
+                "nsmall" => Some(2),
+                "justify" => Some(3),
+                "width" => Some(4),
+                "na.encode" => Some(5),
+                "scientific" => Some(6),
+                "decimal.mark" => Some(7),
+                _ => None,
+            })
+            .unwrap_or_else(|| {
+                if label.is_some() {
+                    return 99;
+                }
+                let order = [0, 1, 2, 4, 3, 5, 6, 7];
+                let slot = order.get(positional).copied().unwrap_or(99);
+                positional += 1;
+                slot
+            });
+        match slot {
+            3 => {
+                if TYPEOF(value) == SEXPTYPE::STRSXP {
+                    // GNU format.default: justify <- match.arg(justify) against
+                    // c("left", "right", "centre", "none") — prefix matching
+                    // applies; unknown/ambiguous values are an error.
+                    const JUSTIFY_CHOICES: [&str; 4] = ["left", "right", "centre", "none"];
+                    let text = elt_to_string(value, 0);
+                    let mut exact: Option<usize> = None;
+                    let mut prefixes: Vec<usize> = Vec::new();
+                    for (i, choice) in JUSTIFY_CHOICES.iter().enumerate() {
+                        if *choice == text {
+                            exact = Some(i);
+                            break;
+                        }
+                        if choice.starts_with(text.as_str()) {
+                            prefixes.push(i);
+                        }
+                    }
+                    let idx = exact.or_else(|| {
+                        if prefixes.len() == 1 {
+                            prefixes.pop()
+                        } else {
+                            None
+                        }
+                    });
+                    match idx {
+                        Some(i) => justify = i as c_int,
+                        None => {
+                            let list = JUSTIFY_CHOICES
+                                .iter()
+                                .map(|c| format!("\"{c}\""))
+                                .collect::<Vec<_>>()
+                                .join(", ");
+                            crate::mainutils::errors::errorcall_str(
+                                crate::mainutils::errors::R_getCurrentCall(),
+                                &format!("'arg' should be one of {list}"),
+                            );
+                        }
+                    }
+                } else {
+                    let v = crate::main::coerce::asInteger(value);
+                    if v != NA_INTEGER && (0..=3).contains(&v) {
+                        justify = v;
+                    }
+                }
             }
+            4 => {
+                let v = crate::main::coerce::asInteger(value);
+                if v != NA_INTEGER {
+                    width = v;
+                }
+            }
+            5 => na_encode = crate::main::coerce::asLogical(value) != FALSE,
+            _ => {}
         }
-        copy_format_shape(x, result);
-        result
+        cell = CDR(cell);
     }
+
+    let mut strings = Vec::with_capacity(n as usize);
+    let mut max_w = 0usize;
+    for i in 0..n {
+        if !na_encode && STRING_ELT(x, i) == crate::sexp::globals::R_NaString() {
+            strings.push(None);
+            continue;
+        }
+        let s = elt_to_string(x, i);
+        max_w = max_w.max(s.chars().count());
+        strings.push(Some(s));
+    }
+    let field = if width > 0 {
+        (width as usize).max(max_w)
+    } else {
+        max_w
+    };
+    let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _result_guard = protect(result);
+    for (i, s) in strings.iter().enumerate() {
+        let Some(s) = s else {
+            crate::sexp::accessors::SET_STRING_ELT(
+                result,
+                i as R_xlen_t,
+                crate::sexp::globals::R_NaString(),
+            );
+            continue;
+        };
+        let out = if justify == 3 {
+            s.clone()
+        } else {
+            justify_pad(s, field, justify)
+        };
+        let cstr = CString::new(out).unwrap_or_default();
+        let charsxp = mk_char_cstr(&cstr);
+        if !charsxp.is_null() {
+            crate::sexp::accessors::SET_STRING_ELT(result, i as R_xlen_t, charsxp);
+        }
+    }
+    copy_format_shape(x, result);
+    result
 }
 
 /// GNU format retains names and array shape, excluding class and unrelated

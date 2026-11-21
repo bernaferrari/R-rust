@@ -1,7 +1,7 @@
 //! Essentials domain module `io` — extracted verbatim from essentials.rs.
 
 use super::*;
-use std::ffi::{CStr, CString};
+use std::ffi::CString;
 use std::os::raw::c_int;
 
 #[allow(unused_imports)]

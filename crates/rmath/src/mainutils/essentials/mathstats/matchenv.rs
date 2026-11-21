@@ -219,7 +219,7 @@ fn match_arg_choices_from_formals(arg_expr: SEXP, rho: SEXP) -> SEXP {
             if pname.is_null() {
                 return R_NilValue();
             }
-            CStr::from_ptr(CHAR(pname)).to_string_lossy().into_owned()
+            charsxp_cstring(pname).to_string_lossy().into_owned()
         } else {
             return R_NilValue();
         };
@@ -234,7 +234,8 @@ fn match_arg_choices_from_formals(arg_expr: SEXP, rho: SEXP) -> SEXP {
                     if !tag.is_null() && TYPEOF(tag) == SEXPTYPE::SYMSXP {
                         let pname = PRINTNAME(tag);
                         if !pname.is_null() {
-                            let tag_name = CStr::from_ptr(CHAR(pname)).to_string_lossy();
+                            let tag_name_cstr = charsxp_cstring(pname);
+                            let tag_name = tag_name_cstr.to_string_lossy();
                             if tag_name == name {
                                 let def = CAR(cell);
                                 if !(def.is_null() || def == R_NilValue() || def == R_MissingArg())

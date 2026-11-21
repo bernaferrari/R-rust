@@ -157,9 +157,7 @@ pub fn do_saveRDS(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let tag = TAG(cell);
             let value = CAR(cell);
             if !tag.is_null() && tag != R_NilValue() {
-                let name = std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(
-                    crate::sexp::accessors::PRINTNAME(tag),
-                ))
+                let name = charsxp_cstring(crate::sexp::accessors::PRINTNAME(tag),)
                 .to_string_lossy()
                 .into_owned();
                 match name.as_str() {

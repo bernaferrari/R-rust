@@ -1188,3 +1188,13 @@ pub(crate) fn force_promise(prom: SEXP) -> SEXP {
 pub(crate) fn define_var(symbol: SEXP, value: SEXP, rho: SEXP) {
     let _ = crate::sexp::envir::define_var_updates(symbol, value, rho);
 }
+
+/// Owned copy of a CHARSXP's bytes up to the first NUL: the value that
+/// `charsxp_cstring(x)` used to borrow, without an unbounded borrow.
+pub(crate) fn charsxp_cstring(x: SEXP) -> std::ffi::CString {
+    let mut bytes = crate::mainutils::printutils::charsxp_bytes(x);
+    if let Some(nul) = bytes.iter().position(|&b| b == 0) {
+        bytes.truncate(nul);
+    }
+    std::ffi::CString::new(bytes).unwrap_or_default()
+}

@@ -340,7 +340,7 @@ pub fn do_stopifnot(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             let tag = TAG(current);
             let named_exprs = !tag.is_null()
                 && tag != R_NilValue()
-                && CStr::from_ptr(CHAR(PRINTNAME(tag))).to_string_lossy() == "exprs";
+                && charsxp_cstring(PRINTNAME(tag)).to_string_lossy() == "exprs";
             if named_exprs
                 && TYPEOF(expr) == SEXPTYPE::LANGSXP
                 && CAR(expr) == crate::sexp::symbol::R_BraceSymbol()
@@ -356,7 +356,7 @@ pub fn do_stopifnot(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 && !tag.is_null()
                 && tag != R_NilValue()
                 && matches!(
-                    CStr::from_ptr(CHAR(PRINTNAME(tag)))
+                    charsxp_cstring(PRINTNAME(tag))
                         .to_string_lossy()
                         .as_ref(),
                     "exprObject" | "local"

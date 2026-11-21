@@ -465,223 +465,222 @@ fn approximate_contains(pattern: &str, text: &str, max_distance: usize, ignore_c
 }
 
 fn do_string_replace(args: SEXP, global: bool) -> SEXP {
-    unsafe {
-        let pattern_arg = CAR(args);
-        let replacement_arg = CAR(CDR(args));
-        let x_arg = CAR(CDR(CDR(args)));
-        let ignore_case = logical_arg_by_name_or_position(args, "ignore.case", 3).unwrap_or(false);
-        let mut perl = logical_arg_by_name_or_position(args, "perl", 4).unwrap_or(false);
-        let fixed = logical_arg_by_name_or_position(args, "fixed", 5).unwrap_or(false);
-        super::shared::ignore_perl_when_fixed(&mut perl, fixed);
-        if x_arg.is_null() || x_arg == R_NilValue() {
-            return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
-        }
-        if pattern_arg.is_null() || replacement_arg.is_null() {
-            return R_NilValue();
-        }
-        let use_bytes = logical_arg_by_name_or_position(args, "useBytes", 6).unwrap_or(false);
-        // Missing patterns short-circuit every matcher, including raw literals.
-        if string_arg_is_na(pattern_arg) {
-            let n = XLENGTH(x_arg);
-            let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
-            let _result_guard = protect(result);
-            for i in 0..n {
-                SET_STRING_ELT(result, i, crate::sexp::globals::R_NaString());
-            }
-            crate::mainutils::coerce::SHALLOW_DUPLICATE_ATTRIB(result, x_arg);
-            return result;
-        }
-        let replacement_missing = string_arg_is_na(replacement_arg);
-        let pattern = elt_to_string(pattern_arg, 0);
-        if fixed && pattern.is_empty() {
-            base_error("zero-length pattern");
-        }
-        let replacement = elt_to_string(replacement_arg, 0);
-        crate::mainutils::grep::validate_pattern(&pattern, ignore_case, perl, fixed)
-            .unwrap_or_else(|message| base_error(&message));
-        let pattern_is_literal = pattern.bytes().all(|b| {
-            !matches!(
-                b,
-                b'.' | b'*'
-                    | b'+'
-                    | b'?'
-                    | b'|'
-                    | b'('
-                    | b')'
-                    | b'['
-                    | b']'
-                    | b'{'
-                    | b'}'
-                    | b'\\'
-                    | b'^'
-                    | b'$'
-            )
-        });
-        if use_bytes
-            && (fixed || (pattern_is_literal && !pattern.is_empty()))
-            && TYPEOF(x_arg) == SEXPTYPE::STRSXP
-            && TYPEOF(pattern_arg) == SEXPTYPE::STRSXP
-        {
-            let n = XLENGTH(x_arg);
-            let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
-            let _result_guard = protect(result);
-            let pat = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(pattern_arg, 0)))
-                .to_bytes()
-                .to_vec();
-            let rep = if TYPEOF(replacement_arg) == SEXPTYPE::STRSXP && XLENGTH(replacement_arg) > 0
-            {
-                std::ffi::CStr::from_ptr(CHAR(STRING_ELT(replacement_arg, 0)))
-                    .to_bytes()
-                    .to_vec()
-            } else {
-                Vec::new()
-            };
-            let parsed_replacement = if fixed || replacement_missing {
-                None
-            } else {
-                Some(crate::mainutils::grep::literal_replacement_bytes(
-                    &rep, perl,
-                ))
-            };
-            let replacement_bytes = parsed_replacement.as_deref().unwrap_or(&rep);
-            for i in 0..n {
-                let src_ch = STRING_ELT(x_arg, i);
-                if src_ch.is_null()
-                    || src_ch == crate::sexp::globals::R_NaString()
-                    || pat.is_empty()
-                {
-                    SET_STRING_ELT(result, i, src_ch);
-                    continue;
-                }
-                let src = std::ffi::CStr::from_ptr(CHAR(src_ch)).to_bytes();
-                let mut out = Vec::new();
-                let mut p = 0;
-                let mut changed = false;
-                while p < src.len() {
-                    let matched = src
-                        .get(p..)
-                        .and_then(|tail| tail.get(..pat.len()))
-                        .is_some_and(|candidate| {
-                            if !fixed && ignore_case {
-                                candidate.eq_ignore_ascii_case(&pat)
-                            } else {
-                                candidate == pat
-                            }
-                        });
-                    if matched {
-                        changed = true;
-                        if replacement_missing {
-                            break;
-                        }
-                        out.extend_from_slice(replacement_bytes);
-                        p += pat.len();
-                        if !global {
-                            out.extend_from_slice(&src[p..]);
-                            break;
-                        }
-                    } else {
-                        out.push(src[p]);
-                        p += 1;
-                    }
-                }
-                if !changed {
-                    SET_STRING_ELT(result, i, src_ch);
-                } else if replacement_missing {
-                    SET_STRING_ELT(result, i, crate::sexp::globals::R_NaString());
-                } else {
-                    let cstr = std::ffi::CString::new(out).unwrap_or_default();
-                    SET_STRING_ELT(
-                        result,
-                        i,
-                        mk_char_cstr(&cstr),
-                    );
-                }
-            }
-            crate::mainutils::coerce::SHALLOW_DUPLICATE_ATTRIB(result, x_arg);
-            return result;
-        }
+    let pattern_arg = CAR(args);
+    let replacement_arg = CAR(CDR(args));
+    let x_arg = CAR(CDR(CDR(args)));
+    let ignore_case = logical_arg_by_name_or_position(args, "ignore.case", 3).unwrap_or(false);
+    let mut perl = logical_arg_by_name_or_position(args, "perl", 4).unwrap_or(false);
+    let fixed = logical_arg_by_name_or_position(args, "fixed", 5).unwrap_or(false);
+    super::shared::ignore_perl_when_fixed(&mut perl, fixed);
+    if x_arg.is_null() || x_arg == R_NilValue() {
+        return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
+    }
+    if pattern_arg.is_null() || replacement_arg.is_null() {
+        return R_NilValue();
+    }
+    let use_bytes = logical_arg_by_name_or_position(args, "useBytes", 6).unwrap_or(false);
+    // Missing patterns short-circuit every matcher, including raw literals.
+    if string_arg_is_na(pattern_arg) {
         let n = XLENGTH(x_arg);
         let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
-        if result.is_null() {
-            return R_NilValue();
-        }
         let _result_guard = protect(result);
         for i in 0..n {
-            if TYPEOF(x_arg) == SEXPTYPE::STRSXP
-                && STRING_ELT(x_arg, i) == crate::sexp::globals::R_NaString()
+            SET_STRING_ELT(result, i, crate::sexp::globals::R_NaString());
+        }
+        crate::mainutils::coerce::SHALLOW_DUPLICATE_ATTRIB(result, x_arg);
+        return result;
+    }
+    let replacement_missing = string_arg_is_na(replacement_arg);
+    let pattern = elt_to_string(pattern_arg, 0);
+    if fixed && pattern.is_empty() {
+        base_error("zero-length pattern");
+    }
+    let replacement = elt_to_string(replacement_arg, 0);
+    crate::mainutils::grep::validate_pattern(&pattern, ignore_case, perl, fixed)
+        .unwrap_or_else(|message| base_error(&message));
+    let pattern_is_literal = pattern.bytes().all(|b| {
+        !matches!(
+            b,
+            b'.' | b'*'
+                | b'+'
+                | b'?'
+                | b'|'
+                | b'('
+                | b')'
+                | b'['
+                | b']'
+                | b'{'
+                | b'}'
+                | b'\\'
+                | b'^'
+                | b'$'
+        )
+    });
+    if use_bytes
+        && (fixed || (pattern_is_literal && !pattern.is_empty()))
+        && TYPEOF(x_arg) == SEXPTYPE::STRSXP
+        && TYPEOF(pattern_arg) == SEXPTYPE::STRSXP
+    {
+        let n = XLENGTH(x_arg);
+        let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+        let _result_guard = protect(result);
+        let pat = charsxp_cstring(STRING_ELT(pattern_arg, 0))
+            .to_bytes()
+            .to_vec();
+        let rep = if TYPEOF(replacement_arg) == SEXPTYPE::STRSXP && XLENGTH(replacement_arg) > 0
+        {
+            charsxp_cstring(STRING_ELT(replacement_arg, 0))
+                .to_bytes()
+                .to_vec()
+        } else {
+            Vec::new()
+        };
+        let parsed_replacement = if fixed || replacement_missing {
+            None
+        } else {
+            Some(crate::mainutils::grep::literal_replacement_bytes(
+                &rep, perl,
+            ))
+        };
+        let replacement_bytes = parsed_replacement.as_deref().unwrap_or(&rep);
+        for i in 0..n {
+            let src_ch = STRING_ELT(x_arg, i);
+            if src_ch.is_null()
+                || src_ch == crate::sexp::globals::R_NaString()
+                || pat.is_empty()
             {
+                SET_STRING_ELT(result, i, src_ch);
+                continue;
+            }
+            let src_cstr = charsxp_cstring(src_ch);
+            let src = src_cstr.to_bytes();
+            let mut out = Vec::new();
+            let mut p = 0;
+            let mut changed = false;
+            while p < src.len() {
+                let matched = src
+                    .get(p..)
+                    .and_then(|tail| tail.get(..pat.len()))
+                    .is_some_and(|candidate| {
+                        if !fixed && ignore_case {
+                            candidate.eq_ignore_ascii_case(&pat)
+                        } else {
+                            candidate == pat
+                        }
+                    });
+                if matched {
+                    changed = true;
+                    if replacement_missing {
+                        break;
+                    }
+                    out.extend_from_slice(replacement_bytes);
+                    p += pat.len();
+                    if !global {
+                        out.extend_from_slice(&src[p..]);
+                        break;
+                    }
+                } else {
+                    out.push(src[p]);
+                    p += 1;
+                }
+            }
+            if !changed {
+                SET_STRING_ELT(result, i, src_ch);
+            } else if replacement_missing {
                 SET_STRING_ELT(result, i, crate::sexp::globals::R_NaString());
-                continue;
-            }
-            // GNU sub/gsub in a single-byte locale treats native strings as
-            // opaque bytes; keep them lossless via the Latin-1 round-trip.
-            let (s, latin1) = if TYPEOF(x_arg) == SEXPTYPE::STRSXP {
-                let ch = STRING_ELT(x_arg, i);
-                let bytes = if ch.is_null() {
-                    &[][..]
-                } else {
-                    std::ffi::CStr::from_ptr(CHAR(ch)).to_bytes()
-                };
-                native_bytes_to_string(bytes)
             } else {
-                (elt_to_string(x_arg, i), false)
-            };
-            if replacement_missing {
-                // Match existence includes empty matches. Deleting text cannot
-                // distinguish those and must not send Perl/fixed syntax to TRE.
-                let value = if grep_value_matches(&s, &pattern, ignore_case && !fixed, perl, fixed)
-                {
-                    crate::sexp::globals::R_NaString()
-                } else if TYPEOF(x_arg) == SEXPTYPE::STRSXP {
-                    STRING_ELT(x_arg, i)
-                } else {
-                    let original =
-                        CString::new(string_to_native_bytes(&s, latin1)).unwrap_or_default();
-                    mk_char_cstr(&original)
-                };
-                SET_STRING_ELT(result, i, value);
-                continue;
-            }
-            let fixed_replacement = if fixed && global {
-                Some(s.replace(&pattern, &replacement))
-            } else if fixed {
-                Some(s.replacen(&pattern, &replacement, 1))
-            } else {
-                None
-            };
-            let regex_replacement = if fixed {
-                None
-            } else if perl {
-                crate::mainutils::grep::perl_replace_with_case(
-                    &pattern,
-                    &s,
-                    &replacement,
-                    global,
-                    ignore_case,
-                    if use_bytes {
-                        crate::mainutils::grep::ReplacementCase::Bytes
-                    } else {
-                        crate::mainutils::grep::ReplacementCase::Unicode
-                    },
-                )
-            } else {
-                crate::mainutils::grep::ere_replace(&pattern, &s, &replacement, global, ignore_case)
-            };
-            // Keep the actual regex output ticket through final R publication.
-            let replaced = fixed_replacement
-                .as_deref()
-                .or(regex_replacement.as_deref())
-                .unwrap_or(&s);
-            let cstr = CString::new(string_to_native_bytes(replaced, latin1)).unwrap_or_default();
-            let charsxp = mk_char_cstr(&cstr);
-            if !charsxp.is_null() {
-                crate::sexp::accessors::SET_STRING_ELT(result, i as R_xlen_t, charsxp);
+                let cstr = std::ffi::CString::new(out).unwrap_or_default();
+                SET_STRING_ELT(
+                    result,
+                    i,
+                    mk_char_cstr(&cstr),
+                );
             }
         }
-        // GNU sub/gsub copy x's attributes (names, dim, dimnames) to the result.
         crate::mainutils::coerce::SHALLOW_DUPLICATE_ATTRIB(result, x_arg);
-        result
+        return result;
     }
+    let n = XLENGTH(x_arg);
+    let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _result_guard = protect(result);
+    for i in 0..n {
+        if TYPEOF(x_arg) == SEXPTYPE::STRSXP
+            && STRING_ELT(x_arg, i) == crate::sexp::globals::R_NaString()
+        {
+            SET_STRING_ELT(result, i, crate::sexp::globals::R_NaString());
+            continue;
+        }
+        // GNU sub/gsub in a single-byte locale treats native strings as
+        // opaque bytes; keep them lossless via the Latin-1 round-trip.
+        let (s, latin1) = if TYPEOF(x_arg) == SEXPTYPE::STRSXP {
+            let ch = STRING_ELT(x_arg, i);
+            let bytes = if ch.is_null() {
+                Vec::new()
+            } else {
+                charsxp_cstring(ch).into_bytes()
+            };
+            native_bytes_to_string(&bytes)
+        } else {
+            (elt_to_string(x_arg, i), false)
+        };
+        if replacement_missing {
+            // Match existence includes empty matches. Deleting text cannot
+            // distinguish those and must not send Perl/fixed syntax to TRE.
+            let value = if grep_value_matches(&s, &pattern, ignore_case && !fixed, perl, fixed)
+            {
+                crate::sexp::globals::R_NaString()
+            } else if TYPEOF(x_arg) == SEXPTYPE::STRSXP {
+                STRING_ELT(x_arg, i)
+            } else {
+                let original =
+                    CString::new(string_to_native_bytes(&s, latin1)).unwrap_or_default();
+                mk_char_cstr(&original)
+            };
+            SET_STRING_ELT(result, i, value);
+            continue;
+        }
+        let fixed_replacement = if fixed && global {
+            Some(s.replace(&pattern, &replacement))
+        } else if fixed {
+            Some(s.replacen(&pattern, &replacement, 1))
+        } else {
+            None
+        };
+        let regex_replacement = if fixed {
+            None
+        } else if perl {
+            crate::mainutils::grep::perl_replace_with_case(
+                &pattern,
+                &s,
+                &replacement,
+                global,
+                ignore_case,
+                if use_bytes {
+                    crate::mainutils::grep::ReplacementCase::Bytes
+                } else {
+                    crate::mainutils::grep::ReplacementCase::Unicode
+                },
+            )
+        } else {
+            crate::mainutils::grep::ere_replace(&pattern, &s, &replacement, global, ignore_case)
+        };
+        // Keep the actual regex output ticket through final R publication.
+        let replaced = fixed_replacement
+            .as_deref()
+            .or(regex_replacement.as_deref())
+            .unwrap_or(&s);
+        let cstr = CString::new(string_to_native_bytes(replaced, latin1)).unwrap_or_default();
+        let charsxp = mk_char_cstr(&cstr);
+        if !charsxp.is_null() {
+            crate::sexp::accessors::SET_STRING_ELT(result, i as R_xlen_t, charsxp);
+        }
+    }
+    // GNU sub/gsub copy x's attributes (names, dim, dimnames) to the result.
+    crate::mainutils::coerce::SHALLOW_DUPLICATE_ATTRIB(result, x_arg);
+    result
 }
 
 /// Decode string bytes for regex work. Valid UTF-8 passes through; native

@@ -50,8 +50,9 @@ pub fn do_as_POSIXct(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         let tag = TAG(cell);
                         if !tag.is_null() && tag != R_NilValue() && TYPEOF(tag) == SEXPTYPE::SYMSXP
                         {
-                            let name =
-                                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag))).to_string_lossy();
+                            let name = charsxp_cstring(PRINTNAME(tag))
+                                .to_string_lossy()
+                                .into_owned();
                             if name == "tz" {
                                 found = true;
                                 break;

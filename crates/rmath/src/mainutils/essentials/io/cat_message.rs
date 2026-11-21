@@ -79,7 +79,8 @@ pub fn do_capture_output(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
             if tag.is_null() || tag == R_NilValue() {
                 return None;
             }
-            let name = CStr::from_ptr(CHAR(PRINTNAME(tag))).to_string_lossy();
+            let name_cstr = charsxp_cstring(PRINTNAME(tag));
+            let name = name_cstr.to_string_lossy();
             matches!(name.as_ref(), "file" | "append" | "type" | "split").then(|| name.into_owned())
         };
         let mut capture_type = "output".to_string();
@@ -104,7 +105,8 @@ pub fn do_capture_output(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
                         if TYPEOF(value) != SEXPTYPE::STRSXP || LENGTH(value) != 1 {
                             base_error("invalid 'type' argument");
                         }
-                        let kind = CStr::from_ptr(CHAR(STRING_ELT(value, 0))).to_string_lossy();
+                        let kind_cstr = charsxp_cstring(STRING_ELT(value, 0));
+                        let kind = kind_cstr.to_string_lossy();
                         capture_type = ["output", "message"]
                             .into_iter()
                             .find(|candidate| {
@@ -348,7 +350,7 @@ pub fn do_suppress_warnings(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SE
                 let name = if pname.is_null() {
                     String::new()
                 } else {
-                    std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(pname))
+                    charsxp_cstring(pname)
                         .to_string_lossy()
                         .into_owned()
                 };
@@ -363,7 +365,7 @@ pub fn do_suppress_warnings(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SE
                             let elt = crate::sexp::accessors::STRING_ELT(value, i);
                             if !elt.is_null() {
                                 names.push(
-                                    std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(elt))
+                                    charsxp_cstring(elt)
                                         .to_string_lossy()
                                         .into_owned(),
                                 );
@@ -411,7 +413,7 @@ pub fn do_suppress_messages(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SE
                 let name = if pname.is_null() {
                     String::new()
                 } else {
-                    std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(pname))
+                    charsxp_cstring(pname)
                         .to_string_lossy()
                         .into_owned()
                 };
@@ -426,7 +428,7 @@ pub fn do_suppress_messages(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SE
                             let elt = crate::sexp::accessors::STRING_ELT(value, i);
                             if !elt.is_null() {
                                 names.push(
-                                    std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(elt))
+                                    charsxp_cstring(elt)
                                         .to_string_lossy()
                                         .into_owned(),
                                 );

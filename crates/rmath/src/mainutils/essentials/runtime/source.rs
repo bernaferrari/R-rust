@@ -1196,18 +1196,16 @@ fn utils_example_closure() -> Option<SEXP> {
 }
 
 fn topic_name_from_arg(topic_arg: SEXP) -> String {
-    unsafe {
-        match TYPEOF(topic_arg) {
-            t if t == SEXPTYPE::SYMSXP => {
-                let pname = PRINTNAME(topic_arg);
-                if pname.is_null() {
-                    String::new()
-                } else {
-                    CStr::from_ptr(CHAR(pname)).to_string_lossy().into_owned()
-                }
+    match TYPEOF(topic_arg) {
+        t if t == SEXPTYPE::SYMSXP => {
+            let pname = PRINTNAME(topic_arg);
+            if pname.is_null() {
+                String::new()
+            } else {
+                charsxp_cstring(pname).to_string_lossy().into_owned()
             }
-            _ => elt_to_string(topic_arg, 0),
         }
+        _ => elt_to_string(topic_arg, 0),
     }
 }
 

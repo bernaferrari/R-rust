@@ -341,53 +341,51 @@ pub fn do_ftable(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// GNU `write.ftable(x, file)` — write values and return `x`.
 pub fn do_write_ftable(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        let mut file = R_NilValue();
-        let mut cell = CDR(args);
-        while !cell.is_null() && cell != R_NilValue() {
-            let tag = TAG(cell);
-            let name = if !tag.is_null() && tag != R_NilValue() {
-                CStr::from_ptr(CHAR(PRINTNAME(tag)))
-                    .to_string_lossy()
-                    .into_owned()
-            } else {
-                String::new()
-            };
-            if name == "file" || name.is_empty() {
-                file = CAR(cell);
-                if name == "file" {
-                    break;
-                }
-            }
-            cell = CDR(cell);
-        }
-        if !file.is_null()
-            && file != R_NilValue()
-            && TYPEOF(file) == SEXPTYPE::STRSXP
-            && XLENGTH(file) >= 1
-        {
-            let owner = active_owner();
-            let path = owner_sexp(owner, file)
-                .try_string_value_elt(0)
-                .ok()
-                .flatten()
-                .unwrap_or_default();
-            if !path.is_empty() {
-                let n = XLENGTH(x) as usize;
-                let mut parts = Vec::with_capacity(n);
-                for i in 0..n {
-                    parts.push(format!(
-                        "{}",
-                        crate::mainutils::essentials::elt_real_safe(x, i as i64)
-                    ));
-                }
-                let _ = std::fs::write(&path, parts.join(" "));
+    let x = CAR(args);
+    let mut file = R_NilValue();
+    let mut cell = CDR(args);
+    while !cell.is_null() && cell != R_NilValue() {
+        let tag = TAG(cell);
+        let name = if !tag.is_null() && tag != R_NilValue() {
+            charsxp_cstring(PRINTNAME(tag))
+                .to_string_lossy()
+                .into_owned()
+        } else {
+            String::new()
+        };
+        if name == "file" || name.is_empty() {
+            file = CAR(cell);
+            if name == "file" {
+                break;
             }
         }
-        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-        x
+        cell = CDR(cell);
     }
+    if !file.is_null()
+        && file != R_NilValue()
+        && TYPEOF(file) == SEXPTYPE::STRSXP
+        && XLENGTH(file) >= 1
+    {
+        let owner = active_owner();
+        let path = owner_sexp(owner, file)
+            .try_string_value_elt(0)
+            .ok()
+            .flatten()
+            .unwrap_or_default();
+        if !path.is_empty() {
+            let n = XLENGTH(x) as usize;
+            let mut parts = Vec::with_capacity(n);
+            for i in 0..n {
+                parts.push(format!(
+                    "{}",
+                    crate::mainutils::essentials::elt_real_safe(x, i as i64)
+                ));
+            }
+            let _ = std::fs::write(&path, parts.join(" "));
+        }
+    }
+    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+    x
 }
 
 /// GNU `read.ftable(file)` — read values written by `write.ftable`.
@@ -1453,7 +1451,7 @@ pub fn do_ave(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             let tag = TAG(cursor);
             let is_fun = if !tag.is_null() && tag != R_NilValue() {
                 let p = PRINTNAME(tag);
-                !p.is_null() && std::ffi::CStr::from_ptr(CHAR(p)).to_string_lossy() == "FUN"
+                !p.is_null() && charsxp_cstring(p).to_string_lossy() == "FUN"
             } else {
                 false
             };

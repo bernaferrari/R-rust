@@ -131,7 +131,7 @@ pub fn do_normalizePath(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
                 continue;
             }
 
-            let path = CStr::from_ptr(CHAR(elt)).to_str().unwrap_or("").to_string();
+            let path = charsxp_cstring(elt).to_str().unwrap_or("").to_string();
             if crate::library::datasets::path_exists(&path) {
                 SET_STRING_ELT(result, i, elt);
                 continue;
@@ -177,9 +177,7 @@ pub fn do_tempfile(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let value = CAR(cell);
             let tagged = !tag.is_null() && tag != R_NilValue();
             if tagged {
-                let name = std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(
-                    crate::sexp::accessors::PRINTNAME(tag),
-                ))
+                let name = charsxp_cstring(crate::sexp::accessors::PRINTNAME(tag),)
                 .to_string_lossy()
                 .into_owned();
                 let nonempty = !value.is_null() && value != R_NilValue() && XLENGTH(value) > 0;

@@ -337,7 +337,7 @@ pub fn do_read_fwf(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let tag = TAG(cell);
             let named = !tag.is_null() && tag != R_NilValue() && TYPEOF(tag) == SEXPTYPE::SYMSXP;
             let name = if named {
-                CStr::from_ptr(CHAR(PRINTNAME(tag)))
+                charsxp_cstring(PRINTNAME(tag))
                     .to_string_lossy()
                     .into_owned()
             } else {
