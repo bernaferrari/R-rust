@@ -63,7 +63,7 @@ fn expand_os_format(
     out
 }
 
-pub(crate) unsafe fn format_posix_named_arg(args: SEXP, name: &str, pos: usize) -> SEXP {
+pub(crate) fn format_posix_named_arg(args: SEXP, name: &str, pos: usize) -> SEXP {
     unsafe {
         let mut cell = CDR(args);
         let mut i = 0usize;
@@ -107,7 +107,7 @@ mod tests {
 
 /// GNU-style matching: exact names, unique prefixes, then positionals.
 /// Bind `args` to `names` through GNU `matchArgs` (exact, partial, positional).
-pub(crate) unsafe fn match_named_then_positional(
+pub(crate) fn match_named_then_positional(
     call: SEXP,
     args: SEXP,
     formals: &[&str],
@@ -119,7 +119,7 @@ pub(crate) unsafe fn match_named_then_positional(
 // do_formatPOSIXlt -- .Internal(format.POSIXlt(x, format, usetz, ...))
 // ---------------------------------------------------------------------------
 
-unsafe fn posixlt_usetz_zone(
+fn posixlt_usetz_zone(
     x: SEXP,
     tzone: SEXP,
     i: usize,
@@ -178,7 +178,7 @@ unsafe fn posixlt_usetz_zone(
 /// Format a POSIXlt object as a character string using strftime.
 ///
 /// Ported from `do_formatPOSIXlt()` in datetime.c.
-pub unsafe fn do_formatPOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_formatPOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let _x_guard = protect(x);

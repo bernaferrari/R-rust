@@ -2,8 +2,6 @@ use super::*;
 
 pub(crate) type time_t = i64;
 
-use crate::sexp::attrib_core::{R_NamesSymbol, getAttrib, setAttrib};
-
 use crate::sexp::globals::R_NilValue;
 
 // ---------------------------------------------------------------------------
@@ -19,98 +17,133 @@ pub const NA_REAL: c_double = crate::sexp::ffi::NA_REAL;
 /// GNU datetime.c reads POSIXlt calendar fields via INTEGER() after
 /// balance, but `$year <-` can leave a REALSXP (GNU `$<-` does not coerce).
 /// Accept INTSXP/LGLSXP/REALSXP the way REAL_ELT accepts integers.
-pub(crate) unsafe fn posixlt_int_elt(col: SEXP, i: usize) -> c_int {
-    unsafe {
-        if col.is_null() || col == R_NilValue() {
-            return NA_INTEGER;
-        }
-        let n = XLENGTH(col);
-        if n <= 0 {
-            return NA_INTEGER;
-        }
-        let i = i % n as usize;
-        match TYPEOF(col) {
-            t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => *INTEGER(col).add(i),
-            t if t == SEXPTYPE::REALSXP => {
-                let v = *REAL(col).add(i);
-                if !R_FINITE(v) || R_IsNA(v) {
-                    NA_INTEGER
-                } else {
-                    v as c_int
-                }
-            }
-            _ => NA_INTEGER,
-        }
+pub(crate) fn posixlt_int_elt(col: SEXP, i: usize) -> c_int {
+    if col.is_null() || col == R_NilValue() {
+        return NA_INTEGER;
     }
+    let n = XLENGTH(col);
+    if n <= 0 {
+        return NA_INTEGER;
+    }
+    let i = i % n as usize;
+    let column = wrapped(col);
+    match TYPEOF(col) {
+        t if t == SEXPTYPE::INTSXP => column.try_integer_elt(i as R_xlen_t),
+        t if t == SEXPTYPE::LGLSXP => column.try_logical_elt(i as R_xlen_t),
+        t if t == SEXPTYPE::REALSXP => {
+            let v = column
+                .try_real_elt(i as R_xlen_t)
+                .unwrap_or_else(|error| r_error(error.to_string()));
+            return if !R_FINITE(v) || R_IsNA(v) {
+                NA_INTEGER
+            } else {
+                v as c_int
+            };
+        }
+        _ => return NA_INTEGER,
+    }
+    .unwrap_or_else(|error| r_error(error.to_string()))
 }
 
-pub(crate) unsafe fn posixlt_real_elt(col: SEXP, i: usize) -> f64 {
-    unsafe {
-        if col.is_null() || col == R_NilValue() {
-            return NA_REAL;
-        }
-        let n = XLENGTH(col);
-        if n <= 0 {
-            return NA_REAL;
-        }
-        let i = i % n as usize;
-        if TYPEOF(col) == SEXPTYPE::REALSXP {
-            *REAL(col).add(i)
-        } else if TYPEOF(col) == SEXPTYPE::INTSXP || TYPEOF(col) == SEXPTYPE::LGLSXP {
-            let v = *INTEGER(col).add(i);
-            if v == NA_INTEGER { NA_REAL } else { v as f64 }
+pub(crate) fn posixlt_real_elt(col: SEXP, i: usize) -> f64 {
+    if col.is_null() || col == R_NilValue() {
+        return NA_REAL;
+    }
+    let n = XLENGTH(col);
+    if n <= 0 {
+        return NA_REAL;
+    }
+    let i = i % n as usize;
+    let column = wrapped(col);
+    if TYPEOF(col) == SEXPTYPE::REALSXP {
+        column
+            .try_real_elt(i as R_xlen_t)
+            .unwrap_or_else(|error| r_error(error.to_string()))
+    } else if TYPEOF(col) == SEXPTYPE::INTSXP || TYPEOF(col) == SEXPTYPE::LGLSXP {
+        let v = if TYPEOF(col) == SEXPTYPE::INTSXP {
+            column.try_integer_elt(i as R_xlen_t)
         } else {
-            NA_REAL
+            column.try_logical_elt(i as R_xlen_t)
         }
+        .unwrap_or_else(|error| r_error(error.to_string()));
+        if v == NA_INTEGER { NA_REAL } else { v as f64 }
+    } else {
+        NA_REAL
     }
 }
 
-pub(crate) unsafe fn recycle_posixlt_component(x: SEXP, n: R_xlen_t) -> SEXP {
-    unsafe {
-        let nx = XLENGTH(x);
-        if n <= 0 {
-            return x;
-        }
-        if nx == n {
-            return x;
-        }
-        if nx <= 0 {
-            return crate::mainutils::builtin::xlengthgets(x, n);
-        }
-        let y = crate::mainutils::builtin::xlengthgets(x, n);
-        let _y = protect(y);
-        match TYPEOF(x) {
-            t if t == SEXPTYPE::REALSXP => {
-                for i in 0..n {
-                    *REAL(y).add(i as usize) = *REAL(x).add((i % nx) as usize);
-                }
-            }
-            t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => {
-                for i in 0..n {
-                    *INTEGER(y).add(i as usize) = *INTEGER(x).add((i % nx) as usize);
-                }
-            }
-            t if t == SEXPTYPE::STRSXP => {
-                for i in 0..n {
-                    SET_STRING_ELT(y, i, STRING_ELT(x, i % nx));
-                }
-            }
-            _ => {}
-        }
-        let names = getAttrib(x, R_NamesSymbol());
-        if !names.is_null() && names != R_NilValue() && TYPEOF(names) == SEXPTYPE::STRSXP {
-            let nn = XLENGTH(names);
-            if nn > 0 {
-                let out_names = Rf_allocVector3(SEXPTYPE::STRSXP, n);
-                let _on = protect(out_names);
-                for i in 0..n {
-                    SET_STRING_ELT(out_names, i, STRING_ELT(names, i % nn));
-                }
-                setAttrib(y, R_NamesSymbol(), out_names);
-            }
-        }
-        y
+pub(crate) fn recycle_posixlt_component(x: SEXP, n: R_xlen_t) -> SEXP {
+    let nx = XLENGTH(x);
+    if n <= 0 {
+        return x;
     }
+    if nx == n {
+        return x;
+    }
+    // SAFETY: audited boundary — length-extension primitive on a live vector.
+    if nx <= 0 {
+        return unsafe { crate::mainutils::builtin::xlengthgets(x, n) };
+    }
+    let y = unsafe { crate::mainutils::builtin::xlengthgets(x, n) };
+    let source = wrapped(x);
+    let mut out = mutable_vector(y);
+    match TYPEOF(x) {
+        t if t == SEXPTYPE::REALSXP => {
+            for i in 0..n {
+                let value = source
+                    .try_real_elt(i % nx)
+                    .unwrap_or_else(|error| r_error(error.to_string()));
+                out.try_set_real_elt(i, value)
+                    .unwrap_or_else(|error| r_error(error.to_string()));
+            }
+        }
+        t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => {
+            for i in 0..n {
+                let value = if t == SEXPTYPE::INTSXP {
+                    source.try_integer_elt(i % nx)
+                } else {
+                    source.try_logical_elt(i % nx)
+                }
+                .unwrap_or_else(|error| r_error(error.to_string()));
+                if t == SEXPTYPE::INTSXP {
+                    out.try_set_integer_elt(i, value)
+                        .unwrap_or_else(|error| r_error(error.to_string()));
+                } else {
+                    out.try_set_logical_elt(i, value)
+                        .unwrap_or_else(|error| r_error(error.to_string()));
+                }
+            }
+        }
+        t if t == SEXPTYPE::STRSXP => {
+            for i in 0..n {
+                let value = source
+                    .try_string_elt(i % nx)
+                    .unwrap_or_else(|error| r_error(error.to_string()));
+                out.try_set_string_elt(i, value)
+                    .unwrap_or_else(|error| r_error(error.to_string()));
+            }
+        }
+        _ => {}
+    }
+    let names = attribute(x, names_symbol());
+    if !names.is_null() && names != R_NilValue() && TYPEOF(names) == SEXPTYPE::STRSXP {
+        let nn = XLENGTH(names);
+        if nn > 0 {
+            let out_names = alloc_vector(SEXPTYPE::STRSXP, n);
+            let name_source = wrapped(names);
+            let mut out_names = mutable_vector(out_names);
+            for i in 0..n {
+                let value = name_source
+                    .try_string_elt(i % nn)
+                    .unwrap_or_else(|error| r_error(error.to_string()));
+                out_names
+                    .try_set_string_elt(i, value)
+                    .unwrap_or_else(|error| r_error(error.to_string()));
+            }
+            set_attribute(y, names_symbol(), out_names.freeze().as_raw());
+        }
+    }
+    y
 }
 
 /// POSIXlt component names.

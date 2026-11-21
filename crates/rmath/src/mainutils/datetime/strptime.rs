@@ -92,21 +92,14 @@ impl Drop for TzSetup {
 
 /// Decode a CHARSXP as UTF-8 text, mirroring trunk's multibyte-path
 /// validation in `R_strptime()` (mbstowcs failing is an error).
-pub(crate) unsafe fn charsxp_text(s: SEXP, what: &str) -> String {
-    unsafe {
-        let p = CHAR(s);
-        let bytes: &[u8] = if p.is_null() {
-            &[]
-        } else {
-            CStr::from_ptr(p).to_bytes()
-        };
-        match std::str::from_utf8(bytes) {
-            Ok(s) => s.to_owned(),
-            Err(_) => std::panic::panic_any(RError {
+pub(crate) fn charsxp_text(s: SEXP, what: &str) -> String {
+    wrapped(s)
+        .try_as_string()
+        .unwrap_or_else(|_| {
+            std::panic::panic_any(RError {
                 message: format!("invalid multibyte {} string", what),
-            }),
-        }
-    }
+            })
+        })
 }
 
 // ---------------------------------------------------------------------------
@@ -120,7 +113,9 @@ pub(crate) unsafe fn charsxp_text(s: SEXP, what: &str) -> String {
 /// `strptime <- function(x, format = "", tz = "")`
 ///   `.Internal(strptime(as.character(x), format, tz))` together with the
 /// `.Internal` handler `do_strptime()` in datetime.c (trunk r90447).
-pub unsafe fn do_strptime(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_strptime(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+    // SAFETY: audited boundary — .Internal entry with live SEXP arguments
+    // under the active runtime.
     unsafe {
         let mut x = CAR(args);
         if TYPEOF(x) != SEXPTYPE::STRSXP {

@@ -1,6 +1,6 @@
 use super::*;
 
-unsafe fn posixlt_seconds_digits(sec: SEXP, digits: i32) -> i32 {
+fn posixlt_seconds_digits(sec: SEXP, digits: i32) -> i32 {
     unsafe {
         if TYPEOF(sec) != SEXPTYPE::REALSXP {
             return use_dig_secs(&[], digits);
@@ -19,7 +19,7 @@ unsafe fn posixlt_seconds_digits(sec: SEXP, digits: i32) -> i32 {
 }
 
 /// GNU `as.POSIXlt(x, tz="")`.
-pub unsafe fn do_as_POSIXlt(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub fn do_as_POSIXlt(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -175,7 +175,7 @@ pub unsafe fn do_as_POSIXlt(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP
 }
 
 /// GNU `format.POSIXlt(x, format, usetz, digits)`.
-pub unsafe fn do_format_POSIXlt(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub fn do_format_POSIXlt(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let mut format = format_posix_named_arg(args, "format", 0);
@@ -340,7 +340,7 @@ pub unsafe fn do_format_POSIXlt(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> 
 }
 
 /// GNU `format.POSIXct(x, format, tz, usetz, digits)`.
-pub unsafe fn do_format_POSIXct(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub fn do_format_POSIXct(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let format = format_posix_named_arg(args, "format", 0);
@@ -433,7 +433,7 @@ mod seconds_slice_tests {
     }
 }
 
-unsafe fn posixlt_as_date(call: SEXP, op: SEXP, x: SEXP, env: SEXP) -> SEXP {
+fn posixlt_as_date(call: SEXP, op: SEXP, x: SEXP, env: SEXP) -> SEXP {
     unsafe {
         if crate::mainutils::objects::inherits2(x, c"POSIXlt".as_ptr()) != 0 {
             crate::mainutils::essentials::do_as_Date(call, op, Rf_cons(x, R_NilValue()), env)
@@ -444,7 +444,7 @@ unsafe fn posixlt_as_date(call: SEXP, op: SEXP, x: SEXP, env: SEXP) -> SEXP {
 }
 
 /// GNU `weekdays.POSIXt(x)`.
-pub unsafe fn do_weekdays_POSIXt(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub fn do_weekdays_POSIXt(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let x = posixlt_as_date(call, op, CAR(args), env);
         crate::mainutils::essentials::do_weekdays(call, op, Rf_cons(x, CDR(args)), env)
@@ -452,7 +452,7 @@ pub unsafe fn do_weekdays_POSIXt(call: SEXP, op: SEXP, args: SEXP, env: SEXP) ->
 }
 
 /// GNU `months.POSIXt(x)`.
-pub unsafe fn do_months_POSIXt(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub fn do_months_POSIXt(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let x = posixlt_as_date(call, op, CAR(args), env);
         crate::mainutils::essentials::do_months(call, op, Rf_cons(x, CDR(args)), env)
@@ -460,7 +460,7 @@ pub unsafe fn do_months_POSIXt(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> S
 }
 
 /// GNU `quarters.POSIXt(x)`.
-pub unsafe fn do_quarters_POSIXt(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub fn do_quarters_POSIXt(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let x = posixlt_as_date(call, op, CAR(args), env);
         crate::mainutils::essentials::do_quarters(call, op, Rf_cons(x, CDR(args)), env)
@@ -468,7 +468,7 @@ pub unsafe fn do_quarters_POSIXt(call: SEXP, op: SEXP, args: SEXP, env: SEXP) ->
 }
 
 /// GNU `as.character.POSIXt(x, digits, OutDec)`.
-pub unsafe fn do_as_character_POSIXt(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub fn do_as_character_POSIXt(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let matched = match_named_then_positional(call, args, &["x", "digits", "OutDec", "..."]);
 
