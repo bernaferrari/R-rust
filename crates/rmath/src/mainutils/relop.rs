@@ -31,12 +31,14 @@ use std::ptr;
 use crate::mainutils::coerce::coerceVector;
 use crate::mainutils::identical::R_compute_identical;
 use crate::sexp::accessors::{
-    ATTRIB, CADR, CAR, CHAR, DATAPTR, INTEGER, INTEGER_ELT, LENGTH, LOGICAL, NAMED, PRINTNAME,
-    REAL, REAL_ELT, SET_STRING_ELT, STRING_ELT, TYPEOF, XLENGTH,
+    ATTRIB, CADR, CAR, CHAR, DATAPTR, INTEGER, INTEGER_ELT, LENGTH, NAMED, PRINTNAME, REAL_ELT,
+    SET_STRING_ELT, STRING_ELT, TYPEOF, XLENGTH,
 };
-use crate::sexp::constructors::{Rf_ScalarLogical, Rf_allocVector, Rf_allocVector3, Rf_length};
+use crate::sexp::constructors::{Rf_ScalarLogical, Rf_allocVector, Rf_length};
 use crate::sexp::ffi::{ISNAN, NA_INTEGER, NA_LOGICAL, R_xlen_t, Rbyte, Rcomplex, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
+use crate::sexp::object::{Sexp, SexpMut, SexpResult, SessionNodeFactory};
+use crate::sexp::owner::{OwnerToken, StoredOwner};
 use crate::sexp::protect::protect;
 
 // ---------------------------------------------------------------------------
@@ -71,7 +73,9 @@ pub fn error_stub(format: *const c_char) {
     crate::mainutils::errors::errorcall(R_NilValue(), format)
 }
 
-pub unsafe fn warningcall_stub(call: SEXP, format: *const c_char) {
+pub fn warningcall_stub(call: SEXP, format: *const c_char) {
+    // SAFETY: delegates to the raw warningcall boundary; `call` and `format`
+    // carry the same contract the unsafe callee already requires.
     unsafe {
         crate::mainutils::errors::warningcall(call, format);
     }
@@ -112,25 +116,27 @@ pub fn NO_REFERENCES(x: SEXP) -> c_int {
 }
 
 /// isTs -- returns 1 if x has a tsp attribute (time series).
-pub unsafe fn isTs(x: SEXP) -> c_int {
-    unsafe {
-        if x.is_null() {
-            return 0;
-        }
-        let tsp = crate::eval::attrib_core::getAttrib(x, crate::eval::attrib_core::R_TspSymbol());
-        (tsp != R_NilValue()) as c_int
+pub fn isTs(x: SEXP) -> c_int {
+    if x.is_null() {
+        return 0;
     }
+    // SAFETY: raw attribute lookup on a live SEXP, as before.
+    let tsp = unsafe {
+        crate::eval::attrib_core::getAttrib(x, crate::eval::attrib_core::R_TspSymbol())
+    };
+    (tsp != R_NilValue()) as c_int
 }
 
 /// isArray -- returns 1 if x has a dim attribute (array).
-pub unsafe fn isArray(x: SEXP) -> c_int {
-    unsafe {
-        if x.is_null() {
-            return 0;
-        }
-        let dim = crate::eval::attrib_core::getAttrib(x, crate::eval::attrib_core::R_DimSymbol());
-        (dim != R_NilValue()) as c_int
+pub fn isArray(x: SEXP) -> c_int {
+    if x.is_null() {
+        return 0;
     }
+    // SAFETY: raw attribute lookup on a live SEXP, as before.
+    let dim = unsafe {
+        crate::eval::attrib_core::getAttrib(x, crate::eval::attrib_core::R_DimSymbol())
+    };
+    (dim != R_NilValue()) as c_int
 }
 
 /// isNumeric -- returns 1 if x is numeric (integer or real, not logical).
@@ -149,7 +155,8 @@ pub fn isNumeric(x: SEXP) -> c_int {
 }
 
 /// deparse1line_ex -- deparses an expression to a single-line string.
-pub unsafe fn deparse1line_ex(x: SEXP, abbreviate: c_int, opts: c_int) -> SEXP {
+pub fn deparse1line_ex(x: SEXP, abbreviate: c_int, opts: c_int) -> SEXP {
+    // SAFETY: delegates to the raw deparse boundary with the same arguments.
     unsafe {
         // deparse1line_ex is the "exact" variant that doesn't abbreviate
         crate::mainutils::deparse::deparse1line(x, abbreviate != 0)
@@ -230,19 +237,23 @@ pub fn PRIMNAME(op: SEXP) -> *const c_char {
 }
 
 /// Helper for getAttrib -- delegates to eval::attrib_core.
-pub(crate) unsafe fn getAttrib(x: SEXP, what: SEXP) -> SEXP {
+pub(crate) fn getAttrib(x: SEXP, what: SEXP) -> SEXP {
+    // SAFETY: delegates to the raw attrib boundary with the same arguments.
     unsafe { crate::eval::attrib_core::getAttrib(x, what) }
 }
 
 /// Helper for setAttrib -- delegates to eval::attrib_core.
-pub(crate) unsafe fn setAttrib(x: SEXP, what: SEXP, value: SEXP) {
+pub(crate) fn setAttrib(x: SEXP, what: SEXP, value: SEXP) {
+    // SAFETY: delegates to the raw attrib boundary with the same arguments.
     unsafe {
         crate::eval::attrib_core::setAttrib(x, what, value);
     }
 }
 
 /// Check if two arrays have conformable dimensions.
-pub unsafe fn conformable(a: SEXP, b: SEXP) -> c_int {
+pub fn conformable(a: SEXP, b: SEXP) -> c_int {
+    // SAFETY: the attribute lookups and INTEGER payload loans stay inside
+    // this comparison; no allocation or mutation intervenes.
     unsafe {
         if a.is_null() || b.is_null() {
             return 1;
@@ -269,18 +280,19 @@ pub unsafe fn conformable(a: SEXP, b: SEXP) -> c_int {
 }
 
 /// Report an unimplemented type error.
-pub unsafe fn UNIMPLEMENTED_TYPE(routine: *const c_char, x: SEXP) -> ! {
-    unsafe {
-        let routine = if routine.is_null() {
-            "relop"
-        } else {
-            CStr::from_ptr(routine).to_str().unwrap_or("relop")
-        };
-        let sexptype = if x.is_null() { -1 } else { TYPEOF(x) };
-        std::panic::panic_any(crate::sexp::context::RError {
-            message: format!("{routine}: unsupported SEXPTYPE {sexptype}"),
-        });
-    }
+pub fn UNIMPLEMENTED_TYPE(routine: *const c_char, x: SEXP) -> ! {
+    let routine = if routine.is_null() {
+        "relop"
+    } else {
+        // SAFETY: callers pass NUL-terminated routine name literals.
+        unsafe { CStr::from_ptr(routine) }
+            .to_str()
+            .unwrap_or("relop")
+    };
+    let sexptype = if x.is_null() { -1 } else { TYPEOF(x) };
+    std::panic::panic_any(crate::sexp::context::RError {
+        message: format!("{routine}: unsupported SEXPTYPE {sexptype}"),
+    });
 }
 
 fn bitwise_type_mismatch() -> ! {
@@ -295,24 +307,117 @@ fn relop_error(message: impl Into<String>) -> ! {
     });
 }
 
-unsafe fn primitive_name(op: SEXP) -> String {
-    unsafe {
-        let name = PRIMNAME(op);
-        if name.is_null() {
-            String::new()
-        } else {
-            CStr::from_ptr(name).to_string_lossy().into_owned()
-        }
+// ---------------------------------------------------------------------------
+// Session-scoped checked helpers
+// ---------------------------------------------------------------------------
+
+/// Acquire the current session's node factory for one builtin scope.
+///
+/// # Safety boundary
+/// [`OwnerToken::current`] names whichever instance is current on this
+/// thread. These routines only run on the interpreter thread during builtin
+/// evaluation, where the current instance is the rightful allocation owner.
+fn session_factory() -> SexpResult<SessionNodeFactory<'static>> {
+    // SAFETY: builtin evaluation runs on the interpreter thread with a live
+    // current instance; the token only scopes this factory's allocations.
+    let owner = unsafe { OwnerToken::current() }?;
+    Ok(owner.node_factory())
+}
+
+/// Wrap a raw SEXP owned by the current session's heap.
+///
+/// `SessionNodeFactory::wrap` validates heap membership, so the returned
+/// handle carries enough authority for checked reads, allocation, and
+/// `SexpMut` mutation.
+fn checked(x: SEXP) -> Sexp<'static> {
+    session_factory()
+        .and_then(|factory| factory.wrap(x))
+        .unwrap_or_else(|err| relop_error(err.to_string()))
+}
+
+/// Allocation authority carried by an already checked handle.
+fn vector_factory<'a>(x: &Sexp<'a>) -> SexpResult<SessionNodeFactory<'a>> {
+    StoredOwner::from_value(x)?.node_factory()
+}
+
+/// Allocate a fresh mutable vector in `x`'s session.
+fn alloc_in<'a>(x: &Sexp<'a>, kind: SEXPTYPE, len: R_xlen_t) -> SexpResult<SexpMut<'a>> {
+    let value = vector_factory(x)?.allocate(|arena| Some(arena.alloc_vector(kind, len)))?;
+    SexpMut::try_from_checked(value)
+}
+
+/// Allocate a one-element logical vector on the current session.
+fn scalar_logical_current(v: c_int) -> SexpResult<Sexp<'static>> {
+    let value =
+        session_factory()?.allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::LGLSXP, 1)))?;
+    let mut scalar = SexpMut::try_from_checked(value)?;
+    scalar.try_set_logical_elt(0, v)?;
+    Ok(scalar.freeze())
+}
+
+/// Hand a checked result back across the raw boundary.
+fn unwrap_sexp(result: SexpResult<Sexp<'_>>) -> SEXP {
+    result
+        .map(|value| value.as_raw())
+        .unwrap_or_else(|err| relop_error(err.to_string()))
+}
+
+/// Read an element of an integer or logical vector (shared `c_int` layout).
+fn int_like_elt(x: &Sexp<'_>, i: R_xlen_t) -> SexpResult<c_int> {
+    match x.typeof_() {
+        SEXPTYPE::LGLSXP => x.try_logical_elt(i),
+        _ => x.try_integer_elt(i),
     }
 }
 
-unsafe fn language_comparison_error(op: SEXP) -> ! {
-    unsafe {
-        relop_error(format!(
-            "comparison ({}) is not possible for language types",
-            primitive_name(op)
-        ))
+/// Thin safe wrapper over the raw `Seql` CHARSXP comparator.
+fn seql_chars(x: &Sexp<'_>, y: &Sexp<'_>) -> c_int {
+    // SAFETY: both handles name live CHARSXPs retained by their root leases;
+    // `Seql` performs the same reads the checked path would.
+    unsafe { Seql(x.as_raw(), y.as_raw()) }
+}
+
+/// Thin safe wrapper over the raw `charsxp_as_utf8` translation.
+fn charsxp_utf8(x: &Sexp<'_>) -> Vec<u8> {
+    // SAFETY: the handle names a live CHARSXP retained by its root lease.
+    unsafe { crate::sexp::accessors::charsxp_as_utf8(x.as_raw()) }
+}
+
+/// Coerce a checked vector to INTSXP, preserving the handle's session.
+fn coerce_to_int<'a>(x: &Sexp<'a>) -> SexpResult<Sexp<'a>> {
+    // SAFETY: `coerceVector` returns a fresh session-heap vector here, which
+    // the factory wrap re-admits as a checked handle.
+    let raw = unsafe { coerceVector(x.as_raw(), SEXPTYPE::INTSXP.into()) };
+    vector_factory(x)?.wrap(raw)
+}
+
+/// Coerce `x` to INTSXP when it is REALSXP (bitwise `a` operand rule).
+fn coerce_bitwise_operand<'a>(x: &Sexp<'a>) -> SexpResult<Sexp<'a>> {
+    if x.typeof_() == SEXPTYPE::REALSXP {
+        coerce_to_int(x)
+    } else {
+        Ok(x.clone())
     }
+}
+
+fn primitive_name(op: SEXP) -> String {
+    let name = PRIMNAME(op);
+    if name.is_null() {
+        String::new()
+    } else {
+        // SAFETY: `PRIMNAME` returns a pointer into the static primitive
+        // name table, which is NUL-terminated for the process lifetime.
+        unsafe { CStr::from_ptr(name) }
+            .to_string_lossy()
+            .into_owned()
+    }
+}
+
+fn language_comparison_error(op: SEXP) -> ! {
+    relop_error(format!(
+        "comparison ({}) is not possible for language types",
+        primitive_name(op)
+    ))
 }
 
 /// Returns DATAPTR as const Rcomplex pointer.
@@ -382,20 +487,18 @@ pub fn isLogical(x: SEXP) -> c_int {
 }
 
 /// Check if SEXP is a simple (no attribs) scalar.
-pub unsafe fn IS_SIMPLE_SCALAR(x: SEXP, _type: c_int) -> c_int {
-    unsafe {
-        if x.is_null() {
-            return 0;
-        }
-        let scalar = (*x).sxpinfo.scalar() as c_int;
-        let no_attrib = ATTRIB(x) == R_NilValue();
-        (scalar != 0 && no_attrib) as c_int
+pub fn IS_SIMPLE_SCALAR(x: SEXP, _type: c_int) -> c_int {
+    if x.is_null() {
+        return 0;
     }
+    let scalar = checked(x).header().sxpinfo.scalar() as c_int;
+    let no_attrib = ATTRIB(x) == R_NilValue();
+    (scalar != 0 && no_attrib) as c_int
 }
 
 /// Wraps Rf_ScalarLogical.
-pub unsafe fn ScalarLogical(x: c_int) -> SEXP {
-    unsafe { Rf_ScalarLogical(x) }
+pub fn ScalarLogical(x: c_int) -> SEXP {
+    unwrap_sexp(scalar_logical_current(x))
 }
 
 /// NA_STRING -- returns the NA string CHARSXP sentinel.
@@ -408,38 +511,43 @@ pub fn NA_STRING() -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// R_DimSymbol -- returns the dim symbol.
-pub unsafe fn R_DimSymbol() -> SEXP {
+pub fn R_DimSymbol() -> SEXP {
+    // SAFETY: delegates to the raw symbol boundary.
     unsafe { crate::eval::attrib_core::R_DimSymbol() }
 }
 
 /// R_DimNamesSymbol -- returns the dimnames symbol.
-pub unsafe fn R_DimNamesSymbol() -> SEXP {
+pub fn R_DimNamesSymbol() -> SEXP {
+    // SAFETY: delegates to the raw symbol boundary.
     unsafe { crate::eval::attrib_core::R_DimNamesSymbol() }
 }
 
 /// R_NamesSymbol -- returns the names symbol.
-pub unsafe fn R_NamesSymbol() -> SEXP {
+pub fn R_NamesSymbol() -> SEXP {
+    // SAFETY: delegates to the raw symbol boundary.
     unsafe { crate::eval::attrib_core::R_NamesSymbol() }
 }
 
 /// R_TspSymbol -- returns the tsp symbol.
-pub unsafe fn R_TspSymbol() -> SEXP {
+pub fn R_TspSymbol() -> SEXP {
+    // SAFETY: delegates to the raw symbol boundary.
     unsafe { crate::eval::attrib_core::R_TspSymbol() }
 }
 
 /// R_ClassSymbol -- returns the class symbol.
-pub unsafe fn R_ClassSymbol() -> SEXP {
+pub fn R_ClassSymbol() -> SEXP {
+    // SAFETY: delegates to the raw symbol boundary.
     unsafe { crate::eval::attrib_core::R_ClassSymbol() }
 }
 
 /// R_TrueValue -- returns the TRUE logical value.
-pub unsafe fn R_TrueValue() -> SEXP {
-    unsafe { Rf_ScalarLogical(1) }
+pub fn R_TrueValue() -> SEXP {
+    unwrap_sexp(scalar_logical_current(1))
 }
 
 /// R_FalseValue -- returns the FALSE logical value.
-pub unsafe fn R_FalseValue() -> SEXP {
-    unsafe { Rf_ScalarLogical(0) }
+pub fn R_FalseValue() -> SEXP {
+    unwrap_sexp(scalar_logical_current(0))
 }
 
 // ---------------------------------------------------------------------------
@@ -467,34 +575,23 @@ pub fn is_scalar_string(x: SEXP) -> bool {
 
 /// Perform a scalar relational operation, returning a ScalarLogical SEXP.
 #[inline]
-pub unsafe fn scalar_relop(code: c_int, x_val: c_double, y_val: c_double) -> SEXP {
-    unsafe {
-        match code {
-            EQOP => Rf_ScalarLogical(if x_val == y_val { 1 } else { 0 }),
-            NEOP => Rf_ScalarLogical(if x_val != y_val { 1 } else { 0 }),
-            LTOP => Rf_ScalarLogical(if x_val < y_val { 1 } else { 0 }),
-            GTOP => Rf_ScalarLogical(if x_val > y_val { 1 } else { 0 }),
-            LEOP => Rf_ScalarLogical(if x_val <= y_val { 1 } else { 0 }),
-            GEOP => Rf_ScalarLogical(if x_val >= y_val { 1 } else { 0 }),
-            _ => Rf_ScalarLogical(NA_LOGICAL),
-        }
-    }
+pub fn scalar_relop(code: c_int, x_val: c_double, y_val: c_double) -> SEXP {
+    let value = match code {
+        EQOP => (x_val == y_val) as c_int,
+        NEOP => (x_val != y_val) as c_int,
+        LTOP => (x_val < y_val) as c_int,
+        GTOP => (x_val > y_val) as c_int,
+        LEOP => (x_val <= y_val) as c_int,
+        GEOP => (x_val >= y_val) as c_int,
+        _ => NA_LOGICAL,
+    };
+    unwrap_sexp(scalar_logical_current(value))
 }
 
 /// Perform a scalar relational operation on integers.
 #[inline]
-pub unsafe fn scalar_relop_int(code: c_int, x_val: c_int, y_val: c_int) -> SEXP {
-    unsafe {
-        match code {
-            EQOP => Rf_ScalarLogical(if x_val == y_val { 1 } else { 0 }),
-            NEOP => Rf_ScalarLogical(if x_val != y_val { 1 } else { 0 }),
-            LTOP => Rf_ScalarLogical(if x_val < y_val { 1 } else { 0 }),
-            GTOP => Rf_ScalarLogical(if x_val > y_val { 1 } else { 0 }),
-            LEOP => Rf_ScalarLogical(if x_val <= y_val { 1 } else { 0 }),
-            GEOP => Rf_ScalarLogical(if x_val >= y_val { 1 } else { 0 }),
-            _ => Rf_ScalarLogical(NA_LOGICAL),
-        }
-    }
+pub fn scalar_relop_int(code: c_int, x_val: c_int, y_val: c_int) -> SEXP {
+    scalar_relop(code, x_val as c_double, y_val as c_double)
 }
 
 // ---------------------------------------------------------------------------
@@ -519,6 +616,22 @@ where
     }
 }
 
+/// Fallible variant of [`mod_iterate2`] for checked element access.
+#[inline]
+fn mod_iterate2_try<F>(n: R_xlen_t, n1: R_xlen_t, n2: R_xlen_t, mut f: F) -> SexpResult<()>
+where
+    F: FnMut(R_xlen_t, R_xlen_t, R_xlen_t) -> SexpResult<()>,
+{
+    let mut i1: R_xlen_t = 0;
+    let mut i2: R_xlen_t = 0;
+    for i in 0..n {
+        f(i, i1, i2)?;
+        i1 = if i1 + 1 == n1 { 0 } else { i1 + 1 };
+        i2 = if i2 + 1 == n2 { 0 } else { i2 + 1 };
+    }
+    Ok(())
+}
+
 // ---------------------------------------------------------------------------
 // do_relop -- main entry point for relational operators
 // ---------------------------------------------------------------------------
@@ -534,7 +647,7 @@ pub unsafe fn do_relop(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 
         // Prefer the evaluator DispatchGroup that actually applies methods.
         // Skip ordered factors so the dedicated Ops.ordered path keeps stock warnings.
-        if !has_class(arg1, "ordered") && !has_class(arg2, "ordered") {
+        if !checked_has_class(arg1, "ordered") && !checked_has_class(arg2, "ordered") {
             let mut ans: SEXP = R_NilValue();
             if crate::eval::dispatch::DispatchGroup(
                 b"Ops\0".as_ptr() as *const c_char,
@@ -757,7 +870,7 @@ pub unsafe fn do_relop_dflt(call: SEXP, op: SEXP, mut x: SEXP, mut y: SEXP) -> S
             && ny > 0
             && (nx == 1 || ny == 1)
         {
-            return numeric_relop(PRIMVAL(op), x, y);
+            return unwrap_sexp(numeric_relop(PRIMVAL(op), &checked(x), &checked(y)));
         }
 
         // Handle the general case
@@ -841,46 +954,50 @@ pub unsafe fn do_relop_dflt(call: SEXP, op: SEXP, mut x: SEXP, mut y: SEXP) -> S
                 // warningcall
             }
 
-            if let Some(result) = ordered_factor_relop(PRIMVAL(op), x, y) {
-                x = result;
-            } else if is_unordered_factor_eq_ne(PRIMVAL(op), x, y) {
+            if let Some(result) = ordered_factor_relop(PRIMVAL(op), &checked(x), &checked(y))
+                .unwrap_or_else(|err| -> Option<Sexp<'_>> { relop_error(err.to_string()) })
+            {
+                x = result.as_raw();
+            } else if is_unordered_factor_eq_ne(PRIMVAL(op), &checked(x), &checked(y))
+                .unwrap_or_else(|err| -> bool { relop_error(err.to_string()) })
+            {
                 // Upstream comparison.c: unordered factor ==/!= compares
                 // the LEVEL STRINGS of the elements (factor vs character
                 // matches the character against the levels); relational
                 // operators on unordered factors are "not meaningful".
-                let xf = factor_operand_as_levels(x);
+                let xf = unwrap_sexp(factor_operand_as_levels(&checked(x)));
                 let _xg = protect(xf);
-                let yf = factor_operand_as_levels(y);
+                let yf = unwrap_sexp(factor_operand_as_levels(&checked(y)));
                 let _yg = protect(yf);
-                x = string_relop(PRIMVAL(op), xf, yf);
+                x = unwrap_sexp(string_relop(PRIMVAL(op), &checked(xf), &checked(yf)));
             } else if isString(x) != 0 || isString(y) != 0 {
-                x = string_relop(PRIMVAL(op), x, y);
+                x = unwrap_sexp(string_relop(PRIMVAL(op), &checked(x), &checked(y)));
             } else if isComplex(x) != 0 || isComplex(y) != 0 {
-                x = complex_relop(PRIMVAL(op), x, y, call);
+                x = unwrap_sexp(complex_relop(PRIMVAL(op), &checked(x), &checked(y)));
             } else if (isNumeric(x) != 0 || isLogical(x) != 0)
                 && (isNumeric(y) != 0 || isLogical(y) != 0)
             {
-                x = numeric_relop(PRIMVAL(op), x, y);
+                x = unwrap_sexp(numeric_relop(PRIMVAL(op), &checked(x), &checked(y)));
             } else if isReal(x) != 0 || isReal(y) != 0 {
                 let xc = coerceVector(x, SEXPTYPE::REALSXP.into());
                 let _xg = protect(xc);
                 let yc = coerceVector(y, SEXPTYPE::REALSXP.into());
                 let _yg = protect(yc);
-                x = numeric_relop(PRIMVAL(op), xc, yc);
+                x = unwrap_sexp(numeric_relop(PRIMVAL(op), &checked(xc), &checked(yc)));
             } else if isInteger(x) != 0 || isInteger(y) != 0 {
                 let xc = coerceVector(x, SEXPTYPE::INTSXP.into());
                 let _xg = protect(xc);
                 let yc = coerceVector(y, SEXPTYPE::INTSXP.into());
                 let _yg = protect(yc);
-                x = numeric_relop(PRIMVAL(op), xc, yc);
+                x = unwrap_sexp(numeric_relop(PRIMVAL(op), &checked(xc), &checked(yc)));
             } else if isLogical(x) != 0 || isLogical(y) != 0 {
                 let xc = coerceVector(x, SEXPTYPE::LGLSXP.into());
                 let _xg = protect(xc);
                 let yc = coerceVector(y, SEXPTYPE::LGLSXP.into());
                 let _yg = protect(yc);
-                x = numeric_relop(PRIMVAL(op), xc, yc);
+                x = unwrap_sexp(numeric_relop(PRIMVAL(op), &checked(xc), &checked(yc)));
             } else if TYPEOF(x) == SEXPTYPE::RAWSXP || TYPEOF(y) == SEXPTYPE::RAWSXP {
-                x = raw_relop(PRIMVAL(op), x, y);
+                x = unwrap_sexp(raw_relop(PRIMVAL(op), &checked(x), &checked(y)));
             } else {
                 relop_error("comparison of these types is not implemented");
             }
@@ -892,84 +1009,81 @@ pub unsafe fn do_relop_dflt(call: SEXP, op: SEXP, mut x: SEXP, mut y: SEXP) -> S
     }
 }
 
+/// Raw-boundary `has_class` for callers still holding SEXP pointers.
+fn checked_has_class(value: SEXP, class_name: &str) -> bool {
+    if value.is_null() {
+        return false;
+    }
+    has_class(&checked(value), class_name).unwrap_or(false)
+}
+
 /// Whether this is an unordered-factor (either side) equality/inequality
 /// comparison — the case that compares level strings.
-unsafe fn is_unordered_factor_eq_ne(code: c_int, x: SEXP, y: SEXP) -> bool {
-    unsafe {
-        (code == EQOP || code == NEOP)
-            && (has_class(x, "factor") || has_class(y, "factor"))
-            && !has_class(x, "ordered")
-            && !has_class(y, "ordered")
-    }
+fn is_unordered_factor_eq_ne(code: c_int, x: &Sexp<'_>, y: &Sexp<'_>) -> SexpResult<bool> {
+    Ok((code == EQOP || code == NEOP)
+        && (has_class(x, "factor")? || has_class(y, "factor")?)
+        && !has_class(x, "ordered")?
+        && !has_class(y, "ordered")?)
 }
 
 /// Convert a factor operand to its level strings (`as.character(f)`); any
 /// non-factor operand maps to itself (a character RHS compares directly
 /// against the levels, matching upstream match()-against-levels).
-unsafe fn factor_operand_as_levels(v: SEXP) -> SEXP {
-    unsafe {
-        if has_class(v, "factor") {
-            let levels = match factor_levels(v) {
-                Some(levels) => levels,
-                None => return v,
-            };
-            let n = XLENGTH(v);
-            let out = Rf_allocVector3(SEXPTYPE::STRSXP, n);
-            let _g = protect(out);
-            for i in 0..n {
-                let code = INTEGER_ELT(v, i as c_int);
-                let s = if code == NA_INTEGER as i32 || code < 1 || code as usize > levels.len() {
-                    crate::sexp::globals::R_NaString()
-                } else {
-                    crate::sexp::constructors::Rf_mkChar(
-                        std::ffi::CString::new(levels[(code - 1) as usize].as_str())
-                            .unwrap_or_default()
-                            .as_ptr(),
-                    )
-                };
-                crate::sexp::accessors::SET_STRING_ELT(out, i, s);
-            }
-            out
-        } else {
-            v
-        }
+fn factor_operand_as_levels<'a>(v: &Sexp<'a>) -> SexpResult<Sexp<'a>> {
+    if !has_class(v, "factor")? {
+        return Ok(v.clone());
     }
+    let Some(levels) = factor_levels(v)? else {
+        return Ok(v.clone());
+    };
+    let n = v.len();
+    let mut out = alloc_in(v, SEXPTYPE::STRSXP, n)?;
+    for i in 0..n {
+        let code = v.try_integer_elt(i)?;
+        let value = if code == NA_INTEGER || code < 1 || code as usize > levels.len() {
+            checked(crate::sexp::globals::R_NaString())
+        } else {
+            vector_factory(v)?.character(&levels[(code - 1) as usize])?
+        };
+        out.try_set_string_elt(i, value)?;
+    }
+    Ok(out.freeze())
 }
 
-unsafe fn ordered_factor_relop(code: c_int, x: SEXP, y: SEXP) -> Option<SEXP> {
-    unsafe {
-        let x_ordered = has_class(x, "ordered");
-        let y_ordered = has_class(y, "ordered");
-        if !x_ordered && !y_ordered {
-            return None;
-        }
-
-        let levels_owner = if x_ordered { x } else { y };
-        let levels = factor_levels(levels_owner)?;
-        if (x_ordered && !factor_levels_match(x, &levels))
-            || (y_ordered && !factor_levels_match(y, &levels))
-        {
-            std::panic::panic_any(crate::sexp::context::RError {
-                message: "level sets of factors are different".to_string(),
-            });
-        }
-
-        let n1 = XLENGTH(x);
-        let n2 = XLENGTH(y);
-        let n = n1.max(n2);
-        let ans = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
-        if ans.is_null() {
-            return Some(ptr::null_mut());
-        }
-
-        let out = LOGICAL(ans);
-        mod_iterate2(n, n1, n2, |i, i1, i2| {
-            let lhs = ordered_operand_code(x, i1, &levels);
-            let rhs = ordered_operand_code(y, i2, &levels);
-            *out.add(i as usize) = ordered_code_relop(code, lhs, rhs);
-        });
-        Some(ans)
+fn ordered_factor_relop<'a>(
+    code: c_int,
+    x: &Sexp<'a>,
+    y: &Sexp<'a>,
+) -> SexpResult<Option<Sexp<'a>>> {
+    let x_ordered = has_class(x, "ordered")?;
+    let y_ordered = has_class(y, "ordered")?;
+    if !x_ordered && !y_ordered {
+        return Ok(None);
     }
+
+    let levels_owner = if x_ordered { x } else { y };
+    let Some(levels) = factor_levels(levels_owner)? else {
+        return Ok(None);
+    };
+    if (x_ordered && !factor_levels_match(x, &levels)?)
+        || (y_ordered && !factor_levels_match(y, &levels)?)
+    {
+        std::panic::panic_any(crate::sexp::context::RError {
+            message: "level sets of factors are different".to_string(),
+        });
+    }
+
+    let n1 = x.len();
+    let n2 = y.len();
+    let n = n1.max(n2);
+    let mut ans = alloc_in(x, SEXPTYPE::LGLSXP, n)?;
+
+    mod_iterate2_try(n, n1, n2, |i, i1, i2| {
+        let lhs = ordered_operand_code(x, i1, &levels)?;
+        let rhs = ordered_operand_code(y, i2, &levels)?;
+        ans.try_set_logical_elt(i, ordered_code_relop(code, lhs, rhs))
+    })?;
+    Ok(Some(ans.freeze()))
 }
 
 #[derive(Clone, Copy)]
@@ -993,71 +1107,84 @@ fn ordered_code_relop(code: c_int, lhs: OrderedOperand, rhs: OrderedOperand) -> 
     }
 }
 
-unsafe fn ordered_operand_code(value: SEXP, index: R_xlen_t, levels: &[String]) -> OrderedOperand {
-    unsafe {
-        if has_class(value, "ordered") {
-            let code = INTEGER_ELT(value, index as c_int);
-            if code == NA_INTEGER || code <= 0 || code as usize > levels.len() {
-                OrderedOperand::Missing
-            } else {
-                OrderedOperand::Code(code)
-            }
-        } else if TYPEOF(value) == SEXPTYPE::STRSXP {
-            let charsxp = STRING_ELT(value, index);
-            let Some(label) = charsxp_to_string(charsxp) else {
-                return OrderedOperand::Missing;
-            };
-            levels
-                .iter()
-                .position(|level| level == &label)
-                .map(|position| OrderedOperand::Code(position as c_int + 1))
-                .unwrap_or(OrderedOperand::UnknownLevel)
+fn ordered_operand_code(
+    value: &Sexp<'_>,
+    index: R_xlen_t,
+    levels: &[String],
+) -> SexpResult<OrderedOperand> {
+    if has_class(value, "ordered")? {
+        let code = value.try_integer_elt(index)?;
+        Ok(if code == NA_INTEGER || code <= 0 || code as usize > levels.len() {
+            OrderedOperand::Missing
         } else {
-            OrderedOperand::UnknownLevel
-        }
+            OrderedOperand::Code(code)
+        })
+    } else if value.typeof_() == SEXPTYPE::STRSXP {
+        let charsxp = value.try_string_elt(index)?;
+        let Some(label) = charsxp_to_string(&charsxp) else {
+            return Ok(OrderedOperand::Missing);
+        };
+        Ok(levels
+            .iter()
+            .position(|level| level == &label)
+            .map(|position| OrderedOperand::Code(position as c_int + 1))
+            .unwrap_or(OrderedOperand::UnknownLevel))
+    } else {
+        Ok(OrderedOperand::UnknownLevel)
     }
 }
 
-unsafe fn factor_levels_match(value: SEXP, expected: &[String]) -> bool {
-    unsafe { factor_levels(value).is_some_and(|levels| levels == expected) }
+fn factor_levels_match(value: &Sexp<'_>, expected: &[String]) -> SexpResult<bool> {
+    Ok(factor_levels(value)?.is_some_and(|levels| levels == expected))
 }
 
-unsafe fn factor_levels(value: SEXP) -> Option<Vec<String>> {
-    unsafe {
-        let levels = getAttrib(value, crate::eval::attrib_core::R_LevelsSymbol());
-        if levels.is_null() || levels == R_NilValue() || TYPEOF(levels) != SEXPTYPE::STRSXP {
-            return None;
-        }
-        let mut out = Vec::with_capacity(XLENGTH(levels) as usize);
-        for i in 0..XLENGTH(levels) {
-            out.push(charsxp_to_string(STRING_ELT(levels, i))?);
-        }
-        Some(out)
+fn factor_levels(value: &Sexp<'_>) -> SexpResult<Option<Vec<String>>> {
+    // SAFETY: `R_LevelsSymbol` returns the static levels symbol on the
+    // interpreter thread where factor comparisons run.
+    let levels = getAttrib(
+        value.as_raw(),
+        unsafe { crate::eval::attrib_core::R_LevelsSymbol() },
+    );
+    if levels.is_null() || levels == R_NilValue() {
+        return Ok(None);
     }
+    let levels = checked(levels);
+    if levels.typeof_() != SEXPTYPE::STRSXP {
+        return Ok(None);
+    }
+    let mut out = Vec::with_capacity(levels.len() as usize);
+    for i in 0..levels.len() {
+        let Some(label) = charsxp_to_string(&levels.try_string_elt(i)?) else {
+            return Ok(None);
+        };
+        out.push(label);
+    }
+    Ok(Some(out))
 }
 
-unsafe fn has_class(value: SEXP, class_name: &str) -> bool {
-    unsafe {
-        let class = getAttrib(value, R_ClassSymbol());
-        if class.is_null() || class == R_NilValue() || TYPEOF(class) != SEXPTYPE::STRSXP {
-            return false;
-        }
-        (0..XLENGTH(class))
-            .any(|i| charsxp_to_string(STRING_ELT(class, i)).as_deref() == Some(class_name))
+fn has_class(value: &Sexp<'_>, class_name: &str) -> SexpResult<bool> {
+    let class = getAttrib(value.as_raw(), R_ClassSymbol());
+    if class.is_null() || class == R_NilValue() {
+        return Ok(false);
     }
+    let class = checked(class);
+    if class.typeof_() != SEXPTYPE::STRSXP {
+        return Ok(false);
+    }
+    for i in 0..class.len() {
+        if charsxp_to_string(&class.try_string_elt(i)?).as_deref() == Some(class_name) {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
-unsafe fn charsxp_to_string(charsxp: SEXP) -> Option<String> {
-    unsafe {
-        if charsxp.is_null() || charsxp == crate::sexp::globals::R_NaString() {
-            return None;
-        }
-        let ptr = CHAR(charsxp);
-        if ptr.is_null() {
-            return None;
-        }
-        Some(CStr::from_ptr(ptr).to_string_lossy().into_owned())
+fn charsxp_to_string(charsxp: &Sexp<'_>) -> Option<String> {
+    if charsxp.as_raw().is_null() || charsxp.is_na_string() {
+        return None;
     }
+    let bytes = charsxp.header().char_bytes()?;
+    Some(String::from_utf8_lossy(&bytes).into_owned())
 }
 
 // ---------------------------------------------------------------------------
@@ -1065,73 +1192,63 @@ unsafe fn charsxp_to_string(charsxp: SEXP) -> Option<String> {
 // ---------------------------------------------------------------------------
 
 /// Numeric relational operation on integer/real vectors with recycling.
-unsafe fn numeric_relop(code: c_int, s1: SEXP, s2: SEXP) -> SEXP {
-    unsafe {
-        let n1 = XLENGTH(s1);
-        let n2 = XLENGTH(s2);
-        let n = if n1 > n2 { n1 } else { n2 };
+fn numeric_relop<'a>(code: c_int, s1: &Sexp<'a>, s2: &Sexp<'a>) -> SexpResult<Sexp<'a>> {
+    let n1 = s1.len();
+    let n2 = s2.len();
+    let n = if n1 > n2 { n1 } else { n2 };
 
-        let ans = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
-        if ans.is_null() {
-            return ptr::null_mut();
-        }
+    let mut ans = alloc_in(s1, SEXPTYPE::LGLSXP, n)?;
 
-        let pa = LOGICAL(ans);
-        let s1_is_int = isInteger(s1) != 0 || isLogical(s1) != 0;
-        let s2_is_int = isInteger(s2) != 0 || isLogical(s2) != 0;
+    let s1_is_int = matches!(s1.typeof_(), SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP);
+    let s2_is_int = matches!(s2.typeof_(), SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP);
 
-        if s1_is_int && s2_is_int {
-            let px1 = INTEGER(s1);
-            let px2 = INTEGER(s2);
-            mod_iterate2(n, n1, n2, |i, i1, i2| {
-                let x1 = *px1.add(i1 as usize);
-                let x2 = *px2.add(i2 as usize);
-                if is_na_int(x1) || is_na_int(x2) {
-                    *pa.add(i as usize) = NA_LOGICAL;
-                } else {
-                    *pa.add(i as usize) = numeric_op(code, x1 as c_double, x2 as c_double);
-                }
-            });
-        } else if s1_is_int {
-            let px1 = INTEGER(s1);
-            let px2 = REAL(s2);
-            mod_iterate2(n, n1, n2, |i, i1, i2| {
-                let x1 = *px1.add(i1 as usize);
-                let x2 = *px2.add(i2 as usize);
-                if is_na_int(x1) || ISNAN(x2) {
-                    *pa.add(i as usize) = NA_LOGICAL;
-                } else {
-                    *pa.add(i as usize) = numeric_op(code, x1 as c_double, x2);
-                }
-            });
-        } else if s2_is_int {
-            let px1 = REAL(s1);
-            let px2 = INTEGER(s2);
-            mod_iterate2(n, n1, n2, |i, i1, i2| {
-                let x1 = *px1.add(i1 as usize);
-                let x2 = *px2.add(i2 as usize);
-                if ISNAN(x1) || is_na_int(x2) {
-                    *pa.add(i as usize) = NA_LOGICAL;
-                } else {
-                    *pa.add(i as usize) = numeric_op(code, x1, x2 as c_double);
-                }
-            });
-        } else {
-            let px1 = REAL(s1);
-            let px2 = REAL(s2);
-            mod_iterate2(n, n1, n2, |i, i1, i2| {
-                let x1 = *px1.add(i1 as usize);
-                let x2 = *px2.add(i2 as usize);
-                if ISNAN(x1) || ISNAN(x2) {
-                    *pa.add(i as usize) = NA_LOGICAL;
-                } else {
-                    *pa.add(i as usize) = numeric_op(code, x1, x2);
-                }
-            });
-        }
-
-        ans
+    if s1_is_int && s2_is_int {
+        mod_iterate2_try(n, n1, n2, |i, i1, i2| {
+            let x1 = int_like_elt(s1, i1)?;
+            let x2 = int_like_elt(s2, i2)?;
+            let v = if is_na_int(x1) || is_na_int(x2) {
+                NA_LOGICAL
+            } else {
+                numeric_op(code, x1 as c_double, x2 as c_double)
+            };
+            ans.try_set_logical_elt(i, v)
+        })?;
+    } else if s1_is_int {
+        mod_iterate2_try(n, n1, n2, |i, i1, i2| {
+            let x1 = int_like_elt(s1, i1)?;
+            let x2 = s2.try_real_elt(i2)?;
+            let v = if is_na_int(x1) || ISNAN(x2) {
+                NA_LOGICAL
+            } else {
+                numeric_op(code, x1 as c_double, x2)
+            };
+            ans.try_set_logical_elt(i, v)
+        })?;
+    } else if s2_is_int {
+        mod_iterate2_try(n, n1, n2, |i, i1, i2| {
+            let x1 = s1.try_real_elt(i1)?;
+            let x2 = int_like_elt(s2, i2)?;
+            let v = if ISNAN(x1) || is_na_int(x2) {
+                NA_LOGICAL
+            } else {
+                numeric_op(code, x1, x2 as c_double)
+            };
+            ans.try_set_logical_elt(i, v)
+        })?;
+    } else {
+        mod_iterate2_try(n, n1, n2, |i, i1, i2| {
+            let x1 = s1.try_real_elt(i1)?;
+            let x2 = s2.try_real_elt(i2)?;
+            let v = if ISNAN(x1) || ISNAN(x2) {
+                NA_LOGICAL
+            } else {
+                numeric_op(code, x1, x2)
+            };
+            ans.try_set_logical_elt(i, v)
+        })?;
     }
+
+    Ok(ans.freeze())
 }
 
 /// Perform a single numeric comparison, returning 0/1/NA_LOGICAL.
@@ -1189,42 +1306,34 @@ fn numeric_op(code: c_int, x1: c_double, x2: c_double) -> c_int {
 // ---------------------------------------------------------------------------
 
 /// Complex relational operation (only EQOP and NEOP are valid).
-unsafe fn complex_relop(code: c_int, s1: SEXP, s2: SEXP, _call: SEXP) -> SEXP {
-    unsafe {
-        if code != EQOP && code != NEOP {
-            relop_error("invalid comparison with complex values");
-        }
-
-        let n1 = XLENGTH(s1);
-        let n2 = XLENGTH(s2);
-        let n = if n1 > n2 { n1 } else { n2 };
-
-        let ans = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
-        if ans.is_null() {
-            return ptr::null_mut();
-        }
-
-        let pa = LOGICAL(ans);
-        let px1 = COMPLEX_RO(s1);
-        let px2 = COMPLEX_RO(s2);
-
-        mod_iterate2(n, n1, n2, |i, i1, i2| {
-            let x1 = *px1.add(i1 as usize);
-            let x2 = *px2.add(i2 as usize);
-            if ISNAN(x1.r) || ISNAN(x1.i) || ISNAN(x2.r) || ISNAN(x2.i) {
-                *pa.add(i as usize) = NA_LOGICAL;
-            } else {
-                let eq = x1.r == x2.r && x1.i == x2.i;
-                *pa.add(i as usize) = if code == EQOP {
-                    if eq { 1 } else { 0 }
-                } else {
-                    if eq { 0 } else { 1 }
-                };
-            }
-        });
-
-        ans
+fn complex_relop<'a>(code: c_int, s1: &Sexp<'a>, s2: &Sexp<'a>) -> SexpResult<Sexp<'a>> {
+    if code != EQOP && code != NEOP {
+        relop_error("invalid comparison with complex values");
     }
+
+    let n1 = s1.len();
+    let n2 = s2.len();
+    let n = if n1 > n2 { n1 } else { n2 };
+
+    let mut ans = alloc_in(s1, SEXPTYPE::LGLSXP, n)?;
+
+    mod_iterate2_try(n, n1, n2, |i, i1, i2| {
+        let x1 = s1.try_complex_elt(i1)?;
+        let x2 = s2.try_complex_elt(i2)?;
+        let v = if ISNAN(x1.r) || ISNAN(x1.i) || ISNAN(x2.r) || ISNAN(x2.i) {
+            NA_LOGICAL
+        } else {
+            let eq = x1.r == x2.r && x1.i == x2.i;
+            if code == EQOP {
+                if eq { 1 } else { 0 }
+            } else {
+                if eq { 0 } else { 1 }
+            }
+        };
+        ans.try_set_logical_elt(i, v)
+    })?;
+
+    Ok(ans.freeze())
 }
 
 // ---------------------------------------------------------------------------
@@ -1232,61 +1341,57 @@ unsafe fn complex_relop(code: c_int, s1: SEXP, s2: SEXP, _call: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// String relational operation with NA handling and byte comparison.
-unsafe fn string_relop(code: c_int, s1: SEXP, s2: SEXP) -> SEXP {
-    unsafe {
-        let n1 = XLENGTH(s1);
-        let n2 = XLENGTH(s2);
-        let n = if n1 > n2 { n1 } else { n2 };
+fn string_relop<'a>(code: c_int, s1: &Sexp<'a>, s2: &Sexp<'a>) -> SexpResult<Sexp<'a>> {
+    let n1 = s1.len();
+    let n2 = s2.len();
+    let n = if n1 > n2 { n1 } else { n2 };
 
-        let ans = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
-        if ans.is_null() {
-            return ptr::null_mut();
+    let mut ans = alloc_in(s1, SEXPTYPE::LGLSXP, n)?;
+
+    mod_iterate2_try(n, n1, n2, |i, i1, i2| {
+        let c1 = s1.try_string_elt(i1)?;
+        let c2 = s2.try_string_elt(i2)?;
+
+        if c1.as_raw().is_null()
+            || c2.as_raw().is_null()
+            || c1.is_na_string()
+            || c2.is_na_string()
+        {
+            return ans.try_set_logical_elt(i, NA_LOGICAL);
         }
 
-        let pa = LOGICAL(ans);
-        let na_str = NA_STRING();
-
-        mod_iterate2(n, n1, n2, |i, i1, i2| {
-            let c1 = STRING_ELT(s1, i1);
-            let c2 = STRING_ELT(s2, i2);
-
-            if c1 == na_str || c2 == na_str || c1.is_null() || c2.is_null() {
-                *pa.add(i as usize) = NA_LOGICAL;
-                return;
-            }
-
-            if c1 == c2 {
-                match code {
-                    EQOP | LEOP | GEOP => *pa.add(i as usize) = 1,
-                    NEOP | LTOP | GTOP => *pa.add(i as usize) = 0,
-                    _ => *pa.add(i as usize) = NA_LOGICAL,
-                }
-                return;
-            }
-
-            if code == EQOP {
-                *pa.add(i as usize) = Seql(c1, c2);
-                return;
-            }
-            if code == NEOP {
-                *pa.add(i as usize) = if Seql(c1, c2) != 0 { 0 } else { 1 };
-                return;
-            }
-
-            let u1 = crate::sexp::accessors::charsxp_as_utf8(c1);
-            let u2 = crate::sexp::accessors::charsxp_as_utf8(c2);
-            let byte_cmp = u1.cmp(&u2);
-            *pa.add(i as usize) = match code {
-                LTOP => (byte_cmp == std::cmp::Ordering::Less) as c_int,
-                GTOP => (byte_cmp == std::cmp::Ordering::Greater) as c_int,
-                LEOP => (byte_cmp != std::cmp::Ordering::Greater) as c_int,
-                GEOP => (byte_cmp != std::cmp::Ordering::Less) as c_int,
+        if c1.as_raw() == c2.as_raw() {
+            let v = match code {
+                EQOP | LEOP | GEOP => 1,
+                NEOP | LTOP | GTOP => 0,
                 _ => NA_LOGICAL,
             };
-        });
+            return ans.try_set_logical_elt(i, v);
+        }
 
-        ans
-    }
+        if code == EQOP {
+            let v = seql_chars(&c1, &c2);
+            return ans.try_set_logical_elt(i, v);
+        }
+        if code == NEOP {
+            let v = if seql_chars(&c1, &c2) != 0 { 0 } else { 1 };
+            return ans.try_set_logical_elt(i, v);
+        }
+
+        let u1 = charsxp_utf8(&c1);
+        let u2 = charsxp_utf8(&c2);
+        let byte_cmp = u1.cmp(&u2);
+        let v = match code {
+            LTOP => (byte_cmp == std::cmp::Ordering::Less) as c_int,
+            GTOP => (byte_cmp == std::cmp::Ordering::Greater) as c_int,
+            LEOP => (byte_cmp != std::cmp::Ordering::Greater) as c_int,
+            GEOP => (byte_cmp != std::cmp::Ordering::Less) as c_int,
+            _ => NA_LOGICAL,
+        };
+        ans.try_set_logical_elt(i, v)
+    })?;
+
+    Ok(ans.freeze())
 }
 
 // ---------------------------------------------------------------------------
@@ -1294,29 +1399,20 @@ unsafe fn string_relop(code: c_int, s1: SEXP, s2: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Raw byte relational operation with recycling.
-unsafe fn raw_relop(code: c_int, s1: SEXP, s2: SEXP) -> SEXP {
-    unsafe {
-        let n1 = XLENGTH(s1);
-        let n2 = XLENGTH(s2);
-        let n = if n1 > n2 { n1 } else { n2 };
+fn raw_relop<'a>(code: c_int, s1: &Sexp<'a>, s2: &Sexp<'a>) -> SexpResult<Sexp<'a>> {
+    let n1 = s1.len();
+    let n2 = s2.len();
+    let n = if n1 > n2 { n1 } else { n2 };
 
-        let ans = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
-        if ans.is_null() {
-            return ptr::null_mut();
-        }
+    let mut ans = alloc_in(s1, SEXPTYPE::LGLSXP, n)?;
 
-        let pa = LOGICAL(ans);
-        let px1 = RAW_RO(s1);
-        let px2 = RAW_RO(s2);
+    mod_iterate2_try(n, n1, n2, |i, i1, i2| {
+        let x1 = s1.try_raw_elt(i1)?;
+        let x2 = s2.try_raw_elt(i2)?;
+        ans.try_set_logical_elt(i, raw_op(code, x1, x2))
+    })?;
 
-        mod_iterate2(n, n1, n2, |i, i1, i2| {
-            let x1 = *px1.add(i1 as usize);
-            let x2 = *px2.add(i2 as usize);
-            *pa.add(i as usize) = raw_op(code, x1, x2);
-        });
-
-        ans
-    }
+    Ok(ans.freeze())
 }
 
 /// Perform a single raw byte comparison.
@@ -1374,212 +1470,139 @@ fn raw_op(code: c_int, x1: Rbyte, x2: Rbyte) -> c_int {
 // ---------------------------------------------------------------------------
 
 /// Bitwise NOT operation on integer vectors.
-unsafe fn bitwiseNot(a: SEXP) -> SEXP {
-    unsafe {
-        let mut a = a;
-        let mut np: c_int = 0;
-
-        if isReal(a) != 0 {
-            a = coerceVector(a, SEXPTYPE::INTSXP.into());
-            np += 1;
-        }
-
-        match TYPEOF(a) {
-            t if t == SEXPTYPE::INTSXP => {
-                let m = XLENGTH(a);
-                let ans = Rf_allocVector3(SEXPTYPE::INTSXP, m);
-                if ans.is_null() {
-                    return ptr::null_mut();
-                }
-                let pans = INTEGER(ans);
-                let pa = INTEGER_RO(a);
-                for i in 0..m {
-                    let aa = *pa.add(i as usize);
-                    *pans.add(i as usize) = if is_na_int(aa) { aa } else { !aa };
-                }
-                ans
+fn bitwise_not<'a>(a: &Sexp<'a>) -> SexpResult<Sexp<'a>> {
+    let a = coerce_bitwise_operand(a)?;
+    match a.typeof_() {
+        SEXPTYPE::INTSXP => {
+            let m = a.len();
+            let mut ans = alloc_in(&a, SEXPTYPE::INTSXP, m)?;
+            for i in 0..m {
+                let aa = a.try_integer_elt(i)?;
+                ans.try_set_integer_elt(i, if is_na_int(aa) { aa } else { !aa })?;
             }
-            _ => {
-                UNIMPLEMENTED_TYPE(b"bitwNot\0".as_ptr() as *const c_char, a);
-            }
+            Ok(ans.freeze())
         }
+        _ => UNIMPLEMENTED_TYPE(b"bitwNot\0".as_ptr() as *const c_char, a.as_raw()),
     }
 }
 
 /// Bitwise AND of two integer vectors with recycling.
-unsafe fn bitwiseAnd(a: SEXP, b: SEXP) -> SEXP {
-    unsafe { bitwise_op(a, b, |x, y| x & y, b"bitwAnd\0") }
+fn bitwise_and<'a>(a: &Sexp<'a>, b: &Sexp<'a>) -> SexpResult<Sexp<'a>> {
+    bitwise_op(a, b, |x, y| x & y, b"bitwAnd\0")
 }
 
 /// Bitwise OR of two integer vectors with recycling.
-unsafe fn bitwiseOr(a: SEXP, b: SEXP) -> SEXP {
-    unsafe { bitwise_op(a, b, |x, y| x | y, b"bitwOr\0") }
+fn bitwise_or<'a>(a: &Sexp<'a>, b: &Sexp<'a>) -> SexpResult<Sexp<'a>> {
+    bitwise_op(a, b, |x, y| x | y, b"bitwOr\0")
 }
 
 /// Bitwise XOR of two integer vectors with recycling.
-unsafe fn bitwiseXor(a: SEXP, b: SEXP) -> SEXP {
-    unsafe { bitwise_op(a, b, |x, y| x ^ y, b"bitwXor\0") }
+fn bitwise_xor<'a>(a: &Sexp<'a>, b: &Sexp<'a>) -> SexpResult<Sexp<'a>> {
+    bitwise_op(a, b, |x, y| x ^ y, b"bitwXor\0")
 }
 
 /// Generic bitwise operation with type coercion and recycling.
-unsafe fn bitwise_op<F: Fn(c_int, c_int) -> c_int>(
-    mut a: SEXP,
-    mut b: SEXP,
+fn bitwise_op<'a, F: Fn(c_int, c_int) -> c_int>(
+    a: &Sexp<'a>,
+    b: &Sexp<'a>,
     op: F,
-    name: &[u8],
-) -> SEXP {
-    unsafe {
-        let mut np: c_int = 0;
-        if isReal(a) != 0 {
-            a = coerceVector(a, SEXPTYPE::INTSXP.into());
-            np += 1;
-        }
-        if isReal(b) != 0 {
-            b = coerceVector(b, SEXPTYPE::INTSXP.into());
-            np += 1;
-        }
+    name: &'static [u8],
+) -> SexpResult<Sexp<'a>> {
+    let a = coerce_bitwise_operand(a)?;
+    let b = coerce_bitwise_operand(b)?;
 
-        if TYPEOF(a) != TYPEOF(b) {
-            bitwise_type_mismatch();
-        }
+    if a.typeof_() != b.typeof_() {
+        bitwise_type_mismatch();
+    }
 
-        match TYPEOF(a) {
-            t if t == SEXPTYPE::INTSXP => {
-                let m = XLENGTH(a);
-                let n = XLENGTH(b);
-                let mn = if m > 0 && n > 0 {
-                    if m > n { m } else { n }
-                } else {
-                    0
-                };
-                let ans = Rf_allocVector3(SEXPTYPE::INTSXP, mn);
-                if ans.is_null() {
-                    return ptr::null_mut();
-                }
-                let pans = INTEGER(ans);
-                let pa = INTEGER_RO(a);
-                let pb = INTEGER_RO(b);
-                mod_iterate2(mn, m, n, |i, ia, ib| {
-                    let aa = *pa.add(ia as usize);
-                    let bb = *pb.add(ib as usize);
-                    *pans.add(i as usize) = if is_na_int(aa) || is_na_int(bb) {
+    match a.typeof_() {
+        SEXPTYPE::INTSXP => {
+            let m = a.len();
+            let n = b.len();
+            let mn = if m > 0 && n > 0 { m.max(n) } else { 0 };
+            let mut ans = alloc_in(&a, SEXPTYPE::INTSXP, mn)?;
+            mod_iterate2_try(mn, m, n, |i, ia, ib| {
+                let aa = a.try_integer_elt(ia)?;
+                let bb = b.try_integer_elt(ib)?;
+                ans.try_set_integer_elt(
+                    i,
+                    if is_na_int(aa) || is_na_int(bb) {
                         NA_INTEGER
                     } else {
                         op(aa, bb)
-                    };
-                });
-                ans
-            }
-            _ => {
-                UNIMPLEMENTED_TYPE(name.as_ptr() as *const c_char, a);
-            }
+                    },
+                )
+            })?;
+            Ok(ans.freeze())
         }
+        _ => UNIMPLEMENTED_TYPE(name.as_ptr() as *const c_char, a.as_raw()),
+    }
+}
+
+/// Coerce the shift-amount operand: anything non-integer goes to INTSXP.
+fn bitwise_shift_rhs<'a>(x: &Sexp<'a>) -> SexpResult<Sexp<'a>> {
+    if x.typeof_() != SEXPTYPE::INTSXP {
+        coerce_to_int(x)
+    } else {
+        Ok(x.clone())
     }
 }
 
 /// Bitwise left shift of integer vectors with recycling.
-unsafe fn bitwiseShiftL(a: SEXP, b: SEXP) -> SEXP {
-    unsafe {
-        let mut a = a;
-        let mut b = b;
-        let mut np: c_int = 0;
-        if isReal(a) != 0 {
-            a = coerceVector(a, SEXPTYPE::INTSXP.into());
-            np += 1;
-        }
-        if isInteger(b) == 0 {
-            b = coerceVector(b, SEXPTYPE::INTSXP.into());
-            np += 1;
-        }
-
-        if TYPEOF(a) != TYPEOF(b) {
-            bitwise_type_mismatch();
-        }
-
-        match TYPEOF(a) {
-            t if t == SEXPTYPE::INTSXP => {
-                let m = XLENGTH(a);
-                let n = XLENGTH(b);
-                let mn = if m > 0 && n > 0 {
-                    if m > n { m } else { n }
-                } else {
-                    0
-                };
-                let ans = Rf_allocVector3(SEXPTYPE::INTSXP, mn);
-                if ans.is_null() {
-                    return ptr::null_mut();
-                }
-                let pans = INTEGER(ans);
-                let pa = INTEGER_RO(a);
-                let pb = INTEGER_RO(b);
-                mod_iterate2(mn, m, n, |i, ia, ib| {
-                    let aa = *pa.add(ia as usize);
-                    let bb = *pb.add(ib as usize);
-                    *pans.add(i as usize) = if is_na_int(aa) || is_na_int(bb) || bb < 0 || bb > 31 {
-                        NA_INTEGER
-                    } else {
-                        ((aa as c_uint) << bb) as c_int
-                    };
-                });
-                ans
-            }
-            _ => {
-                UNIMPLEMENTED_TYPE(b"bitShiftL\0".as_ptr() as *const c_char, a);
-            }
-        }
-    }
+fn bitwise_shift_l<'a>(a: &Sexp<'a>, b: &Sexp<'a>) -> SexpResult<Sexp<'a>> {
+    bitwise_shift(
+        a,
+        b,
+        |aa, bb| ((aa as c_uint) << bb) as c_int,
+        b"bitShiftL\0",
+    )
 }
 
 /// Bitwise right shift of integer vectors with recycling.
-unsafe fn bitwiseShiftR(a: SEXP, b: SEXP) -> SEXP {
-    unsafe {
-        let mut a = a;
-        let mut b = b;
-        let mut np: c_int = 0;
-        if isReal(a) != 0 {
-            a = coerceVector(a, SEXPTYPE::INTSXP.into());
-            np += 1;
-        }
-        if isInteger(b) == 0 {
-            b = coerceVector(b, SEXPTYPE::INTSXP.into());
-            np += 1;
-        }
+fn bitwise_shift_r<'a>(a: &Sexp<'a>, b: &Sexp<'a>) -> SexpResult<Sexp<'a>> {
+    bitwise_shift(
+        a,
+        b,
+        |aa, bb| ((aa as c_uint) >> bb) as c_int,
+        b"bitShiftR\0",
+    )
+}
 
-        if TYPEOF(a) != TYPEOF(b) {
-            bitwise_type_mismatch();
-        }
+/// Shared shift kernel: NA or out-of-range counts yield NA_INTEGER.
+fn bitwise_shift<'a, F: Fn(c_int, c_int) -> c_int>(
+    a: &Sexp<'a>,
+    b: &Sexp<'a>,
+    op: F,
+    name: &'static [u8],
+) -> SexpResult<Sexp<'a>> {
+    let a = coerce_bitwise_operand(a)?;
+    let b = bitwise_shift_rhs(b)?;
 
-        match TYPEOF(a) {
-            t if t == SEXPTYPE::INTSXP => {
-                let m = XLENGTH(a);
-                let n = XLENGTH(b);
-                let mn = if m > 0 && n > 0 {
-                    if m > n { m } else { n }
-                } else {
-                    0
-                };
-                let ans = Rf_allocVector3(SEXPTYPE::INTSXP, mn);
-                if ans.is_null() {
-                    return ptr::null_mut();
-                }
-                let pans = INTEGER(ans);
-                let pa = INTEGER_RO(a);
-                let pb = INTEGER_RO(b);
-                mod_iterate2(mn, m, n, |i, ia, ib| {
-                    let aa = *pa.add(ia as usize);
-                    let bb = *pb.add(ib as usize);
-                    *pans.add(i as usize) = if is_na_int(aa) || is_na_int(bb) || bb < 0 || bb > 31 {
+    if a.typeof_() != b.typeof_() {
+        bitwise_type_mismatch();
+    }
+
+    match a.typeof_() {
+        SEXPTYPE::INTSXP => {
+            let m = a.len();
+            let n = b.len();
+            let mn = if m > 0 && n > 0 { m.max(n) } else { 0 };
+            let mut ans = alloc_in(&a, SEXPTYPE::INTSXP, mn)?;
+            mod_iterate2_try(mn, m, n, |i, ia, ib| {
+                let aa = a.try_integer_elt(ia)?;
+                let bb = b.try_integer_elt(ib)?;
+                ans.try_set_integer_elt(
+                    i,
+                    if is_na_int(aa) || is_na_int(bb) || bb < 0 || bb > 31 {
                         NA_INTEGER
                     } else {
-                        ((aa as c_uint) >> bb) as c_int
-                    };
-                });
-                ans
-            }
-            _ => {
-                UNIMPLEMENTED_TYPE(b"bitShiftR\0".as_ptr() as *const c_char, a);
-            }
+                        op(aa, bb)
+                    },
+                )
+            })?;
+            Ok(ans.freeze())
         }
+        _ => UNIMPLEMENTED_TYPE(name.as_ptr() as *const c_char, a.as_raw()),
     }
 }
 
@@ -1588,53 +1611,55 @@ unsafe fn bitwiseShiftR(a: SEXP, b: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Entry point for bitwise operators dispatched from R's internal mechanism.
+///
+/// # Safety
+/// ABI boundary registered via `PrimFun`; the body delegates to checked
+/// kernels through the session wrap in [`checked`].
 pub unsafe fn do_bitwise(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe {
-        let _ = (call, env);
-        let a = CAR(args);
-        let b = CADR(args);
-        match primitive_name(op).as_str() {
-            "bitwAnd" => bitwiseAnd(a, b),
-            "bitwNot" => bitwiseNot(a),
-            "bitwOr" => bitwiseOr(a, b),
-            "bitwXor" => bitwiseXor(a, b),
-            "bitwShiftL" => bitwiseShiftL(a, b),
-            "bitwShiftR" => bitwiseShiftR(a, b),
-            _ => match PRIMVAL(op) {
-                BITWISE_AND => bitwiseAnd(a, b),
-                BITWISE_NOT => bitwiseNot(a),
-                BITWISE_OR => bitwiseOr(a, b),
-                BITWISE_XOR => bitwiseXor(a, b),
-                BITWISE_SHIFT_L => bitwiseShiftL(a, b),
-                BITWISE_SHIFT_R => bitwiseShiftR(a, b),
-                _ => ptr::null_mut(),
-            },
-        }
+    let _ = (call, env);
+    let a = checked(CAR(args));
+    let b = checked(CADR(args));
+    match primitive_name(op).as_str() {
+        "bitwAnd" => unwrap_sexp(bitwise_and(&a, &b)),
+        "bitwNot" => unwrap_sexp(bitwise_not(&a)),
+        "bitwOr" => unwrap_sexp(bitwise_or(&a, &b)),
+        "bitwXor" => unwrap_sexp(bitwise_xor(&a, &b)),
+        "bitwShiftL" => unwrap_sexp(bitwise_shift_l(&a, &b)),
+        "bitwShiftR" => unwrap_sexp(bitwise_shift_r(&a, &b)),
+        _ => match PRIMVAL(op) {
+            BITWISE_AND => unwrap_sexp(bitwise_and(&a, &b)),
+            BITWISE_NOT => unwrap_sexp(bitwise_not(&a)),
+            BITWISE_OR => unwrap_sexp(bitwise_or(&a, &b)),
+            BITWISE_XOR => unwrap_sexp(bitwise_xor(&a, &b)),
+            BITWISE_SHIFT_L => unwrap_sexp(bitwise_shift_l(&a, &b)),
+            BITWISE_SHIFT_R => unwrap_sexp(bitwise_shift_r(&a, &b)),
+            _ => ptr::null_mut(),
+        },
     }
 }
 
 pub unsafe fn do_bitwAnd(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { bitwiseAnd(CAR(args), CADR(args)) }
+    unwrap_sexp(bitwise_and(&checked(CAR(args)), &checked(CADR(args))))
 }
 
 pub unsafe fn do_bitwOr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { bitwiseOr(CAR(args), CADR(args)) }
+    unwrap_sexp(bitwise_or(&checked(CAR(args)), &checked(CADR(args))))
 }
 
 pub unsafe fn do_bitwXor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { bitwiseXor(CAR(args), CADR(args)) }
+    unwrap_sexp(bitwise_xor(&checked(CAR(args)), &checked(CADR(args))))
 }
 
 pub unsafe fn do_bitwNot(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { bitwiseNot(CAR(args)) }
+    unwrap_sexp(bitwise_not(&checked(CAR(args))))
 }
 
 pub unsafe fn do_bitwShiftL(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { bitwiseShiftL(CAR(args), CADR(args)) }
+    unwrap_sexp(bitwise_shift_l(&checked(CAR(args)), &checked(CADR(args))))
 }
 
 pub unsafe fn do_bitwShiftR(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { bitwiseShiftR(CAR(args), CADR(args)) }
+    unwrap_sexp(bitwise_shift_r(&checked(CAR(args)), &checked(CADR(args))))
 }
 
 // ---------------------------------------------------------------------------
@@ -1758,13 +1783,13 @@ mod tests {
             *INTEGER(s2).add(1) = 4;
             *INTEGER(s2).add(2) = 3;
 
-            let ans = numeric_relop(EQOP, s1, s2);
+            let ans = numeric_relop(EQOP, &checked(s1), &checked(s2)).unwrap().as_raw();
             assert!(!ans.is_null());
             assert_eq!(*LOGICAL(ans).add(0), 1); // 1 == 1
             assert_eq!(*LOGICAL(ans).add(1), 0); // 2 != 4
             assert_eq!(*LOGICAL(ans).add(2), 1); // 3 == 3
 
-            let ans_lt = numeric_relop(LTOP, s1, s2);
+            let ans_lt = numeric_relop(LTOP, &checked(s1), &checked(s2)).unwrap().as_raw();
             assert_eq!(*LOGICAL(ans_lt).add(0), 0); // 1 < 1 => FALSE
             assert_eq!(*LOGICAL(ans_lt).add(1), 1); // 2 < 4 => TRUE
             assert_eq!(*LOGICAL(ans_lt).add(2), 0); // 3 < 3 => FALSE
@@ -1785,7 +1810,7 @@ mod tests {
             *INTEGER(s2).add(1) = 2;
             *INTEGER(s2).add(2) = NA_INTEGER;
 
-            let ans = numeric_relop(EQOP, s1, s2);
+            let ans = numeric_relop(EQOP, &checked(s1), &checked(s2)).unwrap().as_raw();
             assert_eq!(*LOGICAL(ans).add(0), 1); // 1 == 1
             assert_eq!(*LOGICAL(ans).add(1), NA_LOGICAL); // NA == 2
             assert_eq!(*LOGICAL(ans).add(2), NA_LOGICAL); // 3 == NA
@@ -1804,7 +1829,7 @@ mod tests {
             *INTEGER(s2).add(1) = 5;
             *INTEGER(s2).add(2) = 7;
 
-            let ans = numeric_relop(EQOP, s1, s2);
+            let ans = numeric_relop(EQOP, &checked(s1), &checked(s2)).unwrap().as_raw();
             assert_eq!(*LOGICAL(ans).add(0), 0); // 5 == 3 => FALSE
             assert_eq!(*LOGICAL(ans).add(1), 1); // 5 == 5 => TRUE
             assert_eq!(*LOGICAL(ans).add(2), 0); // 5 == 7 => FALSE
@@ -1823,7 +1848,7 @@ mod tests {
             *REAL(s2).add(0) = 1.5;
             *REAL(s2).add(1) = 3.5;
 
-            let ans = numeric_relop(NEOP, s1, s2);
+            let ans = numeric_relop(NEOP, &checked(s1), &checked(s2)).unwrap().as_raw();
             assert_eq!(*LOGICAL(ans).add(0), 0); // 1.5 != 1.5 => FALSE
             assert_eq!(*LOGICAL(ans).add(1), 1); // 2.5 != 3.5 => TRUE
         }
@@ -1841,7 +1866,7 @@ mod tests {
             *REAL(s2).add(0) = 1.0;
             *REAL(s2).add(1) = f64::NAN;
 
-            let ans = numeric_relop(EQOP, s1, s2);
+            let ans = numeric_relop(EQOP, &checked(s1), &checked(s2)).unwrap().as_raw();
             assert_eq!(*LOGICAL(ans).add(0), NA_LOGICAL); // NaN == 1.0
             assert_eq!(*LOGICAL(ans).add(1), NA_LOGICAL); // 1.0 == NaN
         }
@@ -1861,12 +1886,12 @@ mod tests {
             *RAW(s2).add(1) = 25;
             *RAW(s2).add(2) = 30;
 
-            let ans = raw_relop(EQOP, s1, s2);
+            let ans = raw_relop(EQOP, &checked(s1), &checked(s2)).unwrap().as_raw();
             assert_eq!(*LOGICAL(ans).add(0), 1);
             assert_eq!(*LOGICAL(ans).add(1), 0);
             assert_eq!(*LOGICAL(ans).add(2), 1);
 
-            let ans_lt = raw_relop(LTOP, s1, s2);
+            let ans_lt = raw_relop(LTOP, &checked(s1), &checked(s2)).unwrap().as_raw();
             assert_eq!(*LOGICAL(ans_lt).add(0), 0);
             assert_eq!(*LOGICAL(ans_lt).add(1), 1);
             assert_eq!(*LOGICAL(ans_lt).add(2), 0);
@@ -1905,7 +1930,7 @@ mod tests {
         unsafe {
             let string = Rf_allocVector(SEXPTYPE::STRSXP, 1);
             let err = std::panic::catch_unwind(|| {
-                let _ = bitwiseNot(string);
+                let _ = bitwise_not(&checked(string));
             })
             .expect_err("unsupported bitwise type should raise an RError");
             let message = err
@@ -1926,7 +1951,7 @@ mod tests {
             *LOGICAL(logical) = 1;
 
             let err = std::panic::catch_unwind(|| {
-                let _ = bitwise_op(integer, logical, |x, y| x & y, b"bitwAnd\0");
+                let _ = bitwise_op(&checked(integer), &checked(logical), |x, y| x & y, b"bitwAnd\0");
             })
             .expect_err("mismatched bitwise operands should raise an RError");
             let message = err
@@ -2002,7 +2027,7 @@ mod tests {
             *COMPLEX(x) = Rcomplex { r: 1.0, i: 0.0 };
             *COMPLEX(y) = Rcomplex { r: 2.0, i: 0.0 };
             let err = std::panic::catch_unwind(|| {
-                let _ = complex_relop(LTOP, x, y, ptr::null_mut());
+                let _ = complex_relop(LTOP, &checked(x), &checked(y));
             })
             .expect_err("complex ordering should raise an RError");
             let message = err
