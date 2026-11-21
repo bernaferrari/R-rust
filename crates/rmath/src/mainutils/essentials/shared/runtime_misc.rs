@@ -21,6 +21,15 @@ pub(crate) fn owner_sexp<'s>(owner: OwnerToken<'s>, value: SEXP) -> Sexp<'s> {
         .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
 }
 
+/// Allocate a scalar logical through the runtime constructor.
+///
+/// Centralizes the single unsafe `Rf_ScalarLogical` FFI call so callers keep
+/// their bodies on the safe side of the boundary.
+pub(crate) fn scalar_logical(value: c_int) -> SEXP {
+    // SAFETY: allocates a scalar logical through the runtime constructor.
+    unsafe { Rf_ScalarLogical(value) }
+}
+
 /// Read one integer-like element (`INTSXP` or `LGLSXP`) through typed cells.
 pub(crate) fn integer_like_elt(x: &Sexp<'_>, i: R_xlen_t) -> c_int {
     let result = if x.typeof_() == SEXPTYPE::LGLSXP {
