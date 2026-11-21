@@ -104,6 +104,8 @@ impl Drop for TextWriter<'_> {
     fn drop(&mut self) {
         // No callbacks: the operation pin still retains this physical runtime.
         // Restore only the exact original connection, never a reused slot.
+        // SAFETY: `self.owner` pins its live runtime for the guard's whole
+        // lifetime, so the instance pointer stays valid for this field borrow.
         unsafe {
             let table = &mut (*self.owner.as_ptr()).connections_state.table;
             if let Some(conn) = table
@@ -133,17 +135,16 @@ pub(super) fn publish(
     let Some(environment) = data.environment.as_ref() else {
         return;
     };
-    if name.is_empty() {
+    if name.is_empty() || name.contains('\0') {
         return;
     }
-    let Ok(name) = CString::new(name) else {
-        return;
-    };
     let factory = owner.node_factory();
-    let symbol = call(owner, connection, || unsafe {
-        crate::sexp::symbol::Rf_install(name.as_ptr())
+    let symbol = call(owner, connection, || {
+        crate::sexp::symbol::install_str(name)
     });
     let old = call(owner, connection, || unsafe {
+        // SAFETY: `environment` is a checked owning handle and `symbol` is a
+        // live SYMSXP for the duration of this lookup.
         crate::sexp::envir::R_findVarInFrame(environment.as_raw(), symbol)
     });
     let old = factory
@@ -163,6 +164,7 @@ pub(super) fn publish(
         &factory,
     );
     call(owner, connection, || unsafe {
+        // SAFETY: all three handles are live for this strictly-local env write.
         crate::sexp::envir::defineVar(symbol, answer.as_raw(), environment.as_raw())
     });
     data.published = complete;
@@ -180,6 +182,8 @@ fn build<'owner>(
         .unwrap_or_else(|_| r_error("too many text connection lines"));
     let answer = if let Some(old) = old {
         let raw = call(owner, connection, || unsafe {
+            // SAFETY: `old` is a checked owning handle; xlengthgets resizes
+            // the live STRSXP in place.
             crate::mainutils::builtin::xlengthgets(old.as_raw(), length)
         });
         factory
@@ -193,10 +197,14 @@ fn build<'owner>(
     };
     let mut answer = SexpMut::try_from_checked(answer).unwrap_or_else(|e| r_error(&e.to_string()));
     for (i, line) in lines.iter().enumerate().skip(start) {
-        let line = CString::new(line.as_str()).unwrap_or_default();
-        let raw = call(owner, connection, || unsafe { Rf_mkChar(line.as_ptr()) });
-        let character = factory
-            .wrap(raw)
+        // CString::new rejected interior NUL; keep the previous ""
+        // substitution now that the factory copies the text directly.
+        let text = if line.contains('\0') {
+            ""
+        } else {
+            line.as_str()
+        };
+        let character = call(owner, connection, || factory.character(text))
             .unwrap_or_else(|e| r_error(&e.to_string()));
         answer
             .try_set_string_elt(i as R_xlen_t, character)

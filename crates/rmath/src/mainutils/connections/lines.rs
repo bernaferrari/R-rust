@@ -31,7 +31,7 @@ use crate::sexp::protect::*;
 // ---------------------------------------------------------------------------
 
 pub fn do_readLines(call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
+    {
         let scon = CAR(args);
         let mut n_val = -1;
         let mut _ok = 1;
@@ -113,8 +113,7 @@ pub fn do_readLines(call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
             table[i].as_ref().is_some_and(|conn| !conn.isopen)
         };
         let mut auto_guard = temporarily_open.then(|| {
-            let owner = crate::sexp::owner::OwnerToken::current()
-                .unwrap_or_else(|e| r_error(&e.to_string()));
+            let owner = current_owner();
             let mut guard = ConnectionCleanup::new(owner, false);
             guard.attach(i as c_int);
             guard
@@ -304,7 +303,7 @@ fn read_line_charsxp(bytes: &[u8], mark_utf8: bool) -> SEXP {
 // ---------------------------------------------------------------------------
 
 pub fn do_writeLines(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
+    {
         let text = CAR(args);
         args = CDR(args);
         let scon = CAR(args);
@@ -329,8 +328,7 @@ pub fn do_writeLines(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP
             table[i].as_ref().is_some_and(|conn| !conn.isopen)
         };
         let mut auto_guard = temporarily_open.then(|| {
-            let owner = crate::sexp::owner::OwnerToken::current()
-                .unwrap_or_else(|e| r_error(&e.to_string()));
+            let owner = current_owner();
             let mut guard = ConnectionCleanup::new(owner, false);
             guard.attach(i as c_int);
             guard
@@ -371,8 +369,7 @@ pub fn do_writeLines(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP
         };
         if anonymous {
             let token = connection_token(i as c_int).unwrap_or_else(|message| r_error(&message));
-            let owner = crate::sexp::owner::OwnerToken::current()
-                .unwrap_or_else(|error| r_error(&error.to_string()));
+            let owner = current_owner();
             let text = owner
                 .sexp(text)
                 .and_then(crate::sexp::Sexp::into_owned)
@@ -398,8 +395,7 @@ pub fn do_writeLines(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP
         };
         if text_output {
             let token = connection_token(i as c_int).unwrap_or_else(|e| r_error(&e));
-            let owner = crate::sexp::owner::OwnerToken::current()
-                .unwrap_or_else(|e| r_error(&e.to_string()));
+            let owner = current_owner();
             let _pin = owner.pin().unwrap_or_else(|e| r_error(&e.to_string()));
             let text = owner
                 .sexp(text)
@@ -506,17 +502,19 @@ pub fn do_writeLines(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP
 }
 
 fn auto_open_connection(con: SEXP, mode: &str, guard: &ConnectionCleanup) {
-    unsafe {
-        let mode = Rf_mkString(CString::new(mode).unwrap_or_default().as_ptr());
-        let _mode_root = protect(mode);
-        let inner = Rf_cons(mode, R_NilValue());
-        let _inner_root = protect(inner);
-        let call_args = Rf_cons(con, inner);
-        let _args_root = protect(call_args);
-        guard.check();
-        super::file::do_open(ptr::null_mut(), ptr::null_mut(), call_args, R_NilValue());
-        guard.check();
-    }
+    let mode = {
+        let text = CString::new(mode).unwrap_or_default();
+        // SAFETY: `text` is a live NUL-terminated buffer for the call.
+        unsafe { Rf_mkString(text.as_ptr()) }
+    };
+    let _mode_root = protect(mode);
+    let inner = Rf_cons(mode, R_NilValue());
+    let _inner_root = protect(inner);
+    let call_args = Rf_cons(con, inner);
+    let _args_root = protect(call_args);
+    guard.check();
+    super::file::do_open(ptr::null_mut(), ptr::null_mut(), call_args, R_NilValue());
+    guard.check();
 }
 
 pub(super) fn read_crlf_line<R: BufRead>(reader: &mut R) -> io::Result<Option<(String, bool)>> {

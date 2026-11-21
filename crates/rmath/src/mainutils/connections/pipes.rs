@@ -96,7 +96,7 @@ pub fn do_pipe(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 pub fn do_rawConnection(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
+    {
         let first = CAR(args);
         let (sraw, sopen) = if TYPEOF(first) == SEXPTYPE::RAWSXP {
             (first, CAR(CDR(args)))
@@ -126,10 +126,7 @@ pub fn do_rawConnection(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> S
         let mut raw_data = Vec::new();
         if !sraw.is_null() && TYPEOF(sraw) == SEXPTYPE::RAWSXP {
             let len = LENGTH(sraw) as usize;
-            let data_ptr = RAW(sraw);
-            if !data_ptr.is_null() && len > 0 {
-                raw_data.extend_from_slice(std::slice::from_raw_parts(data_ptr, len));
-            }
+            raw_data.extend((0..len as c_int).map(|i| RAW_ELT(sraw, i)));
         }
 
         let ncon = next_connection();
@@ -169,7 +166,7 @@ pub fn do_rawConnection(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> S
 // ---------------------------------------------------------------------------
 
 pub fn do_textConnection(_call: SEXP, _op: SEXP, mut args: SEXP, env: SEXP) -> SEXP {
-    unsafe {
+    {
         let arg1 = CAR(args);
         args = CDR(args);
         let arg2_cell = args;
@@ -257,8 +254,7 @@ pub fn do_textConnection(_call: SEXP, _op: SEXP, mut args: SEXP, env: SEXP) -> S
             } else {
                 None
             };
-            let owner = crate::sexp::owner::OwnerToken::current()
-                .unwrap_or_else(|e| r_error(&e.to_string()));
+            let owner = current_owner();
             let _pin = owner.pin().unwrap_or_else(|e| r_error(&e.to_string()));
             let environment = text_connection_env(local_arg, env);
             let environment = if environment.is_null() {
@@ -319,19 +315,16 @@ fn text_connection_env(local_arg: SEXP, caller: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 pub fn do_textConnectionValue(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
-        let scon = CAR(args);
+    let scon = CAR(args);
 
-        if !inherits_class(scon, "connection") {
-            r_error("'con' is not a connection");
-        }
-        let i = checked_connection_index(as_integer(scon));
-        let owner =
-            crate::sexp::owner::OwnerToken::current().unwrap_or_else(|e| r_error(&e.to_string()));
-        let writer = super::text_publication::TextWriter::take(owner, i as c_int)
-            .unwrap_or_else(|| r_error("'con' is not an output textConnection"));
-        writer.value().as_raw()
+    if !inherits_class(scon, "connection") {
+        r_error("'con' is not a connection");
     }
+    let i = checked_connection_index(as_integer(scon));
+    let owner = current_owner();
+    let writer = super::text_publication::TextWriter::take(owner, i as c_int)
+        .unwrap_or_else(|| r_error("'con' is not an output textConnection"));
+    writer.value().as_raw()
 }
 
 // ---------------------------------------------------------------------------
@@ -388,36 +381,33 @@ pub fn do_getConnection(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
 // ---------------------------------------------------------------------------
 
 pub fn do_showConnections(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
-        let _all = check_logical_arg(CAR(args), "all");
+    let _all = check_logical_arg(CAR(args), "all");
 
-        init_connections_table();
-        let table = connection_table();
+    init_connections_table();
+    let table = connection_table();
 
-        // Count active connections
-        let mut count = 0usize;
-        for i in 0..table.len() {
-            if table[i].is_some() {
-                count += 1;
-            }
+    // Count active connections
+    let mut count = 0usize;
+    for i in 0..table.len() {
+        if table[i].is_some() {
+            count += 1;
         }
-
-        let ans = Rf_allocVector(SEXPTYPE::STRSXP, count as c_int);
-        if !ans.is_null() {
-            let mut idx = 0usize;
-            for i in 0..table.len() {
-                if let Some(ref conn) = table[i] {
-                    let desc = format!("{} {} {}", i, conn.description, conn.mode);
-                    let c_desc = CString::new(desc).unwrap_or_default();
-                    let charsxp = Rf_mkChar(c_desc.as_ptr());
-                    SET_STRING_ELT(ans, idx as R_xlen_t, charsxp);
-                    idx += 1;
-                }
-            }
-        }
-
-        ans
     }
+
+    let ans = Rf_allocVector(SEXPTYPE::STRSXP, count as c_int);
+    if !ans.is_null() {
+        let mut idx = 0usize;
+        for i in 0..table.len() {
+            if let Some(ref conn) = table[i] {
+                let desc = format!("{} {} {}", i, conn.description, conn.mode);
+                let charsxp = mk_char(&desc);
+                SET_STRING_ELT(ans, idx as R_xlen_t, charsxp);
+                idx += 1;
+            }
+        }
+    }
+
+    ans
 }
 
 // ---------------------------------------------------------------------------
@@ -425,7 +415,7 @@ pub fn do_showConnections(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEX
 // ---------------------------------------------------------------------------
 
 pub fn do_sumConnection(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
+    {
         let scon = CAR(args);
         let integer_index = TYPEOF(scon) == SEXPTYPE::INTSXP || TYPEOF(scon) == SEXPTYPE::REALSXP;
         if !inherits_class(scon, "connection") && !integer_index {
@@ -459,10 +449,8 @@ pub fn do_sumConnection(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
         let ans = Rf_allocVector3(SEXPTYPE::VECSXP, 7);
         let names = Rf_allocVector3(SEXPTYPE::STRSXP, 7);
         for (idx, (label, value)) in labels.iter().zip(values.iter()).enumerate() {
-            let lab = CString::new(*label).unwrap_or_default();
-            SET_STRING_ELT(names, idx as R_xlen_t, Rf_mkChar(lab.as_ptr()));
-            let val = CString::new(*value).unwrap_or_default();
-            SET_VECTOR_ELT(ans, idx as R_xlen_t, Rf_mkString(val.as_ptr()));
+            SET_STRING_ELT(names, idx as R_xlen_t, mk_char(label));
+            SET_VECTOR_ELT(ans, idx as R_xlen_t, mk_string(value));
         }
         crate::sexp::attrib_core::setAttrib(ans, crate::sexp::attrib_core::R_NamesSymbol(), names);
         ans
@@ -470,20 +458,18 @@ pub fn do_sumConnection(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
 }
 
 pub fn do_getAllConnections(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
-        let table = connection_table();
-        let mut ids = Vec::new();
-        for (i, slot) in table.iter().enumerate() {
-            if slot.is_some() {
-                ids.push(i as i32);
-            }
+    let table = connection_table();
+    let mut ids = Vec::new();
+    for (i, slot) in table.iter().enumerate() {
+        if slot.is_some() {
+            ids.push(i as i32);
         }
-        let ans = Rf_allocVector3(SEXPTYPE::INTSXP, ids.len() as R_xlen_t);
-        for (i, id) in ids.iter().enumerate() {
-            *INTEGER(ans).add(i) = *id;
-        }
-        ans
     }
+    let ans = Rf_allocVector3(SEXPTYPE::INTSXP, ids.len() as R_xlen_t);
+    for (i, id) in ids.iter().enumerate() {
+        SET_INTEGER_ELT(ans, i as c_int, *id);
+    }
+    ans
 }
 
 // ---------------------------------------------------------------------------

@@ -269,12 +269,15 @@ impl std::ops::Deref for ConnectionTableGuard {
     type Target = Vec<Option<Box<RConn>>>;
 
     fn deref(&self) -> &Self::Target {
+        // SAFETY: the guard is only built inside with_connections_state,
+        // which holds the instance borrow for the guard's uses.
         unsafe { &*self.table }
     }
 }
 
 impl std::ops::DerefMut for ConnectionTableGuard {
     fn deref_mut(&mut self) -> &mut Self::Target {
+        // SAFETY: same as Deref; callers hold `&mut self` exclusively.
         unsafe { &mut *self.table }
     }
 }
@@ -287,12 +290,15 @@ impl std::ops::Deref for SinkStateGuard {
     type Target = SinkState;
 
     fn deref(&self) -> &Self::Target {
+        // SAFETY: the guard is only built inside with_connections_state,
+        // which holds the instance borrow for the guard's uses.
         unsafe { &*self.sink }
     }
 }
 
 impl std::ops::DerefMut for SinkStateGuard {
     fn deref_mut(&mut self) -> &mut Self::Target {
+        // SAFETY: same as Deref; callers hold `&mut self` exclusively.
         unsafe { &mut *self.sink }
     }
 }
@@ -302,7 +308,11 @@ pub fn with_connections_state<F, R>(f: F) -> R
 where
     F: FnOnce(&mut ConnectionsState) -> R,
 {
-    with_required_current_instance(|instance| unsafe { f(&mut (*instance).connections_state) })
+    with_required_current_instance(|instance| {
+        // SAFETY: `instance` is the live current RInstance; the state borrow
+        // ends when the closure returns.
+        unsafe { f(&mut (*instance).connections_state) }
+    })
 }
 
 pub fn connection_table() -> ConnectionTableGuard {
@@ -324,10 +334,10 @@ pub(crate) fn output_sink_active() -> bool {
 
 // P1/P2: raw *mut — this path reenters (r_error unwinds, connection I/O); no &mut RInstance held.
 pub(crate) fn output_sink_active_in(instance: *mut RInstance) -> bool {
-    unsafe {
-        let sink = &(*instance).connections_state.sink;
-        sink.sink_number > 0 && sink.output_con != 1
-    }
+    // SAFETY: `instance` points at the live current RInstance; the field
+    // borrow is local to this statement.
+    let sink = unsafe { &(*instance).connections_state.sink };
+    sink.sink_number > 0 && sink.output_con != 1
 }
 
 pub(crate) fn write_output_sink(bytes: &[u8]) -> bool {
@@ -335,6 +345,7 @@ pub(crate) fn write_output_sink(bytes: &[u8]) -> bool {
 }
 // P1/P2: raw *mut — reenters via init_connections_table/r_error/connection I/O; field borrows stay local.
 pub(crate) fn write_output_sink_in(instance: *mut RInstance, bytes: &[u8]) -> bool {
+    // SAFETY: `instance` points at the live current RInstance.
     let depth = unsafe { (*instance).connections_state.sink.sink_number };
     write_output_sinks_between(instance, bytes, 0, depth)
 }
@@ -346,22 +357,22 @@ pub(crate) fn write_output_sinks_between(
     floor: usize,
     ceiling: usize,
 ) -> bool {
-    unsafe {
-        for depth in (floor + 1..=ceiling).rev() {
-            let (connection, split) = {
-                let sink = &(*instance).connections_state.sink;
-                let Some(&connection) = sink.sink_cons.get(depth) else {
-                    r_error("invalid sink stack");
-                };
-                (connection, sink.sink_split[depth])
+    for depth in (floor + 1..=ceiling).rev() {
+        let (connection, split) = {
+            // SAFETY: `instance` points at the live current RInstance; the
+            // field borrow ends before the connection write below reenters.
+            let sink = unsafe { &(*instance).connections_state.sink };
+            let Some(&connection) = sink.sink_cons.get(depth) else {
+                r_error("invalid sink stack");
             };
-            connection_write_bytes(connection, bytes);
-            if !split {
-                return true;
-            }
+            (connection, sink.sink_split[depth])
+        };
+        connection_write_bytes(connection, bytes);
+        if !split {
+            return true;
         }
-        false
     }
+    false
 }
 
 /// Initialize the connection system with stdin/stdout/stderr.
@@ -660,8 +671,7 @@ pub fn read_raw_line(conn: &mut RConn, skip_nul: bool) -> Option<String> {
 /// Write bytes to a connection using the Rust connection table.
 pub(crate) fn connection_write_bytes(n: c_int, bytes: &[u8]) {
     let index = checked_connection_index(n);
-    let owner = unsafe { crate::sexp::owner::OwnerToken::current() }
-        .unwrap_or_else(|e| r_error(&e.to_string()));
+    let owner = current_owner();
     let _pin = owner.pin().unwrap_or_else(|e| r_error(&e.to_string()));
     owner
         .require_active()

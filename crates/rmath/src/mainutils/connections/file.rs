@@ -35,8 +35,8 @@ pub use anonymous::AnonymousFile;
 mod constructor;
 
 pub fn do_file(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    use crate::sexp::owner::{OwnerToken, with_runtime};
-    let owner = unsafe { OwnerToken::current() }.unwrap_or_else(|e| r_error(&e.to_string()));
+    use crate::sexp::owner::with_runtime;
+    let owner = current_owner();
     let _pin = owner.pin().unwrap_or_else(|e| r_error(&e.to_string()));
     let weak = owner
         .weak_owner()
@@ -85,9 +85,9 @@ fn connection_value(
     let allocator = access.allocator(&domain)?;
     let ans = allocator.allocate(|arena| Some(arena.alloc_vector(SEXPTYPE::INTSXP, 1)))?;
     let classes = allocator.strings(&[class, "connection"])?;
-    let symbol = access.with_native(|owner| unsafe {
+    let symbol = access.with_native(|owner| {
         owner
-            .sexp(crate::eval::attrib_core::R_ClassSymbol())?
+            .sexp(crate::sexp::attrib_core::R_ClassSymbol())?
             .into_owned()
     })?;
     let attrs = allocator.pairlist_cell(&classes, &domain.nil(), &symbol)?;
@@ -102,7 +102,7 @@ fn construct_file(
     access: &crate::sexp::owner::RuntimeAccess,
     options: constructor::FileOptions,
 ) -> crate::sexp::object::SexpResult<crate::sexp::Sexp<'static>> {
-    unsafe {
+    {
         let constructor::FileOptions {
             mut description,
             open,
@@ -112,8 +112,11 @@ fn construct_file(
             description = crate::mainutils::essentials::resolve_package_relative_path(description);
         }
         let anonymous = description.is_empty();
-        let browser_mode =
-            with_current_instance(|instance| (*instance).browser_files_enabled).unwrap_or(false);
+        let browser_mode = with_current_instance(|instance| {
+            // SAFETY: `instance` is the live current RInstance for this call.
+            unsafe { (*instance).browser_files_enabled }
+        })
+        .unwrap_or(false);
         if anonymous {
             if !open.is_empty() && open != "w+" && open != "w+b" {
                 crate::mainutils::errors::Rf_warning(
@@ -499,10 +502,10 @@ pub fn flush_xz_conn(conn: &mut RConn) -> io::Result<()> {
 // ---------------------------------------------------------------------------
 
 pub fn do_url(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
-        let empty = Rf_mkString(c"".as_ptr());
-        let native = Rf_mkString(c"native.enc".as_ptr());
-        let default_method = Rf_mkString(c"default".as_ptr());
+    {
+        let empty = mk_string("");
+        let native = mk_string("native.enc");
+        let default_method = mk_string("default");
         let scmd = arg_by_name_or_position(args, 0, &["description"], R_NilValue());
         let sopen = arg_by_name_or_position(args, 1, &["open"], empty);
         let _block = logical_arg_or(
@@ -660,9 +663,8 @@ pub fn do_gzfile(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
 }
 
 fn construct_browser_gzfile(description: &str, mode: &str, open_now: bool) -> SEXP {
-    use crate::sexp::owner::{OwnerToken, with_runtime};
-    let owner =
-        unsafe { OwnerToken::current() }.unwrap_or_else(|error| r_error(&error.to_string()));
+    use crate::sexp::owner::with_runtime;
+    let owner = current_owner();
     let weak = owner
         .weak_owner()
         .unwrap_or_else(|| r_error("browser gzfile requires a managed runtime"));
@@ -926,7 +928,7 @@ pub fn do_open(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 pub fn do_close(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
+    {
         let scon = CAR(args);
 
         if !inherits_class(scon, "connection") {
@@ -938,10 +940,14 @@ pub fn do_close(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
         }
 
         let captured = crate::sexp::instance::with_required_current_instance(|instance| {
-            (*instance)
-                .output_capture
-                .borrow()
-                .uses_connection(i as c_int)
+            // SAFETY: `instance` is the live current RInstance for this call;
+            // the field borrow ends before the closure returns.
+            unsafe {
+                (*instance)
+                    .output_capture
+                    .borrow()
+                    .uses_connection(i as c_int)
+            }
         });
         if captured {
             r_error("cannot close an active capture connection");
@@ -1176,9 +1182,8 @@ pub fn do_isatty(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 pub fn do_seek(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
-        let owner = crate::sexp::owner::OwnerToken::current()
-            .unwrap_or_else(|error| r_error(&error.to_string()));
+    {
+        let owner = current_owner();
         let _pin = owner
             .pin()
             .unwrap_or_else(|error| r_error(&error.to_string()));
@@ -1268,10 +1273,7 @@ pub fn do_seek(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
         let origin = if origin_arg == R_NilValue() || origin_arg == R_MissingArg() {
             1
         } else if TYPEOF(origin_arg) == SEXPTYPE::STRSXP {
-            match CStr::from_ptr(CHAR(STRING_ELT(origin_arg, 0)))
-                .to_string_lossy()
-                .as_ref()
-            {
+            match String::from_utf8_lossy(&charsxp_as_utf8(STRING_ELT(origin_arg, 0))).as_ref() {
                 "start" => 1,
                 "current" => 2,
                 "end" => 3,
@@ -1433,50 +1435,40 @@ pub fn do_writeTable(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
 }
 
 fn bytes_of(from: SEXP) -> Vec<u8> {
-    unsafe {
-        if from.is_null() || from == R_NilValue() {
+    if from.is_null() || from == R_NilValue() {
+        return Vec::new();
+    }
+    if TYPEOF(from) == SEXPTYPE::STRSXP && XLENGTH(from) > 0 {
+        let ch = STRING_ELT(from, 0);
+        if ch.is_null() {
             return Vec::new();
         }
-        if TYPEOF(from) == SEXPTYPE::STRSXP && XLENGTH(from) > 0 {
-            let ch = STRING_ELT(from, 0);
-            if ch.is_null() {
-                return Vec::new();
-            }
-            return CStr::from_ptr(CHAR(ch)).to_bytes().to_vec();
-        }
-        if TYPEOF(from) == SEXPTYPE::RAWSXP {
-            let n = XLENGTH(from) as usize;
-            return std::slice::from_raw_parts(RAW(from), n).to_vec();
-        }
-        Vec::new()
+        return charsxp_as_utf8(ch);
     }
+    if TYPEOF(from) == SEXPTYPE::RAWSXP {
+        let n = XLENGTH(from) as usize;
+        return (0..n as c_int).map(|i| RAW_ELT(from, i)).collect();
+    }
+    Vec::new()
 }
 
 fn raw_from(bytes: &[u8]) -> SEXP {
-    unsafe {
-        let out = Rf_allocVector(SEXPTYPE::RAWSXP, bytes.len() as i32);
-        if !bytes.is_empty() {
-            std::ptr::copy_nonoverlapping(bytes.as_ptr(), RAW(out), bytes.len());
-        }
-        out
-    }
+    alloc_raw_result(bytes)
 }
 
 fn compress_type(args: SEXP) -> String {
-    unsafe {
-        let cell = CDR(args);
-        if cell.is_null() || cell == R_NilValue() {
-            return "gzip".to_string();
-        }
-        let value = CAR(cell);
-        if TYPEOF(value) == SEXPTYPE::STRSXP && XLENGTH(value) > 0 {
-            let ch = STRING_ELT(value, 0);
-            if !ch.is_null() {
-                return CStr::from_ptr(CHAR(ch)).to_string_lossy().into_owned();
-            }
-        }
-        "gzip".to_string()
+    let cell = CDR(args);
+    if cell.is_null() || cell == R_NilValue() {
+        return "gzip".to_string();
     }
+    let value = CAR(cell);
+    if TYPEOF(value) == SEXPTYPE::STRSXP && XLENGTH(value) > 0 {
+        let ch = STRING_ELT(value, 0);
+        if !ch.is_null() {
+            return String::from_utf8_lossy(&charsxp_as_utf8(ch)).into_owned();
+        }
+    }
+    "gzip".to_string()
 }
 
 pub fn do_memCompress(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
@@ -1508,7 +1500,7 @@ pub fn do_memCompress(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 }
 
 pub fn do_memDecompress(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
+    {
         let input = bytes_of(CAR(args));
         let kind = compress_type(args);
         let mut output = Vec::new();
@@ -1537,8 +1529,7 @@ pub fn do_memDecompress(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
         };
         if as_char {
             let text = String::from_utf8_lossy(&output);
-            let c = CString::new(text.as_ref()).unwrap_or_default();
-            Rf_mkString(c.as_ptr())
+            mk_string(text.as_ref())
         } else {
             raw_from(&output)
         }

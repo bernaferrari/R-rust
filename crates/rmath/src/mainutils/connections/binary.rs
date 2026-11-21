@@ -448,9 +448,7 @@ fn raw_sink_result(
 }
 
 pub fn read_binary_source(con: SEXP, limit: Option<usize>) -> AdmittedBinarySource {
-    // SAFETY: this builtin only runs inside evaluated R calls.
-    let owner = unsafe { crate::sexp::owner::OwnerToken::current() }
-        .unwrap_or_else(|error| r_error(&error.to_string()));
+    let owner = current_owner();
     let con = owner
         .sexp(con)
         .and_then(crate::sexp::Sexp::into_owned)
@@ -809,9 +807,7 @@ fn encode_binary_object_selected_size(
                 }
             }
             t if t == SEXPTYPE::STRSXP => {
-                // SAFETY: this builtin only runs inside evaluated R calls.
-                let owner = unsafe { crate::sexp::owner::OwnerToken::current() }
-                    .unwrap_or_else(|error| r_error(&error.to_string()));
+                let owner = current_owner();
                 for index in 0..obj_len as R_xlen_t {
                     // Select once and keep the actual character alive through
                     // admission callbacks. Copy its bounded UTF-8 text for the
@@ -846,9 +842,7 @@ pub fn write_binary_sink(con: SEXP, bytes: &[u8]) -> SEXP {
         return alloc_raw_result(bytes);
     }
     if TYPEOF(con) == SEXPTYPE::STRSXP {
-        // SAFETY: this builtin only runs inside evaluated R calls.
-        let owner = unsafe { crate::sexp::owner::OwnerToken::current() }
-            .unwrap_or_else(|error| r_error(&error.to_string()));
+        let owner = current_owner();
         let con = owner
             .sexp(con)
             .and_then(crate::sexp::Sexp::into_owned)
@@ -868,9 +862,7 @@ pub fn write_binary_sink(con: SEXP, bytes: &[u8]) -> SEXP {
 // ---------------------------------------------------------------------------
 
 pub fn do_readBin(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    // SAFETY: this builtin only runs inside evaluated R calls.
-    let owner = unsafe { crate::sexp::owner::OwnerToken::current() }
-        .unwrap_or_else(|error| r_error(&error.to_string()));
+    let owner = current_owner();
     let arguments = owner
         .sexp(args)
         .and_then(crate::sexp::Sexp::into_owned)
@@ -885,9 +877,7 @@ pub fn do_readBin(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 pub fn do_writeBin(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    // SAFETY: this builtin only runs inside evaluated R calls.
-    let owner = unsafe { crate::sexp::owner::OwnerToken::current() }
-        .unwrap_or_else(|error| r_error(&error.to_string()));
+    let owner = current_owner();
     let arguments = owner
         .sexp(args)
         .and_then(crate::sexp::Sexp::into_owned)
