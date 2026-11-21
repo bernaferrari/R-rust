@@ -12,7 +12,12 @@ pub struct membuf_st {
     pub buf: *mut u8,
 }
 
-pub fn resize_buffer(mb: *mut membuf_st, needed: R_size_t) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn resize_buffer(mb: *mut membuf_st, needed: R_size_t) {
     // SAFETY: `mb` is a caller-owned membuf whose `buf` is a Vec handed
     // out as a raw pointer; `size` always equals its capacity, so the
     // Vec can be reconstructed, grown, and forgotten here.
@@ -44,7 +49,12 @@ pub fn resize_buffer(mb: *mut membuf_st, needed: R_size_t) {
     }
 }
 
-pub extern "C" fn OutCharMem(stream: R_outpstream_t, c: c_int) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe extern "C" fn OutCharMem(stream: R_outpstream_t, c: c_int) {
     // SAFETY: `stream` is the caller-owned output stream whose `data`
     // points at a live membuf; null/capacity checks precede the store.
     unsafe {
@@ -65,7 +75,12 @@ pub extern "C" fn OutCharMem(stream: R_outpstream_t, c: c_int) {
     }
 }
 
-pub extern "C" fn OutBytesMem(stream: R_outpstream_t, buf: *const c_void, length: c_int) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe extern "C" fn OutBytesMem(stream: R_outpstream_t, buf: *const c_void, length: c_int) {
     // SAFETY: `stream` is the caller-owned output stream whose `data`
     // points at a live membuf, and `buf` is a caller-owned read buffer
     // of `length` bytes; capacity is grown before the copy.
@@ -92,7 +107,12 @@ pub extern "C" fn OutBytesMem(stream: R_outpstream_t, buf: *const c_void, length
     }
 }
 
-pub extern "C" fn InCharMem(stream: R_inpstream_t) -> c_int {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe extern "C" fn InCharMem(stream: R_inpstream_t) -> c_int {
     // SAFETY: `stream` is the caller-owned input stream whose `data`
     // points at a live membuf; bounds checks precede the byte read.
     unsafe {
@@ -112,7 +132,12 @@ pub extern "C" fn InCharMem(stream: R_inpstream_t) -> c_int {
     }
 }
 
-pub extern "C" fn InBytesMem(stream: R_inpstream_t, buf: *mut c_void, length: c_int) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe extern "C" fn InBytesMem(stream: R_inpstream_t, buf: *mut c_void, length: c_int) {
     // SAFETY: `stream` is the caller-owned input stream whose `data`
     // points at a live membuf, and `buf` is a caller-owned write buffer
     // of at least `length` bytes; bounds checks precede the copy.
@@ -132,7 +157,12 @@ pub extern "C" fn InBytesMem(stream: R_inpstream_t, buf: *mut c_void, length: c_
     }
 }
 
-pub fn InitMemInPStream(
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn InitMemInPStream(
     stream: R_inpstream_t,
     mb: *mut membuf_st,
     buf: *mut c_void,
@@ -162,7 +192,12 @@ pub fn InitMemInPStream(
     }
 }
 
-pub fn InitMemOutPStream(
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn InitMemOutPStream(
     stream: R_outpstream_t,
     mb: *mut membuf_st,
     type_: R_pstream_format_t,
@@ -192,7 +227,12 @@ pub fn InitMemOutPStream(
     }
 }
 
-pub fn CloseMemOutPStream(stream: R_outpstream_t) -> SEXP {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn CloseMemOutPStream(stream: R_outpstream_t) -> SEXP {
     // SAFETY: `stream` is the caller-owned output stream whose `data`
     // points at a live membuf; the buffer is copied out before the
     // membuf is released.
@@ -217,7 +257,12 @@ pub fn CloseMemOutPStream(stream: R_outpstream_t) -> SEXP {
     }
 }
 
-pub fn free_mem_buffer(data: *mut c_void) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn free_mem_buffer(data: *mut c_void) {
     // SAFETY: `data` is a membuf whose `buf` is a Vec handed out as a
     // raw pointer with `size` equal to its capacity; it is reclaimed
     // exactly once here and nulled out.
@@ -237,7 +282,12 @@ pub fn free_mem_buffer(data: *mut c_void) {
 // Buffer-connection operations
 // ---------------------------------------------------------------------------
 
-pub fn InitBConOutPStream(
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn InitBConOutPStream(
     stream: R_outpstream_t,
     bbs: *mut c_void,
     con: *mut c_void,
@@ -248,32 +298,43 @@ pub fn InitBConOutPStream(
 ) {
     {
         if !bbs.is_null() {
-            R_InitOutPStream(
-                stream,
-                bbs as R_pstream_data_t,
-                type_,
-                version,
-                Some(OutCharMem),
-                Some(OutBytesMem),
-                phook,
-                pdata,
-            );
+            // SAFETY: forwarded raw pointers satisfy `R_InitOutPStream`'s contract per this function's own `# Safety` requirements.
+            unsafe {
+                R_InitOutPStream(
+                    stream,
+                    bbs as R_pstream_data_t,
+                    type_,
+                    version,
+                    Some(OutCharMem),
+                    Some(OutBytesMem),
+                    phook,
+                    pdata,
+                )
+            };
         } else {
-            R_InitOutPStream(
-                stream,
-                con as R_pstream_data_t,
-                type_,
-                version,
-                Some(OutCharFile),
-                Some(OutBytesFile),
-                phook,
-                pdata,
-            );
+            // SAFETY: forwarded raw pointers satisfy `R_InitOutPStream`'s contract per this function's own `# Safety` requirements.
+            unsafe {
+                R_InitOutPStream(
+                    stream,
+                    con as R_pstream_data_t,
+                    type_,
+                    version,
+                    Some(OutCharFile),
+                    Some(OutBytesFile),
+                    phook,
+                    pdata,
+                )
+            };
         }
     }
 }
 
-pub fn flush_bcon_buffer(bbs: *mut c_void) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn flush_bcon_buffer(bbs: *mut c_void) {
     // SAFETY: `bbs` is a caller-owned RFile cast; the null check
     // precedes the flush call.
     unsafe {
@@ -288,7 +349,12 @@ pub fn flush_bcon_buffer(bbs: *mut c_void) {
 // File I/O callbacks
 // ---------------------------------------------------------------------------
 
-pub extern "C" fn OutCharFile(stream: R_outpstream_t, c: c_int) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe extern "C" fn OutCharFile(stream: R_outpstream_t, c: c_int) {
     // SAFETY: `stream` is the caller-owned output stream whose `data`
     // points at a live RFile; null checks precede the write.
     unsafe {
@@ -303,7 +369,12 @@ pub extern "C" fn OutCharFile(stream: R_outpstream_t, c: c_int) {
     }
 }
 
-pub extern "C" fn OutBytesFile(stream: R_outpstream_t, buf: *const c_void, length: c_int) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe extern "C" fn OutBytesFile(stream: R_outpstream_t, buf: *const c_void, length: c_int) {
     // SAFETY: `stream` is the caller-owned output stream whose `data`
     // points at a live RFile, and `buf` is a caller-owned read buffer
     // of `length` bytes; null checks precede the write.
@@ -322,7 +393,12 @@ pub extern "C" fn OutBytesFile(stream: R_outpstream_t, buf: *const c_void, lengt
     }
 }
 
-pub extern "C" fn InCharFile(stream: R_inpstream_t) -> c_int {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe extern "C" fn InCharFile(stream: R_inpstream_t) -> c_int {
     // SAFETY: `stream` is the caller-owned input stream whose `data`
     // points at a live RFile; null checks precede the read.
     unsafe {
@@ -337,7 +413,12 @@ pub extern "C" fn InCharFile(stream: R_inpstream_t) -> c_int {
     }
 }
 
-pub extern "C" fn InBytesFile(stream: R_inpstream_t, buf: *mut c_void, length: c_int) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe extern "C" fn InBytesFile(stream: R_inpstream_t, buf: *mut c_void, length: c_int) {
     // SAFETY: `stream` is the caller-owned input stream whose `data`
     // points at a live RFile, and `buf` is a caller-owned write buffer
     // of at least `length` bytes; null checks precede the read.
@@ -356,10 +437,16 @@ pub extern "C" fn InBytesFile(stream: R_inpstream_t, buf: *mut c_void, length: c
     }
 }
 
-pub fn InInit(stream: R_inpstream_t, buf: *mut c_void, length: c_int) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn InInit(stream: R_inpstream_t, buf: *mut c_void, length: c_int) {
     {
         if !stream.is_null() && !buf.is_null() && length > 0 {
-            InBytesFile(stream, buf, length);
+            // SAFETY: forwarded raw pointers satisfy `InBytesFile`'s contract per this function's own `# Safety` requirements.
+            unsafe { InBytesFile(stream, buf, length) };
         }
     }
 }
@@ -368,7 +455,12 @@ pub fn InInit(stream: R_inpstream_t, buf: *mut c_void, length: c_int) {
 // Connection I/O
 // ---------------------------------------------------------------------------
 
-pub fn R_WriteConnection(con: *mut c_void, buf: *const c_void, n: usize) -> usize {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn R_WriteConnection(con: *mut c_void, buf: *const c_void, n: usize) -> usize {
     // SAFETY: `con` is a caller-owned RFile cast and `buf` a
     // caller-owned read buffer of `n` bytes; null checks precede
     // the write.

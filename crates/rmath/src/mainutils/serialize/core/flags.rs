@@ -41,34 +41,30 @@ pub fn PackFlags(type_: c_int, levs: c_int, isobj: c_int, hasattr: c_int, hastag
 
 pub fn UnpackFlags(
     flags: c_int,
-    ptype: *mut c_int,
-    plevs: *mut c_int,
-    pisobj: *mut c_int,
-    phasattr: *mut c_int,
-    phastag: *mut c_int,
+    ptype: Option<&mut c_int>,
+    plevs: Option<&mut c_int>,
+    pisobj: Option<&mut c_int>,
+    phasattr: Option<&mut c_int>,
+    phastag: Option<&mut c_int>,
 ) {
-    // SAFETY: each out parameter is caller-owned; every store is preceded
-    // by its own null check.
-    unsafe {
-        if !ptype.is_null() {
-            *ptype = flags & DECODE_TYPE_MASK;
-        }
-        if !plevs.is_null() {
-            *plevs = flags >> 12;
-        }
-        if !pisobj.is_null() {
-            *pisobj = if flags & IS_OBJECT_BIT_MASK != 0 {
-                1
-            } else {
-                0
-            };
-        }
-        if !phasattr.is_null() {
-            *phasattr = if flags & HAS_ATTR_BIT_MASK != 0 { 1 } else { 0 };
-        }
-        if !phastag.is_null() {
-            *phastag = if flags & HAS_TAG_BIT_MASK != 0 { 1 } else { 0 };
-        }
+    if let Some(ptype) = ptype {
+        *ptype = flags & DECODE_TYPE_MASK;
+    }
+    if let Some(plevs) = plevs {
+        *plevs = flags >> 12;
+    }
+    if let Some(pisobj) = pisobj {
+        *pisobj = if flags & IS_OBJECT_BIT_MASK != 0 {
+            1
+        } else {
+            0
+        };
+    }
+    if let Some(phasattr) = phasattr {
+        *phasattr = if flags & HAS_ATTR_BIT_MASK != 0 { 1 } else { 0 };
+    }
+    if let Some(phastag) = phastag {
+        *phastag = if flags & HAS_TAG_BIT_MASK != 0 { 1 } else { 0 };
     }
 }
 
@@ -106,11 +102,7 @@ pub(crate) fn altrep_state_triple(state: SEXP) -> Result<(f64, f64, f64), String
             return Err("invalid ALTREP compact sequence state".into());
         }
         if TYPEOF(state) == SEXPTYPE::REALSXP && XLENGTH(state) >= 3 {
-            return Ok((
-                REAL_ELT(state, 0),
-                REAL_ELT(state, 1),
-                REAL_ELT(state, 2),
-            ));
+            return Ok((REAL_ELT(state, 0), REAL_ELT(state, 1), REAL_ELT(state, 2)));
         }
         if TYPEOF(state) == SEXPTYPE::INTSXP && XLENGTH(state) >= 3 {
             return Ok((

@@ -21,10 +21,10 @@ use std::path::PathBuf;
 use std::ptr;
 use std::slice;
 
-use crate::sexp::attrib_core::{R_NamesSymbol, setAttrib};
 use crate::eval::eval::Rf_eval;
 use crate::mainutils::coerce::{asInteger, asLogical};
 use crate::sexp::accessors::*;
+use crate::sexp::attrib_core::{R_NamesSymbol, setAttrib};
 use crate::sexp::constructors::*;
 use crate::sexp::envir::R_findVarInFrame;
 use crate::sexp::ffi::{R_size_t, R_xlen_t, Rboolean, Rbyte, Rcomplex, SEXP, SEXPTYPE};
@@ -34,9 +34,9 @@ use crate::sexp::globals::{
 use crate::sexp::instance::with_required_current_instance;
 use crate::sexp::memory_ext::allocSExp;
 use crate::sexp::protect::*;
-use crate::sexp::symbol::install_str;
 #[cfg(test)]
 use crate::sexp::symbol::Rf_install;
+use crate::sexp::symbol::install_str;
 
 fn error(msg: &str) -> ! {
     std::panic::panic_any(crate::sexp::context::RError {
@@ -132,8 +132,7 @@ fn arg_present_by_name_or_position(args: SEXP, name: &str, position: usize) -> b
 /// where the current runtime owner is live.
 fn current_owner() -> crate::sexp::owner::OwnerToken<'static> {
     // SAFETY: serialize builtins only run inside evaluated R calls.
-    unsafe { crate::sexp::owner::OwnerToken::current() }
-        .unwrap_or_else(|e| error(&e.to_string()))
+    unsafe { crate::sexp::owner::OwnerToken::current() }.unwrap_or_else(|e| error(&e.to_string()))
 }
 
 fn call_arg_tag_name(node: SEXP) -> Option<String> {
@@ -248,17 +247,6 @@ fn parse_swapped_len_prefix(data: &[u8]) -> Option<usize> {
     let mut bytes = [0u8; 4];
     bytes.copy_from_slice(&data[..4]);
     Some(u32::from_ne_bytes(bytes).swap_bytes() as usize)
-}
-
-#[inline]
-fn mark_decompress_error(err: *mut Rboolean) {
-    if !err.is_null() {
-        // SAFETY: `err` is a caller-owned out parameter checked for null;
-        // the write is a single flag store before returning.
-        unsafe {
-            *err = 1;
-        }
-    }
 }
 
 #[inline]

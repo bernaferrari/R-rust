@@ -4,7 +4,12 @@ use super::*;
 // Basic output routines (C stream-based, module-private)
 // ---------------------------------------------------------------------------
 
-pub fn OutInteger(stream: R_outpstream_t, i: c_int) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn OutInteger(stream: R_outpstream_t, i: c_int) {
     // SAFETY: `stream` is a caller-owned output stream; the null check
     // precedes the field read and the callback only reads `bytes`.
     unsafe {
@@ -18,7 +23,12 @@ pub fn OutInteger(stream: R_outpstream_t, i: c_int) {
     }
 }
 
-pub fn OutReal(stream: R_outpstream_t, d: c_double) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn OutReal(stream: R_outpstream_t, d: c_double) {
     // SAFETY: `stream` is a caller-owned output stream; the null check
     // precedes the field read and the callback only reads `bytes`.
     unsafe {
@@ -32,14 +42,26 @@ pub fn OutReal(stream: R_outpstream_t, d: c_double) {
     }
 }
 
-pub fn OutComplex(stream: R_outpstream_t, c: Rcomplex) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn OutComplex(stream: R_outpstream_t, c: Rcomplex) {
     {
-        OutReal(stream, c.r);
-        OutReal(stream, c.i);
+        // SAFETY: forwarded raw pointers satisfy `OutReal`'s contract per this function's own `# Safety` requirements.
+        unsafe { OutReal(stream, c.r) };
+        // SAFETY: forwarded raw pointers satisfy `OutReal`'s contract per this function's own `# Safety` requirements.
+        unsafe { OutReal(stream, c.i) };
     }
 }
 
-pub fn OutByte(stream: R_outpstream_t, i: Rbyte) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn OutByte(stream: R_outpstream_t, i: Rbyte) {
     // SAFETY: `stream` is a caller-owned output stream; the null check
     // precedes the field read and the callback only reads `i`.
     unsafe {
@@ -52,7 +74,12 @@ pub fn OutByte(stream: R_outpstream_t, i: Rbyte) {
     }
 }
 
-pub fn OutString(stream: R_outpstream_t, s: *const c_char, length: c_int) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn OutString(stream: R_outpstream_t, s: *const c_char, length: c_int) {
     // SAFETY: `stream` is a caller-owned output stream and `s` a
     // caller-owned buffer; null/length checks precede the callback.
     unsafe {
@@ -65,7 +92,12 @@ pub fn OutString(stream: R_outpstream_t, s: *const c_char, length: c_int) {
     }
 }
 
-pub fn OutFormat(stream: R_outpstream_t) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn OutFormat(stream: R_outpstream_t) {
     // SAFETY: `stream` is a caller-owned output stream; the null check
     // precedes field reads and each callback sees a static tag slice.
     unsafe {
@@ -99,7 +131,12 @@ pub fn OutFormat(stream: R_outpstream_t) {
 // Basic input routines (C stream-based, module-private)
 // ---------------------------------------------------------------------------
 
-pub fn InInteger(stream: R_inpstream_t) -> c_int {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn InInteger(stream: R_inpstream_t) -> c_int {
     // SAFETY: `stream` is a caller-owned input stream; the null check
     // precedes field reads and the callback fills a local buffer.
     unsafe {
@@ -118,7 +155,12 @@ pub fn InInteger(stream: R_inpstream_t) -> c_int {
     }
 }
 
-pub fn InReal(stream: R_inpstream_t) -> c_double {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn InReal(stream: R_inpstream_t) -> c_double {
     // SAFETY: `stream` is a caller-owned input stream; the null check
     // precedes field reads and the callback fills a local buffer.
     unsafe {
@@ -137,16 +179,28 @@ pub fn InReal(stream: R_inpstream_t) -> c_double {
     }
 }
 
-pub fn InComplex(stream: R_inpstream_t) -> Rcomplex {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn InComplex(stream: R_inpstream_t) -> Rcomplex {
     {
         Rcomplex {
-            r: InReal(stream),
-            i: InReal(stream),
+            // SAFETY: forwarded raw pointers satisfy `InReal`'s contract per this function's own `# Safety` requirements.
+            r: unsafe { InReal(stream) },
+            // SAFETY: forwarded raw pointers satisfy `InReal`'s contract per this function's own `# Safety` requirements.
+            i: unsafe { InReal(stream) },
         }
     }
 }
 
-pub fn InString(stream: R_inpstream_t, buf: *mut c_char, length: c_int) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn InString(stream: R_inpstream_t, buf: *mut c_char, length: c_int) {
     // SAFETY: `stream` is a caller-owned input stream and `buf` a
     // caller-owned buffer of at least `length` bytes; checks precede
     // the callback write.
@@ -160,14 +214,25 @@ pub fn InString(stream: R_inpstream_t, buf: *mut c_char, length: c_int) {
     }
 }
 
-pub fn InWord(stream: R_inpstream_t, buf: *mut c_char, size: c_int) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn InWord(stream: R_inpstream_t, buf: *mut c_char, size: c_int) {
     {
         // Simplified: just read size bytes
-        InString(stream, buf, size);
+        // SAFETY: forwarded raw pointers satisfy `InString`'s contract per this function's own `# Safety` requirements.
+        unsafe { InString(stream, buf, size) };
     }
 }
 
-pub fn InFormat(stream: R_inpstream_t) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn InFormat(stream: R_inpstream_t) {
     // SAFETY: `stream` is a caller-owned input stream; the null check
     // precedes all field reads/writes, and callbacks only fill local
     // buffers inside this call.
@@ -291,7 +356,12 @@ pub fn HashGet(item: SEXP, ht: SEXP) -> c_int {
 // Persistent name / special hooks
 // ---------------------------------------------------------------------------
 
-pub fn GetPersistentName(stream: R_outpstream_t, s: SEXP) -> SEXP {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn GetPersistentName(stream: R_outpstream_t, s: SEXP) -> SEXP {
     // SAFETY: `stream` is a caller-owned output stream; the persist hook
     // receives only its installed hook data and the checked argument.
     unsafe {
@@ -315,7 +385,12 @@ pub fn GetPersistentName(stream: R_outpstream_t, s: SEXP) -> SEXP {
     }
 }
 
-pub fn PersistentRestore(stream: R_inpstream_t, s: SEXP) -> SEXP {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn PersistentRestore(stream: R_inpstream_t, s: SEXP) -> SEXP {
     // SAFETY: `stream` is a caller-owned input stream; the persist hook
     // receives only its installed hook data and the checked argument.
     unsafe {
@@ -337,9 +412,15 @@ pub fn SaveSpecialHookItem(item: SEXP) -> c_int {
 // Length writing
 // ---------------------------------------------------------------------------
 
-pub fn WriteLENGTH(stream: R_outpstream_t, s: SEXP) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn WriteLENGTH(stream: R_outpstream_t, s: SEXP) {
     {
-        OutInteger(stream, LENGTH(s));
+        // SAFETY: forwarded raw pointers satisfy `OutInteger`'s contract per this function's own `# Safety` requirements.
+        unsafe { OutInteger(stream, LENGTH(s)) };
     }
 }
 
@@ -347,22 +428,37 @@ pub fn WriteLENGTH(stream: R_outpstream_t, s: SEXP) {
 // Vector serialization (C stream-based, module-private)
 // ---------------------------------------------------------------------------
 
-pub fn OutStringVec(stream: R_outpstream_t, s: SEXP, ref_table: SEXP) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn OutStringVec(stream: R_outpstream_t, s: SEXP, ref_table: SEXP) {
     let len = XLENGTH(s);
-    OutInteger(stream, 0);
-    WriteLENGTH(stream, s);
+    // SAFETY: forwarded raw pointers satisfy `OutInteger`'s contract per this function's own `# Safety` requirements.
+    unsafe { OutInteger(stream, 0) };
+    // SAFETY: forwarded raw pointers satisfy `WriteLENGTH`'s contract per this function's own `# Safety` requirements.
+    unsafe { WriteLENGTH(stream, s) };
     for i in 0..len {
         let elt = STRING_ELT(s, i as R_xlen_t);
-        R_WriteItem(elt, stream);
+        // SAFETY: forwarded raw pointers satisfy `R_WriteItem`'s contract per this function's own `# Safety` requirements.
+        unsafe { R_WriteItem(elt, stream) };
     }
 }
 
-pub fn InStringVec(stream: R_inpstream_t, ref_table: SEXP) -> SEXP {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn InStringVec(stream: R_inpstream_t, ref_table: SEXP) -> SEXP {
     {
-        if InInteger(stream) != 0 {
+        // SAFETY: forwarded raw pointers satisfy `InInteger`'s contract per this function's own `# Safety` requirements.
+        if unsafe { InInteger(stream) } != 0 {
             error("names in persistent strings are not supported yet");
         }
-        let len = InInteger(stream);
+        // SAFETY: forwarded raw pointers satisfy `InInteger`'s contract per this function's own `# Safety` requirements.
+        let len = unsafe { InInteger(stream) };
         if len < 0 {
             error("read error");
         }
@@ -377,20 +473,15 @@ pub fn InStringVec(stream: R_inpstream_t, ref_table: SEXP) -> SEXP {
         };
 
         for i in 0..len {
-            let flags = InInteger(stream);
+            // SAFETY: forwarded raw pointers satisfy `InInteger`'s contract per this function's own `# Safety` requirements.
+            let flags = unsafe { InInteger(stream) };
             let mut stype = 0;
-            UnpackFlags(
-                flags,
-                &mut stype,
-                ptr::null_mut(),
-                ptr::null_mut(),
-                ptr::null_mut(),
-                ptr::null_mut(),
-            );
+            UnpackFlags(flags, Some(&mut stype), None, None, None, None);
 
             let elt = if stype == REFSXP {
                 let idx = if (flags >> 8) == 0 {
-                    InInteger(stream)
+                    // SAFETY: forwarded raw pointers satisfy `InInteger`'s contract per this function's own `# Safety` requirements.
+                    unsafe { InInteger(stream) }
                 } else {
                     flags >> 8
                 };
@@ -400,14 +491,16 @@ pub fn InStringVec(stream: R_inpstream_t, ref_table: SEXP) -> SEXP {
                 if stype != charsxp_type {
                     error("read error");
                 }
-                let slen = InInteger(stream);
+                // SAFETY: forwarded raw pointers satisfy `InInteger`'s contract per this function's own `# Safety` requirements.
+                let slen = unsafe { InInteger(stream) };
                 let val = if slen < 0 {
                     R_NaString()
                 } else if slen == 0 {
                     mk_chars(b"")
                 } else {
                     let mut bytes = vec![0u8; slen as usize];
-                    InString(stream, bytes.as_mut_ptr() as *mut c_char, slen);
+                    // SAFETY: forwarded raw pointers satisfy `InString`'s contract per this function's own `# Safety` requirements.
+                    unsafe { InString(stream, bytes.as_mut_ptr() as *mut c_char, slen) };
                     mk_chars(&bytes)
                 };
                 AddReadRef(local_ref_table, val);
@@ -421,52 +514,88 @@ pub fn InStringVec(stream: R_inpstream_t, ref_table: SEXP) -> SEXP {
     }
 }
 
-pub fn OutIntegerVec(stream: R_outpstream_t, s: SEXP, length: R_xlen_t) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn OutIntegerVec(stream: R_outpstream_t, s: SEXP, length: R_xlen_t) {
     {
         for i in 0..length {
-            OutInteger(stream, INTEGER_ELT(s, i as c_int));
+            // SAFETY: forwarded raw pointers satisfy `OutInteger`'s contract per this function's own `# Safety` requirements.
+            unsafe { OutInteger(stream, INTEGER_ELT(s, i as c_int)) };
         }
     }
 }
 
-pub fn InIntegerVec(stream: R_inpstream_t, obj: SEXP, length: R_xlen_t) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn InIntegerVec(stream: R_inpstream_t, obj: SEXP, length: R_xlen_t) {
     {
         for i in 0..length {
-            let value = InInteger(stream);
+            // SAFETY: forwarded raw pointers satisfy `InInteger`'s contract per this function's own `# Safety` requirements.
+            let value = unsafe { InInteger(stream) };
             SET_INTEGER_ELT(obj, i as c_int, value);
         }
     }
 }
 
-pub fn OutRealVec(stream: R_outpstream_t, s: SEXP, length: R_xlen_t) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn OutRealVec(stream: R_outpstream_t, s: SEXP, length: R_xlen_t) {
     {
         for i in 0..length {
-            OutReal(stream, REAL_ELT(s, i as c_int));
+            // SAFETY: forwarded raw pointers satisfy `OutReal`'s contract per this function's own `# Safety` requirements.
+            unsafe { OutReal(stream, REAL_ELT(s, i as c_int)) };
         }
     }
 }
 
-pub fn InRealVec(stream: R_inpstream_t, obj: SEXP, length: R_xlen_t) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn InRealVec(stream: R_inpstream_t, obj: SEXP, length: R_xlen_t) {
     {
         for i in 0..length {
-            let value = InReal(stream);
+            // SAFETY: forwarded raw pointers satisfy `InReal`'s contract per this function's own `# Safety` requirements.
+            let value = unsafe { InReal(stream) };
             SET_REAL_ELT(obj, i as c_int, value);
         }
     }
 }
 
-pub fn OutComplexVec(stream: R_outpstream_t, s: SEXP, length: R_xlen_t) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn OutComplexVec(stream: R_outpstream_t, s: SEXP, length: R_xlen_t) {
     {
         for i in 0..length {
-            OutComplex(stream, COMPLEX_ELT(s, i as c_int));
+            // SAFETY: forwarded raw pointers satisfy `OutComplex`'s contract per this function's own `# Safety` requirements.
+            unsafe { OutComplex(stream, COMPLEX_ELT(s, i as c_int)) };
         }
     }
 }
 
-pub fn InComplexVec(stream: R_inpstream_t, obj: SEXP, length: R_xlen_t) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn InComplexVec(stream: R_inpstream_t, obj: SEXP, length: R_xlen_t) {
     {
         for i in 0..length {
-            let value = InComplex(stream);
+            // SAFETY: forwarded raw pointers satisfy `InComplex`'s contract per this function's own `# Safety` requirements.
+            let value = unsafe { InComplex(stream) };
             SET_COMPLEX_ELT(obj, i as c_int, value);
         }
     }
@@ -476,7 +605,12 @@ pub fn InComplexVec(stream: R_inpstream_t, obj: SEXP, length: R_xlen_t) {
 // Bytecode serialization helpers
 // ---------------------------------------------------------------------------
 
-pub fn WriteBC(s: SEXP, ref_table: SEXP, stream: R_outpstream_t) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn WriteBC(s: SEXP, ref_table: SEXP, stream: R_outpstream_t) {
     {
         let _ = ref_table;
         if stream.is_null() {
@@ -487,7 +621,8 @@ pub fn WriteBC(s: SEXP, ref_table: SEXP, stream: R_outpstream_t) {
         if len < 0 || len > c_int::MAX as R_xlen_t {
             error("write failed");
         }
-        OutInteger(stream, len as c_int);
+        // SAFETY: forwarded raw pointers satisfy `OutInteger`'s contract per this function's own `# Safety` requirements.
+        unsafe { OutInteger(stream, len as c_int) };
         let bytes = raw_to_bytes(raw);
         // SAFETY: `stream` is the caller-owned output stream, checked for
         // null above; each callback only reads the owned `bytes` buffer.
@@ -507,13 +642,19 @@ pub fn WriteBC(s: SEXP, ref_table: SEXP, stream: R_outpstream_t) {
     }
 }
 
-pub fn ReadBC(ref_table: SEXP, stream: R_inpstream_t) -> SEXP {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn ReadBC(ref_table: SEXP, stream: R_inpstream_t) -> SEXP {
     {
         let _ = ref_table;
         if stream.is_null() {
             error("read error");
         }
-        let len = InInteger(stream);
+        // SAFETY: forwarded raw pointers satisfy `InInteger`'s contract per this function's own `# Safety` requirements.
+        let len = unsafe { InInteger(stream) };
         if len < 0 {
             error("read error");
         }
@@ -552,7 +693,12 @@ pub fn ReadBC(ref_table: SEXP, stream: R_inpstream_t) -> SEXP {
 // Character conversion and reading
 // ---------------------------------------------------------------------------
 
-pub fn ReadChar(stream: R_inpstream_t, buf: *mut c_char, length: c_int, levs: c_int) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn ReadChar(stream: R_inpstream_t, buf: *mut c_char, length: c_int, levs: c_int) {
     // SAFETY: `buf` is a caller-owned buffer of at least `length + 1`
     // bytes; the checks below precede the terminating-NUL store.
     unsafe {

@@ -64,18 +64,27 @@ pub(super) fn raw_snapshot(
     }
 }
 
-fn raw_codec_operation(input: SEXP, mode: u8, decode_error: Option<*mut Rboolean>) -> SEXP {
+/// Encode (`decode == false`) or decode `input`. When decoding, an invalid
+/// payload sets `*error_flag` (if present) and returns `NULL`.
+fn raw_codec_operation(
+    input: SEXP,
+    mode: u8,
+    decode: bool,
+    error_flag: Option<&mut Rboolean>,
+) -> SEXP {
     {
         let owner = current_owner();
         let _pin = owner.pin().unwrap_or_else(|e| error(&e.to_string()));
         let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            let bytes = raw_snapshot(&owner, input, mode, decode_error.is_none());
-            if let Some(invalid) = decode_error {
+            let bytes = raw_snapshot(&owner, input, mode, !decode);
+            if decode {
                 match super::raw_codecs::decode(&owner, &bytes, mode) {
                     Ok(decoded) => raw_from_bytes(&decoded),
                     Err(super::raw_codecs::DecodeError::Resource(message)) => error(&message),
                     Err(super::raw_codecs::DecodeError::Invalid) => {
-                        mark_decompress_error(invalid);
+                        if let Some(flag) = error_flag {
+                            *flag = 1;
+                        }
                         R_NilValue()
                     }
                 }
@@ -96,29 +105,46 @@ fn raw_codec_operation(input: SEXP, mode: u8, decode_error: Option<*mut Rboolean
 }
 
 pub fn R_compress1(input: SEXP) -> SEXP {
-    raw_codec_operation(input, 1, None)
+    raw_codec_operation(input, 1, false, None)
 }
 pub fn R_compress2(input: SEXP) -> SEXP {
-    raw_codec_operation(input, 2, None)
+    raw_codec_operation(input, 2, false, None)
 }
 pub fn R_compress3(input: SEXP) -> SEXP {
-    raw_codec_operation(input, 3, None)
+    raw_codec_operation(input, 3, false, None)
 }
-pub fn R_decompress1(input: SEXP, error: *mut Rboolean) -> SEXP {
-    raw_codec_operation(input, 1, Some(error))
+/// # Safety
+///
+/// `error` must be null or valid for a write of one `Rboolean`.
+pub unsafe fn R_decompress1(input: SEXP, error: *mut Rboolean) -> SEXP {
+    // SAFETY: the caller guarantees `error` is null or a writable flag.
+    raw_codec_operation(input, 1, true, unsafe { error.as_mut() })
 }
-pub fn R_decompress2(input: SEXP, error: *mut Rboolean) -> SEXP {
-    raw_codec_operation(input, 2, Some(error))
+/// # Safety
+///
+/// `error` must be null or valid for a write of one `Rboolean`.
+pub unsafe fn R_decompress2(input: SEXP, error: *mut Rboolean) -> SEXP {
+    // SAFETY: the caller guarantees `error` is null or a writable flag.
+    raw_codec_operation(input, 2, true, unsafe { error.as_mut() })
 }
-pub fn R_decompress3(input: SEXP, error: *mut Rboolean) -> SEXP {
-    raw_codec_operation(input, 3, Some(error))
+/// # Safety
+///
+/// `error` must be null or valid for a write of one `Rboolean`.
+pub unsafe fn R_decompress3(input: SEXP, error: *mut Rboolean) -> SEXP {
+    // SAFETY: the caller guarantees `error` is null or a writable flag.
+    raw_codec_operation(input, 3, true, unsafe { error.as_mut() })
 }
 
 // ---------------------------------------------------------------------------
 // R_snprintf utility
 // ---------------------------------------------------------------------------
 
-pub fn Rsnprintf(buf: *mut c_char, size: usize, _format: *const c_char) -> c_int {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn Rsnprintf(buf: *mut c_char, size: usize, _format: *const c_char) -> c_int {
     // SAFETY: `buf` is a caller-owned C buffer; the null check plus the
     // single leading-NUL store cannot overrun its `size` bound.
     unsafe {
@@ -141,7 +167,12 @@ pub struct R_instring_stream_st {
 
 pub type R_instring_stream_t = *mut R_instring_stream_st;
 
-pub fn InitInStringStream(s: R_instring_stream_t, stream: R_inpstream_t) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn InitInStringStream(s: R_instring_stream_t, stream: R_inpstream_t) {
     // SAFETY: `s` is a caller-owned out struct; the null check precedes the
     // two field stores, which stay inside its layout.
     unsafe {
@@ -156,7 +187,12 @@ pub fn GetChar(s: R_instring_stream_t) -> c_int {
     -1
 }
 
-pub fn UngetChar(s: R_instring_stream_t, c: c_int) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn UngetChar(s: R_instring_stream_t, c: c_int) {
     // SAFETY: `s` is a caller-owned struct; the null check precedes the
     // single field store.
     unsafe {

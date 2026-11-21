@@ -130,7 +130,7 @@ impl Default for ForkRuntimeState {
             child_exit_status: -1,
             parent_handler_set: 0,
             // SAFETY: an all-zero sigaction is a valid placeholder until install.
-        old_sig_handler: unsafe { std::mem::zeroed() },
+            old_sig_handler: unsafe { std::mem::zeroed() },
             is_forked_child: 0,
             ignore_sigpipe: 0,
             interactive: 1,
@@ -190,7 +190,12 @@ fn current_time() -> c_double {
 }
 
 #[cfg(unix)]
-fn block_sigchld(oldset: *mut sigset_t) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn block_sigchld(oldset: *mut sigset_t) {
     // SAFETY: `oldset` is a caller-provided sigset_t out pointer;
     // `ss` is a fully initialized local set.
     unsafe {
@@ -202,7 +207,12 @@ fn block_sigchld(oldset: *mut sigset_t) {
 }
 
 #[cfg(unix)]
-fn restore_sigchld(oldset: *const sigset_t) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn restore_sigchld(oldset: *const sigset_t) {
     // SAFETY: `oldset` is the sigset_t saved by block_sigchld.
     unsafe {
         sigprocmask(libc::SIG_SETMASK, oldset as *mut sigset_t, ptr::null_mut());
@@ -210,7 +220,12 @@ fn restore_sigchld(oldset: *const sigset_t) {
 }
 
 #[cfg(unix)]
-fn close_fds_child_ci(ci: *mut child_info_t) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn close_fds_child_ci(ci: *mut child_info_t) {
     // SAFETY: `ci` is a live child node; each fd is closed once
     // and reset to -1.
     unsafe {
@@ -298,7 +313,12 @@ fn parent_sig_handler(_sig: c_int) {
 }
 
 #[cfg(unix)]
-fn wait_for_child_ci(ci: *mut child_info_t) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn wait_for_child_ci(ci: *mut child_info_t) {
     // SAFETY: `ci` is a live child node; waitpid is nonblocking
     // and only the waitedfor flag is stored.
     unsafe {
@@ -347,7 +367,12 @@ fn restore_sig_handler() {
 // ---------------------------------------------------------------------------
 
 #[cfg(unix)]
-fn kill_and_detach_child_ci(ci: *mut child_info_t, sig: c_int) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn kill_and_detach_child_ci(ci: *mut child_info_t, sig: c_int) {
     // SAFETY: `ci` is a live child node; kill targets its recorded pid
     // and fds are closed before detaching.
     unsafe {
@@ -371,12 +396,23 @@ fn kill_and_detach_child_ci(ci: *mut child_info_t, sig: c_int) {
 }
 
 #[cfg(unix)]
-fn terminate_and_detach_child_ci(ci: *mut child_info_t) {
-    kill_and_detach_child_ci(ci, SIGUSR1);
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn terminate_and_detach_child_ci(ci: *mut child_info_t) {
+    // SAFETY: forwarded raw pointers satisfy `kill_and_detach_child_ci`'s contract per this function's own `# Safety` requirements.
+    unsafe { kill_and_detach_child_ci(ci, SIGUSR1) };
 }
 
 #[cfg(unix)]
-fn kill_detached_child_ci(ci: *mut child_info_t, sig: c_int) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn kill_detached_child_ci(ci: *mut child_info_t, sig: c_int) {
     // SAFETY: `ci` is a live child node; kill targets its recorded pid
     // only while not yet reaped.
     unsafe {
@@ -451,7 +487,12 @@ fn compact_children() {
 // ---------------------------------------------------------------------------
 
 #[cfg(unix)]
-fn fdcopy(dst: *mut fd_set, src: *const fd_set, nfds: c_int) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn fdcopy(dst: *mut fd_set, src: *const fd_set, nfds: c_int) {
     // SAFETY: `dst`/`src` are caller-owned fd_set buffers; nfds is
     // bounds-checked against FD_SETSIZE.
     unsafe {
@@ -474,7 +515,12 @@ fn fdcopy(dst: *mut fd_set, src: *const fd_set, nfds: c_int) {
 // ---------------------------------------------------------------------------
 
 #[cfg(unix)]
-fn readrep(fildes: c_int, buf: *mut c_void, nbyte: size_t) -> ssize_t {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn readrep(fildes: c_int, buf: *mut c_void, nbyte: size_t) -> ssize_t {
     // SAFETY: `buf` is a caller-owned buffer of `nbyte` bytes; the
     // running offset never exceeds it.
     unsafe {
@@ -501,7 +547,12 @@ fn readrep(fildes: c_int, buf: *mut c_void, nbyte: size_t) -> ssize_t {
 }
 
 #[cfg(unix)]
-fn writerep(fildes: c_int, buf: *const c_void, nbyte: size_t) -> ssize_t {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn writerep(fildes: c_int, buf: *const c_void, nbyte: size_t) -> ssize_t {
     // SAFETY: `buf` is a caller-owned buffer of `nbyte` bytes; the
     // running offset never exceeds it.
     unsafe {
@@ -532,7 +583,12 @@ fn writerep(fildes: c_int, buf: *const c_void, nbyte: size_t) -> ssize_t {
 // ---------------------------------------------------------------------------
 
 #[cfg(unix)]
-fn mc_select(
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn mc_select(
     n: c_int,
     readfds: *mut fd_set,
     writefds: *mut fd_set,
@@ -1160,8 +1216,14 @@ pub fn mc_select_children(sTimeout: SEXP, sWhich: SEXP) -> SEXP {
 }
 
 /// Read data from a child process.
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
 #[cfg(unix)]
-fn read_child_ci(ci: *mut child_info_t) -> SEXP {
+unsafe fn read_child_ci(ci: *mut child_info_t) -> SEXP {
     // SAFETY: `ci` is a live child node; readrep fills an owned Vec
     // before the checked element store.
     unsafe {

@@ -211,11 +211,11 @@ fn test_unpack_flags() {
         let flags = 0b10011 | HAS_ATTR_BIT_MASK | HAS_TAG_BIT_MASK | (2 << 12);
         UnpackFlags(
             flags,
-            &mut ptype,
-            &mut plevs,
-            &mut pisobj,
-            &mut phasattr,
-            &mut phastag,
+            Some(&mut ptype),
+            Some(&mut plevs),
+            Some(&mut pisobj),
+            Some(&mut phasattr),
+            Some(&mut phastag),
         );
         assert_eq!(ptype, 19);
         assert_eq!(plevs, 2);

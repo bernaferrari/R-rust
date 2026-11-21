@@ -262,7 +262,10 @@ pub fn WriteItemInternal(s: SEXP, ref_table: &mut WriteHashTable, writer: &mut B
             writer.write_i32(len);
             if len >= 0 {
                 let bytes = charsxp_as_utf8(s);
-                writer.write_string_bytes(bytes.as_ptr() as *const c_char, bytes.len() as c_int);
+                // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+                unsafe {
+                    writer.write_string_bytes(bytes.as_ptr() as *const c_char, bytes.len() as c_int)
+                };
             }
             return;
         }

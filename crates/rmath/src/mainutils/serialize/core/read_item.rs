@@ -136,10 +136,7 @@ pub(crate) fn read_bc_source(
         let stream_owner = if reader.pull.is_some() {
             // SAFETY: pull-mode staging runs inside an evaluated
             // unserialize call where the current owner is live.
-            Some(
-                unsafe { crate::sexp::owner::OwnerToken::current() }
-                    .map_err(|e| e.to_string())?,
-            )
+            Some(unsafe { crate::sexp::owner::OwnerToken::current() }.map_err(|e| e.to_string())?)
         } else {
             None
         };
@@ -188,8 +185,7 @@ pub(crate) fn read_bc_source(
         // SAFETY: `code` and `constants` are live vectors validated by
         // their wire types above; the adapter validator reads their raw
         // layouts.
-        if !crate::eval::bytecode::validate_gnu_adapter_with_constants(code, constants)?
-        {
+        if !crate::eval::bytecode::validate_gnu_adapter_with_constants(code, constants)? {
             return Ok(VECTOR_ELT(constants, 0));
         }
 
@@ -335,8 +331,8 @@ pub(crate) fn read_promise(
     {
         // SAFETY: promise decoding runs inside an evaluated unserialize
         // call where the current runtime owner is live.
-        let owner = unsafe { crate::sexp::owner::OwnerToken::current() }
-            .map_err(|e| e.to_string())?;
+        let owner =
+            unsafe { crate::sexp::owner::OwnerToken::current() }.map_err(|e| e.to_string())?;
         let _pin = owner.pin().map_err(|e| e.to_string())?;
         owner.require_active().map_err(|e| e.to_string())?;
         let factory = owner.node_factory();
@@ -426,11 +422,11 @@ pub(crate) fn read_item_body(
         };
         UnpackFlags(
             packed,
-            &mut flags.stype,
-            &mut flags.levs,
-            &mut flags.isobj,
-            &mut flags.hasattr,
-            &mut flags.hastag,
+            Some(&mut flags.stype),
+            Some(&mut flags.levs),
+            Some(&mut flags.isobj),
+            Some(&mut flags.hasattr),
+            Some(&mut flags.hastag),
         );
         match SEXPTYPE(flags.stype) {
             SEXPTYPE::LISTSXP | SEXPTYPE::LANGSXP => read_list_item(reader, ref_table, flags),
@@ -522,8 +518,8 @@ pub(crate) fn read_references_item(
         let staged = if reader.pull.is_some() {
             // SAFETY: pull-mode staging runs inside an evaluated
             // unserialize call where the current owner is live.
-            let owner = unsafe { crate::sexp::owner::OwnerToken::current() }
-                .map_err(|e| e.to_string())?;
+            let owner =
+                unsafe { crate::sexp::owner::OwnerToken::current() }.map_err(|e| e.to_string())?;
             let _pin = owner.pin().map_err(|e| e.to_string())?;
             let reservation = owner
                 .with_arena(|arena| arena.reserve_workspace(0))
@@ -1021,8 +1017,8 @@ pub(crate) fn read_strings_item(
             let _character = protect(character);
             // SAFETY: bytecode string interning runs inside an evaluated
             // unserialize call where the current owner is live.
-            let owner = unsafe { crate::sexp::owner::OwnerToken::current() }
-                .map_err(|e| e.to_string())?;
+            let owner =
+                unsafe { crate::sexp::owner::OwnerToken::current() }.map_err(|e| e.to_string())?;
             let value = owner
                 .with_arena(|arena| arena.immutable_bytecode_string(character))
                 .map_err(|e| e.to_string())?;
@@ -1136,9 +1132,7 @@ pub(crate) fn read_primitive_item(
         cbuf.push(0).map_err(|e| e.to_string())?;
         // SAFETY: `cbuf` is an owned NUL-terminated name buffer live for
         // the duration of the lookup call.
-        let prim = unsafe {
-            crate::mainutils::names::R_Primitive(cbuf.as_ptr() as *const c_char)
-        };
+        let prim = unsafe { crate::mainutils::names::R_Primitive(cbuf.as_ptr() as *const c_char) };
         if prim.is_null() || prim == R_NilValue() {
             Ok(R_NilValue())
         } else {

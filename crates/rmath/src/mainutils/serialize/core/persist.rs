@@ -22,22 +22,12 @@ pub fn InRefIndex(flags: c_int, reader: &mut BinaryReader) -> Result<c_int, Stri
 // Version decoding
 // ---------------------------------------------------------------------------
 
-pub fn DecodeVersion(packed: c_int, v: *mut c_int, p: *mut c_int, s: *mut c_int) {
-    // SAFETY: each out parameter is caller-owned; every store is preceded
-    // by its own null check.
-    unsafe {
-        if !v.is_null() {
-            *v = packed / 65536;
-        }
-        let mut rem = packed % 65536;
-        if !p.is_null() {
-            *p = rem / 256;
-        }
-        rem %= 256;
-        if !s.is_null() {
-            *s = rem;
-        }
-    }
+pub fn DecodeVersion(packed: c_int, v: &mut c_int, p: &mut c_int, s: &mut c_int) {
+    *v = packed / 65536;
+    let mut rem = packed % 65536;
+    *p = rem / 256;
+    rem %= 256;
+    *s = rem;
 }
 
 // ---------------------------------------------------------------------------

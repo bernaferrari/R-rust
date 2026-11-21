@@ -144,7 +144,12 @@ impl BinaryWriter {
         self.buf.extend_from_slice(data);
     }
 
-    pub fn write_string_bytes(&mut self, s: *const c_char, len: i32) {
+    /// # Safety
+    ///
+    /// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+    /// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+    /// the accompanying lengths) for the duration of the call.
+    pub unsafe fn write_string_bytes(&mut self, s: *const c_char, len: i32) {
         if self.ascii_body && len == 0 {
             self.buf.push(b'\n');
         }

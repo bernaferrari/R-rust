@@ -4,7 +4,12 @@ use super::*;
 // R_Serialize -- serialize an R object to a stream (C API)
 // ---------------------------------------------------------------------------
 
-pub fn R_Serialize(s: SEXP, stream: R_outpstream_t) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn R_Serialize(s: SEXP, stream: R_outpstream_t) {
     // SAFETY: `stream` is a caller-owned output stream that outlives this
     // call; the null check guards every field access, and each callback
     // receives only read-only views of buffers owned by this function.
@@ -94,13 +99,19 @@ pub fn R_Serialize(s: SEXP, stream: R_outpstream_t) {
 // R_Unserialize -- unserialize an R object from a stream (C API)
 // ---------------------------------------------------------------------------
 
-pub fn R_Unserialize(stream: R_inpstream_t) -> SEXP {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn R_Unserialize(stream: R_inpstream_t) -> SEXP {
     let owner = current_owner();
     let _pin = owner.pin().unwrap_or_else(|e| error(&e.to_string()));
     if stream.is_null() {
         error("read error");
     }
-    let bytes = read_stream_bytes_via_inchar(stream, &owner);
+    // SAFETY: forwarded raw pointers satisfy `read_stream_bytes_via_inchar`'s contract per this function's own `# Safety` requirements.
+    let bytes = unsafe { read_stream_bytes_via_inchar(stream, &owner) };
     if bytes.is_empty() {
         error("read error");
     }
@@ -116,17 +127,26 @@ pub fn R_Unserialize(stream: R_inpstream_t) -> SEXP {
 // R_SerializeInfo
 // ---------------------------------------------------------------------------
 
-pub fn R_SerializeInfo(stream: R_inpstream_t) -> SEXP {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn R_SerializeInfo(stream: R_inpstream_t) -> SEXP {
     {
         if stream.is_null() {
             error("read error");
         }
-        InFormat(stream);
+        // SAFETY: forwarded raw pointers satisfy `InFormat`'s contract per this function's own `# Safety` requirements.
+        unsafe { InFormat(stream) };
 
-        let version = InInteger(stream);
+        // SAFETY: forwarded raw pointers satisfy `InInteger`'s contract per this function's own `# Safety` requirements.
+        let version = unsafe { InInteger(stream) };
         let anslen = if version == 3 { 5 } else { 4 };
-        let writer_version = InInteger(stream);
-        let min_reader_version = InInteger(stream);
+        // SAFETY: forwarded raw pointers satisfy `InInteger`'s contract per this function's own `# Safety` requirements.
+        let writer_version = unsafe { InInteger(stream) };
+        // SAFETY: forwarded raw pointers satisfy `InInteger`'s contract per this function's own `# Safety` requirements.
+        let min_reader_version = unsafe { InInteger(stream) };
 
         let ans = Rf_allocVector3(SEXPTYPE::VECSXP, anslen as R_xlen_t);
         let names = Rf_allocVector3(SEXPTYPE::STRSXP, anslen as R_xlen_t);
@@ -172,7 +192,8 @@ pub fn R_SerializeInfo(stream: R_inpstream_t) -> SEXP {
 
         if version == 3 {
             SET_STRING_ELT(names, 4, mk_char("native_encoding"));
-            let nelen = InInteger(stream);
+            // SAFETY: forwarded raw pointers satisfy `InInteger`'s contract per this function's own `# Safety` requirements.
+            let nelen = unsafe { InInteger(stream) };
             if !(0..=R_CODESET_MAX).contains(&nelen) {
                 error("invalid length of encoding name");
             }
@@ -180,7 +201,8 @@ pub fn R_SerializeInfo(stream: R_inpstream_t) -> SEXP {
                 SET_VECTOR_ELT(ans, 4, mk_string(""));
             } else {
                 let mut bytes = vec![0u8; nelen as usize];
-                InString(stream, bytes.as_mut_ptr() as *mut c_char, nelen);
+                // SAFETY: forwarded raw pointers satisfy `InString`'s contract per this function's own `# Safety` requirements.
+                unsafe { InString(stream, bytes.as_mut_ptr() as *mut c_char, nelen) };
                 let enc_ch = mk_chars(&bytes);
                 SET_VECTOR_ELT(ans, 4, Rf_ScalarString(enc_ch));
             }
@@ -195,14 +217,20 @@ pub fn R_SerializeInfo(stream: R_inpstream_t) -> SEXP {
 // R_ReadItem / R_WriteItem (C stream API)
 // ---------------------------------------------------------------------------
 
-pub fn R_ReadItem(stream: R_inpstream_t) -> SEXP {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn R_ReadItem(stream: R_inpstream_t) -> SEXP {
     {
         let owner = current_owner();
         let _pin = owner.pin().unwrap_or_else(|e| error(&e.to_string()));
         if stream.is_null() {
             error("read error");
         }
-        let bytes = read_stream_bytes_via_inchar(stream, &owner);
+        // SAFETY: forwarded raw pointers satisfy `read_stream_bytes_via_inchar`'s contract per this function's own `# Safety` requirements.
+        let bytes = unsafe { read_stream_bytes_via_inchar(stream, &owner) };
         if bytes.is_empty() {
             error("read error");
         }
@@ -215,7 +243,12 @@ pub fn R_ReadItem(stream: R_inpstream_t) -> SEXP {
     }
 }
 
-pub fn R_WriteItem(s: SEXP, stream: R_outpstream_t) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn R_WriteItem(s: SEXP, stream: R_outpstream_t) {
     {
         if stream.is_null() {
             return;
@@ -251,7 +284,12 @@ pub fn R_WriteItem(s: SEXP, stream: R_outpstream_t) {
     }
 }
 
-pub(crate) fn read_stream_bytes_via_inchar(
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub(crate) unsafe fn read_stream_bytes_via_inchar(
     stream: R_inpstream_t,
     owner: &crate::sexp::owner::OwnerToken<'_>,
 ) -> super::owned_input::InputBytes {
@@ -293,7 +331,12 @@ pub(crate) fn read_stream_bytes_via_inchar(
 // Stream initializers
 // ---------------------------------------------------------------------------
 
-pub fn R_InitInPStream(
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn R_InitInPStream(
     stream: R_inpstream_t,
     data: R_pstream_data_t,
     type_: R_pstream_format_t,
@@ -320,7 +363,12 @@ pub fn R_InitInPStream(
     }
 }
 
-pub fn R_InitOutPStream(
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn R_InitOutPStream(
     stream: R_outpstream_t,
     data: R_pstream_data_t,
     type_: R_pstream_format_t,
@@ -351,7 +399,12 @@ pub fn R_InitOutPStream(
     }
 }
 
-pub fn R_InitFileOutPStream(
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn R_InitFileOutPStream(
     stream: R_outpstream_t,
     fp: *mut c_void,
     type_: R_pstream_format_t,
@@ -360,20 +413,28 @@ pub fn R_InitFileOutPStream(
     pdata: SEXP,
 ) {
     {
-        R_InitOutPStream(
-            stream,
-            fp,
-            type_,
-            version,
-            Some(OutCharFile),
-            Some(OutBytesFile),
-            phook,
-            pdata,
-        );
+        // SAFETY: forwarded raw pointers satisfy `R_InitOutPStream`'s contract per this function's own `# Safety` requirements.
+        unsafe {
+            R_InitOutPStream(
+                stream,
+                fp,
+                type_,
+                version,
+                Some(OutCharFile),
+                Some(OutBytesFile),
+                phook,
+                pdata,
+            )
+        };
     }
 }
 
-pub fn R_InitFileInPStream(
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn R_InitFileInPStream(
     stream: R_inpstream_t,
     fp: *mut c_void,
     type_: R_pstream_format_t,
@@ -381,19 +442,27 @@ pub fn R_InitFileInPStream(
     pdata: SEXP,
 ) {
     {
-        R_InitInPStream(
-            stream,
-            fp,
-            type_,
-            Some(InCharFile),
-            Some(InBytesFile),
-            phook,
-            pdata,
-        );
+        // SAFETY: forwarded raw pointers satisfy `R_InitInPStream`'s contract per this function's own `# Safety` requirements.
+        unsafe {
+            R_InitInPStream(
+                stream,
+                fp,
+                type_,
+                Some(InCharFile),
+                Some(InBytesFile),
+                phook,
+                pdata,
+            )
+        };
     }
 }
 
-pub fn R_InitConnOutPStream(
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn R_InitConnOutPStream(
     stream: R_outpstream_t,
     con: *mut c_void,
     type_: R_pstream_format_t,
@@ -402,20 +471,28 @@ pub fn R_InitConnOutPStream(
     pdata: SEXP,
 ) {
     {
-        R_InitOutPStream(
-            stream,
-            con,
-            type_,
-            version,
-            Some(OutCharFile),
-            Some(OutBytesFile),
-            phook,
-            pdata,
-        );
+        // SAFETY: forwarded raw pointers satisfy `R_InitOutPStream`'s contract per this function's own `# Safety` requirements.
+        unsafe {
+            R_InitOutPStream(
+                stream,
+                con,
+                type_,
+                version,
+                Some(OutCharFile),
+                Some(OutBytesFile),
+                phook,
+                pdata,
+            )
+        };
     }
 }
 
-pub fn R_InitConnInPStream(
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn R_InitConnInPStream(
     stream: R_inpstream_t,
     con: *mut c_void,
     type_: R_pstream_format_t,
@@ -423,15 +500,18 @@ pub fn R_InitConnInPStream(
     pdata: SEXP,
 ) {
     {
-        R_InitInPStream(
-            stream,
-            con,
-            type_,
-            Some(InCharFile),
-            Some(InBytesFile),
-            phook,
-            pdata,
-        );
+        // SAFETY: forwarded raw pointers satisfy `R_InitInPStream`'s contract per this function's own `# Safety` requirements.
+        unsafe {
+            R_InitInPStream(
+                stream,
+                con,
+                type_,
+                Some(InCharFile),
+                Some(InBytesFile),
+                phook,
+                pdata,
+            )
+        };
     }
 }
 
@@ -564,10 +644,13 @@ fn serialize_snapshot(
         // is UTF-8-native like Unix GNU R.
         const NATIVE_ENCODING: &[u8] = b"UTF-8";
         writer.write_i32(NATIVE_ENCODING.len() as c_int);
-        writer.write_string_bytes(
-            NATIVE_ENCODING.as_ptr() as *const c_char,
-            NATIVE_ENCODING.len() as c_int,
-        );
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        unsafe {
+            writer.write_string_bytes(
+                NATIVE_ENCODING.as_ptr() as *const c_char,
+                NATIVE_ENCODING.len() as c_int,
+            )
+        };
     }
 
     // Serialize the object
