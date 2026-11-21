@@ -28,32 +28,30 @@ pub(crate) fn style_path(
         anti_alias: true,
     }
 }
-pub(crate) unsafe fn justification(x: SEXP) -> [f64; 2] {
-    unsafe {
-        if x == R_NilValue() {
-            return [0.5, 0.5];
-        }
-        if TYPEOF(x) != SEXPTYPE::STRSXP {
-            let v = numbers(x);
-            return match v.as_slice() {
-                [v] => [*v, *v],
-                [x, y] => [*x, *y],
-                _ => base_error("invalid grid justification"),
-            };
-        }
-        let mut out = [0.5, 0.5];
-        for i in 0..XLENGTH(x) {
-            match elt_to_string(x, i).as_str() {
-                "left" => out[0] = 0.,
-                "right" => out[0] = 1.,
-                "bottom" => out[1] = 0.,
-                "top" => out[1] = 1.,
-                "centre" | "center" => {}
-                _ => base_error("invalid grid justification"),
-            }
-        }
-        out
+pub(crate) fn justification(x: SEXP) -> [f64; 2] {
+    if x == R_NilValue() {
+        return [0.5, 0.5];
     }
+    if TYPEOF(x) != SEXPTYPE::STRSXP {
+        let v = numbers(x);
+        return match v.as_slice() {
+            [v] => [*v, *v],
+            [x, y] => [*x, *y],
+            _ => base_error("invalid grid justification"),
+        };
+    }
+    let mut out = [0.5, 0.5];
+    for i in 0..XLENGTH(x) {
+        match elt_to_string(x, i).as_str() {
+            "left" => out[0] = 0.,
+            "right" => out[0] = 1.,
+            "bottom" => out[1] = 0.,
+            "top" => out[1] = 1.,
+            "centre" | "center" => {}
+            _ => base_error("invalid grid justification"),
+        }
+    }
+    out
 }
 pub(crate) fn compose(a: [f64; 6], b: [f64; 6]) -> [f64; 6] {
     [
@@ -65,37 +63,35 @@ pub(crate) fn compose(a: [f64; 6], b: [f64; 6]) -> [f64; 6] {
         a[1] * b[4] + a[3] * b[5] + a[5],
     ]
 }
-pub(crate) unsafe fn layout_axis(x: SEXP, n: usize, frame: &Frame, axis: usize) -> layout::Axis {
-    unsafe {
-        let values = numbers(field(x, "value"));
-        let names = field(x, "units");
-        if values.is_empty() || XLENGTH(names) == 0 {
-            base_error("invalid layout units");
-        }
-        let terms = (0..n)
-            .map(|i| {
-                let v = values[i % values.len()];
-                if !v.is_finite() {
-                    base_error("layout dimensions must be finite");
-                }
-                let name = elt_to_string(names, i as i64 % XLENGTH(names));
-                if name == "null" {
-                    layout::Length::Null(v)
-                } else {
-                    layout::Length::Fixed(
-                        v * frame
-                            .unit_factor(&name, axis, true)
-                            .unwrap_or_else(|e| base_error(e))
-                            .0,
-                    )
-                }
-            })
-            .collect();
-        layout::Axis::new(terms, frame.extent(axis))
+pub(crate) fn layout_axis(x: SEXP, n: usize, frame: &Frame, axis: usize) -> layout::Axis {
+    let values = numbers(field(x, "value"));
+    let names = field(x, "units");
+    if values.is_empty() || XLENGTH(names) == 0 {
+        base_error("invalid layout units");
     }
+    let terms = (0..n)
+        .map(|i| {
+            let v = values[i % values.len()];
+            if !v.is_finite() {
+                base_error("layout dimensions must be finite");
+            }
+            let name = elt_to_string(names, i as i64 % XLENGTH(names));
+            if name == "null" {
+                layout::Length::Null(v)
+            } else {
+                layout::Length::Fixed(
+                    v * frame
+                        .unit_factor(&name, axis, true)
+                        .unwrap_or_else(|e| base_error(e))
+                        .0,
+                )
+            }
+        })
+        .collect();
+    layout::Axis::new(terms, frame.extent(axis))
 }
-pub(crate) unsafe fn push(data: SEXP, parent: &Frame) -> Frame {
-    unsafe {
+pub(crate) fn push(data: SEXP, parent: &Frame) -> Frame {
+    {
         let mut width = units(field(data, "width"), "npc", parent, 0, true)[0];
         let mut height = units(field(data, "height"), "npc", parent, 1, true)[0];
         let mut x = units(field(data, "x"), "npc", parent, 0, false)[0];
@@ -178,7 +174,9 @@ pub(crate) unsafe fn push(data: SEXP, parent: &Frame) -> Frame {
                     // leaves the parent's clip region active; retain that
                     // behavior instead of silently clipping to the rotated
                     // viewport's axis-aligned bounds.
-                    Rf_warning1(c"cannot clip to rotated viewport".as_ptr());
+                    // SAFETY: audited boundary — warning reporter under the
+                    // active runtime.
+                    unsafe { Rf_warning1(c"cannot clip to rotated viewport".as_ptr()) };
                     f.clip = parent.clip;
                 } else {
                     let a = f.map(0., 0.);
@@ -590,100 +588,108 @@ pub(crate) fn append_display_list(
     }
 }
 
-pub(crate) unsafe fn listed_grob(x: SEXP) -> ListedGrob {
-    unsafe {
-        if x == R_NilValue() || TYPEOF(x) != SEXPTYPE::VECSXP {
-            base_error("grid.draw requires a grob");
+pub(crate) fn listed_grob(x: SEXP) -> ListedGrob {
+    if x == R_NilValue() || TYPEOF(x) != SEXPTYPE::VECSXP {
+        base_error("grid.draw requires a grob");
+    }
+    let mut children = Vec::new();
+    let kids = field(x, "children");
+    if kids != R_NilValue() && TYPEOF(kids) == SEXPTYPE::VECSXP {
+        let kids_vector = node_factory()
+            .wrap(kids)
+            .unwrap_or_else(|error| base_error(error.to_string()));
+        for i in 0..XLENGTH(kids) {
+            let child = kids_vector
+                .try_vector_elt(i)
+                .map(|element| element.as_raw())
+                .unwrap_or_else(|error| base_error(error.to_string()));
+            children.push(listed_grob(child));
         }
-        let mut children = Vec::new();
-        let kids = field(x, "children");
-        if kids != R_NilValue() && TYPEOF(kids) == SEXPTYPE::VECSXP {
-            for i in 0..XLENGTH(kids) {
-                children.push(listed_grob(VECTOR_ELT(kids, i)));
-            }
-        }
-        let (vp_name, vp_down) = listed_viewport(field(x, "vp"));
-        ListedGrob {
-            name: string(field(x, "name"), ""),
-            class_name: grob_listing_class(x),
-            vp_name,
-            vp_down,
-            children,
-        }
+    }
+    let (vp_name, vp_down) = listed_viewport(field(x, "vp"));
+    ListedGrob {
+        name: string(field(x, "name"), ""),
+        class_name: grob_listing_class(x),
+        vp_name,
+        vp_down,
+        children,
     }
 }
 
-pub(crate) unsafe fn listed_viewport(vp: SEXP) -> (String, Vec<String>) {
-    unsafe {
-        if vp == R_NilValue() {
-            return (String::new(), Vec::new());
-        }
-        if TYPEOF(vp) == SEXPTYPE::STRSXP {
-            let parts = string(vp, "")
-                .split("::")
-                .filter(|part| !part.is_empty())
-                .map(str::to_string)
-                .collect();
-            return (String::new(), parts);
-        }
-        if TYPEOF(vp) == SEXPTYPE::VECSXP {
-            return (string(field(vp, "name"), ""), Vec::new());
-        }
-        (String::new(), Vec::new())
+pub(crate) fn listed_viewport(vp: SEXP) -> (String, Vec<String>) {
+    if vp == R_NilValue() {
+        return (String::new(), Vec::new());
     }
+    if TYPEOF(vp) == SEXPTYPE::STRSXP {
+        let parts = string(vp, "")
+            .split("::")
+            .filter(|part| !part.is_empty())
+            .map(str::to_string)
+            .collect();
+        return (String::new(), parts);
+    }
+    if TYPEOF(vp) == SEXPTYPE::VECSXP {
+        return (string(field(vp, "name"), ""), Vec::new());
+    }
+    (String::new(), Vec::new())
 }
 
-pub(crate) unsafe fn grob_listing_class(x: SEXP) -> String {
-    unsafe {
-        let class = getAttrib(x, R_ClassSymbol());
-        if class == R_NilValue() || TYPEOF(class) != SEXPTYPE::STRSXP || XLENGTH(class) < 1 {
-            String::new()
-        } else {
-            elt_to_string(class, 0)
-        }
+pub(crate) fn grob_listing_class(x: SEXP) -> String {
+    let class = attribute(x, class_symbol());
+    if class == R_NilValue() || TYPEOF(class) != SEXPTYPE::STRSXP || XLENGTH(class) < 1 {
+        String::new()
+    } else {
+        elt_to_string(class, 0)
     }
 }
 
 pub(crate) fn strings(values: &[String]) -> SEXP {
-    unsafe {
-        let out = Rf_allocVector3(SEXPTYPE::STRSXP, values.len() as i64);
-        let _guard = crate::sexp::protect::protect(out);
-        for (i, value) in values.iter().enumerate() {
-            let text = std::ffi::CString::new(value.as_str())
-                .unwrap_or_else(|_| base_error("grid listing contains an embedded nul"));
-            SET_STRING_ELT(out, i as i64, Rf_mkChar(text.as_ptr()));
+    for value in values {
+        if value.contains('\0') {
+            base_error("grid listing contains an embedded nul");
         }
-        out
     }
+    let refs: Vec<&str> = values.iter().map(String::as_str).collect();
+    node_factory()
+        .strings(&refs)
+        .map(|vector| vector.as_raw())
+        .unwrap_or_else(|error| base_error(error.to_string()))
 }
 
-pub(crate) unsafe fn logical_flag(x: SEXP, default: bool) -> bool {
-    unsafe {
-        if x == R_NilValue() || XLENGTH(x) == 0 {
-            return default;
-        }
-        match SEXPTYPE(TYPEOF(x)) {
-            SEXPTYPE::LGLSXP => *LOGICAL(x) != 0,
-            SEXPTYPE::INTSXP => *INTEGER(x) != 0,
-            SEXPTYPE::REALSXP => {
-                let value = *REAL(x);
-                value.is_nan() || value != 0.
-            }
-            _ => base_error("invalid 'strict' value"),
-        }
+pub(crate) fn logical_flag(x: SEXP, default: bool) -> bool {
+    if x == R_NilValue() || XLENGTH(x) == 0 {
+        return default;
     }
+    let object = node_factory()
+        .wrap(x)
+        .unwrap_or_else(|error| base_error(error.to_string()));
+    match SEXPTYPE(TYPEOF(x)) {
+        SEXPTYPE::LGLSXP => object.try_logical_elt(0),
+        SEXPTYPE::INTSXP => object.try_integer_elt(0),
+        SEXPTYPE::REALSXP => {
+            let value = object
+                .try_real_elt(0)
+                .unwrap_or_else(|error| base_error(error.to_string()));
+            return value.is_nan() || value != 0.;
+        }
+        _ => base_error("invalid 'strict' value"),
+    }
+    .map(|value| value != 0)
+    .unwrap_or_else(|error| base_error(error.to_string()))
 }
 
 pub(crate) fn mk_string(value: &str) -> SEXP {
-    unsafe {
-        let text = std::ffi::CString::new(value)
-            .unwrap_or_else(|_| base_error("viewport name contains an embedded nul"));
-        Rf_mkString(text.as_ptr())
+    if value.contains('\0') {
+        base_error("viewport name contains an embedded nul");
     }
+    node_factory()
+        .strings(&[value])
+        .map(|vector| vector.as_raw())
+        .unwrap_or_else(|error| base_error(error.to_string()))
 }
 
 /// Internal evaluated dispatcher, fed by ordinary R closures below.
-pub unsafe fn dispatch(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn dispatch(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let operation = string(arg_by_name_or_position(args, &["operation"], 0), "");
         let data = arg_by_name_or_position(args, &["data"], 1);
@@ -711,7 +717,7 @@ pub unsafe fn dispatch(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
-pub(super) unsafe fn apply_grid_operation(
+pub(super) fn apply_grid_operation(
     operation: &str,
     data: SEXP,
     state: &mut GridState,
@@ -719,7 +725,7 @@ pub(super) unsafe fn apply_grid_operation(
     dims: (u32, u32),
     dpi: f64,
 ) -> SEXP {
-    unsafe {
+    {
         let parent = state.frames.last().unwrap().clone();
         let mut returned = R_NilValue();
         match operation.strip_prefix("grob.").unwrap_or(operation) {
@@ -883,7 +889,7 @@ pub(super) unsafe fn apply_grid_operation(
                     base_error(format!("Viewport '{final_name}' was not found"));
                 });
                 activate(state, id);
-                returned = Rf_ScalarInteger(depth);
+                returned = scalar_integer(depth);
             }
             "current.name" => returned = mk_string(&current_name(&state)),
             "current.inches" => returned = result(&current_inches(&state)),
