@@ -90,163 +90,160 @@ fn is_rport_private_base_name(name: &str) -> bool {
 
 /// Register essential builtins in the base environment.
 pub fn register_essentials_builtins(env: SEXP) {
-    unsafe {
-        use crate::sexp::accessors::SET_FRAME;
+    use crate::sexp::accessors::SET_FRAME;
 
-        let frame = crate::sexp::accessors::FRAME(env);
-        let mut chain = frame;
+    let frame = crate::sexp::accessors::FRAME(env);
+    let mut chain = frame;
 
-        for &name in registry::ALL_FNS {
-            // `[` / `[[` are SPECIALSXP upstream (funtab eval=0): they must
-            // not be pre-evaluated, so empty subscript slots (`m[,1]`) reach
-            // the subset handlers' keep-missing argument evaluation.
-            let kind = match name {
-                "quote" | "substitute" | "[" | "[[" | "system.time" | "capture.output"
-                | "missing" | "rep" => SEXPTYPE::SPECIALSXP,
-                _ => SEXPTYPE::BUILTINSXP,
-            };
+    for &name in registry::ALL_FNS {
+        // `[` / `[[` are SPECIALSXP upstream (funtab eval=0): they must
+        // not be pre-evaluated, so empty subscript slots (`m[,1]`) reach
+        // the subset handlers' keep-missing argument evaluation.
+        let kind = match name {
+            "quote" | "substitute" | "[" | "[[" | "system.time" | "capture.output" | "missing"
+            | "rep" => SEXPTYPE::SPECIALSXP,
+            _ => SEXPTYPE::BUILTINSXP,
+        };
 
-            let prim = primitive_binding(name, kind);
-            let _p = protect(prim);
-            let sym = install_cstr(&CString::new(name).unwrap_or_default());
-            // GNU baseenv lists only FunTab primitives. Extra rport builtins
-            // stay on SYMVALUE so `f(...)` still resolves via findFun, but
-            // `as.list(baseenv())` / `is.primitive` match GNU's inventory.
-            if is_rport_private_base_name(name)
-                || !crate::sexp::init::is_accounted_primitive_name(name)
+        let prim = primitive_binding(name, kind);
+        let _p = protect(prim);
+        let sym = install_cstr(&CString::new(name).unwrap_or_default());
+        // GNU baseenv lists only FunTab primitives. Extra rport builtins
+        // stay on SYMVALUE so `f(...)` still resolves via findFun, but
+        // `as.list(baseenv())` / `is.primitive` match GNU's inventory.
+        if is_rport_private_base_name(name) || !crate::sexp::init::is_accounted_primitive_name(name)
+        {
+            if !is_rport_private_base_name(name)
+                && crate::library::portable_package::is_namespace_s3_method_name(name)
             {
-                if !is_rport_private_base_name(name)
-                    && crate::library::portable_package::is_namespace_s3_method_name(name)
-                {
-                    // This primitive is an S3 dispatch fallback for a method
-                    // supplied by a package namespace. Publishing its symbol
-                    // value would make inherited get()/get0() lookup return
-                    // the primitive before getS3method can consult the
-                    // namespace's registered method table.
-                    continue;
-                }
-                SET_SYMVALUE(sym, prim);
+                // This primitive is an S3 dispatch fallback for a method
+                // supplied by a package namespace. Publishing its symbol
+                // value would make inherited get()/get0() lookup return
+                // the primitive before getS3method can consult the
+                // namespace's registered method table.
                 continue;
             }
-            let cell = Rf_cons(prim, chain);
-            crate::sexp::accessors::SETTAG(cell, sym);
-            chain = cell;
+            SET_SYMVALUE(sym, prim);
+            continue;
         }
-        {
-            // GNU datetime.R binds difftime as a closure. Keep the builtin
-            // callable through the symbol value without listing it in baseenv.
-            let name = "difftime";
-            let prim = primitive_binding(name, SEXPTYPE::BUILTINSXP);
-            let _p = protect(prim);
-            let sym = install_cstr(&CString::new(name).unwrap_or_default());
-            crate::sexp::accessors::SET_SYMVALUE(sym, prim);
-        }
-        let pi_sym = install_str("pi");
-        let pi_value = Rf_ScalarReal(std::f64::consts::PI);
-        let _pi_value_guard = protect(pi_value);
-        let pi_cell = Rf_cons(pi_value, chain);
-        crate::sexp::accessors::SETTAG(pi_cell, pi_sym);
-        chain = pi_cell;
-
-        let letters_value = static_string_vector(&[
-            "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q",
-            "r", "s", "t", "u", "v", "w", "x", "y", "z",
-        ]);
-        let _letters_guard = protect(letters_value);
-        let letters_cell = Rf_cons(letters_value, chain);
-        crate::sexp::accessors::SETTAG(letters_cell, install_str("letters"));
-        chain = letters_cell;
-
-        let letters_upper_value = static_string_vector(&[
-            "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q",
-            "R", "S", "T", "U", "V", "W", "X", "Y", "Z",
-        ]);
-        let _letters_upper_guard = protect(letters_upper_value);
-        let letters_upper_cell = Rf_cons(letters_upper_value, chain);
-        crate::sexp::accessors::SETTAG(letters_upper_cell, install_str("LETTERS"));
-        chain = letters_upper_cell;
-
-        let padjust_methods = static_string_vector(&[
-            "holm",
-            "hochberg",
-            "hommel",
-            "bonferroni",
-            "BH",
-            "BY",
-            "fdr",
-            "none",
-        ]);
-        let _padjust_guard = protect(padjust_methods);
-        let padjust_cell = Rf_cons(padjust_methods, chain);
-        crate::sexp::accessors::SETTAG(padjust_cell, install_str("p.adjust.methods"));
-        chain = padjust_cell;
-
-        let month_abb = static_string_vector(&[
-            "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-        ]);
-        let _month_abb_guard = protect(month_abb);
-        let month_abb_cell = Rf_cons(month_abb, chain);
-        crate::sexp::accessors::SETTAG(month_abb_cell, install_str("month.abb"));
-        chain = month_abb_cell;
-
-        let month_name = static_string_vector(&[
-            "January",
-            "February",
-            "March",
-            "April",
-            "May",
-            "June",
-            "July",
-            "August",
-            "September",
-            "October",
-            "November",
-            "December",
-        ]);
-        let _month_name_guard = protect(month_name);
-        let month_name_cell = Rf_cons(month_name, chain);
-        crate::sexp::accessors::SETTAG(month_name_cell, install_str("month.name"));
-        chain = month_name_cell;
-
-        let version_value = do_R_version(
-            std::ptr::null_mut(),
-            std::ptr::null_mut(),
-            R_NilValue(),
-            env,
-        );
-        let _version_guard = protect(version_value);
-        for name in ["R.version", "version"] {
-            let sym = install_cstr(&CString::new(name).unwrap_or_default());
-            let cell = Rf_cons(version_value, chain);
-            crate::sexp::accessors::SETTAG(cell, sym);
-            chain = cell;
-        }
-
-        let version_string = do_R_version_string(
-            std::ptr::null_mut(),
-            std::ptr::null_mut(),
-            R_NilValue(),
-            env,
-        );
-        let _version_string_guard = protect(version_string);
-        let sym = install_str("R.version.string");
-        let cell = Rf_cons(version_string, chain);
+        let cell = Rf_cons(prim, chain);
         crate::sexp::accessors::SETTAG(cell, sym);
         chain = cell;
-        SET_FRAME(env, chain);
-        // GNU base defines Recall as a closure. Its wrapper frame carries
-        // the new promises to .Internal(Recall) while retaining caller identity.
-        let parser_factory = active_owner().node_factory();
-        let parsed = sexp_ok(active_owner().with_arena(|arena| {
-            crate::eval::parser::parse(
-                "function(...) .Internal(Recall(...))",
-                arena,
-                parser_factory.clone(),
-            )
-        }))
-        .expect("base Recall wrapper parses");
-        let recall = crate::eval::eval::Rf_eval(parsed.clone().as_raw(), env);
-        let _recall = protect(recall);
-        define_var(install_str("Recall"), recall, env);
     }
+    {
+        // GNU datetime.R binds difftime as a closure. Keep the builtin
+        // callable through the symbol value without listing it in baseenv.
+        let name = "difftime";
+        let prim = primitive_binding(name, SEXPTYPE::BUILTINSXP);
+        let _p = protect(prim);
+        let sym = install_cstr(&CString::new(name).unwrap_or_default());
+        crate::sexp::accessors::SET_SYMVALUE(sym, prim);
+    }
+    let pi_sym = install_str("pi");
+    let pi_value = Rf_ScalarReal(std::f64::consts::PI);
+    let _pi_value_guard = protect(pi_value);
+    let pi_cell = Rf_cons(pi_value, chain);
+    crate::sexp::accessors::SETTAG(pi_cell, pi_sym);
+    chain = pi_cell;
+
+    let letters_value = static_string_vector(&[
+        "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r",
+        "s", "t", "u", "v", "w", "x", "y", "z",
+    ]);
+    let _letters_guard = protect(letters_value);
+    let letters_cell = Rf_cons(letters_value, chain);
+    crate::sexp::accessors::SETTAG(letters_cell, install_str("letters"));
+    chain = letters_cell;
+
+    let letters_upper_value = static_string_vector(&[
+        "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R",
+        "S", "T", "U", "V", "W", "X", "Y", "Z",
+    ]);
+    let _letters_upper_guard = protect(letters_upper_value);
+    let letters_upper_cell = Rf_cons(letters_upper_value, chain);
+    crate::sexp::accessors::SETTAG(letters_upper_cell, install_str("LETTERS"));
+    chain = letters_upper_cell;
+
+    let padjust_methods = static_string_vector(&[
+        "holm",
+        "hochberg",
+        "hommel",
+        "bonferroni",
+        "BH",
+        "BY",
+        "fdr",
+        "none",
+    ]);
+    let _padjust_guard = protect(padjust_methods);
+    let padjust_cell = Rf_cons(padjust_methods, chain);
+    crate::sexp::accessors::SETTAG(padjust_cell, install_str("p.adjust.methods"));
+    chain = padjust_cell;
+
+    let month_abb = static_string_vector(&[
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+    ]);
+    let _month_abb_guard = protect(month_abb);
+    let month_abb_cell = Rf_cons(month_abb, chain);
+    crate::sexp::accessors::SETTAG(month_abb_cell, install_str("month.abb"));
+    chain = month_abb_cell;
+
+    let month_name = static_string_vector(&[
+        "January",
+        "February",
+        "March",
+        "April",
+        "May",
+        "June",
+        "July",
+        "August",
+        "September",
+        "October",
+        "November",
+        "December",
+    ]);
+    let _month_name_guard = protect(month_name);
+    let month_name_cell = Rf_cons(month_name, chain);
+    crate::sexp::accessors::SETTAG(month_name_cell, install_str("month.name"));
+    chain = month_name_cell;
+
+    let version_value = do_R_version(
+        std::ptr::null_mut(),
+        std::ptr::null_mut(),
+        R_NilValue(),
+        env,
+    );
+    let _version_guard = protect(version_value);
+    for name in ["R.version", "version"] {
+        let sym = install_cstr(&CString::new(name).unwrap_or_default());
+        let cell = Rf_cons(version_value, chain);
+        crate::sexp::accessors::SETTAG(cell, sym);
+        chain = cell;
+    }
+
+    let version_string = do_R_version_string(
+        std::ptr::null_mut(),
+        std::ptr::null_mut(),
+        R_NilValue(),
+        env,
+    );
+    let _version_string_guard = protect(version_string);
+    let sym = install_str("R.version.string");
+    let cell = Rf_cons(version_string, chain);
+    crate::sexp::accessors::SETTAG(cell, sym);
+    chain = cell;
+    SET_FRAME(env, chain);
+    // GNU base defines Recall as a closure. Its wrapper frame carries
+    // the new promises to .Internal(Recall) while retaining caller identity.
+    let parser_factory = active_owner().node_factory();
+    let parsed = sexp_ok(active_owner().with_arena(|arena| {
+        crate::eval::parser::parse(
+            "function(...) .Internal(Recall(...))",
+            arena,
+            parser_factory.clone(),
+        )
+    }))
+    .expect("base Recall wrapper parses");
+    let recall = crate::eval::eval::Rf_eval(parsed.clone().as_raw(), env);
+    let _recall = protect(recall);
+    define_var(install_str("Recall"), recall, env);
 }

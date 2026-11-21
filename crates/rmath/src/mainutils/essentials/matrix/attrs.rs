@@ -1033,176 +1033,176 @@ fn namespace_value(namespace: SEXP, name: SEXP, exported: bool) -> SEXP {
 }
 
 pub fn do_namespace_get(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-        let package = CAR(args);
-        let name = CAR(CDR(args));
-        if package.is_null() || name.is_null() || package == R_NilValue() || name == R_NilValue() {
-            return R_NilValue();
-        }
+    let package = CAR(args);
+    let name = CAR(CDR(args));
+    if package.is_null() || name.is_null() || package == R_NilValue() || name == R_NilValue() {
+        return R_NilValue();
+    }
 
-        let package_name = if TYPEOF(package) == SEXPTYPE::SYMSXP {
-            let pname = PRINTNAME(package);
-            if pname.is_null() {
-                String::new()
-            } else {
-                charsxp_cstring(pname).to_string_lossy().into_owned()
-            }
+    let package_name = if TYPEOF(package) == SEXPTYPE::SYMSXP {
+        let pname = PRINTNAME(package);
+        if pname.is_null() {
+            String::new()
         } else {
-            elt_to_string(package, 0)
-        };
-
-        if TYPEOF(name) != SEXPTYPE::SYMSXP {
-            std::panic::panic_any(RError {
-                message: "namespace lookup requires a name".to_string(),
-            });
+            charsxp_cstring(pname).to_string_lossy().into_owned()
         }
-        let lookup_name = symbol_name(name).unwrap_or_default();
+    } else {
+        elt_to_string(package, 0)
+    };
 
-        #[cfg(feature = "renderplot-device")]
-        if package_name == "grid" {
-            if !crate::mainutils::portable_grid::EXPORTS.contains(&lookup_name.as_str()) {
-                package_error(format!(
-                    "'{lookup_name}' is not exported by the portable grid namespace"
-                ));
-            }
-            let namespace = crate::mainutils::portable_grid::namespace();
-            return force_namespace_value(find_var_in_frame(namespace, name));
+    if TYPEOF(name) != SEXPTYPE::SYMSXP {
+        std::panic::panic_any(RError {
+            message: "namespace lookup requires a name".to_string(),
+        });
+    }
+    let lookup_name = symbol_name(name).unwrap_or_default();
+
+    #[cfg(feature = "renderplot-device")]
+    if package_name == "grid" {
+        if !crate::mainutils::portable_grid::EXPORTS.contains(&lookup_name.as_str()) {
+            package_error(format!(
+                "'{lookup_name}' is not exported by the portable grid namespace"
+            ));
         }
+        let namespace = crate::mainutils::portable_grid::namespace();
+        return force_namespace_value(find_var_in_frame(namespace, name));
+    }
 
-        if package_name == "compiler" {
-            if !crate::eval::compiler::EXPORTS.contains(&lookup_name.as_str()) {
-                package_error(format!(
-                    "'{lookup_name}' is not exported by the portable compiler namespace"
-                ));
+    if package_name == "compiler" {
+        if !crate::eval::compiler::EXPORTS.contains(&lookup_name.as_str()) {
+            package_error(format!(
+                "'{lookup_name}' is not exported by the portable compiler namespace"
+            ));
+        }
+        let namespace = crate::eval::compiler::namespace();
+        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::TRUE);
+        return force_namespace_value(find_var_in_frame(namespace, name));
+    }
+
+    if package_name == "tools" {
+        if lookup_name == "langElts" {
+            let values = crate::sexp::init::LANGUAGE_ELEMENTS;
+            let result = Rf_allocVector3(SEXPTYPE::STRSXP, values.len() as R_xlen_t);
+            if result.is_null() {
+                return R_NilValue();
             }
-            let namespace = crate::eval::compiler::namespace();
+            let _result_guard = protect(result);
+            for (i, value) in values.iter().enumerate() {
+                let c_value =
+                    CString::new(*value).expect("static language element has no NUL byte");
+                SET_STRING_ELT(result, i as R_xlen_t, mk_char_cstr(&c_value));
+            }
             crate::sexp::globals::set_R_Visible(crate::sexp::ffi::TRUE);
-            return force_namespace_value(find_var_in_frame(namespace, name));
+            return result;
         }
-
-        if package_name == "tools" {
-            if lookup_name == "langElts" {
-                let values = crate::sexp::init::LANGUAGE_ELEMENTS;
-                let result = Rf_allocVector3(SEXPTYPE::STRSXP, values.len() as R_xlen_t);
-                if result.is_null() {
-                    return R_NilValue();
-                }
-                let _result_guard = protect(result);
-                for (i, value) in values.iter().enumerate() {
-                    let c_value =
-                        CString::new(*value).expect("static language element has no NUL byte");
-                    SET_STRING_ELT(result, i as R_xlen_t, mk_char_cstr(&c_value));
-                }
-                crate::sexp::globals::set_R_Visible(crate::sexp::ffi::TRUE);
-                return result;
+        if lookup_name == ".keep_white_description_fields" {
+            // GNU packageDescription reads Meta/package.rds when present
+            // (the oracle install always has it), so this constant is
+            // served without loading the tools namespace.
+            let values = ["Description", "Authors@R", "Author", "Built", "Packaged"];
+            let result = Rf_allocVector3(SEXPTYPE::STRSXP, values.len() as R_xlen_t);
+            if result.is_null() {
+                return R_NilValue();
             }
-            if lookup_name == ".keep_white_description_fields" {
-                // GNU packageDescription reads Meta/package.rds when present
-                // (the oracle install always has it), so this constant is
-                // served without loading the tools namespace.
-                let values = ["Description", "Authors@R", "Author", "Built", "Packaged"];
-                let result = Rf_allocVector3(SEXPTYPE::STRSXP, values.len() as R_xlen_t);
-                if result.is_null() {
-                    return R_NilValue();
-                }
-                let _result_guard = protect(result);
-                for (i, value) in values.iter().enumerate() {
-                    let c_value = CString::new(*value).expect("static field name has no NUL byte");
-                    SET_STRING_ELT(result, i as R_xlen_t, mk_char_cstr(&c_value));
-                }
-                crate::sexp::globals::set_R_Visible(crate::sexp::ffi::TRUE);
-                return result;
+            let _result_guard = protect(result);
+            for (i, value) in values.iter().enumerate() {
+                let c_value = CString::new(*value).expect("static field name has no NUL byte");
+                SET_STRING_ELT(result, i as R_xlen_t, mk_char_cstr(&c_value));
             }
-            if lookup_name == "file_ext" || lookup_name == "file_path_sans_ext" {
+            crate::sexp::globals::set_R_Visible(crate::sexp::ffi::TRUE);
+            return result;
+        }
+        if lookup_name == "file_ext" || lookup_name == "file_path_sans_ext" {
             let probe = primitive_binding(&lookup_name, SEXPTYPE::BUILTINSXP);
-                if !probe.is_null() && probe != R_NilValue() {
-                    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::TRUE);
-                    return probe;
-                }
+            if !probe.is_null() && probe != R_NilValue() {
+                crate::sexp::globals::set_R_Visible(crate::sexp::ffi::TRUE);
+                return probe;
             }
-            if lookup_name == "assertError"
-                || lookup_name == "assertWarning"
-                || lookup_name == "assertCondition"
-            {
-                if let Ok(namespace) = load_package_namespace_by_name("tools") {
-                    crate::library::tools::native_calls::install_tools_assert_closures(namespace);
-                    let value = find_var_in_frame(namespace, name);
-                    if value != crate::sexp::globals::R_UnboundValue() {
-                        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::TRUE);
-                        return force_namespace_value(value);
-                    }
+        }
+        if lookup_name == "assertError"
+            || lookup_name == "assertWarning"
+            || lookup_name == "assertCondition"
+        {
+            if let Ok(namespace) = load_package_namespace_by_name("tools") {
+                crate::library::tools::native_calls::install_tools_assert_closures(namespace);
+                let value = find_var_in_frame(namespace, name);
+                if value != crate::sexp::globals::R_UnboundValue() {
+                    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::TRUE);
+                    return force_namespace_value(value);
                 }
             }
         }
+    }
 
-        {
-            // Every qualified lookup uses the package namespace, including
-            // base. Searching the attached base environment here would walk
-            // into the global search path and resolve unexported names from
-            // other packages (for example, `base::lm` finding stats::lm).
-            // Recommended packages (methods, stats, ...) also need namespace
-            // identity so `methods:::new` returns GNU's closure, not a base
-            // primitive.
+    {
+        // Every qualified lookup uses the package namespace, including
+        // base. Searching the attached base environment here would walk
+        // into the global search path and resolve unexported names from
+        // other packages (for example, `base::lm` finding stats::lm).
+        // Recommended packages (methods, stats, ...) also need namespace
+        // identity so `methods:::new` returns GNU's closure, not a base
+        // primitive.
 
-            let namespace = match load_package_namespace_by_name(&package_name) {
-                Ok(env) => env,
-                Err(message) => {
-                    std::panic::panic_any(RError { message });
-                }
-            };
-            let private_lookup = symbol_name(CAR(call)).as_deref() == Some(":::")
-                || crate::eval::builtin::PRIMNAME(op) == ":::";
-            if !private_lookup
-                && (namespace == crate::sexp::envir::R_BaseNamespace()
+        let namespace = match load_package_namespace_by_name(&package_name) {
+            Ok(env) => env,
+            Err(message) => {
+                std::panic::panic_any(RError { message });
+            }
+        };
+        let private_lookup = symbol_name(CAR(call)).as_deref() == Some(":::")
+            || crate::eval::builtin::PRIMNAME(op) == ":::";
+        if !private_lookup
+            && (namespace == crate::sexp::envir::R_BaseNamespace()
                 || crate::mainutils::essentials::shared::namespace_export_environment(namespace)
                     .is_some())
-            {
-                return namespace_value(namespace, name, true);
-            }
-            let package_path = find_package_path(&package_name);
-            if !private_lookup {
-                let exported = {
-                    crate::mainutils::essentials::shared::namespace_exports_contains(
-                        std::path::Path::new(&package_path),
-                        namespace,
-                        &lookup_name,
-                    )
-                };
-                if !exported {
-                if let Some(value) = lazy_data_value(&package_name, &package_path, &lookup_name) {
-                        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::TRUE);
-                        return value;
-                    }
-                    std::panic::panic_any(RError {
-                        message: format!(
-                            "'{lookup_name}' is not an exported object from 'namespace:{package_name}'"
-                        ),
-                    });
-                }
-            }
-            if private_lookup
-                && crate::mainutils::essentials::lazy_data_names_binding(namespace)
-                    .iter()
-                    .any(|lazy_name| lazy_name == &lookup_name)
-            {
-                std::panic::panic_any(RError {
-                    message: format!("object '{lookup_name}' not found"),
-                });
-            }
-            let mut value = find_var_in_frame(namespace, name);
-        if !private_lookup && (value == crate::sexp::globals::R_UnboundValue() || value.is_null()) {
-                let parent = crate::sexp::accessors::ENCLOS(namespace);
-                if !parent.is_null() && parent != R_NilValue() {
-                    value = find_var_in_frame(parent, name);
-                }
-            }
-            if value == crate::sexp::globals::R_UnboundValue() {
-                std::panic::panic_any(RError {
-                    message: format!("object '{lookup_name}' not found"),
-                });
-            }
-            crate::sexp::globals::set_R_Visible(crate::sexp::ffi::TRUE);
-            return force_namespace_value(value);
+        {
+            return namespace_value(namespace, name, true);
         }
+        let package_path = find_package_path(&package_name);
+        if !private_lookup {
+            let exported = {
+                crate::mainutils::essentials::shared::namespace_exports_contains(
+                    std::path::Path::new(&package_path),
+                    namespace,
+                    &lookup_name,
+                )
+            };
+            if !exported {
+                if let Some(value) = lazy_data_value(&package_name, &package_path, &lookup_name) {
+                    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::TRUE);
+                    return value;
+                }
+                std::panic::panic_any(RError {
+                    message: format!(
+                        "'{lookup_name}' is not an exported object from 'namespace:{package_name}'"
+                    ),
+                });
+            }
+        }
+        if private_lookup
+            && crate::mainutils::essentials::lazy_data_names_binding(namespace)
+                .iter()
+                .any(|lazy_name| lazy_name == &lookup_name)
+        {
+            std::panic::panic_any(RError {
+                message: format!("object '{lookup_name}' not found"),
+            });
+        }
+        let mut value = find_var_in_frame(namespace, name);
+        if !private_lookup && (value == crate::sexp::globals::R_UnboundValue() || value.is_null()) {
+            let parent = crate::sexp::accessors::ENCLOS(namespace);
+            if !parent.is_null() && parent != R_NilValue() {
+                value = find_var_in_frame(parent, name);
+            }
+        }
+        if value == crate::sexp::globals::R_UnboundValue() {
+            std::panic::panic_any(RError {
+                message: format!("object '{lookup_name}' not found"),
+            });
+        }
+        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::TRUE);
+        return force_namespace_value(value);
+    }
 }
 
 fn lazy_data_value(package: &str, package_path: &str, name: &str) -> Option<SEXP> {

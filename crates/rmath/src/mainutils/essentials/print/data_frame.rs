@@ -331,25 +331,25 @@ fn data_frame_row_labels(x: SEXP, nrow: R_xlen_t, limit: R_xlen_t) -> Vec<String
 }
 
 pub(crate) fn print_method_x(call: SEXP, args: SEXP, class: &str) -> SEXP {
-        if !call.is_null() && call != R_NilValue() {
+    if !call.is_null() && call != R_NilValue() {
         let matched = match_formals(call, args, &["x", "..."]);
-            if let Some(&x) = matched.first()
-                && !x.is_null()
-                && x != R_NilValue()
-                && crate::mainutils::essentials::sexp_has_class(x, class)
-            {
-                return x;
-            }
+        if let Some(&x) = matched.first()
+            && !x.is_null()
+            && x != R_NilValue()
+            && crate::mainutils::essentials::sexp_has_class(x, class)
+        {
+            return x;
         }
-        let mut p = args;
-        while !p.is_null() && p != R_NilValue() {
-            let v = CAR(p);
-            if !v.is_null() && crate::mainutils::essentials::sexp_has_class(v, class) {
-                return v;
-            }
-            p = CDR(p);
+    }
+    let mut p = args;
+    while !p.is_null() && p != R_NilValue() {
+        let v = CAR(p);
+        if !v.is_null() && crate::mainutils::essentials::sexp_has_class(v, class) {
+            return v;
         }
-        CAR(args)
+        p = CDR(p);
+    }
+    CAR(args)
 }
 
 /// R's `print.data.frame(x)` — print a data.frame nicely with aligned columns.

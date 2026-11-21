@@ -354,31 +354,31 @@ pub(crate) fn is_builtin_package_dependency(package: &str) -> bool {
 }
 
 pub(crate) fn bind_methods_base_primitives(ns: SEXP) {
-        for name in [
-            "standardGeneric",
-            "ngettext",
-            "gettext",
-            "bindtextdomain",
-            "dgettext",
-            "asS4",
-            ".asS4",
-            "parent.env",
-            "parent.env<-",
-            "list2env",
-            "as.environment",
-        ] {
-            let symbol = install_cstr(&CString::new(name).unwrap_or_default());
-            let value = find_var_in_frame(ns, symbol);
-            let kind = TYPEOF(value);
+    for name in [
+        "standardGeneric",
+        "ngettext",
+        "gettext",
+        "bindtextdomain",
+        "dgettext",
+        "asS4",
+        ".asS4",
+        "parent.env",
+        "parent.env<-",
+        "list2env",
+        "as.environment",
+    ] {
+        let symbol = install_cstr(&CString::new(name).unwrap_or_default());
+        let value = find_var_in_frame(ns, symbol);
+        let kind = TYPEOF(value);
         if kind == SEXPTYPE::CLOSXP || kind == SEXPTYPE::BUILTINSXP || kind == SEXPTYPE::SPECIALSXP
-            {
-                continue;
-            }
-        let prim = primitive_binding(name, SEXPTYPE::BUILTINSXP);
-            if !prim.is_null() && prim != R_NilValue() {
-                define_var(symbol, prim, ns);
-            }
+        {
+            continue;
         }
+        let prim = primitive_binding(name, SEXPTYPE::BUILTINSXP);
+        if !prim.is_null() && prim != R_NilValue() {
+            define_var(symbol, prim, ns);
+        }
+    }
 }
 
 /// Finish the same original namespace lifecycle for installed and portable images.

@@ -73,197 +73,191 @@ impl Drop for MessageSinkGuard {
 }
 /// R's `capture.output(expr)` — capture printed stdout as a character vector.
 pub fn do_capture_output(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let control_name = |cell: SEXP| -> Option<String> {
-            let tag = TAG(cell);
-            if tag.is_null() || tag == R_NilValue() {
-                return None;
-            }
-            let name_cstr = charsxp_cstring(PRINTNAME(tag));
-            let name = name_cstr.to_string_lossy();
-            matches!(name.as_ref(), "file" | "append" | "type" | "split").then(|| name.into_owned())
-        };
-        let mut capture_type = "output".to_string();
-        let mut split = false;
-        let mut file_value = R_NilValue();
-        let mut _file_root = None;
-        let mut append_file = false;
-        let mut control = args;
-        let mut seen = std::collections::HashSet::new();
-        while control != R_NilValue() && !control.is_null() {
-            if let Some(name) = control_name(control) {
-                if !seen.insert(name.clone()) {
-                    base_error("formal argument matched by multiple actual arguments");
-                }
-                let value = crate::eval::eval::Rf_eval(CAR(control), rho);
-                match name.as_str() {
-                    "file" if value != R_NilValue() => {
-                        file_value = value;
-                        _file_root = Some(protect(value));
-                    }
-                    "type" => {
-                        if TYPEOF(value) != SEXPTYPE::STRSXP || LENGTH(value) != 1 {
-                            base_error("invalid 'type' argument");
-                        }
-                        let kind_cstr = charsxp_cstring(STRING_ELT(value, 0));
-                        let kind = kind_cstr.to_string_lossy();
-                        capture_type = ["output", "message"]
-                            .into_iter()
-                            .find(|candidate| {
-                                !kind.is_empty() && candidate.starts_with(kind.as_ref())
-                            })
-                            .unwrap_or_else(|| base_error("invalid 'type' argument"))
-                            .into();
-                    }
-                    "split" | "append" => {
-                        let enabled = crate::main::coerce::asLogical(value);
-                        if enabled == NA_LOGICAL {
-                            base_error(format!("invalid '{name}' argument"));
-                        }
-                        if name == "split" && enabled != FALSE {
-                            split = true;
-                        }
-                        if name == "append" {
-                            append_file = enabled != FALSE;
-                        }
-                    }
-                    _ => {}
-                }
-            }
-            control = CDR(control);
+    let control_name = |cell: SEXP| -> Option<String> {
+        let tag = TAG(cell);
+        if tag.is_null() || tag == R_NilValue() {
+            return None;
         }
-        if capture_type == "message" && split {
-            base_error("cannot split the message connection");
-        }
-        let owner = current_owner().unwrap_or_else(|e| base_error(e.to_string()));
-        let mut file_guard = crate::mainutils::connections::ConnectionCleanup::new(owner, true);
-        let destination = if file_value == R_NilValue() {
-            None
-        } else {
-            let connection = if inherits_class(file_value, "connection") {
-                let index = connection_index(file_value);
-                let slot = crate::mainutils::connections::checked_connection_index(index);
-                let is_open = {
-                    let table = crate::mainutils::connections::connection_table();
-                    table[slot].as_ref().expect("validated connection").isopen
-                };
-                if !is_open {
-                    let mode = mk_string_cstr(if append_file { c"a" } else { c"w" });
-                    let _mode = protect(mode);
-                    let tail = Rf_cons(mode, R_NilValue());
-                    let _tail = protect(tail);
-                    let open_args = Rf_cons(file_value, tail);
-                    let _open_args = protect(open_args);
-                    crate::mainutils::connections::do_open(_call, _op, open_args, rho);
-                    file_guard.attach(slot as i32);
+        let name_cstr = charsxp_cstring(PRINTNAME(tag));
+        let name = name_cstr.to_string_lossy();
+        matches!(name.as_ref(), "file" | "append" | "type" | "split").then(|| name.into_owned())
+    };
+    let mut capture_type = "output".to_string();
+    let mut split = false;
+    let mut file_value = R_NilValue();
+    let mut _file_root = None;
+    let mut append_file = false;
+    let mut control = args;
+    let mut seen = std::collections::HashSet::new();
+    while control != R_NilValue() && !control.is_null() {
+        if let Some(name) = control_name(control) {
+            if !seen.insert(name.clone()) {
+                base_error("formal argument matched by multiple actual arguments");
+            }
+            let value = crate::eval::eval::Rf_eval(CAR(control), rho);
+            match name.as_str() {
+                "file" if value != R_NilValue() => {
+                    file_value = value;
+                    _file_root = Some(protect(value));
                 }
-                index
-            } else if TYPEOF(file_value) == SEXPTYPE::STRSXP && LENGTH(file_value) == 1 {
+                "type" => {
+                    if TYPEOF(value) != SEXPTYPE::STRSXP || LENGTH(value) != 1 {
+                        base_error("invalid 'type' argument");
+                    }
+                    let kind_cstr = charsxp_cstring(STRING_ELT(value, 0));
+                    let kind = kind_cstr.to_string_lossy();
+                    capture_type = ["output", "message"]
+                        .into_iter()
+                        .find(|candidate| !kind.is_empty() && candidate.starts_with(kind.as_ref()))
+                        .unwrap_or_else(|| base_error("invalid 'type' argument"))
+                        .into();
+                }
+                "split" | "append" => {
+                    let enabled = crate::main::coerce::asLogical(value);
+                    if enabled == NA_LOGICAL {
+                        base_error(format!("invalid '{name}' argument"));
+                    }
+                    if name == "split" && enabled != FALSE {
+                        split = true;
+                    }
+                    if name == "append" {
+                        append_file = enabled != FALSE;
+                    }
+                }
+                _ => {}
+            }
+        }
+        control = CDR(control);
+    }
+    if capture_type == "message" && split {
+        base_error("cannot split the message connection");
+    }
+    let owner = current_owner().unwrap_or_else(|e| base_error(e.to_string()));
+    let mut file_guard = crate::mainutils::connections::ConnectionCleanup::new(owner, true);
+    let destination = if file_value == R_NilValue() {
+        None
+    } else {
+        let connection = if inherits_class(file_value, "connection") {
+            let index = connection_index(file_value);
+            let slot = crate::mainutils::connections::checked_connection_index(index);
+            let is_open = {
+                let table = crate::mainutils::connections::connection_table();
+                table[slot].as_ref().expect("validated connection").isopen
+            };
+            if !is_open {
                 let mode = mk_string_cstr(if append_file { c"a" } else { c"w" });
                 let _mode = protect(mode);
                 let tail = Rf_cons(mode, R_NilValue());
                 let _tail = protect(tail);
-                let file_args = Rf_cons(file_value, tail);
-                let _file_args = protect(file_args);
-                let connection = crate::mainutils::connections::do_file(_call, _op, file_args, rho);
-                let index = connection_index(connection);
-                file_guard.attach(index);
-                index
-            } else {
-                base_error("'file' must be NULL, a connection or a character string");
-            };
-            // Validate before evaluating the expression, even if it prints nothing.
-            crate::mainutils::connections::connection_write_bytes(connection, b"");
-            Some(connection)
-        };
-        let mut capture = crate::sexp::output::OutputCaptureGuard::start_with_options(
-            capture_type == "output",
-            capture_type == "message",
-            split,
-        );
-        if let Some(index) = destination {
-            capture.set_connection(index);
-        }
-        // GNU capture.output(type="message", file=) is sink(file, type="message").
-        // message() follows that connection rather than the output capture frame.
-        let message_sink = if capture_type == "message" {
-            destination.map(MessageSinkGuard::push)
+                let open_args = Rf_cons(file_value, tail);
+                let _open_args = protect(open_args);
+                crate::mainutils::connections::do_open(_call, _op, open_args, rho);
+                file_guard.attach(slot as i32);
+            }
+            index
+        } else if TYPEOF(file_value) == SEXPTYPE::STRSXP && LENGTH(file_value) == 1 {
+            let mode = mk_string_cstr(if append_file { c"a" } else { c"w" });
+            let _mode = protect(mode);
+            let tail = Rf_cons(mode, R_NilValue());
+            let _tail = protect(tail);
+            let file_args = Rf_cons(file_value, tail);
+            let _file_args = protect(file_args);
+            let connection = crate::mainutils::connections::do_file(_call, _op, file_args, rho);
+            let index = connection_index(connection);
+            file_guard.attach(index);
+            index
         } else {
-            None
+            base_error("'file' must be NULL, a connection or a character string");
         };
-        let mut argument = args;
-        while argument != R_NilValue() && !argument.is_null() {
-            if control_name(argument).is_some() {
+        // Validate before evaluating the expression, even if it prints nothing.
+        crate::mainutils::connections::connection_write_bytes(connection, b"");
+        Some(connection)
+    };
+    let mut capture = crate::sexp::output::OutputCaptureGuard::start_with_options(
+        capture_type == "output",
+        capture_type == "message",
+        split,
+    );
+    if let Some(index) = destination {
+        capture.set_connection(index);
+    }
+    // GNU capture.output(type="message", file=) is sink(file, type="message").
+    // message() follows that connection rather than the output capture frame.
+    let message_sink = if capture_type == "message" {
+        destination.map(MessageSinkGuard::push)
+    } else {
+        None
+    };
+    let mut argument = args;
+    while argument != R_NilValue() && !argument.is_null() {
+        if control_name(argument).is_some() {
+            argument = CDR(argument);
+            continue;
+        }
+        let expr = CAR(argument);
+        if expr == crate::sexp::symbol::R_DotsSymbol() {
+            let h = find_var(expr, rho);
+            if TYPEOF(h) == SEXPTYPE::DOTSXP || h == R_NilValue() {
+                let mut dh = h;
+                while !dh.is_null() && dh != R_NilValue() {
+                    let value = crate::eval::eval::Rf_eval(CAR(dh), rho);
+                    let _value_root = protect(value);
+                    if crate::sexp::globals::R_Visible() != FALSE {
+                        let print_args = Rf_cons(value, R_NilValue());
+                        let _print_args_root = protect(print_args);
+                        crate::mainutils::essentials_basic::do_print(_call, _op, print_args, rho);
+                    }
+                    dh = CDR(dh);
+                }
                 argument = CDR(argument);
                 continue;
             }
-            let expr = CAR(argument);
-            if expr == crate::sexp::symbol::R_DotsSymbol() {
-                let h = find_var(expr, rho);
-                if TYPEOF(h) == SEXPTYPE::DOTSXP || h == R_NilValue() {
-                    let mut dh = h;
-                    while !dh.is_null() && dh != R_NilValue() {
-                        let value = crate::eval::eval::Rf_eval(CAR(dh), rho);
-                        let _value_root = protect(value);
-                        if crate::sexp::globals::R_Visible() != FALSE {
-                            let print_args = Rf_cons(value, R_NilValue());
-                            let _print_args_root = protect(print_args);
-                            crate::mainutils::essentials_basic::do_print(
-                                _call, _op, print_args, rho,
-                            );
-                        }
-                        dh = CDR(dh);
-                    }
-                    argument = CDR(argument);
-                    continue;
-                }
-            }
-            let value = crate::eval::eval::Rf_eval(expr, rho);
-            let _value_root = protect(value);
-            if crate::sexp::globals::R_Visible() != FALSE {
-                let print_args = Rf_cons(value, R_NilValue());
-                let _print_args_root = protect(print_args);
-                crate::mainutils::essentials_basic::do_print(_call, _op, print_args, rho);
-            }
-            argument = CDR(argument);
         }
-        drop(message_sink);
-        let captured = capture.finish();
-
-        let captured_stream = if capture_type == "message" {
-            captured.stderr
-        } else {
-            captured.stdout
-        };
-        if destination.is_some() {
-            file_guard.close();
-            crate::sexp::globals::set_R_Visible(FALSE);
-            return R_NilValue();
+        let value = crate::eval::eval::Rf_eval(expr, rho);
+        let _value_root = protect(value);
+        if crate::sexp::globals::R_Visible() != FALSE {
+            let print_args = Rf_cons(value, R_NilValue());
+            let _print_args_root = protect(print_args);
+            crate::mainutils::essentials_basic::do_print(_call, _op, print_args, rho);
         }
-        let stdout = captured_stream
-            .strip_suffix('\n')
-            .unwrap_or(&captured_stream);
-        let lines: Vec<&str> = if captured_stream.is_empty() {
-            Vec::new()
-        } else {
-            stdout.split('\n').collect()
-        };
-
-        let result = Rf_allocVector3(SEXPTYPE::STRSXP, lines.len() as R_xlen_t);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _p = protect(result);
-        for (i, line) in lines.iter().enumerate() {
-            let cstr = CString::new(*line).unwrap_or_default();
-            let charsxp = mk_char_cstr(&cstr);
-            if !charsxp.is_null() {
-                SET_STRING_ELT(result, i as R_xlen_t, charsxp);
-            }
-        }
-        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::TRUE);
-        result
+        argument = CDR(argument);
     }
+    drop(message_sink);
+    let captured = capture.finish();
+
+    let captured_stream = if capture_type == "message" {
+        captured.stderr
+    } else {
+        captured.stdout
+    };
+    if destination.is_some() {
+        file_guard.close();
+        crate::sexp::globals::set_R_Visible(FALSE);
+        return R_NilValue();
+    }
+    let stdout = captured_stream
+        .strip_suffix('\n')
+        .unwrap_or(&captured_stream);
+    let lines: Vec<&str> = if captured_stream.is_empty() {
+        Vec::new()
+    } else {
+        stdout.split('\n').collect()
+    };
+
+    let result = Rf_allocVector3(SEXPTYPE::STRSXP, lines.len() as R_xlen_t);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _p = protect(result);
+    for (i, line) in lines.iter().enumerate() {
+        let cstr = CString::new(*line).unwrap_or_default();
+        let charsxp = mk_char_cstr(&cstr);
+        if !charsxp.is_null() {
+            SET_STRING_ELT(result, i as R_xlen_t, charsxp);
+        }
+    }
+    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::TRUE);
+    result
 }
 
 /// R's `withVisible(x)` — returns a list with $value and $visible.

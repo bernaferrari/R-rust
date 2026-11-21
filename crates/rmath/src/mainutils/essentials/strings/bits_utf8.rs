@@ -289,162 +289,162 @@ pub fn do_utf8ToInt(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 /// GNU `intToUtf8(x, multiple=FALSE, allow_surrogate_pairs=FALSE)`.
 pub fn do_intToUtf8(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     let matched = match_formals(
+        crate::mainutils::errors::R_getCurrentCall(),
+        args,
+        &["x", "multiple", "allow_surrogate_pairs"],
+    );
+    let x = matched[0];
+    let m = matched[1];
+    let p = matched[2];
+    if x == crate::sexp::globals::R_MissingArg() {
+        crate::mainutils::errors::errorcall_str(
             crate::mainutils::errors::R_getCurrentCall(),
-            args,
-            &["x", "multiple", "allow_surrogate_pairs"],
+            "argument \"x\" is missing, with no default",
         );
-        let x = matched[0];
-        let m = matched[1];
-        let p = matched[2];
-        if x == crate::sexp::globals::R_MissingArg() {
+    }
+    let logical_flag = |value: SEXP, name: &str| -> bool {
+        if value == crate::sexp::globals::R_MissingArg() {
+            return false;
+        }
+        if value.is_null() || value == R_NilValue() {
             crate::mainutils::errors::errorcall_str(
                 crate::mainutils::errors::R_getCurrentCall(),
-                "argument \"x\" is missing, with no default",
+                if name == "multiple" {
+                    "argument 'multiple' must be TRUE or FALSE"
+                } else {
+                    "argument 'allow_surrogate_pairs' must be TRUE or FALSE"
+                },
             );
         }
-        let logical_flag = |value: SEXP, name: &str| -> bool {
-            if value == crate::sexp::globals::R_MissingArg() {
-                return false;
-            }
-            if value.is_null() || value == R_NilValue() {
-                crate::mainutils::errors::errorcall_str(
-                    crate::mainutils::errors::R_getCurrentCall(),
-                    if name == "multiple" {
-                        "argument 'multiple' must be TRUE or FALSE"
-                    } else {
-                        "argument 'allow_surrogate_pairs' must be TRUE or FALSE"
-                    },
-                );
-            }
-            let flag = crate::mainutils::coerce::asLogical(value);
-            if flag == crate::sexp::ffi::NA_LOGICAL {
-                crate::mainutils::errors::errorcall_str(
-                    crate::mainutils::errors::R_getCurrentCall(),
-                    if name == "multiple" {
-                        "argument 'multiple' must be TRUE or FALSE"
-                    } else {
-                        "argument 'allow_surrogate_pairs' must be TRUE or FALSE"
-                    },
-                );
-            }
-            flag == TRUE
-        };
-        let multiple = logical_flag(m, "multiple");
-        let s_pair = logical_flag(p, "allow_surrogate_pairs");
-        if is_factor(x) != 0 {
+        let flag = crate::mainutils::coerce::asLogical(value);
+        if flag == crate::sexp::ffi::NA_LOGICAL {
             crate::mainutils::errors::errorcall_str(
                 crate::mainutils::errors::R_getCurrentCall(),
-                "argument 'x' must be an integer vector",
+                if name == "multiple" {
+                    "argument 'multiple' must be TRUE or FALSE"
+                } else {
+                    "argument 'allow_surrogate_pairs' must be TRUE or FALSE"
+                },
             );
         }
-        let int_x = if TYPEOF(x) == SEXPTYPE::INTSXP {
-            x
+        flag == TRUE
+    };
+    let multiple = logical_flag(m, "multiple");
+    let s_pair = logical_flag(p, "allow_surrogate_pairs");
+    if is_factor(x) != 0 {
+        crate::mainutils::errors::errorcall_str(
+            crate::mainutils::errors::R_getCurrentCall(),
+            "argument 'x' must be an integer vector",
+        );
+    }
+    let int_x = if TYPEOF(x) == SEXPTYPE::INTSXP {
+        x
+    } else {
+        crate::mainutils::coerce::coerceVector(x, SEXPTYPE::INTSXP.into())
+    };
+    let _int_x_root = protect(int_x);
+    let n = if int_x.is_null() || int_x == R_NilValue() {
+        0
+    } else {
+        XLENGTH(int_x)
+    };
+    let code = |i: i64| -> i32 {
+        if TYPEOF(int_x) == SEXPTYPE::INTSXP {
+            integer_elt_checked(int_x, (i as usize) as R_xlen_t)
         } else {
-            crate::mainutils::coerce::coerceVector(x, SEXPTYPE::INTSXP.into())
-        };
-        let _int_x_root = protect(int_x);
-        let n = if int_x.is_null() || int_x == R_NilValue() {
-            0
+            NA_INTEGER
+        }
+    };
+    let valid_scalar = |cp: i32| -> Option<char> {
+        if cp == NA_INTEGER || cp < 0 || (0xD800..=0xDFFF).contains(&cp) || cp > 0x10FFFF {
+            None
+        } else if cp == 0 {
+            Some('\0')
         } else {
-            XLENGTH(int_x)
-        };
-        let code = |i: i64| -> i32 {
-            if TYPEOF(int_x) == SEXPTYPE::INTSXP {
-                integer_elt_checked(int_x, (i as usize) as R_xlen_t)
-            } else {
-                NA_INTEGER
-            }
-        };
-        let valid_scalar = |cp: i32| -> Option<char> {
-            if cp == NA_INTEGER || cp < 0 || (0xD800..=0xDFFF).contains(&cp) || cp > 0x10FFFF {
-                None
-            } else if cp == 0 {
-                Some('\0')
-            } else {
-                char::from_u32(cp as u32)
-            }
-        };
-        if multiple {
-            if s_pair {
-                crate::main::errors::Rf_warning_cstr(
+            char::from_u32(cp as u32)
+        }
+    };
+    if multiple {
+        if s_pair {
+            crate::main::errors::Rf_warning_cstr(
                     c"allow_surrogate_pairs = TRUE is incompatible with multiple = TRUE and will be ignored",
                 );
-            }
-            let out = Rf_allocVector3(SEXPTYPE::STRSXP, n);
-            let _o = protect(out);
-            for i in 0..n {
-                match valid_scalar(code(i)) {
-                    Some('\0') => {
-                        SET_STRING_ELT(out, i, mk_char_cstr(c""));
-                    }
-                    Some(ch) => {
-                        let mut buf = [0u8; 8];
-                        let encoded = ch.encode_utf8(&mut buf);
-                        let c = CString::new(encoded.as_bytes())
-                            .unwrap_or_else(|_| CString::new("").unwrap());
-                        SET_STRING_ELT(out, i, mk_char_cstr(&c));
-                    }
-                    None => {
-                        SET_STRING_ELT(out, i, crate::sexp::globals::R_NaString());
-                    }
+        }
+        let out = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+        let _o = protect(out);
+        for i in 0..n {
+            match valid_scalar(code(i)) {
+                Some('\0') => {
+                    SET_STRING_ELT(out, i, mk_char_cstr(c""));
+                }
+                Some(ch) => {
+                    let mut buf = [0u8; 8];
+                    let encoded = ch.encode_utf8(&mut buf);
+                    let c = CString::new(encoded.as_bytes())
+                        .unwrap_or_else(|_| CString::new("").unwrap());
+                    SET_STRING_ELT(out, i, mk_char_cstr(&c));
+                }
+                None => {
+                    SET_STRING_ELT(out, i, crate::sexp::globals::R_NaString());
                 }
             }
-            out
-        } else {
-            // GNU raw.c: high surrogates pair with the next low surrogate when
-            // allow_surrogate_pairs=TRUE; unpaired surrogates / NA / out of
-            // range yield NA_STRING.
-            let mut s = String::new();
-            let mut have_na = false;
-            let mut i = 0i64;
-            while i < n {
-                let this = code(i);
-                if this == NA_INTEGER
-                    || this < 0
-                    || (0xDC00..=0xDFFF).contains(&this)
-                    || this > 0x10FFFF
-                {
+        }
+        out
+    } else {
+        // GNU raw.c: high surrogates pair with the next low surrogate when
+        // allow_surrogate_pairs=TRUE; unpaired surrogates / NA / out of
+        // range yield NA_STRING.
+        let mut s = String::new();
+        let mut have_na = false;
+        let mut i = 0i64;
+        while i < n {
+            let this = code(i);
+            if this == NA_INTEGER
+                || this < 0
+                || (0xDC00..=0xDFFF).contains(&this)
+                || this > 0x10FFFF
+            {
+                have_na = true;
+                break;
+            } else if (0xD800..=0xDBFF).contains(&this) {
+                if !s_pair || i + 1 >= n {
                     have_na = true;
                     break;
-                } else if (0xD800..=0xDBFF).contains(&this) {
-                    if !s_pair || i + 1 >= n {
-                        have_na = true;
-                        break;
-                    }
-                    let next = code(i + 1);
-                    if !(0xDC00..=0xDFFF).contains(&next) {
-                        have_na = true;
-                        break;
-                    }
-                    let hi = (this as u32) - 0xD800;
-                    let lo = (next as u32) - 0xDC00;
-                    let cp = 0x10000 + (hi << 10) + lo;
-                    if let Some(ch) = char::from_u32(cp) {
-                        s.push(ch);
-                    } else {
-                        have_na = true;
-                        break;
-                    }
-                    i += 2;
-                } else if this == 0 {
-                    i += 1;
-                } else if let Some(ch) = char::from_u32(this as u32) {
+                }
+                let next = code(i + 1);
+                if !(0xDC00..=0xDFFF).contains(&next) {
+                    have_na = true;
+                    break;
+                }
+                let hi = (this as u32) - 0xD800;
+                let lo = (next as u32) - 0xDC00;
+                let cp = 0x10000 + (hi << 10) + lo;
+                if let Some(ch) = char::from_u32(cp) {
                     s.push(ch);
-                    i += 1;
                 } else {
                     have_na = true;
                     break;
                 }
-            }
-            let out = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
-            let _o = protect(out);
-            if have_na {
-                SET_STRING_ELT(out, 0, crate::sexp::globals::R_NaString());
+                i += 2;
+            } else if this == 0 {
+                i += 1;
+            } else if let Some(ch) = char::from_u32(this as u32) {
+                s.push(ch);
+                i += 1;
             } else {
-                SET_STRING_ELT(out, 0, mk_char_len(s.as_ref(), s.len() as c_int));
+                have_na = true;
+                break;
             }
-            out
         }
+        let out = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+        let _o = protect(out);
+        if have_na {
+            SET_STRING_ELT(out, 0, crate::sexp::globals::R_NaString());
+        } else {
+            SET_STRING_ELT(out, 0, mk_char_len(s.as_ref(), s.len() as c_int));
+        }
+        out
+    }
 }
 
 fn utf8_bytes_valid(s: SEXP) -> bool {

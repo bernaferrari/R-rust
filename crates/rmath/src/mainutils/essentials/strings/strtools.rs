@@ -4,38 +4,38 @@ use super::*;
 
 pub fn do_format_info(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     let m = match_formals(call, args, &["x", "digits", "nsmall"]);
-        let missing = crate::sexp::globals::R_MissingArg();
-        let force = |v: SEXP| -> SEXP {
-            if !v.is_null() && TYPEOF(v) == SEXPTYPE::PROMSXP {
-                force_promise(v)
-            } else {
-                v
-            }
-        };
-        let x = force(*m.first().unwrap_or(&R_NilValue()));
-        if x.is_null() || x == R_NilValue() || x == missing {
-            return R_NilValue();
+    let missing = crate::sexp::globals::R_MissingArg();
+    let force = |v: SEXP| -> SEXP {
+        if !v.is_null() && TYPEOF(v) == SEXPTYPE::PROMSXP {
+            force_promise(v)
+        } else {
+            v
         }
-        let digits = force(m.get(1).copied().unwrap_or(missing));
-        let digits = if digits.is_null() || digits == missing {
-            R_NilValue()
-        } else {
-            digits
-        };
-        let nsmall = force(m.get(2).copied().unwrap_or(missing));
-        let nsmall = if nsmall.is_null() || nsmall == R_NilValue() || nsmall == missing {
-            Rf_ScalarInteger(0)
-        } else {
-            nsmall
-        };
+    };
+    let x = force(*m.first().unwrap_or(&R_NilValue()));
+    if x.is_null() || x == R_NilValue() || x == missing {
+        return R_NilValue();
+    }
+    let digits = force(m.get(1).copied().unwrap_or(missing));
+    let digits = if digits.is_null() || digits == missing {
+        R_NilValue()
+    } else {
+        digits
+    };
+    let nsmall = force(m.get(2).copied().unwrap_or(missing));
+    let nsmall = if nsmall.is_null() || nsmall == R_NilValue() || nsmall == missing {
+        Rf_ScalarInteger(0)
+    } else {
+        nsmall
+    };
 
-        let tail = Rf_cons(nsmall, R_NilValue());
-        let _tail_guard = protect(tail);
-        let middle = Rf_cons(digits, tail);
-        let _middle_guard = protect(middle);
-        let normalized_args = Rf_cons(x, middle);
-        let _args_guard = protect(normalized_args);
-        crate::mainutils::paste_impl::do_formatinfo(call, op, normalized_args, rho)
+    let tail = Rf_cons(nsmall, R_NilValue());
+    let _tail_guard = protect(tail);
+    let middle = Rf_cons(digits, tail);
+    let _middle_guard = protect(middle);
+    let normalized_args = Rf_cons(x, middle);
+    let _args_guard = protect(normalized_args);
+    crate::mainutils::paste_impl::do_formatinfo(call, op, normalized_args, rho)
 }
 
 // ---------------------------------------------------------------------------

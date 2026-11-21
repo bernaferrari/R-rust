@@ -1944,12 +1944,12 @@ pub fn do_embed(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 /// GNU `toeplitz(x, r = NULL, symmetric = is.null(r))`.
 pub fn do_toeplitz(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     let m = match_formals(call, args, &["x", "r", "symmetric"]);
-        let x = m[0];
-        if x.is_null() || x == R_NilValue() {
-            crate::mainutils::errors::errorcall_str(call, "'x' is not a vector");
-        }
-        let n = XLENGTH(x) as isize;
-        let r = m[1];
+    let x = m[0];
+    if x.is_null() || x == R_NilValue() {
+        crate::mainutils::errors::errorcall_str(call, "'x' is not a vector");
+    }
+    let n = XLENGTH(x) as isize;
+    let r = m[1];
     let r_absent = r.is_null() || r == R_NilValue() || r == crate::sexp::globals::R_MissingArg();
     let symmetric =
         if m[2].is_null() || m[2] == R_NilValue() || m[2] == crate::sexp::globals::R_MissingArg() {
@@ -1957,42 +1957,42 @@ pub fn do_toeplitz(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         } else {
             real_or_default(m[2], 0.0) != 0.0
         };
-        if n < 1 && symmetric {
-            crate::mainutils::errors::errorcall_str(call, "'x' is not a vector of adequate length");
-        }
-        if symmetric {
-            let ans = alloc_matrix(TYPEOF(x), n as i32, n as i32);
-            let _a = protect(ans);
-            for col in 0..n {
-                for row in 0..n {
-                    let k = (row - col).unsigned_abs() as isize;
-                    copy_atomic_elt(x, k, ans, row + col * n);
-                }
-            }
-            return ans;
-        }
-        if r_absent {
-            crate::mainutils::errors::errorcall_str(call, "'r' is not a vector");
-        }
-        let nc = XLENGTH(r) as isize;
-        if n > 0 && nc > 0 && !atomic_elt_equal(x, 0, r, 0) {
-            let msg =
-                std::ffi::CString::new("x[1] != r[1]; using x[1] for diagonal").unwrap_or_default();
-            crate::mainutils::errors::warningcall(call, msg.as_ptr());
-        }
-        let ans = alloc_matrix(TYPEOF(x), n as i32, nc as i32);
+    if n < 1 && symmetric {
+        crate::mainutils::errors::errorcall_str(call, "'x' is not a vector of adequate length");
+    }
+    if symmetric {
+        let ans = alloc_matrix(TYPEOF(x), n as i32, n as i32);
         let _a = protect(ans);
-        for col in 0..nc {
+        for col in 0..n {
             for row in 0..n {
-                let dst = row + col * n;
-                if row >= col {
-                    copy_atomic_elt(x, row - col, ans, dst);
-                } else {
-                    copy_atomic_elt(r, col - row, ans, dst);
-                }
+                let k = (row - col).unsigned_abs() as isize;
+                copy_atomic_elt(x, k, ans, row + col * n);
             }
         }
-        ans
+        return ans;
+    }
+    if r_absent {
+        crate::mainutils::errors::errorcall_str(call, "'r' is not a vector");
+    }
+    let nc = XLENGTH(r) as isize;
+    if n > 0 && nc > 0 && !atomic_elt_equal(x, 0, r, 0) {
+        let msg =
+            std::ffi::CString::new("x[1] != r[1]; using x[1] for diagonal").unwrap_or_default();
+        crate::mainutils::errors::warningcall_cstr(call, &msg);
+    }
+    let ans = alloc_matrix(TYPEOF(x), n as i32, nc as i32);
+    let _a = protect(ans);
+    for col in 0..nc {
+        for row in 0..n {
+            let dst = row + col * n;
+            if row >= col {
+                copy_atomic_elt(x, row - col, ans, dst);
+            } else {
+                copy_atomic_elt(r, col - row, ans, dst);
+            }
+        }
+    }
+    ans
 }
 
 fn copy_atomic_elt(from: SEXP, fi: isize, to: SEXP, ti: isize) {

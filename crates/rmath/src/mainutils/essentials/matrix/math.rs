@@ -222,38 +222,38 @@ pub fn do_log1p(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// R's `acosh(x)` — inverse hyperbolic cosine.
 pub fn do_acosh(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-        if let Some(dispatched) = dispatch_math(call, op, args, rho) {
-            return dispatched;
-        }
-        let x = CAR(args);
-        if !x.is_null() && x != R_NilValue() && TYPEOF(x) == SEXPTYPE::CPLXSXP {
+    if let Some(dispatched) = dispatch_math(call, op, args, rho) {
+        return dispatched;
+    }
+    let x = CAR(args);
+    if !x.is_null() && x != R_NilValue() && TYPEOF(x) == SEXPTYPE::CPLXSXP {
         return complex_unary(x, crate::eval::complex_arith::complex_acosh);
-        }
-        real_math1(call, op, args, rho, f64::acosh)
+    }
+    real_math1(call, op, args, rho, f64::acosh)
 }
 
 /// R's `asinh(x)` — inverse hyperbolic sine.
 pub fn do_asinh(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-        if let Some(dispatched) = dispatch_math(call, op, args, rho) {
-            return dispatched;
-        }
-        let x = CAR(args);
-        if !x.is_null() && x != R_NilValue() && TYPEOF(x) == SEXPTYPE::CPLXSXP {
+    if let Some(dispatched) = dispatch_math(call, op, args, rho) {
+        return dispatched;
+    }
+    let x = CAR(args);
+    if !x.is_null() && x != R_NilValue() && TYPEOF(x) == SEXPTYPE::CPLXSXP {
         return complex_unary(x, crate::eval::complex_arith::complex_asinh);
-        }
-        real_math1(call, op, args, rho, f64::asinh)
+    }
+    real_math1(call, op, args, rho, f64::asinh)
 }
 
 /// R's `atanh(x)` — inverse hyperbolic tangent.
 pub fn do_atanh(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-        if let Some(dispatched) = dispatch_math(call, op, args, rho) {
-            return dispatched;
-        }
-        let x = CAR(args);
-        if !x.is_null() && x != R_NilValue() && TYPEOF(x) == SEXPTYPE::CPLXSXP {
+    if let Some(dispatched) = dispatch_math(call, op, args, rho) {
+        return dispatched;
+    }
+    let x = CAR(args);
+    if !x.is_null() && x != R_NilValue() && TYPEOF(x) == SEXPTYPE::CPLXSXP {
         return complex_unary(x, crate::eval::complex_arith::complex_atanh);
-        }
-        real_math1(call, op, args, rho, f64::atanh)
+    }
+    real_math1(call, op, args, rho, f64::atanh)
 }
 
 /// R's `sinpi(x)` — sin(pi*x), exact at integer arguments.
@@ -273,262 +273,262 @@ pub fn do_tanpi(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// R's `sin(x)` — sine function.
 pub fn do_sin(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-        if args.is_null() || args == R_NilValue() {
-            crate::mainutils::errors::errorcall_str(
-                call,
-                "0 arguments passed to 'sin' which requires 1",
-            );
-        }
-        if let Some(dispatched) = dispatch_math(call, op, args, rho) {
-            return dispatched;
-        }
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            crate::mainutils::errors::errorcall_str(
-                call,
-                "non-numeric argument to mathematical function",
-            );
-        }
+    if args.is_null() || args == R_NilValue() {
+        crate::mainutils::errors::errorcall_str(
+            call,
+            "0 arguments passed to 'sin' which requires 1",
+        );
+    }
+    if let Some(dispatched) = dispatch_math(call, op, args, rho) {
+        return dispatched;
+    }
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        crate::mainutils::errors::errorcall_str(
+            call,
+            "non-numeric argument to mathematical function",
+        );
+    }
 
-        let n = XLENGTH(x);
-        let t = TYPEOF(x);
-        if t == SEXPTYPE::CPLXSXP {
+    let n = XLENGTH(x);
+    let t = TYPEOF(x);
+    if t == SEXPTYPE::CPLXSXP {
         return complex_unary(x, crate::eval::complex_arith::complex_sin);
-        }
-        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _p = protect(result);
-        let mut dst = owner_sexp_mut(result);
+    }
+    let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _p = protect(result);
+    let mut dst = owner_sexp_mut(result);
 
-        for i in 0..n {
-            let val = if t == SEXPTYPE::REALSXP {
-                real_elt_checked(x, (i as usize) as R_xlen_t)
-            } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-                let v = integer_elt_checked(x, (i as usize) as R_xlen_t);
-                if v == NA_INTEGER { NA_REAL } else { v as f64 }
-            } else {
-                NA_REAL
-            };
+    for i in 0..n {
+        let val = if t == SEXPTYPE::REALSXP {
+            real_elt_checked(x, (i as usize) as R_xlen_t)
+        } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
+            let v = integer_elt_checked(x, (i as usize) as R_xlen_t);
+            if v == NA_INTEGER { NA_REAL } else { v as f64 }
+        } else {
+            NA_REAL
+        };
 
-            if val.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
-                sexp_ok(dst.try_set_real_elt((i as usize) as R_xlen_t, NA_REAL));
-            } else {
-                sexp_ok(dst.try_set_real_elt((i as usize) as R_xlen_t, val.sin()));
-            }
+        if val.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
+            sexp_ok(dst.try_set_real_elt((i as usize) as R_xlen_t, NA_REAL));
+        } else {
+            sexp_ok(dst.try_set_real_elt((i as usize) as R_xlen_t, val.sin()));
         }
-        result
+    }
+    result
 }
 
 /// R's `cos(x)` — cosine function.
 pub fn do_cos(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-        if let Some(dispatched) = dispatch_math(call, op, args, rho) {
-            return dispatched;
-        }
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return R_NilValue();
-        }
+    if let Some(dispatched) = dispatch_math(call, op, args, rho) {
+        return dispatched;
+    }
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return R_NilValue();
+    }
 
-        let n = XLENGTH(x);
-        let t = TYPEOF(x);
-        if t == SEXPTYPE::CPLXSXP {
+    let n = XLENGTH(x);
+    let t = TYPEOF(x);
+    if t == SEXPTYPE::CPLXSXP {
         return complex_unary(x, crate::eval::complex_arith::complex_cos);
-        }
-        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _p = protect(result);
-        let mut dst = owner_sexp_mut(result);
+    }
+    let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _p = protect(result);
+    let mut dst = owner_sexp_mut(result);
 
-        for i in 0..n {
-            let val = if t == SEXPTYPE::REALSXP {
-                real_elt_checked(x, (i as usize) as R_xlen_t)
-            } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-                let v = integer_elt_checked(x, (i as usize) as R_xlen_t);
-                if v == NA_INTEGER { NA_REAL } else { v as f64 }
-            } else {
-                NA_REAL
-            };
+    for i in 0..n {
+        let val = if t == SEXPTYPE::REALSXP {
+            real_elt_checked(x, (i as usize) as R_xlen_t)
+        } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
+            let v = integer_elt_checked(x, (i as usize) as R_xlen_t);
+            if v == NA_INTEGER { NA_REAL } else { v as f64 }
+        } else {
+            NA_REAL
+        };
 
-            if val.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
-                sexp_ok(dst.try_set_real_elt((i as usize) as R_xlen_t, NA_REAL));
-            } else {
-                sexp_ok(dst.try_set_real_elt((i as usize) as R_xlen_t, val.cos()));
-            }
+        if val.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
+            sexp_ok(dst.try_set_real_elt((i as usize) as R_xlen_t, NA_REAL));
+        } else {
+            sexp_ok(dst.try_set_real_elt((i as usize) as R_xlen_t, val.cos()));
         }
-        result
+    }
+    result
 }
 
 /// R's `tan(x)` — tangent function.
 pub fn do_tan(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-        if let Some(dispatched) = dispatch_math(call, op, args, rho) {
-            return dispatched;
-        }
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return R_NilValue();
-        }
+    if let Some(dispatched) = dispatch_math(call, op, args, rho) {
+        return dispatched;
+    }
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return R_NilValue();
+    }
 
-        let n = XLENGTH(x);
-        let t = TYPEOF(x);
-        if t == SEXPTYPE::CPLXSXP {
+    let n = XLENGTH(x);
+    let t = TYPEOF(x);
+    if t == SEXPTYPE::CPLXSXP {
         return complex_unary(x, crate::eval::complex_arith::complex_tan);
-        }
-        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _p = protect(result);
-        let mut dst = owner_sexp_mut(result);
+    }
+    let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _p = protect(result);
+    let mut dst = owner_sexp_mut(result);
 
-        for i in 0..n {
-            let val = if t == SEXPTYPE::REALSXP {
-                real_elt_checked(x, (i as usize) as R_xlen_t)
-            } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-                let v = integer_elt_checked(x, (i as usize) as R_xlen_t);
-                if v == NA_INTEGER { NA_REAL } else { v as f64 }
-            } else {
-                NA_REAL
-            };
+    for i in 0..n {
+        let val = if t == SEXPTYPE::REALSXP {
+            real_elt_checked(x, (i as usize) as R_xlen_t)
+        } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
+            let v = integer_elt_checked(x, (i as usize) as R_xlen_t);
+            if v == NA_INTEGER { NA_REAL } else { v as f64 }
+        } else {
+            NA_REAL
+        };
 
-            if val.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
-                sexp_ok(dst.try_set_real_elt((i as usize) as R_xlen_t, NA_REAL));
-            } else {
-                sexp_ok(dst.try_set_real_elt((i as usize) as R_xlen_t, val.tan()));
-            }
+        if val.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
+            sexp_ok(dst.try_set_real_elt((i as usize) as R_xlen_t, NA_REAL));
+        } else {
+            sexp_ok(dst.try_set_real_elt((i as usize) as R_xlen_t, val.tan()));
         }
-        result
+    }
+    result
 }
 
 /// R's `asin(x)` — arc sine function.
 pub fn do_asin(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-        if let Some(dispatched) = dispatch_math(call, op, args, rho) {
-            return dispatched;
-        }
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return R_NilValue();
-        }
+    if let Some(dispatched) = dispatch_math(call, op, args, rho) {
+        return dispatched;
+    }
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return R_NilValue();
+    }
 
-        let n = XLENGTH(x);
-        let t = TYPEOF(x);
-        if t == SEXPTYPE::CPLXSXP {
+    let n = XLENGTH(x);
+    let t = TYPEOF(x);
+    if t == SEXPTYPE::CPLXSXP {
         return complex_unary(x, crate::eval::complex_arith::complex_asin);
-        }
+    }
 
-        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _p = protect(result);
-        let mut dst = owner_sexp_mut(result);
+    let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _p = protect(result);
+    let mut dst = owner_sexp_mut(result);
 
-        for i in 0..n {
-            let val = if t == SEXPTYPE::REALSXP {
-                real_elt_checked(x, (i as usize) as R_xlen_t)
-            } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-                let v = integer_elt_checked(x, (i as usize) as R_xlen_t);
-                if v == NA_INTEGER { NA_REAL } else { v as f64 }
-            } else {
-                NA_REAL
-            };
+    for i in 0..n {
+        let val = if t == SEXPTYPE::REALSXP {
+            real_elt_checked(x, (i as usize) as R_xlen_t)
+        } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
+            let v = integer_elt_checked(x, (i as usize) as R_xlen_t);
+            if v == NA_INTEGER { NA_REAL } else { v as f64 }
+        } else {
+            NA_REAL
+        };
 
-            if val.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
-                sexp_ok(dst.try_set_real_elt((i as usize) as R_xlen_t, NA_REAL));
-            } else {
-                sexp_ok(dst.try_set_real_elt((i as usize) as R_xlen_t, val.asin()));
-            }
+        if val.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
+            sexp_ok(dst.try_set_real_elt((i as usize) as R_xlen_t, NA_REAL));
+        } else {
+            sexp_ok(dst.try_set_real_elt((i as usize) as R_xlen_t, val.asin()));
         }
-        result
+    }
+    result
 }
 
 /// R's `acos(x)` — arc cosine function.
 pub fn do_acos(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-        if let Some(dispatched) = dispatch_math(call, op, args, rho) {
-            return dispatched;
-        }
+    if let Some(dispatched) = dispatch_math(call, op, args, rho) {
+        return dispatched;
+    }
 
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return R_NilValue();
-        }
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return R_NilValue();
+    }
 
-        let n = XLENGTH(x);
-        let t = TYPEOF(x);
-        if t == SEXPTYPE::CPLXSXP {
+    let n = XLENGTH(x);
+    let t = TYPEOF(x);
+    if t == SEXPTYPE::CPLXSXP {
         return complex_unary(x, crate::eval::complex_arith::complex_acos);
-        }
+    }
 
-        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _p = protect(result);
-        let mut dst = owner_sexp_mut(result);
+    let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _p = protect(result);
+    let mut dst = owner_sexp_mut(result);
 
-        for i in 0..n {
-            let val = if t == SEXPTYPE::REALSXP {
-                real_elt_checked(x, (i as usize) as R_xlen_t)
-            } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-                let v = integer_elt_checked(x, (i as usize) as R_xlen_t);
-                if v == NA_INTEGER { NA_REAL } else { v as f64 }
-            } else {
-                NA_REAL
-            };
+    for i in 0..n {
+        let val = if t == SEXPTYPE::REALSXP {
+            real_elt_checked(x, (i as usize) as R_xlen_t)
+        } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
+            let v = integer_elt_checked(x, (i as usize) as R_xlen_t);
+            if v == NA_INTEGER { NA_REAL } else { v as f64 }
+        } else {
+            NA_REAL
+        };
 
-            if val.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
-                sexp_ok(dst.try_set_real_elt((i as usize) as R_xlen_t, NA_REAL));
-            } else {
-                sexp_ok(dst.try_set_real_elt((i as usize) as R_xlen_t, val.acos()));
-            }
+        if val.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
+            sexp_ok(dst.try_set_real_elt((i as usize) as R_xlen_t, NA_REAL));
+        } else {
+            sexp_ok(dst.try_set_real_elt((i as usize) as R_xlen_t, val.acos()));
         }
-        result
+    }
+    result
 }
 
 /// R's `atan(x)` — arc tangent function.
 pub fn do_atan(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-        if let Some(dispatched) = dispatch_math(call, op, args, rho) {
-            return dispatched;
-        }
+    if let Some(dispatched) = dispatch_math(call, op, args, rho) {
+        return dispatched;
+    }
 
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return R_NilValue();
-        }
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return R_NilValue();
+    }
 
-        let n = XLENGTH(x);
-        let t = TYPEOF(x);
-        if t == SEXPTYPE::CPLXSXP {
+    let n = XLENGTH(x);
+    let t = TYPEOF(x);
+    if t == SEXPTYPE::CPLXSXP {
         return complex_unary(x, crate::eval::complex_arith::complex_atan);
-        }
+    }
 
-        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _p = protect(result);
-        let mut dst = owner_sexp_mut(result);
+    let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _p = protect(result);
+    let mut dst = owner_sexp_mut(result);
 
-        for i in 0..n {
-            let val = if t == SEXPTYPE::REALSXP {
-                real_elt_checked(x, (i as usize) as R_xlen_t)
-            } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-                let v = integer_elt_checked(x, (i as usize) as R_xlen_t);
-                if v == NA_INTEGER { NA_REAL } else { v as f64 }
-            } else {
-                NA_REAL
-            };
+    for i in 0..n {
+        let val = if t == SEXPTYPE::REALSXP {
+            real_elt_checked(x, (i as usize) as R_xlen_t)
+        } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
+            let v = integer_elt_checked(x, (i as usize) as R_xlen_t);
+            if v == NA_INTEGER { NA_REAL } else { v as f64 }
+        } else {
+            NA_REAL
+        };
 
-            if val.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
-                sexp_ok(dst.try_set_real_elt((i as usize) as R_xlen_t, NA_REAL));
-            } else {
-                sexp_ok(dst.try_set_real_elt((i as usize) as R_xlen_t, val.atan()));
-            }
+        if val.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
+            sexp_ok(dst.try_set_real_elt((i as usize) as R_xlen_t, NA_REAL));
+        } else {
+            sexp_ok(dst.try_set_real_elt((i as usize) as R_xlen_t, val.atan()));
         }
-        result
+    }
+    result
 }
 
 /// R's `atan2(y, x)` — two-argument arc tangent function.

@@ -52,85 +52,81 @@ pub(super) fn do_call_arguments(args: SEXP) -> [Option<SEXP>; 4] {
 }
 
 pub fn do_do_call(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let matched = do_call_arguments(args);
-        let what = crate::eval::eval::Rf_eval(matched[0].unwrap(), rho);
-        let _what = protect(what);
-        if !(TYPEOF(what) == SEXPTYPE::CLOSXP
-            || TYPEOF(what) == SEXPTYPE::BUILTINSXP
-            || TYPEOF(what) == SEXPTYPE::SPECIALSXP)
-            && !(TYPEOF(what) == SEXPTYPE::STRSXP
-                && XLENGTH(what) == 1
-                && STRING_ELT(what, 0) != crate::sexp::globals::R_NaString())
-        {
-            base_error("'what' must be a function or character string");
+    let matched = do_call_arguments(args);
+    let what = crate::eval::eval::Rf_eval(matched[0].unwrap(), rho);
+    let _what = protect(what);
+    if !(TYPEOF(what) == SEXPTYPE::CLOSXP
+        || TYPEOF(what) == SEXPTYPE::BUILTINSXP
+        || TYPEOF(what) == SEXPTYPE::SPECIALSXP)
+        && !(TYPEOF(what) == SEXPTYPE::STRSXP
+            && XLENGTH(what) == 1
+            && STRING_ELT(what, 0) != crate::sexp::globals::R_NaString())
+    {
+        base_error("'what' must be a function or character string");
+    }
+    let fun = callable_expr(what);
+    let _fun = protect(fun);
+    let arg_list = crate::eval::eval::Rf_eval(matched[1].unwrap(), rho);
+    let _arg_list = protect(arg_list);
+    if arg_list != R_NilValue() && TYPEOF(arg_list) != SEXPTYPE::VECSXP {
+        base_error("second argument must be a list");
+    }
+    let env = matched[3].map_or(rho, |expr| crate::eval::eval::Rf_eval(expr, rho));
+    let _env = protect(env);
+    if TYPEOF(env) != SEXPTYPE::ENVSXP {
+        base_error("'envir' must be an environment");
+    }
+    let quoted = if let Some(expr) = matched[2] {
+        let value = crate::eval::eval::Rf_eval(expr, rho);
+        let flag = crate::mainutils::coerce::asLogical(value);
+        if flag == NA_LOGICAL {
+            base_error("invalid 'quote' argument");
         }
-        let fun = callable_expr(what);
-        let _fun = protect(fun);
-        let arg_list = crate::eval::eval::Rf_eval(matched[1].unwrap(), rho);
-        let _arg_list = protect(arg_list);
-        if arg_list != R_NilValue() && TYPEOF(arg_list) != SEXPTYPE::VECSXP {
-            base_error("second argument must be a list");
-        }
-        let env = matched[3].map_or(rho, |expr| crate::eval::eval::Rf_eval(expr, rho));
-        let _env = protect(env);
-        if TYPEOF(env) != SEXPTYPE::ENVSXP {
-            base_error("'envir' must be an environment");
-        }
-        let quoted = if let Some(expr) = matched[2] {
-            let value = crate::eval::eval::Rf_eval(expr, rho);
-            let flag = crate::mainutils::coerce::asLogical(value);
-            if flag == NA_LOGICAL {
-                base_error("invalid 'quote' argument");
-            }
-            flag != FALSE
+        flag != FALSE
+    } else {
+        false
+    };
+    let names =
+        crate::sexp::attrib_core::getAttrib(arg_list, crate::sexp::attrib_core::R_NamesSymbol());
+    let mut call_args = R_NilValue();
+    let mut guards = Vec::new();
+    for i in (0..XLENGTH(arg_list)).rev() {
+        let value = VECTOR_ELT(arg_list, i);
+        let value = if quoted {
+            let wrapped = crate::sexp::constructors::Rf_lang2(install_str("quote"), value);
+            guards.push(protect(wrapped));
+            wrapped
         } else {
-            false
+            value
         };
-        let names = crate::sexp::attrib_core::getAttrib(
-            arg_list,
-            crate::sexp::attrib_core::R_NamesSymbol(),
-        );
-        let mut call_args = R_NilValue();
-        let mut guards = Vec::new();
-        for i in (0..XLENGTH(arg_list)).rev() {
-            let value = VECTOR_ELT(arg_list, i);
-            let value = if quoted {
-                let wrapped = crate::sexp::constructors::Rf_lang2(install_str("quote"), value);
-                guards.push(protect(wrapped));
-                wrapped
+        let cell = Rf_cons(value, call_args);
+        guards.push(protect(cell));
+        if TYPEOF(names) == SEXPTYPE::STRSXP && i < XLENGTH(names) {
+            let name_elt = STRING_ELT(names, i);
+            if name_elt == crate::sexp::globals::R_NaString() {
+                SETTAG(cell, install_str("NA"));
             } else {
-                value
-            };
-            let cell = Rf_cons(value, call_args);
-            guards.push(protect(cell));
-            if TYPEOF(names) == SEXPTYPE::STRSXP && i < XLENGTH(names) {
-                let name_elt = STRING_ELT(names, i);
-                if name_elt == crate::sexp::globals::R_NaString() {
-                    SETTAG(cell, install_str("NA"));
-                } else {
-                    let chars = charsxp_text_of(name_elt);
-                    if !chars.is_null() && !chars.as_cstr().is_empty() {
-                        SETTAG(cell, install_cstr(chars.as_cstr()));
-                    }
+                let chars = charsxp_text_of(name_elt);
+                if !chars.is_null() && !chars.as_cstr().is_empty() {
+                    SETTAG(cell, install_cstr(chars.as_cstr()));
                 }
             }
-            call_args = cell;
         }
-        let call_sexp = Rf_cons(fun, call_args);
-        let _call_sexp = protect(call_sexp);
-        crate::sexp::accessors::SET_TYPEOF(call_sexp, SEXPTYPE::LANGSXP.as_c_int());
-        let _ctx = crate::sexp::context::begin_context_guard(
-            crate::sexp::context::ctxt_flags::CTXT_BUILTIN,
-            _call,
-            env,
-            rho,
-            None,
-            what,
-            call_args,
-        );
-        crate::eval::eval::Rf_eval(call_sexp, env)
+        call_args = cell;
     }
+    let call_sexp = Rf_cons(fun, call_args);
+    let _call_sexp = protect(call_sexp);
+    crate::sexp::accessors::SET_TYPEOF(call_sexp, SEXPTYPE::LANGSXP.as_c_int());
+    let _ctx = crate::sexp::context::begin_context_guard(
+        crate::sexp::context::ctxt_flags::CTXT_BUILTIN,
+        _call,
+        env,
+        rho,
+        None,
+        what,
+        call_args,
+    );
+    crate::eval::eval::Rf_eval(call_sexp, env)
 }
 
 /// GNU `.Internal(do.call(what, args, envir))` contract.
@@ -196,40 +192,38 @@ pub(super) fn callable_arg_by_name_or_position(
 }
 
 pub(super) fn match_fun_arg(expr: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        if expr.is_null() || expr == R_NilValue() {
-            return expr;
-        }
-        let t = TYPEOF(expr);
-        if t == SEXPTYPE::CLOSXP || t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP {
-            return expr;
-        }
-        let val = if t == SEXPTYPE::SYMSXP
-            || t == SEXPTYPE::LANGSXP
-            || t == SEXPTYPE::PROMSXP
-            || t == SEXPTYPE::BCODESXP
-        {
-            crate::eval::eval::Rf_eval(expr, rho)
-        } else {
-            expr
-        };
-        let vt = TYPEOF(val);
-        if vt == SEXPTYPE::CLOSXP || vt == SEXPTYPE::BUILTINSXP || vt == SEXPTYPE::SPECIALSXP {
-            return val;
-        }
-        if vt == SEXPTYPE::STRSXP && XLENGTH(val) > 0 {
-            let charsxp = STRING_ELT(val, 0);
-            if charsxp.is_null() || charsxp == crate::sexp::globals::R_NaString() {
-                return R_NilValue();
-            }
-            let name = charsxp_cstring(charsxp);
-            return crate::eval::eval::Rf_eval(install_cstr(&name), rho);
-        }
-        if vt == SEXPTYPE::SYMSXP {
-            return crate::eval::eval::Rf_eval(val, rho);
-        }
-        val
+    if expr.is_null() || expr == R_NilValue() {
+        return expr;
     }
+    let t = TYPEOF(expr);
+    if t == SEXPTYPE::CLOSXP || t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP {
+        return expr;
+    }
+    let val = if t == SEXPTYPE::SYMSXP
+        || t == SEXPTYPE::LANGSXP
+        || t == SEXPTYPE::PROMSXP
+        || t == SEXPTYPE::BCODESXP
+    {
+        crate::eval::eval::Rf_eval(expr, rho)
+    } else {
+        expr
+    };
+    let vt = TYPEOF(val);
+    if vt == SEXPTYPE::CLOSXP || vt == SEXPTYPE::BUILTINSXP || vt == SEXPTYPE::SPECIALSXP {
+        return val;
+    }
+    if vt == SEXPTYPE::STRSXP && XLENGTH(val) > 0 {
+        let charsxp = STRING_ELT(val, 0);
+        if charsxp.is_null() || charsxp == crate::sexp::globals::R_NaString() {
+            return R_NilValue();
+        }
+        let name = charsxp_cstring(charsxp);
+        return crate::eval::eval::Rf_eval(install_cstr(&name), rho);
+    }
+    if vt == SEXPTYPE::SYMSXP {
+        return crate::eval::eval::Rf_eval(val, rho);
+    }
+    val
 }
 
 pub(super) fn eval_arg_by_name_or_position(
