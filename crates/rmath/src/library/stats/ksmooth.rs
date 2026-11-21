@@ -41,16 +41,14 @@ use crate::sexp::protect::protect;
 // Local helpers
 // ---------------------------------------------------------------------------
 
-unsafe fn error(msg: &str) {
+fn error(msg: &str) {
     let c_msg = CString::new(msg).unwrap_or_default();
     Rf_error(c_msg.as_ptr());
 }
 
-unsafe fn mkChar(s: &str) -> SEXP {
-    unsafe {
-        let c_str = CString::new(s).unwrap_or_default();
-        Rf_mkChar(c_str.as_ptr())
-    }
+fn mkChar(s: &str) -> SEXP {
+    let c_str = CString::new(s).unwrap_or_default();
+    crate::library::stats::checked::mk_char(c_str.to_str().unwrap_or_default())
 }
 
 // ---------------------------------------------------------------------------
@@ -140,10 +138,8 @@ fn BDRksmooth(
 // ---------------------------------------------------------------------------
 
 /// Called only from spline() in ./ppr.f
-pub unsafe fn bdrsplerr_() {
-    unsafe {
-        error("only 2500 rows are allowed for sm.method=\"spline\"");
-    }
+pub fn bdrsplerr_() {
+    error("only 2500 rows are allowed for sm.method=\"spline\"");
 }
 
 pub unsafe fn splineprt_(
@@ -180,61 +176,44 @@ pub unsafe fn smoothprt_(
 // ksmooth: SEXP interface for kernel smoothing
 // ---------------------------------------------------------------------------
 
-pub unsafe fn ksmooth(x: SEXP, y: SEXP, xp: SEXP, skrn: SEXP, sbw: SEXP) -> SEXP {
-    unsafe {
-        let krn = asInteger(skrn);
-        let bw = asReal(sbw);
+pub fn ksmooth(x: SEXP, y: SEXP, xp: SEXP, skrn: SEXP, sbw: SEXP) -> SEXP {
+    let krn = asInteger(skrn);
+    let bw = asReal(sbw);
 
-        let x = coerceVector(x, SEXPTYPE::REALSXP.as_c_int());
-        let _x_guard = protect(x);
-        let y = coerceVector(y, SEXPTYPE::REALSXP.as_c_int());
-        let _y_guard = protect(y);
-        let xp = coerceVector(xp, SEXPTYPE::REALSXP.as_c_int());
-        let _xp_guard = protect(xp);
+    let x = coerceVector(x, SEXPTYPE::REALSXP.as_c_int());
+    let _x_guard = protect(x);
+    let y = coerceVector(y, SEXPTYPE::REALSXP.as_c_int());
+    let _y_guard = protect(y);
+    let xp = coerceVector(xp, SEXPTYPE::REALSXP.as_c_int());
+    let _xp_guard = protect(xp);
 
-        let nx = XLENGTH(x) as usize;
-        if XLENGTH(y) != nx as crate::sexp::ffi::R_xlen_t {
-            Rf_error(b"'x' and 'y' lengths differ\0".as_ptr() as *const std::os::raw::c_char);
-        }
-        let np = XLENGTH(xp) as usize;
-        let yp = Rf_allocVector3(SEXPTYPE::REALSXP, np as crate::sexp::ffi::R_xlen_t);
-        let _yp_guard = protect(yp);
-
-        let x_slice = if nx == 0 {
-            &[][..]
-        } else {
-            slice::from_raw_parts(REAL(x), nx)
-        };
-        let y_slice = if nx == 0 {
-            &[][..]
-        } else {
-            slice::from_raw_parts(REAL(y), nx)
-        };
-        let xp_slice = if np == 0 {
-            &[][..]
-        } else {
-            slice::from_raw_parts(REAL(xp), np)
-        };
-        let yp_slice = if np == 0 {
-            &mut [][..]
-        } else {
-            slice::from_raw_parts_mut(REAL(yp), np)
-        };
-
-        BDRksmooth(x_slice, y_slice, xp_slice, yp_slice, krn, bw);
-
-        let ans = Rf_allocVector(SEXPTYPE::VECSXP, 2);
-        let _ans_guard = protect(ans);
-        SET_VECTOR_ELT(ans, 0, xp);
-        SET_VECTOR_ELT(ans, 1, yp);
-
-        let nm = Rf_allocVector(SEXPTYPE::STRSXP, 2);
-        setAttrib(ans, R_NamesSymbol(), nm);
-        SET_STRING_ELT(nm, 0, mkChar("x"));
-        SET_STRING_ELT(nm, 1, mkChar("y"));
-
-        ans
+    let nx = XLENGTH(x) as usize;
+    if XLENGTH(y) != nx as crate::sexp::ffi::R_xlen_t {
+        Rf_error(b"'x' and 'y' lengths differ\0".as_ptr() as *const std::os::raw::c_char);
     }
+    let np = XLENGTH(xp) as usize;
+    let yp = Rf_allocVector3(SEXPTYPE::REALSXP, np as crate::sexp::ffi::R_xlen_t);
+    let _yp_guard = protect(yp);
+
+    let x_slice = crate::library::stats::checked::real_vec(x);
+    let y_slice = crate::library::stats::checked::real_vec(y);
+    let xp_slice = crate::library::stats::checked::real_vec(xp);
+    let mut yp_slice = vec![0.0; np];
+
+    BDRksmooth(&x_slice, &y_slice, &xp_slice, &mut yp_slice, krn, bw);
+    crate::library::stats::checked::set_reals(yp, &yp_slice);
+
+    let ans = Rf_allocVector(SEXPTYPE::VECSXP, 2);
+    let _ans_guard = protect(ans);
+    SET_VECTOR_ELT(ans, 0, xp);
+    SET_VECTOR_ELT(ans, 1, yp);
+
+    let nm = Rf_allocVector(SEXPTYPE::STRSXP, 2);
+    setAttrib(ans, R_NamesSymbol(), nm);
+    SET_STRING_ELT(nm, 0, mkChar("x"));
+    SET_STRING_ELT(nm, 1, mkChar("y"));
+
+    ans
 }
 
 pub unsafe extern "C-unwind" fn c_ksmooth(
@@ -244,186 +223,187 @@ pub unsafe extern "C-unwind" fn c_ksmooth(
     skrn: SEXP,
     sbw: SEXP,
 ) -> SEXP {
-    unsafe { ksmooth(x, y, xp, skrn, sbw) }
+    ksmooth(x, y, xp, skrn, sbw)
 }
 
 /// GNU `ksmooth(x, y, kernel=, bandwidth=, n.points=, x.points=)`.
-pub unsafe fn do_ksmooth(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        use crate::sexp::accessors::{CAR, CDR, INTEGER, STRING_ELT, TAG, TYPEOF, XLENGTH};
-        use crate::sexp::constructors::{Rf_ScalarInteger, Rf_ScalarReal, Rf_allocVector3};
-        use crate::sexp::globals::R_NilValue;
-        let x = coerceVector(CAR(args), SEXPTYPE::REALSXP.as_c_int());
-        let _xc = protect(x);
-        let y = coerceVector(CAR(CDR(args)), SEXPTYPE::REALSXP.as_c_int());
-        let _yc = protect(y);
-        let nx = XLENGTH(x) as usize;
-        let mut bw = 0.5;
-        let mut krn_code = 1i32;
-        let mut n_points = nx.max(100);
-        let mut xp = R_NilValue();
-        let mut user_xp = false;
-        let mut range_lo: Option<f64> = None;
-        let mut range_hi: Option<f64> = None;
-        let mut cell = CDR(CDR(args));
-        let mut untagged = 0usize;
-        while !cell.is_null() && cell != R_NilValue() {
-            let tag = TAG(cell);
-            let name = if !tag.is_null() && tag != R_NilValue() {
-                std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(
-                    crate::sexp::accessors::PRINTNAME(tag),
-                ))
-                .to_string_lossy()
-                .into_owned()
-            } else {
-                String::new()
-            };
-            let v = CAR(cell);
-            let mut key = name.as_str();
-            if key.is_empty() {
-                untagged += 1;
-                key = match untagged {
-                    1 => "kernel",
-                    2 => "bandwidth",
-                    3 => "range.x",
-                    4 => "n.points",
-                    5 => "x.points",
-                    _ => "",
-                };
-            }
-            if key == "bandwidth" {
-                bw = if TYPEOF(v) == SEXPTYPE::REALSXP {
-                    *REAL(v)
-                } else if TYPEOF(v) == SEXPTYPE::INTSXP {
-                    *INTEGER(v) as f64
-                } else {
-                    bw
-                };
-            } else if key == "x.points" {
-                xp = v;
-                user_xp = true;
-            } else if key == "range.x" && !v.is_null() && v != R_NilValue() && XLENGTH(v) >= 2 {
-                let a = if TYPEOF(v) == SEXPTYPE::REALSXP {
-                    *REAL(v)
-                } else {
-                    *INTEGER(v) as f64
-                };
-                let b = if TYPEOF(v) == SEXPTYPE::REALSXP {
-                    *REAL(v).add(1)
-                } else {
-                    *INTEGER(v).add(1) as f64
-                };
-                range_lo = Some(a.min(b));
-                range_hi = Some(a.max(b));
-            } else if key == "n.points" && !v.is_null() && v != R_NilValue() && XLENGTH(v) > 0 {
-                n_points = if TYPEOF(v) == SEXPTYPE::INTSXP {
-                    (*INTEGER(v)).max(1) as usize
-                } else {
-                    (*REAL(v) as i32).max(1) as usize
-                };
-            } else if key == "kernel" && TYPEOF(v) == SEXPTYPE::STRSXP && XLENGTH(v) > 0 {
-                let s = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(v, 0)))
-                    .to_string_lossy()
-                    .to_ascii_lowercase();
-                if s.starts_with('n') {
-                    krn_code = 2;
-                }
-            }
-            cell = CDR(cell);
-        }
-        // An explicit NULL is not a missing argument. sort(NULL) has
-        // length 0 and ksmooth returns empty x and y (PR19153).
-        if user_xp && (xp.is_null() || xp == R_NilValue()) {
-            xp = Rf_allocVector3(SEXPTYPE::REALSXP, 0);
-            let _empty_xp = protect(xp);
-        }
-        if xp.is_null() || xp == R_NilValue() {
-            let mut xmin = f64::INFINITY;
-            let mut xmax = f64::NEG_INFINITY;
-            for i in 0..nx {
-                let xi = *REAL(x).add(i);
-                if xi.is_finite() {
-                    xmin = xmin.min(xi);
-                    xmax = xmax.max(xi);
-                }
-            }
-            if let Some(lo) = range_lo {
-                xmin = lo;
-            }
-            if let Some(hi) = range_hi {
-                xmax = hi;
-            }
-            if !xmin.is_finite() || !xmax.is_finite() {
-                xmin = 0.0;
-                xmax = 1.0;
-            }
-            let grid = Rf_allocVector3(SEXPTYPE::REALSXP, n_points as i64);
-            let _g = protect(grid);
-            if n_points == 1 {
-                *REAL(grid) = xmin;
-            } else {
-                let step = (xmax - xmin) / (n_points - 1) as f64;
-                for i in 0..n_points {
-                    *REAL(grid).add(i) = xmin + step * i as f64;
-                }
-            }
-            xp = grid;
-        }
-        if user_xp && !xp.is_null() && xp != R_NilValue() {
-            let np = XLENGTH(xp) as usize;
-            let src = coerceVector(xp, SEXPTYPE::REALSXP.as_c_int());
-            let _src = protect(src);
-            // sort() drops NA. An empty result returns numeric x and y
-            // before the smoother reads past the sample (PR19153, PR19171).
-            let mut vals: Vec<f64> = (0..np)
-                .map(|i| *REAL(src).add(i))
-                .filter(|v| !v.is_nan())
-                .collect();
-            vals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-            let sorted = Rf_allocVector3(SEXPTYPE::REALSXP, vals.len() as i64);
-            let _s = protect(sorted);
-            for (i, value) in vals.iter().enumerate() {
-                *REAL(sorted).add(i) = *value;
-            }
-            xp = sorted;
-        }
-        // GNU: order(x) before C_ksmooth.
-        let mut ord: Vec<usize> = (0..nx).collect();
-        ord.sort_by(|&i, &j| {
-            let xi = if TYPEOF(x) == SEXPTYPE::REALSXP {
-                *REAL(x).add(i)
-            } else {
-                *INTEGER(x).add(i) as f64
-            };
-            let xj = if TYPEOF(x) == SEXPTYPE::REALSXP {
-                *REAL(x).add(j)
-            } else {
-                *INTEGER(x).add(j) as f64
-            };
-            xi.partial_cmp(&xj).unwrap_or(std::cmp::Ordering::Equal)
-        });
-        let xs = Rf_allocVector3(SEXPTYPE::REALSXP, nx as i64);
-        let _xs = protect(xs);
-        let ys = Rf_allocVector3(SEXPTYPE::REALSXP, nx as i64);
-        let _ys = protect(ys);
-        for (k, &i) in ord.iter().enumerate() {
-            *REAL(xs).add(k) = if TYPEOF(x) == SEXPTYPE::REALSXP {
-                *REAL(x).add(i)
-            } else {
-                *INTEGER(x).add(i) as f64
-            };
-            *REAL(ys).add(k) = if TYPEOF(y) == SEXPTYPE::REALSXP {
-                *REAL(y).add(i)
-            } else {
-                *INTEGER(y).add(i) as f64
+pub fn do_ksmooth(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    use crate::sexp::accessors::{CAR, CDR, INTEGER, STRING_ELT, TAG, TYPEOF, XLENGTH};
+    use crate::sexp::constructors::{Rf_ScalarInteger, Rf_ScalarReal, Rf_allocVector3};
+    use crate::sexp::globals::R_NilValue;
+    let x = coerceVector(CAR(args), SEXPTYPE::REALSXP.as_c_int());
+    let _xc = protect(x);
+    let y = coerceVector(CAR(CDR(args)), SEXPTYPE::REALSXP.as_c_int());
+    let _yc = protect(y);
+    let nx = XLENGTH(x) as usize;
+    let mut bw = 0.5;
+    let mut krn_code = 1i32;
+    let mut n_points = nx.max(100);
+    let mut xp = R_NilValue();
+    let mut user_xp = false;
+    let mut range_lo: Option<f64> = None;
+    let mut range_hi: Option<f64> = None;
+    let mut cell = CDR(CDR(args));
+    let mut untagged = 0usize;
+    while !cell.is_null() && cell != R_NilValue() {
+        let tag = TAG(cell);
+        let name = if !tag.is_null() && tag != R_NilValue() {
+            crate::library::stats::checked::char_string(crate::sexp::accessors::PRINTNAME(tag))
+        } else {
+            String::new()
+        };
+        let v = CAR(cell);
+        let mut key = name.as_str();
+        if key.is_empty() {
+            untagged += 1;
+            key = match untagged {
+                1 => "kernel",
+                2 => "bandwidth",
+                3 => "range.x",
+                4 => "n.points",
+                5 => "x.points",
+                _ => "",
             };
         }
-        let krn = Rf_ScalarInteger(krn_code);
-        let _k = protect(krn);
-        let sbw = Rf_ScalarReal(bw);
-        let _b = protect(sbw);
-        ksmooth(xs, ys, xp, krn, sbw)
+        if key == "bandwidth" {
+            bw = if TYPEOF(v) == SEXPTYPE::REALSXP {
+                REAL_ELT(v, 0)
+            } else if TYPEOF(v) == SEXPTYPE::INTSXP {
+                INTEGER_ELT(v, 0) as f64
+            } else {
+                bw
+            };
+        } else if key == "x.points" {
+            xp = v;
+            user_xp = true;
+        } else if key == "range.x" && !v.is_null() && v != R_NilValue() && XLENGTH(v) >= 2 {
+            let a = if TYPEOF(v) == SEXPTYPE::REALSXP {
+                REAL_ELT(v, 0)
+            } else {
+                INTEGER_ELT(v, 0) as f64
+            };
+            let b = if TYPEOF(v) == SEXPTYPE::REALSXP {
+                REAL_ELT(v, 1)
+            } else {
+                INTEGER_ELT(v, 1) as f64
+            };
+            range_lo = Some(a.min(b));
+            range_hi = Some(a.max(b));
+        } else if key == "n.points" && !v.is_null() && v != R_NilValue() && XLENGTH(v) > 0 {
+            n_points = if TYPEOF(v) == SEXPTYPE::INTSXP {
+                (INTEGER_ELT(v, 0)).max(1) as usize
+            } else {
+                (REAL_ELT(v, 0) as i32).max(1) as usize
+            };
+        } else if key == "kernel" && TYPEOF(v) == SEXPTYPE::STRSXP && XLENGTH(v) > 0 {
+            let s =
+                crate::library::stats::checked::char_string(STRING_ELT(v, 0)).to_ascii_lowercase();
+            if s.starts_with('n') {
+                krn_code = 2;
+            }
+        }
+        cell = CDR(cell);
     }
+    // An explicit NULL is not a missing argument. sort(NULL) has
+    // length 0 and ksmooth returns empty x and y (PR19153).
+    if user_xp && (xp.is_null() || xp == R_NilValue()) {
+        xp = Rf_allocVector3(SEXPTYPE::REALSXP, 0);
+        let _empty_xp = protect(xp);
+    }
+    if xp.is_null() || xp == R_NilValue() {
+        let mut xmin = f64::INFINITY;
+        let mut xmax = f64::NEG_INFINITY;
+        for i in 0..nx {
+            let xi = REAL_ELT(x, i as i32);
+            if xi.is_finite() {
+                xmin = xmin.min(xi);
+                xmax = xmax.max(xi);
+            }
+        }
+        if let Some(lo) = range_lo {
+            xmin = lo;
+        }
+        if let Some(hi) = range_hi {
+            xmax = hi;
+        }
+        if !xmin.is_finite() || !xmax.is_finite() {
+            xmin = 0.0;
+            xmax = 1.0;
+        }
+        let grid = Rf_allocVector3(SEXPTYPE::REALSXP, n_points as i64);
+        let _g = protect(grid);
+        if n_points == 1 {
+            SET_REAL_ELT(grid, 0, xmin);
+        } else {
+            let step = (xmax - xmin) / (n_points - 1) as f64;
+            for i in 0..n_points {
+                SET_REAL_ELT(grid, i as i32, xmin + step * i as f64);
+            }
+        }
+        xp = grid;
+    }
+    if user_xp && !xp.is_null() && xp != R_NilValue() {
+        let np = XLENGTH(xp) as usize;
+        let src = coerceVector(xp, SEXPTYPE::REALSXP.as_c_int());
+        let _src = protect(src);
+        // sort() drops NA. An empty result returns numeric x and y
+        // before the smoother reads past the sample (PR19153, PR19171).
+        let mut vals: Vec<f64> = (0..np)
+            .map(|i| REAL_ELT(src, i as i32))
+            .filter(|v| !v.is_nan())
+            .collect();
+        vals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        let sorted = Rf_allocVector3(SEXPTYPE::REALSXP, vals.len() as i64);
+        let _s = protect(sorted);
+        for (i, value) in vals.iter().enumerate() {
+            SET_REAL_ELT(sorted, i as i32, *value);
+        }
+        xp = sorted;
+    }
+    // GNU: order(x) before C_ksmooth.
+    let mut ord: Vec<usize> = (0..nx).collect();
+    ord.sort_by(|&i, &j| {
+        let xi = if TYPEOF(x) == SEXPTYPE::REALSXP {
+            REAL_ELT(x, i as i32)
+        } else {
+            INTEGER_ELT(x, i as i32) as f64
+        };
+        let xj = if TYPEOF(x) == SEXPTYPE::REALSXP {
+            REAL_ELT(x, j as i32)
+        } else {
+            INTEGER_ELT(x, j as i32) as f64
+        };
+        xi.partial_cmp(&xj).unwrap_or(std::cmp::Ordering::Equal)
+    });
+    let xs = Rf_allocVector3(SEXPTYPE::REALSXP, nx as i64);
+    let _xs = protect(xs);
+    let ys = Rf_allocVector3(SEXPTYPE::REALSXP, nx as i64);
+    let _ys = protect(ys);
+    for (k, &i) in ord.iter().enumerate() {
+        SET_REAL_ELT(
+            xs,
+            k as i32,
+            if TYPEOF(x) == SEXPTYPE::REALSXP {
+                REAL_ELT(x, i as i32)
+            } else {
+                INTEGER_ELT(x, i as i32) as f64
+            },
+        );
+        SET_REAL_ELT(
+            ys,
+            k as i32,
+            if TYPEOF(y) == SEXPTYPE::REALSXP {
+                REAL_ELT(y, i as i32)
+            } else {
+                INTEGER_ELT(y, i as i32) as f64
+            },
+        );
+    }
+    let krn = Rf_ScalarInteger(krn_code);
+    let _k = protect(krn);
+    let sbw = Rf_ScalarReal(bw);
+    let _b = protect(sbw);
+    ksmooth(xs, ys, xp, krn, sbw)
 }
 
 #[cfg(test)]
@@ -441,16 +421,16 @@ mod tests {
         let _session = crate::sexp::session::RSession::new();
         unsafe {
             let x = Rf_allocVector3(SEXPTYPE::REALSXP, 2);
-            *REAL(x) = 0.0;
-            *REAL(x).add(1) = 1.0;
+            SET_REAL_ELT(x, 0, 0.0);
+            SET_REAL_ELT(x, 1, 1.0);
             let y = Rf_allocVector3(SEXPTYPE::REALSXP, 2);
-            *REAL(y) = 1.0;
-            *REAL(y).add(1) = 2.0;
+            SET_REAL_ELT(y, 0, 1.0);
+            SET_REAL_ELT(y, 1, 2.0);
             let mut samples: Vec<SEXP> = Vec::new();
             for xp_values in [Vec::<f64>::new(), vec![f64::NAN]] {
                 let xp = Rf_allocVector3(SEXPTYPE::REALSXP, xp_values.len() as i64);
                 for (i, value) in xp_values.iter().enumerate() {
-                    *REAL(xp).add(i) = *value;
+                    SET_REAL_ELT(xp, i as i32, *value);
                 }
                 samples.push(xp);
             }

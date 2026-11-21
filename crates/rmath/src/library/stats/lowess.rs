@@ -1,6 +1,7 @@
 //! Lowess (locally weighted scatterplot smoothing)
 //! Port of r-source/src/library/stats/src/lowess.c
 
+use crate::sexp::accessors::{INTEGER_ELT, REAL_ELT, SET_REAL_ELT};
 use std::os::raw::{c_double, c_int};
 
 use crate::main::coerce::{asInteger, asReal};
@@ -287,32 +288,34 @@ unsafe fn clowess(
     }
 }
 
-pub unsafe fn lowess(x: SEXP, y: SEXP, sf: SEXP, siter: SEXP, sdelta: SEXP) -> SEXP {
-    unsafe {
-        if TYPEOF(x) != SEXPTYPE::REALSXP || TYPEOF(y) != SEXPTYPE::REALSXP {
-            Rf_error(b"invalid input\0".as_ptr() as *const _);
-        }
-        let nx = LENGTH(x);
-        if nx == NA_INTEGER || nx == 0 {
-            Rf_error(b"invalid input\0".as_ptr() as *const _);
-        }
-        let f = asReal(sf);
-        if !f.is_finite() || f <= 0.0 {
-            Rf_error(b"'f' must be finite and > 0\0".as_ptr() as *const _);
-        }
-        let iter = asInteger(siter);
-        if iter == NA_INTEGER || iter < 0 {
-            Rf_error(b"'iter' must be finite and >= 0\0".as_ptr() as *const _);
-        }
-        let delta = asReal(sdelta);
-        if !delta.is_finite() || delta < 0.0 {
-            Rf_error(b"'delta' must be finite and > 0\0".as_ptr() as *const _);
-        }
+pub fn lowess(x: SEXP, y: SEXP, sf: SEXP, siter: SEXP, sdelta: SEXP) -> SEXP {
+    if TYPEOF(x) != SEXPTYPE::REALSXP || TYPEOF(y) != SEXPTYPE::REALSXP {
+        Rf_error(b"invalid input\0".as_ptr() as *const _);
+    }
+    let nx = LENGTH(x);
+    if nx == NA_INTEGER || nx == 0 {
+        Rf_error(b"invalid input\0".as_ptr() as *const _);
+    }
+    let f = asReal(sf);
+    if !f.is_finite() || f <= 0.0 {
+        Rf_error(b"'f' must be finite and > 0\0".as_ptr() as *const _);
+    }
+    let iter = asInteger(siter);
+    if iter == NA_INTEGER || iter < 0 {
+        Rf_error(b"'iter' must be finite and >= 0\0".as_ptr() as *const _);
+    }
+    let delta = asReal(sdelta);
+    if !delta.is_finite() || delta < 0.0 {
+        Rf_error(b"'delta' must be finite and > 0\0".as_ptr() as *const _);
+    }
 
-        let ans = Rf_allocVector(SEXPTYPE::REALSXP, nx);
-        let _ans_guard = protect(ans);
-        let mut rw = vec![0.0f64; nx as usize];
-        let mut res = vec![0.0f64; nx as usize];
+    let ans = Rf_allocVector(SEXPTYPE::REALSXP, nx);
+    let _ans_guard = protect(ans);
+    let mut rw = vec![0.0f64; nx as usize];
+    let mut res = vec![0.0f64; nx as usize];
+    // SAFETY: `x`, `y` and the protected `ans` are live REALSXPs of length
+    // `nx`, and `rw`/`res` are `nx`-cell scratch buffers owned by this frame.
+    unsafe {
         clowess(
             REAL(x),
             REAL(y),
@@ -324,8 +327,8 @@ pub unsafe fn lowess(x: SEXP, y: SEXP, sf: SEXP, siter: SEXP, sdelta: SEXP) -> S
             rw.as_mut_ptr(),
             res.as_mut_ptr(),
         );
-        ans
     }
+    ans
 }
 pub unsafe extern "C-unwind" fn c_lowess(
     x: SEXP,
@@ -334,119 +337,110 @@ pub unsafe extern "C-unwind" fn c_lowess(
     iter: SEXP,
     delta: SEXP,
 ) -> SEXP {
-    unsafe { lowess(x, y, f, iter, delta) }
+    lowess(x, y, f, iter, delta)
 }
 
 /// GNU `lowess(x, y=NULL, f=2/3, iter=3, delta=0.01*diff(range(x)))`.
-pub unsafe fn do_lowess(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        use crate::sexp::accessors::{CAR, CDR, INTEGER, SET_VECTOR_ELT, SETTAG};
-        use crate::sexp::constructors::{
-            Rf_ScalarInteger, Rf_ScalarReal, Rf_allocVector3, Rf_cons,
-        };
-        use crate::sexp::ffi::R_xlen_t;
-        use crate::sexp::globals::{R_MissingArg, R_NilValue};
-        use crate::sexp::symbol::Rf_install;
-        use std::ffi::CString;
-        let mut formals = R_NilValue();
-        for name in ["delta", "iter", "f", "y", "x"] {
-            let cell = Rf_cons(R_MissingArg(), formals);
-            SETTAG(
-                cell,
-                Rf_install(CString::new(name).unwrap_or_default().as_ptr()),
-            );
-            formals = cell;
-        }
-        let _formals = protect(formals);
-        let matched = crate::mainutils::match_mod::matchArgs_RC(formals, args, call);
-        let _matched = protect(matched);
-        let mut slots = [R_MissingArg(); 5];
-        let mut cell = matched;
-        let mut i = 0;
-        while !cell.is_null() && cell != R_NilValue() && i < 5 {
-            slots[i] = CAR(cell);
-            cell = CDR(cell);
-            i += 1;
-        }
-        let mut x0 = slots[0];
-        let mut y0 = slots[1];
-        let absent = |s: SEXP| s.is_null() || s == R_NilValue() || s == R_MissingArg();
-        if absent(x0) {
-            crate::mainutils::errors::errorcall_str(
-                call,
-                "argument \"x\" is missing, with no default",
-            );
-        }
-        if absent(y0) {
-            let n = crate::sexp::accessors::XLENGTH(x0);
-            let seq = Rf_allocVector3(SEXPTYPE::REALSXP, n);
-            let _s = protect(seq);
-            for j in 0..n {
-                *REAL(seq).add(j as usize) = (j + 1) as f64;
-            }
-            y0 = x0;
-            x0 = seq;
-        }
-        let n = crate::sexp::accessors::XLENGTH(x0);
-        let f = if absent(slots[2]) {
-            2.0 / 3.0
-        } else {
-            asReal(slots[2])
-        };
-        let iter = if absent(slots[3]) {
-            3
-        } else {
-            asInteger(slots[3])
-        };
-        let xd = Rf_allocVector3(SEXPTYPE::REALSXP, n);
-        let _xd = protect(xd);
-        let yd = Rf_allocVector3(SEXPTYPE::REALSXP, n);
-        let _yd = protect(yd);
-        let as_f64 = |v: SEXP, i: R_xlen_t| -> f64 {
-            if TYPEOF(v) == SEXPTYPE::REALSXP {
-                *REAL(v).add(i as usize)
-            } else if TYPEOF(v) == SEXPTYPE::INTSXP || TYPEOF(v) == SEXPTYPE::LGLSXP {
-                let iv = *INTEGER(v).add(i as usize);
-                if iv == NA_INTEGER {
-                    f64::NAN
-                } else {
-                    iv as f64
-                }
-            } else {
-                f64::NAN
-            }
-        };
-        let mut xmin = f64::INFINITY;
-        let mut xmax = f64::NEG_INFINITY;
-        for j in 0..n {
-            let xv = as_f64(x0, j);
-            *REAL(xd).add(j as usize) = xv;
-            *REAL(yd).add(j as usize) = as_f64(y0, j);
-            if xv.is_finite() {
-                xmin = xmin.min(xv);
-                xmax = xmax.max(xv);
-            }
-        }
-        let delta = if absent(slots[4]) {
-            0.01 * (xmax - xmin)
-        } else {
-            asReal(slots[4])
-        };
-        let sf = Rf_ScalarReal(f);
-        let _sf = protect(sf);
-        let siter = Rf_ScalarInteger(iter);
-        let _si = protect(siter);
-        let sdelta = Rf_ScalarReal(delta);
-        let _sd = protect(sdelta);
-        let ys = lowess(xd, yd, sf, siter, sdelta);
-        let _ys = protect(ys);
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
-        let _r = protect(result);
-        SET_VECTOR_ELT(result, 0, xd);
-        SET_VECTOR_ELT(result, 1, ys);
-        crate::mainutils::essentials::set_string_names(result, &["x".to_string(), "y".to_string()]);
-        result
+pub fn do_lowess(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    use crate::sexp::accessors::{CAR, CDR, INTEGER, SET_VECTOR_ELT, SETTAG};
+    use crate::sexp::constructors::{Rf_ScalarInteger, Rf_ScalarReal, Rf_allocVector3, Rf_cons};
+    use crate::sexp::ffi::R_xlen_t;
+    use crate::sexp::globals::{R_MissingArg, R_NilValue};
+    use crate::sexp::symbol::install_str;
+    let mut formals = R_NilValue();
+    for name in ["delta", "iter", "f", "y", "x"] {
+        let cell = Rf_cons(R_MissingArg(), formals);
+        SETTAG(cell, install_str(name));
+        formals = cell;
     }
+    let _formals = protect(formals);
+    // SAFETY: `formals` is a live protected pairlist and `args`/`call` are
+    // the live builtin arguments; matchArgs_RC only reads them.
+    let matched = unsafe { crate::mainutils::match_mod::matchArgs_RC(formals, args, call) };
+    let _matched = protect(matched);
+    let mut slots = [R_MissingArg(); 5];
+    let mut cell = matched;
+    let mut i = 0;
+    while !cell.is_null() && cell != R_NilValue() && i < 5 {
+        slots[i] = CAR(cell);
+        cell = CDR(cell);
+        i += 1;
+    }
+    let mut x0 = slots[0];
+    let mut y0 = slots[1];
+    let absent = |s: SEXP| s.is_null() || s == R_NilValue() || s == R_MissingArg();
+    if absent(x0) {
+        crate::mainutils::errors::errorcall_str(call, "argument \"x\" is missing, with no default");
+    }
+    if absent(y0) {
+        let n = crate::sexp::accessors::XLENGTH(x0);
+        let seq = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+        let _s = protect(seq);
+        for j in 0..n {
+            SET_REAL_ELT(seq, j as i32, (j + 1) as f64);
+        }
+        y0 = x0;
+        x0 = seq;
+    }
+    let n = crate::sexp::accessors::XLENGTH(x0);
+    let f = if absent(slots[2]) {
+        2.0 / 3.0
+    } else {
+        asReal(slots[2])
+    };
+    let iter = if absent(slots[3]) {
+        3
+    } else {
+        asInteger(slots[3])
+    };
+    let xd = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+    let _xd = protect(xd);
+    let yd = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+    let _yd = protect(yd);
+    let as_f64 = |v: SEXP, i: R_xlen_t| -> f64 {
+        if TYPEOF(v) == SEXPTYPE::REALSXP {
+            REAL_ELT(v, i as i32)
+        } else if TYPEOF(v) == SEXPTYPE::INTSXP || TYPEOF(v) == SEXPTYPE::LGLSXP {
+            let iv = INTEGER_ELT(v, i as i32);
+            if iv == NA_INTEGER {
+                f64::NAN
+            } else {
+                iv as f64
+            }
+        } else {
+            f64::NAN
+        }
+    };
+    let mut xmin = f64::INFINITY;
+    let mut xmax = f64::NEG_INFINITY;
+    for j in 0..n {
+        let xv = as_f64(x0, j);
+        SET_REAL_ELT(xd, j as i32, xv);
+        SET_REAL_ELT(yd, j as i32, as_f64(y0, j));
+        if xv.is_finite() {
+            xmin = xmin.min(xv);
+            xmax = xmax.max(xv);
+        }
+    }
+    let delta = if absent(slots[4]) {
+        0.01 * (xmax - xmin)
+    } else {
+        asReal(slots[4])
+    };
+    let sf = Rf_ScalarReal(f);
+    let _sf = protect(sf);
+    let siter = Rf_ScalarInteger(iter);
+    let _si = protect(siter);
+    let sdelta = Rf_ScalarReal(delta);
+    let _sd = protect(sdelta);
+    let ys = lowess(xd, yd, sf, siter, sdelta);
+    let _ys = protect(ys);
+    let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+    let _r = protect(result);
+    SET_VECTOR_ELT(result, 0, xd);
+    SET_VECTOR_ELT(result, 1, ys);
+    crate::mainutils::essentials::set_string_names(result, &["x".to_string(), "y".to_string()]);
+    result
 }
 
 /// GNU default/fixed-span supersmoother through owning inputs and checked slices.
@@ -620,7 +614,7 @@ fn write_g<const N: usize>(
     }
 }
 
-pub unsafe fn do_supsmu(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub fn do_supsmu(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     use crate::sexp::{
         R_xlen_t, Sexp, SexpMut,
         owner::{OwnerToken, RuntimeAccess, with_runtime},

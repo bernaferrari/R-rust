@@ -146,13 +146,27 @@ pub(crate) fn define_var(symbol: SEXP, value: SEXP, rho: SEXP) {
 /// Find a function binding for `symbol` from `rho` (GNU `findFun`), or
 /// `R_UnboundValue` when there is none.
 pub(crate) fn find_fun(symbol: SEXP, rho: SEXP) -> SEXP {
+    lookup(symbol, rho, crate::sexp::envir::find_fun_safe)
+}
+
+/// Find a variable binding for `symbol` from `rho` (GNU `findVar`), or
+/// `R_UnboundValue` when there is none.
+pub(crate) fn find_var(symbol: SEXP, rho: SEXP) -> SEXP {
+    lookup(symbol, rho, crate::sexp::envir::find_var_safe)
+}
+
+fn lookup(
+    symbol: SEXP,
+    rho: SEXP,
+    find: fn(Sexp<'static>, Sexp<'static>) -> Option<Sexp<'static>>,
+) -> SEXP {
     let unbound = crate::sexp::globals::R_UnboundValue();
     if symbol.is_null() {
         return unbound;
     }
     let factory = node_factory();
     match (factory.wrap(symbol), factory.wrap(rho)) {
-        (Ok(symbol), Ok(rho)) => crate::sexp::envir::find_fun_safe(symbol, rho)
+        (Ok(symbol), Ok(rho)) => find(symbol, rho)
             .map(|value| value.as_raw())
             .unwrap_or(unbound),
         _ => unbound,

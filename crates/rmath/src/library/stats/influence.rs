@@ -37,83 +37,73 @@ use crate::sexp::protect::protect;
 // Local helpers
 // ---------------------------------------------------------------------------
 
-unsafe fn mkChar(s: &str) -> SEXP {
-    unsafe {
-        let c_str = CString::new(s).unwrap_or_default();
-        Rf_mkChar(c_str.as_ptr())
-    }
+fn mkChar(s: &str) -> SEXP {
+    let c_str = CString::new(s).unwrap_or_default();
+    crate::library::stats::checked::mk_char(c_str.to_str().unwrap_or_default())
 }
 
-unsafe fn getListElement(list: SEXP, str: &str) -> SEXP {
-    unsafe {
-        if TYPEOF(list) != SEXPTYPE::VECSXP {
-            return R_NilValue();
-        }
-        let names = getAttrib(list, R_NamesSymbol());
-        if TYPEOF(names) != SEXPTYPE::STRSXP {
-            return R_NilValue();
-        }
-        let len = LENGTH(list);
-        if LENGTH(names) < len {
-            return R_NilValue();
-        }
-        let target = str.as_bytes();
-        for i in 0..len {
-            let name_sexp = STRING_ELT(names, i as crate::sexp::ffi::R_xlen_t);
-            if name_sexp.is_null() {
-                continue;
-            }
-            let name_ptr = CHAR(name_sexp);
-            if name_ptr.is_null() {
-                continue;
-            }
-            let name_bytes = std::ffi::CStr::from_ptr(name_ptr).to_bytes();
-            if name_bytes == target {
-                return VECTOR_ELT(list, i as crate::sexp::ffi::R_xlen_t);
-            }
-        }
-        R_NilValue()
+fn getListElement(list: SEXP, str: &str) -> SEXP {
+    if TYPEOF(list) != SEXPTYPE::VECSXP {
+        return R_NilValue();
     }
+    let names = getAttrib(list, R_NamesSymbol());
+    if TYPEOF(names) != SEXPTYPE::STRSXP {
+        return R_NilValue();
+    }
+    let len = LENGTH(list);
+    if LENGTH(names) < len {
+        return R_NilValue();
+    }
+    let target = str.as_bytes();
+    for i in 0..len {
+        let name_sexp = STRING_ELT(names, i as crate::sexp::ffi::R_xlen_t);
+        if name_sexp.is_null() {
+            continue;
+        }
+        let name_ptr = name_sexp;
+        if name_ptr.is_null() {
+            continue;
+        }
+        let name_bytes = crate::library::stats::checked::char_bytes(name_ptr);
+        if name_bytes == target {
+            return VECTOR_ELT(list, i as crate::sexp::ffi::R_xlen_t);
+        }
+    }
+    R_NilValue()
 }
 
-unsafe fn nrows(x: SEXP) -> c_int {
-    unsafe {
-        let dn = getAttrib(x, crate::attrib_core::R_DimSymbol());
-        if Rf_isNull(dn) != 0 || LENGTH(dn) < 1 {
-            return LENGTH(x);
-        }
-        *INTEGER(dn)
+fn nrows(x: SEXP) -> c_int {
+    let dn = getAttrib(x, crate::attrib_core::R_DimSymbol());
+    if Rf_isNull(dn) != 0 || LENGTH(dn) < 1 {
+        return LENGTH(x);
     }
+    INTEGER_ELT(dn, 0)
 }
 
-unsafe fn ncols(x: SEXP) -> c_int {
-    unsafe {
-        let dn = getAttrib(x, crate::attrib_core::R_DimSymbol());
-        if Rf_isNull(dn) != 0 || LENGTH(dn) < 2 {
-            return 1;
-        }
-        *INTEGER(dn).add(1)
+fn ncols(x: SEXP) -> c_int {
+    let dn = getAttrib(x, crate::attrib_core::R_DimSymbol());
+    if Rf_isNull(dn) != 0 || LENGTH(dn) < 2 {
+        return 1;
     }
+    INTEGER_ELT(dn, 1)
 }
 
-unsafe fn allocMatrix(sexptype: c_int, nrow: c_int, ncol: c_int) -> SEXP {
-    unsafe {
-        let len = (nrow as i64).checked_mul(ncol as i64);
-        let Some(len) = len.filter(|&len| (0..=c_int::MAX as i64).contains(&len)) else {
-            influence_error(b"influence: matrix dimensions are too large\0");
-        };
-        let ans = Rf_allocVector(sexptype, len as c_int);
-        let _ans_guard = protect(ans);
-        let dim = Rf_allocVector(SEXPTYPE::INTSXP, 2);
-        let _dim_guard = protect(dim);
-        *INTEGER(dim) = nrow;
-        *INTEGER(dim).add(1) = ncol;
-        setAttrib(ans, crate::attrib_core::R_DimSymbol(), dim);
-        ans
-    }
+fn allocMatrix(sexptype: c_int, nrow: c_int, ncol: c_int) -> SEXP {
+    let len = (nrow as i64).checked_mul(ncol as i64);
+    let Some(len) = len.filter(|&len| (0..=c_int::MAX as i64).contains(&len)) else {
+        influence_error(b"influence: matrix dimensions are too large\0");
+    };
+    let ans = Rf_allocVector(sexptype, len as c_int);
+    let _ans_guard = protect(ans);
+    let dim = Rf_allocVector(SEXPTYPE::INTSXP, 2);
+    let _dim_guard = protect(dim);
+    SET_INTEGER_ELT(dim, 0, nrow);
+    SET_INTEGER_ELT(dim, 1, ncol);
+    setAttrib(ans, crate::attrib_core::R_DimSymbol(), dim);
+    ans
 }
 
-unsafe fn influence_error(message: &'static [u8]) -> ! {
+fn influence_error(message: &'static [u8]) -> ! {
     Rf_error(message.as_ptr() as *const std::os::raw::c_char);
     unreachable!("Rf_error must not return")
 }
@@ -282,69 +272,72 @@ unsafe fn lminfl_(
 // influence: regression influence diagnostics
 // ---------------------------------------------------------------------------
 
-pub unsafe fn influence(mqr: SEXP, e: SEXP, stol: SEXP) -> SEXP {
+pub fn influence(mqr: SEXP, e: SEXP, stol: SEXP) -> SEXP {
+    if TYPEOF(mqr) != SEXPTYPE::VECSXP {
+        influence_error(b"influence: 'mqr' must be a list\0");
+    }
+    if TYPEOF(e) != SEXPTYPE::REALSXP {
+        influence_error(b"influence: residuals must be numeric\0");
+    }
+    let qr = getListElement(mqr, "qr");
+    let qraux = getListElement(mqr, "qraux");
+    let rank_val = getListElement(mqr, "rank");
+
+    if TYPEOF(qr) != SEXPTYPE::REALSXP || TYPEOF(qraux) != SEXPTYPE::REALSXP {
+        influence_error(b"influence: invalid QR decomposition\0");
+    }
+    if TYPEOF(rank_val) != SEXPTYPE::INTSXP || XLENGTH(rank_val) < 1 {
+        influence_error(b"influence: invalid QR rank\0");
+    }
+
+    let qr_dim = getAttrib(qr, crate::attrib_core::R_DimSymbol());
+    let e_dim = getAttrib(e, crate::attrib_core::R_DimSymbol());
+    if TYPEOF(qr_dim) != SEXPTYPE::INTSXP
+        || LENGTH(qr_dim) != 2
+        || (TYPEOF(e_dim) != SEXPTYPE::INTSXP && Rf_isNull(e_dim) == 0)
+        || (TYPEOF(e_dim) == SEXPTYPE::INTSXP && LENGTH(e_dim) != 2)
+    {
+        influence_error(b"influence: QR and residuals must be matrices\0");
+    }
+
+    let n = nrows(qr);
+    let qr_cols = ncols(qr);
+    let k = asInteger(rank_val);
+    if n < 0
+        || qr_cols < 0
+        || k < 0
+        || k > n
+        || k > qr_cols
+        || XLENGTH(qr) != (n as i64).saturating_mul(qr_cols as i64)
+        || XLENGTH(qraux) < k as i64
+    {
+        influence_error(b"influence: inconsistent QR dimensions or rank\0");
+    }
+    let (e_rows, e_cols) = if Rf_isNull(e_dim) != 0 {
+        (n, 1)
+    } else {
+        (INTEGER_ELT(e_dim, 0), INTEGER_ELT(e_dim, 1))
+    };
+    let q = if e_rows == n && e_cols >= 0 {
+        e_cols
+    } else {
+        influence_error(b"influence: residual dimensions do not match QR\0");
+    };
+    if XLENGTH(e) != (n as i64).saturating_mul(q as i64) {
+        influence_error(b"influence: residual payload does not match dimensions\0");
+    }
+    let tol = asReal(stol);
+
+    let hat = Rf_allocVector(SEXPTYPE::REALSXP, n);
+    let _hat_guard = protect(hat);
+    let sigma = allocMatrix(SEXPTYPE::REALSXP.into(), n, q);
+    let _sigma_guard = protect(sigma);
+
+    // F77 order: x, ldx, n, k, q, qraux, resid, hat, sigma, tol
+    // SAFETY: `qr` is an `n x k` and `e` an `n x q` REALSXP, `qraux` holds
+    // `k` cells, and the protected `hat`/`sigma` outputs hold `n`/`n x q`
+    // cells; all are live, distinct payloads for this LINPACK kernel call.
     unsafe {
-        if TYPEOF(mqr) != SEXPTYPE::VECSXP {
-            influence_error(b"influence: 'mqr' must be a list\0");
-        }
-        if TYPEOF(e) != SEXPTYPE::REALSXP {
-            influence_error(b"influence: residuals must be numeric\0");
-        }
-        let qr = getListElement(mqr, "qr");
-        let qraux = getListElement(mqr, "qraux");
-        let rank_val = getListElement(mqr, "rank");
-
-        if TYPEOF(qr) != SEXPTYPE::REALSXP || TYPEOF(qraux) != SEXPTYPE::REALSXP {
-            influence_error(b"influence: invalid QR decomposition\0");
-        }
-        if TYPEOF(rank_val) != SEXPTYPE::INTSXP || XLENGTH(rank_val) < 1 {
-            influence_error(b"influence: invalid QR rank\0");
-        }
-
-        let qr_dim = getAttrib(qr, crate::attrib_core::R_DimSymbol());
-        let e_dim = getAttrib(e, crate::attrib_core::R_DimSymbol());
-        if TYPEOF(qr_dim) != SEXPTYPE::INTSXP
-            || LENGTH(qr_dim) != 2
-            || (TYPEOF(e_dim) != SEXPTYPE::INTSXP && Rf_isNull(e_dim) == 0)
-            || (TYPEOF(e_dim) == SEXPTYPE::INTSXP && LENGTH(e_dim) != 2)
-        {
-            influence_error(b"influence: QR and residuals must be matrices\0");
-        }
-
-        let n = nrows(qr);
-        let qr_cols = ncols(qr);
-        let k = asInteger(rank_val);
-        if n < 0
-            || qr_cols < 0
-            || k < 0
-            || k > n
-            || k > qr_cols
-            || XLENGTH(qr) != (n as i64).saturating_mul(qr_cols as i64)
-            || XLENGTH(qraux) < k as i64
-        {
-            influence_error(b"influence: inconsistent QR dimensions or rank\0");
-        }
-        let (e_rows, e_cols) = if Rf_isNull(e_dim) != 0 {
-            (n, 1)
-        } else {
-            (*INTEGER(e_dim), *INTEGER(e_dim).add(1))
-        };
-        let q = if e_rows == n && e_cols >= 0 {
-            e_cols
-        } else {
-            influence_error(b"influence: residual dimensions do not match QR\0");
-        };
-        if XLENGTH(e) != (n as i64).saturating_mul(q as i64) {
-            influence_error(b"influence: residual payload does not match dimensions\0");
-        }
-        let tol = asReal(stol);
-
-        let hat = Rf_allocVector(SEXPTYPE::REALSXP, n);
-        let _hat_guard = protect(hat);
-        let sigma = allocMatrix(SEXPTYPE::REALSXP.into(), n, q);
-        let _sigma_guard = protect(sigma);
-
-        // F77 order: x, ldx, n, k, q, qraux, resid, hat, sigma, tol
         lminfl_(
             REAL(qr),
             &n,
@@ -357,28 +350,28 @@ pub unsafe fn influence(mqr: SEXP, e: SEXP, stol: SEXP) -> SEXP {
             REAL(sigma),
             &tol,
         );
-
-        // Clamp hat values slightly above 1 to exactly 1 (influence.c)
-        for i in 0..n as usize {
-            if *REAL(hat).add(i) > 1.0 - tol {
-                *REAL(hat).add(i) = 1.0;
-            }
-        }
-
-        let ans = Rf_allocVector(SEXPTYPE::VECSXP, 2);
-        let _ans_guard = protect(ans);
-        let nm = Rf_allocVector(SEXPTYPE::STRSXP, 2);
-        setAttrib(ans, R_NamesSymbol(), nm);
-
-        let mut m: c_int = 0;
-        SET_VECTOR_ELT(ans, m as crate::sexp::ffi::R_xlen_t, hat);
-        SET_STRING_ELT(nm, m as crate::sexp::ffi::R_xlen_t, mkChar("hat"));
-        m += 1;
-        SET_VECTOR_ELT(ans, m as crate::sexp::ffi::R_xlen_t, sigma);
-        SET_STRING_ELT(nm, m as crate::sexp::ffi::R_xlen_t, mkChar("sigma"));
-
-        ans
     }
+
+    // Clamp hat values slightly above 1 to exactly 1 (influence.c)
+    for i in 0..n as usize {
+        if REAL_ELT(hat, i as i32) > 1.0 - tol {
+            SET_REAL_ELT(hat, i as i32, 1.0);
+        }
+    }
+
+    let ans = Rf_allocVector(SEXPTYPE::VECSXP, 2);
+    let _ans_guard = protect(ans);
+    let nm = Rf_allocVector(SEXPTYPE::STRSXP, 2);
+    setAttrib(ans, R_NamesSymbol(), nm);
+
+    let mut m: c_int = 0;
+    SET_VECTOR_ELT(ans, m as crate::sexp::ffi::R_xlen_t, hat);
+    SET_STRING_ELT(nm, m as crate::sexp::ffi::R_xlen_t, mkChar("hat"));
+    m += 1;
+    SET_VECTOR_ELT(ans, m as crate::sexp::ffi::R_xlen_t, sigma);
+    SET_STRING_ELT(nm, m as crate::sexp::ffi::R_xlen_t, mkChar("sigma"));
+
+    ans
 }
 
 #[cfg(test)]
@@ -567,7 +560,7 @@ mod tests {
             let residuals = Rf_allocVector(SEXPTYPE::REALSXP, 3);
             let _residuals = protect(residuals);
             for i in 0..3 {
-                *REAL(residuals).add(i) = (i + 1) as f64;
+                SET_REAL_ELT(residuals, i as i32, (i + 1) as f64);
             }
             let tol = crate::sexp::constructors::Rf_ScalarReal(1e-7);
             let _tol = protect(tol);
@@ -575,9 +568,9 @@ mod tests {
             let _result = protect(result);
             let sigma = VECTOR_ELT(result, 1);
             let dims = getAttrib(sigma, crate::attrib_core::R_DimSymbol());
-            assert_eq!((*INTEGER(dims), *INTEGER(dims).add(1)), (3, 1));
+            assert_eq!((INTEGER_ELT(dims, 0), INTEGER_ELT(dims, 1)), (3, 1));
             for (i, expected) in [6.5_f64, 5.0, 2.5].iter().enumerate() {
-                assert!((*REAL(sigma).add(i) - expected.sqrt()).abs() < 1e-12);
+                assert!((REAL_ELT(sigma, i as i32) - expected.sqrt()).abs() < 1e-12);
             }
             let empty = allocMatrix(SEXPTYPE::REALSXP.into(), 3, 0);
             let _empty = protect(empty);

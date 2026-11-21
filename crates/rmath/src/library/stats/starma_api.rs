@@ -169,10 +169,7 @@ fn dimension(value: SEXP, name: &str) -> i32 {
         SEXPTYPE::REALSXP => REAL_ELT(value, 0),
         _ => starma_error(&format!("invalid starma {name}")),
     };
-    if !number.is_finite()
-        || number.fract() != 0.0
-        || number < 0.0
-        || number > f64::from(i32::MAX)
+    if !number.is_finite() || number.fract() != 0.0 || number < 0.0 || number > f64::from(i32::MAX)
     {
         starma_error(&format!("invalid starma {name}"));
     }
@@ -190,10 +187,7 @@ fn require_reals(value: SEXP, needed: i32, name: &str) {
     if needed == 0 {
         return;
     }
-    if value.is_null()
-        || TYPEOF(value) != SEXPTYPE::REALSXP
-        || XLENGTH(value) < i64::from(needed)
-    {
+    if value.is_null() || TYPEOF(value) != SEXPTYPE::REALSXP || XLENGTH(value) < i64::from(needed) {
         starma_error(&format!("starma {name} is shorter than its dimensions"));
     }
 }
@@ -319,425 +313,405 @@ pub unsafe extern "C-unwind" fn c_setup_starma(
     ptrans: SEXP,
     sncond: SEXP,
 ) -> SEXP {
-    {
-        if na.is_null() || TYPEOF(na) != SEXPTYPE::INTSXP || XLENGTH(na) < 5 {
-            starma_error("starma orders must begin with five nonnegative integers");
-        }
-        // GNU arima0 supplies seven entries: the five native model orders
-        // followed by the two differencing orders already applied by its R
-        // wrapper. This kernel consumes the first five; retain minimum-length
-        // admission without rejecting that original public metadata tail.
-        let [mp, mq, msp, msq, ns] = std::array::from_fn(|index| INTEGER_ELT(na, index as c_int));
-        if [mp, mq, msp, msq, ns].iter().any(|order| *order < 0) {
-            starma_error("starma orders must begin with five nonnegative integers");
-        }
-        let n = dimension(pn, "observation count");
-        let m = dimension(pm, "regression count");
-        let ncond = dimension(sncond, "conditioning count");
-        if ncond > n {
-            starma_error("starma conditioning count exceeds observation count");
-        }
-        let reg_n = checked_size(i64::from(n) * i64::from(m));
-        require_reals(x, n, "observations");
-        require_reals(xreg, reg_n, "regression input");
-        let mut g = StarmaModel::new(
-            [mp, mq, msp, msq, ns],
-            n,
-            m,
-            ncond,
-            as_i32(ptrans),
-            as_f64(dt),
-        )
-        .unwrap_or_else(|error| starma_error(&error.to_string()));
-        // Materialization happens before state publication or any model loan.
-        if n > 0 {
-            let observations = real_prefix(x, i64::from(n));
-            g.w[..n as usize].copy_from_slice(&observations);
-            g.wkeep[..n as usize].copy_from_slice(&observations);
-        }
-        if reg_n > 0 {
-            g.reg[..reg_n as usize].copy_from_slice(&real_prefix(xreg, i64::from(reg_n)));
-        }
-        let state = StarmaState::new(g);
-        let mut publication = StarmaPublication {
-            state,
-            published: None,
-        };
-        // SAFETY: the interpreter holds the runtime lock across dispatch; the
-        // token borrows the interpreter-held owner for this call only.
-        let owner = unsafe {
-            crate::sexp::owner::OwnerToken::current().unwrap_or_else(|error| {
-                std::panic::panic_any(crate::sexp::context::RError {
-                    message: error.to_string(),
-                })
-            })
-        };
-        let factory = owner.node_factory();
-        let result = factory
-            .allocate(|arena| {
-                let node = arena.alloc_node(SEXPTYPE::EXTPTRSXP);
-                if node.is_null() {
-                    return None;
-                }
-                let token = arena
-                    .node_token(node)
-                    .expect("fresh starma external pointer");
-                let heap = arena.heap_identity();
-                heap.attach_resource(&token, publication.state.clone())?;
-                publication.published = Some(token);
-                let address = Rc::as_ptr(&publication.state);
-                // SAFETY: `node` is a fresh arena allocation whose extptr
-                // body slot is initialized by this write before publication.
-                unsafe {
-                    *(*node).data.extptr_mut() = crate::sexp::ffi::ExtPtrBody {
-                        address: address as *mut c_void,
-                        protected: crate::sexp::heap::NodeLink::NULL,
-                        tag: crate::sexp::heap::NodeLink::NULL,
-                    };
-                }
-                Some(node)
-            })
-            .unwrap_or_else(|error| {
-                std::panic::panic_any(crate::sexp::context::RError {
-                    message: format!("could not allocate starma pointer: {error}"),
-                })
-            });
-        publication.complete();
-        result.as_raw()
+    if na.is_null() || TYPEOF(na) != SEXPTYPE::INTSXP || XLENGTH(na) < 5 {
+        starma_error("starma orders must begin with five nonnegative integers");
     }
+    // GNU arima0 supplies seven entries: the five native model orders
+    // followed by the two differencing orders already applied by its R
+    // wrapper. This kernel consumes the first five; retain minimum-length
+    // admission without rejecting that original public metadata tail.
+    let [mp, mq, msp, msq, ns] = std::array::from_fn(|index| INTEGER_ELT(na, index as c_int));
+    if [mp, mq, msp, msq, ns].iter().any(|order| *order < 0) {
+        starma_error("starma orders must begin with five nonnegative integers");
+    }
+    let n = dimension(pn, "observation count");
+    let m = dimension(pm, "regression count");
+    let ncond = dimension(sncond, "conditioning count");
+    if ncond > n {
+        starma_error("starma conditioning count exceeds observation count");
+    }
+    let reg_n = checked_size(i64::from(n) * i64::from(m));
+    require_reals(x, n, "observations");
+    require_reals(xreg, reg_n, "regression input");
+    let mut g = StarmaModel::new(
+        [mp, mq, msp, msq, ns],
+        n,
+        m,
+        ncond,
+        as_i32(ptrans),
+        as_f64(dt),
+    )
+    .unwrap_or_else(|error| starma_error(&error.to_string()));
+    // Materialization happens before state publication or any model loan.
+    if n > 0 {
+        let observations = real_prefix(x, i64::from(n));
+        g.w[..n as usize].copy_from_slice(&observations);
+        g.wkeep[..n as usize].copy_from_slice(&observations);
+    }
+    if reg_n > 0 {
+        g.reg[..reg_n as usize].copy_from_slice(&real_prefix(xreg, i64::from(reg_n)));
+    }
+    let state = StarmaState::new(g);
+    let mut publication = StarmaPublication {
+        state,
+        published: None,
+    };
+    // SAFETY: the interpreter holds the runtime lock across dispatch; the
+    // token borrows the interpreter-held owner for this call only.
+    let owner = unsafe {
+        crate::sexp::owner::OwnerToken::current().unwrap_or_else(|error| {
+            std::panic::panic_any(crate::sexp::context::RError {
+                message: error.to_string(),
+            })
+        })
+    };
+    let factory = owner.node_factory();
+    let result = factory
+        .allocate(|arena| {
+            let node = arena.alloc_node(SEXPTYPE::EXTPTRSXP);
+            if node.is_null() {
+                return None;
+            }
+            let token = arena
+                .node_token(node)
+                .expect("fresh starma external pointer");
+            let heap = arena.heap_identity();
+            heap.attach_resource(&token, publication.state.clone())?;
+            publication.published = Some(token);
+            let address = Rc::as_ptr(&publication.state);
+            // SAFETY: `node` is a fresh arena allocation whose extptr
+            // body slot is initialized by this write before publication.
+            unsafe {
+                *(*node).data.extptr_mut() = crate::sexp::ffi::ExtPtrBody {
+                    address: address as *mut c_void,
+                    protected: crate::sexp::heap::NodeLink::NULL,
+                    tag: crate::sexp::heap::NodeLink::NULL,
+                };
+            }
+            Some(node)
+        })
+        .unwrap_or_else(|error| {
+            std::panic::panic_any(crate::sexp::context::RError {
+                message: format!("could not allocate starma pointer: {error}"),
+            })
+        });
+    publication.complete();
+    result.as_raw()
 }
 
 // SAFETY: registered .Call routine; the interpreter holds the runtime lock
 // across dispatch and the callee validates its arguments under that lock.
 pub unsafe extern "C-unwind" fn c_free_starma(pg: SEXP) -> SEXP {
-    {
-        let (_, token) = crate::sexp::memory::checked_projection(pg)
-            .unwrap_or_else(|| starma_error("bad starma pointer"));
-        let heap = token.heap_identity();
-        let mut header = heap
-            .node_snapshot(&token)
-            .unwrap_or_else(|| starma_error("bad starma pointer"));
-        if header.sxpinfo.type_of() != SEXPTYPE::EXTPTRSXP {
-            starma_error("bad starma pointer");
-        }
-        if header.data.extptr().address.is_null() {
-            // Generic external-pointer clearing changes the address, not the
-            // canonical typed attachment. Release only authenticated STARMA
-            // ownership here; an unrelated empty EXTPTR remains untouched.
-            if heap.resource::<StarmaState>(&token).is_some() {
-                drop(heap.take_resource(&token));
-            }
-            return R_NilValue();
-        }
-        // Pin and authenticate before taking the canonical node's attachment.
-        let _state = starma_state(pg);
-        header.data.extptr_mut().address = std::ptr::null_mut();
-        heap.replace_node(&token, header)
-            .expect("live starma pointer close");
-        drop(heap.take_resource(&token));
-        R_NilValue()
+    let (_, token) = crate::sexp::memory::checked_projection(pg)
+        .unwrap_or_else(|| starma_error("bad starma pointer"));
+    let heap = token.heap_identity();
+    let mut header = heap
+        .node_snapshot(&token)
+        .unwrap_or_else(|| starma_error("bad starma pointer"));
+    if header.sxpinfo.type_of() != SEXPTYPE::EXTPTRSXP {
+        starma_error("bad starma pointer");
     }
+    if header.data.extptr().address.is_null() {
+        // Generic external-pointer clearing changes the address, not the
+        // canonical typed attachment. Release only authenticated STARMA
+        // ownership here; an unrelated empty EXTPTR remains untouched.
+        if heap.resource::<StarmaState>(&token).is_some() {
+            drop(heap.take_resource(&token));
+        }
+        return R_NilValue();
+    }
+    // Pin and authenticate before taking the canonical node's attachment.
+    let _state = starma_state(pg);
+    header.data.extptr_mut().address = std::ptr::null_mut();
+    heap.replace_node(&token, header)
+        .expect("live starma pointer close");
+    drop(heap.take_resource(&token));
+    R_NilValue()
 }
 
 // SAFETY: registered .Call routine; the interpreter holds the runtime lock
 // across dispatch and the callee validates its arguments under that lock.
 pub unsafe extern "C-unwind" fn c_starma_method(pg: SEXP, method: SEXP) -> SEXP {
-    {
-        let state = starma_state(pg);
-        let method = as_i32(method);
-        state.state.borrow_mut().method = method;
-        R_NilValue()
-    }
+    let state = starma_state(pg);
+    let method = as_i32(method);
+    state.state.borrow_mut().method = method;
+    R_NilValue()
 }
 
 // SAFETY: registered .Call routine; the interpreter holds the runtime lock
 // across dispatch and the callee validates its arguments under that lock.
 pub unsafe extern "C-unwind" fn c_set_trans(pg: SEXP, ptrans: SEXP) -> SEXP {
-    {
-        let state = starma_state(pg);
-        let trans = as_i32(ptrans);
-        state.state.borrow_mut().trans = trans;
-        R_NilValue()
-    }
+    let state = starma_state(pg);
+    let trans = as_i32(ptrans);
+    state.state.borrow_mut().trans = trans;
+    R_NilValue()
 }
 
 // SAFETY: registered .Call routine; the interpreter holds the runtime lock
 // across dispatch and the callee validates its arguments under that lock.
 pub unsafe extern "C-unwind" fn c_arma0fa(pg: SEXP, inparams: SEXP) -> SEXP {
-    {
-        let state = starma_state(pg);
-        let npar = {
-            let g = state.state.borrow();
-            (g.mp + g.mq + g.msp + g.msq + g.m) as usize
-        };
-        let input = if npar > 0 && !inparams.is_null() && TYPEOF(inparams) == SEXPTYPE::REALSXP {
-            if XLENGTH(inparams) < npar as i64 {
+    let state = starma_state(pg);
+    let npar = {
+        let g = state.state.borrow();
+        (g.mp + g.mq + g.msp + g.msq + g.m) as usize
+    };
+    let input = if npar > 0 && !inparams.is_null() && TYPEOF(inparams) == SEXPTYPE::REALSXP {
+        if XLENGTH(inparams) < npar as i64 {
+            std::panic::panic_any(crate::sexp::context::RError {
+                message: "too few starma parameters".to_string(),
+            });
+        }
+        Some(real_prefix(inparams, npar as i64))
+    } else {
+        None
+    };
+    let ans = {
+        let mut state_loan = state.state.borrow_mut();
+        let g = &mut *state_loan;
+        if let Some(input) = input {
+            let orders = transform_orders(g);
+            dotrans(orders, g.m as usize, &input, &mut g.params, g.trans);
+        }
+        if g.ns > 0 {
+            for i in 0..g.mp as usize {
+                g.phi[i] = g.params[i];
+            }
+            for i in 0..g.mq as usize {
+                g.theta[i] = g.params[i + g.mp as usize];
+            }
+            for i in g.mp as usize..g.p as usize {
+                g.phi[i] = 0.0;
+            }
+            for i in g.mq as usize..g.q as usize {
+                g.theta[i] = 0.0;
+            }
+            for j in 0..g.msp as usize {
+                let at = (j + 1) * g.ns as usize - 1;
+                g.phi[at] += g.params[j + (g.mp + g.mq) as usize];
+                for i in 0..g.mp as usize {
+                    g.phi[at + 1 + i] -= g.params[i] * g.params[j + (g.mp + g.mq) as usize];
+                }
+            }
+            for j in 0..g.msq as usize {
+                let at = (j + 1) * g.ns as usize - 1;
+                let src = j + (g.mp + g.mq + g.msp) as usize;
+                g.theta[at] += g.params[src];
+                for i in 0..g.mq as usize {
+                    g.theta[at + 1 + i] += g.params[i + g.mp as usize] * g.params[src];
+                }
+            }
+        } else {
+            for i in 0..g.mp as usize {
+                g.phi[i] = g.params[i];
+            }
+            for i in 0..g.mq as usize {
+                g.theta[i] = g.params[i + g.mp as usize];
+            }
+        }
+        let streg = (g.mp + g.mq + g.msp + g.msq) as usize;
+        if g.m > 0 {
+            for i in 0..g.n as usize {
+                let mut tmp = g.wkeep[i];
+                for j in 0..g.m as usize {
+                    tmp -= g.reg[i + g.n as usize * j] * g.params[streg + j];
+                }
+                g.w[i] = tmp;
+            }
+        }
+        let ans = if g.method == 1 {
+            let p = g.mp + g.ns * g.msp;
+            let q = g.mq + g.ns * g.msq;
+            let mut ssq = 0.0;
+            let mut nu = 0i32;
+            for i in 0..g.ncond as usize {
+                g.resid[i] = 0.0;
+            }
+            for i in g.ncond..g.n {
+                let ii = i as usize;
+                let mut tmp = g.w[ii];
+                let lim_p = (i - g.ncond).min(p);
+                for j in 0..lim_p {
+                    tmp -= g.phi[j as usize] * g.w[ii - j as usize - 1];
+                }
+                let lim_q = (i - g.ncond).min(q);
+                for j in 0..lim_q {
+                    tmp -= g.theta[j as usize] * g.resid[ii - j as usize - 1];
+                }
+                g.resid[ii] = tmp;
+                if !tmp.is_nan() {
+                    nu += 1;
+                    ssq += tmp * tmp;
+                }
+            }
+            g.s2 = if nu == 0 { f64::NAN } else { ssq / nu as f64 };
+            0.5 * g.s2.ln()
+        } else {
+            let mut ifault = 0;
+            starma(g, &mut ifault);
+            if ifault != 0 {
                 std::panic::panic_any(crate::sexp::context::RError {
-                    message: "too few starma parameters".to_string(),
+                    message: format!("starma error code {ifault}"),
                 });
             }
-            Some(real_prefix(inparams, npar as i64))
-        } else {
-            None
+            let mut sumlog = 0.0;
+            let mut ssq = 0.0;
+            let mut it = 0;
+            karma(g, &mut sumlog, &mut ssq, 1, &mut it);
+            let used = if g.nused == 0 { 1 } else { g.nused };
+            g.s2 = ssq / used as f64;
+            0.5 * ((ssq / used as f64).ln() + sumlog / used as f64)
         };
-        let ans = {
-            let mut state_loan = state.state.borrow_mut();
-            let g = &mut *state_loan;
-            if let Some(input) = input {
-                let orders = transform_orders(g);
-                dotrans(orders, g.m as usize, &input, &mut g.params, g.trans);
-            }
-            if g.ns > 0 {
-                for i in 0..g.mp as usize {
-                    g.phi[i] = g.params[i];
-                }
-                for i in 0..g.mq as usize {
-                    g.theta[i] = g.params[i + g.mp as usize];
-                }
-                for i in g.mp as usize..g.p as usize {
-                    g.phi[i] = 0.0;
-                }
-                for i in g.mq as usize..g.q as usize {
-                    g.theta[i] = 0.0;
-                }
-                for j in 0..g.msp as usize {
-                    let at = (j + 1) * g.ns as usize - 1;
-                    g.phi[at] += g.params[j + (g.mp + g.mq) as usize];
-                    for i in 0..g.mp as usize {
-                        g.phi[at + 1 + i] -= g.params[i] * g.params[j + (g.mp + g.mq) as usize];
-                    }
-                }
-                for j in 0..g.msq as usize {
-                    let at = (j + 1) * g.ns as usize - 1;
-                    let src = j + (g.mp + g.mq + g.msp) as usize;
-                    g.theta[at] += g.params[src];
-                    for i in 0..g.mq as usize {
-                        g.theta[at + 1 + i] += g.params[i + g.mp as usize] * g.params[src];
-                    }
-                }
-            } else {
-                for i in 0..g.mp as usize {
-                    g.phi[i] = g.params[i];
-                }
-                for i in 0..g.mq as usize {
-                    g.theta[i] = g.params[i + g.mp as usize];
-                }
-            }
-            let streg = (g.mp + g.mq + g.msp + g.msq) as usize;
-            if g.m > 0 {
-                for i in 0..g.n as usize {
-                    let mut tmp = g.wkeep[i];
-                    for j in 0..g.m as usize {
-                        tmp -= g.reg[i + g.n as usize * j] * g.params[streg + j];
-                    }
-                    g.w[i] = tmp;
-                }
-            }
-            let ans = if g.method == 1 {
-                let p = g.mp + g.ns * g.msp;
-                let q = g.mq + g.ns * g.msq;
-                let mut ssq = 0.0;
-                let mut nu = 0i32;
-                for i in 0..g.ncond as usize {
-                    g.resid[i] = 0.0;
-                }
-                for i in g.ncond..g.n {
-                    let ii = i as usize;
-                    let mut tmp = g.w[ii];
-                    let lim_p = (i - g.ncond).min(p);
-                    for j in 0..lim_p {
-                        tmp -= g.phi[j as usize] * g.w[ii - j as usize - 1];
-                    }
-                    let lim_q = (i - g.ncond).min(q);
-                    for j in 0..lim_q {
-                        tmp -= g.theta[j as usize] * g.resid[ii - j as usize - 1];
-                    }
-                    g.resid[ii] = tmp;
-                    if !tmp.is_nan() {
-                        nu += 1;
-                        ssq += tmp * tmp;
-                    }
-                }
-                g.s2 = if nu == 0 { f64::NAN } else { ssq / nu as f64 };
-                0.5 * g.s2.ln()
-            } else {
-                let mut ifault = 0;
-                starma(g, &mut ifault);
-                if ifault != 0 {
-                    std::panic::panic_any(crate::sexp::context::RError {
-                        message: format!("starma error code {ifault}"),
-                    });
-                }
-                let mut sumlog = 0.0;
-                let mut ssq = 0.0;
-                let mut it = 0;
-                karma(g, &mut sumlog, &mut ssq, 1, &mut it);
-                let used = if g.nused == 0 { 1 } else { g.nused };
-                g.s2 = ssq / used as f64;
-                0.5 * ((ssq / used as f64).ln() + sumlog / used as f64)
-            };
-            ans
-        };
-        scalar_result(ans)
-    }
+        ans
+    };
+    scalar_result(ans)
 }
 
 // SAFETY: registered .Call routine; the interpreter holds the runtime lock
 // across dispatch and the callee validates its arguments under that lock.
 pub unsafe extern "C-unwind" fn c_get_s2(pg: SEXP) -> SEXP {
-    {
-        let state = starma_state(pg);
-        let s2 = state.state.borrow().s2;
-        scalar_result(s2)
-    }
+    let state = starma_state(pg);
+    let s2 = state.state.borrow().s2;
+    scalar_result(s2)
 }
 
 // SAFETY: registered .Call routine; the interpreter holds the runtime lock
 // across dispatch and the callee validates its arguments under that lock.
 pub unsafe extern "C-unwind" fn c_get_resid(pg: SEXP) -> SEXP {
-    {
-        let state = starma_state(pg);
-        let values = {
-            let g = state.state.borrow();
-            g.resid[..g.n as usize].to_vec()
-        };
-        let res = alloc_result(SEXPTYPE::REALSXP, values.len() as _);
-        let _res = protect(res);
-        store_reals(res, &values);
-        res
-    }
+    let state = starma_state(pg);
+    let values = {
+        let g = state.state.borrow();
+        g.resid[..g.n as usize].to_vec()
+    };
+    let res = alloc_result(SEXPTYPE::REALSXP, values.len() as _);
+    let _res = protect(res);
+    store_reals(res, &values);
+    res
 }
 
 /// Forecast `n_ahead` steps. Returns a list of mean and variance.
 // SAFETY: registered .Call routine; the interpreter holds the runtime lock
 // across dispatch and the callee validates its arguments under that lock.
 pub unsafe extern "C-unwind" fn c_arma0_kfore(pg: SEXP, pd: SEXP, psd: SEXP, nahead: SEXP) -> SEXP {
-    {
-        let state = starma_state(pg);
-        let dd = dimension(pd, "difference count");
-        let sd = dimension(psd, "seasonal difference count");
-        let il = dimension(nahead, "forecast count");
-        if il == 0 {
-            starma_error("forkal error code 11");
-        }
-        let (ns_value, r, n) = {
-            let g = state.state.borrow();
-            (g.ns, g.r, g.n)
-        };
-        let d = checked_size(i64::from(dd) + i64::from(ns_value) * i64::from(sd));
-        forecast_dimensions(r, n, d).unwrap_or_else(|error| starma_error(&error.to_string()));
-        let length = checked_size(i64::from(d) + 1) as usize;
-        let mut del = Vec::new();
-        del.try_reserve_exact(length)
-            .unwrap_or_else(|_| starma_error("could not allocate starma forecast workspace"));
-        del.resize(length, 0.0);
-        let mut del2 = Vec::new();
-        del2.try_reserve_exact(length)
-            .unwrap_or_else(|_| starma_error("could not allocate starma forecast workspace"));
-        del2.resize(length, 0.0);
-        if !del.is_empty() {
-            del[0] = 1.0;
-        }
-        for _j in 0..dd {
-            del2.copy_from_slice(&del);
-            for i in 0..d as usize {
-                del[i + 1] -= del2[i];
-            }
-        }
-        let ns = ns_value.max(0) as usize;
-        for _j in 0..sd {
-            del2.copy_from_slice(&del);
-            let mut i = 0;
-            while i + ns < del.len() && i <= d as usize {
-                del[i + ns] -= del2[i];
-                i += 1;
-            }
-        }
-        for i in 1..=d as usize {
-            if i < del.len() {
-                del[i] *= -1.0;
-            }
-        }
-        let (forecast, variance) = {
-            let state_loan = state.state.borrow();
-            forkal(&state_loan, d, il, &del[1..])
-                .unwrap_or_else(|error| starma_error(&error.to_string()))
-        };
-        // All numerical state loans end before any R result allocation or
-        // materialization. The pinned Rc and owned output survive callbacks.
-        let res = alloc_result(SEXPTYPE::VECSXP, 2);
-        let _res = protect(res);
-        let x = alloc_result(SEXPTYPE::REALSXP, il as i64);
-        let _x = protect(x);
-        let var = alloc_result(SEXPTYPE::REALSXP, il as i64);
-        SET_VECTOR_ELT(res, 0, x);
-        SET_VECTOR_ELT(res, 1, var);
-        store_reals(x, &forecast);
-        store_reals(var, &variance);
-        res
+    let state = starma_state(pg);
+    let dd = dimension(pd, "difference count");
+    let sd = dimension(psd, "seasonal difference count");
+    let il = dimension(nahead, "forecast count");
+    if il == 0 {
+        starma_error("forkal error code 11");
     }
+    let (ns_value, r, n) = {
+        let g = state.state.borrow();
+        (g.ns, g.r, g.n)
+    };
+    let d = checked_size(i64::from(dd) + i64::from(ns_value) * i64::from(sd));
+    forecast_dimensions(r, n, d).unwrap_or_else(|error| starma_error(&error.to_string()));
+    let length = checked_size(i64::from(d) + 1) as usize;
+    let mut del = Vec::new();
+    del.try_reserve_exact(length)
+        .unwrap_or_else(|_| starma_error("could not allocate starma forecast workspace"));
+    del.resize(length, 0.0);
+    let mut del2 = Vec::new();
+    del2.try_reserve_exact(length)
+        .unwrap_or_else(|_| starma_error("could not allocate starma forecast workspace"));
+    del2.resize(length, 0.0);
+    if !del.is_empty() {
+        del[0] = 1.0;
+    }
+    for _j in 0..dd {
+        del2.copy_from_slice(&del);
+        for i in 0..d as usize {
+            del[i + 1] -= del2[i];
+        }
+    }
+    let ns = ns_value.max(0) as usize;
+    for _j in 0..sd {
+        del2.copy_from_slice(&del);
+        let mut i = 0;
+        while i + ns < del.len() && i <= d as usize {
+            del[i + ns] -= del2[i];
+            i += 1;
+        }
+    }
+    for i in 1..=d as usize {
+        if i < del.len() {
+            del[i] *= -1.0;
+        }
+    }
+    let (forecast, variance) = {
+        let state_loan = state.state.borrow();
+        forkal(&state_loan, d, il, &del[1..])
+            .unwrap_or_else(|error| starma_error(&error.to_string()))
+    };
+    // All numerical state loans end before any R result allocation or
+    // materialization. The pinned Rc and owned output survive callbacks.
+    let res = alloc_result(SEXPTYPE::VECSXP, 2);
+    let _res = protect(res);
+    let x = alloc_result(SEXPTYPE::REALSXP, il as i64);
+    let _x = protect(x);
+    let var = alloc_result(SEXPTYPE::REALSXP, il as i64);
+    SET_VECTOR_ELT(res, 0, x);
+    SET_VECTOR_ELT(res, 1, var);
+    store_reals(x, &forecast);
+    store_reals(var, &variance);
+    res
 }
 
 // SAFETY: registered .Call routine; the interpreter holds the runtime lock
 // across dispatch and the callee validates its arguments under that lock.
 pub unsafe extern "C-unwind" fn c_dotrans(pg: SEXP, x: SEXP) -> SEXP {
-    {
-        let state = starma_state(pg);
-        let n = XLENGTH(x).max(0);
-        let input = if n > 0 && TYPEOF(x) == SEXPTYPE::REALSXP {
-            Some(real_prefix(x, n))
-        } else {
-            None
-        };
-        let mut output = transform_workspace(n as usize);
-        if let Some(input) = input {
-            let g = state.state.borrow();
-            let needed = g.mp + g.mq + g.msp + g.msq + g.m;
-            if input.len() < needed as usize {
-                starma_error("too few starma parameters");
-            }
-            dotrans(transform_orders(&g), g.m as usize, &input, &mut output, 1);
+    let state = starma_state(pg);
+    let n = XLENGTH(x).max(0);
+    let input = if n > 0 && TYPEOF(x) == SEXPTYPE::REALSXP {
+        Some(real_prefix(x, n))
+    } else {
+        None
+    };
+    let mut output = transform_workspace(n as usize);
+    if let Some(input) = input {
+        let g = state.state.borrow();
+        let needed = g.mp + g.mq + g.msp + g.msq + g.m;
+        if input.len() < needed as usize {
+            starma_error("too few starma parameters");
         }
-        let y = alloc_result(SEXPTYPE::REALSXP, n);
-        let _y = protect(y);
-        store_reals(y, &output);
-        y
+        dotrans(transform_orders(&g), g.m as usize, &input, &mut output, 1);
     }
+    let y = alloc_result(SEXPTYPE::REALSXP, n);
+    let _y = protect(y);
+    store_reals(y, &output);
+    y
 }
 
 // SAFETY: registered .Call routine; the interpreter holds the runtime lock
 // across dispatch and the callee validates its arguments under that lock.
 pub unsafe extern "C-unwind" fn c_invtrans(pg: SEXP, x: SEXP) -> SEXP {
-    {
-        let state = starma_state(pg);
-        let n = XLENGTH(x).max(0);
-        let input = if n > 0 && TYPEOF(x) == SEXPTYPE::REALSXP {
-            Some(real_prefix(x, n))
-        } else {
-            None
-        };
-        let mut output = transform_workspace(n as usize);
-        if let Some(input) = input {
-            let g = state.state.borrow();
-            let orders = transform_orders(&g);
-            let arma = orders.iter().sum::<usize>();
-            if input.len() < arma {
-                starma_error("too few starma parameters");
-            }
-            let mut start = 0;
-            for order in orders {
-                let end = start + order;
-                invpartrans(&input[start..end], &mut output[start..end]);
-                start = end;
-            }
-            let end = (arma + g.m as usize).min(input.len());
-            output[arma..end].copy_from_slice(&input[arma..end]);
+    let state = starma_state(pg);
+    let n = XLENGTH(x).max(0);
+    let input = if n > 0 && TYPEOF(x) == SEXPTYPE::REALSXP {
+        Some(real_prefix(x, n))
+    } else {
+        None
+    };
+    let mut output = transform_workspace(n as usize);
+    if let Some(input) = input {
+        let g = state.state.borrow();
+        let orders = transform_orders(&g);
+        let arma = orders.iter().sum::<usize>();
+        if input.len() < arma {
+            starma_error("too few starma parameters");
         }
-        let y = alloc_result(SEXPTYPE::REALSXP, n);
-        let _y = protect(y);
-        store_reals(y, &output);
-        y
+        let mut start = 0;
+        for order in orders {
+            let end = start + order;
+            invpartrans(&input[start..end], &mut output[start..end]);
+            start = end;
+        }
+        let end = (arma + g.m as usize).min(input.len());
+        output[arma..end].copy_from_slice(&input[arma..end]);
     }
+    let y = alloc_result(SEXPTYPE::REALSXP, n);
+    let _y = protect(y);
+    store_reals(y, &output);
+    y
 }
 
 /// GNU pacf.c Gradtrans uses forward differences, with input coordinates on
@@ -786,38 +760,36 @@ fn transform_jacobian(
 // SAFETY: registered .Call routine; the interpreter holds the runtime lock
 // across dispatch and the callee validates its arguments under that lock.
 pub unsafe extern "C-unwind" fn c_gradtrans(pg: SEXP, x: SEXP) -> SEXP {
-    {
-        let state = starma_state(pg);
-        let (orders, m) = {
-            let model = state.state.borrow();
-            (transform_orders(&model), model.m as usize)
-        };
-        let n = orders.iter().sum::<usize>() + m;
-        if x.is_null() || TYPEOF(x) != SEXPTYPE::REALSXP || XLENGTH(x) < n as i64 {
-            starma_error("too few starma parameters");
-        }
-        let dimension = usize::try_from(XLENGTH(x))
-            .unwrap_or_else(|_| starma_error("starma dimensions are too large"));
-        let dimension_i32 = i32::try_from(dimension)
-            .unwrap_or_else(|_| starma_error("starma dimensions are too large"));
-        let parameters = real_prefix(x, n as i64);
-        // Gradtrans does not consult the model's trans flag in GNU. All model
-        // loans end before input materialization or any R result allocation.
-        let gradient = transform_jacobian(orders, m, &parameters, dimension);
-        let result = alloc_result(SEXPTYPE::REALSXP, gradient.len() as i64);
-        let _result = protect(result);
-        store_reals(result, &gradient);
-        let dimensions = alloc_result(SEXPTYPE::INTSXP, 2);
-        let _dimensions = protect(dimensions);
-        SET_INTEGER_ELT(dimensions, 0, dimension_i32);
-        SET_INTEGER_ELT(dimensions, 1, dimension_i32);
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            crate::sexp::attrib_core::R_DimSymbol(),
-            dimensions,
-        );
-        result
+    let state = starma_state(pg);
+    let (orders, m) = {
+        let model = state.state.borrow();
+        (transform_orders(&model), model.m as usize)
+    };
+    let n = orders.iter().sum::<usize>() + m;
+    if x.is_null() || TYPEOF(x) != SEXPTYPE::REALSXP || XLENGTH(x) < n as i64 {
+        starma_error("too few starma parameters");
     }
+    let dimension = usize::try_from(XLENGTH(x))
+        .unwrap_or_else(|_| starma_error("starma dimensions are too large"));
+    let dimension_i32 = i32::try_from(dimension)
+        .unwrap_or_else(|_| starma_error("starma dimensions are too large"));
+    let parameters = real_prefix(x, n as i64);
+    // Gradtrans does not consult the model's trans flag in GNU. All model
+    // loans end before input materialization or any R result allocation.
+    let gradient = transform_jacobian(orders, m, &parameters, dimension);
+    let result = alloc_result(SEXPTYPE::REALSXP, gradient.len() as i64);
+    let _result = protect(result);
+    store_reals(result, &gradient);
+    let dimensions = alloc_result(SEXPTYPE::INTSXP, 2);
+    let _dimensions = protect(dimensions);
+    SET_INTEGER_ELT(dimensions, 0, dimension_i32);
+    SET_INTEGER_ELT(dimensions, 1, dimension_i32);
+    crate::sexp::attrib_core::setAttrib(
+        result,
+        crate::sexp::attrib_core::R_DimSymbol(),
+        dimensions,
+    );
+    result
 }
 
 // SAFETY: registered .Call routine; the interpreter holds the runtime lock

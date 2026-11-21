@@ -25,28 +25,25 @@ use crate::sexp::protect::*;
 // Local helpers
 // ---------------------------------------------------------------------------
 
-unsafe fn get_list_element(list: SEXP, name: &[u8]) -> SEXP {
-    unsafe {
-        if TYPEOF(list) != SEXPTYPE::VECSXP {
-            return R_NilValue();
-        }
-        let names = getAttrib(list, R_NamesSymbol());
-        let _names_guard = protect(names);
-        let len = XLENGTH(list);
-        if TYPEOF(names) != SEXPTYPE::STRSXP || XLENGTH(names) != len {
-            return R_NilValue();
-        }
-        for i in 0..len {
-            let nm = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(names, i)));
-            if nm.to_bytes() == name {
-                return VECTOR_ELT(list, i);
-            }
-        }
-        R_NilValue()
+fn get_list_element(list: SEXP, name: &[u8]) -> SEXP {
+    if TYPEOF(list) != SEXPTYPE::VECSXP {
+        return R_NilValue();
     }
+    let names = getAttrib(list, R_NamesSymbol());
+    let _names_guard = protect(names);
+    let len = XLENGTH(list);
+    if TYPEOF(names) != SEXPTYPE::STRSXP || XLENGTH(names) != len {
+        return R_NilValue();
+    }
+    for i in 0..len {
+        if crate::library::stats::checked::char_bytes(STRING_ELT(names, i)) == name {
+            return VECTOR_ELT(list, i);
+        }
+    }
+    R_NilValue()
 }
 
-unsafe fn knot_count(x: SEXP) -> R_xlen_t {
+fn knot_count(x: SEXP) -> R_xlen_t {
     if XLENGTH(x) > 0 {
         match SEXPTYPE::from(TYPEOF(x)) {
             SEXPTYPE::INTSXP => {
@@ -65,25 +62,6 @@ unsafe fn knot_count(x: SEXP) -> R_xlen_t {
         }
     }
     r_error("invalid spline knot count")
-}
-
-fn materialize_real(value: &Sexp<'_>) {
-    value
-        .materialize_compact_payload_for_raw()
-        .unwrap_or_else(|err| r_error(err.to_string()));
-}
-
-fn real_payload(value: &Sexp<'_>, length: R_xlen_t) -> PayloadLease {
-    let header = value.header();
-    if header.type_of() != SEXPTYPE::REALSXP
-        || !matches!(header.body, NodeBody::Vector(vector) if vector.length == length)
-    {
-        r_error("spline vector changed during materialization");
-    }
-    header
-        .payload_lease()
-        .cloned()
-        .unwrap_or_else(|| r_error("spline vector has no numeric storage"))
 }
 
 // ---------------------------------------------------------------------------
@@ -403,243 +381,184 @@ fn spline_eval(
 // ---------------------------------------------------------------------------
 
 /// SplineCoef - compute spline coefficients.
-pub unsafe fn SplineCoef(method: SEXP, x: SEXP, y: SEXP) -> SEXP {
-    unsafe {
-        let x = coerceVector(x, SEXPTYPE::REALSXP.into());
-        let _x_guard = protect(x);
-        let y = coerceVector(y, SEXPTYPE::REALSXP.into());
-        let _y_guard = protect(y);
-        let n = XLENGTH(x);
-        let m = asInteger(method);
-        if XLENGTH(y) != n {
-            Rf_error(b"inputs of different lengths\0".as_ptr() as *const c_char);
-        }
-
-        let b = Rf_allocVector3(SEXPTYPE::REALSXP, n);
-        let _b_guard = protect(b);
-        let c = Rf_allocVector3(SEXPTYPE::REALSXP, n);
-        let _c_guard = protect(c);
-        let d = Rf_allocVector3(SEXPTYPE::REALSXP, n);
-        let _d_guard = protect(d);
-
-        if n != 0 {
-            let len = usize::try_from(n).unwrap_or_else(|_| r_error("invalid spline knot count"));
-            let owner = OwnerToken::current().unwrap_or_else(|err| r_error(err.to_string()));
-            let values = [x, y, b, c, d].map(|value| {
-                owner
-                    .sexp(value)
-                    .unwrap_or_else(|err| r_error(err.to_string()))
-            });
-            materialize_real(&values[0]);
-            materialize_real(&values[1]);
-            let [xp, yp, bp, cp, dp] = values.each_ref().map(|value| real_payload(value, n));
-            // All materialization has finished. The retained inputs have the
-            // checked length, and the three freshly allocated outputs are
-            // distinct. The kernel never reenters R while any slice is live.
-            let (b, c, d) = (
-                from_raw_parts_mut(bp.native_projection().cast(), len),
-                from_raw_parts_mut(cp.native_projection().cast(), len),
-                from_raw_parts_mut(dp.native_projection().cast(), len),
-            );
-            b.fill(0.0);
-            c.fill(0.0);
-            d.fill(0.0);
-            spline_coef(
-                m,
-                from_raw_parts(xp.native_projection().cast(), len),
-                from_raw_parts(yp.native_projection().cast(), len),
-                b,
-                c,
-                d,
-            );
-        }
-
-        let ans = Rf_allocVector(SEXPTYPE::VECSXP, 7);
-        let _ans_guard = protect(ans);
-        SET_VECTOR_ELT(ans, 0, Rf_ScalarInteger(m));
-        if n > i32::MAX as R_xlen_t {
-            SET_VECTOR_ELT(ans, 1, Rf_ScalarReal(n as c_double));
-        } else {
-            SET_VECTOR_ELT(ans, 1, Rf_ScalarInteger(n as c_int));
-        }
-        SET_VECTOR_ELT(ans, 2, x);
-        SET_VECTOR_ELT(ans, 3, y);
-        SET_VECTOR_ELT(ans, 4, b);
-        SET_VECTOR_ELT(ans, 5, c);
-        SET_VECTOR_ELT(ans, 6, d);
-
-        let nm = Rf_allocVector(SEXPTYPE::STRSXP, 7);
-        let _nm_guard = protect(nm);
-        SET_STRING_ELT(nm, 0, Rf_mkChar(b"method\0".as_ptr() as *const c_char));
-        SET_STRING_ELT(nm, 1, Rf_mkChar(b"n\0".as_ptr() as *const c_char));
-        SET_STRING_ELT(nm, 2, Rf_mkChar(b"x\0".as_ptr() as *const c_char));
-        SET_STRING_ELT(nm, 3, Rf_mkChar(b"y\0".as_ptr() as *const c_char));
-        SET_STRING_ELT(nm, 4, Rf_mkChar(b"b\0".as_ptr() as *const c_char));
-        SET_STRING_ELT(nm, 5, Rf_mkChar(b"c\0".as_ptr() as *const c_char));
-        SET_STRING_ELT(nm, 6, Rf_mkChar(b"d\0".as_ptr() as *const c_char));
-        setAttrib(ans, R_NamesSymbol(), nm);
-        ans
+pub fn SplineCoef(method: SEXP, x: SEXP, y: SEXP) -> SEXP {
+    let x = coerceVector(x, SEXPTYPE::REALSXP.into());
+    let _x_guard = protect(x);
+    let y = coerceVector(y, SEXPTYPE::REALSXP.into());
+    let _y_guard = protect(y);
+    let n = XLENGTH(x);
+    let m = asInteger(method);
+    if XLENGTH(y) != n {
+        Rf_error(b"inputs of different lengths\0".as_ptr() as *const c_char);
     }
+
+    let b = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+    let _b_guard = protect(b);
+    let c = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+    let _c_guard = protect(c);
+    let d = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+    let _d_guard = protect(d);
+
+    if n != 0 {
+        let len = usize::try_from(n).unwrap_or_else(|_| r_error("invalid spline knot count"));
+        let (xv, yv) = (
+            crate::library::stats::checked::real_vec(x),
+            crate::library::stats::checked::real_vec(y),
+        );
+        let mut bv = vec![0.0; len];
+        let mut cv = vec![0.0; len];
+        let mut dv = vec![0.0; len];
+        spline_coef(m, &xv, &yv, &mut bv, &mut cv, &mut dv);
+        crate::library::stats::checked::set_reals(b, &bv);
+        crate::library::stats::checked::set_reals(c, &cv);
+        crate::library::stats::checked::set_reals(d, &dv);
+    }
+
+    let ans = Rf_allocVector(SEXPTYPE::VECSXP, 7);
+    let _ans_guard = protect(ans);
+    SET_VECTOR_ELT(ans, 0, Rf_ScalarInteger(m));
+    if n > i32::MAX as R_xlen_t {
+        SET_VECTOR_ELT(ans, 1, Rf_ScalarReal(n as c_double));
+    } else {
+        SET_VECTOR_ELT(ans, 1, Rf_ScalarInteger(n as c_int));
+    }
+    SET_VECTOR_ELT(ans, 2, x);
+    SET_VECTOR_ELT(ans, 3, y);
+    SET_VECTOR_ELT(ans, 4, b);
+    SET_VECTOR_ELT(ans, 5, c);
+    SET_VECTOR_ELT(ans, 6, d);
+
+    let nm = Rf_allocVector(SEXPTYPE::STRSXP, 7);
+    let _nm_guard = protect(nm);
+    SET_STRING_ELT(nm, 0, crate::library::stats::checked::mk_char("method"));
+    SET_STRING_ELT(nm, 1, crate::library::stats::checked::mk_char("n"));
+    SET_STRING_ELT(nm, 2, crate::library::stats::checked::mk_char("x"));
+    SET_STRING_ELT(nm, 3, crate::library::stats::checked::mk_char("y"));
+    SET_STRING_ELT(nm, 4, crate::library::stats::checked::mk_char("b"));
+    SET_STRING_ELT(nm, 5, crate::library::stats::checked::mk_char("c"));
+    SET_STRING_ELT(nm, 6, crate::library::stats::checked::mk_char("d"));
+    setAttrib(ans, R_NamesSymbol(), nm);
+    ans
 }
 
 /// SplineEval - evaluate a spline at given points.
-pub unsafe fn SplineEval(xout: SEXP, z: SEXP) -> SEXP {
-    unsafe {
-        let _z_guard = protect(z);
-        let xout = coerceVector(xout, SEXPTYPE::REALSXP.into());
-        let _xout_guard = protect(xout);
-        let nu = XLENGTH(xout);
-        let nx = knot_count(get_list_element(z, b"n"));
-        let method = asInteger(get_list_element(z, b"method"));
-        let knots = [b"x", b"y", b"b", b"c", b"d"].map(|name| {
-            let value = get_list_element(z, name);
-            (value, protect(value))
-        });
-        if knots
-            .iter()
-            .any(|(part, _)| TYPEOF(*part) != SEXPTYPE::REALSXP || XLENGTH(*part) != nx)
-        {
-            r_error("invalid spline coefficient lengths or types");
-        }
-        let yout = Rf_allocVector3(SEXPTYPE::REALSXP, nu);
-        let _yout_guard = protect(yout);
-        if nu == 0 {
-            return yout;
-        }
-        if nx == 0 {
-            r_error("spline has no knots");
-        }
-        let owner = OwnerToken::current().unwrap_or_else(|err| r_error(err.to_string()));
-        let query = owner
-            .sexp(xout)
-            .unwrap_or_else(|err| r_error(err.to_string()));
-        let output = owner
-            .sexp(yout)
-            .unwrap_or_else(|err| r_error(err.to_string()));
-        let values = knots.each_ref().map(|(value, _guard)| {
-            owner
-                .sexp(*value)
-                .unwrap_or_else(|err| r_error(err.to_string()))
-        });
-        materialize_real(&query);
-        for value in &values {
-            materialize_real(value);
-        }
-        let query = real_payload(&query, nu);
-        let output = real_payload(&output, nu);
-        let parts = values.each_ref().map(|value| real_payload(value, nx));
-        let nu = usize::try_from(nu).unwrap_or_else(|_| r_error("invalid spline query length"));
-        let nx = usize::try_from(nx).unwrap_or_else(|_| r_error("invalid spline knot count"));
-        // The parts retain the exact post-materialization allocations and may
-        // share storage with one another. yout was allocated in this call and
-        // is disjoint. There are no callbacks while any of these slices live.
-        let [x, y, b, c, d] = parts
-            .each_ref()
-            .map(|lease| from_raw_parts(lease.native_projection().cast(), nx));
-        spline_eval(
-            method,
-            from_raw_parts(query.native_projection().cast(), nu),
-            from_raw_parts_mut(output.native_projection().cast(), nu),
-            x,
-            y,
-            b,
-            c,
-            d,
-        );
-        yout
+pub fn SplineEval(xout: SEXP, z: SEXP) -> SEXP {
+    let _z_guard = protect(z);
+    let xout = coerceVector(xout, SEXPTYPE::REALSXP.into());
+    let _xout_guard = protect(xout);
+    let nu = XLENGTH(xout);
+    let nx = knot_count(get_list_element(z, b"n"));
+    let method = asInteger(get_list_element(z, b"method"));
+    let knots = [b"x", b"y", b"b", b"c", b"d"].map(|name| {
+        let value = get_list_element(z, name);
+        (value, protect(value))
+    });
+    if knots
+        .iter()
+        .any(|(part, _)| TYPEOF(*part) != SEXPTYPE::REALSXP || XLENGTH(*part) != nx)
+    {
+        r_error("invalid spline coefficient lengths or types");
     }
+    let yout = Rf_allocVector3(SEXPTYPE::REALSXP, nu);
+    let _yout_guard = protect(yout);
+    if nu == 0 {
+        return yout;
+    }
+    if nx == 0 {
+        r_error("spline has no knots");
+    }
+    let nu = usize::try_from(nu).unwrap_or_else(|_| r_error("invalid spline query length"));
+    let query = crate::library::stats::checked::real_vec(xout);
+    let [x, y, b, c, d] = knots
+        .each_ref()
+        .map(|(value, _guard)| crate::library::stats::checked::real_vec(*value));
+    let mut output = vec![0.0; nu];
+    spline_eval(method, &query, &mut output, &x, &y, &b, &c, &d);
+    crate::library::stats::checked::set_reals(yout, &output);
+    yout
 }
 
 /// GNU `smooth.spline` interpolating path for exact data.
-pub unsafe fn do_smooth_spline(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        let y = CAR(CDR(args));
-        let method = Rf_ScalarInteger(3);
-        let _m = protect(method);
-        let z = SplineCoef(method, x, y);
-        let _z = protect(z);
-        let yhat = SplineEval(x, z);
-        let _yh = protect(yhat);
-        let n = XLENGTH(x);
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 3);
-        let _r = protect(result);
-        SET_VECTOR_ELT(result, 0, x);
-        SET_VECTOR_ELT(result, 1, yhat);
-        SET_VECTOR_ELT(result, 2, Rf_ScalarInteger(n as c_int));
-        crate::mainutils::essentials::set_string_names(
-            result,
-            &["x".to_string(), "y".to_string(), "n".to_string()],
-        );
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            crate::sexp::attrib_core::R_ClassSymbol(),
-            Rf_mkString(c"smooth.spline".as_ptr()),
-        );
-        result
-    }
+pub fn do_smooth_spline(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    let y = CAR(CDR(args));
+    let method = Rf_ScalarInteger(3);
+    let _m = protect(method);
+    let z = SplineCoef(method, x, y);
+    let _z = protect(z);
+    let yhat = SplineEval(x, z);
+    let _yh = protect(yhat);
+    let n = XLENGTH(x);
+    let result = Rf_allocVector3(SEXPTYPE::VECSXP, 3);
+    let _r = protect(result);
+    SET_VECTOR_ELT(result, 0, x);
+    SET_VECTOR_ELT(result, 1, yhat);
+    SET_VECTOR_ELT(result, 2, Rf_ScalarInteger(n as c_int));
+    crate::mainutils::essentials::set_string_names(
+        result,
+        &["x".to_string(), "y".to_string(), "n".to_string()],
+    );
+    crate::sexp::attrib_core::setAttrib(
+        result,
+        crate::sexp::attrib_core::R_ClassSymbol(),
+        crate::library::stats::checked::mk_string("smooth.spline"),
+    );
+    result
 }
 
 /// GNU `spline(x, y, xout)` FMM cubic.
-pub unsafe fn do_spline(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        let y = CAR(CDR(args));
-        let xout = CAR(CDR(CDR(args)));
-        let method = Rf_ScalarInteger(3);
-        let _m = protect(method);
-        let z = SplineCoef(method, x, y);
-        let _z = protect(z);
-        let yout = SplineEval(xout, z);
-        let _yo = protect(yout);
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
-        let _r = protect(result);
-        SET_VECTOR_ELT(result, 0, xout);
-        SET_VECTOR_ELT(result, 1, yout);
-        crate::mainutils::essentials::set_string_names(result, &["x".to_string(), "y".to_string()]);
-        result
-    }
+pub fn do_spline(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    let y = CAR(CDR(args));
+    let xout = CAR(CDR(CDR(args)));
+    let method = Rf_ScalarInteger(3);
+    let _m = protect(method);
+    let z = SplineCoef(method, x, y);
+    let _z = protect(z);
+    let yout = SplineEval(xout, z);
+    let _yo = protect(yout);
+    let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+    let _r = protect(result);
+    SET_VECTOR_ELT(result, 0, xout);
+    SET_VECTOR_ELT(result, 1, yout);
+    crate::mainutils::essentials::set_string_names(result, &["x".to_string(), "y".to_string()]);
+    result
 }
 
 /// GNU `splinefun(x, y)` FMM interpolator.
-pub unsafe fn do_splinefun(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        let y = CAR(CDR(args));
-        let method = Rf_ScalarInteger(3);
-        let _m = protect(method);
-        let z = SplineCoef(method, x, y);
-        let _z = protect(z);
-        let env = crate::sexp::memory_ext::NewEnvironment(R_NilValue(), rho, R_NilValue());
-        let _env = protect(env);
-        crate::sexp::envir::defineVar(crate::sexp::symbol::Rf_install(c"z".as_ptr()), z, env);
-        let vsym = crate::sexp::symbol::Rf_install(c"v".as_ptr());
-        let formals = Rf_cons(R_MissingArg(), R_NilValue());
-        SETTAG(formals, vsym);
-        let body = Rf_lang2(
-            crate::sexp::symbol::Rf_install(c".spline_apply".as_ptr()),
-            vsym,
-        );
-        crate::mainutils::dstruct::mkCLOSXP(formals, body, env)
-    }
+pub fn do_splinefun(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    let y = CAR(CDR(args));
+    let method = Rf_ScalarInteger(3);
+    let _m = protect(method);
+    let z = SplineCoef(method, x, y);
+    let _z = protect(z);
+    let env = crate::sexp::memory_ext::NewEnvironment(R_NilValue(), rho, R_NilValue());
+    let _env = protect(env);
+    crate::library::stats::checked::define_var(crate::sexp::symbol::install_str("z"), z, env);
+    let vsym = crate::sexp::symbol::install_str("v");
+    let formals = Rf_cons(R_MissingArg(), R_NilValue());
+    SETTAG(formals, vsym);
+    let body = Rf_lang2(crate::sexp::symbol::install_str(".spline_apply"), vsym);
+    // SAFETY: `formals`, `body` and `env` are live nodes; mkCLOSXP
+    // only allocates the closure that captures them.
+    unsafe { crate::mainutils::dstruct::mkCLOSXP(formals, body, env) }
 }
 
 /// Evaluate a `splinefun` closure at `v`.
-pub unsafe fn do_spline_apply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let v = CAR(args);
-        let env = ENCLOS(rho);
-        let z = crate::sexp::envir::R_findVar(crate::sexp::symbol::Rf_install(c"z".as_ptr()), env);
-        SplineEval(v, z)
-    }
+pub fn do_spline_apply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    let v = CAR(args);
+    let env = ENCLOS(rho);
+    let z = crate::library::stats::checked::find_var(crate::sexp::symbol::install_str("z"), env);
+    SplineEval(v, z)
 }
 
 pub unsafe extern "C-unwind" fn c_spline_coef(method: SEXP, x: SEXP, y: SEXP) -> SEXP {
-    unsafe { SplineCoef(method, x, y) }
+    SplineCoef(method, x, y)
 }
 
 pub unsafe extern "C-unwind" fn c_spline_eval(xout: SEXP, z: SEXP) -> SEXP {
-    unsafe { SplineEval(xout, z) }
+    SplineEval(xout, z)
 }
 
 #[cfg(test)]

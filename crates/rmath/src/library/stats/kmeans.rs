@@ -186,20 +186,24 @@ pub unsafe fn kmeans_Lloyd(
     nc: *mut c_int,
     wss: *mut f64,
 ) {
-    let n = unsafe { *pn };
-    let k = unsafe { *pk };
-    let p = unsafe { *pp };
-    let x_len = (n * p) as usize;
-    let cen_len = (k * p) as usize;
-    let cl_len = n as usize;
-    let nc_len = k as usize;
-    let wss_len = k as usize;
-    let x = unsafe { slice::from_raw_parts(x, x_len) };
-    let cen = unsafe { slice::from_raw_parts_mut(cen, cen_len) };
-    let cl = unsafe { slice::from_raw_parts_mut(cl, cl_len) };
-    let maxiter = unsafe { &mut *pmaxiter };
-    let nc = unsafe { slice::from_raw_parts_mut(nc, nc_len) };
-    let wss = unsafe { slice::from_raw_parts_mut(wss, wss_len) };
+    // SAFETY: the caller passes the `.C` argument buffers: readable scalars
+    // `n`, `p`, `k`, an `n * p` data matrix, a `k * p` centre matrix, `n`
+    // cluster codes, `k` counts and sums of squares, and a writable
+    // iteration count, all distinct, live and unaliased for this call.
+    let (n, p, k, x, cen, cl, maxiter, nc, wss) = unsafe {
+        let (n, k, p) = (*pn, *pk, *pp);
+        (
+            n,
+            p,
+            k,
+            slice::from_raw_parts(x, (n * p) as usize),
+            slice::from_raw_parts_mut(cen, (k * p) as usize),
+            slice::from_raw_parts_mut(cl, n as usize),
+            &mut *pmaxiter,
+            slice::from_raw_parts_mut(nc, k as usize),
+            slice::from_raw_parts_mut(wss, k as usize),
+        )
+    };
     kmeans_lloyd_impl(x, n, p, k, cen, cl, maxiter, nc, wss);
 }
 
@@ -214,20 +218,24 @@ pub unsafe fn kmeans_MacQueen(
     nc: *mut c_int,
     wss: *mut f64,
 ) {
-    let n = unsafe { *pn };
-    let k = unsafe { *pk };
-    let p = unsafe { *pp };
-    let x_len = (n * p) as usize;
-    let cen_len = (k * p) as usize;
-    let cl_len = n as usize;
-    let nc_len = k as usize;
-    let wss_len = k as usize;
-    let x = unsafe { slice::from_raw_parts(x, x_len) };
-    let cen = unsafe { slice::from_raw_parts_mut(cen, cen_len) };
-    let cl = unsafe { slice::from_raw_parts_mut(cl, cl_len) };
-    let maxiter = unsafe { &mut *pmaxiter };
-    let nc = unsafe { slice::from_raw_parts_mut(nc, nc_len) };
-    let wss = unsafe { slice::from_raw_parts_mut(wss, wss_len) };
+    // SAFETY: the caller passes the `.C` argument buffers: readable scalars
+    // `n`, `p`, `k`, an `n * p` data matrix, a `k * p` centre matrix, `n`
+    // cluster codes, `k` counts and sums of squares, and a writable
+    // iteration count, all distinct, live and unaliased for this call.
+    let (n, p, k, x, cen, cl, maxiter, nc, wss) = unsafe {
+        let (n, k, p) = (*pn, *pk, *pp);
+        (
+            n,
+            p,
+            k,
+            slice::from_raw_parts(x, (n * p) as usize),
+            slice::from_raw_parts_mut(cen, (k * p) as usize),
+            slice::from_raw_parts_mut(cl, n as usize),
+            &mut *pmaxiter,
+            slice::from_raw_parts_mut(nc, k as usize),
+            slice::from_raw_parts_mut(wss, k as usize),
+        )
+    };
     kmeans_macqueen_impl(x, n, p, k, cen, cl, maxiter, nc, wss);
 }
 pub unsafe extern "C-unwind" fn c_kmeans_lloyd(
@@ -283,11 +291,11 @@ pub unsafe extern "C-unwind" fn c_kmeans_macqueen(
 }
 
 // Fortran tracing stubs (F77_SUB name mangling: lowercase + underscore suffix)
-pub unsafe fn kmns1_(_k: *const c_int, _it: *const c_int, _indx: *const c_int) {
+pub fn kmns1_(_k: *const c_int, _it: *const c_int, _indx: *const c_int) {
     Rf_error(b"kmeans tracing stub kmns1_ is not implemented\0".as_ptr() as *const _);
 }
 
-pub unsafe fn kmnsqpr_(
+pub fn kmnsqpr_(
     _istep: *const c_int,
     _icoun: *const c_int,
     _ncp: *const c_int,
@@ -298,99 +306,100 @@ pub unsafe fn kmnsqpr_(
 }
 
 /// GNU `kmeans(x, k)` Lloyd, min/max initial centers.
-pub unsafe fn do_kmeans(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        use crate::sexp::accessors::{CAR, CDR, INTEGER, REAL, SET_VECTOR_ELT, TYPEOF, XLENGTH};
-        use crate::sexp::constructors::{Rf_allocVector3, Rf_mkString};
-        use crate::sexp::ffi::{SEXP, SEXPTYPE};
-        use crate::sexp::globals::R_NilValue;
-        use crate::sexp::protect::protect;
-        let x0 = CAR(args);
-        let karg = CAR(CDR(args));
-        let n = XLENGTH(x0) as c_int;
-        let k = if TYPEOF(karg) == SEXPTYPE::INTSXP {
-            *INTEGER(karg)
-        } else if TYPEOF(karg) == SEXPTYPE::REALSXP {
-            *REAL(karg) as c_int
-        } else {
-            2
-        };
-        if k < 1 || k > n {
-            crate::mainutils::errors::errorcall_str(
-                crate::mainutils::errors::R_getCurrentCall(),
-                "number of cluster centres must lie between 1 and nrow(x)",
-            );
-        }
-        let mut x = vec![0.0f64; n as usize];
-        let mut xmin = f64::INFINITY;
-        let mut xmax = f64::NEG_INFINITY;
-        for i in 0..n as usize {
-            let v = if TYPEOF(x0) == SEXPTYPE::REALSXP {
-                *REAL(x0).add(i)
-            } else {
-                *INTEGER(x0).add(i) as f64
-            };
-            x[i] = v;
-            xmin = xmin.min(v);
-            xmax = xmax.max(v);
-        }
-        let mut cen = vec![0.0f64; k as usize];
-        if k == 1 {
-            cen[0] = xmin;
-        } else {
-            for j in 0..k as usize {
-                cen[j] = xmin + (xmax - xmin) * (j as f64) / ((k - 1) as f64);
-            }
-        }
-        let mut cl = vec![0i32; n as usize];
-        let mut nc = vec![0i32; k as usize];
-        let mut wss = vec![0.0f64; k as usize];
-        let mut maxiter: c_int = 10;
-        let p: c_int = 1;
-        kmeans_Lloyd(
-            x.as_mut_ptr(),
-            &n,
-            &p,
-            cen.as_mut_ptr(),
-            &k,
-            cl.as_mut_ptr(),
-            &mut maxiter,
-            nc.as_mut_ptr(),
-            wss.as_mut_ptr(),
+pub fn do_kmeans(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    use crate::sexp::accessors::{
+        CAR, CDR, INTEGER_ELT, REAL_ELT, SET_INTEGER_ELT, SET_REAL_ELT, SET_VECTOR_ELT, TYPEOF,
+        XLENGTH,
+    };
+    use crate::sexp::constructors::Rf_allocVector3;
+    use crate::sexp::ffi::{SEXP, SEXPTYPE};
+    use crate::sexp::globals::R_NilValue;
+    use crate::sexp::protect::protect;
+    let x0 = CAR(args);
+    let karg = CAR(CDR(args));
+    let n = XLENGTH(x0) as c_int;
+    let k = if TYPEOF(karg) == SEXPTYPE::INTSXP {
+        INTEGER_ELT(karg, 0)
+    } else if TYPEOF(karg) == SEXPTYPE::REALSXP {
+        REAL_ELT(karg, 0) as c_int
+    } else {
+        2
+    };
+    if k < 1 || k > n {
+        crate::mainutils::errors::errorcall_str(
+            crate::mainutils::errors::R_getCurrentCall(),
+            "number of cluster centres must lie between 1 and nrow(x)",
         );
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 3);
-        let _r = protect(result);
-        let cluster = Rf_allocVector3(SEXPTYPE::INTSXP, n as i64);
-        for i in 0..n as usize {
-            *INTEGER(cluster).add(i) = cl[i];
-        }
-        let centers = Rf_allocVector3(SEXPTYPE::REALSXP, k as i64);
-        for j in 0..k as usize {
-            *REAL(centers).add(j) = cen[j];
-        }
-        let size = Rf_allocVector3(SEXPTYPE::INTSXP, k as i64);
-        for j in 0..k as usize {
-            *INTEGER(size).add(j) = nc[j];
-        }
-        SET_VECTOR_ELT(result, 0, cluster);
-        SET_VECTOR_ELT(result, 1, centers);
-        SET_VECTOR_ELT(result, 2, size);
-        crate::mainutils::essentials::set_string_names(
-            result,
-            &[
-                "cluster".to_string(),
-                "centers".to_string(),
-                "size".to_string(),
-            ],
-        );
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            crate::sexp::attrib_core::R_ClassSymbol(),
-            Rf_mkString(c"kmeans".as_ptr()),
-        );
-        let _ = R_NilValue();
-        result
     }
+    let mut x = vec![0.0f64; n as usize];
+    let mut xmin = f64::INFINITY;
+    let mut xmax = f64::NEG_INFINITY;
+    for i in 0..n as usize {
+        let v = if TYPEOF(x0) == SEXPTYPE::REALSXP {
+            REAL_ELT(x0, i as i32)
+        } else {
+            INTEGER_ELT(x0, i as i32) as f64
+        };
+        x[i] = v;
+        xmin = xmin.min(v);
+        xmax = xmax.max(v);
+    }
+    let mut cen = vec![0.0f64; k as usize];
+    if k == 1 {
+        cen[0] = xmin;
+    } else {
+        for j in 0..k as usize {
+            cen[j] = xmin + (xmax - xmin) * (j as f64) / ((k - 1) as f64);
+        }
+    }
+    let mut cl = vec![0i32; n as usize];
+    let mut nc = vec![0i32; k as usize];
+    let mut wss = vec![0.0f64; k as usize];
+    let mut maxiter: c_int = 10;
+    let p: c_int = 1;
+    kmeans_lloyd_impl(
+        &x,
+        n,
+        p,
+        k,
+        &mut cen,
+        &mut cl,
+        &mut maxiter,
+        &mut nc,
+        &mut wss,
+    );
+    let result = Rf_allocVector3(SEXPTYPE::VECSXP, 3);
+    let _r = protect(result);
+    let cluster = Rf_allocVector3(SEXPTYPE::INTSXP, n as i64);
+    for i in 0..n as usize {
+        SET_INTEGER_ELT(cluster, i as i32, cl[i]);
+    }
+    let centers = Rf_allocVector3(SEXPTYPE::REALSXP, k as i64);
+    for j in 0..k as usize {
+        SET_REAL_ELT(centers, j as i32, cen[j]);
+    }
+    let size = Rf_allocVector3(SEXPTYPE::INTSXP, k as i64);
+    for j in 0..k as usize {
+        SET_INTEGER_ELT(size, j as i32, nc[j]);
+    }
+    SET_VECTOR_ELT(result, 0, cluster);
+    SET_VECTOR_ELT(result, 1, centers);
+    SET_VECTOR_ELT(result, 2, size);
+    crate::mainutils::essentials::set_string_names(
+        result,
+        &[
+            "cluster".to_string(),
+            "centers".to_string(),
+            "size".to_string(),
+        ],
+    );
+    crate::sexp::attrib_core::setAttrib(
+        result,
+        crate::sexp::attrib_core::R_ClassSymbol(),
+        crate::library::stats::checked::mk_string("kmeans"),
+    );
+    let _ = R_NilValue();
+    result
 }
 
 /// `.Fortran(C_kmns, ...)`: Hartigan-Wong (AS 136).

@@ -37,7 +37,7 @@ unsafe extern "C-unwind" fn Rintfn(x: *mut c_double, n: c_int, ex: *mut std::ffi
         let args = Rf_allocVector(SEXPTYPE::REALSXP, n);
         let _args_guard = protect(args);
         for i in 0..n {
-            *REAL(args).add(i as usize) = *x.add(i as usize);
+            SET_REAL_ELT(args, i as i32, *x.add(i as usize));
         }
 
         let tmp = Rf_lang2(is.f, args);
@@ -67,7 +67,7 @@ unsafe extern "C-unwind" fn Rintfn(x: *mut c_double, n: c_int, ex: *mut std::ffi
         };
 
         for i in 0..n {
-            *x.add(i as usize) = *REAL(resultsxp).add(i as usize);
+            *x.add(i as usize) = REAL_ELT(resultsxp, i as i32);
             if !R_FINITE(*x.add(i as usize)) {
                 Rf_error(b"non-finite function value\0".as_ptr() as *const _);
             }
@@ -80,193 +80,160 @@ unsafe extern "C-unwind" fn Rintfn(x: *mut c_double, n: c_int, ex: *mut std::ffi
 // Helper: asReal
 // ---------------------------------------------------------------------------
 
-unsafe fn as_real(x: SEXP) -> c_double {
-    unsafe {
-        if x.is_null() {
+fn as_real(x: SEXP) -> c_double {
+    if x.is_null() {
+        return NA_REAL;
+    }
+    let t = TYPEOF(x);
+    if t == SEXPTYPE::REALSXP {
+        return REAL_ELT(x, 0);
+    }
+    if t == SEXPTYPE::INTSXP {
+        let v = INTEGER_ELT(x, 0);
+        if v == NA_INTEGER {
             return NA_REAL;
         }
-        let t = TYPEOF(x);
-        if t == SEXPTYPE::REALSXP {
-            return *REAL(x);
-        }
-        if t == SEXPTYPE::INTSXP {
-            let v = *INTEGER(x);
-            if v == NA_INTEGER {
-                return NA_REAL;
-            }
-            return v as c_double;
-        }
-        if t == SEXPTYPE::LGLSXP {
-            let v = *INTEGER(x);
-            if v == NA_INTEGER {
-                return NA_REAL;
-            }
-            return if v != 0 { 1.0 } else { 0.0 };
-        }
-        NA_REAL
+        return v as c_double;
     }
+    if t == SEXPTYPE::LGLSXP {
+        let v = INTEGER_ELT(x, 0);
+        if v == NA_INTEGER {
+            return NA_REAL;
+        }
+        return if v != 0 { 1.0 } else { 0.0 };
+    }
+    NA_REAL
 }
 
 // ---------------------------------------------------------------------------
 // Helper: asInteger
 // ---------------------------------------------------------------------------
 
-unsafe fn as_integer(x: SEXP) -> c_int {
-    unsafe {
-        if x.is_null() {
+fn as_integer(x: SEXP) -> c_int {
+    if x.is_null() {
+        return NA_INTEGER;
+    }
+    let t = TYPEOF(x);
+    if t == SEXPTYPE::INTSXP {
+        return INTEGER_ELT(x, 0);
+    }
+    if t == SEXPTYPE::REALSXP {
+        let v = REAL_ELT(x, 0);
+        if v.is_nan() || v < c_int::MIN as c_double || v > c_int::MAX as c_double {
             return NA_INTEGER;
         }
-        let t = TYPEOF(x);
-        if t == SEXPTYPE::INTSXP {
-            return *INTEGER(x);
-        }
-        if t == SEXPTYPE::REALSXP {
-            let v = *REAL(x);
-            if v.is_nan() || v < c_int::MIN as c_double || v > c_int::MAX as c_double {
-                return NA_INTEGER;
-            }
-            return v as c_int;
-        }
-        if t == SEXPTYPE::LGLSXP {
-            return *INTEGER(x);
-        }
-        NA_INTEGER
+        return v as c_int;
     }
+    if t == SEXPTYPE::LGLSXP {
+        return INTEGER_ELT(x, 0);
+    }
+    NA_INTEGER
 }
 
 // ---------------------------------------------------------------------------
 // External declarations
 // ---------------------------------------------------------------------------
 
-unsafe fn eval(call: SEXP, rho: SEXP) -> SEXP {
-    unsafe { crate::eval::eval::Rf_eval(call, rho) }
+fn eval(call: SEXP, rho: SEXP) -> SEXP {
+    crate::eval::eval::eval_inner(call, rho)
 }
 
-unsafe fn coerceVector(x: SEXP, type_: c_int) -> SEXP {
+fn coerceVector(x: SEXP, type_: c_int) -> SEXP {
     crate::main::coerce::coerceVector(x, type_)
-}
-
-// ---------------------------------------------------------------------------
-// Helper: allocate int/double arrays (replaces R_alloc)
-// ---------------------------------------------------------------------------
-
-unsafe fn alloc_int_array(n: usize) -> *mut c_int {
-    unsafe {
-        let layout = std::alloc::Layout::array::<c_int>(n)
-            .unwrap_or_else(|_| std::alloc::handle_alloc_error(std::alloc::Layout::new::<c_int>()));
-        let ptr = std::alloc::alloc(layout) as *mut c_int;
-        if ptr.is_null() {
-            std::alloc::handle_alloc_error(layout);
-        }
-        ptr
-    }
-}
-
-unsafe fn alloc_double_array(n: usize) -> *mut c_double {
-    unsafe {
-        let layout = std::alloc::Layout::array::<c_double>(n).unwrap_or_else(|_| {
-            std::alloc::handle_alloc_error(std::alloc::Layout::new::<c_double>())
-        });
-        let ptr = std::alloc::alloc(layout) as *mut c_double;
-        if ptr.is_null() {
-            std::alloc::handle_alloc_error(layout);
-        }
-        ptr
-    }
 }
 
 // ---------------------------------------------------------------------------
 // Helper: build result list
 // ---------------------------------------------------------------------------
 
-unsafe fn build_integrate_result(
-    result: c_double,
-    abserr: c_double,
-    last: c_int,
-    ier: c_int,
-) -> SEXP {
-    unsafe {
-        let ans = Rf_allocVector(SEXPTYPE::VECSXP, 4);
-        let _ans_guard = protect(ans);
-        let ansnames = Rf_allocVector(SEXPTYPE::STRSXP, 4);
-        let _ansnames_guard = protect(ansnames);
+fn build_integrate_result(result: c_double, abserr: c_double, last: c_int, ier: c_int) -> SEXP {
+    let ans = Rf_allocVector(SEXPTYPE::VECSXP, 4);
+    let _ans_guard = protect(ans);
+    let ansnames = Rf_allocVector(SEXPTYPE::STRSXP, 4);
+    let _ansnames_guard = protect(ansnames);
 
-        SET_STRING_ELT(ansnames, 0, Rf_mkChar(b"value\0".as_ptr() as *const c_char));
-        SET_VECTOR_ELT(ans, 0, Rf_allocVector(SEXPTYPE::REALSXP, 1));
-        *REAL(VECTOR_ELT(ans, 0)).add(0) = result;
+    SET_STRING_ELT(
+        ansnames,
+        0,
+        crate::library::stats::checked::mk_char("value"),
+    );
+    SET_VECTOR_ELT(ans, 0, Rf_allocVector(SEXPTYPE::REALSXP, 1));
+    SET_REAL_ELT(VECTOR_ELT(ans, 0), 0, result);
 
-        SET_STRING_ELT(
-            ansnames,
-            1,
-            Rf_mkChar(b"abs.error\0".as_ptr() as *const c_char),
-        );
-        SET_VECTOR_ELT(ans, 1, Rf_allocVector(SEXPTYPE::REALSXP, 1));
-        *REAL(VECTOR_ELT(ans, 1)).add(0) = abserr;
+    SET_STRING_ELT(
+        ansnames,
+        1,
+        crate::library::stats::checked::mk_char("abs.error"),
+    );
+    SET_VECTOR_ELT(ans, 1, Rf_allocVector(SEXPTYPE::REALSXP, 1));
+    SET_REAL_ELT(VECTOR_ELT(ans, 1), 0, abserr);
 
-        SET_STRING_ELT(
-            ansnames,
-            2,
-            Rf_mkChar(b"subdivisions\0".as_ptr() as *const c_char),
-        );
-        SET_VECTOR_ELT(ans, 2, Rf_allocVector(SEXPTYPE::INTSXP, 1));
-        *INTEGER(VECTOR_ELT(ans, 2)).add(0) = last;
+    SET_STRING_ELT(
+        ansnames,
+        2,
+        crate::library::stats::checked::mk_char("subdivisions"),
+    );
+    SET_VECTOR_ELT(ans, 2, Rf_allocVector(SEXPTYPE::INTSXP, 1));
+    SET_INTEGER_ELT(VECTOR_ELT(ans, 2), 0, last);
 
-        SET_STRING_ELT(ansnames, 3, Rf_mkChar(b"ierr\0".as_ptr() as *const c_char));
-        SET_VECTOR_ELT(ans, 3, Rf_allocVector(SEXPTYPE::INTSXP, 1));
-        *INTEGER(VECTOR_ELT(ans, 3)).add(0) = ier;
+    SET_STRING_ELT(ansnames, 3, crate::library::stats::checked::mk_char("ierr"));
+    SET_VECTOR_ELT(ans, 3, Rf_allocVector(SEXPTYPE::INTSXP, 1));
+    SET_INTEGER_ELT(VECTOR_ELT(ans, 3), 0, ier);
 
-        setAttrib(ans, R_NamesSymbol(), ansnames);
-        ans
-    }
+    setAttrib(ans, R_NamesSymbol(), ansnames);
+    ans
 }
 
 // ---------------------------------------------------------------------------
 // call_dqags -- finite interval integration
 // ---------------------------------------------------------------------------
 
-pub unsafe fn call_dqags(args: SEXP) -> SEXP {
-    unsafe {
-        let mut is = IntStruct {
-            f: ptr::null_mut(),
-            env: ptr::null_mut(),
-        };
+pub fn call_dqags(args: SEXP) -> SEXP {
+    let mut is = IntStruct {
+        f: ptr::null_mut(),
+        env: ptr::null_mut(),
+    };
 
-        let mut args = CDR(args);
-        is.f = CAR(args);
-        args = CDR(args);
-        is.env = CAR(args);
-        args = CDR(args);
+    let mut args = CDR(args);
+    is.f = CAR(args);
+    args = CDR(args);
+    is.env = CAR(args);
+    args = CDR(args);
 
-        if LENGTH(CAR(args)) > 1 {
-            Rf_error(b"'lower' must be of length one\0".as_ptr() as *const _);
-        }
-        let mut lower = as_real(CAR(args));
-        args = CDR(args);
+    if LENGTH(CAR(args)) > 1 {
+        Rf_error(b"'lower' must be of length one\0".as_ptr() as *const _);
+    }
+    let mut lower = as_real(CAR(args));
+    args = CDR(args);
 
-        if LENGTH(CAR(args)) > 1 {
-            Rf_error(b"'upper' must be of length one\0".as_ptr() as *const _);
-        }
-        let mut upper = as_real(CAR(args));
-        args = CDR(args);
+    if LENGTH(CAR(args)) > 1 {
+        Rf_error(b"'upper' must be of length one\0".as_ptr() as *const _);
+    }
+    let mut upper = as_real(CAR(args));
+    args = CDR(args);
 
-        let mut epsabs = as_real(CAR(args));
-        args = CDR(args);
-        let mut epsrel = as_real(CAR(args));
-        args = CDR(args);
-        let mut limit = as_integer(CAR(args));
-        args = CDR(args);
+    let mut epsabs = as_real(CAR(args));
+    args = CDR(args);
+    let mut epsrel = as_real(CAR(args));
+    args = CDR(args);
+    let mut limit = as_integer(CAR(args));
+    args = CDR(args);
 
-        let lenw = 4 * limit;
-        let iwork = alloc_int_array(limit as usize);
-        let work = alloc_double_array(lenw as usize);
+    let lenw = 4 * limit;
+    let mut iwork = vec![0 as c_int; limit.max(0) as usize];
+    let mut work = vec![0.0 as c_double; lenw.max(0) as usize];
 
-        let mut result: c_double = 0.0;
-        let mut abserr: c_double = 0.0;
-        let mut neval: c_int = 0;
-        let mut ier: c_int = 0;
-        let mut last: c_int = 0;
-        let mut lenw_out: c_int = lenw;
+    let mut result: c_double = 0.0;
+    let mut abserr: c_double = 0.0;
+    let mut neval: c_int = 0;
+    let mut ier: c_int = 0;
+    let mut last: c_int = 0;
+    let mut lenw_out: c_int = lenw;
 
+    // SAFETY: every out-pointer is a live local, `iwork`/`work` hold
+    // `limit`/`4 * limit` cells as QUADPACK requires, and `ex` points to the
+    // live `IntStruct` the `Rintfn` trampoline reads.
+    {
         Rdqags(
             Rintfn,
             &mut is as *mut IntStruct as *mut std::ffi::c_void,
@@ -281,57 +248,60 @@ pub unsafe fn call_dqags(args: SEXP) -> SEXP {
             &mut limit,
             &mut lenw_out,
             &mut last,
-            iwork,
-            work,
+            iwork.as_mut_ptr(),
+            work.as_mut_ptr(),
         );
-
-        build_integrate_result(result, abserr, last, ier)
     }
+
+    build_integrate_result(result, abserr, last, ier)
 }
 
 // ---------------------------------------------------------------------------
 // call_dqagi -- infinite interval integration
 // ---------------------------------------------------------------------------
 
-pub unsafe fn call_dqagi(args: SEXP) -> SEXP {
-    unsafe {
-        let mut is = IntStruct {
-            f: ptr::null_mut(),
-            env: ptr::null_mut(),
-        };
+pub fn call_dqagi(args: SEXP) -> SEXP {
+    let mut is = IntStruct {
+        f: ptr::null_mut(),
+        env: ptr::null_mut(),
+    };
 
-        let mut args = CDR(args);
-        is.f = CAR(args);
-        args = CDR(args);
-        is.env = CAR(args);
-        args = CDR(args);
+    let mut args = CDR(args);
+    is.f = CAR(args);
+    args = CDR(args);
+    is.env = CAR(args);
+    args = CDR(args);
 
-        if LENGTH(CAR(args)) > 1 {
-            Rf_error(b"'bound' must be of length one\0".as_ptr() as *const _);
-        }
-        let mut bound = as_real(CAR(args));
-        args = CDR(args);
-        let mut inf = as_integer(CAR(args));
-        args = CDR(args);
+    if LENGTH(CAR(args)) > 1 {
+        Rf_error(b"'bound' must be of length one\0".as_ptr() as *const _);
+    }
+    let mut bound = as_real(CAR(args));
+    args = CDR(args);
+    let mut inf = as_integer(CAR(args));
+    args = CDR(args);
 
-        let mut epsabs = as_real(CAR(args));
-        args = CDR(args);
-        let mut epsrel = as_real(CAR(args));
-        args = CDR(args);
-        let mut limit = as_integer(CAR(args));
-        args = CDR(args);
+    let mut epsabs = as_real(CAR(args));
+    args = CDR(args);
+    let mut epsrel = as_real(CAR(args));
+    args = CDR(args);
+    let mut limit = as_integer(CAR(args));
+    args = CDR(args);
 
-        let lenw = 4 * limit;
-        let iwork = alloc_int_array(limit as usize);
-        let work = alloc_double_array(lenw as usize);
+    let lenw = 4 * limit;
+    let mut iwork = vec![0 as c_int; limit.max(0) as usize];
+    let mut work = vec![0.0 as c_double; lenw.max(0) as usize];
 
-        let mut result: c_double = 0.0;
-        let mut abserr: c_double = 0.0;
-        let mut neval: c_int = 0;
-        let mut ier: c_int = 0;
-        let mut last: c_int = 0;
-        let mut lenw_out: c_int = lenw;
+    let mut result: c_double = 0.0;
+    let mut abserr: c_double = 0.0;
+    let mut neval: c_int = 0;
+    let mut ier: c_int = 0;
+    let mut last: c_int = 0;
+    let mut lenw_out: c_int = lenw;
 
+    // SAFETY: every out-pointer is a live local, `iwork`/`work` hold
+    // `limit`/`4 * limit` cells as QUADPACK requires, and `ex` points to the
+    // live `IntStruct` the `Rintfn` trampoline reads.
+    {
         Rdqagi(
             Rintfn,
             &mut is as *mut IntStruct as *mut std::ffi::c_void,
@@ -346,50 +316,48 @@ pub unsafe fn call_dqagi(args: SEXP) -> SEXP {
             &mut limit,
             &mut lenw_out,
             &mut last,
-            iwork,
-            work,
+            iwork.as_mut_ptr(),
+            work.as_mut_ptr(),
         );
-
-        build_integrate_result(result, abserr, last, ier)
     }
+
+    build_integrate_result(result, abserr, last, ier)
 }
 
 /// GNU `integrate(f, lower, upper)`.
-pub unsafe fn do_integrate(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let f = CAR(args);
-        let lower = CAR(CDR(args));
-        let upper = CAR(CDR(CDR(args)));
-        let epsabs = Rf_ScalarReal(1.49e-8);
-        let _ea = protect(epsabs);
-        let epsrel = Rf_ScalarReal(1.49e-8);
-        let _er = protect(epsrel);
-        let limit = Rf_ScalarInteger(100);
-        let _lim = protect(limit);
-        let internal = Rf_cons(
-            R_NilValue(),
+pub fn do_integrate(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    let f = CAR(args);
+    let lower = CAR(CDR(args));
+    let upper = CAR(CDR(CDR(args)));
+    let epsabs = Rf_ScalarReal(1.49e-8);
+    let _ea = protect(epsabs);
+    let epsrel = Rf_ScalarReal(1.49e-8);
+    let _er = protect(epsrel);
+    let limit = Rf_ScalarInteger(100);
+    let _lim = protect(limit);
+    let internal = Rf_cons(
+        R_NilValue(),
+        Rf_cons(
+            f,
             Rf_cons(
-                f,
+                rho,
                 Rf_cons(
-                    rho,
+                    lower,
                     Rf_cons(
-                        lower,
-                        Rf_cons(
-                            upper,
-                            Rf_cons(epsabs, Rf_cons(epsrel, Rf_cons(limit, R_NilValue()))),
-                        ),
+                        upper,
+                        Rf_cons(epsabs, Rf_cons(epsrel, Rf_cons(limit, R_NilValue()))),
                     ),
                 ),
             ),
-        );
-        let _i = protect(internal);
-        let ans = call_dqags(internal);
-        let _a = protect(ans);
-        crate::sexp::attrib_core::setAttrib(
-            ans,
-            crate::sexp::attrib_core::R_ClassSymbol(),
-            Rf_mkString(c"integrate".as_ptr()),
-        );
-        ans
-    }
+        ),
+    );
+    let _i = protect(internal);
+    let ans = call_dqags(internal);
+    let _a = protect(ans);
+    crate::sexp::attrib_core::setAttrib(
+        ans,
+        crate::sexp::attrib_core::R_ClassSymbol(),
+        crate::library::stats::checked::mk_string("integrate"),
+    );
+    ans
 }
