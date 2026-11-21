@@ -1181,20 +1181,19 @@ pub(crate) fn load_upstream_base_sources(base_env: SEXP) {
         return;
     }
 
-    unsafe {
-        let namespace = R_findVarInFrame(base_env, Rf_install_in_current(".BaseNamespaceEnv"));
-        if namespace.is_null() || namespace == R_UnboundValue() {
-            return;
-        }
-        let staging =
-            crate::sexp::memory_ext::NewEnvironment(R_NilValue(), namespace, R_NilValue());
-        let _staging = crate::sexp::protect::protect(staging);
-        load_files(base_env, staging);
-        load_oracle_recovered_closures(base_env, staging);
-        load_fortran_symbol_bindings(base_env);
-        load_profile_common_bindings(base_env);
-        load_lazy_native_symbol_info(base_env, namespace);
+    let namespace =
+        unsafe { R_findVarInFrame(base_env, Rf_install_in_current(".BaseNamespaceEnv")) };
+    if namespace.is_null() || namespace == R_UnboundValue() {
+        return;
     }
+    let staging =
+        crate::sexp::memory_ext::NewEnvironment(R_NilValue(), namespace, R_NilValue());
+    let _staging = crate::sexp::protect::protect(staging);
+    load_files(base_env, staging);
+    load_oracle_recovered_closures(base_env, staging);
+    load_fortran_symbol_bindings(base_env);
+    load_profile_common_bindings(base_env);
+    load_lazy_native_symbol_info(base_env, namespace);
 }
 
 /// GNU registers the `appl` Fortran routines as `.F_*` symbols in the base
@@ -1206,14 +1205,14 @@ const BASE_FORTRAN_SYMBOLS: &[&str] = &[
 ];
 
 fn load_fortran_symbol_bindings(base_env: SEXP) {
-    unsafe {
-        for routine in BASE_FORTRAN_SYMBOLS {
-            let binding = format!(".F_{routine}");
-            if defined_in(base_env, binding.as_str()) {
-                continue;
-            }
-            let symbol = Rf_install_in_current(binding.as_str());
-            let routine_name = std::ffi::CString::new(*routine).unwrap_or_default();
+    for routine in BASE_FORTRAN_SYMBOLS {
+        let binding = format!(".F_{routine}");
+        if defined_in(base_env, binding.as_str()) {
+            continue;
+        }
+        let symbol = Rf_install_in_current(binding.as_str());
+        let routine_name = std::ffi::CString::new(*routine).unwrap_or_default();
+        unsafe {
             let string = crate::sexp::constructors::Rf_mkString(routine_name.as_ptr());
             crate::sexp::envir::defineVar(symbol, string, base_env);
         }
@@ -1430,26 +1429,24 @@ fn copy_exports(base_env: SEXP, staging: SEXP, names: &[&str]) -> bool {
 /// in `base_env` nor staged; repeat until stable so chained generics
 /// (a default that is itself an orphaned generic) converge.
 fn purge_stale_generics(base_env: SEXP, staging: SEXP) {
-    unsafe {
-        loop {
-            let mut removed = false;
-            for file in UPSTREAM_FILES {
-                for name in file.exports {
-                    let symbol = Rf_install_in_current(name);
-                    let value = R_findVarInFrame(staging, symbol);
-                    if value.is_null() || value == R_UnboundValue() {
-                        continue;
-                    }
-                    if calls_use_method(value) && !default_method_reachable(base_env, staging, name)
-                    {
-                        crate::sexp::envir::remove_binding_raw(staging, symbol);
-                        removed = true;
-                    }
+    loop {
+        let mut removed = false;
+        for file in UPSTREAM_FILES {
+            for name in file.exports {
+                let symbol = Rf_install_in_current(name);
+                let value = unsafe { R_findVarInFrame(staging, symbol) };
+                if value.is_null() || value == R_UnboundValue() {
+                    continue;
+                }
+                if calls_use_method(value) && !default_method_reachable(base_env, staging, name)
+                {
+                    crate::sexp::envir::remove_binding_raw(staging, symbol);
+                    removed = true;
                 }
             }
-            if !removed {
-                break;
-            }
+        }
+        if !removed {
+            break;
         }
     }
 }

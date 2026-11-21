@@ -122,6 +122,10 @@ impl Default for CancellationToken {
 }
 
 fn install_symbol(name: &str) -> Option<SEXP> {
+    // C symbol names are NUL-terminated: interior NUL has no spelling.
+    if name.contains('\0') {
+        return None;
+    }
     let symbol = crate::sexp::symbol::install_str(name);
     if symbol.is_null() { None } else { Some(symbol) }
 }
