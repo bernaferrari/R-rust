@@ -126,6 +126,11 @@ fn errorcall(_call: SEXP, msg: &str) -> ! {
     })
 }
 
+/// Adopt a raw SEXP under the active owner for checked element access.
+fn checked_sexp(x: SEXP) -> crate::sexp::object::Sexp<'static> {
+    crate::mainutils::essentials::owner_sexp(crate::mainutils::essentials::active_owner(), x)
+}
+
 fn native_extension_policy_error(call: SEXP, entrypoint: &str) -> ! {
     {
         errorcall(
@@ -141,33 +146,20 @@ fn native_extension_policy_enabled() -> bool {
     !crate::mainutils::rdynload::native_extensions_enabled()
 }
 
-unsafe fn ported_call_name(op: SEXP) -> Option<String> {
-    unsafe {
-        if TYPEOF(op) == SEXPTYPE::STRSXP && LENGTH(op) >= 1 {
-            let ptr = translateChar(STRING_ELT(op, 0));
-            if ptr.is_null() {
-                return None;
-            }
-            return std::ffi::CStr::from_ptr(ptr)
-                .to_str()
-                .ok()
-                .map(str::to_string);
-        }
-        if TYPEOF(op) == SEXPTYPE::SYMSXP {
-            let ptr = translateChar(PRINTNAME(op));
-            if ptr.is_null() {
-                return None;
-            }
-            return std::ffi::CStr::from_ptr(ptr)
-                .to_str()
-                .ok()
-                .map(str::to_string);
-        }
-        if TYPEOF(op) == SEXPTYPE::VECSXP && XLENGTH(op) >= 1 {
-            return ported_call_name(VECTOR_ELT(op, 0));
-        }
-        None
+fn ported_call_name(op: SEXP) -> Option<String> {
+    if TYPEOF(op) == SEXPTYPE::STRSXP && LENGTH(op) >= 1 {
+        return checked_sexp(op).try_string_value_elt(0).ok().flatten();
     }
+    if TYPEOF(op) == SEXPTYPE::SYMSXP {
+        return checked_sexp(op)
+            .try_printname()
+            .ok()
+            .and_then(|name| name.try_as_string().ok());
+    }
+    if TYPEOF(op) == SEXPTYPE::VECSXP && XLENGTH(op) >= 1 {
+        return ported_call_name(VECTOR_ELT(op, 0));
+    }
+    None
 }
 
 fn warning(msg: &str) {
@@ -188,23 +180,23 @@ fn dotcode_retval_check_enabled() -> bool {
 // Session-local symbols
 // ---------------------------------------------------------------------------
 
-unsafe fn NaokSymbol() -> SEXP {
+fn NaokSymbol() -> SEXP {
     unsafe { Rf_install(b"NAOK\0".as_ptr() as *const c_char) }
 }
 
-unsafe fn DupSymbol() -> SEXP {
+fn DupSymbol() -> SEXP {
     unsafe { Rf_install(b"DUP\0".as_ptr() as *const c_char) }
 }
 
-unsafe fn PkgSymbol() -> SEXP {
+fn PkgSymbol() -> SEXP {
     unsafe { Rf_install(b"PACKAGE\0".as_ptr() as *const c_char) }
 }
 
-unsafe fn EncSymbol() -> SEXP {
+fn EncSymbol() -> SEXP {
     unsafe { Rf_install(b"ENCODING\0".as_ptr() as *const c_char) }
 }
 
-unsafe fn CSingSymbol() -> SEXP {
+fn CSingSymbol() -> SEXP {
     unsafe { Rf_install(b"Csingle\0".as_ptr() as *const c_char) }
 }
 
@@ -217,7 +209,7 @@ fn isValidString(s: SEXP) -> bool {
     TYPEOF(s) == SEXPTYPE::STRSXP && LENGTH(s) > 0
 }
 
-unsafe fn isValidStringF(s: SEXP) -> bool {
+fn isValidStringF(s: SEXP) -> bool {
     if !isValidString(s) {
         return false;
     }
@@ -231,7 +223,7 @@ unsafe fn isValidStringF(s: SEXP) -> bool {
 // ---------------------------------------------------------------------------
 
 /// Structural check that replaces inherits(op, "NativeSymbolInfo").
-unsafe fn isNativeSymbolInfo(op: SEXP) -> bool {
+fn isNativeSymbolInfo(op: SEXP) -> bool {
     TYPEOF(op) == SEXPTYPE::VECSXP
         && LENGTH(op) >= 2
         && TYPEOF(VECTOR_ELT(op, 1)) == SEXPTYPE::EXTPTRSXP
@@ -312,13 +304,13 @@ unsafe fn checkValidSymbolId(
 ///
 /// # Safety
 /// The caller retains the original runtime and the supplied symbol graph.
-pub unsafe fn R_dotCallFn(op: SEXP, call: SEXP, _nargs: c_int) -> DL_FUNC {
+pub fn R_dotCallFn(op: SEXP, call: SEXP, _nargs: c_int) -> DL_FUNC {
+    let mut symbol = R_RegisteredNativeSymbol::new(R_CALL_SYM);
+    let mut fun: DL_FUNC = None;
     unsafe {
-        let mut symbol = R_RegisteredNativeSymbol::new(R_CALL_SYM);
-        let mut fun: DL_FUNC = None;
         checkValidSymbolId(op, call, &mut fun, &mut symbol, ptr::null_mut());
-        fun
     }
+    fun
 }
 
 // ---------------------------------------------------------------------------
@@ -417,83 +409,76 @@ unsafe fn naokfind(args: SEXP, len: *mut c_int, naok: *mut c_int, dll: &mut DllR
 // setDLLname / pkgtrim
 // ---------------------------------------------------------------------------
 
-unsafe fn setDLLname(s: SEXP, dll_name: &mut [u8; R_PATH_MAX]) {
-    unsafe {
-        let ss = CAR(s);
-        if TYPEOF(ss) != SEXPTYPE::STRSXP || LENGTH(ss) != 1 {
-            error("PACKAGE argument must be a single character string");
-        }
-        let name = translateChar(STRING_ELT(ss, 0));
-        let name_bytes = std::ffi::CStr::from_ptr(name).to_bytes();
-        // Skip "package:" prefix if present
-        let name_bytes = if name_bytes.starts_with(b"package:") {
-            &name_bytes[8..]
-        } else {
-            name_bytes
-        };
-        if name_bytes.len() >= R_PATH_MAX - 1 {
-            error("PACKAGE argument is too long");
-        }
-        let copy_len = name_bytes.len().min(R_PATH_MAX - 1);
-        dll_name[..copy_len].copy_from_slice(&name_bytes[..copy_len]);
-        dll_name[copy_len] = 0;
+fn setDLLname(s: SEXP, dll_name: &mut [u8; R_PATH_MAX]) {
+    let ss = CAR(s);
+    if TYPEOF(ss) != SEXPTYPE::STRSXP || LENGTH(ss) != 1 {
+        error("PACKAGE argument must be a single character string");
     }
+    let name = checked_sexp(ss)
+        .try_string_value_elt(0)
+        .unwrap_or_else(|_| error("PACKAGE argument must be a single character string"))
+        .unwrap_or_default();
+    let name_bytes = name.as_bytes();
+    // Skip "package:" prefix if present
+    let name_bytes = name_bytes.strip_prefix(b"package:").unwrap_or(name_bytes);
+    if name_bytes.len() >= R_PATH_MAX - 1 {
+        error("PACKAGE argument is too long");
+    }
+    let copy_len = name_bytes.len().min(R_PATH_MAX - 1);
+    dll_name[..copy_len].copy_from_slice(&name_bytes[..copy_len]);
+    dll_name[copy_len] = 0;
 }
 
-unsafe fn pkgtrim(args: SEXP, dll: &mut DllReference) -> SEXP {
-    unsafe {
-        let pkg_sym = PkgSymbol();
-        let mut pkg_used = 0u32;
-        let mut s = args;
-        let head = args;
+fn pkgtrim(args: SEXP, dll: &mut DllReference) -> SEXP {
+    let pkg_sym = PkgSymbol();
+    let mut pkg_used = 0u32;
+    let mut s = args;
+    let head = args;
 
-        while !s.is_null() && s != R_NilValue() {
-            let ss = CDR(s);
-            if ss == R_NilValue() && TAG(s) == pkg_sym {
-                pkg_used += 1;
-                if pkg_used > 1 {
-                    warning("'PACKAGE' used more than once");
-                }
-                setDLLname(s, &mut dll.dll_name);
-                dll.ref_type = FILENAME;
-                return R_NilValue();
+    while !s.is_null() && s != R_NilValue() {
+        let ss = CDR(s);
+        if ss == R_NilValue() && TAG(s) == pkg_sym {
+            pkg_used += 1;
+            if pkg_used > 1 {
+                warning("'PACKAGE' used more than once");
             }
-            if TAG(ss) == pkg_sym {
-                pkg_used += 1;
-                if pkg_used > 1 {
-                    warning("'PACKAGE' used more than once");
-                }
-                setDLLname(ss, &mut dll.dll_name);
-                dll.ref_type = FILENAME;
-                // Can't easily mutate the list — simplified removal
-            }
-            s = CDR(s);
+            setDLLname(s, &mut dll.dll_name);
+            dll.ref_type = FILENAME;
+            return R_NilValue();
         }
-        head
+        if TAG(ss) == pkg_sym {
+            pkg_used += 1;
+            if pkg_used > 1 {
+                warning("'PACKAGE' used more than once");
+            }
+            setDLLname(ss, &mut dll.dll_name);
+            dll.ref_type = FILENAME;
+            // Can't easily mutate the list — simplified removal
+        }
+        s = CDR(s);
     }
+    head
 }
 
 // ---------------------------------------------------------------------------
 // enctrim
 // ---------------------------------------------------------------------------
 
-unsafe fn enctrim(args: SEXP) -> SEXP {
-    unsafe {
-        let enc_sym = EncSymbol();
-        let mut s = args;
-        let head = args;
-        while !s.is_null() && s != R_NilValue() {
-            let ss = CDR(s);
-            if (ss == R_NilValue() && TAG(s) == enc_sym) || TAG(ss) == enc_sym {
-                warning("ENCODING is defunct and will be ignored");
-                if ss == R_NilValue() && TAG(s) == enc_sym {
-                    return R_NilValue();
-                }
+fn enctrim(args: SEXP) -> SEXP {
+    let enc_sym = EncSymbol();
+    let mut s = args;
+    let head = args;
+    while !s.is_null() && s != R_NilValue() {
+        let ss = CDR(s);
+        if (ss == R_NilValue() && TAG(s) == enc_sym) || TAG(ss) == enc_sym {
+            warning("ENCODING is defunct and will be ignored");
+            if ss == R_NilValue() && TAG(s) == enc_sym {
+                return R_NilValue();
             }
-            s = CDR(s);
         }
-        head
+        s = CDR(s);
     }
+    head
 }
 
 // ---------------------------------------------------------------------------
@@ -510,21 +495,19 @@ fn checkNativeType(target_type: c_int, actual_type: c_int) -> bool {
     true
 }
 
-unsafe fn comparePrimitiveTypes(ty: c_int, s: SEXP) -> bool {
-    unsafe {
-        if ty == SEXPTYPE::ANYSXP || TYPEOF(s) == ty {
-            return true;
-        }
-        // SINGLESXP check
-        if ty == 302 {
-            // SINGLESXP in R
-            return crate::mainutils::coerce::asLogical(getAttrib(
-                s,
-                Rf_install(b"Csingle\0".as_ptr() as *const c_char),
-            )) == TRUE as c_int;
-        }
-        false
+fn comparePrimitiveTypes(ty: c_int, s: SEXP) -> bool {
+    if ty == SEXPTYPE::ANYSXP || TYPEOF(s) == ty {
+        return true;
     }
+    // SINGLESXP check
+    if ty == 302 {
+        // SINGLESXP in R
+        return crate::mainutils::coerce::asLogical(getAttrib(
+            s,
+            unsafe { Rf_install(b"Csingle\0".as_ptr() as *const c_char) },
+        )) == TRUE as c_int;
+    }
+    false
 }
 
 // ---------------------------------------------------------------------------
@@ -599,28 +582,24 @@ unsafe fn resolveNativeRoutine(
 // check_retval
 // ---------------------------------------------------------------------------
 
-unsafe fn check_retval(call: SEXP, val: SEXP) -> SEXP {
-    unsafe {
-        let do_check = instance::with_required_current_instance(|inst| {
-            // P1: short-lived raw place access, no &mut held across calls.
-            let slot = (*inst)
-                .dotcode_state
-                .retval_check
-                .get_or_insert_with(dotcode_retval_check_enabled);
-            *slot
-        });
+fn check_retval(call: SEXP, val: SEXP) -> SEXP {
+    let do_check = instance::with_required_current_instance(|inst| {
+        // SAFETY: short-lived raw place access, no &mut held across calls.
+        let slot = unsafe { &mut (*inst).dotcode_state.retval_check }
+            .get_or_insert_with(dotcode_retval_check_enabled);
+        *slot
+    });
 
-        if do_check {
-            if (val as usize) < 16 {
-                errorcall(call, &format!("WEIRD RETURN VALUE: {:?}", val));
-            }
-        } else if val.is_null() {
-            warningcall(call, "converting NULL pointer to R NULL");
-            return R_NilValue();
+    if do_check {
+        if (val as usize) < 16 {
+            errorcall(call, &format!("WEIRD RETURN VALUE: {:?}", val));
         }
-
-        val
+    } else if val.is_null() {
+        warningcall(call, "converting NULL pointer to R NULL");
+        return R_NilValue();
     }
+
+    val
 }
 
 // ---------------------------------------------------------------------------
@@ -1098,7 +1077,7 @@ fn lookup_bundled_native(
 
 /// This translated entry retains original values and execution authority for
 /// the full callback, including reconstruction and result validation.
-unsafe fn invoke_native_handler(
+fn invoke_native_handler(
     call: SEXP,
     operator: SEXP,
     arguments: SEXP,
@@ -1281,34 +1260,32 @@ unsafe fn invoke_native_handler(
             }
         };
         access.require_active()?;
-        let result = unsafe { check_retval(call.as_raw(), result) };
+        let result = check_retval(call.as_raw(), result);
         domain.wrap(result)?.into_owned()
     })?
 }
 
 /// .External / .External2 handler.
-pub unsafe fn do_External(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub fn do_External(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     let interface = if PRIMVAL(op) == 1 {
         crate::mainutils::native_routines::NativeInterface::External2
     } else {
         crate::mainutils::native_routines::NativeInterface::External
     };
-    unsafe { invoke_native_handler(call, op, args, env, interface) }
+    invoke_native_handler(call, op, args, env, interface)
         .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
         .as_raw()
 }
 
 /// .Call handler.
-pub unsafe fn do_dotcall(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe {
-        invoke_native_handler(
-            call,
-            op,
-            args,
-            env,
-            crate::mainutils::native_routines::NativeInterface::Call,
-        )
-    }
+pub fn do_dotcall(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+    invoke_native_handler(
+        call,
+        op,
+        args,
+        env,
+        crate::mainutils::native_routines::NativeInterface::Call,
+    )
     .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()))
     .as_raw()
 }
@@ -1328,7 +1305,7 @@ mod lookup_snapshot_tests;
 #[cfg(test)]
 mod foreign_registration_tests;
 
-pub unsafe fn do_dotCode(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub fn do_dotCode(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     use crate::mainutils::native_routines::buffers::BufferInterface;
     let interface = if PRIMVAL(op) == 0 {
         BufferInterface::C
@@ -1759,13 +1736,13 @@ pub unsafe fn do_isloaded(call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
 // ---------------------------------------------------------------------------
 
 /// .External.graphics handler — simplified for headless environment.
-pub unsafe fn do_Externalgr(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe { do_External(call, op, args, env) }
+pub fn do_Externalgr(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+    do_External(call, op, args, env)
 }
 
 /// .Call.graphics handler — simplified for headless environment.
-pub unsafe fn do_dotcallgr(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe { do_dotcall(call, op, args, env) }
+pub fn do_dotcallgr(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+    do_dotcall(call, op, args, env)
 }
 
 // ---------------------------------------------------------------------------
@@ -1781,7 +1758,7 @@ pub fn Rf_getCallingDLL() -> SEXP {
 }
 
 /// Find a native symbol from a specific DLL.
-unsafe fn R_FindNativeSymbolFromDLL(
+fn R_FindNativeSymbolFromDLL(
     name: &[u8],
     dll: &mut DllReference,
     symbol: &mut R_RegisteredNativeSymbol,
@@ -1858,7 +1835,7 @@ mod tests {
     #[test]
     fn test_find_native_symbol_from_dll_empty() {
         let session = RSession::new();
-        session.with_protected(|| unsafe {
+        session.with_protected(|| {
             let mut dll = DllReference::new();
             let mut symbol = R_RegisteredNativeSymbol::new(R_CALL_SYM);
             let found =
@@ -1872,9 +1849,9 @@ mod tests {
         let left = RSession::new();
         let right = RSession::new();
 
-        let left_naok = left.with_protected(|| unsafe { NaokSymbol() });
-        let right_naok = right.with_protected(|| unsafe { NaokSymbol() });
-        let left_naok_again = left.with_protected(|| unsafe { NaokSymbol() });
+        let left_naok = left.with_protected(NaokSymbol);
+        let right_naok = right.with_protected(NaokSymbol);
+        let left_naok_again = left.with_protected(NaokSymbol);
 
         assert_eq!(left_naok, left_naok_again);
         assert_ne!(left_naok, right_naok);
@@ -1969,7 +1946,7 @@ mod typed_native_handler_tests {
                 let operator = operator(&session, interface);
                 let before =
                     session.with_active_in(|instance| unsafe { (*instance).arena.node_count() });
-                let message = rejection(|| unsafe {
+                let message = rejection(|| {
                     if interface == NativeInterface::Call {
                         do_dotcall(
                             factory.nil().as_raw(),
@@ -2018,7 +1995,7 @@ mod typed_native_handler_tests {
                     }
                     let values = vec![(nil.clone(), nil.clone()); actual];
                     let arguments = make_arguments(&factory, name, &values);
-                    let message = rejection(|| unsafe {
+                    let message = rejection(|| {
                         do_dotcall(
                             nil.as_raw(),
                             operator.as_raw(),
@@ -2043,7 +2020,7 @@ mod typed_native_handler_tests {
             let nil = factory.nil().into_owned().unwrap();
             let operator = operator(&session, NativeInterface::Call);
             let value = factory.strings(&["same"]).unwrap().into_owned().unwrap();
-            let invalid_package = unsafe {
+            let invalid_package = {
                 session
                     .owner_token()
                     .unwrap()
@@ -2066,7 +2043,7 @@ mod typed_native_handler_tests {
                 let mut payload = vec![(value.clone(), nil.clone()), (value.clone(), nil.clone())];
                 payload.insert(position, (package.clone(), tag.clone()));
                 let arguments = make_arguments(&factory, "C_R_identC", &payload);
-                let result = unsafe {
+                let result = {
                     do_dotcall(
                         nil.as_raw(),
                         operator.as_raw(),
@@ -2089,7 +2066,7 @@ mod typed_native_handler_tests {
                     (value.clone(), nil.clone()),
                 ],
             );
-            let message = rejection(|| unsafe {
+            let message = rejection(|| {
                 do_dotcall(
                     nil.as_raw(),
                     operator.as_raw(),
@@ -2102,7 +2079,7 @@ mod typed_native_handler_tests {
                 "explicit wrong package must not fall back globally: {message}"
             );
             let invalid = make_arguments(&factory, "C_R_identC", &[(invalid_package, tag)]);
-            let message = rejection(|| unsafe {
+            let message = rejection(|| {
                 do_dotcall(
                     nil.as_raw(),
                     operator.as_raw(),
@@ -2165,7 +2142,7 @@ mod typed_native_handler_tests {
                 (*instance).memory_state.gc_force_gap = 1;
                 (*instance).memory_state.gc_force_wait = 1;
             });
-            let result = unsafe {
+            let result = {
                 do_External(
                     nil.as_raw(),
                     operator.as_raw(),
@@ -2217,7 +2194,7 @@ mod typed_native_handler_tests {
             (*instance).memory_state.gc_force_gap = 1;
             (*instance).memory_state.gc_force_wait = 1;
         }
-        let message = rejection(|| unsafe {
+        let message = rejection(|| {
             do_External(
                 nil.as_raw(),
                 operator.as_raw(),
@@ -2349,7 +2326,7 @@ mod typed_native_handler_tests {
                     );
                     (factory, nil, operator, arguments)
                 };
-                let invoke = || unsafe {
+                let invoke = || {
                     do_dotcall(
                         nil.as_raw(),
                         operator.as_raw(),
@@ -2591,7 +2568,7 @@ utils	ishashtab_Ext	1";
             let before =
                 session.with_active_in(|instance| unsafe { (*instance).arena.node_count() });
             for (name, expected, actual, _, operator, arguments) in requests {
-                let message = rejection(|| unsafe {
+                let message = rejection(|| {
                     do_External(
                         nil.as_raw(),
                         operator.as_raw(),
@@ -2640,7 +2617,7 @@ utils	ishashtab_Ext	1";
                     .into_owned()
                     .unwrap()
             };
-            let scalar_int = |value| unsafe {
+            let scalar_int = |value| {
                 session
                     .owner_token()
                     .unwrap()
@@ -2649,7 +2626,7 @@ utils	ishashtab_Ext	1";
                     .into_owned()
                     .unwrap()
             };
-            let scalar_real = |value| unsafe {
+            let scalar_real = |value| {
                 session
                     .owner_token()
                     .unwrap()
@@ -2664,7 +2641,7 @@ utils	ishashtab_Ext	1";
                 payload.insert(payload.len() / 2, (package, tag.clone()));
                 let arguments = make_arguments(&factory, name, &payload);
                 let op = operator(&session, interface);
-                let result = unsafe {
+                let result = {
                     do_External(nil.as_raw(), op.as_raw(), arguments.as_raw(), nil.as_raw())
                 };
                 factory.wrap(result).unwrap().into_owned().unwrap()
