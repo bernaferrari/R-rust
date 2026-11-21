@@ -65,7 +65,12 @@ fn r_color_to_native(color: c_int) -> c_int {
 }
 
 #[inline]
-fn headless_style(gc: *const c_void) -> device_registry::DrawStyle {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn headless_style(gc: *const c_void) -> device_registry::DrawStyle {
     let Some(gc) = (!gc.is_null()).then_some(ge_context(gc)) else {
         return device_registry::DrawStyle::default();
     };
@@ -81,12 +86,22 @@ fn headless_style(gc: *const c_void) -> device_registry::DrawStyle {
 }
 
 #[inline]
-fn ge_set_clip(x1: c_double, y1: c_double, x2: c_double, y2: c_double, dd: *mut c_void) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn ge_set_clip(x1: c_double, y1: c_double, x2: c_double, y2: c_double, dd: *mut c_void) {
     unsafe { rmath_ge_set_clip(x1, y1, x2, y2, ge_dev(dd)) }
 }
 
 #[inline]
-fn ge_line(
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn ge_line(
     x1: c_double,
     y1: c_double,
     x2: c_double,
@@ -98,7 +113,12 @@ fn ge_line(
 }
 
 #[inline]
-fn ge_polyline(
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn ge_polyline(
     n: c_int,
     x: *const c_double,
     y: *const c_double,
@@ -117,7 +137,12 @@ fn ge_polyline(
 }
 
 #[inline]
-fn ge_polygon(
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn ge_polygon(
     n: c_int,
     x: *const c_double,
     y: *const c_double,
@@ -136,12 +161,28 @@ fn ge_polygon(
 }
 
 #[inline]
-fn ge_circle(x: c_double, y: c_double, radius: c_double, gc: *const c_void, dd: *mut c_void) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn ge_circle(
+    x: c_double,
+    y: c_double,
+    radius: c_double,
+    gc: *const c_void,
+    dd: *mut c_void,
+) {
     unsafe { rmath_ge_circle(x, y, radius, ge_context(gc), ge_dev(dd)) }
 }
 
 #[inline]
-fn ge_rect(
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn ge_rect(
     x0: c_double,
     y0: c_double,
     x1: c_double,
@@ -153,7 +194,12 @@ fn ge_rect(
 }
 
 #[inline]
-fn ge_path(
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn ge_path(
     x: *mut c_double,
     y: *mut c_double,
     npoly: c_int,
@@ -166,7 +212,12 @@ fn ge_path(
 }
 
 #[inline]
-fn ge_raster(
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn ge_raster(
     raster: *mut c_uint,
     w: c_int,
     h: c_int,
@@ -197,7 +248,12 @@ fn ge_raster(
 }
 
 #[inline]
-fn ge_text_with_encoding(
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn ge_text_with_encoding(
     x: c_double,
     y: c_double,
     str: *const c_char,
@@ -211,17 +267,32 @@ fn ge_text_with_encoding(
 }
 
 #[inline]
-fn ge_mode(mode: c_int, dd: *mut c_void) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn ge_mode(mode: c_int, dd: *mut c_void) {
     unsafe { rmath_ge_mode(mode, ge_dev(dd)) }
 }
 
 #[inline]
-fn ge_new_page(gc: *const c_void, dd: *mut c_void) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn ge_new_page(gc: *const c_void, dd: *mut c_void) {
     unsafe { rmath_ge_new_page(ge_context(gc), ge_dev(dd)) }
 }
 
 #[inline]
-fn ge_metric_info(
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn ge_metric_info(
     c: c_int,
     gc: *const c_void,
     ascent: *mut c_double,
@@ -233,22 +304,52 @@ fn ge_metric_info(
 }
 
 #[inline]
-fn ge_str_width(str: *const c_char, enc: c_int, gc: *const c_void, dd: *mut c_void) -> c_double {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn ge_str_width(
+    str: *const c_char,
+    enc: c_int,
+    gc: *const c_void,
+    dd: *mut c_void,
+) -> c_double {
     unsafe { rmath_ge_str_width(str, enc, ge_context(gc), ge_dev(dd)) }
 }
 
 #[inline]
-fn ge_str_width_utf8(str: *const c_char, gc: *const c_void, dd: *mut c_void) -> c_double {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn ge_str_width_utf8(str: *const c_char, gc: *const c_void, dd: *mut c_void) -> c_double {
     unsafe { rmath_ge_str_width_utf8(str, ge_context(gc), ge_dev(dd)) }
 }
 
 #[inline]
-fn ge_str_height(str: *const c_char, enc: c_int, gc: *const c_void, dd: *mut c_void) -> c_double {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn ge_str_height(
+    str: *const c_char,
+    enc: c_int,
+    gc: *const c_void,
+    dd: *mut c_void,
+) -> c_double {
     unsafe { rmath_ge_str_height(str, enc, ge_context(gc), ge_dev(dd)) }
 }
 
 #[inline]
-fn ge_str_metric(
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn ge_str_metric(
     str: *const c_char,
     enc: c_int,
     gc: *const c_void,
@@ -261,67 +362,132 @@ fn ge_str_metric(
 }
 
 #[inline]
-fn ge_device_dirty(dd: *mut c_void) -> c_int {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn ge_device_dirty(dd: *mut c_void) -> c_int {
     unsafe { rmath_ge_device_dirty(ge_dev(dd)) }
 }
 
 #[inline]
-fn ge_mark_dirty(dd: *mut c_void) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn ge_mark_dirty(dd: *mut c_void) {
     unsafe { rmath_ge_mark_dirty(ge_dev(dd)) }
 }
 
 #[inline]
-fn ge_mark_clean(dd: *mut c_void) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn ge_mark_clean(dd: *mut c_void) {
     unsafe { rmath_ge_mark_clean(ge_dev(dd)) }
 }
 
 #[inline]
-fn ge_recording(dd: *mut c_void) -> c_int {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn ge_recording(dd: *mut c_void) -> c_int {
     unsafe { rmath_ge_recording(ge_dev(dd)) }
 }
 
 #[inline]
-fn ge_from_device_x(value: c_double, to: c_int, dd: *mut c_void) -> c_double {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn ge_from_device_x(value: c_double, to: c_int, dd: *mut c_void) -> c_double {
     unsafe { rmath_ge_from_device_x(value, to, ge_dev(dd)) }
 }
 
 #[inline]
-fn ge_to_device_x(value: c_double, from: c_int, dd: *mut c_void) -> c_double {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn ge_to_device_x(value: c_double, from: c_int, dd: *mut c_void) -> c_double {
     unsafe { rmath_ge_to_device_x(value, from, ge_dev(dd)) }
 }
 
 #[inline]
-fn ge_from_device_y(value: c_double, to: c_int, dd: *mut c_void) -> c_double {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn ge_from_device_y(value: c_double, to: c_int, dd: *mut c_void) -> c_double {
     unsafe { rmath_ge_from_device_y(value, to, ge_dev(dd)) }
 }
 
 #[inline]
-fn ge_to_device_y(value: c_double, from: c_int, dd: *mut c_void) -> c_double {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn ge_to_device_y(value: c_double, from: c_int, dd: *mut c_void) -> c_double {
     unsafe { rmath_ge_to_device_y(value, from, ge_dev(dd)) }
 }
 
 #[inline]
-fn ge_from_device_width(value: c_double, to: c_int, dd: *mut c_void) -> c_double {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn ge_from_device_width(value: c_double, to: c_int, dd: *mut c_void) -> c_double {
     unsafe { rmath_ge_from_device_width(value, to, ge_dev(dd)) }
 }
 
 #[inline]
-fn ge_to_device_width(value: c_double, from: c_int, dd: *mut c_void) -> c_double {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn ge_to_device_width(value: c_double, from: c_int, dd: *mut c_void) -> c_double {
     unsafe { rmath_ge_to_device_width(value, from, ge_dev(dd)) }
 }
 
 #[inline]
-fn ge_from_device_height(value: c_double, to: c_int, dd: *mut c_void) -> c_double {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn ge_from_device_height(value: c_double, to: c_int, dd: *mut c_void) -> c_double {
     unsafe { rmath_ge_from_device_height(value, to, ge_dev(dd)) }
 }
 
 #[inline]
-fn ge_to_device_height(value: c_double, from: c_int, dd: *mut c_void) -> c_double {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn ge_to_device_height(value: c_double, from: c_int, dd: *mut c_void) -> c_double {
     unsafe { rmath_ge_to_device_height(value, from, ge_dev(dd)) }
 }
 
 #[inline]
-fn ge_symbol(
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn ge_symbol(
     x: c_double,
     y: c_double,
     pch: c_int,
@@ -333,22 +499,42 @@ fn ge_symbol(
 }
 
 #[inline]
-fn ge_stroke(path: SEXP, gc: *const c_void, dd: *mut c_void) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn ge_stroke(path: SEXP, gc: *const c_void, dd: *mut c_void) {
     unsafe { rmath_ge_stroke(path, ge_context(gc), ge_dev(dd)) }
 }
 
 #[inline]
-fn ge_fill(path: SEXP, rule: c_int, gc: *const c_void, dd: *mut c_void) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn ge_fill(path: SEXP, rule: c_int, gc: *const c_void, dd: *mut c_void) {
     unsafe { rmath_ge_fill(path, rule, ge_context(gc), ge_dev(dd)) }
 }
 
 #[inline]
-fn ge_fill_stroke(path: SEXP, rule: c_int, gc: *const c_void, dd: *mut c_void) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn ge_fill_stroke(path: SEXP, rule: c_int, gc: *const c_void, dd: *mut c_void) {
     unsafe { rmath_ge_fill_stroke(path, rule, ge_context(gc), ge_dev(dd)) }
 }
 
 #[inline]
-fn ge_raster_scale(
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn ge_raster_scale(
     sraster: *const c_uint,
     sw: c_int,
     sh: c_int,
@@ -360,7 +546,12 @@ fn ge_raster_scale(
 }
 
 #[inline]
-fn ge_raster_interpolate(
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn ge_raster_interpolate(
     sraster: *const c_uint,
     sw: c_int,
     sh: c_int,
@@ -372,12 +563,28 @@ fn ge_raster_interpolate(
 }
 
 #[inline]
-fn ge_raster_rotated_size(w: c_int, h: c_int, angle: c_double, wnew: *mut c_int, hnew: *mut c_int) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn ge_raster_rotated_size(
+    w: c_int,
+    h: c_int,
+    angle: c_double,
+    wnew: *mut c_int,
+    hnew: *mut c_int,
+) {
     unsafe { rmath_ge_raster_rotated_size(w, h, angle, wnew, hnew) }
 }
 
 #[inline]
-fn ge_raster_rotated_offset(
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn ge_raster_rotated_offset(
     w: c_int,
     h: c_int,
     angle: c_double,
@@ -389,7 +596,12 @@ fn ge_raster_rotated_offset(
 }
 
 #[inline]
-fn ge_raster_resize_for_rotation(
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn ge_raster_resize_for_rotation(
     sraster: *const c_uint,
     w: c_int,
     h: c_int,
@@ -404,7 +616,12 @@ fn ge_raster_resize_for_rotation(
 }
 
 #[inline]
-fn ge_raster_rotate(
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn ge_raster_rotate(
     sraster: *const c_uint,
     w: c_int,
     h: c_int,
@@ -435,12 +652,22 @@ fn nil_value() -> SEXP {
 }
 
 #[inline]
-fn mk_string(ptr: *const c_char) -> SEXP {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn mk_string(ptr: *const c_char) -> SEXP {
     unsafe { Rf_mkString(ptr) }
 }
 
 #[inline]
-fn ge_glyph(
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn ge_glyph(
     n: c_int,
     glyphs: *const c_int,
     x: *const c_double,
@@ -645,9 +872,7 @@ fn named_real_scalar(object: SEXP, name: &str) -> c_double {
     let owned = checked_sexp(value);
     match TYPEOF(value) {
         t if t == SEXPTYPE::REALSXP.as_c_int() => owned.try_real_elt(0).unwrap_or(0.0),
-        t if t == SEXPTYPE::INTSXP.as_c_int() => {
-            owned.try_integer_elt(0).unwrap_or(0) as c_double
-        }
+        t if t == SEXPTYPE::INTSXP.as_c_int() => owned.try_integer_elt(0).unwrap_or(0) as c_double,
         _ => 0.0,
     }
 }
@@ -661,9 +886,7 @@ fn named_int_scalar(object: SEXP, name: &str) -> c_int {
     match TYPEOF(value) {
         t if t == SEXPTYPE::INTSXP.as_c_int() => owned.try_integer_elt(0).unwrap_or(0),
         t if t == SEXPTYPE::LGLSXP.as_c_int() => owned.try_logical_elt(0).unwrap_or(0),
-        t if t == SEXPTYPE::REALSXP.as_c_int() => {
-            owned.try_real_elt(0).unwrap_or(0.0) as c_int
-        }
+        t if t == SEXPTYPE::REALSXP.as_c_int() => owned.try_real_elt(0).unwrap_or(0.0) as c_int,
         _ => 0,
     }
 }
@@ -912,67 +1135,123 @@ pub unsafe fn GEhandleEvent(event: c_int, dev: *mut c_void, data: SEXP) -> SEXP 
 // ---------------------------------------------------------------------------
 
 /// Convert X coordinate from device units to the specified unit.
-pub fn fromDeviceX(value: c_double, to: c_int, dd: *mut c_void) -> c_double {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn fromDeviceX(value: c_double, to: c_int, dd: *mut c_void) -> c_double {
     if let Some(value) = device_registry::from_device_x(value, to, headless_device(dd)) {
         return value;
     }
-    ge_from_device_x(value, to, dd)
+    // SAFETY: forwarded raw pointers satisfy `ge_from_device_x`'s contract per this function's own `# Safety` requirements.
+    unsafe { ge_from_device_x(value, to, dd) }
 }
 
 /// Convert X coordinate from the specified unit to device units.
-pub fn toDeviceX(value: c_double, from: c_int, dd: *mut c_void) -> c_double {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn toDeviceX(value: c_double, from: c_int, dd: *mut c_void) -> c_double {
     if let Some(value) = device_registry::to_device_x(value, from, headless_device(dd)) {
         return value;
     }
-    ge_to_device_x(value, from, dd)
+    // SAFETY: forwarded raw pointers satisfy `ge_to_device_x`'s contract per this function's own `# Safety` requirements.
+    unsafe { ge_to_device_x(value, from, dd) }
 }
 
 /// Convert Y coordinate from device units to the specified unit.
-pub fn fromDeviceY(value: c_double, to: c_int, dd: *mut c_void) -> c_double {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn fromDeviceY(value: c_double, to: c_int, dd: *mut c_void) -> c_double {
     if let Some(value) = device_registry::from_device_y(value, to, headless_device(dd)) {
         return value;
     }
-    ge_from_device_y(value, to, dd)
+    // SAFETY: forwarded raw pointers satisfy `ge_from_device_y`'s contract per this function's own `# Safety` requirements.
+    unsafe { ge_from_device_y(value, to, dd) }
 }
 
 /// Convert Y coordinate from the specified unit to device units.
-pub fn toDeviceY(value: c_double, from: c_int, dd: *mut c_void) -> c_double {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn toDeviceY(value: c_double, from: c_int, dd: *mut c_void) -> c_double {
     if let Some(value) = device_registry::to_device_y(value, from, headless_device(dd)) {
         return value;
     }
-    ge_to_device_y(value, from, dd)
+    // SAFETY: forwarded raw pointers satisfy `ge_to_device_y`'s contract per this function's own `# Safety` requirements.
+    unsafe { ge_to_device_y(value, from, dd) }
 }
 
 /// Convert width from device units to the specified unit.
-pub fn fromDeviceWidth(value: c_double, to: c_int, dd: *mut c_void) -> c_double {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn fromDeviceWidth(value: c_double, to: c_int, dd: *mut c_void) -> c_double {
     if let Some(value) = device_registry::from_device_width(value, to, headless_device(dd)) {
         return value;
     }
-    ge_from_device_width(value, to, dd)
+    // SAFETY: forwarded raw pointers satisfy `ge_from_device_width`'s contract per this function's own `# Safety` requirements.
+    unsafe { ge_from_device_width(value, to, dd) }
 }
 
 /// Convert width from the specified unit to device units.
-pub fn toDeviceWidth(value: c_double, from: c_int, dd: *mut c_void) -> c_double {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn toDeviceWidth(value: c_double, from: c_int, dd: *mut c_void) -> c_double {
     if let Some(value) = device_registry::to_device_width(value, from, headless_device(dd)) {
         return value;
     }
-    ge_to_device_width(value, from, dd)
+    // SAFETY: forwarded raw pointers satisfy `ge_to_device_width`'s contract per this function's own `# Safety` requirements.
+    unsafe { ge_to_device_width(value, from, dd) }
 }
 
 /// Convert height from device units to the specified unit.
-pub fn fromDeviceHeight(value: c_double, to: c_int, dd: *mut c_void) -> c_double {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn fromDeviceHeight(value: c_double, to: c_int, dd: *mut c_void) -> c_double {
     if let Some(value) = device_registry::from_device_height(value, to, headless_device(dd)) {
         return value;
     }
-    ge_from_device_height(value, to, dd)
+    // SAFETY: forwarded raw pointers satisfy `ge_from_device_height`'s contract per this function's own `# Safety` requirements.
+    unsafe { ge_from_device_height(value, to, dd) }
 }
 
 /// Convert height from the specified unit to device units.
-pub fn toDeviceHeight(value: c_double, from: c_int, dd: *mut c_void) -> c_double {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn toDeviceHeight(value: c_double, from: c_int, dd: *mut c_void) -> c_double {
     if let Some(value) = device_registry::to_device_height(value, from, headless_device(dd)) {
         return value;
     }
-    ge_to_device_height(value, from, dd)
+    // SAFETY: forwarded raw pointers satisfy `ge_to_device_height`'s contract per this function's own `# Safety` requirements.
+    unsafe { ge_to_device_height(value, from, dd) }
 }
 
 // ---------------------------------------------------------------------------
@@ -993,8 +1272,8 @@ fn reject_real_line_code_past_int(value: SEXP, ind: c_int, what: &str) {
         .try_real_elt(wrap_index(len, ind) as R_xlen_t)
         .unwrap_or(0.0);
     if rcode >= (c_int::MAX as f64) + 1.0 {
-        let msg = CString::new(format!("invalid {what}"))
-            .expect("line-parameter error contains no NUL");
+        let msg =
+            CString::new(format!("invalid {what}")).expect("line-parameter error contains no NUL");
         Rf_error(msg.as_ptr());
     }
 }
@@ -1018,9 +1297,12 @@ pub fn GE_LENDpar(value: SEXP, ind: c_int) -> c_int {
 /// Convert a line end code to an R string.
 pub fn GE_LENDget(lend: c_int) -> SEXP {
     match lend {
-        GE_BUTT_CAP => mk_string(c"butt".as_ptr()),
-        GE_SQUARE_CAP => mk_string(c"square".as_ptr()),
-        _ => mk_string(c"round".as_ptr()),
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        GE_BUTT_CAP => unsafe { mk_string(c"butt".as_ptr()) },
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        GE_SQUARE_CAP => unsafe { mk_string(c"square".as_ptr()) },
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        _ => unsafe { mk_string(c"round".as_ptr()) },
     }
 }
 
@@ -1043,9 +1325,12 @@ pub fn GE_LJOINpar(value: SEXP, ind: c_int) -> c_int {
 /// Convert a line join code to an R string.
 pub fn GE_LJOINget(ljoin: c_int) -> SEXP {
     match ljoin {
-        GE_MITRE_JOIN => mk_string(c"mitre".as_ptr()),
-        GE_BEVEL_JOIN => mk_string(c"bevel".as_ptr()),
-        _ => mk_string(c"round".as_ptr()),
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        GE_MITRE_JOIN => unsafe { mk_string(c"mitre".as_ptr()) },
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        GE_BEVEL_JOIN => unsafe { mk_string(c"bevel".as_ptr()) },
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        _ => unsafe { mk_string(c"round".as_ptr()) },
     }
 }
 
@@ -1054,14 +1339,21 @@ pub fn GE_LJOINget(ljoin: c_int) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Set the clipping rectangle on the current device.
-pub fn GESetClip(x1: c_double, y1: c_double, x2: c_double, y2: c_double, dd: *mut c_void) {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn GESetClip(x1: c_double, y1: c_double, x2: c_double, y2: c_double, dd: *mut c_void) {
     if dd.is_null() {
         return;
     }
     if device_registry::set_clip(headless_device(dd), x1, y1, x2, y2) {
         return;
     }
-    ge_set_clip(x1, y1, x2, y2, dd);
+    // SAFETY: forwarded raw pointers satisfy `ge_set_clip`'s contract per this function's own `# Safety` requirements.
+    unsafe { ge_set_clip(x1, y1, x2, y2, dd) };
 }
 
 // ---------------------------------------------------------------------------
@@ -1069,7 +1361,13 @@ pub fn GESetClip(x1: c_double, y1: c_double, x2: c_double, y2: c_double, dd: *mu
 // ---------------------------------------------------------------------------
 
 /// Draw a line segment on the device, with clipping.
-pub fn GELine(
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn GELine(
     x1: c_double,
     y1: c_double,
     x2: c_double,
@@ -1080,10 +1378,14 @@ pub fn GELine(
     if dd.is_null() {
         return;
     }
-    if device_registry::draw_line(headless_device(dd), x1, y1, x2, y2, headless_style(gc)) {
+    // SAFETY: forwarded raw pointers satisfy `headless_style`'s contract per this function's own `# Safety` requirements.
+    if device_registry::draw_line(headless_device(dd), x1, y1, x2, y2, unsafe {
+        headless_style(gc)
+    }) {
         return;
     }
-    ge_line(x1, y1, x2, y2, gc, dd);
+    // SAFETY: forwarded raw pointers satisfy `ge_line`'s contract per this function's own `# Safety` requirements.
+    unsafe { ge_line(x1, y1, x2, y2, gc, dd) };
 }
 
 // ---------------------------------------------------------------------------
@@ -1109,13 +1411,17 @@ pub unsafe fn GEPolyline(
                 .zip(std::slice::from_raw_parts(y, n as usize).iter().copied())
                 .collect()
         };
-        if device_registry::draw_polyline(headless_device(dd), &points, headless_style(gc)) {
+        // SAFETY: forwarded raw pointers satisfy `headless_style`'s contract per this function's own `# Safety` requirements.
+        if device_registry::draw_polyline(headless_device(dd), &points, unsafe {
+            headless_style(gc)
+        }) {
             return;
         }
     } else if device_registry::is_registered_device(headless_device(dd)) {
         return;
     }
-    ge_polyline(n, x, y, gc, dd);
+    // SAFETY: forwarded raw pointers satisfy `ge_polyline`'s contract per this function's own `# Safety` requirements.
+    unsafe { ge_polyline(n, x, y, gc, dd) };
 }
 
 // ---------------------------------------------------------------------------
@@ -1141,13 +1447,17 @@ pub unsafe fn GEPolygon(
                 .zip(std::slice::from_raw_parts(y, n as usize).iter().copied())
                 .collect()
         };
-        if device_registry::draw_polygon(headless_device(dd), &points, headless_style(gc)) {
+        // SAFETY: forwarded raw pointers satisfy `headless_style`'s contract per this function's own `# Safety` requirements.
+        if device_registry::draw_polygon(headless_device(dd), &points, unsafe {
+            headless_style(gc)
+        }) {
             return;
         }
     } else if device_registry::is_registered_device(headless_device(dd)) {
         return;
     }
-    ge_polygon(n, x, y, gc, dd);
+    // SAFETY: forwarded raw pointers satisfy `ge_polygon`'s contract per this function's own `# Safety` requirements.
+    unsafe { ge_polygon(n, x, y, gc, dd) };
 }
 
 // ---------------------------------------------------------------------------
@@ -1155,14 +1465,30 @@ pub unsafe fn GEPolygon(
 // ---------------------------------------------------------------------------
 
 /// Draw a circle on the device, with clipping.
-pub fn GECircle(x: c_double, y: c_double, radius: c_double, gc: *const c_void, dd: *mut c_void) {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn GECircle(
+    x: c_double,
+    y: c_double,
+    radius: c_double,
+    gc: *const c_void,
+    dd: *mut c_void,
+) {
     if dd.is_null() {
         return;
     }
-    if device_registry::draw_circle(headless_device(dd), x, y, radius, headless_style(gc)) {
+    // SAFETY: forwarded raw pointers satisfy `headless_style`'s contract per this function's own `# Safety` requirements.
+    if device_registry::draw_circle(headless_device(dd), x, y, radius, unsafe {
+        headless_style(gc)
+    }) {
         return;
     }
-    ge_circle(x, y, radius, gc, dd);
+    // SAFETY: forwarded raw pointers satisfy `ge_circle`'s contract per this function's own `# Safety` requirements.
+    unsafe { ge_circle(x, y, radius, gc, dd) };
 }
 
 // ---------------------------------------------------------------------------
@@ -1170,7 +1496,13 @@ pub fn GECircle(x: c_double, y: c_double, radius: c_double, gc: *const c_void, d
 // ---------------------------------------------------------------------------
 
 /// Draw a rectangle on the device, with clipping.
-pub fn GERect(
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn GERect(
     x0: c_double,
     y0: c_double,
     x1: c_double,
@@ -1181,10 +1513,14 @@ pub fn GERect(
     if dd.is_null() {
         return;
     }
-    if device_registry::draw_rect(headless_device(dd), x0, y0, x1, y1, headless_style(gc)) {
+    // SAFETY: forwarded raw pointers satisfy `headless_style`'s contract per this function's own `# Safety` requirements.
+    if device_registry::draw_rect(headless_device(dd), x0, y0, x1, y1, unsafe {
+        headless_style(gc)
+    }) {
         return;
     }
-    ge_rect(x0, y0, x1, y1, gc, dd);
+    // SAFETY: forwarded raw pointers satisfy `ge_rect`'s contract per this function's own `# Safety` requirements.
+    unsafe { ge_rect(x0, y0, x1, y1, gc, dd) };
 }
 
 // ---------------------------------------------------------------------------
@@ -1221,14 +1557,18 @@ pub unsafe fn GEPath(
                             )
                             .collect()
                     };
-                    device_registry::draw_polygon(headless_device(dd), &points, headless_style(gc));
+                    // SAFETY: forwarded raw pointers satisfy `headless_style`'s contract per this function's own `# Safety` requirements.
+                    device_registry::draw_polygon(headless_device(dd), &points, unsafe {
+                        headless_style(gc)
+                    });
                     offset += count as usize;
                 }
             }
         }
         return;
     }
-    ge_path(x, y, npoly, nper, winding, gc, dd);
+    // SAFETY: forwarded raw pointers satisfy `ge_path`'s contract per this function's own `# Safety` requirements.
+    unsafe { ge_path(x, y, npoly, nper, winding, gc, dd) };
 }
 
 // ---------------------------------------------------------------------------
@@ -1236,7 +1576,13 @@ pub unsafe fn GEPath(
 // ---------------------------------------------------------------------------
 
 /// Draw a raster image on the device.
-pub fn GERaster(
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn GERaster(
     raster: *mut c_uint,
     w: c_int,
     h: c_int,
@@ -1252,22 +1598,28 @@ pub fn GERaster(
     if dd.is_null() {
         return;
     }
-    if device_registry::draw_raster(headless_device(dd), raster, w, h, x, y, width, height) {
+    // SAFETY: forwarded raw pointers satisfy `draw_raster`'s contract per this function's own `# Safety` requirements.
+    if unsafe {
+        device_registry::draw_raster(headless_device(dd), raster, w, h, x, y, width, height)
+    } {
         return;
     }
-    ge_raster(
-        raster,
-        w,
-        h,
-        x,
-        y,
-        width,
-        height,
-        angle,
-        interpolate,
-        gc,
-        dd,
-    );
+    // SAFETY: forwarded raw pointers satisfy `ge_raster`'s contract per this function's own `# Safety` requirements.
+    unsafe {
+        ge_raster(
+            raster,
+            w,
+            h,
+            x,
+            y,
+            width,
+            height,
+            angle,
+            interpolate,
+            gc,
+            dd,
+        )
+    };
 }
 
 // ---------------------------------------------------------------------------
@@ -1305,7 +1657,8 @@ pub unsafe fn GEText(
             x,
             y,
             &text,
-            headless_style(gc).text_color,
+            // SAFETY: forwarded raw pointers satisfy `headless_style`'s contract per this function's own `# Safety` requirements.
+            (unsafe { headless_style(gc) }).text_color,
         ) {
             return;
         }
@@ -1313,7 +1666,8 @@ pub unsafe fn GEText(
         return;
     }
     // GEText currently maps x-centering onto device hadj callback input.
-    ge_text_with_encoding(x, y, str, enc, rot, xc, gc, dd);
+    // SAFETY: forwarded raw pointers satisfy `ge_text_with_encoding`'s contract per this function's own `# Safety` requirements.
+    unsafe { ge_text_with_encoding(x, y, str, enc, rot, xc, gc, dd) };
 }
 
 // ---------------------------------------------------------------------------
@@ -1340,14 +1694,21 @@ pub fn GEXspline(
 // ---------------------------------------------------------------------------
 
 /// Set the graphics mode on a device.
-pub fn GEMode(mode: c_int, dd: *mut c_void) {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn GEMode(mode: c_int, dd: *mut c_void) {
     if dd.is_null() {
         return;
     }
     if device_registry::mode(headless_device(dd), mode) {
         return;
     }
-    ge_mode(mode, dd);
+    // SAFETY: forwarded raw pointers satisfy `ge_mode`'s contract per this function's own `# Safety` requirements.
+    unsafe { ge_mode(mode, dd) };
 }
 
 // ---------------------------------------------------------------------------
@@ -1355,7 +1716,13 @@ pub fn GEMode(mode: c_int, dd: *mut c_void) {
 // ---------------------------------------------------------------------------
 
 /// Draw a plotting symbol on the device.
-pub fn GESymbol(
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn GESymbol(
     x: c_double,
     y: c_double,
     pch: c_int,
@@ -1366,7 +1733,8 @@ pub fn GESymbol(
     if dd.is_null() {
         return;
     }
-    ge_symbol(x, y, pch, size, gc, dd);
+    // SAFETY: forwarded raw pointers satisfy `ge_symbol`'s contract per this function's own `# Safety` requirements.
+    unsafe { ge_symbol(x, y, pch, size, gc, dd) };
 }
 
 // ---------------------------------------------------------------------------
@@ -1404,7 +1772,16 @@ pub unsafe fn GEPretty(lo: *mut c_double, up: *mut c_double, ndiv: *mut c_int) {
     let high_u_fact = [0.8_f64, 1.7_f64, 1.125_f64];
     // SAFETY: `ndiv` is non-null (checked above) and valid per this
     // function's contract.
-    let unit = r_pretty(&mut ns, &mut nu, unsafe { &mut *ndiv }, 1, 0.25, &high_u_fact, 2, 0);
+    let unit = r_pretty(
+        &mut ns,
+        &mut nu,
+        unsafe { &mut *ndiv },
+        1,
+        0.25,
+        &high_u_fact,
+        2,
+        0,
+    );
     const ROUNDING_EPS: f64 = 1e-10;
     if nu >= ns + 1.0 {
         let mut modified = false;
@@ -1431,7 +1808,13 @@ pub unsafe fn GEPretty(lo: *mut c_double, up: *mut c_double, ndiv: *mut c_int) {
 // ---------------------------------------------------------------------------
 
 /// Get metric information (ascent, descent, width) for a character.
-pub fn GEMetricInfo(
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn GEMetricInfo(
     c: c_int,
     gc: *const c_void,
     ascent: *mut c_double,
@@ -1439,7 +1822,8 @@ pub fn GEMetricInfo(
     width: *mut c_double,
     dd: *mut c_void,
 ) {
-    ge_metric_info(c, gc, ascent, descent, width, dd);
+    // SAFETY: forwarded raw pointers satisfy `ge_metric_info`'s contract per this function's own `# Safety` requirements.
+    unsafe { ge_metric_info(c, gc, ascent, descent, width, dd) };
 }
 
 // ---------------------------------------------------------------------------
@@ -1447,14 +1831,27 @@ pub fn GEMetricInfo(
 // ---------------------------------------------------------------------------
 
 /// Get the width of a string in device coordinates.
-pub fn GEStrWidth(str: *const c_char, enc: c_int, gc: *const c_void, dd: *mut c_void) -> c_double {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn GEStrWidth(
+    str: *const c_char,
+    enc: c_int,
+    gc: *const c_void,
+    dd: *mut c_void,
+) -> c_double {
     if dd.is_null() {
         return 0.0;
     }
     if enc == 1 {
-        ge_str_width_utf8(str, gc, dd)
+        // SAFETY: forwarded raw pointers satisfy `ge_str_width_utf8`'s contract per this function's own `# Safety` requirements.
+        unsafe { ge_str_width_utf8(str, gc, dd) }
     } else {
-        ge_str_width(str, enc, gc, dd)
+        // SAFETY: forwarded raw pointers satisfy `ge_str_width`'s contract per this function's own `# Safety` requirements.
+        unsafe { ge_str_width(str, enc, gc, dd) }
     }
 }
 
@@ -1463,11 +1860,23 @@ pub fn GEStrWidth(str: *const c_char, enc: c_int, gc: *const c_void, dd: *mut c_
 // ---------------------------------------------------------------------------
 
 /// Get the height of a string in device coordinates.
-pub fn GEStrHeight(str: *const c_char, enc: c_int, gc: *const c_void, dd: *mut c_void) -> c_double {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn GEStrHeight(
+    str: *const c_char,
+    enc: c_int,
+    gc: *const c_void,
+    dd: *mut c_void,
+) -> c_double {
     if dd.is_null() {
         return 0.0;
     }
-    ge_str_height(str, enc, gc, dd)
+    // SAFETY: forwarded raw pointers satisfy `ge_str_height`'s contract per this function's own `# Safety` requirements.
+    unsafe { ge_str_height(str, enc, gc, dd) }
 }
 
 // ---------------------------------------------------------------------------
@@ -1475,7 +1884,13 @@ pub fn GEStrHeight(str: *const c_char, enc: c_int, gc: *const c_void, dd: *mut c
 // ---------------------------------------------------------------------------
 
 /// Get metric information for a string (ascent, descent, width).
-pub fn GEStrMetric(
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn GEStrMetric(
     str: *const c_char,
     enc: c_int,
     gc: *const c_void,
@@ -1484,7 +1899,8 @@ pub fn GEStrMetric(
     width: *mut c_double,
     dd: *mut c_void,
 ) {
-    ge_str_metric(str, enc, gc, ascent, descent, width, dd);
+    // SAFETY: forwarded raw pointers satisfy `ge_str_metric`'s contract per this function's own `# Safety` requirements.
+    unsafe { ge_str_metric(str, enc, gc, ascent, descent, width, dd) };
 }
 
 // ---------------------------------------------------------------------------
@@ -1492,14 +1908,21 @@ pub fn GEStrMetric(
 // ---------------------------------------------------------------------------
 
 /// Start a new page on the device.
-pub fn GENewPage(gc: *const c_void, dd: *mut c_void) {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn GENewPage(gc: *const c_void, dd: *mut c_void) {
     if dd.is_null() {
         return;
     }
     if device_registry::new_page(headless_device(dd)) {
         return;
     }
-    ge_new_page(gc, dd);
+    // SAFETY: forwarded raw pointers satisfy `ge_new_page`'s contract per this function's own `# Safety` requirements.
+    unsafe { ge_new_page(gc, dd) };
 }
 
 // ---------------------------------------------------------------------------
@@ -1507,27 +1930,48 @@ pub fn GENewPage(gc: *const c_void, dd: *mut c_void) {
 // ---------------------------------------------------------------------------
 
 /// Check whether a device has received output from any graphics system.
-pub fn GEdeviceDirty(dd: *mut c_void) -> c_int {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn GEdeviceDirty(dd: *mut c_void) -> c_int {
     if dd.is_null() {
         return 0;
     }
-    ge_device_dirty(dd)
+    // SAFETY: forwarded raw pointers satisfy `ge_device_dirty`'s contract per this function's own `# Safety` requirements.
+    unsafe { ge_device_dirty(dd) }
 }
 
 /// Mark a device as having received output.
-pub fn GEdirtyDevice(dd: *mut c_void) {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn GEdirtyDevice(dd: *mut c_void) {
     if dd.is_null() {
         return;
     }
-    ge_mark_dirty(dd);
+    // SAFETY: forwarded raw pointers satisfy `ge_mark_dirty`'s contract per this function's own `# Safety` requirements.
+    unsafe { ge_mark_dirty(dd) };
 }
 
 /// Mark a device as clean (no output recorded).
-pub(crate) fn GEcleanDevice(dd: *mut c_void) {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub(crate) unsafe fn GEcleanDevice(dd: *mut c_void) {
     if dd.is_null() {
         return;
     }
-    ge_mark_clean(dd);
+    // SAFETY: forwarded raw pointers satisfy `ge_mark_clean`'s contract per this function's own `# Safety` requirements.
+    unsafe { ge_mark_clean(dd) };
 }
 
 // ---------------------------------------------------------------------------
@@ -1548,11 +1992,18 @@ pub fn GEcheckState(dd: *mut c_void) -> c_int {
 // ---------------------------------------------------------------------------
 
 /// Check whether graphics operations should be recorded for replay.
-pub fn GErecording(call: SEXP, dd: *mut c_void) -> c_int {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn GErecording(call: SEXP, dd: *mut c_void) -> c_int {
     if dd.is_null() {
         return 0;
     }
-    ge_recording(dd)
+    // SAFETY: forwarded raw pointers satisfy `ge_recording`'s contract per this function's own `# Safety` requirements.
+    unsafe { ge_recording(dd) }
 }
 
 // ---------------------------------------------------------------------------
@@ -1706,14 +2157,18 @@ pub fn GE_LTYget(lty: c_uint) -> SEXP {
         _ => None,
     };
     if let Some(name) = named {
-        return mk_string(
-            CString::new(name)
-                .expect("lty name contains no NUL")
-                .as_ptr(),
-        );
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        return unsafe {
+            mk_string(
+                CString::new(name)
+                    .expect("lty name contains no NUL")
+                    .as_ptr(),
+            )
+        };
     }
     let custom = CString::new(format!("{lty:x}")).expect("hex lty contains no NUL");
-    mk_string(custom.as_ptr())
+    // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+    unsafe { mk_string(custom.as_ptr()) }
 }
 
 // ---------------------------------------------------------------------------
@@ -1721,7 +2176,13 @@ pub fn GE_LTYget(lty: c_uint) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Scale a raster image using nearest-neighbour interpolation.
-pub fn R_GE_rasterScale(
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn R_GE_rasterScale(
     sraster: *const c_uint,
     sw: c_int,
     sh: c_int,
@@ -1729,11 +2190,18 @@ pub fn R_GE_rasterScale(
     dw: c_int,
     dh: c_int,
 ) {
-    ge_raster_scale(sraster, sw, sh, draster, dw, dh);
+    // SAFETY: forwarded raw pointers satisfy `ge_raster_scale`'s contract per this function's own `# Safety` requirements.
+    unsafe { ge_raster_scale(sraster, sw, sh, draster, dw, dh) };
 }
 
 /// Scale a raster image using bilinear interpolation.
-pub fn R_GE_rasterInterpolate(
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn R_GE_rasterInterpolate(
     sraster: *const c_uint,
     sw: c_int,
     sh: c_int,
@@ -1741,22 +2209,36 @@ pub fn R_GE_rasterInterpolate(
     dw: c_int,
     dh: c_int,
 ) {
-    ge_raster_interpolate(sraster, sw, sh, draster, dw, dh);
+    // SAFETY: forwarded raw pointers satisfy `ge_raster_interpolate`'s contract per this function's own `# Safety` requirements.
+    unsafe { ge_raster_interpolate(sraster, sw, sh, draster, dw, dh) };
 }
 
 /// Calculate the size needed for a rotated raster image.
-pub fn R_GE_rasterRotatedSize(
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn R_GE_rasterRotatedSize(
     w: c_int,
     h: c_int,
     angle: c_double,
     wnew: *mut c_int,
     hnew: *mut c_int,
 ) {
-    ge_raster_rotated_size(w, h, angle, wnew, hnew);
+    // SAFETY: forwarded raw pointers satisfy `ge_raster_rotated_size`'s contract per this function's own `# Safety` requirements.
+    unsafe { ge_raster_rotated_size(w, h, angle, wnew, hnew) };
 }
 
 /// Calculate the offset for a rotated raster image.
-pub fn R_GE_rasterRotatedOffset(
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn R_GE_rasterRotatedOffset(
     w: c_int,
     h: c_int,
     angle: c_double,
@@ -1764,11 +2246,18 @@ pub fn R_GE_rasterRotatedOffset(
     xoff: *mut c_double,
     yoff: *mut c_double,
 ) {
-    ge_raster_rotated_offset(w, h, angle, botleft, xoff, yoff);
+    // SAFETY: forwarded raw pointers satisfy `ge_raster_rotated_offset`'s contract per this function's own `# Safety` requirements.
+    unsafe { ge_raster_rotated_offset(w, h, angle, botleft, xoff, yoff) };
 }
 
 /// Copy a raster image into the middle of a larger raster (for rotation).
-pub fn R_GE_rasterResizeForRotation(
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn R_GE_rasterResizeForRotation(
     sraster: *const c_uint,
     w: c_int,
     h: c_int,
@@ -1777,11 +2266,18 @@ pub fn R_GE_rasterResizeForRotation(
     hnew: c_int,
     gc: *const c_void,
 ) {
-    ge_raster_resize_for_rotation(sraster, w, h, newRaster, wnew, hnew, gc);
+    // SAFETY: forwarded raw pointers satisfy `ge_raster_resize_for_rotation`'s contract per this function's own `# Safety` requirements.
+    unsafe { ge_raster_resize_for_rotation(sraster, w, h, newRaster, wnew, hnew, gc) };
 }
 
 /// Rotate a raster image.
-pub fn R_GE_rasterRotate(
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn R_GE_rasterRotate(
     sraster: *const c_uint,
     w: c_int,
     h: c_int,
@@ -1790,7 +2286,8 @@ pub fn R_GE_rasterRotate(
     gc: *const c_void,
     smoothAlpha: c_int,
 ) {
-    ge_raster_rotate(sraster, w, h, angle, draster, gc, smoothAlpha);
+    // SAFETY: forwarded raw pointers satisfy `ge_raster_rotate`'s contract per this function's own `# Safety` requirements.
+    unsafe { ge_raster_rotate(sraster, w, h, angle, draster, gc, smoothAlpha) };
 }
 
 // ---------------------------------------------------------------------------
@@ -1798,27 +2295,48 @@ pub fn R_GE_rasterRotate(
 // ---------------------------------------------------------------------------
 
 /// Stroke (outline) a path on the device.
-pub fn GEStroke(path: SEXP, gc: *const c_void, dd: *mut c_void) {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn GEStroke(path: SEXP, gc: *const c_void, dd: *mut c_void) {
     if dd.is_null() {
         return;
     }
-    ge_stroke(path, gc, dd);
+    // SAFETY: forwarded raw pointers satisfy `ge_stroke`'s contract per this function's own `# Safety` requirements.
+    unsafe { ge_stroke(path, gc, dd) };
 }
 
 /// Fill a path on the device.
-pub fn GEFill(path: SEXP, rule: c_int, gc: *const c_void, dd: *mut c_void) {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn GEFill(path: SEXP, rule: c_int, gc: *const c_void, dd: *mut c_void) {
     if dd.is_null() {
         return;
     }
-    ge_fill(path, rule, gc, dd);
+    // SAFETY: forwarded raw pointers satisfy `ge_fill`'s contract per this function's own `# Safety` requirements.
+    unsafe { ge_fill(path, rule, gc, dd) };
 }
 
 /// Fill and stroke a path on the device.
-pub fn GEFillStroke(path: SEXP, rule: c_int, gc: *const c_void, dd: *mut c_void) {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn GEFillStroke(path: SEXP, rule: c_int, gc: *const c_void, dd: *mut c_void) {
     if dd.is_null() {
         return;
     }
-    ge_fill_stroke(path, rule, gc, dd);
+    // SAFETY: forwarded raw pointers satisfy `ge_fill_stroke`'s contract per this function's own `# Safety` requirements.
+    unsafe { ge_fill_stroke(path, rule, gc, dd) };
 }
 
 // ---------------------------------------------------------------------------
@@ -1992,7 +2510,13 @@ pub unsafe fn R_GE_glyphFontVarFormatted(glyphFont: SEXP, index: c_int) -> *cons
 // ---------------------------------------------------------------------------
 
 /// Draw glyph(s) on the device.
-pub fn GEGlyph(
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn GEGlyph(
     n: c_int,
     glyphs: *const c_int,
     x: *const c_double,
@@ -2006,7 +2530,8 @@ pub fn GEGlyph(
     if dd.is_null() {
         return;
     }
-    ge_glyph(n, glyphs, x, y, font, size, colour, rot, dd);
+    // SAFETY: forwarded raw pointers satisfy `ge_glyph`'s contract per this function's own `# Safety` requirements.
+    unsafe { ge_glyph(n, glyphs, x, y, font, size, colour, rot, dd) };
 }
 
 // ---------------------------------------------------------------------------
@@ -2120,14 +2645,22 @@ mod tests {
         let _session = crate::sexp::session::RSession::new();
         {
             let val = 1.0;
-            assert_eq!(fromDeviceX(val, GE_DEVICE, ptr::null_mut()), 1.0);
-            assert_eq!(toDeviceX(val, GE_DEVICE, ptr::null_mut()), 1.0);
-            assert_eq!(fromDeviceY(val, GE_INCHES, ptr::null_mut()), 1.0);
-            assert_eq!(toDeviceY(val, GE_INCHES, ptr::null_mut()), 1.0);
-            assert_eq!(fromDeviceWidth(val, GE_CM, ptr::null_mut()), 1.0);
-            assert_eq!(toDeviceWidth(val, GE_CM, ptr::null_mut()), 1.0);
-            assert_eq!(fromDeviceHeight(val, GE_NDC, ptr::null_mut()), 1.0);
-            assert_eq!(toDeviceHeight(val, GE_NDC, ptr::null_mut()), 1.0);
+            // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+            assert_eq!(unsafe { fromDeviceX(val, GE_DEVICE, ptr::null_mut()) }, 1.0);
+            // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+            assert_eq!(unsafe { toDeviceX(val, GE_DEVICE, ptr::null_mut()) }, 1.0);
+            // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+            assert_eq!(unsafe { fromDeviceY(val, GE_INCHES, ptr::null_mut()) }, 1.0);
+            // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+            assert_eq!(unsafe { toDeviceY(val, GE_INCHES, ptr::null_mut()) }, 1.0);
+            // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+            assert_eq!(unsafe { fromDeviceWidth(val, GE_CM, ptr::null_mut()) }, 1.0);
+            // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+            assert_eq!(unsafe { toDeviceWidth(val, GE_CM, ptr::null_mut()) }, 1.0);
+            // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+            assert_eq!(unsafe { fromDeviceHeight(val, GE_NDC, ptr::null_mut()) }, 1.0);
+            // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+            assert_eq!(unsafe { toDeviceHeight(val, GE_NDC, ptr::null_mut()) }, 1.0);
         }
     }
 
@@ -2628,7 +3161,8 @@ mod tests {
             let mut a = 1.0;
             let mut d = 1.0;
             let mut w = 1.0;
-            GEMetricInfo(77, ptr::null(), &mut a, &mut d, &mut w, ptr::null_mut());
+            // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+            unsafe { GEMetricInfo(77, ptr::null(), &mut a, &mut d, &mut w, ptr::null_mut()) };
             assert_eq!(a, 0.0);
             assert_eq!(d, 0.0);
             assert_eq!(w, 0.0);
@@ -2640,7 +3174,8 @@ mod tests {
         let _session = crate::sexp::session::RSession::new();
         {
             assert_eq!(
-                GEStrWidth(ptr::null(), 0, ptr::null(), ptr::null_mut()),
+                // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+                unsafe { GEStrWidth(ptr::null(), 0, ptr::null(), ptr::null_mut()) },
                 0.0
             );
         }
@@ -2651,7 +3186,8 @@ mod tests {
         let _session = crate::sexp::session::RSession::new();
         {
             assert_eq!(
-                GEStrHeight(ptr::null(), 0, ptr::null(), ptr::null_mut()),
+                // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+                unsafe { GEStrHeight(ptr::null(), 0, ptr::null(), ptr::null_mut()) },
                 0.0
             );
         }
@@ -2664,7 +3200,8 @@ mod tests {
             let mut a = 1.0;
             let mut d = 1.0;
             let mut w = 1.0;
-            GEStrMetric(
+            // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+            unsafe { GEStrMetric(
                 ptr::null(),
                 0,
                 ptr::null(),
@@ -2672,7 +3209,7 @@ mod tests {
                 &mut d,
                 &mut w,
                 ptr::null_mut(),
-            );
+            ) };
             assert_eq!(a, 0.0);
             assert_eq!(d, 0.0);
             assert_eq!(w, 0.0);
@@ -2683,7 +3220,8 @@ mod tests {
     fn test_GEdeviceDirty_returns_false() {
         let _session = crate::sexp::session::RSession::new();
         {
-            assert_eq!(GEdeviceDirty(ptr::null_mut()), 0);
+            // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+            assert_eq!(unsafe { GEdeviceDirty(ptr::null_mut()) }, 0);
         }
     }
 
@@ -2700,7 +3238,8 @@ mod tests {
     fn test_GErecording_returns_false() {
         let _session = crate::sexp::session::RSession::new();
         {
-            assert_eq!(GErecording(ptr::null_mut(), ptr::null_mut()), 0);
+            // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+            assert_eq!(unsafe { GErecording(ptr::null_mut(), ptr::null_mut()) }, 0);
         }
     }
 
@@ -2992,7 +3531,8 @@ mod tests {
         {
             let mut wnew: c_int = 0;
             let mut hnew: c_int = 0;
-            R_GE_rasterRotatedSize(100, 200, 0.5, &mut wnew, &mut hnew);
+            // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+            unsafe { R_GE_rasterRotatedSize(100, 200, 0.5, &mut wnew, &mut hnew) };
             assert_eq!(wnew, 184);
             assert_eq!(hnew, 223);
         }
@@ -3004,7 +3544,8 @@ mod tests {
         {
             let mut xoff = 1.0;
             let mut yoff = 1.0;
-            R_GE_rasterRotatedOffset(100, 200, 0.5, 1, &mut xoff, &mut yoff);
+            // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+            unsafe { R_GE_rasterRotatedOffset(100, 200, 0.5, 1, &mut xoff, &mut yoff) };
             assert!((xoff - 54.06342576590164).abs() < 1e-12);
             assert!((yoff - (-11.72953311924742)).abs() < 1e-12);
         }
@@ -3048,7 +3589,8 @@ mod tests {
         {
             let src: [c_uint; 4] = [1, 2, 3, 4];
             let mut dst: [c_uint; 4] = [0; 4];
-            R_GE_rasterScale(src.as_ptr(), 2, 2, dst.as_mut_ptr(), 2, 2);
+            // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+            unsafe { R_GE_rasterScale(src.as_ptr(), 2, 2, dst.as_mut_ptr(), 2, 2) };
             assert_eq!(dst, src);
         }
     }

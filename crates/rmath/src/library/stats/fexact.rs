@@ -597,13 +597,7 @@ unsafe fn f2xact(
                             n2_stack,
                         );
                         if *lp.add(itp as usize) > 0. {
-                            REprintf(
-                                std::ffi::CStr::from_bytes_with_nul(b"___ LP[itp=%d] = %g > 0\n\0")
-                                    .unwrap_or_else(|_| {
-                                        std::ffi::CStr::from_ptr(b"\0".as_ptr() as *const _)
-                                    })
-                                    .as_ptr(),
-                            );
+                            REprintf(c"___ LP[itp=%d] = %g > 0\n");
                             *lp.add(itp as usize) = 0.;
                         }
 

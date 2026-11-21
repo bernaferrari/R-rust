@@ -165,7 +165,13 @@ fn set_vt_identity() {
 
 /// Transform a 3D vector by a 4x4 transformation matrix.
 /// Real implementation of the matrix-vector product.
-fn TransVector(u: &Vector3d, t: *const Trans3d, v: &mut Vector3d) {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn TransVector(u: &Vector3d, t: *const Trans3d, v: &mut Vector3d) {
     unsafe {
         for i in 0..4 {
             let mut sum = 0.0;
@@ -197,7 +203,13 @@ fn Accumulate(t: &Trans3d) {
 }
 
 /// Set a 4x4 transformation matrix to the identity.
-fn SetToIdentity(t: *mut Trans3d) {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn SetToIdentity(t: *mut Trans3d) {
     unsafe {
         for i in 0..4 {
             for j in 0..4 {
@@ -211,7 +223,8 @@ fn SetToIdentity(t: *mut Trans3d) {
 /// Apply a translation to the viewing transformation.
 fn Translate(x: c_double, y: c_double, z: c_double) {
     let mut t: Trans3d = [[0.0; 4]; 4];
-    SetToIdentity(t.as_mut_ptr() as *mut Trans3d);
+    // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+    unsafe { SetToIdentity(t.as_mut_ptr() as *mut Trans3d) };
     t[3][0] = x;
     t[3][1] = y;
     t[3][2] = z;
@@ -221,7 +234,8 @@ fn Translate(x: c_double, y: c_double, z: c_double) {
 /// Apply a scaling to the viewing transformation.
 fn Scale(x: c_double, y: c_double, z: c_double) {
     let mut t: Trans3d = [[0.0; 4]; 4];
-    SetToIdentity(t.as_mut_ptr() as *mut Trans3d);
+    // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+    unsafe { SetToIdentity(t.as_mut_ptr() as *mut Trans3d) };
     t[0][0] = x;
     t[1][1] = y;
     t[2][2] = z;
@@ -231,7 +245,8 @@ fn Scale(x: c_double, y: c_double, z: c_double) {
 /// Apply a rotation about the X axis to the viewing transformation.
 fn XRotate(angle: c_double) {
     let mut t: Trans3d = [[0.0; 4]; 4];
-    SetToIdentity(t.as_mut_ptr() as *mut Trans3d);
+    // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+    unsafe { SetToIdentity(t.as_mut_ptr() as *mut Trans3d) };
     let rad = DEG2RAD * angle;
     let c = rad.cos();
     let s = rad.sin();
@@ -245,7 +260,8 @@ fn XRotate(angle: c_double) {
 /// Apply a rotation about the Y axis to the viewing transformation.
 fn YRotate(angle: c_double) {
     let mut t: Trans3d = [[0.0; 4]; 4];
-    SetToIdentity(t.as_mut_ptr() as *mut Trans3d);
+    // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+    unsafe { SetToIdentity(t.as_mut_ptr() as *mut Trans3d) };
     let rad = DEG2RAD * angle;
     let c = rad.cos();
     let s = rad.sin();
@@ -259,7 +275,8 @@ fn YRotate(angle: c_double) {
 /// Apply a rotation about the Z axis to the viewing transformation.
 fn ZRotate(angle: c_double) {
     let mut t: Trans3d = [[0.0; 4]; 4];
-    SetToIdentity(t.as_mut_ptr() as *mut Trans3d);
+    // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+    unsafe { SetToIdentity(t.as_mut_ptr() as *mut Trans3d) };
     let rad = DEG2RAD * angle;
     let c = rad.cos();
     let s = rad.sin();
@@ -273,7 +290,8 @@ fn ZRotate(angle: c_double) {
 /// Apply a perspective projection to the viewing transformation.
 fn Perspective(d: c_double) {
     let mut t: Trans3d = [[0.0; 4]; 4];
-    SetToIdentity(t.as_mut_ptr() as *mut Trans3d);
+    // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+    unsafe { SetToIdentity(t.as_mut_ptr() as *mut Trans3d) };
     t[2][3] = -1.0 / d;
     Accumulate(&t);
 }
@@ -290,7 +308,8 @@ fn SetUpLight(theta: c_double, phi: c_double) {
     ZRotate(theta);
     let vt_val = with_plot3d_state(|state| state.vt);
     let mut light: [c_double; 4] = [0.0; 4];
-    TransVector(&u, &vt_val, &mut light);
+    // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+    unsafe { TransVector(&u, &vt_val, &mut light) };
     with_plot3d_state(|state| state.light = light);
 }
 
@@ -449,7 +468,13 @@ pub(crate) fn FindPolygonVertices(
 
 /// For each facet, determine the farthest point from the eye.
 /// Sorting facets by depth yields an occlusion-compatible ordering.
-fn DepthOrder(
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn DepthOrder(
     z: *const c_double,
     x: *const c_double,
     y: *const c_double,
@@ -480,7 +505,8 @@ fn DepthOrder(
                     u[3] = 1.0;
                     if u[0].is_finite() && u[1].is_finite() && u[2].is_finite() {
                         let vt_val = with_plot3d_state(|state| state.vt);
-                        TransVector(&u, &vt_val, &mut v);
+                        // SAFETY: forwarded raw pointers satisfy `TransVector`'s contract per this function's own `# Safety` requirements.
+                        unsafe { TransVector(&u, &vt_val, &mut v) };
                         if v[3] > d {
                             d = v[3];
                         }
@@ -499,7 +525,13 @@ fn DepthOrder(
 
 /// Check that limits are valid: both finite and strictly increasing.
 /// Returns true if valid; sets center `c` and scale `s`.
-fn LimitCheck(lim: *const c_double, c: &mut c_double, s: &mut c_double) -> bool {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn LimitCheck(lim: *const c_double, c: &mut c_double, s: &mut c_double) -> bool {
     unsafe {
         let l0 = *lim.add(0);
         let l1 = *lim.add(1);

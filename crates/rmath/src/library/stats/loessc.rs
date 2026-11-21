@@ -25,7 +25,12 @@ use crate::sexp::instance::with_required_current_instance;
 
 const GAUSSIAN: c_int = 1;
 const SYMMETRIC: c_int = 0;
-fn column_major_rows(x: *mut c_double, n: usize, d: usize) -> Vec<Vec<f64>> {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn column_major_rows(x: *mut c_double, n: usize, d: usize) -> Vec<Vec<f64>> {
     unsafe {
         (0..n)
             .map(|i| (0..d).map(|j| *x.add(i + j * n)).collect())
@@ -33,11 +38,21 @@ fn column_major_rows(x: *mut c_double, n: usize, d: usize) -> Vec<Vec<f64>> {
     }
 }
 
-fn copy_vec(ptr: *mut c_double, n: usize) -> Vec<f64> {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn copy_vec(ptr: *mut c_double, n: usize) -> Vec<f64> {
     unsafe { (0..n).map(|i| *ptr.add(i)).collect() }
 }
 
-fn surf_text(surf_stat: *mut *mut c_char) -> String {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn surf_text(surf_stat: *mut *mut c_char) -> String {
     unsafe {
         if surf_stat.is_null() || (*surf_stat).is_null() {
             return String::new();
@@ -46,7 +61,12 @@ fn surf_text(surf_stat: *mut *mut c_char) -> String {
     }
 }
 
-fn fit_loess_model(
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn fit_loess_model(
     y: *mut c_double,
     x: *mut c_double,
     weights: *mut c_double,
@@ -91,9 +111,12 @@ fn fit_loess_model(
     };
     let execution = super::loess::Execution::new(&|| Ok(()));
     let model = super::loess::Model::fit_with_execution(
-        column_major_rows(x, n, d),
-        copy_vec(y, n),
-        copy_vec(weights, n),
+        // SAFETY: forwarded raw pointers satisfy `column_major_rows`'s contract per this function's own `# Safety` requirements.
+        unsafe { column_major_rows(x, n, d) },
+        // SAFETY: forwarded raw pointers satisfy `copy_vec`'s contract per this function's own `# Safety` requirements.
+        unsafe { copy_vec(y, n) },
+        // SAFETY: forwarded raw pointers satisfy `copy_vec`'s contract per this function's own `# Safety` requirements.
+        unsafe { copy_vec(weights, n) },
         config,
         &execution,
     );
@@ -120,7 +143,12 @@ fn fit_loess_model(
     }
 }
 
-fn write_fit(dest: *mut c_double, values: &[f64]) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn write_fit(dest: *mut c_double, values: &[f64]) {
     unsafe {
         if dest.is_null() {
             return;
@@ -146,7 +174,12 @@ fn predict_model(model: &super::loess::Model, queries: &[Vec<f64>]) -> Result<Ve
         .predict_with_execution(queries, false, &super::loess::Execution::new(&|| Ok(())))
         .map(|(fitted, _)| fitted)
 }
-fn engine_loess_se(
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn engine_loess_se(
     y: *mut c_double,
     x: *mut c_double,
     x_evaluate: *mut c_double,
@@ -253,7 +286,12 @@ fn fail_loess(message: &str) -> ! {
     unreachable!();
 }
 
-fn engine_loess_raw(
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn engine_loess_raw(
     y: *mut c_double,
     x: *mut c_double,
     weights: *mut c_double,
@@ -349,7 +387,12 @@ fn engine_loess_raw(
     }
 }
 
-fn engine_loess_dfit(
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn engine_loess_dfit(
     y: *mut c_double,
     x: *mut c_double,
     x_evaluate: *mut c_double,
@@ -391,7 +434,12 @@ fn engine_loess_dfit(
     }
 }
 
-fn engine_loess_ifit(
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn engine_loess_ifit(
     parameter: *mut c_int,
     a: *mut c_int,
     xi: *mut c_double,
@@ -640,12 +688,7 @@ mod loess_stubs {
             message: "LOESS native routines are not implemented".into(),
         });
     }
-    pub fn ehg196(
-        _tau: *mut c_int,
-        _d: *mut c_int,
-        _span: *mut c_double,
-        _trL: *mut c_double,
-    ) {
+    pub fn ehg196(_tau: *mut c_int, _d: *mut c_int, _span: *mut c_double, _trL: *mut c_double) {
         std::panic::panic_any(crate::sexp::context::RError {
             message: "LOESS native routines are not implemented".into(),
         });
@@ -688,30 +731,33 @@ pub unsafe extern "C-unwind" fn loess_raw(
     setLf: *mut c_int,
 ) {
     {
-        engine_loess_raw(
-            y,
-            x,
-            weights,
-            robust,
-            d,
-            n,
-            span,
-            degree,
-            nonparametric,
-            drop_square,
-            cell,
-            surf_stat,
-            surface,
-            parameter,
-            a,
-            xi,
-            vert,
-            vval,
-            diagonal,
-            trL,
-            one_delta,
-            two_delta,
-        );
+        // SAFETY: forwarded raw pointers satisfy `engine_loess_raw`'s contract per this function's own `# Safety` requirements.
+        unsafe {
+            engine_loess_raw(
+                y,
+                x,
+                weights,
+                robust,
+                d,
+                n,
+                span,
+                degree,
+                nonparametric,
+                drop_square,
+                cell,
+                surf_stat,
+                surface,
+                parameter,
+                a,
+                xi,
+                vert,
+                vval,
+                diagonal,
+                trL,
+                one_delta,
+                two_delta,
+            )
+        };
     }
 }
 
@@ -732,20 +778,23 @@ pub unsafe extern "C-unwind" fn loess_dfit(
 ) {
     {
         let _ = (sum_drop_sqr,);
-        engine_loess_dfit(
-            y,
-            x,
-            x_evaluate,
-            weights,
-            span,
-            degree,
-            nonparametric,
-            drop_square,
-            d,
-            n,
-            m,
-            fit,
-        );
+        // SAFETY: forwarded raw pointers satisfy `engine_loess_dfit`'s contract per this function's own `# Safety` requirements.
+        unsafe {
+            engine_loess_dfit(
+                y,
+                x,
+                x_evaluate,
+                weights,
+                span,
+                degree,
+                nonparametric,
+                drop_square,
+                d,
+                n,
+                m,
+                fit,
+            )
+        };
     }
 }
 
@@ -837,7 +886,8 @@ pub unsafe extern "C-unwind" fn loess_ifit(
     fit: *mut c_double,
 ) {
     {
-        engine_loess_ifit(parameter, a, xi, vert, vval, m, x_evaluate, fit);
+        // SAFETY: forwarded raw pointers satisfy `engine_loess_ifit`'s contract per this function's own `# Safety` requirements.
+        unsafe { engine_loess_ifit(parameter, a, xi, vert, vval, m, x_evaluate, fit) };
     }
 }
 

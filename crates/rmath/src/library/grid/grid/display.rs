@@ -137,7 +137,8 @@ pub fn L_newpage() -> SEXP {
         gcontextFromgpar(currentgp, 0, gc.as_mut_ptr() as pGEcontext, dd);
         // SAFETY: `gc` is the opaque engine context buffer just filled by
         // `gcontextFromgpar`; `dd` is the live device returned above.
-        GENewPage(gc.as_ptr() as pGEcontext, dd);
+        // SAFETY: `dd` is the live current graphics device handle obtained from the engine for this call; other pointer arguments are locals or literals.
+        unsafe { GENewPage(gc.as_ptr() as pGEcontext, dd) };
     }
     R_NilValue()
 }

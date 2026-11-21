@@ -303,7 +303,13 @@ fn get_option(name: &str) -> SEXP {
 }
 
 /// Audited boundary: copy a NUL-terminated title (or null) to Rust text.
-fn title_string(title: *const c_char) -> Option<String> {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn title_string(title: *const c_char) -> Option<String> {
     if title.is_null() {
         return None;
     }
@@ -1059,9 +1065,15 @@ fn printNamedRawVectorS(x: SEXP, n: R_xlen_t, names: SEXP) {
 // printNamedVector -- exported
 // ---------------------------------------------------------------------------
 
-pub fn printNamedVector(x: SEXP, names: SEXP, quote: c_int, title: *const c_char) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn printNamedVector(x: SEXP, names: SEXP, quote: c_int, title: *const c_char) {
     {
-        if let Some(title) = title_string(title) {
+        // SAFETY: forwarded raw pointers satisfy `title_string`'s contract per this function's own `# Safety` requirements.
+        if let Some(title) = unsafe { title_string(title) } {
             Rprintf!("{}\n", title);
         }
 
@@ -1412,7 +1424,8 @@ mod tests {
 
     #[test]
     fn test_print_named_vector_null() {
-        printNamedVector(ptr::null_mut(), ptr::null_mut(), 0, ptr::null());
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        unsafe { printNamedVector(ptr::null_mut(), ptr::null_mut(), 0, ptr::null()) };
     }
 
     #[test]

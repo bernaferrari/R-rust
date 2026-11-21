@@ -74,7 +74,10 @@ pub fn do_palette(val: SEXP) -> SEXP {
         let mut i = 0usize;
         while i < ps {
             let color = with_color_state(|state| state.palette[i]);
-            SET_STRING_ELT(ans, i as R_xlen_t, mk_char_ptr(incol2name(color)));
+            // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+            SET_STRING_ELT(ans, i as R_xlen_t, unsafe {
+                mk_char_ptr(incol2name(color))
+            });
             i += 1;
         }
 

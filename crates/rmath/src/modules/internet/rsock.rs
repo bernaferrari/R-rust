@@ -75,7 +75,7 @@ fn close_sock(fd: c_int) -> c_int {
     // SAFETY: `perr` is a live local `Sock_error_t`.
     let res = unsafe { Sock_close(fd, &mut perr) };
     if res == -1 {
-        REprintf(b"socket error: %s\n\0".as_ptr() as *const core::ffi::c_char);
+        REprintf(c"socket error: %s\n");
         // Note: the C code uses REprintf with format string for the error message.
         // Since our REprintf only takes a plain string (no varargs), we print a generic message.
         // The error number is available via perr.error.

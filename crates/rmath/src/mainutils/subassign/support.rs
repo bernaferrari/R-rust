@@ -794,7 +794,13 @@ pub(crate) fn GetArrayDimnames(x: SEXP) -> SEXP {
 }
 
 /// fixSubset3Args: prepare args for $ assignment.
-pub(crate) fn fixSubset3Args(call: SEXP, args: SEXP, env: SEXP, nlist: *mut SEXP) -> SEXP {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub(crate) unsafe fn fixSubset3Args(call: SEXP, args: SEXP, env: SEXP, nlist: *mut SEXP) -> SEXP {
     unsafe { crate::mainutils::subset::fixSubset3Args(call, args, env, nlist) }
 }
 

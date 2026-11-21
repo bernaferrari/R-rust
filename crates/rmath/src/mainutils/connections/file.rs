@@ -967,7 +967,8 @@ pub fn do_close(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
         }
 
         let instance = with_required_current_instance(|instance| instance);
-        close_connection_at_in(instance, i as c_int);
+        // SAFETY: `inst`/`instance` is the live current-instance pointer supplied by the instance accessor (or held by this caller) for the duration of the call.
+        unsafe { close_connection_at_in(instance, i as c_int) };
         let mut table = connection_table();
         let status = table[i]
             .as_ref()
@@ -983,10 +984,21 @@ pub fn do_close(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 
 /// Flush text output only after the original writer storage has moved out of
 /// the table. Every other backend close remains callback-free Rust I/O.
-pub(crate) fn close_connection_at_in(instance: *mut RInstance, index: c_int) {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub(crate) unsafe fn close_connection_at_in(instance: *mut RInstance, index: c_int) {
     // SAFETY: `instance` is a live RInstance pointer supplied by the
     // connection teardown path; the owner is pinned immediately below.
     let owner = unsafe { crate::sexp::owner::OwnerToken::from_raw(instance) };
+    close_connection_at_owned(owner, index);
+}
+
+/// Safe form of [`close_connection_at_in`] for callers holding an owner token.
+pub(crate) fn close_connection_at_owned(owner: crate::sexp::owner::OwnerToken<'_>, index: c_int) {
     let _pin = owner.pin().unwrap_or_else(|e| r_error(&e.to_string()));
     owner
         .require_active()

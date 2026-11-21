@@ -123,8 +123,15 @@ fn isGrobUnit(x: c_int) -> bool {
     x >= L_GROBX && x <= L_GROBDESCENT
 }
 
-type TransformToInchesFn =
-    fn(SEXP, c_int, LViewportContext, pGEcontext, c_double, c_double, pGEDevDesc) -> c_double;
+type TransformToInchesFn = unsafe fn(
+    SEXP,
+    c_int,
+    LViewportContext,
+    pGEcontext,
+    c_double,
+    c_double,
+    pGEDevDesc,
+) -> c_double;
 
 const POINTS_PER_INCH: c_double = 72.27;
 const BIGPOINTS_PER_INCH: c_double = 72.0;
@@ -263,7 +270,12 @@ fn combineArithmeticUnitValues(op: c_int, value: c_double, values: &[c_double]) 
 }
 
 #[inline]
-fn gc_pointsize_inches(gc: pGEcontext) -> c_double {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn gc_pointsize_inches(gc: pGEcontext) -> c_double {
     if gc.is_null() {
         12.0 / POINTS_PER_INCH
     } else {
@@ -275,7 +287,12 @@ fn gc_pointsize_inches(gc: pGEcontext) -> c_double {
 }
 
 #[inline]
-fn gc_lineheight_inches(gc: pGEcontext) -> c_double {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn gc_lineheight_inches(gc: pGEcontext) -> c_double {
     let multiplier = if gc.is_null() {
         1.2
     } else {
@@ -283,7 +300,8 @@ fn gc_lineheight_inches(gc: pGEcontext) -> c_double {
         let gc = gc as crate::mainutils::graphics_ffi::pGEcontext;
         unsafe { (*gc).lineheight }
     };
-    gc_pointsize_inches(gc) * multiplier
+    // SAFETY: forwarded raw pointers satisfy `gc_pointsize_inches`'s contract per this function's own `# Safety` requirements.
+    (unsafe { gc_pointsize_inches(gc) }) * multiplier
 }
 
 fn unit_data_string(unit: SEXP, index: c_int) -> *const c_char {
@@ -294,12 +312,19 @@ fn unit_data_string(unit: SEXP, index: c_int) -> *const c_char {
     char_ptr(string_elt(data, (index % LENGTH(data)) as R_xlen_t))
 }
 
-fn fallback_string_metrics(
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn fallback_string_metrics(
     text: *const c_char,
     gc: pGEcontext,
 ) -> (c_double, c_double, c_double, c_double) {
-    let lineheight = gc_lineheight_inches(gc);
-    let char_width = gc_pointsize_inches(gc) * 0.6;
+    // SAFETY: forwarded raw pointers satisfy `gc_lineheight_inches`'s contract per this function's own `# Safety` requirements.
+    let lineheight = unsafe { gc_lineheight_inches(gc) };
+    // SAFETY: forwarded raw pointers satisfy `gc_pointsize_inches`'s contract per this function's own `# Safety` requirements.
+    let char_width = unsafe { gc_pointsize_inches(gc) } * 0.6;
     if text.is_null() {
         return (0.0, 0.0, 0.0, 0.0);
     }
@@ -323,7 +348,12 @@ fn fallback_string_metrics(
     (width, height, height, 0.0)
 }
 
-fn string_metrics_inches(
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn string_metrics_inches(
     unit: SEXP,
     index: c_int,
     gc: pGEcontext,
@@ -331,7 +361,8 @@ fn string_metrics_inches(
 ) -> (c_double, c_double, c_double, c_double) {
     let text = unit_data_string(unit, index);
     if text.is_null() || dd.is_null() {
-        return fallback_string_metrics(text, gc);
+        // SAFETY: forwarded raw pointers satisfy `fallback_string_metrics`'s contract per this function's own `# Safety` requirements.
+        return unsafe { fallback_string_metrics(text, gc) };
     }
 
     let ffi_gc = gc as crate::mainutils::graphics_ffi::pGEcontext;
@@ -368,10 +399,17 @@ fn string_metrics_inches(
     }
 }
 
-fn char_metric_inches(gc: pGEcontext, dd: pGEDevDesc) -> (c_double, c_double, c_double) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn char_metric_inches(gc: pGEcontext, dd: pGEDevDesc) -> (c_double, c_double, c_double) {
     if dd.is_null() {
-        let pointsize = gc_pointsize_inches(gc);
-        let lineheight = gc_lineheight_inches(gc);
+        // SAFETY: forwarded raw pointers satisfy `gc_pointsize_inches`'s contract per this function's own `# Safety` requirements.
+        let pointsize = unsafe { gc_pointsize_inches(gc) };
+        // SAFETY: forwarded raw pointers satisfy `gc_lineheight_inches`'s contract per this function's own `# Safety` requirements.
+        let lineheight = unsafe { gc_lineheight_inches(gc) };
         return (pointsize * 0.6, lineheight, 0.0);
     }
 
@@ -407,7 +445,12 @@ fn char_metric_inches(gc: pGEcontext, dd: pGEDevDesc) -> (c_double, c_double, c_
     }
 }
 
-fn transformArithmeticUnitToINCHES(
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn transformArithmeticUnitToINCHES(
     unit: SEXP,
     index: c_int,
     vpc: LViewportContext,
@@ -427,7 +470,8 @@ fn transformArithmeticUnitToINCHES(
 
     let mut values = Vec::with_capacity(n as usize);
     for i in 0..n {
-        values.push(convert(data, i, vpc, gc, widthCM, heightCM, dd));
+        // SAFETY: forwarded raw pointers satisfy the callback's contract per this function's own `# Safety` requirements.
+        values.push(unsafe { convert(data, i, vpc, gc, widthCM, heightCM, dd) });
     }
     combineArithmeticUnitValues(op, value, &values)
 }
@@ -655,7 +699,12 @@ fn evaluateNullUnit(
  * transformX -- transform x unit to inches
  * ============================== */
 
-pub fn transformX(
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn transformX(
     x: SEXP,
     index: c_int,
     vpc: LViewportContext,
@@ -673,14 +722,20 @@ pub fn transformX(
     if isArith(u) && pureNullUnit(x, index, dd) != 0 {
         return evaluateNullUnit(pureNullUnitValue(x, index), widthCM, nullLMode, nullAMode);
     }
-    transformXtoINCHES(x, index, vpc, gc, widthCM, heightCM, dd)
+    // SAFETY: forwarded raw pointers satisfy `transformXtoINCHES`'s contract per this function's own `# Safety` requirements.
+    unsafe { transformXtoINCHES(x, index, vpc, gc, widthCM, heightCM, dd) }
 }
 
 /* ==============================
  * transformY -- transform y unit to inches
  * ============================== */
 
-pub fn transformY(
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn transformY(
     y: SEXP,
     index: c_int,
     vpc: LViewportContext,
@@ -698,14 +753,20 @@ pub fn transformY(
     if isArith(u) && pureNullUnit(y, index, dd) != 0 {
         return evaluateNullUnit(pureNullUnitValue(y, index), heightCM, nullLMode, nullAMode);
     }
-    transformYtoINCHES(y, index, vpc, gc, widthCM, heightCM, dd)
+    // SAFETY: forwarded raw pointers satisfy `transformYtoINCHES`'s contract per this function's own `# Safety` requirements.
+    unsafe { transformYtoINCHES(y, index, vpc, gc, widthCM, heightCM, dd) }
 }
 
 /* ==============================
  * transformWidth -- transform width unit to inches
  * ============================== */
 
-pub fn transformWidth(
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn transformWidth(
     width: SEXP,
     index: c_int,
     vpc: LViewportContext,
@@ -728,14 +789,20 @@ pub fn transformWidth(
             nullAMode,
         );
     }
-    transformWidthtoINCHES(width, index, vpc, gc, widthCM, heightCM, dd)
+    // SAFETY: forwarded raw pointers satisfy `transformWidthtoINCHES`'s contract per this function's own `# Safety` requirements.
+    unsafe { transformWidthtoINCHES(width, index, vpc, gc, widthCM, heightCM, dd) }
 }
 
 /* ==============================
  * transformHeight -- transform height unit to inches
  * ============================== */
 
-pub fn transformHeight(
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn transformHeight(
     height: SEXP,
     index: c_int,
     vpc: LViewportContext,
@@ -758,14 +825,20 @@ pub fn transformHeight(
             nullAMode,
         );
     }
-    transformHeighttoINCHES(height, index, vpc, gc, widthCM, heightCM, dd)
+    // SAFETY: forwarded raw pointers satisfy `transformHeighttoINCHES`'s contract per this function's own `# Safety` requirements.
+    unsafe { transformHeighttoINCHES(height, index, vpc, gc, widthCM, heightCM, dd) }
 }
 
 /* ==============================
  * transformXtoINCHES -- transform x unit to inches
  * ============================== */
 
-pub fn transformXtoINCHES(
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn transformXtoINCHES(
     x: SEXP,
     index: c_int,
     vpc: LViewportContext,
@@ -777,16 +850,19 @@ pub fn transformXtoINCHES(
     let u = unitUnit(x, index);
     let value = unitValue(x, index);
     if isArith(u) {
-        return transformArithmeticUnitToINCHES(
-            x,
-            index,
-            vpc,
-            _gc,
-            widthCM,
-            heightCM,
-            _dd,
-            transformXtoINCHES,
-        );
+        // SAFETY: forwarded raw pointers satisfy `transformArithmeticUnitToINCHES`'s contract per this function's own `# Safety` requirements.
+        return unsafe {
+            transformArithmeticUnitToINCHES(
+                x,
+                index,
+                vpc,
+                _gc,
+                widthCM,
+                heightCM,
+                _dd,
+                transformXtoINCHES,
+            )
+        };
     }
     match u {
         L_NATIVE => {
@@ -801,12 +877,18 @@ pub fn transformXtoINCHES(
         L_SNPC => value * widthCM.min(heightCM) / 2.54,
         L_CM | L_INCHES | L_MM | L_POINTS | L_PICAS | L_BIGPOINTS | L_DIDA | L_CICERO
         | L_SCALEDPOINTS => absoluteUnitToInches(value, u).unwrap_or(0.0),
-        L_LINES => value * gc_lineheight_inches(_gc),
-        L_CHAR => value * char_metric_inches(_gc, _dd).0,
-        L_STRINGWIDTH => value * string_metrics_inches(x, index, _gc, _dd).0,
-        L_STRINGHEIGHT => value * string_metrics_inches(x, index, _gc, _dd).1,
-        L_STRINGASCENT => value * string_metrics_inches(x, index, _gc, _dd).2,
-        L_STRINGDESCENT => value * string_metrics_inches(x, index, _gc, _dd).3,
+        // SAFETY: forwarded raw pointers satisfy `gc_lineheight_inches`'s contract per this function's own `# Safety` requirements.
+        L_LINES => value * unsafe { gc_lineheight_inches(_gc) },
+        // SAFETY: forwarded raw pointers satisfy `char_metric_inches`'s contract per this function's own `# Safety` requirements.
+        L_CHAR => value * unsafe { char_metric_inches(_gc, _dd) }.0,
+        // SAFETY: forwarded raw pointers satisfy `string_metrics_inches`'s contract per this function's own `# Safety` requirements.
+        L_STRINGWIDTH => value * unsafe { string_metrics_inches(x, index, _gc, _dd) }.0,
+        // SAFETY: forwarded raw pointers satisfy `string_metrics_inches`'s contract per this function's own `# Safety` requirements.
+        L_STRINGHEIGHT => value * unsafe { string_metrics_inches(x, index, _gc, _dd) }.1,
+        // SAFETY: forwarded raw pointers satisfy `string_metrics_inches`'s contract per this function's own `# Safety` requirements.
+        L_STRINGASCENT => value * unsafe { string_metrics_inches(x, index, _gc, _dd) }.2,
+        // SAFETY: forwarded raw pointers satisfy `string_metrics_inches`'s contract per this function's own `# Safety` requirements.
+        L_STRINGDESCENT => value * unsafe { string_metrics_inches(x, index, _gc, _dd) }.3,
         L_GROBX | L_GROBY | L_GROBWIDTH | L_GROBHEIGHT | L_GROBASCENT | L_GROBDESCENT => {
             grid_error("grob-relative units require grid grob metric resolution")
         }
@@ -822,7 +904,12 @@ pub fn transformXtoINCHES(
  * transformYtoINCHES -- transform y unit to inches
  * ============================== */
 
-pub fn transformYtoINCHES(
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn transformYtoINCHES(
     y: SEXP,
     index: c_int,
     vpc: LViewportContext,
@@ -834,16 +921,19 @@ pub fn transformYtoINCHES(
     let u = unitUnit(y, index);
     let value = unitValue(y, index);
     if isArith(u) {
-        return transformArithmeticUnitToINCHES(
-            y,
-            index,
-            vpc,
-            _gc,
-            widthCM,
-            heightCM,
-            _dd,
-            transformYtoINCHES,
-        );
+        // SAFETY: forwarded raw pointers satisfy `transformArithmeticUnitToINCHES`'s contract per this function's own `# Safety` requirements.
+        return unsafe {
+            transformArithmeticUnitToINCHES(
+                y,
+                index,
+                vpc,
+                _gc,
+                widthCM,
+                heightCM,
+                _dd,
+                transformYtoINCHES,
+            )
+        };
     }
     match u {
         L_NATIVE => {
@@ -858,12 +948,18 @@ pub fn transformYtoINCHES(
         L_SNPC => value * widthCM.min(heightCM) / 2.54,
         L_CM | L_INCHES | L_MM | L_POINTS | L_PICAS | L_BIGPOINTS | L_DIDA | L_CICERO
         | L_SCALEDPOINTS => absoluteUnitToInches(value, u).unwrap_or(0.0),
-        L_LINES => value * gc_lineheight_inches(_gc),
-        L_CHAR => value * char_metric_inches(_gc, _dd).1,
-        L_STRINGWIDTH => value * string_metrics_inches(y, index, _gc, _dd).0,
-        L_STRINGHEIGHT => value * string_metrics_inches(y, index, _gc, _dd).1,
-        L_STRINGASCENT => value * string_metrics_inches(y, index, _gc, _dd).2,
-        L_STRINGDESCENT => value * string_metrics_inches(y, index, _gc, _dd).3,
+        // SAFETY: forwarded raw pointers satisfy `gc_lineheight_inches`'s contract per this function's own `# Safety` requirements.
+        L_LINES => value * unsafe { gc_lineheight_inches(_gc) },
+        // SAFETY: forwarded raw pointers satisfy `char_metric_inches`'s contract per this function's own `# Safety` requirements.
+        L_CHAR => value * unsafe { char_metric_inches(_gc, _dd) }.1,
+        // SAFETY: forwarded raw pointers satisfy `string_metrics_inches`'s contract per this function's own `# Safety` requirements.
+        L_STRINGWIDTH => value * unsafe { string_metrics_inches(y, index, _gc, _dd) }.0,
+        // SAFETY: forwarded raw pointers satisfy `string_metrics_inches`'s contract per this function's own `# Safety` requirements.
+        L_STRINGHEIGHT => value * unsafe { string_metrics_inches(y, index, _gc, _dd) }.1,
+        // SAFETY: forwarded raw pointers satisfy `string_metrics_inches`'s contract per this function's own `# Safety` requirements.
+        L_STRINGASCENT => value * unsafe { string_metrics_inches(y, index, _gc, _dd) }.2,
+        // SAFETY: forwarded raw pointers satisfy `string_metrics_inches`'s contract per this function's own `# Safety` requirements.
+        L_STRINGDESCENT => value * unsafe { string_metrics_inches(y, index, _gc, _dd) }.3,
         L_GROBX | L_GROBY | L_GROBWIDTH | L_GROBHEIGHT | L_GROBASCENT | L_GROBDESCENT => {
             grid_error("grob-relative units require grid grob metric resolution")
         }
@@ -879,7 +975,12 @@ pub fn transformYtoINCHES(
  * transformWidthtoINCHES -- transform width unit to inches
  * ============================== */
 
-pub fn transformWidthtoINCHES(
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn transformWidthtoINCHES(
     w: SEXP,
     index: c_int,
     vpc: LViewportContext,
@@ -891,16 +992,19 @@ pub fn transformWidthtoINCHES(
     let u = unitUnit(w, index);
     let value = unitValue(w, index);
     if isArith(u) {
-        return transformArithmeticUnitToINCHES(
-            w,
-            index,
-            vpc,
-            _gc,
-            widthCM,
-            heightCM,
-            _dd,
-            transformWidthtoINCHES,
-        );
+        // SAFETY: forwarded raw pointers satisfy `transformArithmeticUnitToINCHES`'s contract per this function's own `# Safety` requirements.
+        return unsafe {
+            transformArithmeticUnitToINCHES(
+                w,
+                index,
+                vpc,
+                _gc,
+                widthCM,
+                heightCM,
+                _dd,
+                transformWidthtoINCHES,
+            )
+        };
     }
     match u {
         L_NATIVE => {
@@ -915,12 +1019,18 @@ pub fn transformWidthtoINCHES(
         L_SNPC => value * widthCM.min(heightCM) / 2.54,
         L_CM | L_INCHES | L_MM | L_POINTS | L_PICAS | L_BIGPOINTS | L_DIDA | L_CICERO
         | L_SCALEDPOINTS => absoluteUnitToInches(value, u).unwrap_or(0.0),
-        L_LINES => value * gc_lineheight_inches(_gc),
-        L_CHAR => value * char_metric_inches(_gc, _dd).0,
-        L_STRINGWIDTH => value * string_metrics_inches(w, index, _gc, _dd).0,
-        L_STRINGHEIGHT => value * string_metrics_inches(w, index, _gc, _dd).1,
-        L_STRINGASCENT => value * string_metrics_inches(w, index, _gc, _dd).2,
-        L_STRINGDESCENT => value * string_metrics_inches(w, index, _gc, _dd).3,
+        // SAFETY: forwarded raw pointers satisfy `gc_lineheight_inches`'s contract per this function's own `# Safety` requirements.
+        L_LINES => value * unsafe { gc_lineheight_inches(_gc) },
+        // SAFETY: forwarded raw pointers satisfy `char_metric_inches`'s contract per this function's own `# Safety` requirements.
+        L_CHAR => value * unsafe { char_metric_inches(_gc, _dd) }.0,
+        // SAFETY: forwarded raw pointers satisfy `string_metrics_inches`'s contract per this function's own `# Safety` requirements.
+        L_STRINGWIDTH => value * unsafe { string_metrics_inches(w, index, _gc, _dd) }.0,
+        // SAFETY: forwarded raw pointers satisfy `string_metrics_inches`'s contract per this function's own `# Safety` requirements.
+        L_STRINGHEIGHT => value * unsafe { string_metrics_inches(w, index, _gc, _dd) }.1,
+        // SAFETY: forwarded raw pointers satisfy `string_metrics_inches`'s contract per this function's own `# Safety` requirements.
+        L_STRINGASCENT => value * unsafe { string_metrics_inches(w, index, _gc, _dd) }.2,
+        // SAFETY: forwarded raw pointers satisfy `string_metrics_inches`'s contract per this function's own `# Safety` requirements.
+        L_STRINGDESCENT => value * unsafe { string_metrics_inches(w, index, _gc, _dd) }.3,
         L_GROBX | L_GROBY | L_GROBWIDTH | L_GROBHEIGHT | L_GROBASCENT | L_GROBDESCENT => {
             grid_error("grob-relative units require grid grob metric resolution")
         }
@@ -936,7 +1046,12 @@ pub fn transformWidthtoINCHES(
  * transformHeighttoINCHES -- transform height unit to inches
  * ============================== */
 
-pub fn transformHeighttoINCHES(
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn transformHeighttoINCHES(
     h: SEXP,
     index: c_int,
     vpc: LViewportContext,
@@ -948,16 +1063,19 @@ pub fn transformHeighttoINCHES(
     let u = unitUnit(h, index);
     let value = unitValue(h, index);
     if isArith(u) {
-        return transformArithmeticUnitToINCHES(
-            h,
-            index,
-            vpc,
-            _gc,
-            widthCM,
-            heightCM,
-            _dd,
-            transformHeighttoINCHES,
-        );
+        // SAFETY: forwarded raw pointers satisfy `transformArithmeticUnitToINCHES`'s contract per this function's own `# Safety` requirements.
+        return unsafe {
+            transformArithmeticUnitToINCHES(
+                h,
+                index,
+                vpc,
+                _gc,
+                widthCM,
+                heightCM,
+                _dd,
+                transformHeighttoINCHES,
+            )
+        };
     }
     match u {
         L_NATIVE => {
@@ -972,12 +1090,18 @@ pub fn transformHeighttoINCHES(
         L_SNPC => value * widthCM.min(heightCM) / 2.54,
         L_CM | L_INCHES | L_MM | L_POINTS | L_PICAS | L_BIGPOINTS | L_DIDA | L_CICERO
         | L_SCALEDPOINTS => absoluteUnitToInches(value, u).unwrap_or(0.0),
-        L_LINES => value * gc_lineheight_inches(_gc),
-        L_CHAR => value * char_metric_inches(_gc, _dd).1,
-        L_STRINGWIDTH => value * string_metrics_inches(h, index, _gc, _dd).0,
-        L_STRINGHEIGHT => value * string_metrics_inches(h, index, _gc, _dd).1,
-        L_STRINGASCENT => value * string_metrics_inches(h, index, _gc, _dd).2,
-        L_STRINGDESCENT => value * string_metrics_inches(h, index, _gc, _dd).3,
+        // SAFETY: forwarded raw pointers satisfy `gc_lineheight_inches`'s contract per this function's own `# Safety` requirements.
+        L_LINES => value * unsafe { gc_lineheight_inches(_gc) },
+        // SAFETY: forwarded raw pointers satisfy `char_metric_inches`'s contract per this function's own `# Safety` requirements.
+        L_CHAR => value * unsafe { char_metric_inches(_gc, _dd) }.1,
+        // SAFETY: forwarded raw pointers satisfy `string_metrics_inches`'s contract per this function's own `# Safety` requirements.
+        L_STRINGWIDTH => value * unsafe { string_metrics_inches(h, index, _gc, _dd) }.0,
+        // SAFETY: forwarded raw pointers satisfy `string_metrics_inches`'s contract per this function's own `# Safety` requirements.
+        L_STRINGHEIGHT => value * unsafe { string_metrics_inches(h, index, _gc, _dd) }.1,
+        // SAFETY: forwarded raw pointers satisfy `string_metrics_inches`'s contract per this function's own `# Safety` requirements.
+        L_STRINGASCENT => value * unsafe { string_metrics_inches(h, index, _gc, _dd) }.2,
+        // SAFETY: forwarded raw pointers satisfy `string_metrics_inches`'s contract per this function's own `# Safety` requirements.
+        L_STRINGDESCENT => value * unsafe { string_metrics_inches(h, index, _gc, _dd) }.3,
         L_GROBX | L_GROBY | L_GROBWIDTH | L_GROBHEIGHT | L_GROBASCENT | L_GROBDESCENT => {
             grid_error("grob-relative units require grid grob metric resolution")
         }
@@ -993,7 +1117,12 @@ pub fn transformHeighttoINCHES(
  * transformLocn -- transform x,y location
  * ============================== */
 
-pub fn transformLocn(
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn transformLocn(
     x: SEXP,
     y: SEXP,
     index: c_int,
@@ -1006,8 +1135,10 @@ pub fn transformLocn(
 ) -> (c_double, c_double) {
     let mut lin = [0.0; 3];
     let mut lout = [0.0; 3];
-    let xx = transformXtoINCHES(x, index, vpc, gc, widthCM, heightCM, dd);
-    let yy = transformYtoINCHES(y, index, vpc, gc, widthCM, heightCM, dd);
+    // SAFETY: forwarded raw pointers satisfy `transformXtoINCHES`'s contract per this function's own `# Safety` requirements.
+    let xx = unsafe { transformXtoINCHES(x, index, vpc, gc, widthCM, heightCM, dd) };
+    // SAFETY: forwarded raw pointers satisfy `transformYtoINCHES`'s contract per this function's own `# Safety` requirements.
+    let yy = unsafe { transformYtoINCHES(y, index, vpc, gc, widthCM, heightCM, dd) };
     location(xx, yy, &mut lin);
     trans(&lin, t, &mut lout);
     (locationX(&lout), locationY(&lout))
@@ -1017,7 +1148,12 @@ pub fn transformLocn(
  * transformDimn -- transform width,height dimensions
  * ============================== */
 
-pub fn transformDimn(
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn transformDimn(
     w: SEXP,
     h: SEXP,
     index: c_int,
@@ -1031,8 +1167,10 @@ pub fn transformDimn(
     let mut din = [0.0; 3];
     let mut dout = [0.0; 3];
     let mut r = [[0.0; 3]; 3];
-    let ww = transformWidthtoINCHES(w, index, vpc, gc, widthCM, heightCM, dd);
-    let hh = transformHeighttoINCHES(h, index, vpc, gc, widthCM, heightCM, dd);
+    // SAFETY: forwarded raw pointers satisfy `transformWidthtoINCHES`'s contract per this function's own `# Safety` requirements.
+    let ww = unsafe { transformWidthtoINCHES(w, index, vpc, gc, widthCM, heightCM, dd) };
+    // SAFETY: forwarded raw pointers satisfy `transformHeighttoINCHES`'s contract per this function's own `# Safety` requirements.
+    let hh = unsafe { transformHeighttoINCHES(h, index, vpc, gc, widthCM, heightCM, dd) };
     location(ww, hh, &mut din);
     rotation(rotationAngle, &mut r);
     trans(&din, &r, &mut dout);

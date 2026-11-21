@@ -399,12 +399,13 @@ pub fn is_capturing() -> bool {
 pub unsafe fn is_capturing_in(inst: *mut RInstance) -> bool {
     // P2: strictly-local RefCell read; no ambient write intervenes.
     let capture_active = unsafe { (*inst).output_capture.borrow().is_capturing() };
-    capture_active || crate::mainutils::connections::output_sink_active_in(inst)
+    // SAFETY: forwarded raw pointers satisfy `output_sink_active_in`'s contract per this function's own `# Safety` requirements.
+    capture_active || unsafe { crate::mainutils::connections::output_sink_active_in(inst) }
 }
 
 /// Append to captured stdout. Called by the Rprintf hook.
 pub fn capture_stdout(msg: &str) {
-    // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+    // SAFETY: `inst`/`instance` is the live current-instance pointer supplied by the instance accessor (or held by this caller) for the duration of the call.
     super::super::instance::with_current_instance(|inst| unsafe { capture_stdout_in(inst, msg) });
 }
 
@@ -451,9 +452,12 @@ fn route_runtime(
         };
         if plan.floor < depth {
             let consumed = call_native(owner, || {
-                crate::mainutils::connections::write_output_sinks_between(
-                    instance, msg, plan.floor, depth,
-                )
+                // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+                unsafe {
+                    crate::mainutils::connections::write_output_sinks_between(
+                        instance, msg, plan.floor, depth,
+                    )
+                }
             });
             still_present();
             depth = plan.floor;
@@ -506,7 +510,8 @@ unsafe fn capture_stdout_bytes_in(inst: *mut RInstance, msg: &[u8]) {
         .unwrap_or_else(|e| super::super::context::r_error(e.to_string()));
     if !route_runtime(owner, OutputStream::Stdout, msg)
         && !call_native(owner, || {
-            crate::mainutils::connections::write_output_sink_in(inst, msg)
+            // SAFETY: forwarded raw pointers satisfy `write_output_sink_in`'s contract per this function's own `# Safety` requirements.
+            unsafe { crate::mainutils::connections::write_output_sink_in(inst, msg) }
         })
     {
         write_native_stdout(msg);
@@ -557,7 +562,7 @@ pub(crate) fn capture_interleaved(msg: &str) {
     });
 }
 pub fn capture_stderr(msg: &str) {
-    // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+    // SAFETY: `inst`/`instance` is the live current-instance pointer supplied by the instance accessor (or held by this caller) for the duration of the call.
     super::super::instance::with_current_instance(|inst| unsafe { capture_stderr_in(inst, msg) });
 }
 /// # Safety

@@ -67,13 +67,19 @@ fn first_string_ptr(value: SEXP) -> *const std::os::raw::c_char {
 /// C_strWidth -- compute the width of a string in the current device.
 /// Reports that base graphics string metrics are not implemented yet.
 pub unsafe fn C_strWidth(_str: SEXP, _gc: SEXP, _dd: pGEDevDesc) -> c_double {
-    crate::mainutils::engine::GEStrWidth(first_string_ptr(_str), 0, std::ptr::null(), _dd)
+    // SAFETY: forwarded raw pointers satisfy `GEStrWidth`'s contract per this function's own `# Safety` requirements.
+    unsafe {
+        crate::mainutils::engine::GEStrWidth(first_string_ptr(_str), 0, std::ptr::null(), _dd)
+    }
 }
 
 /// C_strHeight -- compute the height of a string in the current device.
 /// Reports that base graphics string metrics are not implemented yet.
 pub unsafe fn C_strHeight(_str: SEXP, _gc: SEXP, _dd: pGEDevDesc) -> c_double {
-    crate::mainutils::engine::GEStrHeight(first_string_ptr(_str), 0, std::ptr::null(), _dd)
+    // SAFETY: forwarded raw pointers satisfy `GEStrHeight`'s contract per this function's own `# Safety` requirements.
+    unsafe {
+        crate::mainutils::engine::GEStrHeight(first_string_ptr(_str), 0, std::ptr::null(), _dd)
+    }
 }
 
 /* ========================================================================

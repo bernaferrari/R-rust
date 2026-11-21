@@ -101,7 +101,13 @@ fn checked<T>(result: crate::sexp::object::SexpResult<T>) -> T {
 }
 
 /// NUL-terminated pointer text (null maps to "").
-fn cstr_text<'a>(s: *const c_char) -> &'a str {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn cstr_text<'a>(s: *const c_char) -> &'a str {
     if s.is_null() {
         return "";
     }
@@ -210,7 +216,12 @@ fn ceil_DIV(a: c_int, b: c_int) -> c_int {
 // Helper: strwidth -- display width of a C string (simplified)
 // ---------------------------------------------------------------------------
 
-fn strwidth(s: *const c_char) -> c_int {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn strwidth(s: *const c_char) -> c_int {
     {
         if s.is_null() {
             return 0;
@@ -358,7 +369,12 @@ struct RowLabelInfo {
     lbloff: c_int,
 }
 
-fn init_rl_rn(rl: SEXP, rn: *const c_char, r: c_int) -> RowLabelInfo {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn init_rl_rn(rl: SEXP, rn: *const c_char, r: c_int) -> RowLabelInfo {
     {
         let rp = get_R_print_full();
         let mut rlabw: c_int;
@@ -382,7 +398,8 @@ fn init_rl_rn(rl: SEXP, rn: *const c_char, r: c_int) -> RowLabelInfo {
         }
 
         if !rn.is_null() {
-            let rnw = strwidth(rn);
+            // SAFETY: forwarded raw pointers satisfy `strwidth`'s contract per this function's own `# Safety` requirements.
+            let rnw = unsafe { strwidth(rn) };
             if rnw < rlabw + R_MIN_LBLOFF {
                 lbloff = R_MIN_LBLOFF;
             } else {
@@ -399,16 +416,27 @@ fn init_rl_rn(rl: SEXP, rn: *const c_char, r: c_int) -> RowLabelInfo {
 // print_row_header -- print the row name / column name header line
 // ---------------------------------------------------------------------------
 
-fn print_row_header(cn: *const c_char, rlabw: c_int, rn: *const c_char) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn print_row_header(cn: *const c_char, rlabw: c_int, rn: *const c_char) {
     {
         // GNU `_PRINT_ROW_LAB`: Rprintf("%*s%s\n", rlabw, "", cn)
         // then left-justified rn (or rlabw spaces).
         if !cn.is_null() {
             eprint!("{:width$}", "", width = rlabw.max(0) as usize);
-            eprintln!("{}", cstr_text(cn));
+            // SAFETY: forwarded raw pointers satisfy `cstr_text`'s contract per this function's own `# Safety` requirements.
+            eprintln!("{}", unsafe { cstr_text(cn) });
         }
         if !rn.is_null() {
-            eprint!("{:<width$}", cstr_text(rn), width = rlabw.max(0) as usize);
+            // SAFETY: forwarded raw pointers satisfy `cstr_text`'s contract per this function's own `# Safety` requirements.
+            eprint!(
+                "{:<width$}",
+                unsafe { cstr_text(rn) },
+                width = rlabw.max(0) as usize
+            );
         } else {
             eprint!("{:width$}", "", width = rlabw.max(0) as usize);
         }
@@ -431,7 +459,12 @@ fn std_column_labels(cl: SEXP, jmin: usize, jmax: usize, w: &[c_int]) {
 // print_logical_matrix
 // ---------------------------------------------------------------------------
 
-fn print_logical_matrix(
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn print_logical_matrix(
     sx: SEXP,
     offset: R_xlen_t,
     r_pr: c_int,
@@ -445,7 +478,8 @@ fn print_logical_matrix(
 ) {
     {
         let rp = get_R_print_full();
-        let info = init_rl_rn(rl, rn, r);
+        // SAFETY: forwarded raw pointers satisfy `init_rl_rn`'s contract per this function's own `# Safety` requirements.
+        let info = unsafe { init_rl_rn(rl, rn, r) };
         let rlabw = info.rlabw;
         let lbloff = info.lbloff;
 
@@ -490,7 +524,8 @@ fn print_logical_matrix(
 
         // Print matrix
         if c == 0 {
-            print_row_header(cn, rlabw, rn);
+            // SAFETY: forwarded raw pointers satisfy `print_row_header`'s contract per this function's own `# Safety` requirements.
+            unsafe { print_row_header(cn, rlabw, rn) };
             for i in 0..r {
                 MatrixRowLabel(rl, i, rlabw, lbloff);
             }
@@ -511,7 +546,8 @@ fn print_logical_matrix(
                     }
                 }
 
-                print_row_header(cn, rlabw, rn);
+                // SAFETY: forwarded raw pointers satisfy `print_row_header`'s contract per this function's own `# Safety` requirements.
+                unsafe { print_row_header(cn, rlabw, rn) };
                 std_column_labels(cl, jmin, jmax, &w);
 
                 for i in 0..r_pr as usize {
@@ -707,7 +743,12 @@ fn real_at(seq: Option<CompactSeq>, data: &Cells, _len: R_xlen_t, index: R_xlen_
 // print_integer_matrix
 // ---------------------------------------------------------------------------
 
-fn print_integer_matrix(
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn print_integer_matrix(
     sx: SEXP,
     offset: R_xlen_t,
     r_pr: c_int,
@@ -721,7 +762,8 @@ fn print_integer_matrix(
 ) {
     {
         let rp = get_R_print_full();
-        let info = init_rl_rn(rl, rn, r);
+        // SAFETY: forwarded raw pointers satisfy `init_rl_rn`'s contract per this function's own `# Safety` requirements.
+        let info = unsafe { init_rl_rn(rl, rn, r) };
         let rlabw = info.rlabw;
         let lbloff = info.lbloff;
 
@@ -762,7 +804,8 @@ fn print_integer_matrix(
         }
 
         if c == 0 {
-            print_row_header(cn, rlabw, rn);
+            // SAFETY: forwarded raw pointers satisfy `print_row_header`'s contract per this function's own `# Safety` requirements.
+            unsafe { print_row_header(cn, rlabw, rn) };
             for i in 0..r {
                 MatrixRowLabel(rl, i, rlabw, lbloff);
             }
@@ -783,7 +826,8 @@ fn print_integer_matrix(
                     }
                 }
 
-                print_row_header(cn, rlabw, rn);
+                // SAFETY: forwarded raw pointers satisfy `print_row_header`'s contract per this function's own `# Safety` requirements.
+                unsafe { print_row_header(cn, rlabw, rn) };
                 std_column_labels(cl, jmin, jmax, &w);
 
                 for i in 0..r_pr as usize {
@@ -811,7 +855,12 @@ fn print_integer_matrix(
 // print_real_matrix
 // ---------------------------------------------------------------------------
 
-fn print_real_matrix(
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn print_real_matrix(
     sx: SEXP,
     offset: R_xlen_t,
     r_pr: c_int,
@@ -825,7 +874,8 @@ fn print_real_matrix(
 ) {
     {
         let rp = get_R_print_full();
-        let info = init_rl_rn(rl, rn, r);
+        // SAFETY: forwarded raw pointers satisfy `init_rl_rn`'s contract per this function's own `# Safety` requirements.
+        let info = unsafe { init_rl_rn(rl, rn, r) };
         let rlabw = info.rlabw;
         let lbloff = info.lbloff;
 
@@ -870,7 +920,8 @@ fn print_real_matrix(
         }
 
         if c == 0 {
-            print_row_header(cn, rlabw, rn);
+            // SAFETY: forwarded raw pointers satisfy `print_row_header`'s contract per this function's own `# Safety` requirements.
+            unsafe { print_row_header(cn, rlabw, rn) };
             for i in 0..r {
                 MatrixRowLabel(rl, i, rlabw, lbloff);
             }
@@ -891,7 +942,8 @@ fn print_real_matrix(
                     }
                 }
 
-                print_row_header(cn, rlabw, rn);
+                // SAFETY: forwarded raw pointers satisfy `print_row_header`'s contract per this function's own `# Safety` requirements.
+                unsafe { print_row_header(cn, rlabw, rn) };
                 std_column_labels(cl, jmin, jmax, &w);
 
                 for i in 0..r_pr as usize {
@@ -919,7 +971,12 @@ fn print_real_matrix(
 // print_complex_matrix
 // ---------------------------------------------------------------------------
 
-fn print_complex_matrix(
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn print_complex_matrix(
     sx: SEXP,
     offset: R_xlen_t,
     r_pr: c_int,
@@ -933,7 +990,8 @@ fn print_complex_matrix(
 ) {
     {
         let rp = get_R_print_full();
-        let info = init_rl_rn(rl, rn, r);
+        // SAFETY: forwarded raw pointers satisfy `init_rl_rn`'s contract per this function's own `# Safety` requirements.
+        let info = unsafe { init_rl_rn(rl, rn, r) };
         let rlabw = info.rlabw;
         let lbloff = info.lbloff;
 
@@ -982,7 +1040,8 @@ fn print_complex_matrix(
         }
 
         if c == 0 {
-            print_row_header(cn, rlabw, rn);
+            // SAFETY: forwarded raw pointers satisfy `print_row_header`'s contract per this function's own `# Safety` requirements.
+            unsafe { print_row_header(cn, rlabw, rn) };
             for i in 0..r {
                 MatrixRowLabel(rl, i, rlabw, lbloff);
             }
@@ -1003,7 +1062,8 @@ fn print_complex_matrix(
                     }
                 }
 
-                print_row_header(cn, rlabw, rn);
+                // SAFETY: forwarded raw pointers satisfy `print_row_header`'s contract per this function's own `# Safety` requirements.
+                unsafe { print_row_header(cn, rlabw, rn) };
                 std_column_labels(cl, jmin, jmax, &w);
 
                 for i in 0..r_pr as usize {
@@ -1043,7 +1103,12 @@ fn print_complex_matrix(
 // print_string_matrix
 // ---------------------------------------------------------------------------
 
-fn print_string_matrix(
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn print_string_matrix(
     sx: SEXP,
     offset: R_xlen_t,
     r_pr: c_int,
@@ -1059,7 +1124,8 @@ fn print_string_matrix(
 ) {
     {
         let rp = get_R_print_full();
-        let info = init_rl_rn(rl, rn, r);
+        // SAFETY: forwarded raw pointers satisfy `init_rl_rn`'s contract per this function's own `# Safety` requirements.
+        let info = unsafe { init_rl_rn(rl, rn, r) };
         let rlabw = info.rlabw;
         let lbloff = info.lbloff;
 
@@ -1109,7 +1175,8 @@ fn print_string_matrix(
 
         // Print matrix with gap as extra width
         if c == 0 {
-            print_row_header(cn, rlabw, rn);
+            // SAFETY: forwarded raw pointers satisfy `print_row_header`'s contract per this function's own `# Safety` requirements.
+            unsafe { print_row_header(cn, rlabw, rn) };
             for i in 0..r {
                 MatrixRowLabel(rl, i, rlabw, lbloff);
             }
@@ -1130,7 +1197,8 @@ fn print_string_matrix(
                     }
                 }
 
-                print_row_header(cn, rlabw, rn);
+                // SAFETY: forwarded raw pointers satisfy `print_row_header`'s contract per this function's own `# Safety` requirements.
+                unsafe { print_row_header(cn, rlabw, rn) };
 
                 // Column labels: right or left adjusted
                 if right != 0 {
@@ -1172,7 +1240,12 @@ fn print_string_matrix(
 // print_raw_matrix
 // ---------------------------------------------------------------------------
 
-fn print_raw_matrix(
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn print_raw_matrix(
     sx: SEXP,
     offset: R_xlen_t,
     r_pr: c_int,
@@ -1186,7 +1259,8 @@ fn print_raw_matrix(
 ) {
     {
         let rp = get_R_print_full();
-        let info = init_rl_rn(rl, rn, r);
+        // SAFETY: forwarded raw pointers satisfy `init_rl_rn`'s contract per this function's own `# Safety` requirements.
+        let info = unsafe { init_rl_rn(rl, rn, r) };
         let rlabw = info.rlabw;
         let lbloff = info.lbloff;
 
@@ -1222,7 +1296,8 @@ fn print_raw_matrix(
         }
 
         if c == 0 {
-            print_row_header(cn, rlabw, rn);
+            // SAFETY: forwarded raw pointers satisfy `print_row_header`'s contract per this function's own `# Safety` requirements.
+            unsafe { print_row_header(cn, rlabw, rn) };
             for i in 0..r {
                 MatrixRowLabel(rl, i, rlabw, lbloff);
             }
@@ -1243,7 +1318,8 @@ fn print_raw_matrix(
                     }
                 }
 
-                print_row_header(cn, rlabw, rn);
+                // SAFETY: forwarded raw pointers satisfy `print_row_header`'s contract per this function's own `# Safety` requirements.
+                unsafe { print_row_header(cn, rlabw, rn) };
                 std_column_labels(cl, jmin, jmax, &w);
 
                 for i in 0..r_pr as usize {
@@ -1330,23 +1406,31 @@ pub unsafe fn printMatrix(
 
         match TYPEOF(x) {
             LGLSXP_VAL => {
-                print_logical_matrix(x, origin, r_pr, r, c_pr, rl, cl, rn, cn, true);
+                // SAFETY: forwarded raw pointers satisfy `print_logical_matrix`'s contract per this function's own `# Safety` requirements.
+                unsafe { print_logical_matrix(x, origin, r_pr, r, c_pr, rl, cl, rn, cn, true) };
             }
             INTSXP_VAL => {
-                print_integer_matrix(x, origin, r_pr, r, c_pr, rl, cl, rn, cn, true);
+                // SAFETY: forwarded raw pointers satisfy `print_integer_matrix`'s contract per this function's own `# Safety` requirements.
+                unsafe { print_integer_matrix(x, origin, r_pr, r, c_pr, rl, cl, rn, cn, true) };
             }
             REALSXP_VAL => {
-                print_real_matrix(x, origin, r_pr, r, c_pr, rl, cl, rn, cn, true);
+                // SAFETY: forwarded raw pointers satisfy `print_real_matrix`'s contract per this function's own `# Safety` requirements.
+                unsafe { print_real_matrix(x, origin, r_pr, r, c_pr, rl, cl, rn, cn, true) };
             }
             CPLXSXP_VAL => {
-                print_complex_matrix(x, origin, r_pr, r, c_pr, rl, cl, rn, cn, true);
+                // SAFETY: forwarded raw pointers satisfy `print_complex_matrix`'s contract per this function's own `# Safety` requirements.
+                unsafe { print_complex_matrix(x, origin, r_pr, r, c_pr, rl, cl, rn, cn, true) };
             }
             STRSXP_VAL => {
                 let q = if quote != 0 { b'"' as c_int } else { 0 };
-                print_string_matrix(x, origin, r_pr, r, c_pr, q, right, rl, cl, rn, cn, true);
+                // SAFETY: forwarded raw pointers satisfy `print_string_matrix`'s contract per this function's own `# Safety` requirements.
+                unsafe {
+                    print_string_matrix(x, origin, r_pr, r, c_pr, q, right, rl, cl, rn, cn, true)
+                };
             }
             RAWSXP_VAL => {
-                print_raw_matrix(x, origin, r_pr, r, c_pr, rl, cl, rn, cn, true);
+                // SAFETY: forwarded raw pointers satisfy `print_raw_matrix`'s contract per this function's own `# Safety` requirements.
+                unsafe { print_raw_matrix(x, origin, r_pr, r, c_pr, rl, cl, rn, cn, true) };
             }
             _ => {
                 eprintln!(" {} x {} matrix of type {}", r, c, TYPEOF(x));
@@ -1509,25 +1593,43 @@ pub fn printArray(x: SEXP, dim: SEXP, quote: c_int, right: c_int, dimnames: SEXP
             let offset = (ii as R_xlen_t).saturating_mul(b_wide);
             match TYPEOF(x) {
                 LGLSXP_VAL => {
-                    print_logical_matrix(x, offset, use_nr, nr, use_nc, dn0, dn1, rn, cn, do_ij);
+                    // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+                    unsafe {
+                        print_logical_matrix(x, offset, use_nr, nr, use_nc, dn0, dn1, rn, cn, do_ij)
+                    };
                 }
                 INTSXP_VAL => {
-                    print_integer_matrix(x, offset, use_nr, nr, use_nc, dn0, dn1, rn, cn, do_ij);
+                    // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+                    unsafe {
+                        print_integer_matrix(x, offset, use_nr, nr, use_nc, dn0, dn1, rn, cn, do_ij)
+                    };
                 }
                 REALSXP_VAL => {
-                    print_real_matrix(x, offset, use_nr, nr, use_nc, dn0, dn1, rn, cn, do_ij);
+                    // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+                    unsafe {
+                        print_real_matrix(x, offset, use_nr, nr, use_nc, dn0, dn1, rn, cn, do_ij)
+                    };
                 }
                 CPLXSXP_VAL => {
-                    print_complex_matrix(x, offset, use_nr, nr, use_nc, dn0, dn1, rn, cn, do_ij);
+                    // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+                    unsafe {
+                        print_complex_matrix(x, offset, use_nr, nr, use_nc, dn0, dn1, rn, cn, do_ij)
+                    };
                 }
                 STRSXP_VAL => {
                     let q = if quote != 0 { b'"' as c_int } else { 0 };
-                    print_string_matrix(
-                        x, offset, use_nr, nr, use_nc, q, right, dn0, dn1, rn, cn, do_ij,
-                    );
+                    // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+                    unsafe {
+                        print_string_matrix(
+                            x, offset, use_nr, nr, use_nc, q, right, dn0, dn1, rn, cn, do_ij,
+                        )
+                    };
                 }
                 RAWSXP_VAL => {
-                    print_raw_matrix(x, offset, use_nr, nr, use_nc, dn0, dn1, rn, cn, do_ij);
+                    // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+                    unsafe {
+                        print_raw_matrix(x, offset, use_nr, nr, use_nc, dn0, dn1, rn, cn, do_ij)
+                    };
                 }
                 _ => {} // intentionally unhandled: unsupported SEXPTYPE for matrix printing
             }

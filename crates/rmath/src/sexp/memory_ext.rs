@@ -467,7 +467,7 @@ impl Drop for TransientScope<'_> {
 ///
 /// Returns an opaque value to pass to vmaxset().
 pub fn vmaxget() -> *mut c_void {
-    // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+    // SAFETY: `inst`/`instance` is the live current-instance pointer supplied by the instance accessor (or held by this caller) for the duration of the call.
     super::instance::with_required_current_instance(|inst| unsafe { vmaxget_in(inst) })
 }
 

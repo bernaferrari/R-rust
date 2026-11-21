@@ -76,7 +76,7 @@ fn protect_raw(s: SEXP) -> ProtectGuard<'static> {
     let owner = GuardOwner::current();
     with_required_current_instance(|inst| {
         // SAFETY: guard creation requires an active instance; `inst` is it.
-        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        // SAFETY: `inst`/`instance` is the live current-instance pointer supplied by the instance accessor (or held by this caller) for the duration of the call.
         let slot = { unsafe { protect_raw_with_slot_in(inst, s, "protect") } };
         ProtectGuard {
             owner: Some(owner.clone()),
@@ -297,13 +297,13 @@ impl ProtectionSlot {
     /// created for: the entry was released and its index handed out again
     /// (or is gone entirely). Inactive slots are never stale.
     pub(crate) fn is_stale(self) -> bool {
-        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        // SAFETY: `inst`/`instance` is the live current-instance pointer supplied by the instance accessor (or held by this caller) for the duration of the call.
         with_required_current_instance(|inst| unsafe { protect_slot_is_stale_in(inst, self) })
     }
 }
 
 fn protect_raw_with_slot(s: SEXP, api: &str) -> ProtectionSlot {
-    // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+    // SAFETY: `inst`/`instance` is the live current-instance pointer supplied by the instance accessor (or held by this caller) for the duration of the call.
     with_required_current_instance(|inst| unsafe { protect_raw_with_slot_in(inst, s, api) })
 }
 
@@ -612,7 +612,7 @@ pub(crate) fn protect_with_index_raw(s: SEXP, api: &str) -> IndexedProtectGuard<
     let owner = GuardOwner::current();
     with_required_current_instance(|inst| IndexedProtectGuard {
         owner: Some(owner.clone()),
-        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        // SAFETY: `inst`/`instance` is the live current-instance pointer supplied by the instance accessor (or held by this caller) for the duration of the call.
         slot: unsafe { protect_raw_with_slot_in(inst, s, api) },
         value_owner: SexpOwner::Unknown,
         _confined: PhantomData,
@@ -691,7 +691,7 @@ pub(crate) unsafe fn try_push_preserve_in(
 }
 
 fn push_preserve(s: SEXP) {
-    // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+    // SAFETY: `inst`/`instance` is the live current-instance pointer supplied by the instance accessor (or held by this caller) for the duration of the call.
     with_required_current_instance(|inst| unsafe { push_preserve_in(inst, s) });
 }
 

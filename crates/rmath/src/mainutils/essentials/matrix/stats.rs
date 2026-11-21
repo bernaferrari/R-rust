@@ -87,7 +87,13 @@ fn eval_if_needed(x: SEXP, rho: SEXP) -> SEXP {
 /// GNU `.Internal(cbind(deparse.level, ...))` / rbind: evaluate the
 /// sentinel, then promise the data arguments so `...` expansion keeps
 /// the original expressions for deparse.level=1 names.
-fn eval_bind_internal_args<'s>(
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn eval_bind_internal_args<'s>(
     factory: &crate::sexp::object::SessionNodeFactory<'s>,
     call: SEXP,
     args: crate::sexp::object::Sexp<'s>,

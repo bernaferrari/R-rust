@@ -22,7 +22,12 @@
 use crate::mainutils::printutils::Rprintf;
 
 /* Test function used in tests/encodings.R */
-pub fn Renctest(x: *mut *mut core::ffi::c_char) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn Renctest(x: *mut *mut core::ffi::c_char) {
     unsafe {
         let s = std::ffi::CStr::from_ptr(*x);
         let len = s.to_bytes().len();

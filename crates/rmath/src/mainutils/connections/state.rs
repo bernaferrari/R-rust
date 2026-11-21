@@ -329,11 +329,17 @@ pub fn sink_state() -> SinkStateGuard {
 }
 
 pub(crate) fn output_sink_active() -> bool {
-    with_current_instance(output_sink_active_in).unwrap_or(false)
+    // SAFETY: `inst`/`instance` is the live current-instance pointer supplied by the instance accessor (or held by this caller) for the duration of the call.
+    with_current_instance(|inst| unsafe { output_sink_active_in(inst) }).unwrap_or(false)
 }
 
 // P1/P2: raw *mut — this path reenters (r_error unwinds, connection I/O); no &mut RInstance held.
-pub(crate) fn output_sink_active_in(instance: *mut RInstance) -> bool {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub(crate) unsafe fn output_sink_active_in(instance: *mut RInstance) -> bool {
     // SAFETY: `instance` points at the live current RInstance; the field
     // borrow is local to this statement.
     let sink = unsafe { &(*instance).connections_state.sink };
@@ -341,17 +347,31 @@ pub(crate) fn output_sink_active_in(instance: *mut RInstance) -> bool {
 }
 
 pub(crate) fn write_output_sink(bytes: &[u8]) -> bool {
-    with_current_instance(|instance| write_output_sink_in(instance, bytes)).unwrap_or(false)
+    // SAFETY: `inst`/`instance` is the live current-instance pointer supplied by the instance accessor (or held by this caller) for the duration of the call.
+    with_current_instance(|instance| unsafe { write_output_sink_in(instance, bytes) })
+        .unwrap_or(false)
 }
 // P1/P2: raw *mut — reenters via init_connections_table/r_error/connection I/O; field borrows stay local.
-pub(crate) fn write_output_sink_in(instance: *mut RInstance, bytes: &[u8]) -> bool {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub(crate) unsafe fn write_output_sink_in(instance: *mut RInstance, bytes: &[u8]) -> bool {
     // SAFETY: `instance` points at the live current RInstance.
     let depth = unsafe { (*instance).connections_state.sink.sink_number };
-    write_output_sinks_between(instance, bytes, 0, depth)
+    // SAFETY: forwarded raw pointers satisfy `write_output_sinks_between`'s contract per this function's own `# Safety` requirements.
+    unsafe { write_output_sinks_between(instance, bytes, 0, depth) }
 }
 
 /// Write newest-to-oldest down to a capture boundary. Split sinks continue.
-pub(crate) fn write_output_sinks_between(
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub(crate) unsafe fn write_output_sinks_between(
     instance: *mut RInstance,
     bytes: &[u8],
     floor: usize,

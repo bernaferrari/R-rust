@@ -28,19 +28,34 @@ const SHA256_HASH_SIZE: usize = 32;
 const SHA256_HEX_SIZE: usize = 64;
 
 /// Convenience function for init + process + finish (mirrors C's Rsha256_buffer).
-fn rsha256_buffer(buffer: *const std::ffi::c_void, len: usize, resblock: &mut [u8; 32]) -> bool {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn rsha256_buffer(
+    buffer: *const std::ffi::c_void,
+    len: usize,
+    resblock: &mut [u8; 32],
+) -> bool {
     let mut ctx = Sha256Ctx {
         H: [0u32; 8],
         total: [0u32; 2],
         buflen: 0,
         buffer: [0u8; 128],
     };
-    crate::library::tools::sha256::Rsha256_init_ctx(&mut ctx);
-    crate::library::tools::sha256::Rsha256_process_bytes(buffer, len, &mut ctx);
-    let result = crate::library::tools::sha256::Rsha256_finish_ctx(
-        &mut ctx,
-        resblock.as_mut_ptr() as *mut std::ffi::c_void,
-    );
+    // SAFETY: forwarded raw pointers satisfy `Rsha256_init_ctx`'s contract per this function's own `# Safety` requirements.
+    unsafe { crate::library::tools::sha256::Rsha256_init_ctx(&mut ctx) };
+    // SAFETY: forwarded raw pointers satisfy `Rsha256_process_bytes`'s contract per this function's own `# Safety` requirements.
+    unsafe { crate::library::tools::sha256::Rsha256_process_bytes(buffer, len, &mut ctx) };
+    // SAFETY: forwarded raw pointers satisfy `Rsha256_finish_ctx`'s contract per this function's own `# Safety` requirements.
+    let result = unsafe {
+        crate::library::tools::sha256::Rsha256_finish_ctx(
+            &mut ctx,
+            resblock.as_mut_ptr() as *mut std::ffi::c_void,
+        )
+    };
     !result.is_null()
 }
 

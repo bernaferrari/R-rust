@@ -292,7 +292,13 @@ fn md5_process_bytes(mut buffer: &[u8], ctx: &mut Md5Ctx) {
 /// Compute MD5 message digest for bytes read from STREAM.
 /// The resulting message digest will be written into the 16 bytes beginning at RESBLOCK.
 /// Returns 0 on success, 1 on error.
-pub fn md5_stream(stream: *mut RFile, resblock: *mut c_void) -> c_int {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn md5_stream(stream: *mut RFile, resblock: *mut c_void) -> c_int {
     let mut ctx = Md5Ctx {
         A: 0,
         B: 0,
@@ -355,7 +361,13 @@ pub fn md5_stream(stream: *mut RFile, resblock: *mut c_void) -> c_int {
 /// Compute MD5 message digest for LEN bytes beginning at BUFFER.
 /// The result is always in little endian byte order.
 /// Returns resblock on success.
-pub fn md5_buffer(buffer: *const u8, len: usize, resblock: *mut c_void) -> *mut c_void {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn md5_buffer(buffer: *const u8, len: usize, resblock: *mut c_void) -> *mut c_void {
     let mut ctx = Md5Ctx {
         A: 0,
         B: 0,

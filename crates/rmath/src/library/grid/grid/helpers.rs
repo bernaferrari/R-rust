@@ -44,7 +44,8 @@ pub(crate) unsafe fn rmath_grid_release_definitions(dd: pGEDevDesc, clear_groups
 }
 
 pub(crate) unsafe fn initVP(dd: pGEDevDesc) {
-    crate::library::grid::viewport::initVP(dd as *const u8);
+    // SAFETY: forwarded raw pointers satisfy `initVP`'s contract per this function's own `# Safety` requirements.
+    unsafe { crate::library::grid::viewport::initVP(dd as *const u8) };
 }
 
 /* ==============================
@@ -115,8 +116,10 @@ pub unsafe fn getDevice() -> pGEDevDesc {
 pub unsafe fn getDeviceSize(dd: pGEDevDesc) -> (c_double, c_double) {
     // Prefer device-driven conversion helpers when available.
     // In headless mode these still give deterministic non-zero sizes.
-    let mut width_in = toDeviceWidth(1.0, GE_INCHES, dd).abs();
-    let mut height_in = toDeviceHeight(1.0, GE_INCHES, dd).abs();
+    // SAFETY: forwarded raw pointers satisfy `toDeviceWidth`'s contract per this function's own `# Safety` requirements.
+    let mut width_in = unsafe { toDeviceWidth(1.0, GE_INCHES, dd) }.abs();
+    // SAFETY: forwarded raw pointers satisfy `toDeviceHeight`'s contract per this function's own `# Safety` requirements.
+    let mut height_in = unsafe { toDeviceHeight(1.0, GE_INCHES, dd) }.abs();
     if !width_in.is_finite() || width_in == 0.0 {
         width_in = 1.0;
     }

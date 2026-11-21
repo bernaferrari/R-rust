@@ -91,7 +91,8 @@ fn read_chars_from_connection(connection: c_int, nchars: i64) -> String {
     }
     if opened_here {
         let instance = crate::sexp::instance::with_required_current_instance(|instance| instance);
-        crate::mainutils::connections::close_connection_at_in(instance, connection);
+        // SAFETY: `inst`/`instance` is the live current-instance pointer supplied by the instance accessor (or held by this caller) for the duration of the call.
+        unsafe { crate::mainutils::connections::close_connection_at_in(instance, connection) };
     }
     String::from_utf8_lossy(&bytes).into_owned()
 }
@@ -133,14 +134,8 @@ pub fn do_writeChar(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 pub(crate) fn connection_index(con: SEXP) -> c_int {
-    
-        if con.is_null()
-            || con == R_NilValue()
-            || TYPEOF(con) != SEXPTYPE::INTSXP
-            || LENGTH(con) < 1
-        {
-            base_error("invalid connection");
-        }
-        integer_elt_checked(con, 0)
-    
+    if con.is_null() || con == R_NilValue() || TYPEOF(con) != SEXPTYPE::INTSXP || LENGTH(con) < 1 {
+        base_error("invalid connection");
+    }
+    integer_elt_checked(con, 0)
 }

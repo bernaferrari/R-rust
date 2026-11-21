@@ -8,9 +8,7 @@
 use std::os::raw::c_int;
 
 use crate::main::coerce::{asInteger, asLogical, coerceVector};
-use crate::sexp::accessors::{
-    LENGTH, REAL_ELT, SET_REAL_ELT, SET_STRING_ELT, SET_VECTOR_ELT,
-};
+use crate::sexp::accessors::{LENGTH, REAL_ELT, SET_REAL_ELT, SET_STRING_ELT, SET_VECTOR_ELT};
 use crate::sexp::constructors::{Rf_ScalarInteger, Rf_allocVector};
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
 use crate::sexp::protect::protect;
@@ -62,8 +60,10 @@ pub fn R_GAxisPars(usr: SEXP, is_log: SEXP, nintLog: SEXP) -> SEXP {
 
         let names = Rf_allocVector(SEXPTYPE::STRSXP, 2);
         let _names_guard = protect(names);
-        SET_STRING_ELT(names, 0, mk_char_ptr(c"axp".as_ptr()));
-        SET_STRING_ELT(names, 1, mk_char_ptr(c"n".as_ptr()));
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        SET_STRING_ELT(names, 0, unsafe { mk_char_ptr(c"axp".as_ptr()) });
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        SET_STRING_ELT(names, 1, unsafe { mk_char_ptr(c"n".as_ptr()) });
         crate::attrib_core::setAttrib(ans, crate::attrib_core::R_NamesSymbol(), names);
         ans
     }

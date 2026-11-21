@@ -1729,12 +1729,15 @@ fn PrintValueRec_inner(s: SEXP, data: &R_PrintData) {
                         } else {
                             ptr::null()
                         };
-                        crate::mainutils::printvector::printNamedVector(
-                            s,
-                            VECTOR_ELT(dnames, 0),
-                            data.quote,
-                            title,
-                        );
+                        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+                        unsafe {
+                            crate::mainutils::printvector::printNamedVector(
+                                s,
+                                VECTOR_ELT(dnames, 0),
+                                data.quote,
+                                title,
+                            )
+                        };
                     } else {
                         crate::mainutils::printvector::printVector(s, 1, data.quote);
                     }
@@ -1751,12 +1754,15 @@ fn PrintValueRec_inner(s: SEXP, data: &R_PrintData) {
                 let names = getAttrib(s, R_NamesSymbol());
                 let _names_guard = protect(names);
                 if names != R_NilValue() {
-                    crate::mainutils::printvector::printNamedVector(
-                        s,
-                        names,
-                        data.quote,
-                        ptr::null(),
-                    );
+                    // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+                    unsafe {
+                        crate::mainutils::printvector::printNamedVector(
+                            s,
+                            names,
+                            data.quote,
+                            ptr::null(),
+                        )
+                    };
                 } else {
                     crate::mainutils::printvector::printVector(s, 1, data.quote);
                 }

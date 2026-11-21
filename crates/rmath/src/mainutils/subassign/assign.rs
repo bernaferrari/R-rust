@@ -570,14 +570,17 @@ fn assign_column_rows(col: SEXP, rows: &[i64], value: SEXP, value_len: i64) -> S
 /// Port of `do_subassign()` -- the `[<-` operator.
 pub(crate) fn do_subassign(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     let mut ans: SEXP = ptr::null_mut();
-    if R_DispatchOrEvalSP(
-        call,
-        op,
-        b"[<-\0".as_ptr() as *const c_char,
-        args,
-        rho,
-        &mut ans,
-    ) != 0
+    // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+    if unsafe {
+        R_DispatchOrEvalSP(
+            call,
+            op,
+            b"[<-\0".as_ptr() as *const c_char,
+            args,
+            rho,
+            &mut ans,
+        )
+    } != 0
     {
         return ans;
     }
@@ -735,14 +738,17 @@ pub fn do_subassign_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// Port of `do_subassign2()` -- the `[[<-` operator.
 pub(crate) fn do_subassign2(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     let mut ans: SEXP = ptr::null_mut();
-    if R_DispatchOrEvalSP(
-        call,
-        op,
-        b"[[<-\0".as_ptr() as *const c_char,
-        args,
-        rho,
-        &mut ans,
-    ) != 0
+    // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+    if unsafe {
+        R_DispatchOrEvalSP(
+            call,
+            op,
+            b"[[<-\0".as_ptr() as *const c_char,
+            args,
+            rho,
+            &mut ans,
+        )
+    } != 0
     {
         return ans;
     }

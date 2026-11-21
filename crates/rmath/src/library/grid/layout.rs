@@ -105,7 +105,12 @@ fn findRelHeights(layout: SEXP, relativeHeights: &mut [c_int], dd: pGEDevDesc) {
 // allocateKnownWidths / allocateKnownHeights
 // ---------------------------------------------------------------------------
 
-fn allocateKnownWidths(
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn allocateKnownWidths(
     layout: SEXP,
     relativeWidths: &[c_int],
     parentWidthCM: f64,
@@ -120,24 +125,32 @@ fn allocateKnownWidths(
     let widths = layoutWidths(layout);
     for i in 0..ncol {
         if relativeWidths[i as usize] == 0 {
-            let width_cm = transformWidth(
-                widths,
-                i,
-                parentContext,
-                parentgc,
-                parentWidthCM,
-                parentHeightCM,
-                0,
-                0,
-                dd,
-            ) * 2.54;
+            // SAFETY: forwarded raw pointers satisfy `transformWidth`'s contract per this function's own `# Safety` requirements.
+            let width_cm = unsafe {
+                transformWidth(
+                    widths,
+                    i,
+                    parentContext,
+                    parentgc,
+                    parentWidthCM,
+                    parentHeightCM,
+                    0,
+                    0,
+                    dd,
+                )
+            } * 2.54;
             npcWidths[i as usize] = width_cm;
             *widthLeftCM -= width_cm;
         }
     }
 }
 
-fn allocateKnownHeights(
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn allocateKnownHeights(
     layout: SEXP,
     relativeHeights: &[c_int],
     parentWidthCM: f64,
@@ -152,17 +165,20 @@ fn allocateKnownHeights(
     let heights = layoutHeights(layout);
     for i in 0..nrow {
         if relativeHeights[i as usize] == 0 {
-            let height_cm = transformHeight(
-                heights,
-                i,
-                parentContext,
-                parentgc,
-                parentWidthCM,
-                parentHeightCM,
-                0,
-                0,
-                dd,
-            ) * 2.54;
+            // SAFETY: forwarded raw pointers satisfy `transformHeight`'s contract per this function's own `# Safety` requirements.
+            let height_cm = unsafe {
+                transformHeight(
+                    heights,
+                    i,
+                    parentContext,
+                    parentgc,
+                    parentWidthCM,
+                    parentHeightCM,
+                    0,
+                    0,
+                    dd,
+                )
+            } * 2.54;
             npcHeights[i as usize] = height_cm;
             *heightLeftCM -= height_cm;
         }
@@ -468,7 +484,12 @@ fn allocationRemaining(initial: f64, remaining: f64) -> bool {
 // calcViewportLayout
 // ---------------------------------------------------------------------------
 
-pub fn calcViewportLayout(
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn calcViewportLayout(
     viewport: SEXP,
     parentWidthCM: f64,
     parentHeightCM: f64,
@@ -489,28 +510,34 @@ pub fn calcViewportLayout(
     findRelWidths(layout, &mut relativeWidths, dd);
     findRelHeights(layout, &mut relativeHeights, dd);
 
-    allocateKnownWidths(
-        layout,
-        &relativeWidths,
-        parentWidthCM,
-        parentHeightCM,
-        parentContext,
-        parentgc,
-        dd,
-        &mut npcWidths,
-        &mut reducedWidthCM,
-    );
-    allocateKnownHeights(
-        layout,
-        &relativeHeights,
-        parentWidthCM,
-        parentHeightCM,
-        parentContext,
-        parentgc,
-        dd,
-        &mut npcHeights,
-        &mut reducedHeightCM,
-    );
+    // SAFETY: forwarded raw pointers satisfy `allocateKnownWidths`'s contract per this function's own `# Safety` requirements.
+    unsafe {
+        allocateKnownWidths(
+            layout,
+            &relativeWidths,
+            parentWidthCM,
+            parentHeightCM,
+            parentContext,
+            parentgc,
+            dd,
+            &mut npcWidths,
+            &mut reducedWidthCM,
+        )
+    };
+    // SAFETY: forwarded raw pointers satisfy `allocateKnownHeights`'s contract per this function's own `# Safety` requirements.
+    unsafe {
+        allocateKnownHeights(
+            layout,
+            &relativeHeights,
+            parentWidthCM,
+            parentHeightCM,
+            parentContext,
+            parentgc,
+            dd,
+            &mut npcHeights,
+            &mut reducedHeightCM,
+        )
+    };
 
     if allocationRemaining(parentWidthCM, reducedWidthCM)
         || allocationRemaining(parentHeightCM, reducedHeightCM)

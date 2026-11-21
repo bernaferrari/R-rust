@@ -1,6 +1,8 @@
 #![forbid(unsafe_code)]
 //! Cleanup owns original runtime storage and authenticates allocation identity.
-use super::{ConnectionToken, close_connection_at_in, connection_table, connection_token, r_error};
+use super::{
+    ConnectionToken, close_connection_at_owned, connection_table, connection_token, r_error,
+};
 use crate::sexp::{
     object::SexpError,
     owner::{OwnerPin, OwnerToken, WeakOwner, with_runtime},
@@ -65,7 +67,7 @@ impl ConnectionCleanup {
                     let index = connection
                         .require_current()
                         .map_err(|message| SexpError::EvaluationFailed { message })?;
-                    close_connection_at_in(owner.as_ptr(), index);
+                    close_connection_at_owned(owner, index);
                     if self.remove {
                         let index = connection
                             .require_current()

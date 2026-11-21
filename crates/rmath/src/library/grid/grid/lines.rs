@@ -14,7 +14,8 @@ pub fn L_moveTo(x: SEXP, y: SEXP) -> SEXP {
         let _prevloc_guard = protect(prevloc);
         let devloc = gridStateElement(dd, GSS_CURRLOC);
         let _devloc_guard = protect(devloc);
-        let (vpWidthCM, vpHeightCM, transform, _) = getViewportTransform(currentvp, dd);
+        // SAFETY: `dd` is the live current graphics device handle obtained from the engine for this call; other pointer arguments are locals or literals.
+        let (vpWidthCM, vpHeightCM, transform, _) = unsafe { getViewportTransform(currentvp, dd) };
         let mut vpc = LViewportContext::default();
         getViewportContext(currentvp, &mut vpc);
 
@@ -22,7 +23,9 @@ pub fn L_moveTo(x: SEXP, y: SEXP) -> SEXP {
         let gc = gc_buf.as_mut_ptr() as pGEcontext;
         gcontextFromgpar(currentgp, 0, gc, dd);
 
-        let (xx, yy) = transformLocn(x, y, 0, vpc, gc, vpWidthCM, vpHeightCM, dd, &transform);
+        // SAFETY: `dd` is the live current graphics device handle obtained from the engine for this call; other pointer arguments are locals or literals.
+        let (xx, yy) =
+            unsafe { transformLocn(x, y, 0, vpc, gc, vpWidthCM, vpHeightCM, dd, &transform) };
 
         if TYPEOF(prevloc) == SEXPTYPE::REALSXP
             && LENGTH(prevloc) >= 2
@@ -58,7 +61,8 @@ pub fn L_lineTo(x: SEXP, y: SEXP, arrow: SEXP) -> SEXP {
         let _prevloc_guard = protect(prevloc);
         let devloc = gridStateElement(dd, GSS_CURRLOC);
         let _devloc_guard = protect(devloc);
-        let (vpWidthCM, vpHeightCM, transform, _) = getViewportTransform(currentvp, dd);
+        // SAFETY: `dd` is the live current graphics device handle obtained from the engine for this call; other pointer arguments are locals or literals.
+        let (vpWidthCM, vpHeightCM, transform, _) = unsafe { getViewportTransform(currentvp, dd) };
         let mut vpc = LViewportContext::default();
         getViewportContext(currentvp, &mut vpc);
 
@@ -66,7 +70,9 @@ pub fn L_lineTo(x: SEXP, y: SEXP, arrow: SEXP) -> SEXP {
         let gc = gc_buf.as_mut_ptr() as pGEcontext;
         gcontextFromgpar(currentgp, 0, gc, dd);
 
-        let (xx, yy) = transformLocn(x, y, 0, vpc, gc, vpWidthCM, vpHeightCM, dd, &transform);
+        // SAFETY: `dd` is the live current graphics device handle obtained from the engine for this call; other pointer arguments are locals or literals.
+        let (xx, yy) =
+            unsafe { transformLocn(x, y, 0, vpc, gc, vpWidthCM, vpHeightCM, dd, &transform) };
 
         if TYPEOF(prevloc) == SEXPTYPE::REALSXP
             && LENGTH(prevloc) >= 2
@@ -133,7 +139,8 @@ pub fn L_lines(x: SEXP, y: SEXP, index: SEXP, arrow: SEXP) -> SEXP {
         if gp_fill_is_pattern(currentgp) {
             set_gp_fill_string(currentgp, "transparent");
         }
-        let (vpWidthCM, vpHeightCM, transform, _) = getViewportTransform(currentvp, dd);
+        // SAFETY: `dd` is the live current graphics device handle obtained from the engine for this call; other pointer arguments are locals or literals.
+        let (vpWidthCM, vpHeightCM, transform, _) = unsafe { getViewportTransform(currentvp, dd) };
         let mut vpc = LViewportContext::default();
         getViewportContext(currentvp, &mut vpc);
 
@@ -145,7 +152,8 @@ pub fn L_lines(x: SEXP, y: SEXP, index: SEXP, arrow: SEXP) -> SEXP {
         initGContext(currentgp, gc, dd, &mut gp_is_scalar, gc_cache);
 
         // SAFETY: `dd` is the live device returned above.
-        GEMode(1, dd);
+        // SAFETY: `dd` is the live current graphics device handle obtained from the engine for this call; other pointer arguments are locals or literals.
+        unsafe { GEMode(1, dd) };
         let nl = LENGTH(index);
         for j in 0..nl {
             let indices = vector_elt(index, j as R_xlen_t);
@@ -164,22 +172,27 @@ pub fn L_lines(x: SEXP, y: SEXP, index: SEXP, arrow: SEXP) -> SEXP {
             for i in 0..nx as usize {
                 let idx = integer_elt(indices, i as R_xlen_t);
                 if idx > 0 {
-                    (xx[i], yy[i]) = transformLocn(
-                        x,
-                        y,
-                        idx - 1,
-                        vpc,
-                        gc,
-                        vpWidthCM,
-                        vpHeightCM,
-                        dd,
-                        &transform,
-                    );
+                    // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+                    (xx[i], yy[i]) = unsafe {
+                        transformLocn(
+                            x,
+                            y,
+                            idx - 1,
+                            vpc,
+                            gc,
+                            vpWidthCM,
+                            vpHeightCM,
+                            dd,
+                            &transform,
+                        )
+                    };
                     // SAFETY: `dd` is the live device; `toDevice*` are
                     // engine coordinate bridges over the device state.
 
-                    xx[i] = toDeviceX(xx[i], GE_INCHES, dd);
-                    yy[i] = toDeviceY(yy[i], GE_INCHES, dd);
+                    // SAFETY: `dd` is the live current graphics device handle obtained from the engine for this call; other pointer arguments are locals or literals.
+                    xx[i] = unsafe { toDeviceX(xx[i], GE_INCHES, dd) };
+                    // SAFETY: `dd` is the live current graphics device handle obtained from the engine for this call; other pointer arguments are locals or literals.
+                    yy[i] = unsafe { toDeviceY(yy[i], GE_INCHES, dd) };
                 }
 
                 let current_finite = xx[i].is_finite() && yy[i].is_finite();
@@ -253,7 +266,8 @@ pub fn L_lines(x: SEXP, y: SEXP, index: SEXP, arrow: SEXP) -> SEXP {
         }
         // SAFETY: `dd` is the live device; engine mode teardown mirrors
         // the `GEMode(1, dd)` above.
-        GEMode(0, dd);
+        // SAFETY: `dd` is the live current graphics device handle obtained from the engine for this call; other pointer arguments are locals or literals.
+        unsafe { GEMode(0, dd) };
         R_NilValue()
     }
 }
@@ -335,7 +349,8 @@ pub fn L_segments(x0: SEXP, y0: SEXP, x1: SEXP, y1: SEXP, arrow: SEXP) -> SEXP {
             set_gp_fill_string(currentgp, "transparent");
         }
 
-        let (vpWidthCM, vpHeightCM, transform, _) = getViewportTransform(currentvp, dd);
+        // SAFETY: `dd` is the live current graphics device handle obtained from the engine for this call; other pointer arguments are locals or literals.
+        let (vpWidthCM, vpHeightCM, transform, _) = unsafe { getViewportTransform(currentvp, dd) };
         let mut vpc = LViewportContext::default();
         getViewportContext(currentvp, &mut vpc);
 
@@ -351,15 +366,20 @@ pub fn L_segments(x0: SEXP, y0: SEXP, x1: SEXP, y1: SEXP, arrow: SEXP) -> SEXP {
             .max(unitLength(x1))
             .max(unitLength(y1));
         // SAFETY: `dd` is the live device returned above.
-        GEMode(1, dd);
+        // SAFETY: `dd` is the live current graphics device handle obtained from the engine for this call; other pointer arguments are locals or literals.
+        unsafe { GEMode(1, dd) };
         for i in 0..maxn {
             updateGContext(currentgp, i, gc, dd, &mut gp_is_scalar, gc_cache);
             let mut xx0: c_double;
             let mut yy0: c_double;
             let mut xx1: c_double;
             let mut yy1: c_double;
-            (xx0, yy0) = transformLocn(x0, y0, i, vpc, gc, vpWidthCM, vpHeightCM, dd, &transform);
-            (xx1, yy1) = transformLocn(x1, y1, i, vpc, gc, vpWidthCM, vpHeightCM, dd, &transform);
+            // SAFETY: `dd` is the live current graphics device handle obtained from the engine for this call; other pointer arguments are locals or literals.
+            (xx0, yy0) =
+                unsafe { transformLocn(x0, y0, i, vpc, gc, vpWidthCM, vpHeightCM, dd, &transform) };
+            // SAFETY: `dd` is the live current graphics device handle obtained from the engine for this call; other pointer arguments are locals or literals.
+            (xx1, yy1) =
+                unsafe { transformLocn(x1, y1, i, vpc, gc, vpWidthCM, vpHeightCM, dd, &transform) };
             // SAFETY: `dd` is the live device; `toDevice*`/`GELine`/
             // `arrows` are engine bridges over live Rust buffers.
             unsafe {
@@ -392,7 +412,8 @@ pub fn L_segments(x0: SEXP, y0: SEXP, x1: SEXP, y1: SEXP, arrow: SEXP) -> SEXP {
         }
         // SAFETY: `dd` is the live device; engine mode teardown mirrors
         // the `GEMode(1, dd)` above.
-        GEMode(0, dd);
+        // SAFETY: `dd` is the live current graphics device handle obtained from the engine for this call; other pointer arguments are locals or literals.
+        unsafe { GEMode(0, dd) };
         R_NilValue()
     }
 }

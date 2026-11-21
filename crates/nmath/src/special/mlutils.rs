@@ -138,15 +138,12 @@ pub static R_PosInf: f64 = ML_POSINF;
 pub static R_NegInf: f64 = ML_NEGINF;
 
 /// REprintf: print to stderr (C FFI compatibility shim).
-pub fn REprintf(format: *const std::os::raw::c_char) {
-    unsafe {
-        if format.is_null() {
-            return;
-        }
-        let c_str = std::ffi::CStr::from_ptr(format);
-        if let Ok(s) = c_str.to_str() {
-            eprint!("{}", s);
-        }
+///
+/// Takes the message as a borrowed C string so callers cannot pass a dangling
+/// pointer; non-UTF-8 messages are dropped, as before.
+pub fn REprintf(format: &std::ffi::CStr) {
+    if let Ok(s) = format.to_str() {
+        eprint!("{}", s);
     }
 }
 

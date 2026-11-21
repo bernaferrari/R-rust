@@ -202,7 +202,13 @@ pub(crate) fn embedInVector(v: SEXP, _call: SEXP) -> SEXP {
 }
 
 /// Port of `dispatch_asvector()` -- DispatchOrEval("as.vector") on *x.
-pub(crate) fn dispatch_asvector(x: *mut SEXP, call: SEXP, rho: SEXP) -> bool {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub(crate) unsafe fn dispatch_asvector(x: *mut SEXP, call: SEXP, rho: SEXP) -> bool {
     unsafe {
         if x.is_null() || (*x).is_null() {
             return false;
@@ -234,7 +240,13 @@ pub(crate) fn dispatch_asvector(x: *mut SEXP, call: SEXP, rho: SEXP) -> bool {
 
 /// Port of `SubassignTypeFix()` -- coerces LHS/RHS to compatible types
 /// for subassignment. Returns the type code `100 * TYPEOF(x) + TYPEOF(y)`.
-pub(crate) fn SubassignTypeFix(
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub(crate) unsafe fn SubassignTypeFix(
     x: *mut SEXP,
     y: *mut SEXP,
     stretch: R_xlen_t,

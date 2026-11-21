@@ -68,7 +68,7 @@ pub(crate) unsafe fn update_preserve_stack_in(
 
 pub(crate) fn update_remembered_set(old_to_new: &HashMap<usize, SEXP>) {
     instance::with_required_current_instance(|instance| {
-        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        // SAFETY: `inst`/`instance` is the live current-instance pointer supplied by the instance accessor (or held by this caller) for the duration of the call.
         unsafe { update_remembered_set_in(instance, old_to_new) }
     });
 }

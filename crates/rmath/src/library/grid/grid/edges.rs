@@ -197,8 +197,11 @@ pub(crate) unsafe fn calcArrow(
     gc: pGEcontext,
     dd: pGEDevDesc,
 ) {
-    let l1 = transformWidthtoINCHES(length, i, vpc, gc, vpWidthCM, vpHeightCM, dd).abs();
-    let l2 = transformHeighttoINCHES(length, i, vpc, gc, vpWidthCM, vpHeightCM, dd).abs();
+    // SAFETY: forwarded raw pointers satisfy `transformWidthtoINCHES`'s contract per this function's own `# Safety` requirements.
+    let l1 = unsafe { transformWidthtoINCHES(length, i, vpc, gc, vpWidthCM, vpHeightCM, dd) }.abs();
+    // SAFETY: forwarded raw pointers satisfy `transformHeighttoINCHES`'s contract per this function's own `# Safety` requirements.
+    let l2 =
+        unsafe { transformHeighttoINCHES(length, i, vpc, gc, vpWidthCM, vpHeightCM, dd) }.abs();
     let l = fmin2(l1, l2);
     let na = LENGTH(angle);
     let a = DEG2RAD * crate::library::grid::real_elt(angle, (i % na) as R_xlen_t);
@@ -208,12 +211,18 @@ pub(crate) unsafe fn calcArrow(
     // SAFETY: `dd` is the live device; `toDevice*` are engine coordinate
     // bridges over the device state.
 
-    vertx[0] = toDeviceX(x1 + l * (rot + a).cos(), GE_INCHES, dd);
-    verty[0] = toDeviceY(y1 + l * (rot + a).sin(), GE_INCHES, dd);
-    vertx[1] = toDeviceX(x1, GE_INCHES, dd);
-    verty[1] = toDeviceY(y1, GE_INCHES, dd);
-    vertx[2] = toDeviceX(x1 + l * (rot - a).cos(), GE_INCHES, dd);
-    verty[2] = toDeviceY(y1 + l * (rot - a).sin(), GE_INCHES, dd);
+    // SAFETY: forwarded raw pointers satisfy `toDeviceX`'s contract per this function's own `# Safety` requirements.
+    vertx[0] = unsafe { toDeviceX(x1 + l * (rot + a).cos(), GE_INCHES, dd) };
+    // SAFETY: forwarded raw pointers satisfy `toDeviceY`'s contract per this function's own `# Safety` requirements.
+    verty[0] = unsafe { toDeviceY(y1 + l * (rot + a).sin(), GE_INCHES, dd) };
+    // SAFETY: forwarded raw pointers satisfy `toDeviceX`'s contract per this function's own `# Safety` requirements.
+    vertx[1] = unsafe { toDeviceX(x1, GE_INCHES, dd) };
+    // SAFETY: forwarded raw pointers satisfy `toDeviceY`'s contract per this function's own `# Safety` requirements.
+    verty[1] = unsafe { toDeviceY(y1, GE_INCHES, dd) };
+    // SAFETY: forwarded raw pointers satisfy `toDeviceX`'s contract per this function's own `# Safety` requirements.
+    vertx[2] = unsafe { toDeviceX(x1 + l * (rot - a).cos(), GE_INCHES, dd) };
+    // SAFETY: forwarded raw pointers satisfy `toDeviceY`'s contract per this function's own `# Safety` requirements.
+    verty[2] = unsafe { toDeviceY(y1 + l * (rot - a).sin(), GE_INCHES, dd) };
 }
 
 /// Draw arrowheads at the start/end of a polyline. `x`/`y` are raw engine

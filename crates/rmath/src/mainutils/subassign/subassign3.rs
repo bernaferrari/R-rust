@@ -28,18 +28,22 @@ pub(crate) fn do_subassign3(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP
     {
         let mut nlist: SEXP = R_NilValue();
         checkArity(op, args);
-        let args = fixSubset3Args(call, args, env, &mut nlist);
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        let args = unsafe { fixSubset3Args(call, args, env, &mut nlist) };
         let _args_root = owned(args);
 
         let mut ans: SEXP = ptr::null_mut();
-        if R_DispatchOrEvalSP(
-            call,
-            op,
-            b"$<-\0".as_ptr() as *const c_char,
-            args,
-            env,
-            &mut ans,
-        ) != 0
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        if unsafe {
+            R_DispatchOrEvalSP(
+                call,
+                op,
+                b"$<-\0".as_ptr() as *const c_char,
+                args,
+                env,
+                &mut ans,
+            )
+        } != 0
         {
             return ans;
         }

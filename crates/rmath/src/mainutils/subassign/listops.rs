@@ -267,7 +267,13 @@ pub(crate) fn DeleteOneVectorListItem(x: SEXP, which: R_xlen_t) -> SEXP {
 
 /// Port of `SubAssignArgs()` -- extracts (x, s, y) from the argument list
 /// and returns the number of subscripts.
-pub(crate) fn SubAssignArgs(args: SEXP, x: *mut SEXP, s: *mut SEXP, y: *mut SEXP) -> c_int {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub(crate) unsafe fn SubAssignArgs(args: SEXP, x: *mut SEXP, s: *mut SEXP, y: *mut SEXP) -> c_int {
     unsafe {
         if isNull(CDR(args)) {
             // Error: invalid number of arguments

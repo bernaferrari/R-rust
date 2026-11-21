@@ -52,7 +52,8 @@ impl GridModeGuard {
     // SAFETY: `GEMode` is an engine mode-switch bridge; callers pass the live
     // device returned by `getDevice`.
     unsafe fn enter(dd: pGEDevDesc) -> Self {
-        ge::GEMode(1, dd);
+        // SAFETY: forwarded raw pointers satisfy `GEMode`'s contract per this function's own `# Safety` requirements.
+        unsafe { ge::GEMode(1, dd) };
         Self { dd }
     }
 }
@@ -60,7 +61,8 @@ impl GridModeGuard {
 impl Drop for GridModeGuard {
     fn drop(&mut self) {
         // SAFETY: `dd` was a live device when the guard was entered.
-        ge::GEMode(0, self.dd);
+        // SAFETY: `dd` is the live current graphics device handle obtained from the engine for this call; other pointer arguments are locals or literals.
+        unsafe { ge::GEMode(0, self.dd) };
     }
 }
 
@@ -99,7 +101,9 @@ fn renderGlyphs(runs: SEXP, glyphInfo: SEXP, x: SEXP, y: SEXP, draw: bool) {
 
     // SAFETY: `currentvp`/`dd` keep their raw device-state contracts; the
     // viewport transform bridge writes through `dd`.
-    let (vpWidthCM, vpHeightCM, transform, rotationAngle) = getViewportTransform(currentvp, dd);
+    // SAFETY: `dd` is the live current graphics device handle obtained from the engine for this call; other pointer arguments are locals or literals.
+    let (vpWidthCM, vpHeightCM, transform, rotationAngle) =
+        unsafe { getViewportTransform(currentvp, dd) };
 
     let mut vpc = LViewportContext {
         xscalemin: 0.0,
@@ -131,21 +135,26 @@ fn renderGlyphs(runs: SEXP, glyphInfo: SEXP, x: SEXP, y: SEXP, draw: bool) {
     let mut gy: Vec<f64> = vec![0.0; n as usize];
 
     for i in 0..n {
-        let (xx, yy) = transformLocn(
-            x,
-            y,
-            i,
-            vpc,
-            _gc.as_ptr() as *const c_void,
-            vpWidthCM,
-            vpHeightCM,
-            dd,
-            &transform,
-        );
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        let (xx, yy) = unsafe {
+            transformLocn(
+                x,
+                y,
+                i,
+                vpc,
+                _gc.as_ptr() as *const c_void,
+                vpWidthCM,
+                vpHeightCM,
+                dd,
+                &transform,
+            )
+        };
         // SAFETY: `dd` is the live device; `toDevice*` are engine coordinate
         // bridges over the device state.
-        gx[i as usize] = ge::toDeviceX(xx, GE_INCHES, dd);
-        gy[i as usize] = ge::toDeviceY(yy, GE_INCHES, dd);
+        // SAFETY: `dd` is the live current graphics device handle obtained from the engine for this call; other pointer arguments are locals or literals.
+        gx[i as usize] = unsafe { ge::toDeviceX(xx, GE_INCHES, dd) };
+        // SAFETY: `dd` is the live current graphics device handle obtained from the engine for this call; other pointer arguments are locals or literals.
+        gy[i as usize] = unsafe { ge::toDeviceY(yy, GE_INCHES, dd) };
     }
 
     // SAFETY: remaining per-glyph vectors are raw engine SEXP bridges over the

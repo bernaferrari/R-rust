@@ -23,9 +23,15 @@ pub fn L_killGrid() -> SEXP {
  * dirtyGridDevice
  * ============================== */
 
-pub fn dirtyGridDevice(dd: pGEDevDesc) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn dirtyGridDevice(dd: pGEDevDesc) {
     {
-        GEdeviceDirty(dd);
+        // SAFETY: forwarded raw pointers satisfy `GEdeviceDirty`'s contract per this function's own `# Safety` requirements.
+        unsafe { GEdeviceDirty(dd) };
     }
 }
 
@@ -36,7 +42,8 @@ pub fn dirtyGridDevice(dd: pGEDevDesc) {
 pub fn L_gridDirty() -> SEXP {
     {
         let dd = unsafe { getDevice() };
-        dirtyGridDevice(dd);
+        // SAFETY: `dd` is the live current graphics device handle obtained from the engine for this call; other pointer arguments are locals or literals.
+        unsafe { dirtyGridDevice(dd) };
         R_NilValue()
     }
 }
@@ -64,7 +71,12 @@ pub fn L_currentViewport() -> SEXP {
  * doSetViewport
  * ============================== */
 
-pub fn doSetViewport(vp: SEXP, topLevelVP: c_int, pushing: c_int, dd: pGEDevDesc) -> SEXP {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn doSetViewport(vp: SEXP, topLevelVP: c_int, pushing: c_int, dd: pGEDevDesc) -> SEXP {
     {
         let mut xx1: c_double;
         let mut yy1: c_double;
@@ -87,12 +99,15 @@ pub fn doSetViewport(vp: SEXP, topLevelVP: c_int, pushing: c_int, dd: pGEDevDesc
             }
         }
 
-        calcViewportTransform(
-            vp,
-            viewportParent(vp),
-            topLevelVP == 0 && !deviceChanged(devWidthCM, devHeightCM, viewportParent(vp)),
-            dd,
-        );
+        // SAFETY: forwarded raw pointers satisfy `calcViewportTransform`'s contract per this function's own `# Safety` requirements.
+        unsafe {
+            calcViewportTransform(
+                vp,
+                viewportParent(vp),
+                topLevelVP == 0 && !deviceChanged(devWidthCM, devHeightCM, viewportParent(vp)),
+                dd,
+            )
+        };
 
         let resolving_path = gridStateElement(dd, GSS_RESOLVINGPATH);
         if TYPEOF(resolving_path) == SEXPTYPE::LGLSXP
@@ -134,11 +149,16 @@ pub fn doSetViewport(vp: SEXP, topLevelVP: c_int, pushing: c_int, dd: pGEDevDesc
             set_vector_elt(vp, PVP_CLIPRECT as R_xlen_t, currentClip);
         } else {
             if viewportClip(vp) == NA_LOGICAL {
-                xx1 = toDeviceX(-0.5 * devWidthCM / 2.54, GE_INCHES, dd);
-                yy1 = toDeviceY(-0.5 * devHeightCM / 2.54, GE_INCHES, dd);
-                xx2 = toDeviceX(1.5 * devWidthCM / 2.54, GE_INCHES, dd);
-                yy2 = toDeviceY(1.5 * devHeightCM / 2.54, GE_INCHES, dd);
-                GESetClip(xx1, yy1, xx2, yy2, dd);
+                // SAFETY: forwarded raw pointers satisfy `toDeviceX`'s contract per this function's own `# Safety` requirements.
+                xx1 = unsafe { toDeviceX(-0.5 * devWidthCM / 2.54, GE_INCHES, dd) };
+                // SAFETY: forwarded raw pointers satisfy `toDeviceY`'s contract per this function's own `# Safety` requirements.
+                yy1 = unsafe { toDeviceY(-0.5 * devHeightCM / 2.54, GE_INCHES, dd) };
+                // SAFETY: forwarded raw pointers satisfy `toDeviceX`'s contract per this function's own `# Safety` requirements.
+                xx2 = unsafe { toDeviceX(1.5 * devWidthCM / 2.54, GE_INCHES, dd) };
+                // SAFETY: forwarded raw pointers satisfy `toDeviceY`'s contract per this function's own `# Safety` requirements.
+                yy2 = unsafe { toDeviceY(1.5 * devHeightCM / 2.54, GE_INCHES, dd) };
+                // SAFETY: forwarded raw pointers satisfy `GESetClip`'s contract per this function's own `# Safety` requirements.
+                unsafe { GESetClip(xx1, yy1, xx2, yy2, dd) };
             } else if viewportClip(vp) != 0 {
                 let rotationAngle = if TYPEOF(viewportRotation(vp)) == SEXPTYPE::REALSXP
                     && LENGTH(viewportRotation(vp)) > 0
@@ -199,14 +219,21 @@ pub fn doSetViewport(vp: SEXP, topLevelVP: c_int, pushing: c_int, dd: pGEDevDesc
                     let gc = gc_buf.as_ptr() as pGEcontext;
                     gcontextFromViewport(vp, gc, dd);
                     (xx1, yy1) =
-                        transformLocn(x1, y1, 0, vpc, gc, vpWidthCM, vpHeightCM, dd, &transform);
+                        // SAFETY: forwarded raw pointers satisfy `transformLocn`'s contract per this function's own `# Safety` requirements.
+                        unsafe { transformLocn(x1, y1, 0, vpc, gc, vpWidthCM, vpHeightCM, dd, &transform) };
                     (xx2, yy2) =
-                        transformLocn(x2, y2, 0, vpc, gc, vpWidthCM, vpHeightCM, dd, &transform);
-                    xx1 = toDeviceX(xx1, GE_INCHES, dd);
-                    yy1 = toDeviceY(yy1, GE_INCHES, dd);
-                    xx2 = toDeviceX(xx2, GE_INCHES, dd);
-                    yy2 = toDeviceY(yy2, GE_INCHES, dd);
-                    GESetClip(xx1, yy1, xx2, yy2, dd);
+                        // SAFETY: forwarded raw pointers satisfy `transformLocn`'s contract per this function's own `# Safety` requirements.
+                        unsafe { transformLocn(x2, y2, 0, vpc, gc, vpWidthCM, vpHeightCM, dd, &transform) };
+                    // SAFETY: forwarded raw pointers satisfy `toDeviceX`'s contract per this function's own `# Safety` requirements.
+                    xx1 = unsafe { toDeviceX(xx1, GE_INCHES, dd) };
+                    // SAFETY: forwarded raw pointers satisfy `toDeviceY`'s contract per this function's own `# Safety` requirements.
+                    yy1 = unsafe { toDeviceY(yy1, GE_INCHES, dd) };
+                    // SAFETY: forwarded raw pointers satisfy `toDeviceX`'s contract per this function's own `# Safety` requirements.
+                    xx2 = unsafe { toDeviceX(xx2, GE_INCHES, dd) };
+                    // SAFETY: forwarded raw pointers satisfy `toDeviceY`'s contract per this function's own `# Safety` requirements.
+                    yy2 = unsafe { toDeviceY(yy2, GE_INCHES, dd) };
+                    // SAFETY: forwarded raw pointers satisfy `GESetClip`'s contract per this function's own `# Safety` requirements.
+                    unsafe { GESetClip(xx1, yy1, xx2, yy2, dd) };
                 }
             } else {
                 let parentClip = viewportClipRect(viewportParent(vp));
@@ -221,7 +248,8 @@ pub fn doSetViewport(vp: SEXP, topLevelVP: c_int, pushing: c_int, dd: pGEDevDesc
                     set_vector_elt(vp, PVP_CLIPPATH as R_xlen_t, parentClipPath);
                 }
                 if pushing == 0 && !isClipPath(parentClipPath) {
-                    GESetClip(xx1, yy1, xx2, yy2, dd);
+                    // SAFETY: forwarded raw pointers satisfy `GESetClip`'s contract per this function's own `# Safety` requirements.
+                    unsafe { GESetClip(xx1, yy1, xx2, yy2, dd) };
                 }
             }
 
@@ -281,26 +309,31 @@ pub fn L_setviewport(invp: SEXP, hasParent: SEXP) -> SEXP {
         let _fcall_guard = protect(fcall);
         let pushedvp = Rf_eval_with_gd(fcall, grid_eval_env(), ptr::null_mut());
         let _pushedvp_guard = protect(pushedvp);
-        let pushedvp = doSetViewport(
-            pushedvp,
-            if logical_elt(hasParent, 0) != 0 { 0 } else { 1 },
-            1,
-            dd,
-        );
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        let pushedvp = unsafe {
+            doSetViewport(
+                pushedvp,
+                if logical_elt(hasParent, 0) != 0 { 0 } else { 1 },
+                1,
+                dd,
+            )
+        };
 
         setGridStateElement(dd, GSS_VP, pushedvp);
 
         {
             let vpgp = vector_elt(pushedvp, VP_GP as R_xlen_t);
             let _vpgp_guard = protect(vpgp);
-            let fill = getListElement(vpgp, c"fill".as_ptr() as *mut c_char);
+            // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+            let fill = unsafe { getListElement(vpgp, c"fill".as_ptr() as *mut c_char) };
             if fill != R_NilValue() {
                 resolveGPar(vpgp, 1);
                 let pushed_gp = vector_elt(pushedvp, PVP_GPAR as R_xlen_t);
                 set_vector_elt(
                     pushed_gp,
                     GP_FILL as R_xlen_t,
-                    getListElement(vpgp, c"fill".as_ptr() as *mut c_char),
+                    // SAFETY: `dd` is the live current graphics device handle obtained from the engine for this call; other pointer arguments are locals or literals.
+                    unsafe { getListElement(vpgp, c"fill".as_ptr() as *mut c_char) },
                 );
                 setGridStateElement(dd, GSS_GPAR, pushed_gp);
             }
@@ -577,7 +610,8 @@ pub fn L_downviewport(name: SEXP, strict: SEXP) -> SEXP {
         let found = findViewport(name, strict, gvp, 1);
         let _found_guard = protect(found);
         if integer_elt(vector_elt(found, 0 as R_xlen_t), 0) > 0 {
-            let vp = doSetViewport(vector_elt(found, 1 as R_xlen_t), 0, 0, dd);
+            // SAFETY: `dd` is the live current graphics device handle obtained from the engine for this call; other pointer arguments are locals or literals.
+            let vp = unsafe { doSetViewport(vector_elt(found, 1 as R_xlen_t), 0, 0, dd) };
             setGridStateElement(dd, GSS_VP, vp);
             {
                 let clip = vector_elt(vp, PVP_CLIPPATH as R_xlen_t);
@@ -620,7 +654,8 @@ pub fn L_downvppath(path: SEXP, name: SEXP, strict: SEXP) -> SEXP {
         let found = findvppath(path, name, strict, R_NilValue(), gvp, 1);
         let _found_guard = protect(found);
         if integer_elt(vector_elt(found, 0 as R_xlen_t), 0) > 0 {
-            let vp = doSetViewport(vector_elt(found, 1 as R_xlen_t), 0, 0, dd);
+            // SAFETY: `dd` is the live current graphics device handle obtained from the engine for this call; other pointer arguments are locals or literals.
+            let vp = unsafe { doSetViewport(vector_elt(found, 1 as R_xlen_t), 0, 0, dd) };
             setGridStateElement(dd, GSS_VP, vp);
             {
                 let clip = vector_elt(vp, PVP_CLIPPATH as R_xlen_t);
@@ -702,7 +737,8 @@ pub fn L_unsetviewport(n: SEXP) -> SEXP {
 
         let (devWidthCM, devHeightCM) = unsafe { getDeviceSize(dd) };
         if deviceChanged(devWidthCM, devHeightCM, newvp) {
-            calcViewportTransform(newvp, viewportParent(newvp), true, dd);
+            // SAFETY: `dd` is the live current graphics device handle obtained from the engine for this call; other pointer arguments are locals or literals.
+            unsafe { calcViewportTransform(newvp, viewportParent(newvp), true, dd) };
         }
         setGridStateElement(dd, GSS_GPAR, vector_elt(gvp, PVP_PARENTGPAR as R_xlen_t));
         setGridStateElement(dd, GSS_VP, newvp);
@@ -723,7 +759,8 @@ pub fn L_unsetviewport(n: SEXP) -> SEXP {
                 let yy1 = real_elt(parentClip, (1) as R_xlen_t);
                 let xx2 = real_elt(parentClip, (2) as R_xlen_t);
                 let yy2 = real_elt(parentClip, (3) as R_xlen_t);
-                GESetClip(xx1, yy1, xx2, yy2, dd);
+                // SAFETY: `dd` is the live current graphics device handle obtained from the engine for this call; other pointer arguments are locals or literals.
+                unsafe { GESetClip(xx1, yy1, xx2, yy2, dd) };
             }
         }
         if !(TYPEOF(resolving_path) == SEXPTYPE::LGLSXP
@@ -765,7 +802,8 @@ pub fn L_upviewport(n: SEXP) -> SEXP {
 
         let (devWidthCM, devHeightCM) = unsafe { getDeviceSize(dd) };
         if deviceChanged(devWidthCM, devHeightCM, newvp) {
-            calcViewportTransform(newvp, viewportParent(newvp), true, dd);
+            // SAFETY: `dd` is the live current graphics device handle obtained from the engine for this call; other pointer arguments are locals or literals.
+            unsafe { calcViewportTransform(newvp, viewportParent(newvp), true, dd) };
         }
         setGridStateElement(dd, GSS_GPAR, vector_elt(gvp, PVP_PARENTGPAR as R_xlen_t));
         setGridStateElement(dd, GSS_VP, newvp);
@@ -786,7 +824,8 @@ pub fn L_upviewport(n: SEXP) -> SEXP {
                 let yy1 = real_elt(parentClip, (1) as R_xlen_t);
                 let xx2 = real_elt(parentClip, (2) as R_xlen_t);
                 let yy2 = real_elt(parentClip, (3) as R_xlen_t);
-                GESetClip(xx1, yy1, xx2, yy2, dd);
+                // SAFETY: `dd` is the live current graphics device handle obtained from the engine for this call; other pointer arguments are locals or literals.
+                unsafe { GESetClip(xx1, yy1, xx2, yy2, dd) };
             }
         }
         if !(TYPEOF(resolving_path) == SEXPTYPE::LGLSXP

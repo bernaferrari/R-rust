@@ -30,7 +30,13 @@ use super::*;
 /// Port of `R_DispatchOrEvalSP()` -- fast-path dispatch/eval for `[<-` and friends.
 /// Mirrors subset.c: evaluate first arg, skip dispatch when not an object,
 /// otherwise EVPROMISE + `DispatchOrEval`.
-pub(crate) fn R_DispatchOrEvalSP(
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub(crate) unsafe fn R_DispatchOrEvalSP(
     call: SEXP,
     op: SEXP,
     generic: *const c_char,

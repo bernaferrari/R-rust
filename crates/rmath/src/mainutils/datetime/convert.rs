@@ -55,7 +55,13 @@ pub(crate) fn mktime0(tm: &mut stm, local: bool) -> c_double {
 /// UTC conversion via the internal algorithm.
 ///
 /// Ported from `localtime0()` in datetime.c.
-pub(crate) fn localtime0(tp: *const c_double, local: bool, ltm: &mut stm) -> bool {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub(crate) unsafe fn localtime0(tp: *const c_double, local: bool, ltm: &mut stm) -> bool {
     let d = unsafe { *tp };
     if !d.is_finite() {
         ltm.tm_year = NA_INTEGER;
@@ -185,7 +191,12 @@ pub(crate) fn make_posixlt_skeleton(n: R_xlen_t) -> (SEXP, SEXP) {
     }
 }
 
-pub(crate) fn tm_zone_string(p: *const std::os::raw::c_char) -> String {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub(crate) unsafe fn tm_zone_string(p: *const std::os::raw::c_char) -> String {
     if p.is_null() {
         String::new()
     } else {

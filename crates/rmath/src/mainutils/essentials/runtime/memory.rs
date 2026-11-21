@@ -113,7 +113,12 @@ fn bytes_to_mb(bytes: usize) -> f64 {
     bytes as f64 / (1024.0 * 1024.0)
 }
 
-fn set_real_matrix_cell(data: *mut f64, row: usize, col: usize, rows: usize, value: f64) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+unsafe fn set_real_matrix_cell(data: *mut f64, row: usize, col: usize, rows: usize, value: f64) {
     unsafe {
         *data.add(col * rows + row) = value;
     }

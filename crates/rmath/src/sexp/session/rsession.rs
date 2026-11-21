@@ -948,7 +948,9 @@ impl RSession {
                 *portable_grid = crate::mainutils::portable_grid::GridState::default();
             }
             let mut forwarding = RecordingTarget { target, recording };
-            let _backend_guard = RenderPlotBackendGuard::install(instance, &mut forwarding);
+            // SAFETY: `instance` is this session's live runtime instance and
+            // `forwarding` is a local that outlives the guard.
+            let _backend_guard = unsafe { RenderPlotBackendGuard::install(instance, &mut forwarding) };
             let capture = crate::sexp::output::OutputCaptureGuard::start();
             // Remaining parsed statements retain their automatic leases.
             let mut result: RResult<Sexp<'session>> = Ok(Sexp::nil());

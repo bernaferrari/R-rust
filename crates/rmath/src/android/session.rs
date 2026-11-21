@@ -742,7 +742,9 @@ impl RSession {
         self.prepare_request_memory();
         let limit = self.result_limit;
         let original = self.core.owner_token().and_then(|owner| owner.weak_owner());
-        self.core.eval_script_with_output_capture_then_renderplot(
+        // SAFETY: `backend` comes from a live `&mut` DrawTarget borrow that
+        // outlives `'session`, as the method requires.
+        unsafe { self.core.eval_script_with_output_capture_then_renderplot(
             code,
             backend,
             |result, captured, visible| match result {
@@ -751,7 +753,7 @@ impl RSession {
                 }
                 Err(e) => error_result_with_captured(e.to_string(), &captured, original.as_ref()),
             },
-        )
+        ) }
     }
 }
 

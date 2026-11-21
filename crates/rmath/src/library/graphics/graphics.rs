@@ -471,12 +471,14 @@ pub unsafe fn GConvertYUnits(
 
 /// xDevtoNDC -- convert x from device coordinates to NDC.
 pub unsafe fn xDevtoNDC(x: c_double, dd: pGEDevDesc) -> c_double {
-    engine::fromDeviceX(x, 1, dd)
+    // SAFETY: forwarded raw pointers satisfy `fromDeviceX`'s contract per this function's own `# Safety` requirements.
+    unsafe { engine::fromDeviceX(x, 1, dd) }
 }
 
 /// yDevtoNDC -- convert y from device coordinates to NDC.
 pub unsafe fn yDevtoNDC(y: c_double, dd: pGEDevDesc) -> c_double {
-    engine::fromDeviceY(y, 1, dd)
+    // SAFETY: forwarded raw pointers satisfy `fromDeviceY`'s contract per this function's own `# Safety` requirements.
+    unsafe { engine::fromDeviceY(y, 1, dd) }
 }
 
 /// xDevtoNFC -- convert x from device coordinates to NFC.
@@ -795,7 +797,8 @@ pub unsafe fn GMode(mode: c_int, dd: pGEDevDesc) {
     if dd.is_null() {
         return;
     }
-    engine::GEMode(mode, dd);
+    // SAFETY: forwarded raw pointers satisfy `GEMode`'s contract per this function's own `# Safety` requirements.
+    unsafe { engine::GEMode(mode, dd) };
 }
 
 /// GClipPolygon -- clip a polygon to the current clip region.
@@ -945,11 +948,14 @@ pub unsafe fn GStrWidth(
     units: GUnit,
     dd: pGEDevDesc,
 ) -> c_double {
-    let width = engine::GEStrWidth(str, enc, std::ptr::null(), dd);
+    // SAFETY: forwarded raw pointers satisfy `GEStrWidth`'s contract per this function's own `# Safety` requirements.
+    let width = unsafe { engine::GEStrWidth(str, enc, std::ptr::null(), dd) };
     match units {
         DEVICE => width,
-        NDC => engine::fromDeviceWidth(width, 1, dd),
-        INCHES => engine::fromDeviceWidth(width, 2, dd),
+        // SAFETY: forwarded raw pointers satisfy `fromDeviceWidth`'s contract per this function's own `# Safety` requirements.
+        NDC => unsafe { engine::fromDeviceWidth(width, 1, dd) },
+        // SAFETY: forwarded raw pointers satisfy `fromDeviceWidth`'s contract per this function's own `# Safety` requirements.
+        INCHES => unsafe { engine::fromDeviceWidth(width, 2, dd) },
         _ => width,
     }
 }
@@ -962,11 +968,14 @@ pub unsafe fn GStrHeight(
     units: GUnit,
     dd: pGEDevDesc,
 ) -> c_double {
-    let height = engine::GEStrHeight(str, enc, std::ptr::null(), dd);
+    // SAFETY: forwarded raw pointers satisfy `GEStrHeight`'s contract per this function's own `# Safety` requirements.
+    let height = unsafe { engine::GEStrHeight(str, enc, std::ptr::null(), dd) };
     match units {
         DEVICE => height,
-        NDC => engine::fromDeviceHeight(height, 1, dd),
-        INCHES => engine::fromDeviceHeight(height, 2, dd),
+        // SAFETY: forwarded raw pointers satisfy `fromDeviceHeight`'s contract per this function's own `# Safety` requirements.
+        NDC => unsafe { engine::fromDeviceHeight(height, 1, dd) },
+        // SAFETY: forwarded raw pointers satisfy `fromDeviceHeight`'s contract per this function's own `# Safety` requirements.
+        INCHES => unsafe { engine::fromDeviceHeight(height, 2, dd) },
         _ => height,
     }
 }

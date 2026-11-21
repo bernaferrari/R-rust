@@ -66,7 +66,13 @@ fn fmin2(x: f64, y: f64) -> f64 {
 
 /// Get the list element named str, or return R_NilValue.
 /// Copied from the Writing R Extensions manual (which copied it from nls).
-pub fn getListElement(list: SEXP, str: *const c_char) -> SEXP {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn getListElement(list: SEXP, str: *const c_char) -> SEXP {
     let mut elmt: SEXP = R_NilValue();
     if str.is_null() {
         return elmt;
@@ -89,7 +95,13 @@ pub fn getListElement(list: SEXP, str: *const c_char) -> SEXP {
 }
 
 /// Set the list element named str to value.
-pub fn setListElement(list: SEXP, str: *const c_char, value: SEXP) {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn setListElement(list: SEXP, str: *const c_char, value: SEXP) {
     if str.is_null() {
         return;
     }
@@ -230,7 +242,13 @@ pub fn intersect(r1: LRect, r2: LRect) -> c_int {
 
 /// Calculate the bounding rectangle for a string.
 /// x and y are assumed to be in INCHES.
-pub fn textRect(
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn textRect(
     x: c_double,
     y: c_double,
     text: SEXP,
@@ -268,8 +286,10 @@ pub fn textRect(
             // SAFETY: `gc`/`dd` are engine-owned device pointers lent by the
             // grid entry point.
 
-            w = fromDeviceWidth(GEExpressionWidth(expr, gc, dd), 1, dd as *mut c_void);
-            h = fromDeviceHeight(GEExpressionHeight(expr, gc, dd), 1, dd as *mut c_void);
+            // SAFETY: forwarded raw pointers satisfy `fromDeviceWidth`'s contract per this function's own `# Safety` requirements.
+            w = unsafe { fromDeviceWidth(GEExpressionWidth(expr, gc, dd), 1, dd as *mut c_void) };
+            // SAFETY: forwarded raw pointers satisfy `fromDeviceHeight`'s contract per this function's own `# Safety` requirements.
+            h = unsafe { fromDeviceHeight(GEExpressionHeight(expr, gc, dd), 1, dd as *mut c_void) };
         } else {
             let string = char_ptr(string_elt(text, idx as R_xlen_t));
             let enc = CE_SYMBOL;
@@ -277,16 +297,22 @@ pub fn textRect(
             // `string_elt`; `gc`/`dd` are engine-owned device pointers lent by
             // the grid entry point.
 
-            w = fromDeviceWidth(
-                GEStrWidth(string, enc, gc as *const c_void, dd as *mut c_void),
-                1,
-                dd as *mut c_void,
-            );
-            h = fromDeviceHeight(
-                GEStrHeight(string, enc, gc as *const c_void, dd as *mut c_void),
-                1,
-                dd as *mut c_void,
-            );
+            // SAFETY: forwarded raw pointers satisfy `fromDeviceWidth`'s contract per this function's own `# Safety` requirements.
+            w = unsafe {
+                fromDeviceWidth(
+                    GEStrWidth(string, enc, gc as *const c_void, dd as *mut c_void),
+                    1,
+                    dd as *mut c_void,
+                )
+            };
+            // SAFETY: forwarded raw pointers satisfy `fromDeviceHeight`'s contract per this function's own `# Safety` requirements.
+            h = unsafe {
+                fromDeviceHeight(
+                    GEStrHeight(string, enc, gc as *const c_void, dd as *mut c_void),
+                    1,
+                    dd as *mut c_void,
+                )
+            };
         }
 
         if !w.is_finite() || !h.is_finite() {

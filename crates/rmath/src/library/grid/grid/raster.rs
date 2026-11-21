@@ -22,7 +22,9 @@ pub fn L_raster(
         let _currentgp_guard = protect(currentgp);
         set_gp_fill_string(currentgp, "transparent");
 
-        let (vpWidthCM, vpHeightCM, transform, rotationAngle) = getViewportTransform(currentvp, dd);
+        // SAFETY: `dd` is the live current graphics device handle obtained from the engine for this call; other pointer arguments are locals or literals.
+        let (vpWidthCM, vpHeightCM, transform, rotationAngle) =
+            unsafe { getViewportTransform(currentvp, dd) };
         let mut vpc = LViewportContext::default();
         getViewportContext(currentvp, &mut vpc);
 
@@ -70,17 +72,27 @@ pub fn L_raster(
         let interp_len = LENGTH(interpolate).max(1) as usize;
 
         // SAFETY: `dd` is the live device returned above.
-        GEMode(1, dd);
+        // SAFETY: `dd` is the live current graphics device handle obtained from the engine for this call; other pointer arguments are locals or literals.
+        unsafe { GEMode(1, dd) };
         for i in 0..maxn as usize {
             updateGContext(currentgp, i as c_int, gc, dd, &mut gp_is_scalar, gc_cache);
 
             let mut xx: c_double;
             let mut yy: c_double;
-            (xx, yy) = transformLocn(
-                x, y, i as c_int, vpc, gc, vpWidthCM, vpHeightCM, dd, &transform,
-            );
-            let mut ww = transformWidthtoINCHES(w, i as c_int, vpc, gc, vpWidthCM, vpHeightCM, dd);
-            let mut hh = transformHeighttoINCHES(h, i as c_int, vpc, gc, vpWidthCM, vpHeightCM, dd);
+            // SAFETY: `dd` is the live current graphics device handle obtained from the engine for this call; other pointer arguments are locals or literals.
+            (xx, yy) = unsafe {
+                transformLocn(
+                    x, y, i as c_int, vpc, gc, vpWidthCM, vpHeightCM, dd, &transform,
+                )
+            };
+            // SAFETY: `dd` is the live current graphics device handle obtained from the engine for this call; other pointer arguments are locals or literals.
+            let mut ww = unsafe {
+                transformWidthtoINCHES(w, i as c_int, vpc, gc, vpWidthCM, vpHeightCM, dd)
+            };
+            // SAFETY: `dd` is the live current graphics device handle obtained from the engine for this call; other pointer arguments are locals or literals.
+            let mut hh = unsafe {
+                transformHeighttoINCHES(h, i as c_int, vpc, gc, vpWidthCM, vpHeightCM, dd)
+            };
             let hjust_i = if TYPEOF(hjust) == SEXPTYPE::REALSXP && LENGTH(hjust) > 0 {
                 real_elt(hjust, (i % hjust_len) as R_xlen_t)
             } else {
@@ -105,24 +117,31 @@ pub fn L_raster(
                 // or a Rust Vec with `n` elements whose lifetime covers the
                 // call.
 
-                xx = toDeviceX(xx, GE_INCHES, dd);
-                yy = toDeviceY(yy, GE_INCHES, dd);
-                ww = toDeviceWidth(ww, GE_INCHES, dd);
-                hh = toDeviceHeight(hh, GE_INCHES, dd);
+                // SAFETY: `dd` is the live current graphics device handle obtained from the engine for this call; other pointer arguments are locals or literals.
+                xx = unsafe { toDeviceX(xx, GE_INCHES, dd) };
+                // SAFETY: `dd` is the live current graphics device handle obtained from the engine for this call; other pointer arguments are locals or literals.
+                yy = unsafe { toDeviceY(yy, GE_INCHES, dd) };
+                // SAFETY: `dd` is the live current graphics device handle obtained from the engine for this call; other pointer arguments are locals or literals.
+                ww = unsafe { toDeviceWidth(ww, GE_INCHES, dd) };
+                // SAFETY: `dd` is the live current graphics device handle obtained from the engine for this call; other pointer arguments are locals or literals.
+                hh = unsafe { toDeviceHeight(hh, GE_INCHES, dd) };
                 if xx.is_finite() && yy.is_finite() && ww.is_finite() && hh.is_finite() {
-                    GERaster(
-                        image,
-                        integer_elt(dim, 1),
-                        integer_elt(dim, 0),
-                        xx,
-                        yy,
-                        ww,
-                        hh,
-                        rotationAngle,
-                        interp_i,
-                        gc,
-                        dd,
-                    );
+                    // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+                    unsafe {
+                        GERaster(
+                            image,
+                            integer_elt(dim, 1),
+                            integer_elt(dim, 0),
+                            xx,
+                            yy,
+                            ww,
+                            hh,
+                            rotationAngle,
+                            interp_i,
+                            gc,
+                            dd,
+                        )
+                    };
                 }
             } else {
                 let (xadj, yadj) = justification(ww, hh, hjust_i, vjust_i);
@@ -130,46 +149,57 @@ pub fn L_raster(
                 let _xadj_guard = protect(xadjInches);
                 let yadjInches = unit(yadj, L_INCHES);
                 let _yadj_guard = protect(yadjInches);
-                let (dw, dh) = transformDimn(
-                    xadjInches,
-                    yadjInches,
-                    0,
-                    vpc,
-                    gc,
-                    vpWidthCM,
-                    vpHeightCM,
-                    dd,
-                    rotationAngle,
-                );
+                // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+                let (dw, dh) = unsafe {
+                    transformDimn(
+                        xadjInches,
+                        yadjInches,
+                        0,
+                        vpc,
+                        gc,
+                        vpWidthCM,
+                        vpHeightCM,
+                        dd,
+                        rotationAngle,
+                    )
+                };
                 let mut xbl = xx + dw;
                 let mut ybl = yy + dh;
                 // SAFETY: `dd` is the live device; `toDevice*`/`GERaster`
                 // are engine bridges over the live `image` buffer.
 
-                xbl = toDeviceX(xbl, GE_INCHES, dd);
-                ybl = toDeviceY(ybl, GE_INCHES, dd);
-                ww = toDeviceWidth(ww, GE_INCHES, dd);
-                hh = toDeviceHeight(hh, GE_INCHES, dd);
+                // SAFETY: `dd` is the live current graphics device handle obtained from the engine for this call; other pointer arguments are locals or literals.
+                xbl = unsafe { toDeviceX(xbl, GE_INCHES, dd) };
+                // SAFETY: `dd` is the live current graphics device handle obtained from the engine for this call; other pointer arguments are locals or literals.
+                ybl = unsafe { toDeviceY(ybl, GE_INCHES, dd) };
+                // SAFETY: `dd` is the live current graphics device handle obtained from the engine for this call; other pointer arguments are locals or literals.
+                ww = unsafe { toDeviceWidth(ww, GE_INCHES, dd) };
+                // SAFETY: `dd` is the live current graphics device handle obtained from the engine for this call; other pointer arguments are locals or literals.
+                hh = unsafe { toDeviceHeight(hh, GE_INCHES, dd) };
                 if xbl.is_finite() && ybl.is_finite() && ww.is_finite() && hh.is_finite() {
-                    GERaster(
-                        image,
-                        integer_elt(dim, 1),
-                        integer_elt(dim, 0),
-                        xbl,
-                        ybl,
-                        ww,
-                        hh,
-                        rotationAngle,
-                        interp_i,
-                        gc,
-                        dd,
-                    );
+                    // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+                    unsafe {
+                        GERaster(
+                            image,
+                            integer_elt(dim, 1),
+                            integer_elt(dim, 0),
+                            xbl,
+                            ybl,
+                            ww,
+                            hh,
+                            rotationAngle,
+                            interp_i,
+                            gc,
+                            dd,
+                        )
+                    };
                 }
             }
         }
         // SAFETY: `dd` is the live device; engine mode teardown mirrors
         // the `GEMode(1, dd)` above.
-        GEMode(0, dd);
+        // SAFETY: `dd` is the live current graphics device handle obtained from the engine for this call; other pointer arguments are locals or literals.
+        unsafe { GEMode(0, dd) };
         R_NilValue()
     }
 }

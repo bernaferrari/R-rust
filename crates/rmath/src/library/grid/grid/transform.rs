@@ -4,12 +4,18 @@ use crate::library::grid::{
     set_vector_elt,
 };
 
-pub fn getViewportTransform(currentvp: SEXP, dd: pGEDevDesc) -> (f64, f64, LTransform, f64) {
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub unsafe fn getViewportTransform(currentvp: SEXP, dd: pGEDevDesc) -> (f64, f64, LTransform, f64) {
     {
         // SAFETY: `dd` is the live device pointer passed by the caller.
         let (device_width, device_height) = unsafe { getDeviceSize(dd) };
         if deviceChanged(device_width, device_height, currentvp) {
-            calcViewportTransform(currentvp, viewportParent(currentvp), true, dd);
+            // SAFETY: forwarded raw pointers satisfy `calcViewportTransform`'s contract per this function's own `# Safety` requirements.
+            unsafe { calcViewportTransform(currentvp, viewportParent(currentvp), true, dd) };
         }
 
         let width = viewportWidthCM(currentvp);
@@ -53,7 +59,8 @@ pub fn L_convert(x: SEXP, whatfrom: SEXP, whatto: SEXP, unitto: SEXP) -> SEXP {
         let _currentgp_guard = protect(currentgp);
         set_gp_fill_string(currentgp, "black");
 
-        let (vpWidthCM, vpHeightCM, _, _) = getViewportTransform(currentvp, dd);
+        // SAFETY: `dd` is the live current graphics device handle obtained from the engine for this call; other pointer arguments are locals or literals.
+        let (vpWidthCM, vpHeightCM, _, _) = unsafe { getViewportTransform(currentvp, dd) };
         let mut vpc = LViewportContext::default();
         getViewportContext(currentvp, &mut vpc);
 
@@ -101,7 +108,8 @@ pub fn L_convert(x: SEXP, whatfrom: SEXP, whatto: SEXP, unitto: SEXP) -> SEXP {
                         )
                     } else {
                         rel_convert = false;
-                        transformXtoINCHES(x, i, vpc, gc, vpWidthCM, vpHeightCM, dd)
+                        // SAFETY: `dd` is the live current graphics device handle obtained from the engine for this call; other pointer arguments are locals or literals.
+                        unsafe { transformXtoINCHES(x, i, vpc, gc, vpWidthCM, vpHeightCM, dd) }
                     }
                 }
                 1 => {
@@ -114,7 +122,8 @@ pub fn L_convert(x: SEXP, whatfrom: SEXP, whatto: SEXP, unitto: SEXP) -> SEXP {
                         )
                     } else {
                         rel_convert = false;
-                        transformYtoINCHES(x, i, vpc, gc, vpWidthCM, vpHeightCM, dd)
+                        // SAFETY: `dd` is the live current graphics device handle obtained from the engine for this call; other pointer arguments are locals or literals.
+                        unsafe { transformYtoINCHES(x, i, vpc, gc, vpWidthCM, vpHeightCM, dd) }
                     }
                 }
                 2 => {
@@ -127,7 +136,8 @@ pub fn L_convert(x: SEXP, whatfrom: SEXP, whatto: SEXP, unitto: SEXP) -> SEXP {
                         )
                     } else {
                         rel_convert = false;
-                        transformWidthtoINCHES(x, i, vpc, gc, vpWidthCM, vpHeightCM, dd)
+                        // SAFETY: `dd` is the live current graphics device handle obtained from the engine for this call; other pointer arguments are locals or literals.
+                        unsafe { transformWidthtoINCHES(x, i, vpc, gc, vpWidthCM, vpHeightCM, dd) }
                     }
                 }
                 3 => {
@@ -140,7 +150,8 @@ pub fn L_convert(x: SEXP, whatfrom: SEXP, whatto: SEXP, unitto: SEXP) -> SEXP {
                         )
                     } else {
                         rel_convert = false;
-                        transformHeighttoINCHES(x, i, vpc, gc, vpWidthCM, vpHeightCM, dd)
+                        // SAFETY: `dd` is the live current graphics device handle obtained from the engine for this call; other pointer arguments are locals or literals.
+                        unsafe { transformHeighttoINCHES(x, i, vpc, gc, vpWidthCM, vpHeightCM, dd) }
                     }
                 }
                 _ => unitValue(x, i),
@@ -234,7 +245,8 @@ pub fn L_devLoc(x: SEXP, y: SEXP, device: SEXP) -> SEXP {
         let _currentgp_guard = protect(currentgp);
         set_gp_fill_string(currentgp, "black");
 
-        let (vpWidthCM, vpHeightCM, transform, _) = getViewportTransform(currentvp, dd);
+        // SAFETY: `dd` is the live current graphics device handle obtained from the engine for this call; other pointer arguments are locals or literals.
+        let (vpWidthCM, vpHeightCM, transform, _) = unsafe { getViewportTransform(currentvp, dd) };
         let mut vpc = LViewportContext::default();
         getViewportContext(currentvp, &mut vpc);
 
@@ -255,13 +267,17 @@ pub fn L_devLoc(x: SEXP, y: SEXP, device: SEXP) -> SEXP {
         for i in 0..maxn {
             let mut xx: c_double;
             let mut yy: c_double;
-            (xx, yy) = transformLocn(x, y, i, vpc, gc, vpWidthCM, vpHeightCM, dd, &transform);
+            // SAFETY: `dd` is the live current graphics device handle obtained from the engine for this call; other pointer arguments are locals or literals.
+            (xx, yy) =
+                unsafe { transformLocn(x, y, i, vpc, gc, vpWidthCM, vpHeightCM, dd, &transform) };
             if as_device {
                 // SAFETY: `dd` is the live device; `toDevice*` are engine
                 // coordinate bridges over the device state.
 
-                xx = toDeviceX(xx, GE_INCHES, dd);
-                yy = toDeviceY(yy, GE_INCHES, dd);
+                // SAFETY: `dd` is the live current graphics device handle obtained from the engine for this call; other pointer arguments are locals or literals.
+                xx = unsafe { toDeviceX(xx, GE_INCHES, dd) };
+                // SAFETY: `dd` is the live current graphics device handle obtained from the engine for this call; other pointer arguments are locals or literals.
+                yy = unsafe { toDeviceY(yy, GE_INCHES, dd) };
             }
             set_real_elt(devx, i as R_xlen_t, xx);
             set_real_elt(devy, i as R_xlen_t, yy);
@@ -286,7 +302,9 @@ pub fn L_devDim(x: SEXP, y: SEXP, device: SEXP) -> SEXP {
         let _currentgp_guard = protect(currentgp);
         set_gp_fill_string(currentgp, "black");
 
-        let (vpWidthCM, vpHeightCM, _, rotationAngle) = getViewportTransform(currentvp, dd);
+        // SAFETY: `dd` is the live current graphics device handle obtained from the engine for this call; other pointer arguments are locals or literals.
+        let (vpWidthCM, vpHeightCM, _, rotationAngle) =
+            unsafe { getViewportTransform(currentvp, dd) };
         let mut vpc = LViewportContext::default();
         getViewportContext(currentvp, &mut vpc);
 
@@ -307,13 +325,18 @@ pub fn L_devDim(x: SEXP, y: SEXP, device: SEXP) -> SEXP {
         for i in 0..maxn {
             let mut xx: c_double;
             let mut yy: c_double;
-            (xx, yy) = transformDimn(x, y, i, vpc, gc, vpWidthCM, vpHeightCM, dd, rotationAngle);
+            // SAFETY: `dd` is the live current graphics device handle obtained from the engine for this call; other pointer arguments are locals or literals.
+            (xx, yy) = unsafe {
+                transformDimn(x, y, i, vpc, gc, vpWidthCM, vpHeightCM, dd, rotationAngle)
+            };
             if as_device {
                 // SAFETY: `dd` is the live device; `toDevice*` are engine
                 // coordinate bridges over the device state.
 
-                xx = toDeviceWidth(xx, GE_INCHES, dd);
-                yy = toDeviceHeight(yy, GE_INCHES, dd);
+                // SAFETY: `dd` is the live current graphics device handle obtained from the engine for this call; other pointer arguments are locals or literals.
+                xx = unsafe { toDeviceWidth(xx, GE_INCHES, dd) };
+                // SAFETY: `dd` is the live current graphics device handle obtained from the engine for this call; other pointer arguments are locals or literals.
+                yy = unsafe { toDeviceHeight(yy, GE_INCHES, dd) };
             }
             set_real_elt(devx, i as R_xlen_t, xx);
             set_real_elt(devy, i as R_xlen_t, yy);
@@ -368,12 +391,18 @@ pub fn L_layoutRegion(layoutPosRow: SEXP, layoutPosCol: SEXP) -> SEXP {
         let mut gc_buf: [u8; 256] = [0; 256];
         let gc = gc_buf.as_mut_ptr() as pGEcontext;
 
-        let x_cm = transformXtoINCHES(vpl.x, 0, vpc, gc, vp_width_cm, vp_height_cm, dd) * 2.54;
-        let y_cm = transformYtoINCHES(vpl.y, 0, vpc, gc, vp_width_cm, vp_height_cm, dd) * 2.54;
+        // SAFETY: `dd` is the live current graphics device handle obtained from the engine for this call; other pointer arguments are locals or literals.
+        let x_cm =
+            unsafe { transformXtoINCHES(vpl.x, 0, vpc, gc, vp_width_cm, vp_height_cm, dd) } * 2.54;
+        // SAFETY: `dd` is the live current graphics device handle obtained from the engine for this call; other pointer arguments are locals or literals.
+        let y_cm =
+            unsafe { transformYtoINCHES(vpl.y, 0, vpc, gc, vp_width_cm, vp_height_cm, dd) } * 2.54;
         let w_cm =
-            transformWidthtoINCHES(vpl.width, 0, vpc, gc, vp_width_cm, vp_height_cm, dd) * 2.54;
+            // SAFETY: `dd` is the live current graphics device handle obtained from the engine for this call; other pointer arguments are locals or literals.
+            (unsafe { transformWidthtoINCHES(vpl.width, 0, vpc, gc, vp_width_cm, vp_height_cm, dd) }) * 2.54;
         let h_cm =
-            transformHeighttoINCHES(vpl.height, 0, vpc, gc, vp_width_cm, vp_height_cm, dd) * 2.54;
+            // SAFETY: `dd` is the live current graphics device handle obtained from the engine for this call; other pointer arguments are locals or literals.
+            (unsafe { transformHeighttoINCHES(vpl.height, 0, vpc, gc, vp_width_cm, vp_height_cm, dd) }) * 2.54;
 
         let answer = alloc_vector(SEXPTYPE::REALSXP, 4);
         let _answer_guard = protect(answer);

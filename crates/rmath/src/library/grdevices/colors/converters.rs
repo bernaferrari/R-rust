@@ -14,7 +14,13 @@ pub(crate) const HEX_DIGITS: &[u8; 16] = b"0123456789ABCDEF";
 /// `RGB2rgb_func`/`RGBA2rgb_func`, `incol2name`, the `COLOR_DATA_BASE` name
 /// table, or byte-string literals, all of which are NUL-terminated and live
 /// for the duration of the R session.
-pub(crate) fn mk_char_ptr(name: *const c_char) -> SEXP {
+///
+/// # Safety
+///
+/// Each raw-pointer argument must be null where the C original accepts null, or else point to a
+/// live, properly initialized object of its pointee type (C strings NUL-terminated, buffers valid for
+/// the accompanying lengths) for the duration of the call.
+pub(crate) unsafe fn mk_char_ptr(name: *const c_char) -> SEXP {
     unsafe { Rf_mkChar(name) }
 }
 
@@ -471,8 +477,9 @@ pub(crate) fn str2col_bytes(s: &[u8], bg: rcolor) -> rcolor {
         match s.first() {
             Some(&b'#') => rgb2col_bytes(s),
             Some(&c) if c.is_ascii_digit() => {
-                let indx = super::numeric::palette_index(s)
-                    .unwrap_or_else(|| crate::sexp::context::r_error("invalid color specification"));
+                let indx = super::numeric::palette_index(s).unwrap_or_else(|| {
+                    crate::sexp::context::r_error("invalid color specification")
+                });
                 if indx == 0 {
                     return bg;
                 }

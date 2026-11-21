@@ -53,13 +53,23 @@ fn do_bmVersion() -> SEXP {
         let nms = Rf_allocVector(SEXPTYPE::STRSXP, 3);
         let _nms_guard = protect(nms);
 
-        SET_STRING_ELT(nms, 0 as R_xlen_t, mk_char_ptr(c"libpng".as_ptr()));
-        SET_STRING_ELT(nms, 1 as R_xlen_t, mk_char_ptr(c"jpeg".as_ptr()));
-        SET_STRING_ELT(nms, 2 as R_xlen_t, mk_char_ptr(c"libtiff".as_ptr()));
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        SET_STRING_ELT(nms, 0 as R_xlen_t, unsafe {
+            mk_char_ptr(c"libpng".as_ptr())
+        });
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        SET_STRING_ELT(nms, 1 as R_xlen_t, unsafe { mk_char_ptr(c"jpeg".as_ptr()) });
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        SET_STRING_ELT(nms, 2 as R_xlen_t, unsafe {
+            mk_char_ptr(c"libtiff".as_ptr())
+        });
 
-        SET_STRING_ELT(ans, 0 as R_xlen_t, mk_char_ptr(c"".as_ptr()));
-        SET_STRING_ELT(ans, 1 as R_xlen_t, mk_char_ptr(c"".as_ptr()));
-        SET_STRING_ELT(ans, 2 as R_xlen_t, mk_char_ptr(c"".as_ptr()));
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        SET_STRING_ELT(ans, 0 as R_xlen_t, unsafe { mk_char_ptr(c"".as_ptr()) });
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        SET_STRING_ELT(ans, 1 as R_xlen_t, unsafe { mk_char_ptr(c"".as_ptr()) });
+        // SAFETY: pointer arguments are live locals, NUL-terminated literals or owned CString/Vec buffers of this caller, valid for the call.
+        SET_STRING_ELT(ans, 2 as R_xlen_t, unsafe { mk_char_ptr(c"".as_ptr()) });
         crate::attrib_core::setAttrib(ans, crate::attrib_core::R_NamesSymbol(), nms);
 
         ans
