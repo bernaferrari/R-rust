@@ -26,7 +26,7 @@ unsafe extern "C-unwind" fn c_postscript(args: crate::sexp::ffi::SEXP) -> crate:
     unsafe { devps::PostScript(args) }
 }
 unsafe extern "C-unwind" fn c_cairo_props(which: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
-    unsafe { init::cairoProps(which) }
+    init::cairoProps(which)
 }
 unsafe extern "C-unwind" fn c_dev_ask_new_page(
     call: crate::sexp::ffi::SEXP,
@@ -34,7 +34,7 @@ unsafe extern "C-unwind" fn c_dev_ask_new_page(
     args: crate::sexp::ffi::SEXP,
     env: crate::sexp::ffi::SEXP,
 ) -> crate::sexp::ffi::SEXP {
-    unsafe { stubs::devAskNewPage(call, op, args, env) }
+    stubs::devAskNewPage(call, op, args, env)
 }
 unsafe extern "C-unwind" fn c_devholdflush(args: crate::sexp::ffi::SEXP) -> crate::sexp::ffi::SEXP {
     devices::devholdflush(args)
@@ -86,14 +86,14 @@ unsafe extern "C-unwind" fn c_create_at(
     nint: crate::sexp::ffi::SEXP,
     is_log: crate::sexp::ffi::SEXP,
 ) -> crate::sexp::ffi::SEXP {
-    unsafe { axis_scales::R_CreateAtVector(axp, usr, nint, is_log) }
+    axis_scales::R_CreateAtVector(axp, usr, nint, is_log)
 }
 unsafe extern "C-unwind" fn c_g_axis_pars(
     usr: crate::sexp::ffi::SEXP,
     is_log: crate::sexp::ffi::SEXP,
     nint: crate::sexp::ffi::SEXP,
 ) -> crate::sexp::ffi::SEXP {
-    unsafe { axis_scales::R_GAxisPars(usr, is_log, nint) }
+    axis_scales::R_GAxisPars(usr, is_log, nint)
 }
 unsafe extern "C-unwind" fn c_gray(
     lev: crate::sexp::ffi::SEXP,

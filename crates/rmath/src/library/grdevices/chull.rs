@@ -452,9 +452,10 @@ unsafe fn in_chull(
 
 /// Compute the convex hull of a set of 2D points.
 /// x is a two-column numeric matrix.
-pub unsafe fn chull(x: SEXP) -> SEXP {
-    unsafe {
-        let n = nrows(x as *const std::ffi::c_void);
+pub fn chull(x: SEXP) -> SEXP {
+    {
+        // SAFETY: `x` is a live object in the owning session for `nrows`.
+        let n = unsafe { nrows(x as *const std::ffi::c_void) };
         if n <= 0 {
             return Rf_allocVector(SEXPTYPE::INTSXP, 0);
         }
@@ -468,30 +469,34 @@ pub unsafe fn chull(x: SEXP) -> SEXP {
 
         let x = coerceVector(x, SEXPTYPE::REALSXP.into());
         let _x_guard = protect(x);
-        let x_data = REAL(x) as *mut c_double;
+        // SAFETY: `x` was just coerced to a protected REALSXP; `in_chull`
+        // only reads the 2×n payload through this raw view and writes the
+        // disjoint Rust work vectors above.
+        let x_data = unsafe { REAL(x) } as *mut c_double;
 
         let mut n_mut = n;
         let mut m_mut = n;
         let mut nh: c_int = 0;
 
-        in_chull(
-            &mut n_mut,
-            x_data,
-            &mut m_mut,
-            in_vec.as_mut_ptr(),
-            ia_vec.as_mut_ptr().add(n as usize),
-            ia_vec.as_mut_ptr().add(2 * n as usize),
-            ih_vec.as_mut_ptr(),
-            &mut nh,
-            il_vec.as_mut_ptr().add(3 * n as usize),
-        );
+        unsafe {
+            in_chull(
+                &mut n_mut,
+                x_data,
+                &mut m_mut,
+                in_vec.as_mut_ptr(),
+                ia_vec.as_mut_ptr().add(n as usize),
+                ia_vec.as_mut_ptr().add(2 * n as usize),
+                ih_vec.as_mut_ptr(),
+                &mut nh,
+                il_vec.as_mut_ptr().add(3 * n as usize),
+            )
+        };
 
         let ans = Rf_allocVector(SEXPTYPE::INTSXP, nh);
         let _ans_guard = protect(ans);
-        let ians = INTEGER(ans);
-        for i in 0..nh as usize {
+        for i in 0..nh {
             // Reverse order to match C output
-            *ians.add(i) = ih_vec.get(nh as usize - 1 - i).copied().unwrap_or(0);
+            SET_INTEGER_ELT(ans, i, ih_vec.get(nh as usize - 1 - i as usize).copied().unwrap_or(0));
         }
 
         ans

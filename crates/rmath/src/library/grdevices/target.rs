@@ -82,7 +82,7 @@ impl GraphicsTarget {
             .start_grid_command(command, at_root)
     }
 
-    pub(crate) unsafe fn record_grid_command(&self, command: Command, data: SEXP, start: usize) {
+    pub(crate) fn record_grid_command(&self, command: Command, data: SEXP, start: usize) {
         let Backend::Pdf(capture) = &self.0 else {
             return;
         };
@@ -95,7 +95,7 @@ impl GraphicsTarget {
         };
         // Construct the R pairlist outside the device borrow. Collection can
         // run finalizers, and the revision guards the device on return.
-        let retained = unsafe { log.append(command, data) }.unwrap_or(false);
+        let retained = log.append(command, data).unwrap_or(false);
         if let Ok(mut capture) = capture.try_borrow_mut()
             && let Some(capture) = capture.as_mut()
         {
@@ -115,7 +115,7 @@ impl GraphicsTarget {
             .cloned()
     }
 
-    pub(crate) unsafe fn replay_grid(
+    pub(crate) fn replay_grid(
         &self,
         commands: ReplayCommands,
         retry: Option<usize>,
@@ -126,10 +126,10 @@ impl GraphicsTarget {
         let mut staged = PdfCapture::new(self.dimensions())?;
         let dpi = device_dpi(self);
         if let Some(prefix) = retry {
-            unsafe { commands.draw_prefix(prefix, &mut staged, dpi) };
+            commands.draw_prefix(prefix, &mut staged, dpi);
             staged.finish_grid_retry_prefix();
         }
-        let (state, log) = unsafe { commands.draw(&mut staged, dpi) };
+        let (state, log) = commands.draw(&mut staged, dpi);
         if !super::device_registry::active_target().is_some_and(|target| self.same_device(&target))
         {
             return Err("graphics device changed during grid replay");

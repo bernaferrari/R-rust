@@ -7,9 +7,11 @@
 
 use crate::main::errors::Rf_error_unimplemented;
 use crate::sexp::accessors::{CDR, SET_STRING_ELT};
-use crate::sexp::constructors::{Rf_allocVector, Rf_mkChar};
+use crate::sexp::constructors::Rf_allocVector;
 use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::protect::protect;
+
+use super::colors::mk_char_ptr;
 
 fn unsupported(name: &str) -> ! {
     Rf_error_unimplemented(name);
@@ -45,19 +47,19 @@ fn do_setGraphicsEventEnv(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SE
 }
 
 fn do_bmVersion() -> SEXP {
-    unsafe {
+    {
         let ans = Rf_allocVector(SEXPTYPE::STRSXP, 3);
         let _ans_guard = protect(ans);
         let nms = Rf_allocVector(SEXPTYPE::STRSXP, 3);
         let _nms_guard = protect(nms);
 
-        SET_STRING_ELT(nms, 0 as R_xlen_t, Rf_mkChar(c"libpng".as_ptr()));
-        SET_STRING_ELT(nms, 1 as R_xlen_t, Rf_mkChar(c"jpeg".as_ptr()));
-        SET_STRING_ELT(nms, 2 as R_xlen_t, Rf_mkChar(c"libtiff".as_ptr()));
+        SET_STRING_ELT(nms, 0 as R_xlen_t, mk_char_ptr(c"libpng".as_ptr()));
+        SET_STRING_ELT(nms, 1 as R_xlen_t, mk_char_ptr(c"jpeg".as_ptr()));
+        SET_STRING_ELT(nms, 2 as R_xlen_t, mk_char_ptr(c"libtiff".as_ptr()));
 
-        SET_STRING_ELT(ans, 0 as R_xlen_t, Rf_mkChar(c"".as_ptr()));
-        SET_STRING_ELT(ans, 1 as R_xlen_t, Rf_mkChar(c"".as_ptr()));
-        SET_STRING_ELT(ans, 2 as R_xlen_t, Rf_mkChar(c"".as_ptr()));
+        SET_STRING_ELT(ans, 0 as R_xlen_t, mk_char_ptr(c"".as_ptr()));
+        SET_STRING_ELT(ans, 1 as R_xlen_t, mk_char_ptr(c"".as_ptr()));
+        SET_STRING_ELT(ans, 2 as R_xlen_t, mk_char_ptr(c"".as_ptr()));
         crate::attrib_core::setAttrib(ans, crate::attrib_core::R_NamesSymbol(), nms);
 
         ans
@@ -105,10 +107,11 @@ pub(crate) fn bmVersion() -> SEXP {
 }
 
 /// devAskNewPage - get/set the "ask new page" flag for the current device.
-pub unsafe fn devAskNewPage(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub fn devAskNewPage(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     let _ = (call, op, env);
-    unsafe {
-        let owner = crate::sexp::owner::OwnerToken::current()
+    {
+        // SAFETY: the R session owning `args` is active on this thread.
+        let owner = unsafe { crate::sexp::owner::OwnerToken::current() }
             .unwrap_or_else(|error| crate::sexp::context::r_error(error.to_string()));
         let arguments = owner
             .sexp(args)

@@ -8,14 +8,18 @@
 use std::os::raw::c_int;
 
 use crate::main::coerce::{asInteger, asLogical, coerceVector};
-use crate::sexp::accessors::{LENGTH, REAL, SET_STRING_ELT, SET_VECTOR_ELT};
-use crate::sexp::constructors::{Rf_ScalarInteger, Rf_allocVector, Rf_mkChar};
+use crate::sexp::accessors::{
+    LENGTH, REAL_ELT, SET_REAL_ELT, SET_STRING_ELT, SET_VECTOR_ELT,
+};
+use crate::sexp::constructors::{Rf_ScalarInteger, Rf_allocVector};
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
 use crate::sexp::protect::protect;
 
+use super::colors::mk_char_ptr;
+
 /// R_CreateAtVector - create an axis tick vector.
-pub unsafe fn R_CreateAtVector(axp: SEXP, usr: SEXP, nint: SEXP, is_log: SEXP) -> SEXP {
-    unsafe {
+pub fn R_CreateAtVector(axp: SEXP, usr: SEXP, nint: SEXP, is_log: SEXP) -> SEXP {
+    {
         let nint = asInteger(nint).max(1);
         let logflag = asLogical(is_log) == 1;
         let axp = coerceVector(axp, SEXPTYPE::REALSXP.into());
@@ -26,21 +30,23 @@ pub unsafe fn R_CreateAtVector(axp: SEXP, usr: SEXP, nint: SEXP, is_log: SEXP) -
         if LENGTH(usr) != 2 {
             axis_error("'usr' must be numeric of length 2");
         }
-        let axp = [*REAL(axp), *REAL(axp).add(1), *REAL(axp).add(2)];
-        let usr = [*REAL(usr), *REAL(usr).add(1)];
-        create_at_vector_raw(axp, usr, nint, logflag)
+        let axp = [REAL_ELT(axp, 0), REAL_ELT(axp, 1), REAL_ELT(axp, 2)];
+        let usr = [REAL_ELT(usr, 0), REAL_ELT(usr, 1)];
+        // SAFETY: kept unsafe for the grid caller's boundary block; inputs
+        // are local scalars and the result is a fresh allocated vector.
+        unsafe { create_at_vector_raw(axp, usr, nint, logflag) }
     }
 }
 
 /// R_GAxisPars - compute axis parameters (axp, n) from user range.
-pub unsafe fn R_GAxisPars(usr: SEXP, is_log: SEXP, nintLog: SEXP) -> SEXP {
-    unsafe {
+pub fn R_GAxisPars(usr: SEXP, is_log: SEXP, nintLog: SEXP) -> SEXP {
+    {
         let usr = coerceVector(usr, SEXPTYPE::REALSXP.into());
         if LENGTH(usr) != 2 {
             axis_error("'usr' must be numeric of length 2");
         }
-        let mut min = *REAL(usr);
-        let mut max = *REAL(usr).add(1);
+        let mut min = REAL_ELT(usr, 0);
+        let mut max = REAL_ELT(usr, 1);
         let mut n = asInteger(nintLog).max(1);
         let logflag = asLogical(is_log) == 1;
         g_axis_pars(&mut min, &mut max, &mut n, logflag);
@@ -49,16 +55,16 @@ pub unsafe fn R_GAxisPars(usr: SEXP, is_log: SEXP, nintLog: SEXP) -> SEXP {
         let _ans_guard = protect(ans);
         let axp = Rf_allocVector(SEXPTYPE::REALSXP, 2);
         let _axp_guard = protect(axp);
-        *REAL(axp) = min;
-        *REAL(axp).add(1) = max;
+        SET_REAL_ELT(axp, 0, min);
+        SET_REAL_ELT(axp, 1, max);
         SET_VECTOR_ELT(ans, 0, axp);
         SET_VECTOR_ELT(ans, 1, Rf_ScalarInteger(n));
 
         let names = Rf_allocVector(SEXPTYPE::STRSXP, 2);
         let _names_guard = protect(names);
-        SET_STRING_ELT(names, 0, Rf_mkChar(c"axp".as_ptr()));
-        SET_STRING_ELT(names, 1, Rf_mkChar(c"n".as_ptr()));
-        crate::eval::attrib_core::setAttrib(ans, crate::eval::attrib_core::R_NamesSymbol(), names);
+        SET_STRING_ELT(names, 0, mk_char_ptr(c"axp".as_ptr()));
+        SET_STRING_ELT(names, 1, mk_char_ptr(c"n".as_ptr()));
+        crate::attrib_core::setAttrib(ans, crate::attrib_core::R_NamesSymbol(), names);
         ans
     }
 }
@@ -69,24 +75,26 @@ fn axis_error(message: impl Into<String>) -> ! {
     });
 }
 
-unsafe fn real_vector(values: &[f64]) -> SEXP {
-    unsafe {
+fn real_vector(values: &[f64]) -> SEXP {
+    {
         let result = Rf_allocVector(SEXPTYPE::REALSXP, values.len() as c_int);
         let _guard = protect(result);
         for (index, value) in values.iter().copied().enumerate() {
-            *REAL(result).add(index) = value;
+            SET_REAL_ELT(result, index as c_int, value);
         }
         result
     }
 }
 
+/// Kept `unsafe` because the grid caller invokes it inside an unsafe
+/// boundary block; the body itself is now fully checked.
 pub(crate) unsafe fn create_at_vector_raw(
     axp: [f64; 3],
     usr: [f64; 2],
     nint: c_int,
     logflag: bool,
 ) -> SEXP {
-    unsafe {
+    {
         let ticks = create_at_vector(axp, usr, nint, logflag);
         real_vector(&ticks)
     }
@@ -269,50 +277,44 @@ fn gl_pretty(ul: &mut f64, uh: &mut f64, n: &mut c_int) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sexp::accessors::{INTEGER, VECTOR_ELT};
+    use crate::sexp::accessors::{INTEGER_ELT, VECTOR_ELT};
 
-    unsafe fn real(values: &[f64]) -> SEXP {
-        unsafe { real_vector(values) }
+    fn real(values: &[f64]) -> SEXP {
+        real_vector(values)
     }
 
     #[test]
     fn test_create_at_vector_linear() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            let axp = real(&[0.0, 10.0, 5.0]);
-            let usr = real(&[0.0, 10.0]);
-            let out = R_CreateAtVector(axp, usr, Rf_ScalarInteger(5), Rf_ScalarInteger(0));
-            assert_eq!(LENGTH(out), 6);
-            assert_eq!(*REAL(out), 0.0);
-            assert_eq!(*REAL(out).add(5), 10.0);
-        }
+        let axp = real(&[0.0, 10.0, 5.0]);
+        let usr = real(&[0.0, 10.0]);
+        let out = R_CreateAtVector(axp, usr, Rf_ScalarInteger(5), Rf_ScalarInteger(0));
+        assert_eq!(LENGTH(out), 6);
+        assert_eq!(REAL_ELT(out, 0), 0.0);
+        assert_eq!(REAL_ELT(out, 5), 10.0);
     }
 
     #[test]
     fn test_axis_pars_linear_returns_named_shape() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            let usr = real(&[0.0, 10.0]);
-            let out = R_GAxisPars(usr, Rf_ScalarInteger(0), Rf_ScalarInteger(5));
-            assert_eq!(LENGTH(out), 2);
-            let axp = VECTOR_ELT(out, 0);
-            assert_eq!(LENGTH(axp), 2);
-            assert!(*REAL(axp) <= *REAL(axp).add(1));
-            assert!(*INTEGER(VECTOR_ELT(out, 1)) >= 1);
-        }
+        let usr = real(&[0.0, 10.0]);
+        let out = R_GAxisPars(usr, Rf_ScalarInteger(0), Rf_ScalarInteger(5));
+        assert_eq!(LENGTH(out), 2);
+        let axp = VECTOR_ELT(out, 0);
+        assert_eq!(LENGTH(axp), 2);
+        assert!(REAL_ELT(axp, 0) <= REAL_ELT(axp, 1));
+        assert!(INTEGER_ELT(VECTOR_ELT(out, 1), 0) >= 1);
     }
 
     #[test]
     fn test_create_at_vector_log_has_positive_ticks() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            let axp = real(&[1.0, 1000.0, 3.0]);
-            let usr = real(&[1.0, 1000.0]);
-            let out = R_CreateAtVector(axp, usr, Rf_ScalarInteger(5), Rf_ScalarInteger(1));
-            assert!(LENGTH(out) > 0);
-            for i in 0..LENGTH(out) as usize {
-                assert!(*REAL(out).add(i) > 0.0);
-            }
+        let axp = real(&[1.0, 1000.0, 3.0]);
+        let usr = real(&[1.0, 1000.0]);
+        let out = R_CreateAtVector(axp, usr, Rf_ScalarInteger(5), Rf_ScalarInteger(1));
+        assert!(LENGTH(out) > 0);
+        for i in 0..LENGTH(out) {
+            assert!(REAL_ELT(out, i) > 0.0);
         }
     }
 }

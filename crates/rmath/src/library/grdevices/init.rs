@@ -18,7 +18,7 @@ use crate::sexp::ffi::SEXP;
 /// cairoProps - return whether Cairo features are available.
 /// Returns FALSE (0) for both Cairo and PangoCairo and errors for any
 /// unsupported selector.
-pub unsafe fn cairoProps(in_: SEXP) -> SEXP {
+pub fn cairoProps(in_: SEXP) -> SEXP {
     let which = asInteger(in_);
     match which {
         1 | 2 => Rf_ScalarLogical(0),
