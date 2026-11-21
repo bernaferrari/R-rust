@@ -179,10 +179,9 @@ pub fn L_initViewportStack() -> SEXP {
 }
 
 pub fn L_initDisplayList() -> SEXP {
-    // SAFETY: device registry bridge; `initDL` is an unsafe device-state
-    // bridge, so the call stays wrapped.
+    // SAFETY: device registry bridge.
     let dd = unsafe { getDevice() };
-    unsafe { initDL(dd) };
+    initDL(dd);
     R_NilValue()
 }
 
