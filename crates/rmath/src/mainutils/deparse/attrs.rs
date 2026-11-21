@@ -15,8 +15,8 @@ pub unsafe fn attr1(s: SEXP, d: *mut LocalParseData) -> c_int {
         let d = &mut *d;
         let a = ATTRIB(s);
         // For attr1 we need R_NamesSymbol and R_SrcrefSymbol - install them
-        let names_sym = Rf_install(b"names\0".as_ptr() as *const c_char);
-        let srcref_sym = Rf_install(b"srcref\0".as_ptr() as *const c_char);
+        let names_sym = crate::sexp::symbol::install_str("names");
+        let srcref_sym = crate::sexp::symbol::install_str("srcref");
         let nm = getAttrib(s, names_sym);
 
         let mut attr = ATTR_UNKNOWN;
@@ -70,11 +70,11 @@ pub unsafe fn attr1(s: SEXP, d: *mut LocalParseData) -> c_int {
 pub unsafe fn attrEntry(a: SEXP, d: *mut LocalParseData) {
     unsafe {
         let d = &mut *d;
-        let names_sym = Rf_install(b"names\0".as_ptr() as *const c_char);
-        let dim_sym = Rf_install(b"dim\0".as_ptr() as *const c_char);
-        let dimnames_sym = Rf_install(b"dimnames\0".as_ptr() as *const c_char);
-        let tsp_sym = Rf_install(b"tsp\0".as_ptr() as *const c_char);
-        let levels_sym = Rf_install(b"levels\0".as_ptr() as *const c_char);
+        let names_sym = crate::sexp::symbol::install_str("names");
+        let dim_sym = crate::sexp::symbol::install_str("dim");
+        let dimnames_sym = crate::sexp::symbol::install_str("dimnames");
+        let tsp_sym = crate::sexp::symbol::install_str("tsp");
+        let levels_sym = crate::sexp::symbol::install_str("levels");
 
         if TAG(a) == dim_sym {
             print2buff(b"dim\0".as_ptr() as *const c_char, d); // was .Dim
@@ -116,8 +116,8 @@ pub unsafe fn attrEntry(a: SEXP, d: *mut LocalParseData) {
 pub unsafe fn attr2(s: SEXP, d: *mut LocalParseData, not_names: bool) {
     unsafe {
         let d = &mut *d;
-        let names_sym = Rf_install(b"names\0".as_ptr() as *const c_char);
-        let srcref_sym = Rf_install(b"srcref\0".as_ptr() as *const c_char);
+        let names_sym = crate::sexp::symbol::install_str("names");
+        let srcref_sym = crate::sexp::symbol::install_str("srcref");
 
         let mut a = ATTRIB(s);
         while !isNull(a) {

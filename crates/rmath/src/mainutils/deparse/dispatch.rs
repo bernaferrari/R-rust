@@ -21,7 +21,7 @@ pub unsafe fn deparse_s4_object(s: SEXP, d: *mut LocalParseData) -> bool {
         // fallback setClass table. .S3Class formula objects have no .Data
         // slot; the language body is emitted via asS3() below.
         let has_s3_class = {
-            let s3_sym = Rf_install(c".S3Class".as_ptr());
+            let s3_sym = crate::sexp::symbol::install_str(".S3Class");
             let s3 = crate::sexp::attrib_core::getAttrib(s, s3_sym);
             !s3.is_null() && s3 != R_NilValue()
         };
@@ -61,7 +61,7 @@ pub unsafe fn deparse_s4_object(s: SEXP, d: *mut LocalParseData) -> bool {
             }
             crate::sexp::attrib_core::setAttrib(
                 slotlist,
-                Rf_install(b"names\0".as_ptr() as *const c_char),
+                crate::sexp::symbol::install_str("names"),
                 names,
             );
             vec2buff(slotlist, d, true);
@@ -84,24 +84,22 @@ pub unsafe fn deparse_s4_object(s: SEXP, d: *mut LocalParseData) -> bool {
 
 /// GNU `asS3(s)` for deparse: drop the S4 bit and restore `.S3Class`.
 fn s4_as_s3_view(s: SEXP) -> Option<SEXP> {
-    unsafe {
-        let view = crate::mainutils::duplicate::duplicate(s);
-        if view.is_null() {
-            return None;
-        }
-        crate::sexp::accessors::UNSET_S4_OBJECT(view);
-
-        let s3_sym = Rf_install(c".S3Class".as_ptr());
-        let s3_class = crate::sexp::attrib_core::getAttrib(view, s3_sym);
-        if !s3_class.is_null() && s3_class != R_NilValue() {
-            crate::sexp::attrib_core::setAttrib(
-                view,
-                crate::sexp::attrib_core::R_ClassSymbol(),
-                s3_class,
-            );
-        }
-        Some(view)
+    let view = crate::mainutils::duplicate::duplicate(s);
+    if view.is_null() {
+        return None;
     }
+    crate::sexp::accessors::UNSET_S4_OBJECT(view);
+
+    let s3_sym = crate::sexp::symbol::install_str(".S3Class");
+    let s3_class = crate::sexp::attrib_core::getAttrib(view, s3_sym);
+    if !s3_class.is_null() && s3_class != R_NilValue() {
+        crate::sexp::attrib_core::setAttrib(
+            view,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            s3_class,
+        );
+    }
+    Some(view)
 }
 
 fn s4_deparse_slot_value(s: SEXP, slot_name: &str) -> Option<SEXP> {
@@ -170,29 +168,25 @@ pub fn s4_class_name(s: SEXP) -> Option<String> {
 /// Slot names from the object when the class is not in the local setClass table
 /// (methods package classes such as classGeneratorFunction).
 fn s4_instance_slot_names(s: SEXP) -> Vec<String> {
-    unsafe {
-        let mut slots = Vec::new();
-        if TYPEOF(s) == SEXPTYPE::CLOSXP {
-            slots.push(".Data".to_string());
-        }
-        let mut att = ATTRIB(s);
-        while !att.is_null() && att != R_NilValue() {
-            let tag = TAG(att);
-            if TYPEOF(tag) == SEXPTYPE::SYMSXP {
-                let pn = PRINTNAME(tag);
-                if !pn.is_null() && pn != R_NilValue() {
-                    let name = std::ffi::CStr::from_ptr(CHAR(pn))
-                        .to_string_lossy()
-                        .into_owned();
-                    if name != "class" && !slots.iter().any(|existing| existing == &name) {
-                        slots.push(name);
-                    }
+    let mut slots = Vec::new();
+    if TYPEOF(s) == SEXPTYPE::CLOSXP {
+        slots.push(".Data".to_string());
+    }
+    let mut att = ATTRIB(s);
+    while !att.is_null() && att != R_NilValue() {
+        let tag = TAG(att);
+        if TYPEOF(tag) == SEXPTYPE::SYMSXP {
+            let pn = PRINTNAME(tag);
+            if !pn.is_null() && pn != R_NilValue() {
+                let name = char_lossy(pn);
+                if name != "class" && !slots.iter().any(|existing| existing == &name) {
+                    slots.push(name);
                 }
             }
-            att = CDR(att);
         }
-        slots
+        att = CDR(att);
     }
+    slots
 }
 
 pub fn string_attribute_values(s: SEXP, attribute: &'static [u8]) -> Vec<String> {
@@ -210,12 +204,14 @@ pub fn string_attribute_values(s: SEXP, attribute: &'static [u8]) -> Vec<String>
                 out.push(String::new());
                 continue;
             }
-            let chars = CHAR(elt);
-            if chars.is_null() {
+            let chars = char_cstring(elt);
+            if chars.is_none() {
                 out.push(String::new());
             } else {
                 out.push(
-                    std::ffi::CStr::from_ptr(chars)
+                    chars
+                        .as_deref()
+                        .unwrap_or_default()
                         .to_string_lossy()
                         .into_owned(),
                 );
@@ -396,7 +392,7 @@ pub unsafe fn deparse2buff(s: SEXP, d: *mut LocalParseData) {
             } else {
                 ATTR_SIMPLE
             };
-            let srcref_sym = Rf_install(b"srcref\0".as_ptr() as *const c_char);
+            let srcref_sym = crate::sexp::symbol::install_str("srcref");
             let t = getAttrib(s, srcref_sym);
             if (d.opts & USESOURCE != 0) && !isNull(t) {
                 src2buff1(t, d);
@@ -550,7 +546,7 @@ pub unsafe fn deparse2buff(s: SEXP, d: *mut LocalParseData) {
                     let mut fop: PPinfo;
                     let s = CDR(s);
                     if userbinop != 0 {
-                        let names_sym = Rf_install(b"names\0".as_ptr() as *const c_char);
+                        let names_sym = crate::sexp::symbol::install_str("names");
                         if isNull(getAttrib(s, names_sym)) {
                             fop = PPinfo::new(PP_BINARY2, PREC_PERCENT, 0);
                         } else {
@@ -1115,7 +1111,7 @@ pub unsafe fn deparse2buff(s: SEXP, d: *mut LocalParseData) {
             // dealt with above.  Deparse to .OBJSXP() or
             // structure(.OBJSXP(), <attrs>).
             if (d_opts_in & SHOW_ATTR_OR_NMS) != 0 {
-                let srcref_sym = Rf_install(b"srcref\0".as_ptr() as *const c_char);
+                let srcref_sym = crate::sexp::symbol::install_str("srcref");
                 let mut a = ATTRIB(s);
                 print2buff(b"structure(.OBJSXP()\0".as_ptr() as *const c_char, d);
                 while !isNull(a) {

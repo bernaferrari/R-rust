@@ -98,28 +98,26 @@ fn test_local_parse_data_default() {
 #[test]
 fn test_do_deparse_simple_expr() {
     let _session = RSession::new();
-    unsafe {
-        // Create a simple expression: 1L
-        let expr = Rf_ScalarInteger(1);
-        let _expr_guard = protect(expr);
-        let args = Rf_cons(
-            expr,
+    // Create a simple expression: 1L
+    let expr = Rf_ScalarInteger(1);
+    let _expr_guard = protect(expr);
+    let args = Rf_cons(
+        expr,
+        Rf_cons(
+            Rf_ScalarInteger(DEFAULT_CUTOFF),
             Rf_cons(
-                Rf_ScalarInteger(DEFAULT_CUTOFF),
+                Rf_ScalarLogical(0),
                 Rf_cons(
-                    Rf_ScalarLogical(0),
-                    Rf_cons(
-                        Rf_ScalarInteger(SHOWATTRIBUTES),
-                        Rf_cons(Rf_ScalarInteger(-1), R_NilValue()),
-                    ),
+                    Rf_ScalarInteger(SHOWATTRIBUTES),
+                    Rf_cons(Rf_ScalarInteger(-1), R_NilValue()),
                 ),
             ),
-        );
-        let _args_guard = protect(args);
-        let result = do_deparse(ptr::null_mut(), ptr::null_mut(), args, ptr::null_mut());
-        // Should return a character vector (STRSXP)
-        assert!(!result.is_null());
-    }
+        ),
+    );
+    let _args_guard = protect(args);
+    let result = do_deparse(ptr::null_mut(), ptr::null_mut(), args, ptr::null_mut());
+    // Should return a character vector (STRSXP)
+    assert!(!result.is_null());
 }
 
 #[test]
@@ -138,15 +136,13 @@ fn dput_returns_its_input_invisibly() {
 
 #[test]
 fn test_do_dump_returns_nil() {
-    unsafe {
-        let result = do_dump(
-            ptr::null_mut(),
-            ptr::null_mut(),
-            ptr::null_mut(),
-            ptr::null_mut(),
-        );
-        assert!(result.is_null() || result == R_NilValue());
-    }
+    let result = do_dump(
+        ptr::null_mut(),
+        ptr::null_mut(),
+        ptr::null_mut(),
+        ptr::null_mut(),
+    );
+    assert!(result.is_null() || result == R_NilValue());
 }
 
 #[test]
@@ -170,20 +166,17 @@ fn test_deparse_objsxp_structure_form() {
         let _x_guard = protect(x);
         let out = deparse1s(x);
         assert!(!out.is_null() && TYPEOF(out) == SEXPTYPE::STRSXP);
-        assert_eq!(
-            std::ffi::CStr::from_ptr(CHAR(STRING_ELT(out, 0))).to_string_lossy(),
-            "structure(.OBJSXP())"
-        );
+        assert_eq!(char_lossy(STRING_ELT(out, 0)), "structure(.OBJSXP())");
 
         // Attributes go through attrEntry(): `foo = 42`.
         crate::eval::attrib_core::setAttrib(
             x,
-            Rf_install(b"foo\0".as_ptr() as *const c_char),
+            crate::sexp::symbol::install_str("foo"),
             Rf_ScalarReal(42.0),
         );
         let out2 = deparse1s(x);
         assert_eq!(
-            std::ffi::CStr::from_ptr(CHAR(STRING_ELT(out2, 0))).to_string_lossy(),
+            char_lossy(STRING_ELT(out2, 0)),
             "structure(.OBJSXP(), foo = 42)"
         );
     }
@@ -470,30 +463,26 @@ fn owned_deparse_buffer_error_unwind_preserves_line_and_allows_actual_error_rend
         scalar_mut.try_set_integer_elt(0, 7).unwrap();
         let scalar = scalar_mut.freeze();
         let result = factory
-            .wrap(unsafe {
-                deparse1WithCutoff(
-                    scalar.clone().as_raw(),
-                    false,
-                    DEFAULT_CUTOFF,
-                    true,
-                    DEFAULTDEPARSE,
-                    -1,
-                )
-            })
+            .wrap(deparse1WithCutoff(
+                scalar.clone().as_raw(),
+                false,
+                DEFAULT_CUTOFF,
+                true,
+                DEFAULTDEPARSE,
+                -1,
+            ))
             .unwrap();
         assert_eq!(result.string_value_elt(0), Some(Some("7L".into())));
         let input = factory.strings(&[""]).unwrap();
         let result = factory
-            .wrap(unsafe {
-                deparse1WithCutoff(
-                    input.clone().as_raw(),
-                    false,
-                    DEFAULT_CUTOFF,
-                    true,
-                    DEFAULTDEPARSE,
-                    -1,
-                )
-            })
+            .wrap(deparse1WithCutoff(
+                input.clone().as_raw(),
+                false,
+                DEFAULT_CUTOFF,
+                true,
+                DEFAULTDEPARSE,
+                -1,
+            ))
             .unwrap();
         assert_eq!(result.string_value_elt(0), Some(Some("\"\"".into())));
     });
@@ -532,7 +521,7 @@ fn bounded_deparse_reclaims_discarded_nodes_but_still_rejects_a_retained_full_he
                 cap
             })
             .unwrap();
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             deparse1WithCutoff(value.as_raw(), false, DEFAULT_CUTOFF, true, 0, 0)
         }));
         if keep_alive {

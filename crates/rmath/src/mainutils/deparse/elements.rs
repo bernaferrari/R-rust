@@ -214,67 +214,65 @@ pub fn format_real_element(val: f64) -> *const c_char {
 
 /// Format a string element with quoting.
 pub unsafe fn format_string_element(s: SEXP) -> *const c_char {
-    unsafe {
-        with_deparse_runtime(|state| {
-            let buf = &mut state.string_buf;
-            if s.is_null() || s == R_NilValue() || s == R_NaString() {
-                buf[0] = b'N';
-                buf[1] = b'A';
-                buf[2] = 0;
-                return buf.as_ptr() as *const c_char;
+    with_deparse_runtime(|state| {
+        let buf = &mut state.string_buf;
+        if s.is_null() || s == R_NilValue() || s == R_NaString() {
+            buf[0] = b'N';
+            buf[1] = b'A';
+            buf[2] = 0;
+            return buf.as_ptr() as *const c_char;
+        }
+        let name = char_cstring(s);
+        if name.is_none() {
+            buf[0] = b'N';
+            buf[1] = b'A';
+            buf[2] = 0;
+            return buf.as_ptr() as *const c_char;
+        }
+        let bytes = name.as_deref().unwrap_or_default().to_bytes();
+        let mut pos = 0;
+        buf[pos] = b'"';
+        pos += 1;
+        for &b in bytes.iter() {
+            if pos + 2 >= 2046 {
+                break;
             }
-            let name = CHAR(s);
-            if name.is_null() {
-                buf[0] = b'N';
-                buf[1] = b'A';
-                buf[2] = 0;
-                return buf.as_ptr() as *const c_char;
-            }
-            let bytes = std::ffi::CStr::from_ptr(name).to_bytes();
-            let mut pos = 0;
-            buf[pos] = b'"';
-            pos += 1;
-            for &b in bytes.iter() {
-                if pos + 2 >= 2046 {
-                    break;
+            match b {
+                b'"' | b'\\' => {
+                    buf[pos] = b'\\';
+                    pos += 1;
+                    buf[pos] = b;
+                    pos += 1;
                 }
-                match b {
-                    b'"' | b'\\' => {
-                        buf[pos] = b'\\';
-                        pos += 1;
-                        buf[pos] = b;
-                        pos += 1;
-                    }
-                    b'\n' => {
-                        buf[pos] = b'\\';
-                        pos += 1;
-                        buf[pos] = b'n';
-                        pos += 1;
-                    }
-                    b'\r' => {
-                        buf[pos] = b'\\';
-                        pos += 1;
-                        buf[pos] = b'r';
-                        pos += 1;
-                    }
-                    b'\t' => {
-                        buf[pos] = b'\\';
-                        pos += 1;
-                        buf[pos] = b't';
-                        pos += 1;
-                    }
-                    _ => {
-                        buf[pos] = b;
-                        pos += 1;
-                    }
+                b'\n' => {
+                    buf[pos] = b'\\';
+                    pos += 1;
+                    buf[pos] = b'n';
+                    pos += 1;
+                }
+                b'\r' => {
+                    buf[pos] = b'\\';
+                    pos += 1;
+                    buf[pos] = b'r';
+                    pos += 1;
+                }
+                b'\t' => {
+                    buf[pos] = b'\\';
+                    pos += 1;
+                    buf[pos] = b't';
+                    pos += 1;
+                }
+                _ => {
+                    buf[pos] = b;
+                    pos += 1;
                 }
             }
-            buf[pos] = b'"';
-            pos += 1;
-            buf[pos] = 0;
-            buf.as_ptr() as *const c_char
-        })
-    }
+        }
+        buf[pos] = b'"';
+        pos += 1;
+        buf[pos] = 0;
+        buf.as_ptr() as *const c_char
+    })
 }
 
 /// Format a raw element as hex.
@@ -310,19 +308,19 @@ pub unsafe fn vector2buff(vector: SEXP, d: *mut LocalParseData) {
         if TYPEOF(vector) == SEXPTYPE::INTSXP && tlen > 1 {
             let vec = INTEGER(vector);
             if !vec.is_null() {
-                let v0 = *vec;
-                let v1 = *vec.add(1);
+                let v0 = INTEGER_ELT(vector, 0);
+                let v1 = INTEGER_ELT(vector, (1) as c_int);
                 if v0 != NA_INTEGER && v1 != NA_INTEGER {
                     let d_i = (v1 as f64) - (v0 as f64);
                     if d_i.abs() == 1.0 {
                         int_seq = true;
                         for i in 2..tlen as usize {
-                            let vi = *vec.add(i);
+                            let vi = INTEGER_ELT(vector, (i) as c_int);
                             if vi == NA_INTEGER {
                                 int_seq = false;
                                 break;
                             }
-                            let diff = (vi as f64) - (*vec.add(i - 1) as f64);
+                            let diff = (vi as f64) - (INTEGER_ELT(vector, (i - 1) as c_int) as f64);
                             if (diff - d_i).abs() > 1e-10 {
                                 int_seq = false;
                                 break;
@@ -333,8 +331,8 @@ pub unsafe fn vector2buff(vector: SEXP, d: *mut LocalParseData) {
             }
         }
 
-        let names_sym = Rf_install(b"names\0".as_ptr() as *const c_char);
-        let srcref_sym = Rf_install(b"srcref\0".as_ptr() as *const c_char);
+        let names_sym = crate::sexp::symbol::install_str("names");
+        let srcref_sym = crate::sexp::symbol::install_str("srcref");
         let mut nv = R_NilValue();
         let mut do_names = (d_opts_in & SHOW_ATTR_OR_NMS) != 0;
         if do_names {
@@ -377,10 +375,11 @@ pub unsafe fn vector2buff(vector: SEXP, d: *mut LocalParseData) {
             if int_seq {
                 let vec = INTEGER(vector);
                 if !vec.is_null() {
-                    let strp = format_int_element(*vec);
+                    let strp = format_int_element(INTEGER_ELT(vector, 0));
                     print2buff(strp, d);
                     print2buff(b":\0".as_ptr() as *const c_char, d);
-                    let strp = format_int_element(*vec.add((tlen - 1) as usize));
+                    let strp =
+                        format_int_element(INTEGER_ELT(vector, ((tlen - 1) as usize) as c_int));
                     print2buff(strp, d);
                 }
             } else {
@@ -389,7 +388,7 @@ pub unsafe fn vector2buff(vector: SEXP, d: *mut LocalParseData) {
                 let mut all_na = (d.opts & KEEPNA != 0) || add_l;
                 if !vec.is_null() {
                     for i in 0..tlen as usize {
-                        if *vec.add(i) != NA_INTEGER {
+                        if INTEGER_ELT(vector, (i) as c_int) != NA_INTEGER {
                             all_na = false;
                             break;
                         }
@@ -408,12 +407,12 @@ pub unsafe fn vector2buff(vector: SEXP, d: *mut LocalParseData) {
                         if do_names {
                             deparse2buf_name(nv, i as c_int, d);
                         }
-                        if all_na && *vec.add(i) == NA_INTEGER {
+                        if all_na && INTEGER_ELT(vector, (i) as c_int) == NA_INTEGER {
                             print2buff(b"NA_integer_\0".as_ptr() as *const c_char, d);
                         } else {
-                            let strp = format_int_element(*vec.add(i));
+                            let strp = format_int_element(INTEGER_ELT(vector, (i) as c_int));
                             print2buff(strp, d);
-                            if add_l && *vec.add(i) != NA_INTEGER {
+                            if add_l && INTEGER_ELT(vector, (i) as c_int) != NA_INTEGER {
                                 print2buff(b"L\0".as_ptr() as *const c_char, d);
                             }
                         }
@@ -444,7 +443,7 @@ pub unsafe fn vector2buff(vector: SEXP, d: *mut LocalParseData) {
                 let vec = REAL(vector);
                 if !vec.is_null() {
                     for i in 0..tlen as usize {
-                        if !ISNAN(*vec.add(i)) {
+                        if !ISNAN(REAL_ELT(vector, (i) as c_int)) {
                             all_na = false;
                             break;
                         }
@@ -458,7 +457,7 @@ pub unsafe fn vector2buff(vector: SEXP, d: *mut LocalParseData) {
                 let vec = COMPLEX(vector);
                 if !vec.is_null() {
                     for i in 0..tlen as usize {
-                        let c = *vec.add(i);
+                        let c = COMPLEX_ELT(vector, (i) as c_int);
                         if !crate::sexp::ffi::R_IsNA(c.r) && !crate::sexp::ffi::R_IsNA(c.i) {
                             all_na = false;
                             break;
@@ -503,10 +502,10 @@ pub unsafe fn vector2buff(vector: SEXP, d: *mut LocalParseData) {
                         // LGLSXP
                         let vec = LOGICAL(vector);
                         if !vec.is_null() {
-                            if all_na && *vec.add(i) == NA_INTEGER {
+                            if all_na && LOGICAL_ELT(vector, (i) as c_int) == NA_INTEGER {
                                 strp = b"NA\0".as_ptr() as *const c_char;
                             } else {
-                                strp = format_logical_element(*vec.add(i));
+                                strp = format_logical_element(LOGICAL_ELT(vector, (i) as c_int));
                             }
                         }
                     }
@@ -514,7 +513,7 @@ pub unsafe fn vector2buff(vector: SEXP, d: *mut LocalParseData) {
                         // REALSXP
                         let vec = REAL(vector);
                         if !vec.is_null() {
-                            let v = *vec.add(i);
+                            let v = REAL_ELT(vector, (i) as c_int);
                             if all_na
                                 && ISNAN(v)
                                 && (v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN)
@@ -541,7 +540,7 @@ pub unsafe fn vector2buff(vector: SEXP, d: *mut LocalParseData) {
                         // CPLXSXP
                         let vec = COMPLEX(vector);
                         if !vec.is_null() {
-                            let c = *vec.add(i);
+                            let c = COMPLEX_ELT(vector, (i) as c_int);
                             if crate::sexp::ffi::R_IsNA(c.r) && crate::sexp::ffi::R_IsNA(c.i) {
                                 strp = if all_na {
                                     c"NA_complex_".as_ptr()
@@ -609,7 +608,7 @@ pub unsafe fn vector2buff(vector: SEXP, d: *mut LocalParseData) {
                         // RAWSXP
                         let vec = RAW(vector);
                         if !vec.is_null() {
-                            strp = format_raw_element(*vec.add(i));
+                            strp = format_raw_element(RAW_ELT(vector, (i) as c_int));
                         }
                     }
                     _ => {} // intentionally unhandled: unsupported SEXPTYPE for element formatting
@@ -655,8 +654,8 @@ pub unsafe fn vec2buff(v: SEXP, d: *mut LocalParseData, do_names: bool) {
         let d = &mut *d;
         let mut lbreak = false;
         let n = LENGTH(v);
-        let names_sym = Rf_install(b"names\0".as_ptr() as *const c_char);
-        let srcref_sym = Rf_install(b"srcref\0".as_ptr() as *const c_char);
+        let names_sym = crate::sexp::symbol::install_str("names");
+        let srcref_sym = crate::sexp::symbol::install_str("srcref");
         let mut nv = R_NilValue();
         let mut do_names = do_names;
         if do_names {

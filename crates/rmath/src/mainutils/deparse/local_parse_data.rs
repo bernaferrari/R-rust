@@ -168,20 +168,18 @@ fn is_gnu_reserved_name(bytes: &[u8]) -> bool {
 
 /// Check if a symbol is a user-defined binary operator (%...%).
 pub fn isUserBinop(sym: SEXP) -> bool {
-    unsafe {
-        if !isSymbol(sym) {
-            return false;
-        }
-        let name = CHAR(PRINTNAME(sym));
-        if name.is_null() {
-            return false;
-        }
-        let bytes = std::ffi::CStr::from_ptr(name).to_bytes();
-        if bytes.len() < 3 {
-            return false;
-        }
-        bytes[0] == b'%' && bytes[bytes.len() - 1] == b'%'
+    if !isSymbol(sym) {
+        return false;
     }
+    let name = char_cstring(PRINTNAME(sym));
+    if name.is_none() {
+        return false;
+    }
+    let bytes = name.as_deref().unwrap_or_default().to_bytes();
+    if bytes.len() < 3 {
+        return false;
+    }
+    bytes[0] == b'%' && bytes[bytes.len() - 1] == b'%'
 }
 
 /// Check if a string is a valid string (non-null, non-NA).

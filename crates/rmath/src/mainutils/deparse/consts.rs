@@ -80,29 +80,25 @@ pub const SHOW_ATTR_OR_NMS: c_int = SHOWATTRIBUTES | NICE_NAMES;
 /// `"all"` is keepInteger+quoteExpressions+showAttributes+useSource+
 /// warnIncomplete+keepNA+digits17+niceNames (not delayPromises/S_compatible).
 pub fn deparse_opts_from_control(control: SEXP) -> c_int {
-    unsafe {
-        use crate::sexp::accessors::{STRING_ELT, TYPEOF, XLENGTH};
-        use crate::sexp::ffi::SEXPTYPE;
-        if control.is_null()
-            || control == crate::sexp::globals::R_NilValue()
-            || TYPEOF(control) != SEXPTYPE::STRSXP
-            || XLENGTH(control) == 0
-        {
-            return DEFAULT_USER_DEPARSE;
-        }
-        let mut names = Vec::new();
-        for i in 0..XLENGTH(control) {
-            let s = STRING_ELT(control, i);
-            if s.is_null() || s == crate::sexp::globals::R_NaString() {
-                continue;
-            }
-            let text = std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(s))
-                .to_string_lossy()
-                .into_owned();
-            names.push(text);
-        }
-        deparse_opts_from_names(&names)
+    use crate::sexp::accessors::{STRING_ELT, TYPEOF, XLENGTH};
+    use crate::sexp::ffi::SEXPTYPE;
+    if control.is_null()
+        || control == crate::sexp::globals::R_NilValue()
+        || TYPEOF(control) != SEXPTYPE::STRSXP
+        || XLENGTH(control) == 0
+    {
+        return DEFAULT_USER_DEPARSE;
     }
+    let mut names = Vec::new();
+    for i in 0..XLENGTH(control) {
+        let s = STRING_ELT(control, i);
+        if s.is_null() || s == crate::sexp::globals::R_NaString() {
+            continue;
+        }
+        let text = char_lossy(s);
+        names.push(text);
+    }
+    deparse_opts_from_names(&names)
 }
 
 pub fn deparse_opts_from_names(names: &[String]) -> c_int {

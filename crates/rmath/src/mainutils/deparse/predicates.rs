@@ -138,9 +138,9 @@ pub fn usable_nice_names(x: SEXP, isAtomic: bool) -> bool {
             }
 
             if isAtomic {
-                let name = CHAR(elt);
-                if !name.is_null() {
-                    let bytes = std::ffi::CStr::from_ptr(name).to_bytes();
+                let name = char_cstring(elt);
+                if !name.is_none() {
+                    let bytes = name.as_deref().unwrap_or_default().to_bytes();
                     if bytes == b"recursive" || bytes == b"use.names" {
                         return false;
                     }
